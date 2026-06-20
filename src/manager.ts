@@ -790,7 +790,9 @@ export async function startLlamaServerProcess(config: LocalBaseConfig, modelFile
     // llama-server's default is 4, which splits context size equally among 4 slots.
     "--parallel", "1",
     // Force --jinja to parse model's embedded tokenizer template correctly instead of standard fallback.
-    "--jinja"
+    "--jinja",
+    // Expose the /v1/embeddings endpoint for local vector indexing/search in coding clients.
+    "--embeddings"
   ];
 
   // Enable --flash-attn on Apple Silicon GPUs for up to 2x faster prompt prefill and reduced VRAM.
@@ -833,7 +835,8 @@ export async function launchLlamaServer(config: LocalBaseConfig, modelFile: stri
     "--port", String(port),
     "-c", String(ctxSize),
     "--parallel", "1",
-    "--jinja"
+    "--jinja",
+    "--embeddings"
   ];
 
   if (platform() === "darwin" && arch() === "arm64") {
