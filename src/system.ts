@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import * as os from "node:os";
 
 export type HostSpecs = {
   osName: string;
@@ -7,6 +8,8 @@ export type HostSpecs = {
   cpuModel: string;
   gpuName: string;
   gpuVramGb: number;
+  isMac: boolean;
+  isAppleSilicon: boolean;
 };
 
 function run(cmd: string, args: string[]): string {
@@ -14,45 +17,232 @@ function run(cmd: string, args: string[]): string {
   return (result.stdout ?? "").trim();
 }
 
+function tryNvmlFfi(): { name: string; vramGb: number } | null {
+  try {
+    const { dlopen, ptr } = require("bun:ffi");
+    const nvmlLibPaths = [
+      "libnvidia-ml.so",
+      "libnvidia-ml.so.1",
+      "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so",
+      "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1",
+      "/usr/lib/wsl/lib/libnvidia-ml.so",
+      "/usr/lib/wsl/lib/libnvidia-ml.so.1"
+    ];
+
+    let nvml: any = null;
+    for (const path of nvmlLibPaths) {
+      try {
+        nvml = dlopen(path, {
+          nvmlInit_v2: {
+            args: [],
+            returns: "i32"
+          },
+          nvmlShutdown: {
+            args: [],
+            returns: "i32"
+          },
+          nvmlDeviceGetCount_v2: {
+            args: ["ptr"],
+            returns: "i32"
+          },
+          nvmlDeviceGetHandleByIndex_v2: {
+            args: ["u32", "ptr"],
+            returns: "i32"
+          },
+          nvmlDeviceGetMemoryInfo: {
+            args: ["ptr", "ptr"],
+            returns: "i32"
+          },
+          nvmlDeviceGetName: {
+            args: ["ptr", "ptr", "u32"],
+            returns: "i32"
+          }
+        });
+        break;
+      } catch {
+        // try next path
+      }
+    }
+
+    if (!nvml) return null;
+
+    const initRes = nvml.symbols.nvmlInit_v2();
+    if (initRes !== 0) return null;
+
+    try {
+      const countBuf = new Uint32Array(1);
+      const countRes = nvml.symbols.nvmlDeviceGetCount_v2(ptr(countBuf));
+      if (countRes !== 0 || countBuf[0] === 0) return null;
+
+      const handleBuf = new BigUint64Array(1);
+      const handleRes = nvml.symbols.nvmlDeviceGetHandleByIndex_v2(0, ptr(handleBuf));
+      if (handleRes !== 0) return null;
+
+      const handle = ptr(handleBuf);
+
+      const nameBuf = new Uint8Array(64);
+      const nameRes = nvml.symbols.nvmlDeviceGetName(handle, ptr(nameBuf), 64);
+      let name = "NVIDIA GPU";
+      if (nameRes === 0) {
+        const end = nameBuf.indexOf(0);
+        name = new TextDecoder().decode(nameBuf.subarray(0, end > 0 ? end : undefined)).trim();
+      }
+
+      const memBuf = new BigUint64Array(3);
+      const memRes = nvml.symbols.nvmlDeviceGetMemoryInfo(handle, ptr(memBuf));
+      let vramGb = 0;
+      if (memRes === 0) {
+        vramGb = Math.round(Number(memBuf[0]) / 1024 / 1024 / 1024);
+      }
+
+      return { name, vramGb };
+    } finally {
+      nvml.symbols.nvmlShutdown();
+    }
+  } catch {
+    return null;
+  }
+}
+
+function tryAmdLinux(): { name: string; vramGb: number } | null {
+  try {
+    const vramFile = "/sys/class/drm/card0/device/mem_info_vram_total";
+    if (existsSync(vramFile)) {
+      const bytes = Number(readFileSync(vramFile, "utf8").trim());
+      if (Number.isFinite(bytes) && bytes > 0) {
+        const vramGb = Math.round(bytes / 1024 / 1024 / 1024);
+        return { name: "AMD GPU", vramGb };
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 export function detectSpecs(): HostSpecs {
-  const osName = run("bash", ["-lc", "source /etc/os-release && echo $PRETTY_NAME"]) || "Unknown";
+  const platform = os.platform();
+  const isMac = platform === "darwin";
+  const isAppleSilicon = isMac && os.arch() === "arm64";
 
-  let ramKb = 0;
-  if (existsSync("/proc/meminfo")) {
-    const memInfo = readFileSync("/proc/meminfo", "utf8").split("\n");
-    const memLine = memInfo.find((line) => line.startsWith("MemTotal:"));
-    if (memLine) {
-      ramKb = Number(memLine.split(/\s+/)[1]);
-    }
-  }
-  const ramGb = Math.round(ramKb / 1024 / 1024);
-
+  let osName = "Unknown";
+  let ramGb = 0;
   let cpuModel = "Unknown";
-  if (existsSync("/proc/cpuinfo")) {
-    const cpuInfo = readFileSync("/proc/cpuinfo", "utf8").split("\n");
-    const line = cpuInfo.find((l) => l.startsWith("model name"));
-    if (line) {
-      cpuModel = line.split(":", 2)[1]?.trim() ?? cpuModel;
-    }
-  }
-
   let gpuName = "Unavailable";
   let gpuVramGb = 0;
-  const smi = spawnSync("bash", ["-lc", "command -v nvidia-smi"], { encoding: "utf8", timeout: 3000, killSignal: "SIGKILL" });
-  if (smi.status === 0) {
-    const raw = run("nvidia-smi", ["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"]);
-    const first = raw.split("\n")[0] ?? "";
-    if (first.includes(",")) {
-      const [name, memMbRaw] = first.split(",", 2).map((item) => item.trim());
-      const memMb = Number(memMbRaw);
-      if (name) {
-        gpuName = name;
+
+  if (isMac) {
+    const version = run("sw_vers", ["-productVersion"]) || "Unknown";
+    osName = `macOS ${version}`;
+
+    try {
+      const memBytesStr = run("sysctl", ["-n", "hw.memsize"]);
+      const memBytes = Number(memBytesStr);
+      if (Number.isFinite(memBytes) && memBytes > 0) {
+        ramGb = Math.round(memBytes / 1024 / 1024 / 1024);
+      } else {
+        ramGb = Math.round(os.totalmem() / 1024 / 1024 / 1024);
       }
-      if (Number.isFinite(memMb) && memMb > 0) {
-        gpuVramGb = Math.round(memMb / 1024);
+    } catch {
+      ramGb = Math.round(os.totalmem() / 1024 / 1024 / 1024);
+    }
+
+    cpuModel = run("sysctl", ["-n", "machdep.cpu.brand_string"]) || os.cpus()[0]?.model || "Apple Silicon";
+
+    if (isAppleSilicon) {
+      const profilerOut = run("system_profiler", ["SPDisplaysDataType"]);
+      const match = profilerOut.match(/Chipset Model:\s*(.+)/);
+      gpuName = match ? match[1].trim() : cpuModel;
+      gpuVramGb = ramGb; // Unified memory is shared and fully accessible
+    } else {
+      const profilerOut = run("system_profiler", ["SPDisplaysDataType"]);
+      const match = profilerOut.match(/Chipset Model:\s*(.+)/);
+      gpuName = match ? match[1].trim() : "Intel Integrated Graphics";
+      const vramMatch = profilerOut.match(/VRAM \(Total\):\s*(.+)/);
+      if (vramMatch) {
+        const vramStr = vramMatch[1].trim();
+        const val = parseFloat(vramStr);
+        if (!isNaN(val)) {
+          gpuVramGb = vramStr.toLowerCase().includes("mb") ? Math.round(val / 1024) : Math.round(val);
+        }
       }
+    }
+  } else {
+    // Linux/Windows (Unix-fallback)
+    osName = run("bash", ["-lc", "source /etc/os-release && echo $PRETTY_NAME"]) || "Unknown Linux";
+
+    let ramKb = 0;
+    if (existsSync("/proc/meminfo")) {
+      const memInfo = readFileSync("/proc/meminfo", "utf8").split("\n");
+      const memLine = memInfo.find((line) => line.startsWith("MemTotal:"));
+      if (memLine) {
+        ramKb = Number(memLine.split(/\s+/)[1]);
+      }
+    }
+    if (ramKb > 0) {
+      ramGb = Math.round(ramKb / 1024 / 1024);
+    } else {
+      ramGb = Math.round(os.totalmem() / 1024 / 1024 / 1024);
+    }
+
+    cpuModel = "Unknown";
+    if (existsSync("/proc/cpuinfo")) {
+      const cpuInfo = readFileSync("/proc/cpuinfo", "utf8").split("\n");
+      const line = cpuInfo.find((l) => l.startsWith("model name"));
+      if (line) {
+        cpuModel = line.split(":", 2)[1]?.trim() ?? cpuModel;
+      }
+    }
+    if (cpuModel === "Unknown") {
+      cpuModel = os.cpus()[0]?.model ?? "Unknown CPU";
+    }
+
+    // Try detecting Nvidia via nvidia-smi
+    let detectedGpu = false;
+    const smi = spawnSync("bash", ["-lc", "command -v nvidia-smi"], { encoding: "utf8", timeout: 3000, killSignal: "SIGKILL" });
+    if (smi.status === 0) {
+      const raw = run("nvidia-smi", ["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"]);
+      const first = raw.split("\n")[0] ?? "";
+      if (first.includes(",")) {
+        const [name, memMbRaw] = first.split(",", 2).map((item) => item.trim());
+        const memMb = Number(memMbRaw);
+        if (name) {
+          gpuName = name;
+          detectedGpu = true;
+        }
+        if (Number.isFinite(memMb) && memMb > 0) {
+          gpuVramGb = Math.round(memMb / 1024);
+        }
+      }
+    }
+
+    // Fallback 1: Try NVML FFI directly
+    if (!detectedGpu) {
+      const nvmlGpu = tryNvmlFfi();
+      if (nvmlGpu) {
+        gpuName = nvmlGpu.name;
+        gpuVramGb = nvmlGpu.vramGb;
+        detectedGpu = true;
+      }
+    }
+
+    // Fallback 2: Try AMD Linux sysfs
+    if (!detectedGpu) {
+      const amdGpu = tryAmdLinux();
+      if (amdGpu) {
+        gpuName = amdGpu.name;
+        gpuVramGb = amdGpu.vramGb;
+        detectedGpu = true;
+      }
+    }
+
+    // Fallback 3: Integrated GPU or CPU-only
+    if (!detectedGpu) {
+      gpuName = "CPU / Integrated Graphics";
+      gpuVramGb = 0;
     }
   }
 
-  return { osName, ramGb, cpuModel, gpuName, gpuVramGb };
+  return { osName, ramGb, cpuModel, gpuName, gpuVramGb, isMac, isAppleSilicon };
 }
+

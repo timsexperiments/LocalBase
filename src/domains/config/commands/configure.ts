@@ -1,29 +1,67 @@
 import { existsSync } from "node:fs";
-import { byId, recommendedForVram, recommendedSttForVram } from "../../../catalog";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { byId, listModels, evaluateModelFit, calculateMaxSafeContextSize } from "../../../catalog";
 import { createApiKey, defaultRoot, loadApiKeys, loadConfig, saveConfig, type LocalBaseConfig } from "../../../manager";
+import type { AppContext } from "../../../context";
 import { detectSpecs } from "../../../system";
 import { validateModelList } from "../../models/model-selection";
 import { parseBool, parseFlag, parseList, toInt } from "../../../utils/args";
 import { confirmPrompt, multiSelectPrompt, numberPrompt, singleSelectPrompt, textPrompt } from "../../../utils/prompt";
 import { loadTomlOverrides } from "../../../utils/toml";
 
-function llmChoices(current: string[]): Array<{ name: string; value: string; checked?: boolean }> {
-  return recommendedForVram(detectSpecs().gpuVramGb).slice(0, 12).map((model) => ({
-    name: `${model.modelId} (${model.storageGb.toFixed(2)}GB, min VRAM ${model.minVramGb}GB, coding ${model.codingScore}/10)`,
-    value: model.modelId,
-    checked: current.includes(model.modelId)
-  }));
+function llmChoices(current: string[]): Array<{ name: string; value: string; checked?: boolean; disabled?: string | boolean }> {
+  const vramGb = detectSpecs().gpuVramGb;
+  return listModels("llm").map((model) => {
+    const fit = evaluateModelFit(model, vramGb);
+    let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, min VRAM ${model.minVramGb}GB, coding ${model.codingScore}/10)`;
+
+    let disabled: string | boolean = false;
+    if (fit.status === "insufficient") {
+      label += ` [❌ Requires ${model.minVramGb}GB, you have ${vramGb}GB]`;
+      disabled = `Requires ${model.minVramGb}GB VRAM`;
+    } else if (fit.status === "tight") {
+      label += ` [⚠️ Tight: leaves ${fit.headroomGb.toFixed(1)}GB headroom]`;
+    } else {
+      label += ` [✅ Comfortable fit]`;
+    }
+
+    return {
+      name: label,
+      value: model.modelId,
+      checked: current.includes(model.modelId),
+      disabled
+    };
+  });
 }
 
-function sttChoices(current: string[]): Array<{ name: string; value: string; checked?: boolean }> {
-  return recommendedSttForVram(detectSpecs().gpuVramGb).slice(0, 12).map((model) => ({
-    name: `${model.modelId} (${model.storageGb.toFixed(2)}GB, min VRAM ${model.minVramGb}GB)`,
-    value: model.modelId,
-    checked: current.includes(model.modelId)
-  }));
+function sttChoices(current: string[]): Array<{ name: string; value: string; checked?: boolean; disabled?: string | boolean }> {
+  const vramGb = detectSpecs().gpuVramGb;
+  return listModels("stt").map((model) => {
+    const fit = evaluateModelFit(model, vramGb);
+    let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, min VRAM ${model.minVramGb}GB)`;
+
+    let disabled: string | boolean = false;
+    if (fit.status === "insufficient") {
+      label += ` [❌ Requires ${model.minVramGb}GB, you have ${vramGb}GB]`;
+      disabled = `Requires ${model.minVramGb}GB VRAM`;
+    } else if (fit.status === "tight") {
+      label += ` [⚠️ Tight: leaves ${fit.headroomGb.toFixed(1)}GB headroom]`;
+    } else {
+      label += ` [✅ Comfortable fit]`;
+    }
+
+    return {
+      name: label,
+      value: model.modelId,
+      checked: current.includes(model.modelId),
+      disabled
+    };
+  });
 }
 
-async function interactiveConfigureSelective(config: LocalBaseConfig, locked: Set<keyof LocalBaseConfig>): Promise<LocalBaseConfig> {
+
+async function interactiveConfigureSelective(config: LocalBaseConfig, locked: Set<keyof LocalBaseConfig>, vramGb: number): Promise<LocalBaseConfig> {
   console.log("\nInteractive setup mode");
 
   const useAll = !locked.has("root") && !locked.has("host") && !locked.has("port") && !locked.has("ctxSize") && !locked.has("sttHost") && !locked.has("sttPort") && !locked.has("startupOnBoot") && !locked.has("selectedLlmModels") && !locked.has("selectedSttModels") && !locked.has("activeLlmModel") && !locked.has("activeSttModel");
@@ -34,7 +72,6 @@ async function interactiveConfigureSelective(config: LocalBaseConfig, locked: Se
 
   if (!locked.has("host")) config.host = await textPrompt("LLM host", config.host);
   if (!locked.has("port")) config.port = await numberPrompt("LLM port", config.port);
-  if (!locked.has("ctxSize")) config.ctxSize = await numberPrompt("LLM context size", config.ctxSize);
 
   if (!locked.has("sttHost")) config.sttHost = await textPrompt("STT host", config.sttHost);
   if (!locked.has("sttPort")) config.sttPort = await numberPrompt("STT port", config.sttPort);
@@ -53,6 +90,16 @@ async function interactiveConfigureSelective(config: LocalBaseConfig, locked: Se
     config.activeLlmModel = await singleSelectPrompt("Active LLM model", options, fallback);
   }
 
+  if (!locked.has("ctxSize")) {
+    const spec = byId(config.activeLlmModel);
+    const recommendedCtx = spec ? calculateMaxSafeContextSize(spec, vramGb) : (vramGb >= 32 ? 32768 : 8192);
+    let suggestCtx = config.ctxSize;
+    if (config.ctxSize <= 8192 || config.ctxSize === 32768 || recommendedCtx > config.ctxSize) {
+      suggestCtx = recommendedCtx;
+    }
+    config.ctxSize = await numberPrompt(`LLM maximum context limit (ceiling for dynamic sizing; recommended for ${config.activeLlmModel}: ${recommendedCtx})`, suggestCtx);
+  }
+
   if (!locked.has("selectedSttModels")) {
     config.selectedSttModels = validateModelList(await multiSelectPrompt("Select STT models", sttChoices(config.selectedSttModels)), "stt") ?? config.selectedSttModels;
   }
@@ -67,14 +114,81 @@ async function interactiveConfigureSelective(config: LocalBaseConfig, locked: Se
   return config;
 }
 
-export async function runConfigure(args: string[]): Promise<number> {
-  const specs = detectSpecs();
+export async function syncOpenCodeConfig(config: LocalBaseConfig, activeModelCtxSizeOverride?: number): Promise<void> {
+  const opencodeDir = join(homedir(), ".config", "opencode");
+  const configPath = join(opencodeDir, "opencode.jsonc");
+  const jsonPath = join(opencodeDir, "opencode.json");
+
+  let path = "";
+  if (existsSync(configPath)) {
+    path = configPath;
+  } else if (existsSync(jsonPath)) {
+    path = jsonPath;
+  } else {
+    return;
+  }
+
+  try {
+    const raw = Bun.file(path);
+    const text = await raw.text();
+    const cleaned = text.replace(/("([^"\\]|\\.)*")|(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g, (m, g1) => {
+      if (g1) return g1;
+      return "";
+    });
+    const data = JSON.parse(cleaned);
+
+    if (!data.provider) data.provider = {};
+
+    const host = config.host === "0.0.0.0" ? "localhost" : config.host;
+    const wrapperPort = 8787;
+
+    data.provider.localbase = {
+      npm: "@ai-sdk/openai-compatible",
+      name: "LocalBase",
+      options: {
+        baseURL: `http://${host}:${wrapperPort}/v1`
+      },
+      models: {}
+    };
+
+    const activeModel = config.activeLlmModel;
+    const vramGb = detectSpecs().gpuVramGb;
+
+    for (const modelId of config.selectedLlmModels) {
+      const spec = byId(modelId);
+      const displayName = spec ? `${spec.family} ${spec.version}` : modelId;
+      const recommendedCtx = spec ? calculateMaxSafeContextSize(spec, vramGb) : config.ctxSize;
+
+      const actualCtx = modelId === activeModel
+        ? (activeModelCtxSizeOverride ?? config.ctxSize)
+        : Math.min(recommendedCtx, config.ctxSize);
+
+      data.provider.localbase.models[modelId] = {
+        name: displayName,
+        tool_call: true,
+        limit: {
+          context: actualCtx
+        }
+      };
+    }
+
+    data.model = `localbase/${activeModel}`;
+
+    await Bun.write(path, JSON.stringify(data, null, 2));
+    console.log(`\n🔄 Automatically synchronized model configs and context limits to ${path}`);
+  } catch (err) {
+    console.warn("\n⚠️  Could not automatically synchronize config with OpenCode:", (err as Error).message);
+  }
+}
+
+export async function runConfigure(args: string[], ctx: AppContext): Promise<number> {
+  const specs = ctx.specs;
   const configPath = parseFlag(args, "--config");
   const rawToml = configPath ? loadTomlOverrides(configPath) : {};
   const root = parseFlag(args, "--root") ?? rawToml.root;
   const hasConfig = root ? existsSync(`${root}/local-base.db`) : existsSync(`${defaultRoot()}/local-base.db`);
 
-  let config = loadConfig(root, specs.gpuVramGb);
+  let config = root ? loadConfig(root, specs.gpuVramGb) : ctx.config;
   const llmFromFlags = validateModelList(parseList(parseFlag(args, "--llm-models")), "llm");
   const sttFromFlags = validateModelList(parseList(parseFlag(args, "--stt-models")), "stt");
   const llmFromToml = validateModelList(rawToml.selectedLlmModels, "llm");
@@ -117,12 +231,13 @@ export async function runConfigure(args: string[]): Promise<number> {
 
   const explicitMode = args.includes("--all") || args.includes("--defaults") || args.includes("--config") || locked.size > 0;
   const shouldAsk = args.includes("--all") || (!args.includes("--defaults") && (!hasConfig || !explicitMode));
-  if (shouldAsk) config = await interactiveConfigureSelective(config, locked);
+  if (shouldAsk) config = await interactiveConfigureSelective(config, locked, specs.gpuVramGb);
 
   if (byId(config.activeLlmModel)?.kind !== "llm") throw new Error(`Active LLM model is invalid: ${config.activeLlmModel}`);
   if (byId(config.activeSttModel)?.kind !== "stt") throw new Error(`Active STT model is invalid: ${config.activeSttModel}`);
 
   saveConfig(config);
+  await syncOpenCodeConfig(config);
   console.log(`Saved configuration to ${config.root}/local-base.db`);
   console.log(`Selected LLM models: ${config.selectedLlmModels.join(", ")}`);
   console.log(`Selected STT models: ${config.selectedSttModels.join(", ")}`);

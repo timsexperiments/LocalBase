@@ -12,13 +12,13 @@ export function printServeNextSteps(host: string, port: number): void {
   console.log("Note: local-base orchestrates serving, but model inference is executed by llama-server/whisper-server runtimes.");
 }
 
-export function serveLlm(config: LocalBaseConfig, modelFile: string, host: string, port: number, ctxSize: number): number {
+export async function serveLlm(config: LocalBaseConfig, modelFile: string, host: string, port: number, ctxSize: number): Promise<number> {
   printServeNextSteps(host, port);
-  return launchLlamaServer(config, modelFile, host, port, ctxSize);
+  return await launchLlamaServer(config, modelFile, host, port, ctxSize);
 }
 
-export function serveStt(config: LocalBaseConfig, modelFile: string, host: string, port: number): number {
+export async function serveStt(config: LocalBaseConfig, modelFile: string, host: string, port: number): Promise<number> {
   console.log(`STT endpoint: http://${host}:${port}`);
   console.log("Note: local-base launches whisper-server; the runtime process serves inference traffic.");
-  return launchWhisperServer(config, modelFile, host, port);
+  return await launchWhisperServer(config, modelFile, host, port);
 }

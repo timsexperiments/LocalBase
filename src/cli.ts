@@ -1,5 +1,3 @@
-import { loadConfig } from "./manager";
-import { detectSpecs } from "./system";
 import { parseFlag } from "./utils/args";
 import { printHelp } from "./domains/app/commands/help";
 import { runConfigure } from "./domains/config/commands/configure";
@@ -13,6 +11,7 @@ import { runServe } from "./domains/runtime/commands/serve";
 import { runKeys } from "./domains/auth/commands/keys";
 import { runReset } from "./domains/maintenance/commands/reset";
 import { runUninstall } from "./domains/maintenance/commands/uninstall";
+import { createAppContext } from "./context";
 
 async function main(): Promise<number> {
   const args = Bun.argv.slice(2);
@@ -23,26 +22,25 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  const ctx = createAppContext(args);
+
   if (!command || command.startsWith("--")) {
-    return runConfigure(args);
+    return runConfigure(args, ctx);
   }
 
-  if (command === "init") return runInit(args);
-  if (command === "configure") return runConfigure(args);
-  if (command === "doctor") return runDoctor(args);
-  if (command === "catalog") return runCatalog(args);
-  if (command === "recommend") return runRecommend(args);
+  if (command === "init") return runInit(args, ctx);
+  if (command === "configure") return runConfigure(args, ctx);
+  if (command === "doctor") return runDoctor(args, ctx);
+  if (command === "catalog") return runCatalog(args, ctx);
+  if (command === "recommend") return runRecommend(args, ctx);
 
-  if (command === "reset") return runReset(args);
-  if (command === "uninstall") return runUninstall(args);
+  if (command === "reset") return runReset(args, ctx);
+  if (command === "uninstall") return runUninstall(args, ctx);
 
-  const root = parseFlag(args, "--root");
-  const config = loadConfig(root, detectSpecs().gpuVramGb);
-
-  if (command === "keys") return runKeys(args, config);
-  if (command === "installed") return runInstalled(args, config);
-  if (command === "install") return runInstall(args, config);
-  if (command === "serve") return runServe(args, config);
+  if (command === "keys") return runKeys(args, ctx);
+  if (command === "installed") return runInstalled(args, ctx);
+  if (command === "install") return runInstall(args, ctx);
+  if (command === "serve") return runServe(args, ctx);
 
   console.error(`Unknown command: ${command}`);
   printHelp();

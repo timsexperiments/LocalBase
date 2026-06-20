@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, copyFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { homedir } from "node:os";
+import { homedir, platform, arch } from "node:os";
 import { extname, join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { eq } from "drizzle-orm";
@@ -183,6 +183,7 @@ export function defaultRoot(): string {
 function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
   const llm = recommendedForVram(vramGb)[0]?.modelId ?? "qwen2.5-coder-7b-instruct-q4_k_m";
   const stt = recommendedSttForVram(vramGb)[2]?.modelId ?? recommendedSttForVram(vramGb)[0]?.modelId ?? "whisper-base-q8_0";
+  const defaultCtxSize = 131072;
   return {
     root,
     llmModelsDir: join(root, "models", "llm"),
@@ -191,7 +192,7 @@ function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     sttBackend: "whisper.cpp",
     host: "0.0.0.0",
     port: 8000,
-    ctxSize: 8192,
+    ctxSize: defaultCtxSize,
     sttHost: "0.0.0.0",
     sttPort: 8080,
     startupOnBoot: false,
@@ -414,51 +415,430 @@ export function rotateApiKey(config: LocalBaseConfig, id: string): { record: Api
 
 
 
-export function startLlamaServerProcess(config: LocalBaseConfig, modelFile: string, host: string, port: number, ctxSize: number): Bun.Subprocess {
+export function resolveBinaryPath(config: LocalBaseConfig, name: string): string | null {
+  const localBin = join(config.root, "bin", name);
+  if (existsSync(localBin)) {
+    return localBin;
+  }
+
+  const check = spawnSync("which", [name], { encoding: "utf8" });
+  if (check.status === 0 && check.stdout.trim()) {
+    return check.stdout.trim();
+  }
+
+  return null;
+}
+
+export function ensureCMake(config: LocalBaseConfig): string {
+  const systemCheck = spawnSync("which", ["cmake"], { encoding: "utf8" });
+  if (systemCheck.status === 0 && systemCheck.stdout.trim()) {
+    return systemCheck.stdout.trim();
+  }
+
+  const portableDir = join(config.root, "bin", "portable-cmake");
+  const osName = platform();
+  const cpuArch = arch();
+
+  let cmakeBin = "";
+  if (osName === "darwin") {
+    cmakeBin = join(portableDir, "CMake.app", "Contents", "bin", "cmake");
+  } else {
+    cmakeBin = join(portableDir, "bin", "cmake");
+  }
+
+  if (existsSync(cmakeBin)) {
+    return cmakeBin;
+  }
+
+  console.log("\n🛠️  CMake not found on system. Automatically installing portable CMake 3.31.5...");
+  mkdirSync(portableDir, { recursive: true });
+
+  let url = "";
+  if (osName === "darwin") {
+    url = "https://github.com/Kitware/CMake/releases/download/v3.31.5/cmake-3.31.5-macos-universal.tar.gz";
+  } else if (osName === "linux" && cpuArch === "x64") {
+    url = "https://github.com/Kitware/CMake/releases/download/v3.31.5/cmake-3.31.5-linux-x86_64.tar.gz";
+  } else if (osName === "linux" && cpuArch === "arm64") {
+    url = "https://github.com/Kitware/CMake/releases/download/v3.31.5/cmake-3.31.5-linux-aarch64.tar.gz";
+  } else {
+    throw new Error(`Unsupported platform/architecture for portable CMake: ${osName} ${cpuArch}`);
+  }
+
+  const archivePath = join(config.root, "bin", "cmake-temp.tar.gz");
+  console.log(`Downloading CMake from ${url}...`);
+  const download = spawnSync("curl", ["-L", "--fail", "-o", archivePath, url], { stdio: "inherit" });
+  if (download.status !== 0) {
+    throw new Error(`Failed to download portable CMake from ${url}`);
+  }
+
+  console.log("Extracting CMake...");
+  const extract = spawnSync("tar", ["-zxf", archivePath, "-C", portableDir, "--strip-components=1"], { stdio: "inherit" });
+  rmSync(archivePath, { force: true });
+
+  if (extract.status !== 0) {
+    throw new Error("Failed to extract portable CMake.");
+  }
+
+  if (osName === "darwin") {
+    spawnSync("xattr", ["-rd", "com.apple.quarantine", portableDir]);
+  }
+
+  spawnSync("chmod", ["+x", cmakeBin]);
+
+  if (!existsSync(cmakeBin)) {
+    throw new Error(`Failed to verify portable CMake installation at ${cmakeBin}`);
+  }
+
+  console.log("✅ Portable CMake set up successfully.");
+  return cmakeBin;
+}
+
+export async function fetchLatestLlamaReleaseTag(): Promise<string> {
+  try {
+    const res = await fetch("https://api.github.com/repos/ggml-org/llama.cpp/releases/latest", {
+      headers: { "User-Agent": "LocalBase-CLI" }
+    });
+    if (res.ok) {
+      const data = await res.json() as { tag_name: string };
+      if (data.tag_name) return data.tag_name;
+    }
+  } catch (err) {
+    // Ignore error
+  }
+
+  try {
+    const htmlRes = await fetch("https://github.com/ggml-org/llama.cpp/releases");
+    if (htmlRes.ok) {
+      const text = await htmlRes.text();
+      const match = text.match(/\/releases\/tag\/(b\d+)/);
+      if (match && match[1]) return match[1];
+    }
+  } catch {
+    // Ignore
+  }
+
+  return "b9692";
+}
+
+export async function compileBinary(config: LocalBaseConfig, name: "llama-server" | "whisper-server"): Promise<string> {
+  const binDir = join(config.root, "bin");
+  mkdirSync(binDir, { recursive: true });
+
+  const tempDir = join(config.root, "temp-build");
+  if (existsSync(tempDir)) {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+  mkdirSync(tempDir, { recursive: true });
+
+  const osName = platform();
+  const cpuArch = arch();
+
+  if (name === "llama-server") {
+    try {
+      console.log(`\n🔍 Checking for precompiled llama-server for ${osName}-${cpuArch}...`);
+      const tag = await fetchLatestLlamaReleaseTag();
+      
+      let assetName = "";
+      if (osName === "darwin" && cpuArch === "arm64") {
+        assetName = `llama-${tag}-bin-macos-arm64.tar.gz`;
+      } else if (osName === "darwin" && cpuArch === "x64") {
+        assetName = `llama-${tag}-bin-macos-x64.tar.gz`;
+      } else if (osName === "linux" && cpuArch === "x64") {
+        assetName = `llama-${tag}-bin-ubuntu-x64.tar.gz`;
+      } else if (osName === "linux" && cpuArch === "arm64") {
+        assetName = `llama-${tag}-bin-ubuntu-arm64.tar.gz`;
+      }
+
+      if (assetName) {
+        const url = `https://github.com/ggml-org/llama.cpp/releases/download/${tag}/${assetName}`;
+        console.log(`Downloading precompiled llama-server from ${url}...`);
+        const archivePath = join(tempDir, assetName);
+        const dl = spawnSync("curl", ["-L", "--fail", "-o", archivePath, url], { stdio: "inherit" });
+        if (dl.status === 0) {
+          console.log("Extracting precompiled llama.cpp release...");
+          const ext = spawnSync("tar", ["-zxf", archivePath, "-C", binDir, "--strip-components=1"], { stdio: "inherit" });
+          if (ext.status === 0) {
+            const binaryDest = join(binDir, "llama-server");
+            if (existsSync(binaryDest)) {
+              spawnSync("chmod", ["+x", binaryDest]);
+              if (osName === "darwin") {
+                spawnSync("xattr", ["-rd", "com.apple.quarantine", binDir]);
+              }
+              console.log(`\n✅ Successfully set up precompiled llama-server at ${binaryDest}`);
+              try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+              return binaryDest;
+            }
+          }
+        }
+      }
+      console.log("⚠️  Precompiled binary not found or failed to download. Compiling from source...");
+    } catch (err) {
+      console.warn("⚠️  Failed to download precompiled binary:", err);
+      console.log("Compiling from source...");
+    }
+
+    console.log("Cloning ggml-org/llama.cpp...");
+    const clone = spawnSync("git", ["clone", "--depth", "1", "https://github.com/ggml-org/llama.cpp.git", "llama.cpp"], {
+      cwd: tempDir,
+      stdio: "inherit"
+    });
+    if (clone.status !== 0) throw new Error("Failed to clone llama.cpp repo.");
+
+    console.log("Configuring llama.cpp with CMake...");
+    const cmakeBin = ensureCMake(config);
+    const configRes = spawnSync(cmakeBin, ["-B", "build", "-DLLAMA_BUILD_SERVER=ON", "-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_EXAMPLES=ON"], {
+      cwd: join(tempDir, "llama.cpp"),
+      stdio: "inherit"
+    });
+    if (configRes.status !== 0) throw new Error("Failed to configure llama.cpp with CMake.");
+
+    console.log("Compiling llama-server (this may take a minute)...");
+    const buildRes = spawnSync(cmakeBin, ["--build", "build", "--config", "Release", "--target", "llama-server", "-j"], {
+      cwd: join(tempDir, "llama.cpp"),
+      stdio: "inherit"
+    });
+    if (buildRes.status !== 0) throw new Error("Failed to compile llama-server.");
+
+    let binarySource = join(tempDir, "llama.cpp", "build", "bin", "llama-server");
+    if (!existsSync(binarySource)) {
+      binarySource = join(tempDir, "llama.cpp", "build", "llama-server");
+    }
+    if (!existsSync(binarySource)) {
+      binarySource = join(tempDir, "llama.cpp", "build", "bin", "Release", "llama-server");
+    }
+
+    if (!existsSync(binarySource)) {
+      throw new Error("Could not find compiled llama-server binary in build output.");
+    }
+
+    const binaryDest = join(binDir, "llama-server");
+    copyFileSync(binarySource, binaryDest);
+
+    const buildBinDir = join(tempDir, "llama.cpp", "build", "bin");
+    if (existsSync(buildBinDir)) {
+      const files = readdirSync(buildBinDir);
+      for (const file of files) {
+        if (file.endsWith(".dylib") || file.endsWith(".so")) {
+          copyFileSync(join(buildBinDir, file), join(binDir, file));
+        }
+      }
+    }
+
+    spawnSync("chmod", ["+x", binaryDest]);
+    if (osName === "darwin") {
+      spawnSync("xattr", ["-rd", "com.apple.quarantine", binDir]);
+    }
+    console.log(`\n✅ Successfully compiled and installed llama-server to ${binaryDest}`);
+
+  } else if (name === "whisper-server") {
+    if (osName === "linux") {
+      try {
+        console.log(`\n🔍 Checking for precompiled whisper-server for ${osName}-${cpuArch}...`);
+        const res = await fetch("https://api.github.com/repos/ggml-org/whisper.cpp/releases/latest", {
+          headers: { "User-Agent": "LocalBase-CLI" }
+        });
+        if (res.ok) {
+          const data = await res.json() as { tag_name: string };
+          const tag = data.tag_name;
+          if (tag) {
+            let assetName = "";
+            if (cpuArch === "x64") {
+              assetName = "whisper-bin-ubuntu-x64.tar.gz";
+            } else if (cpuArch === "arm64") {
+              assetName = "whisper-bin-ubuntu-arm64.tar.gz";
+            }
+
+            if (assetName) {
+              const url = `https://github.com/ggml-org/whisper.cpp/releases/download/${tag}/${assetName}`;
+              console.log(`Downloading precompiled whisper-server from ${url}...`);
+              const archivePath = join(tempDir, assetName);
+              const dl = spawnSync("curl", ["-L", "--fail", "-o", archivePath, url], { stdio: "inherit" });
+              if (dl.status === 0) {
+                console.log("Extracting precompiled whisper.cpp release...");
+                const ext = spawnSync("tar", ["-zxf", archivePath, "-C", binDir], { stdio: "inherit" });
+                if (ext.status === 0) {
+                  let binaryDest = join(binDir, "whisper-server");
+                  if (!existsSync(binaryDest)) {
+                    const find = spawnSync("find", [binDir, "-name", "whisper-server", "-o", "-name", "server"]);
+                    if (find.status === 0 && find.stdout.toString().trim()) {
+                      const foundPath = find.stdout.toString().trim().split("\n")[0];
+                      if (foundPath !== binaryDest) {
+                        copyFileSync(foundPath, binaryDest);
+                      }
+                    }
+                  }
+                  if (existsSync(binaryDest)) {
+                    spawnSync("chmod", ["+x", binaryDest]);
+                    console.log(`\n✅ Successfully set up precompiled whisper-server at ${binaryDest}`);
+                    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+                    return binaryDest;
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("⚠️  Failed to download precompiled whisper-server:", err);
+      }
+    }
+
+    console.log("Cloning ggml-org/whisper.cpp...");
+    const clone = spawnSync("git", ["clone", "--depth", "1", "https://github.com/ggml-org/whisper.cpp.git", "whisper.cpp"], {
+      cwd: tempDir,
+      stdio: "inherit"
+    });
+    if (clone.status !== 0) throw new Error("Failed to clone whisper.cpp repo.");
+
+    console.log("Configuring whisper.cpp with CMake...");
+    const cmakeBin = ensureCMake(config);
+    const libDir = join(config.root, "lib");
+    mkdirSync(libDir, { recursive: true });
+
+    const rpath = osName === "darwin" ? "@loader_path/../lib" : "$ORIGIN/../lib";
+    const configRes = spawnSync(cmakeBin, [
+      "-B", "build",
+      "-DWHISPER_BUILD_TESTS=OFF",
+      "-DWHISPER_BUILD_EXAMPLES=ON",
+      `-DCMAKE_INSTALL_RPATH=${rpath}`,
+      "-DCMAKE_INSTALL_PREFIX=" + config.root
+    ], {
+      cwd: join(tempDir, "whisper.cpp"),
+      stdio: "inherit"
+    });
+    if (configRes.status !== 0) throw new Error("Failed to configure whisper.cpp with CMake.");
+
+    console.log("Compiling whisper.cpp (this may take a minute)...");
+    const buildRes = spawnSync(cmakeBin, ["--build", "build", "--config", "Release", "-j"], {
+      cwd: join(tempDir, "whisper.cpp"),
+      stdio: "inherit"
+    });
+    if (buildRes.status !== 0) throw new Error("Failed to compile whisper.cpp.");
+
+    console.log("Installing whisper.cpp...");
+    const installRes = spawnSync(cmakeBin, ["--install", "build", "--prefix", config.root], {
+      cwd: join(tempDir, "whisper.cpp"),
+      stdio: "inherit"
+    });
+    if (installRes.status !== 0) throw new Error("Failed to install whisper.cpp.");
+
+    const binaryDest = join(binDir, "whisper-server");
+    if (!existsSync(binaryDest)) {
+      const possibleName = join(binDir, "server");
+      if (existsSync(possibleName)) {
+        copyFileSync(possibleName, binaryDest);
+        rmSync(possibleName, { force: true });
+      }
+    }
+
+    if (!existsSync(binaryDest)) {
+      throw new Error(`Failed to find whisper-server at ${binaryDest} after installation.`);
+    }
+
+    spawnSync("chmod", ["+x", binaryDest]);
+    if (osName === "darwin") {
+      spawnSync("xattr", ["-rd", "com.apple.quarantine", binDir]);
+      spawnSync("xattr", ["-rd", "com.apple.quarantine", libDir]);
+    }
+    console.log(`\n✅ Successfully compiled and installed whisper-server to ${binaryDest}`);
+  }
+
+  try {
+    rmSync(tempDir, { recursive: true, force: true });
+  } catch {
+    // ignore
+  }
+
+  return join(binDir, name);
+}
+
+export async function ensureBinary(config: LocalBaseConfig, name: "llama-server" | "whisper-server"): Promise<string> {
+  const resolved = resolveBinaryPath(config, name);
+  if (resolved) {
+    return resolved;
+  }
+  return await compileBinary(config, name);
+}
+
+export async function startLlamaServerProcess(config: LocalBaseConfig, modelFile: string, host: string, port: number, ctxSize: number): Promise<Bun.Subprocess> {
   const modelPath = join(config.llmModelsDir, modelFile);
   if (!existsSync(modelPath)) {
     throw new Error(`Model file not found: ${modelPath}`);
   }
 
-  return Bun.spawn(["llama-server", "-m", modelPath, "--host", host, "--port", String(port), "-c", String(ctxSize)], {
-    stdout: "inherit",
-    stderr: "inherit",
+  const binPath = await ensureBinary(config, "llama-server");
+  const args = [
+    binPath,
+    "-m", modelPath,
+    "--host", host,
+    "--port", String(port),
+    "-c", String(ctxSize),
+    "--parallel", "1",
+    "--jinja"
+  ];
+
+  if (platform() === "darwin" && arch() === "arm64") {
+    args.push("--flash-attn");
+  }
+
+  return Bun.spawn(args, {
+    stdout: "pipe",
+    stderr: "pipe",
     stdin: "inherit"
   });
 }
 
-export function startWhisperServerProcess(config: LocalBaseConfig, modelFile: string, host: string, port: number): Bun.Subprocess {
+export async function startWhisperServerProcess(config: LocalBaseConfig, modelFile: string, host: string, port: number): Promise<Bun.Subprocess> {
   const modelPath = join(config.sttModelsDir, modelFile);
   if (!existsSync(modelPath)) {
     throw new Error(`STT model file not found: ${modelPath}`);
   }
 
-  return Bun.spawn(["whisper-server", "--model", modelPath, "--host", host, "--port", String(port)], {
-    stdout: "inherit",
-    stderr: "inherit",
+  const binPath = await ensureBinary(config, "whisper-server");
+
+  return Bun.spawn([binPath, "--model", modelPath, "--host", host, "--port", String(port)], {
+    stdout: "pipe",
+    stderr: "pipe",
     stdin: "inherit"
   });
 }
-export function launchLlamaServer(config: LocalBaseConfig, modelFile: string, host: string, port: number, ctxSize: number): number {
+
+export async function launchLlamaServer(config: LocalBaseConfig, modelFile: string, host: string, port: number, ctxSize: number): Promise<number> {
   const modelPath = join(config.llmModelsDir, modelFile);
   if (!existsSync(modelPath)) {
     throw new Error(`Model file not found: ${modelPath}`);
   }
 
-  const result = spawnSync("llama-server", ["-m", modelPath, "--host", host, "--port", String(port), "-c", String(ctxSize)], {
+  const binPath = await ensureBinary(config, "llama-server");
+  const args = [
+    "-m", modelPath,
+    "--host", host,
+    "--port", String(port),
+    "-c", String(ctxSize),
+    "--parallel", "1",
+    "--jinja"
+  ];
+
+  if (platform() === "darwin" && arch() === "arm64") {
+    args.push("--flash-attn");
+  }
+
+  const result = spawnSync(binPath, args, {
     stdio: "inherit"
   });
 
   return result.status ?? 1;
 }
 
-export function launchWhisperServer(config: LocalBaseConfig, modelFile: string, host: string, port: number): number {
+export async function launchWhisperServer(config: LocalBaseConfig, modelFile: string, host: string, port: number): Promise<number> {
   const modelPath = join(config.sttModelsDir, modelFile);
   if (!existsSync(modelPath)) {
     throw new Error(`STT model file not found: ${modelPath}`);
   }
 
-  const result = spawnSync("whisper-server", ["--model", modelPath, "--host", host, "--port", String(port)], {
+  const binPath = await ensureBinary(config, "whisper-server");
+
+  const result = spawnSync(binPath, ["--model", modelPath, "--host", host, "--port", String(port)], {
     stdio: "inherit"
   });
 

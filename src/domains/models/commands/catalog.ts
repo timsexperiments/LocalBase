@@ -1,7 +1,8 @@
 import { listModels } from "../../../catalog";
 import { parseFlag, parseKind } from "../../../utils/args";
+import type { AppContext } from "../../../context";
 
-export function runCatalog(args: string[]): number {
+export function runCatalog(args: string[], ctx: AppContext): number {
   const kind = parseKind(parseFlag(args, "--kind"));
   for (const model of listModels(kind)) {
     const coding = model.kind === "llm" ? ` | coding=${model.codingScore}/10` : "";

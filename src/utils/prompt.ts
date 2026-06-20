@@ -20,7 +20,7 @@ export async function confirmPrompt(message: string, defaultValue: boolean): Pro
 
 export async function singleSelectPrompt<T extends string>(
   message: string,
-  options: Array<{ name: string; value: T }>,
+  options: Array<{ name: string; value: T; disabled?: string | boolean }>,
   defaultValue: T
 ): Promise<T> {
   return select({
@@ -32,7 +32,7 @@ export async function singleSelectPrompt<T extends string>(
 
 export async function multiSelectPrompt<T extends string>(
   message: string,
-  options: Array<{ name: string; value: T; checked?: boolean }>
+  options: Array<{ name: string; value: T; checked?: boolean; disabled?: string | boolean }>
 ): Promise<T[]> {
   return checkbox({
     message,
@@ -40,3 +40,4 @@ export async function multiSelectPrompt<T extends string>(
     validate: (values) => (values.length > 0 ? true : "Select at least one option")
   });
 }
+
