@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import { join, basename } from "node:path";
-import { type LocalBaseConfig, startLlamaServerProcess, startWhisperServerProcess, validateApiKey, installModel } from "../../../manager";
+import { type LocalBaseConfig, startLlamaServerProcess, startWhisperServerProcess, validateApiKey, installModel, saveConfig } from "../../../manager";
 import { byId, evaluateModelFit, calculateMaxSafeContextSize } from "../../../catalog";
 import type { AppContext } from "../../../context";
 import { parseBool, parseFlag, toInt } from "../../../utils/args";
-import { syncOpenCodeConfig } from "../../config/commands/configure";
+import { syncOpenCodeConfig, syncContinueConfig } from "../../config/commands/configure";
 import { type ILogger } from "../../../utils/logger";
 
 
@@ -296,8 +296,9 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
     console.log(`\n💡 Context Size: Using explicit override --ctx-size ${ctxSize} tokens.`);
   }
 
-  // Automatically synchronize active model and calculated context size with OpenCode configuration
+  // Automatically synchronize active model and calculated context size with OpenCode/Continue configuration
   await syncOpenCodeConfig(config, ctxSize);
+  await syncContinueConfig(config, ctxSize);
   const sttPath = parseFlag(args, "--stt-path") ?? "/inference";
   const authRequired = parseFlag(args, "--auth") !== "false";
   const authMode = parseAuthMode(parseFlag(args, "--auth-mode"));
@@ -440,9 +441,37 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
   const sttBase = `http://${sttHost}:${sttPort}`;
 
   const llmService = enabled.llm
-    ? new ManagedService("llama-server", llmBase + "/health", ctx.logger, () =>
-        startLlamaServerProcess(config, llmModelFile, llmHost, llmPort, ctxSize)
-      )
+    ? new ManagedService("llama-server", llmBase + "/health", ctx.logger, async () => {
+        const activeModel = config.activeLlmModel;
+        let modelFile = parseFlag(args, "--llm-model-file");
+        if (!modelFile) {
+          const spec = byId(activeModel);
+          let expectedFile = spec?.filename;
+          if (!expectedFile) {
+            expectedFile = existsSync(join(config.llmModelsDir, `${activeModel}.bin`))
+              ? `${activeModel}.bin`
+              : `${activeModel}.gguf`;
+          }
+          const modelPath = join(config.llmModelsDir, expectedFile);
+          if (!existsSync(modelPath)) {
+            ctx.logger.info("llama-server", `Model file is missing for "${activeModel}". Automatically installing...`);
+            const installedPath = installModel(config, activeModel);
+            modelFile = basename(installedPath);
+          } else {
+            modelFile = expectedFile;
+          }
+        }
+
+        let finalCtxSize = toInt(parseFlag(args, "--ctx-size"), 0);
+        if (!finalCtxSize) {
+          const spec = byId(activeModel);
+          const recommendedCtx = spec ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb) : (ctx.specs.gpuVramGb >= 32 ? 32768 : 8192);
+          finalCtxSize = Math.min(recommendedCtx, config.ctxSize);
+        }
+
+        ctx.logger.info("llama-server", `Spawning model "${activeModel}" (file: ${modelFile}, context: ${finalCtxSize} tokens)`);
+        return startLlamaServerProcess(config, modelFile, llmHost, llmPort, finalCtxSize);
+      })
     : null;
 
   const sttService = enabled.stt
@@ -461,6 +490,39 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
       const isMasterKey = process.env.LOCALBASE_API_KEY && token === process.env.LOCALBASE_API_KEY;
       if (!token || (!isMasterKey && !validateApiKey(config, token))) {
         return unauthorized(authMode);
+      }
+    }
+
+    if (enabled.llm && llmService && (pathname === "/v1/chat/completions" || pathname === "/v1/completions" || pathname === "/v1/embeddings")) {
+      try {
+        const bodyText = await request.clone().text();
+        const bodyJson = JSON.parse(bodyText);
+        if (bodyJson && typeof bodyJson.model === "string") {
+          const requestedModel = bodyJson.model;
+          const normalized = requestedModel.replace(/^(localbase|openai|ollama)\//, "");
+          const matchedModel = config.selectedLlmModels.find(
+            (m) => m.toLowerCase() === normalized.toLowerCase()
+          );
+          if (matchedModel && matchedModel !== config.activeLlmModel) {
+            ctx.logger.info("llama-server", `Switching active LLM from "${config.activeLlmModel}" to "${matchedModel}"`);
+            llmService.kill();
+            config.activeLlmModel = matchedModel;
+            saveConfig(config);
+
+            const spec = byId(matchedModel);
+            const recommendedCtx = spec ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb) : (ctx.specs.gpuVramGb >= 32 ? 32768 : 8192);
+            const newCtxSize = Math.min(recommendedCtx, config.ctxSize);
+
+            syncOpenCodeConfig(config, newCtxSize).catch((err) => {
+              ctx.logger.warn("sync", `Failed to sync OpenCode config: ${err.message}`);
+            });
+            syncContinueConfig(config, newCtxSize).catch((err) => {
+              ctx.logger.warn("sync", `Failed to sync Continue config: ${err.message}`);
+            });
+          }
+        }
+      } catch (e) {
+        // Ignore json body read issues
       }
     }
 
@@ -535,6 +597,20 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
       } catch (e) {
         // Fall back to default proxy if body parsing fails
       }
+    }
+
+    if (pathname === "/v1/models") {
+      const modelsList = [...new Set([config.activeLlmModel, ...config.selectedLlmModels])];
+      const data = modelsList.map((modelId) => ({
+        id: modelId,
+        object: "model",
+        created: 1670000000,
+        owned_by: "local-base"
+      }));
+      return Response.json({
+        object: "list",
+        data
+      });
     }
 
     if (pathname === "/v1/slots") {

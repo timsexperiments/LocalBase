@@ -181,6 +181,101 @@ export async function syncOpenCodeConfig(config: LocalBaseConfig, activeModelCtx
   }
 }
 
+export async function syncContinueConfig(config: LocalBaseConfig, activeModelCtxSizeOverride?: number): Promise<void> {
+  const continueDir = join(homedir(), ".continue");
+  const configPath = join(continueDir, "config.json");
+
+  if (!existsSync(configPath)) {
+    return;
+  }
+
+  try {
+    const raw = Bun.file(configPath);
+    const text = await raw.text();
+    const cleaned = text.replace(/("([^"\\]|\\.)*")|(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g, (m, g1) => {
+      if (g1) return g1;
+      return "";
+    });
+    const data = JSON.parse(cleaned);
+
+    if (!Array.isArray(data.models)) {
+      data.models = [];
+    }
+
+    const host = config.host === "0.0.0.0" ? "localhost" : config.host;
+    const wrapperPort = 8787;
+    const apiKey = process.env.LOCALBASE_API_KEY || "";
+
+    // Filter out existing LocalBase model entries to avoid duplicates
+    data.models = data.models.filter((m: any) => {
+      if (!m || typeof m !== "object") return true;
+      const title = String(m.title || "").toLowerCase();
+      const apiBase = String(m.apiBase || "").toLowerCase();
+      return !title.includes("localbase") && !apiBase.includes(":8787/v1") && !apiBase.includes("local-base");
+    });
+
+    const activeModel = config.activeLlmModel;
+    const vramGb = detectSpecs().gpuVramGb;
+
+    // Ensure the active model is placed at the front of the list
+    const sortedSelectedModels = [
+      activeModel,
+      ...config.selectedLlmModels.filter(m => m !== activeModel)
+    ];
+
+    for (const modelId of sortedSelectedModels) {
+      if (!config.selectedLlmModels.includes(modelId)) continue;
+      const spec = byId(modelId);
+      const displayName = spec ? `LocalBase (${spec.family} ${spec.version})` : `LocalBase (${modelId})`;
+      const recommendedCtx = spec ? calculateMaxSafeContextSize(spec, vramGb) : config.ctxSize;
+      const actualCtx = modelId === activeModel
+        ? (activeModelCtxSizeOverride ?? config.ctxSize)
+        : Math.min(recommendedCtx, config.ctxSize);
+
+      data.models.unshift({
+        title: displayName,
+        provider: "openai",
+        model: modelId,
+        apiBase: `http://${host}:${wrapperPort}/v1`,
+        apiKey: apiKey || undefined,
+        completionOptions: {
+          contextLength: actualCtx
+        }
+      });
+    }
+
+    // Configure tab autocomplete if not set or if pointing to LocalBase
+    const currentTabTitle = String(data.tabAutocompleteModel?.title || "").toLowerCase();
+    const currentTabBase = String(data.tabAutocompleteModel?.apiBase || "").toLowerCase();
+    if (!data.tabAutocompleteModel || currentTabTitle.includes("localbase") || currentTabBase.includes(":8787/v1")) {
+      data.tabAutocompleteModel = {
+        title: `LocalBase Autocomplete (${activeModel})`,
+        provider: "openai",
+        model: activeModel,
+        apiBase: `http://${host}:${wrapperPort}/v1`,
+        apiKey: apiKey || undefined
+      };
+    }
+
+    // Configure embeddings provider if not set or if pointing to LocalBase
+    const currentEmbeddingsProvider = String(data.embeddingsProvider?.provider || "").toLowerCase();
+    const currentEmbeddingsBase = String(data.embeddingsProvider?.apiBase || "").toLowerCase();
+    if (!data.embeddingsProvider || currentEmbeddingsProvider === "openai" || currentEmbeddingsBase.includes(":8787/v1")) {
+      data.embeddingsProvider = {
+        provider: "openai",
+        model: activeModel,
+        apiBase: `http://${host}:${wrapperPort}/v1`,
+        apiKey: apiKey || undefined
+      };
+    }
+
+    await Bun.write(configPath, JSON.stringify(data, null, 2));
+    console.log(`\n🔄 Automatically synchronized model configs and autocomplete/embeddings to ${configPath}`);
+  } catch (err) {
+    console.warn("\n⚠️  Could not automatically synchronize config with Continue:", (err as Error).message);
+  }
+}
+
 export async function runConfigure(args: string[], ctx: AppContext): Promise<number> {
   const specs = ctx.specs;
   const configPath = parseFlag(args, "--config");
@@ -238,6 +333,7 @@ export async function runConfigure(args: string[], ctx: AppContext): Promise<num
 
   saveConfig(config);
   await syncOpenCodeConfig(config);
+  await syncContinueConfig(config);
   console.log(`Saved configuration to ${config.root}/local-base.db`);
   console.log(`Selected LLM models: ${config.selectedLlmModels.join(", ")}`);
   console.log(`Selected STT models: ${config.selectedSttModels.join(", ")}`);
