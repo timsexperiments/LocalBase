@@ -5,7 +5,7 @@ import { byId, evaluateModelFit, calculateMaxSafeContextSize } from "../../../ca
 import type { AppContext } from "../../../context";
 import { parseBool, parseFlag, toInt } from "../../../utils/args";
 import { syncOpenCodeConfig } from "../../config/commands/configure";
-import { Logger } from "../../../utils/logger";
+import { type ILogger } from "../../../utils/logger";
 
 
 type AuthMode = "bearer" | "x-api-key" | "either";
@@ -125,13 +125,15 @@ class ManagedService {
   private name: string;
   private startFn: () => Promise<Bun.Subprocess>;
   private healthUrl: string;
+  private logger: ILogger;
   private crashTimes: number[] = [];
   private isRestarting = false;
   private restartPromise: Promise<void> | null = null;
 
-  constructor(name: string, healthUrl: string, startFn: () => Promise<Bun.Subprocess>) {
+  constructor(name: string, healthUrl: string, logger: ILogger, startFn: () => Promise<Bun.Subprocess>) {
     this.name = name;
     this.healthUrl = healthUrl;
+    this.logger = logger;
     this.startFn = startFn;
   }
 
@@ -154,21 +156,21 @@ class ManagedService {
       const crashCount = this.crashTimes.length;
 
       if (crashCount >= 5) {
-        Logger.error(this.name, `Service has crashed ${crashCount} times in 5 minutes. Stopping manager.`);
+        this.logger.error(this.name, `Service has crashed ${crashCount} times in 5 minutes. Stopping manager.`);
         process.exit(1);
       }
 
       if (crashCount > 0) {
         const backoffMs = Math.min(1000 * Math.pow(2, crashCount - 1), 16000);
-        Logger.warn(this.name, `Crashed previously. Backing off for ${backoffMs}ms before restarting...`);
+        this.logger.warn(this.name, `Crashed previously. Backing off for ${backoffMs}ms before restarting...`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
       }
 
-      Logger.info(this.name, "Starting subprocess...");
+      this.logger.info(this.name, "Starting subprocess...");
       try {
         this.proc = await this.startFn();
-        if (this.proc.stdout && typeof this.proc.stdout !== "number") Logger.pipeStream(this.proc.stdout, this.name);
-        if (this.proc.stderr && typeof this.proc.stderr !== "number") Logger.pipeStream(this.proc.stderr, this.name);
+        if (this.proc.stdout && typeof this.proc.stdout !== "number") this.logger.pipeStream(this.proc.stdout, this.name);
+        if (this.proc.stderr && typeof this.proc.stderr !== "number") this.logger.pipeStream(this.proc.stderr, this.name);
 
         this.proc.exited.then(() => {
           this.handleCrash();
@@ -178,9 +180,9 @@ class ManagedService {
         if (!ok) {
           throw new Error("Health check failed to pass within timeout");
         }
-        Logger.info(this.name, "Subprocess is healthy and ready.");
+        this.logger.info(this.name, "Subprocess is healthy and ready.");
       } catch (err) {
-        Logger.error(this.name, "Failed to start service", err as Error);
+        this.logger.error(this.name, "Failed to start service", err as Error);
         this.crashTimes.push(Date.now());
         this.proc?.kill();
         this.proc = null;
@@ -199,7 +201,7 @@ class ManagedService {
 
     while (Date.now() - start < timeout) {
       if (this.proc?.exitCode !== null) {
-        Logger.error(this.name, `Subprocess exited during startup with code ${this.proc?.exitCode}`);
+        this.logger.error(this.name, `Subprocess exited during startup with code ${this.proc?.exitCode}`);
         return false;
       }
       try {
@@ -222,7 +224,7 @@ class ManagedService {
 
   handleCrash(): void {
     if (this.proc && this.proc.exitCode !== null && !this.isRestarting) {
-      Logger.warn(this.name, `Subprocess exited unexpectedly with code ${this.proc.exitCode}. Triggering self-healing...`);
+      this.logger.warn(this.name, `Subprocess exited unexpectedly with code ${this.proc.exitCode}. Triggering self-healing...`);
       this.crashTimes.push(Date.now());
       this.proc = null;
       this.start().catch(() => {});
@@ -407,13 +409,13 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
   const sttBase = `http://${sttHost}:${sttPort}`;
 
   const llmService = enabled.llm
-    ? new ManagedService("llama-server", llmBase + "/health", () =>
+    ? new ManagedService("llama-server", llmBase + "/health", ctx.logger, () =>
         startLlamaServerProcess(config, llmModelFile, llmHost, llmPort, ctxSize)
       )
     : null;
 
   const sttService = enabled.stt
-    ? new ManagedService("whisper-server", sttBase + "/health", () =>
+    ? new ManagedService("whisper-server", sttBase + "/health", ctx.logger, () =>
         startWhisperServerProcess(config, sttModelFile, sttHost, sttPort)
       )
     : null;
@@ -425,7 +427,8 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
 
     if (authRequired) {
       const token = extractAuthToken(request, authMode);
-      if (!token || !validateApiKey(config, token)) {
+      const isMasterKey = process.env.LOCALBASE_API_KEY && token === process.env.LOCALBASE_API_KEY;
+      if (!token || (!isMasterKey && !validateApiKey(config, token))) {
         return unauthorized(authMode);
       }
     }
@@ -546,12 +549,12 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
       try {
         response = await handleRequest(request, pathname, method);
       } catch (err) {
-        Logger.error("HTTP", `Error handling request ${method} ${pathname}`, err as Error);
+        ctx.logger.error("HTTP", `Error handling request ${method} ${pathname}`, err as Error);
         response = Response.json({ error: "Internal Server Error" }, { status: 500 });
       }
 
       const durationMs = performance.now() - start;
-      Logger.request(ip, method, pathname, response.status, durationMs);
+      ctx.logger.request(ip, method, pathname, response.status, durationMs);
       return response;
     }
   });
@@ -559,7 +562,7 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
   printUnifiedNextSteps(wrapperHost, wrapperPort, llmPort, sttPort, authRequired, authMode, enabled, ttsUpstream ?? undefined, imageUpstream ?? undefined, videoUpstream ?? undefined);
 
   const shutdown = () => {
-    Logger.info("Manager", "Shutting down servers and subprocesses...");
+    ctx.logger.info("Manager", "Shutting down servers and subprocesses...");
     server.stop(true);
     llmService?.kill();
     sttService?.kill();
