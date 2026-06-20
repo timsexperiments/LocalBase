@@ -120,6 +120,11 @@ async function proxyRequest(request: Request, targetBase: string, pathOverride?:
   });
 }
 
+/**
+ * Supervisor that manages a model backend subprocess (e.g. llama-server).
+ * Handles lazy loading, auto-restart crash recovery with exponential backoff,
+ * sliding-window crash limits, stdout/stderr log piping, and startup readiness checks.
+ */
 class ManagedService {
   private proc: Bun.Subprocess | null = null;
   private name: string;
@@ -137,6 +142,9 @@ class ManagedService {
     this.startFn = startFn;
   }
 
+  /**
+   * Lazily starts the service on first use, or awaits recovery if currently restarting.
+   */
   async ensureRunning(): Promise<void> {
     if (this.proc && this.proc.exitCode === null) {
       return;
@@ -148,6 +156,10 @@ class ManagedService {
     await this.start();
   }
 
+  /**
+   * Spawns the subprocess, registers crash handlers, pipes logs, and awaits healthy status.
+   * Employs exponential backoff on retry and exits the manager if crash limits are hit.
+   */
   private async start(): Promise<void> {
     this.isRestarting = true;
     this.restartPromise = (async () => {
@@ -194,6 +206,9 @@ class ManagedService {
     await this.restartPromise;
   }
 
+  /**
+   * Polls the backend's /health endpoint until it is online or startup times out.
+   */
   private async waitHealthy(): Promise<boolean> {
     const timeout = 30000; // 30s
     const interval = 200; // 200ms
@@ -208,13 +223,16 @@ class ManagedService {
         const res = await fetch(this.healthUrl);
         if (res.ok) return true;
       } catch (e) {
-        // Expected during startup
+        // Expected network failures while booting
       }
       await new Promise(resolve => setTimeout(resolve, interval));
     }
     return false;
   }
 
+  /**
+   * Forcefully kills the subprocess.
+   */
   kill(): void {
     if (this.proc) {
       this.proc.kill();
@@ -222,6 +240,9 @@ class ManagedService {
     }
   }
 
+  /**
+   * Initiates asynchronous process recovery when a running subprocess exits.
+   */
   handleCrash(): void {
     if (this.proc && this.proc.exitCode !== null && !this.isRestarting) {
       this.logger.warn(this.name, `Subprocess exited unexpectedly with code ${this.proc.exitCode}. Triggering self-healing...`);
@@ -232,6 +253,9 @@ class ManagedService {
   }
 }
 
+/**
+ * Returns a standard HTTP 503 service unavailable response.
+ */
 function serviceUnavailable(serviceName: string): Response {
   return new Response(
     JSON.stringify({ error: `${serviceName} service is currently restarting or unavailable. Please try again shortly.` }),
@@ -245,6 +269,13 @@ function serviceUnavailable(serviceName: string): Response {
   );
 }
 
+/**
+ * Main command handler for 'serve'. Starts the unified proxy server.
+ * Handles dynamic context sizing: min(recommendedForHardwareAndModel, maxContextCeiling).
+ * Automatically maps OpenAI 'developer' role to 'system' role for tokenizer compatibility.
+ * Maps client-side '/v1/slots|metrics|props|system_info' queries to standard llama-server root endpoints.
+ * Automatically synchronizes active model specifications and context limits to OpenCode in real-time.
+ */
 export async function runServe(args: string[], ctx: AppContext): Promise<number> {
   const config = ctx.config;
   const wrapperHost = parseFlag(args, "--host") ?? "0.0.0.0";
@@ -482,6 +513,8 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
         if (bodyJson && Array.isArray(bodyJson.messages)) {
           let modified = false;
           for (const msg of bodyJson.messages) {
+            // Map modern OpenAI 'developer' messages to 'system' because standard GGUF tokenizer
+            // templates (e.g. Qwen, Llama) only recognize the 'system' role.
             if (msg.role === "developer") {
               msg.role = "system";
               modified = true;
@@ -489,6 +522,7 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
           }
           if (modified) {
             const headers = new Headers(request.headers);
+            // Delete Content-Length header to let fetch recalculate it for the modified JSON payload.
             headers.delete("content-length");
             const modifiedRequest = new Request(request.url, {
               method: request.method,
@@ -499,7 +533,7 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
           }
         }
       } catch (e) {
-        // Fall back to default proxy if parsing fails
+        // Fall back to default proxy if body parsing fails
       }
     }
 

@@ -429,6 +429,10 @@ export function resolveBinaryPath(config: LocalBaseConfig, name: string): string
   return null;
 }
 
+/**
+ * Checks for system-wide CMake, falling back to downloading and extracting
+ * a portable, standalone CMake release binary to avoid external package manager dependencies (Homebrew/apt).
+ */
 export function ensureCMake(config: LocalBaseConfig): string {
   const systemCheck = spawnSync("which", ["cmake"], { encoding: "utf8" });
   if (systemCheck.status === 0 && systemCheck.stdout.trim()) {
@@ -520,6 +524,10 @@ export async function fetchLatestLlamaReleaseTag(): Promise<string> {
   return "b9692";
 }
 
+/**
+ * Automatically provisions the backend binaries: downloads precompiled llama-server binaries
+ * matching host architecture, or fallback clones and builds whisper-server from source.
+ */
 export async function compileBinary(config: LocalBaseConfig, name: "llama-server" | "whisper-server"): Promise<string> {
   const binDir = join(config.root, "bin");
   mkdirSync(binDir, { recursive: true });
@@ -695,6 +703,8 @@ export async function compileBinary(config: LocalBaseConfig, name: "llama-server
     const libDir = join(config.root, "lib");
     mkdirSync(libDir, { recursive: true });
 
+    // Configure relative runpath (RPATH) so the compiled binary can find its sibling
+    // dynamic libraries (.dylib/.so) under <root>/lib relative to the executable path.
     const rpath = osName === "darwin" ? "@loader_path/../lib" : "$ORIGIN/../lib";
     const configRes = spawnSync(cmakeBin, [
       "-B", "build",
@@ -760,6 +770,9 @@ export async function ensureBinary(config: LocalBaseConfig, name: "llama-server"
   return await compileBinary(config, name);
 }
 
+/**
+ * Spawns the llama-server background subprocess with memory/attention optimizations.
+ */
 export async function startLlamaServerProcess(config: LocalBaseConfig, modelFile: string, host: string, port: number, ctxSize: number): Promise<Bun.Subprocess> {
   const modelPath = join(config.llmModelsDir, modelFile);
   if (!existsSync(modelPath)) {
@@ -773,10 +786,14 @@ export async function startLlamaServerProcess(config: LocalBaseConfig, modelFile
     "--host", host,
     "--port", String(port),
     "-c", String(ctxSize),
+    // Force --parallel 1 so the single active agent session gets the full context limit.
+    // llama-server's default is 4, which splits context size equally among 4 slots.
     "--parallel", "1",
+    // Force --jinja to parse model's embedded tokenizer template correctly instead of standard fallback.
     "--jinja"
   ];
 
+  // Enable --flash-attn on Apple Silicon GPUs for up to 2x faster prompt prefill and reduced VRAM.
   if (platform() === "darwin" && arch() === "arm64") {
     args.push("--flash-attn");
   }

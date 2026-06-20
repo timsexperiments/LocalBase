@@ -3,18 +3,25 @@ import { loadConfig, type LocalBaseConfig } from "./manager";
 import { parseFlag, toInt } from "./utils/args";
 import { createLogger, type ILogger } from "./utils/logger";
 
+/**
+ * Dependency Injection (DI) Container for LocalBase application context.
+ */
 export interface AppContext {
   logger: ILogger;
   specs: HostSpecs;
   config: LocalBaseConfig;
 }
 
+/**
+ * Bootstraps and configures the Dependency Injection container.
+ * Applies environment variable configuration overrides on top of SQLite-stored config.
+ */
 export function createAppContext(args: string[]): AppContext {
   const specs = detectSpecs();
   const root = process.env.LOCALBASE_ROOT ?? parseFlag(args, "--root");
   const config = loadConfig(root, specs.gpuVramGb);
 
-  // Apply environment configuration overrides
+  // Server environment configuration overrides
   if (process.env.LOCALBASE_HOST) config.host = process.env.LOCALBASE_HOST;
   if (process.env.LOCALBASE_PORT) config.port = toInt(process.env.LOCALBASE_PORT, config.port);
   

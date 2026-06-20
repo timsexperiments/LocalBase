@@ -1,3 +1,6 @@
+/**
+ * Standard interface for LocalBase logging engines.
+ */
 export interface ILogger {
   info(prefix: string, message: string): void;
   warn(prefix: string, message: string): void;
@@ -6,6 +9,9 @@ export interface ILogger {
   pipeStream(stream: ReadableStream<Uint8Array>, name: string): void;
 }
 
+/**
+ * Colorized, human-readable terminal logger. Optimized for development.
+ */
 export class ConsoleLogger implements ILogger {
   private getTimestamp(): string {
     return new Date().toISOString();
@@ -51,13 +57,16 @@ export class ConsoleLogger implements ILogger {
           }
         }
       } catch (err) {
-        // Stream reading finished/closed
+        // Stream closed or completed
       }
     };
     read();
   }
 }
 
+/**
+ * Structured JSON-line logger. Optimized for production metrics and ship-to-service collectors.
+ */
 export class JsonLogger implements ILogger {
   private log(level: string, prefix: string, message: string, extra?: Record<string, any>): void {
     console.log(
@@ -114,9 +123,10 @@ export class JsonLogger implements ILogger {
               try {
                 parsed = JSON.parse(line);
               } catch (e) {
-                // Not JSON
+                // Not standard JSON
               }
               if (parsed) {
+                // Merge structured logs from backend process directly
                 console.log(JSON.stringify({
                   timestamp: parsed.timestamp ?? new Date().toISOString(),
                   level: parsed.level ?? "INFO",
@@ -131,13 +141,16 @@ export class JsonLogger implements ILogger {
           }
         }
       } catch (err) {
-        // Stream reading finished/closed
+        // Stream closed or completed
       }
     };
     read();
   }
 }
 
+/**
+ * Factory function to instantiate console or structured JSON logger format.
+ */
 export function createLogger(format?: string): ILogger {
   if (format?.toLowerCase() === "json" || process.env.LOG_FORMAT?.toLowerCase() === "json") {
     return new JsonLogger();
