@@ -1,20 +1,35 @@
+import type { AppContext } from "../../../context";
+import { runInit } from "../../config/commands/init";
+import { runConfigure } from "../../config/commands/configure";
+import { runDoctor } from "../../system/commands/doctor";
+import { runCatalog } from "../../models/commands/catalog";
+import { runRecommend } from "../../models/commands/recommend";
+import { runInstalled } from "../../models/commands/installed";
+import { runInstall } from "../../models/commands/install";
+import { runServe } from "../../runtime/commands/serve";
+import { runKeys } from "../../auth/commands/keys";
+import { runReset } from "../../maintenance/commands/reset";
+import { runUninstall } from "../../maintenance/commands/uninstall";
+
 interface CommandFlag {
   name: string;
   type: string;
   description: string;
 }
 
-interface CLICommand {
+export interface CLICommand {
   name: string;
   description: string;
   positional?: string[];
   flags?: CommandFlag[];
+  handler: (args: string[], ctx: AppContext) => Promise<number> | number;
 }
 
-const commandRegistry: CLICommand[] = [
+export const commandRegistry: CLICommand[] = [
   {
     name: "",
     description: "Default action: interactive configuration setup",
+    handler: runConfigure,
     flags: [
       { name: "--defaults", type: "boolean", description: "Use default settings without prompting" },
       { name: "--all", type: "boolean", description: "Prompt for all available settings interactively" },
@@ -36,6 +51,7 @@ const commandRegistry: CLICommand[] = [
   {
     name: "init",
     description: "Initialize the database and directories in the storage root",
+    handler: runInit,
     flags: [
       { name: "--root", type: "path", description: "Storage root directory path" }
     ]
@@ -43,6 +59,7 @@ const commandRegistry: CLICommand[] = [
   {
     name: "configure",
     description: "Configure models, ports, settings, and create API keys",
+    handler: runConfigure,
     flags: [
       { name: "--defaults", type: "boolean", description: "Use default settings without prompting" },
       { name: "--all", type: "boolean", description: "Interactive prompt for all settings" },
@@ -64,6 +81,7 @@ const commandRegistry: CLICommand[] = [
   {
     name: "doctor",
     description: "Run system health check and print configuration details",
+    handler: runDoctor,
     flags: [
       { name: "--json", type: "boolean", description: "Output system information as JSON" }
     ]
@@ -71,6 +89,7 @@ const commandRegistry: CLICommand[] = [
   {
     name: "catalog",
     description: "List all supported models in the model registry catalog",
+    handler: runCatalog,
     flags: [
       { name: "--kind", type: "llm|stt|tts|image|video|audio", description: "Filter models by kind" }
     ]
@@ -78,6 +97,7 @@ const commandRegistry: CLICommand[] = [
   {
     name: "recommend",
     description: "Recommend models based on system specifications and VRAM limit",
+    handler: runRecommend,
     flags: [
       { name: "--kind", type: "llm|stt|tts|image|video|audio", description: "Filter recommendations by kind" },
       { name: "--vram", type: "gb", description: "Specify target VRAM in GB for memory check calculations" }
@@ -86,6 +106,7 @@ const commandRegistry: CLICommand[] = [
   {
     name: "installed",
     description: "List models currently installed in the storage root",
+    handler: runInstalled,
     flags: [
       { name: "--kind", type: "llm|stt|tts|image|video|audio", description: "Filter listed models by kind" }
     ]
@@ -93,11 +114,13 @@ const commandRegistry: CLICommand[] = [
   {
     name: "install",
     description: "Download and install a model from repository by ID",
+    handler: runInstall,
     positional: ["<model_id>"]
   },
   {
     name: "serve",
     description: "Start the unified LocalBase API gateway and LLM/STT backends",
+    handler: runServe,
     flags: [
       { name: "--host", type: "host", description: "API gateway binding host" },
       { name: "--port", type: "port", description: "API gateway binding port (defaults to 8787)" },
@@ -123,11 +146,13 @@ const commandRegistry: CLICommand[] = [
   },
   {
     name: "keys list",
-    description: "List all active API keys and their usage stats"
+    description: "List all active API keys and their usage stats",
+    handler: runKeys
   },
   {
     name: "keys create",
     description: "Create a new API key for client authentication",
+    handler: runKeys,
     flags: [
       { name: "--name", type: "label", description: "Descriptive label for the API key" },
       { name: "--expires-days", type: "n", description: "Optional expiration period in days" }
@@ -136,16 +161,19 @@ const commandRegistry: CLICommand[] = [
   {
     name: "keys revoke",
     description: "Revoke/deactivate an API key by ID",
+    handler: runKeys,
     positional: ["<key_id>"]
   },
   {
     name: "keys rotate",
     description: "Rotate/replace an API key with a new secret key",
+    handler: runKeys,
     positional: ["<key_id>"]
   },
   {
     name: "reset",
     description: "Reset database and purge selected configuration state",
+    handler: runReset,
     flags: [
       { name: "--root", type: "path", description: "Storage root path to reset" },
       { name: "--yes", type: "boolean", description: "Confirm reset without interactive prompting" }
@@ -154,6 +182,7 @@ const commandRegistry: CLICommand[] = [
   {
     name: "uninstall",
     description: "Remove installed binaries, models, database and cleanup system settings",
+    handler: runUninstall,
     flags: [
       { name: "--root", type: "path", description: "Storage root path to uninstall" },
       { name: "--yes", type: "boolean", description: "Confirm uninstallation without interactive prompting" }
