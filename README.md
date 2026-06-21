@@ -70,10 +70,44 @@ To route Cursor queries through LocalBase:
 
 ---
 
-## Development & CI/CD
+## Development Setup & Running
 
+### Prerequisites
+- [Bun](https://bun.sh) runtime (latest)
+- SQLite3 (installed on host)
+
+### Local Setup
+1. Clone the repository and navigate to the directory:
+   ```bash
+   git clone git@github.com:timsexperiments/LocalBase.git
+   cd LocalBase
+   ```
+2. Install dependencies:
+   ```bash
+   bun install --frozen-lockfile
+   ```
+
+### Running in Development
+Execute the CLI directly from source using the Bun runtime:
+```bash
+bun run local-base [command] [options]
+# Example:
+bun run local-base doctor
+```
+
+### Build & Package Validation
 *   **Typecheck**: `bun run typecheck`
-*   **NPM Pack Check**: `npm pack` (packages only `dist/cli.js` and documentation, keeping footprint under 420kB).
-*   **GitHub Actions**:
-    -   **CI**: Validates lockfiles, executes TypeScript compilation checks, and runs CLI smoke tests on push/PR.
-    -   **Release**: Triggers on version tags (`v*`). Packages and attaches cross-compiled standalone binaries for macOS (ARM64/x64), Linux (ARM64/x64), and Windows (x64), alongside SHA-256 integrity checksums, and publishes the JS entrypoint directly to NPM.
+*   **Build Standalone Binary**: `bun run build` (outputs to `dist/local-base`)
+*   **Build JS NPM Entrypoint**: `bun run build:js` (outputs to `dist/cli.js`)
+*   **Verify NPM Package Size & Contents**: `npm pack`
+
+### CI/CD Pipelines
+*   **CI Workflow**: Automatically validates lockfiles, executes TypeScript compilation checks, and runs CLI smoke tests on push/PR.
+*   **Release Workflow**: Triggered on tag pushes (`v*`). Automatically cross-compiles native binaries for macOS (ARM64/x64), Linux (ARM64/x64), and Windows (x64), computes SHA-256 integrity checksums, publishes a GitHub Release, and publishes the JS CLI to NPM with secure provenance.
+
+---
+
+## Support & Contribution
+
+*   **Bug Reports & Requests**: Submit an issue on [GitHub Issues](https://github.com/timsexperiments/LocalBase/issues).
+*   **Contributing**: Create a branch (prefixed with `tim/` or your name), apply modifications, verify using `bun run typecheck`, and submit a Pull Request.
