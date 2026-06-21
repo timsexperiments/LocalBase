@@ -114,7 +114,10 @@ export const commandRegistry: CLICommand[] = [
       const { runInstall } = await import("../../models/commands/install");
       return runInstall(args, ctx);
     },
-    positional: ["<model_id>"]
+    positional: ["[model_id]"],
+    flags: [
+      { name: "--all", type: "boolean", description: "Download and install all selected models" }
+    ]
   },
   {
     name: "serve",
