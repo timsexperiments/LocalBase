@@ -49,8 +49,9 @@ The wrapper binds to a single port (default `8787`) and exposes standard OpenAI 
 *   **Codebase Indexing**: Proxies `/v1/embeddings` to `llama-server`.
 *   **Model List**: Intercepts `/v1/models` to serve active/selected configurations instantly.
 *   **STT (Audio Transcriptions)**: Proxies `/v1/audio/transcriptions` and `/v1/audio/translations` to `whisper-server`.
-*   **Modality Proxies**: Directs `/v1/audio/speech` (TTS) and `/v1/images/*` (Image generation) to optional external upstreams via `--tts-upstream` and `--image-upstream`.
 *   **Diagnostics & Health**: Exposes `/health` to verify all upstream bindings and active statuses.
+
+> **Roadmap**: Local TTS, image generation, and video generation are planned modalities. They are not yet implemented.
 
 ---
 
