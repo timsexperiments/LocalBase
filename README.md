@@ -100,7 +100,6 @@ bun run local-base doctor
 *   **Typecheck**: `bun run typecheck`
 *   **Build Standalone Binary**: `bun run build` (outputs to `dist/local-base`)
 *   **Build JS NPM Entrypoint**: `bun run build:js` (outputs to `dist/cli.js`)
-*   **Verify NPM Package Size & Contents**: `npm pack`
 
 ### CI/CD Pipelines
 *   **CI Workflow**: Automatically validates lockfiles, executes TypeScript compilation checks, and runs CLI smoke tests on push/PR.
