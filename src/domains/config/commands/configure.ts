@@ -167,7 +167,8 @@ export async function syncOpenCodeConfig(config: LocalBaseConfig, activeModelCtx
         name: displayName,
         tool_call: true,
         limit: {
-          context: actualCtx
+          context: actualCtx,
+          output: 4096
         }
       };
     }

@@ -391,14 +391,14 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
   // Automatically download models if they pass memory checks and are missing
   if (enabled.llm && !llmModelExists) {
     console.log(`LLM model file is missing. Automatically installing "${config.activeLlmModel}"...`);
-    const installedPath = installModel(config, config.activeLlmModel);
+    const installedPath = await installModel(config, config.activeLlmModel);
     llmModelFile = basename(installedPath);
     llmModelExists = true;
   }
 
   if (enabled.stt && !sttModelExists) {
     console.log(`STT model file is missing. Automatically installing "${config.activeSttModel}"...`);
-    const installedPath = installModel(config, config.activeSttModel);
+    const installedPath = await installModel(config, config.activeSttModel);
     sttModelFile = basename(installedPath);
     sttModelExists = true;
   }
@@ -433,7 +433,7 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
           const modelPath = join(config.llmModelsDir, expectedFile);
           if (!existsSync(modelPath)) {
             ctx.logger.info("llama-server", `Model file is missing for "${activeModel}". Automatically installing...`);
-            const installedPath = installModel(config, activeModel);
+            const installedPath = await installModel(config, activeModel);
             modelFile = basename(installedPath);
           } else {
             modelFile = expectedFile;

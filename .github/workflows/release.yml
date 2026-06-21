@@ -10,7 +10,32 @@ permissions:
   id-token: write
 
 jobs:
+  build-whisper:
+    name: Build whisper-server
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, macos-13]
+
+    steps:
+      - name: Clone whisper.cpp
+        run: git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git
+
+      - name: Build whisper-server
+        run: |
+          cd whisper.cpp
+          cmake -B build -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
+          cmake --build build --config Release -j
+
+      - name: Upload whisper-server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-binary-${{ matrix.os }}
+          path: whisper.cpp/build/bin/whisper-server
+
   release:
+    name: Package and Release
+    needs: build-whisper
     runs-on: ubuntu-latest
 
     steps:
@@ -55,10 +80,34 @@ jobs:
           # Windows x64
           bun build src/cli.ts --compile --target=bun-windows-x64 --outfile release/local-base-windows-x64.exe
 
+      - name: Download whisper-server (Linux x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: whisper-binary-ubuntu-latest
+          path: release-linux-x64
+
+      - name: Download whisper-server (macOS ARM64)
+        uses: actions/download-artifact@v4
+        with:
+          name: whisper-binary-macos-latest
+          path: release-macos-arm64
+
+      - name: Download whisper-server (macOS x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: whisper-binary-macos-13
+          path: release-macos-x64
+
+      - name: Copy whisper-server binaries
+        run: |
+          cp release-linux-x64/whisper-server release/whisper-server-linux-x64
+          cp release-macos-arm64/whisper-server release/whisper-server-macos-arm64
+          cp release-macos-x64/whisper-server release/whisper-server-macos-x64
+
       - name: Generate SHA-256 Checksums
         run: |
           cd release
-          sha256sum local-base-* > checksums.txt
+          sha256sum local-base-* whisper-server-* > checksums.txt
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -69,6 +118,9 @@ jobs:
             release/local-base-linux-x64
             release/local-base-linux-arm64
             release/local-base-windows-x64.exe
+            release/whisper-server-macos-arm64
+            release/whisper-server-macos-x64
+            release/whisper-server-linux-x64
             release/checksums.txt
           generate_release_notes: true
 
