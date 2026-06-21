@@ -45,7 +45,7 @@ export function toInt(inputValue: string | undefined, fallback: number): number 
 
 export function parseKind(inputValue: string | undefined): ModelKind | undefined {
   if (!inputValue) return undefined;
-  if (["llm", "stt", "tts", "image", "video", "audio"].includes(inputValue)) return inputValue as ModelKind;
+  if (["llm", "stt"].includes(inputValue)) return inputValue as ModelKind;
   return undefined;
 }
 

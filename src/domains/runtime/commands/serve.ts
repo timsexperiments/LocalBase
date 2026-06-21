@@ -13,9 +13,6 @@ type AuthMode = "bearer" | "x-api-key" | "either";
 type ModalityState = {
   llm: boolean;
   stt: boolean;
-  tts: boolean;
-  image: boolean;
-  video: boolean;
 };
 
 function parseAuthMode(raw: string | undefined): AuthMode {
@@ -31,10 +28,7 @@ function printUnifiedNextSteps(
   sttPort: number,
   authRequired: boolean,
   authMode: AuthMode,
-  enabled: ModalityState,
-  ttsUpstream?: string,
-  imageUpstream?: string,
-  videoUpstream?: string
+  enabled: ModalityState
 ): void {
   console.log("\nUnified API wrapper started.");
   console.log(`Wrapper base URL: http://${host}:${port}`);
@@ -49,9 +43,6 @@ function printUnifiedNextSteps(
   console.log(`Enabled modalities: ${Object.entries(enabled).filter(([, on]) => on).map(([k]) => k).join(", ") || "none"}`);
   if (enabled.llm) console.log(`Upstream llama-server: http://127.0.0.1:${llmPort}`);
   if (enabled.stt) console.log(`Upstream whisper-server: http://127.0.0.1:${sttPort}`);
-  if (enabled.tts && ttsUpstream) console.log(`Upstream TTS: ${ttsUpstream}`);
-  if (enabled.image && imageUpstream) console.log(`Upstream Image: ${imageUpstream}`);
-  if (enabled.video && videoUpstream) console.log(`Upstream Video: ${videoUpstream}`);
 
   if (enabled.llm) {
     console.log("\nExample chat request (Bearer):");
@@ -63,8 +54,6 @@ function printUnifiedNextSteps(
     console.log("\nExample STT request (x-api-key):");
     console.log(`curl -X POST http://${host}:${port}/v1/audio/transcriptions -H 'x-api-key: <API_KEY>' -F file=@audio.wav -F model=whisper`);
   }
-  if (enabled.tts) console.log(`\nExample TTS request: curl -X POST http://${host}:${port}/v1/audio/speech -H 'Authorization: Bearer <API_KEY>' -H 'Content-Type: application/json' -d '{"model":"tts","input":"hello"}'`);
-  if (enabled.image) console.log(`\nExample image request: curl -X POST http://${host}:${port}/v1/images/generations -H 'Authorization: Bearer <API_KEY>' -H 'Content-Type: application/json' -d '{"prompt":"a cat"}'`);
 }
 
 function extractBearerToken(request: Request): string | null {
@@ -299,13 +288,9 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
   // Automatically synchronize active model and calculated context size with OpenCode/Continue configuration
   await syncOpenCodeConfig(config, ctxSize);
   await syncContinueConfig(config, ctxSize);
-  const sttPath = parseFlag(args, "--stt-path") ?? "/inference";
+  const sttPath = parseFlag(args, "--stt-path");
   const authRequired = parseFlag(args, "--auth") !== "false";
   const authMode = parseAuthMode(parseFlag(args, "--auth-mode"));
-
-  const ttsUpstream = parseFlag(args, "--tts-upstream");
-  const imageUpstream = parseFlag(args, "--image-upstream");
-  const videoUpstream = parseFlag(args, "--video-upstream");
 
   let llmModelFile = parseFlag(args, "--llm-model-file");
   if (!llmModelFile) {
@@ -336,10 +321,7 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
 
   const enabled: ModalityState = {
     llm: parseBool(parseFlag(args, "--llm"), true),
-    stt: parseBool(parseFlag(args, "--stt"), true),
-    tts: parseBool(parseFlag(args, "--tts"), Boolean(ttsUpstream)),
-    image: parseBool(parseFlag(args, "--image"), Boolean(imageUpstream)),
-    video: parseBool(parseFlag(args, "--video"), Boolean(videoUpstream))
+    stt: parseBool(parseFlag(args, "--stt"), true)
   };
 
   // Perform memory fit evaluation BEFORE downloading
@@ -421,12 +403,8 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
     sttModelExists = true;
   }
 
-  if (enabled.tts && !ttsUpstream) throw new Error("TTS enabled but --tts-upstream is not set.");
-  if (enabled.image && !imageUpstream) throw new Error("Image enabled but --image-upstream is not set.");
-  if (enabled.video && !videoUpstream) throw new Error("Video enabled but --video-upstream is not set.");
-
-  if (!enabled.llm && !enabled.stt && !enabled.tts && !enabled.image && !enabled.video) {
-    throw new Error("No modalities enabled. Install/configure models or upstreams, or enable with --llm/--stt/--tts/--image/--video true.");
+  if (!enabled.llm && !enabled.stt) {
+    throw new Error("No modalities enabled. Enable with --llm/--stt true.");
   }
 
   if (!enabled.llm && !parseFlag(args, "--llm")) {
@@ -482,7 +460,7 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
 
   const handleRequest = async (request: Request, pathname: string, method: string): Promise<Response> => {
     if (pathname === "/health") {
-      return Response.json({ status: "ok", enabled, llmUpstream: enabled.llm ? llmBase : null, sttUpstream: enabled.stt ? sttBase : null, ttsUpstream: enabled.tts ? ttsUpstream : null, imageUpstream: enabled.image ? imageUpstream : null, videoUpstream: enabled.video ? videoUpstream : null, authRequired, authMode });
+      return Response.json({ status: "ok", enabled, llmUpstream: enabled.llm ? llmBase : null, sttUpstream: enabled.stt ? sttBase : null, authRequired, authMode });
     }
 
     if (authRequired) {
@@ -534,21 +512,6 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
         return serviceUnavailable("STT");
       }
       return proxyRequest(request, sttBase, sttPath);
-    }
-
-    if (pathname === "/v1/audio/speech") {
-      if (!enabled.tts || !ttsUpstream) return notConfigured("TTS");
-      return proxyRequest(request, ttsUpstream);
-    }
-
-    if (pathname.startsWith("/v1/images")) {
-      if (!enabled.image || !imageUpstream) return notConfigured("Image");
-      return proxyRequest(request, imageUpstream);
-    }
-
-    if (pathname.startsWith("/v1/video")) {
-      if (!enabled.video || !videoUpstream) return notConfigured("Video");
-      return proxyRequest(request, videoUpstream);
     }
 
     if (pathname.startsWith("/stt")) {
@@ -669,7 +632,7 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
     }
   });
 
-  printUnifiedNextSteps(wrapperHost, wrapperPort, llmPort, sttPort, authRequired, authMode, enabled, ttsUpstream ?? undefined, imageUpstream ?? undefined, videoUpstream ?? undefined);
+  printUnifiedNextSteps(wrapperHost, wrapperPort, llmPort, sttPort, authRequired, authMode, enabled);
 
   const shutdown = () => {
     ctx.logger.info("Manager", "Shutting down servers and subprocesses...");

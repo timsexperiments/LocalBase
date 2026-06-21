@@ -271,7 +271,7 @@ export function installedModels(config: LocalBaseConfig, kind?: ModelKind): stri
       .sort();
   }
 
-  const kinds: ModelKind[] = ["llm", "stt", "tts", "image", "video", "audio"];
+  const kinds: ModelKind[] = ["llm", "stt"];
   const files = kinds.flatMap((k) => {
     const d = kindDir(config, k);
     if (!existsSync(d)) return [];

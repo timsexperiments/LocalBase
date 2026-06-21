@@ -81,7 +81,7 @@ export const commandRegistry: CLICommand[] = [
       return runCatalog(args, ctx);
     },
     flags: [
-      { name: "--kind", type: "llm|stt|tts|image|video|audio", description: "Filter models by kind" }
+      { name: "--kind", type: "llm|stt", description: "Filter models by kind" }
     ]
   },
   {
@@ -92,7 +92,7 @@ export const commandRegistry: CLICommand[] = [
       return runRecommend(args, ctx);
     },
     flags: [
-      { name: "--kind", type: "llm|stt|tts|image|video|audio", description: "Filter recommendations by kind" },
+      { name: "--kind", type: "llm|stt", description: "Filter recommendations by kind" },
       { name: "--vram", type: "gb", description: "Specify target VRAM in GB for memory check calculations" }
     ]
   },
@@ -104,7 +104,7 @@ export const commandRegistry: CLICommand[] = [
       return runInstalled(args, ctx);
     },
     flags: [
-      { name: "--kind", type: "llm|stt|tts|image|video|audio", description: "Filter listed models by kind" }
+      { name: "--kind", type: "llm|stt", description: "Filter listed models by kind" }
     ]
   },
   {
@@ -128,22 +128,16 @@ export const commandRegistry: CLICommand[] = [
       { name: "--port", type: "port", description: "API gateway binding port (defaults to 8787)" },
       { name: "--llm", type: "true|false", description: "Enable/disable the LLM service (defaults to true)" },
       { name: "--stt", type: "true|false", description: "Enable/disable the STT service (defaults to true)" },
-      { name: "--tts", type: "true|false", description: "Enable/disable TTS routing" },
-      { name: "--image", type: "true|false", description: "Enable/disable Image generation routing" },
-      { name: "--video", type: "true|false", description: "Enable/disable Video generation routing" },
       { name: "--llm-host", type: "host", description: "Host for the upstream llama-server" },
       { name: "--llm-port", type: "port", description: "Port for the upstream llama-server" },
       { name: "--stt-host", type: "host", description: "Host for the upstream whisper-server" },
       { name: "--stt-port", type: "port", description: "Port for the upstream whisper-server" },
       { name: "--ctx-size", type: "tokens", description: "Explicit override for LLM context size limit" },
-      { name: "--stt-path", type: "path", description: "Path for Whisper transcription proxy endpoint" },
+      { name: "--stt-path", type: "path", description: "Explicit path override for Whisper transcription endpoint (defaults to preserving incoming path)" },
       { name: "--llm-model-file", type: "file", description: "Filename override for the active LLM GGUF model" },
       { name: "--stt-model-file", type: "file", description: "Filename override for the active STT model" },
       { name: "--auth", type: "true|false", description: "Enable/disable API key authentication check" },
-      { name: "--auth-mode", type: "bearer|x-api-key|either", description: "Authentication header mode to enforce" },
-      { name: "--tts-upstream", type: "url", description: "Upstream URL for speech generation endpoint" },
-      { name: "--image-upstream", type: "url", description: "Upstream URL for image generation endpoint" },
-      { name: "--video-upstream", type: "url", description: "Upstream URL for video generation endpoint" }
+      { name: "--auth-mode", type: "bearer|x-api-key|either", description: "Authentication header mode to enforce" }
     ]
   },
   {
