@@ -1,4 +1,5 @@
-import { printHelp, commandRegistry } from "./domains/app/commands/help";
+import { printHelp } from "./domains/app/commands/help";
+import { commandRegistry } from "./domains/app/commands/registry";
 import { createAppContext } from "./context";
 
 async function main(): Promise<number> {
