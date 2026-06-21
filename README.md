@@ -4,18 +4,7 @@
 
 ---
 
-## Core Architectural Features
-
-*   **On-Demand Lazy Loading**: Upstream backend servers (`llama-server` and `whisper-server`) are only booted on the first API request targeting that model, preserving VRAM when idle.
-*   **Self-Healing Supervisor**: Monitors child processes and automatically recovers from unexpected crashes using doubling exponential backoff (1s to 16s) and a safety budget (max 5 crashes in 5 minutes).
-*   **On-the-Fly Model Switching**: Intercepts `/v1/chat/completions`, `/v1/completions`, and `/v1/embeddings` requests. If the requested model differs from the active one, the supervisor halts the current backend, updates configurations, synchronizes editor settings, and boots the new model before routing the request.
-*   **Dynamic Context Sizing**: Automatically detects host hardware (VRAM/RAM) and calculates the optimal context ceiling for the active model: `min(recommendedCtxForHardware, maxConfigCtx)`.
-*   **Automated Editor Syncing**: Synchronizes model choices, context limits, and endpoints in real-time with **OpenCode** (`opencode.jsonc`) and **Continue.dev** (`config.json`).
-*   **Lazy-Load Shield (`/v1/models`)**: Intercepts model listing requests and serves catalog metadata instantly without triggering LLM process activation during IDE background polling.
-
----
-
-## Quick Start
+## Installation & Quick Start
 
 ```bash
 # 1. Install dependencies and compile the binary
@@ -38,6 +27,17 @@ bun run build:js    # Compiles NPM-executable JS to dist/cli.js
 ```bash
 ./dist/local-base --help
 ```
+
+---
+
+## Core Architectural Features
+
+*   **On-Demand Lazy Loading**: Upstream backend servers (`llama-server` and `whisper-server`) are only booted on the first API request targeting that model, preserving VRAM when idle.
+*   **Self-Healing Supervisor**: Monitors child processes and automatically recovers from unexpected crashes using doubling exponential backoff (1s to 16s) and a safety budget (max 5 crashes in 5 minutes).
+*   **On-the-Fly Model Switching**: Intercepts `/v1/chat/completions`, `/v1/completions`, and `/v1/embeddings` requests. If the requested model differs from the active one, the supervisor halts the current backend, updates configurations, synchronizes editor settings, and boots the new model before routing the request.
+*   **Dynamic Context Sizing**: Automatically detects host hardware (VRAM/RAM) and calculates the optimal context ceiling for the active model: `min(recommendedCtxForHardware, maxConfigCtx)`.
+*   **Automated Editor Syncing**: Synchronizes model choices, context limits, and endpoints in real-time with **OpenCode** (`opencode.jsonc`) and **Continue.dev** (`config.json`).
+*   **Lazy-Load Shield (`/v1/models`)**: Intercepts model listing requests and serves catalog metadata instantly without triggering LLM process activation during IDE background polling.
 
 ---
 
