@@ -111,4 +111,4 @@ bun run local-base doctor
 ## Support & Contribution
 
 *   **Bug Reports & Requests**: Submit an issue on [GitHub Issues](https://github.com/timsexperiments/LocalBase/issues).
-*   **Contributing**: Create a branch (prefixed with `tim/` or your name), apply modifications, verify using `bun run typecheck`, and submit a Pull Request.
+*   **Contributing**: Fork the repository, apply your changes, verify using `bun run typecheck`, and submit a Pull Request.
