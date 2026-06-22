@@ -291,10 +291,46 @@ export function installedModels(config: LocalBaseConfig, kind?: ModelKind): stri
   return files.sort();
 }
 
-function resolveDownload(spec: ModelSpec): string {
+async function resolveDownload(spec: ModelSpec): Promise<string> {
   const base = spec.source.replace(/\/$/, "");
-  const path = spec.downloadPath ?? "resolve/main/model.gguf";
-  return `${base}/${path.replace(/^\//, "")}`;
+  if (spec.downloadPath) {
+    return `${base}/${spec.downloadPath.replace(/^\//, "")}`;
+  }
+
+  // Parse repo path (e.g. "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF") from URL
+  const match = spec.source.match(/huggingface\.co\/([^/]+\/[^/]+)/);
+  if (match && match[1]) {
+    const repo = match[1];
+    try {
+      console.log(`\n🔍 Resolving download file list for HF repo: ${repo}...`);
+      const res = await fetch(`https://huggingface.co/api/models/${repo}`, {
+        headers: { "User-Agent": "LocalBase-CLI" }
+      });
+      if (res.ok) {
+        const data = await res.json() as { siblings?: { rfilename: string }[] };
+        const files = data.siblings?.map((s) => s.rfilename) ?? [];
+        
+        // Find a GGUF file matching the quantization pattern (e.g. "q4_k_m")
+        const quantClean = spec.quant.toLowerCase().replace(/[-_]/g, "");
+        const matchedFile = files.find((f) => {
+          if (!f.endsWith(".gguf")) return false;
+          const nameClean = f.toLowerCase().replace(/[-_]/g, "");
+          return nameClean.includes(quantClean);
+        });
+
+        if (matchedFile) {
+          console.log(`🎯 Resolved remote filename: ${matchedFile}`);
+          return `${base}/resolve/main/${matchedFile}`;
+        }
+      }
+    } catch (err) {
+      console.warn(`⚠️  Failed to fetch siblings from HF API: ${(err as Error).message}`);
+    }
+  }
+
+  // Fallback guess
+  const defaultPath = `resolve/main/${spec.modelId}.gguf`;
+  return `${base}/${defaultPath}`;
 }
 
 export async function installModel(config: LocalBaseConfig, modelId: string, filename?: string): Promise<string> {
@@ -306,7 +342,9 @@ export async function installModel(config: LocalBaseConfig, modelId: string, fil
   const targetDir = kindDir(config, spec.kind);
   ensureDirs(config);
   mkdirSync(targetDir, { recursive: true });
-  const inferred = filename ?? spec.filename ?? `${modelId}${spec.kind === "stt" ? ".gguf" : ".bin"}`;
+
+  const url = await resolveDownload(spec);
+  const inferred = filename ?? spec.filename ?? basename(url);
   const output = join(targetDir, inferred);
 
   // If already installed, verify checksum integrity before returning.
@@ -320,10 +358,10 @@ export async function installModel(config: LocalBaseConfig, modelId: string, fil
     return output;
   }
 
-  const url = resolveDownload(spec);
   console.log(`⬇️  Downloading model "${modelId}" from ${url}...`);
   const result = spawnSync("curl", ["-L", "--fail", "-o", output, url], { stdio: "inherit" });
   if (result.status !== 0) {
+    try { rmSync(output, { force: true }); } catch {}
     throw new Error(`Failed to download model from ${url}`);
   }
 
