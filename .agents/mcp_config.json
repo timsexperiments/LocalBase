@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "linear": {
+      "command": "bunx",
+      "args": [
+        "-y",
+        "mcp-linear"
+      ],
+      "env": {
+        "LINEAR_API_KEY": ""
+      }
+    }
+  }
+}
