@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "linear": {
+      "command": "bunx",
+      "args": [
+        "-y",
+        "mcp-linear"
+      ]
+    }
+  }
+}
