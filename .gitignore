@@ -1,3 +1,4 @@
 node_modules/
 dist/
 .agents/mcp_config.json
+.env
