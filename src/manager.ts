@@ -823,8 +823,8 @@ export async function startSdServerProcess(config: LocalBaseConfig, modelFile: s
   const args = [
     binPath,
     "-m", modelPath,
-    "--host", host,
-    "--port", String(port)
+    "--listen-ip", host,
+    "--listen-port", String(port)
   ];
 
   return Bun.spawn(args, {
@@ -845,8 +845,8 @@ export async function launchSdServer(config: LocalBaseConfig, modelFile: string,
   const binDir = join(config.root, "bin");
   const args = [
     "-m", modelPath,
-    "--host", host,
-    "--port", String(port)
+    "--listen-ip", host,
+    "--listen-port", String(port)
   ];
 
   const result = spawnSync(binPath, args, {
