@@ -302,7 +302,7 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
   // Automatically synchronize active model and calculated context size with OpenCode/Continue configuration
   await syncOpenCodeConfig(config, ctxSize);
   await syncContinueConfig(config, ctxSize);
-  const sttPath = parseFlag(args, "--stt-path");
+  const sttPath = parseFlag(args, "--stt-path") ?? "/inference";
   const authRequired = parseFlag(args, "--auth") !== "false";
   const authMode = parseAuthMode(parseFlag(args, "--auth-mode"));
 
