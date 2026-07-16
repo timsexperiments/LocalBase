@@ -1,3 +1,4 @@
+import { byId } from "../../../catalog";
 import { installModel } from "../../../manager";
 import type { AppContext } from "../../../context";
 
@@ -17,6 +18,10 @@ export async function runInstall(args: string[], ctx: AppContext): Promise<numbe
 
     console.log(`Installing all ${modelsToInstall.length} selected models...`);
     for (const modelId of modelsToInstall) {
+      if (!byId(modelId)) {
+        console.warn(`⚠️  Skipping "${modelId}": Model does not exist in the catalog.`);
+        continue;
+      }
       try {
         const path = await installModel(ctx.config, modelId);
         console.log(`✅ Installed: ${path}`);

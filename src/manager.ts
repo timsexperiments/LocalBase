@@ -384,7 +384,13 @@ export async function installModel(config: LocalBaseConfig, modelId: string, fil
   }
 
   console.log(`⬇️  Downloading model "${modelId}" from ${url}...`);
-  const result = spawnSync("curl", ["-L", "--fail", "-o", output, url], { stdio: "inherit" });
+  const curlArgs = ["-L", "--fail"];
+  if (process.env.HF_TOKEN) {
+    curlArgs.push("-H", `Authorization: Bearer ${process.env.HF_TOKEN}`);
+  }
+  curlArgs.push("-o", output, url);
+  
+  const result = spawnSync("curl", curlArgs, { stdio: "inherit" });
   if (result.status !== 0) {
     try { rmSync(output, { force: true }); } catch {}
     throw new Error(`Failed to download model from ${url}`);
