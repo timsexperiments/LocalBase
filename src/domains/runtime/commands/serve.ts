@@ -618,14 +618,14 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
       return proxyRequest(request, sttBase, mapped);
     }
 
-    if (pathname.startsWith("/text") || pathname.startsWith("/llm")) {
+    if (pathname.startsWith("/llm")) {
       if (!enabled.llm || !llmService) return notConfigured("LLM");
       try {
         await llmService.ensureRunning();
       } catch (err) {
         return serviceUnavailable("LLM");
       }
-      const mapped = pathname.replace(/^\/(text|llm)/, "") || "/";
+      const mapped = pathname.replace(/^\/llm/, "") || "/";
       return proxyRequest(request, llmBase, mapped);
     }
 
