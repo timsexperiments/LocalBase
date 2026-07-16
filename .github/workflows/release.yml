@@ -24,14 +24,14 @@ jobs:
       - name: Build whisper-server
         run: |
           cd whisper.cpp
-          cmake -B build -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
+          cmake -B build -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF
           cmake --build build --config Release -j
 
       - name: Build whisper-server (macOS Intel cross-compile)
         if: matrix.os == 'macos-latest'
         run: |
           cd whisper.cpp
-          cmake -B build-intel -DCMAKE_OSX_ARCHITECTURES=x86_64 -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
+          cmake -B build-intel -DCMAKE_OSX_ARCHITECTURES=x86_64 -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF
           cmake --build build-intel --config Release -j
 
       - name: Upload whisper-server artifact (ARM64 / Linux)
@@ -61,12 +61,6 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -139,12 +133,4 @@ jobs:
             release/whisper-server-linux-x64
             release/checksums.txt
           generate_release_notes: true
-
-      - name: Publish to NPM
-        if: env.NODE_AUTH_TOKEN != ''
-        run: |
-          bun run build:js
-          npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
