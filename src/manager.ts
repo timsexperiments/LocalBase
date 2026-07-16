@@ -34,6 +34,7 @@ export type LocalBaseConfig = {
   selectedSttModels: string[];
   activeLlmModel: string;
   activeSttModel: string;
+  systemPrompt: string;
 };
 
 export type ApiKeyRecord = {
@@ -63,8 +64,10 @@ const configTable = sqliteTable("config", {
   selectedLlmModels: text("selected_llm_models").notNull(),
   selectedSttModels: text("selected_stt_models").notNull(),
   activeLlmModel: text("active_llm_model").notNull(),
-  activeSttModel: text("active_stt_model").notNull()
+  activeSttModel: text("active_stt_model").notNull(),
+  systemPrompt: text("system_prompt").default("").notNull()
 });
+
 
 const apiKeysTable = sqliteTable("api_keys", {
   id: text("id").primaryKey(),
@@ -101,7 +104,8 @@ function openDb(root: string) {
       selected_llm_models text not null,
       selected_stt_models text not null,
       active_llm_model text not null,
-      active_stt_model text not null
+      active_stt_model text not null,
+      system_prompt text
     );
 
     create table if not exists api_keys (
@@ -115,8 +119,14 @@ function openDb(root: string) {
       revoked_at text
     );
   `);
+  try {
+    sqlite.exec("ALTER TABLE config ADD COLUMN system_prompt TEXT;");
+  } catch (e) {
+    // Ignore error if column already exists
+  }
   return drizzle(sqlite);
 }
+
 
 function toConfigRow(config: LocalBaseConfig) {
   return {
@@ -135,7 +145,8 @@ function toConfigRow(config: LocalBaseConfig) {
     selectedLlmModels: JSON.stringify(config.selectedLlmModels),
     selectedSttModels: JSON.stringify(config.selectedSttModels),
     activeLlmModel: config.activeLlmModel,
-    activeSttModel: config.activeSttModel
+    activeSttModel: config.activeSttModel,
+    systemPrompt: config.systemPrompt
   };
 }
 
@@ -155,9 +166,11 @@ function fromConfigRow(row: (typeof configTable.$inferSelect)): LocalBaseConfig 
     selectedLlmModels: JSON.parse(row.selectedLlmModels) as string[],
     selectedSttModels: JSON.parse(row.selectedSttModels) as string[],
     activeLlmModel: row.activeLlmModel,
-    activeSttModel: row.activeSttModel
+    activeSttModel: row.activeSttModel,
+    systemPrompt: row.systemPrompt ?? ""
   };
 }
+
 
 
 
@@ -208,9 +221,11 @@ function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     selectedLlmModels: [llm],
     selectedSttModels: [stt],
     activeLlmModel: llm,
-    activeSttModel: stt
+    activeSttModel: stt,
+    systemPrompt: ""
   };
 }
+
 
 export function ensureDirs(config: LocalBaseConfig): void {
   mkdirSync(config.root, { recursive: true });
