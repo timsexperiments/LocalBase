@@ -81,7 +81,7 @@ export const commandRegistry: CLICommand[] = [
       return runCatalog(args, ctx);
     },
     flags: [
-      { name: "--kind", type: "llm|stt", description: "Filter models by kind" }
+      { name: "--kind", type: "llm|stt|image", description: "Filter models by kind" }
     ]
   },
   {
@@ -92,7 +92,7 @@ export const commandRegistry: CLICommand[] = [
       return runRecommend(args, ctx);
     },
     flags: [
-      { name: "--kind", type: "llm|stt", description: "Filter recommendations by kind" },
+      { name: "--kind", type: "llm|stt|image", description: "Filter recommendations by kind" },
       { name: "--vram", type: "gb", description: "Specify target VRAM in GB for memory check calculations" }
     ]
   },
@@ -104,9 +104,10 @@ export const commandRegistry: CLICommand[] = [
       return runInstalled(args, ctx);
     },
     flags: [
-      { name: "--kind", type: "llm|stt", description: "Filter listed models by kind" }
+      { name: "--kind", type: "llm|stt|image", description: "Filter listed models by kind" }
     ]
   },
+
   {
     name: "install",
     description: "Download and install a model from repository by ID",
