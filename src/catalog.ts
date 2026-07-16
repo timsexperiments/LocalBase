@@ -800,6 +800,26 @@ export const CATALOG: readonly ModelSpec[] = [
     notes: "Extremely lightweight baseline model. Perfect for low VRAM systems (under 8GB) and fast prototyping. Generates 512x512 images."
   },
   {
+    modelId: "dreamshaper-v8",
+    kind: "image",
+    provider: "Lykon",
+    family: "Stable-Diffusion",
+    version: "8.0",
+    size: "2.0GB",
+    quant: "F16",
+    minVramGb: 4,
+    storageGb: 1.98,
+    source: "https://huggingface.co/Lykon/DreamShaper",
+    downloadPath: "resolve/main/DreamShaper_8_pruned.safetensors",
+    filename: "DreamShaper_8_pruned.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "CreativeML Open RAIL-M license.",
+    notes: "Highly optimized community model for digital art, anime, and portraiture. Extremely fast and lightweight. Requires 4GB+ VRAM."
+  },
+  {
     modelId: "sdxl-turbo",
     kind: "image",
     provider: "StabilityAI",
@@ -838,6 +858,26 @@ export const CATALOG: readonly ModelSpec[] = [
     commercialStatus: "open",
     catch: "Stability AI Community License.",
     notes: "Standard high-resolution (1024x1024) image generator. Recommended for standard workstation GPUs with 12GB+ VRAM."
+  },
+  {
+    modelId: "juggernaut-xl-v9",
+    kind: "image",
+    provider: "RunDiffusion",
+    family: "Stable-Diffusion-XL",
+    version: "9.0",
+    size: "6.6GB",
+    quant: "F16",
+    minVramGb: 12,
+    storageGb: 6.61,
+    source: "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
+    downloadPath: "resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+    filename: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "Stability AI Community License.",
+    notes: "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism. Requires 12GB+ VRAM."
   }
 ];
 
