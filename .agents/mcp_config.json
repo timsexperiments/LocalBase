@@ -1,10 +1,10 @@
 {
   "mcpServers": {
     "linear": {
-      "command": "bunx",
+      "command": "bun",
       "args": [
-        "-y",
-        "@modelcontextprotocol/server-linear"
+        "run",
+        "scripts/linear-mcp.ts"
       ]
     }
   }
