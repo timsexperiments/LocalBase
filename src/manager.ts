@@ -22,6 +22,7 @@ export type LocalBaseConfig = {
   root: string;
   llmModelsDir: string;
   sttModelsDir: string;
+  imageModelsDir: string;
   runtimeBackend: "llama.cpp";
   sttBackend: "whisper.cpp";
   host: string;
@@ -32,8 +33,10 @@ export type LocalBaseConfig = {
   startupOnBoot: boolean;
   selectedLlmModels: string[];
   selectedSttModels: string[];
+  selectedImageModels: string[];
   activeLlmModel: string;
   activeSttModel: string;
+  activeImageModel: string;
   systemPrompt: string;
 };
 
@@ -53,6 +56,7 @@ const configTable = sqliteTable("config", {
   root: text("root").notNull(),
   llmModelsDir: text("llm_models_dir").notNull(),
   sttModelsDir: text("stt_models_dir").notNull(),
+  imageModelsDir: text("image_models_dir").default("").notNull(),
   runtimeBackend: text("runtime_backend").notNull(),
   sttBackend: text("stt_backend").notNull(),
   host: text("host").notNull(),
@@ -63,10 +67,13 @@ const configTable = sqliteTable("config", {
   startupOnBoot: integer("startup_on_boot").notNull(),
   selectedLlmModels: text("selected_llm_models").notNull(),
   selectedSttModels: text("selected_stt_models").notNull(),
+  selectedImageModels: text("selected_image_models").default("[]").notNull(),
   activeLlmModel: text("active_llm_model").notNull(),
   activeSttModel: text("active_stt_model").notNull(),
+  activeImageModel: text("active_image_model").default("").notNull(),
   systemPrompt: text("system_prompt").default("").notNull()
 });
+
 
 
 const apiKeysTable = sqliteTable("api_keys", {
@@ -93,6 +100,7 @@ function openDb(root: string) {
       root text not null,
       llm_models_dir text not null,
       stt_models_dir text not null,
+      image_models_dir text,
       runtime_backend text not null,
       stt_backend text not null,
       host text not null,
@@ -103,8 +111,10 @@ function openDb(root: string) {
       startup_on_boot integer not null,
       selected_llm_models text not null,
       selected_stt_models text not null,
+      selected_image_models text,
       active_llm_model text not null,
       active_stt_model text not null,
+      active_image_model text,
       system_prompt text
     );
 
@@ -124,8 +134,24 @@ function openDb(root: string) {
   } catch (e) {
     // Ignore error if column already exists
   }
+  try {
+    sqlite.exec("ALTER TABLE config ADD COLUMN image_models_dir TEXT;");
+  } catch (e) {
+    // Ignore error if column already exists
+  }
+  try {
+    sqlite.exec("ALTER TABLE config ADD COLUMN selected_image_models TEXT;");
+  } catch (e) {
+    // Ignore error if column already exists
+  }
+  try {
+    sqlite.exec("ALTER TABLE config ADD COLUMN active_image_model TEXT;");
+  } catch (e) {
+    // Ignore error if column already exists
+  }
   return drizzle(sqlite);
 }
+
 
 
 function toConfigRow(config: LocalBaseConfig) {
@@ -134,6 +160,7 @@ function toConfigRow(config: LocalBaseConfig) {
     root: config.root,
     llmModelsDir: config.llmModelsDir,
     sttModelsDir: config.sttModelsDir,
+    imageModelsDir: config.imageModelsDir,
     runtimeBackend: config.runtimeBackend,
     sttBackend: config.sttBackend,
     host: config.host,
@@ -144,17 +171,25 @@ function toConfigRow(config: LocalBaseConfig) {
     startupOnBoot: config.startupOnBoot ? 1 : 0,
     selectedLlmModels: JSON.stringify(config.selectedLlmModels),
     selectedSttModels: JSON.stringify(config.selectedSttModels),
+    selectedImageModels: JSON.stringify(config.selectedImageModels),
     activeLlmModel: config.activeLlmModel,
     activeSttModel: config.activeSttModel,
+    activeImageModel: config.activeImageModel,
     systemPrompt: config.systemPrompt
   };
 }
 
 function fromConfigRow(row: (typeof configTable.$inferSelect)): LocalBaseConfig {
+  const root = row.root;
+  const imageModelsDir = row.imageModelsDir || join(root, "models", "image");
+  const selectedImageModels = row.selectedImageModels ? (JSON.parse(row.selectedImageModels) as string[]) : ["stable-diffusion-v1-5"];
+  const activeImageModel = row.activeImageModel || "stable-diffusion-v1-5";
+
   return {
-    root: row.root,
+    root,
     llmModelsDir: row.llmModelsDir,
     sttModelsDir: row.sttModelsDir,
+    imageModelsDir,
     runtimeBackend: "llama.cpp",
     sttBackend: "whisper.cpp",
     host: row.host,
@@ -165,11 +200,15 @@ function fromConfigRow(row: (typeof configTable.$inferSelect)): LocalBaseConfig 
     startupOnBoot: row.startupOnBoot === 1,
     selectedLlmModels: JSON.parse(row.selectedLlmModels) as string[],
     selectedSttModels: JSON.parse(row.selectedSttModels) as string[],
+    selectedImageModels,
     activeLlmModel: row.activeLlmModel,
     activeSttModel: row.activeSttModel,
+    activeImageModel,
     systemPrompt: row.systemPrompt ?? ""
   };
 }
+
+
 
 
 
@@ -210,6 +249,7 @@ function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     root,
     llmModelsDir: join(root, "models", "llm"),
     sttModelsDir: join(root, "models", "stt"),
+    imageModelsDir: join(root, "models", "image"),
     runtimeBackend: "llama.cpp",
     sttBackend: "whisper.cpp",
     host: "0.0.0.0",
@@ -220,8 +260,10 @@ function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     startupOnBoot: false,
     selectedLlmModels: [llm],
     selectedSttModels: [stt],
+    selectedImageModels: ["stable-diffusion-v1-5"],
     activeLlmModel: llm,
     activeSttModel: stt,
+    activeImageModel: "stable-diffusion-v1-5",
     systemPrompt: ""
   };
 }
@@ -231,7 +273,9 @@ export function ensureDirs(config: LocalBaseConfig): void {
   mkdirSync(config.root, { recursive: true });
   mkdirSync(config.llmModelsDir, { recursive: true });
   mkdirSync(config.sttModelsDir, { recursive: true });
+  mkdirSync(config.imageModelsDir, { recursive: true });
 }
+
 
 export function saveConfig(config: LocalBaseConfig): void {
   ensureDirs(config);
@@ -283,6 +327,7 @@ export function uninstallManaged(root?: string): string {
 function kindDir(config: LocalBaseConfig, kind: ModelKind): string {
   if (kind === "llm") return config.llmModelsDir;
   if (kind === "stt") return config.sttModelsDir;
+  if (kind === "image") return config.imageModelsDir;
   return join(config.root, "models", kind);
 }
 
@@ -295,7 +340,7 @@ export function installedModels(config: LocalBaseConfig, kind?: ModelKind): stri
       .sort();
   }
 
-  const kinds: ModelKind[] = ["llm", "stt"];
+  const kinds: ModelKind[] = ["llm", "stt", "image"];
   const files = kinds.flatMap((k) => {
     const d = kindDir(config, k);
     if (!existsSync(d)) return [];
@@ -305,6 +350,7 @@ export function installedModels(config: LocalBaseConfig, kind?: ModelKind): stri
   });
   return files.sort();
 }
+
 
 function resolveDownload(spec: ModelSpec): string {
   const base = spec.source.replace(/\/$/, "");
@@ -587,14 +633,63 @@ async function downloadLlamaServer(config: LocalBaseConfig): Promise<string> {
 }
 
 /**
+ * Downloads the stable-diffusion.cpp server prebuilt binary from leejet/stable-diffusion.cpp
+ * releases, extracts it, sets execution permissions, and records SHA-256 for future integrity checks.
+ */
+async function downloadSdServer(config: LocalBaseConfig): Promise<string> {
+  const binDir = join(config.root, "bin");
+  mkdirSync(binDir, { recursive: true });
+
+  const plat = platform();
+  const a = arch();
+
+  let assetName = "";
+  if (plat === "darwin" && a === "arm64") {
+    assetName = "sd-master-c00a9e9-bin-Darwin-macOS-26.4-arm64.zip";
+  } else if (plat === "linux" && a === "x64") {
+    assetName = "sd-master-c00a9e9-bin-Linux-Ubuntu-24.04-x86_64.zip";
+  } else if (plat === "win32" && a === "x64") {
+    assetName = "sd-master-c00a9e9-bin-win-cpu-x64.zip";
+  } else {
+    throw new Error(
+      `No prebuilt stable-diffusion.cpp binaries are available for platform ${plat}-${a}.\n` +
+      `Please compile stable-diffusion.cpp locally and place the 'sd-server' executable in your system PATH or under ${join(binDir, "sd-server")}.`
+    );
+  }
+
+  const url = `https://github.com/leejet/stable-diffusion.cpp/releases/download/master-778-c00a9e9/${assetName}`;
+  console.log(`\n⬇️  Downloading stable-diffusion.cpp server (${plat}-${a})...`);
+  const archivePath = join(binDir, assetName);
+  curlDownload(url, archivePath);
+
+  console.log("Extracting stable-diffusion.cpp release...");
+  const ext = spawnSync("unzip", ["-o", archivePath, "-d", binDir], { stdio: "inherit" });
+  try { Bun.spawnSync(["rm", "-f", archivePath]); } catch {}
+  if (ext.status !== 0) throw new Error("Failed to extract stable-diffusion.cpp archive.");
+
+  const destPath = join(binDir, plat === "win32" ? "sd-server.exe" : "sd-server");
+  if (!existsSync(destPath)) throw new Error("sd-server binary not found after extraction.");
+
+  spawnSync("chmod", ["+x", destPath]);
+  if (plat === "darwin") {
+    spawnSync("xattr", ["-rd", "com.apple.quarantine", binDir]);
+  }
+
+  await recordChecksum(binDir, "sd-server", destPath);
+  console.log(`\n✅ sd-server installed to ${destPath}`);
+  return destPath;
+}
+
+/**
  * Ensures the named backend binary is available, in order:
  *  1. Locally installed in <root>/bin — verified against stored checksum.
  *  2. Available on system PATH — used as-is (user-managed installation).
  *  3. Downloaded from the appropriate prebuilt release and checksum-verified.
  */
-export async function ensureBinary(config: LocalBaseConfig, name: "llama-server" | "whisper-server"): Promise<string> {
+export async function ensureBinary(config: LocalBaseConfig, name: "llama-server" | "whisper-server" | "sd-server"): Promise<string> {
   const binDir = join(config.root, "bin");
-  const localBin = join(binDir, name);
+  const localBinName = platform() === "win32" ? `${name}.exe` : name;
+  const localBin = join(binDir, localBinName);
 
   // 1. Check locally managed binary and verify stored checksum.
   if (existsSync(localBin)) {
@@ -607,7 +702,7 @@ export async function ensureBinary(config: LocalBaseConfig, name: "llama-server"
   }
 
   // 2. Check system PATH.
-  const systemBin = spawnSync("which", [name], { encoding: "utf8" });
+  const systemBin = spawnSync(platform() === "win32" ? "where" : "which", [localBinName], { encoding: "utf8" });
   if (systemBin.status === 0 && systemBin.stdout.trim()) {
     console.log(`ℹ️  Using system-installed ${name} at ${systemBin.stdout.trim()}`);
     return systemBin.stdout.trim();
@@ -615,8 +710,10 @@ export async function ensureBinary(config: LocalBaseConfig, name: "llama-server"
 
   // 3. Download prebuilt release.
   if (name === "whisper-server") return downloadWhisperServer(config);
+  if (name === "sd-server") return downloadSdServer(config);
   return downloadLlamaServer(config);
 }
+
 
 
 
@@ -714,3 +811,49 @@ export async function launchWhisperServer(config: LocalBaseConfig, modelFile: st
 
   return result.status ?? 1;
 }
+
+export async function startSdServerProcess(config: LocalBaseConfig, modelFile: string, host: string, port: number): Promise<Bun.Subprocess> {
+  const modelPath = join(config.imageModelsDir, modelFile);
+  if (!existsSync(modelPath)) {
+    throw new Error(`Model file not found: ${modelPath}`);
+  }
+
+  const binPath = await ensureBinary(config, "sd-server");
+  const binDir = join(config.root, "bin");
+  const args = [
+    binPath,
+    "-m", modelPath,
+    "--listen-ip", host,
+    "--listen-port", String(port)
+  ];
+
+  return Bun.spawn(args, {
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "inherit",
+    cwd: binDir
+  });
+}
+
+export async function launchSdServer(config: LocalBaseConfig, modelFile: string, host: string, port: number): Promise<number> {
+  const modelPath = join(config.imageModelsDir, modelFile);
+  if (!existsSync(modelPath)) {
+    throw new Error(`Model file not found: ${modelPath}`);
+  }
+
+  const binPath = await ensureBinary(config, "sd-server");
+  const binDir = join(config.root, "bin");
+  const args = [
+    "-m", modelPath,
+    "--listen-ip", host,
+    "--listen-port", String(port)
+  ];
+
+  const result = spawnSync(binPath, args, {
+    stdio: "inherit",
+    cwd: binDir
+  });
+
+  return result.status ?? 1;
+}
+

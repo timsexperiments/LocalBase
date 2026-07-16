@@ -1,4 +1,5 @@
-export type ModelKind = "llm" | "stt";
+export type ModelKind = "llm" | "stt" | "image";
+
 
 export type CommercialStatus = "open" | "conditional" | "prohibited";
 
@@ -777,8 +778,149 @@ export const CATALOG: readonly ModelSpec[] = [
     commercialStatus: "open",
     catch: "MIT License.",
     notes: "Good default STT latency/quality tradeoff."
+  },
+  {
+    modelId: "stable-diffusion-v1-5",
+    kind: "image",
+    provider: "RunwayML",
+    family: "Stable-Diffusion",
+    version: "1.5",
+    size: "4.3GB",
+    quant: "F16",
+    minVramGb: 4,
+    storageGb: 4.27,
+    source: "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
+    downloadPath: "resolve/main/v1-5-pruned-emaonly.safetensors",
+    filename: "v1-5-pruned-emaonly.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "CreativeML Open RAIL-M license.",
+    notes: "Extremely lightweight baseline model. Perfect for low VRAM systems (under 8GB) and fast prototyping. Generates 512x512 images."
+  },
+  {
+    modelId: "dreamshaper-v8",
+    kind: "image",
+    provider: "Lykon",
+    family: "Stable-Diffusion",
+    version: "8.0",
+    size: "2.0GB",
+    quant: "F16",
+    minVramGb: 4,
+    storageGb: 1.98,
+    source: "https://huggingface.co/Lykon/DreamShaper",
+    downloadPath: "resolve/main/DreamShaper_8_pruned.safetensors",
+    filename: "DreamShaper_8_pruned.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "CreativeML Open RAIL-M license.",
+    notes: "Highly optimized community model for digital art, anime, and portraiture. Extremely fast and lightweight. Requires 4GB+ VRAM."
+  },
+  {
+    modelId: "sdxl-turbo",
+    kind: "image",
+    provider: "StabilityAI",
+    family: "Stable-Diffusion-XL",
+    version: "Turbo-1.0",
+    size: "13.9GB",
+    quant: "F16",
+    minVramGb: 8,
+    storageGb: 13.9,
+    source: "https://huggingface.co/stabilityai/sdxl-turbo",
+    downloadPath: "resolve/main/sd_xl_turbo_1.0_fp16.safetensors",
+    filename: "sd_xl_turbo_1.0_fp16.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "Stability AI Community License.",
+    notes: "High-speed 1-step real-time generation model. Excellent for fast interactive feedback cycles. Requires 8GB+ VRAM."
+  },
+  {
+    modelId: "sdxl-base-1.0",
+    kind: "image",
+    provider: "StabilityAI",
+    family: "Stable-Diffusion-XL",
+    version: "1.0",
+    size: "6.5GB",
+    quant: "F16",
+    minVramGb: 12,
+    storageGb: 6.46,
+    source: "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
+    downloadPath: "resolve/main/sd_xl_base_1.0.safetensors",
+    filename: "sd_xl_base_1.0.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "Stability AI Community License.",
+    notes: "Standard high-resolution (1024x1024) image generator. Recommended for standard workstation GPUs with 12GB+ VRAM."
+  },
+  {
+    modelId: "juggernaut-xl-v9",
+    kind: "image",
+    provider: "RunDiffusion",
+    family: "Stable-Diffusion-XL",
+    version: "9.0",
+    size: "6.6GB",
+    quant: "F16",
+    minVramGb: 12,
+    storageGb: 6.61,
+    source: "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
+    downloadPath: "resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+    filename: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "Stability AI Community License.",
+    notes: "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism. Requires 12GB+ VRAM."
+  },
+  {
+    modelId: "animagine-xl-3.1",
+    kind: "image",
+    provider: "CagliostroLab",
+    family: "Stable-Diffusion-XL",
+    version: "3.1",
+    size: "6.5GB",
+    quant: "F16",
+    minVramGb: 12,
+    storageGb: 6.46,
+    source: "https://huggingface.co/cagliostrolab/animagine-xl-3.1",
+    downloadPath: "resolve/main/animagine-xl-3.1.safetensors",
+    filename: "animagine-xl-3.1.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "Stability AI Community License.",
+    notes: "The premier open-source model for high-fidelity anime, manga, and Japanese illustration styles. Requires 12GB+ VRAM."
+  },
+  {
+    modelId: "realvis-xl-v4.0",
+    kind: "image",
+    provider: "SG161222",
+    family: "Stable-Diffusion-XL",
+    version: "4.0",
+    size: "6.5GB",
+    quant: "F16",
+    minVramGb: 12,
+    storageGb: 6.46,
+    source: "https://huggingface.co/SG161222/RealVisXL_V4.0",
+    downloadPath: "resolve/main/RealVisXL_V4.0.safetensors",
+    filename: "RealVisXL_V4.0.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "CreativeML Open RAIL-M license.",
+    notes: "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures. Requires 12GB+ VRAM."
   }
 ];
+
 
 export function byId(modelId: string): ModelSpec | undefined {
   return CATALOG.find((model) => model.modelId === modelId);
@@ -797,6 +939,11 @@ export function recommendedForVram(vramGb: number): ModelSpec[] {
 export function recommendedSttForVram(vramGb: number): ModelSpec[] {
   return CATALOG.filter((m) => m.kind === "stt" && m.minVramGb <= vramGb).sort((a, b) => a.storageGb - b.storageGb);
 }
+
+export function recommendedImageForVram(vramGb: number): ModelSpec[] {
+  return CATALOG.filter((m) => m.kind === "image" && m.minVramGb <= vramGb).sort((a, b) => a.storageGb - b.storageGb);
+}
+
 
 export type MemoryFitStatus = "perfect" | "tight" | "insufficient";
 
