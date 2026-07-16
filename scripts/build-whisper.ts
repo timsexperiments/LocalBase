@@ -45,7 +45,7 @@ async function main() {
   const whisperDir = join(tempDir, "whisper.cpp");
 
   console.log(`\n🛠️  Configuring CMake...`);
-  const config = spawnSync("cmake", ["-B", "build", "-DWHISPER_BUILD_TESTS=OFF", "-DWHISPER_BUILD_EXAMPLES=ON"], {
+  const config = spawnSync("cmake", ["-B", "build", "-DWHISPER_BUILD_TESTS=OFF", "-DWHISPER_BUILD_EXAMPLES=ON", "-DBUILD_SHARED_LIBS=OFF"], {
     cwd: whisperDir,
     stdio: "inherit"
   });
