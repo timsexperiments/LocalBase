@@ -6,6 +6,8 @@ import type { AppContext } from "../../../context";
 import { parseBool, parseFlag, toInt } from "../../../utils/args";
 import { syncOpenCodeConfig, syncContinueConfig } from "../../config/commands/configure";
 import { type ILogger } from "../../../utils/logger";
+import { DEFAULT_SYSTEM_PROMPT } from "./prompt";
+
 
 
 type AuthMode = "bearer" | "x-api-key" | "either";
@@ -545,6 +547,15 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
               modified = true;
             }
           }
+
+          // Inject configured system prompt (or default fallback) if no system prompt is present
+          const systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+          const hasSystem = bodyJson.messages.some((msg: any) => msg.role === "system");
+          if (!hasSystem && systemPrompt) {
+            bodyJson.messages.unshift({ role: "system", content: systemPrompt });
+            modified = true;
+          }
+
           if (modified) {
             const headers = new Headers(request.headers);
             // Delete Content-Length header to let fetch recalculate it for the modified JSON payload.
@@ -561,6 +572,7 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
         // Fall back to default proxy if body parsing fails
       }
     }
+
 
     if (pathname === "/v1/models") {
       const modelsList = [...new Set([config.activeLlmModel, ...config.selectedLlmModels])];
@@ -618,6 +630,18 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
       const { pathname } = new URL(request.url);
       const method = request.method;
 
+      if (method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, x-api-key",
+            "Access-Control-Max-Age": "86400"
+          }
+        });
+      }
+
       let response: Response;
       try {
         response = await handleRequest(request, pathname, method);
@@ -626,11 +650,23 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
         response = Response.json({ error: "Internal Server Error" }, { status: 500 });
       }
 
+      const headers = new Headers(response.headers);
+      headers.set("Access-Control-Allow-Origin", "*");
+      headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key");
+
+      const corsResponse = new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      });
+
       const durationMs = performance.now() - start;
-      ctx.logger.request(ip, method, pathname, response.status, durationMs);
-      return response;
+      ctx.logger.request(ip, method, pathname, corsResponse.status, durationMs);
+      return corsResponse;
     }
   });
+
 
   printUnifiedNextSteps(wrapperHost, wrapperPort, llmPort, sttPort, authRequired, authMode, enabled);
 
