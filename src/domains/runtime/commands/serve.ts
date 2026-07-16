@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, basename } from "node:path";
-import { type LocalBaseConfig, startLlamaServerProcess, startWhisperServerProcess, validateApiKey, installModel, saveConfig } from "../../../manager";
+import { type LocalBaseConfig, startLlamaServerProcess, startWhisperServerProcess, startSdServerProcess, validateApiKey, installModel, saveConfig } from "../../../manager";
 import { byId, evaluateModelFit, calculateMaxSafeContextSize } from "../../../catalog";
 import type { AppContext } from "../../../context";
 import { parseBool, parseFlag, toInt } from "../../../utils/args";
@@ -15,6 +15,7 @@ type AuthMode = "bearer" | "x-api-key" | "either";
 type ModalityState = {
   llm: boolean;
   stt: boolean;
+  image: boolean;
 };
 
 function parseAuthMode(raw: string | undefined): AuthMode {
@@ -28,6 +29,7 @@ function printUnifiedNextSteps(
   port: number,
   llmPort: number,
   sttPort: number,
+  imagePort: number,
   authRequired: boolean,
   authMode: AuthMode,
   enabled: ModalityState
@@ -36,6 +38,7 @@ function printUnifiedNextSteps(
   console.log(`Wrapper base URL: http://${host}:${port}`);
   if (enabled.llm) console.log(`OpenAI-compatible LLM endpoint: http://${host}:${port}/v1`);
   if (enabled.stt) console.log(`OpenAI-compatible STT endpoint: http://${host}:${port}/v1/audio/transcriptions`);
+  if (enabled.image) console.log(`OpenAI-compatible Image endpoint: http://${host}:${port}/v1/images/generations`);
   if (authRequired) {
     console.log(`Authentication: enabled (mode=${authMode}).`);
     console.log("Supported credentials: Authorization: Bearer <key>, x-api-key: <key> (mode-dependent).");
@@ -45,6 +48,7 @@ function printUnifiedNextSteps(
   console.log(`Enabled modalities: ${Object.entries(enabled).filter(([, on]) => on).map(([k]) => k).join(", ") || "none"}`);
   if (enabled.llm) console.log(`Upstream llama-server: http://127.0.0.1:${llmPort}`);
   if (enabled.stt) console.log(`Upstream whisper-server: http://127.0.0.1:${sttPort}`);
+  if (enabled.image) console.log(`Upstream sd-server: http://127.0.0.1:${imagePort}`);
 
   if (enabled.llm) {
     console.log("\nExample chat request (Bearer):");
@@ -56,7 +60,12 @@ function printUnifiedNextSteps(
     console.log("\nExample STT request (x-api-key):");
     console.log(`curl -X POST http://${host}:${port}/v1/audio/transcriptions -H 'x-api-key: <API_KEY>' -F file=@audio.wav -F model=whisper`);
   }
+  if (enabled.image) {
+    console.log("\nExample Image request (Bearer):");
+    console.log(`curl http://${host}:${port}/v1/images/generations -H 'Authorization: Bearer <API_KEY>' -H 'Content-Type: application/json' -d '{"prompt":"A scenic sunset","n":1,"size":"512x512"}'`);
+  }
 }
+
 
 function extractBearerToken(request: Request): string | null {
   const auth = request.headers.get("authorization") ?? request.headers.get("Authorization");
@@ -276,6 +285,9 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
   const llmPort = toInt(parseFlag(args, "--llm-port"), config.port);
   const sttHost = parseFlag(args, "--stt-host") ?? "127.0.0.1";
   const sttPort = toInt(parseFlag(args, "--stt-port"), config.sttPort);
+  const imageHost = parseFlag(args, "--image-host") ?? "127.0.0.1";
+  const imagePort = toInt(parseFlag(args, "--image-port"), 8090);
+
   let ctxSize = toInt(parseFlag(args, "--ctx-size"), 0);
   if (!ctxSize) {
     const spec = byId(config.activeLlmModel);
@@ -318,13 +330,26 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
     }
   }
 
+  let imageModelFile = parseFlag(args, "--image-model-file");
+  if (!imageModelFile) {
+    const spec = byId(config.activeImageModel);
+    if (spec?.filename && existsSync(join(config.imageModelsDir, spec.filename))) {
+      imageModelFile = spec.filename;
+    } else {
+      imageModelFile = `${config.activeImageModel}.safetensors`;
+    }
+  }
+
   let llmModelExists = existsSync(join(config.llmModelsDir, llmModelFile));
   let sttModelExists = existsSync(join(config.sttModelsDir, sttModelFile));
+  let imageModelExists = existsSync(join(config.imageModelsDir, imageModelFile));
 
   const enabled: ModalityState = {
     llm: parseBool(parseFlag(args, "--llm"), true),
-    stt: parseBool(parseFlag(args, "--stt"), true)
+    stt: parseBool(parseFlag(args, "--stt"), true),
+    image: parseBool(parseFlag(args, "--image"), true)
   };
+
 
   // Perform memory fit evaluation BEFORE downloading
   const specs = ctx.specs;
@@ -390,6 +415,29 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
     }
   }
 
+  if (enabled.image) {
+    const imageModelId = getModelIdFromFile(imageModelFile);
+    const imageSpec = byId(imageModelId);
+    if (imageSpec) {
+      const fit = evaluateModelFit(imageSpec, specs.gpuVramGb);
+      if (fit.status === "insufficient") {
+        console.error(`\n❌ ERROR: Insufficient VRAM/Unified Memory to run Image model "${imageSpec.modelId}".`);
+        console.error(`   Model minimum requirement: ${fit.minVramGb} GB`);
+        console.error(`   Detected host memory:      ${fit.systemVramGb} GB`);
+        if (!bypassCheck) {
+          console.error(`   To force launch this model anyway, use --bypass-memory-check`);
+          return 1;
+        } else {
+          console.warn(`   Bypassing memory validation check and proceeding...`);
+        }
+      } else if (fit.status === "tight") {
+        console.warn(`\n⚠️ WARNING: Tight memory fit for Image model "${imageSpec.modelId}".`);
+        console.warn(`   Model minimum requirement: ${fit.minVramGb} GB`);
+        console.warn(`   Detected host memory:      ${fit.systemVramGb} GB`);
+      }
+    }
+  }
+
   // Automatically download models if they pass memory checks and are missing
   if (enabled.llm && !llmModelExists) {
     console.log(`LLM model file is missing. Automatically installing "${config.activeLlmModel}"...`);
@@ -405,8 +453,15 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
     sttModelExists = true;
   }
 
-  if (!enabled.llm && !enabled.stt) {
-    throw new Error("No modalities enabled. Enable with --llm/--stt true.");
+  if (enabled.image && !imageModelExists) {
+    console.log(`Image model file is missing. Automatically installing "${config.activeImageModel}"...`);
+    const installedPath = await installModel(config, config.activeImageModel);
+    imageModelFile = basename(installedPath);
+    imageModelExists = true;
+  }
+
+  if (!enabled.llm && !enabled.stt && !enabled.image) {
+    throw new Error("No modalities enabled. Enable with --llm/--stt/--image true.");
   }
 
   if (!enabled.llm && !parseFlag(args, "--llm")) {
@@ -415,10 +470,15 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
   if (!enabled.stt && !parseFlag(args, "--stt")) {
     console.log("STT route auto-disabled (no local STT model file found).");
   }
+  if (!enabled.image && !parseFlag(args, "--image")) {
+    console.log("Image route auto-disabled (no local Image model file found).");
+  }
+
 
 
   const llmBase = `http://${llmHost}:${llmPort}`;
   const sttBase = `http://${sttHost}:${sttPort}`;
+  const imageBase = `http://${imageHost}:${imagePort}`;
 
   const llmService = enabled.llm
     ? new ManagedService("llama-server", llmBase + "/health", ctx.logger, async () => {
@@ -460,10 +520,41 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
       )
     : null;
 
+  const imageService = enabled.image
+    ? new ManagedService("sd-server", imageBase + "/", ctx.logger, () => {
+        const activeModel = config.activeImageModel;
+        let modelFile = parseFlag(args, "--image-model-file");
+        if (!modelFile) {
+          const spec = byId(activeModel);
+          let expectedFile = spec?.filename;
+          if (!expectedFile) {
+            expectedFile = `${activeModel}.safetensors`;
+          }
+          const modelPath = join(config.imageModelsDir, expectedFile);
+          if (!existsSync(modelPath)) {
+            throw new Error(`Image model file missing at ${modelPath}`);
+          }
+          modelFile = expectedFile;
+        }
+
+        ctx.logger.info("sd-server", `Spawning image model "${activeModel}" (file: ${modelFile}) on port ${imagePort}`);
+        return startSdServerProcess(config, modelFile, imageHost, imagePort);
+      })
+    : null;
+
   const handleRequest = async (request: Request, pathname: string, method: string): Promise<Response> => {
     if (pathname === "/health") {
-      return Response.json({ status: "ok", enabled, llmUpstream: enabled.llm ? llmBase : null, sttUpstream: enabled.stt ? sttBase : null, authRequired, authMode });
+      return Response.json({
+        status: "ok",
+        enabled,
+        llmUpstream: enabled.llm ? llmBase : null,
+        sttUpstream: enabled.stt ? sttBase : null,
+        imageUpstream: enabled.image ? imageBase : null,
+        authRequired,
+        authMode
+      });
     }
+
 
     if (authRequired) {
       const token = extractAuthToken(request, authMode);
@@ -527,7 +618,67 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
       return proxyRequest(request, sttBase, mapped);
     }
 
+    if (pathname.startsWith("/text") || pathname.startsWith("/llm")) {
+      if (!enabled.llm || !llmService) return notConfigured("LLM");
+      try {
+        await llmService.ensureRunning();
+      } catch (err) {
+        return serviceUnavailable("LLM");
+      }
+      const mapped = pathname.replace(/^\/(text|llm)/, "") || "/";
+      return proxyRequest(request, llmBase, mapped);
+    }
+
+    if (pathname.startsWith("/image") && pathname !== "/v1/images/generations") {
+      if (!enabled.image || !imageService) return notConfigured("Image");
+      try {
+        await imageService.ensureRunning();
+      } catch (err) {
+        return serviceUnavailable("Image");
+      }
+      const mapped = pathname.replace(/^\/image/, "") || "/";
+      return proxyRequest(request, imageBase, mapped);
+    }
+
+    if (pathname.startsWith("/tts")) {
+      return Response.json({ error: "TTS service is not yet implemented. Stay tuned!" }, { status: 501 });
+    }
+
+    if (pathname.startsWith("/video")) {
+      return Response.json({ error: "Video generation service is not yet implemented. Stay tuned!" }, { status: 501 });
+    }
+
+    if (pathname === "/v1/images/generations") {
+
+      if (!enabled.image || !imageService) return notConfigured("Image");
+      try {
+        const bodyText = await request.clone().text();
+        const bodyJson = JSON.parse(bodyText);
+        if (bodyJson && typeof bodyJson.model === "string") {
+          const requestedModel = bodyJson.model;
+          const matchedModel = config.selectedImageModels.find(
+            (m) => m.toLowerCase() === requestedModel.toLowerCase()
+          );
+          if (matchedModel && matchedModel !== config.activeImageModel) {
+            ctx.logger.info("sd-server", `Switching active Image model from "${config.activeImageModel}" to "${matchedModel}"`);
+            imageService.kill();
+            config.activeImageModel = matchedModel;
+            saveConfig(config);
+          }
+        }
+      } catch (e) {
+        // Fall back if body parsing fails
+      }
+      try {
+        await imageService.ensureRunning();
+      } catch (err) {
+        return serviceUnavailable("Image");
+      }
+      return proxyRequest(request, imageBase);
+    }
+
     if (pathname === "/v1/chat/completions") {
+
       if (!enabled.llm || !llmService) return notConfigured("LLM");
       try {
         await llmService.ensureRunning();
@@ -668,14 +819,16 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
   });
 
 
-  printUnifiedNextSteps(wrapperHost, wrapperPort, llmPort, sttPort, authRequired, authMode, enabled);
+  printUnifiedNextSteps(wrapperHost, wrapperPort, llmPort, sttPort, imagePort, authRequired, authMode, enabled);
 
   const shutdown = () => {
     ctx.logger.info("Manager", "Shutting down servers and subprocesses...");
     server.stop(true);
     llmService?.kill();
     sttService?.kill();
+    imageService?.kill();
   };
+
 
   process.on("SIGINT", () => {
     shutdown();

@@ -1,4 +1,5 @@
-export type ModelKind = "llm" | "stt";
+export type ModelKind = "llm" | "stt" | "image";
+
 
 export type CommercialStatus = "open" | "conditional" | "prohibited";
 
@@ -777,8 +778,49 @@ export const CATALOG: readonly ModelSpec[] = [
     commercialStatus: "open",
     catch: "MIT License.",
     notes: "Good default STT latency/quality tradeoff."
+  },
+  {
+    modelId: "stable-diffusion-v1-5",
+    kind: "image",
+    provider: "RunwayML",
+    family: "Stable-Diffusion",
+    version: "1.5",
+    size: "4.3GB",
+    quant: "F16",
+    minVramGb: 4,
+    storageGb: 4.27,
+    source: "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
+    downloadPath: "resolve/main/v1-5-pruned-emaonly.safetensors",
+    filename: "v1-5-pruned-emaonly.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "CreativeML Open RAIL-M license.",
+    notes: "Standard Stable Diffusion 1.5 baseline model for image generation."
+  },
+  {
+    modelId: "sdxl-turbo",
+    kind: "image",
+    provider: "StabilityAI",
+    family: "Stable-Diffusion-XL",
+    version: "Turbo-1.0",
+    size: "13.9GB",
+    quant: "F16",
+    minVramGb: 8,
+    storageGb: 13.9,
+    source: "https://huggingface.co/stabilityai/sdxl-turbo",
+    downloadPath: "resolve/main/sd_xl_turbo_1.0_fp16.safetensors",
+    filename: "sd_xl_turbo_1.0_fp16.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "Stability AI Community License.",
+    notes: "State-of-the-art fast 1-step SDXL image generation model."
   }
 ];
+
 
 export function byId(modelId: string): ModelSpec | undefined {
   return CATALOG.find((model) => model.modelId === modelId);
@@ -797,6 +839,11 @@ export function recommendedForVram(vramGb: number): ModelSpec[] {
 export function recommendedSttForVram(vramGb: number): ModelSpec[] {
   return CATALOG.filter((m) => m.kind === "stt" && m.minVramGb <= vramGb).sort((a, b) => a.storageGb - b.storageGb);
 }
+
+export function recommendedImageForVram(vramGb: number): ModelSpec[] {
+  return CATALOG.filter((m) => m.kind === "image" && m.minVramGb <= vramGb).sort((a, b) => a.storageGb - b.storageGb);
+}
+
 
 export type MemoryFitStatus = "perfect" | "tight" | "insufficient";
 

@@ -45,9 +45,10 @@ export function toInt(inputValue: string | undefined, fallback: number): number 
 
 export function parseKind(inputValue: string | undefined): ModelKind | undefined {
   if (!inputValue) return undefined;
-  if (["llm", "stt"].includes(inputValue)) return inputValue as ModelKind;
+  if (["llm", "stt", "image"].includes(inputValue)) return inputValue as ModelKind;
   return undefined;
 }
+
 
 /**
  * Checks if the yes flag (-y or --yes) is specified.
