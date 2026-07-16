@@ -302,7 +302,7 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
   // Automatically synchronize active model and calculated context size with OpenCode/Continue configuration
   await syncOpenCodeConfig(config, ctxSize);
   await syncContinueConfig(config, ctxSize);
-  const sttPath = parseFlag(args, "--stt-path");
+  const sttPath = parseFlag(args, "--stt-path") ?? "/inference";
   const authRequired = parseFlag(args, "--auth") !== "false";
   const authMode = parseAuthMode(parseFlag(args, "--auth-mode"));
 
@@ -346,10 +346,16 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
 
   const enabled: ModalityState = {
     llm: parseBool(parseFlag(args, "--llm"), true),
-    stt: parseBool(parseFlag(args, "--stt"), true),
-    image: parseBool(parseFlag(args, "--image"), true)
+    stt: parseBool(parseFlag(args, "--stt"), config.selectedSttModels.length > 0),
+    image: parseBool(parseFlag(args, "--image"), config.selectedImageModels.length > 0)
   };
 
+  if (enabled.stt && !config.activeSttModel) {
+    throw new Error("STT modality is enabled but no active STT model is configured. Run `local-base configure` first.");
+  }
+  if (enabled.image && !config.activeImageModel) {
+    throw new Error("Image modality is enabled but no active Image model is configured. Run `local-base configure` first.");
+  }
 
   // Perform memory fit evaluation BEFORE downloading
   const specs = ctx.specs;

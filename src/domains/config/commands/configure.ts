@@ -60,6 +60,31 @@ function sttChoices(current: string[]): Array<{ name: string; value: string; che
   });
 }
 
+function imageChoices(current: string[]): Array<{ name: string; value: string; checked?: boolean; disabled?: string | boolean }> {
+  const vramGb = detectSpecs().gpuVramGb;
+  return listModels("image").map((model) => {
+    const fit = evaluateModelFit(model, vramGb);
+    let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, min VRAM ${model.minVramGb}GB)`;
+
+    let disabled: string | boolean = false;
+    if (fit.status === "insufficient") {
+      label += ` [❌ Requires ${model.minVramGb}GB, you have ${vramGb}GB]`;
+      disabled = `Requires ${model.minVramGb}GB VRAM`;
+    } else if (fit.status === "tight") {
+      label += ` [⚠️ Tight: leaves ${fit.headroomGb.toFixed(1)}GB headroom]`;
+    } else {
+      label += ` [✅ Comfortable fit]`;
+    }
+
+    return {
+      name: label,
+      value: model.modelId,
+      checked: current.includes(model.modelId),
+      disabled
+    };
+  });
+}
+
 
 async function interactiveConfigureSelective(config: LocalBaseConfig, locked: Set<keyof LocalBaseConfig>, vramGb: number): Promise<LocalBaseConfig> {
   console.log("\nInteractive setup mode");
@@ -101,13 +126,31 @@ async function interactiveConfigureSelective(config: LocalBaseConfig, locked: Se
   }
 
   if (!locked.has("selectedSttModels")) {
-    config.selectedSttModels = validateModelList(await multiSelectPrompt("Select STT models", sttChoices(config.selectedSttModels)), "stt") ?? config.selectedSttModels;
+    config.selectedSttModels = validateModelList(await multiSelectPrompt("Select STT models (select none to disable)", sttChoices(config.selectedSttModels)), "stt") ?? config.selectedSttModels;
   }
 
   if (!locked.has("activeSttModel")) {
-    const options = config.selectedSttModels.map((id) => ({ name: id, value: id }));
-    const fallback = options[0]?.value ?? config.activeSttModel;
-    config.activeSttModel = await singleSelectPrompt("Active STT model", options, fallback);
+    if (config.selectedSttModels.length > 0) {
+      const options = config.selectedSttModels.map((id) => ({ name: id, value: id }));
+      const fallback = options.map(o => o.value).includes(config.activeSttModel) ? config.activeSttModel : options[0].value;
+      config.activeSttModel = await singleSelectPrompt("Active STT model", options, fallback);
+    } else {
+      config.activeSttModel = "";
+    }
+  }
+
+  if (!locked.has("selectedImageModels")) {
+    config.selectedImageModels = validateModelList(await multiSelectPrompt("Select Image models (select none to disable)", imageChoices(config.selectedImageModels)), "image") ?? config.selectedImageModels;
+  }
+
+  if (!locked.has("activeImageModel")) {
+    if (config.selectedImageModels.length > 0) {
+      const options = config.selectedImageModels.map((id) => ({ name: id, value: id }));
+      const fallback = options.includes(config.activeImageModel as any) ? config.activeImageModel : options[0].value;
+      config.activeImageModel = await singleSelectPrompt("Active Image model", options, fallback);
+    } else {
+      config.activeImageModel = "";
+    }
   }
 
   if (useAll) console.log("\nTip: run `local-base catalog --kind <kind>` for full model details before final install.");
@@ -287,8 +330,10 @@ export async function runConfigure(args: string[], ctx: AppContext): Promise<num
   let config = root ? loadConfig(root, specs.gpuVramGb) : ctx.config;
   const llmFromFlags = validateModelList(parseList(parseFlag(args, "--llm-models")), "llm");
   const sttFromFlags = validateModelList(parseList(parseFlag(args, "--stt-models")), "stt");
+  const imageFromFlags = validateModelList(parseList(parseFlag(args, "--image-models")), "image");
   const llmFromToml = validateModelList(rawToml.selectedLlmModels, "llm");
   const sttFromToml = validateModelList(rawToml.selectedSttModels, "stt");
+  const imageFromToml = validateModelList(rawToml.selectedImageModels, "image");
 
   const locked = new Set<keyof LocalBaseConfig>();
   const maybeLock = (key: keyof LocalBaseConfig, value: unknown): void => {
@@ -304,8 +349,10 @@ export async function runConfigure(args: string[], ctx: AppContext): Promise<num
   maybeLock("startupOnBoot", parseFlag(args, "--startup-on-boot") ?? rawToml.startupOnBoot);
   maybeLock("selectedLlmModels", llmFromFlags ?? llmFromToml);
   maybeLock("selectedSttModels", sttFromFlags ?? sttFromToml);
+  maybeLock("selectedImageModels", imageFromFlags ?? imageFromToml);
   maybeLock("activeLlmModel", parseFlag(args, "--active-llm") ?? rawToml.activeLlmModel);
   maybeLock("activeSttModel", parseFlag(args, "--active-stt") ?? rawToml.activeSttModel);
+  maybeLock("activeImageModel", parseFlag(args, "--active-image") ?? rawToml.activeImageModel);
 
   config = {
     ...config,
@@ -318,19 +365,23 @@ export async function runConfigure(args: string[], ctx: AppContext): Promise<num
     startupOnBoot: parseBool(parseFlag(args, "--startup-on-boot"), rawToml.startupOnBoot ?? config.startupOnBoot),
     selectedLlmModels: llmFromFlags ?? llmFromToml ?? config.selectedLlmModels,
     selectedSttModels: sttFromFlags ?? sttFromToml ?? config.selectedSttModels,
+    selectedImageModels: imageFromFlags ?? imageFromToml ?? config.selectedImageModels,
     activeLlmModel: parseFlag(args, "--active-llm") ?? rawToml.activeLlmModel ?? config.activeLlmModel,
-    activeSttModel: parseFlag(args, "--active-stt") ?? rawToml.activeSttModel ?? config.activeSttModel
+    activeSttModel: parseFlag(args, "--active-stt") ?? rawToml.activeSttModel ?? config.activeSttModel,
+    activeImageModel: parseFlag(args, "--active-image") ?? rawToml.activeImageModel ?? config.activeImageModel
   };
 
   config.llmModelsDir = `${config.root}/models/llm`;
   config.sttModelsDir = `${config.root}/models/stt`;
+  config.imageModelsDir = `${config.root}/models/image`;
 
   const explicitMode = args.includes("--all") || args.includes("--defaults") || args.includes("--config") || locked.size > 0;
   const shouldAsk = args.includes("--all") || (!args.includes("--defaults") && (!hasConfig || !explicitMode));
   if (shouldAsk) config = await interactiveConfigureSelective(config, locked, specs.gpuVramGb);
 
   if (byId(config.activeLlmModel)?.kind !== "llm") throw new Error(`Active LLM model is invalid: ${config.activeLlmModel}`);
-  if (byId(config.activeSttModel)?.kind !== "stt") throw new Error(`Active STT model is invalid: ${config.activeSttModel}`);
+  if (config.activeSttModel && byId(config.activeSttModel)?.kind !== "stt") throw new Error(`Active STT model is invalid: ${config.activeSttModel}`);
+  if (config.activeImageModel && byId(config.activeImageModel)?.kind !== "image") throw new Error(`Active Image model is invalid: ${config.activeImageModel}`);
 
   saveConfig(config);
   await syncOpenCodeConfig(config);
@@ -338,6 +389,7 @@ export async function runConfigure(args: string[], ctx: AppContext): Promise<num
   console.log(`Saved configuration to ${config.root}/local-base.db`);
   console.log(`Selected LLM models: ${config.selectedLlmModels.join(", ")}`);
   console.log(`Selected STT models: ${config.selectedSttModels.join(", ")}`);
+  console.log(`Selected Image models: ${config.selectedImageModels.join(", ")}`);
 
   const hasAnyKeys = loadApiKeys(config).some((k) => !k.revokedAt);
   const createKeyFlag = parseFlag(args, "--create-key");
