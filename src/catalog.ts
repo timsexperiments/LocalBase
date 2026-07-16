@@ -656,25 +656,25 @@ export const CATALOG: readonly ModelSpec[] = [
     notes: "DeepSeek-R1 reasoning model distilled on Llama-3-70B. High reasoning quality."
   },
   {
-    modelId: "qwen2.5-coder-72b-instruct-q4_k_m",
+    modelId: "qwen2.5-72b-instruct-q4_k_m",
     kind: "llm",
     provider: "Alibaba",
     family: "Qwen",
-    version: "2.5-Coder",
+    version: "2.5",
     size: "72B",
     quant: "Q4_K_M",
     codingScore: 10,
     minVramGb: 42,
     storageGb: 47.0,
-    source: "https://huggingface.co/bartowski/Qwen2.5-Coder-72B-Instruct-GGUF",
-    filename: "Qwen2.5-Coder-72B-Instruct-Q4_K_M.gguf",
-    downloadPath: "resolve/main/Qwen2.5-Coder-72B-Instruct-Q4_K_M.gguf",
+    source: "https://huggingface.co/bartowski/Qwen2.5-72B-Instruct-GGUF",
+    filename: "Qwen2.5-72B-Instruct-Q4_K_M.gguf",
+    downloadPath: "resolve/main/Qwen2.5-72B-Instruct-Q4_K_M.gguf",
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
     catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
-    notes: "Top-tier 72B coding model. Superb logic, math, and code generation."
+    notes: "Top-tier 72B reasoning and coding model. Superb logic, math, and code generation."
   },
   {
     modelId: "codestral-22b-instruct-q4_k_m",
