@@ -5,10 +5,7 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-linear"
-      ],
-      "env": {
-        "LINEAR_API_KEY": "${LINEAR_API_KEY}"
-      }
+      ]
     }
   }
 }
