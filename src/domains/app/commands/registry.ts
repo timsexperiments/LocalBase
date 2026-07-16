@@ -144,6 +144,33 @@ export const commandRegistry: CLICommand[] = [
     ]
   },
   {
+    name: "prompt show",
+    description: "Display the active system prompt used for LLM completions",
+    handler: async (args, ctx) => {
+      const { runPromptShow } = await import("../../runtime/commands/prompt");
+      return runPromptShow(args, ctx);
+    }
+  },
+  {
+    name: "prompt set",
+    description: "Set a custom system prompt (accepts text, --file <path>, or stdin)",
+    handler: async (args, ctx) => {
+      const { runPromptSet } = await import("../../runtime/commands/prompt");
+      return runPromptSet(args, ctx);
+    },
+    flags: [
+      { name: "--file", type: "path", description: "Path to a text file containing the system prompt" }
+    ]
+  },
+  {
+    name: "prompt reset",
+    description: "Reset the custom system prompt back to the default assistant persona",
+    handler: async (args, ctx) => {
+      const { runPromptReset } = await import("../../runtime/commands/prompt");
+      return runPromptReset(args, ctx);
+    }
+  },
+  {
     name: "keys list",
     description: "List all active API keys and their usage stats",
     handler: async (args, ctx) => {
