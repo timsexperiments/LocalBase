@@ -797,7 +797,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "CreativeML Open RAIL-M license.",
-    notes: "Standard Stable Diffusion 1.5 baseline model for image generation."
+    notes: "Extremely lightweight baseline model. Perfect for low VRAM systems (under 8GB) and fast prototyping. Generates 512x512 images."
   },
   {
     modelId: "sdxl-turbo",
@@ -817,7 +817,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "Stability AI Community License.",
-    notes: "State-of-the-art fast 1-step SDXL image generation model."
+    notes: "High-speed 1-step real-time generation model. Excellent for fast interactive feedback cycles. Requires 8GB+ VRAM."
   },
   {
     modelId: "sdxl-base-1.0",
@@ -837,47 +837,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "Stability AI Community License.",
-    notes: "Standard Stable Diffusion XL base model."
-  },
-  {
-    modelId: "flux1-schnell",
-    kind: "image",
-    provider: "BlackForestLabs",
-    family: "Flux",
-    version: "Schnell",
-    size: "23.8GB",
-    quant: "F16",
-    minVramGb: 24,
-    storageGb: 23.8,
-    source: "https://huggingface.co/black-forest-labs/FLUX.1-schnell",
-    downloadPath: "resolve/main/flux1-schnell.safetensors",
-    filename: "flux1-schnell.safetensors",
-    inputModalities: ["text"],
-    outputModalities: ["image"],
-    features: ["text-to-image"],
-    commercialStatus: "open",
-    catch: "Apache 2.0.",
-    notes: "State-of-the-art fast 4-step generation model with exceptional prompt adherence."
-  },
-  {
-    modelId: "flux1-dev",
-    kind: "image",
-    provider: "BlackForestLabs",
-    family: "Flux",
-    version: "Dev",
-    size: "23.8GB",
-    quant: "F16",
-    minVramGb: 24,
-    storageGb: 23.8,
-    source: "https://huggingface.co/black-forest-labs/FLUX.1-dev",
-    downloadPath: "resolve/main/flux1-dev.safetensors",
-    filename: "flux1-dev.safetensors",
-    inputModalities: ["text"],
-    outputModalities: ["image"],
-    features: ["text-to-image"],
-    commercialStatus: "conditional",
-    catch: "Non-commercial license.",
-    notes: "The ultimate quality developer tier model. Exceptional detail and text generation."
+    notes: "Standard high-resolution (1024x1024) image generator. Recommended for standard workstation GPUs with 12GB+ VRAM."
   }
 ];
 
