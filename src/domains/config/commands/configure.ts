@@ -126,13 +126,17 @@ async function interactiveConfigureSelective(config: LocalBaseConfig, locked: Se
   }
 
   if (!locked.has("selectedSttModels")) {
-    config.selectedSttModels = validateModelList(await multiSelectPrompt("Select STT models", sttChoices(config.selectedSttModels)), "stt") ?? config.selectedSttModels;
+    config.selectedSttModels = validateModelList(await multiSelectPrompt("Select STT models (select none to disable)", sttChoices(config.selectedSttModels)), "stt") ?? config.selectedSttModels;
   }
 
   if (!locked.has("activeSttModel")) {
-    const options = config.selectedSttModels.map((id) => ({ name: id, value: id }));
-    const fallback = options[0]?.value ?? config.activeSttModel;
-    config.activeSttModel = await singleSelectPrompt("Active STT model", options, fallback);
+    if (config.selectedSttModels.length > 0) {
+      const options = config.selectedSttModels.map((id) => ({ name: id, value: id }));
+      const fallback = options.map(o => o.value).includes(config.activeSttModel) ? config.activeSttModel : options[0].value;
+      config.activeSttModel = await singleSelectPrompt("Active STT model", options, fallback);
+    } else {
+      config.activeSttModel = "";
+    }
   }
 
   if (!locked.has("selectedImageModels")) {
@@ -376,7 +380,7 @@ export async function runConfigure(args: string[], ctx: AppContext): Promise<num
   if (shouldAsk) config = await interactiveConfigureSelective(config, locked, specs.gpuVramGb);
 
   if (byId(config.activeLlmModel)?.kind !== "llm") throw new Error(`Active LLM model is invalid: ${config.activeLlmModel}`);
-  if (byId(config.activeSttModel)?.kind !== "stt") throw new Error(`Active STT model is invalid: ${config.activeSttModel}`);
+  if (config.activeSttModel && byId(config.activeSttModel)?.kind !== "stt") throw new Error(`Active STT model is invalid: ${config.activeSttModel}`);
   if (config.activeImageModel && byId(config.activeImageModel)?.kind !== "image") throw new Error(`Active Image model is invalid: ${config.activeImageModel}`);
 
   saveConfig(config);
