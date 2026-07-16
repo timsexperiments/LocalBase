@@ -878,6 +878,46 @@ export const CATALOG: readonly ModelSpec[] = [
     commercialStatus: "open",
     catch: "Stability AI Community License.",
     notes: "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism. Requires 12GB+ VRAM."
+  },
+  {
+    modelId: "animagine-xl-3.1",
+    kind: "image",
+    provider: "CagliostroLab",
+    family: "Stable-Diffusion-XL",
+    version: "3.1",
+    size: "6.5GB",
+    quant: "F16",
+    minVramGb: 12,
+    storageGb: 6.46,
+    source: "https://huggingface.co/cagliostrolab/animagine-xl-3.1",
+    downloadPath: "resolve/main/animagine-xl-3.1.safetensors",
+    filename: "animagine-xl-3.1.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "Stability AI Community License.",
+    notes: "The premier open-source model for high-fidelity anime, manga, and Japanese illustration styles. Requires 12GB+ VRAM."
+  },
+  {
+    modelId: "realvis-xl-v4.0",
+    kind: "image",
+    provider: "SG161222",
+    family: "Stable-Diffusion-XL",
+    version: "4.0",
+    size: "6.5GB",
+    quant: "F16",
+    minVramGb: 12,
+    storageGb: 6.46,
+    source: "https://huggingface.co/SG161222/RealVisXL_V4.0",
+    downloadPath: "resolve/main/RealVisXL_V4.0.safetensors",
+    filename: "RealVisXL_V4.0.safetensors",
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image", "image-to-image"],
+    commercialStatus: "open",
+    catch: "CreativeML Open RAIL-M license.",
+    notes: "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures. Requires 12GB+ VRAM."
   }
 ];
 
