@@ -10,12 +10,30 @@ permissions:
   id-token: write
 
 jobs:
-  build-whisper:
-    name: Build whisper-server
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+  build-whisper-linux:
+    name: Build whisper-server (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone whisper.cpp
+        run: git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git
+
+      - name: Build whisper-server
+        run: |
+          cd whisper.cpp
+          cmake -B build -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF
+          cmake --build build --config Release -j
+
+      - name: Upload whisper-server artifact (Linux)
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-binary-ubuntu-latest
+          path: whisper.cpp/build/bin/whisper-server
+
+
+  build-whisper-macos:
+    name: Build & Notarize macOS binaries
+    runs-on: macos-latest
 
     steps:
       - name: Checkout
@@ -25,17 +43,14 @@ jobs:
         run: git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git
 
       - name: Setup Bun
-        if: matrix.os == 'macos-latest'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
       - name: Install dependencies
-        if: matrix.os == 'macos-latest'
         run: bun install --frozen-lockfile
 
       - name: Import Apple Certificate
-        if: matrix.os == 'macos-latest'
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE }}
           P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
@@ -52,27 +67,24 @@ jobs:
           security list-keychains -d user -s $KEYCHAIN_PATH
 
       - name: Build macOS standalone binaries
-        if: matrix.os == 'macos-latest'
         run: |
           mkdir -p build-cli
           bun build src/cli.ts --compile --target=bun-darwin-arm64 --outfile build-cli/local-base-macos-arm64
           bun build src/cli.ts --compile --target=bun-darwin-x64 --outfile build-cli/local-base-macos-x64
 
-      - name: Build whisper-server
+      - name: Build whisper-server (macOS ARM64)
         run: |
           cd whisper.cpp
           cmake -B build -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF
           cmake --build build --config Release -j
 
       - name: Build whisper-server (macOS Intel cross-compile)
-        if: matrix.os == 'macos-latest'
         run: |
           cd whisper.cpp
           cmake -B build-intel -DCMAKE_OSX_ARCHITECTURES=x86_64 -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF
           cmake --build build-intel --config Release -j
 
       - name: Sign macOS binaries
-        if: matrix.os == 'macos-latest'
         run: |
           codesign --force --options runtime --sign "Developer ID Application:" build-cli/local-base-macos-arm64
           codesign --force --options runtime --sign "Developer ID Application:" build-cli/local-base-macos-x64
@@ -80,7 +92,6 @@ jobs:
           codesign --force --options runtime --sign "Developer ID Application:" whisper.cpp/build-intel/bin/whisper-server
 
       - name: Notarize macOS binaries
-        if: matrix.os == 'macos-latest'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
@@ -98,25 +109,23 @@ jobs:
           xcrun notarytool submit whisper-server-macos-x64.zip --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$TEAM_ID" --wait
 
       - name: Clean up temporary keychain
-        if: always() && matrix.os == 'macos-latest'
+        if: always()
         run: |
           security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
 
       - name: Upload macOS CLI binaries
-        if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: macos-cli-binaries
           path: build-cli/
 
-      - name: Upload whisper-server artifact (ARM64 / Linux)
+      - name: Upload whisper-server artifact (macOS ARM64)
         uses: actions/upload-artifact@v4
         with:
-          name: whisper-binary-${{ matrix.os }}
+          name: whisper-binary-macos-latest
           path: whisper.cpp/build/bin/whisper-server
 
       - name: Upload whisper-server artifact (macOS Intel)
-        if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: whisper-binary-macos-intel
@@ -125,7 +134,7 @@ jobs:
 
   release:
     name: Package and Release
-    needs: build-whisper
+    needs: [build-whisper-linux, build-whisper-macos]
     runs-on: ubuntu-latest
 
     steps:
@@ -182,7 +191,6 @@ jobs:
           name: whisper-binary-macos-intel
           path: release-macos-x64
 
-
       - name: Copy binaries
         run: |
           cp release-linux-x64/whisper-server release/whisper-server-linux-x64
@@ -210,4 +218,3 @@ jobs:
             release/whisper-server-linux-x64
             release/checksums.txt
           generate_release_notes: true
-
