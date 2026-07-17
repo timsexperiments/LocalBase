@@ -157,7 +157,7 @@ async function interactiveConfigureSelective(config: LocalBaseConfig, locked: Se
   return config;
 }
 
-export async function syncOpenCodeConfig(config: LocalBaseConfig, activeModelCtxSizeOverride?: number): Promise<void> {
+export async function syncOpenCodeConfig(config: LocalBaseConfig, activeModelCtxSizeOverride?: number, apiKeyOverride?: string): Promise<void> {
   const opencodeDir = join(homedir(), ".config", "opencode");
   const configPath = join(opencodeDir, "opencode.jsonc");
   const jsonPath = join(opencodeDir, "opencode.json");
@@ -184,12 +184,14 @@ export async function syncOpenCodeConfig(config: LocalBaseConfig, activeModelCtx
 
     const host = config.host === "0.0.0.0" ? "localhost" : config.host;
     const wrapperPort = 2273;
+    const apiKey = apiKeyOverride || process.env.LOCALBASE_API_KEY || "";
 
     data.provider.localbase = {
       npm: "@ai-sdk/openai-compatible",
       name: "LocalBase",
       options: {
-        baseURL: `http://${host}:${wrapperPort}/v1`
+        baseURL: `http://${host}:${wrapperPort}/v1`,
+        headers: apiKey ? { "Authorization": `Bearer ${apiKey}` } : undefined
       },
       models: {}
     };
@@ -225,7 +227,7 @@ export async function syncOpenCodeConfig(config: LocalBaseConfig, activeModelCtx
   }
 }
 
-export async function syncContinueConfig(config: LocalBaseConfig, activeModelCtxSizeOverride?: number): Promise<void> {
+export async function syncContinueConfig(config: LocalBaseConfig, activeModelCtxSizeOverride?: number, apiKeyOverride?: string): Promise<void> {
   const continueDir = join(homedir(), ".continue");
   const configPath = join(continueDir, "config.json");
 
@@ -248,14 +250,14 @@ export async function syncContinueConfig(config: LocalBaseConfig, activeModelCtx
 
     const host = config.host === "0.0.0.0" ? "localhost" : config.host;
     const wrapperPort = 2273;
-    const apiKey = process.env.LOCALBASE_API_KEY || "";
+    const apiKey = apiKeyOverride || process.env.LOCALBASE_API_KEY || "";
 
     // Filter out existing LocalBase model entries to avoid duplicates
     data.models = data.models.filter((m: any) => {
       if (!m || typeof m !== "object") return true;
       const title = String(m.title || "").toLowerCase();
       const apiBase = String(m.apiBase || "").toLowerCase();
-      return !title.includes("localbase") && !apiBase.includes(":2273/v1") && !apiBase.includes(":18787/v1") && !apiBase.includes(":8787/v1") && !apiBase.includes("local-base");
+      return !title.includes("localbase") && !apiBase.includes(":2273/v1") && !apiBase.includes("local-base");
     });
 
     const activeModel = config.activeLlmModel;
@@ -291,7 +293,7 @@ export async function syncContinueConfig(config: LocalBaseConfig, activeModelCtx
     // Configure tab autocomplete if not set or if pointing to LocalBase
     const currentTabTitle = String(data.tabAutocompleteModel?.title || "").toLowerCase();
     const currentTabBase = String(data.tabAutocompleteModel?.apiBase || "").toLowerCase();
-    if (!data.tabAutocompleteModel || currentTabTitle.includes("localbase") || currentTabBase.includes(":2273/v1") || currentTabBase.includes(":18787/v1") || currentTabBase.includes(":8787/v1")) {
+    if (!data.tabAutocompleteModel || currentTabTitle.includes("localbase") || currentTabBase.includes(":2273/v1")) {
       data.tabAutocompleteModel = {
         title: `LocalBase Autocomplete (${activeModel})`,
         provider: "openai",
@@ -304,7 +306,7 @@ export async function syncContinueConfig(config: LocalBaseConfig, activeModelCtx
     // Configure embeddings provider if not set or if pointing to LocalBase
     const currentEmbeddingsProvider = String(data.embeddingsProvider?.provider || "").toLowerCase();
     const currentEmbeddingsBase = String(data.embeddingsProvider?.apiBase || "").toLowerCase();
-    if (!data.embeddingsProvider || currentEmbeddingsProvider === "openai" || currentEmbeddingsBase.includes(":2273/v1") || currentEmbeddingsBase.includes(":18787/v1") || currentEmbeddingsBase.includes(":8787/v1")) {
+    if (!data.embeddingsProvider || currentEmbeddingsProvider === "openai" || currentEmbeddingsBase.includes(":2273/v1")) {
       data.embeddingsProvider = {
         provider: "openai",
         model: activeModel,
@@ -384,8 +386,6 @@ export async function runConfigure(args: string[], ctx: AppContext): Promise<num
   if (config.activeImageModel && byId(config.activeImageModel)?.kind !== "image") throw new Error(`Active Image model is invalid: ${config.activeImageModel}`);
 
   saveConfig(config);
-  await syncOpenCodeConfig(config);
-  await syncContinueConfig(config);
   console.log(`Saved configuration to ${config.root}/local-base.db`);
   console.log(`Selected LLM models: ${config.selectedLlmModels.join(", ")}`);
   console.log(`Selected STT models: ${config.selectedSttModels.join(", ")}`);
@@ -398,13 +398,18 @@ export async function runConfigure(args: string[], ctx: AppContext): Promise<num
     createFirstKey = await confirmPrompt("No API keys found. Create one now", true);
   }
 
+  let activeApiKey = "";
   if (!hasAnyKeys && createFirstKey) {
     const { record, rawKey } = createApiKey(config, "default");
+    activeApiKey = rawKey;
     console.log("\nCreated initial API key:");
     console.log(`id=${record.id} name=${record.name} prefix=${record.prefix}`);
     console.log(`secret=${rawKey}`);
     console.log("Store this secret now. It is not shown again.");
   }
+
+  await syncOpenCodeConfig(config, undefined, activeApiKey || undefined);
+  await syncContinueConfig(config, undefined, activeApiKey || undefined);
 
   return 0;
 }
