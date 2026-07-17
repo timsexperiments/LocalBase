@@ -183,7 +183,7 @@ export async function syncOpenCodeConfig(config: LocalBaseConfig, activeModelCtx
     if (!data.provider) data.provider = {};
 
     const host = config.host === "0.0.0.0" ? "localhost" : config.host;
-    const wrapperPort = 8787;
+    const wrapperPort = 2273;
 
     data.provider.localbase = {
       npm: "@ai-sdk/openai-compatible",
@@ -247,7 +247,7 @@ export async function syncContinueConfig(config: LocalBaseConfig, activeModelCtx
     }
 
     const host = config.host === "0.0.0.0" ? "localhost" : config.host;
-    const wrapperPort = 8787;
+    const wrapperPort = 2273;
     const apiKey = process.env.LOCALBASE_API_KEY || "";
 
     // Filter out existing LocalBase model entries to avoid duplicates
@@ -255,7 +255,7 @@ export async function syncContinueConfig(config: LocalBaseConfig, activeModelCtx
       if (!m || typeof m !== "object") return true;
       const title = String(m.title || "").toLowerCase();
       const apiBase = String(m.apiBase || "").toLowerCase();
-      return !title.includes("localbase") && !apiBase.includes(":8787/v1") && !apiBase.includes("local-base");
+      return !title.includes("localbase") && !apiBase.includes(":2273/v1") && !apiBase.includes(":18787/v1") && !apiBase.includes(":8787/v1") && !apiBase.includes("local-base");
     });
 
     const activeModel = config.activeLlmModel;
@@ -291,7 +291,7 @@ export async function syncContinueConfig(config: LocalBaseConfig, activeModelCtx
     // Configure tab autocomplete if not set or if pointing to LocalBase
     const currentTabTitle = String(data.tabAutocompleteModel?.title || "").toLowerCase();
     const currentTabBase = String(data.tabAutocompleteModel?.apiBase || "").toLowerCase();
-    if (!data.tabAutocompleteModel || currentTabTitle.includes("localbase") || currentTabBase.includes(":8787/v1")) {
+    if (!data.tabAutocompleteModel || currentTabTitle.includes("localbase") || currentTabBase.includes(":2273/v1") || currentTabBase.includes(":18787/v1") || currentTabBase.includes(":8787/v1")) {
       data.tabAutocompleteModel = {
         title: `LocalBase Autocomplete (${activeModel})`,
         provider: "openai",
@@ -304,7 +304,7 @@ export async function syncContinueConfig(config: LocalBaseConfig, activeModelCtx
     // Configure embeddings provider if not set or if pointing to LocalBase
     const currentEmbeddingsProvider = String(data.embeddingsProvider?.provider || "").toLowerCase();
     const currentEmbeddingsBase = String(data.embeddingsProvider?.apiBase || "").toLowerCase();
-    if (!data.embeddingsProvider || currentEmbeddingsProvider === "openai" || currentEmbeddingsBase.includes(":8787/v1")) {
+    if (!data.embeddingsProvider || currentEmbeddingsProvider === "openai" || currentEmbeddingsBase.includes(":2273/v1") || currentEmbeddingsBase.includes(":18787/v1") || currentEmbeddingsBase.includes(":8787/v1")) {
       data.embeddingsProvider = {
         provider: "openai",
         model: activeModel,
