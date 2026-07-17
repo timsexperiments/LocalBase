@@ -30,14 +30,33 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install dependencies
+        if: matrix.os == 'macos-latest'
+        run: bun install --frozen-lockfile
+
+      - name: Import Apple Certificate
+        if: matrix.os == 'macos-latest'
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE }}
+          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
+          KEYCHAIN_PASSWORD: "temporary-keychain-pass"
+        run: |
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security import $CERTIFICATE_PATH -k $KEYCHAIN_PATH -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -A
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychains -d user -s $KEYCHAIN_PATH
+
       - name: Build macOS standalone binaries
         if: matrix.os == 'macos-latest'
         run: |
           mkdir -p build-cli
           bun build src/cli.ts --compile --target=bun-darwin-arm64 --outfile build-cli/local-base-macos-arm64
           bun build src/cli.ts --compile --target=bun-darwin-x64 --outfile build-cli/local-base-macos-x64
-          codesign -s - --force --deep build-cli/local-base-macos-arm64
-          codesign -s - --force --deep build-cli/local-base-macos-x64
 
       - name: Upload macOS CLI binaries
         if: matrix.os == 'macos-latest'
@@ -58,6 +77,37 @@ jobs:
           cd whisper.cpp
           cmake -B build-intel -DCMAKE_OSX_ARCHITECTURES=x86_64 -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF
           cmake --build build-intel --config Release -j
+
+      - name: Sign macOS binaries
+        if: matrix.os == 'macos-latest'
+        run: |
+          codesign --force --options runtime --sign "Developer ID Application:" build-cli/local-base-macos-arm64
+          codesign --force --options runtime --sign "Developer ID Application:" build-cli/local-base-macos-x64
+          codesign --force --options runtime --sign "Developer ID Application:" whisper.cpp/build/bin/whisper-server
+          codesign --force --options runtime --sign "Developer ID Application:" whisper.cpp/build-intel/bin/whisper-server
+
+      - name: Notarize macOS binaries
+        if: matrix.os == 'macos-latest'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          zip -j local-base-macos-arm64.zip build-cli/local-base-macos-arm64
+          zip -j local-base-macos-x64.zip build-cli/local-base-macos-x64
+          zip -j whisper-server-macos-arm64.zip whisper.cpp/build/bin/whisper-server
+          zip -j whisper-server-macos-x64.zip whisper.cpp/build-intel/bin/whisper-server
+          
+          # Submit to Apple Notarization Service and wait for results
+          xcrun notarytool submit local-base-macos-arm64.zip --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$TEAM_ID" --wait
+          xcrun notarytool submit local-base-macos-x64.zip --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$TEAM_ID" --wait
+          xcrun notarytool submit whisper-server-macos-arm64.zip --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$TEAM_ID" --wait
+          xcrun notarytool submit whisper-server-macos-x64.zip --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$TEAM_ID" --wait
+
+      - name: Clean up temporary keychain
+        if: always() && matrix.os == 'macos-latest'
+        run: |
+          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
 
       - name: Upload whisper-server artifact (ARM64 / Linux)
         uses: actions/upload-artifact@v4
