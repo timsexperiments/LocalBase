@@ -18,8 +18,33 @@ jobs:
         os: [ubuntu-latest, macos-latest]
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Clone whisper.cpp
         run: git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git
+
+      - name: Setup Bun
+        if: matrix.os == 'macos-latest'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build macOS standalone binaries
+        if: matrix.os == 'macos-latest'
+        run: |
+          mkdir -p build-cli
+          bun build src/cli.ts --compile --target=bun-darwin-arm64 --outfile build-cli/local-base-macos-arm64
+          bun build src/cli.ts --compile --target=bun-darwin-x64 --outfile build-cli/local-base-macos-x64
+          codesign -s - --force --deep build-cli/local-base-macos-arm64
+          codesign -s - --force --deep build-cli/local-base-macos-x64
+
+      - name: Upload macOS CLI binaries
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-cli-binaries
+          path: build-cli/
 
       - name: Build whisper-server
         run: |
@@ -74,12 +99,6 @@ jobs:
         run: |
           mkdir -p release
           
-          # macOS Apple Silicon (ARM64)
-          bun build src/cli.ts --compile --target=bun-darwin-arm64 --outfile release/local-base-macos-arm64
-          
-          # macOS Intel (x64)
-          bun build src/cli.ts --compile --target=bun-darwin-x64 --outfile release/local-base-macos-x64
-          
           # Linux AMD64 (x64)
           bun build src/cli.ts --compile --target=bun-linux-x64 --outfile release/local-base-linux-x64
           
@@ -88,6 +107,12 @@ jobs:
           
           # Windows x64
           bun build src/cli.ts --compile --target=bun-windows-x64 --outfile release/local-base-windows-x64.exe
+
+      - name: Download macOS CLI binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-cli-binaries
+          path: release-macos-cli
 
       - name: Download whisper-server (Linux x64)
         uses: actions/download-artifact@v4
@@ -108,11 +133,13 @@ jobs:
           path: release-macos-x64
 
 
-      - name: Copy whisper-server binaries
+      - name: Copy binaries
         run: |
           cp release-linux-x64/whisper-server release/whisper-server-linux-x64
           cp release-macos-arm64/whisper-server release/whisper-server-macos-arm64
           cp release-macos-x64/whisper-server release/whisper-server-macos-x64
+          cp release-macos-cli/local-base-macos-arm64 release/local-base-macos-arm64
+          cp release-macos-cli/local-base-macos-x64 release/local-base-macos-x64
 
       - name: Generate SHA-256 Checksums
         run: |
