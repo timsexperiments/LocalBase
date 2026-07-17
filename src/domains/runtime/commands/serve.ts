@@ -4,7 +4,7 @@ import { type LocalBaseConfig, startLlamaServerProcess, startWhisperServerProces
 import { byId, evaluateModelFit, calculateMaxSafeContextSize } from "../../../catalog";
 import type { AppContext } from "../../../context";
 import { parseBool, parseFlag, toInt } from "../../../utils/args";
-import { syncOpenCodeConfig, syncContinueConfig } from "../../config/commands/configure";
+import { syncContinueConfig } from "../../config/commands/configure";
 import { type ILogger } from "../../../utils/logger";
 import { DEFAULT_SYSTEM_PROMPT } from "./prompt";
 
@@ -299,8 +299,7 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
     console.log(`\n💡 Context Size: Using explicit override --ctx-size ${ctxSize} tokens.`);
   }
 
-  // Automatically synchronize active model and calculated context size with OpenCode/Continue configuration
-  await syncOpenCodeConfig(config, ctxSize);
+  // Automatically synchronize active model and calculated context size with Continue configuration
   await syncContinueConfig(config, ctxSize);
   const sttPath = parseFlag(args, "--stt-path") ?? "/inference";
   const authRequired = parseFlag(args, "--auth") !== "false";
@@ -590,9 +589,6 @@ export async function runServe(args: string[], ctx: AppContext): Promise<number>
             const recommendedCtx = spec ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb) : (ctx.specs.gpuVramGb >= 32 ? 32768 : 8192);
             const newCtxSize = Math.min(recommendedCtx, config.ctxSize);
 
-            syncOpenCodeConfig(config, newCtxSize).catch((err) => {
-              ctx.logger.warn("sync", `Failed to sync OpenCode config: ${err.message}`);
-            });
             syncContinueConfig(config, newCtxSize).catch((err) => {
               ctx.logger.warn("sync", `Failed to sync Continue config: ${err.message}`);
             });

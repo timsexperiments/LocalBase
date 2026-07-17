@@ -157,74 +157,6 @@ async function interactiveConfigureSelective(config: LocalBaseConfig, locked: Se
   return config;
 }
 
-export async function syncOpenCodeConfig(config: LocalBaseConfig, activeModelCtxSizeOverride?: number): Promise<void> {
-  const opencodeDir = join(homedir(), ".config", "opencode");
-  const configPath = join(opencodeDir, "opencode.jsonc");
-  const jsonPath = join(opencodeDir, "opencode.json");
-
-  let path = "";
-  if (existsSync(configPath)) {
-    path = configPath;
-  } else if (existsSync(jsonPath)) {
-    path = jsonPath;
-  } else {
-    return;
-  }
-
-  try {
-    const raw = Bun.file(path);
-    const text = await raw.text();
-    const cleaned = text.replace(/("([^"\\]|\\.)*")|(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g, (m, g1) => {
-      if (g1) return g1;
-      return "";
-    });
-    const data = JSON.parse(cleaned);
-
-    if (!data.provider) data.provider = {};
-
-    const host = config.host === "0.0.0.0" ? "localhost" : config.host;
-    const wrapperPort = 2273;
-
-    data.provider.localbase = {
-      npm: "@ai-sdk/openai-compatible",
-      name: "LocalBase",
-      options: {
-        baseURL: `http://${host}:${wrapperPort}/v1`
-      },
-      models: {}
-    };
-
-    const activeModel = config.activeLlmModel;
-    const vramGb = detectSpecs().gpuVramGb;
-
-    for (const modelId of config.selectedLlmModels) {
-      const spec = byId(modelId);
-      const displayName = spec ? `${spec.family} ${spec.version}` : modelId;
-      const recommendedCtx = spec ? calculateMaxSafeContextSize(spec, vramGb) : config.ctxSize;
-
-      const actualCtx = modelId === activeModel
-        ? (activeModelCtxSizeOverride ?? config.ctxSize)
-        : Math.min(recommendedCtx, config.ctxSize);
-
-      data.provider.localbase.models[modelId] = {
-        name: displayName,
-        tool_call: true,
-        limit: {
-          context: actualCtx,
-          output: 4096
-        }
-      };
-    }
-
-    data.model = `localbase/${activeModel}`;
-
-    await Bun.write(path, JSON.stringify(data, null, 2));
-    console.log(`\n🔄 Automatically synchronized model configs and context limits to ${path}`);
-  } catch (err) {
-    console.warn("\n⚠️  Could not automatically synchronize config with OpenCode:", (err as Error).message);
-  }
-}
-
 export async function syncContinueConfig(config: LocalBaseConfig, activeModelCtxSizeOverride?: number): Promise<void> {
   const continueDir = join(homedir(), ".continue");
   const configPath = join(continueDir, "config.json");
@@ -384,7 +316,6 @@ export async function runConfigure(args: string[], ctx: AppContext): Promise<num
   if (config.activeImageModel && byId(config.activeImageModel)?.kind !== "image") throw new Error(`Active Image model is invalid: ${config.activeImageModel}`);
 
   saveConfig(config);
-  await syncOpenCodeConfig(config);
   await syncContinueConfig(config);
   console.log(`Saved configuration to ${config.root}/local-base.db`);
   console.log(`Selected LLM models: ${config.selectedLlmModels.join(", ")}`);
