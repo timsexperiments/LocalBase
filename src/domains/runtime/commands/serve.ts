@@ -279,7 +279,7 @@ function serviceUnavailable(serviceName: string): Response {
 export async function runServe(args: string[], ctx: AppContext): Promise<number> {
   const config = ctx.config;
   const wrapperHost = parseFlag(args, "--host") ?? "0.0.0.0";
-  const wrapperPort = toInt(parseFlag(args, "--port"), 8787);
+  const wrapperPort = toInt(parseFlag(args, "--port"), 2273);
 
   const llmHost = parseFlag(args, "--llm-host") ?? "127.0.0.1";
   const llmPort = toInt(parseFlag(args, "--llm-port"), config.port);

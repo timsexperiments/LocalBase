@@ -129,7 +129,7 @@ export const commandRegistry: CLICommand[] = [
     },
     flags: [
       { name: "--host", type: "host", description: "API gateway binding host" },
-      { name: "--port", type: "port", description: "API gateway binding port (defaults to 8787)" },
+      { name: "--port", type: "port", description: "API gateway binding port (defaults to 2273)" },
       { name: "--llm", type: "true|false", description: "Enable/disable the LLM service (defaults to true)" },
       { name: "--stt", type: "true|false", description: "Enable/disable the STT service (defaults to true)" },
       { name: "--llm-host", type: "host", description: "Host for the upstream llama-server" },
