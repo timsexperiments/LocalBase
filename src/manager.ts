@@ -750,7 +750,7 @@ export async function startLlamaServerProcess(config: LocalBaseConfig, modelFile
 
   // Enable --flash-attn on Apple Silicon GPUs for up to 2x faster prompt prefill and reduced VRAM.
   if (platform() === "darwin" && arch() === "arm64") {
-    args.push("--flash-attn");
+    args.push("--flash-attn", "auto");
   }
 
   return Bun.spawn(args, {
@@ -793,7 +793,7 @@ export async function launchLlamaServer(config: LocalBaseConfig, modelFile: stri
   ];
 
   if (platform() === "darwin" && arch() === "arm64") {
-    args.push("--flash-attn");
+    args.push("--flash-attn", "auto");
   }
 
   const result = spawnSync(binPath, args, {
