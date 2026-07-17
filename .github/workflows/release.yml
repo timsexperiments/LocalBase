@@ -30,6 +30,10 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install dependencies
+        if: matrix.os == 'macos-latest'
+        run: bun install --frozen-lockfile
+
       - name: Build macOS standalone binaries
         if: matrix.os == 'macos-latest'
         run: |
