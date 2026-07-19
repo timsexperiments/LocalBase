@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { z } from "zod";
 import { join, basename } from "node:path";
 import {
   type LocalBaseConfig,
@@ -125,26 +126,145 @@ function extractAuthToken(request: Request, mode: AuthMode): string | null {
   );
 }
 
+type OpenAIErrorType =
+  | "invalid_request_error"
+  | "api_error"
+  | "invalid_authentication_error"
+  | "server_error";
+
+type OpenAIErrorCode =
+  | "invalid_api_key"
+  | "route_disabled"
+  | "validation_failed"
+  | "service_unavailable";
+
+interface OpenAIError {
+  message: string;
+  type: OpenAIErrorType;
+  param: string | null;
+  code: OpenAIErrorCode | null;
+  [key: string]: any;
+}
+
+interface OpenAIErrorResponse {
+  error: OpenAIError;
+}
+
 function unauthorized(mode: AuthMode): Response {
   const hint = mode === "x-api-key" ? "x-api-key" : "Bearer";
-  return Response.json(
-    {
-      error: "Unauthorized",
+  const body: OpenAIErrorResponse = {
+    error: {
+      message: "Unauthorized: Invalid or missing API key.",
+      type: "invalid_request_error",
+      param: null,
+      code: "invalid_api_key",
       expected: mode === "either" ? "Bearer or x-api-key" : hint,
     },
-    { status: 401, headers: { "www-authenticate": "Bearer" } },
-  );
+  };
+  return Response.json(body, {
+    status: 401,
+    headers: { "www-authenticate": "Bearer" },
+  });
 }
 
 function notConfigured(feature: string): Response {
-  return Response.json(
-    {
-      error: `${feature} route is disabled`,
+  const body: OpenAIErrorResponse = {
+    error: {
+      message: `${feature} route is disabled.`,
+      type: "invalid_request_error",
+      param: null,
+      code: "route_disabled",
       hint: `Set --${feature.toLowerCase()} true and configure upstream/model to enable this route`,
     },
-    { status: 501 },
-  );
+  };
+  return Response.json(body, { status: 501 });
 }
+
+function badRequest(message: string): Response {
+  const body: OpenAIErrorResponse = {
+    error: {
+      message,
+      type: "invalid_request_error",
+      param: null,
+      code: "validation_failed",
+    },
+  };
+  return Response.json(body, { status: 400 });
+}
+
+const chatMessageSchema = z.object({
+  role: z.enum([
+    "system",
+    "user",
+    "assistant",
+    "function",
+    "tool",
+    "developer",
+  ]),
+  content: z
+    .union([
+      z.string(),
+      z.array(
+        z.object({
+          type: z.string(),
+          text: z.string().optional(),
+          image_url: z.object({ url: z.string() }).optional(),
+        }),
+      ),
+    ])
+    .optional(),
+  name: z.string().optional(),
+  tool_calls: z.array(z.any()).optional(),
+  tool_call_id: z.string().optional(),
+});
+
+const chatCompletionRequestSchema = z.object({
+  model: z.string(),
+  messages: z.array(chatMessageSchema),
+  temperature: z.number().min(0).max(2).optional(),
+  top_p: z.number().min(0).max(1).optional(),
+  n: z.number().min(1).optional(),
+  stream: z.boolean().optional(),
+  stop: z
+    .union([z.string(), z.array(z.string())])
+    .nullable()
+    .optional(),
+  max_tokens: z.number().positive().optional(),
+  presence_penalty: z.number().min(-2).max(2).optional(),
+  frequency_penalty: z.number().min(-2).max(2).optional(),
+  logit_bias: z.record(z.string(), z.number()).nullable().optional(),
+  user: z.string().optional(),
+  response_format: z
+    .object({ type: z.enum(["text", "json_object"]) })
+    .optional(),
+  tools: z.array(z.any()).optional(),
+  tool_choice: z
+    .union([
+      z.string(),
+      z.object({
+        type: z.string(),
+        function: z.object({ name: z.string() }),
+      }),
+    ])
+    .optional(),
+});
+
+const textCompletionRequestSchema = z.object({
+  model: z.string(),
+  prompt: z.union([z.string(), z.array(z.string())]),
+  temperature: z.number().min(0).max(2).optional(),
+  top_p: z.number().min(0).max(1).optional(),
+  n: z.number().min(1).optional(),
+  stream: z.boolean().optional(),
+  stop: z
+    .union([z.string(), z.array(z.string())])
+    .nullable()
+    .optional(),
+  max_tokens: z.number().positive().optional(),
+  presence_penalty: z.number().min(-2).max(2).optional(),
+  frequency_penalty: z.number().min(-2).max(2).optional(),
+  user: z.string().optional(),
+});
 
 async function proxyRequest(
   request: Request,
@@ -334,18 +454,21 @@ class ManagedService {
  * Returns a standard HTTP 503 service unavailable response.
  */
 function serviceUnavailable(serviceName: string): Response {
-  return new Response(
-    JSON.stringify({
-      error: `${serviceName} service is currently restarting or unavailable. Please try again shortly.`,
-    }),
-    {
-      status: 503,
-      headers: {
-        "Content-Type": "application/json",
-        "Retry-After": "5",
-      },
+  const body: OpenAIErrorResponse = {
+    error: {
+      message: `${serviceName} service is currently restarting or unavailable. Please try again shortly.`,
+      type: "api_error",
+      param: null,
+      code: "service_unavailable",
     },
-  );
+  };
+  return new Response(JSON.stringify(body), {
+    status: 503,
+    headers: {
+      "Content-Type": "application/json",
+      "Retry-After": "5",
+    },
+  });
 }
 
 /**
@@ -914,52 +1037,82 @@ export async function runServe(
     if (pathname === "/v1/chat/completions") {
       if (!enabled.llm || !llmService) return notConfigured("LLM");
       try {
-        await llmService.ensureRunning();
-      } catch (err) {
-        return serviceUnavailable("LLM");
+        const bodyText = await request.clone().text();
+        const bodyJson = JSON.parse(bodyText);
+        const parsed = chatCompletionRequestSchema.safeParse(bodyJson);
+        if (!parsed.success) {
+          const issues = parsed.error.issues
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join(", ");
+          return badRequest(`Validation failed: ${issues}`);
+        }
+
+        try {
+          await llmService.ensureRunning();
+        } catch (err) {
+          return serviceUnavailable("LLM");
+        }
+
+        let modified = false;
+        for (const msg of bodyJson.messages) {
+          // Map modern OpenAI 'developer' messages to 'system' because standard GGUF tokenizer
+          // templates (e.g. Qwen, Llama) only recognize the 'system' role.
+          if (msg.role === "developer") {
+            msg.role = "system";
+            modified = true;
+          }
+        }
+
+        // Inject configured system prompt (or default fallback) if no system prompt is present
+        const systemPrompt =
+          currentConfig.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+        const hasSystem = bodyJson.messages.some(
+          (msg: any) => msg.role === "system",
+        );
+        if (!hasSystem && systemPrompt) {
+          bodyJson.messages.unshift({
+            role: "system",
+            content: systemPrompt,
+          });
+          modified = true;
+        }
+
+        if (modified) {
+          const headers = new Headers(request.headers);
+          // Delete Content-Length header to let fetch recalculate it for the modified JSON payload.
+          headers.delete("content-length");
+          const modifiedRequest = new Request(request.url, {
+            method: request.method,
+            headers,
+            body: JSON.stringify(bodyJson),
+          });
+          return proxyRequest(modifiedRequest, llmBase);
+        }
+      } catch (e) {
+        return badRequest("Invalid JSON payload.");
       }
+    }
+
+    if (pathname === "/v1/completions") {
+      if (!enabled.llm || !llmService) return notConfigured("LLM");
       try {
         const bodyText = await request.clone().text();
         const bodyJson = JSON.parse(bodyText);
-        if (bodyJson && Array.isArray(bodyJson.messages)) {
-          let modified = false;
-          for (const msg of bodyJson.messages) {
-            // Map modern OpenAI 'developer' messages to 'system' because standard GGUF tokenizer
-            // templates (e.g. Qwen, Llama) only recognize the 'system' role.
-            if (msg.role === "developer") {
-              msg.role = "system";
-              modified = true;
-            }
-          }
+        const parsed = textCompletionRequestSchema.safeParse(bodyJson);
+        if (!parsed.success) {
+          const issues = parsed.error.issues
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join(", ");
+          return badRequest(`Validation failed: ${issues}`);
+        }
 
-          // Inject configured system prompt (or default fallback) if no system prompt is present
-          const systemPrompt =
-            currentConfig.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-          const hasSystem = bodyJson.messages.some(
-            (msg: any) => msg.role === "system",
-          );
-          if (!hasSystem && systemPrompt) {
-            bodyJson.messages.unshift({
-              role: "system",
-              content: systemPrompt,
-            });
-            modified = true;
-          }
-
-          if (modified) {
-            const headers = new Headers(request.headers);
-            // Delete Content-Length header to let fetch recalculate it for the modified JSON payload.
-            headers.delete("content-length");
-            const modifiedRequest = new Request(request.url, {
-              method: request.method,
-              headers,
-              body: JSON.stringify(bodyJson),
-            });
-            return proxyRequest(modifiedRequest, llmBase);
-          }
+        try {
+          await llmService.ensureRunning();
+        } catch (err) {
+          return serviceUnavailable("LLM");
         }
       } catch (e) {
-        // Fall back to default proxy if body parsing fails
+        return badRequest("Invalid JSON payload.");
       }
     }
 
