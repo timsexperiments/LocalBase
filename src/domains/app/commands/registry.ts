@@ -37,6 +37,11 @@ export const commandRegistry: CLICommand[] = [
         description: "LLM maximum context limit ceiling",
       },
       {
+        name: "--parallel",
+        type: "n|auto",
+        description: "Parallel slots to run automatically or manually (1-4)",
+      },
+      {
         name: "--stt-host",
         type: "host",
         description: "STT binding host address",
@@ -123,6 +128,11 @@ export const commandRegistry: CLICommand[] = [
         name: "--ctx-size",
         type: "n",
         description: "LLM maximum context limit ceiling",
+      },
+      {
+        name: "--parallel",
+        type: "n|auto",
+        description: "Parallel slots to run automatically or manually (1-4)",
       },
       { name: "--stt-host", type: "host", description: "STT host address" },
       { name: "--stt-port", type: "n", description: "STT port number" },
