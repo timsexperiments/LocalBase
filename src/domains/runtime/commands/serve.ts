@@ -266,10 +266,131 @@ const textCompletionRequestSchema = z.object({
   user: z.string().optional(),
 });
 
+const imageGenerationRequestSchema = z.object({
+  prompt: z.string(),
+  model: z.string().optional(),
+  n: z.number().min(1).max(10).optional(),
+  quality: z.enum(["standard", "hd"]).optional(),
+  response_format: z.enum(["url", "b64_json"]).optional(),
+  size: z.enum(["256x256", "512x512", "1024x1024"]).optional(),
+  style: z.enum(["vivid", "natural"]).optional(),
+  user: z.string().optional(),
+});
+
+const transcriptionRequestSchema = z.object({
+  file: z.any().refine((val) => val instanceof Blob || val instanceof File, {
+    message: "file must be a valid File or Blob object",
+  }),
+  model: z.string().optional(),
+  language: z.string().optional(),
+  prompt: z.string().optional(),
+  response_format: z
+    .enum(["json", "text", "srt", "verbose_json", "vtt"])
+    .optional(),
+  temperature: z.number().min(0).max(1).optional(),
+});
+
+const embeddingsRequestSchema = z.object({
+  model: z.string(),
+  input: z.union([
+    z.string(),
+    z.array(z.string()),
+    z.array(z.number()),
+    z.array(z.array(z.number())),
+  ]),
+  user: z.string().optional(),
+});
+
+const chatCompletionResponseSchema = z.object({
+  id: z.string(),
+  object: z.string(),
+  created: z.number(),
+  model: z.string(),
+  choices: z.array(
+    z.object({
+      index: z.number(),
+      message: z.object({
+        role: z.string(),
+        content: z.string().nullable().optional(),
+      }),
+      finish_reason: z.string().nullable().optional(),
+    }),
+  ),
+  usage: z
+    .object({
+      prompt_tokens: z.number(),
+      completion_tokens: z.number(),
+      total_tokens: z.number(),
+    })
+    .optional(),
+});
+
+const textCompletionResponseSchema = z.object({
+  id: z.string(),
+  object: z.string(),
+  created: z.number(),
+  model: z.string(),
+  choices: z.array(
+    z.object({
+      text: z.string(),
+      index: z.number(),
+      finish_reason: z.string().nullable().optional(),
+    }),
+  ),
+  usage: z
+    .object({
+      prompt_tokens: z.number(),
+      completion_tokens: z.number(),
+      total_tokens: z.number(),
+    })
+    .optional(),
+});
+
+const embeddingsResponseSchema = z.object({
+  object: z.string(),
+  data: z.array(
+    z.object({
+      object: z.string(),
+      index: z.number(),
+      embedding: z.array(z.number()),
+    }),
+  ),
+  model: z.string(),
+  usage: z.object({
+    prompt_tokens: z.number(),
+    total_tokens: z.number(),
+  }),
+});
+
+const imageGenerationResponseSchema = z.object({
+  created: z.number(),
+  data: z.array(
+    z.object({
+      url: z.string().optional(),
+      b64_json: z.string().optional(),
+      revised_prompt: z.string().optional(),
+    }),
+  ),
+});
+
+const transcriptionResponseSchema = z.union([
+  z.object({
+    text: z.string(),
+  }),
+  z.object({
+    task: z.string().optional(),
+    language: z.string().optional(),
+    duration: z.number().optional(),
+    text: z.string(),
+    segments: z.array(z.any()).optional(),
+  }),
+]);
+
 async function proxyRequest(
   request: Request,
   targetBase: string,
   pathOverride?: string,
+  responseSchema?: z.ZodSchema,
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
@@ -279,6 +400,42 @@ async function proxyRequest(
     headers: request.headers,
     body: request.body,
   });
+
+  const isStream = upstream.headers
+    .get("content-type")
+    ?.includes("text/event-stream");
+
+  if (responseSchema && !isStream && upstream.ok) {
+    try {
+      const bodyText = await upstream.text();
+      // Only attempt JSON validation if it parses as valid JSON
+      let bodyJson: any;
+      try {
+        bodyJson = JSON.parse(bodyText);
+      } catch (e) {
+        // Fall back to plain text if response is not JSON (e.g. STT returning format: text/srt)
+        return new Response(bodyText, {
+          status: upstream.status,
+          headers: upstream.headers,
+        });
+      }
+
+      const parsed = responseSchema.safeParse(bodyJson);
+      if (!parsed.success) {
+        const issues = parsed.error.issues
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join(", ");
+        return badRequest(`Upstream validation failed: ${issues}`);
+      }
+
+      return Response.json(bodyJson, {
+        status: upstream.status,
+        headers: upstream.headers,
+      });
+    } catch (e) {
+      return badRequest("Failed to validate upstream JSON response.");
+    }
+  }
 
   return new Response(upstream.body, {
     status: upstream.status,
@@ -944,11 +1101,33 @@ export async function runServe(
     ) {
       if (!enabled.stt || !sttService) return notConfigured("STT");
       try {
+        const formData = await request.clone().formData();
+        const bodyObj: Record<string, any> = {};
+        for (const [key, value] of formData.entries()) {
+          bodyObj[key] = value;
+        }
+
+        const parsed = transcriptionRequestSchema.safeParse(bodyObj);
+        if (!parsed.success) {
+          const issues = parsed.error.issues
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join(", ");
+          return badRequest(`Validation failed: ${issues}`);
+        }
+      } catch (e) {
+        return badRequest("Invalid form data payload.");
+      }
+      try {
         await sttService.ensureRunning();
       } catch (err) {
         return serviceUnavailable("STT");
       }
-      return proxyRequest(request, sttBase, sttPath);
+      return proxyRequest(
+        request,
+        sttBase,
+        sttPath,
+        transcriptionResponseSchema,
+      );
     }
 
     if (pathname.startsWith("/stt")) {
@@ -1008,6 +1187,15 @@ export async function runServe(
       try {
         const bodyText = await request.clone().text();
         const bodyJson = JSON.parse(bodyText);
+
+        const parsed = imageGenerationRequestSchema.safeParse(bodyJson);
+        if (!parsed.success) {
+          const issues = parsed.error.issues
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join(", ");
+          return badRequest(`Validation failed: ${issues}`);
+        }
+
         if (bodyJson && typeof bodyJson.model === "string") {
           const requestedModel = bodyJson.model;
           const matchedModel = currentConfig.selectedImageModels.find(
@@ -1024,14 +1212,19 @@ export async function runServe(
           }
         }
       } catch (e) {
-        // Fall back if body parsing fails
+        return badRequest("Invalid JSON payload.");
       }
       try {
         await imageService.ensureRunning();
       } catch (err) {
         return serviceUnavailable("Image");
       }
-      return proxyRequest(request, imageBase);
+      return proxyRequest(
+        request,
+        imageBase,
+        undefined,
+        imageGenerationResponseSchema,
+      );
     }
 
     if (pathname === "/v1/chat/completions") {
@@ -1077,17 +1270,23 @@ export async function runServe(
           modified = true;
         }
 
+        const headers = modified
+          ? new Headers(request.headers)
+          : request.headers;
         if (modified) {
-          const headers = new Headers(request.headers);
-          // Delete Content-Length header to let fetch recalculate it for the modified JSON payload.
           headers.delete("content-length");
-          const modifiedRequest = new Request(request.url, {
-            method: request.method,
-            headers,
-            body: JSON.stringify(bodyJson),
-          });
-          return proxyRequest(modifiedRequest, llmBase);
         }
+        const modifiedRequest = new Request(request.url, {
+          method: request.method,
+          headers,
+          body: JSON.stringify(bodyJson),
+        });
+        return proxyRequest(
+          modifiedRequest,
+          llmBase,
+          undefined,
+          chatCompletionResponseSchema,
+        );
       } catch (e) {
         return badRequest("Invalid JSON payload.");
       }
@@ -1105,15 +1304,48 @@ export async function runServe(
             .join(", ");
           return badRequest(`Validation failed: ${issues}`);
         }
+      } catch (e) {
+        return badRequest("Invalid JSON payload.");
+      }
+      try {
+        await llmService.ensureRunning();
+      } catch (err) {
+        return serviceUnavailable("LLM");
+      }
+      return proxyRequest(
+        request,
+        llmBase,
+        undefined,
+        textCompletionResponseSchema,
+      );
+    }
 
-        try {
-          await llmService.ensureRunning();
-        } catch (err) {
-          return serviceUnavailable("LLM");
+    if (pathname === "/v1/embeddings") {
+      if (!enabled.llm || !llmService) return notConfigured("LLM");
+      try {
+        const bodyText = await request.clone().text();
+        const bodyJson = JSON.parse(bodyText);
+        const parsed = embeddingsRequestSchema.safeParse(bodyJson);
+        if (!parsed.success) {
+          const issues = parsed.error.issues
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join(", ");
+          return badRequest(`Validation failed: ${issues}`);
         }
       } catch (e) {
         return badRequest("Invalid JSON payload.");
       }
+      try {
+        await llmService.ensureRunning();
+      } catch (err) {
+        return serviceUnavailable("LLM");
+      }
+      return proxyRequest(
+        request,
+        llmBase,
+        undefined,
+        embeddingsResponseSchema,
+      );
     }
 
     if (pathname === "/v1/models") {
