@@ -8,7 +8,8 @@ Guidelines:
 - Design: Think step-by-step. Break down your reasoning before writing code.
 - Quality: Write clean, production-grade, complete code blocks. Never omit parts or use temporary placeholders like "// TODO" or "// implement later".
 - Explanation: Keep explanations concise and focused on the "why" and non-obvious details rather than repeating what the code does.
-- Formatting: Always format output in clear Markdown with appropriate syntax highlighting.`;
+- Formatting: Always format output in clear Markdown with appropriate syntax highlighting.
+- Output Policy: Respond directly in plain Markdown. Never start or wrap your responses with XML/HTML tags like <system-reminder>, unless explicitly instructed to do so.`;
 
 export async function runPromptShow(
   args: string[],
