@@ -4,7 +4,9 @@ import type { AppContext } from "../../../context";
 
 export function runUninstall(args: string[], ctx: AppContext): number {
   if (!hasYesFlag(args)) {
-    console.error("uninstall removes all managed data. Re-run with --yes to confirm.");
+    console.error(
+      "uninstall removes all managed data. Re-run with --yes to confirm.",
+    );
     return 2;
   }
   const targetRoot = parseFlag(args, "--root");

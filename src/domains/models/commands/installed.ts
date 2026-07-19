@@ -6,7 +6,11 @@ export function runInstalled(args: string[], ctx: AppContext): number {
   const kind = parseKind(parseFlag(args, "--kind"));
   const found = installedModels(ctx.config, kind);
   if (found.length === 0) {
-    console.log(kind ? `No installed ${kind.toUpperCase()} models found.` : "No installed models found.");
+    console.log(
+      kind
+        ? `No installed ${kind.toUpperCase()} models found.`
+        : "No installed models found.",
+    );
     return 0;
   }
   for (const file of found) console.log(file);
