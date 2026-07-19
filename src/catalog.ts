@@ -328,9 +328,9 @@ export const CATALOG: readonly ModelSpec[] = [
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning"],
-    commercialStatus: "open",
+    commercialStatus: "conditional",
     catch:
-      "Gemma terms allow commercial use; cannot use to improve other models.",
+      "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
     notes: "Smallest Gemma 3 variant, fast and lightweight.",
   },
   {
@@ -350,9 +350,9 @@ export const CATALOG: readonly ModelSpec[] = [
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning"],
-    commercialStatus: "open",
+    commercialStatus: "conditional",
     catch:
-      "Gemma terms allow commercial use; cannot use to improve other models.",
+      "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
     notes: "Highly capable 4B generalist and reasoning model.",
   },
   {
@@ -372,9 +372,9 @@ export const CATALOG: readonly ModelSpec[] = [
     inputModalities: ["text", "image"],
     outputModalities: ["text"],
     features: ["vision", "tool-calling", "reasoning"],
-    commercialStatus: "open",
+    commercialStatus: "conditional",
     catch:
-      "Gemma terms allow commercial use; cannot use to improve other models.",
+      "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
     notes: "Multimodal-capable family with permissive usage terms.",
   },
   {
@@ -394,9 +394,9 @@ export const CATALOG: readonly ModelSpec[] = [
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning", "multilingual"],
-    commercialStatus: "open",
+    commercialStatus: "conditional",
     catch:
-      "Gemma terms allow commercial use; cannot use to improve other models.",
+      "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
     notes: "Top-tier 27B model; matches larger models in reasoning quality.",
   },
   {

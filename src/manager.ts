@@ -58,6 +58,7 @@ export type LocalBaseConfig = {
   activeSttModel: string;
   activeImageModel: string;
   systemPrompt: string;
+  hfToken: string;
 };
 
 export type ApiKeyRecord = {
@@ -92,6 +93,7 @@ const configTable = sqliteTable("config", {
   activeSttModel: text("active_stt_model").notNull(),
   activeImageModel: text("active_image_model").default("").notNull(),
   systemPrompt: text("system_prompt").default("").notNull(),
+  hfToken: text("hf_token").default("").notNull(),
 });
 
 const apiKeysTable = sqliteTable("api_keys", {
@@ -133,7 +135,8 @@ function openDb(root: string) {
       active_llm_model text not null,
       active_stt_model text not null,
       active_image_model text,
-      system_prompt text
+      system_prompt text,
+      hf_token text
     );
 
     create table if not exists api_keys (
@@ -167,6 +170,11 @@ function openDb(root: string) {
   } catch (e) {
     // Ignore error if column already exists
   }
+  try {
+    sqlite.exec("ALTER TABLE config ADD COLUMN hf_token TEXT;");
+  } catch (e) {
+    // Ignore error if column already exists
+  }
   return drizzle(sqlite);
 }
 
@@ -192,6 +200,7 @@ function toConfigRow(config: LocalBaseConfig) {
     activeSttModel: config.activeSttModel,
     activeImageModel: config.activeImageModel,
     systemPrompt: config.systemPrompt,
+    hfToken: config.hfToken || "",
   };
 }
 
@@ -223,6 +232,7 @@ function fromConfigRow(row: typeof configTable.$inferSelect): LocalBaseConfig {
     activeSttModel: row.activeSttModel,
     activeImageModel,
     systemPrompt: row.systemPrompt ?? "",
+    hfToken: row.hfToken ?? "",
   };
 }
 
@@ -283,6 +293,7 @@ function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     activeSttModel: stt,
     activeImageModel: "stable-diffusion-v1-5",
     systemPrompt: "",
+    hfToken: "",
   };
 }
 
@@ -431,8 +442,9 @@ export async function installModel(
 
   console.log(`⬇️  Downloading model "${modelId}" from ${url}...`);
   const curlArgs = ["-L", "--fail"];
-  if (process.env.HF_TOKEN) {
-    curlArgs.push("-H", `Authorization: Bearer ${process.env.HF_TOKEN}`);
+  const token = config.hfToken || process.env.HF_TOKEN;
+  if (token) {
+    curlArgs.push("-H", `Authorization: Bearer ${token}`);
   }
   curlArgs.push("-o", output, url);
 
@@ -446,6 +458,15 @@ export async function installModel(
     try {
       rmSync(output, { force: true });
     } catch {}
+    if (
+      !token &&
+      (url.toLowerCase().includes("gemma") ||
+        url.toLowerCase().includes("llama"))
+    ) {
+      throw new Error(
+        `Failed to download model from ${url}.\n\n⚠️  This model is gated on Hugging Face. To download it:\n1. Accept the model terms on Hugging Face (e.g., https://huggingface.co/google/gemma-3-27b-it)\n2. Save your access token in the database: local-base configure --hf-token "your_token" (or set the HF_TOKEN environment variable)\n3. Re-run the command.`,
+      );
+    }
     throw new Error(`Failed to download model from ${url}`);
   }
 
