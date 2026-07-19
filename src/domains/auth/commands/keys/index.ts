@@ -1,4 +1,9 @@
-import { createApiKey, loadApiKeys, revokeApiKey, rotateApiKey } from "../../../../manager";
+import {
+  createApiKey,
+  loadApiKeys,
+  revokeApiKey,
+  rotateApiKey,
+} from "../../../../manager";
 import { parseFlag, toInt } from "../../../../utils/args";
 import type { AppContext } from "../../../../context";
 
@@ -8,12 +13,14 @@ export function runKeys(args: string[], ctx: AppContext): number {
   if (sub === "list") {
     const keys = loadApiKeys(ctx.config);
     if (keys.length === 0) {
-      console.log("No API keys found. Create one with: local-base keys create --name default");
+      console.log(
+        "No API keys found. Create one with: local-base keys create --name default",
+      );
       return 0;
     }
     for (const key of keys) {
       console.log(
-        `${key.id} | ${key.name} | prefix=${key.prefix} | created=${key.createdAt} | rotated=${key.lastRotatedAt}${key.expiresAt ? ` | expires=${key.expiresAt}` : ""}${key.revokedAt ? ` | revoked=${key.revokedAt}` : ""}`
+        `${key.id} | ${key.name} | prefix=${key.prefix} | created=${key.createdAt} | rotated=${key.lastRotatedAt}${key.expiresAt ? ` | expires=${key.expiresAt}` : ""}${key.revokedAt ? ` | revoked=${key.revokedAt}` : ""}`,
       );
     }
     return 0;
@@ -22,8 +29,14 @@ export function runKeys(args: string[], ctx: AppContext): number {
   if (sub === "create") {
     const name = parseFlag(args, "--name") ?? "manual";
     const expiresDays = toInt(parseFlag(args, "--expires-days"), 0);
-    const { record, rawKey } = createApiKey(ctx.config, name, expiresDays > 0 ? expiresDays : undefined);
-    console.log(`Created key id=${record.id} name=${record.name} prefix=${record.prefix}`);
+    const { record, rawKey } = createApiKey(
+      ctx.config,
+      name,
+      expiresDays > 0 ? expiresDays : undefined,
+    );
+    console.log(
+      `Created key id=${record.id} name=${record.name} prefix=${record.prefix}`,
+    );
     console.log(`secret=${rawKey}`);
     console.log("Store this secret now. It is not shown again.");
     return 0;
@@ -56,4 +69,3 @@ export function runKeys(args: string[], ctx: AppContext): number {
   console.error(`Unknown keys subcommand: ${sub}`);
   return 2;
 }
-

@@ -1,14 +1,33 @@
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 import { homedir, platform, arch } from "node:os";
 import { basename, extname, join } from "node:path";
-import { computeSha256, parseChecksumFile, readChecksumStore, recordChecksum, verifyChecksum, verifyStoredChecksum, writeChecksumStore } from "./utils/checksum";
+import {
+  computeSha256,
+  parseChecksumFile,
+  readChecksumStore,
+  recordChecksum,
+  verifyChecksum,
+  verifyStoredChecksum,
+  writeChecksumStore,
+} from "./utils/checksum";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { eq } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { Database } from "bun:sqlite";
-import { byId, type ModelKind, type ModelSpec, recommendedForVram, recommendedSttForVram } from "./catalog";
+import {
+  byId,
+  type ModelKind,
+  type ModelSpec,
+  recommendedForVram,
+  recommendedSttForVram,
+} from "./catalog";
 
 // ---------------------------------------------------------------------------
 // Pinned upstream versions — update these when qualifying a new binary release.
@@ -16,7 +35,8 @@ import { byId, type ModelKind, type ModelSpec, recommendedForVram, recommendedSt
 // llama-server is sourced from the ggml-org/llama.cpp prebuilt releases.
 // ---------------------------------------------------------------------------
 const LLAMA_CPP_VERSION = "b9741";
-const LOCALBASE_RELEASES_BASE = "https://github.com/timsexperiments/LocalBase/releases/latest/download";
+const LOCALBASE_RELEASES_BASE =
+  "https://github.com/timsexperiments/LocalBase/releases/latest/download";
 
 export type LocalBaseConfig = {
   root: string;
@@ -71,10 +91,8 @@ const configTable = sqliteTable("config", {
   activeLlmModel: text("active_llm_model").notNull(),
   activeSttModel: text("active_stt_model").notNull(),
   activeImageModel: text("active_image_model").default("").notNull(),
-  systemPrompt: text("system_prompt").default("").notNull()
+  systemPrompt: text("system_prompt").default("").notNull(),
 });
-
-
 
 const apiKeysTable = sqliteTable("api_keys", {
   id: text("id").primaryKey(),
@@ -84,7 +102,7 @@ const apiKeysTable = sqliteTable("api_keys", {
   createdAt: text("created_at").notNull(),
   lastRotatedAt: text("last_rotated_at").notNull(),
   expiresAt: text("expires_at"),
-  revokedAt: text("revoked_at")
+  revokedAt: text("revoked_at"),
 });
 
 function dbPath(root: string): string {
@@ -152,8 +170,6 @@ function openDb(root: string) {
   return drizzle(sqlite);
 }
 
-
-
 function toConfigRow(config: LocalBaseConfig) {
   return {
     id: "default",
@@ -175,14 +191,16 @@ function toConfigRow(config: LocalBaseConfig) {
     activeLlmModel: config.activeLlmModel,
     activeSttModel: config.activeSttModel,
     activeImageModel: config.activeImageModel,
-    systemPrompt: config.systemPrompt
+    systemPrompt: config.systemPrompt,
   };
 }
 
-function fromConfigRow(row: (typeof configTable.$inferSelect)): LocalBaseConfig {
+function fromConfigRow(row: typeof configTable.$inferSelect): LocalBaseConfig {
   const root = row.root;
   const imageModelsDir = row.imageModelsDir || join(root, "models", "image");
-  const selectedImageModels = row.selectedImageModels ? (JSON.parse(row.selectedImageModels) as string[]) : ["stable-diffusion-v1-5"];
+  const selectedImageModels = row.selectedImageModels
+    ? (JSON.parse(row.selectedImageModels) as string[])
+    : ["stable-diffusion-v1-5"];
   const activeImageModel = row.activeImageModel || "stable-diffusion-v1-5";
 
   return {
@@ -204,14 +222,9 @@ function fromConfigRow(row: (typeof configTable.$inferSelect)): LocalBaseConfig 
     activeLlmModel: row.activeLlmModel,
     activeSttModel: row.activeSttModel,
     activeImageModel,
-    systemPrompt: row.systemPrompt ?? ""
+    systemPrompt: row.systemPrompt ?? "",
   };
 }
-
-
-
-
-
 
 function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a, "utf8");
@@ -242,8 +255,13 @@ export function defaultRoot(): string {
 }
 
 function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
-  const llm = recommendedForVram(vramGb)[0]?.modelId ?? "qwen2.5-coder-7b-instruct-q4_k_m";
-  const stt = recommendedSttForVram(vramGb)[2]?.modelId ?? recommendedSttForVram(vramGb)[0]?.modelId ?? "whisper-base-q8_0";
+  const llm =
+    recommendedForVram(vramGb)[0]?.modelId ??
+    "qwen2.5-coder-7b-instruct-q4_k_m";
+  const stt =
+    recommendedSttForVram(vramGb)[2]?.modelId ??
+    recommendedSttForVram(vramGb)[0]?.modelId ??
+    "whisper-base-q8_0";
   const defaultCtxSize = 131072;
   return {
     root,
@@ -264,10 +282,9 @@ function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     activeLlmModel: llm,
     activeSttModel: stt,
     activeImageModel: "stable-diffusion-v1-5",
-    systemPrompt: ""
+    systemPrompt: "",
   };
 }
-
 
 export function ensureDirs(config: LocalBaseConfig): void {
   mkdirSync(config.root, { recursive: true });
@@ -276,13 +293,19 @@ export function ensureDirs(config: LocalBaseConfig): void {
   mkdirSync(config.imageModelsDir, { recursive: true });
 }
 
-
 export function saveConfig(config: LocalBaseConfig): void {
   ensureDirs(config);
   const db = openDb(config.root);
-  const existing = db.select().from(configTable).where(eq(configTable.id, "default")).get();
+  const existing = db
+    .select()
+    .from(configTable)
+    .where(eq(configTable.id, "default"))
+    .get();
   if (existing) {
-    db.update(configTable).set(toConfigRow(config)).where(eq(configTable.id, "default")).run();
+    db.update(configTable)
+      .set(toConfigRow(config))
+      .where(eq(configTable.id, "default"))
+      .run();
   } else {
     db.insert(configTable).values(toConfigRow(config)).run();
   }
@@ -298,11 +321,18 @@ export function initConfig(root?: string, vramGb?: number): LocalBaseConfig {
 export function loadConfig(root?: string, vramGb?: number): LocalBaseConfig {
   const selectedRoot = root ?? defaultRoot();
   const db = openDb(selectedRoot);
-  const row = db.select().from(configTable).where(eq(configTable.id, "default")).get();
+  const row = db
+    .select()
+    .from(configTable)
+    .where(eq(configTable.id, "default"))
+    .get();
   if (!row) {
     return initConfig(selectedRoot, vramGb);
   }
-  const merged = { ...defaultConfig(selectedRoot, vramGb ?? 0), ...fromConfigRow(row) } as LocalBaseConfig;
+  const merged = {
+    ...defaultConfig(selectedRoot, vramGb ?? 0),
+    ...fromConfigRow(row),
+  } as LocalBaseConfig;
   ensureDirs(merged);
   return merged;
 }
@@ -331,12 +361,19 @@ function kindDir(config: LocalBaseConfig, kind: ModelKind): string {
   return join(config.root, "models", kind);
 }
 
-export function installedModels(config: LocalBaseConfig, kind?: ModelKind): string[] {
+export function installedModels(
+  config: LocalBaseConfig,
+  kind?: ModelKind,
+): string[] {
   const dir = kind ? kindDir(config, kind) : undefined;
   if (dir) {
     if (!existsSync(dir)) return [];
     return readdirSync(dir)
-      .filter((name) => [".gguf", ".bin", ".onnx", ".safetensors", ".pth"].includes(extname(name)))
+      .filter((name) =>
+        [".gguf", ".bin", ".onnx", ".safetensors", ".pth"].includes(
+          extname(name),
+        ),
+      )
       .sort();
   }
 
@@ -345,12 +382,15 @@ export function installedModels(config: LocalBaseConfig, kind?: ModelKind): stri
     const d = kindDir(config, k);
     if (!existsSync(d)) return [];
     return readdirSync(d)
-      .filter((name) => [".gguf", ".bin", ".onnx", ".safetensors", ".pth"].includes(extname(name)))
+      .filter((name) =>
+        [".gguf", ".bin", ".onnx", ".safetensors", ".pth"].includes(
+          extname(name),
+        ),
+      )
       .map((name) => `${k}:${name}`);
   });
   return files.sort();
 }
-
 
 function resolveDownload(spec: ModelSpec): string {
   const base = spec.source.replace(/\/$/, "");
@@ -358,7 +398,11 @@ function resolveDownload(spec: ModelSpec): string {
   return `${base}/${path.replace(/^\//, "")}`;
 }
 
-export async function installModel(config: LocalBaseConfig, modelId: string, filename?: string): Promise<string> {
+export async function installModel(
+  config: LocalBaseConfig,
+  modelId: string,
+  filename?: string,
+): Promise<string> {
   const spec = byId(modelId);
   if (!spec) {
     throw new Error(`Unknown model id: ${modelId}`);
@@ -377,7 +421,9 @@ export async function installModel(config: LocalBaseConfig, modelId: string, fil
     const known = await verifyStoredChecksum(targetDir, inferred, output);
     if (!known) {
       // First run after upgrade or fresh install without a stored hash — record it.
-      console.log(`📝 Recording checksum for existing model file "${inferred}"...`);
+      console.log(
+        `📝 Recording checksum for existing model file "${inferred}"...`,
+      );
       await recordChecksum(targetDir, inferred, output);
     }
     return output;
@@ -389,10 +435,12 @@ export async function installModel(config: LocalBaseConfig, modelId: string, fil
     curlArgs.push("-H", `Authorization: Bearer ${process.env.HF_TOKEN}`);
   }
   curlArgs.push("-o", output, url);
-  
+
   const result = spawnSync("curl", curlArgs, { stdio: "inherit" });
   if (result.status !== 0) {
-    try { rmSync(output, { force: true }); } catch {}
+    try {
+      rmSync(output, { force: true });
+    } catch {}
     throw new Error(`Failed to download model from ${url}`);
   }
 
@@ -405,21 +453,26 @@ export async function installModel(config: LocalBaseConfig, modelId: string, fil
 
 export function loadApiKeys(config: LocalBaseConfig): ApiKeyRecord[] {
   const db = openDb(config.root);
-  return db.select().from(apiKeysTable).all().map((row) => ({
-    id: row.id,
-    name: row.name,
-    prefix: row.prefix,
-    keyHash: row.keyHash,
-    createdAt: row.createdAt,
-    lastRotatedAt: row.lastRotatedAt,
-    expiresAt: row.expiresAt ?? undefined,
-    revokedAt: row.revokedAt ?? undefined
-  }));
+  return db
+    .select()
+    .from(apiKeysTable)
+    .all()
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      prefix: row.prefix,
+      keyHash: row.keyHash,
+      createdAt: row.createdAt,
+      lastRotatedAt: row.lastRotatedAt,
+      expiresAt: row.expiresAt ?? undefined,
+      revokedAt: row.revokedAt ?? undefined,
+    }));
 }
 
-
-
-export function validateApiKey(config: LocalBaseConfig, presentedKey: string): boolean {
+export function validateApiKey(
+  config: LocalBaseConfig,
+  presentedKey: string,
+): boolean {
   if (!presentedKey) return false;
   const presentedHash = hashApiKey(presentedKey);
   const keys = loadApiKeys(config);
@@ -429,7 +482,11 @@ export function validateApiKey(config: LocalBaseConfig, presentedKey: string): b
   }
   return false;
 }
-export function createApiKey(config: LocalBaseConfig, name: string, expiresDays?: number): { record: ApiKeyRecord; rawKey: string } {
+export function createApiKey(
+  config: LocalBaseConfig,
+  name: string,
+  expiresDays?: number,
+): { record: ApiKeyRecord; rawKey: string } {
   const db = openDb(config.root);
   const now = new Date().toISOString();
   const { key, prefix } = makeRawApiKey();
@@ -440,29 +497,44 @@ export function createApiKey(config: LocalBaseConfig, name: string, expiresDays?
     keyHash: hashApiKey(key),
     createdAt: now,
     lastRotatedAt: now,
-    expiresAt: expiresDays && expiresDays > 0 ? new Date(Date.now() + expiresDays * 86400_000).toISOString() : undefined
+    expiresAt:
+      expiresDays && expiresDays > 0
+        ? new Date(Date.now() + expiresDays * 86400_000).toISOString()
+        : undefined,
   };
-  db.insert(apiKeysTable).values({
-    id: record.id,
-    name: record.name,
-    prefix: record.prefix,
-    keyHash: record.keyHash,
-    createdAt: record.createdAt,
-    lastRotatedAt: record.lastRotatedAt,
-    expiresAt: record.expiresAt,
-    revokedAt: null
-  }).run();
+  db.insert(apiKeysTable)
+    .values({
+      id: record.id,
+      name: record.name,
+      prefix: record.prefix,
+      keyHash: record.keyHash,
+      createdAt: record.createdAt,
+      lastRotatedAt: record.lastRotatedAt,
+      expiresAt: record.expiresAt,
+      revokedAt: null,
+    })
+    .run();
   return { record, rawKey: key };
 }
 
-export function revokeApiKey(config: LocalBaseConfig, id: string): ApiKeyRecord {
+export function revokeApiKey(
+  config: LocalBaseConfig,
+  id: string,
+): ApiKeyRecord {
   const db = openDb(config.root);
-  const record = db.select().from(apiKeysTable).where(eq(apiKeysTable.id, id)).get();
+  const record = db
+    .select()
+    .from(apiKeysTable)
+    .where(eq(apiKeysTable.id, id))
+    .get();
   if (!record) {
     throw new Error(`API key not found: ${id}`);
   }
   const revokedAt = new Date().toISOString();
-  db.update(apiKeysTable).set({ revokedAt }).where(eq(apiKeysTable.id, id)).run();
+  db.update(apiKeysTable)
+    .set({ revokedAt })
+    .where(eq(apiKeysTable.id, id))
+    .run();
   return {
     id: record.id,
     name: record.name,
@@ -471,13 +543,20 @@ export function revokeApiKey(config: LocalBaseConfig, id: string): ApiKeyRecord 
     createdAt: record.createdAt,
     lastRotatedAt: record.lastRotatedAt,
     expiresAt: record.expiresAt ?? undefined,
-    revokedAt
+    revokedAt,
   };
 }
 
-export function rotateApiKey(config: LocalBaseConfig, id: string): { record: ApiKeyRecord; rawKey: string } {
+export function rotateApiKey(
+  config: LocalBaseConfig,
+  id: string,
+): { record: ApiKeyRecord; rawKey: string } {
   const db = openDb(config.root);
-  const record = db.select().from(apiKeysTable).where(eq(apiKeysTable.id, id)).get();
+  const record = db
+    .select()
+    .from(apiKeysTable)
+    .where(eq(apiKeysTable.id, id))
+    .get();
   if (!record) {
     throw new Error(`API key not found: ${id}`);
   }
@@ -498,19 +577,20 @@ export function rotateApiKey(config: LocalBaseConfig, id: string): { record: Api
       createdAt: record.createdAt,
       lastRotatedAt,
       expiresAt: record.expiresAt ?? undefined,
-      revokedAt: undefined
+      revokedAt: undefined,
     },
-    rawKey: key
+    rawKey: key,
   };
 }
-
-
 
 /**
  * Resolves a binary by checking the LocalBase-managed bin dir first, then PATH.
  * Returns null if the binary is not available anywhere on the system.
  */
-export function resolveBinaryPath(config: LocalBaseConfig, name: string): string | null {
+export function resolveBinaryPath(
+  config: LocalBaseConfig,
+  name: string,
+): string | null {
   const localBin = join(config.root, "bin", name);
   if (existsSync(localBin)) {
     return localBin;
@@ -529,7 +609,9 @@ export function resolveBinaryPath(config: LocalBaseConfig, name: string): string
  * Throws if the download fails.
  */
 function curlDownload(url: string, dest: string): void {
-  const result = spawnSync("curl", ["-L", "--fail", "-o", dest, url], { stdio: "inherit" });
+  const result = spawnSync("curl", ["-L", "--fail", "-o", dest, url], {
+    stdio: "inherit",
+  });
   if (result.status !== 0) {
     throw new Error(`Failed to download ${url}`);
   }
@@ -544,12 +626,12 @@ function platformAssetSuffix(): string {
   const os = platform();
   const cpu = arch();
   if (os === "darwin" && cpu === "arm64") return "macos-arm64";
-  if (os === "darwin" && cpu === "x64")   return "macos-x64";
-  if (os === "linux"  && cpu === "x64")   return "linux-x64";
-  if (os === "linux"  && cpu === "arm64") return "linux-arm64";
+  if (os === "darwin" && cpu === "x64") return "macos-x64";
+  if (os === "linux" && cpu === "x64") return "linux-x64";
+  if (os === "linux" && cpu === "arm64") return "linux-arm64";
   throw new Error(
     `Unsupported platform for prebuilt binaries: ${os} ${cpu}.\n` +
-    `Install llama-server / whisper-server manually and ensure they are on PATH.`
+      `Install llama-server / whisper-server manually and ensure they are on PATH.`,
   );
 }
 
@@ -562,23 +644,29 @@ async function downloadWhisperServer(config: LocalBaseConfig): Promise<string> {
   const binDir = join(config.root, "bin");
   mkdirSync(binDir, { recursive: true });
 
-  const suffix   = platformAssetSuffix();
+  const suffix = platformAssetSuffix();
   const assetName = `whisper-server-${suffix}`;
-  const binaryUrl  = `${LOCALBASE_RELEASES_BASE}/${assetName}`;
+  const binaryUrl = `${LOCALBASE_RELEASES_BASE}/${assetName}`;
   const checksumUrl = `${LOCALBASE_RELEASES_BASE}/checksums.txt`;
 
-  console.log(`\n⬇️  Fetching whisper-server checksums from LocalBase releases...`);
-  const csRes = await fetch(checksumUrl, { headers: { "User-Agent": "LocalBase-CLI" } });
+  console.log(
+    `\n⬇️  Fetching whisper-server checksums from LocalBase releases...`,
+  );
+  const csRes = await fetch(checksumUrl, {
+    headers: { "User-Agent": "LocalBase-CLI" },
+  });
   if (!csRes.ok) {
     throw new Error(
       `Could not fetch checksums from LocalBase releases (${csRes.status}).\n` +
-      `Ensure a release exists at ${LOCALBASE_RELEASES_BASE}.`
+        `Ensure a release exists at ${LOCALBASE_RELEASES_BASE}.`,
     );
   }
   const checksumMap = parseChecksumFile(await csRes.text());
   const expectedHash = checksumMap.get(assetName);
   if (!expectedHash) {
-    throw new Error(`No checksum entry found for "${assetName}" in release checksums.txt.`);
+    throw new Error(
+      `No checksum entry found for "${assetName}" in release checksums.txt.`,
+    );
   }
 
   const destPath = join(binDir, "whisper-server");
@@ -614,27 +702,37 @@ async function downloadLlamaServer(config: LocalBaseConfig): Promise<string> {
   const assetName = `llama-${LLAMA_CPP_VERSION}-bin-${suffix === "macos-arm64" ? "macos-arm64" : suffix === "macos-x64" ? "macos-x64" : suffix === "linux-x64" ? "ubuntu-x64" : "ubuntu-arm64"}.tar.gz`;
   const url = `https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_CPP_VERSION}/${assetName}`;
 
-  console.log(`\n⬇️  Downloading llama-server ${LLAMA_CPP_VERSION} (${suffix})...`);
+  console.log(
+    `\n⬇️  Downloading llama-server ${LLAMA_CPP_VERSION} (${suffix})...`,
+  );
   const archivePath = join(binDir, assetName);
   curlDownload(url, archivePath);
 
   console.log("Extracting llama.cpp release...");
-  const ext = spawnSync("tar", ["-zxf", archivePath, "-C", binDir, "--strip-components=1"], { stdio: "inherit" });
-  try { Bun.spawnSync(["rm", "-f", archivePath]); } catch {}
+  const ext = spawnSync(
+    "tar",
+    ["-zxf", archivePath, "-C", binDir, "--strip-components=1"],
+    { stdio: "inherit" },
+  );
+  try {
+    Bun.spawnSync(["rm", "-f", archivePath]);
+  } catch {}
   if (ext.status !== 0) throw new Error("Failed to extract llama.cpp archive.");
 
   const destPath = join(binDir, "llama-server");
-  if (!existsSync(destPath)) throw new Error("llama-server binary not found after extraction.");
+  if (!existsSync(destPath))
+    throw new Error("llama-server binary not found after extraction.");
 
   spawnSync("chmod", ["+x", destPath]);
   if (platform() === "darwin") {
     spawnSync("xattr", ["-rd", "com.apple.quarantine", binDir]);
   }
 
-
   // Record the SHA-256 we got from ggml-org for future integrity checks.
   await recordChecksum(binDir, "llama-server", destPath);
-  console.log(`\n✅ llama-server ${LLAMA_CPP_VERSION} installed to ${destPath}`);
+  console.log(
+    `\n✅ llama-server ${LLAMA_CPP_VERSION} installed to ${destPath}`,
+  );
   return destPath;
 }
 
@@ -659,22 +757,33 @@ async function downloadSdServer(config: LocalBaseConfig): Promise<string> {
   } else {
     throw new Error(
       `No prebuilt stable-diffusion.cpp binaries are available for platform ${plat}-${a}.\n` +
-      `Please compile stable-diffusion.cpp locally and place the 'sd-server' executable in your system PATH or under ${join(binDir, "sd-server")}.`
+        `Please compile stable-diffusion.cpp locally and place the 'sd-server' executable in your system PATH or under ${join(binDir, "sd-server")}.`,
     );
   }
 
   const url = `https://github.com/leejet/stable-diffusion.cpp/releases/download/master-778-c00a9e9/${assetName}`;
-  console.log(`\n⬇️  Downloading stable-diffusion.cpp server (${plat}-${a})...`);
+  console.log(
+    `\n⬇️  Downloading stable-diffusion.cpp server (${plat}-${a})...`,
+  );
   const archivePath = join(binDir, assetName);
   curlDownload(url, archivePath);
 
   console.log("Extracting stable-diffusion.cpp release...");
-  const ext = spawnSync("unzip", ["-o", archivePath, "-d", binDir], { stdio: "inherit" });
-  try { Bun.spawnSync(["rm", "-f", archivePath]); } catch {}
-  if (ext.status !== 0) throw new Error("Failed to extract stable-diffusion.cpp archive.");
+  const ext = spawnSync("unzip", ["-o", archivePath, "-d", binDir], {
+    stdio: "inherit",
+  });
+  try {
+    Bun.spawnSync(["rm", "-f", archivePath]);
+  } catch {}
+  if (ext.status !== 0)
+    throw new Error("Failed to extract stable-diffusion.cpp archive.");
 
-  const destPath = join(binDir, plat === "win32" ? "sd-server.exe" : "sd-server");
-  if (!existsSync(destPath)) throw new Error("sd-server binary not found after extraction.");
+  const destPath = join(
+    binDir,
+    plat === "win32" ? "sd-server.exe" : "sd-server",
+  );
+  if (!existsSync(destPath))
+    throw new Error("sd-server binary not found after extraction.");
 
   spawnSync("chmod", ["+x", destPath]);
   if (plat === "darwin") {
@@ -692,7 +801,10 @@ async function downloadSdServer(config: LocalBaseConfig): Promise<string> {
  *  2. Available on system PATH — used as-is (user-managed installation).
  *  3. Downloaded from the appropriate prebuilt release and checksum-verified.
  */
-export async function ensureBinary(config: LocalBaseConfig, name: "llama-server" | "whisper-server" | "sd-server"): Promise<string> {
+export async function ensureBinary(
+  config: LocalBaseConfig,
+  name: "llama-server" | "whisper-server" | "sd-server",
+): Promise<string> {
   const binDir = join(config.root, "bin");
   const localBinName = platform() === "win32" ? `${name}.exe` : name;
   const localBin = join(binDir, localBinName);
@@ -708,9 +820,15 @@ export async function ensureBinary(config: LocalBaseConfig, name: "llama-server"
   }
 
   // 2. Check system PATH.
-  const systemBin = spawnSync(platform() === "win32" ? "where" : "which", [localBinName], { encoding: "utf8" });
+  const systemBin = spawnSync(
+    platform() === "win32" ? "where" : "which",
+    [localBinName],
+    { encoding: "utf8" },
+  );
   if (systemBin.status === 0 && systemBin.stdout.trim()) {
-    console.log(`ℹ️  Using system-installed ${name} at ${systemBin.stdout.trim()}`);
+    console.log(
+      `ℹ️  Using system-installed ${name} at ${systemBin.stdout.trim()}`,
+    );
     return systemBin.stdout.trim();
   }
 
@@ -720,13 +838,16 @@ export async function ensureBinary(config: LocalBaseConfig, name: "llama-server"
   return downloadLlamaServer(config);
 }
 
-
-
-
 /**
  * Spawns the llama-server background subprocess with memory/attention optimizations.
  */
-export async function startLlamaServerProcess(config: LocalBaseConfig, modelFile: string, host: string, port: number, ctxSize: number): Promise<Bun.Subprocess> {
+export async function startLlamaServerProcess(
+  config: LocalBaseConfig,
+  modelFile: string,
+  host: string,
+  port: number,
+  ctxSize: number,
+): Promise<Bun.Subprocess> {
   const modelPath = join(config.llmModelsDir, modelFile);
   if (!existsSync(modelPath)) {
     throw new Error(`Model file not found: ${modelPath}`);
@@ -735,17 +856,22 @@ export async function startLlamaServerProcess(config: LocalBaseConfig, modelFile
   const binPath = await ensureBinary(config, "llama-server");
   const args = [
     binPath,
-    "-m", modelPath,
-    "--host", host,
-    "--port", String(port),
-    "-c", String(ctxSize),
+    "-m",
+    modelPath,
+    "--host",
+    host,
+    "--port",
+    String(port),
+    "-c",
+    String(ctxSize),
     // Force --parallel 1 so the single active agent session gets the full context limit.
     // llama-server's default is 4, which splits context size equally among 4 slots.
-    "--parallel", "1",
+    "--parallel",
+    "1",
     // Force --jinja to parse model's embedded tokenizer template correctly instead of standard fallback.
     "--jinja",
     // Expose the /v1/embeddings endpoint for local vector indexing/search in coding clients.
-    "--embeddings"
+    "--embeddings",
   ];
 
   // Enable --flash-attn on Apple Silicon GPUs for up to 2x faster prompt prefill and reduced VRAM.
@@ -756,11 +882,16 @@ export async function startLlamaServerProcess(config: LocalBaseConfig, modelFile
   return Bun.spawn(args, {
     stdout: "pipe",
     stderr: "pipe",
-    stdin: "inherit"
+    stdin: "inherit",
   });
 }
 
-export async function startWhisperServerProcess(config: LocalBaseConfig, modelFile: string, host: string, port: number): Promise<Bun.Subprocess> {
+export async function startWhisperServerProcess(
+  config: LocalBaseConfig,
+  modelFile: string,
+  host: string,
+  port: number,
+): Promise<Bun.Subprocess> {
   const modelPath = join(config.sttModelsDir, modelFile);
   if (!existsSync(modelPath)) {
     throw new Error(`STT model file not found: ${modelPath}`);
@@ -768,14 +899,23 @@ export async function startWhisperServerProcess(config: LocalBaseConfig, modelFi
 
   const binPath = await ensureBinary(config, "whisper-server");
 
-  return Bun.spawn([binPath, "--model", modelPath, "--host", host, "--port", String(port)], {
-    stdout: "pipe",
-    stderr: "pipe",
-    stdin: "inherit"
-  });
+  return Bun.spawn(
+    [binPath, "--model", modelPath, "--host", host, "--port", String(port)],
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+      stdin: "inherit",
+    },
+  );
 }
 
-export async function launchLlamaServer(config: LocalBaseConfig, modelFile: string, host: string, port: number, ctxSize: number): Promise<number> {
+export async function launchLlamaServer(
+  config: LocalBaseConfig,
+  modelFile: string,
+  host: string,
+  port: number,
+  ctxSize: number,
+): Promise<number> {
   const modelPath = join(config.llmModelsDir, modelFile);
   if (!existsSync(modelPath)) {
     throw new Error(`Model file not found: ${modelPath}`);
@@ -783,13 +923,18 @@ export async function launchLlamaServer(config: LocalBaseConfig, modelFile: stri
 
   const binPath = await ensureBinary(config, "llama-server");
   const args = [
-    "-m", modelPath,
-    "--host", host,
-    "--port", String(port),
-    "-c", String(ctxSize),
-    "--parallel", "1",
+    "-m",
+    modelPath,
+    "--host",
+    host,
+    "--port",
+    String(port),
+    "-c",
+    String(ctxSize),
+    "--parallel",
+    "1",
     "--jinja",
-    "--embeddings"
+    "--embeddings",
   ];
 
   if (platform() === "darwin" && arch() === "arm64") {
@@ -797,13 +942,18 @@ export async function launchLlamaServer(config: LocalBaseConfig, modelFile: stri
   }
 
   const result = spawnSync(binPath, args, {
-    stdio: "inherit"
+    stdio: "inherit",
   });
 
   return result.status ?? 1;
 }
 
-export async function launchWhisperServer(config: LocalBaseConfig, modelFile: string, host: string, port: number): Promise<number> {
+export async function launchWhisperServer(
+  config: LocalBaseConfig,
+  modelFile: string,
+  host: string,
+  port: number,
+): Promise<number> {
   const modelPath = join(config.sttModelsDir, modelFile);
   if (!existsSync(modelPath)) {
     throw new Error(`STT model file not found: ${modelPath}`);
@@ -811,14 +961,23 @@ export async function launchWhisperServer(config: LocalBaseConfig, modelFile: st
 
   const binPath = await ensureBinary(config, "whisper-server");
 
-  const result = spawnSync(binPath, ["--model", modelPath, "--host", host, "--port", String(port)], {
-    stdio: "inherit"
-  });
+  const result = spawnSync(
+    binPath,
+    ["--model", modelPath, "--host", host, "--port", String(port)],
+    {
+      stdio: "inherit",
+    },
+  );
 
   return result.status ?? 1;
 }
 
-export async function startSdServerProcess(config: LocalBaseConfig, modelFile: string, host: string, port: number): Promise<Bun.Subprocess> {
+export async function startSdServerProcess(
+  config: LocalBaseConfig,
+  modelFile: string,
+  host: string,
+  port: number,
+): Promise<Bun.Subprocess> {
   const modelPath = join(config.imageModelsDir, modelFile);
   if (!existsSync(modelPath)) {
     throw new Error(`Model file not found: ${modelPath}`);
@@ -828,20 +987,28 @@ export async function startSdServerProcess(config: LocalBaseConfig, modelFile: s
   const binDir = join(config.root, "bin");
   const args = [
     binPath,
-    "-m", modelPath,
-    "--listen-ip", host,
-    "--listen-port", String(port)
+    "-m",
+    modelPath,
+    "--listen-ip",
+    host,
+    "--listen-port",
+    String(port),
   ];
 
   return Bun.spawn(args, {
     stdout: "pipe",
     stderr: "pipe",
     stdin: "inherit",
-    cwd: binDir
+    cwd: binDir,
   });
 }
 
-export async function launchSdServer(config: LocalBaseConfig, modelFile: string, host: string, port: number): Promise<number> {
+export async function launchSdServer(
+  config: LocalBaseConfig,
+  modelFile: string,
+  host: string,
+  port: number,
+): Promise<number> {
   const modelPath = join(config.imageModelsDir, modelFile);
   if (!existsSync(modelPath)) {
     throw new Error(`Model file not found: ${modelPath}`);
@@ -850,16 +1017,18 @@ export async function launchSdServer(config: LocalBaseConfig, modelFile: string,
   const binPath = await ensureBinary(config, "sd-server");
   const binDir = join(config.root, "bin");
   const args = [
-    "-m", modelPath,
-    "--listen-ip", host,
-    "--listen-port", String(port)
+    "-m",
+    modelPath,
+    "--listen-ip",
+    host,
+    "--listen-port",
+    String(port),
   ];
 
   const result = spawnSync(binPath, args, {
     stdio: "inherit",
-    cwd: binDir
+    cwd: binDir,
   });
 
   return result.status ?? 1;
 }
-

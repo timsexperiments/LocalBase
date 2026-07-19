@@ -5,7 +5,13 @@ export interface ILogger {
   info(prefix: string, message: string): void;
   warn(prefix: string, message: string): void;
   error(prefix: string, message: string, err?: Error): void;
-  request(ip: string, method: string, path: string, status: number, durationMs: number): void;
+  request(
+    ip: string,
+    method: string,
+    path: string,
+    status: number,
+    durationMs: number,
+  ): void;
   pipeStream(stream: ReadableStream<Uint8Array>, name: string): void;
 }
 
@@ -18,22 +24,35 @@ export class ConsoleLogger implements ILogger {
   }
 
   info(prefix: string, message: string): void {
-    console.log(`[${this.getTimestamp()}] \x1b[32m[INFO]\x1b[0m [\x1b[36m${prefix}\x1b[0m] ${message}`);
+    console.log(
+      `[${this.getTimestamp()}] \x1b[32m[INFO]\x1b[0m [\x1b[36m${prefix}\x1b[0m] ${message}`,
+    );
   }
 
   warn(prefix: string, message: string): void {
-    console.warn(`[${this.getTimestamp()}] \x1b[33m[WARN]\x1b[0m [\x1b[36m${prefix}\x1b[0m] ${message}`);
+    console.warn(
+      `[${this.getTimestamp()}] \x1b[33m[WARN]\x1b[0m [\x1b[36m${prefix}\x1b[0m] ${message}`,
+    );
   }
 
   error(prefix: string, message: string, err?: Error): void {
     const errText = err ? `: ${err.stack ?? err.message}` : "";
-    console.error(`[${this.getTimestamp()}] \x1b[31m[ERROR]\x1b[0m [\x1b[36m${prefix}\x1b[0m] ${message}${errText}`);
+    console.error(
+      `[${this.getTimestamp()}] \x1b[31m[ERROR]\x1b[0m [\x1b[36m${prefix}\x1b[0m] ${message}${errText}`,
+    );
   }
 
-  request(ip: string, method: string, path: string, status: number, durationMs: number): void {
-    const color = status >= 500 ? "\x1b[31m" : status >= 400 ? "\x1b[33m" : "\x1b[32m";
+  request(
+    ip: string,
+    method: string,
+    path: string,
+    status: number,
+    durationMs: number,
+  ): void {
+    const color =
+      status >= 500 ? "\x1b[31m" : status >= 400 ? "\x1b[33m" : "\x1b[32m";
     console.log(
-      `[${this.getTimestamp()}] \x1b[32m[INFO]\x1b[0m [\x1b[35mHTTP\x1b[0m] ${ip} - ${method} ${path} -> ${color}${status}\x1b[0m (${durationMs.toFixed(1)}ms)`
+      `[${this.getTimestamp()}] \x1b[32m[INFO]\x1b[0m [\x1b[35mHTTP\x1b[0m] ${ip} - ${method} ${path} -> ${color}${status}\x1b[0m (${durationMs.toFixed(1)}ms)`,
     );
   }
 
@@ -52,7 +71,9 @@ export class ConsoleLogger implements ILogger {
           buffer = lines.pop() ?? "";
           for (const line of lines) {
             if (line.trim()) {
-              console.log(`[${this.getTimestamp()}] [\x1b[36m${name}\x1b[0m] ${line}`);
+              console.log(
+                `[${this.getTimestamp()}] [\x1b[36m${name}\x1b[0m] ${line}`,
+              );
             }
           }
         }
@@ -68,15 +89,20 @@ export class ConsoleLogger implements ILogger {
  * Structured JSON-line logger. Optimized for production metrics and ship-to-service collectors.
  */
 export class JsonLogger implements ILogger {
-  private log(level: string, prefix: string, message: string, extra?: Record<string, any>): void {
+  private log(
+    level: string,
+    prefix: string,
+    message: string,
+    extra?: Record<string, any>,
+  ): void {
     console.log(
       JSON.stringify({
         timestamp: new Date().toISOString(),
         level,
         prefix,
         message,
-        ...extra
-      })
+        ...extra,
+      }),
     );
   }
 
@@ -89,18 +115,29 @@ export class JsonLogger implements ILogger {
   }
 
   error(prefix: string, message: string, err?: Error): void {
-    this.log("ERROR", prefix, message, err ? { error: err.message, stack: err.stack } : undefined);
+    this.log(
+      "ERROR",
+      prefix,
+      message,
+      err ? { error: err.message, stack: err.stack } : undefined,
+    );
   }
 
-  request(ip: string, method: string, path: string, status: number, durationMs: number): void {
+  request(
+    ip: string,
+    method: string,
+    path: string,
+    status: number,
+    durationMs: number,
+  ): void {
     this.log("INFO", "HTTP", `${method} ${path} -> ${status}`, {
       http: {
         client_ip: ip,
         method,
         path,
         status,
-        duration_ms: parseFloat(durationMs.toFixed(2))
-      }
+        duration_ms: parseFloat(durationMs.toFixed(2)),
+      },
     });
   }
 
@@ -127,13 +164,15 @@ export class JsonLogger implements ILogger {
               }
               if (parsed) {
                 // Merge structured logs from backend process directly
-                console.log(JSON.stringify({
-                  timestamp: parsed.timestamp ?? new Date().toISOString(),
-                  level: parsed.level ?? "INFO",
-                  prefix: name,
-                  message: parsed.message ?? line,
-                  ...parsed
-                }));
+                console.log(
+                  JSON.stringify({
+                    timestamp: parsed.timestamp ?? new Date().toISOString(),
+                    level: parsed.level ?? "INFO",
+                    prefix: name,
+                    message: parsed.message ?? line,
+                    ...parsed,
+                  }),
+                );
               } else {
                 this.log("INFO", name, line);
               }
@@ -152,7 +191,10 @@ export class JsonLogger implements ILogger {
  * Factory function to instantiate console or structured JSON logger format.
  */
 export function createLogger(format?: string): ILogger {
-  if (format?.toLowerCase() === "json" || process.env.LOG_FORMAT?.toLowerCase() === "json") {
+  if (
+    format?.toLowerCase() === "json" ||
+    process.env.LOG_FORMAT?.toLowerCase() === "json"
+  ) {
     return new JsonLogger();
   }
   return new ConsoleLogger();

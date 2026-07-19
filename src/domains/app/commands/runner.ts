@@ -6,10 +6,18 @@ import type { AppContext } from "../../../context";
  * Parses and routes the CLI arguments dynamically using the command registry.
  * Falls back to printing the help screen on invalid commands or flags.
  */
-export async function runRegistry(args: string[], ctx: AppContext): Promise<number> {
+export async function runRegistry(
+  args: string[],
+  ctx: AppContext,
+): Promise<number> {
   const command = args[0];
 
-  if (command === "--help" || command === "-h" || args.includes("--help") || args.includes("-h")) {
+  if (
+    command === "--help" ||
+    command === "-h" ||
+    args.includes("--help") ||
+    args.includes("-h")
+  ) {
     printHelp();
     return 0;
   }

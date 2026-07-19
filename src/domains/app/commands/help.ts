@@ -27,19 +27,19 @@ function buildUsageLine(cmd: CLICommand): string {
 export function printHelp(): void {
   console.log("local-base - Bun TypeScript local AI installer/manager\n");
   console.log("Usage:");
-  
+
   for (const cmd of commandRegistry) {
     console.log(`  ${buildUsageLine(cmd)}`);
   }
-  
+
   console.log("\nCommands:");
-  const activeCommands = commandRegistry.filter(cmd => cmd.name !== "");
-  const maxLen = Math.max(...activeCommands.map(cmd => cmd.name.length));
-  
+  const activeCommands = commandRegistry.filter((cmd) => cmd.name !== "");
+  const maxLen = Math.max(...activeCommands.map((cmd) => cmd.name.length));
+
   for (const cmd of activeCommands) {
     const padded = cmd.name.padEnd(maxLen + 2, " ");
     console.log(`  ${padded}${cmd.description}`);
   }
-  
+
   console.log("");
 }

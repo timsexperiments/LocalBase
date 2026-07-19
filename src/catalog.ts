@@ -1,6 +1,5 @@
 export type ModelKind = "llm" | "stt" | "image";
 
-
 export type CommercialStatus = "open" | "conditional" | "prohibited";
 
 export type ModelSpec = {
@@ -45,7 +44,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
     catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
-    notes: "Ultra-fast autocomplete baseline and tab completion model."
+    notes: "Ultra-fast autocomplete baseline and tab completion model.",
   },
   {
     modelId: "qwen2.5-coder-3b-instruct-q4_k_m",
@@ -66,7 +65,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
     catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
-    notes: "Fast coding baseline for low-VRAM GPUs."
+    notes: "Fast coding baseline for low-VRAM GPUs.",
   },
   {
     modelId: "qwen2.5-coder-7b-instruct-q4_k_m",
@@ -87,7 +86,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
     catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
-    notes: "Great coding quality per watt; ideal default for a 12GB GPU."
+    notes: "Great coding quality per watt; ideal default for a 12GB GPU.",
   },
   {
     modelId: "qwen2.5-coder-14b-instruct-q4_k_m",
@@ -108,7 +107,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
     catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
-    notes: "Top-end coding option that still fits on 12GB with careful context settings."
+    notes:
+      "Top-end coding option that still fits on 12GB with careful context settings.",
   },
   {
     modelId: "qwen2.5-coder-32b-instruct-q4_k_m",
@@ -129,7 +129,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
     catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
-    notes: "State-of-the-art local coding model. Perfect for unified memory setups."
+    notes:
+      "State-of-the-art local coding model. Perfect for unified memory setups.",
   },
   {
     modelId: "llama-3.2-1b-instruct-q4_k_m",
@@ -149,8 +150,9 @@ export const CATALOG: readonly ModelSpec[] = [
     outputModalities: ["text"],
     features: ["tool-calling", "lightweight"],
     commercialStatus: "conditional",
-    catch: "Free unless your app has >700M monthly active users; then request a Meta license.",
-    notes: "Ultra-small Llama model for low-resource environments."
+    catch:
+      "Free unless your app has >700M monthly active users; then request a Meta license.",
+    notes: "Ultra-small Llama model for low-resource environments.",
   },
   {
     modelId: "llama-3.2-3b-instruct-q4_k_m",
@@ -170,8 +172,9 @@ export const CATALOG: readonly ModelSpec[] = [
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning"],
     commercialStatus: "conditional",
-    catch: "Free unless your app has >700M monthly active users; then request a Meta license.",
-    notes: "Highly capable 3B generalist model."
+    catch:
+      "Free unless your app has >700M monthly active users; then request a Meta license.",
+    notes: "Highly capable 3B generalist model.",
   },
   {
     modelId: "llama-3.1-8b-instruct-q4_k_m",
@@ -191,8 +194,10 @@ export const CATALOG: readonly ModelSpec[] = [
     outputModalities: ["text"],
     features: ["tool-calling", "multilingual", "reasoning"],
     commercialStatus: "conditional",
-    catch: "Free unless your app has >700M monthly active users; then request a Meta license.",
-    notes: "One of the most popular open-source 8B models for general tasks and coding."
+    catch:
+      "Free unless your app has >700M monthly active users; then request a Meta license.",
+    notes:
+      "One of the most popular open-source 8B models for general tasks and coding.",
   },
   {
     modelId: "llama-3.3-70b-instruct-q4_k_m",
@@ -212,8 +217,9 @@ export const CATALOG: readonly ModelSpec[] = [
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning", "multilingual"],
     commercialStatus: "conditional",
-    catch: "Free unless your app has >700M monthly active users; then request a Meta license.",
-    notes: "High quality generalist model for large GPU servers."
+    catch:
+      "Free unless your app has >700M monthly active users; then request a Meta license.",
+    notes: "High quality generalist model for large GPU servers.",
   },
   {
     modelId: "deepseek-r1-distill-qwen-14b-q4_k_m",
@@ -226,7 +232,8 @@ export const CATALOG: readonly ModelSpec[] = [
     codingScore: 9,
     minVramGb: 11,
     storageGb: 9,
-    source: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
+    source:
+      "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
     downloadPath: "resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
     filename: "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
     inputModalities: ["text"],
@@ -234,7 +241,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["reasoning", "tool-calling", "code-generation"],
     commercialStatus: "open",
     catch: "MIT License. No revenue caps.",
-    notes: "Reasoning-focused model with strong coding quality in quantized form."
+    notes:
+      "Reasoning-focused model with strong coding quality in quantized form.",
   },
   {
     modelId: "deepseek-coder-6.7b-instruct-q4_k_m",
@@ -255,7 +263,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
     catch: "Permissive License (DeepSeek License), allows commercial use.",
-    notes: "Highly capable code model from the first-gen DeepSeek coder series."
+    notes:
+      "Highly capable code model from the first-gen DeepSeek coder series.",
   },
   {
     modelId: "deepseek-coder-v2-lite-instruct-q4_k_m",
@@ -268,7 +277,8 @@ export const CATALOG: readonly ModelSpec[] = [
     codingScore: 9.5,
     minVramGb: 12,
     storageGb: 11.2,
-    source: "https://huggingface.co/bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
+    source:
+      "https://huggingface.co/bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
     downloadPath: "resolve/main/DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
     filename: "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
     inputModalities: ["text"],
@@ -276,7 +286,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["mixture-of-experts", "code-generation", "code-editing"],
     commercialStatus: "open",
     catch: "Permissive License (DeepSeek License), allows commercial use.",
-    notes: "State-of-the-art MoE coding model with 16B total parameters and 2.4B active."
+    notes:
+      "State-of-the-art MoE coding model with 16B total parameters and 2.4B active.",
   },
   {
     modelId: "deepseek-coder-33b-instruct-q4_k_m",
@@ -297,7 +308,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
     catch: "Permissive License (DeepSeek License), allows commercial use.",
-    notes: "Top-tier 33B coding model, excellent balance between performance and footprint."
+    notes:
+      "Top-tier 33B coding model, excellent balance between performance and footprint.",
   },
   {
     modelId: "gemma-3-1b-it-q4_k_m",
@@ -317,8 +329,9 @@ export const CATALOG: readonly ModelSpec[] = [
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning"],
     commercialStatus: "open",
-    catch: "Gemma terms allow commercial use; cannot use to improve other models.",
-    notes: "Smallest Gemma 3 variant, fast and lightweight."
+    catch:
+      "Gemma terms allow commercial use; cannot use to improve other models.",
+    notes: "Smallest Gemma 3 variant, fast and lightweight.",
   },
   {
     modelId: "gemma-3-4b-it-q4_k_m",
@@ -338,8 +351,9 @@ export const CATALOG: readonly ModelSpec[] = [
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning"],
     commercialStatus: "open",
-    catch: "Gemma terms allow commercial use; cannot use to improve other models.",
-    notes: "Highly capable 4B generalist and reasoning model."
+    catch:
+      "Gemma terms allow commercial use; cannot use to improve other models.",
+    notes: "Highly capable 4B generalist and reasoning model.",
   },
   {
     modelId: "gemma-3-12b-it-q4_k_m",
@@ -359,8 +373,9 @@ export const CATALOG: readonly ModelSpec[] = [
     outputModalities: ["text"],
     features: ["vision", "tool-calling", "reasoning"],
     commercialStatus: "open",
-    catch: "Gemma terms allow commercial use; cannot use to improve other models.",
-    notes: "Multimodal-capable family with permissive usage terms."
+    catch:
+      "Gemma terms allow commercial use; cannot use to improve other models.",
+    notes: "Multimodal-capable family with permissive usage terms.",
   },
   {
     modelId: "gemma-3-27b-it-q4_k_m",
@@ -380,8 +395,9 @@ export const CATALOG: readonly ModelSpec[] = [
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning", "multilingual"],
     commercialStatus: "open",
-    catch: "Gemma terms allow commercial use; cannot use to improve other models.",
-    notes: "Top-tier 27B model; matches larger models in reasoning quality."
+    catch:
+      "Gemma terms allow commercial use; cannot use to improve other models.",
+    notes: "Top-tier 27B model; matches larger models in reasoning quality.",
   },
   {
     modelId: "phi-4-q4_k_m",
@@ -402,7 +418,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["reasoning", "tool-calling", "code-generation"],
     commercialStatus: "open",
     catch: "MIT License. No restrictions.",
-    notes: "Compact reasoning model with strong quality density."
+    notes: "Compact reasoning model with strong quality density.",
   },
   {
     modelId: "phi-3.5-mini-instruct-q4_k_m",
@@ -423,7 +439,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["tool-calling", "multilingual"],
     commercialStatus: "open",
     catch: "MIT License. No restrictions.",
-    notes: "Extremely lightweight 3.8B model with high reasoning ability."
+    notes: "Extremely lightweight 3.8B model with high reasoning ability.",
   },
   {
     modelId: "phi-3.5-moe-instruct-q4_k_m",
@@ -444,7 +460,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["mixture-of-experts", "reasoning", "multilingual"],
     commercialStatus: "open",
     catch: "MIT License. No restrictions.",
-    notes: "Microsoft MoE release; high performance with 6.6B active parameters."
+    notes:
+      "Microsoft MoE release; high performance with 6.6B active parameters.",
   },
   {
     modelId: "gpt-oss-20b-q4_k_m",
@@ -465,7 +482,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["reasoning", "tool-calling"],
     commercialStatus: "open",
     catch: "Apache 2.0.",
-    notes: "OpenAI's open-weight reasoning model, optimized for edge devices."
+    notes: "OpenAI's open-weight reasoning model, optimized for edge devices.",
   },
   {
     modelId: "falcon-2-11b-instruct-q4_k_m",
@@ -486,7 +503,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["tool-calling", "multilingual"],
     commercialStatus: "open",
     catch: "Apache 2.0.",
-    notes: "General-purpose LLM alternative in permissive license family."
+    notes: "General-purpose LLM alternative in permissive license family.",
   },
   {
     modelId: "deepseek-r1-distill-qwen-32b-q4_k_m",
@@ -499,7 +516,8 @@ export const CATALOG: readonly ModelSpec[] = [
     codingScore: 9.5,
     minVramGb: 22,
     storageGb: 20.3,
-    source: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
+    source:
+      "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
     filename: "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
     downloadPath: "resolve/main/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
     inputModalities: ["text"],
@@ -507,7 +525,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["reasoning", "tool-calling", "code-generation"],
     commercialStatus: "open",
     catch: "MIT License. No restrictions.",
-    notes: "DeepSeek-R1 reasoning model distilled on Qwen-32B. Superb coding and logic."
+    notes:
+      "DeepSeek-R1 reasoning model distilled on Qwen-32B. Superb coding and logic.",
   },
   {
     modelId: "deepseek-r1-distill-llama-8b-q4_k_m",
@@ -520,7 +539,8 @@ export const CATALOG: readonly ModelSpec[] = [
     codingScore: 8,
     minVramGb: 6,
     storageGb: 4.7,
-    source: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
+    source:
+      "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
     filename: "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
     downloadPath: "resolve/main/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
     inputModalities: ["text"],
@@ -528,7 +548,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["reasoning", "tool-calling", "code-generation"],
     commercialStatus: "open",
     catch: "MIT License. No restrictions.",
-    notes: "DeepSeek-R1 reasoning model distilled on Llama-8B. Great for laptop runs."
+    notes:
+      "DeepSeek-R1 reasoning model distilled on Llama-8B. Great for laptop runs.",
   },
   {
     modelId: "deepseek-r1-distill-llama-70b-q4_k_m",
@@ -541,7 +562,8 @@ export const CATALOG: readonly ModelSpec[] = [
     codingScore: 9.5,
     minVramGb: 40,
     storageGb: 42.0,
-    source: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
+    source:
+      "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
     filename: "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
     downloadPath: "resolve/main/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
     inputModalities: ["text"],
@@ -549,7 +571,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["reasoning", "tool-calling", "code-generation"],
     commercialStatus: "open",
     catch: "MIT License. No restrictions.",
-    notes: "DeepSeek-R1 reasoning model distilled on Llama-3-70B. High reasoning quality."
+    notes:
+      "DeepSeek-R1 reasoning model distilled on Llama-3-70B. High reasoning quality.",
   },
   {
     modelId: "qwen2.5-72b-instruct-q4_k_m",
@@ -570,7 +593,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
     catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
-    notes: "Top-tier 72B reasoning and coding model. Superb logic, math, and code generation."
+    notes:
+      "Top-tier 72B reasoning and coding model. Superb logic, math, and code generation.",
   },
   {
     modelId: "codestral-22b-instruct-q4_k_m",
@@ -591,7 +615,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["code-generation", "code-editing"],
     commercialStatus: "conditional",
     catch: "Mistral commercial terms apply for non-research use.",
-    notes: "Mistral's dedicated coding model. Strong FIM capability."
+    notes: "Mistral's dedicated coding model. Strong FIM capability.",
   },
   {
     modelId: "mistral-nemo-12b-instruct-q4_k_m",
@@ -612,7 +636,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["tool-calling", "multilingual"],
     commercialStatus: "open",
     catch: "Apache 2.0.",
-    notes: "Excellent 12B model with large 128k context window."
+    notes: "Excellent 12B model with large 128k context window.",
   },
   {
     modelId: "whisper-large-v3-turbo",
@@ -632,7 +656,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["speech-to-text", "translation"],
     commercialStatus: "open",
     catch: "MIT License.",
-    notes: "Best quality Whisper family model for local deployment."
+    notes: "Best quality Whisper family model for local deployment.",
   },
   {
     modelId: "whisper-tiny-en-q8_0",
@@ -652,7 +676,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["speech-to-text"],
     commercialStatus: "open",
     catch: "MIT License.",
-    notes: "Ultra-fast English STT with lower accuracy."
+    notes: "Ultra-fast English STT with lower accuracy.",
   },
   {
     modelId: "whisper-base-q8_0",
@@ -672,7 +696,7 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["speech-to-text"],
     commercialStatus: "open",
     catch: "MIT License.",
-    notes: "Good default STT latency/quality tradeoff."
+    notes: "Good default STT latency/quality tradeoff.",
   },
   {
     modelId: "stable-diffusion-v1-5",
@@ -684,7 +708,8 @@ export const CATALOG: readonly ModelSpec[] = [
     quant: "F16",
     minVramGb: 4,
     storageGb: 4.27,
-    source: "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
+    source:
+      "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
     downloadPath: "resolve/main/v1-5-pruned-emaonly.safetensors",
     filename: "v1-5-pruned-emaonly.safetensors",
     inputModalities: ["text"],
@@ -692,7 +717,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "CreativeML Open RAIL-M license.",
-    notes: "Extremely lightweight baseline model. Perfect for low VRAM systems (under 8GB) and fast prototyping. Generates 512x512 images."
+    notes:
+      "Extremely lightweight baseline model. Perfect for low VRAM systems (under 8GB) and fast prototyping. Generates 512x512 images.",
   },
   {
     modelId: "dreamshaper-v8",
@@ -712,7 +738,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "CreativeML Open RAIL-M license.",
-    notes: "Highly optimized community model for digital art, anime, and portraiture. Extremely fast and lightweight. Requires 4GB+ VRAM."
+    notes:
+      "Highly optimized community model for digital art, anime, and portraiture. Extremely fast and lightweight. Requires 4GB+ VRAM.",
   },
   {
     modelId: "sdxl-turbo",
@@ -732,7 +759,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "Stability AI Community License.",
-    notes: "High-speed 1-step real-time generation model. Excellent for fast interactive feedback cycles. Requires 8GB+ VRAM."
+    notes:
+      "High-speed 1-step real-time generation model. Excellent for fast interactive feedback cycles. Requires 8GB+ VRAM.",
   },
   {
     modelId: "sdxl-base-1.0",
@@ -752,7 +780,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "Stability AI Community License.",
-    notes: "Standard high-resolution (1024x1024) image generator. Recommended for standard workstation GPUs with 12GB+ VRAM."
+    notes:
+      "Standard high-resolution (1024x1024) image generator. Recommended for standard workstation GPUs with 12GB+ VRAM.",
   },
   {
     modelId: "juggernaut-xl-v9",
@@ -765,14 +794,16 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 12,
     storageGb: 6.61,
     source: "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
-    downloadPath: "resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+    downloadPath:
+      "resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
     filename: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
     inputModalities: ["text"],
     outputModalities: ["image"],
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "Stability AI Community License.",
-    notes: "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism. Requires 12GB+ VRAM."
+    notes:
+      "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism. Requires 12GB+ VRAM.",
   },
   {
     modelId: "animagine-xl-3.1",
@@ -792,7 +823,8 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "Stability AI Community License.",
-    notes: "The premier open-source model for high-fidelity anime, manga, and Japanese illustration styles. Requires 12GB+ VRAM."
+    notes:
+      "The premier open-source model for high-fidelity anime, manga, and Japanese illustration styles. Requires 12GB+ VRAM.",
   },
   {
     modelId: "realvis-xl-v4.0",
@@ -812,10 +844,10 @@ export const CATALOG: readonly ModelSpec[] = [
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "CreativeML Open RAIL-M license.",
-    notes: "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures. Requires 12GB+ VRAM."
-  }
+    notes:
+      "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures. Requires 12GB+ VRAM.",
+  },
 ];
-
 
 export function byId(modelId: string): ModelSpec | undefined {
   return CATALOG.find((model) => model.modelId === modelId);
@@ -827,18 +859,22 @@ export function listModels(kind?: ModelKind): ModelSpec[] {
 
 export function recommendedForVram(vramGb: number): ModelSpec[] {
   return CATALOG.filter((m) => m.kind === "llm" && m.minVramGb <= vramGb).sort(
-    (a, b) => (b.codingScore ?? 0) - (a.codingScore ?? 0) || b.minVramGb - a.minVramGb
+    (a, b) =>
+      (b.codingScore ?? 0) - (a.codingScore ?? 0) || b.minVramGb - a.minVramGb,
   );
 }
 
 export function recommendedSttForVram(vramGb: number): ModelSpec[] {
-  return CATALOG.filter((m) => m.kind === "stt" && m.minVramGb <= vramGb).sort((a, b) => a.storageGb - b.storageGb);
+  return CATALOG.filter((m) => m.kind === "stt" && m.minVramGb <= vramGb).sort(
+    (a, b) => a.storageGb - b.storageGb,
+  );
 }
 
 export function recommendedImageForVram(vramGb: number): ModelSpec[] {
-  return CATALOG.filter((m) => m.kind === "image" && m.minVramGb <= vramGb).sort((a, b) => a.storageGb - b.storageGb);
+  return CATALOG.filter(
+    (m) => m.kind === "image" && m.minVramGb <= vramGb,
+  ).sort((a, b) => a.storageGb - b.storageGb);
 }
-
 
 export type MemoryFitStatus = "perfect" | "tight" | "insufficient";
 
@@ -851,10 +887,13 @@ export type MemoryFitEvaluation = {
   message: string;
 };
 
-export function evaluateModelFit(model: ModelSpec, systemVramGb: number): MemoryFitEvaluation {
+export function evaluateModelFit(
+  model: ModelSpec,
+  systemVramGb: number,
+): MemoryFitEvaluation {
   const minVramGb = model.minVramGb;
   let requiredVramGb = minVramGb;
-  
+
   const p = parseFloat(model.size);
   if (!isNaN(p)) {
     let b = 4;
@@ -863,8 +902,8 @@ export function evaluateModelFit(model: ModelSpec, systemVramGb: number): Memory
     else if (q.includes("q5")) b = 5;
     else if (q.includes("q8")) b = 8;
     else if (q.includes("fp16")) b = 16;
-    
-    const computed = (p * b / 8) * 1.2;
+
+    const computed = ((p * b) / 8) * 1.2;
     requiredVramGb = Math.max(computed, minVramGb);
   }
 
@@ -875,7 +914,10 @@ export function evaluateModelFit(model: ModelSpec, systemVramGb: number): Memory
   if (systemVramGb < minVramGb) {
     status = "insufficient";
     message = `Requires ${minVramGb}GB, you have ${systemVramGb}GB`;
-  } else if (headroomGb < 4 || (systemVramGb > 0 && minVramGb / systemVramGb > 0.75)) {
+  } else if (
+    headroomGb < 4 ||
+    (systemVramGb > 0 && minVramGb / systemVramGb > 0.75)
+  ) {
     status = "tight";
     message = `Leaves ${headroomGb.toFixed(1)}GB headroom`;
   } else {
@@ -889,11 +931,14 @@ export function evaluateModelFit(model: ModelSpec, systemVramGb: number): Memory
     requiredVramGb,
     systemVramGb,
     headroomGb,
-    message
+    message,
   };
 }
 
-export function calculateMaxSafeContextSize(model: ModelSpec, systemVramGb: number): number {
+export function calculateMaxSafeContextSize(
+  model: ModelSpec,
+  systemVramGb: number,
+): number {
   const p = parseFloat(model.size);
   if (isNaN(p)) {
     return 8192;
@@ -908,8 +953,10 @@ export function calculateMaxSafeContextSize(model: ModelSpec, systemVramGb: numb
 
   const calculatedC = availableGb / (p * 8e-6);
 
-  const standardBlocks = [4096, 8192, 16384, 24576, 32768, 49152, 65536, 98304, 131072];
-  
+  const standardBlocks = [
+    4096, 8192, 16384, 24576, 32768, 49152, 65536, 98304, 131072,
+  ];
+
   let recommended = 4096;
   for (const block of standardBlocks) {
     if (block <= calculatedC) {
@@ -917,9 +964,11 @@ export function calculateMaxSafeContextSize(model: ModelSpec, systemVramGb: numb
     }
   }
 
-  const isOlderModel = model.family.toLowerCase().includes("phi-3") || model.modelId.includes("llama-3.2-") || model.modelId.includes("llama-3-8b");
+  const isOlderModel =
+    model.family.toLowerCase().includes("phi-3") ||
+    model.modelId.includes("llama-3.2-") ||
+    model.modelId.includes("llama-3-8b");
   const maxModelCtx = isOlderModel ? 8192 : 131072;
 
   return Math.min(recommended, maxModelCtx);
 }
-

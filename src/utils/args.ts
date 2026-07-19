@@ -11,9 +11,9 @@ export function parseFlag(args: string[], key: string): string | undefined {
     const { values } = parseArgs({
       args,
       options: {
-        [optionName]: { type: "string" }
+        [optionName]: { type: "string" },
       },
-      strict: false
+      strict: false,
     });
     return values[optionName] as string | undefined;
   } catch {
@@ -24,12 +24,17 @@ export function parseFlag(args: string[], key: string): string | undefined {
   }
 }
 
-export function parseBool(inputValue: string | undefined, fallback: boolean): boolean {
+export function parseBool(
+  inputValue: string | undefined,
+  fallback: boolean,
+): boolean {
   if (!inputValue) return fallback;
   return ["1", "true", "yes", "on"].includes(inputValue.toLowerCase());
 }
 
-export function parseList(inputValue: string | undefined): string[] | undefined {
+export function parseList(
+  inputValue: string | undefined,
+): string[] | undefined {
   if (!inputValue) return undefined;
   return inputValue
     .split(",")
@@ -37,18 +42,23 @@ export function parseList(inputValue: string | undefined): string[] | undefined 
     .filter(Boolean);
 }
 
-export function toInt(inputValue: string | undefined, fallback: number): number {
+export function toInt(
+  inputValue: string | undefined,
+  fallback: number,
+): number {
   if (!inputValue) return fallback;
   const parsed = Number(inputValue);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export function parseKind(inputValue: string | undefined): ModelKind | undefined {
+export function parseKind(
+  inputValue: string | undefined,
+): ModelKind | undefined {
   if (!inputValue) return undefined;
-  if (["llm", "stt", "image"].includes(inputValue)) return inputValue as ModelKind;
+  if (["llm", "stt", "image"].includes(inputValue))
+    return inputValue as ModelKind;
   return undefined;
 }
-
 
 /**
  * Checks if the yes flag (-y or --yes) is specified.
@@ -58,9 +68,9 @@ export function hasYesFlag(args: string[]): boolean {
     const { values } = parseArgs({
       args,
       options: {
-        yes: { type: "boolean", short: "y" }
+        yes: { type: "boolean", short: "y" },
       },
-      strict: false
+      strict: false,
     });
     return !!values.yes;
   } catch {

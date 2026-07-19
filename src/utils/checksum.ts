@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  createReadStream,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -20,15 +25,19 @@ export async function computeSha256(filePath: string): Promise<string> {
  * Verifies that a file on disk matches an expected SHA-256 hex digest.
  * Throws a descriptive error on mismatch so callers can surface it clearly.
  */
-export async function verifyChecksum(filePath: string, expected: string, label: string): Promise<void> {
+export async function verifyChecksum(
+  filePath: string,
+  expected: string,
+  label: string,
+): Promise<void> {
   console.log(`🔍 Verifying checksum for ${label}...`);
   const actual = await computeSha256(filePath);
   if (actual !== expected.toLowerCase().trim()) {
     throw new Error(
       `Checksum mismatch for ${label}!\n` +
-      `  Expected: ${expected.toLowerCase()}\n` +
-      `  Got:      ${actual}\n` +
-      `  File may be corrupted or tampered with. Delete it and retry.`
+        `  Expected: ${expected.toLowerCase()}\n` +
+        `  Got:      ${actual}\n` +
+        `  File may be corrupted or tampered with. Delete it and retry.`,
     );
   }
   console.log(`✅ Checksum verified for ${label}`);
@@ -82,7 +91,11 @@ export function writeChecksumStore(dir: string, store: ChecksumStore): void {
  * Records the SHA-256 of a file into the local checksum store for the given
  * directory. Subsequent calls to `verifyStoredChecksum` will use this value.
  */
-export async function recordChecksum(dir: string, filename: string, filePath: string): Promise<string> {
+export async function recordChecksum(
+  dir: string,
+  filename: string,
+  filePath: string,
+): Promise<string> {
   const hash = await computeSha256(filePath);
   const store = readChecksumStore(dir);
   store[filename] = hash;
@@ -95,7 +108,11 @@ export async function recordChecksum(dir: string, filename: string, filePath: st
  * Returns true if a stored checksum exists and matches, false if no stored
  * checksum exists (allowing first-run installs through), and throws on mismatch.
  */
-export async function verifyStoredChecksum(dir: string, filename: string, filePath: string): Promise<boolean> {
+export async function verifyStoredChecksum(
+  dir: string,
+  filename: string,
+  filePath: string,
+): Promise<boolean> {
   const store = readChecksumStore(dir);
   const expected = store[filename];
   if (!expected) return false; // No recorded checksum yet — first run

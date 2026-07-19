@@ -2,19 +2,12 @@
   "name": "local-base",
   "version": "0.1.0",
   "type": "module",
-  "bin": {
-    "local-base": "dist/cli.js"
-  },
-  "files": [
-    "dist/cli.js",
-    "README.md"
-  ],
   "scripts": {
     "local-base": "bun run src/cli.ts",
-    "check": "bun run src/cli.ts --help",
+    "format": "bunx prettier --write src",
+    "check": "bunx prettier --check src && bun run typecheck && bun run src/cli.ts --help",
     "typecheck": "bunx tsgo --noEmit",
     "build": "bun build src/cli.ts --compile --outfile dist/local-base",
-    "build:js": "bun build src/cli.ts --target=bun --outfile dist/cli.js",
     "build:whisper": "bun run scripts/build-whisper.ts"
   },
   "devDependencies": {

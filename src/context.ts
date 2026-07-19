@@ -23,12 +23,16 @@ export function createAppContext(args: string[]): AppContext {
 
   // Server environment configuration overrides
   if (process.env.LOCALBASE_HOST) config.host = process.env.LOCALBASE_HOST;
-  if (process.env.LOCALBASE_PORT) config.port = toInt(process.env.LOCALBASE_PORT, config.port);
-  
-  if (process.env.LOCALBASE_STT_HOST) config.sttHost = process.env.LOCALBASE_STT_HOST;
-  if (process.env.LOCALBASE_STT_PORT) config.sttPort = toInt(process.env.LOCALBASE_STT_PORT, config.sttPort);
-  
-  if (process.env.LOCALBASE_CTX_SIZE) config.ctxSize = toInt(process.env.LOCALBASE_CTX_SIZE, config.ctxSize);
+  if (process.env.LOCALBASE_PORT)
+    config.port = toInt(process.env.LOCALBASE_PORT, config.port);
+
+  if (process.env.LOCALBASE_STT_HOST)
+    config.sttHost = process.env.LOCALBASE_STT_HOST;
+  if (process.env.LOCALBASE_STT_PORT)
+    config.sttPort = toInt(process.env.LOCALBASE_STT_PORT, config.sttPort);
+
+  if (process.env.LOCALBASE_CTX_SIZE)
+    config.ctxSize = toInt(process.env.LOCALBASE_CTX_SIZE, config.ctxSize);
 
   const logFormat = process.env.LOG_FORMAT;
   const logger = createLogger(logFormat);

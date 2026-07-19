@@ -10,4 +10,3 @@ export function runInit(args: string[], ctx: AppContext): number {
   console.log(`STT directory: ${config.sttModelsDir}`);
   return 0;
 }
-
