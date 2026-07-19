@@ -27,7 +27,8 @@ export function loadTomlOverrides(path: string): ConfigOverrides {
 
   for (const line of raw.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("[")) continue;
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("["))
+      continue;
     const idx = trimmed.indexOf("=");
     if (idx === -1) continue;
     const key = trimmed.slice(0, idx).trim();
@@ -45,10 +46,23 @@ export function loadTomlOverrides(path: string): ConfigOverrides {
     ctxSize: typeof values.ctxSize === "number" ? values.ctxSize : undefined,
     sttHost: typeof values.sttHost === "string" ? values.sttHost : undefined,
     sttPort: typeof values.sttPort === "number" ? values.sttPort : undefined,
-    startupOnBoot: typeof values.startupOnBoot === "boolean" ? values.startupOnBoot : undefined,
-    selectedLlmModels: Array.isArray(selectedLlmModels) ? selectedLlmModels : undefined,
-    selectedSttModels: Array.isArray(selectedSttModels) ? selectedSttModels : undefined,
-    activeLlmModel: typeof values.activeLlmModel === "string" ? values.activeLlmModel : undefined,
-    activeSttModel: typeof values.activeSttModel === "string" ? values.activeSttModel : undefined
+    startupOnBoot:
+      typeof values.startupOnBoot === "boolean"
+        ? values.startupOnBoot
+        : undefined,
+    selectedLlmModels: Array.isArray(selectedLlmModels)
+      ? selectedLlmModels
+      : undefined,
+    selectedSttModels: Array.isArray(selectedSttModels)
+      ? selectedSttModels
+      : undefined,
+    activeLlmModel:
+      typeof values.activeLlmModel === "string"
+        ? values.activeLlmModel
+        : undefined,
+    activeSttModel:
+      typeof values.activeSttModel === "string"
+        ? values.activeSttModel
+        : undefined,
   };
 }

@@ -10,7 +10,6 @@
 # 1. Install dependencies and compile the binary
 bun install
 bun run build       # Compiles standalone native executable to dist/local-base
-bun run build:js    # Compiles NPM-executable JS to dist/cli.js
 
 # 2. Run interactive guided configuration
 ./dist/local-base
@@ -99,11 +98,10 @@ bun run local-base doctor
 ### Build & Package Validation
 *   **Typecheck**: `bun run typecheck`
 *   **Build Standalone Binary**: `bun run build` (outputs to `dist/local-base`)
-*   **Build JS NPM Entrypoint**: `bun run build:js` (outputs to `dist/cli.js`)
 
 ### CI/CD Pipelines
 *   **CI Workflow**: Automatically validates lockfiles, executes TypeScript compilation checks, and runs CLI smoke tests on push/PR.
-*   **Release Workflow**: Triggered on tag pushes (`v*`). Automatically cross-compiles native binaries for macOS (ARM64/x64), Linux (ARM64/x64), and Windows (x64), computes SHA-256 integrity checksums, publishes a GitHub Release, and publishes the JS CLI to NPM with secure provenance.
+*   **Release Workflow**: Triggered on tag pushes (`v*`). Automatically cross-compiles native binaries for macOS (ARM64/x64), Linux (ARM64/x64), and Windows (x64), computes SHA-256 integrity checksums, and publishes a GitHub Release.
 
 ---
 
