@@ -267,6 +267,13 @@ async function interactiveConfigureSelective(
     }
   }
 
+  if (!locked.has("hfToken")) {
+    config.hfToken = await textPrompt(
+      "Hugging Face access token (optional, for gated models like Gemma/Llama)",
+      config.hfToken || process.env.HF_TOKEN || "",
+    );
+  }
+
   if (useAll)
     console.log(
       "\nTip: run `local-base catalog --kind <kind>` for full model details before final install.",
@@ -470,6 +477,7 @@ export async function runConfigure(
     "activeImageModel",
     parseFlag(args, "--active-image") ?? rawToml.activeImageModel,
   );
+  maybeLock("hfToken", parseFlag(args, "--hf-token") ?? rawToml.hfToken);
 
   config = {
     ...config,
@@ -505,6 +513,12 @@ export async function runConfigure(
       parseFlag(args, "--active-image") ??
       rawToml.activeImageModel ??
       config.activeImageModel,
+    hfToken:
+      parseFlag(args, "--hf-token") ??
+      rawToml.hfToken ??
+      config.hfToken ??
+      process.env.HF_TOKEN ??
+      "",
   };
 
   config.llmModelsDir = `${config.root}/models/llm`;
