@@ -27,6 +27,21 @@ import {
   textPrompt,
 } from "../../../utils/prompt";
 import { loadTomlOverrides } from "../../../utils/toml";
+import { parseParallelSlots } from "../parallel";
+
+export const PARALLEL_SLOTS_PROMPT =
+  "Parallel request slots count (type 'auto' for dynamic auto-allocation, or an integer like 1, 2, 4)";
+
+function warnAboutParallelOomRisk(
+  parallel: LocalBaseConfig["parallel"],
+  vramGb: number,
+): void {
+  if (typeof parallel === "number" && parallel > 1 && vramGb < 16) {
+    console.warn(
+      `Warning: Setting parallel slots to ${parallel} on a system with only ${vramGb} GB VRAM may cause Out-Of-Memory (OOM) crashes.`,
+    );
+  }
+}
 
 function llmChoices(current: string[]): Array<{
   name: string;
@@ -203,6 +218,21 @@ async function interactiveConfigureSelective(
       `LLM maximum context limit (ceiling for dynamic sizing; recommended for ${config.activeLlmModel}: ${recommendedCtx})`,
       suggestCtx,
     );
+  }
+
+  if (!locked.has("parallel")) {
+    while (true) {
+      const value = await textPrompt(
+        PARALLEL_SLOTS_PROMPT,
+        String(config.parallel),
+      );
+      try {
+        config.parallel = parseParallelSlots(value);
+        break;
+      } catch (error) {
+        console.log((error as Error).message);
+      }
+    }
   }
 
   if (!locked.has("selectedSttModels")) {
@@ -449,6 +479,12 @@ export async function runConfigure(
   const llmFromToml = validateModelList(rawToml.selectedLlmModels, "llm");
   const sttFromToml = validateModelList(rawToml.selectedSttModels, "stt");
   const imageFromToml = validateModelList(rawToml.selectedImageModels, "image");
+  const parallelFromFlag = parseFlag(args, "--parallel");
+  const parallelInput = parallelFromFlag ?? rawToml.parallel;
+  const parallel =
+    parallelInput === undefined
+      ? config.parallel
+      : parseParallelSlots(parallelInput);
 
   const locked = new Set<keyof LocalBaseConfig>();
   const maybeLock = (key: keyof LocalBaseConfig, value: unknown): void => {
@@ -459,6 +495,7 @@ export async function runConfigure(
   maybeLock("host", parseFlag(args, "--host") ?? rawToml.host);
   maybeLock("port", parseFlag(args, "--port") ?? rawToml.port);
   maybeLock("ctxSize", parseFlag(args, "--ctx-size") ?? rawToml.ctxSize);
+  maybeLock("parallel", parallelInput);
   maybeLock("sttHost", parseFlag(args, "--stt-host") ?? rawToml.sttHost);
   maybeLock("sttPort", parseFlag(args, "--stt-port") ?? rawToml.sttPort);
   maybeLock(
@@ -491,6 +528,7 @@ export async function runConfigure(
       parseFlag(args, "--ctx-size"),
       rawToml.ctxSize ?? config.ctxSize,
     ),
+    parallel,
     sttHost: parseFlag(args, "--stt-host") ?? rawToml.sttHost ?? config.sttHost,
     sttPort: toInt(
       parseFlag(args, "--stt-port"),
@@ -554,6 +592,8 @@ export async function runConfigure(
     throw new Error(
       `Active Image model is invalid: ${config.activeImageModel}`,
     );
+
+  warnAboutParallelOomRisk(config.parallel, specs.gpuVramGb);
 
   saveConfig(config);
   await syncContinueConfig(config);

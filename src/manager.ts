@@ -28,6 +28,12 @@ import {
   recommendedForVram,
   recommendedSttForVram,
 } from "./catalog";
+import {
+  allocateParallelSlots,
+  parseParallelSlots,
+  type ParallelAllocation,
+  type ParallelSlots,
+} from "./domains/config/parallel";
 
 // ---------------------------------------------------------------------------
 // Pinned upstream versions — update these when qualifying a new binary release.
@@ -59,6 +65,7 @@ export type LocalBaseConfig = {
   activeImageModel: string;
   systemPrompt: string;
   hfToken: string;
+  parallel: ParallelSlots;
 };
 
 export type ApiKeyRecord = {
@@ -94,6 +101,7 @@ const configTable = sqliteTable("config", {
   activeImageModel: text("active_image_model").default("").notNull(),
   systemPrompt: text("system_prompt").default("").notNull(),
   hfToken: text("hf_token").default("").notNull(),
+  parallel: text("parallel").default("auto").notNull(),
 });
 
 const apiKeysTable = sqliteTable("api_keys", {
@@ -136,7 +144,8 @@ function openDb(root: string) {
       active_stt_model text not null,
       active_image_model text,
       system_prompt text,
-      hf_token text
+      hf_token text,
+      parallel text not null default 'auto'
     );
 
     create table if not exists api_keys (
@@ -175,6 +184,14 @@ function openDb(root: string) {
   } catch (e) {
     // Ignore error if column already exists
   }
+  try {
+    sqlite.exec(
+      "ALTER TABLE config ADD COLUMN parallel TEXT NOT NULL DEFAULT 'auto';",
+    );
+  } catch (e) {
+    // Ignore error if column already exists
+  }
+  sqlite.exec("UPDATE config SET parallel = 'auto' WHERE parallel IS NULL;");
   return drizzle(sqlite);
 }
 
@@ -201,6 +218,7 @@ function toConfigRow(config: LocalBaseConfig) {
     activeImageModel: config.activeImageModel,
     systemPrompt: config.systemPrompt,
     hfToken: config.hfToken || "",
+    parallel: String(parseParallelSlots(config.parallel)),
   };
 }
 
@@ -233,6 +251,7 @@ function fromConfigRow(row: typeof configTable.$inferSelect): LocalBaseConfig {
     activeImageModel,
     systemPrompt: row.systemPrompt ?? "",
     hfToken: row.hfToken ?? "",
+    parallel: parseParallelSlots(row.parallel ?? "auto"),
   };
 }
 
@@ -294,6 +313,7 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     activeImageModel: "stable-diffusion-v1-5",
     systemPrompt: "",
     hfToken: "",
+    parallel: "auto",
   };
 }
 
@@ -863,24 +883,42 @@ export async function ensureBinary(
   return downloadLlamaServer(config);
 }
 
-/**
- * Spawns the llama-server background subprocess with memory/attention optimizations.
- */
-export async function startLlamaServerProcess(
+export type ParallelHardware = {
+  memoryGb: number;
+};
+
+export type LlamaServerArgs = {
+  args: string[];
+  parallel: ParallelAllocation;
+};
+
+function logAutoParallel(
+  parallel: ParallelAllocation,
+  hardware?: ParallelHardware,
+): void {
+  const memoryGb = hardware?.memoryGb ?? 0;
+  console.log(
+    `🤖 Dynamic Concurrency: Calculated ${parallel.slots} parallel slots based on ${memoryGb} GB VRAM and context memory constraints. ${parallel.contextPerSlot} tokens per slot.`,
+  );
+}
+
+/** Builds llama-server arguments so launch paths share parallel-slot policy. */
+export function buildLlamaServerArgs(
   config: LocalBaseConfig,
-  modelFile: string,
+  modelPath: string,
   host: string,
   port: number,
   ctxSize: number,
-): Promise<Bun.Subprocess> {
-  const modelPath = join(config.llmModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
-    throw new Error(`Model file not found: ${modelPath}`);
-  }
-
-  const binPath = await ensureBinary(config, "llama-server");
+  hardware?: ParallelHardware,
+): LlamaServerArgs {
+  const modelRequirementGb = byId(config.activeLlmModel)?.minVramGb;
+  const parallel = allocateParallelSlots({
+    parallel: config.parallel,
+    memoryGb: hardware?.memoryGb ?? 0,
+    modelRequirementGb,
+    ctxSize,
+  });
   const args = [
-    binPath,
     "-m",
     modelPath,
     "--host",
@@ -889,10 +927,8 @@ export async function startLlamaServerProcess(
     String(port),
     "-c",
     String(ctxSize),
-    // Force --parallel 1 so the single active agent session gets the full context limit.
-    // llama-server's default is 4, which splits context size equally among 4 slots.
     "--parallel",
-    "1",
+    String(parallel.slots),
     // Force --jinja to parse model's embedded tokenizer template correctly instead of standard fallback.
     "--jinja",
     // Expose the /v1/embeddings endpoint for local vector indexing/search in coding clients.
@@ -904,7 +940,39 @@ export async function startLlamaServerProcess(
     args.push("--flash-attn", "auto");
   }
 
-  return Bun.spawn(args, {
+  return { args, parallel };
+}
+
+/**
+ * Spawns the llama-server background subprocess with memory/attention optimizations.
+ */
+export async function startLlamaServerProcess(
+  config: LocalBaseConfig,
+  modelFile: string,
+  host: string,
+  port: number,
+  ctxSize: number,
+  hardware?: ParallelHardware,
+): Promise<Bun.Subprocess> {
+  const modelPath = join(config.llmModelsDir, modelFile);
+  if (!existsSync(modelPath)) {
+    throw new Error(`Model file not found: ${modelPath}`);
+  }
+
+  const binPath = await ensureBinary(config, "llama-server");
+  const launch = buildLlamaServerArgs(
+    config,
+    modelPath,
+    host,
+    port,
+    ctxSize,
+    hardware,
+  );
+  if (launch.parallel.isAuto) {
+    logAutoParallel(launch.parallel, hardware);
+  }
+
+  return Bun.spawn([binPath, ...launch.args], {
     stdout: "pipe",
     stderr: "pipe",
     stdin: "inherit",
@@ -940,6 +1008,7 @@ export async function launchLlamaServer(
   host: string,
   port: number,
   ctxSize: number,
+  hardware?: ParallelHardware,
 ): Promise<number> {
   const modelPath = join(config.llmModelsDir, modelFile);
   if (!existsSync(modelPath)) {
@@ -947,26 +1016,19 @@ export async function launchLlamaServer(
   }
 
   const binPath = await ensureBinary(config, "llama-server");
-  const args = [
-    "-m",
+  const launch = buildLlamaServerArgs(
+    config,
     modelPath,
-    "--host",
     host,
-    "--port",
-    String(port),
-    "-c",
-    String(ctxSize),
-    "--parallel",
-    "1",
-    "--jinja",
-    "--embeddings",
-  ];
-
-  if (platform() === "darwin" && arch() === "arm64") {
-    args.push("--flash-attn", "auto");
+    port,
+    ctxSize,
+    hardware,
+  );
+  if (launch.parallel.isAuto) {
+    logAutoParallel(launch.parallel, hardware);
   }
 
-  const result = spawnSync(binPath, args, {
+  const result = spawnSync(binPath, launch.args, {
     stdio: "inherit",
   });
 

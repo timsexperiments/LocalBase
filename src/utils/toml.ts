@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { type LocalBaseConfig } from "../manager";
+import { parseOptionalParallelSlots } from "../domains/config/parallel";
 
 export type ConfigOverrides = Partial<LocalBaseConfig>;
 
@@ -44,6 +45,7 @@ export function loadTomlOverrides(path: string): ConfigOverrides {
     host: typeof values.host === "string" ? values.host : undefined,
     port: typeof values.port === "number" ? values.port : undefined,
     ctxSize: typeof values.ctxSize === "number" ? values.ctxSize : undefined,
+    parallel: parseOptionalParallelSlots(values.parallel),
     sttHost: typeof values.sttHost === "string" ? values.sttHost : undefined,
     sttPort: typeof values.sttPort === "number" ? values.sttPort : undefined,
     startupOnBoot:
