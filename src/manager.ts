@@ -436,8 +436,13 @@ export async function installModel(
   }
   curlArgs.push("-o", output, url);
 
-  const result = spawnSync("curl", curlArgs, { stdio: "inherit" });
-  if (result.status !== 0) {
+  const proc = Bun.spawn(["curl", ...curlArgs], {
+    stdout: "inherit",
+    stderr: "inherit",
+    stdin: "inherit",
+  });
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
     try {
       rmSync(output, { force: true });
     } catch {}
@@ -604,15 +609,14 @@ export function resolveBinaryPath(
   return null;
 }
 
-/**
- * Downloads a file from the given URL using curl.
- * Throws if the download fails.
- */
-function curlDownload(url: string, dest: string): void {
-  const result = spawnSync("curl", ["-L", "--fail", "-o", dest, url], {
-    stdio: "inherit",
+async function curlDownload(url: string, dest: string): Promise<void> {
+  const proc = Bun.spawn(["curl", "-L", "--fail", "-o", dest, url], {
+    stdout: "inherit",
+    stderr: "inherit",
+    stdin: "inherit",
   });
-  if (result.status !== 0) {
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
     throw new Error(`Failed to download ${url}`);
   }
 }
@@ -671,7 +675,7 @@ async function downloadWhisperServer(config: LocalBaseConfig): Promise<string> {
 
   const destPath = join(binDir, "whisper-server");
   console.log(`⬇️  Downloading ${assetName} from LocalBase releases...`);
-  curlDownload(binaryUrl, destPath);
+  await curlDownload(binaryUrl, destPath);
 
   await verifyChecksum(destPath, expectedHash, assetName);
 
@@ -706,7 +710,7 @@ async function downloadLlamaServer(config: LocalBaseConfig): Promise<string> {
     `\n⬇️  Downloading llama-server ${LLAMA_CPP_VERSION} (${suffix})...`,
   );
   const archivePath = join(binDir, assetName);
-  curlDownload(url, archivePath);
+  await curlDownload(url, archivePath);
 
   console.log("Extracting llama.cpp release...");
   const ext = spawnSync(
@@ -766,7 +770,7 @@ async function downloadSdServer(config: LocalBaseConfig): Promise<string> {
     `\n⬇️  Downloading stable-diffusion.cpp server (${plat}-${a})...`,
   );
   const archivePath = join(binDir, assetName);
-  curlDownload(url, archivePath);
+  await curlDownload(url, archivePath);
 
   console.log("Extracting stable-diffusion.cpp release...");
   const ext = spawnSync("unzip", ["-o", archivePath, "-d", binDir], {
