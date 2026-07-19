@@ -179,17 +179,20 @@ class ManagedService {
   private crashTimes: number[] = [];
   private isRestarting = false;
   private restartPromise: Promise<void> | null = null;
+  private timeoutMs: number;
 
   constructor(
     name: string,
     healthUrl: string,
     logger: ILogger,
     startFn: () => Promise<Bun.Subprocess>,
+    timeoutMs = 30000,
   ) {
     this.name = name;
     this.healthUrl = healthUrl;
     this.logger = logger;
     this.startFn = startFn;
+    this.timeoutMs = timeoutMs;
   }
 
   /**
@@ -254,8 +257,7 @@ class ManagedService {
       } catch (err) {
         this.logger.error(this.name, "Failed to start service", err as Error);
         this.crashTimes.push(Date.now());
-        this.proc?.kill();
-        this.proc = null;
+        this.kill();
         this.isRestarting = false;
         throw err;
       }
@@ -268,7 +270,7 @@ class ManagedService {
    * Polls the backend's /health endpoint until it is online or startup times out.
    */
   private async waitHealthy(): Promise<boolean> {
-    const timeout = 30000; // 30s
+    const timeout = this.timeoutMs;
     const interval = 200; // 200ms
     const start = Date.now();
 
@@ -292,12 +294,22 @@ class ManagedService {
   }
 
   /**
-   * Forcefully kills the subprocess.
+   * Gracefully terminates the subprocess (SIGTERM -> brief sleep -> SIGKILL).
    */
   kill(): void {
-    if (this.proc) {
-      this.proc.kill();
+    const p = this.proc;
+    if (p) {
       this.proc = null;
+      try {
+        p.kill(15);
+        setTimeout(() => {
+          if (p.exitCode === null) {
+            try {
+              p.kill(9);
+            } catch (err) {}
+          }
+        }, 500);
+      } catch (err) {}
     }
   }
 
@@ -628,6 +640,10 @@ export async function runServe(
   const sttBase = `http://${sttHost}:${sttPort}`;
   const imageBase = `http://${imageHost}:${imagePort}`;
 
+  const activeLlmSpec = byId(config.activeLlmModel);
+  const llmTimeoutMs =
+    activeLlmSpec && activeLlmSpec.minVramGb >= 16 ? 180000 : 60000;
+
   const llmService = enabled.llm
     ? new ManagedService(
         "llama-server",
@@ -682,6 +698,7 @@ export async function runServe(
             finalCtxSize,
           );
         },
+        llmTimeoutMs,
       )
     : null;
 
