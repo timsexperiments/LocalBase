@@ -274,6 +274,21 @@ async function interactiveConfigureSelective(
     );
   }
 
+  if (!locked.has("parallel")) {
+    const input = await textPrompt(
+      "Parallel request slots count (type 'auto' for dynamic auto-allocation, or an integer like 1, 2, 4)",
+      String(config.parallel || "auto"),
+    );
+    const parsed =
+      input.toLowerCase() === "auto" ? "auto" : parseInt(input, 10) || 1;
+    if (typeof parsed === "number" && parsed > 1 && vramGb < 16) {
+      console.log(
+        `⚠️  Warning: Setting parallel slots to ${parsed} on a system with only ${vramGb}GB VRAM may cause Out-Of-Memory (OOM) crashes during concurrent request execution.`,
+      );
+    }
+    config.parallel = parsed;
+  }
+
   if (useAll)
     console.log(
       "\nTip: run `local-base catalog --kind <kind>` for full model details before final install.",
@@ -478,6 +493,7 @@ export async function runConfigure(
     parseFlag(args, "--active-image") ?? rawToml.activeImageModel,
   );
   maybeLock("hfToken", parseFlag(args, "--hf-token") ?? rawToml.hfToken);
+  maybeLock("parallel", parseFlag(args, "--parallel") ?? rawToml.parallel);
 
   config = {
     ...config,
@@ -519,6 +535,20 @@ export async function runConfigure(
       config.hfToken ??
       process.env.HF_TOKEN ??
       "",
+    parallel: (() => {
+      const flagVal = parseFlag(args, "--parallel");
+      const rawVal =
+        flagVal !== undefined
+          ? flagVal
+          : rawToml.parallel !== undefined
+            ? rawToml.parallel
+            : config.parallel;
+      if (rawVal === undefined) return "auto";
+      if (typeof rawVal === "number") return rawVal;
+      if (String(rawVal).toLowerCase() === "auto") return "auto";
+      const parsed = parseInt(String(rawVal), 10);
+      return isNaN(parsed) ? "auto" : parsed;
+    })(),
   };
 
   config.llmModelsDir = `${config.root}/models/llm`;

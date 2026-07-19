@@ -72,6 +72,11 @@ export const commandRegistry: CLICommand[] = [
         type: "true|false",
         description: "Create an initial API key during configuration",
       },
+      {
+        name: "--parallel",
+        type: "n|auto",
+        description: "Number of parallel request slots (default: auto)",
+      },
     ],
   },
   {
@@ -155,6 +160,11 @@ export const commandRegistry: CLICommand[] = [
         name: "--create-key",
         type: "true|false",
         description: "Create an initial API key during configuration",
+      },
+      {
+        name: "--parallel",
+        type: "n|auto",
+        description: "Number of parallel request slots (default: auto)",
       },
     ],
   },
