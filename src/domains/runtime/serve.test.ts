@@ -22,14 +22,40 @@ describe("API Gateway Integration & Schema Validation", () => {
     config.sttPort = 18002;
     config.activeLlmModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
     config.selectedLlmModels = ["qwen2.5-coder-1.5b-instruct-q4_k_m"];
+    config.activeSttModel = "whisper-large-v3-turbo";
+    config.selectedSttModels = ["whisper-large-v3-turbo"];
+    config.activeImageModel = "stable-diffusion-v1-5";
+    config.selectedImageModels = ["stable-diffusion-v1-5"];
     saveConfig(config);
 
-    // Create a dummy GGUF model file to bypass serve startup downloader checks
-    const modelDir = join(TEST_ROOT, "models", "llm");
-    mkdirSync(modelDir, { recursive: true });
+    // Create dummy mock binaries to bypass ensureBinary downloads
+    const binDir = join(TEST_ROOT, "bin");
+    mkdirSync(binDir, { recursive: true });
+    const dummyScript = "#!/bin/sh\nexit 0\n";
+    await Bun.write(join(binDir, "llama-server"), dummyScript);
+    await Bun.write(join(binDir, "whisper-server"), dummyScript);
+    await Bun.write(join(binDir, "sd-server"), dummyScript);
+    Bun.spawnSync(["chmod", "+x", join(binDir, "llama-server")]);
+    Bun.spawnSync(["chmod", "+x", join(binDir, "whisper-server")]);
+    Bun.spawnSync(["chmod", "+x", join(binDir, "sd-server")]);
+
+    // Create dummy model files to bypass serve startup downloader checks
+    const llmDir = join(TEST_ROOT, "models", "llm");
+    mkdirSync(llmDir, { recursive: true });
     await Bun.write(
-      join(modelDir, "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"),
-      "dummy model",
+      join(llmDir, "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"),
+      "dummy llm model",
+    );
+
+    const sttDir = join(TEST_ROOT, "models", "stt");
+    mkdirSync(sttDir, { recursive: true });
+    await Bun.write(join(sttDir, "ggml-large-v3-turbo.bin"), "dummy stt model");
+
+    const imageDir = join(TEST_ROOT, "models", "image");
+    mkdirSync(imageDir, { recursive: true });
+    await Bun.write(
+      join(imageDir, "v1-5-pruned-emaonly.safetensors"),
+      "dummy image model",
     );
 
     // Spawn serving gateway wrapper on port 8989
@@ -46,9 +72,9 @@ describe("API Gateway Integration & Schema Validation", () => {
         "--llm",
         "true",
         "--stt",
-        "false",
+        "true",
         "--image",
-        "false",
+        "true",
         "--auth",
         "false", // Disable auth for easy base testing
       ],
@@ -84,7 +110,8 @@ describe("API Gateway Integration & Schema Validation", () => {
     const body = await res.json();
     expect(body.status).toBe("ok");
     expect(body.enabled.llm).toBe(true);
-    expect(body.enabled.stt).toBe(false);
+    expect(body.enabled.stt).toBe(true);
+    expect(body.enabled.image).toBe(true);
   });
 
   test("GET /v1/models lists configured models", async () => {
@@ -125,5 +152,47 @@ describe("API Gateway Integration & Schema Validation", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.message).toContain("messages.0.role: ");
+  });
+
+  test("POST /v1/images/generations fails validation on missing prompt", async () => {
+    const res = await fetch("http://localhost:8989/v1/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        n: 1,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.message).toContain("prompt: ");
+  });
+
+  test("POST /v1/embeddings fails validation on missing input", async () => {
+    const res = await fetch("http://localhost:8989/v1/embeddings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "embeddings-model",
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.message).toContain("input: ");
+  });
+
+  test("POST /v1/audio/transcriptions fails validation on missing file", async () => {
+    const fd = new FormData();
+    fd.append("model", "whisper-large-v3");
+
+    const res = await fetch("http://localhost:8989/v1/audio/transcriptions", {
+      method: "POST",
+      body: fd,
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.message).toContain("file: ");
   });
 });
