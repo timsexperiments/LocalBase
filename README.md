@@ -1,111 +1,70 @@
 # LocalBase
 
-`local-base` is a lightweight, zero-external-dependency local AI serving wrapper and developer proxy control plane written in Bun and TypeScript. It orchestrates, installs, and supervises local LLM (`llama-server`) and STT (`whisper-server`) runtimes, exposing a single, unified, OpenAI-compatible API gateway.
+LocalBase is a Bun/TypeScript unified, OpenAI-compatible gateway for local AI runtimes. It listens on port `2273` by default and manages model processes behind one API surface.
 
----
+## Current capabilities
 
-## Installation & Quick Start
+- **LLM** chat and completions, including configured-model switching.
+- **Embeddings** for local indexing and search.
+- **STT** audio transcriptions and translations.
+- **Image generation** through the OpenAI-compatible `/v1/images/generations` endpoint.
+- Lazy loading of LLM, STT, and image backends on first use.
+- Self-healing process supervision with bounded restart backoff.
+- Zod request and response validation.
+- SQLite-backed configuration and API-key storage.
+- Hardware-aware context sizing and llama-server parallel-slot configuration.
+
+The runtime currently keeps one active model per service. Dynamic model pools and eviction are future work.
+
+## Supported platforms
+
+Full managed support includes the CLI and automatic backend management:
+
+- macOS ARM64.
+- Linux x64.
+
+CLI-only compatibility is available for macOS x64 and Linux ARM64. These releases publish the Bun CLI but no LocalBase-built `whisper-server` or `sd-server` runtime. Put compatible backend executables in `$LOCALBASE_ROOT/bin` (by default `~/.local/share/local-base/bin`) or on `PATH`. Pinned upstream `llama.cpp` downloads remain available only where that upstream release provides them.
+
+Windows is unsupported.
+
+## Quick start
 
 ```bash
-# 1. Install dependencies and compile the binary
 bun install
-bun run build       # Compiles standalone native executable to dist/local-base
-
-# 2. Run interactive guided configuration
-./dist/local-base
-
-# 3. Download and install a model from catalog
-./dist/local-base catalog --kind llm
-./dist/local-base install qwen2.5-coder-7b-instruct-q4_k_m
-
-# 4. Start the unified serving gateway
+bun run build
+./dist/local-base configure
 ./dist/local-base serve
 ```
 
-*For a full description of all subcommands, arguments, and options, run:*
+The gateway is available at `http://localhost:2273/v1`. Use `./dist/local-base --help` for command details. API keys can be created with `./dist/local-base keys create`.
+
+## Continue.dev integration
+
+If `~/.continue/config.json` exists, `configure` and `serve` synchronize LocalBase model entries, autocomplete, embeddings, API base, and calculated context settings with that file.
+
+## Development
+
+Install dependencies and run the source CLI with Bun:
+
 ```bash
-./dist/local-base --help
+bun install --frozen-lockfile
+bun run local-base --help
 ```
 
----
+Useful verification commands:
 
-## Core Architectural Features
-
-*   **On-Demand Lazy Loading**: Upstream backend servers (`llama-server` and `whisper-server`) are only booted on the first API request targeting that model, preserving VRAM when idle.
-*   **Self-Healing Supervisor**: Monitors child processes and automatically recovers from unexpected crashes using doubling exponential backoff (1s to 16s) and a safety budget (max 5 crashes in 5 minutes).
-*   **On-the-Fly Model Switching**: Intercepts `/v1/chat/completions`, `/v1/completions`, and `/v1/embeddings` requests. If the requested model differs from the active one, the supervisor halts the current backend, updates configurations, synchronizes editor settings, and boots the new model before routing the request.
-*   **Dynamic Context Sizing**: Automatically detects host hardware (VRAM/RAM) and calculates the optimal context ceiling for the active model: `min(recommendedCtxForHardware, maxConfigCtx)`.
-*   **Automated Editor Syncing**: Synchronizes model choices, context limits, and endpoints in real-time with **OpenCode** (`opencode.jsonc`) and **Continue.dev** (`config.json`).
-*   **Lazy-Load Shield (`/v1/models`)**: Intercepts model listing requests and serves catalog metadata instantly without triggering LLM process activation during IDE background polling.
-
----
-
-## Unified API Mappings
-
-The wrapper binds to a single port (default `8787`) and exposes standard OpenAI endpoints:
-
-*   **LLM (Chat & Completions)**: Proxies `/v1/chat/completions` and `/v1/completions` to `llama-server`. Maps modern OpenAI `"developer"` role inputs to `"system"` for tokenizer compatibility.
-*   **Codebase Indexing**: Proxies `/v1/embeddings` to `llama-server`.
-*   **Model List**: Intercepts `/v1/models` to serve active/selected configurations instantly.
-*   **STT (Audio Transcriptions)**: Proxies `/v1/audio/transcriptions` and `/v1/audio/translations` to `whisper-server`.
-*   **Diagnostics & Health**: Exposes `/health` to verify all upstream bindings and active statuses.
-
-> **Roadmap**: Local TTS, image generation, and video generation are planned modalities. They are not yet implemented.
-
----
-
-## IDE Integration Setup
-
-### OpenCode & Continue.dev
-Configuration is performed automatically. Upon running `./dist/local-base serve` or `./dist/local-base configure`, the wrapper resolves your active model, calculated context limits, and credentials, writing them directly to:
-*   `~/.config/opencode/opencode.jsonc` (OpenCode)
-*   `~/.continue/config.json` (Continue.dev)
-
-### Cursor
-To route Cursor queries through LocalBase:
-1. Open Cursor Settings -> **Models**.
-2. Under **OpenAI API Key**, add a key generated via `local-base keys create` (or your static `LOCALBASE_API_KEY`).
-3. Under **Override URL**, set `http://localhost:8787/v1`.
-4. Define your active model (e.g. `qwen2.5-coder-7b-instruct-q4_k_m`) under the Model list.
-
----
-
-## Development Setup & Running
-
-### Prerequisites
-- [Bun](https://bun.sh) runtime (latest)
-- SQLite3 (installed on host)
-
-### Local Setup
-1. Clone the repository and navigate to the directory:
-   ```bash
-   git clone git@github.com:timsexperiments/LocalBase.git
-   cd LocalBase
-   ```
-2. Install dependencies:
-   ```bash
-   bun install --frozen-lockfile
-   ```
-
-### Running in Development
-Execute the CLI directly from source using the Bun runtime:
 ```bash
-bun run local-base [command] [options]
-# Example:
-bun run local-base doctor
+bun run check
+bun test
+bun run build
 ```
 
-### Build & Package Validation
-*   **Typecheck**: `bun run typecheck`
-*   **Build Standalone Binary**: `bun run build` (outputs to `dist/local-base`)
+`bun run check` formats-checks the source, type-checks the project, and runs the CLI help smoke test. `bun run build` produces `dist/local-base`.
 
-### CI/CD Pipelines
-*   **CI Workflow**: Automatically validates lockfiles, executes TypeScript compilation checks, and runs CLI smoke tests on push/PR.
-*   **Release Workflow**: Triggered on tag pushes (`v*`). Automatically cross-compiles native binaries for macOS (ARM64/x64), Linux (ARM64/x64), and Windows (x64), computes SHA-256 integrity checksums, and publishes a GitHub Release.
+## Roadmap
 
----
+TIM-21 adds configurable and hardware-aware llama-server request slots. Dynamic model pools, LRU eviction, text-to-speech, and video generation remain future work.
 
-## Support & Contribution
+## Contributing
 
-*   **Bug Reports & Requests**: Submit an issue on [GitHub Issues](https://github.com/timsexperiments/LocalBase/issues).
-*   **Contributing**: Fork the repository, apply your changes, verify using `bun run typecheck`, and submit a Pull Request.
+Keep documentation and behavior aligned, use Bun for project commands, and verify changes with the checks above before opening a pull request. Report bugs and requests through [GitHub Issues](https://github.com/timsexperiments/LocalBase/issues).

@@ -13,6 +13,8 @@ import {
   defaultConfig,
   launchLlamaServer,
   loadConfig,
+  managedRuntimeUnavailableError,
+  platformSupportTier,
   saveConfig,
   startLlamaServerProcess,
   type LocalBaseConfig,
@@ -158,6 +160,44 @@ describe("parallel configuration persistence", () => {
     config.parallel = "auto";
     saveConfig(config);
     expect(loadConfig(root).parallel).toBe("auto");
+  });
+});
+
+describe("platform support tiers", () => {
+  test("classifies managed, CLI-only, and unsupported targets", () => {
+    expect(platformSupportTier({ os: "darwin", cpu: "arm64" })).toBe("managed");
+    expect(platformSupportTier({ os: "linux", cpu: "x64" })).toBe("managed");
+    expect(platformSupportTier({ os: "darwin", cpu: "x64" })).toBe("cli-only");
+    expect(platformSupportTier({ os: "linux", cpu: "arm64" })).toBe("cli-only");
+    expect(platformSupportTier({ os: "win32", cpu: "x64" })).toBe(
+      "unsupported",
+    );
+  });
+
+  test("explains how to provide missing CLI-only runtimes", () => {
+    expect(
+      managedRuntimeUnavailableError(
+        "whisper-server",
+        { os: "darwin", cpu: "x64" },
+        "/tmp/local-base/bin",
+      ).message,
+    ).toBe(
+      "LocalBase CLI-only compatibility on macOS x64 does not include a managed whisper-server runtime. Place a compatible whisper-server executable in /tmp/local-base/bin/whisper-server or on PATH.",
+    );
+    expect(
+      managedRuntimeUnavailableError(
+        "sd-server",
+        { os: "linux", cpu: "arm64" },
+        "/tmp/local-base/bin",
+      ).message,
+    ).toContain("/tmp/local-base/bin/sd-server or on PATH");
+    expect(
+      managedRuntimeUnavailableError(
+        "sd-server",
+        { os: "win32", cpu: "x64" },
+        "/tmp/local-base/bin",
+      ).message,
+    ).toContain("/tmp/local-base/bin/sd-server or on PATH");
   });
 });
 
