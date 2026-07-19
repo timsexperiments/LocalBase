@@ -18,12 +18,14 @@ The runtime currently keeps one active model per service. Dynamic model pools an
 
 ## Supported platforms
 
-LocalBase targets:
+Full managed support includes the CLI and automatic backend management:
 
-- macOS on Apple Silicon with Metal.
-- GPU-accelerated Linux, with NVIDIA as the primary target and AMD supported secondarily where the runtime permits it.
+- macOS ARM64.
+- Linux x64.
 
-Windows, Intel macOS, and CPU-only Linux are explicitly outside the product scope.
+CLI-only compatibility is available for macOS x64 and Linux ARM64. These releases publish the Bun CLI but no LocalBase-built `whisper-server` or `sd-server` runtime. Put compatible backend executables in `$LOCALBASE_ROOT/bin` (by default `~/.local/share/local-base/bin`) or on `PATH`. Pinned upstream `llama.cpp` downloads remain available only where that upstream release provides them.
+
+Windows is unsupported.
 
 ## Quick start
 

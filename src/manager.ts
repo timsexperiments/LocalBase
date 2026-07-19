@@ -37,8 +37,8 @@ import {
 
 // ---------------------------------------------------------------------------
 // Pinned upstream versions — update these when qualifying a new binary release.
-// whisper-server is sourced from our own GitHub releases (built in CI).
-// llama-server is sourced from the ggml-org/llama.cpp prebuilt releases.
+// whisper-server is sourced from LocalBase releases on managed platforms.
+// llama-server is sourced from ggml-org/llama.cpp prebuilt releases.
 // ---------------------------------------------------------------------------
 const LLAMA_CPP_VERSION = "b9741";
 const LOCALBASE_RELEASES_BASE =
@@ -667,16 +667,69 @@ async function curlDownload(url: string, dest: string): Promise<void> {
  * e.g. "macos-arm64", "linux-x64".
  * Throws on unsupported platforms.
  */
-function platformAssetSuffix(): string {
-  const os = platform();
-  const cpu = arch();
+export type PlatformTarget = {
+  os: string;
+  cpu: string;
+};
+
+export type PlatformSupportTier = "managed" | "cli-only" | "unsupported";
+
+/** Returns the release tier without reading process globals so platform policy is testable. */
+export function platformSupportTier(
+  target: PlatformTarget,
+): PlatformSupportTier {
+  if (
+    (target.os === "darwin" && target.cpu === "arm64") ||
+    (target.os === "linux" && target.cpu === "x64")
+  ) {
+    return "managed";
+  }
+  if (
+    (target.os === "darwin" && target.cpu === "x64") ||
+    (target.os === "linux" && target.cpu === "arm64")
+  ) {
+    return "cli-only";
+  }
+  return "unsupported";
+}
+
+function currentPlatformTarget(): PlatformTarget {
+  return { os: platform(), cpu: arch() };
+}
+
+function platformLabel(target: PlatformTarget): string {
+  if (target.os === "darwin") return `macOS ${target.cpu}`;
+  if (target.os === "linux") return `Linux ${target.cpu}`;
+  if (target.os === "win32") return "Windows";
+  return `${target.os} ${target.cpu}`;
+}
+
+export function managedRuntimeUnavailableError(
+  name: "whisper-server" | "sd-server",
+  target: PlatformTarget,
+  binDir: string,
+): Error {
+  const label = platformLabel(target);
+  if (platformSupportTier(target) === "cli-only") {
+    return new Error(
+      `LocalBase CLI-only compatibility on ${label} does not include a managed ${name} runtime. ` +
+        `Place a compatible ${name} executable in ${join(binDir, name)} or on PATH.`,
+    );
+  }
+  return new Error(
+    `${label} is unsupported by LocalBase. ${name} cannot be downloaded automatically; ` +
+      `place a compatible ${name} executable in ${join(binDir, name)} or on PATH.`,
+  );
+}
+
+function platformAssetSuffix(target = currentPlatformTarget()): string {
+  const { os, cpu } = target;
   if (os === "darwin" && cpu === "arm64") return "macos-arm64";
   if (os === "darwin" && cpu === "x64") return "macos-x64";
   if (os === "linux" && cpu === "x64") return "linux-x64";
   if (os === "linux" && cpu === "arm64") return "linux-arm64";
   throw new Error(
-    `Unsupported platform for prebuilt binaries: ${os} ${cpu}.\n` +
-      `Install llama-server / whisper-server manually and ensure they are on PATH.`,
+    `No pinned upstream llama.cpp binary is available for ${platformLabel(target)}.`,
   );
 }
 
@@ -689,7 +742,11 @@ async function downloadWhisperServer(config: LocalBaseConfig): Promise<string> {
   const binDir = join(config.root, "bin");
   mkdirSync(binDir, { recursive: true });
 
-  const suffix = platformAssetSuffix();
+  const target = currentPlatformTarget();
+  if (platformSupportTier(target) !== "managed") {
+    throw managedRuntimeUnavailableError("whisper-server", target, binDir);
+  }
+  const suffix = platformAssetSuffix(target);
   const assetName = `whisper-server-${suffix}`;
   const binaryUrl = `${LOCALBASE_RELEASES_BASE}/${assetName}`;
   const checksumUrl = `${LOCALBASE_RELEASES_BASE}/checksums.txt`;
@@ -789,26 +846,23 @@ async function downloadSdServer(config: LocalBaseConfig): Promise<string> {
   const binDir = join(config.root, "bin");
   mkdirSync(binDir, { recursive: true });
 
-  const plat = platform();
-  const a = arch();
+  const target = currentPlatformTarget();
+  if (platformSupportTier(target) !== "managed") {
+    throw managedRuntimeUnavailableError("sd-server", target, binDir);
+  }
 
   let assetName = "";
-  if (plat === "darwin" && a === "arm64") {
+  if (target.os === "darwin" && target.cpu === "arm64") {
     assetName = "sd-master-c00a9e9-bin-Darwin-macOS-26.4-arm64.zip";
-  } else if (plat === "linux" && a === "x64") {
+  } else if (target.os === "linux" && target.cpu === "x64") {
     assetName = "sd-master-c00a9e9-bin-Linux-Ubuntu-24.04-x86_64.zip";
-  } else if (plat === "win32" && a === "x64") {
-    assetName = "sd-master-c00a9e9-bin-win-cpu-x64.zip";
   } else {
-    throw new Error(
-      `No prebuilt stable-diffusion.cpp binaries are available for platform ${plat}-${a}.\n` +
-        `Please compile stable-diffusion.cpp locally and place the 'sd-server' executable in your system PATH or under ${join(binDir, "sd-server")}.`,
-    );
+    throw managedRuntimeUnavailableError("sd-server", target, binDir);
   }
 
   const url = `https://github.com/leejet/stable-diffusion.cpp/releases/download/master-778-c00a9e9/${assetName}`;
   console.log(
-    `\n⬇️  Downloading stable-diffusion.cpp server (${plat}-${a})...`,
+    `\n⬇️  Downloading stable-diffusion.cpp server (${target.os}-${target.cpu})...`,
   );
   const archivePath = join(binDir, assetName);
   await curlDownload(url, archivePath);
@@ -823,15 +877,12 @@ async function downloadSdServer(config: LocalBaseConfig): Promise<string> {
   if (ext.status !== 0)
     throw new Error("Failed to extract stable-diffusion.cpp archive.");
 
-  const destPath = join(
-    binDir,
-    plat === "win32" ? "sd-server.exe" : "sd-server",
-  );
+  const destPath = join(binDir, "sd-server");
   if (!existsSync(destPath))
     throw new Error("sd-server binary not found after extraction.");
 
   spawnSync("chmod", ["+x", destPath]);
-  if (plat === "darwin") {
+  if (target.os === "darwin") {
     spawnSync("xattr", ["-rd", "com.apple.quarantine", binDir]);
   }
 
@@ -851,7 +902,7 @@ export async function ensureBinary(
   name: "llama-server" | "whisper-server" | "sd-server",
 ): Promise<string> {
   const binDir = join(config.root, "bin");
-  const localBinName = platform() === "win32" ? `${name}.exe` : name;
+  const localBinName = name;
   const localBin = join(binDir, localBinName);
 
   // 1. Check locally managed binary and verify stored checksum.
@@ -865,11 +916,7 @@ export async function ensureBinary(
   }
 
   // 2. Check system PATH.
-  const systemBin = spawnSync(
-    platform() === "win32" ? "where" : "which",
-    [localBinName],
-    { encoding: "utf8" },
-  );
+  const systemBin = spawnSync("which", [localBinName], { encoding: "utf8" });
   if (systemBin.status === 0 && systemBin.stdout.trim()) {
     console.log(
       `ℹ️  Using system-installed ${name} at ${systemBin.stdout.trim()}`,
@@ -878,6 +925,13 @@ export async function ensureBinary(
   }
 
   // 3. Download prebuilt release.
+  const target = currentPlatformTarget();
+  if (
+    (name === "whisper-server" || name === "sd-server") &&
+    platformSupportTier(target) !== "managed"
+  ) {
+    throw managedRuntimeUnavailableError(name, target, binDir);
+  }
   if (name === "whisper-server") return downloadWhisperServer(config);
   if (name === "sd-server") return downloadSdServer(config);
   return downloadLlamaServer(config);
