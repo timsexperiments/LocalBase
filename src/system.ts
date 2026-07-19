@@ -13,7 +13,11 @@ export type HostSpecs = {
 };
 
 function run(cmd: string, args: string[]): string {
-  const result = spawnSync(cmd, args, { encoding: "utf8", timeout: 3000, killSignal: "SIGKILL" });
+  const result = spawnSync(cmd, args, {
+    encoding: "utf8",
+    timeout: 3000,
+    killSignal: "SIGKILL",
+  });
   return (result.stdout ?? "").trim();
 }
 
@@ -26,7 +30,7 @@ function tryNvmlFfi(): { name: string; vramGb: number } | null {
       "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so",
       "/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1",
       "/usr/lib/wsl/lib/libnvidia-ml.so",
-      "/usr/lib/wsl/lib/libnvidia-ml.so.1"
+      "/usr/lib/wsl/lib/libnvidia-ml.so.1",
     ];
 
     let nvml: any = null;
@@ -35,28 +39,28 @@ function tryNvmlFfi(): { name: string; vramGb: number } | null {
         nvml = dlopen(path, {
           nvmlInit_v2: {
             args: [],
-            returns: "i32"
+            returns: "i32",
           },
           nvmlShutdown: {
             args: [],
-            returns: "i32"
+            returns: "i32",
           },
           nvmlDeviceGetCount_v2: {
             args: ["ptr"],
-            returns: "i32"
+            returns: "i32",
           },
           nvmlDeviceGetHandleByIndex_v2: {
             args: ["u32", "ptr"],
-            returns: "i32"
+            returns: "i32",
           },
           nvmlDeviceGetMemoryInfo: {
             args: ["ptr", "ptr"],
-            returns: "i32"
+            returns: "i32",
           },
           nvmlDeviceGetName: {
             args: ["ptr", "ptr", "u32"],
-            returns: "i32"
-          }
+            returns: "i32",
+          },
         });
         break;
       } catch {
@@ -75,7 +79,10 @@ function tryNvmlFfi(): { name: string; vramGb: number } | null {
       if (countRes !== 0 || countBuf[0] === 0) return null;
 
       const handleBuf = new BigUint64Array(1);
-      const handleRes = nvml.symbols.nvmlDeviceGetHandleByIndex_v2(0, ptr(handleBuf));
+      const handleRes = nvml.symbols.nvmlDeviceGetHandleByIndex_v2(
+        0,
+        ptr(handleBuf),
+      );
       if (handleRes !== 0) return null;
 
       const handle = ptr(handleBuf);
@@ -85,7 +92,9 @@ function tryNvmlFfi(): { name: string; vramGb: number } | null {
       let name = "NVIDIA GPU";
       if (nameRes === 0) {
         const end = nameBuf.indexOf(0);
-        name = new TextDecoder().decode(nameBuf.subarray(0, end > 0 ? end : undefined)).trim();
+        name = new TextDecoder()
+          .decode(nameBuf.subarray(0, end > 0 ? end : undefined))
+          .trim();
       }
 
       const memBuf = new BigUint64Array(3);
@@ -147,7 +156,10 @@ export function detectSpecs(): HostSpecs {
       ramGb = Math.round(os.totalmem() / 1024 / 1024 / 1024);
     }
 
-    cpuModel = run("sysctl", ["-n", "machdep.cpu.brand_string"]) || os.cpus()[0]?.model || "Apple Silicon";
+    cpuModel =
+      run("sysctl", ["-n", "machdep.cpu.brand_string"]) ||
+      os.cpus()[0]?.model ||
+      "Apple Silicon";
 
     if (isAppleSilicon) {
       const profilerOut = run("system_profiler", ["SPDisplaysDataType"]);
@@ -163,13 +175,17 @@ export function detectSpecs(): HostSpecs {
         const vramStr = vramMatch[1].trim();
         const val = parseFloat(vramStr);
         if (!isNaN(val)) {
-          gpuVramGb = vramStr.toLowerCase().includes("mb") ? Math.round(val / 1024) : Math.round(val);
+          gpuVramGb = vramStr.toLowerCase().includes("mb")
+            ? Math.round(val / 1024)
+            : Math.round(val);
         }
       }
     }
   } else {
     // Linux/Windows (Unix-fallback)
-    osName = run("bash", ["-lc", "source /etc/os-release && echo $PRETTY_NAME"]) || "Unknown Linux";
+    osName =
+      run("bash", ["-lc", "source /etc/os-release && echo $PRETTY_NAME"]) ||
+      "Unknown Linux";
 
     let ramKb = 0;
     if (existsSync("/proc/meminfo")) {
@@ -199,9 +215,16 @@ export function detectSpecs(): HostSpecs {
 
     // Try detecting Nvidia via nvidia-smi
     let detectedGpu = false;
-    const smi = spawnSync("bash", ["-lc", "command -v nvidia-smi"], { encoding: "utf8", timeout: 3000, killSignal: "SIGKILL" });
+    const smi = spawnSync("bash", ["-lc", "command -v nvidia-smi"], {
+      encoding: "utf8",
+      timeout: 3000,
+      killSignal: "SIGKILL",
+    });
     if (smi.status === 0) {
-      const raw = run("nvidia-smi", ["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"]);
+      const raw = run("nvidia-smi", [
+        "--query-gpu=name,memory.total",
+        "--format=csv,noheader,nounits",
+      ]);
       const first = raw.split("\n")[0] ?? "";
       if (first.includes(",")) {
         const [name, memMbRaw] = first.split(",", 2).map((item) => item.trim());
@@ -245,4 +268,3 @@ export function detectSpecs(): HostSpecs {
 
   return { osName, ramGb, cpuModel, gpuName, gpuVramGb, isMac, isAppleSilicon };
 }
-
