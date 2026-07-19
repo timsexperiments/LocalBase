@@ -285,6 +285,9 @@ export async function syncContinueConfig(
   config: LocalBaseConfig,
   activeModelCtxSizeOverride?: number,
 ): Promise<void> {
+  // Gateway tests must not mutate a contributor's Continue configuration.
+  if (process.env.LOCALBASE_TEST_DISABLE_CONTINUE_SYNC === "1") return;
+
   const continueDir = join(homedir(), ".continue");
   const configPath = join(continueDir, "config.json");
 
