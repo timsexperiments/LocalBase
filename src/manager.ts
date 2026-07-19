@@ -264,7 +264,7 @@ export function defaultRoot(): string {
   return join(homedir(), ".local", "share", "local-base");
 }
 
-function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
+export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
   const llm =
     recommendedForVram(vramGb)[0]?.modelId ??
     "qwen2.5-coder-7b-instruct-q4_k_m";
