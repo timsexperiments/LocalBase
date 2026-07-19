@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /** Maximum concurrent llama.cpp request slots supported by the current policy. */
 export const MAX_PARALLEL_SLOTS = 4;
 
@@ -13,7 +15,15 @@ export const CONTEXT_MEMORY_GB_PER_8K_TOKENS = 0.5;
 /** Per-slot scheduler and activation headroom after shared memory is reserved. */
 export const PARALLEL_SLOT_OVERHEAD_GB = 0.5;
 
-export type ParallelSlots = "auto" | 1 | 2 | 3 | 4;
+export const parallelSlotsSchema = z.union([
+  z.literal("auto"),
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+]);
+
+export type ParallelSlots = z.infer<typeof parallelSlotsSchema>;
 
 export type ParallelAllocationInput = {
   parallel: ParallelSlots;
@@ -34,23 +44,21 @@ function invalidParallelSlots(value: unknown): never {
   );
 }
 
-/** Parses CLI, TOML, and interactive parallel-slot input without coercion. */
+/** Parses CLI, TOML, and interactive parallel-slot input without broad coercion. */
 export function parseParallelSlots(value: unknown): ParallelSlots {
+  let normalized: unknown = value;
+
   if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "auto") return "auto";
-    if (/^[1-4]$/.test(normalized)) return Number(normalized) as 1 | 2 | 3 | 4;
-    return invalidParallelSlots(value);
+    const trimmed = value.trim();
+    if (trimmed.toLowerCase() === "auto") {
+      normalized = "auto";
+    } else if (/^[1-4]$/.test(trimmed)) {
+      normalized = Number(trimmed);
+    }
   }
 
-  if (
-    typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= 1 &&
-    value <= MAX_PARALLEL_SLOTS
-  ) {
-    return value as 1 | 2 | 3 | 4;
-  }
+  const result = parallelSlotsSchema.safeParse(normalized);
+  if (result.success) return result.data;
 
   return invalidParallelSlots(value);
 }
