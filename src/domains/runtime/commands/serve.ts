@@ -8,6 +8,7 @@ import {
   validateApiKey,
   installModel,
   saveConfig,
+  loadConfig,
 } from "../../../manager";
 import {
   byId,
@@ -741,6 +742,8 @@ export async function runServe(
     pathname: string,
     method: string,
   ): Promise<Response> => {
+    const currentConfig = loadConfig(config.root);
+
     if (pathname === "/health") {
       return Response.json({
         status: "ok",
@@ -758,7 +761,7 @@ export async function runServe(
       const isMasterKey =
         process.env.LOCALBASE_API_KEY &&
         token === process.env.LOCALBASE_API_KEY;
-      if (!token || (!isMasterKey && !validateApiKey(config, token))) {
+      if (!token || (!isMasterKey && !validateApiKey(currentConfig, token))) {
         return unauthorized(authMode);
       }
     }
@@ -779,17 +782,17 @@ export async function runServe(
             /^(localbase|openai|ollama)\//,
             "",
           );
-          const matchedModel = config.selectedLlmModels.find(
-            (m) => m.toLowerCase() === normalized.toLowerCase(),
+          const matchedModel = currentConfig.selectedLlmModels.find(
+            (m: string) => m.toLowerCase() === normalized.toLowerCase(),
           );
-          if (matchedModel && matchedModel !== config.activeLlmModel) {
+          if (matchedModel && matchedModel !== currentConfig.activeLlmModel) {
             ctx.logger.info(
               "llama-server",
-              `Switching active LLM from "${config.activeLlmModel}" to "${matchedModel}"`,
+              `Switching active LLM from "${currentConfig.activeLlmModel}" to "${matchedModel}"`,
             );
             llmService.kill();
-            config.activeLlmModel = matchedModel;
-            saveConfig(config);
+            currentConfig.activeLlmModel = matchedModel;
+            saveConfig(currentConfig);
 
             const spec = byId(matchedModel);
             const recommendedCtx = spec
@@ -797,9 +800,9 @@ export async function runServe(
               : ctx.specs.gpuVramGb >= 32
                 ? 32768
                 : 8192;
-            const newCtxSize = Math.min(recommendedCtx, config.ctxSize);
+            const newCtxSize = Math.min(recommendedCtx, currentConfig.ctxSize);
 
-            syncContinueConfig(config, newCtxSize).catch((err) => {
+            syncContinueConfig(currentConfig, newCtxSize).catch((err) => {
               ctx.logger.warn(
                 "sync",
                 `Failed to sync Continue config: ${err.message}`,
@@ -884,17 +887,17 @@ export async function runServe(
         const bodyJson = JSON.parse(bodyText);
         if (bodyJson && typeof bodyJson.model === "string") {
           const requestedModel = bodyJson.model;
-          const matchedModel = config.selectedImageModels.find(
-            (m) => m.toLowerCase() === requestedModel.toLowerCase(),
+          const matchedModel = currentConfig.selectedImageModels.find(
+            (m: string) => m.toLowerCase() === requestedModel.toLowerCase(),
           );
-          if (matchedModel && matchedModel !== config.activeImageModel) {
+          if (matchedModel && matchedModel !== currentConfig.activeImageModel) {
             ctx.logger.info(
               "sd-server",
-              `Switching active Image model from "${config.activeImageModel}" to "${matchedModel}"`,
+              `Switching active Image model from "${currentConfig.activeImageModel}" to "${matchedModel}"`,
             );
             imageService.kill();
-            config.activeImageModel = matchedModel;
-            saveConfig(config);
+            currentConfig.activeImageModel = matchedModel;
+            saveConfig(currentConfig);
           }
         }
       } catch (e) {
@@ -930,7 +933,8 @@ export async function runServe(
           }
 
           // Inject configured system prompt (or default fallback) if no system prompt is present
-          const systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+          const systemPrompt =
+            currentConfig.systemPrompt || DEFAULT_SYSTEM_PROMPT;
           const hasSystem = bodyJson.messages.some(
             (msg: any) => msg.role === "system",
           );
@@ -961,7 +965,10 @@ export async function runServe(
 
     if (pathname === "/v1/models") {
       const modelsList = [
-        ...new Set([config.activeLlmModel, ...config.selectedLlmModels]),
+        ...new Set([
+          currentConfig.activeLlmModel,
+          ...currentConfig.selectedLlmModels,
+        ]),
       ];
       const data = modelsList.map((modelId) => ({
         id: modelId,
