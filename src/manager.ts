@@ -28,6 +28,7 @@ import {
   recommendedForVram,
   recommendedSttForVram,
 } from "./catalog";
+import { detectSpecs } from "./system";
 
 // ---------------------------------------------------------------------------
 // Pinned upstream versions — update these when qualifying a new binary release.
@@ -59,6 +60,7 @@ export type LocalBaseConfig = {
   activeImageModel: string;
   systemPrompt: string;
   hfToken: string;
+  parallel: number | "auto";
 };
 
 export type ApiKeyRecord = {
@@ -94,6 +96,7 @@ const configTable = sqliteTable("config", {
   activeImageModel: text("active_image_model").default("").notNull(),
   systemPrompt: text("system_prompt").default("").notNull(),
   hfToken: text("hf_token").default("").notNull(),
+  parallel: text("parallel").default("auto").notNull(),
 });
 
 const apiKeysTable = sqliteTable("api_keys", {
@@ -136,7 +139,8 @@ function openDb(root: string) {
       active_stt_model text not null,
       active_image_model text,
       system_prompt text,
-      hf_token text
+      hf_token text,
+      parallel text
     );
 
     create table if not exists api_keys (
@@ -175,6 +179,11 @@ function openDb(root: string) {
   } catch (e) {
     // Ignore error if column already exists
   }
+  try {
+    sqlite.exec("ALTER TABLE config ADD COLUMN parallel TEXT;");
+  } catch (e) {
+    // Ignore error if column already exists
+  }
   return drizzle(sqlite);
 }
 
@@ -201,6 +210,7 @@ function toConfigRow(config: LocalBaseConfig) {
     activeImageModel: config.activeImageModel,
     systemPrompt: config.systemPrompt,
     hfToken: config.hfToken || "",
+    parallel: String(config.parallel || "auto"),
   };
 }
 
@@ -233,6 +243,8 @@ function fromConfigRow(row: typeof configTable.$inferSelect): LocalBaseConfig {
     activeImageModel,
     systemPrompt: row.systemPrompt ?? "",
     hfToken: row.hfToken ?? "",
+    parallel:
+      row.parallel === "auto" ? "auto" : parseInt(row.parallel || "", 10) || 1,
   };
 }
 
@@ -294,6 +306,7 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     activeImageModel: "stable-diffusion-v1-5",
     systemPrompt: "",
     hfToken: "",
+    parallel: "auto",
   };
 }
 
@@ -879,6 +892,32 @@ export async function startLlamaServerProcess(
   }
 
   const binPath = await ensureBinary(config, "llama-server");
+
+  let parallelSlots = 1;
+  if (config.parallel === "auto") {
+    const specs = detectSpecs();
+    const vramGb = specs.gpuVramGb;
+    const spec = byId(config.activeLlmModel);
+    if (spec) {
+      const baseSystemOverheadGb = 2;
+      const modelVramGb = spec.minVramGb;
+      const remainingVramGb = Math.max(
+        0,
+        vramGb - modelVramGb - baseSystemOverheadGb,
+      );
+      const slotOverheadGb = (ctxSize / 8192) * 1.2;
+      const calculated = Math.floor(remainingVramGb / slotOverheadGb);
+      parallelSlots = Math.max(1, Math.min(4, calculated));
+      console.log(
+        `🤖 Dynamic Concurrency: Calculated ${parallelSlots} parallel slots based on ${vramGb}GB VRAM and context memory constraints.`,
+      );
+    } else {
+      parallelSlots = 1;
+    }
+  } else {
+    parallelSlots = config.parallel;
+  }
+
   const args = [
     binPath,
     "-m",
@@ -889,10 +928,8 @@ export async function startLlamaServerProcess(
     String(port),
     "-c",
     String(ctxSize),
-    // Force --parallel 1 so the single active agent session gets the full context limit.
-    // llama-server's default is 4, which splits context size equally among 4 slots.
     "--parallel",
-    "1",
+    String(parallelSlots),
     // Force --jinja to parse model's embedded tokenizer template correctly instead of standard fallback.
     "--jinja",
     // Expose the /v1/embeddings endpoint for local vector indexing/search in coding clients.
