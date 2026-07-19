@@ -931,25 +931,29 @@ export async function runServe(
         llmBase + "/health",
         ctx.logger,
         async () => {
-          const activeModel = config.activeLlmModel;
+          const launchConfig = loadConfig(config.root);
+          const activeModel = launchConfig.activeLlmModel;
           let modelFile = parseFlag(args, "--llm-model-file");
           if (!modelFile) {
             const spec = byId(activeModel);
             let expectedFile = spec?.filename;
             if (!expectedFile) {
               expectedFile = existsSync(
-                join(config.llmModelsDir, `${activeModel}.bin`),
+                join(launchConfig.llmModelsDir, `${activeModel}.bin`),
               )
                 ? `${activeModel}.bin`
                 : `${activeModel}.gguf`;
             }
-            const modelPath = join(config.llmModelsDir, expectedFile);
+            const modelPath = join(launchConfig.llmModelsDir, expectedFile);
             if (!existsSync(modelPath)) {
               ctx.logger.info(
                 "llama-server",
                 `Model file is missing for "${activeModel}". Automatically installing...`,
               );
-              const installedPath = await installModel(config, activeModel);
+              const installedPath = await installModel(
+                launchConfig,
+                activeModel,
+              );
               modelFile = basename(installedPath);
             } else {
               modelFile = expectedFile;
@@ -964,7 +968,7 @@ export async function runServe(
               : ctx.specs.gpuVramGb >= 32
                 ? 32768
                 : 8192;
-            finalCtxSize = Math.min(recommendedCtx, config.ctxSize);
+            finalCtxSize = Math.min(recommendedCtx, launchConfig.ctxSize);
           }
 
           ctx.logger.info(
@@ -972,11 +976,12 @@ export async function runServe(
             `Spawning model "${activeModel}" (file: ${modelFile}, context: ${finalCtxSize} tokens)`,
           );
           return startLlamaServerProcess(
-            config,
+            launchConfig,
             modelFile,
             llmHost,
             llmPort,
             finalCtxSize,
+            { memoryGb: ctx.specs.gpuVramGb },
           );
         },
         llmTimeoutMs,

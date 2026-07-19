@@ -3,7 +3,18 @@ import type { AppContext } from "../../../context";
 export function runDoctor(args: string[], ctx: AppContext): number {
   const specs = ctx.specs;
   if (args.includes("--json")) {
-    console.log(JSON.stringify(specs, null, 2));
+    const { hfToken: _hfToken, ...configuration } = ctx.config;
+    console.log(
+      JSON.stringify(
+        {
+          ...specs,
+          hardware: specs,
+          configuration,
+        },
+        null,
+        2,
+      ),
+    );
     return 0;
   }
 
@@ -16,6 +27,7 @@ export function runDoctor(args: string[], ctx: AppContext): number {
   } else {
     console.log(`GPU VRAM: ${specs.gpuVramGb} GB (Discrete Memory)`);
   }
+  console.log(`Parallel Slots: ${ctx.config.parallel}`);
 
   if (specs.isAppleSilicon) {
     if (specs.ramGb >= 64) {
