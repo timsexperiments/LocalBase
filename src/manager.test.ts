@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -113,7 +112,7 @@ async function createArtifactServer(
 }
 
 function sha256(content: Uint8Array): string {
-  return createHash("sha256").update(content).digest("hex");
+  return new Bun.CryptoHasher("sha256").update(content).digest("hex");
 }
 
 function artifact(
@@ -134,7 +133,7 @@ function installFixtureModel(
   source: string,
   artifacts: ModelArtifact[],
 ): string {
-  const modelId = `test-install-${randomUUID()}`;
+  const modelId = `test-install-${crypto.randomUUID()}`;
   (CATALOG as ModelSpec[]).push({
     modelId,
     kind: "llm",

@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { createHash, randomInt } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -9,8 +8,6 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultConfig, loadConfig, saveConfig } from "../../../manager";
@@ -21,7 +18,9 @@ const PROJECT_ROOT = join(import.meta.dirname, "../../../..");
 
 function reservePort(): number {
   for (let attempt = 0; attempt < 10; attempt++) {
-    const port = randomInt(20_000, 60_000);
+    const value = new Uint32Array(1);
+    crypto.getRandomValues(value);
+    const port = 20_000 + (value[0] % 40_000);
     try {
       const reservation = Bun.serve({
         hostname: "127.0.0.1",
@@ -103,32 +102,28 @@ async function startArtifactServer(files: Record<string, Uint8Array>): Promise<{
   stop: () => Promise<void>;
 }> {
   const requests: string[] = [];
-  const server = createServer((request, response) => {
-    const path = new URL(
-      request.url ?? "/",
-      `http://${request.headers.host ?? "127.0.0.1"}`,
-    ).pathname;
-    requests.push(path);
-    const body = files[path];
-    if (!body) {
-      response.writeHead(404).end();
-      return;
-    }
-    response.writeHead(200, { "Content-Length": String(body.byteLength) });
-    response.end(body);
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      const path = new URL(request.url).pathname;
+      requests.push(path);
+      const body = files[path];
+      if (!body) {
+        return new Response(null, { status: 404 });
+      }
+      const bodyCopy = new Uint8Array(body);
+      return new Response(bodyCopy.buffer, {
+        headers: { "Content-Length": String(body.byteLength) },
+      });
+    },
   });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const { port } = server.address() as AddressInfo;
   return {
-    source: `http://127.0.0.1:${port}/repo`,
+    source: `http://127.0.0.1:${server.port}/repo`,
     requests,
-    stop: () =>
-      new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      }),
+    stop: async () => {
+      server.stop(true);
+    },
   };
 }
 
@@ -382,14 +377,18 @@ exec sleep 600
             sourcePath: primaryName,
             filename: primaryName,
             expectedSizeBytes: primary.byteLength,
-            sha256: createHash("sha256").update(primary).digest("hex"),
+            sha256: new Bun.CryptoHasher("sha256")
+              .update(primary)
+              .digest("hex"),
             role: "primary",
           },
           {
             sourcePath: supplementaryName,
             filename: supplementaryName,
             expectedSizeBytes: supplementary.byteLength,
-            sha256: createHash("sha256").update(supplementary).digest("hex"),
+            sha256: new Bun.CryptoHasher("sha256")
+              .update(supplementary)
+              .digest("hex"),
             role: "supplementary",
           },
         ],

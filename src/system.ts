@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import * as os from "node:os";
 
 export type HostSpecs = {
@@ -13,12 +12,13 @@ export type HostSpecs = {
 };
 
 function run(cmd: string, args: string[]): string {
-  const result = spawnSync(cmd, args, {
-    encoding: "utf8",
+  const result = Bun.spawnSync([cmd, ...args], {
+    stdout: "pipe",
+    stderr: "ignore",
     timeout: 3000,
     killSignal: "SIGKILL",
   });
-  return (result.stdout ?? "").trim();
+  return new TextDecoder().decode(result.stdout).trim();
 }
 
 function tryNvmlFfi(): { name: string; vramGb: number } | null {
@@ -215,12 +215,7 @@ export function detectSpecs(): HostSpecs {
 
     // Try detecting Nvidia via nvidia-smi
     let detectedGpu = false;
-    const smi = spawnSync("bash", ["-lc", "command -v nvidia-smi"], {
-      encoding: "utf8",
-      timeout: 3000,
-      killSignal: "SIGKILL",
-    });
-    if (smi.status === 0) {
+    if (Bun.which("nvidia-smi")) {
       const raw = run("nvidia-smi", [
         "--query-gpu=name,memory.total",
         "--format=csv,noheader,nounits",

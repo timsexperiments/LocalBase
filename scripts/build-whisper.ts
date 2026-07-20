@@ -1,5 +1,5 @@
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, copyFileSync, rmSync } from "node:fs";
+import { $ } from "bun";
+import { chmodSync, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { platform, arch } from "node:os";
 
@@ -33,36 +33,17 @@ async function main() {
   mkdirSync(releaseDir, { recursive: true });
 
   console.log(`\n⬇️  Cloning ggml-org/whisper.cpp...`);
-  const clone = spawnSync("git", ["clone", "--depth", "1", WHISPER_REPO, "whisper.cpp"], {
-    cwd: tempDir,
-    stdio: "inherit"
-  });
-  if (clone.status !== 0) {
-    console.error("❌ Failed to clone whisper.cpp repo.");
-    process.exit(1);
-  }
+  await $`git clone --depth 1 ${WHISPER_REPO} whisper.cpp`.cwd(tempDir);
 
   const whisperDir = join(tempDir, "whisper.cpp");
 
   console.log(`\n🛠️  Configuring CMake...`);
-  const config = spawnSync("cmake", ["-B", "build", "-DWHISPER_BUILD_TESTS=OFF", "-DWHISPER_BUILD_EXAMPLES=ON", "-DBUILD_SHARED_LIBS=OFF"], {
-    cwd: whisperDir,
-    stdio: "inherit"
-  });
-  if (config.status !== 0) {
-    console.error("❌ Failed to configure CMake.");
-    process.exit(1);
-  }
+  await $`cmake -B build -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF`.cwd(
+    whisperDir,
+  );
 
   console.log(`\n🏗️  Compiling whisper-server...`);
-  const build = spawnSync("cmake", ["--build", "build", "--config", "Release", "-j"], {
-    cwd: whisperDir,
-    stdio: "inherit"
-  });
-  if (build.status !== 0) {
-    console.error("❌ Failed to compile whisper-server.");
-    process.exit(1);
-  }
+  await $`cmake --build build --config Release -j`.cwd(whisperDir);
 
   // Find the compiled binary
   const buildBinDir = join(whisperDir, "build", "bin");
@@ -88,8 +69,8 @@ async function main() {
   }
 
   console.log(`\n💾 Copying binary to ${destPath}...`);
-  copyFileSync(sourcePath, destPath);
-  spawnSync("chmod", ["+x", destPath]);
+  await Bun.write(destPath, Bun.file(sourcePath));
+  chmodSync(destPath, statSync(destPath).mode | 0o111);
 
   console.log(`\n🧹 Cleaning up temporary build files...`);
   rmSync(tempDir, { recursive: true, force: true });

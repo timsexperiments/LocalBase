@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -6,13 +7,6 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { spawnSync } from "node:child_process";
-import {
-  createHash,
-  randomBytes,
-  randomUUID,
-  timingSafeEqual,
-} from "node:crypto";
 import { homedir, platform, arch } from "node:os";
 import { extname, join } from "node:path";
 import {
@@ -271,7 +265,7 @@ function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a, "utf8");
   const bb = Buffer.from(b, "utf8");
   if (ab.length !== bb.length) return false;
-  return timingSafeEqual(ab, bb);
+  return crypto.timingSafeEqual(ab, bb);
 }
 
 function isKeyActive(expiresAt?: string, revokedAt?: string): boolean {
@@ -282,11 +276,13 @@ function isKeyActive(expiresAt?: string, revokedAt?: string): boolean {
   return expiresMs > Date.now();
 }
 function hashApiKey(key: string): string {
-  return createHash("sha256").update(key).digest("hex");
+  return new Bun.CryptoHasher("sha256").update(key).digest("hex");
 }
 
 function makeRawApiKey(): { key: string; prefix: string } {
-  const raw = randomBytes(24).toString("base64url");
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  const raw = Buffer.from(bytes).toString("base64url");
   const prefix = raw.slice(0, 8);
   return { key: `lb_${raw}`, prefix };
 }
@@ -650,7 +646,7 @@ export function createApiKey(
   const now = new Date().toISOString();
   const { key, prefix } = makeRawApiKey();
   const record: ApiKeyRecord = {
-    id: `key_${randomUUID()}`,
+    id: `key_${crypto.randomUUID()}`,
     name,
     prefix,
     keyHash: hashApiKey(key),
@@ -755,12 +751,11 @@ export function resolveBinaryPath(
     return localBin;
   }
 
-  const check = spawnSync("which", [name], { encoding: "utf8" });
-  if (check.status === 0 && check.stdout.trim()) {
-    return check.stdout.trim();
-  }
+  return Bun.which(name);
+}
 
-  return null;
+function makeExecutable(path: string): void {
+  chmodSync(path, statSync(path).mode | 0o111);
 }
 
 async function curlDownload(url: string, dest: string): Promise<void> {
@@ -890,15 +885,15 @@ async function downloadWhisperServer(config: LocalBaseConfig): Promise<string> {
 
   await verifyChecksum(destPath, expectedHash, assetName);
 
-  spawnSync("chmod", ["+x", destPath]);
+  makeExecutable(destPath);
   if (platform() === "darwin") {
-    spawnSync("xattr", ["-rd", "com.apple.quarantine", destPath]);
+    Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", destPath]);
   }
 
   // Record checksum for future integrity checks on this installation.
-  const store = readChecksumStore(binDir);
+  const store = await readChecksumStore(binDir);
   store["whisper-server"] = expectedHash;
-  writeChecksumStore(binDir, store);
+  await writeChecksumStore(binDir, store);
 
   console.log(`\n✅ whisper-server installed to ${destPath}`);
   return destPath;
@@ -924,23 +919,23 @@ async function downloadLlamaServer(config: LocalBaseConfig): Promise<string> {
   await curlDownload(url, archivePath);
 
   console.log("Extracting llama.cpp release...");
-  const ext = spawnSync(
-    "tar",
-    ["-zxf", archivePath, "-C", binDir, "--strip-components=1"],
-    { stdio: "inherit" },
+  const ext = Bun.spawnSync(
+    ["tar", "-zxf", archivePath, "-C", binDir, "--strip-components=1"],
+    { stdin: "inherit", stdout: "inherit", stderr: "inherit" },
   );
   try {
-    Bun.spawnSync(["rm", "-f", archivePath]);
+    rmSync(archivePath, { force: true });
   } catch {}
-  if (ext.status !== 0) throw new Error("Failed to extract llama.cpp archive.");
+  if (ext.exitCode !== 0)
+    throw new Error("Failed to extract llama.cpp archive.");
 
   const destPath = join(binDir, "llama-server");
   if (!existsSync(destPath))
     throw new Error("llama-server binary not found after extraction.");
 
-  spawnSync("chmod", ["+x", destPath]);
+  makeExecutable(destPath);
   if (platform() === "darwin") {
-    spawnSync("xattr", ["-rd", "com.apple.quarantine", binDir]);
+    Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", binDir]);
   }
 
   // Record the SHA-256 we got from ggml-org for future integrity checks.
@@ -981,22 +976,24 @@ async function downloadSdServer(config: LocalBaseConfig): Promise<string> {
   await curlDownload(url, archivePath);
 
   console.log("Extracting stable-diffusion.cpp release...");
-  const ext = spawnSync("unzip", ["-o", archivePath, "-d", binDir], {
-    stdio: "inherit",
+  const ext = Bun.spawnSync(["unzip", "-o", archivePath, "-d", binDir], {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
   });
   try {
-    Bun.spawnSync(["rm", "-f", archivePath]);
+    rmSync(archivePath, { force: true });
   } catch {}
-  if (ext.status !== 0)
+  if (ext.exitCode !== 0)
     throw new Error("Failed to extract stable-diffusion.cpp archive.");
 
   const destPath = join(binDir, "sd-server");
   if (!existsSync(destPath))
     throw new Error("sd-server binary not found after extraction.");
 
-  spawnSync("chmod", ["+x", destPath]);
+  makeExecutable(destPath);
   if (target.os === "darwin") {
-    spawnSync("xattr", ["-rd", "com.apple.quarantine", binDir]);
+    Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", binDir]);
   }
 
   await recordChecksum(binDir, "sd-server", destPath);
@@ -1029,12 +1026,10 @@ export async function ensureBinary(
   }
 
   // 2. Check system PATH.
-  const systemBin = spawnSync("which", [localBinName], { encoding: "utf8" });
-  if (systemBin.status === 0 && systemBin.stdout.trim()) {
-    console.log(
-      `ℹ️  Using system-installed ${name} at ${systemBin.stdout.trim()}`,
-    );
-    return systemBin.stdout.trim();
+  const systemBin = Bun.which(localBinName);
+  if (systemBin) {
+    console.log(`ℹ️  Using system-installed ${name} at ${systemBin}`);
+    return systemBin;
   }
 
   // 3. Download prebuilt release.
@@ -1195,11 +1190,13 @@ export async function launchLlamaServer(
     logAutoParallel(launch.parallel, hardware);
   }
 
-  const result = spawnSync(binPath, launch.args, {
-    stdio: "inherit",
+  const result = Bun.spawnSync([binPath, ...launch.args], {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
   });
 
-  return result.status ?? 1;
+  return result.exitCode;
 }
 
 export async function launchWhisperServer(
@@ -1215,15 +1212,12 @@ export async function launchWhisperServer(
 
   const binPath = await ensureBinary(config, "whisper-server");
 
-  const result = spawnSync(
-    binPath,
-    ["--model", modelPath, "--host", host, "--port", String(port)],
-    {
-      stdio: "inherit",
-    },
+  const result = Bun.spawnSync(
+    [binPath, "--model", modelPath, "--host", host, "--port", String(port)],
+    { stdin: "inherit", stdout: "inherit", stderr: "inherit" },
   );
 
-  return result.status ?? 1;
+  return result.exitCode;
 }
 
 export async function startSdServerProcess(
@@ -1279,10 +1273,12 @@ export async function launchSdServer(
     String(port),
   ];
 
-  const result = spawnSync(binPath, args, {
-    stdio: "inherit",
+  const result = Bun.spawnSync([binPath, ...args], {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
     cwd: binDir,
   });
 
-  return result.status ?? 1;
+  return result.exitCode;
 }

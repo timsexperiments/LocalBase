@@ -1,10 +1,3 @@
-import { createHash } from "node:crypto";
-import {
-  createReadStream,
-  existsSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -12,13 +5,11 @@ import { join } from "node:path";
  * safe for arbitrarily large files (model weights, binary releases, etc.).
  */
 export async function computeSha256(filePath: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const hash = createHash("sha256");
-    const stream = createReadStream(filePath);
-    stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("end", () => resolve(hash.digest("hex")));
-    stream.on("error", reject);
-  });
+  const hash = new Bun.CryptoHasher("sha256");
+  for await (const chunk of Bun.file(filePath).stream()) {
+    hash.update(chunk);
+  }
+  return hash.digest("hex");
 }
 
 /**
@@ -73,18 +64,22 @@ function storeFilePath(dir: string): string {
   return join(dir, ".checksums.json");
 }
 
-export function readChecksumStore(dir: string): ChecksumStore {
+export async function readChecksumStore(dir: string): Promise<ChecksumStore> {
   const file = storeFilePath(dir);
-  if (!existsSync(file)) return {};
+  const checksumFile = Bun.file(file);
+  if (!(await checksumFile.exists())) return {};
   try {
-    return JSON.parse(readFileSync(file, "utf8")) as ChecksumStore;
+    return JSON.parse(await checksumFile.text()) as ChecksumStore;
   } catch {
     return {};
   }
 }
 
-export function writeChecksumStore(dir: string, store: ChecksumStore): void {
-  writeFileSync(storeFilePath(dir), JSON.stringify(store, null, 2), "utf8");
+export async function writeChecksumStore(
+  dir: string,
+  store: ChecksumStore,
+): Promise<void> {
+  await Bun.write(storeFilePath(dir), JSON.stringify(store, null, 2));
 }
 
 /**
@@ -97,9 +92,9 @@ export async function recordChecksum(
   filePath: string,
 ): Promise<string> {
   const hash = await computeSha256(filePath);
-  const store = readChecksumStore(dir);
+  const store = await readChecksumStore(dir);
   store[filename] = hash;
-  writeChecksumStore(dir, store);
+  await writeChecksumStore(dir, store);
   return hash;
 }
 
@@ -113,7 +108,7 @@ export async function verifyStoredChecksum(
   filename: string,
   filePath: string,
 ): Promise<boolean> {
-  const store = readChecksumStore(dir);
+  const store = await readChecksumStore(dir);
   const expected = store[filename];
   if (!expected) return false; // No recorded checksum yet — first run
   await verifyChecksum(filePath, expected, filename);
