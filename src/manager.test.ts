@@ -18,6 +18,7 @@ import { CATALOG, type ModelArtifact, type ModelSpec } from "./catalog";
 import {
   defaultConfig,
   installModel,
+  installedModels,
   launchLlamaServer,
   loadConfig,
   managedRuntimeUnavailableError,
@@ -513,6 +514,46 @@ describe("transactional model artifact installation", () => {
       installModel(createInstallConfig(), modelId, "renamed.gguf"),
     ).rejects.toThrow("filename override is not supported for multi-artifact");
     expect(server.requests).toEqual([]);
+  });
+});
+
+describe("installed model reporting", () => {
+  test("reports complete catalog sets once and preserves unmatched files", () => {
+    const primary = Buffer.from("primary");
+    const supplementary = Buffer.from("supplementary");
+    const modelId = installFixtureModel("https://example.com/models", [
+      artifact("reporting-00001.gguf", primary, "primary"),
+      artifact("reporting-00002.gguf", supplementary, "supplementary"),
+    ]);
+    const config = createInstallConfig();
+    mkdirSync(config.llmModelsDir, { recursive: true });
+    writeFileSync(join(config.llmModelsDir, "reporting-00001.gguf"), primary);
+    writeFileSync(
+      join(config.llmModelsDir, "reporting-00002.gguf"),
+      supplementary,
+    );
+    writeFileSync(join(config.llmModelsDir, "z-manual.gguf"), "manual");
+
+    expect(installedModels(config, "llm")).toEqual([modelId, "z-manual.gguf"]);
+    expect(installedModels(config)).toEqual([
+      `llm:${modelId}`,
+      "llm:z-manual.gguf",
+    ]);
+
+    rmSync(join(config.llmModelsDir, "reporting-00002.gguf"));
+    expect(installedModels(config, "llm")).toEqual(["z-manual.gguf"]);
+
+    writeFileSync(join(config.llmModelsDir, "reporting-00002.gguf"), "short");
+    expect(installedModels(config, "llm")).toEqual(["z-manual.gguf"]);
+  });
+
+  test("keeps complete single-file catalog models compatible", () => {
+    const config = createInstallConfig();
+    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    mkdirSync(config.llmModelsDir, { recursive: true });
+    writeFileSync(join(config.llmModelsDir, `${modelId}.gguf`), "model");
+
+    expect(installedModels(config, "llm")).toEqual([modelId]);
   });
 });
 
