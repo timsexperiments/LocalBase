@@ -1,7 +1,6 @@
 import { $ } from "bun";
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { platform, arch } from "node:os";
 
 const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
 const root = join(__dirname, "..");
@@ -9,8 +8,8 @@ const tempDir = join(root, "tmp-whisper-build");
 const releaseDir = join(root, "release");
 
 function platformSuffix(): string {
-  const osName = platform();
-  const cpuArch = arch();
+  const osName = process.platform;
+  const cpuArch = process.arch;
   if (osName === "darwin" && cpuArch === "arm64") return "macos-arm64";
   if (osName === "darwin" && cpuArch === "x64") return "macos-x64";
   if (osName === "linux" && cpuArch === "x64") return "linux-x64";

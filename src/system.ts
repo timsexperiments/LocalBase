@@ -1,4 +1,4 @@
-import * as os from "node:os";
+import { cpus, totalmem } from "node:os";
 
 export type HostSpecs = {
   osName: string;
@@ -130,9 +130,9 @@ async function tryAmdLinux(): Promise<{
 }
 
 export async function detectSpecs(): Promise<HostSpecs> {
-  const platform = os.platform();
+  const platform = process.platform;
   const isMac = platform === "darwin";
-  const isAppleSilicon = isMac && os.arch() === "arm64";
+  const isAppleSilicon = isMac && process.arch === "arm64";
 
   let osName = "Unknown";
   let ramGb = 0;
@@ -150,15 +150,15 @@ export async function detectSpecs(): Promise<HostSpecs> {
       if (Number.isFinite(memBytes) && memBytes > 0) {
         ramGb = Math.round(memBytes / 1024 / 1024 / 1024);
       } else {
-        ramGb = Math.round(os.totalmem() / 1024 / 1024 / 1024);
+        ramGb = Math.round(totalmem() / 1024 / 1024 / 1024);
       }
     } catch {
-      ramGb = Math.round(os.totalmem() / 1024 / 1024 / 1024);
+      ramGb = Math.round(totalmem() / 1024 / 1024 / 1024);
     }
 
     cpuModel =
       run("sysctl", ["-n", "machdep.cpu.brand_string"]) ||
-      os.cpus()[0]?.model ||
+      cpus()[0]?.model ||
       "Apple Silicon";
 
     if (isAppleSilicon) {
@@ -198,7 +198,7 @@ export async function detectSpecs(): Promise<HostSpecs> {
     if (ramKb > 0) {
       ramGb = Math.round(ramKb / 1024 / 1024);
     } else {
-      ramGb = Math.round(os.totalmem() / 1024 / 1024 / 1024);
+      ramGb = Math.round(totalmem() / 1024 / 1024 / 1024);
     }
 
     cpuModel = "Unknown";
@@ -210,7 +210,7 @@ export async function detectSpecs(): Promise<HostSpecs> {
       }
     } catch {}
     if (cpuModel === "Unknown") {
-      cpuModel = os.cpus()[0]?.model ?? "Unknown CPU";
+      cpuModel = cpus()[0]?.model ?? "Unknown CPU";
     }
 
     // Try detecting Nvidia via nvidia-smi

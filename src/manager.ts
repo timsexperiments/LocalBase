@@ -1,5 +1,5 @@
 import { chmodSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
-import { homedir, platform, arch } from "node:os";
+import { homedir } from "node:os";
 import { extname, join } from "node:path";
 import {
   computeSha256,
@@ -822,7 +822,7 @@ export function platformSupportTier(
 }
 
 function currentPlatformTarget(): PlatformTarget {
-  return { os: platform(), cpu: arch() };
+  return { os: process.platform, cpu: process.arch };
 }
 
 function platformLabel(target: PlatformTarget): string {
@@ -906,7 +906,7 @@ async function downloadWhisperServer(config: LocalBaseConfig): Promise<string> {
   await verifyChecksum(destPath, expectedHash, assetName);
 
   await makeExecutable(destPath);
-  if (platform() === "darwin") {
+  if (process.platform === "darwin") {
     Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", destPath]);
   }
 
@@ -954,7 +954,7 @@ async function downloadLlamaServer(config: LocalBaseConfig): Promise<string> {
     throw new Error("llama-server binary not found after extraction.");
 
   await makeExecutable(destPath);
-  if (platform() === "darwin") {
+  if (process.platform === "darwin") {
     Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", binDir]);
   }
 
@@ -1118,7 +1118,7 @@ export function buildLlamaServerArgs(
   ];
 
   // Enable --flash-attn on Apple Silicon GPUs for up to 2x faster prompt prefill and reduced VRAM.
-  if (platform() === "darwin" && arch() === "arm64") {
+  if (process.platform === "darwin" && process.arch === "arm64") {
     args.push("--flash-attn", "auto");
   }
 

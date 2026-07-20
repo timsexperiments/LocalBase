@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { arch, platform, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CATALOG, type ModelArtifact, type ModelSpec } from "./catalog";
 import {
@@ -268,7 +268,7 @@ function expectedLlamaArgs(modelPath: string, parallel: string): string[] {
     "--jinja",
     "--embeddings",
   ];
-  if (platform() === "darwin" && arch() === "arm64") {
+  if (process.platform === "darwin" && process.arch === "arm64") {
     args.push("--flash-attn", "auto");
   }
   return args;
