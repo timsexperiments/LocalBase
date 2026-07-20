@@ -1,5 +1,5 @@
 import { $ } from "bun";
-import { chmodSync, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { platform, arch } from "node:os";
 
@@ -26,9 +26,7 @@ async function main() {
   console.log(`\n🚀 Starting local build for whisper-server (${suffix})...`);
 
   // Clean up any stale temp directories
-  if (existsSync(tempDir)) {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
+  rmSync(tempDir, { recursive: true, force: true });
   mkdirSync(tempDir, { recursive: true });
   mkdirSync(releaseDir, { recursive: true });
 
@@ -52,12 +50,12 @@ async function main() {
 
   for (const name of possibleNames) {
     const p = join(buildBinDir, name);
-    if (existsSync(p)) {
+    if (await Bun.file(p).exists()) {
       sourcePath = p;
       break;
     }
     const exePath = join(buildBinDir, `${name}.exe`);
-    if (existsSync(exePath)) {
+    if (await Bun.file(exePath).exists()) {
       sourcePath = exePath;
       break;
     }
@@ -70,7 +68,7 @@ async function main() {
 
   console.log(`\n💾 Copying binary to ${destPath}...`);
   await Bun.write(destPath, Bun.file(sourcePath));
-  chmodSync(destPath, statSync(destPath).mode | 0o111);
+  chmodSync(destPath, (await Bun.file(destPath).stat()).mode | 0o111);
 
   console.log(`\n🧹 Cleaning up temporary build files...`);
   rmSync(tempDir, { recursive: true, force: true });

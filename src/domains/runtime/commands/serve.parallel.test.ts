@@ -1,13 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultConfig, loadConfig, saveConfig } from "../../../manager";
@@ -75,7 +67,7 @@ async function stopProcess(process: Bun.Subprocess): Promise<void> {
 async function waitForFile(path: string): Promise<void> {
   const deadline = Date.now() + 2_000;
   while (Date.now() < deadline) {
-    if (existsSync(path)) return;
+    if (await Bun.file(path).exists()) return;
     await Bun.sleep(20);
   }
   throw new Error(`Timed out waiting for ${path}`);
@@ -92,7 +84,7 @@ import { runServe } from ${JSON.stringify(servePath)};
 
 (CATALOG as any).push(JSON.parse(process.env.LOCALBASE_TEST_MODEL!));
 const args = JSON.parse(process.env.LOCALBASE_TEST_ARGS!);
-await runServe(args, createAppContext(args));
+await runServe(args, await createAppContext(args));
 `;
 }
 
@@ -274,7 +266,7 @@ exec sleep 600
       expect(response.status).toBe(200);
 
       await waitForFile(argsPath);
-      const launchArgs = readFileSync(argsPath, "utf8").trim().split("\n");
+      const launchArgs = (await Bun.file(argsPath).text()).trim().split("\n");
       expect(launchArgs[launchArgs.indexOf("--parallel") + 1]).toBe("3");
       expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(
         join(config.llmModelsDir, `${SWITCHED_MODEL}.gguf`),
@@ -345,12 +337,12 @@ test(
 
       mkdirSync(join(root, "bin"), { recursive: true });
       mkdirSync(config.llmModelsDir, { recursive: true });
-      writeFileSync(join(config.llmModelsDir, primaryName), primary);
-      writeFileSync(
+      await Bun.write(join(config.llmModelsDir, primaryName), primary);
+      await Bun.write(
         join(config.llmModelsDir, supplementaryName),
         supplementary,
       );
-      writeFileSync(
+      await Bun.write(
         join(root, "bin", "llama-server"),
         `#!/bin/sh
 test -f "$LOCALBASE_TEST_SUPPLEMENTARY_PATH" || exit 41
@@ -439,7 +431,7 @@ exec sleep 600
 
       const baseUrl = `http://127.0.0.1:${wrapperPort}`;
       await waitForGateway(gateway, baseUrl);
-      rmSync(join(config.llmModelsDir, supplementaryName));
+      await Bun.file(join(config.llmModelsDir, supplementaryName)).delete();
 
       const response = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
@@ -454,9 +446,9 @@ exec sleep 600
 
       expect(artifacts.requests).toEqual([artifactPath]);
       expect(
-        readFileSync(join(config.llmModelsDir, supplementaryName)),
+        await Bun.file(join(config.llmModelsDir, supplementaryName)).bytes(),
       ).toEqual(supplementary);
-      const launchArgs = readFileSync(argsPath, "utf8").trim().split("\n");
+      const launchArgs = (await Bun.file(argsPath).text()).trim().split("\n");
       expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(
         join(config.llmModelsDir, primaryName),
       );
@@ -520,8 +512,8 @@ test(
       saveConfig(config);
 
       mkdirSync(join(root, "bin"), { recursive: true });
-      writeFileSync(join(config.llmModelsDir, modelFile), "custom model");
-      writeFileSync(
+      await Bun.write(join(config.llmModelsDir, modelFile), "custom model");
+      await Bun.write(
         join(root, "bin", "llama-server"),
         `#!/bin/sh
 printf '%s\\n' "$@" > "$LOCALBASE_TEST_ARGS_PATH"
@@ -583,17 +575,17 @@ exec sleep 600
       expect(response.status).toBe(200);
       await waitForFile(argsPath);
 
-      const launchArgs = readFileSync(argsPath, "utf8").trim().split("\n");
+      const launchArgs = (await Bun.file(argsPath).text()).trim().split("\n");
       expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(
         join(config.llmModelsDir, modelFile),
       );
       expect(
-        existsSync(
+        await Bun.file(
           join(
             config.llmModelsDir,
             "Qwen3-Coder-Next-Q4_K_M-00002-of-00004.gguf",
           ),
-        ),
+        ).exists(),
       ).toBe(false);
     } finally {
       if (gateway) await stopProcess(gateway);

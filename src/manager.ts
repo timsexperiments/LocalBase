@@ -1,12 +1,4 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  statSync,
-} from "node:fs";
+import { chmodSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { homedir, platform, arch } from "node:os";
 import { extname, join } from "node:path";
 import {
@@ -376,20 +368,18 @@ export function loadConfig(root?: string, vramGb?: number): LocalBaseConfig {
   return merged;
 }
 
-export function resetDatabase(root?: string, vramGb?: number): LocalBaseConfig {
+export async function resetDatabase(
+  root?: string,
+  vramGb?: number,
+): Promise<LocalBaseConfig> {
   const selectedRoot = root ?? defaultRoot();
-  const path = dbPath(selectedRoot);
-  if (existsSync(path)) {
-    rmSync(path, { force: true });
-  }
+  await deleteFileIfExists(dbPath(selectedRoot));
   return initConfig(selectedRoot, vramGb);
 }
 
 export function uninstallManaged(root?: string): string {
   const selectedRoot = root ?? defaultRoot();
-  if (existsSync(selectedRoot)) {
-    rmSync(selectedRoot, { recursive: true, force: true });
-  }
+  rmSync(selectedRoot, { recursive: true, force: true });
   return selectedRoot;
 }
 
@@ -400,36 +390,51 @@ function kindDir(config: LocalBaseConfig, kind: ModelKind): string {
   return join(config.root, "models", kind);
 }
 
-export function installedModels(
+export async function installedModels(
   config: LocalBaseConfig,
   kind?: ModelKind,
-): string[] {
+): Promise<string[]> {
   const kinds: ModelKind[] = ["llm", "stt", "image"];
   const selectedKinds = kind ? [kind] : kinds;
-  const installed = selectedKinds.flatMap((currentKind) => {
+  const installed: string[] = [];
+  for (const currentKind of selectedKinds) {
     const dir = kindDir(config, currentKind);
-    if (!existsSync(dir)) return [];
+    let directoryEntries: string[];
+    try {
+      directoryEntries = readdirSync(dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
 
     const catalogModels = CATALOG.filter((model) => model.kind === currentKind);
-    const completeModelIds = catalogModels
-      .filter((model) => resolveCatalogInstallation(model, dir).complete)
-      .map((model) => model.modelId);
+    const installationStates = await Promise.all(
+      catalogModels.map(async (model) => ({
+        model,
+        state: await resolveCatalogInstallation(model, dir),
+      })),
+    );
+    const completeModelIds = installationStates
+      .filter(({ state }) => state.complete)
+      .map(({ model }) => model.modelId);
     const knownArtifactNames = new Set(
       catalogModels.flatMap((model) =>
         model.artifacts.map((artifact) => artifact.filename),
       ),
     );
-    const manualFiles = readdirSync(dir).filter(
+    const manualFiles = directoryEntries.filter(
       (name) =>
         [".gguf", ".bin", ".onnx", ".safetensors", ".pth"].includes(
           extname(name),
         ) && !knownArtifactNames.has(name),
     );
 
-    return [...completeModelIds, ...manualFiles].map((name) =>
-      kind ? name : `${currentKind}:${name}`,
+    installed.push(
+      ...[...completeModelIds, ...manualFiles].map((name) =>
+        kind ? name : `${currentKind}:${name}`,
+      ),
     );
-  });
+  }
 
   return installed.sort();
 }
@@ -484,7 +489,7 @@ async function validateArtifact(
 ): Promise<void> {
   if (!hasAuthoritativeIntegrity(artifact)) return;
 
-  const actualSize = statSync(path).size;
+  const actualSize = (await Bun.file(path).stat()).size;
   if (actualSize !== artifact.expectedSizeBytes) {
     throw new Error(
       `Size mismatch for ${filename}: expected ${artifact.expectedSizeBytes} bytes, got ${actualSize} bytes.`,
@@ -493,9 +498,21 @@ async function validateArtifact(
   await verifyChecksum(path, artifact.sha256, filename);
 }
 
-function removeIfEmpty(path: string): void {
-  if (existsSync(path) && statSync(path).size === 0) {
-    rmSync(path, { force: true });
+async function deleteFileIfExists(path: string): Promise<void> {
+  try {
+    await Bun.file(path).delete();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
+async function removeIfEmpty(path: string): Promise<void> {
+  try {
+    if ((await Bun.file(path).stat()).size === 0) {
+      await Bun.file(path).delete();
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 }
 
@@ -509,7 +526,7 @@ async function installArtifact(
   const output = join(targetDir, filename);
   const partial = `${output}.partial`;
 
-  if (existsSync(output)) {
+  if (await Bun.file(output).exists()) {
     if (!hasAuthoritativeIntegrity(artifact)) {
       const known = await verifyStoredChecksum(targetDir, filename, output);
       if (!known) {
@@ -521,20 +538,20 @@ async function installArtifact(
       return;
     }
 
-    const existingSize = statSync(output).size;
+    const existingSize = (await Bun.file(output).stat()).size;
     if (existingSize < artifact.expectedSizeBytes) {
-      if (!existsSync(partial)) {
+      if (!(await Bun.file(partial).exists())) {
         renameSync(output, partial);
       } else {
-        const partialSize = statSync(partial).size;
+        const partialSize = (await Bun.file(partial).stat()).size;
         if (
           partialSize > artifact.expectedSizeBytes ||
           existingSize > partialSize
         ) {
-          rmSync(partial, { force: true });
+          await Bun.file(partial).delete();
           renameSync(output, partial);
         } else {
-          rmSync(output, { force: true });
+          await Bun.file(output).delete();
         }
       }
     } else {
@@ -542,23 +559,26 @@ async function installArtifact(
         await validateArtifact(output, artifact, filename);
         return;
       } catch {
-        rmSync(output, { force: true });
-        rmSync(partial, { force: true });
+        await deleteFileIfExists(output);
+        await deleteFileIfExists(partial);
       }
     }
   }
 
-  if (hasAuthoritativeIntegrity(artifact) && existsSync(partial)) {
-    const partialSize = statSync(partial).size;
+  if (
+    hasAuthoritativeIntegrity(artifact) &&
+    (await Bun.file(partial).exists())
+  ) {
+    const partialSize = (await Bun.file(partial).stat()).size;
     if (partialSize > artifact.expectedSizeBytes) {
-      rmSync(partial, { force: true });
+      await Bun.file(partial).delete();
     } else if (partialSize === artifact.expectedSizeBytes) {
       try {
         await validateArtifact(partial, artifact, filename);
         renameSync(partial, output);
         return;
       } catch {
-        rmSync(partial, { force: true });
+        await deleteFileIfExists(partial);
       }
     }
   }
@@ -579,7 +599,7 @@ async function installArtifact(
   });
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
-    removeIfEmpty(partial);
+    await removeIfEmpty(partial);
     if (
       !token &&
       (url.toLowerCase().includes("gemma") ||
@@ -595,7 +615,7 @@ async function installArtifact(
   try {
     await validateArtifact(partial, artifact, filename);
   } catch (error) {
-    rmSync(partial, { force: true });
+    await deleteFileIfExists(partial);
     throw error;
   }
   renameSync(partial, output);
@@ -742,20 +762,20 @@ export function rotateApiKey(
  * Resolves a binary by checking the LocalBase-managed bin dir first, then PATH.
  * Returns null if the binary is not available anywhere on the system.
  */
-export function resolveBinaryPath(
+export async function resolveBinaryPath(
   config: LocalBaseConfig,
   name: string,
-): string | null {
+): Promise<string | null> {
   const localBin = join(config.root, "bin", name);
-  if (existsSync(localBin)) {
+  if (await Bun.file(localBin).exists()) {
     return localBin;
   }
 
   return Bun.which(name);
 }
 
-function makeExecutable(path: string): void {
-  chmodSync(path, statSync(path).mode | 0o111);
+async function makeExecutable(path: string): Promise<void> {
+  chmodSync(path, (await Bun.file(path).stat()).mode | 0o111);
 }
 
 async function curlDownload(url: string, dest: string): Promise<void> {
@@ -885,7 +905,7 @@ async function downloadWhisperServer(config: LocalBaseConfig): Promise<string> {
 
   await verifyChecksum(destPath, expectedHash, assetName);
 
-  makeExecutable(destPath);
+  await makeExecutable(destPath);
   if (platform() === "darwin") {
     Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", destPath]);
   }
@@ -924,16 +944,16 @@ async function downloadLlamaServer(config: LocalBaseConfig): Promise<string> {
     { stdin: "inherit", stdout: "inherit", stderr: "inherit" },
   );
   try {
-    rmSync(archivePath, { force: true });
+    await Bun.file(archivePath).delete();
   } catch {}
   if (ext.exitCode !== 0)
     throw new Error("Failed to extract llama.cpp archive.");
 
   const destPath = join(binDir, "llama-server");
-  if (!existsSync(destPath))
+  if (!(await Bun.file(destPath).exists()))
     throw new Error("llama-server binary not found after extraction.");
 
-  makeExecutable(destPath);
+  await makeExecutable(destPath);
   if (platform() === "darwin") {
     Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", binDir]);
   }
@@ -982,16 +1002,16 @@ async function downloadSdServer(config: LocalBaseConfig): Promise<string> {
     stderr: "inherit",
   });
   try {
-    rmSync(archivePath, { force: true });
+    await Bun.file(archivePath).delete();
   } catch {}
   if (ext.exitCode !== 0)
     throw new Error("Failed to extract stable-diffusion.cpp archive.");
 
   const destPath = join(binDir, "sd-server");
-  if (!existsSync(destPath))
+  if (!(await Bun.file(destPath).exists()))
     throw new Error("sd-server binary not found after extraction.");
 
-  makeExecutable(destPath);
+  await makeExecutable(destPath);
   if (target.os === "darwin") {
     Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", binDir]);
   }
@@ -1016,7 +1036,7 @@ export async function ensureBinary(
   const localBin = join(binDir, localBinName);
 
   // 1. Check locally managed binary and verify stored checksum.
-  if (existsSync(localBin)) {
+  if (await Bun.file(localBin).exists()) {
     const known = await verifyStoredChecksum(binDir, name, localBin);
     if (!known) {
       // Binary exists but no stored hash (e.g. manually placed) — record it.
@@ -1117,7 +1137,7 @@ export async function startLlamaServerProcess(
   hardware?: ParallelHardware,
 ): Promise<Bun.Subprocess> {
   const modelPath = join(config.llmModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
+  if (!(await Bun.file(modelPath).exists())) {
     throw new Error(`Model file not found: ${modelPath}`);
   }
 
@@ -1148,7 +1168,7 @@ export async function startWhisperServerProcess(
   port: number,
 ): Promise<Bun.Subprocess> {
   const modelPath = join(config.sttModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
+  if (!(await Bun.file(modelPath).exists())) {
     throw new Error(`STT model file not found: ${modelPath}`);
   }
 
@@ -1173,7 +1193,7 @@ export async function launchLlamaServer(
   hardware?: ParallelHardware,
 ): Promise<number> {
   const modelPath = join(config.llmModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
+  if (!(await Bun.file(modelPath).exists())) {
     throw new Error(`Model file not found: ${modelPath}`);
   }
 
@@ -1206,7 +1226,7 @@ export async function launchWhisperServer(
   port: number,
 ): Promise<number> {
   const modelPath = join(config.sttModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
+  if (!(await Bun.file(modelPath).exists())) {
     throw new Error(`STT model file not found: ${modelPath}`);
   }
 
@@ -1227,7 +1247,7 @@ export async function startSdServerProcess(
   port: number,
 ): Promise<Bun.Subprocess> {
   const modelPath = join(config.imageModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
+  if (!(await Bun.file(modelPath).exists())) {
     throw new Error(`Model file not found: ${modelPath}`);
   }
 
@@ -1258,7 +1278,7 @@ export async function launchSdServer(
   port: number,
 ): Promise<number> {
   const modelPath = join(config.imageModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
+  if (!(await Bun.file(modelPath).exists())) {
     throw new Error(`Model file not found: ${modelPath}`);
   }
 

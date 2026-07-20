@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import { type LocalBaseConfig } from "../manager";
 import { parseOptionalParallelSlots } from "../domains/config/parallel";
 
@@ -20,10 +19,13 @@ function parseTomlValue(value: string): string | number | boolean | string[] {
   return trimmed.replace(/^"|"$/g, "");
 }
 
-export function loadTomlOverrides(path: string): ConfigOverrides {
-  if (!existsSync(path)) throw new Error(`Config file not found: ${path}`);
+export async function loadTomlOverrides(
+  path: string,
+): Promise<ConfigOverrides> {
+  const file = Bun.file(path);
+  if (!(await file.exists())) throw new Error(`Config file not found: ${path}`);
 
-  const raw = readFileSync(path, "utf8");
+  const raw = await file.text();
   const values: Record<string, string | number | boolean | string[]> = {};
 
   for (const line of raw.split(/\r?\n/)) {
