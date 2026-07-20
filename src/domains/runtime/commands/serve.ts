@@ -15,6 +15,7 @@ import {
   byId,
   evaluateModelFit,
   calculateMaxSafeContextSize,
+  primaryArtifact,
 } from "../../../catalog";
 import type { AppContext } from "../../../context";
 import { parseBool, parseFlag, toInt } from "../../../utils/args";
@@ -678,11 +679,12 @@ export async function runServe(
   let llmModelFile = parseFlag(args, "--llm-model-file");
   if (!llmModelFile) {
     const spec = byId(config.activeLlmModel);
+    const primaryFilename = spec && primaryArtifact(spec).filename;
     if (
-      spec?.filename &&
-      existsSync(join(config.llmModelsDir, spec.filename))
+      primaryFilename &&
+      existsSync(join(config.llmModelsDir, primaryFilename))
     ) {
-      llmModelFile = spec.filename;
+      llmModelFile = primaryFilename;
     } else if (
       existsSync(join(config.llmModelsDir, `${config.activeLlmModel}.bin`))
     ) {
@@ -695,11 +697,12 @@ export async function runServe(
   let sttModelFile = parseFlag(args, "--stt-model-file");
   if (!sttModelFile) {
     const spec = byId(config.activeSttModel);
+    const primaryFilename = spec && primaryArtifact(spec).filename;
     if (
-      spec?.filename &&
-      existsSync(join(config.sttModelsDir, spec.filename))
+      primaryFilename &&
+      existsSync(join(config.sttModelsDir, primaryFilename))
     ) {
-      sttModelFile = spec.filename;
+      sttModelFile = primaryFilename;
     } else if (
       existsSync(join(config.sttModelsDir, `${config.activeSttModel}.bin`))
     ) {
@@ -712,11 +715,12 @@ export async function runServe(
   let imageModelFile = parseFlag(args, "--image-model-file");
   if (!imageModelFile) {
     const spec = byId(config.activeImageModel);
+    const primaryFilename = spec && primaryArtifact(spec).filename;
     if (
-      spec?.filename &&
-      existsSync(join(config.imageModelsDir, spec.filename))
+      primaryFilename &&
+      existsSync(join(config.imageModelsDir, primaryFilename))
     ) {
-      imageModelFile = spec.filename;
+      imageModelFile = primaryFilename;
     } else {
       imageModelFile = `${config.activeImageModel}.safetensors`;
     }
@@ -936,7 +940,9 @@ export async function runServe(
           let modelFile = parseFlag(args, "--llm-model-file");
           if (!modelFile) {
             const spec = byId(activeModel);
-            let expectedFile = spec?.filename;
+            let expectedFile = spec
+              ? primaryArtifact(spec).filename
+              : undefined;
             if (!expectedFile) {
               expectedFile = existsSync(
                 join(launchConfig.llmModelsDir, `${activeModel}.bin`),
@@ -1003,7 +1009,7 @@ export async function runServe(
         let modelFile = parseFlag(args, "--image-model-file");
         if (!modelFile) {
           const spec = byId(activeModel);
-          let expectedFile = spec?.filename;
+          let expectedFile = spec ? primaryArtifact(spec).filename : undefined;
           if (!expectedFile) {
             expectedFile = `${activeModel}.safetensors`;
           }

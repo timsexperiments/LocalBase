@@ -1,30 +1,94 @@
-export type ModelKind = "llm" | "stt" | "image";
+import { z } from "zod";
 
-export type CommercialStatus = "open" | "conditional" | "prohibited";
+export const ModelKindSchema = z.enum(["llm", "stt", "image"]);
+export type ModelKind = z.infer<typeof ModelKindSchema>;
 
-export type ModelSpec = {
-  modelId: string;
-  kind: ModelKind;
-  provider: string;
-  family: string;
-  version: string;
-  size: string;
-  quant: string;
-  codingScore?: number;
-  minVramGb: number;
-  storageGb: number;
-  source: string;
-  downloadPath?: string;
-  filename?: string;
-  inputModalities: string[];
-  outputModalities: string[];
-  features: string[];
-  commercialStatus: CommercialStatus;
-  catch: string;
-  notes: string;
-};
+export const CommercialStatusSchema = z.enum([
+  "open",
+  "conditional",
+  "prohibited",
+]);
+export type CommercialStatus = z.infer<typeof CommercialStatusSchema>;
 
-export const CATALOG: readonly ModelSpec[] = [
+export const ModelArtifactSchema = z
+  .object({
+    sourcePath: z.string().min(1),
+    filename: z.string().min(1),
+    expectedSizeBytes: z.number().positive().optional(),
+    sha256: z
+      .string()
+      .regex(/^[a-fA-F0-9]{64}$/)
+      .optional(),
+    role: z.enum(["primary", "supplementary"]),
+  })
+  .superRefine((artifact, ctx) => {
+    if (
+      (artifact.expectedSizeBytes === undefined) !==
+      (artifact.sha256 === undefined)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "expectedSizeBytes and sha256 must be provided together",
+      });
+    }
+  });
+export type ModelArtifact = z.infer<typeof ModelArtifactSchema>;
+
+export const ModelSpecSchema = z
+  .object({
+    modelId: z.string().min(1),
+    kind: ModelKindSchema,
+    provider: z.string().min(1),
+    family: z.string().min(1),
+    version: z.string().min(1),
+    size: z.string().min(1),
+    quant: z.string().min(1),
+    codingScore: z.number().optional(),
+    minVramGb: z.number().nonnegative(),
+    storageGb: z.number().positive(),
+    source: z.string().url(),
+    repositoryRevision: z.string().min(1),
+    artifacts: z.array(ModelArtifactSchema).min(1),
+    inputModalities: z.array(z.string().min(1)),
+    outputModalities: z.array(z.string().min(1)),
+    features: z.array(z.string().min(1)),
+    commercialStatus: CommercialStatusSchema,
+    catch: z.string(),
+    notes: z.string(),
+  })
+  .superRefine((model, ctx) => {
+    const filenames = new Set<string>();
+    let primaryCount = 0;
+
+    for (const [index, artifact] of model.artifacts.entries()) {
+      if (filenames.has(artifact.filename)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "artifact filenames must be unique",
+          path: ["artifacts", index, "filename"],
+        });
+      }
+      filenames.add(artifact.filename);
+      if (artifact.role === "primary") primaryCount += 1;
+    }
+
+    if (primaryCount !== 1) {
+      ctx.addIssue({
+        code: "custom",
+        message: "models must have exactly one primary artifact",
+        path: ["artifacts"],
+      });
+    }
+  });
+export type ModelSpec = z.infer<typeof ModelSpecSchema>;
+
+export const CatalogSchema = z.array(ModelSpecSchema);
+
+export function validateCatalog(catalog: unknown): ModelSpec[] {
+  return CatalogSchema.parse(catalog);
+}
+
+export const CATALOG: readonly ModelSpec[] = validateCatalog([
   {
     modelId: "qwen2.5-coder-1.5b-instruct-q4_k_m",
     kind: "llm",
@@ -37,8 +101,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 2,
     storageGb: 1.2,
     source: "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
-    downloadPath: "resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
-    filename: "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        filename: "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
@@ -58,8 +128,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 4,
     storageGb: 2.2,
     source: "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
-    downloadPath: "resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf",
-    filename: "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
+        filename: "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
@@ -79,8 +155,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 6,
     storageGb: 4.7,
     source: "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
-    downloadPath: "resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf",
-    filename: "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+        filename: "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
@@ -100,8 +182,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 11,
     storageGb: 9.1,
     source: "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
-    downloadPath: "resolve/main/qwen2.5-coder-14b-instruct-q4_k_m.gguf",
-    filename: "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+        filename: "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
@@ -122,8 +210,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 20,
     storageGb: 20.3,
     source: "https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF",
-    downloadPath: "resolve/main/qwen2.5-coder-32b-instruct-q4_k_m.gguf",
-    filename: "qwen2.5-coder-32b-instruct-q4_k_m.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "qwen2.5-coder-32b-instruct-q4_k_m.gguf",
+        filename: "qwen2.5-coder-32b-instruct-q4_k_m.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
@@ -131,6 +225,64 @@ export const CATALOG: readonly ModelSpec[] = [
     catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
     notes:
       "State-of-the-art local coding model. Perfect for unified memory setups.",
+  },
+  {
+    modelId: "qwen3-coder-next-q4_k_m",
+    kind: "llm",
+    provider: "Qwen",
+    family: "Qwen3-Coder",
+    version: "Next",
+    size: "80B-A3B",
+    quant: "Q4_K_M",
+    codingScore: 10,
+    minVramGb: 64,
+    storageGb: 48.4,
+    source: "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
+    repositoryRevision: "b82fb7382639d97b38fa7672e526c760c2fb358e",
+    artifacts: [
+      {
+        sourcePath:
+          "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
+        filename: "Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
+        expectedSizeBytes: 15524827040,
+        sha256:
+          "6bcfc9f9c37901eeb92172e2ab871224dab36a453d263bcb2547f737409534da",
+        role: "primary",
+      },
+      {
+        sourcePath:
+          "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00002-of-00004.gguf",
+        filename: "Qwen3-Coder-Next-Q4_K_M-00002-of-00004.gguf",
+        expectedSizeBytes: 14872168352,
+        sha256:
+          "817def0691ee9d08bf3dc4444be7aed29c9e52091e8fa9d97901ce7e7f6f01d3",
+        role: "supplementary",
+      },
+      {
+        sourcePath:
+          "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00003-of-00004.gguf",
+        filename: "Qwen3-Coder-Next-Q4_K_M-00003-of-00004.gguf",
+        expectedSizeBytes: 14503294496,
+        sha256:
+          "23aa634d47dca9b4ca3ea249384e6f01951b24c83cdc076f37f6f43d6c99883f",
+        role: "supplementary",
+      },
+      {
+        sourcePath:
+          "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00004-of-00004.gguf",
+        filename: "Qwen3-Coder-Next-Q4_K_M-00004-of-00004.gguf",
+        expectedSizeBytes: 3510702144,
+        sha256:
+          "249c768cc5f130dc731567d6edcbdacc48e14dec9e02c5dbe2b2185d2c5bdb2b",
+        role: "supplementary",
+      },
+    ],
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    features: ["agentic-coding", "tool-calling", "long-context"],
+    commercialStatus: "open",
+    catch: "Apache 2.0.",
+    notes: "Qwen's sparse next-generation coding model for agentic workflows.",
   },
   {
     modelId: "llama-3.2-1b-instruct-q4_k_m",
@@ -144,8 +296,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 2,
     storageGb: 1.0,
     source: "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF",
-    downloadPath: "resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-    filename: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+        filename: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "lightweight"],
@@ -166,8 +324,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 4,
     storageGb: 2.0,
     source: "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
-    downloadPath: "resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
-    filename: "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        filename: "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning"],
@@ -188,8 +352,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 6,
     storageGb: 4.7,
     source: "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
-    downloadPath: "resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
-    filename: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+        filename: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "multilingual", "reasoning"],
@@ -211,8 +381,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 40,
     storageGb: 42,
     source: "https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF",
-    downloadPath: "resolve/main/Llama-3.3-70B-Instruct-Q4_K_M.gguf",
-    filename: "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
+        filename: "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning", "multilingual"],
@@ -234,8 +410,14 @@ export const CATALOG: readonly ModelSpec[] = [
     storageGb: 9,
     source:
       "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
-    downloadPath: "resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
-    filename: "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+        filename: "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["reasoning", "tool-calling", "code-generation"],
@@ -256,8 +438,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 6,
     storageGb: 4.8,
     source: "https://huggingface.co/TheBloke/deepseek-coder-6.7B-Instruct-GGUF",
-    downloadPath: "resolve/main/deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
-    filename: "deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
+        filename: "deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
@@ -279,8 +467,14 @@ export const CATALOG: readonly ModelSpec[] = [
     storageGb: 11.2,
     source:
       "https://huggingface.co/bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
-    downloadPath: "resolve/main/DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
-    filename: "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+        filename: "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["mixture-of-experts", "code-generation", "code-editing"],
@@ -301,8 +495,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 22,
     storageGb: 21.0,
     source: "https://huggingface.co/TheBloke/deepseek-coder-33B-Instruct-GGUF",
-    downloadPath: "resolve/main/deepseek-coder-33b-instruct.Q4_K_M.gguf",
-    filename: "deepseek-coder-33b-instruct.Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "deepseek-coder-33b-instruct.Q4_K_M.gguf",
+        filename: "deepseek-coder-33b-instruct.Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
@@ -323,8 +523,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 2,
     storageGb: 0.9,
     source: "https://huggingface.co/bartowski/gemma-3-1b-it-GGUF",
-    downloadPath: "resolve/main/gemma-3-1b-it-Q4_K_M.gguf",
-    filename: "gemma-3-1b-it-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "gemma-3-1b-it-Q4_K_M.gguf",
+        filename: "gemma-3-1b-it-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning"],
@@ -345,8 +551,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 4,
     storageGb: 2.8,
     source: "https://huggingface.co/bartowski/gemma-3-4b-it-GGUF",
-    downloadPath: "resolve/main/gemma-3-4b-it-Q4_K_M.gguf",
-    filename: "gemma-3-4b-it-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "gemma-3-4b-it-Q4_K_M.gguf",
+        filename: "gemma-3-4b-it-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning"],
@@ -367,8 +579,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 10,
     storageGb: 8,
     source: "https://huggingface.co/bartowski/gemma-3-12b-it-GGUF",
-    downloadPath: "resolve/main/gemma-3-12b-it-Q4_K_M.gguf",
-    filename: "gemma-3-12b-it-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "gemma-3-12b-it-Q4_K_M.gguf",
+        filename: "gemma-3-12b-it-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text", "image"],
     outputModalities: ["text"],
     features: ["vision", "tool-calling", "reasoning"],
@@ -389,8 +607,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 18,
     storageGb: 16.5,
     source: "https://huggingface.co/bartowski/gemma-3-27b-it-GGUF",
-    downloadPath: "resolve/main/gemma-3-27b-it-Q4_K_M.gguf",
-    filename: "gemma-3-27b-it-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "gemma-3-27b-it-Q4_K_M.gguf",
+        filename: "gemma-3-27b-it-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "reasoning", "multilingual"],
@@ -411,8 +635,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 11,
     storageGb: 9,
     source: "https://huggingface.co/bartowski/phi-4-GGUF",
-    downloadPath: "resolve/main/phi-4-Q4_K_M.gguf",
-    filename: "phi-4-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "phi-4-Q4_K_M.gguf",
+        filename: "phi-4-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["reasoning", "tool-calling", "code-generation"],
@@ -432,8 +662,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 3,
     storageGb: 2.2,
     source: "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF",
-    downloadPath: "resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf",
-    filename: "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+        filename: "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "multilingual"],
@@ -453,8 +689,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 28,
     storageGb: 23.0,
     source: "https://huggingface.co/bartowski/Phi-3.5-MoE-instruct-GGUF",
-    downloadPath: "resolve/main/Phi-3.5-MoE-instruct-Q4_K_M.gguf",
-    filename: "Phi-3.5-MoE-instruct-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "Phi-3.5-MoE-instruct-Q4_K_M.gguf",
+        filename: "Phi-3.5-MoE-instruct-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["mixture-of-experts", "reasoning", "multilingual"],
@@ -475,8 +717,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 16,
     storageGb: 14.0,
     source: "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
-    downloadPath: "resolve/main/openai_gpt-oss-20b-Q4_K_M.gguf",
-    filename: "openai_gpt-oss-20b-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "openai_gpt-oss-20b-Q4_K_M.gguf",
+        filename: "openai_gpt-oss-20b-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["reasoning", "tool-calling"],
@@ -496,8 +744,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 9,
     storageGb: 7,
     source: "https://huggingface.co/bartowski/Falcon3-10B-Instruct-GGUF",
-    downloadPath: "resolve/main/Falcon3-10B-Instruct-Q4_K_M.gguf",
-    filename: "Falcon3-10B-Instruct-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "Falcon3-10B-Instruct-Q4_K_M.gguf",
+        filename: "Falcon3-10B-Instruct-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "multilingual"],
@@ -518,8 +772,14 @@ export const CATALOG: readonly ModelSpec[] = [
     storageGb: 20.3,
     source:
       "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
-    filename: "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
-    downloadPath: "resolve/main/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+        filename: "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["reasoning", "tool-calling", "code-generation"],
@@ -541,8 +801,14 @@ export const CATALOG: readonly ModelSpec[] = [
     storageGb: 4.7,
     source:
       "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
-    filename: "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
-    downloadPath: "resolve/main/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+        filename: "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["reasoning", "tool-calling", "code-generation"],
@@ -564,8 +830,14 @@ export const CATALOG: readonly ModelSpec[] = [
     storageGb: 42.0,
     source:
       "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
-    filename: "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
-    downloadPath: "resolve/main/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+        filename: "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["reasoning", "tool-calling", "code-generation"],
@@ -586,8 +858,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 42,
     storageGb: 47.0,
     source: "https://huggingface.co/bartowski/Qwen2.5-72B-Instruct-GGUF",
-    filename: "Qwen2.5-72B-Instruct-Q4_K_M.gguf",
-    downloadPath: "resolve/main/Qwen2.5-72B-Instruct-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "Qwen2.5-72B-Instruct-Q4_K_M.gguf",
+        filename: "Qwen2.5-72B-Instruct-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
@@ -608,8 +886,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 18,
     storageGb: 14.0,
     source: "https://huggingface.co/bartowski/Codestral-22B-v0.1-GGUF",
-    filename: "Codestral-22B-v0.1-Q4_K_M.gguf",
-    downloadPath: "resolve/main/Codestral-22B-v0.1-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "Codestral-22B-v0.1-Q4_K_M.gguf",
+        filename: "Codestral-22B-v0.1-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["code-generation", "code-editing"],
@@ -629,8 +913,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 10,
     storageGb: 7.5,
     source: "https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF",
-    filename: "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
-    downloadPath: "resolve/main/Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+        filename: "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "multilingual"],
@@ -649,8 +939,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 4,
     storageGb: 1.7,
     source: "https://huggingface.co/ggerganov/whisper.cpp",
-    downloadPath: "resolve/main/ggml-large-v3-turbo.bin",
-    filename: "ggml-large-v3-turbo.bin",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "ggml-large-v3-turbo.bin",
+        filename: "ggml-large-v3-turbo.bin",
+        role: "primary",
+      },
+    ],
     inputModalities: ["audio"],
     outputModalities: ["text"],
     features: ["speech-to-text", "translation"],
@@ -669,8 +965,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 0,
     storageGb: 0.08,
     source: "https://huggingface.co/ggerganov/whisper.cpp",
-    downloadPath: "resolve/main/ggml-tiny.en-q8_0.bin",
-    filename: "ggml-tiny.en-q8_0.bin",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "ggml-tiny.en-q8_0.bin",
+        filename: "ggml-tiny.en-q8_0.bin",
+        role: "primary",
+      },
+    ],
     inputModalities: ["audio"],
     outputModalities: ["text"],
     features: ["speech-to-text"],
@@ -689,8 +991,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 0,
     storageGb: 0.15,
     source: "https://huggingface.co/ggerganov/whisper.cpp",
-    downloadPath: "resolve/main/ggml-base-q8_0.bin",
-    filename: "ggml-base-q8_0.bin",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "ggml-base-q8_0.bin",
+        filename: "ggml-base-q8_0.bin",
+        role: "primary",
+      },
+    ],
     inputModalities: ["audio"],
     outputModalities: ["text"],
     features: ["speech-to-text"],
@@ -710,8 +1018,14 @@ export const CATALOG: readonly ModelSpec[] = [
     storageGb: 4.27,
     source:
       "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
-    downloadPath: "resolve/main/v1-5-pruned-emaonly.safetensors",
-    filename: "v1-5-pruned-emaonly.safetensors",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "v1-5-pruned-emaonly.safetensors",
+        filename: "v1-5-pruned-emaonly.safetensors",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["image"],
     features: ["text-to-image", "image-to-image"],
@@ -731,8 +1045,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 4,
     storageGb: 1.98,
     source: "https://huggingface.co/Lykon/DreamShaper",
-    downloadPath: "resolve/main/DreamShaper_8_pruned.safetensors",
-    filename: "DreamShaper_8_pruned.safetensors",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "DreamShaper_8_pruned.safetensors",
+        filename: "DreamShaper_8_pruned.safetensors",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["image"],
     features: ["text-to-image", "image-to-image"],
@@ -752,8 +1072,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 8,
     storageGb: 13.9,
     source: "https://huggingface.co/stabilityai/sdxl-turbo",
-    downloadPath: "resolve/main/sd_xl_turbo_1.0_fp16.safetensors",
-    filename: "sd_xl_turbo_1.0_fp16.safetensors",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "sd_xl_turbo_1.0_fp16.safetensors",
+        filename: "sd_xl_turbo_1.0_fp16.safetensors",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["image"],
     features: ["text-to-image", "image-to-image"],
@@ -773,8 +1099,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 12,
     storageGb: 6.46,
     source: "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
-    downloadPath: "resolve/main/sd_xl_base_1.0.safetensors",
-    filename: "sd_xl_base_1.0.safetensors",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "sd_xl_base_1.0.safetensors",
+        filename: "sd_xl_base_1.0.safetensors",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["image"],
     features: ["text-to-image", "image-to-image"],
@@ -794,9 +1126,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 12,
     storageGb: 6.61,
     source: "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
-    downloadPath:
-      "resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
-    filename: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+        filename: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["image"],
     features: ["text-to-image", "image-to-image"],
@@ -816,8 +1153,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 12,
     storageGb: 6.46,
     source: "https://huggingface.co/cagliostrolab/animagine-xl-3.1",
-    downloadPath: "resolve/main/animagine-xl-3.1.safetensors",
-    filename: "animagine-xl-3.1.safetensors",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "animagine-xl-3.1.safetensors",
+        filename: "animagine-xl-3.1.safetensors",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["image"],
     features: ["text-to-image", "image-to-image"],
@@ -837,8 +1180,14 @@ export const CATALOG: readonly ModelSpec[] = [
     minVramGb: 12,
     storageGb: 6.46,
     source: "https://huggingface.co/SG161222/RealVisXL_V4.0",
-    downloadPath: "resolve/main/RealVisXL_V4.0.safetensors",
-    filename: "RealVisXL_V4.0.safetensors",
+    repositoryRevision: "main",
+    artifacts: [
+      {
+        sourcePath: "RealVisXL_V4.0.safetensors",
+        filename: "RealVisXL_V4.0.safetensors",
+        role: "primary",
+      },
+    ],
     inputModalities: ["text"],
     outputModalities: ["image"],
     features: ["text-to-image", "image-to-image"],
@@ -847,10 +1196,24 @@ export const CATALOG: readonly ModelSpec[] = [
     notes:
       "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures. Requires 12GB+ VRAM.",
   },
-];
+]);
 
 export function byId(modelId: string): ModelSpec | undefined {
   return CATALOG.find((model) => model.modelId === modelId);
+}
+
+export function primaryArtifact(model: ModelSpec): ModelArtifact {
+  const artifact = model.artifacts.find(({ role }) => role === "primary");
+  if (!artifact) {
+    throw new Error(`Model "${model.modelId}" has no primary artifact`);
+  }
+  return artifact;
+}
+
+export function modelDownloadUrl(model: ModelSpec): string {
+  const base = model.source.replace(/\/$/, "");
+  const sourcePath = primaryArtifact(model).sourcePath.replace(/^\/+/, "");
+  return `${base}/resolve/${model.repositoryRevision}/${sourcePath}`;
 }
 
 export function listModels(kind?: ModelKind): ModelSpec[] {

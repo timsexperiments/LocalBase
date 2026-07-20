@@ -7,7 +7,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { homedir, platform, arch } from "node:os";
-import { basename, extname, join } from "node:path";
+import { extname, join } from "node:path";
 import {
   computeSha256,
   parseChecksumFile,
@@ -23,8 +23,9 @@ import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { Database } from "bun:sqlite";
 import {
   byId,
+  modelDownloadUrl,
+  primaryArtifact,
   type ModelKind,
-  type ModelSpec,
   recommendedForVram,
   recommendedSttForVram,
 } from "./catalog";
@@ -423,12 +424,6 @@ export function installedModels(
   return files.sort();
 }
 
-function resolveDownload(spec: ModelSpec): string {
-  const base = spec.source.replace(/\/$/, "");
-  const path = spec.downloadPath ?? "resolve/main/model.gguf";
-  return `${base}/${path.replace(/^\//, "")}`;
-}
-
 export async function installModel(
   config: LocalBaseConfig,
   modelId: string,
@@ -443,8 +438,8 @@ export async function installModel(
   ensureDirs(config);
   mkdirSync(targetDir, { recursive: true });
 
-  const url = resolveDownload(spec);
-  const inferred = filename ?? spec.filename ?? basename(url);
+  const url = modelDownloadUrl(spec);
+  const inferred = filename ?? primaryArtifact(spec).filename;
   const output = join(targetDir, inferred);
 
   // If already installed, verify checksum integrity before returning.
