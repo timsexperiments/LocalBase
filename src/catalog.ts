@@ -1210,10 +1210,17 @@ export function primaryArtifact(model: ModelSpec): ModelArtifact {
   return artifact;
 }
 
-export function modelDownloadUrl(model: ModelSpec): string {
+export function artifactDownloadUrl(
+  model: ModelSpec,
+  artifact: ModelArtifact,
+): string {
   const base = model.source.replace(/\/$/, "");
-  const sourcePath = primaryArtifact(model).sourcePath.replace(/^\/+/, "");
+  const sourcePath = artifact.sourcePath.replace(/^\/+/, "");
   return `${base}/resolve/${model.repositoryRevision}/${sourcePath}`;
+}
+
+export function modelDownloadUrl(model: ModelSpec): string {
+  return artifactDownloadUrl(model, primaryArtifact(model));
 }
 
 export function listModels(kind?: ModelKind): ModelSpec[] {
