@@ -20,6 +20,23 @@ function run(cmd: string, args: string[]): string {
   return new TextDecoder().decode(result.stdout).trim();
 }
 
+function parsePrettyName(osRelease: string): string | undefined {
+  const line = osRelease
+    .split(/\r?\n/)
+    .find((entry) => entry.startsWith("PRETTY_NAME="));
+  if (!line) return undefined;
+
+  const value = line.slice("PRETTY_NAME=".length).trim();
+  if (!value) return undefined;
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
 function tryNvmlFfi(): { name: string; vramGb: number } | null {
   try {
     const { dlopen, ptr } = require("bun:ffi");
@@ -183,9 +200,13 @@ export async function detectSpecs(): Promise<HostSpecs> {
     }
   } else {
     // Linux/Windows (Unix-fallback)
-    osName =
-      run("bash", ["-lc", "source /etc/os-release && echo $PRETTY_NAME"]) ||
-      "Unknown Linux";
+    try {
+      osName =
+        parsePrettyName(await Bun.file("/etc/os-release").text()) ||
+        "Unknown Linux";
+    } catch {
+      osName = "Unknown Linux";
+    }
 
     let ramKb = 0;
     try {

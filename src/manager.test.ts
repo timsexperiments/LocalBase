@@ -22,6 +22,8 @@ import {
 const testRoots: string[] = [];
 const testModelIds: string[] = [];
 const testServerClosers: Array<() => Promise<void>> = [];
+const textEncoder = new TextEncoder();
+const textBytes = (value: string) => textEncoder.encode(value);
 
 type ArtifactRequest = { path: string; range?: string };
 
@@ -293,7 +295,7 @@ afterEach(async () => {
 
 describe("transactional model artifact installation", () => {
   test("keeps single-file installs compatible and supports a filename override", async () => {
-    const content = Buffer.from("single model");
+    const content = textBytes("single model");
     const server = await createArtifactServer({
       "/repo/resolve/test-revision/model.gguf": content,
     });
@@ -318,8 +320,8 @@ describe("transactional model artifact installation", () => {
   });
 
   test("installs every shard sequentially and returns the primary artifact", async () => {
-    const primary = Buffer.from("primary shard");
-    const supplementary = Buffer.from("supplementary shard");
+    const primary = textBytes("primary shard");
+    const supplementary = textBytes("supplementary shard");
     const primaryArtifact = artifact("model-00001.gguf", primary, "primary");
     const supplementaryArtifact = artifact(
       "model-00002.gguf",
@@ -352,8 +354,8 @@ describe("transactional model artifact installation", () => {
   });
 
   test("skips a verified shard and resumes a truncated artifact with Range", async () => {
-    const primary = Buffer.from("already verified");
-    const supplementary = Buffer.from("resume this shard");
+    const primary = textBytes("already verified");
+    const supplementary = textBytes("resume this shard");
     const primaryArtifact = artifact("model-00001.gguf", primary, "primary");
     const supplementaryArtifact = artifact(
       "model-00002.gguf",
@@ -408,8 +410,8 @@ describe("transactional model artifact installation", () => {
   });
 
   test("preserves completed shards and partial failures, then repairs the set on retry", async () => {
-    const primary = Buffer.from("primary shard");
-    const supplementary = Buffer.from("supplementary shard that interrupts");
+    const primary = textBytes("primary shard");
+    const supplementary = textBytes("supplementary shard that interrupts");
     const primaryArtifact = artifact("model-00001.gguf", primary, "primary");
     const supplementaryArtifact = artifact(
       "model-00002.gguf",
@@ -461,8 +463,8 @@ describe("transactional model artifact installation", () => {
   });
 
   test("cleans partials when authoritative size or checksum validation fails", async () => {
-    const wrongSize = Buffer.from("wrong size");
-    const wrongHash = Buffer.from("wrong hash");
+    const wrongSize = textBytes("wrong size");
+    const wrongHash = textBytes("wrong hash");
     const server = await createArtifactServer({
       "/repo/resolve/test-revision/wrong-size.gguf": wrongSize,
       "/repo/resolve/test-revision/wrong-hash.gguf": wrongHash,
@@ -507,8 +509,8 @@ describe("transactional model artifact installation", () => {
   });
 
   test("rejects filename overrides for multi-artifact models before downloading", async () => {
-    const primary = Buffer.from("primary");
-    const supplementary = Buffer.from("supplementary");
+    const primary = textBytes("primary");
+    const supplementary = textBytes("supplementary");
     const server = await createArtifactServer({
       "/repo/resolve/test-revision/model-00001.gguf": primary,
       "/repo/resolve/test-revision/model-00002.gguf": supplementary,
@@ -527,8 +529,8 @@ describe("transactional model artifact installation", () => {
 
 describe("installed model reporting", () => {
   test("reports complete catalog sets once and preserves unmatched files", async () => {
-    const primary = Buffer.from("primary");
-    const supplementary = Buffer.from("supplementary");
+    const primary = textBytes("primary");
+    const supplementary = textBytes("supplementary");
     const modelId = installFixtureModel("https://example.com/models", [
       artifact("reporting-00001.gguf", primary, "primary"),
       artifact("reporting-00002.gguf", supplementary, "supplementary"),

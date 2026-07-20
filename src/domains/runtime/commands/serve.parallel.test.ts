@@ -7,6 +7,8 @@ import { defaultConfig, loadConfig, saveConfig } from "../../../manager";
 const INITIAL_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const SWITCHED_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
 const PROJECT_ROOT = join(import.meta.dirname, "../../../..");
+const textEncoder = new TextEncoder();
+const textBytes = (value: string) => textEncoder.encode(value);
 
 function reservePort(): number {
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -291,8 +293,8 @@ test(
     const modelId = "test-lazy-sharded-model";
     const primaryName = "test-lazy-00001-of-00002.gguf";
     const supplementaryName = "test-lazy-00002-of-00002.gguf";
-    const primary = Buffer.from("primary shard");
-    const supplementary = Buffer.from("supplementary shard");
+    const primary = textBytes("primary shard");
+    const supplementary = textBytes("supplementary shard");
     const artifactPath = `/repo/resolve/test-revision/${supplementaryName}`;
     const artifacts = await startArtifactServer({
       [`/repo/resolve/test-revision/${primaryName}`]: primary,

@@ -41,6 +41,7 @@ import {
 const LLAMA_CPP_VERSION = "b9741";
 const LOCALBASE_RELEASES_BASE =
   "https://github.com/timsexperiments/LocalBase/releases/latest/download";
+const textEncoder = new TextEncoder();
 
 export type LocalBaseConfig = {
   root: string;
@@ -254,8 +255,8 @@ function fromConfigRow(row: typeof configTable.$inferSelect): LocalBaseConfig {
 }
 
 function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
+  const ab = textEncoder.encode(a);
+  const bb = textEncoder.encode(b);
   if (ab.length !== bb.length) return false;
   return crypto.timingSafeEqual(ab, bb);
 }
@@ -274,7 +275,7 @@ function hashApiKey(key: string): string {
 function makeRawApiKey(): { key: string; prefix: string } {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
-  const raw = Buffer.from(bytes).toString("base64url");
+  const raw = bytes.toBase64({ alphabet: "base64url", omitPadding: true });
   const prefix = raw.slice(0, 8);
   return { key: `lb_${raw}`, prefix };
 }

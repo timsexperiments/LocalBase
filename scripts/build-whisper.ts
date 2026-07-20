@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
-const root = join(__dirname, "..");
+const root = join(import.meta.dir, "..");
 const tempDir = join(root, "tmp-whisper-build");
 const releaseDir = join(root, "release");
 
