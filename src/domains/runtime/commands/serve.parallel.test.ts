@@ -75,6 +75,53 @@ async function waitForFile(path: string): Promise<void> {
   throw new Error(`Timed out waiting for ${path}`);
 }
 
+async function waitForProcessExit(pid: number): Promise<void> {
+  const deadline = Date.now() + 3_000;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+      throw error;
+    }
+    await Bun.sleep(25);
+  }
+  throw new Error(`Process ${pid} did not exit`);
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+async function findGuardianPid(
+  gatewayPid: number,
+  backendPid: number,
+): Promise<number> {
+  const deadline = Date.now() + 2_000;
+  const marker = `local-base-backend-guardian ${gatewayPid} ${backendPid}`;
+  while (Date.now() < deadline) {
+    const process = Bun.spawn(["ps", "-axww", "-o", "pid=", "-o", "command="], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const output = await readProcessOutput(process.stdout);
+    await process.exited;
+    const line = output.split("\n").find((value) => value.includes(marker));
+    if (line) {
+      const pid = Number(line.trim().split(/\s+/, 1)[0]);
+      if (Number.isInteger(pid)) return pid;
+    }
+    await Bun.sleep(25);
+  }
+  throw new Error("Backend guardian did not start");
+}
+
 function serveRunnerSource(): string {
   const catalogPath = join(PROJECT_ROOT, "src/catalog.ts");
   const contextPath = join(PROJECT_ROOT, "src/context.ts");
@@ -469,10 +516,12 @@ exec sleep 600
 );
 
 test(
-  "an explicit LLM model file bypasses catalog shard completeness",
+  "gateway SIGKILL causes its guardian to reap a TERM-ignoring explicit LLM backend",
   async () => {
     const root = mkdtempSync(join(tmpdir(), "local-base-explicit-model-"));
     const argsPath = join(root, "bin", "llama-server.args");
+    const pidPath = join(root, "bin", "llama-server.pid");
+    const parentPidPath = join(root, "bin", "llama-server.parent.pid");
     const wrapperPort = reservePort();
     const backendPort = reservePort();
     const modelFile = "custom-model.gguf";
@@ -518,6 +567,9 @@ test(
       await Bun.write(
         join(root, "bin", "llama-server"),
         `#!/bin/sh
+trap '' TERM
+printf '%s\\n' "$$" > "$LOCALBASE_TEST_PID_PATH"
+printf '%s\\n' "$PPID" > "$LOCALBASE_TEST_PARENT_PID_PATH"
 printf '%s\\n' "$@" > "$LOCALBASE_TEST_ARGS_PATH"
 exec sleep 600
 `,
@@ -556,6 +608,8 @@ exec sleep 600
             ...process.env,
             LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
             LOCALBASE_TEST_ARGS_PATH: argsPath,
+            LOCALBASE_TEST_PID_PATH: pidPath,
+            LOCALBASE_TEST_PARENT_PID_PATH: parentPidPath,
           } as Record<string, string>,
           stdout: "pipe",
           stderr: "pipe",
@@ -589,6 +643,19 @@ exec sleep 600
           ),
         ).exists(),
       ).toBe(false);
+
+      const backendPid = Number((await Bun.file(pidPath).text()).trim());
+      expect(Number.isInteger(backendPid)).toBe(true);
+      expect(Number((await Bun.file(parentPidPath).text()).trim())).toBe(
+        gateway.pid,
+      );
+      const guardianPid = await findGuardianPid(gateway.pid, backendPid);
+      await Bun.sleep(300);
+      expect(isProcessRunning(guardianPid)).toBe(true);
+      gateway.kill(9);
+      await gateway.exited;
+      await waitForProcessExit(backendPid);
+      await waitForProcessExit(guardianPid);
     } finally {
       if (gateway) await stopProcess(gateway);
       await Promise.all([gatewayStdout, gatewayStderr].filter(Boolean));
