@@ -1,6 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
-import * as os from "node:os";
+import { cpus, totalmem } from "node:os";
 
 export type HostSpecs = {
   osName: string;
@@ -13,12 +11,30 @@ export type HostSpecs = {
 };
 
 function run(cmd: string, args: string[]): string {
-  const result = spawnSync(cmd, args, {
-    encoding: "utf8",
+  const result = Bun.spawnSync([cmd, ...args], {
+    stdout: "pipe",
+    stderr: "ignore",
     timeout: 3000,
     killSignal: "SIGKILL",
   });
-  return (result.stdout ?? "").trim();
+  return new TextDecoder().decode(result.stdout).trim();
+}
+
+function parsePrettyName(osRelease: string): string | undefined {
+  const line = osRelease
+    .split(/\r?\n/)
+    .find((entry) => entry.startsWith("PRETTY_NAME="));
+  if (!line) return undefined;
+
+  const value = line.slice("PRETTY_NAME=".length).trim();
+  if (!value) return undefined;
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
 }
 
 function tryNvmlFfi(): { name: string; vramGb: number } | null {
@@ -113,15 +129,16 @@ function tryNvmlFfi(): { name: string; vramGb: number } | null {
   }
 }
 
-function tryAmdLinux(): { name: string; vramGb: number } | null {
+async function tryAmdLinux(): Promise<{
+  name: string;
+  vramGb: number;
+} | null> {
   try {
     const vramFile = "/sys/class/drm/card0/device/mem_info_vram_total";
-    if (existsSync(vramFile)) {
-      const bytes = Number(readFileSync(vramFile, "utf8").trim());
-      if (Number.isFinite(bytes) && bytes > 0) {
-        const vramGb = Math.round(bytes / 1024 / 1024 / 1024);
-        return { name: "AMD GPU", vramGb };
-      }
+    const bytes = Number((await Bun.file(vramFile).text()).trim());
+    if (Number.isFinite(bytes) && bytes > 0) {
+      const vramGb = Math.round(bytes / 1024 / 1024 / 1024);
+      return { name: "AMD GPU", vramGb };
     }
   } catch {
     // ignore
@@ -129,10 +146,10 @@ function tryAmdLinux(): { name: string; vramGb: number } | null {
   return null;
 }
 
-export function detectSpecs(): HostSpecs {
-  const platform = os.platform();
+export async function detectSpecs(): Promise<HostSpecs> {
+  const platform = process.platform;
   const isMac = platform === "darwin";
-  const isAppleSilicon = isMac && os.arch() === "arm64";
+  const isAppleSilicon = isMac && process.arch === "arm64";
 
   let osName = "Unknown";
   let ramGb = 0;
@@ -150,15 +167,15 @@ export function detectSpecs(): HostSpecs {
       if (Number.isFinite(memBytes) && memBytes > 0) {
         ramGb = Math.round(memBytes / 1024 / 1024 / 1024);
       } else {
-        ramGb = Math.round(os.totalmem() / 1024 / 1024 / 1024);
+        ramGb = Math.round(totalmem() / 1024 / 1024 / 1024);
       }
     } catch {
-      ramGb = Math.round(os.totalmem() / 1024 / 1024 / 1024);
+      ramGb = Math.round(totalmem() / 1024 / 1024 / 1024);
     }
 
     cpuModel =
       run("sysctl", ["-n", "machdep.cpu.brand_string"]) ||
-      os.cpus()[0]?.model ||
+      cpus()[0]?.model ||
       "Apple Silicon";
 
     if (isAppleSilicon) {
@@ -183,44 +200,43 @@ export function detectSpecs(): HostSpecs {
     }
   } else {
     // Linux/Windows (Unix-fallback)
-    osName =
-      run("bash", ["-lc", "source /etc/os-release && echo $PRETTY_NAME"]) ||
-      "Unknown Linux";
+    try {
+      osName =
+        parsePrettyName(await Bun.file("/etc/os-release").text()) ||
+        "Unknown Linux";
+    } catch {
+      osName = "Unknown Linux";
+    }
 
     let ramKb = 0;
-    if (existsSync("/proc/meminfo")) {
-      const memInfo = readFileSync("/proc/meminfo", "utf8").split("\n");
+    try {
+      const memInfo = (await Bun.file("/proc/meminfo").text()).split("\n");
       const memLine = memInfo.find((line) => line.startsWith("MemTotal:"));
       if (memLine) {
         ramKb = Number(memLine.split(/\s+/)[1]);
       }
-    }
+    } catch {}
     if (ramKb > 0) {
       ramGb = Math.round(ramKb / 1024 / 1024);
     } else {
-      ramGb = Math.round(os.totalmem() / 1024 / 1024 / 1024);
+      ramGb = Math.round(totalmem() / 1024 / 1024 / 1024);
     }
 
     cpuModel = "Unknown";
-    if (existsSync("/proc/cpuinfo")) {
-      const cpuInfo = readFileSync("/proc/cpuinfo", "utf8").split("\n");
+    try {
+      const cpuInfo = (await Bun.file("/proc/cpuinfo").text()).split("\n");
       const line = cpuInfo.find((l) => l.startsWith("model name"));
       if (line) {
         cpuModel = line.split(":", 2)[1]?.trim() ?? cpuModel;
       }
-    }
+    } catch {}
     if (cpuModel === "Unknown") {
-      cpuModel = os.cpus()[0]?.model ?? "Unknown CPU";
+      cpuModel = cpus()[0]?.model ?? "Unknown CPU";
     }
 
     // Try detecting Nvidia via nvidia-smi
     let detectedGpu = false;
-    const smi = spawnSync("bash", ["-lc", "command -v nvidia-smi"], {
-      encoding: "utf8",
-      timeout: 3000,
-      killSignal: "SIGKILL",
-    });
-    if (smi.status === 0) {
+    if (Bun.which("nvidia-smi")) {
       const raw = run("nvidia-smi", [
         "--query-gpu=name,memory.total",
         "--format=csv,noheader,nounits",
@@ -251,7 +267,7 @@ export function detectSpecs(): HostSpecs {
 
     // Fallback 2: Try AMD Linux sysfs
     if (!detectedGpu) {
-      const amdGpu = tryAmdLinux();
+      const amdGpu = await tryAmdLinux();
       if (amdGpu) {
         gpuName = amdGpu.name;
         gpuVramGb = amdGpu.vramGb;

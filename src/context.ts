@@ -16,8 +16,8 @@ export interface AppContext {
  * Bootstraps and configures the Dependency Injection container.
  * Applies environment variable configuration overrides on top of SQLite-stored config.
  */
-export function createAppContext(args: string[]): AppContext {
-  const specs = detectSpecs();
+export async function createAppContext(args: string[]): Promise<AppContext> {
+  const specs = await detectSpecs();
   const root = process.env.LOCALBASE_ROOT ?? parseFlag(args, "--root");
   const config = loadConfig(root, specs.gpuVramGb);
 

@@ -1,19 +1,5 @@
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  statSync,
-} from "node:fs";
-import { spawnSync } from "node:child_process";
-import {
-  createHash,
-  randomBytes,
-  randomUUID,
-  timingSafeEqual,
-} from "node:crypto";
-import { homedir, platform, arch } from "node:os";
+import { chmodSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
 import { extname, join } from "node:path";
 import {
   computeSha256,
@@ -55,6 +41,7 @@ import {
 const LLAMA_CPP_VERSION = "b9741";
 const LOCALBASE_RELEASES_BASE =
   "https://github.com/timsexperiments/LocalBase/releases/latest/download";
+const textEncoder = new TextEncoder();
 
 export type LocalBaseConfig = {
   root: string;
@@ -268,10 +255,10 @@ function fromConfigRow(row: typeof configTable.$inferSelect): LocalBaseConfig {
 }
 
 function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
+  const ab = textEncoder.encode(a);
+  const bb = textEncoder.encode(b);
   if (ab.length !== bb.length) return false;
-  return timingSafeEqual(ab, bb);
+  return crypto.timingSafeEqual(ab, bb);
 }
 
 function isKeyActive(expiresAt?: string, revokedAt?: string): boolean {
@@ -282,11 +269,13 @@ function isKeyActive(expiresAt?: string, revokedAt?: string): boolean {
   return expiresMs > Date.now();
 }
 function hashApiKey(key: string): string {
-  return createHash("sha256").update(key).digest("hex");
+  return new Bun.CryptoHasher("sha256").update(key).digest("hex");
 }
 
 function makeRawApiKey(): { key: string; prefix: string } {
-  const raw = randomBytes(24).toString("base64url");
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  const raw = bytes.toBase64({ alphabet: "base64url", omitPadding: true });
   const prefix = raw.slice(0, 8);
   return { key: `lb_${raw}`, prefix };
 }
@@ -380,20 +369,18 @@ export function loadConfig(root?: string, vramGb?: number): LocalBaseConfig {
   return merged;
 }
 
-export function resetDatabase(root?: string, vramGb?: number): LocalBaseConfig {
+export async function resetDatabase(
+  root?: string,
+  vramGb?: number,
+): Promise<LocalBaseConfig> {
   const selectedRoot = root ?? defaultRoot();
-  const path = dbPath(selectedRoot);
-  if (existsSync(path)) {
-    rmSync(path, { force: true });
-  }
+  await deleteFileIfExists(dbPath(selectedRoot));
   return initConfig(selectedRoot, vramGb);
 }
 
 export function uninstallManaged(root?: string): string {
   const selectedRoot = root ?? defaultRoot();
-  if (existsSync(selectedRoot)) {
-    rmSync(selectedRoot, { recursive: true, force: true });
-  }
+  rmSync(selectedRoot, { recursive: true, force: true });
   return selectedRoot;
 }
 
@@ -404,36 +391,51 @@ function kindDir(config: LocalBaseConfig, kind: ModelKind): string {
   return join(config.root, "models", kind);
 }
 
-export function installedModels(
+export async function installedModels(
   config: LocalBaseConfig,
   kind?: ModelKind,
-): string[] {
+): Promise<string[]> {
   const kinds: ModelKind[] = ["llm", "stt", "image"];
   const selectedKinds = kind ? [kind] : kinds;
-  const installed = selectedKinds.flatMap((currentKind) => {
+  const installed: string[] = [];
+  for (const currentKind of selectedKinds) {
     const dir = kindDir(config, currentKind);
-    if (!existsSync(dir)) return [];
+    let directoryEntries: string[];
+    try {
+      directoryEntries = readdirSync(dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
 
     const catalogModels = CATALOG.filter((model) => model.kind === currentKind);
-    const completeModelIds = catalogModels
-      .filter((model) => resolveCatalogInstallation(model, dir).complete)
-      .map((model) => model.modelId);
+    const installationStates = await Promise.all(
+      catalogModels.map(async (model) => ({
+        model,
+        state: await resolveCatalogInstallation(model, dir),
+      })),
+    );
+    const completeModelIds = installationStates
+      .filter(({ state }) => state.complete)
+      .map(({ model }) => model.modelId);
     const knownArtifactNames = new Set(
       catalogModels.flatMap((model) =>
         model.artifacts.map((artifact) => artifact.filename),
       ),
     );
-    const manualFiles = readdirSync(dir).filter(
+    const manualFiles = directoryEntries.filter(
       (name) =>
         [".gguf", ".bin", ".onnx", ".safetensors", ".pth"].includes(
           extname(name),
         ) && !knownArtifactNames.has(name),
     );
 
-    return [...completeModelIds, ...manualFiles].map((name) =>
-      kind ? name : `${currentKind}:${name}`,
+    installed.push(
+      ...[...completeModelIds, ...manualFiles].map((name) =>
+        kind ? name : `${currentKind}:${name}`,
+      ),
     );
-  });
+  }
 
   return installed.sort();
 }
@@ -488,7 +490,7 @@ async function validateArtifact(
 ): Promise<void> {
   if (!hasAuthoritativeIntegrity(artifact)) return;
 
-  const actualSize = statSync(path).size;
+  const actualSize = (await Bun.file(path).stat()).size;
   if (actualSize !== artifact.expectedSizeBytes) {
     throw new Error(
       `Size mismatch for ${filename}: expected ${artifact.expectedSizeBytes} bytes, got ${actualSize} bytes.`,
@@ -497,9 +499,21 @@ async function validateArtifact(
   await verifyChecksum(path, artifact.sha256, filename);
 }
 
-function removeIfEmpty(path: string): void {
-  if (existsSync(path) && statSync(path).size === 0) {
-    rmSync(path, { force: true });
+async function deleteFileIfExists(path: string): Promise<void> {
+  try {
+    await Bun.file(path).delete();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
+async function removeIfEmpty(path: string): Promise<void> {
+  try {
+    if ((await Bun.file(path).stat()).size === 0) {
+      await Bun.file(path).delete();
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 }
 
@@ -513,7 +527,7 @@ async function installArtifact(
   const output = join(targetDir, filename);
   const partial = `${output}.partial`;
 
-  if (existsSync(output)) {
+  if (await Bun.file(output).exists()) {
     if (!hasAuthoritativeIntegrity(artifact)) {
       const known = await verifyStoredChecksum(targetDir, filename, output);
       if (!known) {
@@ -525,20 +539,20 @@ async function installArtifact(
       return;
     }
 
-    const existingSize = statSync(output).size;
+    const existingSize = (await Bun.file(output).stat()).size;
     if (existingSize < artifact.expectedSizeBytes) {
-      if (!existsSync(partial)) {
+      if (!(await Bun.file(partial).exists())) {
         renameSync(output, partial);
       } else {
-        const partialSize = statSync(partial).size;
+        const partialSize = (await Bun.file(partial).stat()).size;
         if (
           partialSize > artifact.expectedSizeBytes ||
           existingSize > partialSize
         ) {
-          rmSync(partial, { force: true });
+          await Bun.file(partial).delete();
           renameSync(output, partial);
         } else {
-          rmSync(output, { force: true });
+          await Bun.file(output).delete();
         }
       }
     } else {
@@ -546,23 +560,26 @@ async function installArtifact(
         await validateArtifact(output, artifact, filename);
         return;
       } catch {
-        rmSync(output, { force: true });
-        rmSync(partial, { force: true });
+        await deleteFileIfExists(output);
+        await deleteFileIfExists(partial);
       }
     }
   }
 
-  if (hasAuthoritativeIntegrity(artifact) && existsSync(partial)) {
-    const partialSize = statSync(partial).size;
+  if (
+    hasAuthoritativeIntegrity(artifact) &&
+    (await Bun.file(partial).exists())
+  ) {
+    const partialSize = (await Bun.file(partial).stat()).size;
     if (partialSize > artifact.expectedSizeBytes) {
-      rmSync(partial, { force: true });
+      await Bun.file(partial).delete();
     } else if (partialSize === artifact.expectedSizeBytes) {
       try {
         await validateArtifact(partial, artifact, filename);
         renameSync(partial, output);
         return;
       } catch {
-        rmSync(partial, { force: true });
+        await deleteFileIfExists(partial);
       }
     }
   }
@@ -583,7 +600,7 @@ async function installArtifact(
   });
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
-    removeIfEmpty(partial);
+    await removeIfEmpty(partial);
     if (
       !token &&
       (url.toLowerCase().includes("gemma") ||
@@ -599,7 +616,7 @@ async function installArtifact(
   try {
     await validateArtifact(partial, artifact, filename);
   } catch (error) {
-    rmSync(partial, { force: true });
+    await deleteFileIfExists(partial);
     throw error;
   }
   renameSync(partial, output);
@@ -650,7 +667,7 @@ export function createApiKey(
   const now = new Date().toISOString();
   const { key, prefix } = makeRawApiKey();
   const record: ApiKeyRecord = {
-    id: `key_${randomUUID()}`,
+    id: `key_${crypto.randomUUID()}`,
     name,
     prefix,
     keyHash: hashApiKey(key),
@@ -746,21 +763,20 @@ export function rotateApiKey(
  * Resolves a binary by checking the LocalBase-managed bin dir first, then PATH.
  * Returns null if the binary is not available anywhere on the system.
  */
-export function resolveBinaryPath(
+export async function resolveBinaryPath(
   config: LocalBaseConfig,
   name: string,
-): string | null {
+): Promise<string | null> {
   const localBin = join(config.root, "bin", name);
-  if (existsSync(localBin)) {
+  if (await Bun.file(localBin).exists()) {
     return localBin;
   }
 
-  const check = spawnSync("which", [name], { encoding: "utf8" });
-  if (check.status === 0 && check.stdout.trim()) {
-    return check.stdout.trim();
-  }
+  return Bun.which(name);
+}
 
-  return null;
+async function makeExecutable(path: string): Promise<void> {
+  chmodSync(path, (await Bun.file(path).stat()).mode | 0o111);
 }
 
 async function curlDownload(url: string, dest: string): Promise<void> {
@@ -807,7 +823,7 @@ export function platformSupportTier(
 }
 
 function currentPlatformTarget(): PlatformTarget {
-  return { os: platform(), cpu: arch() };
+  return { os: process.platform, cpu: process.arch };
 }
 
 function platformLabel(target: PlatformTarget): string {
@@ -890,15 +906,15 @@ async function downloadWhisperServer(config: LocalBaseConfig): Promise<string> {
 
   await verifyChecksum(destPath, expectedHash, assetName);
 
-  spawnSync("chmod", ["+x", destPath]);
-  if (platform() === "darwin") {
-    spawnSync("xattr", ["-rd", "com.apple.quarantine", destPath]);
+  await makeExecutable(destPath);
+  if (process.platform === "darwin") {
+    Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", destPath]);
   }
 
   // Record checksum for future integrity checks on this installation.
-  const store = readChecksumStore(binDir);
+  const store = await readChecksumStore(binDir);
   store["whisper-server"] = expectedHash;
-  writeChecksumStore(binDir, store);
+  await writeChecksumStore(binDir, store);
 
   console.log(`\n✅ whisper-server installed to ${destPath}`);
   return destPath;
@@ -924,23 +940,23 @@ async function downloadLlamaServer(config: LocalBaseConfig): Promise<string> {
   await curlDownload(url, archivePath);
 
   console.log("Extracting llama.cpp release...");
-  const ext = spawnSync(
-    "tar",
-    ["-zxf", archivePath, "-C", binDir, "--strip-components=1"],
-    { stdio: "inherit" },
+  const ext = Bun.spawnSync(
+    ["tar", "-zxf", archivePath, "-C", binDir, "--strip-components=1"],
+    { stdin: "inherit", stdout: "inherit", stderr: "inherit" },
   );
   try {
-    Bun.spawnSync(["rm", "-f", archivePath]);
+    await Bun.file(archivePath).delete();
   } catch {}
-  if (ext.status !== 0) throw new Error("Failed to extract llama.cpp archive.");
+  if (ext.exitCode !== 0)
+    throw new Error("Failed to extract llama.cpp archive.");
 
   const destPath = join(binDir, "llama-server");
-  if (!existsSync(destPath))
+  if (!(await Bun.file(destPath).exists()))
     throw new Error("llama-server binary not found after extraction.");
 
-  spawnSync("chmod", ["+x", destPath]);
-  if (platform() === "darwin") {
-    spawnSync("xattr", ["-rd", "com.apple.quarantine", binDir]);
+  await makeExecutable(destPath);
+  if (process.platform === "darwin") {
+    Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", binDir]);
   }
 
   // Record the SHA-256 we got from ggml-org for future integrity checks.
@@ -981,22 +997,24 @@ async function downloadSdServer(config: LocalBaseConfig): Promise<string> {
   await curlDownload(url, archivePath);
 
   console.log("Extracting stable-diffusion.cpp release...");
-  const ext = spawnSync("unzip", ["-o", archivePath, "-d", binDir], {
-    stdio: "inherit",
+  const ext = Bun.spawnSync(["unzip", "-o", archivePath, "-d", binDir], {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
   });
   try {
-    Bun.spawnSync(["rm", "-f", archivePath]);
+    await Bun.file(archivePath).delete();
   } catch {}
-  if (ext.status !== 0)
+  if (ext.exitCode !== 0)
     throw new Error("Failed to extract stable-diffusion.cpp archive.");
 
   const destPath = join(binDir, "sd-server");
-  if (!existsSync(destPath))
+  if (!(await Bun.file(destPath).exists()))
     throw new Error("sd-server binary not found after extraction.");
 
-  spawnSync("chmod", ["+x", destPath]);
+  await makeExecutable(destPath);
   if (target.os === "darwin") {
-    spawnSync("xattr", ["-rd", "com.apple.quarantine", binDir]);
+    Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", binDir]);
   }
 
   await recordChecksum(binDir, "sd-server", destPath);
@@ -1019,7 +1037,7 @@ export async function ensureBinary(
   const localBin = join(binDir, localBinName);
 
   // 1. Check locally managed binary and verify stored checksum.
-  if (existsSync(localBin)) {
+  if (await Bun.file(localBin).exists()) {
     const known = await verifyStoredChecksum(binDir, name, localBin);
     if (!known) {
       // Binary exists but no stored hash (e.g. manually placed) — record it.
@@ -1029,12 +1047,10 @@ export async function ensureBinary(
   }
 
   // 2. Check system PATH.
-  const systemBin = spawnSync("which", [localBinName], { encoding: "utf8" });
-  if (systemBin.status === 0 && systemBin.stdout.trim()) {
-    console.log(
-      `ℹ️  Using system-installed ${name} at ${systemBin.stdout.trim()}`,
-    );
-    return systemBin.stdout.trim();
+  const systemBin = Bun.which(localBinName);
+  if (systemBin) {
+    console.log(`ℹ️  Using system-installed ${name} at ${systemBin}`);
+    return systemBin;
   }
 
   // 3. Download prebuilt release.
@@ -1103,7 +1119,7 @@ export function buildLlamaServerArgs(
   ];
 
   // Enable --flash-attn on Apple Silicon GPUs for up to 2x faster prompt prefill and reduced VRAM.
-  if (platform() === "darwin" && arch() === "arm64") {
+  if (process.platform === "darwin" && process.arch === "arm64") {
     args.push("--flash-attn", "auto");
   }
 
@@ -1122,7 +1138,7 @@ export async function startLlamaServerProcess(
   hardware?: ParallelHardware,
 ): Promise<Bun.Subprocess> {
   const modelPath = join(config.llmModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
+  if (!(await Bun.file(modelPath).exists())) {
     throw new Error(`Model file not found: ${modelPath}`);
   }
 
@@ -1153,7 +1169,7 @@ export async function startWhisperServerProcess(
   port: number,
 ): Promise<Bun.Subprocess> {
   const modelPath = join(config.sttModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
+  if (!(await Bun.file(modelPath).exists())) {
     throw new Error(`STT model file not found: ${modelPath}`);
   }
 
@@ -1178,7 +1194,7 @@ export async function launchLlamaServer(
   hardware?: ParallelHardware,
 ): Promise<number> {
   const modelPath = join(config.llmModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
+  if (!(await Bun.file(modelPath).exists())) {
     throw new Error(`Model file not found: ${modelPath}`);
   }
 
@@ -1195,11 +1211,13 @@ export async function launchLlamaServer(
     logAutoParallel(launch.parallel, hardware);
   }
 
-  const result = spawnSync(binPath, launch.args, {
-    stdio: "inherit",
+  const result = Bun.spawnSync([binPath, ...launch.args], {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
   });
 
-  return result.status ?? 1;
+  return result.exitCode;
 }
 
 export async function launchWhisperServer(
@@ -1209,21 +1227,18 @@ export async function launchWhisperServer(
   port: number,
 ): Promise<number> {
   const modelPath = join(config.sttModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
+  if (!(await Bun.file(modelPath).exists())) {
     throw new Error(`STT model file not found: ${modelPath}`);
   }
 
   const binPath = await ensureBinary(config, "whisper-server");
 
-  const result = spawnSync(
-    binPath,
-    ["--model", modelPath, "--host", host, "--port", String(port)],
-    {
-      stdio: "inherit",
-    },
+  const result = Bun.spawnSync(
+    [binPath, "--model", modelPath, "--host", host, "--port", String(port)],
+    { stdin: "inherit", stdout: "inherit", stderr: "inherit" },
   );
 
-  return result.status ?? 1;
+  return result.exitCode;
 }
 
 export async function startSdServerProcess(
@@ -1233,7 +1248,7 @@ export async function startSdServerProcess(
   port: number,
 ): Promise<Bun.Subprocess> {
   const modelPath = join(config.imageModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
+  if (!(await Bun.file(modelPath).exists())) {
     throw new Error(`Model file not found: ${modelPath}`);
   }
 
@@ -1264,7 +1279,7 @@ export async function launchSdServer(
   port: number,
 ): Promise<number> {
   const modelPath = join(config.imageModelsDir, modelFile);
-  if (!existsSync(modelPath)) {
+  if (!(await Bun.file(modelPath).exists())) {
     throw new Error(`Model file not found: ${modelPath}`);
   }
 
@@ -1279,10 +1294,12 @@ export async function launchSdServer(
     String(port),
   ];
 
-  const result = spawnSync(binPath, args, {
-    stdio: "inherit",
+  const result = Bun.spawnSync([binPath, ...args], {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
     cwd: binDir,
   });
 
-  return result.status ?? 1;
+  return result.exitCode;
 }

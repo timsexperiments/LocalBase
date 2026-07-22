@@ -1,18 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { createHash, randomUUID } from "node:crypto";
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { arch, platform, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CATALOG, type ModelArtifact, type ModelSpec } from "./catalog";
 import {
@@ -31,6 +22,8 @@ import {
 const testRoots: string[] = [];
 const testModelIds: string[] = [];
 const testServerClosers: Array<() => Promise<void>> = [];
+const textEncoder = new TextEncoder();
+const textBytes = (value: string) => textEncoder.encode(value);
 
 type ArtifactRequest = { path: string; range?: string };
 
@@ -113,7 +106,7 @@ async function createArtifactServer(
 }
 
 function sha256(content: Uint8Array): string {
-  return createHash("sha256").update(content).digest("hex");
+  return new Bun.CryptoHasher("sha256").update(content).digest("hex");
 }
 
 function artifact(
@@ -134,7 +127,7 @@ function installFixtureModel(
   source: string,
   artifacts: ModelArtifact[],
 ): string {
-  const modelId = `test-install-${randomUUID()}`;
+  const modelId = `test-install-${crypto.randomUUID()}`;
   (CATALOG as ModelSpec[]).push({
     modelId,
     kind: "llm",
@@ -277,14 +270,14 @@ function expectedLlamaArgs(modelPath: string, parallel: string): string[] {
     "--jinja",
     "--embeddings",
   ];
-  if (platform() === "darwin" && arch() === "arm64") {
+  if (process.platform === "darwin" && process.arch === "arm64") {
     args.push("--flash-attn", "auto");
   }
   return args;
 }
 
-function readCapturedArgs(argsPath: string): string[] {
-  return readFileSync(argsPath, "utf8").trim().split("\n");
+async function readCapturedArgs(argsPath: string): Promise<string[]> {
+  return (await Bun.file(argsPath).text()).trim().split("\n");
 }
 
 afterEach(async () => {
@@ -302,7 +295,7 @@ afterEach(async () => {
 
 describe("transactional model artifact installation", () => {
   test("keeps single-file installs compatible and supports a filename override", async () => {
-    const content = Buffer.from("single model");
+    const content = textBytes("single model");
     const server = await createArtifactServer({
       "/repo/resolve/test-revision/model.gguf": content,
     });
@@ -318,15 +311,17 @@ describe("transactional model artifact installation", () => {
     const installed = await installModel(config, modelId, "renamed.gguf");
 
     expect(installed).toBe(join(config.llmModelsDir, "renamed.gguf"));
-    expect(readFileSync(installed)).toEqual(content);
-    expect(existsSync(join(config.llmModelsDir, "renamed.gguf.partial"))).toBe(
-      false,
-    );
+    expect(await Bun.file(installed).bytes()).toEqual(content);
+    expect(
+      await Bun.file(
+        join(config.llmModelsDir, "renamed.gguf.partial"),
+      ).exists(),
+    ).toBe(false);
   });
 
   test("installs every shard sequentially and returns the primary artifact", async () => {
-    const primary = Buffer.from("primary shard");
-    const supplementary = Buffer.from("supplementary shard");
+    const primary = textBytes("primary shard");
+    const supplementary = textBytes("supplementary shard");
     const primaryArtifact = artifact("model-00001.gguf", primary, "primary");
     const supplementaryArtifact = artifact(
       "model-00002.gguf",
@@ -346,9 +341,11 @@ describe("transactional model artifact installation", () => {
     const installed = await installModel(config, modelId);
 
     expect(installed).toBe(join(config.llmModelsDir, primaryArtifact.filename));
-    expect(readFileSync(installed)).toEqual(primary);
+    expect(await Bun.file(installed).bytes()).toEqual(primary);
     expect(
-      readFileSync(join(config.llmModelsDir, supplementaryArtifact.filename)),
+      await Bun.file(
+        join(config.llmModelsDir, supplementaryArtifact.filename),
+      ).bytes(),
     ).toEqual(supplementary);
     expect(server.requests.map((request) => request.path)).toEqual([
       artifactPath(server.source, primaryArtifact.sourcePath),
@@ -357,8 +354,8 @@ describe("transactional model artifact installation", () => {
   });
 
   test("skips a verified shard and resumes a truncated artifact with Range", async () => {
-    const primary = Buffer.from("already verified");
-    const supplementary = Buffer.from("resume this shard");
+    const primary = textBytes("already verified");
+    const supplementary = textBytes("resume this shard");
     const primaryArtifact = artifact("model-00001.gguf", primary, "primary");
     const supplementaryArtifact = artifact(
       "model-00002.gguf",
@@ -375,18 +372,21 @@ describe("transactional model artifact installation", () => {
     ]);
     const config = createInstallConfig();
     mkdirSync(config.llmModelsDir, { recursive: true });
-    writeFileSync(join(config.llmModelsDir, primaryArtifact.filename), primary);
+    await Bun.write(
+      join(config.llmModelsDir, primaryArtifact.filename),
+      primary,
+    );
     const partial = join(
       config.llmModelsDir,
       `${supplementaryArtifact.filename}.partial`,
     );
     const prefix = supplementary.subarray(0, 9);
     const shorterPartial = supplementary.subarray(0, 4);
-    writeFileSync(
+    await Bun.write(
       join(config.llmModelsDir, supplementaryArtifact.filename),
       prefix,
     );
-    writeFileSync(partial, shorterPartial);
+    await Bun.write(partial, shorterPartial);
 
     await installModel(config, modelId);
 
@@ -402,14 +402,16 @@ describe("transactional model artifact installation", () => {
       },
     ]);
     expect(
-      readFileSync(join(config.llmModelsDir, supplementaryArtifact.filename)),
+      await Bun.file(
+        join(config.llmModelsDir, supplementaryArtifact.filename),
+      ).bytes(),
     ).toEqual(supplementary);
-    expect(existsSync(partial)).toBe(false);
+    expect(await Bun.file(partial).exists()).toBe(false);
   });
 
   test("preserves completed shards and partial failures, then repairs the set on retry", async () => {
-    const primary = Buffer.from("primary shard");
-    const supplementary = Buffer.from("supplementary shard that interrupts");
+    const primary = textBytes("primary shard");
+    const supplementary = textBytes("supplementary shard that interrupts");
     const primaryArtifact = artifact("model-00001.gguf", primary, "primary");
     const supplementaryArtifact = artifact(
       "model-00002.gguf",
@@ -438,18 +440,22 @@ describe("transactional model artifact installation", () => {
       "Failed to download model",
     );
     expect(
-      readFileSync(join(config.llmModelsDir, primaryArtifact.filename)),
+      await Bun.file(
+        join(config.llmModelsDir, primaryArtifact.filename),
+      ).bytes(),
     ).toEqual(primary);
-    const partialSize = readFileSync(partial).byteLength;
+    const partialSize = (await Bun.file(partial).stat()).size;
     expect(partialSize).toBeGreaterThan(0);
 
     await expect(installModel(config, modelId)).resolves.toBe(
       join(config.llmModelsDir, primaryArtifact.filename),
     );
     expect(
-      readFileSync(join(config.llmModelsDir, supplementaryArtifact.filename)),
+      await Bun.file(
+        join(config.llmModelsDir, supplementaryArtifact.filename),
+      ).bytes(),
     ).toEqual(supplementary);
-    expect(existsSync(partial)).toBe(false);
+    expect(await Bun.file(partial).exists()).toBe(false);
     expect(server.requests.at(-1)).toEqual({
       path: artifactPath(server.source, supplementaryArtifact.sourcePath),
       range: `bytes=${partialSize}-`,
@@ -457,8 +463,8 @@ describe("transactional model artifact installation", () => {
   });
 
   test("cleans partials when authoritative size or checksum validation fails", async () => {
-    const wrongSize = Buffer.from("wrong size");
-    const wrongHash = Buffer.from("wrong hash");
+    const wrongSize = textBytes("wrong size");
+    const wrongHash = textBytes("wrong hash");
     const server = await createArtifactServer({
       "/repo/resolve/test-revision/wrong-size.gguf": wrongSize,
       "/repo/resolve/test-revision/wrong-hash.gguf": wrongHash,
@@ -484,23 +490,27 @@ describe("transactional model artifact installation", () => {
       "Checksum mismatch",
     );
 
-    expect(existsSync(join(config.llmModelsDir, "wrong-size.gguf"))).toBe(
-      false,
-    );
     expect(
-      existsSync(join(config.llmModelsDir, "wrong-size.gguf.partial")),
+      await Bun.file(join(config.llmModelsDir, "wrong-size.gguf")).exists(),
     ).toBe(false);
-    expect(existsSync(join(config.llmModelsDir, "wrong-hash.gguf"))).toBe(
-      false,
-    );
     expect(
-      existsSync(join(config.llmModelsDir, "wrong-hash.gguf.partial")),
+      await Bun.file(
+        join(config.llmModelsDir, "wrong-size.gguf.partial"),
+      ).exists(),
+    ).toBe(false);
+    expect(
+      await Bun.file(join(config.llmModelsDir, "wrong-hash.gguf")).exists(),
+    ).toBe(false);
+    expect(
+      await Bun.file(
+        join(config.llmModelsDir, "wrong-hash.gguf.partial"),
+      ).exists(),
     ).toBe(false);
   });
 
   test("rejects filename overrides for multi-artifact models before downloading", async () => {
-    const primary = Buffer.from("primary");
-    const supplementary = Buffer.from("supplementary");
+    const primary = textBytes("primary");
+    const supplementary = textBytes("supplementary");
     const server = await createArtifactServer({
       "/repo/resolve/test-revision/model-00001.gguf": primary,
       "/repo/resolve/test-revision/model-00002.gguf": supplementary,
@@ -518,42 +528,45 @@ describe("transactional model artifact installation", () => {
 });
 
 describe("installed model reporting", () => {
-  test("reports complete catalog sets once and preserves unmatched files", () => {
-    const primary = Buffer.from("primary");
-    const supplementary = Buffer.from("supplementary");
+  test("reports complete catalog sets once and preserves unmatched files", async () => {
+    const primary = textBytes("primary");
+    const supplementary = textBytes("supplementary");
     const modelId = installFixtureModel("https://example.com/models", [
       artifact("reporting-00001.gguf", primary, "primary"),
       artifact("reporting-00002.gguf", supplementary, "supplementary"),
     ]);
     const config = createInstallConfig();
     mkdirSync(config.llmModelsDir, { recursive: true });
-    writeFileSync(join(config.llmModelsDir, "reporting-00001.gguf"), primary);
-    writeFileSync(
+    await Bun.write(join(config.llmModelsDir, "reporting-00001.gguf"), primary);
+    await Bun.write(
       join(config.llmModelsDir, "reporting-00002.gguf"),
       supplementary,
     );
-    writeFileSync(join(config.llmModelsDir, "z-manual.gguf"), "manual");
+    await Bun.write(join(config.llmModelsDir, "z-manual.gguf"), "manual");
 
-    expect(installedModels(config, "llm")).toEqual([modelId, "z-manual.gguf"]);
-    expect(installedModels(config)).toEqual([
+    expect(await installedModels(config, "llm")).toEqual([
+      modelId,
+      "z-manual.gguf",
+    ]);
+    expect(await installedModels(config)).toEqual([
       `llm:${modelId}`,
       "llm:z-manual.gguf",
     ]);
 
-    rmSync(join(config.llmModelsDir, "reporting-00002.gguf"));
-    expect(installedModels(config, "llm")).toEqual(["z-manual.gguf"]);
+    await Bun.file(join(config.llmModelsDir, "reporting-00002.gguf")).delete();
+    expect(await installedModels(config, "llm")).toEqual(["z-manual.gguf"]);
 
-    writeFileSync(join(config.llmModelsDir, "reporting-00002.gguf"), "short");
-    expect(installedModels(config, "llm")).toEqual(["z-manual.gguf"]);
+    await Bun.write(join(config.llmModelsDir, "reporting-00002.gguf"), "short");
+    expect(await installedModels(config, "llm")).toEqual(["z-manual.gguf"]);
   });
 
-  test("keeps complete single-file catalog models compatible", () => {
+  test("keeps complete single-file catalog models compatible", async () => {
     const config = createInstallConfig();
     const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
     mkdirSync(config.llmModelsDir, { recursive: true });
-    writeFileSync(join(config.llmModelsDir, `${modelId}.gguf`), "model");
+    await Bun.write(join(config.llmModelsDir, `${modelId}.gguf`), "model");
 
-    expect(installedModels(config, "llm")).toEqual([modelId]);
+    expect(await installedModels(config, "llm")).toEqual([modelId]);
   });
 });
 
@@ -633,7 +646,7 @@ describe("llama server argument construction", () => {
       console.log = originalLog;
     }
 
-    expect(readCapturedArgs(fixture.argsPath)).toEqual(
+    expect(await readCapturedArgs(fixture.argsPath)).toEqual(
       expectedLlamaArgs(fixture.modelPath, "2"),
     );
     expect(
@@ -655,7 +668,7 @@ describe("llama server argument construction", () => {
         8192,
       ),
     ).toBe(0);
-    expect(readCapturedArgs(fixture.argsPath)).toEqual(
+    expect(await readCapturedArgs(fixture.argsPath)).toEqual(
       expectedLlamaArgs(fixture.modelPath, "3"),
     );
   });

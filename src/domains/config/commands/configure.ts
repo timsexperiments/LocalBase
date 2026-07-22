@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -43,13 +42,15 @@ function warnAboutParallelOomRisk(
   }
 }
 
-function llmChoices(current: string[]): Array<{
+function llmChoices(
+  current: string[],
+  vramGb: number,
+): Array<{
   name: string;
   value: string;
   checked?: boolean;
   disabled?: string | boolean;
 }> {
-  const vramGb = detectSpecs().gpuVramGb;
   return listModels("llm").map((model) => {
     const fit = evaluateModelFit(model, vramGb);
     let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, min VRAM ${model.minVramGb}GB, coding ${model.codingScore}/10)`;
@@ -73,13 +74,15 @@ function llmChoices(current: string[]): Array<{
   });
 }
 
-function sttChoices(current: string[]): Array<{
+function sttChoices(
+  current: string[],
+  vramGb: number,
+): Array<{
   name: string;
   value: string;
   checked?: boolean;
   disabled?: string | boolean;
 }> {
-  const vramGb = detectSpecs().gpuVramGb;
   return listModels("stt").map((model) => {
     const fit = evaluateModelFit(model, vramGb);
     let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, min VRAM ${model.minVramGb}GB)`;
@@ -103,13 +106,15 @@ function sttChoices(current: string[]): Array<{
   });
 }
 
-function imageChoices(current: string[]): Array<{
+function imageChoices(
+  current: string[],
+  vramGb: number,
+): Array<{
   name: string;
   value: string;
   checked?: boolean;
   disabled?: string | boolean;
 }> {
-  const vramGb = detectSpecs().gpuVramGb;
   return listModels("image").map((model) => {
     const fit = evaluateModelFit(model, vramGb);
     let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, min VRAM ${model.minVramGb}GB)`;
@@ -180,7 +185,7 @@ async function interactiveConfigureSelective(
       validateModelList(
         await multiSelectPrompt(
           "Select LLM models",
-          llmChoices(config.selectedLlmModels),
+          llmChoices(config.selectedLlmModels, vramGb),
         ),
         "llm",
       ) ?? config.selectedLlmModels;
@@ -240,7 +245,7 @@ async function interactiveConfigureSelective(
       validateModelList(
         await multiSelectPrompt(
           "Select STT models (select none to disable)",
-          sttChoices(config.selectedSttModels),
+          sttChoices(config.selectedSttModels, vramGb),
         ),
         "stt",
       ) ?? config.selectedSttModels;
@@ -272,7 +277,7 @@ async function interactiveConfigureSelective(
       validateModelList(
         await multiSelectPrompt(
           "Select Image models (select none to disable)",
-          imageChoices(config.selectedImageModels),
+          imageChoices(config.selectedImageModels, vramGb),
         ),
         "image",
       ) ?? config.selectedImageModels;
@@ -321,7 +326,7 @@ export async function syncContinueConfig(
   const continueDir = join(homedir(), ".continue");
   const configPath = join(continueDir, "config.json");
 
-  if (!existsSync(configPath)) {
+  if (!(await Bun.file(configPath).exists())) {
     return;
   }
 
@@ -360,7 +365,7 @@ export async function syncContinueConfig(
     });
 
     const activeModel = config.activeLlmModel;
-    const vramGb = detectSpecs().gpuVramGb;
+    const vramGb = (await detectSpecs()).gpuVramGb;
 
     // Ensure the active model is placed at the front of the list
     const sortedSelectedModels = [
@@ -457,11 +462,11 @@ export async function runConfigure(
 ): Promise<number> {
   const specs = ctx.specs;
   const configPath = parseFlag(args, "--config");
-  const rawToml = configPath ? loadTomlOverrides(configPath) : {};
+  const rawToml = configPath ? await loadTomlOverrides(configPath) : {};
   const root = parseFlag(args, "--root") ?? rawToml.root;
-  const hasConfig = root
-    ? existsSync(`${root}/local-base.db`)
-    : existsSync(`${defaultRoot()}/local-base.db`);
+  const hasConfig = await Bun.file(
+    root ? `${root}/local-base.db` : `${defaultRoot()}/local-base.db`,
+  ).exists();
 
   let config = root ? loadConfig(root, specs.gpuVramGb) : ctx.config;
   const llmFromFlags = validateModelList(

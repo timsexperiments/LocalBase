@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { z } from "zod";
 import { join, basename } from "node:path";
 import {
@@ -684,21 +683,26 @@ export async function runServe(
     const spec = byId(config.activeLlmModel);
     if (spec) {
       llmModelFile = primaryArtifact(spec).filename;
-      llmModelExists = resolveCatalogInstallation(
-        spec,
-        config.llmModelsDir,
+      llmModelExists = (
+        await resolveCatalogInstallation(spec, config.llmModelsDir)
       ).complete;
     } else if (
-      existsSync(join(config.llmModelsDir, `${config.activeLlmModel}.bin`))
+      await Bun.file(
+        join(config.llmModelsDir, `${config.activeLlmModel}.bin`),
+      ).exists()
     ) {
       llmModelFile = `${config.activeLlmModel}.bin`;
       llmModelExists = true;
     } else {
       llmModelFile = `${config.activeLlmModel}.gguf`;
-      llmModelExists = existsSync(join(config.llmModelsDir, llmModelFile));
+      llmModelExists = await Bun.file(
+        join(config.llmModelsDir, llmModelFile),
+      ).exists();
     }
   } else {
-    llmModelExists = existsSync(join(config.llmModelsDir, llmModelFile));
+    llmModelExists = await Bun.file(
+      join(config.llmModelsDir, llmModelFile),
+    ).exists();
   }
 
   let sttModelFile = parseFlag(args, "--stt-model-file");
@@ -707,11 +711,13 @@ export async function runServe(
     const primaryFilename = spec && primaryArtifact(spec).filename;
     if (
       primaryFilename &&
-      existsSync(join(config.sttModelsDir, primaryFilename))
+      (await Bun.file(join(config.sttModelsDir, primaryFilename)).exists())
     ) {
       sttModelFile = primaryFilename;
     } else if (
-      existsSync(join(config.sttModelsDir, `${config.activeSttModel}.bin`))
+      await Bun.file(
+        join(config.sttModelsDir, `${config.activeSttModel}.bin`),
+      ).exists()
     ) {
       sttModelFile = `${config.activeSttModel}.bin`;
     } else {
@@ -725,7 +731,7 @@ export async function runServe(
     const primaryFilename = spec && primaryArtifact(spec).filename;
     if (
       primaryFilename &&
-      existsSync(join(config.imageModelsDir, primaryFilename))
+      (await Bun.file(join(config.imageModelsDir, primaryFilename)).exists())
     ) {
       imageModelFile = primaryFilename;
     } else {
@@ -733,10 +739,12 @@ export async function runServe(
     }
   }
 
-  let sttModelExists = existsSync(join(config.sttModelsDir, sttModelFile));
-  let imageModelExists = existsSync(
+  let sttModelExists = await Bun.file(
+    join(config.sttModelsDir, sttModelFile),
+  ).exists();
+  let imageModelExists = await Bun.file(
     join(config.imageModelsDir, imageModelFile),
-  );
+  ).exists();
 
   const enabled: ModalityState = {
     llm: parseBool(parseFlag(args, "--llm"), true),
@@ -947,7 +955,7 @@ export async function runServe(
           if (!modelFile) {
             const spec = byId(activeModel);
             if (spec) {
-              const installation = resolveCatalogInstallation(
+              const installation = await resolveCatalogInstallation(
                 spec,
                 launchConfig.llmModelsDir,
               );
@@ -965,13 +973,13 @@ export async function runServe(
                 modelFile = primaryArtifact(spec).filename;
               }
             } else {
-              const expectedFile = existsSync(
+              const expectedFile = (await Bun.file(
                 join(launchConfig.llmModelsDir, `${activeModel}.bin`),
-              )
+              ).exists())
                 ? `${activeModel}.bin`
                 : `${activeModel}.gguf`;
               const modelPath = join(launchConfig.llmModelsDir, expectedFile);
-              if (!existsSync(modelPath)) {
+              if (!(await Bun.file(modelPath).exists())) {
                 ctx.logger.info(
                   "llama-server",
                   `Model file is missing for "${activeModel}". Automatically installing...`,
@@ -1025,7 +1033,7 @@ export async function runServe(
     : null;
 
   const imageService = enabled.image
-    ? new ManagedService("sd-server", imageBase + "/", ctx.logger, () => {
+    ? new ManagedService("sd-server", imageBase + "/", ctx.logger, async () => {
         const activeModel = config.activeImageModel;
         let modelFile = parseFlag(args, "--image-model-file");
         if (!modelFile) {
@@ -1035,7 +1043,7 @@ export async function runServe(
             expectedFile = `${activeModel}.safetensors`;
           }
           const modelPath = join(config.imageModelsDir, expectedFile);
-          if (!existsSync(modelPath)) {
+          if (!(await Bun.file(modelPath).exists())) {
             throw new Error(`Image model file missing at ${modelPath}`);
           }
           modelFile = expectedFile;
