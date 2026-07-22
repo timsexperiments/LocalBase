@@ -4,6 +4,7 @@ export interface CommandFlag {
   name: string;
   type: string;
   description: string;
+  short?: string;
 }
 
 export interface CLICommand {

@@ -1,7 +1,14 @@
 import { expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  truncateSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { byId } from "../../../catalog";
 import { defaultConfig, loadConfig, saveConfig } from "../../../manager";
 
 const INITIAL_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
@@ -131,7 +138,7 @@ function serveRunnerSource(): string {
     "src/domains/runtime/backend-guardian.ts",
   );
   return `
-import { CATALOG } from ${JSON.stringify(catalogPath)};
+import { CATALOG, validateCatalog } from ${JSON.stringify(catalogPath)};
 import { createAppContext } from ${JSON.stringify(contextPath)};
 import { runServe } from ${JSON.stringify(servePath)};
 import { BACKEND_GUARDIAN_COMMAND, runBackendGuardian } from ${JSON.stringify(guardianPath)};
@@ -141,7 +148,12 @@ if (cliArgs[0] === BACKEND_GUARDIAN_COMMAND) {
   process.exit(await runBackendGuardian(cliArgs.slice(1)));
 }
 
-(CATALOG as any).push(JSON.parse(process.env.LOCALBASE_TEST_MODEL!));
+const testModel = validateCatalog([
+  JSON.parse(process.env.LOCALBASE_TEST_MODEL!),
+])[0];
+const modelIndex = CATALOG.findIndex(({ modelId }) => modelId === testModel.modelId);
+if (modelIndex === -1) throw new Error("Test model is not in the production catalog: " + testModel.modelId);
+(CATALOG as any)[modelIndex] = testModel;
 const args = JSON.parse(process.env.LOCALBASE_TEST_ARGS!);
 await runServe(args, await createAppContext(args));
 `;
@@ -183,6 +195,7 @@ test(
   async () => {
     const root = mkdtempSync(join(tmpdir(), "local-base-lazy-parallel-"));
     const argsPath = join(root, "bin", "llama-server.args");
+    const runtimeDir = join(root, "test-runtimes");
     const wrapperPort = reservePort();
     const backendPort = reservePort();
     const backend = Bun.serve({
@@ -225,6 +238,7 @@ test(
       saveConfig(config);
 
       mkdirSync(join(root, "bin"), { recursive: true });
+      mkdirSync(runtimeDir, { recursive: true });
       await Promise.all([
         Bun.write(
           join(config.llmModelsDir, `${INITIAL_MODEL}.gguf`),
@@ -235,15 +249,25 @@ test(
           "model placeholder",
         ),
         Bun.write(
-          join(root, "bin", "llama-server"),
+          join(runtimeDir, "llama-server"),
           `#!/bin/sh
-script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-printf '%s\\n' "$@" > "$script_dir/llama-server.args"
+printf '%s\\n' "$@" > "$LOCALBASE_TEST_ARGS_PATH"
 exec sleep 600
 `,
         ),
       ]);
-      chmodSync(join(root, "bin", "llama-server"), 0o755);
+      for (const modelId of [INITIAL_MODEL, SWITCHED_MODEL]) {
+        const expectedSizeBytes = byId(modelId)?.artifacts.find(
+          ({ role }) => role === "primary",
+        )?.expectedSizeBytes;
+        if (expectedSizeBytes !== undefined) {
+          truncateSync(
+            join(config.llmModelsDir, `${modelId}.gguf`),
+            expectedSizeBytes,
+          );
+        }
+      }
+      chmodSync(join(runtimeDir, "llama-server"), 0o755);
 
       gateway = Bun.spawn(
         [
@@ -275,7 +299,9 @@ exec sleep 600
           cwd: PROJECT_ROOT,
           env: {
             ...process.env,
+            PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
             LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
+            LOCALBASE_TEST_ARGS_PATH: argsPath,
           } as Record<string, string>,
           stdout: "pipe",
           stderr: "pipe",
@@ -305,6 +331,7 @@ exec sleep 600
           cwd: PROJECT_ROOT,
           env: {
             ...process.env,
+            PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
             LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
           } as Record<string, string>,
           stdout: "ignore",
@@ -345,16 +372,18 @@ test(
   async () => {
     const root = mkdtempSync(join(tmpdir(), "local-base-lazy-shard-"));
     const argsPath = join(root, "bin", "llama-server.args");
+    const runtimeDir = join(root, "test-runtimes");
     const wrapperPort = reservePort();
     const backendPort = reservePort();
-    const modelId = "test-lazy-sharded-model";
+    const modelId = "qwen3-coder-next-q4_k_m";
     const primaryName = "test-lazy-00001-of-00002.gguf";
     const supplementaryName = "test-lazy-00002-of-00002.gguf";
     const primary = textBytes("primary shard");
     const supplementary = textBytes("supplementary shard");
-    const artifactPath = `/repo/resolve/test-revision/${supplementaryName}`;
+    const repositoryRevision = "b82fb7382639d97b38fa7672e526c760c2fb358e";
+    const artifactPath = `/repo/resolve/${repositoryRevision}/${supplementaryName}`;
     const artifacts = await startArtifactServer({
-      [`/repo/resolve/test-revision/${primaryName}`]: primary,
+      [`/repo/resolve/${repositoryRevision}/${primaryName}`]: primary,
       [artifactPath]: supplementary,
     });
     const backend = Bun.serve({
@@ -395,6 +424,7 @@ test(
       saveConfig(config);
 
       mkdirSync(join(root, "bin"), { recursive: true });
+      mkdirSync(runtimeDir, { recursive: true });
       mkdirSync(config.llmModelsDir, { recursive: true });
       await Bun.write(join(config.llmModelsDir, primaryName), primary);
       await Bun.write(
@@ -402,14 +432,14 @@ test(
         supplementary,
       );
       await Bun.write(
-        join(root, "bin", "llama-server"),
+        join(runtimeDir, "llama-server"),
         `#!/bin/sh
 test -f "$LOCALBASE_TEST_SUPPLEMENTARY_PATH" || exit 41
 printf '%s\\n' "$@" > "$LOCALBASE_TEST_ARGS_PATH"
 exec sleep 600
 `,
       );
-      chmodSync(join(root, "bin", "llama-server"), 0o755);
+      chmodSync(join(runtimeDir, "llama-server"), 0o755);
 
       const model = {
         modelId,
@@ -422,7 +452,7 @@ exec sleep 600
         minVramGb: 1,
         storageGb: 1,
         source: artifacts.source,
-        repositoryRevision: "test-revision",
+        repositoryRevision,
         artifacts: [
           {
             sourcePath: primaryName,
@@ -473,6 +503,7 @@ exec sleep 600
         cwd: PROJECT_ROOT,
         env: {
           ...process.env,
+          PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
           LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
           LOCALBASE_TEST_MODEL: JSON.stringify(model),
           LOCALBASE_TEST_ARGS: JSON.stringify(serveArgs),
@@ -532,6 +563,7 @@ test(
     const argsPath = join(root, "bin", "llama-server.args");
     const pidPath = join(root, "bin", "llama-server.pid");
     const parentPidPath = join(root, "bin", "llama-server.parent.pid");
+    const runtimeDir = join(root, "test-runtimes");
     const wrapperPort = reservePort();
     const backendPort = reservePort();
     const modelFile = "custom-model.gguf";
@@ -573,9 +605,10 @@ test(
       saveConfig(config);
 
       mkdirSync(join(root, "bin"), { recursive: true });
+      mkdirSync(runtimeDir, { recursive: true });
       await Bun.write(join(config.llmModelsDir, modelFile), "custom model");
       await Bun.write(
-        join(root, "bin", "llama-server"),
+        join(runtimeDir, "llama-server"),
         `#!/bin/sh
 trap '' TERM
 printf '%s\\n' "$$" > "$LOCALBASE_TEST_PID_PATH"
@@ -584,7 +617,7 @@ printf '%s\\n' "$@" > "$LOCALBASE_TEST_ARGS_PATH"
 exec sleep 600
 `,
       );
-      chmodSync(join(root, "bin", "llama-server"), 0o755);
+      chmodSync(join(runtimeDir, "llama-server"), 0o755);
 
       gateway = Bun.spawn(
         [
@@ -616,6 +649,7 @@ exec sleep 600
           cwd: PROJECT_ROOT,
           env: {
             ...process.env,
+            PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
             LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
             LOCALBASE_TEST_ARGS_PATH: argsPath,
             LOCALBASE_TEST_PID_PATH: pidPath,

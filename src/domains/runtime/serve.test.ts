@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { join } from "node:path";
+import { loadConfig, saveConfig } from "../../manager";
 import {
   startGatewayFixture,
   type GatewayFixture,
@@ -80,6 +82,125 @@ describe("API gateway integration", () => {
     });
   });
 
+  test("proxies normalized chat requests without gateway credentials", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer gateway-secret",
+        "x-api-key": "gateway-key",
+        "x-test-header": "retained",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [{ role: "developer", content: "hello" }],
+        provider_option: "preserved",
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      object: "chat.completion",
+      choices: [{ message: { content: "ok" } }],
+    });
+
+    const upstream = gateway.upstreamRequests.at(-1);
+    expect(upstream?.headers.get("authorization")).toBeNull();
+    expect(upstream?.headers.get("x-api-key")).toBeNull();
+    expect(upstream?.headers.get("x-test-header")).toBe("retained");
+    expect(JSON.parse(upstream?.body ?? "{}")).toMatchObject({
+      model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+      provider_option: "preserved",
+      messages: [{ role: "system", content: "hello" }],
+    });
+  });
+
+  test("returns a 502 OpenAI error for malformed successful upstream responses", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "malformed",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      error: { type: "server_error", code: "upstream_error" },
+    });
+  });
+
+  test("passes SSE responses through without buffering or schema gating", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(await response.text()).toContain("[DONE]");
+  });
+
+  test("rejects removed raw backend namespaces", async () => {
+    for (const pathname of ["/llm/health", "/stt/health", "/image/health"]) {
+      const response = await request(pathname);
+      expect(response.status).toBe(404);
+    }
+  });
+
+  test("does not switch models for invalid requests and serializes valid switches", async () => {
+    const initialConfig = loadConfig(gateway.root);
+    const secondModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    initialConfig.selectedLlmModels = [
+      initialConfig.activeLlmModel,
+      secondModel,
+    ];
+    saveConfig(initialConfig);
+    await Bun.write(
+      join(initialConfig.llmModelsDir, `${secondModel}.gguf`),
+      "test model placeholder",
+    );
+
+    const invalid = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: secondModel }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(loadConfig(gateway.root).activeLlmModel).toBe(
+      "qwen2.5-coder-1.5b-instruct-q4_k_m",
+    );
+
+    const responses = await Promise.all(
+      [secondModel, "qwen2.5-coder-1.5b-instruct-q4_k_m", secondModel].map(
+        (model) =>
+          request("/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model,
+              messages: [{ role: "user", content: "hello" }],
+            }),
+          }),
+      ),
+    );
+    expect(responses.map((response) => response.status)).toEqual([
+      200, 200, 200,
+    ]);
+    expect([secondModel, "qwen2.5-coder-1.5b-instruct-q4_k_m"]).toContain(
+      loadConfig(gateway.root).activeLlmModel,
+    );
+  });
+
   const jsonValidationCases: ValidationCase[] = [
     {
       name: "chat completions require messages",
@@ -146,6 +267,19 @@ describe("API gateway integration", () => {
       "/v1/audio/transcriptions",
       { method: "POST", body: formData },
       "file",
+    );
+  });
+
+  test("audio transcriptions reject repeated scalar multipart fields", async () => {
+    const formData = new FormData();
+    formData.append("file", new Blob(["audio"]), "audio.wav");
+    formData.append("model", "whisper-a");
+    formData.append("model", "whisper-b");
+
+    await expectValidationFailure(
+      "/v1/audio/transcriptions",
+      { method: "POST", body: formData },
+      "model",
     );
   });
 });

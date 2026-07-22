@@ -1,5 +1,72 @@
 import type { CLICommand } from "./types";
 
+const configureFlags: NonNullable<CLICommand["flags"]> = [
+  {
+    name: "--defaults",
+    type: "boolean",
+    description: "Use saved or default settings without prompting",
+  },
+  {
+    name: "--all",
+    type: "boolean",
+    description: "Prompt for every configurable setting",
+  },
+  {
+    name: "--config",
+    type: "file.toml",
+    description: "Load configuration overrides from a TOML file",
+  },
+  { name: "--root", type: "path", description: "Storage root directory path" },
+  { name: "--host", type: "host", description: "LLM binding host address" },
+  { name: "--port", type: "n", description: "LLM binding port number" },
+  {
+    name: "--ctx-size",
+    type: "n",
+    description: "LLM maximum context limit ceiling",
+  },
+  {
+    name: "--parallel",
+    type: "n|auto",
+    description: "Parallel slots: auto or an integer from 1 to 4",
+  },
+  { name: "--stt-host", type: "host", description: "STT binding host address" },
+  { name: "--stt-port", type: "n", description: "STT binding port number" },
+  {
+    name: "--startup-on-boot",
+    type: "true|false",
+    description: "Configure system service startup on boot",
+  },
+  {
+    name: "--llm-models",
+    type: "id1,id2",
+    description: "Comma-separated LLM model IDs",
+  },
+  {
+    name: "--stt-models",
+    type: "id1,id2",
+    description: "Comma-separated STT model IDs; empty disables STT",
+  },
+  {
+    name: "--image-models",
+    type: "id1,id2",
+    description:
+      "Comma-separated image model IDs; empty disables image generation",
+  },
+  { name: "--active-llm", type: "id", description: "Active LLM model ID" },
+  { name: "--active-stt", type: "id", description: "Active STT model ID" },
+  { name: "--active-image", type: "id", description: "Active image model ID" },
+  {
+    name: "--hf-token",
+    type: "token",
+    description: "Hugging Face token for gated model downloads",
+  },
+  {
+    name: "--create-key",
+    type: "true|false",
+    description: "Create an initial API key during configuration",
+  },
+];
+
 export const commandRegistry: CLICommand[] = [
   {
     name: "",
@@ -8,76 +75,7 @@ export const commandRegistry: CLICommand[] = [
       const { runConfigure } = await import("../../config/commands/configure");
       return runConfigure(args, ctx);
     },
-    flags: [
-      {
-        name: "--defaults",
-        type: "boolean",
-        description: "Use default settings without prompting",
-      },
-      {
-        name: "--all",
-        type: "boolean",
-        description: "Prompt for all available settings interactively",
-      },
-      {
-        name: "--config",
-        type: "file.toml",
-        description: "Load configuration overrides from a TOML file",
-      },
-      {
-        name: "--root",
-        type: "path",
-        description: "Storage root directory path",
-      },
-      { name: "--host", type: "host", description: "LLM binding host address" },
-      { name: "--port", type: "n", description: "LLM binding port number" },
-      {
-        name: "--ctx-size",
-        type: "n",
-        description: "LLM maximum context limit ceiling",
-      },
-      {
-        name: "--parallel",
-        type: "n|auto",
-        description: "Parallel slots to run automatically or manually (1-4)",
-      },
-      {
-        name: "--stt-host",
-        type: "host",
-        description: "STT binding host address",
-      },
-      { name: "--stt-port", type: "n", description: "STT binding port number" },
-      {
-        name: "--startup-on-boot",
-        type: "true|false",
-        description: "Configure system service startup on boot",
-      },
-      {
-        name: "--llm-models",
-        type: "id1,id2",
-        description: "Comma-separated list of LLM models to select",
-      },
-      {
-        name: "--stt-models",
-        type: "id1,id2",
-        description: "Comma-separated list of STT models to select",
-      },
-      {
-        name: "--active-llm",
-        type: "id",
-        description: "Sets the active LLM model ID",
-      },
-      {
-        name: "--active-stt",
-        type: "id",
-        description: "Sets the active STT model ID",
-      },
-      {
-        name: "--create-key",
-        type: "true|false",
-        description: "Create an initial API key during configuration",
-      },
-    ],
+    flags: configureFlags,
   },
   {
     name: "init",
@@ -101,72 +99,7 @@ export const commandRegistry: CLICommand[] = [
       const { runConfigure } = await import("../../config/commands/configure");
       return runConfigure(args, ctx);
     },
-    flags: [
-      {
-        name: "--defaults",
-        type: "boolean",
-        description: "Use default settings without prompting",
-      },
-      {
-        name: "--all",
-        type: "boolean",
-        description: "Interactive prompt for all settings",
-      },
-      {
-        name: "--config",
-        type: "file.toml",
-        description: "Load configuration overrides from a TOML file",
-      },
-      {
-        name: "--root",
-        type: "path",
-        description: "Storage root directory path",
-      },
-      { name: "--host", type: "host", description: "LLM host address" },
-      { name: "--port", type: "n", description: "LLM port number" },
-      {
-        name: "--ctx-size",
-        type: "n",
-        description: "LLM maximum context limit ceiling",
-      },
-      {
-        name: "--parallel",
-        type: "n|auto",
-        description: "Parallel slots to run automatically or manually (1-4)",
-      },
-      { name: "--stt-host", type: "host", description: "STT host address" },
-      { name: "--stt-port", type: "n", description: "STT port number" },
-      {
-        name: "--startup-on-boot",
-        type: "true|false",
-        description: "Configure system service startup on boot",
-      },
-      {
-        name: "--llm-models",
-        type: "id1,id2",
-        description: "Comma-separated list of LLM models to select",
-      },
-      {
-        name: "--stt-models",
-        type: "id1,id2",
-        description: "Comma-separated list of STT models to select",
-      },
-      {
-        name: "--active-llm",
-        type: "id",
-        description: "Sets the active LLM model ID",
-      },
-      {
-        name: "--active-stt",
-        type: "id",
-        description: "Sets the active STT model ID",
-      },
-      {
-        name: "--create-key",
-        type: "true|false",
-        description: "Create an initial API key during configuration",
-      },
-    ],
+    flags: configureFlags,
   },
   {
     name: "doctor",
@@ -259,6 +192,11 @@ export const commandRegistry: CLICommand[] = [
       return runServe(args, ctx);
     },
     flags: [
+      {
+        name: "--root",
+        type: "path",
+        description: "Storage root directory path",
+      },
       { name: "--host", type: "host", description: "API gateway binding host" },
       {
         name: "--port",
@@ -317,6 +255,26 @@ export const commandRegistry: CLICommand[] = [
         description: "Filename override for the active STT model",
       },
       {
+        name: "--image-host",
+        type: "host",
+        description: "Host for the upstream image-generation server",
+      },
+      {
+        name: "--image-port",
+        type: "port",
+        description: "Port for the upstream image-generation server",
+      },
+      {
+        name: "--image",
+        type: "true|false",
+        description: "Enable or disable image generation",
+      },
+      {
+        name: "--image-model-file",
+        type: "file",
+        description: "Filename override for the active image model",
+      },
+      {
         name: "--auth",
         type: "true|false",
         description: "Enable/disable API key authentication check",
@@ -326,14 +284,24 @@ export const commandRegistry: CLICommand[] = [
         type: "bearer|x-api-key|either",
         description: "Authentication header mode to enforce",
       },
+      {
+        name: "--bypass-memory-check",
+        type: "boolean",
+        description: "Start services without enforcing model memory checks",
+      },
+      {
+        name: "--force",
+        type: "boolean",
+        description: "Alias for bypassing model memory checks",
+      },
     ],
   },
   {
     name: "prompt show",
     description: "Display the active system prompt used for LLM completions",
-    handler: async (args, ctx) => {
+    handler: async (_, ctx) => {
       const { runPromptShow } = await import("../../runtime/commands/prompt");
-      return runPromptShow(args, ctx);
+      return runPromptShow(ctx);
     },
   },
   {
@@ -344,6 +312,7 @@ export const commandRegistry: CLICommand[] = [
       const { runPromptSet } = await import("../../runtime/commands/prompt");
       return runPromptSet(args, ctx);
     },
+    positional: ["[text...]"],
     flags: [
       {
         name: "--file",
@@ -356,9 +325,9 @@ export const commandRegistry: CLICommand[] = [
     name: "prompt reset",
     description:
       "Reset the custom system prompt back to the default assistant persona",
-    handler: async (args, ctx) => {
+    handler: async (_, ctx) => {
       const { runPromptReset } = await import("../../runtime/commands/prompt");
-      return runPromptReset(args, ctx);
+      return runPromptReset(ctx);
     },
   },
   {
@@ -409,7 +378,8 @@ export const commandRegistry: CLICommand[] = [
   },
   {
     name: "reset",
-    description: "Reset database and purge selected configuration state",
+    description:
+      "Delete the configuration database and recreate default settings",
     handler: async (args, ctx) => {
       const { runReset } = await import("../../maintenance/commands/reset");
       return runReset(args, ctx);
@@ -423,18 +393,19 @@ export const commandRegistry: CLICommand[] = [
       {
         name: "--yes",
         type: "boolean",
-        description: "Confirm reset without interactive prompting",
+        short: "y",
+        description: "Confirm reset without interactive prompting (also -y)",
       },
     ],
   },
   {
     name: "uninstall",
     description:
-      "Remove installed binaries, models, database and cleanup system settings",
-    handler: async (args, ctx) => {
+      "Remove all LocalBase-managed data under the selected storage root",
+    handler: async (args) => {
       const { runUninstall } =
         await import("../../maintenance/commands/uninstall");
-      return runUninstall(args, ctx);
+      return runUninstall(args);
     },
     flags: [
       {
@@ -445,7 +416,9 @@ export const commandRegistry: CLICommand[] = [
       {
         name: "--yes",
         type: "boolean",
-        description: "Confirm uninstallation without interactive prompting",
+        short: "y",
+        description:
+          "Confirm uninstallation without interactive prompting (also -y)",
       },
     ],
   },
