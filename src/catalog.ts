@@ -1,4 +1,3 @@
-import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 
@@ -1223,25 +1222,27 @@ export function primaryArtifact(model: ModelSpec): ModelArtifact {
  * Expected sizes catch interrupted or stale downloads without hashing large
  * artifacts during routine startup. Full checksums remain installer work.
  */
-export function resolveCatalogInstallation(
+export async function resolveCatalogInstallation(
   model: ModelSpec,
   kindDirectory: string,
-): CatalogInstallationState {
+): Promise<CatalogInstallationState> {
   const primary = primaryArtifact(model);
-  const complete = model.artifacts.every((artifact) => {
-    const path = join(kindDirectory, artifact.filename);
-    if (!existsSync(path)) return false;
-    if (artifact.expectedSizeBytes === undefined) return true;
+  const artifactStates = await Promise.all(
+    model.artifacts.map(async (artifact) => {
+      const file = Bun.file(join(kindDirectory, artifact.filename));
+      if (!(await file.exists())) return false;
+      if (artifact.expectedSizeBytes === undefined) return true;
 
-    try {
-      return statSync(path).size === artifact.expectedSizeBytes;
-    } catch {
-      return false;
-    }
-  });
+      try {
+        return (await file.stat()).size === artifact.expectedSizeBytes;
+      } catch {
+        return false;
+      }
+    }),
+  );
 
   return {
-    complete,
+    complete: artifactStates.every(Boolean),
     primaryPath: join(kindDirectory, primary.filename),
   };
 }

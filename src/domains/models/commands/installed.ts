@@ -2,9 +2,12 @@ import { installedModels } from "../../../manager";
 import { parseFlag, parseKind } from "../../../utils/args";
 import type { AppContext } from "../../../context";
 
-export function runInstalled(args: string[], ctx: AppContext): number {
+export async function runInstalled(
+  args: string[],
+  ctx: AppContext,
+): Promise<number> {
   const kind = parseKind(parseFlag(args, "--kind"));
-  const found = installedModels(ctx.config, kind);
+  const found = await installedModels(ctx.config, kind);
   if (found.length === 0) {
     console.log(
       kind

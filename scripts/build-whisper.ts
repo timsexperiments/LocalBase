@@ -1,16 +1,15 @@
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, copyFileSync, rmSync } from "node:fs";
+import { $ } from "bun";
+import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { platform, arch } from "node:os";
 
 const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
-const root = join(__dirname, "..");
+const root = join(import.meta.dir, "..");
 const tempDir = join(root, "tmp-whisper-build");
 const releaseDir = join(root, "release");
 
 function platformSuffix(): string {
-  const osName = platform();
-  const cpuArch = arch();
+  const osName = process.platform;
+  const cpuArch = process.arch;
   if (osName === "darwin" && cpuArch === "arm64") return "macos-arm64";
   if (osName === "darwin" && cpuArch === "x64") return "macos-x64";
   if (osName === "linux" && cpuArch === "x64") return "linux-x64";
@@ -26,43 +25,22 @@ async function main() {
   console.log(`\n🚀 Starting local build for whisper-server (${suffix})...`);
 
   // Clean up any stale temp directories
-  if (existsSync(tempDir)) {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
+  rmSync(tempDir, { recursive: true, force: true });
   mkdirSync(tempDir, { recursive: true });
   mkdirSync(releaseDir, { recursive: true });
 
   console.log(`\n⬇️  Cloning ggml-org/whisper.cpp...`);
-  const clone = spawnSync("git", ["clone", "--depth", "1", WHISPER_REPO, "whisper.cpp"], {
-    cwd: tempDir,
-    stdio: "inherit"
-  });
-  if (clone.status !== 0) {
-    console.error("❌ Failed to clone whisper.cpp repo.");
-    process.exit(1);
-  }
+  await $`git clone --depth 1 ${WHISPER_REPO} whisper.cpp`.cwd(tempDir);
 
   const whisperDir = join(tempDir, "whisper.cpp");
 
   console.log(`\n🛠️  Configuring CMake...`);
-  const config = spawnSync("cmake", ["-B", "build", "-DWHISPER_BUILD_TESTS=OFF", "-DWHISPER_BUILD_EXAMPLES=ON", "-DBUILD_SHARED_LIBS=OFF"], {
-    cwd: whisperDir,
-    stdio: "inherit"
-  });
-  if (config.status !== 0) {
-    console.error("❌ Failed to configure CMake.");
-    process.exit(1);
-  }
+  await $`cmake -B build -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF`.cwd(
+    whisperDir,
+  );
 
   console.log(`\n🏗️  Compiling whisper-server...`);
-  const build = spawnSync("cmake", ["--build", "build", "--config", "Release", "-j"], {
-    cwd: whisperDir,
-    stdio: "inherit"
-  });
-  if (build.status !== 0) {
-    console.error("❌ Failed to compile whisper-server.");
-    process.exit(1);
-  }
+  await $`cmake --build build --config Release -j`.cwd(whisperDir);
 
   // Find the compiled binary
   const buildBinDir = join(whisperDir, "build", "bin");
@@ -71,12 +49,12 @@ async function main() {
 
   for (const name of possibleNames) {
     const p = join(buildBinDir, name);
-    if (existsSync(p)) {
+    if (await Bun.file(p).exists()) {
       sourcePath = p;
       break;
     }
     const exePath = join(buildBinDir, `${name}.exe`);
-    if (existsSync(exePath)) {
+    if (await Bun.file(exePath).exists()) {
       sourcePath = exePath;
       break;
     }
@@ -88,8 +66,8 @@ async function main() {
   }
 
   console.log(`\n💾 Copying binary to ${destPath}...`);
-  copyFileSync(sourcePath, destPath);
-  spawnSync("chmod", ["+x", destPath]);
+  await Bun.write(destPath, Bun.file(sourcePath));
+  chmodSync(destPath, (await Bun.file(destPath).stat()).mode | 0o111);
 
   console.log(`\n🧹 Cleaning up temporary build files...`);
   rmSync(tempDir, { recursive: true, force: true });

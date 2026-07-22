@@ -3,7 +3,7 @@ import { runRegistry } from "./domains/app/commands/runner";
 
 async function main(): Promise<number> {
   const args = Bun.argv.slice(2);
-  const ctx = createAppContext(args);
+  const ctx = await createAppContext(args);
   return await runRegistry(args, ctx);
 }
 

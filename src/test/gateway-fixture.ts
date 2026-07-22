@@ -1,5 +1,4 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { randomInt } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultConfig, saveConfig, type LocalBaseConfig } from "../manager";
@@ -24,7 +23,9 @@ async function readProcessOutput(
 }
 
 function getGatewayPort(): number {
-  return randomInt(20_000, 60_000);
+  const value = new Uint32Array(1);
+  crypto.getRandomValues(value);
+  return 20_000 + (value[0] % 40_000);
 }
 
 async function stopProcess(serverProcess: Bun.Subprocess): Promise<void> {

@@ -2,7 +2,7 @@ import { parseArgs } from "node:util";
 import { type ModelKind } from "../catalog";
 
 /**
- * Parses a flag value robustly from the argument array using Bun's native node:util parseArgs.
+ * Parses a flag value robustly from the argument array using node:util's parseArgs.
  * Automatically supports both space-separated (--port 8787) and equals-separated (--port=8787) formats.
  */
 export function parseFlag(args: string[], key: string): string | undefined {

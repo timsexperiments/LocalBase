@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import { type AppContext } from "../../../context";
 import { parseFlag } from "../../../utils/args";
 import { loadConfig, saveConfig } from "../../../manager";
@@ -41,11 +40,12 @@ export async function runPromptSet(
 
   const file = parseFlag(args, "--file");
   if (file) {
-    if (!existsSync(file)) {
+    const promptFile = Bun.file(file);
+    if (!(await promptFile.exists())) {
       console.error(`Error: File not found at "${file}"`);
       return 1;
     }
-    promptText = readFileSync(file, "utf8").trim();
+    promptText = (await promptFile.text()).trim();
   } else {
     // Collect all positional arguments after 'prompt' and 'set'
     const promptIdx = args.indexOf("prompt");

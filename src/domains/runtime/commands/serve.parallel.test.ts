@@ -1,16 +1,5 @@
 import { expect, test } from "bun:test";
-import { createHash, randomInt } from "node:crypto";
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultConfig, loadConfig, saveConfig } from "../../../manager";
@@ -18,10 +7,14 @@ import { defaultConfig, loadConfig, saveConfig } from "../../../manager";
 const INITIAL_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const SWITCHED_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
 const PROJECT_ROOT = join(import.meta.dirname, "../../../..");
+const textEncoder = new TextEncoder();
+const textBytes = (value: string) => textEncoder.encode(value);
 
 function reservePort(): number {
   for (let attempt = 0; attempt < 10; attempt++) {
-    const port = randomInt(20_000, 60_000);
+    const value = new Uint32Array(1);
+    crypto.getRandomValues(value);
+    const port = 20_000 + (value[0] % 40_000);
     try {
       const reservation = Bun.serve({
         hostname: "127.0.0.1",
@@ -76,7 +69,7 @@ async function stopProcess(process: Bun.Subprocess): Promise<void> {
 async function waitForFile(path: string): Promise<void> {
   const deadline = Date.now() + 2_000;
   while (Date.now() < deadline) {
-    if (existsSync(path)) return;
+    if (await Bun.file(path).exists()) return;
     await Bun.sleep(20);
   }
   throw new Error(`Timed out waiting for ${path}`);
@@ -93,7 +86,7 @@ import { runServe } from ${JSON.stringify(servePath)};
 
 (CATALOG as any).push(JSON.parse(process.env.LOCALBASE_TEST_MODEL!));
 const args = JSON.parse(process.env.LOCALBASE_TEST_ARGS!);
-await runServe(args, createAppContext(args));
+await runServe(args, await createAppContext(args));
 `;
 }
 
@@ -103,32 +96,28 @@ async function startArtifactServer(files: Record<string, Uint8Array>): Promise<{
   stop: () => Promise<void>;
 }> {
   const requests: string[] = [];
-  const server = createServer((request, response) => {
-    const path = new URL(
-      request.url ?? "/",
-      `http://${request.headers.host ?? "127.0.0.1"}`,
-    ).pathname;
-    requests.push(path);
-    const body = files[path];
-    if (!body) {
-      response.writeHead(404).end();
-      return;
-    }
-    response.writeHead(200, { "Content-Length": String(body.byteLength) });
-    response.end(body);
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      const path = new URL(request.url).pathname;
+      requests.push(path);
+      const body = files[path];
+      if (!body) {
+        return new Response(null, { status: 404 });
+      }
+      const bodyCopy = new Uint8Array(body);
+      return new Response(bodyCopy.buffer, {
+        headers: { "Content-Length": String(body.byteLength) },
+      });
+    },
   });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const { port } = server.address() as AddressInfo;
   return {
-    source: `http://127.0.0.1:${port}/repo`,
+    source: `http://127.0.0.1:${server.port}/repo`,
     requests,
-    stop: () =>
-      new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      }),
+    stop: async () => {
+      server.stop(true);
+    },
   };
 }
 
@@ -279,7 +268,7 @@ exec sleep 600
       expect(response.status).toBe(200);
 
       await waitForFile(argsPath);
-      const launchArgs = readFileSync(argsPath, "utf8").trim().split("\n");
+      const launchArgs = (await Bun.file(argsPath).text()).trim().split("\n");
       expect(launchArgs[launchArgs.indexOf("--parallel") + 1]).toBe("3");
       expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(
         join(config.llmModelsDir, `${SWITCHED_MODEL}.gguf`),
@@ -304,8 +293,8 @@ test(
     const modelId = "test-lazy-sharded-model";
     const primaryName = "test-lazy-00001-of-00002.gguf";
     const supplementaryName = "test-lazy-00002-of-00002.gguf";
-    const primary = Buffer.from("primary shard");
-    const supplementary = Buffer.from("supplementary shard");
+    const primary = textBytes("primary shard");
+    const supplementary = textBytes("supplementary shard");
     const artifactPath = `/repo/resolve/test-revision/${supplementaryName}`;
     const artifacts = await startArtifactServer({
       [`/repo/resolve/test-revision/${primaryName}`]: primary,
@@ -350,12 +339,12 @@ test(
 
       mkdirSync(join(root, "bin"), { recursive: true });
       mkdirSync(config.llmModelsDir, { recursive: true });
-      writeFileSync(join(config.llmModelsDir, primaryName), primary);
-      writeFileSync(
+      await Bun.write(join(config.llmModelsDir, primaryName), primary);
+      await Bun.write(
         join(config.llmModelsDir, supplementaryName),
         supplementary,
       );
-      writeFileSync(
+      await Bun.write(
         join(root, "bin", "llama-server"),
         `#!/bin/sh
 test -f "$LOCALBASE_TEST_SUPPLEMENTARY_PATH" || exit 41
@@ -382,14 +371,18 @@ exec sleep 600
             sourcePath: primaryName,
             filename: primaryName,
             expectedSizeBytes: primary.byteLength,
-            sha256: createHash("sha256").update(primary).digest("hex"),
+            sha256: new Bun.CryptoHasher("sha256")
+              .update(primary)
+              .digest("hex"),
             role: "primary",
           },
           {
             sourcePath: supplementaryName,
             filename: supplementaryName,
             expectedSizeBytes: supplementary.byteLength,
-            sha256: createHash("sha256").update(supplementary).digest("hex"),
+            sha256: new Bun.CryptoHasher("sha256")
+              .update(supplementary)
+              .digest("hex"),
             role: "supplementary",
           },
         ],
@@ -440,7 +433,7 @@ exec sleep 600
 
       const baseUrl = `http://127.0.0.1:${wrapperPort}`;
       await waitForGateway(gateway, baseUrl);
-      rmSync(join(config.llmModelsDir, supplementaryName));
+      await Bun.file(join(config.llmModelsDir, supplementaryName)).delete();
 
       const response = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
@@ -455,9 +448,9 @@ exec sleep 600
 
       expect(artifacts.requests).toEqual([artifactPath]);
       expect(
-        readFileSync(join(config.llmModelsDir, supplementaryName)),
+        await Bun.file(join(config.llmModelsDir, supplementaryName)).bytes(),
       ).toEqual(supplementary);
-      const launchArgs = readFileSync(argsPath, "utf8").trim().split("\n");
+      const launchArgs = (await Bun.file(argsPath).text()).trim().split("\n");
       expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(
         join(config.llmModelsDir, primaryName),
       );
@@ -521,8 +514,8 @@ test(
       saveConfig(config);
 
       mkdirSync(join(root, "bin"), { recursive: true });
-      writeFileSync(join(config.llmModelsDir, modelFile), "custom model");
-      writeFileSync(
+      await Bun.write(join(config.llmModelsDir, modelFile), "custom model");
+      await Bun.write(
         join(root, "bin", "llama-server"),
         `#!/bin/sh
 printf '%s\\n' "$@" > "$LOCALBASE_TEST_ARGS_PATH"
@@ -584,17 +577,17 @@ exec sleep 600
       expect(response.status).toBe(200);
       await waitForFile(argsPath);
 
-      const launchArgs = readFileSync(argsPath, "utf8").trim().split("\n");
+      const launchArgs = (await Bun.file(argsPath).text()).trim().split("\n");
       expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(
         join(config.llmModelsDir, modelFile),
       );
       expect(
-        existsSync(
+        await Bun.file(
           join(
             config.llmModelsDir,
             "Qwen3-Coder-Next-Q4_K_M-00002-of-00004.gguf",
           ),
-        ),
+        ).exists(),
       ).toBe(false);
     } finally {
       if (gateway) await stopProcess(gateway);
