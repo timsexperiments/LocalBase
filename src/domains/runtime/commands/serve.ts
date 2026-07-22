@@ -22,6 +22,7 @@ import { parseBool, parseFlag, toInt } from "../../../utils/args";
 import { syncContinueConfig } from "../../config/commands/configure";
 import { type ILogger } from "../../../utils/logger";
 import { DEFAULT_SYSTEM_PROMPT } from "./prompt";
+import { guardianProcessCommand } from "../backend-guardian";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
@@ -30,6 +31,8 @@ type ModalityState = {
   stt: boolean;
   image: boolean;
 };
+
+const CHILD_STOP_GRACE_MS = 500;
 
 function parseAuthMode(raw: string | undefined): AuthMode {
   if (!raw) return "either";
@@ -458,6 +461,10 @@ class ManagedService {
   private crashTimes: number[] = [];
   private isRestarting = false;
   private restartPromise: Promise<void> | null = null;
+  private isShuttingDown = false;
+  private shutdownPromise: Promise<void> | null = null;
+  private guardians = new Map<number, Bun.Subprocess>();
+  private onFatal: () => Promise<void>;
   private timeoutMs: number;
 
   constructor(
@@ -466,18 +473,23 @@ class ManagedService {
     logger: ILogger,
     startFn: () => Promise<Bun.Subprocess>,
     timeoutMs = 30000,
+    onFatal: () => Promise<void> = async () => {},
   ) {
     this.name = name;
     this.healthUrl = healthUrl;
     this.logger = logger;
     this.startFn = startFn;
     this.timeoutMs = timeoutMs;
+    this.onFatal = onFatal;
   }
 
   /**
    * Lazily starts the service on first use, or awaits recovery if currently restarting.
    */
   async ensureRunning(): Promise<void> {
+    if (this.isShuttingDown) {
+      throw new Error(`${this.name} is shutting down`);
+    }
     if (this.proc && this.proc.exitCode === null) {
       return;
     }
@@ -504,7 +516,10 @@ class ManagedService {
           this.name,
           `Service has crashed ${crashCount} times in 5 minutes. Stopping manager.`,
         );
-        process.exit(1);
+        void this.onFatal().catch((err) => {
+          this.logger.error(this.name, "Failed to stop manager", err as Error);
+        });
+        return;
       }
 
       if (crashCount > 0) {
@@ -518,14 +533,22 @@ class ManagedService {
 
       this.logger.info(this.name, "Starting subprocess...");
       try {
-        this.proc = await this.startFn();
+        const proc = await this.startFn();
+        if (this.isShuttingDown) {
+          await this.stopProcess(proc);
+          return;
+        }
+
+        this.proc = proc;
+        this.startGuardian(proc);
         if (this.proc.stdout && typeof this.proc.stdout !== "number")
           this.logger.pipeStream(this.proc.stdout, this.name);
         if (this.proc.stderr && typeof this.proc.stderr !== "number")
           this.logger.pipeStream(this.proc.stderr, this.name);
 
-        this.proc.exited.then(() => {
-          this.handleCrash();
+        proc.exited.then(() => {
+          void this.stopGuardian(proc);
+          this.handleCrash(proc);
         });
 
         const ok = await this.waitHealthy();
@@ -536,7 +559,7 @@ class ManagedService {
       } catch (err) {
         this.logger.error(this.name, "Failed to start service", err as Error);
         this.crashTimes.push(Date.now());
-        this.kill();
+        await this.kill();
         this.isRestarting = false;
         throw err;
       }
@@ -554,6 +577,7 @@ class ManagedService {
     const start = Date.now();
 
     while (Date.now() - start < timeout) {
+      if (this.isShuttingDown) return false;
       if (this.proc?.exitCode !== null) {
         this.logger.error(
           this.name,
@@ -573,33 +597,104 @@ class ManagedService {
   }
 
   /**
-   * Gracefully terminates the subprocess (SIGTERM -> brief sleep -> SIGKILL).
+   * Stops a backend for a model switch without triggering crash recovery.
    */
-  kill(): void {
+  async kill(): Promise<void> {
+    await this.stopCurrentProcess();
+  }
+
+  /** Prevents future restarts and waits for an active startup to finish stopping. */
+  async shutdown(): Promise<void> {
+    if (!this.shutdownPromise) {
+      this.isShuttingDown = true;
+      const startup = this.restartPromise;
+      this.shutdownPromise = (async () => {
+        await this.stopCurrentProcess();
+        if (startup) await startup.catch(() => {});
+        await this.stopCurrentProcess();
+        await this.stopAllGuardians();
+      })();
+    }
+    await this.shutdownPromise;
+  }
+
+  private async stopCurrentProcess(): Promise<void> {
     const p = this.proc;
     if (p) {
       this.proc = null;
-      try {
-        p.kill(15);
-        setTimeout(() => {
-          if (p.exitCode === null) {
-            try {
-              p.kill(9);
-            } catch (err) {}
-          }
-        }, 500);
-      } catch (err) {}
+      await this.stopProcess(p);
+      await this.stopGuardian(p);
     }
+  }
+
+  private startGuardian(proc: Bun.Subprocess): void {
+    const guardian = Bun.spawn(guardianProcessCommand(process.pid, proc.pid), {
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+      detached: true,
+    });
+    this.guardians.set(proc.pid, guardian);
+    guardian.exited.then(() => {
+      if (this.guardians.get(proc.pid) === guardian) {
+        this.guardians.delete(proc.pid);
+      }
+    });
+  }
+
+  private async stopGuardian(proc: Bun.Subprocess): Promise<void> {
+    const guardian = this.guardians.get(proc.pid);
+    if (!guardian) return;
+    this.guardians.delete(proc.pid);
+    await this.stopProcess(guardian);
+  }
+
+  private async stopAllGuardians(): Promise<void> {
+    const guardians = [...this.guardians.values()];
+    this.guardians.clear();
+    await Promise.all(guardians.map((guardian) => this.stopProcess(guardian)));
+  }
+
+  /** Gracefully terminates a subprocess, then forcefully reaps it if needed. */
+  private async stopProcess(p: Bun.Subprocess): Promise<void> {
+    if (p.exitCode !== null) return;
+
+    try {
+      p.kill(15);
+    } catch {
+      return;
+    }
+
+    const exitedDuringGrace = await Promise.race([
+      p.exited.then(
+        () => true,
+        () => true,
+      ),
+      Bun.sleep(CHILD_STOP_GRACE_MS).then(() => false),
+    ]);
+    if (exitedDuringGrace || p.exitCode !== null) return;
+
+    try {
+      p.kill(9);
+    } catch {
+      return;
+    }
+    await p.exited.catch(() => {});
   }
 
   /**
    * Initiates asynchronous process recovery when a running subprocess exits.
    */
-  handleCrash(): void {
-    if (this.proc && this.proc.exitCode !== null && !this.isRestarting) {
+  handleCrash(proc: Bun.Subprocess): void {
+    if (
+      !this.isShuttingDown &&
+      this.proc === proc &&
+      proc.exitCode !== null &&
+      !this.isRestarting
+    ) {
       this.logger.warn(
         this.name,
-        `Subprocess exited unexpectedly with code ${this.proc.exitCode}. Triggering self-healing...`,
+        `Subprocess exited unexpectedly with code ${proc.exitCode}. Triggering self-healing...`,
       );
       this.crashTimes.push(Date.now());
       this.proc = null;
@@ -943,6 +1038,14 @@ export async function runServe(
   const llmTimeoutMs =
     activeLlmSpec && activeLlmSpec.minVramGb >= 16 ? 180000 : 60000;
 
+  let exitAfterShutdown: ((status: number) => Promise<never>) | undefined;
+  const fatalServiceExit = async (): Promise<void> => {
+    if (!exitAfterShutdown) {
+      throw new Error("Serve shutdown is not initialized");
+    }
+    await exitAfterShutdown(1);
+  };
+
   const llmService = enabled.llm
     ? new ManagedService(
         "llama-server",
@@ -1020,6 +1123,7 @@ export async function runServe(
           );
         },
         llmTimeoutMs,
+        fatalServiceExit,
       )
     : null;
 
@@ -1029,32 +1133,43 @@ export async function runServe(
         sttBase + "/health",
         ctx.logger,
         () => startWhisperServerProcess(config, sttModelFile, sttHost, sttPort),
+        30000,
+        fatalServiceExit,
       )
     : null;
 
   const imageService = enabled.image
-    ? new ManagedService("sd-server", imageBase + "/", ctx.logger, async () => {
-        const activeModel = config.activeImageModel;
-        let modelFile = parseFlag(args, "--image-model-file");
-        if (!modelFile) {
-          const spec = byId(activeModel);
-          let expectedFile = spec ? primaryArtifact(spec).filename : undefined;
-          if (!expectedFile) {
-            expectedFile = `${activeModel}.safetensors`;
+    ? new ManagedService(
+        "sd-server",
+        imageBase + "/",
+        ctx.logger,
+        async () => {
+          const activeModel = config.activeImageModel;
+          let modelFile = parseFlag(args, "--image-model-file");
+          if (!modelFile) {
+            const spec = byId(activeModel);
+            let expectedFile = spec
+              ? primaryArtifact(spec).filename
+              : undefined;
+            if (!expectedFile) {
+              expectedFile = `${activeModel}.safetensors`;
+            }
+            const modelPath = join(config.imageModelsDir, expectedFile);
+            if (!(await Bun.file(modelPath).exists())) {
+              throw new Error(`Image model file missing at ${modelPath}`);
+            }
+            modelFile = expectedFile;
           }
-          const modelPath = join(config.imageModelsDir, expectedFile);
-          if (!(await Bun.file(modelPath).exists())) {
-            throw new Error(`Image model file missing at ${modelPath}`);
-          }
-          modelFile = expectedFile;
-        }
 
-        ctx.logger.info(
-          "sd-server",
-          `Spawning image model "${activeModel}" (file: ${modelFile}) on port ${imagePort}`,
-        );
-        return startSdServerProcess(config, modelFile, imageHost, imagePort);
-      })
+          ctx.logger.info(
+            "sd-server",
+            `Spawning image model "${activeModel}" (file: ${modelFile}) on port ${imagePort}`,
+          );
+          return startSdServerProcess(config, modelFile, imageHost, imagePort);
+        },
+        30000,
+        fatalServiceExit,
+      )
     : null;
 
   const handleRequest = async (
@@ -1110,7 +1225,7 @@ export async function runServe(
               "llama-server",
               `Switching active LLM from "${currentConfig.activeLlmModel}" to "${matchedModel}"`,
             );
-            llmService.kill();
+            await llmService.kill();
             currentConfig.activeLlmModel = matchedModel;
             saveConfig(currentConfig);
 
@@ -1246,7 +1361,7 @@ export async function runServe(
               "sd-server",
               `Switching active Image model from "${currentConfig.activeImageModel}" to "${matchedModel}"`,
             );
-            imageService.kill();
+            await imageService.kill();
             currentConfig.activeImageModel = matchedModel;
             saveConfig(currentConfig);
           }
@@ -1527,22 +1642,44 @@ export async function runServe(
     enabled,
   );
 
-  const shutdown = () => {
-    ctx.logger.info("Manager", "Shutting down servers and subprocesses...");
-    server.stop(true);
-    llmService?.kill();
-    sttService?.kill();
-    imageService?.kill();
+  let shutdownPromise: Promise<void> | null = null;
+  let exitPromise: Promise<never> | null = null;
+  let requestedExitStatus = 0;
+  const shutdown = (): Promise<void> => {
+    if (!shutdownPromise) {
+      shutdownPromise = (async () => {
+        ctx.logger.info("Manager", "Shutting down servers and subprocesses...");
+        server.stop(true);
+        await Promise.all([
+          llmService?.shutdown(),
+          sttService?.shutdown(),
+          imageService?.shutdown(),
+        ]);
+      })();
+    }
+    return shutdownPromise;
   };
 
-  process.on("SIGINT", () => {
-    shutdown();
-    process.exit(0);
-  });
-  process.on("SIGTERM", () => {
-    shutdown();
-    process.exit(0);
-  });
+  exitAfterShutdown = (status: number): Promise<never> => {
+    requestedExitStatus = Math.max(requestedExitStatus, status);
+    if (!exitPromise) {
+      exitPromise = (async () => {
+        try {
+          await shutdown();
+        } catch (err) {
+          ctx.logger.error("Manager", "Shutdown failed", err as Error);
+          requestedExitStatus = 1;
+        }
+        process.exit(requestedExitStatus);
+      })();
+    }
+    return exitPromise;
+  };
+
+  // SIGKILL cannot run cleanup: POSIX does not let a process handle its own SIGKILL.
+  process.once("SIGINT", () => void exitAfterShutdown?.(0));
+  process.once("SIGTERM", () => void exitAfterShutdown?.(0));
+  process.once("SIGHUP", () => void exitAfterShutdown?.(0));
 
   // Keep alive forever
   await new Promise(() => {});
