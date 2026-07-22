@@ -104,7 +104,7 @@ async function findGuardianPid(
   backendPid: number,
 ): Promise<number> {
   const deadline = Date.now() + 2_000;
-  const marker = `local-base-backend-guardian ${gatewayPid} ${backendPid}`;
+  const marker = `__localbase_backend_guardian ${gatewayPid} ${backendPid}`;
   while (Date.now() < deadline) {
     const process = Bun.spawn(["ps", "-axww", "-o", "pid=", "-o", "command="], {
       stdout: "pipe",
@@ -126,10 +126,20 @@ function serveRunnerSource(): string {
   const catalogPath = join(PROJECT_ROOT, "src/catalog.ts");
   const contextPath = join(PROJECT_ROOT, "src/context.ts");
   const servePath = join(PROJECT_ROOT, "src/domains/runtime/commands/serve.ts");
+  const guardianPath = join(
+    PROJECT_ROOT,
+    "src/domains/runtime/backend-guardian.ts",
+  );
   return `
 import { CATALOG } from ${JSON.stringify(catalogPath)};
 import { createAppContext } from ${JSON.stringify(contextPath)};
 import { runServe } from ${JSON.stringify(servePath)};
+import { BACKEND_GUARDIAN_COMMAND, runBackendGuardian } from ${JSON.stringify(guardianPath)};
+
+const cliArgs = Bun.argv.slice(2);
+if (cliArgs[0] === BACKEND_GUARDIAN_COMMAND) {
+  process.exit(await runBackendGuardian(cliArgs.slice(1)));
+}
 
 (CATALOG as any).push(JSON.parse(process.env.LOCALBASE_TEST_MODEL!));
 const args = JSON.parse(process.env.LOCALBASE_TEST_ARGS!);

@@ -22,6 +22,7 @@ import { parseBool, parseFlag, toInt } from "../../../utils/args";
 import { syncContinueConfig } from "../../config/commands/configure";
 import { type ILogger } from "../../../utils/logger";
 import { DEFAULT_SYSTEM_PROMPT } from "./prompt";
+import { guardianProcessCommand } from "../backend-guardian";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
@@ -32,65 +33,6 @@ type ModalityState = {
 };
 
 const CHILD_STOP_GRACE_MS = 500;
-
-// `lstart` plus the command protects against ordinary PID reuse. A same-second
-// reuse with an identical command is still theoretically indistinguishable.
-const BACKEND_GUARDIAN_SCRIPT = String.raw`
-gateway_pid=$1
-backend_pid=$2
-
-identity() {
-  ps -p "$1" -o lstart= -o command= 2>/dev/null
-}
-
-same_process() {
-  [ -n "$2" ] && [ "$(identity "$1")" = "$2" ]
-}
-
-gateway_identity=$(identity "$gateway_pid") || exit 0
-[ -n "$gateway_identity" ] || exit 0
-
-backend_identity=""
-attempts=10
-while [ "$attempts" -gt 0 ]; do
-  candidate=$(identity "$backend_pid") || exit 0
-  if [ -n "$candidate" ]; then
-    sleep 0.2
-    if same_process "$backend_pid" "$candidate"; then
-      backend_identity=$candidate
-      break
-    fi
-  fi
-  attempts=$((attempts - 1))
-done
-[ -n "$backend_identity" ] || exit 0
-
-while :; do
-  current_gateway_identity=$(identity "$gateway_pid")
-  if [ "$current_gateway_identity" != "$gateway_identity" ]; then
-    if [ -n "$current_gateway_identity" ]; then
-      gateway_identity=$current_gateway_identity
-      sleep 0.2
-      continue
-    fi
-    if same_process "$backend_pid" "$backend_identity"; then
-      kill -TERM "$backend_pid" 2>/dev/null || true
-      attempts=5
-      while [ "$attempts" -gt 0 ] && same_process "$backend_pid" "$backend_identity"; do
-        sleep 0.1
-        attempts=$((attempts - 1))
-      done
-      if same_process "$backend_pid" "$backend_identity"; then
-        kill -KILL "$backend_pid" 2>/dev/null || true
-      fi
-    fi
-    exit 0
-  fi
-
-  same_process "$backend_pid" "$backend_identity" || exit 0
-  sleep 0.2
-done
-`;
 
 function parseAuthMode(raw: string | undefined): AuthMode {
   if (!raw) return "either";
@@ -686,17 +628,12 @@ class ManagedService {
   }
 
   private startGuardian(proc: Bun.Subprocess): void {
-    const guardian = Bun.spawn(
-      [
-        "/bin/sh",
-        "-c",
-        BACKEND_GUARDIAN_SCRIPT,
-        "local-base-backend-guardian",
-        String(process.pid),
-        String(proc.pid),
-      ],
-      { stdin: "ignore", stdout: "ignore", stderr: "ignore" },
-    );
+    const guardian = Bun.spawn(guardianProcessCommand(process.pid, proc.pid), {
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+      detached: true,
+    });
     this.guardians.set(proc.pid, guardian);
     guardian.exited.then(() => {
       if (this.guardians.get(proc.pid) === guardian) {
