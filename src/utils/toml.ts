@@ -60,14 +60,5 @@ export async function loadTomlOverrides(
     values[key] = parseTomlValue(value);
   }
 
-  const normalized: Record<string, string | number | boolean | string[]> = {
-    ...values,
-    selectedLlmModels: values.selectedLlmModels ?? values.llmModels,
-    selectedSttModels: values.selectedSttModels ?? values.sttModels,
-    selectedImageModels: values.selectedImageModels ?? values.imageModels,
-  };
-  delete normalized.llmModels;
-  delete normalized.sttModels;
-  delete normalized.imageModels;
-  return configOverridesSchema.parse(normalized);
+  return configOverridesSchema.parse(values);
 }
