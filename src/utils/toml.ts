@@ -1,7 +1,28 @@
 import { type LocalBaseConfig } from "../manager";
-import { parseOptionalParallelSlots } from "../domains/config/parallel";
+import { z } from "zod";
+import { parallelSlotsSchema } from "../domains/config/parallel";
 
 export type ConfigOverrides = Partial<LocalBaseConfig>;
+
+const configOverridesSchema = z
+  .object({
+    root: z.string().min(1).optional(),
+    host: z.string().min(1).optional(),
+    port: z.number().int().positive().optional(),
+    ctxSize: z.number().int().positive().optional(),
+    parallel: parallelSlotsSchema.optional(),
+    sttHost: z.string().min(1).optional(),
+    sttPort: z.number().int().positive().optional(),
+    startupOnBoot: z.boolean().optional(),
+    selectedLlmModels: z.array(z.string().min(1)).optional(),
+    selectedSttModels: z.array(z.string().min(1)).optional(),
+    selectedImageModels: z.array(z.string().min(1)).optional(),
+    activeLlmModel: z.string().min(1).optional(),
+    activeSttModel: z.string().optional(),
+    activeImageModel: z.string().optional(),
+    hfToken: z.string().optional(),
+  })
+  .strict();
 
 function parseTomlValue(value: string): string | number | boolean | string[] {
   const trimmed = value.trim();
@@ -39,34 +60,5 @@ export async function loadTomlOverrides(
     values[key] = parseTomlValue(value);
   }
 
-  const selectedLlmModels = values.selectedLlmModels ?? values.llmModels;
-  const selectedSttModels = values.selectedSttModels ?? values.sttModels;
-
-  return {
-    root: typeof values.root === "string" ? values.root : undefined,
-    host: typeof values.host === "string" ? values.host : undefined,
-    port: typeof values.port === "number" ? values.port : undefined,
-    ctxSize: typeof values.ctxSize === "number" ? values.ctxSize : undefined,
-    parallel: parseOptionalParallelSlots(values.parallel),
-    sttHost: typeof values.sttHost === "string" ? values.sttHost : undefined,
-    sttPort: typeof values.sttPort === "number" ? values.sttPort : undefined,
-    startupOnBoot:
-      typeof values.startupOnBoot === "boolean"
-        ? values.startupOnBoot
-        : undefined,
-    selectedLlmModels: Array.isArray(selectedLlmModels)
-      ? selectedLlmModels
-      : undefined,
-    selectedSttModels: Array.isArray(selectedSttModels)
-      ? selectedSttModels
-      : undefined,
-    activeLlmModel:
-      typeof values.activeLlmModel === "string"
-        ? values.activeLlmModel
-        : undefined,
-    activeSttModel:
-      typeof values.activeSttModel === "string"
-        ? values.activeSttModel
-        : undefined,
-  };
+  return configOverridesSchema.parse(values);
 }

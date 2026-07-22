@@ -61,10 +61,6 @@ bun run build
 
 `bun run check` formats-checks the source, type-checks the project, and runs the CLI help smoke test. `bun run build` produces `dist/local-base`.
 
-## Roadmap
-
-TIM-21 adds configurable and hardware-aware llama-server request slots. Dynamic model pools, LRU eviction, text-to-speech, and video generation remain future work.
-
 ## Contributing
 
 Keep documentation and behavior aligned, use Bun for project commands, and verify changes with the checks above before opening a pull request. Report bugs and requests through [GitHub Issues](https://github.com/timsexperiments/LocalBase/issues).

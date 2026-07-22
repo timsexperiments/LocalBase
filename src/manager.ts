@@ -1,19 +1,12 @@
-import { chmodSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { extname, join } from "node:path";
-import {
-  computeSha256,
-  parseChecksumFile,
-  readChecksumStore,
-  recordChecksum,
-  verifyChecksum,
-  verifyStoredChecksum,
-  writeChecksumStore,
-} from "./utils/checksum";
+import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import { SafeFilenameSchema, verifyAuthoritativeFile } from "./utils/checksum";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { eq } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { Database } from "bun:sqlite";
+import { z } from "zod";
 import {
   artifactDownloadUrl,
   byId,
@@ -32,15 +25,18 @@ import {
   type ParallelAllocation,
   type ParallelSlots,
 } from "./domains/config/parallel";
+import { ensureBinary } from "./manager/binaries";
+export {
+  ensureBinary,
+  managedRuntimeRelease,
+  managedRuntimeUnavailableError,
+  platformSupportTier,
+  type ManagedRuntimeRelease,
+  type PlatformSupportTier,
+  type PlatformTarget,
+  type RuntimeName,
+} from "./manager/binaries";
 
-// ---------------------------------------------------------------------------
-// Pinned upstream versions — update these when qualifying a new binary release.
-// whisper-server is sourced from LocalBase releases on managed platforms.
-// llama-server is sourced from ggml-org/llama.cpp prebuilt releases.
-// ---------------------------------------------------------------------------
-const LLAMA_CPP_VERSION = "b9741";
-const LOCALBASE_RELEASES_BASE =
-  "https://github.com/timsexperiments/LocalBase/releases/latest/download";
 const textEncoder = new TextEncoder();
 
 export type LocalBaseConfig = {
@@ -118,6 +114,148 @@ function dbPath(root: string): string {
   return join(root, "local-base.db");
 }
 
+const absolutePathSchema = z
+  .string()
+  .min(1)
+  .refine(isAbsolute, "must be an absolute path")
+  .refine((value) => resolve(value) === value, "must be normalized");
+const hostSchema = z
+  .string()
+  .min(1)
+  .max(253)
+  .refine(
+    (value) => value === value.trim() && !/\s/.test(value),
+    "must not contain whitespace",
+  );
+const portSchema = z.number().int().min(1).max(65535);
+const timestampSchema = z.iso.datetime({ offset: true });
+
+const ConfigRowSchema = z
+  .object({
+    id: z.literal("default"),
+    root: absolutePathSchema,
+    llmModelsDir: absolutePathSchema,
+    sttModelsDir: absolutePathSchema,
+    imageModelsDir: absolutePathSchema,
+    runtimeBackend: z.literal("llama.cpp"),
+    sttBackend: z.literal("whisper.cpp"),
+    host: hostSchema,
+    port: portSchema,
+    ctxSize: z.number().int().min(2048).max(2_147_483_647),
+    sttHost: hostSchema,
+    sttPort: portSchema,
+    startupOnBoot: z.union([z.literal(0), z.literal(1)]),
+    selectedLlmModels: z.string(),
+    selectedSttModels: z.string(),
+    selectedImageModels: z.string(),
+    activeLlmModel: z.string().min(1),
+    activeSttModel: z.string(),
+    activeImageModel: z.string(),
+    systemPrompt: z.string(),
+    hfToken: z.string(),
+    parallel: z.enum(["auto", "1", "2", "3", "4"]),
+  })
+  .strict();
+
+const ApiKeyRowSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    prefix: z.string().min(1),
+    keyHash: z.string().regex(/^[a-fA-F0-9]{64}$/),
+    createdAt: timestampSchema,
+    lastRotatedAt: timestampSchema,
+    expiresAt: timestampSchema.nullable(),
+    revokedAt: timestampSchema.nullable(),
+  })
+  .strict()
+  .superRefine((key, ctx) => {
+    const createdAt = Date.parse(key.createdAt);
+    if (Date.parse(key.lastRotatedAt) < createdAt) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["lastRotatedAt"],
+        message: "must not be before createdAt",
+      });
+    }
+    if (key.revokedAt && Date.parse(key.revokedAt) < createdAt) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["revokedAt"],
+        message: "must not be before createdAt",
+      });
+    }
+  });
+
+function issueSummary(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => `${issue.path.join(".") || "value"}: ${issue.message}`)
+    .join("; ");
+}
+
+function invalidConfiguration(
+  root: string,
+  detail: string,
+  cause?: unknown,
+): Error {
+  return new Error(
+    `Invalid LocalBase configuration in ${dbPath(root)}: ${detail}. ` +
+      `Repair the invalid row or run "local-base reset --root ${root} --yes" to recreate the database.`,
+    cause === undefined ? undefined : { cause },
+  );
+}
+
+function tableColumns(sqlite: Database, table: string): Set<string> {
+  const rows = sqlite.query(`PRAGMA table_info(${table})`).all();
+  return new Set(
+    z
+      .array(z.object({ name: z.string() }).passthrough())
+      .parse(rows)
+      .map((row) => row.name),
+  );
+}
+
+function migrateConfigTable(sqlite: Database): void {
+  const columns = tableColumns(sqlite, "config");
+  const migrations = [
+    {
+      name: "system_prompt",
+      add: "ALTER TABLE config ADD COLUMN system_prompt TEXT;",
+      fill: "UPDATE config SET system_prompt = '' WHERE system_prompt IS NULL;",
+    },
+    {
+      name: "image_models_dir",
+      add: "ALTER TABLE config ADD COLUMN image_models_dir TEXT;",
+      fill: "UPDATE config SET image_models_dir = root || '/models/image' WHERE image_models_dir IS NULL;",
+    },
+    {
+      name: "selected_image_models",
+      add: "ALTER TABLE config ADD COLUMN selected_image_models TEXT;",
+      fill: `UPDATE config SET selected_image_models = '["stable-diffusion-v1-5"]' WHERE selected_image_models IS NULL;`,
+    },
+    {
+      name: "active_image_model",
+      add: "ALTER TABLE config ADD COLUMN active_image_model TEXT;",
+      fill: "UPDATE config SET active_image_model = 'stable-diffusion-v1-5' WHERE active_image_model IS NULL;",
+    },
+    {
+      name: "hf_token",
+      add: "ALTER TABLE config ADD COLUMN hf_token TEXT;",
+      fill: "UPDATE config SET hf_token = '' WHERE hf_token IS NULL;",
+    },
+    {
+      name: "parallel",
+      add: "ALTER TABLE config ADD COLUMN parallel TEXT NOT NULL DEFAULT 'auto';",
+      fill: "UPDATE config SET parallel = 'auto' WHERE parallel IS NULL;",
+    },
+  ];
+
+  for (const migration of migrations) {
+    if (!columns.has(migration.name)) sqlite.exec(migration.add);
+    sqlite.exec(migration.fill);
+  }
+}
+
 function openDb(root: string) {
   mkdirSync(root, { recursive: true });
   const sqlite = new Database(dbPath(root));
@@ -127,7 +265,7 @@ function openDb(root: string) {
       root text not null,
       llm_models_dir text not null,
       stt_models_dir text not null,
-      image_models_dir text,
+      image_models_dir text not null,
       runtime_backend text not null,
       stt_backend text not null,
       host text not null,
@@ -138,12 +276,12 @@ function openDb(root: string) {
       startup_on_boot integer not null,
       selected_llm_models text not null,
       selected_stt_models text not null,
-      selected_image_models text,
+      selected_image_models text not null,
       active_llm_model text not null,
       active_stt_model text not null,
-      active_image_model text,
-      system_prompt text,
-      hf_token text,
+      active_image_model text not null,
+      system_prompt text not null,
+      hf_token text not null,
       parallel text not null default 'auto'
     );
 
@@ -158,39 +296,7 @@ function openDb(root: string) {
       revoked_at text
     );
   `);
-  try {
-    sqlite.exec("ALTER TABLE config ADD COLUMN system_prompt TEXT;");
-  } catch (e) {
-    // Ignore error if column already exists
-  }
-  try {
-    sqlite.exec("ALTER TABLE config ADD COLUMN image_models_dir TEXT;");
-  } catch (e) {
-    // Ignore error if column already exists
-  }
-  try {
-    sqlite.exec("ALTER TABLE config ADD COLUMN selected_image_models TEXT;");
-  } catch (e) {
-    // Ignore error if column already exists
-  }
-  try {
-    sqlite.exec("ALTER TABLE config ADD COLUMN active_image_model TEXT;");
-  } catch (e) {
-    // Ignore error if column already exists
-  }
-  try {
-    sqlite.exec("ALTER TABLE config ADD COLUMN hf_token TEXT;");
-  } catch (e) {
-    // Ignore error if column already exists
-  }
-  try {
-    sqlite.exec(
-      "ALTER TABLE config ADD COLUMN parallel TEXT NOT NULL DEFAULT 'auto';",
-    );
-  } catch (e) {
-    // Ignore error if column already exists
-  }
-  sqlite.exec("UPDATE config SET parallel = 'auto' WHERE parallel IS NULL;");
+  migrateConfigTable(sqlite);
   return drizzle(sqlite);
 }
 
@@ -221,36 +327,171 @@ function toConfigRow(config: LocalBaseConfig) {
   };
 }
 
-function fromConfigRow(row: typeof configTable.$inferSelect): LocalBaseConfig {
-  const root = row.root;
-  const imageModelsDir = row.imageModelsDir || join(root, "models", "image");
-  const selectedImageModels = row.selectedImageModels
-    ? (JSON.parse(row.selectedImageModels) as string[])
-    : ["stable-diffusion-v1-5"];
-  const activeImageModel = row.activeImageModel || "stable-diffusion-v1-5";
+function modelHasExpectedModalities(
+  model: ModelSpec,
+  kind: ModelKind,
+): boolean {
+  const expected =
+    kind === "llm"
+      ? { input: "text", output: "text" }
+      : kind === "stt"
+        ? { input: "audio", output: "text" }
+        : { input: "text", output: "image" };
+  return (
+    model.inputModalities.includes(expected.input) &&
+    model.outputModalities.includes(expected.output)
+  );
+}
+
+function selectedModelsSchema(kind: ModelKind, requireOne: boolean) {
+  const schema = z
+    .array(
+      z.string().refine(
+        (id) => {
+          const model = byId(id);
+          return (
+            !!model &&
+            model.kind === kind &&
+            modelHasExpectedModalities(model, kind)
+          );
+        },
+        {
+          message: `must name a catalog ${kind} model with compatible modalities`,
+        },
+      ),
+    )
+    .refine(
+      (ids) => new Set(ids).size === ids.length,
+      "must not contain duplicates",
+    );
+  return requireOne ? schema.min(1) : schema;
+}
+
+function parseSelectedModels(
+  value: string,
+  field: string,
+  kind: ModelKind,
+  requireOne: boolean,
+  root: string,
+): string[] {
+  let json: unknown;
+  try {
+    json = JSON.parse(value);
+  } catch (error) {
+    throw invalidConfiguration(root, `${field} contains malformed JSON`, error);
+  }
+  const parsed = selectedModelsSchema(kind, requireOne).safeParse(json);
+  if (!parsed.success) {
+    throw invalidConfiguration(root, `${field}: ${issueSummary(parsed.error)}`);
+  }
+  return parsed.data;
+}
+
+function pathWithin(root: string, path: string): boolean {
+  const child = relative(root, path);
+  return child !== "" && !child.startsWith("..") && !isAbsolute(child);
+}
+
+function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
+  const parsed = ConfigRowSchema.safeParse(row);
+  if (!parsed.success) {
+    throw invalidConfiguration(openedRoot, issueSummary(parsed.error));
+  }
+  const data = parsed.data;
+  if (data.root !== openedRoot) {
+    throw invalidConfiguration(
+      openedRoot,
+      `root is ${JSON.stringify(data.root)} but this database was opened for ${JSON.stringify(openedRoot)}`,
+    );
+  }
+  for (const [field, path] of [
+    ["llmModelsDir", data.llmModelsDir],
+    ["sttModelsDir", data.sttModelsDir],
+    ["imageModelsDir", data.imageModelsDir],
+  ] as const) {
+    if (!pathWithin(openedRoot, path)) {
+      throw invalidConfiguration(
+        openedRoot,
+        `${field} must be inside the configured root`,
+      );
+    }
+  }
+
+  const selectedLlmModels = parseSelectedModels(
+    data.selectedLlmModels,
+    "selectedLlmModels",
+    "llm",
+    true,
+    openedRoot,
+  );
+  const selectedSttModels = parseSelectedModels(
+    data.selectedSttModels,
+    "selectedSttModels",
+    "stt",
+    false,
+    openedRoot,
+  );
+  const selectedImageModels = parseSelectedModels(
+    data.selectedImageModels,
+    "selectedImageModels",
+    "image",
+    false,
+    openedRoot,
+  );
+  const activeModels = [
+    ["activeLlmModel", data.activeLlmModel, "llm", selectedLlmModels, false],
+    ["activeSttModel", data.activeSttModel, "stt", selectedSttModels, true],
+    [
+      "activeImageModel",
+      data.activeImageModel,
+      "image",
+      selectedImageModels,
+      true,
+    ],
+  ] as const;
+  for (const [field, id, kind, selected, optional] of activeModels) {
+    if (optional && id === "") continue;
+    const model = byId(id);
+    if (
+      !model ||
+      model.kind !== kind ||
+      !modelHasExpectedModalities(model, kind)
+    ) {
+      throw invalidConfiguration(
+        openedRoot,
+        `${field} must name a catalog ${kind} model with compatible modalities`,
+      );
+    }
+    if (!selected.includes(id)) {
+      throw invalidConfiguration(
+        openedRoot,
+        `${field} must also be present in its selected model list`,
+      );
+    }
+  }
 
   return {
-    root,
-    llmModelsDir: row.llmModelsDir,
-    sttModelsDir: row.sttModelsDir,
-    imageModelsDir,
-    runtimeBackend: "llama.cpp",
-    sttBackend: "whisper.cpp",
-    host: row.host,
-    port: row.port,
-    ctxSize: row.ctxSize,
-    sttHost: row.sttHost,
-    sttPort: row.sttPort,
-    startupOnBoot: row.startupOnBoot === 1,
-    selectedLlmModels: JSON.parse(row.selectedLlmModels) as string[],
-    selectedSttModels: JSON.parse(row.selectedSttModels) as string[],
+    root: data.root,
+    llmModelsDir: data.llmModelsDir,
+    sttModelsDir: data.sttModelsDir,
+    imageModelsDir: data.imageModelsDir,
+    runtimeBackend: data.runtimeBackend,
+    sttBackend: data.sttBackend,
+    host: data.host,
+    port: data.port,
+    ctxSize: data.ctxSize,
+    sttHost: data.sttHost,
+    sttPort: data.sttPort,
+    startupOnBoot: data.startupOnBoot === 1,
+    selectedLlmModels,
+    selectedSttModels,
     selectedImageModels,
-    activeLlmModel: row.activeLlmModel,
-    activeSttModel: row.activeSttModel,
-    activeImageModel,
-    systemPrompt: row.systemPrompt ?? "",
-    hfToken: row.hfToken ?? "",
-    parallel: parseParallelSlots(row.parallel ?? "auto"),
+    activeLlmModel: data.activeLlmModel,
+    activeSttModel: data.activeSttModel,
+    activeImageModel: data.activeImageModel,
+    systemPrompt: data.systemPrompt,
+    hfToken: data.hfToken,
+    parallel: parseParallelSlots(data.parallel),
   };
 }
 
@@ -265,7 +506,7 @@ function isKeyActive(expiresAt?: string, revokedAt?: string): boolean {
   if (revokedAt) return false;
   if (!expiresAt) return true;
   const expiresMs = Date.parse(expiresAt);
-  if (!Number.isFinite(expiresMs)) return true;
+  if (!Number.isFinite(expiresMs)) return false;
   return expiresMs > Date.now();
 }
 function hashApiKey(key: string): string {
@@ -285,6 +526,7 @@ export function defaultRoot(): string {
 }
 
 export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
+  root = resolve(root);
   const llm =
     recommendedForVram(vramGb)[0]?.modelId ??
     "qwen2.5-coder-7b-instruct-q4_k_m";
@@ -326,6 +568,8 @@ export function ensureDirs(config: LocalBaseConfig): void {
 }
 
 export function saveConfig(config: LocalBaseConfig): void {
+  const row = toConfigRow(config);
+  fromConfigRow(row, config.root);
   ensureDirs(config);
   const db = openDb(config.root);
   const existing = db
@@ -344,14 +588,14 @@ export function saveConfig(config: LocalBaseConfig): void {
 }
 
 export function initConfig(root?: string, vramGb?: number): LocalBaseConfig {
-  const selectedRoot = root ?? defaultRoot();
+  const selectedRoot = resolve(root ?? defaultRoot());
   const config = defaultConfig(selectedRoot, vramGb ?? 0);
   saveConfig(config);
   return config;
 }
 
 export function loadConfig(root?: string, vramGb?: number): LocalBaseConfig {
-  const selectedRoot = root ?? defaultRoot();
+  const selectedRoot = resolve(root ?? defaultRoot());
   const db = openDb(selectedRoot);
   const row = db
     .select()
@@ -361,25 +605,22 @@ export function loadConfig(root?: string, vramGb?: number): LocalBaseConfig {
   if (!row) {
     return initConfig(selectedRoot, vramGb);
   }
-  const merged = {
-    ...defaultConfig(selectedRoot, vramGb ?? 0),
-    ...fromConfigRow(row),
-  } as LocalBaseConfig;
-  ensureDirs(merged);
-  return merged;
+  const config = fromConfigRow(row, selectedRoot);
+  ensureDirs(config);
+  return config;
 }
 
 export async function resetDatabase(
   root?: string,
   vramGb?: number,
 ): Promise<LocalBaseConfig> {
-  const selectedRoot = root ?? defaultRoot();
+  const selectedRoot = resolve(root ?? defaultRoot());
   await deleteFileIfExists(dbPath(selectedRoot));
   return initConfig(selectedRoot, vramGb);
 }
 
 export function uninstallManaged(root?: string): string {
-  const selectedRoot = root ?? defaultRoot();
+  const selectedRoot = resolve(root ?? defaultRoot());
   rmSync(selectedRoot, { recursive: true, force: true });
   return selectedRoot;
 }
@@ -387,8 +628,7 @@ export function uninstallManaged(root?: string): string {
 function kindDir(config: LocalBaseConfig, kind: ModelKind): string {
   if (kind === "llm") return config.llmModelsDir;
   if (kind === "stt") return config.sttModelsDir;
-  if (kind === "image") return config.imageModelsDir;
-  return join(config.root, "models", kind);
+  return config.imageModelsDir;
 }
 
 export async function installedModels(
@@ -475,28 +715,36 @@ type AuthoritativeArtifact = ModelArtifact & {
   sha256: string;
 };
 
-function hasAuthoritativeIntegrity(
+function authoritativeArtifact(
   artifact: ModelArtifact,
-): artifact is AuthoritativeArtifact {
-  return (
-    artifact.expectedSizeBytes !== undefined && artifact.sha256 !== undefined
-  );
+  modelId: string,
+): AuthoritativeArtifact {
+  if (
+    artifact.expectedSizeBytes === undefined ||
+    artifact.sha256 === undefined
+  ) {
+    throw new Error(
+      `Managed model ${modelId} is missing authoritative size and SHA-256 metadata; installation is disabled until the catalog is repaired.`,
+    );
+  }
+  return artifact as AuthoritativeArtifact;
 }
 
 async function validateArtifact(
   path: string,
-  artifact: ModelArtifact,
+  artifact: AuthoritativeArtifact,
   filename: string,
+  cacheDir: string,
 ): Promise<void> {
-  if (!hasAuthoritativeIntegrity(artifact)) return;
-
-  const actualSize = (await Bun.file(path).stat()).size;
-  if (actualSize !== artifact.expectedSizeBytes) {
-    throw new Error(
-      `Size mismatch for ${filename}: expected ${artifact.expectedSizeBytes} bytes, got ${actualSize} bytes.`,
-    );
-  }
-  await verifyChecksum(path, artifact.sha256, filename);
+  await verifyAuthoritativeFile(
+    path,
+    {
+      filename,
+      expectedSizeBytes: artifact.expectedSizeBytes,
+      sha256: artifact.sha256,
+    },
+    cacheDir,
+  );
 }
 
 async function deleteFileIfExists(path: string): Promise<void> {
@@ -524,29 +772,20 @@ async function installArtifact(
   targetDir: string,
   filename: string,
 ): Promise<void> {
+  SafeFilenameSchema.parse(filename);
+  const authority = authoritativeArtifact(artifact, spec.modelId);
   const output = join(targetDir, filename);
   const partial = `${output}.partial`;
 
   if (await Bun.file(output).exists()) {
-    if (!hasAuthoritativeIntegrity(artifact)) {
-      const known = await verifyStoredChecksum(targetDir, filename, output);
-      if (!known) {
-        console.log(
-          `📝 Recording checksum for existing model file "${filename}"...`,
-        );
-        await recordChecksum(targetDir, filename, output);
-      }
-      return;
-    }
-
     const existingSize = (await Bun.file(output).stat()).size;
-    if (existingSize < artifact.expectedSizeBytes) {
+    if (existingSize < authority.expectedSizeBytes) {
       if (!(await Bun.file(partial).exists())) {
         renameSync(output, partial);
       } else {
         const partialSize = (await Bun.file(partial).stat()).size;
         if (
-          partialSize > artifact.expectedSizeBytes ||
+          partialSize > authority.expectedSizeBytes ||
           existingSize > partialSize
         ) {
           await Bun.file(partial).delete();
@@ -557,7 +796,7 @@ async function installArtifact(
       }
     } else {
       try {
-        await validateArtifact(output, artifact, filename);
+        await validateArtifact(output, authority, filename, targetDir);
         return;
       } catch {
         await deleteFileIfExists(output);
@@ -566,16 +805,13 @@ async function installArtifact(
     }
   }
 
-  if (
-    hasAuthoritativeIntegrity(artifact) &&
-    (await Bun.file(partial).exists())
-  ) {
+  if (await Bun.file(partial).exists()) {
     const partialSize = (await Bun.file(partial).stat()).size;
-    if (partialSize > artifact.expectedSizeBytes) {
+    if (partialSize > authority.expectedSizeBytes) {
       await Bun.file(partial).delete();
-    } else if (partialSize === artifact.expectedSizeBytes) {
+    } else if (partialSize === authority.expectedSizeBytes) {
       try {
-        await validateArtifact(partial, artifact, filename);
+        await validateArtifact(partial, authority, filename, targetDir);
         renameSync(partial, output);
         return;
       } catch {
@@ -614,17 +850,12 @@ async function installArtifact(
   }
 
   try {
-    await validateArtifact(partial, artifact, filename);
+    await validateArtifact(partial, authority, filename, targetDir);
   } catch (error) {
     await deleteFileIfExists(partial);
     throw error;
   }
   renameSync(partial, output);
-
-  if (!hasAuthoritativeIntegrity(artifact)) {
-    console.log(`📝 Recording checksum for "${filename}"...`);
-    await recordChecksum(targetDir, filename, output);
-  }
 }
 
 export function loadApiKeys(config: LocalBaseConfig): ApiKeyRecord[] {
@@ -633,16 +864,26 @@ export function loadApiKeys(config: LocalBaseConfig): ApiKeyRecord[] {
     .select()
     .from(apiKeysTable)
     .all()
-    .map((row) => ({
-      id: row.id,
-      name: row.name,
-      prefix: row.prefix,
-      keyHash: row.keyHash,
-      createdAt: row.createdAt,
-      lastRotatedAt: row.lastRotatedAt,
-      expiresAt: row.expiresAt ?? undefined,
-      revokedAt: row.revokedAt ?? undefined,
-    }));
+    .map((row) => fromApiKeyRow(row, config.root));
+}
+
+function fromApiKeyRow(row: unknown, root: string): ApiKeyRecord {
+  const parsed = ApiKeyRowSchema.safeParse(row);
+  if (!parsed.success) {
+    const id =
+      row && typeof row === "object" && "id" in row
+        ? String((row as { id: unknown }).id)
+        : "unknown";
+    throw new Error(
+      `Invalid API key configuration for ${id} in ${dbPath(root)}: ${issueSummary(parsed.error)}. ` +
+        `Repair or revoke the row before accepting API authentication.`,
+    );
+  }
+  return {
+    ...parsed.data,
+    expiresAt: parsed.data.expiresAt ?? undefined,
+    revokedAt: parsed.data.revokedAt ?? undefined,
+  };
 }
 
 export function validateApiKey(
@@ -663,6 +904,13 @@ export function createApiKey(
   name: string,
   expiresDays?: number,
 ): { record: ApiKeyRecord; rawKey: string } {
+  if (!name.trim()) throw new Error("API key name must not be empty.");
+  if (
+    expiresDays !== undefined &&
+    (!Number.isInteger(expiresDays) || expiresDays <= 0)
+  ) {
+    throw new Error("API key expiry must be a positive whole number of days.");
+  }
   const db = openDb(config.root);
   const now = new Date().toISOString();
   const { key, prefix } = makeRawApiKey();
@@ -674,7 +922,7 @@ export function createApiKey(
     createdAt: now,
     lastRotatedAt: now,
     expiresAt:
-      expiresDays && expiresDays > 0
+      expiresDays !== undefined
         ? new Date(Date.now() + expiresDays * 86400_000).toISOString()
         : undefined,
   };
@@ -706,19 +954,14 @@ export function revokeApiKey(
   if (!record) {
     throw new Error(`API key not found: ${id}`);
   }
+  const validated = fromApiKeyRow(record, config.root);
   const revokedAt = new Date().toISOString();
   db.update(apiKeysTable)
     .set({ revokedAt })
     .where(eq(apiKeysTable.id, id))
     .run();
   return {
-    id: record.id,
-    name: record.name,
-    prefix: record.prefix,
-    keyHash: record.keyHash,
-    createdAt: record.createdAt,
-    lastRotatedAt: record.lastRotatedAt,
-    expiresAt: record.expiresAt ?? undefined,
+    ...validated,
     revokedAt,
   };
 }
@@ -736,6 +979,7 @@ export function rotateApiKey(
   if (!record) {
     throw new Error(`API key not found: ${id}`);
   }
+  const validated = fromApiKeyRow(record, config.root);
   const { key, prefix } = makeRawApiKey();
   const lastRotatedAt = new Date().toISOString();
   const keyHash = hashApiKey(key);
@@ -746,324 +990,17 @@ export function rotateApiKey(
 
   return {
     record: {
-      id: record.id,
-      name: record.name,
+      id: validated.id,
+      name: validated.name,
       prefix,
       keyHash,
-      createdAt: record.createdAt,
+      createdAt: validated.createdAt,
       lastRotatedAt,
-      expiresAt: record.expiresAt ?? undefined,
+      expiresAt: validated.expiresAt,
       revokedAt: undefined,
     },
     rawKey: key,
   };
-}
-
-/**
- * Resolves a binary by checking the LocalBase-managed bin dir first, then PATH.
- * Returns null if the binary is not available anywhere on the system.
- */
-export async function resolveBinaryPath(
-  config: LocalBaseConfig,
-  name: string,
-): Promise<string | null> {
-  const localBin = join(config.root, "bin", name);
-  if (await Bun.file(localBin).exists()) {
-    return localBin;
-  }
-
-  return Bun.which(name);
-}
-
-async function makeExecutable(path: string): Promise<void> {
-  chmodSync(path, (await Bun.file(path).stat()).mode | 0o111);
-}
-
-async function curlDownload(url: string, dest: string): Promise<void> {
-  const proc = Bun.spawn(["curl", "-L", "--fail", "-o", dest, url], {
-    stdout: "inherit",
-    stderr: "inherit",
-    stdin: "inherit",
-  });
-  const exitCode = await proc.exited;
-  if (exitCode !== 0) {
-    throw new Error(`Failed to download ${url}`);
-  }
-}
-
-/**
- * Returns the platform-specific asset name fragment used in binary release filenames.
- * e.g. "macos-arm64", "linux-x64".
- * Throws on unsupported platforms.
- */
-export type PlatformTarget = {
-  os: string;
-  cpu: string;
-};
-
-export type PlatformSupportTier = "managed" | "cli-only" | "unsupported";
-
-/** Returns the release tier without reading process globals so platform policy is testable. */
-export function platformSupportTier(
-  target: PlatformTarget,
-): PlatformSupportTier {
-  if (
-    (target.os === "darwin" && target.cpu === "arm64") ||
-    (target.os === "linux" && target.cpu === "x64")
-  ) {
-    return "managed";
-  }
-  if (
-    (target.os === "darwin" && target.cpu === "x64") ||
-    (target.os === "linux" && target.cpu === "arm64")
-  ) {
-    return "cli-only";
-  }
-  return "unsupported";
-}
-
-function currentPlatformTarget(): PlatformTarget {
-  return { os: process.platform, cpu: process.arch };
-}
-
-function platformLabel(target: PlatformTarget): string {
-  if (target.os === "darwin") return `macOS ${target.cpu}`;
-  if (target.os === "linux") return `Linux ${target.cpu}`;
-  if (target.os === "win32") return "Windows";
-  return `${target.os} ${target.cpu}`;
-}
-
-export function managedRuntimeUnavailableError(
-  name: "whisper-server" | "sd-server",
-  target: PlatformTarget,
-  binDir: string,
-): Error {
-  const label = platformLabel(target);
-  if (platformSupportTier(target) === "cli-only") {
-    return new Error(
-      `LocalBase CLI-only compatibility on ${label} does not include a managed ${name} runtime. ` +
-        `Place a compatible ${name} executable in ${join(binDir, name)} or on PATH.`,
-    );
-  }
-  return new Error(
-    `${label} is unsupported by LocalBase. ${name} cannot be downloaded automatically; ` +
-      `place a compatible ${name} executable in ${join(binDir, name)} or on PATH.`,
-  );
-}
-
-function platformAssetSuffix(target = currentPlatformTarget()): string {
-  const { os, cpu } = target;
-  if (os === "darwin" && cpu === "arm64") return "macos-arm64";
-  if (os === "darwin" && cpu === "x64") return "macos-x64";
-  if (os === "linux" && cpu === "x64") return "linux-x64";
-  if (os === "linux" && cpu === "arm64") return "linux-arm64";
-  throw new Error(
-    `No pinned upstream llama.cpp binary is available for ${platformLabel(target)}.`,
-  );
-}
-
-/**
- * Downloads the whisper-server binary from the LocalBase GitHub release assets,
- * verifies its SHA-256 against the release checksums.txt, marks it executable,
- * records the checksum locally, and returns the installed binary path.
- */
-async function downloadWhisperServer(config: LocalBaseConfig): Promise<string> {
-  const binDir = join(config.root, "bin");
-  mkdirSync(binDir, { recursive: true });
-
-  const target = currentPlatformTarget();
-  if (platformSupportTier(target) !== "managed") {
-    throw managedRuntimeUnavailableError("whisper-server", target, binDir);
-  }
-  const suffix = platformAssetSuffix(target);
-  const assetName = `whisper-server-${suffix}`;
-  const binaryUrl = `${LOCALBASE_RELEASES_BASE}/${assetName}`;
-  const checksumUrl = `${LOCALBASE_RELEASES_BASE}/checksums.txt`;
-
-  console.log(
-    `\n⬇️  Fetching whisper-server checksums from LocalBase releases...`,
-  );
-  const csRes = await fetch(checksumUrl, {
-    headers: { "User-Agent": "LocalBase-CLI" },
-  });
-  if (!csRes.ok) {
-    throw new Error(
-      `Could not fetch checksums from LocalBase releases (${csRes.status}).\n` +
-        `Ensure a release exists at ${LOCALBASE_RELEASES_BASE}.`,
-    );
-  }
-  const checksumMap = parseChecksumFile(await csRes.text());
-  const expectedHash = checksumMap.get(assetName);
-  if (!expectedHash) {
-    throw new Error(
-      `No checksum entry found for "${assetName}" in release checksums.txt.`,
-    );
-  }
-
-  const destPath = join(binDir, "whisper-server");
-  console.log(`⬇️  Downloading ${assetName} from LocalBase releases...`);
-  await curlDownload(binaryUrl, destPath);
-
-  await verifyChecksum(destPath, expectedHash, assetName);
-
-  await makeExecutable(destPath);
-  if (process.platform === "darwin") {
-    Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", destPath]);
-  }
-
-  // Record checksum for future integrity checks on this installation.
-  const store = await readChecksumStore(binDir);
-  store["whisper-server"] = expectedHash;
-  await writeChecksumStore(binDir, store);
-
-  console.log(`\n✅ whisper-server installed to ${destPath}`);
-  return destPath;
-}
-
-/**
- * Downloads the llama-server prebuilt binary from the pinned ggml-org/llama.cpp
- * release, marks it executable, records the computed SHA-256 for future integrity
- * checks, and returns the installed binary path.
- */
-async function downloadLlamaServer(config: LocalBaseConfig): Promise<string> {
-  const binDir = join(config.root, "bin");
-  mkdirSync(binDir, { recursive: true });
-
-  const suffix = platformAssetSuffix();
-  const assetName = `llama-${LLAMA_CPP_VERSION}-bin-${suffix === "macos-arm64" ? "macos-arm64" : suffix === "macos-x64" ? "macos-x64" : suffix === "linux-x64" ? "ubuntu-x64" : "ubuntu-arm64"}.tar.gz`;
-  const url = `https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_CPP_VERSION}/${assetName}`;
-
-  console.log(
-    `\n⬇️  Downloading llama-server ${LLAMA_CPP_VERSION} (${suffix})...`,
-  );
-  const archivePath = join(binDir, assetName);
-  await curlDownload(url, archivePath);
-
-  console.log("Extracting llama.cpp release...");
-  const ext = Bun.spawnSync(
-    ["tar", "-zxf", archivePath, "-C", binDir, "--strip-components=1"],
-    { stdin: "inherit", stdout: "inherit", stderr: "inherit" },
-  );
-  try {
-    await Bun.file(archivePath).delete();
-  } catch {}
-  if (ext.exitCode !== 0)
-    throw new Error("Failed to extract llama.cpp archive.");
-
-  const destPath = join(binDir, "llama-server");
-  if (!(await Bun.file(destPath).exists()))
-    throw new Error("llama-server binary not found after extraction.");
-
-  await makeExecutable(destPath);
-  if (process.platform === "darwin") {
-    Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", binDir]);
-  }
-
-  // Record the SHA-256 we got from ggml-org for future integrity checks.
-  await recordChecksum(binDir, "llama-server", destPath);
-  console.log(
-    `\n✅ llama-server ${LLAMA_CPP_VERSION} installed to ${destPath}`,
-  );
-  return destPath;
-}
-
-/**
- * Downloads the stable-diffusion.cpp server prebuilt binary from leejet/stable-diffusion.cpp
- * releases, extracts it, sets execution permissions, and records SHA-256 for future integrity checks.
- */
-async function downloadSdServer(config: LocalBaseConfig): Promise<string> {
-  const binDir = join(config.root, "bin");
-  mkdirSync(binDir, { recursive: true });
-
-  const target = currentPlatformTarget();
-  if (platformSupportTier(target) !== "managed") {
-    throw managedRuntimeUnavailableError("sd-server", target, binDir);
-  }
-
-  let assetName = "";
-  if (target.os === "darwin" && target.cpu === "arm64") {
-    assetName = "sd-master-c00a9e9-bin-Darwin-macOS-26.4-arm64.zip";
-  } else if (target.os === "linux" && target.cpu === "x64") {
-    assetName = "sd-master-c00a9e9-bin-Linux-Ubuntu-24.04-x86_64.zip";
-  } else {
-    throw managedRuntimeUnavailableError("sd-server", target, binDir);
-  }
-
-  const url = `https://github.com/leejet/stable-diffusion.cpp/releases/download/master-778-c00a9e9/${assetName}`;
-  console.log(
-    `\n⬇️  Downloading stable-diffusion.cpp server (${target.os}-${target.cpu})...`,
-  );
-  const archivePath = join(binDir, assetName);
-  await curlDownload(url, archivePath);
-
-  console.log("Extracting stable-diffusion.cpp release...");
-  const ext = Bun.spawnSync(["unzip", "-o", archivePath, "-d", binDir], {
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  try {
-    await Bun.file(archivePath).delete();
-  } catch {}
-  if (ext.exitCode !== 0)
-    throw new Error("Failed to extract stable-diffusion.cpp archive.");
-
-  const destPath = join(binDir, "sd-server");
-  if (!(await Bun.file(destPath).exists()))
-    throw new Error("sd-server binary not found after extraction.");
-
-  await makeExecutable(destPath);
-  if (target.os === "darwin") {
-    Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", binDir]);
-  }
-
-  await recordChecksum(binDir, "sd-server", destPath);
-  console.log(`\n✅ sd-server installed to ${destPath}`);
-  return destPath;
-}
-
-/**
- * Ensures the named backend binary is available, in order:
- *  1. Locally installed in <root>/bin — verified against stored checksum.
- *  2. Available on system PATH — used as-is (user-managed installation).
- *  3. Downloaded from the appropriate prebuilt release and checksum-verified.
- */
-export async function ensureBinary(
-  config: LocalBaseConfig,
-  name: "llama-server" | "whisper-server" | "sd-server",
-): Promise<string> {
-  const binDir = join(config.root, "bin");
-  const localBinName = name;
-  const localBin = join(binDir, localBinName);
-
-  // 1. Check locally managed binary and verify stored checksum.
-  if (await Bun.file(localBin).exists()) {
-    const known = await verifyStoredChecksum(binDir, name, localBin);
-    if (!known) {
-      // Binary exists but no stored hash (e.g. manually placed) — record it.
-      await recordChecksum(binDir, name, localBin);
-    }
-    return localBin;
-  }
-
-  // 2. Check system PATH.
-  const systemBin = Bun.which(localBinName);
-  if (systemBin) {
-    console.log(`ℹ️  Using system-installed ${name} at ${systemBin}`);
-    return systemBin;
-  }
-
-  // 3. Download prebuilt release.
-  const target = currentPlatformTarget();
-  if (
-    (name === "whisper-server" || name === "sd-server") &&
-    platformSupportTier(target) !== "managed"
-  ) {
-    throw managedRuntimeUnavailableError(name, target, binDir);
-  }
-  if (name === "whisper-server") return downloadWhisperServer(config);
-  if (name === "sd-server") return downloadSdServer(config);
-  return downloadLlamaServer(config);
 }
 
 export type ParallelHardware = {
@@ -1185,62 +1122,6 @@ export async function startWhisperServerProcess(
   );
 }
 
-export async function launchLlamaServer(
-  config: LocalBaseConfig,
-  modelFile: string,
-  host: string,
-  port: number,
-  ctxSize: number,
-  hardware?: ParallelHardware,
-): Promise<number> {
-  const modelPath = join(config.llmModelsDir, modelFile);
-  if (!(await Bun.file(modelPath).exists())) {
-    throw new Error(`Model file not found: ${modelPath}`);
-  }
-
-  const binPath = await ensureBinary(config, "llama-server");
-  const launch = buildLlamaServerArgs(
-    config,
-    modelPath,
-    host,
-    port,
-    ctxSize,
-    hardware,
-  );
-  if (launch.parallel.isAuto) {
-    logAutoParallel(launch.parallel, hardware);
-  }
-
-  const result = Bun.spawnSync([binPath, ...launch.args], {
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-
-  return result.exitCode;
-}
-
-export async function launchWhisperServer(
-  config: LocalBaseConfig,
-  modelFile: string,
-  host: string,
-  port: number,
-): Promise<number> {
-  const modelPath = join(config.sttModelsDir, modelFile);
-  if (!(await Bun.file(modelPath).exists())) {
-    throw new Error(`STT model file not found: ${modelPath}`);
-  }
-
-  const binPath = await ensureBinary(config, "whisper-server");
-
-  const result = Bun.spawnSync(
-    [binPath, "--model", modelPath, "--host", host, "--port", String(port)],
-    { stdin: "inherit", stdout: "inherit", stderr: "inherit" },
-  );
-
-  return result.exitCode;
-}
-
 export async function startSdServerProcess(
   config: LocalBaseConfig,
   modelFile: string,
@@ -1270,36 +1151,4 @@ export async function startSdServerProcess(
     stdin: "inherit",
     cwd: binDir,
   });
-}
-
-export async function launchSdServer(
-  config: LocalBaseConfig,
-  modelFile: string,
-  host: string,
-  port: number,
-): Promise<number> {
-  const modelPath = join(config.imageModelsDir, modelFile);
-  if (!(await Bun.file(modelPath).exists())) {
-    throw new Error(`Model file not found: ${modelPath}`);
-  }
-
-  const binPath = await ensureBinary(config, "sd-server");
-  const binDir = join(config.root, "bin");
-  const args = [
-    "-m",
-    modelPath,
-    "--listen-ip",
-    host,
-    "--listen-port",
-    String(port),
-  ];
-
-  const result = Bun.spawnSync([binPath, ...args], {
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-    cwd: binDir,
-  });
-
-  return result.exitCode;
 }

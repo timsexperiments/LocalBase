@@ -1,4 +1,5 @@
 import { cpus, totalmem } from "node:os";
+import { z } from "zod";
 
 export type HostSpecs = {
   osName: string;
@@ -10,13 +11,31 @@ export type HostSpecs = {
   isAppleSilicon: boolean;
 };
 
+const commandResultSchema = z.object({
+  exitCode: z.number().int(),
+  stdout: z.instanceof(Uint8Array),
+});
+
+const gpuDetectionSchema = z.object({
+  name: z.string().min(1),
+  vramGb: z.number().finite().nonnegative(),
+});
+
+const nvidiaSmiOutputSchema = z.object({
+  name: z.string().min(1),
+  memoryMb: z.number().finite().positive(),
+});
+
 function run(cmd: string, args: string[]): string {
-  const result = Bun.spawnSync([cmd, ...args], {
-    stdout: "pipe",
-    stderr: "ignore",
-    timeout: 3000,
-    killSignal: "SIGKILL",
-  });
+  const result = commandResultSchema.parse(
+    Bun.spawnSync([cmd, ...args], {
+      stdout: "pipe",
+      stderr: "ignore",
+      timeout: 3000,
+      killSignal: "SIGKILL",
+    }),
+  );
+  if (result.exitCode !== 0) return "";
   return new TextDecoder().decode(result.stdout).trim();
 }
 
@@ -37,9 +56,20 @@ function parsePrettyName(osRelease: string): string | undefined {
   return value;
 }
 
+type NvmlSymbols = {
+  nvmlInit_v2(): number;
+  nvmlShutdown(): number;
+  nvmlDeviceGetCount_v2(count: unknown): number;
+  nvmlDeviceGetHandleByIndex_v2(index: number, handle: unknown): number;
+  nvmlDeviceGetMemoryInfo(handle: unknown, memory: unknown): number;
+  nvmlDeviceGetName(handle: unknown, name: unknown, length: number): number;
+};
+
+type NvmlLibrary = { symbols: NvmlSymbols };
+
 function tryNvmlFfi(): { name: string; vramGb: number } | null {
   try {
-    const { dlopen, ptr } = require("bun:ffi");
+    const { dlopen, ptr } = require("bun:ffi") as typeof import("bun:ffi");
     const nvmlLibPaths = [
       "libnvidia-ml.so",
       "libnvidia-ml.so.1",
@@ -49,7 +79,7 @@ function tryNvmlFfi(): { name: string; vramGb: number } | null {
       "/usr/lib/wsl/lib/libnvidia-ml.so.1",
     ];
 
-    let nvml: any = null;
+    let nvml: NvmlLibrary | null = null;
     for (const path of nvmlLibPaths) {
       try {
         nvml = dlopen(path, {
@@ -77,7 +107,7 @@ function tryNvmlFfi(): { name: string; vramGb: number } | null {
             args: ["ptr", "ptr", "u32"],
             returns: "i32",
           },
-        });
+        }) as unknown as NvmlLibrary;
         break;
       } catch {
         // try next path
@@ -120,7 +150,7 @@ function tryNvmlFfi(): { name: string; vramGb: number } | null {
         vramGb = Math.round(Number(memBuf[0]) / 1024 / 1024 / 1024);
       }
 
-      return { name, vramGb };
+      return gpuDetectionSchema.parse({ name, vramGb });
     } finally {
       nvml.symbols.nvmlShutdown();
     }
@@ -129,6 +159,7 @@ function tryNvmlFfi(): { name: string; vramGb: number } | null {
   }
 }
 
+/** Reads the standard AMD VRAM sysfs node available on Linux DRM devices. */
 async function tryAmdLinux(): Promise<{
   name: string;
   vramGb: number;
@@ -138,7 +169,7 @@ async function tryAmdLinux(): Promise<{
     const bytes = Number((await Bun.file(vramFile).text()).trim());
     if (Number.isFinite(bytes) && bytes > 0) {
       const vramGb = Math.round(bytes / 1024 / 1024 / 1024);
-      return { name: "AMD GPU", vramGb };
+      return gpuDetectionSchema.parse({ name: "AMD GPU", vramGb });
     }
   } catch {
     // ignore
@@ -198,8 +229,8 @@ export async function detectSpecs(): Promise<HostSpecs> {
         }
       }
     }
-  } else {
-    // Linux/Windows (Unix-fallback)
+  } else if (platform === "linux") {
+    // Linux exposes hardware details through procfs and DRM sysfs.
     try {
       osName =
         parsePrettyName(await Bun.file("/etc/os-release").text()) ||
@@ -234,7 +265,7 @@ export async function detectSpecs(): Promise<HostSpecs> {
       cpuModel = cpus()[0]?.model ?? "Unknown CPU";
     }
 
-    // Try detecting Nvidia via nvidia-smi
+    // Prefer nvidia-smi when it is installed and exits successfully.
     let detectedGpu = false;
     if (Bun.which("nvidia-smi")) {
       const raw = run("nvidia-smi", [
@@ -244,13 +275,14 @@ export async function detectSpecs(): Promise<HostSpecs> {
       const first = raw.split("\n")[0] ?? "";
       if (first.includes(",")) {
         const [name, memMbRaw] = first.split(",", 2).map((item) => item.trim());
-        const memMb = Number(memMbRaw);
-        if (name) {
-          gpuName = name;
+        const parsed = nvidiaSmiOutputSchema.safeParse({
+          name,
+          memoryMb: Number(memMbRaw),
+        });
+        if (parsed.success) {
+          gpuName = parsed.data.name;
           detectedGpu = true;
-        }
-        if (Number.isFinite(memMb) && memMb > 0) {
-          gpuVramGb = Math.round(memMb / 1024);
+          gpuVramGb = Math.round(parsed.data.memoryMb / 1024);
         }
       }
     }
@@ -265,7 +297,7 @@ export async function detectSpecs(): Promise<HostSpecs> {
       }
     }
 
-    // Fallback 2: Try AMD Linux sysfs
+    // Fallback 2: AMD Linux sysfs.
     if (!detectedGpu) {
       const amdGpu = await tryAmdLinux();
       if (amdGpu) {
@@ -275,11 +307,16 @@ export async function detectSpecs(): Promise<HostSpecs> {
       }
     }
 
-    // Fallback 3: Integrated GPU or CPU-only
+    // Fallback 3: integrated GPU or CPU-only.
     if (!detectedGpu) {
       gpuName = "CPU / Integrated Graphics";
       gpuVramGb = 0;
     }
+  } else {
+    osName = platform === "win32" ? "Windows" : platform;
+    ramGb = Math.round(totalmem() / 1024 / 1024 / 1024);
+    cpuModel = cpus()[0]?.model ?? "Unknown CPU";
+    gpuName = "Unavailable";
   }
 
   return { osName, ramGb, cpuModel, gpuName, gpuVramGb, isMac, isAppleSilicon };

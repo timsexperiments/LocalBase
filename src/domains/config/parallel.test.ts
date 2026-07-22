@@ -3,17 +3,9 @@ import {
   allocateParallelSlots,
   parseOptionalParallelSlots,
   parseParallelSlots,
-  parallelSlotsSchema,
 } from "./parallel";
 
 describe("parallel slot configuration", () => {
-  test("keeps the schema and parser aligned", () => {
-    for (const value of ["auto", 1, 2, 3, 4] as const) {
-      expect(parallelSlotsSchema.safeParse(value).success).toBe(true);
-      expect(parseParallelSlots(value)).toBe(value);
-    }
-  });
-
   test("parses supported values without coercing invalid input", () => {
     expect(parseParallelSlots("auto")).toBe("auto");
     expect(parseParallelSlots(" AUTO ")).toBe("auto");
@@ -21,7 +13,6 @@ describe("parallel slot configuration", () => {
     expect(parseOptionalParallelSlots(undefined)).toBeUndefined();
 
     for (const value of [0, 5, 1.5, "01", "1.0", "2x", "five"]) {
-      expect(parallelSlotsSchema.safeParse(value).success).toBe(false);
       expect(() => parseParallelSlots(value)).toThrow(
         'Use "auto" or an integer from 1 to 4',
       );

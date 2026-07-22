@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { join, basename } from "node:path";
 import {
-  type LocalBaseConfig,
   startLlamaServerProcess,
   startWhisperServerProcess,
   startSdServerProcess,
@@ -33,6 +32,9 @@ type ModalityState = {
 };
 
 const CHILD_STOP_GRACE_MS = 500;
+const HEALTH_PROBE_TIMEOUT_MS = 2_000;
+const UPSTREAM_PROXY_TIMEOUT_MS = 120_000;
+const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
 
 function parseAuthMode(raw: string | undefined): AuthMode {
   if (!raw) return "either";
@@ -140,14 +142,17 @@ type OpenAIErrorCode =
   | "invalid_api_key"
   | "route_disabled"
   | "validation_failed"
-  | "service_unavailable";
+  | "service_unavailable"
+  | "payload_too_large"
+  | "upstream_error";
 
 interface OpenAIError {
   message: string;
   type: OpenAIErrorType;
   param: string | null;
   code: OpenAIErrorCode | null;
-  [key: string]: any;
+  expected?: string;
+  hint?: string;
 }
 
 interface OpenAIErrorResponse {
@@ -196,93 +201,138 @@ function badRequest(message: string): Response {
   return Response.json(body, { status: 400 });
 }
 
-const chatMessageSchema = z.object({
-  role: z.enum([
-    "system",
-    "user",
-    "assistant",
-    "function",
-    "tool",
-    "developer",
-  ]),
-  content: z
-    .union([
-      z.string(),
-      z.array(
+function payloadTooLarge(): Response {
+  return Response.json(
+    {
+      error: {
+        message: `Request body exceeds the ${MAX_REQUEST_BYTES / (1024 * 1024)} MiB limit.`,
+        type: "invalid_request_error",
+        param: null,
+        code: "payload_too_large",
+      },
+    } satisfies OpenAIErrorResponse,
+    { status: 413 },
+  );
+}
+
+function upstreamFailure(message: string): Response {
+  return Response.json(
+    {
+      error: {
+        message,
+        type: "server_error",
+        param: null,
+        code: "upstream_error",
+      },
+    } satisfies OpenAIErrorResponse,
+    { status: 502 },
+  );
+}
+
+function validationFailure(error: z.ZodError): Response {
+  const issues = error.issues
+    .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+    .join(", ");
+  return badRequest(`Validation failed: ${issues}`);
+}
+
+const chatMessageSchema = z
+  .object({
+    role: z.enum([
+      "system",
+      "user",
+      "assistant",
+      "function",
+      "tool",
+      "developer",
+    ]),
+    content: z
+      .union([
+        z.string(),
+        z.array(
+          z
+            .object({
+              type: z.string(),
+              text: z.string().optional(),
+              image_url: z.object({ url: z.string() }).optional(),
+            })
+            .passthrough(),
+        ),
+      ])
+      .optional(),
+    name: z.string().optional(),
+    tool_calls: z.array(z.unknown()).optional(),
+    tool_call_id: z.string().optional(),
+  })
+  .passthrough();
+
+const chatCompletionRequestSchema = z
+  .object({
+    model: z.string(),
+    messages: z.array(chatMessageSchema),
+    temperature: z.number().min(0).max(2).optional(),
+    top_p: z.number().min(0).max(1).optional(),
+    n: z.number().min(1).optional(),
+    stream: z.boolean().optional(),
+    stop: z
+      .union([z.string(), z.array(z.string())])
+      .nullable()
+      .optional(),
+    max_tokens: z.number().positive().optional(),
+    presence_penalty: z.number().min(-2).max(2).optional(),
+    frequency_penalty: z.number().min(-2).max(2).optional(),
+    logit_bias: z.record(z.string(), z.number()).nullable().optional(),
+    user: z.string().optional(),
+    response_format: z
+      .object({ type: z.enum(["text", "json_object"]) })
+      .optional(),
+    tools: z.array(z.unknown()).optional(),
+    tool_choice: z
+      .union([
+        z.string(),
         z.object({
           type: z.string(),
-          text: z.string().optional(),
-          image_url: z.object({ url: z.string() }).optional(),
+          function: z.object({ name: z.string() }),
         }),
-      ),
-    ])
-    .optional(),
-  name: z.string().optional(),
-  tool_calls: z.array(z.any()).optional(),
-  tool_call_id: z.string().optional(),
-});
+      ])
+      .optional(),
+  })
+  .passthrough();
 
-const chatCompletionRequestSchema = z.object({
-  model: z.string(),
-  messages: z.array(chatMessageSchema),
-  temperature: z.number().min(0).max(2).optional(),
-  top_p: z.number().min(0).max(1).optional(),
-  n: z.number().min(1).optional(),
-  stream: z.boolean().optional(),
-  stop: z
-    .union([z.string(), z.array(z.string())])
-    .nullable()
-    .optional(),
-  max_tokens: z.number().positive().optional(),
-  presence_penalty: z.number().min(-2).max(2).optional(),
-  frequency_penalty: z.number().min(-2).max(2).optional(),
-  logit_bias: z.record(z.string(), z.number()).nullable().optional(),
-  user: z.string().optional(),
-  response_format: z
-    .object({ type: z.enum(["text", "json_object"]) })
-    .optional(),
-  tools: z.array(z.any()).optional(),
-  tool_choice: z
-    .union([
-      z.string(),
-      z.object({
-        type: z.string(),
-        function: z.object({ name: z.string() }),
-      }),
-    ])
-    .optional(),
-});
+const textCompletionRequestSchema = z
+  .object({
+    model: z.string(),
+    prompt: z.union([z.string(), z.array(z.string())]),
+    temperature: z.number().min(0).max(2).optional(),
+    top_p: z.number().min(0).max(1).optional(),
+    n: z.number().min(1).optional(),
+    stream: z.boolean().optional(),
+    stop: z
+      .union([z.string(), z.array(z.string())])
+      .nullable()
+      .optional(),
+    max_tokens: z.number().positive().optional(),
+    presence_penalty: z.number().min(-2).max(2).optional(),
+    frequency_penalty: z.number().min(-2).max(2).optional(),
+    user: z.string().optional(),
+  })
+  .passthrough();
 
-const textCompletionRequestSchema = z.object({
-  model: z.string(),
-  prompt: z.union([z.string(), z.array(z.string())]),
-  temperature: z.number().min(0).max(2).optional(),
-  top_p: z.number().min(0).max(1).optional(),
-  n: z.number().min(1).optional(),
-  stream: z.boolean().optional(),
-  stop: z
-    .union([z.string(), z.array(z.string())])
-    .nullable()
-    .optional(),
-  max_tokens: z.number().positive().optional(),
-  presence_penalty: z.number().min(-2).max(2).optional(),
-  frequency_penalty: z.number().min(-2).max(2).optional(),
-  user: z.string().optional(),
-});
-
-const imageGenerationRequestSchema = z.object({
-  prompt: z.string(),
-  model: z.string().optional(),
-  n: z.number().min(1).max(10).optional(),
-  quality: z.enum(["standard", "hd"]).optional(),
-  response_format: z.enum(["url", "b64_json"]).optional(),
-  size: z.enum(["256x256", "512x512", "1024x1024"]).optional(),
-  style: z.enum(["vivid", "natural"]).optional(),
-  user: z.string().optional(),
-});
+const imageGenerationRequestSchema = z
+  .object({
+    prompt: z.string(),
+    model: z.string().optional(),
+    n: z.number().min(1).max(10).optional(),
+    quality: z.enum(["standard", "hd"]).optional(),
+    response_format: z.enum(["url", "b64_json"]).optional(),
+    size: z.enum(["256x256", "512x512", "1024x1024"]).optional(),
+    style: z.enum(["vivid", "natural"]).optional(),
+    user: z.string().optional(),
+  })
+  .passthrough();
 
 const transcriptionRequestSchema = z.object({
-  file: z.any().refine((val) => val instanceof Blob || val instanceof File, {
+  file: z.instanceof(Blob, {
     message: "file must be a valid File or Blob object",
   }),
   model: z.string().optional(),
@@ -294,156 +344,267 @@ const transcriptionRequestSchema = z.object({
   temperature: z.number().min(0).max(1).optional(),
 });
 
-const embeddingsRequestSchema = z.object({
-  model: z.string(),
-  input: z.union([
-    z.string(),
-    z.array(z.string()),
-    z.array(z.number()),
-    z.array(z.array(z.number())),
-  ]),
-  user: z.string().optional(),
-});
+const embeddingsRequestSchema = z
+  .object({
+    model: z.string(),
+    input: z.union([
+      z.string(),
+      z.array(z.string()),
+      z.array(z.number()),
+      z.array(z.array(z.number())),
+    ]),
+    user: z.string().optional(),
+  })
+  .passthrough();
 
-const chatCompletionResponseSchema = z.object({
-  id: z.string(),
-  object: z.string(),
-  created: z.number(),
-  model: z.string(),
-  choices: z.array(
-    z.object({
-      index: z.number(),
-      message: z.object({
-        role: z.string(),
-        content: z.string().nullable().optional(),
+const chatCompletionResponseSchema = z
+  .object({
+    id: z.string(),
+    object: z.string(),
+    created: z.number(),
+    model: z.string(),
+    choices: z.array(
+      z.object({
+        index: z.number(),
+        message: z.object({
+          role: z.string(),
+          content: z.string().nullable().optional(),
+        }),
+        finish_reason: z.string().nullable().optional(),
       }),
-      finish_reason: z.string().nullable().optional(),
-    }),
-  ),
-  usage: z
-    .object({
+    ),
+    usage: z
+      .object({
+        prompt_tokens: z.number(),
+        completion_tokens: z.number(),
+        total_tokens: z.number(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
+const textCompletionResponseSchema = z
+  .object({
+    id: z.string(),
+    object: z.string(),
+    created: z.number(),
+    model: z.string(),
+    choices: z.array(
+      z.object({
+        text: z.string(),
+        index: z.number(),
+        finish_reason: z.string().nullable().optional(),
+      }),
+    ),
+    usage: z
+      .object({
+        prompt_tokens: z.number(),
+        completion_tokens: z.number(),
+        total_tokens: z.number(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
+const embeddingsResponseSchema = z
+  .object({
+    object: z.string(),
+    data: z.array(
+      z.object({
+        object: z.string(),
+        index: z.number(),
+        embedding: z.array(z.number()),
+      }),
+    ),
+    model: z.string(),
+    usage: z.object({
       prompt_tokens: z.number(),
-      completion_tokens: z.number(),
       total_tokens: z.number(),
-    })
-    .optional(),
-});
-
-const textCompletionResponseSchema = z.object({
-  id: z.string(),
-  object: z.string(),
-  created: z.number(),
-  model: z.string(),
-  choices: z.array(
-    z.object({
-      text: z.string(),
-      index: z.number(),
-      finish_reason: z.string().nullable().optional(),
     }),
-  ),
-  usage: z
-    .object({
-      prompt_tokens: z.number(),
-      completion_tokens: z.number(),
-      total_tokens: z.number(),
-    })
-    .optional(),
-});
+  })
+  .passthrough();
 
-const embeddingsResponseSchema = z.object({
-  object: z.string(),
-  data: z.array(
-    z.object({
-      object: z.string(),
-      index: z.number(),
-      embedding: z.array(z.number()),
-    }),
-  ),
-  model: z.string(),
-  usage: z.object({
-    prompt_tokens: z.number(),
-    total_tokens: z.number(),
-  }),
-});
-
-const imageGenerationResponseSchema = z.object({
-  created: z.number(),
-  data: z.array(
-    z.object({
-      url: z.string().optional(),
-      b64_json: z.string().optional(),
-      revised_prompt: z.string().optional(),
-    }),
-  ),
-});
+const imageGenerationResponseSchema = z
+  .object({
+    created: z.number(),
+    data: z.array(
+      z.object({
+        url: z.string().optional(),
+        b64_json: z.string().optional(),
+        revised_prompt: z.string().optional(),
+      }),
+    ),
+  })
+  .passthrough();
 
 const transcriptionResponseSchema = z.union([
   z.object({
     text: z.string(),
   }),
-  z.object({
-    task: z.string().optional(),
-    language: z.string().optional(),
-    duration: z.number().optional(),
-    text: z.string(),
-    segments: z.array(z.any()).optional(),
-  }),
+  z
+    .object({
+      task: z.string().optional(),
+      language: z.string().optional(),
+      duration: z.number().optional(),
+      text: z.string(),
+      segments: z.array(z.unknown()).optional(),
+    })
+    .passthrough(),
 ]);
+
+class PayloadTooLargeError extends Error {}
+
+function requestExceedsSizeLimit(request: Request): boolean {
+  const contentLength = request.headers.get("content-length");
+  if (!contentLength) return false;
+  const size = Number(contentLength);
+  return !Number.isSafeInteger(size) || size < 0 || size > MAX_REQUEST_BYTES;
+}
+
+async function readBoundedRequestBody(request: Request): Promise<Uint8Array> {
+  if (requestExceedsSizeLimit(request)) throw new PayloadTooLargeError();
+  const body = request.clone().body;
+  if (!body) return new Uint8Array();
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_REQUEST_BYTES) throw new PayloadTooLargeError();
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const result = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
+}
+
+async function parseJsonRequest<T extends z.ZodType>(
+  request: Request,
+  schema: T,
+): Promise<
+  { success: true; data: z.output<T> } | { success: false; response: Response }
+> {
+  try {
+    const body = await readBoundedRequestBody(request);
+    const parsed = schema.safeParse(JSON.parse(new TextDecoder().decode(body)));
+    return parsed.success
+      ? { success: true, data: parsed.data }
+      : { success: false, response: validationFailure(parsed.error) };
+  } catch (error) {
+    return {
+      success: false,
+      response:
+        error instanceof PayloadTooLargeError
+          ? payloadTooLarge()
+          : badRequest("Invalid JSON payload."),
+    };
+  }
+}
+
+function requestWithJsonBody(request: Request, body: unknown): Request {
+  const headers = new Headers(request.headers);
+  headers.set("content-type", "application/json");
+  headers.delete("content-length");
+  return new Request(request.url, {
+    method: request.method,
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
+function filterProxyHeaders(headers: Headers): Headers {
+  const filtered = new Headers(headers);
+  const connection = filtered.get("connection");
+  const connectionHeaders = connection
+    ? connection
+        .split(",")
+        .map((header) => header.trim())
+        .filter(Boolean)
+    : [];
+  for (const header of [
+    "authorization",
+    "x-api-key",
+    "proxy-authorization",
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "host",
+    ...connectionHeaders,
+  ]) {
+    filtered.delete(header);
+  }
+  return filtered;
+}
+
+function isEventStream(response: Response): boolean {
+  return (
+    response.headers.get("content-type")?.includes("text/event-stream") ?? false
+  );
+}
 
 async function proxyRequest(
   request: Request,
   targetBase: string,
   pathOverride?: string,
-  responseSchema?: z.ZodSchema,
+  responseSchema?: z.ZodType,
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
   const target = `${targetBase}${path}${incoming.search}`;
-  const upstream = await fetch(target, {
-    method: request.method,
-    headers: request.headers,
-    body: request.body,
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(target, {
+      method: request.method,
+      headers: filterProxyHeaders(request.headers),
+      body: request.body,
+      signal: AbortSignal.any([
+        request.signal,
+        AbortSignal.timeout(UPSTREAM_PROXY_TIMEOUT_MS),
+      ]),
+    });
+  } catch {
+    return upstreamFailure("The upstream service could not be reached.");
+  }
 
-  const isStream = upstream.headers
-    .get("content-type")
-    ?.includes("text/event-stream");
-
-  if (responseSchema && !isStream && upstream.ok) {
+  if (responseSchema && !isEventStream(upstream) && upstream.ok) {
     try {
-      const bodyText = await upstream.text();
-      // Only attempt JSON validation if it parses as valid JSON
-      let bodyJson: any;
-      try {
-        bodyJson = JSON.parse(bodyText);
-      } catch (e) {
-        // Fall back to plain text if response is not JSON (e.g. STT returning format: text/srt)
-        return new Response(bodyText, {
-          status: upstream.status,
-          headers: upstream.headers,
-        });
-      }
-
-      const parsed = responseSchema.safeParse(bodyJson);
+      const parsed = responseSchema.safeParse(await upstream.json());
       if (!parsed.success) {
-        const issues = parsed.error.issues
-          .map((i) => `${i.path.join(".")}: ${i.message}`)
-          .join(", ");
-        return badRequest(`Upstream validation failed: ${issues}`);
+        return upstreamFailure(
+          "The upstream service returned an invalid response.",
+        );
       }
 
-      return Response.json(bodyJson, {
+      const headers = filterProxyHeaders(upstream.headers);
+      headers.delete("content-length");
+      return Response.json(parsed.data, {
         status: upstream.status,
-        headers: upstream.headers,
+        headers,
       });
-    } catch (e) {
-      return badRequest("Failed to validate upstream JSON response.");
+    } catch {
+      return upstreamFailure("The upstream service returned malformed JSON.");
     }
   }
 
   return new Response(upstream.body, {
     status: upstream.status,
-    headers: upstream.headers,
+    headers: filterProxyHeaders(upstream.headers),
   });
 }
 
@@ -586,7 +747,9 @@ class ManagedService {
         return false;
       }
       try {
-        const res = await fetch(this.healthUrl);
+        const res = await fetch(this.healthUrl, {
+          signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
+        });
         if (res.ok) return true;
       } catch (e) {
         // Expected network failures while booting
@@ -1144,7 +1307,8 @@ export async function runServe(
         imageBase + "/",
         ctx.logger,
         async () => {
-          const activeModel = config.activeImageModel;
+          const launchConfig = loadConfig(config.root);
+          const activeModel = launchConfig.activeImageModel;
           let modelFile = parseFlag(args, "--image-model-file");
           if (!modelFile) {
             const spec = byId(activeModel);
@@ -1154,7 +1318,7 @@ export async function runServe(
             if (!expectedFile) {
               expectedFile = `${activeModel}.safetensors`;
             }
-            const modelPath = join(config.imageModelsDir, expectedFile);
+            const modelPath = join(launchConfig.imageModelsDir, expectedFile);
             if (!(await Bun.file(modelPath).exists())) {
               throw new Error(`Image model file missing at ${modelPath}`);
             }
@@ -1165,17 +1329,99 @@ export async function runServe(
             "sd-server",
             `Spawning image model "${activeModel}" (file: ${modelFile}) on port ${imagePort}`,
           );
-          return startSdServerProcess(config, modelFile, imageHost, imagePort);
+          return startSdServerProcess(
+            launchConfig,
+            modelFile,
+            imageHost,
+            imagePort,
+          );
         },
         30000,
         fatalServiceExit,
       )
     : null;
 
+  let modelSwitches = Promise.resolve();
+  const serializeModelSwitch = async (
+    work: () => Promise<void>,
+  ): Promise<void> => {
+    const next = modelSwitches.then(work, work);
+    modelSwitches = next.catch(() => {});
+    await next;
+  };
+
+  const switchLlmModel = async (requestedModel: string): Promise<void> => {
+    if (!llmService) return;
+    await serializeModelSwitch(async () => {
+      const latestConfig = loadConfig(config.root);
+      const normalized = requestedModel.replace(
+        /^(localbase|openai|ollama)\//,
+        "",
+      );
+      const matchedModel = latestConfig.selectedLlmModels.find(
+        (model) => model.toLowerCase() === normalized.toLowerCase(),
+      );
+      if (!matchedModel || matchedModel === latestConfig.activeLlmModel) return;
+
+      ctx.logger.info(
+        "llama-server",
+        `Switching active LLM from "${latestConfig.activeLlmModel}" to "${matchedModel}"`,
+      );
+      await llmService.kill();
+      latestConfig.activeLlmModel = matchedModel;
+      saveConfig(latestConfig);
+
+      const spec = byId(matchedModel);
+      const recommendedCtx = spec
+        ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
+        : ctx.specs.gpuVramGb >= 32
+          ? 32768
+          : 8192;
+      const newCtxSize = Math.min(recommendedCtx, latestConfig.ctxSize);
+      void syncContinueConfig(latestConfig, newCtxSize).catch((error) => {
+        ctx.logger.warn(
+          "sync",
+          `Failed to sync Continue config: ${error.message}`,
+        );
+      });
+    });
+  };
+
+  const switchImageModel = async (
+    requestedModel: string | undefined,
+  ): Promise<void> => {
+    if (!imageService || !requestedModel) return;
+    await serializeModelSwitch(async () => {
+      const latestConfig = loadConfig(config.root);
+      const matchedModel = latestConfig.selectedImageModels.find(
+        (model) => model.toLowerCase() === requestedModel.toLowerCase(),
+      );
+      if (!matchedModel || matchedModel === latestConfig.activeImageModel)
+        return;
+
+      ctx.logger.info(
+        "sd-server",
+        `Switching active Image model from "${latestConfig.activeImageModel}" to "${matchedModel}"`,
+      );
+      await imageService.kill();
+      latestConfig.activeImageModel = matchedModel;
+      saveConfig(latestConfig);
+    });
+  };
+
+  const ensureLlm = async (): Promise<Response | null> => {
+    if (!enabled.llm || !llmService) return notConfigured("LLM");
+    try {
+      await llmService.ensureRunning();
+      return null;
+    } catch {
+      return serviceUnavailable("LLM");
+    }
+  };
+
   const handleRequest = async (
     request: Request,
     pathname: string,
-    method: string,
   ): Promise<Response> => {
     const currentConfig = loadConfig(config.root);
 
@@ -1201,54 +1447,7 @@ export async function runServe(
       }
     }
 
-    if (
-      enabled.llm &&
-      llmService &&
-      (pathname === "/v1/chat/completions" ||
-        pathname === "/v1/completions" ||
-        pathname === "/v1/embeddings")
-    ) {
-      try {
-        const bodyText = await request.clone().text();
-        const bodyJson = JSON.parse(bodyText);
-        if (bodyJson && typeof bodyJson.model === "string") {
-          const requestedModel = bodyJson.model;
-          const normalized = requestedModel.replace(
-            /^(localbase|openai|ollama)\//,
-            "",
-          );
-          const matchedModel = currentConfig.selectedLlmModels.find(
-            (m: string) => m.toLowerCase() === normalized.toLowerCase(),
-          );
-          if (matchedModel && matchedModel !== currentConfig.activeLlmModel) {
-            ctx.logger.info(
-              "llama-server",
-              `Switching active LLM from "${currentConfig.activeLlmModel}" to "${matchedModel}"`,
-            );
-            await llmService.kill();
-            currentConfig.activeLlmModel = matchedModel;
-            saveConfig(currentConfig);
-
-            const spec = byId(matchedModel);
-            const recommendedCtx = spec
-              ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
-              : ctx.specs.gpuVramGb >= 32
-                ? 32768
-                : 8192;
-            const newCtxSize = Math.min(recommendedCtx, currentConfig.ctxSize);
-
-            syncContinueConfig(currentConfig, newCtxSize).catch((err) => {
-              ctx.logger.warn(
-                "sync",
-                `Failed to sync Continue config: ${err.message}`,
-              );
-            });
-          }
-        }
-      } catch (e) {
-        // Ignore json body read issues
-      }
-    }
+    if (requestExceedsSizeLimit(request)) return payloadTooLarge();
 
     if (
       pathname === "/v1/audio/transcriptions" ||
@@ -1256,21 +1455,48 @@ export async function runServe(
     ) {
       if (!enabled.stt || !sttService) return notConfigured("STT");
       try {
-        const formData = await request.clone().formData();
-        const bodyObj: Record<string, any> = {};
+        const body = await readBoundedRequestBody(request);
+        const multipartBody = new ArrayBuffer(body.byteLength);
+        new Uint8Array(multipartBody).set(body);
+        const formData = await new Request(request.url, {
+          method: request.method,
+          headers: request.headers,
+          body: multipartBody,
+        }).formData();
+        const bodyObj: Record<
+          string,
+          FormDataEntryValue | FormDataEntryValue[]
+        > = {};
         for (const [key, value] of formData.entries()) {
-          bodyObj[key] = value;
+          const existing = bodyObj[key];
+          bodyObj[key] =
+            existing === undefined
+              ? value
+              : Array.isArray(existing)
+                ? [...existing, value]
+                : [existing, value];
         }
 
         const parsed = transcriptionRequestSchema.safeParse(bodyObj);
         if (!parsed.success) {
-          const issues = parsed.error.issues
-            .map((i) => `${i.path.join(".")}: ${i.message}`)
-            .join(", ");
-          return badRequest(`Validation failed: ${issues}`);
+          return validationFailure(parsed.error);
         }
+        const normalizedForm = new FormData();
+        for (const [key, value] of Object.entries(parsed.data)) {
+          if (value !== undefined)
+            normalizedForm.append(
+              key,
+              value instanceof Blob ? value : String(value),
+            );
+        }
+        request = new Request(request.url, {
+          method: request.method,
+          body: normalizedForm,
+        });
       } catch (e) {
-        return badRequest("Invalid form data payload.");
+        return e instanceof PayloadTooLargeError
+          ? payloadTooLarge()
+          : badRequest("Invalid form data payload.");
       }
       try {
         await sttService.ensureRunning();
@@ -1285,40 +1511,24 @@ export async function runServe(
       );
     }
 
-    if (pathname.startsWith("/stt")) {
-      if (!enabled.stt || !sttService) return notConfigured("STT");
-      try {
-        await sttService.ensureRunning();
-      } catch (err) {
-        return serviceUnavailable("STT");
-      }
-      const mapped = pathname.replace(/^\/stt/, "") || "/";
-      return proxyRequest(request, sttBase, mapped);
-    }
-
-    if (pathname.startsWith("/llm")) {
-      if (!enabled.llm || !llmService) return notConfigured("LLM");
-      try {
-        await llmService.ensureRunning();
-      } catch (err) {
-        return serviceUnavailable("LLM");
-      }
-      const mapped = pathname.replace(/^\/llm/, "") || "/";
-      return proxyRequest(request, llmBase, mapped);
-    }
-
     if (
-      pathname.startsWith("/image") &&
-      pathname !== "/v1/images/generations"
+      ["/llm", "/stt", "/image"].some(
+        (namespace) =>
+          pathname === namespace || pathname.startsWith(`${namespace}/`),
+      )
     ) {
-      if (!enabled.image || !imageService) return notConfigured("Image");
-      try {
-        await imageService.ensureRunning();
-      } catch (err) {
-        return serviceUnavailable("Image");
-      }
-      const mapped = pathname.replace(/^\/image/, "") || "/";
-      return proxyRequest(request, imageBase, mapped);
+      return Response.json(
+        {
+          error: {
+            message:
+              "Raw backend passthrough routes are not exposed by this gateway.",
+            type: "invalid_request_error",
+            param: null,
+            code: "route_disabled",
+          },
+        } satisfies OpenAIErrorResponse,
+        { status: 404 },
+      );
     }
 
     if (pathname.startsWith("/tts")) {
@@ -1339,43 +1549,19 @@ export async function runServe(
 
     if (pathname === "/v1/images/generations") {
       if (!enabled.image || !imageService) return notConfigured("Image");
-      try {
-        const bodyText = await request.clone().text();
-        const bodyJson = JSON.parse(bodyText);
-
-        const parsed = imageGenerationRequestSchema.safeParse(bodyJson);
-        if (!parsed.success) {
-          const issues = parsed.error.issues
-            .map((i) => `${i.path.join(".")}: ${i.message}`)
-            .join(", ");
-          return badRequest(`Validation failed: ${issues}`);
-        }
-
-        if (bodyJson && typeof bodyJson.model === "string") {
-          const requestedModel = bodyJson.model;
-          const matchedModel = currentConfig.selectedImageModels.find(
-            (m: string) => m.toLowerCase() === requestedModel.toLowerCase(),
-          );
-          if (matchedModel && matchedModel !== currentConfig.activeImageModel) {
-            ctx.logger.info(
-              "sd-server",
-              `Switching active Image model from "${currentConfig.activeImageModel}" to "${matchedModel}"`,
-            );
-            await imageService.kill();
-            currentConfig.activeImageModel = matchedModel;
-            saveConfig(currentConfig);
-          }
-        }
-      } catch (e) {
-        return badRequest("Invalid JSON payload.");
-      }
+      const parsed = await parseJsonRequest(
+        request,
+        imageGenerationRequestSchema,
+      );
+      if (!parsed.success) return parsed.response;
+      await switchImageModel(parsed.data.model);
       try {
         await imageService.ensureRunning();
-      } catch (err) {
+      } catch {
         return serviceUnavailable("Image");
       }
       return proxyRequest(
-        request,
+        requestWithJsonBody(request, parsed.data),
         imageBase,
         undefined,
         imageGenerationResponseSchema,
@@ -1383,92 +1569,47 @@ export async function runServe(
     }
 
     if (pathname === "/v1/chat/completions") {
-      if (!enabled.llm || !llmService) return notConfigured("LLM");
-      try {
-        const bodyText = await request.clone().text();
-        const bodyJson = JSON.parse(bodyText);
-        const parsed = chatCompletionRequestSchema.safeParse(bodyJson);
-        if (!parsed.success) {
-          const issues = parsed.error.issues
-            .map((i) => `${i.path.join(".")}: ${i.message}`)
-            .join(", ");
-          return badRequest(`Validation failed: ${issues}`);
-        }
+      const parsed = await parseJsonRequest(
+        request,
+        chatCompletionRequestSchema,
+      );
+      if (!parsed.success) return parsed.response;
+      await switchLlmModel(parsed.data.model);
+      const unavailable = await ensureLlm();
+      if (unavailable) return unavailable;
 
-        try {
-          await llmService.ensureRunning();
-        } catch (err) {
-          return serviceUnavailable("LLM");
-        }
-
-        let modified = false;
-        for (const msg of bodyJson.messages) {
-          // Map modern OpenAI 'developer' messages to 'system' because standard GGUF tokenizer
-          // templates (e.g. Qwen, Llama) only recognize the 'system' role.
-          if (msg.role === "developer") {
-            msg.role = "system";
-            modified = true;
-          }
-        }
-
-        // Inject configured system prompt (or default fallback) if no system prompt is present
-        const systemPrompt =
-          currentConfig.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-        const hasSystem = bodyJson.messages.some(
-          (msg: any) => msg.role === "system",
-        );
-        if (!hasSystem && systemPrompt) {
-          bodyJson.messages.unshift({
-            role: "system",
-            content: systemPrompt,
-          });
-          modified = true;
-        }
-
-        const headers = modified
-          ? new Headers(request.headers)
-          : request.headers;
-        if (modified) {
-          headers.delete("content-length");
-        }
-        const modifiedRequest = new Request(request.url, {
-          method: request.method,
-          headers,
-          body: JSON.stringify(bodyJson),
-        });
-        return proxyRequest(
-          modifiedRequest,
-          llmBase,
-          undefined,
-          chatCompletionResponseSchema,
-        );
-      } catch (e) {
-        return badRequest("Invalid JSON payload.");
+      const messages = parsed.data.messages.map((message) =>
+        message.role === "developer"
+          ? { ...message, role: "system" as const }
+          : message,
+      );
+      const currentPrompt =
+        loadConfig(config.root).systemPrompt || DEFAULT_SYSTEM_PROMPT;
+      if (
+        !messages.some((message) => message.role === "system") &&
+        currentPrompt
+      ) {
+        messages.unshift({ role: "system", content: currentPrompt });
       }
+      return proxyRequest(
+        requestWithJsonBody(request, { ...parsed.data, messages }),
+        llmBase,
+        undefined,
+        chatCompletionResponseSchema,
+      );
     }
 
     if (pathname === "/v1/completions") {
-      if (!enabled.llm || !llmService) return notConfigured("LLM");
-      try {
-        const bodyText = await request.clone().text();
-        const bodyJson = JSON.parse(bodyText);
-        const parsed = textCompletionRequestSchema.safeParse(bodyJson);
-        if (!parsed.success) {
-          const issues = parsed.error.issues
-            .map((i) => `${i.path.join(".")}: ${i.message}`)
-            .join(", ");
-          return badRequest(`Validation failed: ${issues}`);
-        }
-      } catch (e) {
-        return badRequest("Invalid JSON payload.");
-      }
-      try {
-        await llmService.ensureRunning();
-      } catch (err) {
-        return serviceUnavailable("LLM");
-      }
-      return proxyRequest(
+      const parsed = await parseJsonRequest(
         request,
+        textCompletionRequestSchema,
+      );
+      if (!parsed.success) return parsed.response;
+      await switchLlmModel(parsed.data.model);
+      const unavailable = await ensureLlm();
+      if (unavailable) return unavailable;
+      return proxyRequest(
+        requestWithJsonBody(request, parsed.data),
         llmBase,
         undefined,
         textCompletionResponseSchema,
@@ -1476,27 +1617,13 @@ export async function runServe(
     }
 
     if (pathname === "/v1/embeddings") {
-      if (!enabled.llm || !llmService) return notConfigured("LLM");
-      try {
-        const bodyText = await request.clone().text();
-        const bodyJson = JSON.parse(bodyText);
-        const parsed = embeddingsRequestSchema.safeParse(bodyJson);
-        if (!parsed.success) {
-          const issues = parsed.error.issues
-            .map((i) => `${i.path.join(".")}: ${i.message}`)
-            .join(", ");
-          return badRequest(`Validation failed: ${issues}`);
-        }
-      } catch (e) {
-        return badRequest("Invalid JSON payload.");
-      }
-      try {
-        await llmService.ensureRunning();
-      } catch (err) {
-        return serviceUnavailable("LLM");
-      }
+      const parsed = await parseJsonRequest(request, embeddingsRequestSchema);
+      if (!parsed.success) return parsed.response;
+      await switchLlmModel(parsed.data.model);
+      const unavailable = await ensureLlm();
+      if (unavailable) return unavailable;
       return proxyRequest(
-        request,
+        requestWithJsonBody(request, parsed.data),
         llmBase,
         undefined,
         embeddingsResponseSchema,
@@ -1522,52 +1649,21 @@ export async function runServe(
       });
     }
 
-    if (pathname === "/v1/slots") {
-      if (!enabled.llm || !llmService) return notConfigured("LLM");
-      try {
-        await llmService.ensureRunning();
-      } catch (err) {
-        return serviceUnavailable("LLM");
-      }
-      return proxyRequest(request, llmBase, "/slots");
+    const llmIntrospectionRoutes: Record<string, string> = {
+      "/v1/slots": "/slots",
+      "/v1/metrics": "/metrics",
+      "/v1/props": "/props",
+      "/v1/system_info": "/system_info",
+    };
+    const upstreamPath = llmIntrospectionRoutes[pathname];
+    if (upstreamPath) {
+      const unavailable = await ensureLlm();
+      if (unavailable) return unavailable;
+      return proxyRequest(request, llmBase, upstreamPath);
     }
 
-    if (pathname === "/v1/metrics") {
-      if (!enabled.llm || !llmService) return notConfigured("LLM");
-      try {
-        await llmService.ensureRunning();
-      } catch (err) {
-        return serviceUnavailable("LLM");
-      }
-      return proxyRequest(request, llmBase, "/metrics");
-    }
-
-    if (pathname === "/v1/props") {
-      if (!enabled.llm || !llmService) return notConfigured("LLM");
-      try {
-        await llmService.ensureRunning();
-      } catch (err) {
-        return serviceUnavailable("LLM");
-      }
-      return proxyRequest(request, llmBase, "/props");
-    }
-
-    if (pathname === "/v1/system_info") {
-      if (!enabled.llm || !llmService) return notConfigured("LLM");
-      try {
-        await llmService.ensureRunning();
-      } catch (err) {
-        return serviceUnavailable("LLM");
-      }
-      return proxyRequest(request, llmBase, "/system_info");
-    }
-
-    if (!enabled.llm || !llmService) return notConfigured("LLM");
-    try {
-      await llmService.ensureRunning();
-    } catch (err) {
-      return serviceUnavailable("LLM");
-    }
+    const unavailable = await ensureLlm();
+    if (unavailable) return unavailable;
     return proxyRequest(request, llmBase);
   };
 
@@ -1595,7 +1691,7 @@ export async function runServe(
 
       let response: Response;
       try {
-        response = await handleRequest(request, pathname, method);
+        response = await handleRequest(request, pathname);
       } catch (err) {
         ctx.logger.error(
           "HTTP",
@@ -1633,7 +1729,7 @@ export async function runServe(
 
   printUnifiedNextSteps(
     wrapperHost,
-    wrapperPort,
+    server.port ?? wrapperPort,
     llmPort,
     sttPort,
     imagePort,
