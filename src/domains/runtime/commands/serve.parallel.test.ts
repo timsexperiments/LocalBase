@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { randomInt } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -7,7 +7,10 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultConfig, loadConfig, saveConfig } from "../../../manager";
@@ -77,6 +80,56 @@ async function waitForFile(path: string): Promise<void> {
     await Bun.sleep(20);
   }
   throw new Error(`Timed out waiting for ${path}`);
+}
+
+function serveRunnerSource(): string {
+  const catalogPath = join(PROJECT_ROOT, "src/catalog.ts");
+  const contextPath = join(PROJECT_ROOT, "src/context.ts");
+  const servePath = join(PROJECT_ROOT, "src/domains/runtime/commands/serve.ts");
+  return `
+import { CATALOG } from ${JSON.stringify(catalogPath)};
+import { createAppContext } from ${JSON.stringify(contextPath)};
+import { runServe } from ${JSON.stringify(servePath)};
+
+(CATALOG as any).push(JSON.parse(process.env.LOCALBASE_TEST_MODEL!));
+const args = JSON.parse(process.env.LOCALBASE_TEST_ARGS!);
+await runServe(args, createAppContext(args));
+`;
+}
+
+async function startArtifactServer(files: Record<string, Uint8Array>): Promise<{
+  source: string;
+  requests: string[];
+  stop: () => Promise<void>;
+}> {
+  const requests: string[] = [];
+  const server = createServer((request, response) => {
+    const path = new URL(
+      request.url ?? "/",
+      `http://${request.headers.host ?? "127.0.0.1"}`,
+    ).pathname;
+    requests.push(path);
+    const body = files[path];
+    if (!body) {
+      response.writeHead(404).end();
+      return;
+    }
+    response.writeHead(200, { "Content-Length": String(body.byteLength) });
+    response.end(body);
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return {
+    source: `http://127.0.0.1:${port}/repo`,
+    requests,
+    stop: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      }),
+  };
 }
 
 test(
@@ -231,6 +284,318 @@ exec sleep 600
       expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(
         join(config.llmModelsDir, `${SWITCHED_MODEL}.gguf`),
       );
+    } finally {
+      if (gateway) await stopProcess(gateway);
+      await Promise.all([gatewayStdout, gatewayStderr].filter(Boolean));
+      backend.stop(true);
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+  { timeout: 20_000 },
+);
+
+test(
+  "lazy llama startup repairs a missing shard before launching the primary shard",
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), "local-base-lazy-shard-"));
+    const argsPath = join(root, "bin", "llama-server.args");
+    const wrapperPort = reservePort();
+    const backendPort = reservePort();
+    const modelId = "test-lazy-sharded-model";
+    const primaryName = "test-lazy-00001-of-00002.gguf";
+    const supplementaryName = "test-lazy-00002-of-00002.gguf";
+    const primary = Buffer.from("primary shard");
+    const supplementary = Buffer.from("supplementary shard");
+    const artifactPath = `/repo/resolve/test-revision/${supplementaryName}`;
+    const artifacts = await startArtifactServer({
+      [`/repo/resolve/test-revision/${primaryName}`]: primary,
+      [artifactPath]: supplementary,
+    });
+    const backend = Bun.serve({
+      hostname: "127.0.0.1",
+      port: backendPort,
+      fetch: (request) => {
+        if (new URL(request.url).pathname === "/health") {
+          return Response.json({ status: "ok" });
+        }
+        return Response.json({
+          id: "chatcmpl-test",
+          object: "chat.completion",
+          created: 0,
+          model: modelId,
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "ok" },
+              finish_reason: "stop",
+            },
+          ],
+        });
+      },
+    });
+    let gateway: Bun.Subprocess | undefined;
+    let gatewayStdout: Promise<string> | undefined;
+    let gatewayStderr: Promise<string> | undefined;
+
+    try {
+      const config = defaultConfig(root, 16);
+      config.port = backendPort;
+      config.activeLlmModel = modelId;
+      config.selectedLlmModels = [modelId];
+      config.activeSttModel = "";
+      config.selectedSttModels = [];
+      config.activeImageModel = "";
+      config.selectedImageModels = [];
+      saveConfig(config);
+
+      mkdirSync(join(root, "bin"), { recursive: true });
+      mkdirSync(config.llmModelsDir, { recursive: true });
+      writeFileSync(join(config.llmModelsDir, primaryName), primary);
+      writeFileSync(
+        join(config.llmModelsDir, supplementaryName),
+        supplementary,
+      );
+      writeFileSync(
+        join(root, "bin", "llama-server"),
+        `#!/bin/sh
+test -f "$LOCALBASE_TEST_SUPPLEMENTARY_PATH" || exit 41
+printf '%s\\n' "$@" > "$LOCALBASE_TEST_ARGS_PATH"
+exec sleep 600
+`,
+      );
+      chmodSync(join(root, "bin", "llama-server"), 0o755);
+
+      const model = {
+        modelId,
+        kind: "llm",
+        provider: "Test",
+        family: "Test",
+        version: "1",
+        size: "1B",
+        quant: "Q4_K_M",
+        minVramGb: 1,
+        storageGb: 1,
+        source: artifacts.source,
+        repositoryRevision: "test-revision",
+        artifacts: [
+          {
+            sourcePath: primaryName,
+            filename: primaryName,
+            expectedSizeBytes: primary.byteLength,
+            sha256: createHash("sha256").update(primary).digest("hex"),
+            role: "primary",
+          },
+          {
+            sourcePath: supplementaryName,
+            filename: supplementaryName,
+            expectedSizeBytes: supplementary.byteLength,
+            sha256: createHash("sha256").update(supplementary).digest("hex"),
+            role: "supplementary",
+          },
+        ],
+        inputModalities: ["text"],
+        outputModalities: ["text"],
+        features: ["test"],
+        commercialStatus: "open",
+        catch: "Test only.",
+        notes: "Test only.",
+      };
+      const serveArgs = [
+        "--root",
+        root,
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(wrapperPort),
+        "--llm-port",
+        String(backendPort),
+        "--llm",
+        "true",
+        "--stt",
+        "false",
+        "--image",
+        "false",
+        "--auth",
+        "false",
+        "--bypass-memory-check",
+      ];
+      gateway = Bun.spawn([process.execPath, "--eval", serveRunnerSource()], {
+        cwd: PROJECT_ROOT,
+        env: {
+          ...process.env,
+          LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
+          LOCALBASE_TEST_MODEL: JSON.stringify(model),
+          LOCALBASE_TEST_ARGS: JSON.stringify(serveArgs),
+          LOCALBASE_TEST_SUPPLEMENTARY_PATH: join(
+            config.llmModelsDir,
+            supplementaryName,
+          ),
+          LOCALBASE_TEST_ARGS_PATH: argsPath,
+        } as Record<string, string>,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      gatewayStdout = readProcessOutput(gateway.stdout);
+      gatewayStderr = readProcessOutput(gateway.stderr);
+
+      const baseUrl = `http://127.0.0.1:${wrapperPort}`;
+      await waitForGateway(gateway, baseUrl);
+      rmSync(join(config.llmModelsDir, supplementaryName));
+
+      const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      });
+      expect(response.status).toBe(200);
+      await waitForFile(argsPath);
+
+      expect(artifacts.requests).toEqual([artifactPath]);
+      expect(
+        readFileSync(join(config.llmModelsDir, supplementaryName)),
+      ).toEqual(supplementary);
+      const launchArgs = readFileSync(argsPath, "utf8").trim().split("\n");
+      expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(
+        join(config.llmModelsDir, primaryName),
+      );
+      expect(launchArgs).not.toContain(
+        join(config.llmModelsDir, supplementaryName),
+      );
+    } finally {
+      if (gateway) await stopProcess(gateway);
+      await Promise.all([gatewayStdout, gatewayStderr].filter(Boolean));
+      backend.stop(true);
+      await artifacts.stop();
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+  { timeout: 20_000 },
+);
+
+test(
+  "an explicit LLM model file bypasses catalog shard completeness",
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), "local-base-explicit-model-"));
+    const argsPath = join(root, "bin", "llama-server.args");
+    const wrapperPort = reservePort();
+    const backendPort = reservePort();
+    const modelFile = "custom-model.gguf";
+    const backend = Bun.serve({
+      hostname: "127.0.0.1",
+      port: backendPort,
+      fetch: (request) => {
+        if (new URL(request.url).pathname === "/health") {
+          return Response.json({ status: "ok" });
+        }
+        return Response.json({
+          id: "chatcmpl-test",
+          object: "chat.completion",
+          created: 0,
+          model: "custom-model",
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "ok" },
+              finish_reason: "stop",
+            },
+          ],
+        });
+      },
+    });
+    let gateway: Bun.Subprocess | undefined;
+    let gatewayStdout: Promise<string> | undefined;
+    let gatewayStderr: Promise<string> | undefined;
+
+    try {
+      const config = defaultConfig(root, 64);
+      config.port = backendPort;
+      config.activeLlmModel = "qwen3-coder-next-q4_k_m";
+      config.selectedLlmModels = [config.activeLlmModel];
+      config.activeSttModel = "";
+      config.selectedSttModels = [];
+      config.activeImageModel = "";
+      config.selectedImageModels = [];
+      saveConfig(config);
+
+      mkdirSync(join(root, "bin"), { recursive: true });
+      writeFileSync(join(config.llmModelsDir, modelFile), "custom model");
+      writeFileSync(
+        join(root, "bin", "llama-server"),
+        `#!/bin/sh
+printf '%s\\n' "$@" > "$LOCALBASE_TEST_ARGS_PATH"
+exec sleep 600
+`,
+      );
+      chmodSync(join(root, "bin", "llama-server"), 0o755);
+
+      gateway = Bun.spawn(
+        [
+          process.execPath,
+          "run",
+          "src/cli.ts",
+          "serve",
+          "--root",
+          root,
+          "--host",
+          "127.0.0.1",
+          "--port",
+          String(wrapperPort),
+          "--llm-port",
+          String(backendPort),
+          "--llm-model-file",
+          modelFile,
+          "--llm",
+          "true",
+          "--stt",
+          "false",
+          "--image",
+          "false",
+          "--auth",
+          "false",
+          "--bypass-memory-check",
+        ],
+        {
+          cwd: PROJECT_ROOT,
+          env: {
+            ...process.env,
+            LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
+            LOCALBASE_TEST_ARGS_PATH: argsPath,
+          } as Record<string, string>,
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      gatewayStdout = readProcessOutput(gateway.stdout);
+      gatewayStderr = readProcessOutput(gateway.stderr);
+
+      const baseUrl = `http://127.0.0.1:${wrapperPort}`;
+      await waitForGateway(gateway, baseUrl);
+      const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: config.activeLlmModel,
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      });
+      expect(response.status).toBe(200);
+      await waitForFile(argsPath);
+
+      const launchArgs = readFileSync(argsPath, "utf8").trim().split("\n");
+      expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(
+        join(config.llmModelsDir, modelFile),
+      );
+      expect(
+        existsSync(
+          join(
+            config.llmModelsDir,
+            "Qwen3-Coder-Next-Q4_K_M-00002-of-00004.gguf",
+          ),
+        ),
+      ).toBe(false);
     } finally {
       if (gateway) await stopProcess(gateway);
       await Promise.all([gatewayStdout, gatewayStderr].filter(Boolean));

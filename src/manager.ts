@@ -31,7 +31,9 @@ import { Database } from "bun:sqlite";
 import {
   artifactDownloadUrl,
   byId,
+  CATALOG,
   primaryArtifact,
+  resolveCatalogInstallation,
   type ModelArtifact,
   type ModelSpec,
   type ModelKind,
@@ -406,31 +408,34 @@ export function installedModels(
   config: LocalBaseConfig,
   kind?: ModelKind,
 ): string[] {
-  const dir = kind ? kindDir(config, kind) : undefined;
-  if (dir) {
-    if (!existsSync(dir)) return [];
-    return readdirSync(dir)
-      .filter((name) =>
-        [".gguf", ".bin", ".onnx", ".safetensors", ".pth"].includes(
-          extname(name),
-        ),
-      )
-      .sort();
-  }
-
   const kinds: ModelKind[] = ["llm", "stt", "image"];
-  const files = kinds.flatMap((k) => {
-    const d = kindDir(config, k);
-    if (!existsSync(d)) return [];
-    return readdirSync(d)
-      .filter((name) =>
+  const selectedKinds = kind ? [kind] : kinds;
+  const installed = selectedKinds.flatMap((currentKind) => {
+    const dir = kindDir(config, currentKind);
+    if (!existsSync(dir)) return [];
+
+    const catalogModels = CATALOG.filter((model) => model.kind === currentKind);
+    const completeModelIds = catalogModels
+      .filter((model) => resolveCatalogInstallation(model, dir).complete)
+      .map((model) => model.modelId);
+    const knownArtifactNames = new Set(
+      catalogModels.flatMap((model) =>
+        model.artifacts.map((artifact) => artifact.filename),
+      ),
+    );
+    const manualFiles = readdirSync(dir).filter(
+      (name) =>
         [".gguf", ".bin", ".onnx", ".safetensors", ".pth"].includes(
           extname(name),
-        ),
-      )
-      .map((name) => `${k}:${name}`);
+        ) && !knownArtifactNames.has(name),
+    );
+
+    return [...completeModelIds, ...manualFiles].map((name) =>
+      kind ? name : `${currentKind}:${name}`,
+    );
   });
-  return files.sort();
+
+  return installed.sort();
 }
 
 export async function installModel(
