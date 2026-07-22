@@ -16,6 +16,7 @@ import {
   evaluateModelFit,
   calculateMaxSafeContextSize,
   primaryArtifact,
+  resolveCatalogInstallation,
 } from "../../../catalog";
 import type { AppContext } from "../../../context";
 import { parseBool, parseFlag, toInt } from "../../../utils/args";
@@ -676,22 +677,28 @@ export async function runServe(
   const authRequired = parseFlag(args, "--auth") !== "false";
   const authMode = parseAuthMode(parseFlag(args, "--auth-mode"));
 
-  let llmModelFile = parseFlag(args, "--llm-model-file");
+  const llmModelFileOverride = parseFlag(args, "--llm-model-file");
+  let llmModelFile = llmModelFileOverride;
+  let llmModelExists: boolean;
   if (!llmModelFile) {
     const spec = byId(config.activeLlmModel);
-    const primaryFilename = spec && primaryArtifact(spec).filename;
-    if (
-      primaryFilename &&
-      existsSync(join(config.llmModelsDir, primaryFilename))
-    ) {
-      llmModelFile = primaryFilename;
+    if (spec) {
+      llmModelFile = primaryArtifact(spec).filename;
+      llmModelExists = resolveCatalogInstallation(
+        spec,
+        config.llmModelsDir,
+      ).complete;
     } else if (
       existsSync(join(config.llmModelsDir, `${config.activeLlmModel}.bin`))
     ) {
       llmModelFile = `${config.activeLlmModel}.bin`;
+      llmModelExists = true;
     } else {
       llmModelFile = `${config.activeLlmModel}.gguf`;
+      llmModelExists = existsSync(join(config.llmModelsDir, llmModelFile));
     }
+  } else {
+    llmModelExists = existsSync(join(config.llmModelsDir, llmModelFile));
   }
 
   let sttModelFile = parseFlag(args, "--stt-model-file");
@@ -726,7 +733,6 @@ export async function runServe(
     }
   }
 
-  let llmModelExists = existsSync(join(config.llmModelsDir, llmModelFile));
   let sttModelExists = existsSync(join(config.sttModelsDir, sttModelFile));
   let imageModelExists = existsSync(
     join(config.imageModelsDir, imageModelFile),
@@ -877,10 +883,10 @@ export async function runServe(
     }
   }
 
-  // Automatically download models if they pass memory checks and are missing
+  // Automatically download models if they pass memory checks and are missing.
   if (enabled.llm && !llmModelExists) {
     console.log(
-      `LLM model file is missing. Automatically installing "${config.activeLlmModel}"...`,
+      `LLM model is incomplete. Automatically installing "${config.activeLlmModel}"...`,
     );
     const installedPath = await installModel(config, config.activeLlmModel);
     llmModelFile = basename(installedPath);
@@ -937,32 +943,47 @@ export async function runServe(
         async () => {
           const launchConfig = loadConfig(config.root);
           const activeModel = launchConfig.activeLlmModel;
-          let modelFile = parseFlag(args, "--llm-model-file");
+          let modelFile = llmModelFileOverride;
           if (!modelFile) {
             const spec = byId(activeModel);
-            let expectedFile = spec
-              ? primaryArtifact(spec).filename
-              : undefined;
-            if (!expectedFile) {
-              expectedFile = existsSync(
+            if (spec) {
+              const installation = resolveCatalogInstallation(
+                spec,
+                launchConfig.llmModelsDir,
+              );
+              if (!installation.complete) {
+                ctx.logger.info(
+                  "llama-server",
+                  `Model is incomplete for "${activeModel}". Automatically installing...`,
+                );
+                const installedPath = await installModel(
+                  launchConfig,
+                  activeModel,
+                );
+                modelFile = basename(installedPath);
+              } else {
+                modelFile = primaryArtifact(spec).filename;
+              }
+            } else {
+              const expectedFile = existsSync(
                 join(launchConfig.llmModelsDir, `${activeModel}.bin`),
               )
                 ? `${activeModel}.bin`
                 : `${activeModel}.gguf`;
-            }
-            const modelPath = join(launchConfig.llmModelsDir, expectedFile);
-            if (!existsSync(modelPath)) {
-              ctx.logger.info(
-                "llama-server",
-                `Model file is missing for "${activeModel}". Automatically installing...`,
-              );
-              const installedPath = await installModel(
-                launchConfig,
-                activeModel,
-              );
-              modelFile = basename(installedPath);
-            } else {
-              modelFile = expectedFile;
+              const modelPath = join(launchConfig.llmModelsDir, expectedFile);
+              if (!existsSync(modelPath)) {
+                ctx.logger.info(
+                  "llama-server",
+                  `Model file is missing for "${activeModel}". Automatically installing...`,
+                );
+                const installedPath = await installModel(
+                  launchConfig,
+                  activeModel,
+                );
+                modelFile = basename(installedPath);
+              } else {
+                modelFile = expectedFile;
+              }
             }
           }
 

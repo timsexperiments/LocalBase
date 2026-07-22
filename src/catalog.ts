@@ -1,3 +1,5 @@
+import { existsSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 
 export const ModelKindSchema = z.enum(["llm", "stt", "image"]);
@@ -81,6 +83,11 @@ export const ModelSpecSchema = z
     }
   });
 export type ModelSpec = z.infer<typeof ModelSpecSchema>;
+
+export type CatalogInstallationState = {
+  complete: boolean;
+  primaryPath: string;
+};
 
 export const CatalogSchema = z.array(ModelSpecSchema);
 
@@ -1208,6 +1215,35 @@ export function primaryArtifact(model: ModelSpec): ModelArtifact {
     throw new Error(`Model "${model.modelId}" has no primary artifact`);
   }
   return artifact;
+}
+
+/**
+ * Checks whether every file declared by a catalog model is ready to use.
+ *
+ * Expected sizes catch interrupted or stale downloads without hashing large
+ * artifacts during routine startup. Full checksums remain installer work.
+ */
+export function resolveCatalogInstallation(
+  model: ModelSpec,
+  kindDirectory: string,
+): CatalogInstallationState {
+  const primary = primaryArtifact(model);
+  const complete = model.artifacts.every((artifact) => {
+    const path = join(kindDirectory, artifact.filename);
+    if (!existsSync(path)) return false;
+    if (artifact.expectedSizeBytes === undefined) return true;
+
+    try {
+      return statSync(path).size === artifact.expectedSizeBytes;
+    } catch {
+      return false;
+    }
+  });
+
+  return {
+    complete,
+    primaryPath: join(kindDirectory, primary.filename),
+  };
 }
 
 export function artifactDownloadUrl(
