@@ -1,5 +1,4 @@
-import { createAppContext } from "./context";
-import { runRegistry } from "./domains/app/commands/runner";
+import { runCli } from "./domains/app/commands/runner";
 import {
   BACKEND_GUARDIAN_COMMAND,
   runBackendGuardian,
@@ -10,8 +9,10 @@ async function main(): Promise<number> {
   if (args[0] === BACKEND_GUARDIAN_COMMAND) {
     return await runBackendGuardian(args.slice(1));
   }
-  const ctx = await createAppContext(args);
-  return await runRegistry(args, ctx);
+  return await runCli(args, async (contextArgs) => {
+    const { createAppContext } = await import("./context");
+    return await createAppContext(contextArgs);
+  });
 }
 
 try {

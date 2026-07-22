@@ -11,29 +11,22 @@ export const CommercialStatusSchema = z.enum([
 ]);
 export type CommercialStatus = z.infer<typeof CommercialStatusSchema>;
 
-export const ModelArtifactSchema = z
-  .object({
-    sourcePath: z.string().min(1),
-    filename: z.string().min(1),
-    expectedSizeBytes: z.number().positive().optional(),
-    sha256: z
-      .string()
-      .regex(/^[a-fA-F0-9]{64}$/)
-      .optional(),
-    role: z.enum(["primary", "supplementary"]),
-  })
-  .superRefine((artifact, ctx) => {
-    if (
-      (artifact.expectedSizeBytes === undefined) !==
-      (artifact.sha256 === undefined)
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: "expectedSizeBytes and sha256 must be provided together",
-      });
-    }
-  });
-export type ModelArtifact = z.infer<typeof ModelArtifactSchema>;
+export const ModelArtifactSchema = z.object({
+  sourcePath: z.string().min(1),
+  filename: z.string().min(1),
+  expectedSizeBytes: z.number().int().positive(),
+  sha256: z.string().regex(/^[a-fA-F0-9]{64}$/),
+  role: z.enum(["primary", "supplementary"]),
+});
+
+/** Local or test artifacts may omit release metadata outside the managed catalog. */
+export type ModelArtifact = {
+  sourcePath: string;
+  filename: string;
+  expectedSizeBytes?: number;
+  sha256?: string;
+  role: "primary" | "supplementary";
+};
 
 export const ModelSpecSchema = z
   .object({
@@ -48,7 +41,7 @@ export const ModelSpecSchema = z
     minVramGb: z.number().nonnegative(),
     storageGb: z.number().positive(),
     source: z.string().url(),
-    repositoryRevision: z.string().min(1),
+    repositoryRevision: z.string().regex(/^[a-fA-F0-9]{40}$/),
     artifacts: z.array(ModelArtifactSchema).min(1),
     inputModalities: z.array(z.string().min(1)),
     outputModalities: z.array(z.string().min(1)),
@@ -81,7 +74,9 @@ export const ModelSpecSchema = z
       });
     }
   });
-export type ModelSpec = z.infer<typeof ModelSpecSchema>;
+export type ModelSpec = Omit<z.infer<typeof ModelSpecSchema>, "artifacts"> & {
+  artifacts: ModelArtifact[];
+};
 
 export type CatalogInstallationState = {
   complete: boolean;
@@ -107,11 +102,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 2,
     storageGb: 1.2,
     source: "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "f86cb2c1fa58255f8052cc32aeede1b7482d4361",
     artifacts: [
       {
         sourcePath: "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
         filename: "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        expectedSizeBytes: 1117320768,
+        sha256:
+          "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046",
         role: "primary",
       },
     ],
@@ -134,11 +132,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 4,
     storageGb: 2.2,
     source: "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "f74adce6aa16316c625447af059dbebe4983757c",
     artifacts: [
       {
         sourcePath: "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
         filename: "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
+        expectedSizeBytes: 2104932800,
+        sha256:
+          "724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7",
         role: "primary",
       },
     ],
@@ -161,11 +162,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 6,
     storageGb: 4.7,
     source: "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "13fb94bfda8c8cf22497dc57b78f391a9acb426a",
     artifacts: [
       {
         sourcePath: "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
         filename: "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+        expectedSizeBytes: 4683073536,
+        sha256:
+          "509287f78cb4d4cf6b3843734733b914b2c158e43e22a7f4bf5e963800894d3c",
         role: "primary",
       },
     ],
@@ -188,11 +192,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 11,
     storageGb: 9.1,
     source: "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "d0a692ef765eefbf2fabb130b3cb2e8917e3d225",
     artifacts: [
       {
         sourcePath: "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
         filename: "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+        expectedSizeBytes: 8988110272,
+        sha256:
+          "c1e659736d89ac1065fb495330fb824d94001974a4bfa78e7270e43476a8d940",
         role: "primary",
       },
     ],
@@ -216,11 +223,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 20,
     storageGb: 20.3,
     source: "https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "9d3053fce650fe1cdbdb75998c2a87add9d178ef",
     artifacts: [
       {
         sourcePath: "qwen2.5-coder-32b-instruct-q4_k_m.gguf",
         filename: "qwen2.5-coder-32b-instruct-q4_k_m.gguf",
+        expectedSizeBytes: 19851335872,
+        sha256:
+          "4d64b316b5e6319d9613e0d97935d9ebd631fc7e334da400d00085eca749d085",
         role: "primary",
       },
     ],
@@ -302,11 +312,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 2,
     storageGb: 1.0,
     source: "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "067b946cf014b7c697f3654f621d577a3e3afd1c",
     artifacts: [
       {
         sourcePath: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
         filename: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+        expectedSizeBytes: 807694464,
+        sha256:
+          "6f85a640a97cf2bf5b8e764087b1e83da0fdb51d7c9fab7d0fece9385611df83",
         role: "primary",
       },
     ],
@@ -330,11 +343,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 4,
     storageGb: 2.0,
     source: "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "5ab33fa94d1d04e903623ae72c95d1696f09f9e8",
     artifacts: [
       {
         sourcePath: "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
         filename: "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        expectedSizeBytes: 2019377696,
+        sha256:
+          "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff",
         role: "primary",
       },
     ],
@@ -358,11 +374,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 6,
     storageGb: 4.7,
     source: "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "bf5b95e96dac0462e2a09145ec66cae9a3f12067",
     artifacts: [
       {
         sourcePath: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
         filename: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+        expectedSizeBytes: 4920739232,
+        sha256:
+          "7b064f5842bf9532c91456deda288a1b672397a54fa729aa665952863033557c",
         role: "primary",
       },
     ],
@@ -387,11 +406,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 40,
     storageGb: 42,
     source: "https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "b6c5c9f176f3279204034e1d16d393105e95cb88",
     artifacts: [
       {
         sourcePath: "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
         filename: "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
+        expectedSizeBytes: 42520398816,
+        sha256:
+          "32df3baccb556f9840059b2528b2dee4d3d516b24afdfb9d0c56ff5f63e3a664",
         role: "primary",
       },
     ],
@@ -416,11 +438,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     storageGb: 9,
     source:
       "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "9f5d77d401799416e0702290a691038b44012e0c",
     artifacts: [
       {
         sourcePath: "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
         filename: "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+        expectedSizeBytes: 8988110240,
+        sha256:
+          "0b319bd0572f2730bfe11cc751defe82045fad5085b4e60591ac2cd2d9633181",
         role: "primary",
       },
     ],
@@ -444,11 +469,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 6,
     storageGb: 4.8,
     source: "https://huggingface.co/TheBloke/deepseek-coder-6.7B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "9e221e6b41cb1bf1c5d8f9718e81e3dc781f7557",
     artifacts: [
       {
         sourcePath: "deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
         filename: "deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
+        expectedSizeBytes: 4083015904,
+        sha256:
+          "92da6238854f2fa902d8b2ad79d548536af1d3ab06821f323bd5bbcea2013276",
         role: "primary",
       },
     ],
@@ -473,11 +501,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     storageGb: 11.2,
     source:
       "https://huggingface.co/bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "8f248fa2072348f77a8bc37754e470de1f61866e",
     artifacts: [
       {
         sourcePath: "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
         filename: "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+        expectedSizeBytes: 10364416768,
+        sha256:
+          "603bd3f8a0281d16571da7c08bd661ee17ff0d1be6fcbd1b42242da257ef0bb8",
         role: "primary",
       },
     ],
@@ -501,11 +532,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 22,
     storageGb: 21.0,
     source: "https://huggingface.co/TheBloke/deepseek-coder-33B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "cd6a4d02d3502901ff7f980b6373387ab8b8e91a",
     artifacts: [
       {
         sourcePath: "deepseek-coder-33b-instruct.Q4_K_M.gguf",
         filename: "deepseek-coder-33b-instruct.Q4_K_M.gguf",
+        expectedSizeBytes: 19940659200,
+        sha256:
+          "e76518575f9d367b0a04278cd027c51e53519506b4316b4d368e853a42bfe790",
         role: "primary",
       },
     ],
@@ -528,12 +562,15 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     codingScore: 5,
     minVramGb: 2,
     storageGb: 0.9,
-    source: "https://huggingface.co/bartowski/gemma-3-1b-it-GGUF",
-    repositoryRevision: "main",
+    source: "https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF",
+    repositoryRevision: "116f76234503685a98f572982177b11d44ec8ff1",
     artifacts: [
       {
-        sourcePath: "gemma-3-1b-it-Q4_K_M.gguf",
-        filename: "gemma-3-1b-it-Q4_K_M.gguf",
+        sourcePath: "google_gemma-3-1b-it-Q4_K_M.gguf",
+        filename: "google_gemma-3-1b-it-Q4_K_M.gguf",
+        expectedSizeBytes: 806058496,
+        sha256:
+          "12bf0fff8815d5f73a3c9b586bd8fee8e7b248c935de70dec367679873d0f29d",
         role: "primary",
       },
     ],
@@ -556,12 +593,15 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     codingScore: 6,
     minVramGb: 4,
     storageGb: 2.8,
-    source: "https://huggingface.co/bartowski/gemma-3-4b-it-GGUF",
-    repositoryRevision: "main",
+    source: "https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF",
+    repositoryRevision: "71506238f970075ca85125cd749c28b1b0eee84e",
     artifacts: [
       {
-        sourcePath: "gemma-3-4b-it-Q4_K_M.gguf",
-        filename: "gemma-3-4b-it-Q4_K_M.gguf",
+        sourcePath: "google_gemma-3-4b-it-Q4_K_M.gguf",
+        filename: "google_gemma-3-4b-it-Q4_K_M.gguf",
+        expectedSizeBytes: 2489758112,
+        sha256:
+          "4996030242583a40aa151ff93f49ed787ac8c25e4120c3ae4588b2e2a7d1ae94",
         role: "primary",
       },
     ],
@@ -584,12 +624,15 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     codingScore: 7,
     minVramGb: 10,
     storageGb: 8,
-    source: "https://huggingface.co/bartowski/gemma-3-12b-it-GGUF",
-    repositoryRevision: "main",
+    source: "https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF",
+    repositoryRevision: "648e3a36a77c8a9f12d86e741f9dcb9089c769c4",
     artifacts: [
       {
-        sourcePath: "gemma-3-12b-it-Q4_K_M.gguf",
-        filename: "gemma-3-12b-it-Q4_K_M.gguf",
+        sourcePath: "google_gemma-3-12b-it-Q4_K_M.gguf",
+        filename: "google_gemma-3-12b-it-Q4_K_M.gguf",
+        expectedSizeBytes: 7300575264,
+        sha256:
+          "fc57f67efa46d711c346e587cbef7d049e95f3df8db2eb2271153343ef0acc7b",
         role: "primary",
       },
     ],
@@ -612,12 +655,15 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     codingScore: 9,
     minVramGb: 18,
     storageGb: 16.5,
-    source: "https://huggingface.co/bartowski/gemma-3-27b-it-GGUF",
-    repositoryRevision: "main",
+    source: "https://huggingface.co/bartowski/google_gemma-3-27b-it-GGUF",
+    repositoryRevision: "4a05c54413bd0d87d77a97af403266f69cec0ee6",
     artifacts: [
       {
-        sourcePath: "gemma-3-27b-it-Q4_K_M.gguf",
-        filename: "gemma-3-27b-it-Q4_K_M.gguf",
+        sourcePath: "google_gemma-3-27b-it-Q4_K_M.gguf",
+        filename: "google_gemma-3-27b-it-Q4_K_M.gguf",
+        expectedSizeBytes: 16546404992,
+        sha256:
+          "4e83142e3ad3719ac61334f70a956dcc60bbba8adb29de5114161310bb9f7170",
         role: "primary",
       },
     ],
@@ -641,11 +687,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 11,
     storageGb: 9,
     source: "https://huggingface.co/bartowski/phi-4-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "19cd65f97c2f1712a81c506611d3f9c94b16a1e1",
     artifacts: [
       {
         sourcePath: "phi-4-Q4_K_M.gguf",
         filename: "phi-4-Q4_K_M.gguf",
+        expectedSizeBytes: 9053114816,
+        sha256:
+          "009aba717c09d4a35890c7d35eb59d54e1dba884c7c526e7197d9c13ab5911d9",
         role: "primary",
       },
     ],
@@ -668,11 +717,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 3,
     storageGb: 2.2,
     source: "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "6d70da17e749a471ccb62ade694486011a75cda3",
     artifacts: [
       {
         sourcePath: "Phi-3.5-mini-instruct-Q4_K_M.gguf",
         filename: "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+        expectedSizeBytes: 2393232672,
+        sha256:
+          "e4165e3a71af97f1b4820da61079826d8752a2088e313af0c7d346796c38eff5",
         role: "primary",
       },
     ],
@@ -695,11 +747,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 28,
     storageGb: 23.0,
     source: "https://huggingface.co/bartowski/Phi-3.5-MoE-instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "4b580329100cf44d7d041b6f63967b26869a6937",
     artifacts: [
       {
         sourcePath: "Phi-3.5-MoE-instruct-Q4_K_M.gguf",
         filename: "Phi-3.5-MoE-instruct-Q4_K_M.gguf",
+        expectedSizeBytes: 25345994592,
+        sha256:
+          "43e91bb720869bd8a92d8eb86bc3c74a52c49cf61642ca709b3d7bb89644df36",
         role: "primary",
       },
     ],
@@ -723,11 +778,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 16,
     storageGb: 14.0,
     source: "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
     artifacts: [
       {
         sourcePath: "openai_gpt-oss-20b-Q4_K_M.gguf",
         filename: "openai_gpt-oss-20b-Q4_K_M.gguf",
+        expectedSizeBytes: 11673418816,
+        sha256:
+          "86a21df11afa5a40031ec1974e368ae0ab561ee3995f4d08ff432e8b2b7af9fc",
         role: "primary",
       },
     ],
@@ -750,11 +808,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 9,
     storageGb: 7,
     source: "https://huggingface.co/bartowski/Falcon3-10B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "a826d55e0af24842680260d23f7221b6138c342a",
     artifacts: [
       {
         sourcePath: "Falcon3-10B-Instruct-Q4_K_M.gguf",
         filename: "Falcon3-10B-Instruct-Q4_K_M.gguf",
+        expectedSizeBytes: 6287521472,
+        sha256:
+          "0a33327bd71e1788a8e9f17889824a17a65efd3f96a4b2a5e2bc6ff2f39b8241",
         role: "primary",
       },
     ],
@@ -778,11 +839,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     storageGb: 20.3,
     source:
       "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "1dc8cf9ffa5dd333057ea1b09ccf4772d8726dec",
     artifacts: [
       {
         sourcePath: "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
         filename: "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+        expectedSizeBytes: 19851335840,
+        sha256:
+          "bed9b0f551f5b95bf9da5888a48f0f87c37ad6b72519c4cbd775f54ac0b9fc62",
         role: "primary",
       },
     ],
@@ -807,11 +871,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     storageGb: 4.7,
     source:
       "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "935d400c2ed1a29cc2a1045df25ec7998fb4dfe4",
     artifacts: [
       {
         sourcePath: "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
         filename: "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+        expectedSizeBytes: 4920736608,
+        sha256:
+          "87bcba20b4846d8dadf753d3ff48f9285d131fc95e3e0e7e934d4f20bc896f5d",
         role: "primary",
       },
     ],
@@ -836,11 +903,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     storageGb: 42.0,
     source:
       "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "1842c5f7280f933ead58adf8afd078672c9f6cd0",
     artifacts: [
       {
         sourcePath: "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
         filename: "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+        expectedSizeBytes: 42520395936,
+        sha256:
+          "181a82a1d6d2fa24fe4db83a68eee030384986bdbdd4773ba76424e3a6eb9fd8",
         role: "primary",
       },
     ],
@@ -864,11 +934,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 42,
     storageGb: 47.0,
     source: "https://huggingface.co/bartowski/Qwen2.5-72B-Instruct-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "d43fd973131bce821f41e2df3c78c6fe15c5627a",
     artifacts: [
       {
         sourcePath: "Qwen2.5-72B-Instruct-Q4_K_M.gguf",
         filename: "Qwen2.5-72B-Instruct-Q4_K_M.gguf",
+        expectedSizeBytes: 47415715488,
+        sha256:
+          "e4c8fad16946be8cf0bbf67eb8f4e18fc7415a5a6d2854b4cda453edb4082545",
         role: "primary",
       },
     ],
@@ -892,11 +965,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 18,
     storageGb: 14.0,
     source: "https://huggingface.co/bartowski/Codestral-22B-v0.1-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "0e6abe14d6aeaf2c99d5dc9973205e8e38692d90",
     artifacts: [
       {
         sourcePath: "Codestral-22B-v0.1-Q4_K_M.gguf",
         filename: "Codestral-22B-v0.1-Q4_K_M.gguf",
+        expectedSizeBytes: 13341237600,
+        sha256:
+          "003e48ed892850b80994fcddca2bd6b833b092a4ef2db2853c33a3144245e06c",
         role: "primary",
       },
     ],
@@ -919,11 +995,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 10,
     storageGb: 7.5,
     source: "https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF",
-    repositoryRevision: "main",
+    repositoryRevision: "a2dd64a0a76ea1bdb2bb6ab6fa5496b003c7c908",
     artifacts: [
       {
         sourcePath: "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
         filename: "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+        expectedSizeBytes: 7477208192,
+        sha256:
+          "7c1a10d202d8788dbe5628dc962254d10654c853cae6aaeca0618f05490d4a46",
         role: "primary",
       },
     ],
@@ -945,11 +1024,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 4,
     storageGb: 1.7,
     source: "https://huggingface.co/ggerganov/whisper.cpp",
-    repositoryRevision: "main",
+    repositoryRevision: "5359861c739e955e79d9a303bcbc70fb988958b1",
     artifacts: [
       {
         sourcePath: "ggml-large-v3-turbo.bin",
         filename: "ggml-large-v3-turbo.bin",
+        expectedSizeBytes: 1624555275,
+        sha256:
+          "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
         role: "primary",
       },
     ],
@@ -971,11 +1053,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 0,
     storageGb: 0.08,
     source: "https://huggingface.co/ggerganov/whisper.cpp",
-    repositoryRevision: "main",
+    repositoryRevision: "5359861c739e955e79d9a303bcbc70fb988958b1",
     artifacts: [
       {
         sourcePath: "ggml-tiny.en-q8_0.bin",
         filename: "ggml-tiny.en-q8_0.bin",
+        expectedSizeBytes: 43550795,
+        sha256:
+          "5bc2b3860aa151a4c6e7bb095e1fcce7cf12c7b020ca08dcec0c6d018bb7dd94",
         role: "primary",
       },
     ],
@@ -997,11 +1082,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 0,
     storageGb: 0.15,
     source: "https://huggingface.co/ggerganov/whisper.cpp",
-    repositoryRevision: "main",
+    repositoryRevision: "5359861c739e955e79d9a303bcbc70fb988958b1",
     artifacts: [
       {
         sourcePath: "ggml-base-q8_0.bin",
         filename: "ggml-base-q8_0.bin",
+        expectedSizeBytes: 81768585,
+        sha256:
+          "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9",
         role: "primary",
       },
     ],
@@ -1024,11 +1112,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     storageGb: 4.27,
     source:
       "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
-    repositoryRevision: "main",
+    repositoryRevision: "451f4fe16113bff5a5d2269ed5ad43b0592e9a14",
     artifacts: [
       {
         sourcePath: "v1-5-pruned-emaonly.safetensors",
         filename: "v1-5-pruned-emaonly.safetensors",
+        expectedSizeBytes: 4265146304,
+        sha256:
+          "6ce0161689b3853acaa03779ec93eafe75a02f4ced659bee03f50797806fa2fa",
         role: "primary",
       },
     ],
@@ -1051,11 +1142,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 4,
     storageGb: 1.98,
     source: "https://huggingface.co/Lykon/DreamShaper",
-    repositoryRevision: "main",
+    repositoryRevision: "228d79cb20811466f5c5710aa91f05dabd0b8a14",
     artifacts: [
       {
         sourcePath: "DreamShaper_8_pruned.safetensors",
         filename: "DreamShaper_8_pruned.safetensors",
+        expectedSizeBytes: 2132625894,
+        sha256:
+          "879db523c30d3b9017143d56705015e15a2cb5628762c11d086fed9538abd7fd",
         role: "primary",
       },
     ],
@@ -1078,11 +1172,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 8,
     storageGb: 13.9,
     source: "https://huggingface.co/stabilityai/sdxl-turbo",
-    repositoryRevision: "main",
+    repositoryRevision: "71153311d3dbb46851df1931d3ca6e939de83304",
     artifacts: [
       {
         sourcePath: "sd_xl_turbo_1.0_fp16.safetensors",
         filename: "sd_xl_turbo_1.0_fp16.safetensors",
+        expectedSizeBytes: 6938081905,
+        sha256:
+          "e869ac7d6942cb327d68d5ed83a40447aadf20e0c3358d98b2cc9e270db0da26",
         role: "primary",
       },
     ],
@@ -1105,11 +1202,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 12,
     storageGb: 6.46,
     source: "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
-    repositoryRevision: "main",
+    repositoryRevision: "462165984030d82259a11f4367a4eed129e94a7b",
     artifacts: [
       {
         sourcePath: "sd_xl_base_1.0.safetensors",
         filename: "sd_xl_base_1.0.safetensors",
+        expectedSizeBytes: 6938078334,
+        sha256:
+          "31e35c80fc4829d14f90153f4c74cd59c90b779f6afe05a74cd6120b893f7e5b",
         role: "primary",
       },
     ],
@@ -1132,11 +1232,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 12,
     storageGb: 6.61,
     source: "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
-    repositoryRevision: "main",
+    repositoryRevision: "cf419233522daa0b9ea36c3aff98fa2cab1fb0fb",
     artifacts: [
       {
         sourcePath: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
         filename: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+        expectedSizeBytes: 7105348188,
+        sha256:
+          "c9e3e68f89b8e38689e1097d4be4573cf308de4e3fd044c64ca697bdb4aa8bca",
         role: "primary",
       },
     ],
@@ -1159,11 +1262,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 12,
     storageGb: 6.46,
     source: "https://huggingface.co/cagliostrolab/animagine-xl-3.1",
-    repositoryRevision: "main",
+    repositoryRevision: "483f0c322568ed13697ed01dd0be07204746d12b",
     artifacts: [
       {
         sourcePath: "animagine-xl-3.1.safetensors",
         filename: "animagine-xl-3.1.safetensors",
+        expectedSizeBytes: 6938325776,
+        sha256:
+          "e3c47aedb06418c6c331443cd89f2b3b3b34b7ed2102a3d4c4408a8d35aad6b0",
         role: "primary",
       },
     ],
@@ -1186,11 +1292,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     minVramGb: 12,
     storageGb: 6.46,
     source: "https://huggingface.co/SG161222/RealVisXL_V4.0",
-    repositoryRevision: "main",
+    repositoryRevision: "26dfe44930964cd70d0a817b6d1cc945c130e38d",
     artifacts: [
       {
         sourcePath: "RealVisXL_V4.0.safetensors",
         filename: "RealVisXL_V4.0.safetensors",
+        expectedSizeBytes: 6938040706,
+        sha256:
+          "912c9dc74f5855175c31a7993f863a043ac8dcc31732b324cd05d75cd7e16844",
         role: "primary",
       },
     ],

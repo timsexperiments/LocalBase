@@ -27,9 +27,70 @@ import {
 } from "../../../utils/prompt";
 import { loadTomlOverrides } from "../../../utils/toml";
 import { parseParallelSlots } from "../parallel";
+import { z } from "zod";
 
 export const PARALLEL_SLOTS_PROMPT =
   "Parallel request slots count (type 'auto' for dynamic auto-allocation, or an integer like 1, 2, 4)";
+
+const continueConfigSchema = z
+  .object({
+    models: z.array(z.unknown()).optional(),
+    tabAutocompleteModel: z.unknown().optional(),
+    embeddingsProvider: z.unknown().optional(),
+  })
+  .passthrough();
+
+type ConfigureFlags = {
+  all: boolean;
+  defaults: boolean;
+  configPath?: string;
+  root?: string;
+  host?: string;
+  port?: string;
+  ctxSize?: string;
+  parallel?: string;
+  sttHost?: string;
+  sttPort?: string;
+  startupOnBoot?: string;
+  llmModels?: string;
+  sttModels?: string;
+  imageModels?: string;
+  activeLlm?: string;
+  activeStt?: string;
+  activeImage?: string;
+  hfToken?: string;
+  createKey?: string;
+};
+
+function parseConfigureFlags(args: string[]): ConfigureFlags {
+  return {
+    all: args.includes("--all"),
+    defaults: args.includes("--defaults"),
+    configPath: parseFlag(args, "--config"),
+    root: parseFlag(args, "--root"),
+    host: parseFlag(args, "--host"),
+    port: parseFlag(args, "--port"),
+    ctxSize: parseFlag(args, "--ctx-size"),
+    parallel: parseFlag(args, "--parallel"),
+    sttHost: parseFlag(args, "--stt-host"),
+    sttPort: parseFlag(args, "--stt-port"),
+    startupOnBoot: parseFlag(args, "--startup-on-boot"),
+    llmModels: parseFlag(args, "--llm-models"),
+    sttModels: parseFlag(args, "--stt-models"),
+    imageModels: parseFlag(args, "--image-models"),
+    activeLlm: parseFlag(args, "--active-llm"),
+    activeStt: parseFlag(args, "--active-stt"),
+    activeImage: parseFlag(args, "--active-image"),
+    hfToken: parseFlag(args, "--hf-token"),
+    createKey: parseFlag(args, "--create-key"),
+  };
+}
+
+function continueField(value: unknown, field: string): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const candidate = (value as Record<string, unknown>)[field];
+  return typeof candidate === "string" ? candidate : "";
+}
 
 function warnAboutParallelOomRisk(
   parallel: LocalBaseConfig["parallel"],
@@ -186,6 +247,7 @@ async function interactiveConfigureSelective(
         await multiSelectPrompt(
           "Select LLM models",
           llmChoices(config.selectedLlmModels, vramGb),
+          true,
         ),
         "llm",
       ) ?? config.selectedLlmModels;
@@ -246,6 +308,7 @@ async function interactiveConfigureSelective(
         await multiSelectPrompt(
           "Select STT models (select none to disable)",
           sttChoices(config.selectedSttModels, vramGb),
+          false,
         ),
         "stt",
       ) ?? config.selectedSttModels;
@@ -278,6 +341,7 @@ async function interactiveConfigureSelective(
         await multiSelectPrompt(
           "Select Image models (select none to disable)",
           imageChoices(config.selectedImageModels, vramGb),
+          false,
         ),
         "image",
       ) ?? config.selectedImageModels;
@@ -289,7 +353,9 @@ async function interactiveConfigureSelective(
         name: id,
         value: id,
       }));
-      const fallback = options.includes(config.activeImageModel as any)
+      const fallback = options.some(
+        (option) => option.value === config.activeImageModel,
+      )
         ? config.activeImageModel
         : options[0].value;
       config.activeImageModel = await singleSelectPrompt(
@@ -335,26 +401,22 @@ export async function syncContinueConfig(
     const text = await raw.text();
     const cleaned = text.replace(
       /("([^"\\]|\\.)*")|(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g,
-      (m, g1) => {
+      (_match, g1) => {
         if (g1) return g1;
         return "";
       },
     );
-    const data = JSON.parse(cleaned);
-
-    if (!Array.isArray(data.models)) {
-      data.models = [];
-    }
+    const data = continueConfigSchema.parse(JSON.parse(cleaned));
+    const models = data.models ?? [];
 
     const host = config.host === "0.0.0.0" ? "localhost" : config.host;
     const wrapperPort = 2273;
     const apiKey = process.env.LOCALBASE_API_KEY || "";
 
     // Filter out existing LocalBase model entries to avoid duplicates
-    data.models = data.models.filter((m: any) => {
-      if (!m || typeof m !== "object") return true;
-      const title = String(m.title || "").toLowerCase();
-      const apiBase = String(m.apiBase || "").toLowerCase();
+    data.models = models.filter((model) => {
+      const title = continueField(model, "title").toLowerCase();
+      const apiBase = continueField(model, "apiBase").toLowerCase();
       return (
         !title.includes("localbase") &&
         !apiBase.includes(":2273/v1") &&
@@ -400,11 +462,13 @@ export async function syncContinueConfig(
     }
 
     // Configure tab autocomplete if not set or if pointing to LocalBase
-    const currentTabTitle = String(
-      data.tabAutocompleteModel?.title || "",
+    const currentTabTitle = continueField(
+      data.tabAutocompleteModel,
+      "title",
     ).toLowerCase();
-    const currentTabBase = String(
-      data.tabAutocompleteModel?.apiBase || "",
+    const currentTabBase = continueField(
+      data.tabAutocompleteModel,
+      "apiBase",
     ).toLowerCase();
     if (
       !data.tabAutocompleteModel ||
@@ -423,11 +487,13 @@ export async function syncContinueConfig(
     }
 
     // Configure embeddings provider if not set or if pointing to LocalBase
-    const currentEmbeddingsProvider = String(
-      data.embeddingsProvider?.provider || "",
+    const currentEmbeddingsProvider = continueField(
+      data.embeddingsProvider,
+      "provider",
     ).toLowerCase();
-    const currentEmbeddingsBase = String(
-      data.embeddingsProvider?.apiBase || "",
+    const currentEmbeddingsBase = continueField(
+      data.embeddingsProvider,
+      "apiBase",
     ).toLowerCase();
     if (
       !data.embeddingsProvider ||
@@ -461,30 +527,26 @@ export async function runConfigure(
   ctx: AppContext,
 ): Promise<number> {
   const specs = ctx.specs;
-  const configPath = parseFlag(args, "--config");
-  const rawToml = configPath ? await loadTomlOverrides(configPath) : {};
-  const root = parseFlag(args, "--root") ?? rawToml.root;
+  const flags = parseConfigureFlags(args);
+  const rawToml = flags.configPath
+    ? await loadTomlOverrides(flags.configPath)
+    : {};
+  const root = flags.root ?? rawToml.root;
   const hasConfig = await Bun.file(
     root ? `${root}/local-base.db` : `${defaultRoot()}/local-base.db`,
   ).exists();
 
   let config = root ? loadConfig(root, specs.gpuVramGb) : ctx.config;
-  const llmFromFlags = validateModelList(
-    parseList(parseFlag(args, "--llm-models")),
-    "llm",
-  );
-  const sttFromFlags = validateModelList(
-    parseList(parseFlag(args, "--stt-models")),
-    "stt",
-  );
+  const llmFromFlags = validateModelList(parseList(flags.llmModels), "llm");
+  const sttFromFlags = validateModelList(parseList(flags.sttModels), "stt");
   const imageFromFlags = validateModelList(
-    parseList(parseFlag(args, "--image-models")),
+    parseList(flags.imageModels),
     "image",
   );
   const llmFromToml = validateModelList(rawToml.selectedLlmModels, "llm");
   const sttFromToml = validateModelList(rawToml.selectedSttModels, "stt");
   const imageFromToml = validateModelList(rawToml.selectedImageModels, "image");
-  const parallelFromFlag = parseFlag(args, "--parallel");
+  const parallelFromFlag = flags.parallel;
   const parallelInput = parallelFromFlag ?? rawToml.parallel;
   const parallel =
     parallelInput === undefined
@@ -496,51 +558,33 @@ export async function runConfigure(
     if (value !== undefined) locked.add(key);
   };
 
-  maybeLock("root", parseFlag(args, "--root") ?? rawToml.root);
-  maybeLock("host", parseFlag(args, "--host") ?? rawToml.host);
-  maybeLock("port", parseFlag(args, "--port") ?? rawToml.port);
-  maybeLock("ctxSize", parseFlag(args, "--ctx-size") ?? rawToml.ctxSize);
+  maybeLock("root", flags.root ?? rawToml.root);
+  maybeLock("host", flags.host ?? rawToml.host);
+  maybeLock("port", flags.port ?? rawToml.port);
+  maybeLock("ctxSize", flags.ctxSize ?? rawToml.ctxSize);
   maybeLock("parallel", parallelInput);
-  maybeLock("sttHost", parseFlag(args, "--stt-host") ?? rawToml.sttHost);
-  maybeLock("sttPort", parseFlag(args, "--stt-port") ?? rawToml.sttPort);
-  maybeLock(
-    "startupOnBoot",
-    parseFlag(args, "--startup-on-boot") ?? rawToml.startupOnBoot,
-  );
+  maybeLock("sttHost", flags.sttHost ?? rawToml.sttHost);
+  maybeLock("sttPort", flags.sttPort ?? rawToml.sttPort);
+  maybeLock("startupOnBoot", flags.startupOnBoot ?? rawToml.startupOnBoot);
   maybeLock("selectedLlmModels", llmFromFlags ?? llmFromToml);
   maybeLock("selectedSttModels", sttFromFlags ?? sttFromToml);
   maybeLock("selectedImageModels", imageFromFlags ?? imageFromToml);
-  maybeLock(
-    "activeLlmModel",
-    parseFlag(args, "--active-llm") ?? rawToml.activeLlmModel,
-  );
-  maybeLock(
-    "activeSttModel",
-    parseFlag(args, "--active-stt") ?? rawToml.activeSttModel,
-  );
-  maybeLock(
-    "activeImageModel",
-    parseFlag(args, "--active-image") ?? rawToml.activeImageModel,
-  );
-  maybeLock("hfToken", parseFlag(args, "--hf-token") ?? rawToml.hfToken);
+  maybeLock("activeLlmModel", flags.activeLlm ?? rawToml.activeLlmModel);
+  maybeLock("activeSttModel", flags.activeStt ?? rawToml.activeSttModel);
+  maybeLock("activeImageModel", flags.activeImage ?? rawToml.activeImageModel);
+  maybeLock("hfToken", flags.hfToken ?? rawToml.hfToken);
 
   config = {
     ...config,
-    root: parseFlag(args, "--root") ?? rawToml.root ?? config.root,
-    host: parseFlag(args, "--host") ?? rawToml.host ?? config.host,
-    port: toInt(parseFlag(args, "--port"), rawToml.port ?? config.port),
-    ctxSize: toInt(
-      parseFlag(args, "--ctx-size"),
-      rawToml.ctxSize ?? config.ctxSize,
-    ),
+    root: flags.root ?? rawToml.root ?? config.root,
+    host: flags.host ?? rawToml.host ?? config.host,
+    port: toInt(flags.port, rawToml.port ?? config.port),
+    ctxSize: toInt(flags.ctxSize, rawToml.ctxSize ?? config.ctxSize),
     parallel,
-    sttHost: parseFlag(args, "--stt-host") ?? rawToml.sttHost ?? config.sttHost,
-    sttPort: toInt(
-      parseFlag(args, "--stt-port"),
-      rawToml.sttPort ?? config.sttPort,
-    ),
+    sttHost: flags.sttHost ?? rawToml.sttHost ?? config.sttHost,
+    sttPort: toInt(flags.sttPort, rawToml.sttPort ?? config.sttPort),
     startupOnBoot: parseBool(
-      parseFlag(args, "--startup-on-boot"),
+      flags.startupOnBoot,
       rawToml.startupOnBoot ?? config.startupOnBoot,
     ),
     selectedLlmModels: llmFromFlags ?? llmFromToml ?? config.selectedLlmModels,
@@ -548,19 +592,13 @@ export async function runConfigure(
     selectedImageModels:
       imageFromFlags ?? imageFromToml ?? config.selectedImageModels,
     activeLlmModel:
-      parseFlag(args, "--active-llm") ??
-      rawToml.activeLlmModel ??
-      config.activeLlmModel,
+      flags.activeLlm ?? rawToml.activeLlmModel ?? config.activeLlmModel,
     activeSttModel:
-      parseFlag(args, "--active-stt") ??
-      rawToml.activeSttModel ??
-      config.activeSttModel,
+      flags.activeStt ?? rawToml.activeSttModel ?? config.activeSttModel,
     activeImageModel:
-      parseFlag(args, "--active-image") ??
-      rawToml.activeImageModel ??
-      config.activeImageModel,
+      flags.activeImage ?? rawToml.activeImageModel ?? config.activeImageModel,
     hfToken:
-      parseFlag(args, "--hf-token") ??
+      flags.hfToken ??
       rawToml.hfToken ??
       config.hfToken ??
       process.env.HF_TOKEN ??
@@ -572,13 +610,12 @@ export async function runConfigure(
   config.imageModelsDir = `${config.root}/models/image`;
 
   const explicitMode =
-    args.includes("--all") ||
-    args.includes("--defaults") ||
-    args.includes("--config") ||
+    flags.all ||
+    flags.defaults ||
+    flags.configPath !== undefined ||
     locked.size > 0;
   const shouldAsk =
-    args.includes("--all") ||
-    (!args.includes("--defaults") && (!hasConfig || !explicitMode));
+    flags.all || (!flags.defaults && (!hasConfig || !explicitMode));
   if (shouldAsk)
     config = await interactiveConfigureSelective(
       config,
@@ -610,7 +647,7 @@ export async function runConfigure(
   );
 
   const hasAnyKeys = loadApiKeys(config).some((k) => !k.revokedAt);
-  const createKeyFlag = parseFlag(args, "--create-key");
+  const createKeyFlag = flags.createKey;
   let createFirstKey = parseBool(createKeyFlag, true);
   if (createKeyFlag === undefined && shouldAsk && !hasAnyKeys) {
     createFirstKey = await confirmPrompt(

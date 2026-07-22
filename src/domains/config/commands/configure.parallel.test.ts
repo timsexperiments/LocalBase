@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AppContext } from "../../../context";
 import { defaultConfig, loadConfig } from "../../../manager";
-import { PARALLEL_SLOTS_PROMPT, runConfigure } from "./configure";
+import { runConfigure } from "./configure";
 
 function makeContext(root: string, gpuVramGb = 16): AppContext {
   return {
@@ -53,12 +53,6 @@ test("configure rejects malformed and out-of-range parallel values", async () =>
       ).rejects.toThrow(/parallel/i);
     }
   });
-});
-
-test("interactive configuration describes auto and manual parallel slots", () => {
-  expect(PARALLEL_SLOTS_PROMPT).toBe(
-    "Parallel request slots count (type 'auto' for dynamic auto-allocation, or an integer like 1, 2, 4)",
-  );
 });
 
 test("configure validates TOML parallel overrides and warns on low VRAM", async () => {

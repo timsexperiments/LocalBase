@@ -1,3 +1,15 @@
+import { z } from "zod";
+
+type LogExtra = Record<string, unknown>;
+
+const childLogEventSchema = z
+  .object({
+    timestamp: z.string().optional(),
+    level: z.string().optional(),
+    message: z.string().optional(),
+  })
+  .passthrough();
+
 /**
  * Standard interface for LocalBase logging engines.
  */
@@ -77,7 +89,7 @@ export class ConsoleLogger implements ILogger {
             }
           }
         }
-      } catch (err) {
+      } catch {
         // Stream closed or completed
       }
     };
@@ -93,7 +105,7 @@ export class JsonLogger implements ILogger {
     level: string,
     prefix: string,
     message: string,
-    extra?: Record<string, any>,
+    extra?: LogExtra,
   ): void {
     console.log(
       JSON.stringify({
@@ -156,11 +168,13 @@ export class JsonLogger implements ILogger {
           buffer = lines.pop() ?? "";
           for (const line of lines) {
             if (line.trim()) {
-              let parsed: any = null;
+              let parsed: z.infer<typeof childLogEventSchema> | undefined;
               try {
-                parsed = JSON.parse(line);
-              } catch (e) {
-                // Not standard JSON
+                const candidate: unknown = JSON.parse(line);
+                const result = childLogEventSchema.safeParse(candidate);
+                parsed = result.success ? result.data : undefined;
+              } catch {
+                // Plain-text child output is logged below.
               }
               if (parsed) {
                 // Merge structured logs from backend process directly
@@ -179,7 +193,7 @@ export class JsonLogger implements ILogger {
             }
           }
         }
-      } catch (err) {
+      } catch {
         // Stream closed or completed
       }
     };

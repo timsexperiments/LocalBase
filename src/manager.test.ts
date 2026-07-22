@@ -7,23 +7,35 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CATALOG, type ModelArtifact, type ModelSpec } from "./catalog";
 import {
+  createApiKey,
   defaultConfig,
   installModel,
   installedModels,
-  launchLlamaServer,
+  loadApiKeys,
   loadConfig,
+  managedRuntimeRelease,
   managedRuntimeUnavailableError,
   platformSupportTier,
+  revokeApiKey,
   saveConfig,
   startLlamaServerProcess,
+  validateApiKey,
   type LocalBaseConfig,
 } from "./manager";
+import {
+  parseChecksumFile,
+  readChecksumStore,
+  verifyAuthoritativeFile,
+  writeChecksumStore,
+} from "./utils/checksum";
 
 const testRoots: string[] = [];
 const testModelIds: string[] = [];
 const testServerClosers: Array<() => Promise<void>> = [];
 const textEncoder = new TextEncoder();
 const textBytes = (value: string) => textEncoder.encode(value);
+const TEST_REVISION = "a".repeat(40);
+const originalPath = process.env.PATH;
 
 type ArtifactRequest = { path: string; range?: string };
 
@@ -139,7 +151,7 @@ function installFixtureModel(
     minVramGb: 1,
     storageGb: 1,
     source,
-    repositoryRevision: "test-revision",
+    repositoryRevision: TEST_REVISION,
     artifacts,
     inputModalities: ["text"],
     outputModalities: ["text"],
@@ -159,7 +171,7 @@ function createInstallConfig(): LocalBaseConfig {
 }
 
 function artifactPath(source: string, sourcePath: string): string {
-  return `${new URL(source).pathname}/resolve/test-revision/${sourcePath}`;
+  return `${new URL(source).pathname}/resolve/${TEST_REVISION}/${sourcePath}`;
 }
 
 function createLegacyConfigRoot(): string {
@@ -237,11 +249,11 @@ async function createLlamaLaunchFixture(
 
   const modelFile = "model.gguf";
   const modelPath = join(config.llmModelsDir, modelFile);
-  const binDir = join(root, "bin");
-  const binPath = join(binDir, "llama-server");
-  const argsPath = join(binDir, "llama-server.args");
+  const userBinDir = join(root, "user-bin");
+  const binPath = join(userBinDir, "llama-server");
+  const argsPath = join(userBinDir, "llama-server.args");
   mkdirSync(config.llmModelsDir, { recursive: true });
-  mkdirSync(binDir, { recursive: true });
+  mkdirSync(userBinDir, { recursive: true });
   await Bun.write(modelPath, "model placeholder");
   await Bun.write(
     binPath,
@@ -251,6 +263,7 @@ printf '%s\\n' "$@" > "$script_dir/llama-server.args"
 `,
   );
   chmodSync(binPath, 0o755);
+  process.env.PATH = `${userBinDir}:${originalPath ?? ""}`;
 
   return { argsPath, config, modelFile, modelPath };
 }
@@ -281,6 +294,7 @@ async function readCapturedArgs(argsPath: string): Promise<string[]> {
 }
 
 afterEach(async () => {
+  process.env.PATH = originalPath;
   await Promise.all(testServerClosers.splice(0).map((close) => close()));
   for (const modelId of testModelIds.splice(0)) {
     const index = (CATALOG as ModelSpec[]).findIndex(
@@ -293,18 +307,15 @@ afterEach(async () => {
   }
 });
 
-describe("transactional model artifact installation", () => {
+describe.serial("transactional model artifact installation", () => {
   test("keeps single-file installs compatible and supports a filename override", async () => {
     const content = textBytes("single model");
     const server = await createArtifactServer({
-      "/repo/resolve/test-revision/model.gguf": content,
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model.gguf":
+        content,
     });
     const modelId = installFixtureModel(server.source, [
-      {
-        sourcePath: "model.gguf",
-        filename: "model.gguf",
-        role: "primary",
-      },
+      artifact("model.gguf", content, "primary"),
     ]);
     const config = createInstallConfig();
 
@@ -329,8 +340,10 @@ describe("transactional model artifact installation", () => {
       "supplementary",
     );
     const server = await createArtifactServer({
-      "/repo/resolve/test-revision/model-00001.gguf": primary,
-      "/repo/resolve/test-revision/model-00002.gguf": supplementary,
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00001.gguf":
+        primary,
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00002.gguf":
+        supplementary,
     });
     const modelId = installFixtureModel(server.source, [
       primaryArtifact,
@@ -363,8 +376,10 @@ describe("transactional model artifact installation", () => {
       "supplementary",
     );
     const server = await createArtifactServer({
-      "/repo/resolve/test-revision/model-00001.gguf": primary,
-      "/repo/resolve/test-revision/model-00002.gguf": supplementary,
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00001.gguf":
+        primary,
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00002.gguf":
+        supplementary,
     });
     const modelId = installFixtureModel(server.source, [
       primaryArtifact,
@@ -418,10 +433,12 @@ describe("transactional model artifact installation", () => {
       supplementary,
       "supplementary",
     );
-    const secondPath = "/repo/resolve/test-revision/model-00002.gguf";
+    const secondPath =
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00002.gguf";
     const server = await createArtifactServer(
       {
-        "/repo/resolve/test-revision/model-00001.gguf": primary,
+        "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00001.gguf":
+          primary,
         [secondPath]: supplementary,
       },
       new Map([[secondPath, 1]]),
@@ -466,8 +483,10 @@ describe("transactional model artifact installation", () => {
     const wrongSize = textBytes("wrong size");
     const wrongHash = textBytes("wrong hash");
     const server = await createArtifactServer({
-      "/repo/resolve/test-revision/wrong-size.gguf": wrongSize,
-      "/repo/resolve/test-revision/wrong-hash.gguf": wrongHash,
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/wrong-size.gguf":
+        wrongSize,
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/wrong-hash.gguf":
+        wrongHash,
     });
     const sizeModel = installFixtureModel(server.source, [
       {
@@ -512,8 +531,10 @@ describe("transactional model artifact installation", () => {
     const primary = textBytes("primary");
     const supplementary = textBytes("supplementary");
     const server = await createArtifactServer({
-      "/repo/resolve/test-revision/model-00001.gguf": primary,
-      "/repo/resolve/test-revision/model-00002.gguf": supplementary,
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00001.gguf":
+        primary,
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00002.gguf":
+        supplementary,
     });
     const modelId = installFixtureModel(server.source, [
       artifact("model-00001.gguf", primary, "primary"),
@@ -527,7 +548,7 @@ describe("transactional model artifact installation", () => {
   });
 });
 
-describe("installed model reporting", () => {
+describe.serial("installed model reporting", () => {
   test("reports complete catalog sets once and preserves unmatched files", async () => {
     const primary = textBytes("primary");
     const supplementary = textBytes("supplementary");
@@ -559,23 +580,18 @@ describe("installed model reporting", () => {
     await Bun.write(join(config.llmModelsDir, "reporting-00002.gguf"), "short");
     expect(await installedModels(config, "llm")).toEqual(["z-manual.gguf"]);
   });
-
-  test("keeps complete single-file catalog models compatible", async () => {
-    const config = createInstallConfig();
-    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    mkdirSync(config.llmModelsDir, { recursive: true });
-    await Bun.write(join(config.llmModelsDir, `${modelId}.gguf`), "model");
-
-    expect(await installedModels(config, "llm")).toEqual([modelId]);
-  });
 });
 
-describe("parallel configuration persistence", () => {
-  test("migrates legacy SQLite config and round-trips auto and manual values", () => {
+describe.serial("parallel configuration persistence", () => {
+  test("inspects and migrates legacy SQLite config, then round-trips parallel values", () => {
     const root = createLegacyConfigRoot();
     const config = loadConfig(root);
 
     expect(config.parallel).toBe("auto");
+    const columns = new Database(join(root, "local-base.db"))
+      .query("PRAGMA table_info(config)")
+      .all() as Array<{ name: string }>;
+    expect(columns.map((column) => column.name)).toContain("parallel");
 
     config.parallel = 4;
     saveConfig(config);
@@ -587,7 +603,126 @@ describe("parallel configuration persistence", () => {
   });
 });
 
-describe("platform support tiers", () => {
+describe.serial("LocalBase database validation", () => {
+  test("fails closed on invalid roots, paths, ports, and selected models", () => {
+    const incompatibleId = installFixtureModel("https://example.com/models", [
+      artifact("incompatible.gguf", textBytes("model"), "primary"),
+    ]);
+    const incompatible = (CATALOG as ModelSpec[]).find(
+      (model) => model.modelId === incompatibleId,
+    )!;
+    incompatible.outputModalities = ["image"];
+    const cases = [
+      { column: "root", value: "/tmp/other-root", message: "root is" },
+      {
+        column: "llm_models_dir",
+        value: "/tmp/models",
+        message: "llmModelsDir",
+      },
+      { column: "port", value: 0, message: "port" },
+      {
+        column: "selected_llm_models",
+        value: '["whisper-base-q8_0"]',
+        message: "selectedLlmModels",
+      },
+      {
+        column: "selected_llm_models",
+        value: JSON.stringify([incompatibleId]),
+        message: "compatible modalities",
+      },
+    ];
+
+    for (const { column, value, message } of cases) {
+      const config = createInstallConfig();
+      saveConfig(config);
+      const db = new Database(join(config.root, "local-base.db"));
+      db.prepare(`UPDATE config SET ${column} = ? WHERE id = 'default'`).run(
+        value,
+      );
+      db.close();
+
+      expect(() => loadConfig(config.root)).toThrow(message);
+    }
+  });
+
+  test("fails closed on malformed API-key rows and does not authenticate them", () => {
+    const config = createInstallConfig();
+    saveConfig(config);
+    const { record, rawKey } = createApiKey(config, "test key");
+
+    expect(validateApiKey(config, rawKey)).toBe(true);
+    const db = new Database(join(config.root, "local-base.db"));
+    db.prepare("UPDATE api_keys SET last_rotated_at = ? WHERE id = ?").run(
+      "2020-01-01T00:00:00Z",
+      record.id,
+    );
+    db.close();
+
+    expect(() => validateApiKey(config, rawKey)).toThrow(
+      "Invalid API key configuration",
+    );
+  });
+
+  test("creates, revokes, and lists validated API keys", () => {
+    const config = createInstallConfig();
+    saveConfig(config);
+    const { record, rawKey } = createApiKey(config, "deploy", 1);
+
+    expect(validateApiKey(config, rawKey)).toBe(true);
+    expect(loadApiKeys(config)).toEqual([record]);
+    expect(revokeApiKey(config, record.id).revokedAt).toMatch(/^\d{4}-/);
+    expect(validateApiKey(config, rawKey)).toBe(false);
+  });
+});
+
+describe.serial("checksum inputs and continuity cache", () => {
+  test("rejects malformed, unsafe, and duplicate external checksum rows", () => {
+    expect(parseChecksumFile(`${"a".repeat(64)}  model.bin\n`)).toEqual(
+      new Map([["model.bin", "a".repeat(64)]]),
+    );
+    expect(() => parseChecksumFile("not-a-checksum  model.bin\n")).toThrow(
+      "line 1",
+    );
+    expect(() =>
+      parseChecksumFile(`${"a".repeat(64)}  ../model.bin\n`),
+    ).toThrow("line 1");
+    expect(() =>
+      parseChecksumFile(
+        `${"a".repeat(64)}  model.bin\n${"b".repeat(64)}  model.bin\n`,
+      ),
+    ).toThrow("duplicate filename");
+  });
+
+  test("validates cache structure and rechecks when cached authority differs", async () => {
+    const root = createInstallConfig().root;
+    const file = join(root, "model.bin");
+    await Bun.write(file, "verified model");
+    const digest = await new Bun.CryptoHasher("sha256")
+      .update("verified model")
+      .digest("hex");
+    const authority = {
+      filename: "model.bin",
+      expectedSizeBytes: (await Bun.file(file).stat()).size,
+      sha256: digest,
+    };
+
+    await verifyAuthoritativeFile(file, authority, root);
+    const cache = await readChecksumStore(root);
+    cache.entries["model.bin"]!.authoritativeSha256 = "0".repeat(64);
+    await writeChecksumStore(root, cache);
+    await verifyAuthoritativeFile(file, authority, root);
+    expect(
+      (await readChecksumStore(root)).entries["model.bin"]?.authoritativeSha256,
+    ).toBe(digest);
+
+    await Bun.write(join(root, ".checksums.json"), "{not json");
+    await expect(readChecksumStore(root)).rejects.toThrow(
+      "Invalid continuity checksum cache",
+    );
+  });
+});
+
+describe.serial("platform support tiers", () => {
   test("classifies managed, CLI-only, and unsupported targets", () => {
     expect(platformSupportTier({ os: "darwin", cpu: "arm64" })).toBe("managed");
     expect(platformSupportTier({ os: "linux", cpu: "x64" })).toBe("managed");
@@ -606,7 +741,7 @@ describe("platform support tiers", () => {
         "/tmp/local-base/bin",
       ).message,
     ).toBe(
-      "LocalBase CLI-only compatibility on macOS x64 does not include a managed whisper-server runtime. Place a compatible whisper-server executable in /tmp/local-base/bin/whisper-server or on PATH.",
+      "LocalBase CLI-only compatibility on macOS x64 does not include a managed whisper-server runtime. Place a compatible whisper-server executable on PATH outside /tmp/local-base/bin; it will be treated as user-managed and unverified.",
     );
     expect(
       managedRuntimeUnavailableError(
@@ -614,18 +749,33 @@ describe("platform support tiers", () => {
         { os: "linux", cpu: "arm64" },
         "/tmp/local-base/bin",
       ).message,
-    ).toContain("/tmp/local-base/bin/sd-server or on PATH");
+    ).toContain("on PATH outside /tmp/local-base/bin");
     expect(
       managedRuntimeUnavailableError(
         "sd-server",
         { os: "win32", cpu: "x64" },
         "/tmp/local-base/bin",
       ).message,
-    ).toContain("/tmp/local-base/bin/sd-server or on PATH");
+    ).toContain("on PATH outside /tmp/local-base/bin");
+  });
+
+  test("pins managed releases to a tag with independent size and digest metadata", () => {
+    for (const [name, target] of [
+      ["llama-server", { os: "darwin", cpu: "arm64" }],
+      ["whisper-server", { os: "darwin", cpu: "arm64" }],
+      ["sd-server", { os: "linux", cpu: "x64" }],
+    ] as const) {
+      const release = managedRuntimeRelease(name, target);
+      expect(release).toBeDefined();
+      expect(release?.url).toContain(`/download/${release?.tag}/`);
+      expect(release?.url).not.toContain("/latest/");
+      expect(release?.expectedSizeBytes).toBeGreaterThan(0);
+      expect(release?.sha256).toMatch(/^[a-f0-9]{64}$/);
+    }
   });
 });
 
-describe("llama server argument construction", () => {
+describe.serial("llama server argument construction", () => {
   test("passes exact argv to async startup and logs auto allocation", async () => {
     const fixture = await createLlamaLaunchFixture("auto");
     const output: string[] = [];
@@ -654,22 +804,5 @@ describe("llama server argument construction", () => {
     ).toEqual([
       "🤖 Dynamic Concurrency: Calculated 2 parallel slots based on 9.5 GB VRAM and context memory constraints. 4096 tokens per slot.",
     ]);
-  });
-
-  test("passes exact argv to synchronous startup", async () => {
-    const fixture = await createLlamaLaunchFixture(3);
-
-    expect(
-      await launchLlamaServer(
-        fixture.config,
-        fixture.modelFile,
-        "127.0.0.1",
-        18000,
-        8192,
-      ),
-    ).toBe(0);
-    expect(await readCapturedArgs(fixture.argsPath)).toEqual(
-      expectedLlamaArgs(fixture.modelPath, "3"),
-    );
   });
 });

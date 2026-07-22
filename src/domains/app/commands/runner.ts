@@ -1,56 +1,160 @@
 import { printHelp } from "./help";
 import { commandRegistry } from "./registry";
 import type { AppContext } from "../../../context";
+import type { CLICommand, CommandFlag } from "./types";
+import { z } from "zod";
+
+type CommandResolution =
+  | { kind: "help" }
+  | { kind: "error"; message: string }
+  | { kind: "command"; command: CLICommand };
+
+const nonEmptyValue = z.string().min(1);
+const flagValueSchemas: Record<string, z.ZodType<string>> = {
+  boolean: z.never(),
+  "true|false": z.enum(["true", "false"]),
+  "llm|stt|image": z.enum(["llm", "stt", "image"]),
+  "bearer|x-api-key|either": z.enum(["bearer", "x-api-key", "either"]),
+  "n|auto": z.union([z.literal("auto"), z.string().regex(/^[1-4]$/)]),
+  n: z.string().regex(/^\d+$/),
+  port: z.string().regex(/^\d+$/),
+  tokens: z.string().regex(/^\d+$/),
+  gb: z.string().regex(/^\d+$/),
+};
+
+function schemaFor(flag: CommandFlag): z.ZodType<string> {
+  return flagValueSchemas[flag.type] ?? nonEmptyValue;
+}
+
+function matchesPositionals(command: CLICommand, count: number): boolean {
+  const positionals = command.positional ?? [];
+  if (
+    positionals.some(
+      (positional) =>
+        positional.endsWith("...]") || positional.endsWith("...>"),
+    )
+  ) {
+    return (
+      count >=
+      positionals.filter((positional) => positional.startsWith("<")).length
+    );
+  }
+  const required = positionals.filter((positional) =>
+    positional.startsWith("<"),
+  ).length;
+  return count >= required && count <= positionals.length;
+}
+
+function validateInvocation(
+  command: CLICommand,
+  values: string[],
+): string | undefined {
+  const flags = new Map<string, CommandFlag>();
+  for (const flag of command.flags ?? []) {
+    flags.set(flag.name, flag);
+    if (flag.short) flags.set(`-${flag.short}`, flag);
+  }
+
+  const positionals: string[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < values.length; index += 1) {
+    const token = values[index];
+    if (!token.startsWith("-")) {
+      positionals.push(token);
+      continue;
+    }
+
+    const equalsIndex = token.indexOf("=");
+    const flagName = equalsIndex === -1 ? token : token.slice(0, equalsIndex);
+    const inlineValue =
+      equalsIndex === -1 ? undefined : token.slice(equalsIndex + 1);
+    const flag = flags.get(flagName);
+    if (!flag)
+      return `Unknown flag for ${command.name || "configure"}: ${flagName}`;
+    if (seen.has(flag.name))
+      return `Flag may only be provided once: ${flag.name}`;
+    seen.add(flag.name);
+
+    if (flag.type === "boolean") {
+      if (inlineValue !== undefined)
+        return `${flag.name} does not accept a value`;
+      continue;
+    }
+
+    const value = inlineValue ?? values[++index];
+    if (value === undefined) return `Missing value for ${flag.name}`;
+    if (!schemaFor(flag).safeParse(value).success) {
+      return `Invalid value for ${flag.name}: ${value}`;
+    }
+  }
+
+  if (!matchesPositionals(command, positionals.length)) {
+    const expected = command.positional?.join(" ") ?? "no positional arguments";
+    return `Invalid positional arguments for ${command.name || "configure"}; expected ${expected}`;
+  }
+  return undefined;
+}
+
+/** Resolves and validates a command before any configuration or hardware probing. */
+export function resolveCommand(args: string[]): CommandResolution {
+  if (args.includes("--help") || args.includes("-h")) return { kind: "help" };
+
+  const first = args[0];
+  let command: CLICommand | undefined;
+  let commandParts = 0;
+  if (!first || first.startsWith("-")) {
+    command = commandRegistry.find((entry) => entry.name === "");
+  } else {
+    for (const entry of commandRegistry) {
+      if (!entry.name) continue;
+      const parts = entry.name.split(" ");
+      if (
+        parts.length > commandParts &&
+        parts.every((part, index) => args[index] === part)
+      ) {
+        command = entry;
+        commandParts = parts.length;
+      }
+    }
+  }
+
+  if (!command) return { kind: "error", message: `Unknown command: ${first}` };
+  const validationError = validateInvocation(command, args.slice(commandParts));
+  return validationError
+    ? { kind: "error", message: validationError }
+    : { kind: "command", command };
+}
+
+function reportResolution(
+  resolution: Exclude<CommandResolution, { kind: "command" }>,
+): number {
+  if (resolution.kind === "help") {
+    printHelp();
+    return 0;
+  }
+  console.error(`Error: ${resolution.message}`);
+  return 2;
+}
 
 /**
- * Parses and routes the CLI arguments dynamically using the command registry.
- * Falls back to printing the help screen on invalid commands or flags.
+ * Dispatches already-validated CLI arguments with a constructed application context.
  */
 export async function runRegistry(
   args: string[],
   ctx: AppContext,
 ): Promise<number> {
-  const command = args[0];
+  const resolution = resolveCommand(args);
+  if (resolution.kind !== "command") return reportResolution(resolution);
+  return await resolution.command.handler(args, ctx);
+}
 
-  if (
-    command === "--help" ||
-    command === "-h" ||
-    args.includes("--help") ||
-    args.includes("-h")
-  ) {
-    printHelp();
-    return 0;
-  }
-
-  // Default fallback to interactive configuration if no command is specified or if it starts with an option flag
-  if (!command || command.startsWith("--")) {
-    const defaultCmd = commandRegistry.find((cmd) => cmd.name === "");
-    if (!defaultCmd) {
-      console.error("Default configuration command not found in registry");
-      return 1;
-    }
-    return await defaultCmd.handler(args, ctx);
-  }
-
-  // Search for the longest matching command path in the registry (supporting subcommands like "keys create")
-  let matchedCmd = null;
-  let maxParts = 0;
-
-  for (const cmd of commandRegistry) {
-    if (!cmd.name) continue;
-    const parts = cmd.name.split(" ");
-    const matches = parts.every((part, i) => args[i] === part);
-    if (matches && parts.length > maxParts) {
-      matchedCmd = cmd;
-      maxParts = parts.length;
-    }
-  }
-
-  if (matchedCmd) {
-    return await matchedCmd.handler(args, ctx);
-  }
-
-  console.error(`Unknown command: ${command}`);
-  printHelp();
-  return 2;
+/** Routes help and argument failures before invoking the potentially expensive context factory. */
+export async function runCli(
+  args: string[],
+  createContext: (args: string[]) => Promise<AppContext>,
+): Promise<number> {
+  const resolution = resolveCommand(args);
+  if (resolution.kind !== "command") return reportResolution(resolution);
+  const ctx = await createContext(args);
+  return await resolution.command.handler(args, ctx);
 }

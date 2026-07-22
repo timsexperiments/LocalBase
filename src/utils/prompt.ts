@@ -50,11 +50,14 @@ export async function multiSelectPrompt<T extends string>(
     checked?: boolean;
     disabled?: string | boolean;
   }>,
+  requireSelection = true,
 ): Promise<T[]> {
   return checkbox({
     message,
     choices: options,
     validate: (values) =>
-      values.length > 0 ? true : "Select at least one option",
+      !requireSelection || values.length > 0
+        ? true
+        : "Select at least one option",
   });
 }

@@ -12,6 +12,7 @@ export async function runInstall(
     const modelsToInstall = [
       ...ctx.config.selectedLlmModels,
       ...ctx.config.selectedSttModels,
+      ...ctx.config.selectedImageModels,
     ];
 
     if (modelsToInstall.length === 0) {

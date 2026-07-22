@@ -1,6 +1,6 @@
 import { type AppContext } from "../../../context";
 import { parseFlag } from "../../../utils/args";
-import { loadConfig, saveConfig } from "../../../manager";
+import { saveConfig } from "../../../manager";
 
 export const DEFAULT_SYSTEM_PROMPT = `You are an expert AI software engineer and system architect. You provide helpful, correct, and highly optimized code implementations.
 Guidelines:
@@ -10,11 +10,8 @@ Guidelines:
 - Formatting: Always format output in clear Markdown with appropriate syntax highlighting.
 - Output Policy: Respond directly in plain Markdown. Never start or wrap your responses with XML/HTML tags like <system-reminder>, unless explicitly instructed to do so.`;
 
-export async function runPromptShow(
-  args: string[],
-  ctx: AppContext,
-): Promise<number> {
-  const config = loadConfig();
+export async function runPromptShow(ctx: AppContext): Promise<number> {
+  const config = ctx.config;
   const prompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
   const isCustom = !!config.systemPrompt;
 
@@ -35,7 +32,7 @@ export async function runPromptSet(
   args: string[],
   ctx: AppContext,
 ): Promise<number> {
-  const config = loadConfig();
+  const config = ctx.config;
   let promptText = "";
 
   const file = parseFlag(args, "--file");
@@ -87,11 +84,8 @@ export async function runPromptSet(
   return 0;
 }
 
-export async function runPromptReset(
-  args: string[],
-  ctx: AppContext,
-): Promise<number> {
-  const config = loadConfig();
+export async function runPromptReset(ctx: AppContext): Promise<number> {
+  const config = ctx.config;
   config.systemPrompt = "";
   saveConfig(config);
   console.log(

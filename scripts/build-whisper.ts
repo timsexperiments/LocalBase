@@ -5,7 +5,7 @@ import { join } from "node:path";
 const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
 const root = join(import.meta.dir, "..");
 const tempDir = join(root, "tmp-whisper-build");
-const releaseDir = join(root, "release");
+const outputDir = join(root, "dist");
 
 function platformSuffix(): string {
   const osName = process.platform;
@@ -20,14 +20,13 @@ function platformSuffix(): string {
 async function main() {
   const suffix = platformSuffix();
   const outputName = `whisper-server-${suffix}`;
-  const destPath = join(releaseDir, outputName);
+  const destPath = join(outputDir, outputName);
 
   console.log(`\n🚀 Starting local build for whisper-server (${suffix})...`);
 
-  // Clean up any stale temp directories
   rmSync(tempDir, { recursive: true, force: true });
   mkdirSync(tempDir, { recursive: true });
-  mkdirSync(releaseDir, { recursive: true });
+  mkdirSync(outputDir, { recursive: true });
 
   console.log(`\n⬇️  Cloning ggml-org/whisper.cpp...`);
   await $`git clone --depth 1 ${WHISPER_REPO} whisper.cpp`.cwd(tempDir);
@@ -42,7 +41,6 @@ async function main() {
   console.log(`\n🏗️  Compiling whisper-server...`);
   await $`cmake --build build --config Release -j`.cwd(whisperDir);
 
-  // Find the compiled binary
   const buildBinDir = join(whisperDir, "build", "bin");
   const possibleNames = ["whisper-server", "server"];
   let sourcePath = "";
@@ -61,7 +59,9 @@ async function main() {
   }
 
   if (!sourcePath) {
-    console.error("❌ Could not locate the compiled whisper-server binary in build/bin.");
+    console.error(
+      "❌ Could not locate the compiled whisper-server binary in build/bin.",
+    );
     process.exit(1);
   }
 
