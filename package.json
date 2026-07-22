@@ -4,15 +4,18 @@
   "type": "module",
   "scripts": {
     "local-base": "bun run src/cli.ts",
-    "format": "bunx prettier --write src",
-    "check": "bunx prettier --check src && bun run typecheck && bun run src/cli.ts --help",
+    "format": "bunx prettier --write src scripts drizzle.config.ts",
+    "check": "bunx prettier --check src scripts drizzle.config.ts && bun run typecheck && bun run src/cli.ts --help",
+    "db:generate": "bunx drizzle-kit generate && bun run scripts/generate-migration-assets.ts",
+    "db:check": "bunx drizzle-kit check && bun run scripts/check-migration-assets.ts",
     "typecheck": "bunx tsgo --noEmit",
-    "build": "bun build src/cli.ts --compile --outfile dist/local-base",
+    "build": "bun build src/cli.ts --compile --asset-naming='[dir]/[name].[ext]' --outfile dist/local-base",
     "build:whisper": "bun run scripts/build-whisper.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.3.10",
-    "@typescript/native-preview": "^7.0.0-dev.20260620.1"
+    "@typescript/native-preview": "^7.0.0-dev.20260620.1",
+    "drizzle-kit": "^0.31.10"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.8.4",

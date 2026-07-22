@@ -2,11 +2,10 @@ import { mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { SafeFilenameSchema, verifyAuthoritativeFile } from "./utils/checksum";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import { eq } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { Database } from "bun:sqlite";
 import { z } from "zod";
+import { databasePath as dbPath, withDatabase } from "./db/client";
+import { apiKeysTable, configTable } from "./db/schema";
 import {
   artifactDownloadUrl,
   byId,
@@ -73,46 +72,6 @@ export type ApiKeyRecord = {
   expiresAt?: string;
   revokedAt?: string;
 };
-
-const configTable = sqliteTable("config", {
-  id: text("id").primaryKey(),
-  root: text("root").notNull(),
-  llmModelsDir: text("llm_models_dir").notNull(),
-  sttModelsDir: text("stt_models_dir").notNull(),
-  imageModelsDir: text("image_models_dir").default("").notNull(),
-  runtimeBackend: text("runtime_backend").notNull(),
-  sttBackend: text("stt_backend").notNull(),
-  host: text("host").notNull(),
-  port: integer("port").notNull(),
-  ctxSize: integer("ctx_size").notNull(),
-  sttHost: text("stt_host").notNull(),
-  sttPort: integer("stt_port").notNull(),
-  startupOnBoot: integer("startup_on_boot").notNull(),
-  selectedLlmModels: text("selected_llm_models").notNull(),
-  selectedSttModels: text("selected_stt_models").notNull(),
-  selectedImageModels: text("selected_image_models").default("[]").notNull(),
-  activeLlmModel: text("active_llm_model").notNull(),
-  activeSttModel: text("active_stt_model").notNull(),
-  activeImageModel: text("active_image_model").default("").notNull(),
-  systemPrompt: text("system_prompt").default("").notNull(),
-  hfToken: text("hf_token").default("").notNull(),
-  parallel: text("parallel").default("auto").notNull(),
-});
-
-const apiKeysTable = sqliteTable("api_keys", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  prefix: text("prefix").notNull(),
-  keyHash: text("key_hash").notNull(),
-  createdAt: text("created_at").notNull(),
-  lastRotatedAt: text("last_rotated_at").notNull(),
-  expiresAt: text("expires_at"),
-  revokedAt: text("revoked_at"),
-});
-
-function dbPath(root: string): string {
-  return join(root, "local-base.db");
-}
 
 const absolutePathSchema = z
   .string()
@@ -203,101 +162,6 @@ function invalidConfiguration(
       `Repair the invalid row or run "local-base reset --root ${root} --yes" to recreate the database.`,
     cause === undefined ? undefined : { cause },
   );
-}
-
-function tableColumns(sqlite: Database, table: string): Set<string> {
-  const rows = sqlite.query(`PRAGMA table_info(${table})`).all();
-  return new Set(
-    z
-      .array(z.object({ name: z.string() }).passthrough())
-      .parse(rows)
-      .map((row) => row.name),
-  );
-}
-
-function migrateConfigTable(sqlite: Database): void {
-  const columns = tableColumns(sqlite, "config");
-  const migrations = [
-    {
-      name: "system_prompt",
-      add: "ALTER TABLE config ADD COLUMN system_prompt TEXT;",
-      fill: "UPDATE config SET system_prompt = '' WHERE system_prompt IS NULL;",
-    },
-    {
-      name: "image_models_dir",
-      add: "ALTER TABLE config ADD COLUMN image_models_dir TEXT;",
-      fill: "UPDATE config SET image_models_dir = root || '/models/image' WHERE image_models_dir IS NULL;",
-    },
-    {
-      name: "selected_image_models",
-      add: "ALTER TABLE config ADD COLUMN selected_image_models TEXT;",
-      fill: `UPDATE config SET selected_image_models = '["stable-diffusion-v1-5"]' WHERE selected_image_models IS NULL;`,
-    },
-    {
-      name: "active_image_model",
-      add: "ALTER TABLE config ADD COLUMN active_image_model TEXT;",
-      fill: "UPDATE config SET active_image_model = 'stable-diffusion-v1-5' WHERE active_image_model IS NULL;",
-    },
-    {
-      name: "hf_token",
-      add: "ALTER TABLE config ADD COLUMN hf_token TEXT;",
-      fill: "UPDATE config SET hf_token = '' WHERE hf_token IS NULL;",
-    },
-    {
-      name: "parallel",
-      add: "ALTER TABLE config ADD COLUMN parallel TEXT NOT NULL DEFAULT 'auto';",
-      fill: "UPDATE config SET parallel = 'auto' WHERE parallel IS NULL;",
-    },
-  ];
-
-  for (const migration of migrations) {
-    if (!columns.has(migration.name)) sqlite.exec(migration.add);
-    sqlite.exec(migration.fill);
-  }
-}
-
-function openDb(root: string) {
-  mkdirSync(root, { recursive: true });
-  const sqlite = new Database(dbPath(root));
-  sqlite.exec(`
-    create table if not exists config (
-      id text primary key,
-      root text not null,
-      llm_models_dir text not null,
-      stt_models_dir text not null,
-      image_models_dir text not null,
-      runtime_backend text not null,
-      stt_backend text not null,
-      host text not null,
-      port integer not null,
-      ctx_size integer not null,
-      stt_host text not null,
-      stt_port integer not null,
-      startup_on_boot integer not null,
-      selected_llm_models text not null,
-      selected_stt_models text not null,
-      selected_image_models text not null,
-      active_llm_model text not null,
-      active_stt_model text not null,
-      active_image_model text not null,
-      system_prompt text not null,
-      hf_token text not null,
-      parallel text not null default 'auto'
-    );
-
-    create table if not exists api_keys (
-      id text primary key,
-      name text not null,
-      prefix text not null,
-      key_hash text not null,
-      created_at text not null,
-      last_rotated_at text not null,
-      expires_at text,
-      revoked_at text
-    );
-  `);
-  migrateConfigTable(sqlite);
-  return drizzle(sqlite);
 }
 
 function toConfigRow(config: LocalBaseConfig) {
@@ -571,20 +435,15 @@ export function saveConfig(config: LocalBaseConfig): void {
   const row = toConfigRow(config);
   fromConfigRow(row, config.root);
   ensureDirs(config);
-  const db = openDb(config.root);
-  const existing = db
-    .select()
-    .from(configTable)
-    .where(eq(configTable.id, "default"))
-    .get();
-  if (existing) {
-    db.update(configTable)
-      .set(toConfigRow(config))
-      .where(eq(configTable.id, "default"))
+  withDatabase(config.root, (db) => {
+    db.insert(configTable)
+      .values(row)
+      .onConflictDoUpdate({
+        target: configTable.id,
+        set: row,
+      })
       .run();
-  } else {
-    db.insert(configTable).values(toConfigRow(config)).run();
-  }
+  });
 }
 
 export function initConfig(root?: string, vramGb?: number): LocalBaseConfig {
@@ -596,12 +455,9 @@ export function initConfig(root?: string, vramGb?: number): LocalBaseConfig {
 
 export function loadConfig(root?: string, vramGb?: number): LocalBaseConfig {
   const selectedRoot = resolve(root ?? defaultRoot());
-  const db = openDb(selectedRoot);
-  const row = db
-    .select()
-    .from(configTable)
-    .where(eq(configTable.id, "default"))
-    .get();
+  const row = withDatabase(selectedRoot, (db) =>
+    db.select().from(configTable).where(eq(configTable.id, "default")).get(),
+  );
   if (!row) {
     return initConfig(selectedRoot, vramGb);
   }
@@ -859,12 +715,13 @@ async function installArtifact(
 }
 
 export function loadApiKeys(config: LocalBaseConfig): ApiKeyRecord[] {
-  const db = openDb(config.root);
-  return db
-    .select()
-    .from(apiKeysTable)
-    .all()
-    .map((row) => fromApiKeyRow(row, config.root));
+  return withDatabase(config.root, (db) =>
+    db
+      .select()
+      .from(apiKeysTable)
+      .all()
+      .map((row) => fromApiKeyRow(row, config.root)),
+  );
 }
 
 function fromApiKeyRow(row: unknown, root: string): ApiKeyRecord {
@@ -911,7 +768,6 @@ export function createApiKey(
   ) {
     throw new Error("API key expiry must be a positive whole number of days.");
   }
-  const db = openDb(config.root);
   const now = new Date().toISOString();
   const { key, prefix } = makeRawApiKey();
   const record: ApiKeyRecord = {
@@ -926,18 +782,20 @@ export function createApiKey(
         ? new Date(Date.now() + expiresDays * 86400_000).toISOString()
         : undefined,
   };
-  db.insert(apiKeysTable)
-    .values({
-      id: record.id,
-      name: record.name,
-      prefix: record.prefix,
-      keyHash: record.keyHash,
-      createdAt: record.createdAt,
-      lastRotatedAt: record.lastRotatedAt,
-      expiresAt: record.expiresAt,
-      revokedAt: null,
-    })
-    .run();
+  withDatabase(config.root, (db) => {
+    db.insert(apiKeysTable)
+      .values({
+        id: record.id,
+        name: record.name,
+        prefix: record.prefix,
+        keyHash: record.keyHash,
+        createdAt: record.createdAt,
+        lastRotatedAt: record.lastRotatedAt,
+        expiresAt: record.expiresAt,
+        revokedAt: null,
+      })
+      .run();
+  });
   return { record, rawKey: key };
 }
 
@@ -945,62 +803,64 @@ export function revokeApiKey(
   config: LocalBaseConfig,
   id: string,
 ): ApiKeyRecord {
-  const db = openDb(config.root);
-  const record = db
-    .select()
-    .from(apiKeysTable)
-    .where(eq(apiKeysTable.id, id))
-    .get();
-  if (!record) {
-    throw new Error(`API key not found: ${id}`);
-  }
-  const validated = fromApiKeyRow(record, config.root);
-  const revokedAt = new Date().toISOString();
-  db.update(apiKeysTable)
-    .set({ revokedAt })
-    .where(eq(apiKeysTable.id, id))
-    .run();
-  return {
-    ...validated,
-    revokedAt,
-  };
+  return withDatabase(config.root, (db) => {
+    const record = db
+      .select()
+      .from(apiKeysTable)
+      .where(eq(apiKeysTable.id, id))
+      .get();
+    if (!record) {
+      throw new Error(`API key not found: ${id}`);
+    }
+    const validated = fromApiKeyRow(record, config.root);
+    const revokedAt = new Date().toISOString();
+    db.update(apiKeysTable)
+      .set({ revokedAt })
+      .where(eq(apiKeysTable.id, id))
+      .run();
+    return {
+      ...validated,
+      revokedAt,
+    };
+  });
 }
 
 export function rotateApiKey(
   config: LocalBaseConfig,
   id: string,
 ): { record: ApiKeyRecord; rawKey: string } {
-  const db = openDb(config.root);
-  const record = db
-    .select()
-    .from(apiKeysTable)
-    .where(eq(apiKeysTable.id, id))
-    .get();
-  if (!record) {
-    throw new Error(`API key not found: ${id}`);
-  }
-  const validated = fromApiKeyRow(record, config.root);
-  const { key, prefix } = makeRawApiKey();
-  const lastRotatedAt = new Date().toISOString();
-  const keyHash = hashApiKey(key);
-  db.update(apiKeysTable)
-    .set({ prefix, keyHash, lastRotatedAt, revokedAt: null })
-    .where(eq(apiKeysTable.id, id))
-    .run();
+  return withDatabase(config.root, (db) => {
+    const record = db
+      .select()
+      .from(apiKeysTable)
+      .where(eq(apiKeysTable.id, id))
+      .get();
+    if (!record) {
+      throw new Error(`API key not found: ${id}`);
+    }
+    const validated = fromApiKeyRow(record, config.root);
+    const { key, prefix } = makeRawApiKey();
+    const lastRotatedAt = new Date().toISOString();
+    const keyHash = hashApiKey(key);
+    db.update(apiKeysTable)
+      .set({ prefix, keyHash, lastRotatedAt, revokedAt: null })
+      .where(eq(apiKeysTable.id, id))
+      .run();
 
-  return {
-    record: {
-      id: validated.id,
-      name: validated.name,
-      prefix,
-      keyHash,
-      createdAt: validated.createdAt,
-      lastRotatedAt,
-      expiresAt: validated.expiresAt,
-      revokedAt: undefined,
-    },
-    rawKey: key,
-  };
+    return {
+      record: {
+        id: validated.id,
+        name: validated.name,
+        prefix,
+        keyHash,
+        createdAt: validated.createdAt,
+        lastRotatedAt,
+        expiresAt: validated.expiresAt,
+        revokedAt: undefined,
+      },
+      rawKey: key,
+    };
+  });
 }
 
 export type ParallelHardware = {
