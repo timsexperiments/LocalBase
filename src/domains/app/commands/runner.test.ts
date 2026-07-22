@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
 import { resolveCommand, runCli } from "./runner";
+import { defaultConfig } from "../../../manager";
+import type { AppContext } from "../../../context";
+import { DatabaseSession } from "../../../db/client";
 
 test("rejects unknown flags, invalid kinds, and positional misuse", () => {
   expect(resolveCommand(["catalog", "--unknown"])).toEqual({
@@ -54,4 +57,36 @@ test("routes help and invalid commands before context creation", async () => {
   }
 
   expect(contextsCreated).toBe(0);
+});
+
+test("closes command-scoped database resources", async () => {
+  let closes = 0;
+  let databaseInitialized = true;
+  class TestDatabaseSession extends DatabaseSession {
+    override close(): void {
+      closes += 1;
+      super.close();
+    }
+  }
+  const context = {
+    config: defaultConfig("/tmp/local-base-runner-test"),
+    database: new TestDatabaseSession(),
+    specs: { gpuVramGb: 0 },
+    logger: {},
+  } as AppContext;
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    await expect(
+      runCli(["reset"], async (_args, initializeDatabase) => {
+        databaseInitialized = initializeDatabase;
+        return context;
+      }),
+    ).resolves.toBe(2);
+  } finally {
+    console.error = originalError;
+  }
+
+  expect(databaseInitialized).toBe(false);
+  expect(closes).toBe(1);
 });

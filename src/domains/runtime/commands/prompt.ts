@@ -79,7 +79,7 @@ export async function runPromptSet(
   }
 
   config.systemPrompt = promptText;
-  saveConfig(config);
+  saveConfig(ctx.database, config);
   console.log("\n✅ Custom system prompt updated successfully.");
   return 0;
 }
@@ -87,7 +87,7 @@ export async function runPromptSet(
 export async function runPromptReset(ctx: AppContext): Promise<number> {
   const config = ctx.config;
   config.systemPrompt = "";
-  saveConfig(config);
+  saveConfig(ctx.database, config);
   console.log(
     "\n✅ Custom system prompt reset back to default assistant persona.",
   );

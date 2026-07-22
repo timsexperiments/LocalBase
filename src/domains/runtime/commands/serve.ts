@@ -1215,7 +1215,7 @@ export async function runServe(
         llmBase + "/health",
         ctx.logger,
         async () => {
-          const launchConfig = loadConfig(config.root);
+          const launchConfig = loadConfig(ctx.database, config.root);
           const activeModel = launchConfig.activeLlmModel;
           let modelFile = llmModelFileOverride;
           if (!modelFile) {
@@ -1307,7 +1307,7 @@ export async function runServe(
         imageBase + "/",
         ctx.logger,
         async () => {
-          const launchConfig = loadConfig(config.root);
+          const launchConfig = loadConfig(ctx.database, config.root);
           const activeModel = launchConfig.activeImageModel;
           let modelFile = parseFlag(args, "--image-model-file");
           if (!modelFile) {
@@ -1353,7 +1353,7 @@ export async function runServe(
   const switchLlmModel = async (requestedModel: string): Promise<void> => {
     if (!llmService) return;
     await serializeModelSwitch(async () => {
-      const latestConfig = loadConfig(config.root);
+      const latestConfig = loadConfig(ctx.database, config.root);
       const normalized = requestedModel.replace(
         /^(localbase|openai|ollama)\//,
         "",
@@ -1369,7 +1369,7 @@ export async function runServe(
       );
       await llmService.kill();
       latestConfig.activeLlmModel = matchedModel;
-      saveConfig(latestConfig);
+      saveConfig(ctx.database, latestConfig);
 
       const spec = byId(matchedModel);
       const recommendedCtx = spec
@@ -1392,7 +1392,7 @@ export async function runServe(
   ): Promise<void> => {
     if (!imageService || !requestedModel) return;
     await serializeModelSwitch(async () => {
-      const latestConfig = loadConfig(config.root);
+      const latestConfig = loadConfig(ctx.database, config.root);
       const matchedModel = latestConfig.selectedImageModels.find(
         (model) => model.toLowerCase() === requestedModel.toLowerCase(),
       );
@@ -1405,7 +1405,7 @@ export async function runServe(
       );
       await imageService.kill();
       latestConfig.activeImageModel = matchedModel;
-      saveConfig(latestConfig);
+      saveConfig(ctx.database, latestConfig);
     });
   };
 
@@ -1423,7 +1423,7 @@ export async function runServe(
     request: Request,
     pathname: string,
   ): Promise<Response> => {
-    const currentConfig = loadConfig(config.root);
+    const currentConfig = loadConfig(ctx.database, config.root);
 
     if (pathname === "/health") {
       return Response.json({
@@ -1442,7 +1442,10 @@ export async function runServe(
       const isMasterKey =
         process.env.LOCALBASE_API_KEY &&
         token === process.env.LOCALBASE_API_KEY;
-      if (!token || (!isMasterKey && !validateApiKey(currentConfig, token))) {
+      if (
+        !token ||
+        (!isMasterKey && !validateApiKey(ctx.database, currentConfig, token))
+      ) {
         return unauthorized(authMode);
       }
     }
@@ -1584,7 +1587,8 @@ export async function runServe(
           : message,
       );
       const currentPrompt =
-        loadConfig(config.root).systemPrompt || DEFAULT_SYSTEM_PROMPT;
+        loadConfig(ctx.database, config.root).systemPrompt ||
+        DEFAULT_SYSTEM_PROMPT;
       if (
         !messages.some((message) => message.role === "system") &&
         currentPrompt

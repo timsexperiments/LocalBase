@@ -4,7 +4,11 @@ import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { SafeFilenameSchema, verifyAuthoritativeFile } from "./utils/checksum";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { databasePath as dbPath, withDatabase } from "./db/client";
+import {
+  databasePath as dbPath,
+  type DatabaseSession,
+  withDatabase,
+} from "./db/client";
 import { apiKeysTable, configTable } from "./db/schema";
 import {
   artifactDownloadUrl,
@@ -431,11 +435,14 @@ export function ensureDirs(config: LocalBaseConfig): void {
   mkdirSync(config.imageModelsDir, { recursive: true });
 }
 
-export function saveConfig(config: LocalBaseConfig): void {
+export function saveConfig(
+  database: DatabaseSession,
+  config: LocalBaseConfig,
+): void {
   const row = toConfigRow(config);
   fromConfigRow(row, config.root);
   ensureDirs(config);
-  withDatabase(config.root, (db) => {
+  withDatabase(database, config.root, (db) => {
     db.insert(configTable)
       .values(row)
       .onConflictDoUpdate({
@@ -446,20 +453,28 @@ export function saveConfig(config: LocalBaseConfig): void {
   });
 }
 
-export function initConfig(root?: string, vramGb?: number): LocalBaseConfig {
+export function initConfig(
+  database: DatabaseSession,
+  root?: string,
+  vramGb?: number,
+): LocalBaseConfig {
   const selectedRoot = resolve(root ?? defaultRoot());
   const config = defaultConfig(selectedRoot, vramGb ?? 0);
-  saveConfig(config);
+  saveConfig(database, config);
   return config;
 }
 
-export function loadConfig(root?: string, vramGb?: number): LocalBaseConfig {
+export function loadConfig(
+  database: DatabaseSession,
+  root?: string,
+  vramGb?: number,
+): LocalBaseConfig {
   const selectedRoot = resolve(root ?? defaultRoot());
-  const row = withDatabase(selectedRoot, (db) =>
+  const row = withDatabase(database, selectedRoot, (db) =>
     db.select().from(configTable).where(eq(configTable.id, "default")).get(),
   );
   if (!row) {
-    return initConfig(selectedRoot, vramGb);
+    return initConfig(database, selectedRoot, vramGb);
   }
   const config = fromConfigRow(row, selectedRoot);
   ensureDirs(config);
@@ -467,16 +482,22 @@ export function loadConfig(root?: string, vramGb?: number): LocalBaseConfig {
 }
 
 export async function resetDatabase(
+  database: DatabaseSession,
   root?: string,
   vramGb?: number,
 ): Promise<LocalBaseConfig> {
   const selectedRoot = resolve(root ?? defaultRoot());
+  database.closeRoot(selectedRoot);
   await deleteFileIfExists(dbPath(selectedRoot));
-  return initConfig(selectedRoot, vramGb);
+  return initConfig(database, selectedRoot, vramGb);
 }
 
-export function uninstallManaged(root?: string): string {
+export function uninstallManaged(
+  database: DatabaseSession,
+  root?: string,
+): string {
   const selectedRoot = resolve(root ?? defaultRoot());
+  database.closeRoot(selectedRoot);
   rmSync(selectedRoot, { recursive: true, force: true });
   return selectedRoot;
 }
@@ -714,8 +735,11 @@ async function installArtifact(
   renameSync(partial, output);
 }
 
-export function loadApiKeys(config: LocalBaseConfig): ApiKeyRecord[] {
-  return withDatabase(config.root, (db) =>
+export function loadApiKeys(
+  database: DatabaseSession,
+  config: LocalBaseConfig,
+): ApiKeyRecord[] {
+  return withDatabase(database, config.root, (db) =>
     db
       .select()
       .from(apiKeysTable)
@@ -744,12 +768,13 @@ function fromApiKeyRow(row: unknown, root: string): ApiKeyRecord {
 }
 
 export function validateApiKey(
+  database: DatabaseSession,
   config: LocalBaseConfig,
   presentedKey: string,
 ): boolean {
   if (!presentedKey) return false;
   const presentedHash = hashApiKey(presentedKey);
-  const keys = loadApiKeys(config);
+  const keys = loadApiKeys(database, config);
   for (const key of keys) {
     if (!isKeyActive(key.expiresAt, key.revokedAt)) continue;
     if (safeEqual(key.keyHash, presentedHash)) return true;
@@ -757,6 +782,7 @@ export function validateApiKey(
   return false;
 }
 export function createApiKey(
+  database: DatabaseSession,
   config: LocalBaseConfig,
   name: string,
   expiresDays?: number,
@@ -782,7 +808,7 @@ export function createApiKey(
         ? new Date(Date.now() + expiresDays * 86400_000).toISOString()
         : undefined,
   };
-  withDatabase(config.root, (db) => {
+  withDatabase(database, config.root, (db) => {
     db.insert(apiKeysTable)
       .values({
         id: record.id,
@@ -800,10 +826,11 @@ export function createApiKey(
 }
 
 export function revokeApiKey(
+  database: DatabaseSession,
   config: LocalBaseConfig,
   id: string,
 ): ApiKeyRecord {
-  return withDatabase(config.root, (db) => {
+  return withDatabase(database, config.root, (db) => {
     const record = db
       .select()
       .from(apiKeysTable)
@@ -826,10 +853,11 @@ export function revokeApiKey(
 }
 
 export function rotateApiKey(
+  database: DatabaseSession,
   config: LocalBaseConfig,
   id: string,
 ): { record: ApiKeyRecord; rawKey: string } {
-  return withDatabase(config.root, (db) => {
+  return withDatabase(database, config.root, (db) => {
     const record = db
       .select()
       .from(apiKeysTable)

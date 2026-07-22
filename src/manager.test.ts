@@ -17,6 +17,7 @@ import {
   managedRuntimeRelease,
   managedRuntimeUnavailableError,
   platformSupportTier,
+  resetDatabase,
   revokeApiKey,
   saveConfig,
   startLlamaServerProcess,
@@ -24,6 +25,7 @@ import {
   type LocalBaseConfig,
 } from "./manager";
 import { migrationsFolder } from "./db/migration-assets";
+import { DatabaseSession } from "./db/client";
 import {
   parseChecksumFile,
   readChecksumStore,
@@ -38,6 +40,7 @@ const textEncoder = new TextEncoder();
 const textBytes = (value: string) => textEncoder.encode(value);
 const TEST_REVISION = "a".repeat(40);
 const originalPath = process.env.PATH;
+let testDatabase = new DatabaseSession();
 
 type ArtifactRequest = { path: string; range?: string };
 
@@ -273,6 +276,8 @@ async function readCapturedArgs(argsPath: string): Promise<string[]> {
 }
 
 afterEach(async () => {
+  testDatabase.close();
+  testDatabase = new DatabaseSession();
   process.env.PATH = originalPath;
   await Promise.all(testServerClosers.splice(0).map((close) => close()));
   for (const modelId of testModelIds.splice(0)) {
@@ -564,15 +569,15 @@ describe.serial("installed model reporting", () => {
 describe.serial("parallel configuration persistence", () => {
   test("round-trips auto and manual parallel values", () => {
     const config = createInstallConfig();
-    loadConfig(config.root);
+    loadConfig(testDatabase, config.root);
 
     config.parallel = 4;
-    saveConfig(config);
-    expect(loadConfig(config.root).parallel).toBe(4);
+    saveConfig(testDatabase, config);
+    expect(loadConfig(testDatabase, config.root).parallel).toBe(4);
 
     config.parallel = "auto";
-    saveConfig(config);
-    expect(loadConfig(config.root).parallel).toBe("auto");
+    saveConfig(testDatabase, config);
+    expect(loadConfig(testDatabase, config.root).parallel).toBe("auto");
   });
 });
 
@@ -580,26 +585,34 @@ describe.serial("Drizzle database migrations", () => {
   test("migrates an empty database with the generated history", () => {
     const config = createInstallConfig();
 
-    expect(loadConfig(config.root)).toEqual(config);
+    expect(loadConfig(testDatabase, config.root)).toEqual(config);
     expect(migrationJournal(config.root)).toEqual(generatedMigrationJournal());
   });
 
   test("rejects existing unmanaged schemas", () => {
     const root = createUnsupportedConfigRoot();
 
-    expect(() => loadConfig(root)).toThrow();
+    expect(() => loadConfig(testDatabase, root)).toThrow();
+  });
+
+  test("reset replaces an unmanaged schema with current state", async () => {
+    const root = createUnsupportedConfigRoot();
+
+    const fresh = await resetDatabase(testDatabase, root, 16);
+    expect(loadConfig(testDatabase, root)).toEqual(fresh);
   });
 
   test("rejects migration journals with a mismatched generated history", () => {
     const config = createInstallConfig();
-    loadConfig(config.root);
+    loadConfig(testDatabase, config.root);
     const db = new Database(join(config.root, "local-base.db"));
     db.prepare("UPDATE __drizzle_migrations SET hash = ?").run(
       "not-a-generated-migration-hash",
     );
     db.close();
 
-    expect(() => loadConfig(config.root)).toThrow(
+    testDatabase.closeRoot(config.root);
+    expect(() => loadConfig(testDatabase, config.root)).toThrow(
       "hashes or order do not match",
     );
   });
@@ -636,23 +649,23 @@ describe.serial("LocalBase database validation", () => {
 
     for (const { column, value, message } of cases) {
       const config = createInstallConfig();
-      saveConfig(config);
+      saveConfig(testDatabase, config);
       const db = new Database(join(config.root, "local-base.db"));
       db.prepare(`UPDATE config SET ${column} = ? WHERE id = 'default'`).run(
         value,
       );
       db.close();
 
-      expect(() => loadConfig(config.root)).toThrow(message);
+      expect(() => loadConfig(testDatabase, config.root)).toThrow(message);
     }
   });
 
   test("fails closed on malformed API-key rows and does not authenticate them", () => {
     const config = createInstallConfig();
-    saveConfig(config);
-    const { record, rawKey } = createApiKey(config, "test key");
+    saveConfig(testDatabase, config);
+    const { record, rawKey } = createApiKey(testDatabase, config, "test key");
 
-    expect(validateApiKey(config, rawKey)).toBe(true);
+    expect(validateApiKey(testDatabase, config, rawKey)).toBe(true);
     const db = new Database(join(config.root, "local-base.db"));
     db.prepare("UPDATE api_keys SET last_rotated_at = ? WHERE id = ?").run(
       "2020-01-01T00:00:00Z",
@@ -660,20 +673,22 @@ describe.serial("LocalBase database validation", () => {
     );
     db.close();
 
-    expect(() => validateApiKey(config, rawKey)).toThrow(
+    expect(() => validateApiKey(testDatabase, config, rawKey)).toThrow(
       "Invalid API key configuration",
     );
   });
 
   test("creates, revokes, and lists validated API keys", () => {
     const config = createInstallConfig();
-    saveConfig(config);
-    const { record, rawKey } = createApiKey(config, "deploy", 1);
+    saveConfig(testDatabase, config);
+    const { record, rawKey } = createApiKey(testDatabase, config, "deploy", 1);
 
-    expect(validateApiKey(config, rawKey)).toBe(true);
-    expect(loadApiKeys(config)).toEqual([record]);
-    expect(revokeApiKey(config, record.id).revokedAt).toMatch(/^\d{4}-/);
-    expect(validateApiKey(config, rawKey)).toBe(false);
+    expect(validateApiKey(testDatabase, config, rawKey)).toBe(true);
+    expect(loadApiKeys(testDatabase, config)).toEqual([record]);
+    expect(revokeApiKey(testDatabase, config, record.id).revokedAt).toMatch(
+      /^\d{4}-/,
+    );
+    expect(validateApiKey(testDatabase, config, rawKey)).toBe(false);
   });
 });
 
