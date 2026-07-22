@@ -1,13 +1,11 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-// Nullable legacy columns remain nullable at the database layer. Config reads
-// validate their semantic requirements with Zod before returning them.
 export const configTable = sqliteTable("config", {
   id: text("id").primaryKey(),
   root: text("root").notNull(),
   llmModelsDir: text("llm_models_dir").notNull(),
   sttModelsDir: text("stt_models_dir").notNull(),
-  imageModelsDir: text("image_models_dir"),
+  imageModelsDir: text("image_models_dir").notNull(),
   runtimeBackend: text("runtime_backend").notNull(),
   sttBackend: text("stt_backend").notNull(),
   host: text("host").notNull(),
@@ -18,12 +16,12 @@ export const configTable = sqliteTable("config", {
   startupOnBoot: integer("startup_on_boot").notNull(),
   selectedLlmModels: text("selected_llm_models").notNull(),
   selectedSttModels: text("selected_stt_models").notNull(),
-  selectedImageModels: text("selected_image_models"),
+  selectedImageModels: text("selected_image_models").notNull(),
   activeLlmModel: text("active_llm_model").notNull(),
   activeSttModel: text("active_stt_model").notNull(),
-  activeImageModel: text("active_image_model"),
-  systemPrompt: text("system_prompt"),
-  hfToken: text("hf_token"),
+  activeImageModel: text("active_image_model").notNull(),
+  systemPrompt: text("system_prompt").notNull(),
+  hfToken: text("hf_token").notNull(),
   parallel: text("parallel").default("auto").notNull(),
 });
 

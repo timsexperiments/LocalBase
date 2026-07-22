@@ -6,9 +6,9 @@ const expected = readdirSync("drizzle")
   .map((name) => `../../drizzle/${name}`);
 const assets = await Bun.file("src/db/migration-assets.ts").text();
 
-if (!assets.includes("../../drizzle/bootstrap/meta/_journal.json")) {
+if (!assets.includes("../../drizzle/meta/_journal.json")) {
   throw new Error(
-    "src/db/migration-assets.ts is missing the bootstrap migration journal; run bun run db:generate.",
+    "src/db/migration-assets.ts is missing the migration journal; run bun run db:generate.",
   );
 }
 

@@ -1,1 +1,0 @@
-ALTER TABLE `config` ADD `parallel` text DEFAULT 'auto' NOT NULL;

@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `api_keys` (
+CREATE TABLE `api_keys` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`prefix` text NOT NULL,
@@ -9,12 +9,12 @@ CREATE TABLE IF NOT EXISTS `api_keys` (
 	`revoked_at` text
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS `config` (
+CREATE TABLE `config` (
 	`id` text PRIMARY KEY NOT NULL,
 	`root` text NOT NULL,
 	`llm_models_dir` text NOT NULL,
 	`stt_models_dir` text NOT NULL,
-	`image_models_dir` text,
+	`image_models_dir` text NOT NULL,
 	`runtime_backend` text NOT NULL,
 	`stt_backend` text NOT NULL,
 	`host` text NOT NULL,
@@ -25,10 +25,11 @@ CREATE TABLE IF NOT EXISTS `config` (
 	`startup_on_boot` integer NOT NULL,
 	`selected_llm_models` text NOT NULL,
 	`selected_stt_models` text NOT NULL,
-	`selected_image_models` text,
+	`selected_image_models` text NOT NULL,
 	`active_llm_model` text NOT NULL,
 	`active_stt_model` text NOT NULL,
-	`active_image_model` text,
-	`system_prompt` text,
-	`hf_token` text
+	`active_image_model` text NOT NULL,
+	`system_prompt` text NOT NULL,
+	`hf_token` text NOT NULL,
+	`parallel` text DEFAULT 'auto' NOT NULL
 );

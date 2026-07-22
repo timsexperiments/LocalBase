@@ -176,134 +176,6 @@ function artifactPath(source: string, sourcePath: string): string {
   return `${new URL(source).pathname}/resolve/${TEST_REVISION}/${sourcePath}`;
 }
 
-function createLegacyConfigRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), "local-base-parallel-"));
-  testRoots.push(root);
-  const db = new Database(join(root, "local-base.db"));
-  db.exec(`
-    create table config (
-      id text primary key,
-      root text not null,
-      llm_models_dir text not null,
-      stt_models_dir text not null,
-      image_models_dir text,
-      runtime_backend text not null,
-      stt_backend text not null,
-      host text not null,
-      port integer not null,
-      ctx_size integer not null,
-      stt_host text not null,
-      stt_port integer not null,
-      startup_on_boot integer not null,
-      selected_llm_models text not null,
-      selected_stt_models text not null,
-      selected_image_models text,
-      active_llm_model text not null,
-      active_stt_model text not null,
-      active_image_model text,
-      system_prompt text,
-      hf_token text
-    );
-  `);
-  db.prepare(
-    `insert into config values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    "default",
-    root,
-    join(root, "models", "llm"),
-    join(root, "models", "stt"),
-    join(root, "models", "image"),
-    "llama.cpp",
-    "whisper.cpp",
-    "127.0.0.1",
-    18000,
-    8192,
-    "127.0.0.1",
-    18080,
-    0,
-    '["qwen2.5-coder-7b-instruct-q4_k_m"]',
-    '["whisper-base-q8_0"]',
-    "[]",
-    "qwen2.5-coder-7b-instruct-q4_k_m",
-    "whisper-base-q8_0",
-    "",
-    "",
-    "",
-  );
-  db.close();
-  return root;
-}
-
-function createPreDrizzleCurrentRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), "local-base-current-"));
-  testRoots.push(root);
-  const db = new Database(join(root, "local-base.db"));
-  db.exec(`
-    create table config (
-      id text primary key,
-      root text not null,
-      llm_models_dir text not null,
-      stt_models_dir text not null,
-      image_models_dir text not null,
-      runtime_backend text not null,
-      stt_backend text not null,
-      host text not null,
-      port integer not null,
-      ctx_size integer not null,
-      stt_host text not null,
-      stt_port integer not null,
-      startup_on_boot integer not null,
-      selected_llm_models text not null,
-      selected_stt_models text not null,
-      selected_image_models text not null,
-      active_llm_model text not null,
-      active_stt_model text not null,
-      active_image_model text not null,
-      system_prompt text not null,
-      hf_token text not null,
-      parallel text not null default 'auto'
-    );
-    create table api_keys (
-      id text primary key,
-      name text not null,
-      prefix text not null,
-      key_hash text not null,
-      created_at text not null,
-      last_rotated_at text not null,
-      expires_at text,
-      revoked_at text
-    );
-  `);
-  db.prepare(
-    `insert into config values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    "default",
-    root,
-    join(root, "models", "llm"),
-    join(root, "models", "stt"),
-    join(root, "models", "image"),
-    "llama.cpp",
-    "whisper.cpp",
-    "127.0.0.1",
-    18000,
-    8192,
-    "127.0.0.1",
-    18080,
-    0,
-    '["qwen2.5-coder-7b-instruct-q4_k_m"]',
-    '["whisper-base-q8_0"]',
-    "[]",
-    "qwen2.5-coder-7b-instruct-q4_k_m",
-    "whisper-base-q8_0",
-    "",
-    "",
-    "",
-    "auto",
-  );
-  db.close();
-  return root;
-}
-
 function createUnsupportedConfigRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "local-base-unsupported-"));
   testRoots.push(root);
@@ -690,30 +562,21 @@ describe.serial("installed model reporting", () => {
 });
 
 describe.serial("parallel configuration persistence", () => {
-  test("inspects and migrates legacy SQLite config, then round-trips parallel values", () => {
-    const root = createLegacyConfigRoot();
-    const config = loadConfig(root);
-
-    expect(config.parallel).toBe("auto");
-    const db = new Database(join(root, "local-base.db"));
-    const columns = db.query("PRAGMA table_info(config)").all() as Array<{
-      name: string;
-    }>;
-    expect(columns.map((column) => column.name)).toContain("parallel");
-    db.close();
-    expect(migrationJournal(root)).toEqual(generatedMigrationJournal());
+  test("round-trips auto and manual parallel values", () => {
+    const config = createInstallConfig();
+    loadConfig(config.root);
 
     config.parallel = 4;
     saveConfig(config);
-    expect(loadConfig(root).parallel).toBe(4);
+    expect(loadConfig(config.root).parallel).toBe(4);
 
     config.parallel = "auto";
     saveConfig(config);
-    expect(loadConfig(root).parallel).toBe("auto");
+    expect(loadConfig(config.root).parallel).toBe("auto");
   });
 });
 
-describe.serial("Drizzle database migration adoption", () => {
+describe.serial("Drizzle database migrations", () => {
   test("migrates an empty database with the generated history", () => {
     const config = createInstallConfig();
 
@@ -721,19 +584,10 @@ describe.serial("Drizzle database migration adoption", () => {
     expect(migrationJournal(config.root)).toEqual(generatedMigrationJournal());
   });
 
-  test("baselines the pre-Drizzle current schema without reapplying parallel", () => {
-    const root = createPreDrizzleCurrentRoot();
-
-    expect(loadConfig(root).parallel).toBe("auto");
-    expect(migrationJournal(root)).toEqual(generatedMigrationJournal());
-  });
-
-  test("rejects partial schemas instead of guessing a migration path", () => {
+  test("rejects existing unmanaged schemas", () => {
     const root = createUnsupportedConfigRoot();
 
-    expect(() => loadConfig(root)).toThrow(
-      "Unsupported LocalBase database schema",
-    );
+    expect(() => loadConfig(root)).toThrow();
   });
 
   test("rejects migration journals with a mismatched generated history", () => {

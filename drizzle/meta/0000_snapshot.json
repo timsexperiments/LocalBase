@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "331d364a-3a25-43f7-8299-5102a14004e4",
+  "id": "50c9924b-0162-43a8-b74a-58500494d07e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "api_keys": {
@@ -105,7 +105,7 @@
           "name": "image_models_dir",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "runtime_backend": {
@@ -182,7 +182,7 @@
           "name": "selected_image_models",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "active_llm_model": {
@@ -203,22 +203,30 @@
           "name": "active_image_model",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "system_prompt": {
           "name": "system_prompt",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "hf_token": {
           "name": "hf_token",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
+        },
+        "parallel": {
+          "name": "parallel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'auto'"
         }
       },
       "indexes": {},
