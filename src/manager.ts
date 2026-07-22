@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { spawnSync } from "node:child_process";
 import {
   createHash,
@@ -22,9 +29,11 @@ import { eq } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { Database } from "bun:sqlite";
 import {
+  artifactDownloadUrl,
   byId,
-  modelDownloadUrl,
   primaryArtifact,
+  type ModelArtifact,
+  type ModelSpec,
   type ModelKind,
   recommendedForVram,
   recommendedSttForVram,
@@ -438,30 +447,129 @@ export async function installModel(
   ensureDirs(config);
   mkdirSync(targetDir, { recursive: true });
 
-  const url = modelDownloadUrl(spec);
-  const inferred = filename ?? primaryArtifact(spec).filename;
-  const output = join(targetDir, inferred);
-
-  // If already installed, verify checksum integrity before returning.
-  if (existsSync(output)) {
-    const known = await verifyStoredChecksum(targetDir, inferred, output);
-    if (!known) {
-      // First run after upgrade or fresh install without a stored hash — record it.
-      console.log(
-        `📝 Recording checksum for existing model file "${inferred}"...`,
-      );
-      await recordChecksum(targetDir, inferred, output);
-    }
-    return output;
+  if (filename && spec.artifacts.length > 1) {
+    throw new Error(
+      "A filename override is not supported for multi-artifact models because it breaks shard discovery.",
+    );
   }
 
-  console.log(`⬇️  Downloading model "${modelId}" from ${url}...`);
-  const curlArgs = ["-L", "--fail"];
+  const primaryFilename = filename ?? primaryArtifact(spec).filename;
+  for (const artifact of spec.artifacts) {
+    const artifactFilename =
+      spec.artifacts.length === 1 ? primaryFilename : artifact.filename;
+    await installArtifact(config, spec, artifact, targetDir, artifactFilename);
+  }
+
+  return join(targetDir, primaryFilename);
+}
+
+type AuthoritativeArtifact = ModelArtifact & {
+  expectedSizeBytes: number;
+  sha256: string;
+};
+
+function hasAuthoritativeIntegrity(
+  artifact: ModelArtifact,
+): artifact is AuthoritativeArtifact {
+  return (
+    artifact.expectedSizeBytes !== undefined && artifact.sha256 !== undefined
+  );
+}
+
+async function validateArtifact(
+  path: string,
+  artifact: ModelArtifact,
+  filename: string,
+): Promise<void> {
+  if (!hasAuthoritativeIntegrity(artifact)) return;
+
+  const actualSize = statSync(path).size;
+  if (actualSize !== artifact.expectedSizeBytes) {
+    throw new Error(
+      `Size mismatch for ${filename}: expected ${artifact.expectedSizeBytes} bytes, got ${actualSize} bytes.`,
+    );
+  }
+  await verifyChecksum(path, artifact.sha256, filename);
+}
+
+function removeIfEmpty(path: string): void {
+  if (existsSync(path) && statSync(path).size === 0) {
+    rmSync(path, { force: true });
+  }
+}
+
+async function installArtifact(
+  config: LocalBaseConfig,
+  spec: ModelSpec,
+  artifact: ModelArtifact,
+  targetDir: string,
+  filename: string,
+): Promise<void> {
+  const output = join(targetDir, filename);
+  const partial = `${output}.partial`;
+
+  if (existsSync(output)) {
+    if (!hasAuthoritativeIntegrity(artifact)) {
+      const known = await verifyStoredChecksum(targetDir, filename, output);
+      if (!known) {
+        console.log(
+          `📝 Recording checksum for existing model file "${filename}"...`,
+        );
+        await recordChecksum(targetDir, filename, output);
+      }
+      return;
+    }
+
+    const existingSize = statSync(output).size;
+    if (existingSize < artifact.expectedSizeBytes) {
+      if (!existsSync(partial)) {
+        renameSync(output, partial);
+      } else {
+        const partialSize = statSync(partial).size;
+        if (
+          partialSize > artifact.expectedSizeBytes ||
+          existingSize > partialSize
+        ) {
+          rmSync(partial, { force: true });
+          renameSync(output, partial);
+        } else {
+          rmSync(output, { force: true });
+        }
+      }
+    } else {
+      try {
+        await validateArtifact(output, artifact, filename);
+        return;
+      } catch {
+        rmSync(output, { force: true });
+        rmSync(partial, { force: true });
+      }
+    }
+  }
+
+  if (hasAuthoritativeIntegrity(artifact) && existsSync(partial)) {
+    const partialSize = statSync(partial).size;
+    if (partialSize > artifact.expectedSizeBytes) {
+      rmSync(partial, { force: true });
+    } else if (partialSize === artifact.expectedSizeBytes) {
+      try {
+        await validateArtifact(partial, artifact, filename);
+        renameSync(partial, output);
+        return;
+      } catch {
+        rmSync(partial, { force: true });
+      }
+    }
+  }
+
+  const url = artifactDownloadUrl(spec, artifact);
+  console.log(`⬇️  Downloading model "${spec.modelId}" from ${url}...`);
+  const curlArgs = ["-L", "--fail", "--continue-at", "-"];
   const token = config.hfToken || process.env.HF_TOKEN;
   if (token) {
     curlArgs.push("-H", `Authorization: Bearer ${token}`);
   }
-  curlArgs.push("-o", output, url);
+  curlArgs.push("-o", partial, url);
 
   const proc = Bun.spawn(["curl", ...curlArgs], {
     stdout: "inherit",
@@ -470,9 +578,7 @@ export async function installModel(
   });
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
-    try {
-      rmSync(output, { force: true });
-    } catch {}
+    removeIfEmpty(partial);
     if (
       !token &&
       (url.toLowerCase().includes("gemma") ||
@@ -485,11 +591,18 @@ export async function installModel(
     throw new Error(`Failed to download model from ${url}`);
   }
 
-  // Record SHA-256 of freshly downloaded file for future integrity checks.
-  console.log(`📝 Recording checksum for "${inferred}"...`);
-  await recordChecksum(targetDir, inferred, output);
+  try {
+    await validateArtifact(partial, artifact, filename);
+  } catch (error) {
+    rmSync(partial, { force: true });
+    throw error;
+  }
+  renameSync(partial, output);
 
-  return output;
+  if (!hasAuthoritativeIntegrity(artifact)) {
+    console.log(`📝 Recording checksum for "${filename}"...`);
+    await recordChecksum(targetDir, filename, output);
+  }
 }
 
 export function loadApiKeys(config: LocalBaseConfig): ApiKeyRecord[] {
