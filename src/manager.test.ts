@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -32,6 +32,7 @@ import {
   verifyAuthoritativeFile,
   writeChecksumStore,
 } from "./utils/checksum";
+import { compileRuntimeFixture } from "./test/runtime-fixture";
 
 const testRoots: string[] = [];
 const testModelIds: string[] = [];
@@ -42,11 +43,19 @@ const TEST_REVISION = "a".repeat(40);
 const originalPath = process.env.PATH;
 let testDatabase = new DatabaseSession();
 
-type ArtifactRequest = { path: string; range?: string };
+type ArtifactRequest = {
+  path: string;
+  range?: string;
+  authorization?: string;
+};
 
 async function createArtifactServer(
   files: Record<string, Uint8Array>,
   interruptedRequests = new Map<string, number>(),
+  options: {
+    requiredToken?: string;
+    invalidRangePaths?: Set<string>;
+  } = {},
 ): Promise<{
   source: string;
   requests: ArtifactRequest[];
@@ -58,10 +67,22 @@ async function createArtifactServer(
       `http://${request.headers.host ?? "127.0.0.1"}`,
     ).pathname;
     const body = files[path];
-    requests.push({ path, range: request.headers.range });
+    const authorization = request.headers.authorization;
+    requests.push({
+      path,
+      range: request.headers.range,
+      ...(authorization ? { authorization } : {}),
+    });
 
     if (!body) {
       response.writeHead(404).end();
+      return;
+    }
+    if (
+      options.requiredToken &&
+      authorization !== `Bearer ${options.requiredToken}`
+    ) {
+      response.writeHead(401).end();
       return;
     }
 
@@ -74,7 +95,7 @@ async function createArtifactServer(
       });
       response.end(
         body.subarray(0, Math.max(1, Math.floor(body.byteLength / 2))),
-        () => request.socket.destroy(),
+        () => setTimeout(() => request.socket.destroy(), 10),
       );
       return;
     }
@@ -94,7 +115,9 @@ async function createArtifactServer(
       response.writeHead(206, {
         "Accept-Ranges": "bytes",
         "Content-Length": String(chunk.byteLength),
-        "Content-Range": `bytes ${start}-${body.byteLength - 1}/${body.byteLength}`,
+        "Content-Range": options.invalidRangePaths?.has(path)
+          ? `bytes ${start + 1}-${body.byteLength - 1}/${body.byteLength}`
+          : `bytes ${start}-${body.byteLength - 1}/${body.byteLength}`,
       });
       response.end(chunk);
       return;
@@ -237,14 +260,7 @@ async function createLlamaLaunchFixture(
   mkdirSync(config.llmModelsDir, { recursive: true });
   mkdirSync(userBinDir, { recursive: true });
   await Bun.write(modelPath, "model placeholder");
-  await Bun.write(
-    binPath,
-    `#!/bin/sh
-script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-printf '%s\\n' "$@" > "$script_dir/llama-server.args"
-`,
-  );
-  chmodSync(binPath, 0o755);
+  await compileRuntimeFixture(binPath, argsPath);
   process.env.PATH = `${userBinDir}:${originalPath ?? ""}`;
 
   return { argsPath, config, modelFile, modelPath };
@@ -272,6 +288,13 @@ function expectedLlamaArgs(modelPath: string, parallel: string): string[] {
 }
 
 async function readCapturedArgs(argsPath: string): Promise<string[]> {
+  const deadline = Date.now() + 2_000;
+  while (!(await Bun.file(argsPath).exists())) {
+    if (Date.now() >= deadline) {
+      throw new Error(`Runtime did not write arguments to ${argsPath}.`);
+    }
+    await Bun.sleep(10);
+  }
   return (await Bun.file(argsPath).text()).trim().split("\n");
 }
 
@@ -359,17 +382,22 @@ describe.serial("transactional model artifact installation", () => {
       supplementary,
       "supplementary",
     );
-    const server = await createArtifactServer({
-      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00001.gguf":
-        primary,
-      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00002.gguf":
-        supplementary,
-    });
+    const server = await createArtifactServer(
+      {
+        "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00001.gguf":
+          primary,
+        "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00002.gguf":
+          supplementary,
+      },
+      new Map(),
+      { requiredToken: "test-token" },
+    );
     const modelId = installFixtureModel(server.source, [
       primaryArtifact,
       supplementaryArtifact,
     ]);
     const config = createInstallConfig();
+    config.hfToken = "test-token";
     mkdirSync(config.llmModelsDir, { recursive: true });
     await Bun.write(
       join(config.llmModelsDir, primaryArtifact.filename),
@@ -393,11 +421,13 @@ describe.serial("transactional model artifact installation", () => {
       server.requests.map((request) => ({
         path: request.path,
         range: request.range,
+        authorization: request.authorization,
       })),
     ).toEqual([
       {
         path: artifactPath(server.source, supplementaryArtifact.sourcePath),
         range: `bytes=${prefix.byteLength}-`,
+        authorization: "Bearer test-token",
       },
     ]);
     expect(
@@ -406,6 +436,29 @@ describe.serial("transactional model artifact installation", () => {
       ).bytes(),
     ).toEqual(supplementary);
     expect(await Bun.file(partial).exists()).toBe(false);
+  });
+
+  test("rejects a mismatched Content-Range without appending to the partial", async () => {
+    const content = textBytes("resume with validated range");
+    const modelArtifact = artifact("model.gguf", content, "primary");
+    const path =
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model.gguf";
+    const server = await createArtifactServer({ [path]: content }, new Map(), {
+      invalidRangePaths: new Set([path]),
+    });
+    const modelId = installFixtureModel(server.source, [modelArtifact]);
+    const config = createInstallConfig();
+    const partial = join(config.llmModelsDir, "model.gguf.partial");
+    const prefix = content.subarray(0, 5);
+    await Bun.write(partial, prefix);
+
+    await expect(installModel(config, modelId)).rejects.toThrow(
+      "Content-Range",
+    );
+    expect(await Bun.file(partial).bytes()).toEqual(prefix);
+    expect(
+      await Bun.file(join(config.llmModelsDir, "model.gguf")).exists(),
+    ).toBe(false);
   });
 
   test("preserves completed shards and partial failures, then repairs the set on retry", async () => {
@@ -457,7 +510,8 @@ describe.serial("transactional model artifact installation", () => {
       ).bytes(),
     ).toEqual(supplementary);
     expect(await Bun.file(partial).exists()).toBe(false);
-    expect(server.requests.at(-1)).toEqual({
+    const lastRequest = server.requests.at(-1)!;
+    expect({ path: lastRequest.path, range: lastRequest.range }).toEqual({
       path: artifactPath(server.source, supplementaryArtifact.sourcePath),
       range: `bytes=${partialSize}-`,
     });
@@ -487,7 +541,7 @@ describe.serial("transactional model artifact installation", () => {
     const config = createInstallConfig();
 
     await expect(installModel(config, sizeModel)).rejects.toThrow(
-      "Size mismatch",
+      "Content-Length",
     );
     await expect(installModel(config, hashModel)).rejects.toThrow(
       "Checksum mismatch",
@@ -808,6 +862,8 @@ describe.serial("llama server argument construction", () => {
         8192,
         { memoryGb: 9.5 },
       );
+      await readCapturedArgs(fixture.argsPath);
+      process.kill();
       expect(await process.exited).toBe(0);
     } finally {
       console.log = originalLog;

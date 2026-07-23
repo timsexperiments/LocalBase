@@ -6,3 +6,4 @@
 - **Intentional Testing**: Test core business behavior and meaningful boundaries. Prefer reusable fixtures and in-memory SQLite databases for stateful behavior. Use focused mocks only when they isolate a specific external boundary.
 - **Nonredundant Test Coverage**: Before adding tests, inspect existing coverage and extend or consolidate it where practical. Avoid duplicate assertions and tests that only restate implementation details.
 - **Pre-Release Compatibility**: Do not preserve obsolete configuration, database, API, or file formats unless explicitly requested. Prefer the clean current design; reset or uninstall is the supported transition while the project remains pre-release.
+- **Standalone Distribution**: Distributed CLI binaries must not depend on shells, general-purpose host utilities, or local compiler toolchains. Build native runtimes only in CI from pinned, verified sources and package them as intentional release artifacts.
