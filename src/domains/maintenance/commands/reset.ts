@@ -11,7 +11,11 @@ export async function runReset(
     return 2;
   }
   const resetRoot = parseFlag(args, "--root");
-  const fresh = await resetDatabase(resetRoot, ctx.specs.gpuVramGb);
+  const fresh = await resetDatabase(
+    ctx.database,
+    resetRoot,
+    ctx.specs.gpuVramGb,
+  );
   console.log(`Database reset complete at ${fresh.root}`);
   console.log("Initialized default configuration.");
   return 0;
