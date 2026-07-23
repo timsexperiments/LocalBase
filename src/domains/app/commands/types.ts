@@ -12,5 +12,6 @@ export interface CLICommand {
   description: string;
   positional?: string[];
   flags?: CommandFlag[];
+  requiresDatabase?: boolean;
   handler: (args: string[], ctx: AppContext) => Promise<number> | number;
 }

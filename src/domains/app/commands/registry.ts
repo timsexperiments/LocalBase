@@ -380,6 +380,7 @@ export const commandRegistry: CLICommand[] = [
     name: "reset",
     description:
       "Delete the configuration database and recreate default settings",
+    requiresDatabase: false,
     handler: async (args, ctx) => {
       const { runReset } = await import("../../maintenance/commands/reset");
       return runReset(args, ctx);
@@ -402,10 +403,11 @@ export const commandRegistry: CLICommand[] = [
     name: "uninstall",
     description:
       "Remove all LocalBase-managed data under the selected storage root",
-    handler: async (args) => {
+    requiresDatabase: false,
+    handler: async (args, ctx) => {
       const { runUninstall } =
         await import("../../maintenance/commands/uninstall");
-      return runUninstall(args);
+      return runUninstall(args, ctx);
     },
     flags: [
       {

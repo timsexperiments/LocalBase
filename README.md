@@ -61,6 +61,8 @@ bun run build
 
 `bun run check` formats-checks the source, type-checks the project, and runs the CLI help smoke test. `bun run build` produces `dist/local-base`.
 
+Database changes use Drizzle. Run `bun run db:generate` to create SQL migrations and refresh their compiled-CLI asset manifest; run `bun run db:check` in verification. The generated SQL and journal are embedded in `dist/local-base`, so the single-file CLI can migrate databases without a source-tree migration folder.
+
 ## Contributing
 
 Keep documentation and behavior aligned, use Bun for project commands, and verify changes with the checks above before opening a pull request. Report bugs and requests through [GitHub Issues](https://github.com/timsexperiments/LocalBase/issues).

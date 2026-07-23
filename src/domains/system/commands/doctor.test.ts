@@ -2,12 +2,14 @@ import { expect, test } from "bun:test";
 import { defaultConfig } from "../../../manager";
 import type { AppContext } from "../../../context";
 import { runDoctor } from "./doctor";
+import { DatabaseSession } from "../../../db/client";
 
 function makeContext(): AppContext {
   const config = defaultConfig("/tmp/local-base-doctor", 16);
   config.parallel = 2;
 
   return {
+    database: new DatabaseSession(),
     config,
     specs: {
       osName: "Test OS",

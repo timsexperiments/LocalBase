@@ -10,12 +10,31 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { byId } from "../../../catalog";
 import { defaultConfig, loadConfig, saveConfig } from "../../../manager";
+import { DatabaseSession } from "../../../db/client";
 
 const INITIAL_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const SWITCHED_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
 const PROJECT_ROOT = join(import.meta.dirname, "../../../..");
 const textEncoder = new TextEncoder();
 const textBytes = (value: string) => textEncoder.encode(value);
+
+function saveTestConfig(config: ReturnType<typeof defaultConfig>): void {
+  const database = new DatabaseSession();
+  try {
+    saveConfig(database, config);
+  } finally {
+    database.close();
+  }
+}
+
+function loadTestConfig(root: string) {
+  const database = new DatabaseSession();
+  try {
+    return loadConfig(database, root);
+  } finally {
+    database.close();
+  }
+}
 
 function reservePort(): number {
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -235,7 +254,7 @@ test(
       config.selectedSttModels = [];
       config.activeImageModel = "";
       config.selectedImageModels = [];
-      saveConfig(config);
+      saveTestConfig(config);
 
       mkdirSync(join(root, "bin"), { recursive: true });
       mkdirSync(runtimeDir, { recursive: true });
@@ -339,7 +358,7 @@ exec sleep 600
         },
       );
       expect(await configure.exited).toBe(0);
-      expect(loadConfig(root).parallel).toBe(3);
+      expect(loadTestConfig(root).parallel).toBe(3);
 
       const response = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
@@ -421,7 +440,7 @@ test(
       config.selectedSttModels = [];
       config.activeImageModel = "";
       config.selectedImageModels = [];
-      saveConfig(config);
+      saveTestConfig(config);
 
       mkdirSync(join(root, "bin"), { recursive: true });
       mkdirSync(runtimeDir, { recursive: true });
@@ -602,7 +621,7 @@ test(
       config.selectedSttModels = [];
       config.activeImageModel = "";
       config.selectedImageModels = [];
-      saveConfig(config);
+      saveTestConfig(config);
 
       mkdirSync(join(root, "bin"), { recursive: true });
       mkdirSync(runtimeDir, { recursive: true });

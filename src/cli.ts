@@ -9,9 +9,9 @@ async function main(): Promise<number> {
   if (args[0] === BACKEND_GUARDIAN_COMMAND) {
     return await runBackendGuardian(args.slice(1));
   }
-  return await runCli(args, async (contextArgs) => {
+  return await runCli(args, async (contextArgs, initializeDatabase) => {
     const { createAppContext } = await import("./context");
-    return await createAppContext(contextArgs);
+    return await createAppContext(contextArgs, initializeDatabase);
   });
 }
 

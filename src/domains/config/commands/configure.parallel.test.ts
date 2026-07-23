@@ -5,9 +5,11 @@ import { join } from "node:path";
 import type { AppContext } from "../../../context";
 import { defaultConfig, loadConfig } from "../../../manager";
 import { runConfigure } from "./configure";
+import { DatabaseSession } from "../../../db/client";
 
 function makeContext(root: string, gpuVramGb = 16): AppContext {
   return {
+    database: new DatabaseSession(),
     config: defaultConfig(root, gpuVramGb),
     specs: {
       osName: "Test OS",
@@ -52,6 +54,7 @@ test("configure rejects malformed and out-of-range parallel values", async () =>
         ),
       ).rejects.toThrow(/parallel/i);
     }
+    context.database.close();
   });
 });
 
@@ -63,16 +66,20 @@ test("configure validates TOML parallel overrides and warns on low VRAM", async 
     const originalWarn = console.warn;
     console.warn = (...values: unknown[]) => warnings.push(values.join(" "));
 
+    const context = makeContext(root, 12);
     try {
       await runConfigure(
         ["--defaults", "--config", configPath, "--create-key", "false"],
-        makeContext(root, 12),
+        context,
       );
     } finally {
+      context.database.close();
       console.warn = originalWarn;
     }
 
-    expect(loadConfig(root, 12).parallel).toBe(2);
+    const database = new DatabaseSession();
+    expect(loadConfig(database, root, 12).parallel).toBe(2);
+    database.close();
     expect(warnings).toEqual([
       "Warning: Setting parallel slots to 2 on a system with only 12 GB VRAM may cause Out-Of-Memory (OOM) crashes.",
     ]);

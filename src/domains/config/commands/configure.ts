@@ -536,7 +536,9 @@ export async function runConfigure(
     root ? `${root}/local-base.db` : `${defaultRoot()}/local-base.db`,
   ).exists();
 
-  let config = root ? loadConfig(root, specs.gpuVramGb) : ctx.config;
+  let config = root
+    ? loadConfig(ctx.database, root, specs.gpuVramGb)
+    : ctx.config;
   const llmFromFlags = validateModelList(parseList(flags.llmModels), "llm");
   const sttFromFlags = validateModelList(parseList(flags.sttModels), "stt");
   const imageFromFlags = validateModelList(
@@ -637,7 +639,7 @@ export async function runConfigure(
 
   warnAboutParallelOomRisk(config.parallel, specs.gpuVramGb);
 
-  saveConfig(config);
+  saveConfig(ctx.database, config);
   await syncContinueConfig(config);
   console.log(`Saved configuration to ${config.root}/local-base.db`);
   console.log(`Selected LLM models: ${config.selectedLlmModels.join(", ")}`);
@@ -646,7 +648,9 @@ export async function runConfigure(
     `Selected Image models: ${config.selectedImageModels.join(", ")}`,
   );
 
-  const hasAnyKeys = loadApiKeys(config).some((k) => !k.revokedAt);
+  const hasAnyKeys = loadApiKeys(ctx.database, config).some(
+    (k) => !k.revokedAt,
+  );
   const createKeyFlag = flags.createKey;
   let createFirstKey = parseBool(createKeyFlag, true);
   if (createKeyFlag === undefined && shouldAsk && !hasAnyKeys) {
@@ -657,7 +661,7 @@ export async function runConfigure(
   }
 
   if (!hasAnyKeys && createFirstKey) {
-    const { record, rawKey } = createApiKey(config, "default");
+    const { record, rawKey } = createApiKey(ctx.database, config, "default");
     console.log("\nCreated initial API key:");
     console.log(`id=${record.id} name=${record.name} prefix=${record.prefix}`);
     console.log(`secret=${rawKey}`);

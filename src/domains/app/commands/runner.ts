@@ -151,10 +151,20 @@ export async function runRegistry(
 /** Routes help and argument failures before invoking the potentially expensive context factory. */
 export async function runCli(
   args: string[],
-  createContext: (args: string[]) => Promise<AppContext>,
+  createContext: (
+    args: string[],
+    initializeDatabase: boolean,
+  ) => Promise<AppContext>,
 ): Promise<number> {
   const resolution = resolveCommand(args);
   if (resolution.kind !== "command") return reportResolution(resolution);
-  const ctx = await createContext(args);
-  return await resolution.command.handler(args, ctx);
+  const ctx = await createContext(
+    args,
+    resolution.command.requiresDatabase ?? true,
+  );
+  try {
+    return await resolution.command.handler(args, ctx);
+  } finally {
+    ctx.database.close();
+  }
 }

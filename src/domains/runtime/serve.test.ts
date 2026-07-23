@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { loadConfig, saveConfig } from "../../manager";
+import { DatabaseSession } from "../../db/client";
 import {
   startGatewayFixture,
   type GatewayFixture,
@@ -32,6 +33,24 @@ describe("API gateway integration", () => {
 
   const request = (path: string, init?: RequestInit) =>
     fetch(`${gateway.baseUrl}${path}`, init);
+
+  function loadGatewayConfig() {
+    const database = new DatabaseSession();
+    try {
+      return loadConfig(database, gateway.root);
+    } finally {
+      database.close();
+    }
+  }
+
+  function saveGatewayConfig(config: ReturnType<typeof loadConfig>): void {
+    const database = new DatabaseSession();
+    try {
+      saveConfig(database, config);
+    } finally {
+      database.close();
+    }
+  }
 
   async function expectValidationFailure(
     path: string,
@@ -158,13 +177,13 @@ describe("API gateway integration", () => {
   });
 
   test("does not switch models for invalid requests and serializes valid switches", async () => {
-    const initialConfig = loadConfig(gateway.root);
+    const initialConfig = loadGatewayConfig();
     const secondModel = "qwen2.5-coder-7b-instruct-q4_k_m";
     initialConfig.selectedLlmModels = [
       initialConfig.activeLlmModel,
       secondModel,
     ];
-    saveConfig(initialConfig);
+    saveGatewayConfig(initialConfig);
     await Bun.write(
       join(initialConfig.llmModelsDir, `${secondModel}.gguf`),
       "test model placeholder",
@@ -176,7 +195,7 @@ describe("API gateway integration", () => {
       body: JSON.stringify({ model: secondModel }),
     });
     expect(invalid.status).toBe(400);
-    expect(loadConfig(gateway.root).activeLlmModel).toBe(
+    expect(loadGatewayConfig().activeLlmModel).toBe(
       "qwen2.5-coder-1.5b-instruct-q4_k_m",
     );
 
@@ -197,7 +216,7 @@ describe("API gateway integration", () => {
       200, 200, 200,
     ]);
     expect([secondModel, "qwen2.5-coder-1.5b-instruct-q4_k_m"]).toContain(
-      loadConfig(gateway.root).activeLlmModel,
+      loadGatewayConfig().activeLlmModel,
     );
   });
 

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -16,12 +17,15 @@ import {
   managedRuntimeRelease,
   managedRuntimeUnavailableError,
   platformSupportTier,
+  resetDatabase,
   revokeApiKey,
   saveConfig,
   startLlamaServerProcess,
   validateApiKey,
   type LocalBaseConfig,
 } from "./manager";
+import { migrationsFolder } from "./db/migration-assets";
+import { DatabaseSession } from "./db/client";
 import {
   parseChecksumFile,
   readChecksumStore,
@@ -36,6 +40,7 @@ const textEncoder = new TextEncoder();
 const textBytes = (value: string) => textEncoder.encode(value);
 const TEST_REVISION = "a".repeat(40);
 const originalPath = process.env.PATH;
+let testDatabase = new DatabaseSession();
 
 type ArtifactRequest = { path: string; range?: string };
 
@@ -174,62 +179,39 @@ function artifactPath(source: string, sourcePath: string): string {
   return `${new URL(source).pathname}/resolve/${TEST_REVISION}/${sourcePath}`;
 }
 
-function createLegacyConfigRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), "local-base-parallel-"));
+function createUnsupportedConfigRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "local-base-unsupported-"));
   testRoots.push(root);
   const db = new Database(join(root, "local-base.db"));
-  db.exec(`
-    create table config (
-      id text primary key,
-      root text not null,
-      llm_models_dir text not null,
-      stt_models_dir text not null,
-      image_models_dir text,
-      runtime_backend text not null,
-      stt_backend text not null,
-      host text not null,
-      port integer not null,
-      ctx_size integer not null,
-      stt_host text not null,
-      stt_port integer not null,
-      startup_on_boot integer not null,
-      selected_llm_models text not null,
-      selected_stt_models text not null,
-      selected_image_models text,
-      active_llm_model text not null,
-      active_stt_model text not null,
-      active_image_model text,
-      system_prompt text,
-      hf_token text
-    );
-  `);
-  db.prepare(
-    `insert into config values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    "default",
-    root,
-    join(root, "models", "llm"),
-    join(root, "models", "stt"),
-    join(root, "models", "image"),
-    "llama.cpp",
-    "whisper.cpp",
-    "127.0.0.1",
-    18000,
-    8192,
-    "127.0.0.1",
-    18080,
-    0,
-    '["qwen2.5-coder-7b-instruct-q4_k_m"]',
-    '["whisper-base-q8_0"]',
-    "[]",
-    "qwen2.5-coder-7b-instruct-q4_k_m",
-    "whisper-base-q8_0",
-    "",
-    "",
-    "",
-  );
+  db.exec("create table config (id text primary key, root text not null);");
   db.close();
   return root;
+}
+
+function migrationJournal(root: string): Array<{
+  hash: string;
+  createdAt: number;
+}> {
+  const db = new Database(join(root, "local-base.db"));
+  const rows = db
+    .query(
+      "SELECT hash, created_at AS createdAt FROM __drizzle_migrations ORDER BY created_at",
+    )
+    .all() as Array<{ hash: string; createdAt: number }>;
+  db.close();
+  return rows;
+}
+
+function generatedMigrationJournal(): Array<{
+  hash: string;
+  createdAt: number;
+}> {
+  return readMigrationFiles({ migrationsFolder: migrationsFolder() }).map(
+    (migration) => ({
+      hash: migration.hash,
+      createdAt: migration.folderMillis,
+    }),
+  );
 }
 
 async function createLlamaLaunchFixture(
@@ -294,6 +276,8 @@ async function readCapturedArgs(argsPath: string): Promise<string[]> {
 }
 
 afterEach(async () => {
+  testDatabase.close();
+  testDatabase = new DatabaseSession();
   process.env.PATH = originalPath;
   await Promise.all(testServerClosers.splice(0).map((close) => close()));
   for (const modelId of testModelIds.splice(0)) {
@@ -583,23 +567,54 @@ describe.serial("installed model reporting", () => {
 });
 
 describe.serial("parallel configuration persistence", () => {
-  test("inspects and migrates legacy SQLite config, then round-trips parallel values", () => {
-    const root = createLegacyConfigRoot();
-    const config = loadConfig(root);
-
-    expect(config.parallel).toBe("auto");
-    const columns = new Database(join(root, "local-base.db"))
-      .query("PRAGMA table_info(config)")
-      .all() as Array<{ name: string }>;
-    expect(columns.map((column) => column.name)).toContain("parallel");
+  test("round-trips auto and manual parallel values", () => {
+    const config = createInstallConfig();
+    loadConfig(testDatabase, config.root);
 
     config.parallel = 4;
-    saveConfig(config);
-    expect(loadConfig(root).parallel).toBe(4);
+    saveConfig(testDatabase, config);
+    expect(loadConfig(testDatabase, config.root).parallel).toBe(4);
 
     config.parallel = "auto";
-    saveConfig(config);
-    expect(loadConfig(root).parallel).toBe("auto");
+    saveConfig(testDatabase, config);
+    expect(loadConfig(testDatabase, config.root).parallel).toBe("auto");
+  });
+});
+
+describe.serial("Drizzle database migrations", () => {
+  test("migrates an empty database with the generated history", () => {
+    const config = createInstallConfig();
+
+    expect(loadConfig(testDatabase, config.root)).toEqual(config);
+    expect(migrationJournal(config.root)).toEqual(generatedMigrationJournal());
+  });
+
+  test("rejects existing unmanaged schemas", () => {
+    const root = createUnsupportedConfigRoot();
+
+    expect(() => loadConfig(testDatabase, root)).toThrow();
+  });
+
+  test("reset replaces an unmanaged schema with current state", async () => {
+    const root = createUnsupportedConfigRoot();
+
+    const fresh = await resetDatabase(testDatabase, root, 16);
+    expect(loadConfig(testDatabase, root)).toEqual(fresh);
+  });
+
+  test("rejects migration journals with a mismatched generated history", () => {
+    const config = createInstallConfig();
+    loadConfig(testDatabase, config.root);
+    const db = new Database(join(config.root, "local-base.db"));
+    db.prepare("UPDATE __drizzle_migrations SET hash = ?").run(
+      "not-a-generated-migration-hash",
+    );
+    db.close();
+
+    testDatabase.closeRoot(config.root);
+    expect(() => loadConfig(testDatabase, config.root)).toThrow(
+      "hashes or order do not match",
+    );
   });
 });
 
@@ -634,23 +649,23 @@ describe.serial("LocalBase database validation", () => {
 
     for (const { column, value, message } of cases) {
       const config = createInstallConfig();
-      saveConfig(config);
+      saveConfig(testDatabase, config);
       const db = new Database(join(config.root, "local-base.db"));
       db.prepare(`UPDATE config SET ${column} = ? WHERE id = 'default'`).run(
         value,
       );
       db.close();
 
-      expect(() => loadConfig(config.root)).toThrow(message);
+      expect(() => loadConfig(testDatabase, config.root)).toThrow(message);
     }
   });
 
   test("fails closed on malformed API-key rows and does not authenticate them", () => {
     const config = createInstallConfig();
-    saveConfig(config);
-    const { record, rawKey } = createApiKey(config, "test key");
+    saveConfig(testDatabase, config);
+    const { record, rawKey } = createApiKey(testDatabase, config, "test key");
 
-    expect(validateApiKey(config, rawKey)).toBe(true);
+    expect(validateApiKey(testDatabase, config, rawKey)).toBe(true);
     const db = new Database(join(config.root, "local-base.db"));
     db.prepare("UPDATE api_keys SET last_rotated_at = ? WHERE id = ?").run(
       "2020-01-01T00:00:00Z",
@@ -658,20 +673,22 @@ describe.serial("LocalBase database validation", () => {
     );
     db.close();
 
-    expect(() => validateApiKey(config, rawKey)).toThrow(
+    expect(() => validateApiKey(testDatabase, config, rawKey)).toThrow(
       "Invalid API key configuration",
     );
   });
 
   test("creates, revokes, and lists validated API keys", () => {
     const config = createInstallConfig();
-    saveConfig(config);
-    const { record, rawKey } = createApiKey(config, "deploy", 1);
+    saveConfig(testDatabase, config);
+    const { record, rawKey } = createApiKey(testDatabase, config, "deploy", 1);
 
-    expect(validateApiKey(config, rawKey)).toBe(true);
-    expect(loadApiKeys(config)).toEqual([record]);
-    expect(revokeApiKey(config, record.id).revokedAt).toMatch(/^\d{4}-/);
-    expect(validateApiKey(config, rawKey)).toBe(false);
+    expect(validateApiKey(testDatabase, config, rawKey)).toBe(true);
+    expect(loadApiKeys(testDatabase, config)).toEqual([record]);
+    expect(revokeApiKey(testDatabase, config, record.id).revokedAt).toMatch(
+      /^\d{4}-/,
+    );
+    expect(validateApiKey(testDatabase, config, rawKey)).toBe(false);
   });
 });
 

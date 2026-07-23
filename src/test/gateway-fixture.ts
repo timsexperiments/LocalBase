@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultConfig, saveConfig, type LocalBaseConfig } from "../manager";
+import { DatabaseSession } from "../db/client";
 
 const LLM_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const STT_MODEL = "whisper-large-v3-turbo";
@@ -209,7 +210,9 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
     config.selectedSttModels = [STT_MODEL];
     config.activeImageModel = IMAGE_MODEL;
     config.selectedImageModels = [IMAGE_MODEL];
-    saveConfig(config);
+    const database = new DatabaseSession();
+    saveConfig(database, config);
+    database.close();
 
     mkdirSync(config.llmModelsDir, { recursive: true });
     mkdirSync(config.sttModelsDir, { recursive: true });
