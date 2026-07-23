@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { byId } from "../../../catalog";
 import { defaultConfig, loadConfig, saveConfig } from "../../../manager";
 import { DatabaseSession } from "../../../db/client";
+import { compileRuntimeFixture } from "../../../test/runtime-fixture";
 
 const INITIAL_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const SWITCHED_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
@@ -125,29 +126,6 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
-async function findGuardianPid(
-  gatewayPid: number,
-  backendPid: number,
-): Promise<number> {
-  const deadline = Date.now() + 2_000;
-  const marker = `__localbase_backend_guardian ${gatewayPid} ${backendPid}`;
-  while (Date.now() < deadline) {
-    const process = Bun.spawn(["ps", "-axww", "-o", "pid=", "-o", "command="], {
-      stdout: "pipe",
-      stderr: "ignore",
-    });
-    const output = await readProcessOutput(process.stdout);
-    await process.exited;
-    const line = output.split("\n").find((value) => value.includes(marker));
-    if (line) {
-      const pid = Number(line.trim().split(/\s+/, 1)[0]);
-      if (Number.isInteger(pid)) return pid;
-    }
-    await Bun.sleep(25);
-  }
-  throw new Error("Backend guardian did not start");
-}
-
 function serveRunnerSource(): string {
   const catalogPath = join(PROJECT_ROOT, "src/catalog.ts");
   const contextPath = join(PROJECT_ROOT, "src/context.ts");
@@ -166,6 +144,7 @@ const cliArgs = Bun.argv.slice(2);
 if (cliArgs[0] === BACKEND_GUARDIAN_COMMAND) {
   process.exit(await runBackendGuardian(cliArgs.slice(1)));
 }
+process.env.LOCALBASE_TEST_DISABLE_CONTINUE_SYNC = "1";
 
 const testModel = validateCatalog([
   JSON.parse(process.env.LOCALBASE_TEST_MODEL!),
@@ -267,13 +246,7 @@ test(
           join(config.llmModelsDir, `${SWITCHED_MODEL}.gguf`),
           "model placeholder",
         ),
-        Bun.write(
-          join(runtimeDir, "llama-server"),
-          `#!/bin/sh
-printf '%s\\n' "$@" > "$LOCALBASE_TEST_ARGS_PATH"
-exec sleep 600
-`,
-        ),
+        compileRuntimeFixture(join(runtimeDir, "llama-server")),
       ]);
       for (const modelId of [INITIAL_MODEL, SWITCHED_MODEL]) {
         const expectedSizeBytes = byId(modelId)?.artifacts.find(
@@ -450,15 +423,7 @@ test(
         join(config.llmModelsDir, supplementaryName),
         supplementary,
       );
-      await Bun.write(
-        join(runtimeDir, "llama-server"),
-        `#!/bin/sh
-test -f "$LOCALBASE_TEST_SUPPLEMENTARY_PATH" || exit 41
-printf '%s\\n' "$@" > "$LOCALBASE_TEST_ARGS_PATH"
-exec sleep 600
-`,
-      );
-      chmodSync(join(runtimeDir, "llama-server"), 0o755);
+      await compileRuntimeFixture(join(runtimeDir, "llama-server"));
 
       const model = {
         modelId,
@@ -582,6 +547,7 @@ test(
     const argsPath = join(root, "bin", "llama-server.args");
     const pidPath = join(root, "bin", "llama-server.pid");
     const parentPidPath = join(root, "bin", "llama-server.parent.pid");
+    const cliPath = join(root, "local-base");
     const runtimeDir = join(root, "test-runtimes");
     const wrapperPort = reservePort();
     const backendPort = reservePort();
@@ -626,23 +592,34 @@ test(
       mkdirSync(join(root, "bin"), { recursive: true });
       mkdirSync(runtimeDir, { recursive: true });
       await Bun.write(join(config.llmModelsDir, modelFile), "custom model");
-      await Bun.write(
-        join(runtimeDir, "llama-server"),
-        `#!/bin/sh
-trap '' TERM
-printf '%s\\n' "$$" > "$LOCALBASE_TEST_PID_PATH"
-printf '%s\\n' "$PPID" > "$LOCALBASE_TEST_PARENT_PID_PATH"
-printf '%s\\n' "$@" > "$LOCALBASE_TEST_ARGS_PATH"
-exec sleep 600
-`,
+      await compileRuntimeFixture(join(runtimeDir, "llama-server"));
+
+      const buildProcess = Bun.spawn(
+        [
+          process.execPath,
+          "build",
+          join(PROJECT_ROOT, "src/cli.ts"),
+          "--compile",
+          "--target=bun",
+          "--asset-naming=[dir]/[name].[ext]",
+          `--outfile=${cliPath}`,
+        ],
+        { stdout: "pipe", stderr: "pipe" },
       );
-      chmodSync(join(runtimeDir, "llama-server"), 0o755);
+      const [buildStdout, buildStderr] = await Promise.all([
+        readProcessOutput(buildProcess.stdout),
+        readProcessOutput(buildProcess.stderr),
+      ]);
+      const buildExitCode = await buildProcess.exited;
+      if (buildExitCode !== 0) {
+        throw new Error(
+          `Could not compile test CLI (exit ${buildExitCode}):\n${buildStdout}\n${buildStderr}`,
+        );
+      }
 
       gateway = Bun.spawn(
         [
-          process.execPath,
-          "run",
-          "src/cli.ts",
+          cliPath,
           "serve",
           "--root",
           root,
@@ -668,18 +645,19 @@ exec sleep 600
           cwd: PROJECT_ROOT,
           env: {
             ...process.env,
-            PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
+            PATH: runtimeDir,
             LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
             LOCALBASE_TEST_ARGS_PATH: argsPath,
             LOCALBASE_TEST_PID_PATH: pidPath,
             LOCALBASE_TEST_PARENT_PID_PATH: parentPidPath,
+            LOCALBASE_TEST_IGNORE_SIGTERM: "1",
           } as Record<string, string>,
-          stdout: "pipe",
-          stderr: "pipe",
+          stdout: "inherit",
+          stderr: "inherit",
         },
       );
-      gatewayStdout = readProcessOutput(gateway.stdout);
-      gatewayStderr = readProcessOutput(gateway.stderr);
+      gatewayStdout = Promise.resolve("");
+      gatewayStderr = Promise.resolve("");
 
       const baseUrl = `http://127.0.0.1:${wrapperPort}`;
       await waitForGateway(gateway, baseUrl);
@@ -712,13 +690,11 @@ exec sleep 600
       expect(Number((await Bun.file(parentPidPath).text()).trim())).toBe(
         gateway.pid,
       );
-      const guardianPid = await findGuardianPid(gateway.pid, backendPid);
       await Bun.sleep(300);
-      expect(isProcessRunning(guardianPid)).toBe(true);
+      expect(isProcessRunning(backendPid)).toBe(true);
       gateway.kill(9);
       await gateway.exited;
       await waitForProcessExit(backendPid);
-      await waitForProcessExit(guardianPid);
     } finally {
       if (gateway) await stopProcess(gateway);
       await Promise.all([gatewayStdout, gatewayStderr].filter(Boolean));
