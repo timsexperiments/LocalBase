@@ -1,4 +1,4 @@
-import { cpus, totalmem } from "node:os";
+import { cpus, platform as osPlatform, totalmem } from "node:os";
 import { z } from "zod";
 
 export type HostSpecs = {
@@ -11,32 +11,48 @@ export type HostSpecs = {
   isAppleSilicon: boolean;
 };
 
-const commandResultSchema = z.object({
-  exitCode: z.number().int(),
-  stdout: z.instanceof(Uint8Array),
-});
+const nonEmptyStringSchema = z.string().trim().min(1);
+const positiveNumberSchema = z.coerce.number().finite().positive();
+const cpuInfoSchema = z.object({ model: nonEmptyStringSchema });
 
 const gpuDetectionSchema = z.object({
-  name: z.string().min(1),
+  name: nonEmptyStringSchema,
   vramGb: z.number().finite().nonnegative(),
 });
 
-const nvidiaSmiOutputSchema = z.object({
-  name: z.string().min(1),
-  memoryMb: z.number().finite().positive(),
-});
+function parsePositiveNumber(value: unknown): number | undefined {
+  const parsed = positiveNumberSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
 
-function run(cmd: string, args: string[]): string {
-  const result = commandResultSchema.parse(
-    Bun.spawnSync([cmd, ...args], {
-      stdout: "pipe",
-      stderr: "ignore",
-      timeout: 3000,
-      killSignal: "SIGKILL",
-    }),
-  );
-  if (result.exitCode !== 0) return "";
-  return new TextDecoder().decode(result.stdout).trim();
+function bytesToGb(value: unknown): number {
+  const bytes = parsePositiveNumber(value);
+  return bytes === undefined ? 0 : Math.round(bytes / 1024 / 1024 / 1024);
+}
+
+function totalRamGb(): number {
+  try {
+    return bytesToGb(totalmem());
+  } catch {
+    return 0;
+  }
+}
+
+function firstCpuModel(fallback: string): string {
+  try {
+    const parsed = cpuInfoSchema.safeParse(cpus()[0]);
+    return parsed.success ? parsed.data.model : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function deriveAppleGpuName(cpuModel: string): string {
+  const parsed = nonEmptyStringSchema.safeParse(cpuModel);
+  if (!parsed.success) return "Apple Silicon GPU";
+
+  const chip = parsed.data.match(/\bApple\s+M\d+(?:\s+(?:Pro|Max|Ultra))?\b/i);
+  return chip ? `${chip[0]} GPU` : "Apple Silicon GPU";
 }
 
 function parsePrettyName(osRelease: string): string | undefined {
@@ -45,15 +61,16 @@ function parsePrettyName(osRelease: string): string | undefined {
     .find((entry) => entry.startsWith("PRETTY_NAME="));
   if (!line) return undefined;
 
-  const value = line.slice("PRETTY_NAME=".length).trim();
+  let value = line.slice("PRETTY_NAME=".length).trim();
   if (!value) return undefined;
   if (
     (value.startsWith('"') && value.endsWith('"')) ||
     (value.startsWith("'") && value.endsWith("'"))
   ) {
-    return value.slice(1, -1);
+    value = value.slice(1, -1);
   }
-  return value;
+  const parsed = nonEmptyStringSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 type NvmlSymbols = {
@@ -138,17 +155,17 @@ function tryNvmlFfi(): { name: string; vramGb: number } | null {
       let name = "NVIDIA GPU";
       if (nameRes === 0) {
         const end = nameBuf.indexOf(0);
-        name = new TextDecoder()
-          .decode(nameBuf.subarray(0, end > 0 ? end : undefined))
-          .trim();
+        const parsedName = nonEmptyStringSchema.safeParse(
+          new TextDecoder()
+            .decode(nameBuf.subarray(0, end > 0 ? end : undefined))
+            .trim(),
+        );
+        if (parsedName.success) name = parsedName.data;
       }
 
       const memBuf = new BigUint64Array(3);
       const memRes = nvml.symbols.nvmlDeviceGetMemoryInfo(handle, ptr(memBuf));
-      let vramGb = 0;
-      if (memRes === 0) {
-        vramGb = Math.round(Number(memBuf[0]) / 1024 / 1024 / 1024);
-      }
+      const vramGb = memRes === 0 ? bytesToGb(memBuf[0]) : 0;
 
       return gpuDetectionSchema.parse({ name, vramGb });
     } finally {
@@ -166,9 +183,8 @@ async function tryAmdLinux(): Promise<{
 } | null> {
   try {
     const vramFile = "/sys/class/drm/card0/device/mem_info_vram_total";
-    const bytes = Number((await Bun.file(vramFile).text()).trim());
-    if (Number.isFinite(bytes) && bytes > 0) {
-      const vramGb = Math.round(bytes / 1024 / 1024 / 1024);
+    const vramGb = bytesToGb(await Bun.file(vramFile).text());
+    if (vramGb > 0) {
       return gpuDetectionSchema.parse({ name: "AMD GPU", vramGb });
     }
   } catch {
@@ -178,7 +194,7 @@ async function tryAmdLinux(): Promise<{
 }
 
 export async function detectSpecs(): Promise<HostSpecs> {
-  const platform = process.platform;
+  const platform = osPlatform();
   const isMac = platform === "darwin";
   const isAppleSilicon = isMac && process.arch === "arm64";
 
@@ -189,45 +205,15 @@ export async function detectSpecs(): Promise<HostSpecs> {
   let gpuVramGb = 0;
 
   if (isMac) {
-    const version = run("sw_vers", ["-productVersion"]) || "Unknown";
-    osName = `macOS ${version}`;
-
-    try {
-      const memBytesStr = run("sysctl", ["-n", "hw.memsize"]);
-      const memBytes = Number(memBytesStr);
-      if (Number.isFinite(memBytes) && memBytes > 0) {
-        ramGb = Math.round(memBytes / 1024 / 1024 / 1024);
-      } else {
-        ramGb = Math.round(totalmem() / 1024 / 1024 / 1024);
-      }
-    } catch {
-      ramGb = Math.round(totalmem() / 1024 / 1024 / 1024);
-    }
-
-    cpuModel =
-      run("sysctl", ["-n", "machdep.cpu.brand_string"]) ||
-      cpus()[0]?.model ||
-      "Apple Silicon";
+    osName = "macOS";
+    ramGb = totalRamGb();
+    cpuModel = firstCpuModel(isAppleSilicon ? "Apple Silicon" : "Unknown CPU");
 
     if (isAppleSilicon) {
-      const profilerOut = run("system_profiler", ["SPDisplaysDataType"]);
-      const match = profilerOut.match(/Chipset Model:\s*(.+)/);
-      gpuName = match ? match[1].trim() : cpuModel;
-      gpuVramGb = ramGb; // Unified memory is shared and fully accessible
+      gpuName = deriveAppleGpuName(cpuModel);
+      gpuVramGb = ramGb;
     } else {
-      const profilerOut = run("system_profiler", ["SPDisplaysDataType"]);
-      const match = profilerOut.match(/Chipset Model:\s*(.+)/);
-      gpuName = match ? match[1].trim() : "Intel Integrated Graphics";
-      const vramMatch = profilerOut.match(/VRAM \(Total\):\s*(.+)/);
-      if (vramMatch) {
-        const vramStr = vramMatch[1].trim();
-        const val = parseFloat(vramStr);
-        if (!isNaN(val)) {
-          gpuVramGb = vramStr.toLowerCase().includes("mb")
-            ? Math.round(val / 1024)
-            : Math.round(val);
-        }
-      }
+      gpuName = "Intel Integrated Graphics";
     }
   } else if (platform === "linux") {
     // Linux exposes hardware details through procfs and DRM sysfs.
@@ -244,60 +230,34 @@ export async function detectSpecs(): Promise<HostSpecs> {
       const memInfo = (await Bun.file("/proc/meminfo").text()).split("\n");
       const memLine = memInfo.find((line) => line.startsWith("MemTotal:"));
       if (memLine) {
-        ramKb = Number(memLine.split(/\s+/)[1]);
+        ramKb = parsePositiveNumber(memLine.split(/\s+/)[1]) ?? 0;
       }
     } catch {}
-    if (ramKb > 0) {
-      ramGb = Math.round(ramKb / 1024 / 1024);
-    } else {
-      ramGb = Math.round(totalmem() / 1024 / 1024 / 1024);
-    }
+    ramGb = ramKb > 0 ? Math.round(ramKb / 1024 / 1024) : totalRamGb();
 
     cpuModel = "Unknown";
     try {
       const cpuInfo = (await Bun.file("/proc/cpuinfo").text()).split("\n");
       const line = cpuInfo.find((l) => l.startsWith("model name"));
       if (line) {
-        cpuModel = line.split(":", 2)[1]?.trim() ?? cpuModel;
+        const parsed = nonEmptyStringSchema.safeParse(line.split(":", 2)[1]);
+        if (parsed.success) cpuModel = parsed.data;
       }
     } catch {}
     if (cpuModel === "Unknown") {
-      cpuModel = cpus()[0]?.model ?? "Unknown CPU";
+      cpuModel = firstCpuModel("Unknown CPU");
     }
 
-    // Prefer nvidia-smi when it is installed and exits successfully.
+    // Prefer direct NVML FFI so detection does not depend on host utilities.
     let detectedGpu = false;
-    if (Bun.which("nvidia-smi")) {
-      const raw = run("nvidia-smi", [
-        "--query-gpu=name,memory.total",
-        "--format=csv,noheader,nounits",
-      ]);
-      const first = raw.split("\n")[0] ?? "";
-      if (first.includes(",")) {
-        const [name, memMbRaw] = first.split(",", 2).map((item) => item.trim());
-        const parsed = nvidiaSmiOutputSchema.safeParse({
-          name,
-          memoryMb: Number(memMbRaw),
-        });
-        if (parsed.success) {
-          gpuName = parsed.data.name;
-          detectedGpu = true;
-          gpuVramGb = Math.round(parsed.data.memoryMb / 1024);
-        }
-      }
+    const nvmlGpu = tryNvmlFfi();
+    if (nvmlGpu) {
+      gpuName = nvmlGpu.name;
+      gpuVramGb = nvmlGpu.vramGb;
+      detectedGpu = true;
     }
 
-    // Fallback 1: Try NVML FFI directly
-    if (!detectedGpu) {
-      const nvmlGpu = tryNvmlFfi();
-      if (nvmlGpu) {
-        gpuName = nvmlGpu.name;
-        gpuVramGb = nvmlGpu.vramGb;
-        detectedGpu = true;
-      }
-    }
-
-    // Fallback 2: AMD Linux sysfs.
+    // Fallback 1: AMD Linux sysfs.
     if (!detectedGpu) {
       const amdGpu = await tryAmdLinux();
       if (amdGpu) {
@@ -307,15 +267,15 @@ export async function detectSpecs(): Promise<HostSpecs> {
       }
     }
 
-    // Fallback 3: integrated GPU or CPU-only.
+    // Fallback 2: integrated GPU or CPU-only.
     if (!detectedGpu) {
       gpuName = "CPU / Integrated Graphics";
       gpuVramGb = 0;
     }
   } else {
     osName = platform === "win32" ? "Windows" : platform;
-    ramGb = Math.round(totalmem() / 1024 / 1024 / 1024);
-    cpuModel = cpus()[0]?.model ?? "Unknown CPU";
+    ramGb = totalRamGb();
+    cpuModel = firstCpuModel("Unknown CPU");
     gpuName = "Unavailable";
   }
 

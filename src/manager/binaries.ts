@@ -2,7 +2,7 @@ import {
   accessSync,
   chmodSync,
   constants,
-  cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -10,7 +10,10 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve, sep } from "node:path";
+import { Readable } from "node:stream";
+import { unzip } from "fflate";
+import { extract as createTarExtractor, type Headers } from "tar-stream";
 import { z } from "zod";
 import {
   computeSha256,
@@ -38,7 +41,7 @@ export type ManagedRuntimeRelease = {
   format: "binary" | "tar.gz" | "zip";
 };
 
-type RuntimeConfig = { root: string };
+export type RuntimeConfig = { root: string };
 
 const RELEASES: Record<string, ManagedRuntimeRelease> = {
   "llama-server:darwin:arm64": {
@@ -305,35 +308,184 @@ async function verifyManagedBinary(
   return true;
 }
 
-async function curlDownload(url: string, dest: string): Promise<void> {
-  const proc = Bun.spawn(["curl", "-L", "--fail", "-o", dest, url], {
-    stdout: "inherit",
-    stderr: "inherit",
-    stdin: "inherit",
-  });
-  if ((await proc.exited) !== 0) throw new Error(`Failed to download ${url}`);
+async function downloadRelease(url: string, dest: string): Promise<void> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to download ${url}: ${response.status} ${response.statusText}.`,
+    );
+  }
+  await Bun.write(dest, response);
 }
 
-function extractRelease(
-  release: ManagedRuntimeRelease,
+function archiveDestination(
+  stagingDir: string,
+  archivePath: string,
+  stripComponents: number,
+): string | undefined {
+  const normalized = archivePath.replaceAll("\\", "/");
+  if (
+    !normalized ||
+    normalized.includes("\0") ||
+    normalized.startsWith("/") ||
+    /^[a-zA-Z]:\//.test(normalized)
+  ) {
+    throw new Error(`Unsafe archive path: ${JSON.stringify(archivePath)}.`);
+  }
+
+  const components = normalized.split("/").filter(Boolean);
+  if (components.some((component) => component === "." || component === "..")) {
+    throw new Error(`Unsafe archive path: ${JSON.stringify(archivePath)}.`);
+  }
+  const destinationComponents = components.slice(stripComponents);
+  if (destinationComponents.length === 0) return undefined;
+
+  const root = resolve(stagingDir);
+  const destination = resolve(root, ...destinationComponents);
+  if (!destination.startsWith(`${root}${sep}`)) {
+    throw new Error(`Unsafe archive path: ${JSON.stringify(archivePath)}.`);
+  }
+  return destination;
+}
+
+async function extractTarGz(
   archivePath: string,
   stagingDir: string,
-): void {
-  const command =
-    release.format === "tar.gz"
-      ? ["tar", "-zxf", archivePath, "-C", stagingDir, "--strip-components=1"]
-      : ["unzip", "-o", archivePath, "-d", stagingDir];
-  const result = Bun.spawnSync(command, {
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
+): Promise<void> {
+  const extractor = createTarExtractor();
+  const completed = new Promise<void>((resolveExtraction, rejectExtraction) => {
+    extractor.once("finish", resolveExtraction);
+    extractor.once("error", rejectExtraction);
+    extractor.on(
+      "entry",
+      (header: Headers, entry: Readable, next: (error?: unknown) => void) => {
+        void (async () => {
+          try {
+            const destination = archiveDestination(stagingDir, header.name, 1);
+            if (header.type === "directory") {
+              if (destination) mkdirSync(destination, { recursive: true });
+            } else if (!header.type || header.type === "file") {
+              if (destination) {
+                mkdirSync(dirname(destination), { recursive: true });
+                const chunks: Uint8Array[] = [];
+                for await (const chunk of entry) chunks.push(chunk);
+                const size = chunks.reduce(
+                  (total, chunk) => total + chunk.byteLength,
+                  0,
+                );
+                const contents = new Uint8Array(size);
+                let offset = 0;
+                for (const chunk of chunks) {
+                  contents.set(chunk, offset);
+                  offset += chunk.byteLength;
+                }
+                await Bun.write(destination, contents);
+              } else {
+                entry.resume();
+              }
+            } else if (
+              header.type !== "pax-header" &&
+              header.type !== "pax-global-header" &&
+              header.type !== "gnu-long-link-path" &&
+              header.type !== "gnu-long-path"
+            ) {
+              throw new Error(
+                `Unsupported ${header.type} entry in ${archivePath}.`,
+              );
+            } else {
+              entry.resume();
+            }
+            next();
+          } catch (error) {
+            entry.resume();
+            next(error);
+          }
+        })();
+      },
+    );
   });
-  if (result.exitCode !== 0) {
-    throw new Error(`Failed to extract ${release.assetName}.`);
+
+  Readable.fromWeb(
+    Bun.file(archivePath)
+      .stream()
+      .pipeThrough(
+        new DecompressionStream("gzip"),
+      ) as unknown as import("node:stream/web").ReadableStream,
+  ).pipe(extractor);
+  await completed;
+}
+
+async function unzipArchive(
+  archivePath: string,
+): Promise<Record<string, Uint8Array>> {
+  const archive = new Uint8Array(await Bun.file(archivePath).arrayBuffer());
+  return new Promise((resolveArchive, rejectArchive) => {
+    unzip(archive, (error, files) => {
+      if (error) rejectArchive(error);
+      else resolveArchive(files);
+    });
+  });
+}
+
+async function extractZip(
+  archivePath: string,
+  stagingDir: string,
+): Promise<void> {
+  const files = await unzipArchive(archivePath);
+  for (const [archivePath, contents] of Object.entries(files)) {
+    const destination = archiveDestination(stagingDir, archivePath, 0);
+    if (!destination) continue;
+    if (archivePath.endsWith("/")) {
+      mkdirSync(destination, { recursive: true });
+      continue;
+    }
+    mkdirSync(dirname(destination), { recursive: true });
+    await Bun.write(destination, contents);
   }
 }
 
-async function installManagedRuntime(
+async function extractRelease(
+  release: ManagedRuntimeRelease,
+  archivePath: string,
+  stagingDir: string,
+): Promise<void> {
+  try {
+    if (release.format === "tar.gz") {
+      await extractTarGz(archivePath, stagingDir);
+    } else {
+      await extractZip(archivePath, stagingDir);
+    }
+  } catch (error) {
+    throw new Error(`Failed to extract ${release.assetName}.`, {
+      cause: error,
+    });
+  }
+}
+
+function commitStagedRelease(
+  stagingDir: string,
+  binDir: string,
+  binaryName: RuntimeName,
+): void {
+  const entries = readdirSync(stagingDir);
+  for (const entry of entries) {
+    const destination = join(binDir, entry);
+    if (existsSync(destination)) {
+      throw new Error(
+        `Refusing to replace existing managed runtime asset at ${destination}.`,
+      );
+    }
+  }
+  for (const entry of [...entries].sort((left, right) => {
+    if (left === binaryName) return 1;
+    if (right === binaryName) return -1;
+    return left.localeCompare(right);
+  })) {
+    renameSync(join(stagingDir, entry), join(binDir, entry));
+  }
+}
+
+export async function installManagedRuntime(
   config: RuntimeConfig,
   release: ManagedRuntimeRelease,
 ): Promise<string> {
@@ -347,7 +499,7 @@ async function installManagedRuntime(
     console.log(
       `⬇️  Downloading pinned ${release.name} release ${release.tag}...`,
     );
-    await curlDownload(release.url, downloadPath);
+    await downloadRelease(release.url, downloadPath);
     await verifyAuthoritativeFile(
       downloadPath,
       {
@@ -361,13 +513,14 @@ async function installManagedRuntime(
     if (release.format === "binary") {
       renameSync(downloadPath, destPath);
     } else {
-      extractRelease(release, downloadPath, stagingDir);
-      for (const entry of readdirSync(stagingDir)) {
-        cpSync(join(stagingDir, entry), join(binDir, entry), {
-          recursive: true,
-          force: true,
-        });
+      await extractRelease(release, downloadPath, stagingDir);
+      const stagedBinary = join(stagingDir, release.name);
+      if (!(await Bun.file(stagedBinary).exists())) {
+        throw new Error(
+          `${release.name} was not found after extracting ${release.assetName}.`,
+        );
       }
+      commitStagedRelease(stagingDir, binDir, release.name);
     }
     if (!(await Bun.file(destPath).exists())) {
       throw new Error(
@@ -376,9 +529,6 @@ async function installManagedRuntime(
     }
 
     chmodSync(destPath, statSync(destPath).mode | 0o111);
-    if (process.platform === "darwin") {
-      Bun.spawnSync(["xattr", "-rd", "com.apple.quarantine", destPath]);
-    }
 
     const receipt = (await readReceipt(binDir)) ?? { version: 1, runtimes: {} };
     receipt.runtimes[release.name] = {

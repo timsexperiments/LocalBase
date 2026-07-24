@@ -1,4 +1,10 @@
-import { mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
+import {
+  createWriteStream,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { SafeFilenameSchema, verifyAuthoritativeFile } from "./utils/checksum";
@@ -41,6 +47,8 @@ export {
 } from "./manager/binaries";
 
 const textEncoder = new TextEncoder();
+const nonNegativeIntegerHeaderSchema = z.string().regex(/^\d+$/);
+const contentRangeHeaderSchema = z.string().regex(/^bytes \d+-\d+\/\d+$/);
 
 export type LocalBaseConfig = {
   root: string;
@@ -642,6 +650,133 @@ async function removeIfEmpty(path: string): Promise<void> {
   }
 }
 
+function downloadError(url: string, token: string, detail?: unknown): Error {
+  if (
+    !token &&
+    (url.toLowerCase().includes("gemma") || url.toLowerCase().includes("llama"))
+  ) {
+    return new Error(
+      `Failed to download model from ${url}.\n\n⚠️  This model is gated on Hugging Face. To download it:\n1. Accept the model terms on Hugging Face (e.g., https://huggingface.co/google/gemma-3-27b-it)\n2. Save your access token in the database: local-base configure --hf-token "your_token" (or set the HF_TOKEN environment variable)\n3. Re-run the command.`,
+      detail === undefined ? undefined : { cause: detail },
+    );
+  }
+  return new Error(
+    `Failed to download model from ${url}${detail ? `: ${detail instanceof Error ? detail.message : String(detail)}` : ""}`,
+    detail === undefined ? undefined : { cause: detail },
+  );
+}
+
+function parseDownloadResponse(
+  response: Response,
+  offset: number,
+  expectedSizeBytes: number,
+): void {
+  const contentLengthHeader = response.headers.get("content-length");
+  let contentLength: number | undefined;
+  if (contentLengthHeader !== null) {
+    try {
+      contentLength = Number(
+        nonNegativeIntegerHeaderSchema.parse(contentLengthHeader),
+      );
+    } catch (error) {
+      throw new Error(
+        `Invalid Content-Length header ${JSON.stringify(contentLengthHeader)}`,
+        { cause: error },
+      );
+    }
+  }
+  const contentRangeHeader = response.headers.get("content-range");
+
+  if (offset === 0) {
+    if (response.status !== 200 || contentRangeHeader !== null) {
+      throw new Error(
+        `Expected an HTTP 200 response without Content-Range for a new download, received ${response.status}${contentRangeHeader ? ` with Content-Range ${contentRangeHeader}` : ""}`,
+      );
+    }
+    if (contentLength !== undefined && contentLength !== expectedSizeBytes) {
+      throw new Error(
+        `Content-Length ${contentLength} does not match authoritative size ${expectedSizeBytes}`,
+      );
+    }
+    return;
+  }
+
+  if (response.status !== 206 || contentRangeHeader === null) {
+    throw new Error(
+      `Expected an HTTP 206 response with Content-Range for a resumed download, received ${response.status}`,
+    );
+  }
+  let parsedContentRange: string;
+  try {
+    parsedContentRange = contentRangeHeaderSchema.parse(contentRangeHeader);
+  } catch (error) {
+    throw new Error(
+      `Invalid Content-Range header ${JSON.stringify(contentRangeHeader)}`,
+      { cause: error },
+    );
+  }
+  const [, startText, endText, totalText] = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(
+    parsedContentRange,
+  )!;
+  const start = Number(startText);
+  const end = Number(endText);
+  const totalSize = Number(totalText);
+  if (
+    start !== offset ||
+    end < start ||
+    end >= totalSize ||
+    totalSize !== expectedSizeBytes
+  ) {
+    throw new Error(
+      `Content-Range ${contentRangeHeader} does not describe bytes ${offset}-${expectedSizeBytes - 1}/${expectedSizeBytes}`,
+    );
+  }
+  const expectedResponseSize = end - start + 1;
+  if (contentLength !== undefined && contentLength !== expectedResponseSize) {
+    throw new Error(
+      `Content-Length ${contentLength} does not match Content-Range size ${expectedResponseSize}`,
+    );
+  }
+}
+
+function writeDownloadChunk(
+  writer: ReturnType<typeof createWriteStream>,
+  chunk: Uint8Array,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    writer.write(chunk, (error) => (error ? reject(error) : resolve()));
+  });
+}
+
+function closeDownloadWriter(
+  writer: ReturnType<typeof createWriteStream>,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    writer.once("error", reject);
+    writer.end(() => {
+      writer.removeListener("error", reject);
+      resolve();
+    });
+  });
+}
+
+function createDownloadProgress(totalSize: number, initialSize: number) {
+  const enabled = process.stderr.isTTY === true;
+  let lastPercent = Math.floor((initialSize / totalSize) * 100);
+  return {
+    update(downloadedSize: number) {
+      if (!enabled) return;
+      const percent = Math.floor((downloadedSize / totalSize) * 100);
+      if (percent === lastPercent && downloadedSize !== totalSize) return;
+      lastPercent = percent;
+      process.stderr.write(`\r   Download progress: ${percent}%`);
+    },
+    end() {
+      if (enabled) process.stderr.write("\n");
+    },
+  };
+}
+
 async function installArtifact(
   config: LocalBaseConfig,
   spec: ModelSpec,
@@ -699,31 +834,70 @@ async function installArtifact(
 
   const url = artifactDownloadUrl(spec, artifact);
   console.log(`⬇️  Downloading model "${spec.modelId}" from ${url}...`);
-  const curlArgs = ["-L", "--fail", "--continue-at", "-"];
-  const token = config.hfToken || process.env.HF_TOKEN;
-  if (token) {
-    curlArgs.push("-H", `Authorization: Bearer ${token}`);
-  }
-  curlArgs.push("-o", partial, url);
+  const token = config.hfToken || process.env.HF_TOKEN || "";
+  const partialSize = (await Bun.file(partial).exists())
+    ? (await Bun.file(partial).stat()).size
+    : 0;
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (partialSize > 0) headers.set("Range", `bytes=${partialSize}-`);
 
-  const proc = Bun.spawn(["curl", ...curlArgs], {
-    stdout: "inherit",
-    stderr: "inherit",
-    stdin: "inherit",
-  });
-  const exitCode = await proc.exited;
-  if (exitCode !== 0) {
+  let response: Response;
+  try {
+    response = await fetch(url, { headers });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    }
+    parseDownloadResponse(response, partialSize, authority.expectedSizeBytes);
+  } catch (error) {
     await removeIfEmpty(partial);
-    if (
-      !token &&
-      (url.toLowerCase().includes("gemma") ||
-        url.toLowerCase().includes("llama"))
-    ) {
+    throw downloadError(url, token, error);
+  }
+
+  if (!response.body) {
+    await removeIfEmpty(partial);
+    throw downloadError(url, token, "response has no body");
+  }
+
+  const writer = createWriteStream(partial, { flags: "a" });
+  const progress = createDownloadProgress(
+    authority.expectedSizeBytes,
+    partialSize,
+  );
+  let downloadedSize = partialSize;
+  try {
+    const reader = response.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        downloadedSize += value.byteLength;
+        if (downloadedSize > authority.expectedSizeBytes) {
+          throw new Error(
+            `downloaded size exceeds authoritative size ${authority.expectedSizeBytes}`,
+          );
+        }
+        await writeDownloadChunk(writer, value);
+        progress.update(downloadedSize);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    await closeDownloadWriter(writer);
+    if (downloadedSize !== authority.expectedSizeBytes) {
       throw new Error(
-        `Failed to download model from ${url}.\n\n⚠️  This model is gated on Hugging Face. To download it:\n1. Accept the model terms on Hugging Face (e.g., https://huggingface.co/google/gemma-3-27b-it)\n2. Save your access token in the database: local-base configure --hf-token "your_token" (or set the HF_TOKEN environment variable)\n3. Re-run the command.`,
+        `download ended at ${downloadedSize} bytes; expected ${authority.expectedSizeBytes}`,
       );
     }
-    throw new Error(`Failed to download model from ${url}`);
+    progress.end();
+  } catch (error) {
+    progress.end();
+    try {
+      await closeDownloadWriter(writer);
+    } catch {
+      writer.destroy();
+    }
+    throw downloadError(url, token, error);
   }
 
   try {

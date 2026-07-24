@@ -1,8 +1,9 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultConfig, saveConfig, type LocalBaseConfig } from "../manager";
 import { DatabaseSession } from "../db/client";
+import { compileRuntimeFixture } from "./runtime-fixture";
 
 const LLM_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const STT_MODEL = "whisper-large-v3-turbo";
@@ -231,19 +232,10 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
         join(config.imageModelsDir, "v1-5-pruned-emaonly.safetensors"),
         "test model placeholder",
       ),
-      Bun.write(
-        join(runtimeDir, "llama-server"),
-        "#!/bin/sh\nexec sleep 600\n",
-      ),
-      Bun.write(
-        join(runtimeDir, "whisper-server"),
-        "#!/bin/sh\nexec sleep 600\n",
-      ),
-      Bun.write(join(runtimeDir, "sd-server"), "#!/bin/sh\nexec sleep 600\n"),
+      compileRuntimeFixture(join(runtimeDir, "llama-server")),
+      compileRuntimeFixture(join(runtimeDir, "whisper-server")),
+      compileRuntimeFixture(join(runtimeDir, "sd-server")),
     ]);
-    for (const binary of ["llama-server", "whisper-server", "sd-server"]) {
-      chmodSync(join(runtimeDir, binary), 0o755);
-    }
   } catch (error) {
     llmUpstream.stop(true);
     sttUpstream.stop(true);
@@ -261,7 +253,7 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
     const port = reservePort();
     const gatewayProcess = Bun.spawn(
       [
-        "bun",
+        process.execPath,
         "run",
         "src/cli.ts",
         "serve",
