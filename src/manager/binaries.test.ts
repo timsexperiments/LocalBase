@@ -1,5 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import {
+  lstatSync,
+  mkdtempSync,
+  readlinkSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zipSync } from "fflate";
@@ -45,10 +51,20 @@ function release(
   };
 }
 
-async function tarGz(entries: Record<string, Uint8Array>): Promise<Uint8Array> {
+async function tarGz(
+  entries: Record<string, Uint8Array | { linkname: string }>,
+): Promise<Uint8Array> {
   const archive = pack();
   for (const [name, contents] of Object.entries(entries)) {
-    archive.entry({ name, mode: 0o644 }, Buffer.from(contents));
+    if (contents instanceof Uint8Array) {
+      archive.entry({ name, mode: 0o644 }, Buffer.from(contents));
+    } else {
+      archive.entry({
+        name,
+        type: "symlink",
+        linkname: contents.linkname,
+      });
+    }
   }
   archive.finalize();
 
@@ -89,6 +105,7 @@ test("installs a verified tar.gz runtime with its staged support files", async (
   const archive = await tarGz({
     "release/llama-server": binary,
     "release/libsupport.dylib": supportFile,
+    "release/libsupport.dylib.link": { linkname: "libsupport.dylib" },
   });
   const root = createRoot();
 
@@ -103,6 +120,9 @@ test("installs a verified tar.gz runtime with its staged support files", async (
       await Bun.file(join(root, "bin", "libsupport.dylib")).bytes(),
     ).toEqual(supportFile);
     expect(statSync(installed).mode & 0o111).toBe(0o111);
+    const installedLink = join(root, "bin", "libsupport.dylib.link");
+    expect(lstatSync(installedLink).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(installedLink)).toBe("libsupport.dylib");
     expect(
       await Bun.file(join(root, "bin", ".managed-binaries.json")).json(),
     ).toMatchObject({
@@ -172,5 +192,23 @@ test("rejects archive paths that would escape the staging directory", async () =
     ).rejects.toThrow("Failed to extract");
     expect(await Bun.file(join(root, "outside")).exists()).toBe(false);
     expect(await Bun.file(join(root, "bin", "sd-server")).exists()).toBe(false);
+  });
+});
+
+test("rejects archive symlinks that would escape the staging directory", async () => {
+  const archive = await tarGz({
+    "release/llama-server": new TextEncoder().encode("llama executable"),
+    "release/unsafe": { linkname: "../outside" },
+  });
+  const root = createRoot();
+
+  await withArchive(archive, async (url) => {
+    await expect(
+      installManagedRuntime(
+        { root },
+        release("llama-server", "tar.gz", archive, url),
+      ),
+    ).rejects.toThrow("Failed to extract");
+    expect(await Bun.file(join(root, "outside")).exists()).toBe(false);
   });
 });
