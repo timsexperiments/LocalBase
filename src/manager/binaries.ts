@@ -9,10 +9,11 @@ import {
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
 } from "node:fs";
 import { delimiter, dirname, join, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
-import { unzip } from "fflate";
+import { unzipSync } from "fflate";
 import { extract as createTarExtractor, type Headers } from "tar-stream";
 import { z } from "zod";
 import {
@@ -315,7 +316,7 @@ async function downloadRelease(url: string, dest: string): Promise<void> {
       `Failed to download ${url}: ${response.status} ${response.statusText}.`,
     );
   }
-  await Bun.write(dest, response);
+  await Bun.write(dest, await response.bytes());
 }
 
 function archiveDestination(
@@ -348,11 +349,46 @@ function archiveDestination(
   return destination;
 }
 
+function archiveLinkTarget(
+  stagingDir: string,
+  destination: string,
+  linkTarget: string | null | undefined,
+): string {
+  const normalized = linkTarget?.replaceAll("\\", "/") ?? "";
+  if (
+    !normalized ||
+    normalized.includes("\0") ||
+    normalized.startsWith("/") ||
+    /^[a-zA-Z]:\//.test(normalized)
+  ) {
+    throw new Error(
+      `Unsafe archive link target: ${JSON.stringify(linkTarget)}.`,
+    );
+  }
+
+  const components = normalized.split("/");
+  if (components.some((component) => component === "." || component === "..")) {
+    throw new Error(
+      `Unsafe archive link target: ${JSON.stringify(linkTarget)}.`,
+    );
+  }
+
+  const root = resolve(stagingDir);
+  const resolvedTarget = resolve(dirname(destination), normalized);
+  if (!resolvedTarget.startsWith(`${root}${sep}`)) {
+    throw new Error(
+      `Unsafe archive link target: ${JSON.stringify(linkTarget)}.`,
+    );
+  }
+  return normalized;
+}
+
 async function extractTarGz(
   archivePath: string,
   stagingDir: string,
 ): Promise<void> {
   const extractor = createTarExtractor();
+  const symlinks: Array<{ destination: string; target: string }> = [];
   const completed = new Promise<void>((resolveExtraction, rejectExtraction) => {
     extractor.once("finish", resolveExtraction);
     extractor.once("error", rejectExtraction);
@@ -383,6 +419,18 @@ async function extractTarGz(
               } else {
                 entry.resume();
               }
+            } else if (header.type === "symlink") {
+              if (destination) {
+                symlinks.push({
+                  destination,
+                  target: archiveLinkTarget(
+                    stagingDir,
+                    destination,
+                    header.linkname,
+                  ),
+                });
+              }
+              entry.resume();
             } else if (
               header.type !== "pax-header" &&
               header.type !== "pax-global-header" &&
@@ -413,18 +461,15 @@ async function extractTarGz(
       ) as unknown as import("node:stream/web").ReadableStream,
   ).pipe(extractor);
   await completed;
+  for (const { destination, target } of symlinks) {
+    mkdirSync(dirname(destination), { recursive: true });
+    symlinkSync(target, destination);
+  }
 }
 
-async function unzipArchive(
-  archivePath: string,
-): Promise<Record<string, Uint8Array>> {
+async function unzipArchive(archivePath: string) {
   const archive = new Uint8Array(await Bun.file(archivePath).arrayBuffer());
-  return new Promise((resolveArchive, rejectArchive) => {
-    unzip(archive, (error, files) => {
-      if (error) rejectArchive(error);
-      else resolveArchive(files);
-    });
-  });
+  return unzipSync(archive);
 }
 
 async function extractZip(
