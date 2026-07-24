@@ -57,7 +57,7 @@ export function guardianProcessCommand(
   gatewayPid: number,
   backendPid: number,
 ): string[] {
-  const entrypoint = Bun.main === process.execPath ? [] : [Bun.main];
+  const entrypoint = Bun.main.startsWith("/$bunfs/") ? [] : [Bun.main];
   return [
     process.execPath,
     ...entrypoint,

@@ -1,81 +1,80 @@
 import { $ } from "bun";
-import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
-const root = join(import.meta.dir, "..");
-const tempDir = join(root, "tmp-whisper-build");
-const outputDir = join(root, "dist");
+const WHISPER_SOURCE = {
+  revision: "23ee03506a91ac3d3f0071b40e66a430eebdfa1d",
+  archiveSha256:
+    "c8b0de473e9ec47a74bdf6104425c709261beeada8d6d7c1fec7432be701d032",
+};
+const archiveUrl = `https://codeload.github.com/ggml-org/whisper.cpp/tar.gz/${WHISPER_SOURCE.revision}`;
+const workspace = process.env.GITHUB_WORKSPACE;
+const root = workspace ? join(workspace, "build-whisper") : "";
+const archivePath = root ? join(root, "whisper.cpp.tar.gz") : "";
+const sourcePath = root
+  ? join(root, `whisper.cpp-${WHISPER_SOURCE.revision}`)
+  : "";
+const buildPath = root ? join(root, "build") : "";
+const outputPath = root ? join(root, "whisper-server") : "";
 
-function platformSuffix(): string {
-  const osName = process.platform;
-  const cpuArch = process.arch;
-  if (osName === "darwin" && cpuArch === "arm64") return "macos-arm64";
-  if (osName === "darwin" && cpuArch === "x64") return "macos-x64";
-  if (osName === "linux" && cpuArch === "x64") return "linux-x64";
-  if (osName === "linux" && cpuArch === "arm64") return "linux-arm64";
-  return `${osName}-${cpuArch}`;
+function sha256(bytes: Uint8Array): Promise<string> {
+  return crypto.subtle
+    .digest("SHA-256", bytes)
+    .then((digest) =>
+      Array.from(new Uint8Array(digest), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join(""),
+    );
 }
 
 async function main() {
-  const suffix = platformSuffix();
-  const outputName = `whisper-server-${suffix}`;
-  const destPath = join(outputDir, outputName);
-
-  console.log(`\n🚀 Starting local build for whisper-server (${suffix})...`);
-
-  rmSync(tempDir, { recursive: true, force: true });
-  mkdirSync(tempDir, { recursive: true });
-  mkdirSync(outputDir, { recursive: true });
-
-  console.log(`\n⬇️  Cloning ggml-org/whisper.cpp...`);
-  await $`git clone --depth 1 ${WHISPER_REPO} whisper.cpp`.cwd(tempDir);
-
-  const whisperDir = join(tempDir, "whisper.cpp");
-
-  console.log(`\n🛠️  Configuring CMake...`);
-  await $`cmake -B build -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF`.cwd(
-    whisperDir,
-  );
-
-  console.log(`\n🏗️  Compiling whisper-server...`);
-  await $`cmake --build build --config Release -j`.cwd(whisperDir);
-
-  const buildBinDir = join(whisperDir, "build", "bin");
-  const possibleNames = ["whisper-server", "server"];
-  let sourcePath = "";
-
-  for (const name of possibleNames) {
-    const p = join(buildBinDir, name);
-    if (await Bun.file(p).exists()) {
-      sourcePath = p;
-      break;
-    }
-    const exePath = join(buildBinDir, `${name}.exe`);
-    if (await Bun.file(exePath).exists()) {
-      sourcePath = exePath;
-      break;
-    }
-  }
-
-  if (!sourcePath) {
-    console.error(
-      "❌ Could not locate the compiled whisper-server binary in build/bin.",
+  if (process.env.GITHUB_ACTIONS !== "true" || !workspace) {
+    throw new Error(
+      "Whisper source builds run only in GitHub Actions release jobs.",
     );
-    process.exit(1);
   }
 
-  console.log(`\n💾 Copying binary to ${destPath}...`);
-  await Bun.write(destPath, Bun.file(sourcePath));
-  chmodSync(destPath, (await Bun.file(destPath).stat()).mode | 0o111);
+  console.log(`Downloading whisper.cpp at ${WHISPER_SOURCE.revision}...`);
+  const response = await fetch(archiveUrl);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to download whisper.cpp source: HTTP ${response.status}.`,
+    );
+  }
 
-  console.log(`\n🧹 Cleaning up temporary build files...`);
-  rmSync(tempDir, { recursive: true, force: true });
+  const archive = new Uint8Array(await response.arrayBuffer());
+  const actualSha256 = await sha256(archive);
+  if (actualSha256 !== WHISPER_SOURCE.archiveSha256) {
+    throw new Error(
+      `whisper.cpp source checksum mismatch: expected ${WHISPER_SOURCE.archiveSha256}, received ${actualSha256}.`,
+    );
+  }
 
-  console.log(`\n✅ Success! Compiled binary saved as: ${destPath}`);
+  await $`rm -rf ${root}`;
+  await $`mkdir -p ${root}`;
+  await Bun.write(archivePath, archive);
+
+  console.log("Extracting verified whisper.cpp source...");
+  await $`tar --extract --gzip --file ${archivePath} --directory ${root}`;
+
+  console.log("Configuring whisper-server...");
+  await $`cmake -S ${sourcePath} -B ${buildPath} -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF`;
+
+  console.log("Building whisper-server...");
+  await $`cmake --build ${buildPath} --config Release --target whisper-server --parallel`;
+
+  const binaryPath = join(buildPath, "bin", "whisper-server");
+  if (!(await Bun.file(binaryPath).exists())) {
+    throw new Error(
+      "The Whisper build completed without a whisper-server binary.",
+    );
+  }
+
+  await Bun.write(outputPath, Bun.file(binaryPath));
+  await $`chmod +x ${outputPath}`;
+  console.log(`Built verified whisper-server: ${outputPath}`);
 }
 
-main().catch((err) => {
-  console.error("❌ Build script failed:", err);
+main().catch((error) => {
+  console.error(error);
   process.exit(1);
 });
