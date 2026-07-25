@@ -532,6 +532,91 @@ function startMockUpstream(
           { headers: { "content-type": "text/event-stream" } },
         );
       }
+      if (
+        mode === "multi-choice-unfinished-stream" ||
+        mode === "multi-choice-complete-stream"
+      ) {
+        const chunks = [
+          {
+            id: "chatcmpl-multi-choice",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "first" },
+                finish_reason: null,
+              },
+              {
+                index: 1,
+                delta: { role: "assistant", content: "second" },
+                finish_reason: null,
+              },
+            ],
+            usage: null,
+          },
+          {
+            id: "chatcmpl-multi-choice",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              { index: 0, delta: {}, finish_reason: "stop" },
+              ...(mode === "multi-choice-complete-stream"
+                ? [{ index: 1, delta: {}, finish_reason: "length" as const }]
+                : []),
+            ],
+            usage: null,
+          },
+          {
+            id: "chatcmpl-multi-choice",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [],
+            usage: {
+              prompt_tokens: 2,
+              completion_tokens: 2,
+              total_tokens: 4,
+            },
+          },
+        ];
+        return new Response(
+          `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      if (mode === "post-finish-choice-stream") {
+        const chunks = [
+          {
+            id: "chatcmpl-post-finish",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: null,
+          },
+          {
+            id: "chatcmpl-post-finish",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              {
+                index: 0,
+                delta: { content: "too late for this choice" },
+                finish_reason: null,
+              },
+            ],
+            usage: null,
+          },
+        ];
+        return new Response(
+          `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
       if (mode === "unterminated-done-stream") {
         return new Response(
           `data: ${JSON.stringify({

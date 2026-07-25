@@ -877,7 +877,7 @@ function validateEventStream(
   let buffered = "";
   let doneEvent: string | undefined;
   let failed = false;
-  let sawTerminalFinish = false;
+  const choiceFinished = new Map<number, boolean>();
 
   const validationFailure = `data: ${JSON.stringify({
     error: {
@@ -914,7 +914,11 @@ function validateEventStream(
 
     const data = eventData(event);
     if (data === "[DONE]") {
-      if (!framed || !sawTerminalFinish) {
+      if (
+        !framed ||
+        choiceFinished.size === 0 ||
+        [...choiceFinished.values()].some((finished) => !finished)
+      ) {
         return fail(controller, terminateOnFailure);
       }
       doneEvent = event;
@@ -934,8 +938,11 @@ function validateEventStream(
           controller.terminate();
           return false;
         }
-        if (value.choices.some((choice) => choice.finish_reason !== null)) {
-          sawTerminalFinish = true;
+        for (const choice of value.choices) {
+          if (choiceFinished.get(choice.index)) {
+            return fail(controller, terminateOnFailure);
+          }
+          choiceFinished.set(choice.index, choice.finish_reason !== null);
         }
       } catch {
         return fail(controller, terminateOnFailure);

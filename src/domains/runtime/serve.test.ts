@@ -551,6 +551,72 @@ describe("API gateway integration", () => {
     expect(stream.endsWith(STREAM_VALIDATION_FAILURE)).toBe(true);
   });
 
+  test("requires every observed choice to finish before done", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "multi-choice-unfinished-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        n: 2,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).toContain('"index":0,"delta":{},"finish_reason":"stop"');
+    expect(stream).not.toContain(
+      '"index":1,"delta":{},"finish_reason":"length"',
+    );
+    expect(stream.endsWith(STREAM_VALIDATION_FAILURE)).toBe(true);
+  });
+
+  test("accepts done after every observed choice has finished", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "multi-choice-complete-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        n: 2,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).toContain('"index":0,"delta":{},"finish_reason":"stop"');
+    expect(stream).toContain('"index":1,"delta":{},"finish_reason":"length"');
+    expect(stream).toContain('"choices":[],"usage"');
+    expect(stream.endsWith("data: [DONE]\n\n")).toBe(true);
+    expect(stream).not.toContain('"code":"upstream_error"');
+  });
+
+  test("rejects additional choice data after that choice has finished", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "post-finish-choice-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).toContain('"finish_reason":"stop"');
+    expect(stream).not.toContain("too late for this choice");
+    expect(stream.endsWith(STREAM_VALIDATION_FAILURE)).toBe(true);
+  });
+
   test("forwards one backend error event and terminates before later events", async () => {
     for (const [mode, code] of [
       ["backend-error-stream", 500],
