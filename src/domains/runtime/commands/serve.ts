@@ -297,6 +297,24 @@ const functionToolSchema = z
   })
   .strict();
 
+const chatResponseFormatSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text") }).strict(),
+  z.object({ type: z.literal("json_object") }).strict(),
+  z
+    .object({
+      type: z.literal("json_schema"),
+      json_schema: z
+        .object({
+          name: z.string().min(1),
+          description: z.string().optional(),
+          schema: z.record(z.string(), jsonSchemaValueSchema),
+          strict: z.boolean().optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+]);
+
 const modelIdSchema = z
   .string()
   .refine((value) => value.trim().length > 0, "model must not be empty");
@@ -432,9 +450,7 @@ const chatCompletionRequestSchema = z
     frequency_penalty: z.number().min(-2).max(2).optional(),
     logit_bias: z.record(z.string(), z.number()).nullable().optional(),
     user: z.string().optional(),
-    response_format: z
-      .object({ type: z.enum(["text", "json_object"]) })
-      .optional(),
+    response_format: chatResponseFormatSchema.optional(),
     tools: z.array(functionToolSchema).optional(),
     tool_choice: z
       .union([
