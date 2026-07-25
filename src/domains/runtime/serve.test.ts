@@ -1,7 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { generateText } from "ai";
 import { join } from "node:path";
 import { loadConfig, saveConfig } from "../../manager";
 import { DatabaseSession } from "../../db/client";
+import { withDatabase } from "../../db/client";
+import {
+  deleteModelSystemPrompt,
+  saveModelSystemPrompt,
+} from "./model-system-prompts";
+import { DEFAULT_SYSTEM_PROMPT } from "./commands/prompt";
 import {
   startGatewayFixture,
   type GatewayFixture,
@@ -54,6 +62,28 @@ describe("API gateway integration", () => {
     const database = new DatabaseSession();
     try {
       saveConfig(database, config);
+    } finally {
+      database.close();
+    }
+  }
+
+  function saveGatewayModelPrompt(modelId: string, prompt: string): void {
+    const database = new DatabaseSession();
+    try {
+      withDatabase(database, gateway.root, (connection) => {
+        saveModelSystemPrompt(connection, { modelId, prompt });
+      });
+    } finally {
+      database.close();
+    }
+  }
+
+  function deleteGatewayModelPrompt(modelId: string): void {
+    const database = new DatabaseSession();
+    try {
+      withDatabase(database, gateway.root, (connection) => {
+        deleteModelSystemPrompt(connection, modelId);
+      });
     } finally {
       database.close();
     }
@@ -138,6 +168,192 @@ describe("API gateway integration", () => {
       provider_option: "preserved",
       messages: [{ role: "system", content: "hello" }],
     });
+  });
+
+  test("injects the model prompt for the canonical LLM serving each request", async () => {
+    const firstModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const secondModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const original = loadGatewayConfig();
+    const configured = {
+      ...original,
+      activeLlmModel: firstModel,
+      selectedLlmModels: [firstModel, secondModel],
+      systemPrompt: "Global fallback",
+    };
+    saveGatewayConfig(configured);
+    await Bun.write(
+      join(configured.llmModelsDir, `${secondModel}.gguf`),
+      "test model placeholder",
+    );
+    saveGatewayModelPrompt(firstModel, "First model prompt");
+    saveGatewayModelPrompt(secondModel, "Second model prompt");
+
+    try {
+      for (const model of [firstModel, `openai/${secondModel}`]) {
+        const response = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: "hello" }],
+          }),
+        });
+        expect(response.status).toBe(200);
+      }
+
+      const firstRequest = JSON.parse(
+        gateway.upstreamRequests.at(-2)?.body ?? "{}",
+      );
+      const secondRequest = JSON.parse(
+        gateway.upstreamRequests.at(-1)?.body ?? "{}",
+      );
+      expect(firstRequest.messages[0]).toEqual({
+        role: "system",
+        content: "First model prompt",
+      });
+      expect(secondRequest.messages[0]).toEqual({
+        role: "system",
+        content: "Second model prompt",
+      });
+    } finally {
+      deleteGatewayModelPrompt(firstModel);
+      deleteGatewayModelPrompt(secondModel);
+      saveGatewayConfig(original);
+    }
+  });
+
+  test("preserves client system and developer messages without injecting prompts", async () => {
+    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const original = loadGatewayConfig();
+    saveGatewayConfig({ ...original, systemPrompt: "Global fallback" });
+    saveGatewayModelPrompt(modelId, "Model override");
+
+    try {
+      const response = await request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: "system", content: "Client system" },
+            { role: "developer", content: "Client developer" },
+            { role: "user", content: "hello" },
+          ],
+        }),
+      });
+      expect(response.status).toBe(200);
+
+      const body = JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}");
+      expect(body.messages).toEqual([
+        { role: "system", content: "Client system" },
+        { role: "system", content: "Client developer" },
+        { role: "user", content: "hello" },
+      ]);
+    } finally {
+      deleteGatewayModelPrompt(modelId);
+      saveGatewayConfig(original);
+    }
+  });
+
+  test("falls back from a model override to global and built-in prompts", async () => {
+    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const original = loadGatewayConfig();
+    deleteGatewayModelPrompt(modelId);
+    saveGatewayConfig({ ...original, systemPrompt: "Global fallback" });
+
+    try {
+      for (const systemPrompt of ["Global fallback", ""]) {
+        const current = loadGatewayConfig();
+        saveGatewayConfig({ ...current, systemPrompt });
+        const response = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: modelId,
+            messages: [{ role: "user", content: "hello" }],
+          }),
+        });
+        expect(response.status).toBe(200);
+      }
+
+      const globalRequest = JSON.parse(
+        gateway.upstreamRequests.at(-2)?.body ?? "{}",
+      );
+      const builtInRequest = JSON.parse(
+        gateway.upstreamRequests.at(-1)?.body ?? "{}",
+      );
+      expect(globalRequest.messages[0]).toEqual({
+        role: "system",
+        content: "Global fallback",
+      });
+      expect(builtInRequest.messages[0]).toEqual({
+        role: "system",
+        content: DEFAULT_SYSTEM_PROMPT,
+      });
+    } finally {
+      saveGatewayConfig(original);
+    }
+  });
+
+  test("does not modify legacy text-completion prompts", async () => {
+    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const original = loadGatewayConfig();
+    saveGatewayConfig({ ...original, systemPrompt: "Global fallback" });
+    saveGatewayModelPrompt(modelId, "Model override");
+
+    try {
+      const response = await request("/v1/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: modelId, prompt: "Raw completion" }),
+      });
+      expect(response.status).toBe(200);
+      expect(JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}")).toEqual(
+        expect.objectContaining({ model: modelId, prompt: "Raw completion" }),
+      );
+    } finally {
+      deleteGatewayModelPrompt(modelId);
+      saveGatewayConfig(original);
+    }
+  });
+
+  test("accepts an AI SDK system prompt without injecting LocalBase fallbacks", async () => {
+    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const original = loadGatewayConfig();
+    saveGatewayConfig({ ...original, systemPrompt: "Global fallback" });
+    saveGatewayModelPrompt(modelId, "Model override");
+    const localbase = createOpenAICompatible({
+      baseURL: `${gateway.baseUrl}/v1`,
+      name: "localbase-test",
+    });
+
+    try {
+      const result = await generateText({
+        model: localbase.chatModel(modelId),
+        system: "AI SDK system instruction",
+        prompt: "hello",
+      });
+      expect(result.text).toBe("ok");
+
+      const body = JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}");
+      expect(body.messages).toEqual(
+        expect.arrayContaining([
+          { role: "system", content: "AI SDK system instruction" },
+          { role: "user", content: "hello" },
+        ]),
+      );
+      expect(body.messages).not.toContainEqual({
+        role: "system",
+        content: "Global fallback",
+      });
+      expect(body.messages).not.toContainEqual({
+        role: "system",
+        content: "Model override",
+      });
+    } finally {
+      deleteGatewayModelPrompt(modelId);
+      saveGatewayConfig(original);
+    }
   });
 
   test("returns a 502 OpenAI error for malformed successful upstream responses", async () => {

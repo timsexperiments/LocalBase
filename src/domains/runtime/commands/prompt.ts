@@ -1,4 +1,5 @@
 import { type AppContext } from "../../../context";
+import { withDatabase } from "../../../db/client";
 import { saveConfig } from "../../../manager";
 import type { CommandExecution } from "../../app/commands/framework";
 import { CliInputError } from "../../app/commands/errors";
@@ -7,6 +8,12 @@ import type {
   PromptSetInput,
   PromptShowInput,
 } from "../../app/commands/inputs";
+import {
+  deleteModelSystemPrompt,
+  getModelSystemPrompt,
+  saveModelSystemPrompt,
+  systemPromptTextSchema,
+} from "../model-system-prompts";
 
 export const DEFAULT_SYSTEM_PROMPT = `You are an expert AI software engineer and system architect. You provide helpful, correct, and highly optimized code implementations.
 Guidelines:
@@ -16,17 +23,45 @@ Guidelines:
 - Formatting: Always format output in clear Markdown with appropriate syntax highlighting.
 - Output Policy: Respond directly in plain Markdown. Never start or wrap your responses with XML/HTML tags like <system-reminder>, unless explicitly instructed to do so.`;
 
+export type EffectiveSystemPrompt = {
+  prompt: string;
+  source: "model" | "global" | "built-in";
+};
+
+type PromptScope = { scope: "global" } | { scope: "model"; modelId: string };
+
+export function effectiveSystemPrompt(
+  ctx: AppContext,
+  modelId?: string,
+): EffectiveSystemPrompt {
+  const override = modelId
+    ? withDatabase(ctx.database, ctx.config.root, (database) =>
+        getModelSystemPrompt(database, modelId),
+      )
+    : undefined;
+  if (override) return { prompt: override.prompt, source: "model" };
+  if (ctx.config.systemPrompt) {
+    return { prompt: ctx.config.systemPrompt, source: "global" };
+  }
+  return { prompt: DEFAULT_SYSTEM_PROMPT, source: "built-in" };
+}
+
+function promptSourceLabel(source: EffectiveSystemPrompt["source"]): string {
+  if (source === "model") return "Model override";
+  if (source === "global") return "Global fallback";
+  return "Built-in default";
+}
+
 export async function runPromptShow(
-  _input: PromptShowInput,
+  input: PromptShowInput,
   ctx: AppContext,
   execution: CommandExecution,
-): Promise<{ data: { prompt: string; source: "custom" | "default" } }> {
-  const config = ctx.config;
-  const prompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-  const isCustom = !!config.systemPrompt;
+): Promise<{ data: PromptScope & EffectiveSystemPrompt }> {
+  const { prompt, source } = effectiveSystemPrompt(ctx, input.model);
+  const scope = promptScope(input.model);
 
   execution.output.info(
-    `\nActive System Prompt (${isCustom ? "Custom" : "Default fallback"}):`,
+    `\nEffective System Prompt (${promptSourceLabel(source)}):`,
   );
   execution.output.info(
     "--------------------------------------------------------------------------------",
@@ -35,61 +70,81 @@ export async function runPromptShow(
   execution.output.info(
     "--------------------------------------------------------------------------------",
   );
-  return { data: { prompt, source: isCustom ? "custom" : "default" } };
+  return { data: { ...scope, prompt, source } };
 }
 
 export async function runPromptSet(
   input: PromptSetInput,
   ctx: AppContext,
   execution: CommandExecution,
-): Promise<{ data: { updated: true; configured: boolean } }> {
-  const config = ctx.config;
-  let promptText = "";
+): Promise<{ data: PromptScope & { updated: true } }> {
+  const promptText = await resolvePromptText(input);
 
-  const file = input.file;
-  if (file) {
-    const promptFile = Bun.file(file);
-    if (!(await promptFile.exists())) {
-      throw new CliInputError(`File not found at "${file}"`);
-    }
-    promptText = (await promptFile.text()).trim();
-  } else {
-    if (input.text.length > 0) {
-      promptText = input.text.join(" ").trim();
-    } else {
-      // Read from stdin if not a TTY
-      if (!process.stdin.isTTY) {
-        promptText = await readStdin();
-      } else {
-        throw new CliInputError(
-          "Provide prompt text, specify --file <path>, or pipe text to stdin.",
-        );
-      }
-    }
+  if (input.model) {
+    withDatabase(ctx.database, ctx.config.root, (database) => {
+      saveModelSystemPrompt(database, {
+        modelId: input.model!,
+        prompt: promptText,
+      });
+    });
+    execution.output.info("\n✅ Model system prompt updated successfully.");
+    return { data: { updated: true, scope: "model", modelId: input.model } };
   }
 
-  if (!promptText) {
-    throw new CliInputError("Custom system prompt cannot be empty.");
-  }
-
-  config.systemPrompt = promptText;
-  saveConfig(ctx.database, config);
-  execution.output.info("\n✅ Custom system prompt updated successfully.");
-  return { data: { updated: true, configured: true } };
+  ctx.config.systemPrompt = promptText;
+  saveConfig(ctx.database, ctx.config);
+  execution.output.info("\n✅ Global system prompt updated successfully.");
+  return { data: { updated: true, scope: "global" } };
 }
 
 export async function runPromptReset(
-  _input: PromptResetInput,
+  input: PromptResetInput,
   ctx: AppContext,
   execution: CommandExecution,
-): Promise<{ data: { updated: true; configured: boolean } }> {
-  const config = ctx.config;
-  config.systemPrompt = "";
-  saveConfig(ctx.database, config);
+): Promise<{ data: PromptScope & { updated: true } }> {
+  if (input.model) {
+    withDatabase(ctx.database, ctx.config.root, (database) => {
+      deleteModelSystemPrompt(database, input.model!);
+    });
+    execution.output.info("\n✅ Model system prompt reset to its fallback.");
+    return { data: { updated: true, scope: "model", modelId: input.model } };
+  }
+
+  ctx.config.systemPrompt = "";
+  saveConfig(ctx.database, ctx.config);
   execution.output.info(
-    "\n✅ Custom system prompt reset back to default assistant persona.",
+    "\n✅ Global system prompt reset to the built-in default.",
   );
-  return { data: { updated: true, configured: false } };
+  return { data: { updated: true, scope: "global" } };
+}
+
+function promptScope(modelId: string | undefined): PromptScope {
+  return modelId ? { scope: "model", modelId } : { scope: "global" };
+}
+
+async function resolvePromptText(input: PromptSetInput): Promise<string> {
+  let text: string;
+  if (input.file) {
+    const promptFile = Bun.file(input.file);
+    if (!(await promptFile.exists())) {
+      throw new CliInputError(`File not found at "${input.file}"`);
+    }
+    text = await promptFile.text();
+  } else if (input.text.length > 0) {
+    text = input.text.join(" ");
+  } else if (!process.stdin.isTTY) {
+    text = await readStdin();
+  } else {
+    throw new CliInputError(
+      "Provide prompt text, specify --file <path>, or pipe text to stdin.",
+    );
+  }
+
+  const parsed = systemPromptTextSchema.safeParse(text.trim());
+  if (!parsed.success) {
+    throw new CliInputError("Custom system prompt cannot be empty.");
+  }
+  return parsed.data;
 }
 
 async function readStdin(): Promise<string> {

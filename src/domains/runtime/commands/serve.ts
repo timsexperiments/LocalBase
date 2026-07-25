@@ -19,7 +19,7 @@ import {
 import type { AppContext } from "../../../context";
 import { syncContinueConfig } from "../../config/commands/configure";
 import { type ILogger } from "../../../utils/logger";
-import { DEFAULT_SYSTEM_PROMPT } from "./prompt";
+import { effectiveSystemPrompt } from "./prompt";
 import { guardianProcessCommand } from "../backend-guardian";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ServeInput } from "../../app/commands/inputs";
@@ -1591,19 +1591,21 @@ export async function runServe(
       const unavailable = await ensureLlm();
       if (unavailable) return unavailable;
 
+      const hasClientInstruction = parsed.data.messages.some(
+        (message) => message.role === "system" || message.role === "developer",
+      );
       const messages = parsed.data.messages.map((message) =>
         message.role === "developer"
           ? { ...message, role: "system" as const }
           : message,
       );
-      const currentPrompt =
-        loadConfig(ctx.database, config.root).systemPrompt ||
-        DEFAULT_SYSTEM_PROMPT;
-      if (
-        !messages.some((message) => message.role === "system") &&
-        currentPrompt
-      ) {
-        messages.unshift({ role: "system", content: currentPrompt });
+      if (!hasClientInstruction) {
+        const activeConfig = loadConfig(ctx.database, config.root);
+        const { prompt } = effectiveSystemPrompt(
+          { ...ctx, config: activeConfig },
+          activeConfig.activeLlmModel,
+        );
+        messages.unshift({ role: "system", content: prompt });
       }
       return proxyRequest(
         requestWithJsonBody(request, { ...parsed.data, messages }),
