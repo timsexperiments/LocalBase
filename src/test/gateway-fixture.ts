@@ -20,11 +20,16 @@ type ControlledStream = {
   close: () => void;
 };
 
+type ControlledHeaderWait = {
+  aborted: Promise<void>;
+};
+
 export type GatewayFixture = {
   baseUrl: string;
   root: string;
   upstreamRequests: UpstreamRequest[];
   closeControlledStream: (id: string) => void;
+  waitForControlledHeaderAbort: (id: string) => Promise<void>;
   stop: () => Promise<void>;
 };
 
@@ -91,6 +96,7 @@ async function readGatewayBaseUrl(
 function startMockUpstream(
   requests: UpstreamRequest[],
   controlledStreams: Map<string, ControlledStream>,
+  controlledHeaderWaits: Map<string, ControlledHeaderWait>,
 ): Bun.Server<undefined> {
   const options = {
     hostname: "127.0.0.1",
@@ -130,6 +136,44 @@ function startMockUpstream(
         });
         return new Response(body, {
           headers: { "content-type": "text/event-stream" },
+        });
+      }
+      if (mode === "controlled-headers") {
+        const id = request.headers.get("x-test-stream-id");
+        if (!id) return new Response("Missing stream id", { status: 400 });
+        if (controlledHeaderWaits.has(id)) {
+          return new Response("Duplicate stream id", { status: 409 });
+        }
+
+        let releaseHeaders: () => void;
+        let resolveAborted: () => void;
+        const headersReleased = new Promise<void>((resolve) => {
+          releaseHeaders = resolve;
+        });
+        const aborted = new Promise<void>((resolve) => {
+          resolveAborted = resolve;
+        });
+        const abort = () => {
+          resolveAborted!();
+          releaseHeaders!();
+        };
+        request.signal.addEventListener("abort", abort, { once: true });
+        if (request.signal.aborted) abort();
+        controlledHeaderWaits.set(id, { aborted });
+        await headersReleased;
+        request.signal.removeEventListener("abort", abort);
+        return Response.json({
+          id: "chatcmpl-test",
+          object: "chat.completion",
+          created: 0,
+          model: LLM_MODEL,
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "ok" },
+              finish_reason: "stop",
+            },
+          ],
         });
       }
       if (mode === "stream") {
@@ -231,9 +275,22 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
   const cleanup = () => rmSync(root, { recursive: true, force: true });
   const upstreamRequests: UpstreamRequest[] = [];
   const controlledStreams = new Map<string, ControlledStream>();
-  const llmUpstream = startMockUpstream(upstreamRequests, controlledStreams);
-  const sttUpstream = startMockUpstream(upstreamRequests, controlledStreams);
-  const imageUpstream = startMockUpstream(upstreamRequests, controlledStreams);
+  const controlledHeaderWaits = new Map<string, ControlledHeaderWait>();
+  const llmUpstream = startMockUpstream(
+    upstreamRequests,
+    controlledStreams,
+    controlledHeaderWaits,
+  );
+  const sttUpstream = startMockUpstream(
+    upstreamRequests,
+    controlledStreams,
+    controlledHeaderWaits,
+  );
+  const imageUpstream = startMockUpstream(
+    upstreamRequests,
+    controlledStreams,
+    controlledHeaderWaits,
+  );
   const llmPort = boundPort(llmUpstream);
   const sttPort = boundPort(sttUpstream);
   const imagePort = boundPort(imageUpstream);
@@ -374,6 +431,11 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
       const stream = controlledStreams.get(id);
       if (!stream) throw new Error(`Unknown controlled stream: ${id}`);
       stream.close();
+    },
+    waitForControlledHeaderAbort(id) {
+      const headerWait = controlledHeaderWaits.get(id);
+      if (!headerWait) throw new Error(`Unknown controlled header wait: ${id}`);
+      return headerWait.aborted;
     },
     stop: async () => {
       await stopProcess(serverProcess);

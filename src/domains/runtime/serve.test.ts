@@ -29,7 +29,7 @@ test("formats IPv4, hostnames, and IPv6 literals as HTTP base URLs", () => {
   expect(httpBaseUrl("::1", 2273)).toBe("http://[::1]:2273");
 });
 
-test("releases a response lease when the stream or request is cancelled", async () => {
+test("releases a response lease exactly once when the stream or request is cancelled", async () => {
   const createLeasedResponse = () => {
     let resolveCancelled: () => void;
     const cancelled = new Promise<void>((resolve) => {
@@ -99,9 +99,12 @@ describe("API gateway integration", () => {
   const request = (path: string, init?: RequestInit) =>
     fetch(`${gateway.baseUrl}${path}`, init);
 
-  async function expectResponseBlocked(response: Promise<Response>) {
+  async function expectPromiseBlocked(promise: Promise<unknown>) {
     const completed = await Promise.race([
-      response.then(() => true),
+      promise.then(
+        () => true,
+        () => true,
+      ),
       Bun.sleep(100).then(() => false),
     ]);
     expect(completed).toBe(false);
@@ -114,6 +117,21 @@ describe("API gateway integration", () => {
         throw new Error(`${label} did not complete within two seconds.`);
       }),
     ]);
+  }
+
+  async function waitForUpstreamRequest(id: string): Promise<void> {
+    const deadline = Date.now() + 2_000;
+    while (Date.now() < deadline) {
+      if (
+        gateway.upstreamRequests.some(
+          (upstream) => upstream.headers.get("x-test-stream-id") === id,
+        )
+      ) {
+        return;
+      }
+      await Bun.sleep(10);
+    }
+    throw new Error(`Upstream request ${id} did not start within two seconds.`);
   }
 
   function loadGatewayConfig() {
@@ -584,7 +602,7 @@ describe("API gateway integration", () => {
         messages: [{ role: "user", content: "switch" }],
       }),
     });
-    await expectResponseBlocked(switchToB);
+    await expectPromiseBlocked(switchToB);
 
     gateway.closeControlledStream(eofStreamId);
     expect(
@@ -593,6 +611,158 @@ describe("API gateway integration", () => {
     const completeB = await within(switchToB, "switch after EOF");
     expect(completeB.status).toBe(200);
     await completeB.text();
+  });
+
+  test("forwards aborts while waiting for rewritten LLM response headers", async () => {
+    const config = loadGatewayConfig();
+    const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const modelA = config.activeLlmModel;
+    const modelB =
+      modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
+    saveGatewayConfig({
+      ...config,
+      selectedLlmModels: [modelA, modelB],
+    });
+    await Bun.write(
+      join(config.llmModelsDir, `${modelB}.gguf`),
+      "test model placeholder",
+    );
+
+    const headerWaitId = "llm-header-abort";
+    const controller = new AbortController();
+    const abortedRequest = request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "controlled-headers",
+        "x-test-stream-id": headerWaitId,
+      },
+      body: JSON.stringify({
+        model: modelA,
+        messages: [{ role: "user", content: "wait" }],
+      }),
+      signal: controller.signal,
+    }).then(
+      () => "response",
+      () => "aborted",
+    );
+
+    await waitForUpstreamRequest(headerWaitId);
+    controller.abort();
+    expect(await within(abortedRequest, "header wait abort")).toBe("aborted");
+    await within(
+      gateway.waitForControlledHeaderAbort(headerWaitId),
+      "upstream header wait abort",
+    );
+
+    const switched = await within(
+      request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelB,
+          messages: [{ role: "user", content: "continue" }],
+        }),
+      }),
+      "model switch after header abort",
+    );
+    expect(switched.status).toBe(200);
+    await switched.text();
+  });
+
+  test("abandons queued LLM model switches before dispatch", async () => {
+    const config = loadGatewayConfig();
+    const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const modelA = config.activeLlmModel;
+    const modelB =
+      modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
+    saveGatewayConfig({
+      ...config,
+      selectedLlmModels: [modelA, modelB],
+    });
+    await Bun.write(
+      join(config.llmModelsDir, `${modelB}.gguf`),
+      "test model placeholder",
+    );
+
+    const completeA = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelA,
+        messages: [{ role: "user", content: "complete" }],
+      }),
+    });
+    expect(completeA.status).toBe(200);
+    await completeA.text();
+
+    const streamId = "llm-lease-queued-abort";
+    const slowA = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "controlled-stream",
+        "x-test-stream-id": streamId,
+      },
+      body: JSON.stringify({
+        model: modelA,
+        stream: true,
+        messages: [{ role: "user", content: "hold" }],
+      }),
+    });
+    const slowAReader = slowA.body!.getReader();
+    expect((await slowAReader.read()).done).toBe(false);
+
+    const requestOffset = gateway.upstreamRequests.length;
+    const controller = new AbortController();
+    const abandonedRequest = request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelB,
+        messages: [{ role: "user", content: "switch" }],
+      }),
+      signal: controller.signal,
+    }).then(
+      () => "response",
+      () => "aborted",
+    );
+    await expectPromiseBlocked(abandonedRequest);
+    controller.abort();
+    expect(await within(abandonedRequest, "queued request abort")).toBe(
+      "aborted",
+    );
+
+    gateway.closeControlledStream(streamId);
+    expect(
+      (await within(slowAReader.read(), "queued abort stream completion")).done,
+    ).toBe(true);
+    await Bun.sleep(100);
+    expect(loadGatewayConfig().activeLlmModel).toBe(modelA);
+    expect(
+      gateway.upstreamRequests
+        .slice(requestOffset)
+        .some(
+          (upstream) =>
+            (JSON.parse(upstream.body) as { model?: string }).model === modelB,
+        ),
+    ).toBe(false);
+
+    const switched = await within(
+      request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelB,
+          messages: [{ role: "user", content: "continue" }],
+        }),
+      }),
+      "model switch after queued abort",
+    );
+    expect(switched.status).toBe(200);
+    await switched.text();
   });
 
   const jsonValidationCases: ValidationCase[] = [

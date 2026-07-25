@@ -463,6 +463,45 @@ const transcriptionResponseSchema = z.union([
 
 class PayloadTooLargeError extends Error {}
 
+class RequestAbortedError extends Error {
+  constructor() {
+    super("Request was aborted.");
+    this.name = "RequestAbortedError";
+  }
+}
+
+function throwIfRequestAborted(signal: AbortSignal): void {
+  if (signal.aborted) throw new RequestAbortedError();
+}
+
+function waitForRequestAbort<T>(
+  promise: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  if (signal.aborted) return Promise.reject(new RequestAbortedError());
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      callback();
+    };
+    const onAbort = () => finish(() => reject(new RequestAbortedError()));
+
+    signal.addEventListener("abort", onAbort, { once: true });
+    void promise.then(
+      (value) => finish(() => resolve(value)),
+      (error) => finish(() => reject(error)),
+    );
+  });
+}
+
+function requestAborted(): Response {
+  return new Response(null, { status: 499 });
+}
+
 function requestExceedsSizeLimit(request: Request): boolean {
   const contentLength = request.headers.get("content-length");
   if (!contentLength) return false;
@@ -530,6 +569,7 @@ function requestWithJsonBody(request: Request, body: unknown): Request {
     method: request.method,
     headers,
     body: JSON.stringify(body),
+    signal: request.signal,
   });
 }
 
@@ -588,6 +628,7 @@ async function proxyRequest(
       ]),
     });
   } catch {
+    if (request.signal.aborted) return requestAborted();
     return upstreamFailure("The upstream service could not be reached.");
   }
 
@@ -1428,8 +1469,15 @@ export async function runServe(
     await next;
   };
 
-  const withLlmLeaseLock = async <T>(work: () => Promise<T>): Promise<T> => {
+  const withLlmLeaseLock = async <T>(
+    requestSignal: AbortSignal,
+    work: () => Promise<T>,
+  ): Promise<T> => {
+    throwIfRequestAborted(requestSignal);
+
     let releaseLock: () => void;
+    let lockReleased = false;
+    let entered = false;
     const next = new Promise<void>((resolve) => {
       releaseLock = resolve;
     });
@@ -1438,12 +1486,33 @@ export async function runServe(
       () => next,
       () => next,
     );
-    await previous;
-    try {
-      return await work();
-    } finally {
+    const releaseLockOnce = () => {
+      if (lockReleased) return;
+      lockReleased = true;
       releaseLock!();
-    }
+    };
+    const releaseQueuedLock = () => {
+      if (!entered) releaseLockOnce();
+    };
+
+    requestSignal.addEventListener("abort", releaseQueuedLock, { once: true });
+    if (requestSignal.aborted) releaseQueuedLock();
+
+    const lockedWork = (async () => {
+      try {
+        await previous;
+        entered = true;
+        requestSignal.removeEventListener("abort", releaseQueuedLock);
+        throwIfRequestAborted(requestSignal);
+        return await work();
+      } finally {
+        requestSignal.removeEventListener("abort", releaseQueuedLock);
+        releaseLockOnce();
+      }
+    })();
+    // A caller can stop awaiting after its request aborts while startup finishes.
+    void lockedWork.catch(() => {});
+    return await waitForRequestAbort(lockedWork, requestSignal);
   };
 
   const requestedLlmModel = (requestedModel: string | undefined): string => {
@@ -1460,8 +1529,12 @@ export async function runServe(
     );
   };
 
-  const activateLlmModel = async (modelId: string): Promise<void> => {
+  const activateLlmModel = async (
+    modelId: string,
+    requestSignal: AbortSignal,
+  ): Promise<void> => {
     if (!llmService) return;
+    throwIfRequestAborted(requestSignal);
     const latestConfig = loadConfig(ctx.database, config.root);
     if (latestConfig.activeLlmModel === modelId) return;
 
@@ -1470,6 +1543,7 @@ export async function runServe(
       `Switching active LLM from "${latestConfig.activeLlmModel}" to "${modelId}"`,
     );
     await llmService.kill();
+    throwIfRequestAborted(requestSignal);
     latestConfig.activeLlmModel = modelId;
     saveConfig(ctx.database, latestConfig);
 
@@ -1522,18 +1596,24 @@ export async function runServe(
 
   const acquireLlmRequestLease = async (
     requestedModel: string | undefined,
+    requestSignal: AbortSignal,
   ): Promise<{ modelId: string; release: () => void } | Response> => {
     if (!enabled.llm || !llmService) return notConfigured("LLM");
 
-    return await withLlmLeaseLock(async () => {
+    return await withLlmLeaseLock(requestSignal, async () => {
       const modelId = requestedLlmModel(requestedModel);
+      throwIfRequestAborted(requestSignal);
       if (activeLlmLeases && activeLlmLeases.modelId !== modelId) {
-        if (activeLlmLeases.count > 0) await activeLlmLeases.idle;
+        if (activeLlmLeases.count > 0) {
+          await waitForRequestAbort(activeLlmLeases.idle, requestSignal);
+        }
+        throwIfRequestAborted(requestSignal);
         activeLlmLeases = undefined;
       }
 
-      await activateLlmModel(modelId);
+      await activateLlmModel(modelId, requestSignal);
       const unavailable = await ensureLlm();
+      throwIfRequestAborted(requestSignal);
       if (unavailable) return unavailable;
 
       if (!activeLlmLeases) {
@@ -1572,16 +1652,23 @@ export async function runServe(
     dispatch: (modelId: string) => Promise<Response>,
     requestSignal: AbortSignal,
   ): Promise<Response> => {
-    const acquired = await acquireLlmRequestLease(requestedModel);
+    let acquired: { modelId: string; release: () => void } | Response;
+    try {
+      acquired = await acquireLlmRequestLease(requestedModel, requestSignal);
+    } catch (error) {
+      if (error instanceof RequestAbortedError) return requestAborted();
+      throw error;
+    }
     if (acquired instanceof Response) return acquired;
     try {
       return withResponseLease(
-        await dispatch(acquired.modelId),
+        await waitForRequestAbort(dispatch(acquired.modelId), requestSignal),
         acquired.release,
         requestSignal,
       );
     } catch (error) {
       acquired.release();
+      if (error instanceof RequestAbortedError) return requestAborted();
       throw error;
     }
   };
@@ -1632,6 +1719,7 @@ export async function runServe(
           method: request.method,
           headers: request.headers,
           body: multipartBody,
+          signal: request.signal,
         }).formData();
         const bodyObj: Record<
           string,
@@ -1662,6 +1750,7 @@ export async function runServe(
         request = new Request(request.url, {
           method: request.method,
           body: normalizedForm,
+          signal: request.signal,
         });
       } catch (e) {
         return e instanceof PayloadTooLargeError
