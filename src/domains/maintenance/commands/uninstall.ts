@@ -1,16 +1,20 @@
 import { uninstallManaged } from "../../../manager";
-import { hasYesFlag, parseFlag } from "../../../utils/args";
 import type { AppContext } from "../../../context";
+import type { CommandExecution } from "../../app/commands/framework";
+import type { UninstallInput } from "../../app/commands/inputs";
 
-export function runUninstall(args: string[], ctx: AppContext): number {
-  if (!hasYesFlag(args)) {
-    console.error(
+export function runUninstall(
+  input: UninstallInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+): number {
+  if (!input.yes) {
+    execution.output.error(
       "uninstall removes all managed data. Re-run with --yes to confirm.",
     );
     return 2;
   }
-  const targetRoot = parseFlag(args, "--root");
-  const removed = uninstallManaged(ctx.database, targetRoot);
-  console.log(`Removed all local-base managed data at ${removed}`);
+  const removed = uninstallManaged(ctx.database, ctx.config.root);
+  execution.output.info(`Removed all local-base managed data at ${removed}`);
   return 0;
 }

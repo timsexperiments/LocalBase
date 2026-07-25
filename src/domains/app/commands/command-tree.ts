@@ -1,0 +1,597 @@
+import {
+  defineCommand,
+  type ArgDef,
+  type ArgsDef,
+  type CommandDef,
+} from "citty";
+import type { AppContext } from "../../../context";
+import {
+  catalogInputSchema,
+  configureInputSchema,
+  doctorInputSchema,
+  globalOptionsSchema,
+  initInputSchema,
+  installedInputSchema,
+  installInputSchema,
+  keyIdInputSchema,
+  keysCreateInputSchema,
+  keysListInputSchema,
+  promptResetInputSchema,
+  promptSetInputSchema,
+  promptShowInputSchema,
+  recommendInputSchema,
+  resetInputSchema,
+  serveInputSchema,
+  uninstallInputSchema,
+  type CatalogInput,
+  type ConfigureInput,
+  type DoctorInput,
+  type GlobalOptions,
+  type InitInput,
+  type InstalledInput,
+  type InstallInput,
+  type KeyIdInput,
+  type KeysCreateInput,
+  type KeysListInput,
+  type PromptResetInput,
+  type PromptSetInput,
+  type PromptShowInput,
+  type RecommendInput,
+  type ResetInput,
+  type ServeInput,
+  type UninstallInput,
+} from "./inputs";
+import type { CommandOutput } from "./output";
+import { CliInputError } from "./errors";
+
+export { CliInputError } from "./errors";
+
+export type CommandExecution = {
+  global: GlobalOptions;
+  output: CommandOutput;
+};
+
+type Positionals = {
+  minimum?: number;
+  maximum?: number;
+};
+
+export type CittyCommand = CommandDef<any>;
+
+type LocalCommand<Input> = {
+  path: readonly string[];
+  description: string;
+  examples?: readonly string[];
+  args?: ArgsDef;
+  positionals?: Positionals;
+  requiresDatabase?: boolean;
+  citty: CittyCommand;
+  parse(input: Record<string, unknown>, positionals: string[]): Input;
+  validate?(input: Input, global: GlobalOptions): Input;
+  run(
+    input: Input,
+    context: AppContext,
+    execution: CommandExecution,
+  ): Promise<number> | number;
+};
+
+export type Command = LocalCommand<unknown>;
+
+export const globalArgs = {
+  root: {
+    type: "string",
+    valueHint: "path",
+    description: "LocalBase data directory",
+  },
+  "non-interactive": {
+    type: "boolean",
+    description: "Never open interactive prompts",
+  },
+} satisfies ArgsDef;
+
+const modelKindArg = {
+  type: "enum",
+  options: ["llm", "stt", "image"],
+  description: "Filter by model kind",
+} satisfies ArgDef;
+
+const noPromptBoolean = (description: string, negativeDescription: string) =>
+  ({ type: "boolean", description, negativeDescription }) as const;
+
+function command<Input>(
+  definition: Omit<LocalCommand<Input>, "citty">,
+): LocalCommand<Input> {
+  return {
+    ...definition,
+    citty: defineCommand({
+      meta: {
+        name: definition.path.at(-1),
+        description: definition.description,
+      },
+      args: { ...globalArgs, ...definition.args },
+    }),
+  };
+}
+
+export const configureCommand = command<ConfigureInput>({
+  path: ["configure"],
+  description: "Configure models, ports, settings, and API keys",
+  examples: [
+    "local-base configure --all",
+    "local-base --non-interactive configure --defaults --parallel auto",
+  ],
+  args: {
+    all: { type: "boolean", description: "Prompt for every setting" },
+    defaults: {
+      type: "boolean",
+      description: "Use saved or default settings without prompting",
+    },
+    config: {
+      type: "string",
+      valueHint: "file",
+      description: "Load TOML configuration overrides",
+    },
+    host: { type: "string", valueHint: "host", description: "LLM host" },
+    port: { type: "string", valueHint: "port", description: "LLM port" },
+    "ctx-size": {
+      type: "string",
+      valueHint: "tokens",
+      description: "LLM context limit ceiling",
+    },
+    parallel: {
+      type: "string",
+      valueHint: "auto|1-4",
+      description: "Parallel request slots",
+    },
+    "stt-host": {
+      type: "string",
+      valueHint: "host",
+      description: "STT host",
+    },
+    "stt-port": {
+      type: "string",
+      valueHint: "port",
+      description: "STT port",
+    },
+    "startup-on-boot": noPromptBoolean(
+      "Enable startup on boot",
+      "Disable startup on boot",
+    ),
+    "llm-models": {
+      type: "string",
+      valueHint: "id,...",
+      description: "Selected LLM model IDs",
+    },
+    "stt-models": {
+      type: "string",
+      valueHint: "id,...",
+      description: "Selected STT model IDs; use an empty value to disable",
+    },
+    "image-models": {
+      type: "string",
+      valueHint: "id,...",
+      description: "Selected image model IDs; use an empty value to disable",
+    },
+    "active-llm": {
+      type: "string",
+      valueHint: "id",
+      description: "Active LLM model ID",
+    },
+    "active-stt": {
+      type: "string",
+      valueHint: "id",
+      description: "Active STT model ID",
+    },
+    "active-image": {
+      type: "string",
+      valueHint: "id",
+      description: "Active image model ID",
+    },
+    "hf-token": {
+      type: "string",
+      valueHint: "token",
+      description: "Hugging Face token for gated downloads",
+    },
+    "create-key": noPromptBoolean(
+      "Create an initial API key",
+      "Do not create an initial API key",
+    ),
+  },
+  parse: (input) =>
+    configureInputSchema.parse({ ...input, configPath: input.config }),
+  validate: (input, global) => {
+    if (global.nonInteractive && input.all) {
+      throw new CliInputError("--all cannot be used with --non-interactive");
+    }
+    return input;
+  },
+  run: async (input, context, execution) => {
+    const { runConfigure } = await import("../../config/commands/configure");
+    return await runConfigure(input, context, execution);
+  },
+});
+
+const initCommand = command<InitInput>({
+  path: ["init"],
+  description: "Initialize the LocalBase data directory",
+  parse: (input) => initInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runInit } = await import("../../config/commands/init");
+    return runInit(input, context, execution);
+  },
+});
+
+const doctorCommand = command<DoctorInput>({
+  path: ["doctor"],
+  description: "Run a system health check and print configuration details",
+  args: { json: { type: "boolean", description: "Output JSON" } },
+  parse: (input) => doctorInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runDoctor } = await import("../../system/commands/doctor");
+    return runDoctor(input, context, execution);
+  },
+});
+
+const catalogCommand = command<CatalogInput>({
+  path: ["models", "catalog"],
+  description: "List all supported models",
+  args: { kind: modelKindArg },
+  parse: (input) => catalogInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runCatalog } = await import("../../models/commands/catalog");
+    return runCatalog(input, context, execution);
+  },
+});
+
+const recommendCommand = command<RecommendInput>({
+  path: ["models", "recommend"],
+  description: "Recommend models for available VRAM",
+  args: {
+    kind: modelKindArg,
+    vram: {
+      type: "string",
+      valueHint: "GB",
+      description: "Target VRAM in GB",
+    },
+  },
+  parse: (input) => recommendInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runRecommend } = await import("../../models/commands/recommend");
+    return runRecommend(input, context, execution);
+  },
+});
+
+const listCommand = command<InstalledInput>({
+  path: ["models", "list"],
+  description: "List installed models",
+  args: { kind: modelKindArg },
+  parse: (input) => installedInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runInstalled } = await import("../../models/commands/installed");
+    return await runInstalled(input, context, execution);
+  },
+});
+
+const installCommand = command<InstallInput>({
+  path: ["models", "install"],
+  description: "Download and install a model",
+  examples: [
+    "local-base models install qwen2.5-coder-7b-instruct-q4_k_m",
+    "local-base --non-interactive models install --all",
+  ],
+  args: {
+    modelId: {
+      type: "positional",
+      required: false,
+      description: "Catalog model ID",
+    },
+    all: { type: "boolean", description: "Install all selected models" },
+  },
+  positionals: { maximum: 1 },
+  parse: (input) => installInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runInstall } = await import("../../models/commands/install");
+    return await runInstall(input, context, execution);
+  },
+});
+
+const serveCommand = command<ServeInput>({
+  path: ["serve"],
+  description: "Start the unified LocalBase API gateway",
+  args: {
+    host: { type: "string", valueHint: "host", description: "Gateway host" },
+    port: { type: "string", valueHint: "port", description: "Gateway port" },
+    llm: noPromptBoolean("Enable the LLM service", "Disable the LLM service"),
+    stt: noPromptBoolean("Enable the STT service", "Disable the STT service"),
+    image: noPromptBoolean(
+      "Enable image generation",
+      "Disable image generation",
+    ),
+    "llm-host": {
+      type: "string",
+      valueHint: "host",
+      description: "llama-server host",
+    },
+    "llm-port": {
+      type: "string",
+      valueHint: "port",
+      description: "llama-server port",
+    },
+    "stt-host": {
+      type: "string",
+      valueHint: "host",
+      description: "whisper-server host",
+    },
+    "stt-port": {
+      type: "string",
+      valueHint: "port",
+      description: "whisper-server port",
+    },
+    "image-host": {
+      type: "string",
+      valueHint: "host",
+      description: "sd-server host",
+    },
+    "image-port": {
+      type: "string",
+      valueHint: "port",
+      description: "sd-server port",
+    },
+    "ctx-size": {
+      type: "string",
+      valueHint: "tokens",
+      description: "LLM context limit",
+    },
+    "stt-path": {
+      type: "string",
+      valueHint: "path",
+      description: "Whisper endpoint path",
+    },
+    "llm-model-file": {
+      type: "string",
+      valueHint: "file",
+      description: "LLM model filename override",
+    },
+    "stt-model-file": {
+      type: "string",
+      valueHint: "file",
+      description: "STT model filename override",
+    },
+    "image-model-file": {
+      type: "string",
+      valueHint: "file",
+      description: "Image model filename override",
+    },
+    auth: noPromptBoolean(
+      "Enable API key authentication",
+      "Disable API key authentication",
+    ),
+    "auth-mode": {
+      type: "enum",
+      options: ["bearer", "x-api-key", "either"],
+      description: "Authentication header mode",
+    },
+    "bypass-memory-check": {
+      type: "boolean",
+      description: "Start despite model memory warnings",
+    },
+  },
+  parse: (input) => serveInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runServe } = await import("../../runtime/commands/serve");
+    return await runServe(input, context, execution);
+  },
+});
+
+const promptShowCommand = command<PromptShowInput>({
+  path: ["prompt", "show"],
+  description: "Display the active system prompt",
+  parse: (input) => promptShowInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runPromptShow } = await import("../../runtime/commands/prompt");
+    return await runPromptShow(input, context, execution);
+  },
+});
+
+const promptSetCommand = command<PromptSetInput>({
+  path: ["prompt", "set"],
+  description: "Set a custom system prompt",
+  examples: [
+    'local-base prompt set "Use concise responses"',
+    "local-base prompt set --file ./prompt.txt",
+  ],
+  args: {
+    text: {
+      type: "positional",
+      required: false,
+      description: "Prompt text",
+    },
+    file: {
+      type: "string",
+      valueHint: "path",
+      description: "Read prompt text from a file",
+    },
+  },
+  positionals: { maximum: Number.POSITIVE_INFINITY },
+  parse: (input, positionals) =>
+    promptSetInputSchema.parse({ ...input, text: positionals }),
+  run: async (input, context, execution) => {
+    const { runPromptSet } = await import("../../runtime/commands/prompt");
+    return await runPromptSet(input, context, execution);
+  },
+});
+
+const promptResetCommand = command<PromptResetInput>({
+  path: ["prompt", "reset"],
+  description: "Reset the system prompt to its default",
+  parse: (input) => promptResetInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runPromptReset } = await import("../../runtime/commands/prompt");
+    return await runPromptReset(input, context, execution);
+  },
+});
+
+const keysListCommand = command<KeysListInput>({
+  path: ["keys", "list"],
+  description: "List API keys",
+  parse: (input) => keysListInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runKeysList } = await import("../../auth/commands/keys");
+    return runKeysList(input, context, execution);
+  },
+});
+
+const keysCreateCommand = command<KeysCreateInput>({
+  path: ["keys", "create"],
+  description: "Create an API key",
+  args: {
+    name: { type: "string", valueHint: "label", description: "Key label" },
+    "expires-days": {
+      type: "string",
+      valueHint: "days",
+      description: "Expiration period",
+    },
+  },
+  parse: (input) => keysCreateInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runKeysCreate } = await import("../../auth/commands/keys");
+    return runKeysCreate(input, context, execution);
+  },
+});
+
+const keysRevokeCommand = command<KeyIdInput>({
+  path: ["keys", "revoke"],
+  description: "Revoke an API key",
+  args: {
+    keyId: { type: "positional", description: "API key ID", required: true },
+  },
+  positionals: { minimum: 1, maximum: 1 },
+  parse: (input) => keyIdInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runKeysRevoke } = await import("../../auth/commands/keys");
+    return runKeysRevoke(input, context, execution);
+  },
+});
+
+const keysRotateCommand = command<KeyIdInput>({
+  path: ["keys", "rotate"],
+  description: "Rotate an API key",
+  args: {
+    keyId: { type: "positional", description: "API key ID", required: true },
+  },
+  positionals: { minimum: 1, maximum: 1 },
+  parse: (input) => keyIdInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runKeysRotate } = await import("../../auth/commands/keys");
+    return runKeysRotate(input, context, execution);
+  },
+});
+
+const resetCommand = command<ResetInput>({
+  path: ["reset"],
+  description: "Reset the LocalBase configuration database",
+  args: {
+    yes: { type: "boolean", alias: "y", description: "Confirm reset" },
+  },
+  requiresDatabase: false,
+  parse: (input) => resetInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runReset } = await import("../../maintenance/commands/reset");
+    return await runReset(input, context, execution);
+  },
+});
+
+const uninstallCommand = command<UninstallInput>({
+  path: ["uninstall"],
+  description: "Remove all LocalBase-managed data",
+  args: {
+    yes: { type: "boolean", alias: "y", description: "Confirm uninstall" },
+  },
+  requiresDatabase: false,
+  parse: (input) => uninstallInputSchema.parse(input),
+  run: async (input, context, execution) => {
+    const { runUninstall } =
+      await import("../../maintenance/commands/uninstall");
+    return runUninstall(input, context, execution);
+  },
+});
+
+export const commands = [
+  configureCommand,
+  initCommand,
+  doctorCommand,
+  catalogCommand,
+  recommendCommand,
+  listCommand,
+  installCommand,
+  serveCommand,
+  promptShowCommand,
+  promptSetCommand,
+  promptResetCommand,
+  keysListCommand,
+  keysCreateCommand,
+  keysRevokeCommand,
+  keysRotateCommand,
+  resetCommand,
+  uninstallCommand,
+] as const satisfies readonly Command[];
+
+export const modelsCommand = defineCommand({
+  meta: { name: "local-base models", description: "Browse and install models" },
+  args: globalArgs,
+  subCommands: {
+    catalog: catalogCommand.citty,
+    recommend: recommendCommand.citty,
+    list: listCommand.citty,
+    install: installCommand.citty,
+  },
+});
+
+export const promptCommand = defineCommand({
+  meta: { name: "local-base prompt", description: "Manage the system prompt" },
+  args: globalArgs,
+  subCommands: {
+    show: promptShowCommand.citty,
+    set: promptSetCommand.citty,
+    reset: promptResetCommand.citty,
+  },
+});
+
+export const keysCommand = defineCommand({
+  meta: { name: "local-base keys", description: "Manage API keys" },
+  args: globalArgs,
+  subCommands: {
+    list: keysListCommand.citty,
+    create: keysCreateCommand.citty,
+    revoke: keysRevokeCommand.citty,
+    rotate: keysRotateCommand.citty,
+  },
+});
+
+export const rootCommand = defineCommand({
+  meta: {
+    name: "local-base",
+    version: "0.1.0",
+    description: "Local AI installer, manager, and OpenAI-compatible gateway",
+  },
+  args: globalArgs,
+  subCommands: {
+    init: initCommand.citty,
+    configure: configureCommand.citty,
+    doctor: doctorCommand.citty,
+    models: modelsCommand,
+    serve: serveCommand.citty,
+    prompt: promptCommand,
+    keys: keysCommand,
+    reset: resetCommand.citty,
+    uninstall: uninstallCommand.citty,
+  },
+});
+
+export function groupForPath(path: string[]): CittyCommand | undefined {
+  if (path.length !== 1) return undefined;
+  if (path[0] === "models") return modelsCommand;
+  if (path[0] === "prompt") return promptCommand;
+  if (path[0] === "keys") return keysCommand;
+  return undefined;
+}

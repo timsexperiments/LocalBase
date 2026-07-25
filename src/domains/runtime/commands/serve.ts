@@ -17,11 +17,12 @@ import {
   resolveCatalogInstallation,
 } from "../../../catalog";
 import type { AppContext } from "../../../context";
-import { parseBool, parseFlag, toInt } from "../../../utils/args";
 import { syncContinueConfig } from "../../config/commands/configure";
 import { type ILogger } from "../../../utils/logger";
 import { DEFAULT_SYSTEM_PROMPT } from "./prompt";
 import { guardianProcessCommand } from "../backend-guardian";
+import type { CommandExecution } from "../../app/commands/framework";
+import type { ServeInput } from "../../app/commands/inputs";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
@@ -36,7 +37,7 @@ const HEALTH_PROBE_TIMEOUT_MS = 2_000;
 const UPSTREAM_PROXY_TIMEOUT_MS = 120_000;
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
 
-function parseAuthMode(raw: string | undefined): AuthMode {
+function parseAuthMode(raw: AuthMode | undefined): AuthMode {
   if (!raw) return "either";
   if (raw === "bearer" || raw === "x-api-key" || raw === "either") return raw;
   throw new Error(
@@ -72,7 +73,7 @@ function printUnifiedNextSteps(
       "Supported credentials: Authorization: Bearer <key>, x-api-key: <key> (mode-dependent).",
     );
   } else {
-    console.log("Authentication: disabled via --auth false.");
+    console.log("Authentication: disabled via --no-auth.");
   }
   console.log(
     `Enabled modalities: ${
@@ -895,21 +896,22 @@ function serviceUnavailable(serviceName: string): Response {
  * Automatically synchronizes active model specifications and context limits to OpenCode in real-time.
  */
 export async function runServe(
-  args: string[],
+  input: ServeInput,
   ctx: AppContext,
+  _execution: CommandExecution,
 ): Promise<number> {
   const config = ctx.config;
-  const wrapperHost = parseFlag(args, "--host") ?? "0.0.0.0";
-  const wrapperPort = toInt(parseFlag(args, "--port"), 2273);
+  const wrapperHost = input.host ?? "0.0.0.0";
+  const wrapperPort = input.port ?? 2273;
 
-  const llmHost = parseFlag(args, "--llm-host") ?? "127.0.0.1";
-  const llmPort = toInt(parseFlag(args, "--llm-port"), config.port);
-  const sttHost = parseFlag(args, "--stt-host") ?? "127.0.0.1";
-  const sttPort = toInt(parseFlag(args, "--stt-port"), config.sttPort);
-  const imageHost = parseFlag(args, "--image-host") ?? "127.0.0.1";
-  const imagePort = toInt(parseFlag(args, "--image-port"), 8090);
+  const llmHost = input.llmHost ?? "127.0.0.1";
+  const llmPort = input.llmPort ?? config.port;
+  const sttHost = input.sttHost ?? "127.0.0.1";
+  const sttPort = input.sttPort ?? config.sttPort;
+  const imageHost = input.imageHost ?? "127.0.0.1";
+  const imagePort = input.imagePort ?? 8090;
 
-  let ctxSize = toInt(parseFlag(args, "--ctx-size"), 0);
+  let ctxSize = input.ctxSize ?? 0;
   if (!ctxSize) {
     const spec = byId(config.activeLlmModel);
     const recommendedCtx = spec
@@ -930,11 +932,11 @@ export async function runServe(
 
   // Automatically synchronize active model and calculated context size with Continue configuration
   await syncContinueConfig(config, ctxSize);
-  const sttPath = parseFlag(args, "--stt-path") ?? "/inference";
-  const authRequired = parseFlag(args, "--auth") !== "false";
-  const authMode = parseAuthMode(parseFlag(args, "--auth-mode"));
+  const sttPath = input.sttPath ?? "/inference";
+  const authRequired = input.auth ?? true;
+  const authMode = parseAuthMode(input.authMode);
 
-  const llmModelFileOverride = parseFlag(args, "--llm-model-file");
+  const llmModelFileOverride = input.llmModelFile;
   let llmModelFile = llmModelFileOverride;
   let llmModelExists: boolean;
   if (!llmModelFile) {
@@ -963,7 +965,7 @@ export async function runServe(
     ).exists();
   }
 
-  let sttModelFile = parseFlag(args, "--stt-model-file");
+  let sttModelFile = input.sttModelFile;
   if (!sttModelFile) {
     const spec = byId(config.activeSttModel);
     const primaryFilename = spec && primaryArtifact(spec).filename;
@@ -983,7 +985,7 @@ export async function runServe(
     }
   }
 
-  let imageModelFile = parseFlag(args, "--image-model-file");
+  let imageModelFile = input.imageModelFile;
   if (!imageModelFile) {
     const spec = byId(config.activeImageModel);
     const primaryFilename = spec && primaryArtifact(spec).filename;
@@ -1005,15 +1007,9 @@ export async function runServe(
   ).exists();
 
   const enabled: ModalityState = {
-    llm: parseBool(parseFlag(args, "--llm"), true),
-    stt: parseBool(
-      parseFlag(args, "--stt"),
-      config.selectedSttModels.length > 0,
-    ),
-    image: parseBool(
-      parseFlag(args, "--image"),
-      config.selectedImageModels.length > 0,
-    ),
+    llm: input.llm ?? true,
+    stt: input.stt ?? config.selectedSttModels.length > 0,
+    image: input.image ?? config.selectedImageModels.length > 0,
   };
 
   if (enabled.stt && !config.activeSttModel) {
@@ -1033,8 +1029,7 @@ export async function runServe(
     return filename.replace(/\.(gguf|bin|onnx|safetensors|pth)$/i, "");
   };
 
-  const bypassCheck =
-    args.includes("--bypass-memory-check") || args.includes("--force");
+  const bypassCheck = input.bypassMemoryCheck;
 
   if (enabled.llm) {
     const llmModelId = getModelIdFromFile(llmModelFile);
@@ -1179,17 +1174,17 @@ export async function runServe(
 
   if (!enabled.llm && !enabled.stt && !enabled.image) {
     throw new Error(
-      "No modalities enabled. Enable with --llm/--stt/--image true.",
+      "No modalities enabled. Remove at least one --no-<modality> option.",
     );
   }
 
-  if (!enabled.llm && !parseFlag(args, "--llm")) {
+  if (!enabled.llm && input.llm === undefined) {
     console.log("LLM route auto-disabled (no local LLM model file found).");
   }
-  if (!enabled.stt && !parseFlag(args, "--stt")) {
+  if (!enabled.stt && input.stt === undefined) {
     console.log("STT route auto-disabled (no local STT model file found).");
   }
-  if (!enabled.image && !parseFlag(args, "--image")) {
+  if (!enabled.image && input.image === undefined) {
     console.log("Image route auto-disabled (no local Image model file found).");
   }
 
@@ -1201,7 +1196,7 @@ export async function runServe(
   const llmTimeoutMs =
     activeLlmSpec && activeLlmSpec.minVramGb >= 16 ? 180000 : 60000;
 
-  let exitAfterShutdown: ((status: number) => Promise<never>) | undefined;
+  let exitAfterShutdown: ((status: number) => Promise<number>) | undefined;
   const fatalServiceExit = async (): Promise<void> => {
     if (!exitAfterShutdown) {
       throw new Error("Serve shutdown is not initialized");
@@ -1261,7 +1256,7 @@ export async function runServe(
             }
           }
 
-          let finalCtxSize = toInt(parseFlag(args, "--ctx-size"), 0);
+          let finalCtxSize = input.ctxSize ?? 0;
           if (!finalCtxSize) {
             const spec = byId(activeModel);
             const recommendedCtx = spec
@@ -1309,7 +1304,7 @@ export async function runServe(
         async () => {
           const launchConfig = loadConfig(ctx.database, config.root);
           const activeModel = launchConfig.activeImageModel;
-          let modelFile = parseFlag(args, "--image-model-file");
+          let modelFile = input.imageModelFile;
           if (!modelFile) {
             const spec = byId(activeModel);
             let expectedFile = spec
@@ -1743,8 +1738,12 @@ export async function runServe(
   );
 
   let shutdownPromise: Promise<void> | null = null;
-  let exitPromise: Promise<never> | null = null;
+  let exitPromise: Promise<number> | null = null;
   let requestedExitStatus = 0;
+  let resolveServeExit: (status: number) => void;
+  const serveExit = new Promise<number>((resolve) => {
+    resolveServeExit = resolve;
+  });
   const shutdown = (): Promise<void> => {
     if (!shutdownPromise) {
       shutdownPromise = (async () => {
@@ -1760,7 +1759,7 @@ export async function runServe(
     return shutdownPromise;
   };
 
-  exitAfterShutdown = (status: number): Promise<never> => {
+  exitAfterShutdown = (status: number): Promise<number> => {
     requestedExitStatus = Math.max(requestedExitStatus, status);
     if (!exitPromise) {
       exitPromise = (async () => {
@@ -1770,7 +1769,8 @@ export async function runServe(
           ctx.logger.error("Manager", "Shutdown failed", err as Error);
           requestedExitStatus = 1;
         }
-        process.exit(requestedExitStatus);
+        resolveServeExit(requestedExitStatus);
+        return requestedExitStatus;
       })();
     }
     return exitPromise;
@@ -1781,7 +1781,5 @@ export async function runServe(
   process.once("SIGTERM", () => void exitAfterShutdown?.(0));
   process.once("SIGHUP", () => void exitAfterShutdown?.(0));
 
-  // Keep alive forever
-  await new Promise(() => {});
-  return 0;
+  return await serveExit;
 }

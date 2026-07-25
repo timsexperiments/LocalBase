@@ -1,43 +1,95 @@
 import { expect, test } from "bun:test";
-import { resolveCommand, runCli } from "./runner";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defaultConfig } from "../../../manager";
 import type { AppContext } from "../../../context";
+import { parseEnvironmentOverrides } from "../../../context";
 import { DatabaseSession } from "../../../db/client";
+import { resolveCli } from "./framework";
+import { runCli } from "./runner";
 
-test("rejects unknown flags, invalid kinds, and positional misuse", () => {
-  expect(resolveCommand(["catalog", "--unknown"])).toEqual({
-    kind: "error",
-    message: "Unknown flag for catalog: --unknown",
+test("resolves nested commands and global options before context creation", async () => {
+  const catalog = await resolveCli([
+    "--root",
+    "/tmp/local-base-cli-test",
+    "models",
+    "catalog",
+    "--kind=llm",
+  ]);
+
+  expect(catalog).toMatchObject({
+    kind: "command",
+    global: { root: "/tmp/local-base-cli-test", nonInteractive: false },
   });
-  expect(resolveCommand(["catalog", "--kind", "vision"])).toEqual({
-    kind: "error",
-    message: "Invalid value for --kind: vision",
+  expect((await resolveCli(["keys"])).kind).toBe("help");
+  expect((await resolveCli(["--help"])).kind).toBe("help");
+
+  const prompt = await resolveCli(["prompt", "set", "--", "--no-auth"]);
+  expect(prompt).toMatchObject({
+    kind: "command",
+    input: { text: ["--no-auth"] },
   });
-  expect(resolveCommand(["doctor", "extra"])).toEqual({
-    kind: "error",
-    message:
-      "Invalid positional arguments for doctor; expected no positional arguments",
+  const serve = await resolveCli(["serve", "--no-auth"]);
+  expect(serve).toMatchObject({ kind: "command", input: { auth: false } });
+
+  const literalHelp = await resolveCli(["prompt", "set", "--", "--help"]);
+  expect(literalHelp).toMatchObject({
+    kind: "command",
+    input: { text: ["--help"] },
+  });
+
+  const emptyModelList = await resolveCli(["configure", "--stt-models", ""]);
+  expect(emptyModelList).toMatchObject({
+    kind: "command",
+    input: { sttModels: [] },
   });
 });
 
-test("accepts serve root selection and supported memory-check overrides", () => {
-  expect(
-    resolveCommand([
-      "serve",
-      "--root",
-      "/tmp/localbase-test",
-      "--bypass-memory-check",
-    ]).kind,
-  ).toBe("command");
-  expect(
-    resolveCommand(["serve", "--root", "/tmp/localbase-test", "--unknown"]),
-  ).toEqual({
+test("rejects invalid CLI structure and contradictory interaction options", async () => {
+  await expect(
+    resolveCli(["models", "catalog", "--unknown"]),
+  ).resolves.toMatchObject({
     kind: "error",
-    message: "Unknown flag for serve: --unknown",
+    message: "Unknown option: --unknown",
+  });
+  await expect(
+    resolveCli(["models", "catalog", "--kind", "vision"]),
+  ).resolves.toMatchObject({
+    kind: "error",
+    message: expect.stringContaining("kind"),
+  });
+  await expect(resolveCli(["catalog"])).resolves.toMatchObject({
+    kind: "error",
+    message: "Unknown command: catalog",
+  });
+  await expect(resolveCli(["serve", "--no-auth=false"])).resolves.toMatchObject(
+    {
+      kind: "error",
+      message: "--no-auth does not accept a value",
+    },
+  );
+  await expect(
+    resolveCli(["configure", "--all", "--non-interactive"]),
+  ).resolves.toMatchObject({
+    kind: "error",
+    message: "--all cannot be used with --non-interactive",
+  });
+  await expect(
+    resolveCli(["serve", "--host", "bad host"]),
+  ).resolves.toMatchObject({
+    kind: "error",
+    message: expect.stringContaining("host"),
+  });
+  await expect(
+    resolveCli(["configure", "--active-stt", ""]),
+  ).resolves.toMatchObject({
+    kind: "error",
+    message: expect.stringContaining("activeStt"),
   });
 });
 
-test("routes help and invalid commands before context creation", async () => {
+test("help and syntax failures skip context creation", async () => {
   let contextsCreated = 0;
   const createContext = async () => {
     contextsCreated += 1;
@@ -49,7 +101,7 @@ test("routes help and invalid commands before context creation", async () => {
   console.error = () => {};
 
   try {
-    await expect(runCli(["--help"], createContext)).resolves.toBe(0);
+    await expect(runCli(["models", "--help"], createContext)).resolves.toBe(0);
     await expect(runCli(["missing-command"], createContext)).resolves.toBe(2);
   } finally {
     console.log = originalLog;
@@ -59,7 +111,7 @@ test("routes help and invalid commands before context creation", async () => {
   expect(contextsCreated).toBe(0);
 });
 
-test("closes command-scoped database resources", async () => {
+test("closes a command-scoped database session exactly once", async () => {
   let closes = 0;
   let databaseInitialized = true;
   class TestDatabaseSession extends DatabaseSession {
@@ -78,7 +130,7 @@ test("closes command-scoped database resources", async () => {
   console.error = () => {};
   try {
     await expect(
-      runCli(["reset"], async (_args, initializeDatabase) => {
+      runCli(["reset"], async (_options, initializeDatabase) => {
         databaseInitialized = initializeDatabase;
         return context;
       }),
@@ -89,4 +141,53 @@ test("closes command-scoped database resources", async () => {
 
   expect(databaseInitialized).toBe(false);
   expect(closes).toBe(1);
+});
+
+test("reports environment input failures as concise syntax errors", async () => {
+  const errors: string[] = [];
+  const originalError = console.error;
+  console.error = (...values: unknown[]) => errors.push(values.join(" "));
+
+  try {
+    await expect(
+      runCli(["doctor"], async () => {
+        parseEnvironmentOverrides({ LOCALBASE_PORT: "invalid" });
+        throw new Error("unreachable");
+      }),
+    ).resolves.toBe(2);
+  } finally {
+    console.error = originalError;
+  }
+
+  expect(errors[0]).toBe(
+    "Error: LOCALBASE_PORT: LOCALBASE_PORT must be an integer",
+  );
+});
+
+test("returns syntax failure and scoped help for an empty prompt", async () => {
+  const root = mkdtempSync(join(tmpdir(), "local-base-empty-prompt-"));
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "src/cli.ts",
+      "--root",
+      root,
+      "--non-interactive",
+      "prompt",
+      "set",
+    ],
+    { cwd: process.cwd(), stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+  );
+
+  try {
+    const [exitCode, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stderr).text(),
+    ]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("Error: Custom system prompt cannot be empty.");
+    expect(stderr).toContain("local-base prompt set");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
