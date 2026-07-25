@@ -4,8 +4,6 @@ import { generateText, stepCountIs, tool } from "ai";
 import { join } from "node:path";
 import { z } from "zod";
 import { byId, primaryArtifact } from "../../catalog";
-import { loadConfig, saveConfig } from "../../manager";
-import { DatabaseSession } from "../../db/client";
 import {
   startGatewayFixture,
   type GatewayFixture,
@@ -122,37 +120,6 @@ describe("API gateway integration", () => {
     ]);
   }
 
-  async function waitForUpstreamRequest(id: string): Promise<void> {
-    const deadline = Date.now() + 2_000;
-    while (Date.now() < deadline) {
-      if (
-        gateway.upstreamRequests.some(
-          (upstream) => upstream.headers.get("x-test-stream-id") === id,
-        )
-      ) {
-        return;
-      }
-      await Bun.sleep(10);
-    }
-    throw new Error(`Upstream request ${id} did not start within two seconds.`);
-  }
-
-  async function waitForLlmRuntimeLaunches(
-    offset: number,
-    count: number,
-  ): Promise<string[][]> {
-    const deadline = Date.now() + 2_000;
-    while (Date.now() < deadline) {
-      const launches = await gateway.readLlmRuntimeLaunches();
-      if (launches.length >= offset + count) return launches.slice(offset);
-      await Bun.sleep(10);
-    }
-    const launches = await gateway.readLlmRuntimeLaunches();
-    throw new Error(
-      `Expected ${count} LLM runtime launches, received ${launches.length - offset}: ${JSON.stringify(launches.slice(offset))}`,
-    );
-  }
-
   function launchedModelPath(args: string[]): string {
     const modelIndex = args.indexOf("-m");
     if (modelIndex === -1 || !args[modelIndex + 1]) {
@@ -162,21 +129,13 @@ describe("API gateway integration", () => {
   }
 
   function loadGatewayConfig() {
-    const database = new DatabaseSession();
-    try {
-      return loadConfig(database, gateway.root);
-    } finally {
-      database.close();
-    }
+    return gateway.readConfig();
   }
 
-  function saveGatewayConfig(config: ReturnType<typeof loadConfig>): void {
-    const database = new DatabaseSession();
-    try {
-      saveConfig(database, config);
-    } finally {
-      database.close();
-    }
+  function saveGatewayConfig(
+    config: ReturnType<GatewayFixture["readConfig"]>,
+  ): void {
+    gateway.saveConfig(config);
   }
 
   async function expectValidationFailure(
@@ -312,54 +271,6 @@ describe("API gateway integration", () => {
     });
   });
 
-  test("preserves ordered client system and developer messages", async () => {
-    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const response = await request("/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [
-          {
-            role: "system",
-            content: [
-              {
-                type: "text",
-                text: "Client system",
-                cache_control: { type: "ephemeral" },
-              },
-            ],
-          },
-          {
-            role: "developer",
-            content: [{ type: "text", text: "Client developer" }],
-          },
-          { role: "user", content: "hello" },
-        ],
-      }),
-    });
-    expect(response.status).toBe(200);
-
-    const body = JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}");
-    expect(body.messages).toEqual([
-      {
-        role: "system",
-        content: [
-          {
-            type: "text",
-            text: "Client system",
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-      },
-      {
-        role: "developer",
-        content: [{ type: "text", text: "Client developer" }],
-      },
-      { role: "user", content: "hello" },
-    ]);
-  });
-
   test("forwards user-only chat requests without injected instructions", async () => {
     const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
     const response = await request("/v1/chat/completions", {
@@ -397,39 +308,6 @@ describe("API gateway integration", () => {
         },
       });
     }
-  });
-
-  test("keeps AI SDK instructions and unconfigured requests transparent", async () => {
-    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const localbase = createOpenAICompatible({
-      baseURL: `${gateway.baseUrl}/v1`,
-      name: "localbase-test",
-    });
-
-    const result = await generateText({
-      model: localbase.chatModel(modelId),
-      system: "AI SDK system instruction",
-      prompt: "hello",
-    });
-    expect(result.text).toBe("ok");
-
-    const body = JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}");
-    expect(body.messages).toEqual([
-      { role: "system", content: "AI SDK system instruction" },
-      { role: "user", content: "hello" },
-    ]);
-
-    const transparent = await generateText({
-      model: localbase.chatModel(modelId),
-      prompt: "transparent",
-    });
-    expect(transparent.text).toBe("ok");
-    const transparentBody = JSON.parse(
-      gateway.upstreamRequests.at(-1)?.body ?? "{}",
-    );
-    expect(transparentBody.messages).toEqual([
-      { role: "user", content: "transparent" },
-    ]);
   });
 
   test("round-trips AI SDK tool calls and results", async () => {
@@ -612,7 +490,7 @@ describe("API gateway integration", () => {
     });
     const firstReader = firstResponse.body!.getReader();
     expect((await firstReader.read()).done).toBe(false);
-    await waitForLlmRuntimeLaunches(launchOffset, 1);
+    await gateway.waitForLlmRuntimeLaunches(launchOffset, 1);
 
     const secondResponse = request("/v1/chat/completions", {
       method: "POST",
@@ -646,7 +524,7 @@ describe("API gateway integration", () => {
     expect(second.status).toBe(200);
     const secondReader = second.body!.getReader();
     expect((await secondReader.read()).done).toBe(false);
-    await waitForLlmRuntimeLaunches(launchOffset, 2);
+    await gateway.waitForLlmRuntimeLaunches(launchOffset, 2);
     await expectPromiseBlocked(thirdResponse);
     expect(loadGatewayConfig().activeLlmModel).toBe(firstModel);
 
@@ -665,7 +543,7 @@ describe("API gateway integration", () => {
       requests.map(() => [{ role: "user", content: "hello" }]),
     );
 
-    const launches = await waitForLlmRuntimeLaunches(launchOffset, 3);
+    const launches = await gateway.waitForLlmRuntimeLaunches(launchOffset, 3);
     expect(launches.map(launchedModelPath)).toEqual(
       requestedModels.map((modelId) =>
         join(initialConfig.llmModelsDir, modelArtifactFile(modelId)),
@@ -765,7 +643,7 @@ describe("API gateway integration", () => {
       () => "aborted",
     );
 
-    await waitForUpstreamRequest(headerWaitId);
+    await gateway.waitForUpstreamRequest(headerWaitId);
     controller.abort();
     expect(await within(abortedRequest, "header wait abort")).toBe("aborted");
     await within(

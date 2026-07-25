@@ -2,7 +2,13 @@ import { mkdirSync, mkdtempSync, rmSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { byId, primaryArtifact } from "../catalog";
-import { defaultConfig, saveConfig, type LocalBaseConfig } from "../manager";
+import {
+  createApiKey,
+  defaultConfig,
+  loadConfig,
+  saveConfig,
+  type LocalBaseConfig,
+} from "../manager";
 import { DatabaseSession } from "../db/client";
 import { compileRuntimeFixture } from "./runtime-fixture";
 
@@ -19,6 +25,7 @@ type UpstreamRequest = {
 
 type ControlledStream = {
   close: () => void;
+  aborted: Promise<void>;
 };
 
 type ControlledHeaderWait = {
@@ -44,11 +51,24 @@ export async function writeCompleteCatalogArtifact(
 export type GatewayFixture = {
   baseUrl: string;
   root: string;
+  apiKey?: string;
   upstreamRequests: UpstreamRequest[];
+  readConfig: () => LocalBaseConfig;
+  saveConfig: (config: LocalBaseConfig) => void;
   readLlmRuntimeLaunches: () => Promise<string[][]>;
+  waitForLlmRuntimeLaunches: (
+    offset: number,
+    count: number,
+  ) => Promise<string[][]>;
+  waitForUpstreamRequest: (id: string) => Promise<void>;
   closeControlledStream: (id: string) => void;
+  waitForControlledStreamAbort: (id: string) => Promise<void>;
   waitForControlledHeaderAbort: (id: string) => Promise<void>;
   stop: () => Promise<void>;
+};
+
+export type GatewayFixtureOptions = {
+  auth?: { mode?: "bearer" | "x-api-key" | "either" };
 };
 
 async function readProcessOutput(
@@ -87,6 +107,29 @@ async function stopProcess(serverProcess: Bun.Subprocess): Promise<void> {
     }),
   ]);
   await serverProcess.exited;
+}
+
+async function compileGatewayCli(outputPath: string): Promise<void> {
+  const build = Bun.spawn(
+    [
+      process.execPath,
+      "build",
+      "src/cli.ts",
+      "--compile",
+      "--target=bun",
+      "--asset-naming=[dir]/[name].[ext]",
+      `--outfile=${outputPath}`,
+    ],
+    { cwd: PROJECT_ROOT, stdout: "pipe", stderr: "pipe" },
+  );
+  const [exitCode, stdout, stderr] = await Promise.all([
+    build.exited,
+    readProcessOutput(build.stdout),
+    readProcessOutput(build.stderr),
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(`Could not compile gateway CLI:\n${stdout}${stderr}`);
+  }
 }
 
 async function readGatewayBaseUrl(
@@ -231,7 +274,7 @@ function startMockUpstream(
           ],
         });
       }
-      if (mode === "controlled-stream") {
+      if (mode === "controlled-stream" || mode === "ai-sdk-controlled-stream") {
         const id = request.headers.get("x-test-stream-id");
         if (!id) return new Response("Missing stream id", { status: 400 });
         if (controlledStreams.has(id)) {
@@ -239,21 +282,48 @@ function startMockUpstream(
         }
 
         let closed = false;
+        let resolveAborted: () => void;
+        const aborted = new Promise<void>((resolve) => {
+          resolveAborted = resolve;
+        });
+        const abort = () => resolveAborted!();
+        request.signal.addEventListener("abort", abort, { once: true });
+        if (request.signal.aborted) abort();
         const body = new ReadableStream<Uint8Array>({
           start(controller) {
             controlledStreams.set(id, {
               close: () => {
                 if (closed) return;
                 closed = true;
+                request.signal.removeEventListener("abort", abort);
                 controller.close();
               },
+              aborted,
             });
             controller.enqueue(
-              new TextEncoder().encode('data: {"ok":true}\n\n'),
+              new TextEncoder().encode(
+                mode === "ai-sdk-controlled-stream"
+                  ? `data: ${JSON.stringify({
+                      id: "chatcmpl-controlled",
+                      object: "chat.completion.chunk",
+                      created: 0,
+                      model: LLM_MODEL,
+                      choices: [
+                        {
+                          index: 0,
+                          delta: { role: "assistant", content: "waiting" },
+                          finish_reason: null,
+                        },
+                      ],
+                    })}\n\n`
+                  : 'data: {"ok":true}\n\n',
+              ),
             );
           },
           cancel() {
+            abort();
             closed = true;
+            request.signal.removeEventListener("abort", abort);
           },
         });
         return new Response(body, {
@@ -303,6 +373,48 @@ function startMockUpstream(
           headers: { "content-type": "text/event-stream" },
         });
       }
+      if (mode === "ai-sdk-stream") {
+        const chunks = [
+          {
+            id: "chatcmpl-stream",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "hel" },
+                finish_reason: null,
+              },
+            ],
+          },
+          {
+            id: "chatcmpl-stream",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              {
+                index: 0,
+                delta: { content: "lo" },
+                finish_reason: null,
+              },
+            ],
+          },
+          {
+            id: "chatcmpl-stream",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+          },
+        ];
+        return new Response(
+          `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
       if (path === "/v1/images/generations") {
         return Response.json({ created: 0, data: [{ b64_json: "test" }] });
       }
@@ -327,6 +439,7 @@ function startMockUpstream(
             finish_reason: "stop",
           },
         ],
+        usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
       });
     },
   };
@@ -382,9 +495,12 @@ async function waitForReady(
   );
 }
 
-export async function startGatewayFixture(): Promise<GatewayFixture> {
+export async function startGatewayFixture(
+  options: GatewayFixtureOptions = {},
+): Promise<GatewayFixture> {
   const root = mkdtempSync(join(tmpdir(), "localbase-gateway-"));
   const runtimeDir = join(root, "test-runtimes");
+  const cliPath = join(root, "local-base");
   const llmLaunchesPath = join(root, "llama-launches.jsonl");
   const cleanup = () => rmSync(root, { recursive: true, force: true });
   const upstreamRequests: UpstreamRequest[] = [];
@@ -410,6 +526,7 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
   const imagePort = boundPort(imageUpstream);
 
   let config: LocalBaseConfig;
+  let apiKey: string | undefined;
   try {
     config = defaultConfig(root);
     config.port = llmPort;
@@ -422,6 +539,9 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
     config.selectedImageModels = [IMAGE_MODEL];
     const database = new DatabaseSession();
     saveConfig(database, config);
+    if (options.auth) {
+      apiKey = createApiKey(database, config, "conformance").rawKey;
+    }
     database.close();
 
     mkdirSync(config.llmModelsDir, { recursive: true });
@@ -445,6 +565,7 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
       ),
       compileRuntimeFixture(join(runtimeDir, "whisper-server")),
       compileRuntimeFixture(join(runtimeDir, "sd-server")),
+      compileGatewayCli(cliPath),
     ]);
   } catch (error) {
     llmUpstream.stop(true);
@@ -463,9 +584,7 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
     const port = reservePort();
     const gatewayProcess = Bun.spawn(
       [
-        process.execPath,
-        "run",
-        "src/cli.ts",
+        cliPath,
         "serve",
         "--root",
         root,
@@ -479,7 +598,9 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
         String(sttPort),
         "--image-port",
         String(imagePort),
-        "--no-auth",
+        ...(options.auth
+          ? ["--auth-mode", options.auth.mode ?? "bearer"]
+          : ["--no-auth"]),
         "--bypass-memory-check",
       ],
       {
@@ -536,23 +657,79 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
       : new Error("Gateway process was not created.");
   }
 
+  const readLlmRuntimeLaunches = async (): Promise<string[][]> => {
+    const file = Bun.file(llmLaunchesPath);
+    if (!(await file.exists())) return [];
+    return (await file.text())
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as string[]);
+  };
+  const waitForLlmRuntimeLaunches = async (
+    offset: number,
+    count: number,
+  ): Promise<string[][]> => {
+    const deadline = Date.now() + 2_000;
+    while (Date.now() < deadline) {
+      const launches = await readLlmRuntimeLaunches();
+      if (launches.length >= offset + count) return launches.slice(offset);
+      await Bun.sleep(10);
+    }
+    const launches = await readLlmRuntimeLaunches();
+    throw new Error(
+      `Expected ${count} LLM runtime launches, received ${launches.length - offset}: ${JSON.stringify(launches.slice(offset))}`,
+    );
+  };
+
   return {
     baseUrl,
     root,
+    apiKey,
     upstreamRequests,
-    async readLlmRuntimeLaunches() {
-      const file = Bun.file(llmLaunchesPath);
-      if (!(await file.exists())) return [];
-      return (await file.text())
-        .trim()
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line) as string[]);
+    readConfig() {
+      const database = new DatabaseSession();
+      try {
+        return loadConfig(database, root);
+      } finally {
+        database.close();
+      }
+    },
+    saveConfig(nextConfig) {
+      const database = new DatabaseSession();
+      try {
+        saveConfig(database, nextConfig);
+      } finally {
+        database.close();
+      }
+    },
+    readLlmRuntimeLaunches,
+    waitForLlmRuntimeLaunches,
+    async waitForUpstreamRequest(id) {
+      const deadline = Date.now() + 2_000;
+      while (Date.now() < deadline) {
+        if (
+          upstreamRequests.some(
+            (upstream) => upstream.headers.get("x-test-stream-id") === id,
+          )
+        ) {
+          return;
+        }
+        await Bun.sleep(10);
+      }
+      throw new Error(
+        `Upstream request ${id} did not start within two seconds.`,
+      );
     },
     closeControlledStream(id) {
       const stream = controlledStreams.get(id);
       if (!stream) throw new Error(`Unknown controlled stream: ${id}`);
       stream.close();
+    },
+    waitForControlledStreamAbort(id) {
+      const stream = controlledStreams.get(id);
+      if (!stream) throw new Error(`Unknown controlled stream: ${id}`);
+      return stream.aborted;
     },
     waitForControlledHeaderAbort(id) {
       const headerWait = controlledHeaderWaits.get(id);
