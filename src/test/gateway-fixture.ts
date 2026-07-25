@@ -302,21 +302,19 @@ function startMockUpstream(
             });
             controller.enqueue(
               new TextEncoder().encode(
-                mode === "ai-sdk-controlled-stream"
-                  ? `data: ${JSON.stringify({
-                      id: "chatcmpl-controlled",
-                      object: "chat.completion.chunk",
-                      created: 0,
-                      model: LLM_MODEL,
-                      choices: [
-                        {
-                          index: 0,
-                          delta: { role: "assistant", content: "waiting" },
-                          finish_reason: null,
-                        },
-                      ],
-                    })}\n\n`
-                  : 'data: {"ok":true}\n\n',
+                `data: ${JSON.stringify({
+                  id: "chatcmpl-controlled",
+                  object: "chat.completion.chunk",
+                  created: 0,
+                  model: LLM_MODEL,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: { role: "assistant", content: "waiting" },
+                      finish_reason: null,
+                    },
+                  ],
+                })}\n\n`,
               ),
             );
           },
@@ -369,7 +367,32 @@ function startMockUpstream(
         });
       }
       if (mode === "stream") {
-        return new Response('data: {"ok":true}\n\ndata: [DONE]\n\n', {
+        return new Response(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-stream",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "ok" },
+                finish_reason: "stop",
+              },
+            ],
+          })}\n\ndata: [DONE]\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      if (mode === "invalid-stream") {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('data: {"ok"'));
+            controller.enqueue(new TextEncoder().encode(":true}\n\n"));
+            controller.close();
+          },
+        });
+        return new Response(body, {
           headers: { "content-type": "text/event-stream" },
         });
       }
@@ -650,7 +673,6 @@ export async function startGatewayFixture(
     llmUpstream.stop(true);
     sttUpstream.stop(true);
     imageUpstream.stop(true);
-    cleanup();
     cleanup();
     throw lastError instanceof Error
       ? lastError

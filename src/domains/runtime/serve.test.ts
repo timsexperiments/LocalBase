@@ -428,7 +428,7 @@ describe("API gateway integration", () => {
     }
   });
 
-  test("passes SSE responses through without buffering or schema gating", async () => {
+  test("validates streamed chat events without changing the SSE response", async () => {
     const response = await request("/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -443,7 +443,33 @@ describe("API gateway integration", () => {
     });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/event-stream");
-    expect(await response.text()).toContain("[DONE]");
+    await expect(response.text()).resolves.toContain("[DONE]");
+  });
+
+  test("terminates invalid streamed chat events before they reach clients", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "invalid-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe(
+      `data: ${JSON.stringify({
+        error: {
+          message: "The upstream service returned an invalid event stream.",
+          type: "server_error",
+          param: null,
+          code: "upstream_error",
+        },
+      })}\n\ndata: [DONE]\n\n`,
+    );
   });
 
   test("rejects removed raw backend namespaces", async () => {

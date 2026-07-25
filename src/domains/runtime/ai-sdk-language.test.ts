@@ -78,8 +78,20 @@ describe("Vercel AI SDK language conformance", () => {
         body: JSON.stringify({
           model: PRIMARY_MODEL,
           messages: [
-            { role: "system", content: "Client system" },
-            { role: "developer", content: "Client developer" },
+            {
+              role: "system",
+              content: [
+                {
+                  type: "text",
+                  text: "Client system",
+                  cache_control: { type: "ephemeral" },
+                },
+              ],
+            },
+            {
+              role: "developer",
+              content: [{ type: "text", text: "Client developer" }],
+            },
             { role: "user", content: "Client user" },
           ],
         }),
@@ -87,8 +99,20 @@ describe("Vercel AI SDK language conformance", () => {
     );
     expect(developerResponse.status).toBe(200);
     expect(latestUpstreamRequestBody(gateway).messages).toEqual([
-      { role: "system", content: "Client system" },
-      { role: "developer", content: "Client developer" },
+      {
+        role: "system",
+        content: [
+          {
+            type: "text",
+            text: "Client system",
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+      },
+      {
+        role: "developer",
+        content: [{ type: "text", text: "Client developer" }],
+      },
       { role: "user", content: "Client user" },
     ]);
   });
@@ -177,6 +201,34 @@ describe("Vercel AI SDK language conformance", () => {
     expect(launches[0]?.[modelArgument! + 1]).toBe(
       modelArtifactPath(config.llmModelsDir, SWITCHED_MODEL),
     );
+  });
+
+  test("rejects unknown model IDs before dispatching to the backend", async () => {
+    const requestOffset = gateway.upstreamRequests.length;
+    const launchOffset = (await gateway.readLlmRuntimeLaunches()).length;
+
+    const response = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "definitely-not-selected",
+        messages: [{ role: "user", content: "Do not dispatch this." }],
+      }),
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        message: "The model 'definitely-not-selected' does not exist.",
+        type: "invalid_request_error",
+        param: "model",
+        code: "model_not_found",
+      },
+    });
+    expect(gateway.upstreamRequests.slice(requestOffset)).toEqual([]);
+    expect(
+      (await gateway.readLlmRuntimeLaunches()).slice(launchOffset),
+    ).toEqual([]);
   });
 
   test("maps gateway authentication, validation, and upstream failures to OpenAI-shaped errors", async () => {

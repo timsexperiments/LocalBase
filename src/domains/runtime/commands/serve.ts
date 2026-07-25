@@ -148,6 +148,7 @@ type OpenAIErrorType =
 
 type OpenAIErrorCode =
   | "invalid_api_key"
+  | "model_not_found"
   | "route_disabled"
   | "validation_failed"
   | "service_unavailable"
@@ -207,6 +208,20 @@ function badRequest(message: string): Response {
     },
   };
   return Response.json(body, { status: 400 });
+}
+
+function modelNotFound(model: string): Response {
+  return Response.json(
+    {
+      error: {
+        message: `The model '${model}' does not exist.`,
+        type: "invalid_request_error",
+        param: "model",
+        code: "model_not_found",
+      },
+    } satisfies OpenAIErrorResponse,
+    { status: 404 },
+  );
 }
 
 function payloadTooLarge(): Response {
@@ -496,6 +511,54 @@ const chatCompletionResponseSchema = z
   })
   .passthrough();
 
+const chatCompletionStreamDeltaSchema = z
+  .object({
+    role: z.literal("assistant").optional(),
+    content: z.string().nullable().optional(),
+    refusal: z.string().nullable().optional(),
+  })
+  .strict();
+
+const chatCompletionStreamEventSchema = z.union([
+  z
+    .object({
+      id: z.string(),
+      object: z.literal("chat.completion.chunk"),
+      created: z.number(),
+      model: z.string(),
+      choices: z.array(
+        z
+          .object({
+            index: z.number(),
+            delta: chatCompletionStreamDeltaSchema,
+            finish_reason: z.string().nullable().optional(),
+          })
+          .passthrough(),
+      ),
+      usage: z
+        .object({
+          prompt_tokens: z.number(),
+          completion_tokens: z.number(),
+          total_tokens: z.number(),
+        })
+        .passthrough()
+        .optional(),
+    })
+    .passthrough(),
+  z
+    .object({
+      error: z
+        .object({
+          message: z.string(),
+          type: z.string(),
+          param: z.string().nullable().optional(),
+          code: z.string().nullable().optional(),
+        })
+        .passthrough(),
+    })
+    .passthrough(),
+]);
+
 const embeddingsResponseSchema = z
   .object({
     object: z.string(),
@@ -688,11 +751,83 @@ function isEventStream(response: Response): boolean {
   );
 }
 
+function eventData(event: string): string | undefined {
+  const values: string[] = [];
+  for (const line of event.split(/\r\n|\r|\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const value = line.slice("data:".length);
+    values.push(value.startsWith(" ") ? value.slice(1) : value);
+  }
+  return values.length > 0 ? values.join("\n") : undefined;
+}
+
+function validateEventStream(
+  body: ReadableStream<Uint8Array>,
+  schema: z.ZodType,
+): ReadableStream<Uint8Array> {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  const boundary = /(?:\r\n|\r|\n)(?:\r\n|\r|\n)/;
+  let buffered = "";
+
+  const validate = (event: string): boolean => {
+    const data = eventData(event);
+    if (!data || data === "[DONE]") return true;
+    try {
+      const parsed = JSON.parse(data);
+      return schema.safeParse(parsed).success;
+    } catch {}
+    return false;
+  };
+
+  const validationFailure = `data: ${JSON.stringify({
+    error: {
+      message: "The upstream service returned an invalid event stream.",
+      type: "server_error",
+      param: null,
+      code: "upstream_error",
+    },
+  })}\n\ndata: [DONE]\n\n`;
+
+  const flushEvent = (
+    controller: TransformStreamDefaultController<Uint8Array>,
+    event: string,
+  ): boolean => {
+    if (!validate(event)) {
+      controller.enqueue(encoder.encode(validationFailure));
+      controller.terminate();
+      return false;
+    }
+    controller.enqueue(encoder.encode(event));
+    return true;
+  };
+
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        buffered += decoder.decode(chunk, { stream: true });
+        while (true) {
+          const match = boundary.exec(buffered);
+          if (!match || match.index === undefined) return;
+          const end = match.index + match[0].length;
+          if (!flushEvent(controller, buffered.slice(0, end))) return;
+          buffered = buffered.slice(end);
+        }
+      },
+      flush(controller) {
+        buffered += decoder.decode();
+        if (buffered) flushEvent(controller, buffered);
+      },
+    }),
+  );
+}
+
 async function proxyRequest(
   request: Request,
   targetBase: string,
   pathOverride?: string,
   responseSchema?: z.ZodType,
+  eventStreamSchema?: z.ZodType,
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
@@ -711,6 +846,26 @@ async function proxyRequest(
   } catch {
     if (request.signal.aborted) return requestAborted();
     return upstreamFailure("The upstream service could not be reached.");
+  }
+
+  if (
+    responseSchema &&
+    eventStreamSchema &&
+    isEventStream(upstream) &&
+    upstream.ok
+  ) {
+    if (!upstream.body) {
+      return upstreamFailure(
+        "The upstream service returned an invalid response.",
+      );
+    }
+    const headers = filterProxyHeaders(upstream.headers);
+    headers.delete("content-length");
+    return new Response(validateEventStream(upstream.body, eventStreamSchema), {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers,
+    });
   }
 
   if (responseSchema && !isEventStream(upstream) && upstream.ok) {
@@ -1595,18 +1750,19 @@ export async function runServe(
     return await waitForRequestAbort(lockedWork, requestSignal);
   };
 
-  const requestedLlmModel = (requestedModel: string | undefined): string => {
+  const requestedLlmModel = (
+    requestedModel: string | undefined,
+  ): string | undefined => {
     const latestConfig = loadConfig(ctx.database, config.root);
     if (!requestedModel) return latestConfig.activeLlmModel;
     const normalized = requestedModel.replace(
-      /^(localbase|openai|ollama)\//,
+      /^(localbase|openai|ollama)\//i,
       "",
     );
-    return (
-      latestConfig.selectedLlmModels.find(
-        (model) => model.toLowerCase() === normalized.toLowerCase(),
-      ) ?? latestConfig.activeLlmModel
-    );
+    return [
+      latestConfig.activeLlmModel,
+      ...latestConfig.selectedLlmModels,
+    ].find((model) => model.toLowerCase() === normalized.toLowerCase());
   };
 
   const activateLlmModel = async (
@@ -1682,6 +1838,7 @@ export async function runServe(
 
     return await withLlmLeaseLock(requestSignal, async () => {
       const modelId = requestedLlmModel(requestedModel);
+      if (!modelId) return modelNotFound(requestedModel ?? "");
       throwIfRequestAborted(requestSignal);
       if (activeLlmLeases && activeLlmLeases.modelId !== modelId) {
         if (activeLlmLeases.count > 0) {
@@ -1938,6 +2095,7 @@ export async function runServe(
             llmBase,
             undefined,
             chatCompletionResponseSchema,
+            chatCompletionStreamEventSchema,
           );
         },
         request.signal,
