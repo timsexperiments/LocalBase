@@ -1,22 +1,25 @@
 import { resetDatabase } from "../../../manager";
-import { hasYesFlag, parseFlag } from "../../../utils/args";
 import type { AppContext } from "../../../context";
+import type { CommandExecution } from "../../app/commands/framework";
+import type { ResetInput } from "../../app/commands/inputs";
 
 export async function runReset(
-  args: string[],
+  input: ResetInput,
   ctx: AppContext,
+  execution: CommandExecution,
 ): Promise<number> {
-  if (!hasYesFlag(args)) {
-    console.error("reset is destructive. Re-run with --yes to confirm.");
+  if (!input.yes) {
+    execution.output.error(
+      "reset is destructive. Re-run with --yes to confirm.",
+    );
     return 2;
   }
-  const resetRoot = parseFlag(args, "--root");
   const fresh = await resetDatabase(
     ctx.database,
-    resetRoot,
+    ctx.config.root,
     ctx.specs.gpuVramGb,
   );
-  console.log(`Database reset complete at ${fresh.root}`);
-  console.log("Initialized default configuration.");
+  execution.output.info(`Database reset complete at ${fresh.root}`);
+  execution.output.info("Initialized default configuration.");
   return 0;
 }

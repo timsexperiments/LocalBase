@@ -1,19 +1,23 @@
 import { listModels } from "../../../catalog";
-import { parseFlag, parseKind } from "../../../utils/args";
 import type { AppContext } from "../../../context";
+import type { CommandExecution } from "../../app/commands/framework";
+import type { CatalogInput } from "../../app/commands/inputs";
 
-export function runCatalog(args: string[], _ctx: AppContext): number {
-  const kind = parseKind(parseFlag(args, "--kind"));
-  for (const model of listModels(kind)) {
+export function runCatalog(
+  input: CatalogInput,
+  _ctx: AppContext,
+  execution: CommandExecution,
+): number {
+  for (const model of listModels(input.kind)) {
     const coding =
       model.kind === "llm" ? ` | coding=${model.codingScore}/10` : "";
-    console.log(
+    execution.output.info(
       `${model.kind.padEnd(5)} | ${model.modelId.padEnd(38)} | size=${model.size.padEnd(10)} | min_vram=${String(model.minVramGb).padStart(3)} GB | storage=${model.storageGb.toFixed(2)} GB | status=${model.commercialStatus}${coding}`,
     );
-    console.log(
+    execution.output.info(
       `      in=${model.inputModalities.join(",")} out=${model.outputModalities.join(",")} features=${model.features.join(",")}`,
     );
-    console.log(`      catch: ${model.catch}`);
+    execution.output.info(`      catch: ${model.catch}`);
   }
   return 0;
 }

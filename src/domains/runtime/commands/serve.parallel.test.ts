@@ -18,6 +18,8 @@ const SWITCHED_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
 const PROJECT_ROOT = join(import.meta.dirname, "../../../..");
 const textEncoder = new TextEncoder();
 const textBytes = (value: string) => textEncoder.encode(value);
+const LAZY_LLAMA_LAUNCH_TIMEOUT_MS = 10_000;
+const POLL_INTERVAL_MS = 25;
 
 function saveTestConfig(config: ReturnType<typeof defaultConfig>): void {
   const database = new DatabaseSession();
@@ -93,13 +95,23 @@ async function stopProcess(process: Bun.Subprocess): Promise<void> {
   await process.exited;
 }
 
-async function waitForFile(path: string): Promise<void> {
-  const deadline = Date.now() + 2_000;
+async function waitForLazyLlamaLaunch(
+  gateway: Bun.Subprocess,
+  argsPath: string,
+): Promise<void> {
+  const deadline = Date.now() + LAZY_LLAMA_LAUNCH_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (await Bun.file(path).exists()) return;
-    await Bun.sleep(20);
+    if (await Bun.file(argsPath).exists()) return;
+    if (gateway.exitCode !== null) {
+      throw new Error(
+        `Gateway exited with code ${gateway.exitCode} before the lazy Llama fixture wrote ${argsPath}`,
+      );
+    }
+    await Bun.sleep(POLL_INTERVAL_MS);
   }
-  throw new Error(`Timed out waiting for ${path}`);
+  throw new Error(
+    `Timed out after ${LAZY_LLAMA_LAUNCH_TIMEOUT_MS}ms waiting for the lazy Llama fixture to write ${argsPath}; gateway pid ${gateway.pid} is still running`,
+  );
 }
 
 async function waitForProcessExit(pid: number): Promise<void> {
@@ -129,7 +141,7 @@ function isProcessRunning(pid: number): boolean {
 function serveRunnerSource(): string {
   const catalogPath = join(PROJECT_ROOT, "src/catalog.ts");
   const contextPath = join(PROJECT_ROOT, "src/context.ts");
-  const servePath = join(PROJECT_ROOT, "src/domains/runtime/commands/serve.ts");
+  const runnerPath = join(PROJECT_ROOT, "src/domains/app/commands/runner.ts");
   const guardianPath = join(
     PROJECT_ROOT,
     "src/domains/runtime/backend-guardian.ts",
@@ -137,7 +149,7 @@ function serveRunnerSource(): string {
   return `
 import { CATALOG, validateCatalog } from ${JSON.stringify(catalogPath)};
 import { createAppContext } from ${JSON.stringify(contextPath)};
-import { runServe } from ${JSON.stringify(servePath)};
+import { runCli } from ${JSON.stringify(runnerPath)};
 import { BACKEND_GUARDIAN_COMMAND, runBackendGuardian } from ${JSON.stringify(guardianPath)};
 
 const cliArgs = Bun.argv.slice(2);
@@ -153,7 +165,7 @@ const modelIndex = CATALOG.findIndex(({ modelId }) => modelId === testModel.mode
 if (modelIndex === -1) throw new Error("Test model is not in the production catalog: " + testModel.modelId);
 (CATALOG as any)[modelIndex] = testModel;
 const args = JSON.parse(process.env.LOCALBASE_TEST_ARGS!);
-await runServe(args, await createAppContext(args));
+process.exit(await runCli(args, createAppContext));
 `;
 }
 
@@ -277,14 +289,9 @@ test(
           String(backendPort),
           "--ctx-size",
           "8192",
-          "--llm",
-          "true",
-          "--stt",
-          "false",
-          "--image",
-          "false",
-          "--auth",
-          "false",
+          "--no-stt",
+          "--no-image",
+          "--no-auth",
           "--bypass-memory-check",
         ],
         {
@@ -316,8 +323,7 @@ test(
           "--defaults",
           "--parallel",
           "3",
-          "--create-key",
-          "false",
+          "--no-create-key",
         ],
         {
           cwd: PROJECT_ROOT,
@@ -343,7 +349,7 @@ test(
       });
       expect(response.status).toBe(200);
 
-      await waitForFile(argsPath);
+      await waitForLazyLlamaLaunch(gateway, argsPath);
       const launchArgs = (await Bun.file(argsPath).text()).trim().split("\n");
       expect(launchArgs[launchArgs.indexOf("--parallel") + 1]).toBe("3");
       expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(
@@ -465,6 +471,7 @@ test(
         notes: "Test only.",
       };
       const serveArgs = [
+        "serve",
         "--root",
         root,
         "--host",
@@ -473,14 +480,9 @@ test(
         String(wrapperPort),
         "--llm-port",
         String(backendPort),
-        "--llm",
-        "true",
-        "--stt",
-        "false",
-        "--image",
-        "false",
-        "--auth",
-        "false",
+        "--no-stt",
+        "--no-image",
+        "--no-auth",
         "--bypass-memory-check",
       ];
       gateway = Bun.spawn([process.execPath, "--eval", serveRunnerSource()], {
@@ -516,7 +518,7 @@ test(
         }),
       });
       expect(response.status).toBe(200);
-      await waitForFile(argsPath);
+      await waitForLazyLlamaLaunch(gateway, argsPath);
 
       expect(artifacts.requests).toEqual([artifactPath]);
       expect(
@@ -631,14 +633,9 @@ test(
           String(backendPort),
           "--llm-model-file",
           modelFile,
-          "--llm",
-          "true",
-          "--stt",
-          "false",
-          "--image",
-          "false",
-          "--auth",
-          "false",
+          "--no-stt",
+          "--no-image",
+          "--no-auth",
           "--bypass-memory-check",
         ],
         {
@@ -670,7 +667,7 @@ test(
         }),
       });
       expect(response.status).toBe(200);
-      await waitForFile(argsPath);
+      await waitForLazyLlamaLaunch(gateway, argsPath);
 
       const launchArgs = (await Bun.file(argsPath).text()).trim().split("\n");
       expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(

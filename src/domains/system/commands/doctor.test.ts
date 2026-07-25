@@ -3,6 +3,12 @@ import { defaultConfig } from "../../../manager";
 import type { AppContext } from "../../../context";
 import { runDoctor } from "./doctor";
 import { DatabaseSession } from "../../../db/client";
+import type { CommandExecution } from "../../app/commands/framework";
+
+const execution: CommandExecution = {
+  global: { nonInteractive: false },
+  output: { info() {}, error() {} },
+};
 
 function makeContext(): AppContext {
   const config = defaultConfig("/tmp/local-base-doctor", 16);
@@ -45,7 +51,9 @@ function captureOutput(action: () => void): string[] {
 }
 
 test("doctor prints configured parallel slots", () => {
-  const output = captureOutput(() => runDoctor([], makeContext()));
+  const output = captureOutput(() =>
+    runDoctor({ json: false }, makeContext(), execution),
+  );
 
   expect(output).toContain("Parallel Slots: 2");
 });
@@ -53,7 +61,9 @@ test("doctor prints configured parallel slots", () => {
 test("doctor JSON separates hardware from non-sensitive configuration", () => {
   const context = makeContext();
   context.config.hfToken = "secret";
-  const output = captureOutput(() => runDoctor(["--json"], context));
+  const output = captureOutput(() =>
+    runDoctor({ json: true }, context, execution),
+  );
   const report = JSON.parse(output.join("\n"));
 
   expect(report.gpuVramGb).toBe(16);

@@ -1,8 +1,14 @@
 import type { AppContext } from "../../../context";
+import type { CommandExecution } from "../../app/commands/framework";
+import type { DoctorInput } from "../../app/commands/inputs";
 
-export function runDoctor(args: string[], ctx: AppContext): number {
+export function runDoctor(
+  input: DoctorInput,
+  ctx: AppContext,
+  _execution: CommandExecution,
+): number {
   const specs = ctx.specs;
-  if (args.includes("--json")) {
+  if (input.json) {
     const { hfToken: _hfToken, ...configuration } = ctx.config;
     console.log(
       JSON.stringify(

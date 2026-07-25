@@ -1,0 +1,192 @@
+import { isAbsolute, resolve } from "node:path";
+import { z } from "zod";
+import { parallelSlotsSchema } from "../../config/parallel";
+
+export const modelKindSchema = z.enum(["llm", "stt", "image"]);
+
+export const dataRootSchema = z
+  .string()
+  .min(1)
+  .refine(isAbsolute, "must be an absolute path")
+  .refine((value) => resolve(value) === value, "must be normalized");
+
+export const hostSchema = z
+  .string()
+  .min(1)
+  .max(253)
+  .refine((value) => value === value.trim() && !/\s/.test(value), {
+    message: "must not contain whitespace",
+  });
+
+const positiveInteger = (maximum = 2_147_483_647) =>
+  z
+    .string()
+    .regex(/^\d+$/, "must be an integer")
+    .transform(Number)
+    .pipe(z.number().int().min(1).max(maximum));
+
+const modelListSchema = z.string().transform((value) =>
+  value
+    .split(",")
+    .map((modelId) => modelId.trim())
+    .filter(Boolean),
+);
+
+const nonEmptyModelListSchema = modelListSchema.pipe(
+  z.array(z.string()).min(1, "must include at least one model ID"),
+);
+
+export const globalOptionsSchema = z.object({
+  root: dataRootSchema.optional(),
+  nonInteractive: z.boolean().default(false),
+});
+
+export type GlobalOptions = z.infer<typeof globalOptionsSchema>;
+
+export const configureInputSchema = z.object({
+  all: z.boolean().default(false),
+  defaults: z.boolean().default(false),
+  configPath: z.string().min(1).optional(),
+  host: hostSchema.optional(),
+  port: positiveInteger(65_535).optional(),
+  ctxSize: positiveInteger().optional(),
+  parallel: z
+    .union([
+      z.literal("auto"),
+      z
+        .string()
+        .regex(/^[1-4]$/)
+        .transform(Number),
+    ])
+    .pipe(parallelSlotsSchema)
+    .optional(),
+  sttHost: hostSchema.optional(),
+  sttPort: positiveInteger(65_535).optional(),
+  startupOnBoot: z.boolean().optional(),
+  llmModels: nonEmptyModelListSchema.optional(),
+  sttModels: modelListSchema.optional(),
+  imageModels: modelListSchema.optional(),
+  activeLlm: z.string().min(1).optional(),
+  activeStt: z.string().min(1).optional(),
+  activeImage: z.string().min(1).optional(),
+  hfToken: z.string().optional(),
+  createKey: z.boolean().optional(),
+});
+
+export type ConfigureInput = z.infer<typeof configureInputSchema>;
+
+export const initInputSchema = z.object({});
+export type InitInput = z.infer<typeof initInputSchema>;
+
+export const catalogInputSchema = z.object({
+  kind: modelKindSchema.optional(),
+});
+export type CatalogInput = z.infer<typeof catalogInputSchema>;
+
+export const recommendInputSchema = z.object({
+  kind: modelKindSchema.optional(),
+  vram: positiveInteger().optional(),
+});
+export type RecommendInput = z.infer<typeof recommendInputSchema>;
+
+export const installedInputSchema = z.object({
+  kind: modelKindSchema.optional(),
+});
+export type InstalledInput = z.infer<typeof installedInputSchema>;
+
+export const installInputSchema = z
+  .object({
+    all: z.boolean().default(false),
+    modelId: z.string().min(1).optional(),
+  })
+  .superRefine(({ all, modelId }, ctx) => {
+    if (all && modelId) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["modelId"],
+        message: "cannot be used with --all",
+      });
+    }
+    if (!all && !modelId) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["modelId"],
+        message: "is required unless --all is provided",
+      });
+    }
+  });
+export type InstallInput = z.infer<typeof installInputSchema>;
+
+export const serveInputSchema = z.object({
+  host: hostSchema.optional(),
+  port: positiveInteger(65_535).optional(),
+  llm: z.boolean().optional(),
+  stt: z.boolean().optional(),
+  image: z.boolean().optional(),
+  llmHost: hostSchema.optional(),
+  llmPort: positiveInteger(65_535).optional(),
+  sttHost: hostSchema.optional(),
+  sttPort: positiveInteger(65_535).optional(),
+  imageHost: hostSchema.optional(),
+  imagePort: positiveInteger(65_535).optional(),
+  ctxSize: positiveInteger().optional(),
+  sttPath: z.string().min(1).optional(),
+  llmModelFile: z.string().min(1).optional(),
+  sttModelFile: z.string().min(1).optional(),
+  imageModelFile: z.string().min(1).optional(),
+  auth: z.boolean().optional(),
+  authMode: z.enum(["bearer", "x-api-key", "either"]).optional(),
+  bypassMemoryCheck: z.boolean().default(false),
+});
+export type ServeInput = z.infer<typeof serveInputSchema>;
+
+export const promptShowInputSchema = z.object({});
+export type PromptShowInput = z.infer<typeof promptShowInputSchema>;
+
+export const promptSetInputSchema = z
+  .object({
+    file: z.string().min(1).optional(),
+    text: z.array(z.string()).default([]),
+  })
+  .superRefine(({ file, text }, ctx) => {
+    if (file && text.length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["text"],
+        message: "cannot be used with --file",
+      });
+    }
+  });
+export type PromptSetInput = z.infer<typeof promptSetInputSchema>;
+
+export const promptResetInputSchema = z.object({});
+export type PromptResetInput = z.infer<typeof promptResetInputSchema>;
+
+export const doctorInputSchema = z.object({
+  json: z.boolean().default(false),
+});
+export type DoctorInput = z.infer<typeof doctorInputSchema>;
+
+export const keysListInputSchema = z.object({});
+export type KeysListInput = z.infer<typeof keysListInputSchema>;
+
+export const keysCreateInputSchema = z.object({
+  name: z.string().min(1).default("manual"),
+  expiresDays: positiveInteger().optional(),
+});
+export type KeysCreateInput = z.infer<typeof keysCreateInputSchema>;
+
+export const keyIdInputSchema = z.object({
+  keyId: z.string().min(1),
+});
+export type KeyIdInput = z.infer<typeof keyIdInputSchema>;
+
+export const resetInputSchema = z.object({
+  yes: z.boolean().default(false),
+});
+export type ResetInput = z.infer<typeof resetInputSchema>;
+
+export const uninstallInputSchema = z.object({
+  yes: z.boolean().default(false),
+});
+export type UninstallInput = z.infer<typeof uninstallInputSchema>;

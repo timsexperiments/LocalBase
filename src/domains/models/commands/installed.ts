@@ -1,21 +1,22 @@
 import { installedModels } from "../../../manager";
-import { parseFlag, parseKind } from "../../../utils/args";
 import type { AppContext } from "../../../context";
+import type { CommandExecution } from "../../app/commands/framework";
+import type { InstalledInput } from "../../app/commands/inputs";
 
 export async function runInstalled(
-  args: string[],
+  input: InstalledInput,
   ctx: AppContext,
+  execution: CommandExecution,
 ): Promise<number> {
-  const kind = parseKind(parseFlag(args, "--kind"));
-  const found = await installedModels(ctx.config, kind);
+  const found = await installedModels(ctx.config, input.kind);
   if (found.length === 0) {
-    console.log(
-      kind
-        ? `No installed ${kind.toUpperCase()} models found.`
+    execution.output.info(
+      input.kind
+        ? `No installed ${input.kind.toUpperCase()} models found.`
         : "No installed models found.",
     );
     return 0;
   }
-  for (const file of found) console.log(file);
+  for (const file of found) execution.output.info(file);
   return 0;
 }
