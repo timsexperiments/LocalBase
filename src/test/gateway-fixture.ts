@@ -16,10 +16,20 @@ type UpstreamRequest = {
   body: string;
 };
 
+type ControlledStream = {
+  close: () => void;
+};
+
+type ControlledHeaderWait = {
+  aborted: Promise<void>;
+};
+
 export type GatewayFixture = {
   baseUrl: string;
   root: string;
   upstreamRequests: UpstreamRequest[];
+  closeControlledStream: (id: string) => void;
+  waitForControlledHeaderAbort: (id: string) => Promise<void>;
   stop: () => Promise<void>;
 };
 
@@ -83,7 +93,11 @@ async function readGatewayBaseUrl(
   throw new Error(`Gateway did not report its bound URL. Output:\n${output}`);
 }
 
-function startMockUpstream(requests: UpstreamRequest[]): Bun.Server<undefined> {
+function startMockUpstream(
+  requests: UpstreamRequest[],
+  controlledStreams: Map<string, ControlledStream>,
+  controlledHeaderWaits: Map<string, ControlledHeaderWait>,
+): Bun.Server<undefined> {
   const options = {
     hostname: "127.0.0.1",
     async fetch(request: Request) {
@@ -95,6 +109,73 @@ function startMockUpstream(requests: UpstreamRequest[]): Bun.Server<undefined> {
       const mode = request.headers.get("x-test-upstream");
       if (mode === "malformed") return new Response("not json");
       if (mode === "invalid-schema") return Response.json({ unexpected: true });
+      if (mode === "controlled-stream") {
+        const id = request.headers.get("x-test-stream-id");
+        if (!id) return new Response("Missing stream id", { status: 400 });
+        if (controlledStreams.has(id)) {
+          return new Response("Duplicate stream id", { status: 409 });
+        }
+
+        let closed = false;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controlledStreams.set(id, {
+              close: () => {
+                if (closed) return;
+                closed = true;
+                controller.close();
+              },
+            });
+            controller.enqueue(
+              new TextEncoder().encode('data: {"ok":true}\n\n'),
+            );
+          },
+          cancel() {
+            closed = true;
+          },
+        });
+        return new Response(body, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      if (mode === "controlled-headers") {
+        const id = request.headers.get("x-test-stream-id");
+        if (!id) return new Response("Missing stream id", { status: 400 });
+        if (controlledHeaderWaits.has(id)) {
+          return new Response("Duplicate stream id", { status: 409 });
+        }
+
+        let releaseHeaders: () => void;
+        let resolveAborted: () => void;
+        const headersReleased = new Promise<void>((resolve) => {
+          releaseHeaders = resolve;
+        });
+        const aborted = new Promise<void>((resolve) => {
+          resolveAborted = resolve;
+        });
+        const abort = () => {
+          resolveAborted!();
+          releaseHeaders!();
+        };
+        request.signal.addEventListener("abort", abort, { once: true });
+        if (request.signal.aborted) abort();
+        controlledHeaderWaits.set(id, { aborted });
+        await headersReleased;
+        request.signal.removeEventListener("abort", abort);
+        return Response.json({
+          id: "chatcmpl-test",
+          object: "chat.completion",
+          created: 0,
+          model: LLM_MODEL,
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "ok" },
+              finish_reason: "stop",
+            },
+          ],
+        });
+      }
       if (mode === "stream") {
         return new Response('data: {"ok":true}\n\ndata: [DONE]\n\n', {
           headers: { "content-type": "text/event-stream" },
@@ -193,9 +274,23 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
   const runtimeDir = join(root, "test-runtimes");
   const cleanup = () => rmSync(root, { recursive: true, force: true });
   const upstreamRequests: UpstreamRequest[] = [];
-  const llmUpstream = startMockUpstream(upstreamRequests);
-  const sttUpstream = startMockUpstream(upstreamRequests);
-  const imageUpstream = startMockUpstream(upstreamRequests);
+  const controlledStreams = new Map<string, ControlledStream>();
+  const controlledHeaderWaits = new Map<string, ControlledHeaderWait>();
+  const llmUpstream = startMockUpstream(
+    upstreamRequests,
+    controlledStreams,
+    controlledHeaderWaits,
+  );
+  const sttUpstream = startMockUpstream(
+    upstreamRequests,
+    controlledStreams,
+    controlledHeaderWaits,
+  );
+  const imageUpstream = startMockUpstream(
+    upstreamRequests,
+    controlledStreams,
+    controlledHeaderWaits,
+  );
   const llmPort = boundPort(llmUpstream);
   const sttPort = boundPort(sttUpstream);
   const imagePort = boundPort(imageUpstream);
@@ -332,6 +427,16 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
     baseUrl,
     root,
     upstreamRequests,
+    closeControlledStream(id) {
+      const stream = controlledStreams.get(id);
+      if (!stream) throw new Error(`Unknown controlled stream: ${id}`);
+      stream.close();
+    },
+    waitForControlledHeaderAbort(id) {
+      const headerWait = controlledHeaderWaits.get(id);
+      if (!headerWait) throw new Error(`Unknown controlled header wait: ${id}`);
+      return headerWait.aborted;
+    },
     stop: async () => {
       await stopProcess(serverProcess);
       await Promise.all([stdout, stderr]);

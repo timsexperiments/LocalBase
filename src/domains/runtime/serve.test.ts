@@ -1,12 +1,20 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { generateText } from "ai";
 import { join } from "node:path";
 import { loadConfig, saveConfig } from "../../manager";
 import { DatabaseSession } from "../../db/client";
+import { withDatabase } from "../../db/client";
+import {
+  deleteModelSystemPrompt,
+  saveModelSystemPrompt,
+} from "./model-system-prompts";
+import { DEFAULT_SYSTEM_PROMPT } from "./commands/prompt";
 import {
   startGatewayFixture,
   type GatewayFixture,
 } from "../../test/gateway-fixture";
-import { httpBaseUrl } from "./commands/serve";
+import { httpBaseUrl, withResponseLease } from "./commands/serve";
 
 type ValidationCase = {
   name: string;
@@ -19,6 +27,56 @@ test("formats IPv4, hostnames, and IPv6 literals as HTTP base URLs", () => {
   expect(httpBaseUrl("127.0.0.1", 2273)).toBe("http://127.0.0.1:2273");
   expect(httpBaseUrl("localhost", 2273)).toBe("http://localhost:2273");
   expect(httpBaseUrl("::1", 2273)).toBe("http://[::1]:2273");
+});
+
+test("releases a response lease exactly once when the stream or request is cancelled", async () => {
+  const createLeasedResponse = () => {
+    let resolveCancelled: () => void;
+    const cancelled = new Promise<void>((resolve) => {
+      resolveCancelled = resolve;
+    });
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1]));
+        },
+        cancel() {
+          resolveCancelled!();
+        },
+      }),
+    );
+    return { cancelled, response };
+  };
+
+  const streamCancellation = createLeasedResponse();
+  const streamAbort = new AbortController();
+  let streamReleases = 0;
+  const leasedStream = withResponseLease(
+    streamCancellation.response,
+    () => {
+      streamReleases += 1;
+    },
+    streamAbort.signal,
+  );
+  const streamReader = leasedStream.body!.getReader();
+  await streamReader.read();
+  await streamReader.cancel();
+  await streamCancellation.cancelled;
+  expect(streamReleases).toBe(1);
+
+  const requestCancellation = createLeasedResponse();
+  const requestAbort = new AbortController();
+  let requestReleases = 0;
+  withResponseLease(
+    requestCancellation.response,
+    () => {
+      requestReleases += 1;
+    },
+    requestAbort.signal,
+  );
+  requestAbort.abort();
+  await requestCancellation.cancelled;
+  expect(requestReleases).toBe(1);
 });
 
 describe("API gateway integration", () => {
@@ -41,6 +99,41 @@ describe("API gateway integration", () => {
   const request = (path: string, init?: RequestInit) =>
     fetch(`${gateway.baseUrl}${path}`, init);
 
+  async function expectPromiseBlocked(promise: Promise<unknown>) {
+    const completed = await Promise.race([
+      promise.then(
+        () => true,
+        () => true,
+      ),
+      Bun.sleep(100).then(() => false),
+    ]);
+    expect(completed).toBe(false);
+  }
+
+  async function within<T>(promise: Promise<T>, label: string): Promise<T> {
+    return await Promise.race([
+      promise,
+      Bun.sleep(2_000).then(() => {
+        throw new Error(`${label} did not complete within two seconds.`);
+      }),
+    ]);
+  }
+
+  async function waitForUpstreamRequest(id: string): Promise<void> {
+    const deadline = Date.now() + 2_000;
+    while (Date.now() < deadline) {
+      if (
+        gateway.upstreamRequests.some(
+          (upstream) => upstream.headers.get("x-test-stream-id") === id,
+        )
+      ) {
+        return;
+      }
+      await Bun.sleep(10);
+    }
+    throw new Error(`Upstream request ${id} did not start within two seconds.`);
+  }
+
   function loadGatewayConfig() {
     const database = new DatabaseSession();
     try {
@@ -54,6 +147,28 @@ describe("API gateway integration", () => {
     const database = new DatabaseSession();
     try {
       saveConfig(database, config);
+    } finally {
+      database.close();
+    }
+  }
+
+  function saveGatewayModelPrompt(modelId: string, prompt: string): void {
+    const database = new DatabaseSession();
+    try {
+      withDatabase(database, gateway.root, (connection) => {
+        saveModelSystemPrompt(connection, { modelId, prompt });
+      });
+    } finally {
+      database.close();
+    }
+  }
+
+  function deleteGatewayModelPrompt(modelId: string): void {
+    const database = new DatabaseSession();
+    try {
+      withDatabase(database, gateway.root, (connection) => {
+        deleteModelSystemPrompt(connection, modelId);
+      });
     } finally {
       database.close();
     }
@@ -140,6 +255,192 @@ describe("API gateway integration", () => {
     });
   });
 
+  test("injects the model prompt for the canonical LLM serving each request", async () => {
+    const firstModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const secondModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const original = loadGatewayConfig();
+    const configured = {
+      ...original,
+      activeLlmModel: firstModel,
+      selectedLlmModels: [firstModel, secondModel],
+      systemPrompt: "Global fallback",
+    };
+    saveGatewayConfig(configured);
+    await Bun.write(
+      join(configured.llmModelsDir, `${secondModel}.gguf`),
+      "test model placeholder",
+    );
+    saveGatewayModelPrompt(firstModel, "First model prompt");
+    saveGatewayModelPrompt(secondModel, "Second model prompt");
+
+    try {
+      for (const model of [firstModel, `openai/${secondModel}`]) {
+        const response = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: "hello" }],
+          }),
+        });
+        expect(response.status).toBe(200);
+      }
+
+      const firstRequest = JSON.parse(
+        gateway.upstreamRequests.at(-2)?.body ?? "{}",
+      );
+      const secondRequest = JSON.parse(
+        gateway.upstreamRequests.at(-1)?.body ?? "{}",
+      );
+      expect(firstRequest.messages[0]).toEqual({
+        role: "system",
+        content: "First model prompt",
+      });
+      expect(secondRequest.messages[0]).toEqual({
+        role: "system",
+        content: "Second model prompt",
+      });
+    } finally {
+      deleteGatewayModelPrompt(firstModel);
+      deleteGatewayModelPrompt(secondModel);
+      saveGatewayConfig(original);
+    }
+  });
+
+  test("preserves client system and developer messages without injecting prompts", async () => {
+    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const original = loadGatewayConfig();
+    saveGatewayConfig({ ...original, systemPrompt: "Global fallback" });
+    saveGatewayModelPrompt(modelId, "Model override");
+
+    try {
+      const response = await request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: "system", content: "Client system" },
+            { role: "developer", content: "Client developer" },
+            { role: "user", content: "hello" },
+          ],
+        }),
+      });
+      expect(response.status).toBe(200);
+
+      const body = JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}");
+      expect(body.messages).toEqual([
+        { role: "system", content: "Client system" },
+        { role: "system", content: "Client developer" },
+        { role: "user", content: "hello" },
+      ]);
+    } finally {
+      deleteGatewayModelPrompt(modelId);
+      saveGatewayConfig(original);
+    }
+  });
+
+  test("falls back from a model override to global and built-in prompts", async () => {
+    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const original = loadGatewayConfig();
+    deleteGatewayModelPrompt(modelId);
+    saveGatewayConfig({ ...original, systemPrompt: "Global fallback" });
+
+    try {
+      for (const systemPrompt of ["Global fallback", ""]) {
+        const current = loadGatewayConfig();
+        saveGatewayConfig({ ...current, systemPrompt });
+        const response = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: modelId,
+            messages: [{ role: "user", content: "hello" }],
+          }),
+        });
+        expect(response.status).toBe(200);
+      }
+
+      const globalRequest = JSON.parse(
+        gateway.upstreamRequests.at(-2)?.body ?? "{}",
+      );
+      const builtInRequest = JSON.parse(
+        gateway.upstreamRequests.at(-1)?.body ?? "{}",
+      );
+      expect(globalRequest.messages[0]).toEqual({
+        role: "system",
+        content: "Global fallback",
+      });
+      expect(builtInRequest.messages[0]).toEqual({
+        role: "system",
+        content: DEFAULT_SYSTEM_PROMPT,
+      });
+    } finally {
+      saveGatewayConfig(original);
+    }
+  });
+
+  test("does not modify legacy text-completion prompts", async () => {
+    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const original = loadGatewayConfig();
+    saveGatewayConfig({ ...original, systemPrompt: "Global fallback" });
+    saveGatewayModelPrompt(modelId, "Model override");
+
+    try {
+      const response = await request("/v1/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: modelId, prompt: "Raw completion" }),
+      });
+      expect(response.status).toBe(200);
+      expect(JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}")).toEqual(
+        expect.objectContaining({ model: modelId, prompt: "Raw completion" }),
+      );
+    } finally {
+      deleteGatewayModelPrompt(modelId);
+      saveGatewayConfig(original);
+    }
+  });
+
+  test("accepts an AI SDK system prompt without injecting LocalBase fallbacks", async () => {
+    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const original = loadGatewayConfig();
+    saveGatewayConfig({ ...original, systemPrompt: "Global fallback" });
+    saveGatewayModelPrompt(modelId, "Model override");
+    const localbase = createOpenAICompatible({
+      baseURL: `${gateway.baseUrl}/v1`,
+      name: "localbase-test",
+    });
+
+    try {
+      const result = await generateText({
+        model: localbase.chatModel(modelId),
+        system: "AI SDK system instruction",
+        prompt: "hello",
+      });
+      expect(result.text).toBe("ok");
+
+      const body = JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}");
+      expect(body.messages).toEqual(
+        expect.arrayContaining([
+          { role: "system", content: "AI SDK system instruction" },
+          { role: "user", content: "hello" },
+        ]),
+      );
+      expect(body.messages).not.toContainEqual({
+        role: "system",
+        content: "Global fallback",
+      });
+      expect(body.messages).not.toContainEqual({
+        role: "system",
+        content: "Model override",
+      });
+    } finally {
+      deleteGatewayModelPrompt(modelId);
+      saveGatewayConfig(original);
+    }
+  });
+
   test("returns a 502 OpenAI error for malformed successful upstream responses", async () => {
     const response = await request("/v1/chat/completions", {
       method: "POST",
@@ -183,13 +484,11 @@ describe("API gateway integration", () => {
     }
   });
 
-  test("does not switch models for invalid requests and serializes valid switches", async () => {
+  test("keeps each concurrent LLM request paired with its model prompt", async () => {
     const initialConfig = loadGatewayConfig();
+    const firstModel = initialConfig.activeLlmModel;
     const secondModel = "qwen2.5-coder-7b-instruct-q4_k_m";
-    initialConfig.selectedLlmModels = [
-      initialConfig.activeLlmModel,
-      secondModel,
-    ];
+    initialConfig.selectedLlmModels = [firstModel, secondModel];
     saveGatewayConfig(initialConfig);
     await Bun.write(
       join(initialConfig.llmModelsDir, `${secondModel}.gguf`),
@@ -206,9 +505,14 @@ describe("API gateway integration", () => {
       "qwen2.5-coder-1.5b-instruct-q4_k_m",
     );
 
-    const responses = await Promise.all(
-      [secondModel, "qwen2.5-coder-1.5b-instruct-q4_k_m", secondModel].map(
-        (model) =>
+    saveGatewayModelPrompt(firstModel, "First concurrent model prompt");
+    saveGatewayModelPrompt(secondModel, "Second concurrent model prompt");
+    const requestOffset = gateway.upstreamRequests.length;
+
+    try {
+      const requestedModels = [secondModel, firstModel, secondModel];
+      const responses = await Promise.all(
+        requestedModels.map((model) =>
           request("/v1/chat/completions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -217,14 +521,248 @@ describe("API gateway integration", () => {
               messages: [{ role: "user", content: "hello" }],
             }),
           }),
-      ),
+        ),
+      );
+      expect(responses.map((response) => response.status)).toEqual([
+        200, 200, 200,
+      ]);
+
+      const requestPairs = gateway.upstreamRequests
+        .slice(requestOffset)
+        .map((upstream) => {
+          const body = JSON.parse(upstream.body) as {
+            model: string;
+            messages: Array<{ role: string; content: string }>;
+          };
+          return `${body.model}:${body.messages[0]?.content}`;
+        })
+        .sort();
+      expect(requestPairs).toEqual(
+        [
+          `${firstModel}:First concurrent model prompt`,
+          `${secondModel}:Second concurrent model prompt`,
+          `${secondModel}:Second concurrent model prompt`,
+        ].sort(),
+      );
+    } finally {
+      deleteGatewayModelPrompt(firstModel);
+      deleteGatewayModelPrompt(secondModel);
+    }
+  });
+
+  test("holds model switches until streamed LLM responses end", async () => {
+    const config = loadGatewayConfig();
+    const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const modelA = config.activeLlmModel;
+    const modelB =
+      modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
+    saveGatewayConfig({
+      ...config,
+      selectedLlmModels: [modelA, modelB],
+    });
+    await Bun.write(
+      join(config.llmModelsDir, `${modelB}.gguf`),
+      "test model placeholder",
     );
-    expect(responses.map((response) => response.status)).toEqual([
-      200, 200, 200,
-    ]);
-    expect([secondModel, "qwen2.5-coder-1.5b-instruct-q4_k_m"]).toContain(
-      loadGatewayConfig().activeLlmModel,
+
+    const completeA = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelA,
+        messages: [{ role: "user", content: "complete" }],
+      }),
+    });
+    expect(completeA.status).toBe(200);
+    await completeA.text();
+
+    const eofStreamId = "llm-lease-eof";
+    const slowA = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "controlled-stream",
+        "x-test-stream-id": eofStreamId,
+      },
+      body: JSON.stringify({
+        model: modelA,
+        stream: true,
+        messages: [{ role: "user", content: "hold" }],
+      }),
+    });
+    const slowAReader = slowA.body!.getReader();
+    expect((await slowAReader.read()).done).toBe(false);
+
+    const switchToB = request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelB,
+        messages: [{ role: "user", content: "switch" }],
+      }),
+    });
+    await expectPromiseBlocked(switchToB);
+
+    gateway.closeControlledStream(eofStreamId);
+    expect(
+      (await within(slowAReader.read(), "EOF stream completion")).done,
+    ).toBe(true);
+    const completeB = await within(switchToB, "switch after EOF");
+    expect(completeB.status).toBe(200);
+    await completeB.text();
+  });
+
+  test("forwards aborts while waiting for rewritten LLM response headers", async () => {
+    const config = loadGatewayConfig();
+    const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const modelA = config.activeLlmModel;
+    const modelB =
+      modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
+    saveGatewayConfig({
+      ...config,
+      selectedLlmModels: [modelA, modelB],
+    });
+    await Bun.write(
+      join(config.llmModelsDir, `${modelB}.gguf`),
+      "test model placeholder",
     );
+
+    const headerWaitId = "llm-header-abort";
+    const controller = new AbortController();
+    const abortedRequest = request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "controlled-headers",
+        "x-test-stream-id": headerWaitId,
+      },
+      body: JSON.stringify({
+        model: modelA,
+        messages: [{ role: "user", content: "wait" }],
+      }),
+      signal: controller.signal,
+    }).then(
+      () => "response",
+      () => "aborted",
+    );
+
+    await waitForUpstreamRequest(headerWaitId);
+    controller.abort();
+    expect(await within(abortedRequest, "header wait abort")).toBe("aborted");
+    await within(
+      gateway.waitForControlledHeaderAbort(headerWaitId),
+      "upstream header wait abort",
+    );
+
+    const switched = await within(
+      request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelB,
+          messages: [{ role: "user", content: "continue" }],
+        }),
+      }),
+      "model switch after header abort",
+    );
+    expect(switched.status).toBe(200);
+    await switched.text();
+  });
+
+  test("abandons queued LLM model switches before dispatch", async () => {
+    const config = loadGatewayConfig();
+    const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const modelA = config.activeLlmModel;
+    const modelB =
+      modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
+    saveGatewayConfig({
+      ...config,
+      selectedLlmModels: [modelA, modelB],
+    });
+    await Bun.write(
+      join(config.llmModelsDir, `${modelB}.gguf`),
+      "test model placeholder",
+    );
+
+    const completeA = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelA,
+        messages: [{ role: "user", content: "complete" }],
+      }),
+    });
+    expect(completeA.status).toBe(200);
+    await completeA.text();
+
+    const streamId = "llm-lease-queued-abort";
+    const slowA = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "controlled-stream",
+        "x-test-stream-id": streamId,
+      },
+      body: JSON.stringify({
+        model: modelA,
+        stream: true,
+        messages: [{ role: "user", content: "hold" }],
+      }),
+    });
+    const slowAReader = slowA.body!.getReader();
+    expect((await slowAReader.read()).done).toBe(false);
+
+    const requestOffset = gateway.upstreamRequests.length;
+    const controller = new AbortController();
+    const abandonedRequest = request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelB,
+        messages: [{ role: "user", content: "switch" }],
+      }),
+      signal: controller.signal,
+    }).then(
+      () => "response",
+      () => "aborted",
+    );
+    await expectPromiseBlocked(abandonedRequest);
+    controller.abort();
+    expect(await within(abandonedRequest, "queued request abort")).toBe(
+      "aborted",
+    );
+
+    gateway.closeControlledStream(streamId);
+    expect(
+      (await within(slowAReader.read(), "queued abort stream completion")).done,
+    ).toBe(true);
+    await Bun.sleep(100);
+    expect(loadGatewayConfig().activeLlmModel).toBe(modelA);
+    expect(
+      gateway.upstreamRequests
+        .slice(requestOffset)
+        .some(
+          (upstream) =>
+            (JSON.parse(upstream.body) as { model?: string }).model === modelB,
+        ),
+    ).toBe(false);
+
+    const switched = await within(
+      request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelB,
+          messages: [{ role: "user", content: "continue" }],
+        }),
+      }),
+      "model switch after queued abort",
+    );
+    expect(switched.status).toBe(200);
+    await switched.text();
   });
 
   const jsonValidationCases: ValidationCase[] = [
