@@ -1,0 +1,155 @@
+import { z } from "zod";
+import type { ApiKeyRecord, LocalBaseConfig } from "../../../manager";
+import { ModelSpecSchema } from "../../../catalog";
+
+export const configurationOutputSchema = z
+  .object({
+    root: z.string(),
+    llmModelsDir: z.string(),
+    sttModelsDir: z.string(),
+    imageModelsDir: z.string(),
+    runtimeBackend: z.literal("llama.cpp"),
+    sttBackend: z.literal("whisper.cpp"),
+    host: z.string(),
+    port: z.number().int(),
+    ctxSize: z.number().int(),
+    sttHost: z.string(),
+    sttPort: z.number().int(),
+    startupOnBoot: z.boolean(),
+    selectedLlmModels: z.array(z.string()),
+    selectedSttModels: z.array(z.string()),
+    selectedImageModels: z.array(z.string()),
+    activeLlmModel: z.string(),
+    activeSttModel: z.string(),
+    activeImageModel: z.string(),
+    parallel: z.union([z.literal("auto"), z.number().int().min(1).max(4)]),
+    hfTokenConfigured: z.boolean(),
+  })
+  .strict();
+
+export const hardwareOutputSchema = z
+  .object({
+    osName: z.string(),
+    ramGb: z.number(),
+    cpuModel: z.string(),
+    gpuName: z.string(),
+    gpuVramGb: z.number(),
+    isMac: z.boolean(),
+    isAppleSilicon: z.boolean(),
+  })
+  .strict();
+
+export const modelOutputSchema = ModelSpecSchema.strict();
+
+export const apiKeyMetadataOutputSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    prefix: z.string(),
+    createdAt: z.string(),
+    lastRotatedAt: z.string(),
+    expiresAt: z.string().optional(),
+    revokedAt: z.string().optional(),
+  })
+  .strict();
+
+export const initResultSchema = z
+  .object({ configuration: configurationOutputSchema })
+  .strict();
+export const configureResultSchema = z
+  .object({
+    configuration: configurationOutputSchema,
+    createdKey: apiKeyMetadataOutputSchema
+      .extend({ secret: z.string().min(1) })
+      .optional(),
+  })
+  .strict();
+export const doctorResultSchema = z
+  .object({
+    hardware: hardwareOutputSchema,
+    configuration: configurationOutputSchema,
+  })
+  .strict();
+export const catalogResultSchema = z
+  .object({ models: z.array(modelOutputSchema) })
+  .strict();
+export const recommendResultSchema = z
+  .object({
+    kind: z.enum(["llm", "stt", "image"]),
+    vramGb: z.number(),
+    models: z.array(modelOutputSchema),
+  })
+  .strict();
+export const installedResultSchema = z
+  .object({ models: z.array(z.string()) })
+  .strict();
+export const installResultSchema = z
+  .object({
+    installed: z.array(
+      z.object({ modelId: z.string(), path: z.string() }).strict(),
+    ),
+  })
+  .strict();
+export const promptShowResultSchema = z
+  .object({ prompt: z.string(), source: z.enum(["custom", "default"]) })
+  .strict();
+export const promptMutationResultSchema = z
+  .object({ updated: z.literal(true), configured: z.boolean() })
+  .strict();
+export const keysListResultSchema = z
+  .object({ keys: z.array(apiKeyMetadataOutputSchema) })
+  .strict();
+export const keySecretResultSchema = z
+  .object({ key: apiKeyMetadataOutputSchema, secret: z.string().min(1) })
+  .strict();
+export const keyRevocationResultSchema = z
+  .object({ key: apiKeyMetadataOutputSchema })
+  .strict();
+export const resetResultSchema = z
+  .object({ reset: z.literal(true), root: z.string() })
+  .strict();
+export const uninstallResultSchema = z
+  .object({ removed: z.literal(true), root: z.string() })
+  .strict();
+export const serveResultSchema = z
+  .object({ exitCode: z.number().int().min(0) })
+  .strict();
+
+/** Omits credentials and prompt content from general-purpose command output. */
+export function publicConfiguration(config: LocalBaseConfig) {
+  return configurationOutputSchema.parse({
+    root: config.root,
+    llmModelsDir: config.llmModelsDir,
+    sttModelsDir: config.sttModelsDir,
+    imageModelsDir: config.imageModelsDir,
+    runtimeBackend: config.runtimeBackend,
+    sttBackend: config.sttBackend,
+    host: config.host,
+    port: config.port,
+    ctxSize: config.ctxSize,
+    sttHost: config.sttHost,
+    sttPort: config.sttPort,
+    startupOnBoot: config.startupOnBoot,
+    selectedLlmModels: config.selectedLlmModels,
+    selectedSttModels: config.selectedSttModels,
+    selectedImageModels: config.selectedImageModels,
+    activeLlmModel: config.activeLlmModel,
+    activeSttModel: config.activeSttModel,
+    activeImageModel: config.activeImageModel,
+    parallel: config.parallel,
+    hfTokenConfigured: Boolean(config.hfToken),
+  });
+}
+
+/** API-key hashes are deliberately never part of command output. */
+export function publicApiKey(record: ApiKeyRecord) {
+  return apiKeyMetadataOutputSchema.parse({
+    id: record.id,
+    name: record.name,
+    prefix: record.prefix,
+    createdAt: record.createdAt,
+    lastRotatedAt: record.lastRotatedAt,
+    ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}),
+    ...(record.revokedAt ? { revokedAt: record.revokedAt } : {}),
+  });
+}

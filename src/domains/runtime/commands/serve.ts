@@ -23,6 +23,7 @@ import { DEFAULT_SYSTEM_PROMPT } from "./prompt";
 import { guardianProcessCommand } from "../backend-guardian";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ServeInput } from "../../app/commands/inputs";
+import { CliInputError } from "../../app/commands/errors";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
@@ -31,6 +32,12 @@ type ModalityState = {
   stt: boolean;
   image: boolean;
 };
+
+export function httpBaseUrl(host: string, port: number): string {
+  const urlHost =
+    host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return `http://${urlHost}:${port}`;
+}
 
 const CHILD_STOP_GRACE_MS = 500;
 const HEALTH_PROBE_TIMEOUT_MS = 2_000;
@@ -54,28 +61,29 @@ function printUnifiedNextSteps(
   authRequired: boolean,
   authMode: AuthMode,
   enabled: ModalityState,
+  output: CommandExecution["output"],
 ): void {
-  console.log("\nUnified API wrapper started.");
-  console.log(`Wrapper base URL: http://${host}:${port}`);
-  if (enabled.llm)
-    console.log(`OpenAI-compatible LLM endpoint: http://${host}:${port}/v1`);
+  const baseUrl = httpBaseUrl(host, port);
+  output.info("\nUnified API wrapper started.");
+  output.info(`Wrapper base URL: ${baseUrl}`);
+  if (enabled.llm) output.info(`OpenAI-compatible LLM endpoint: ${baseUrl}/v1`);
   if (enabled.stt)
-    console.log(
-      `OpenAI-compatible STT endpoint: http://${host}:${port}/v1/audio/transcriptions`,
+    output.info(
+      `OpenAI-compatible STT endpoint: ${baseUrl}/v1/audio/transcriptions`,
     );
   if (enabled.image)
-    console.log(
-      `OpenAI-compatible Image endpoint: http://${host}:${port}/v1/images/generations`,
+    output.info(
+      `OpenAI-compatible Image endpoint: ${baseUrl}/v1/images/generations`,
     );
   if (authRequired) {
-    console.log(`Authentication: enabled (mode=${authMode}).`);
-    console.log(
+    output.info(`Authentication: enabled (mode=${authMode}).`);
+    output.info(
       "Supported credentials: Authorization: Bearer <key>, x-api-key: <key> (mode-dependent).",
     );
   } else {
-    console.log("Authentication: disabled via --no-auth.");
+    output.info("Authentication: disabled via --no-auth.");
   }
-  console.log(
+  output.info(
     `Enabled modalities: ${
       Object.entries(enabled)
         .filter(([, on]) => on)
@@ -84,28 +92,28 @@ function printUnifiedNextSteps(
     }`,
   );
   if (enabled.llm)
-    console.log(`Upstream llama-server: http://127.0.0.1:${llmPort}`);
+    output.info(`Upstream llama-server: http://127.0.0.1:${llmPort}`);
   if (enabled.stt)
-    console.log(`Upstream whisper-server: http://127.0.0.1:${sttPort}`);
+    output.info(`Upstream whisper-server: http://127.0.0.1:${sttPort}`);
   if (enabled.image)
-    console.log(`Upstream sd-server: http://127.0.0.1:${imagePort}`);
+    output.info(`Upstream sd-server: http://127.0.0.1:${imagePort}`);
 
   if (enabled.llm) {
-    console.log("\nExample chat request (Bearer):");
-    console.log(
-      `curl http://${host}:${port}/v1/chat/completions -H 'Authorization: Bearer <API_KEY>' -H 'Content-Type: application/json' -d '{"model":"<your-model>","messages":[{"role":"user","content":"hello"}]}'`,
+    output.info("\nExample chat request (Bearer):");
+    output.info(
+      `curl ${baseUrl}/v1/chat/completions -H 'Authorization: Bearer <API_KEY>' -H 'Content-Type: application/json' -d '{"model":"<your-model>","messages":[{"role":"user","content":"hello"}]}'`,
     );
   }
   if (enabled.stt) {
-    console.log("\nExample STT request (x-api-key):");
-    console.log(
-      `curl -X POST http://${host}:${port}/v1/audio/transcriptions -H 'x-api-key: <API_KEY>' -F file=@audio.wav -F model=whisper`,
+    output.info("\nExample STT request (x-api-key):");
+    output.info(
+      `curl -X POST ${baseUrl}/v1/audio/transcriptions -H 'x-api-key: <API_KEY>' -F file=@audio.wav -F model=whisper`,
     );
   }
   if (enabled.image) {
-    console.log("\nExample Image request (Bearer):");
-    console.log(
-      `curl http://${host}:${port}/v1/images/generations -H 'Authorization: Bearer <API_KEY>' -H 'Content-Type: application/json' -d '{"prompt":"A scenic sunset","n":1,"size":"512x512"}'`,
+    output.info("\nExample Image request (Bearer):");
+    output.info(
+      `curl ${baseUrl}/v1/images/generations -H 'Authorization: Bearer <API_KEY>' -H 'Content-Type: application/json' -d '{"prompt":"A scenic sunset","n":1,"size":"512x512"}'`,
     );
   }
 }
@@ -898,8 +906,8 @@ function serviceUnavailable(serviceName: string): Response {
 export async function runServe(
   input: ServeInput,
   ctx: AppContext,
-  _execution: CommandExecution,
-): Promise<number> {
+  execution: CommandExecution,
+): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
   const wrapperHost = input.host ?? "0.0.0.0";
   const wrapperPort = input.port ?? 2273;
@@ -1049,7 +1057,7 @@ export async function runServe(
           console.error(
             `   To force launch this model anyway, use --bypass-memory-check`,
           );
-          return 1;
+          throw new Error("LLM model does not fit available memory.");
         } else {
           console.warn(
             `   Bypassing memory validation check and proceeding...`,
@@ -1097,7 +1105,7 @@ export async function runServe(
           console.error(
             `   To force launch this model anyway, use --bypass-memory-check`,
           );
-          return 1;
+          throw new Error("STT model does not fit available memory.");
         } else {
           console.warn(
             `   Bypassing memory validation check and proceeding...`,
@@ -1128,7 +1136,7 @@ export async function runServe(
           console.error(
             `   To force launch this model anyway, use --bypass-memory-check`,
           );
-          return 1;
+          throw new Error("Image model does not fit available memory.");
         } else {
           console.warn(
             `   Bypassing memory validation check and proceeding...`,
@@ -1173,7 +1181,7 @@ export async function runServe(
   }
 
   if (!enabled.llm && !enabled.stt && !enabled.image) {
-    throw new Error(
+    throw new CliInputError(
       "No modalities enabled. Remove at least one --no-<modality> option.",
     );
   }
@@ -1201,6 +1209,13 @@ export async function runServe(
     if (!exitAfterShutdown) {
       throw new Error("Serve shutdown is not initialized");
     }
+    execution.output.lifecycle({
+      event: "error",
+      error: {
+        code: "operational_error",
+        message: "A managed runtime exited and could not be recovered.",
+      },
+    });
     await exitAfterShutdown(1);
   };
 
@@ -1735,7 +1750,13 @@ export async function runServe(
     authRequired,
     authMode,
     enabled,
+    execution.output,
   );
+  execution.output.lifecycle({
+    event: "started",
+    baseUrl: httpBaseUrl(wrapperHost, server.port ?? wrapperPort),
+    enabled,
+  });
 
   let shutdownPromise: Promise<void> | null = null;
   let exitPromise: Promise<number> | null = null;
@@ -1768,7 +1789,18 @@ export async function runServe(
         } catch (err) {
           ctx.logger.error("Manager", "Shutdown failed", err as Error);
           requestedExitStatus = 1;
+          execution.output.lifecycle({
+            event: "error",
+            error: {
+              code: "operational_error",
+              message: err instanceof Error ? err.message : String(err),
+            },
+          });
         }
+        execution.output.lifecycle({
+          event: "stopped",
+          exitCode: requestedExitStatus,
+        });
         resolveServeExit(requestedExitStatus);
         return requestedExitStatus;
       })();
@@ -1781,5 +1813,6 @@ export async function runServe(
   process.once("SIGTERM", () => void exitAfterShutdown?.(0));
   process.once("SIGHUP", () => void exitAfterShutdown?.(0));
 
-  return await serveExit;
+  const exitCode = await serveExit;
+  return { data: { exitCode }, exitCode };
 }

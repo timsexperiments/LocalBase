@@ -33,9 +33,23 @@ import { z } from "zod";
 import { CliInputError } from "../../app/commands/errors";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ConfigureInput } from "../../app/commands/inputs";
+import { publicApiKey, publicConfiguration } from "../../app/commands/results";
 
 export const PARALLEL_SLOTS_PROMPT =
   "Parallel request slots count (type 'auto' for dynamic auto-allocation, or an integer like 1, 2, 4)";
+
+function validateExternalModelList(
+  modelIds: string[] | undefined,
+  kind: "llm" | "stt" | "image",
+): string[] | undefined {
+  try {
+    return validateModelList(modelIds, kind);
+  } catch (error) {
+    throw new CliInputError(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
 
 const continueConfigSchema = z
   .object({
@@ -485,7 +499,12 @@ export async function runConfigure(
   flags: ConfigureInput,
   ctx: AppContext,
   execution: CommandExecution,
-): Promise<number> {
+): Promise<{
+  data: {
+    configuration: ReturnType<typeof publicConfiguration>;
+    createdKey?: ReturnType<typeof publicApiKey> & { secret: string };
+  };
+}> {
   const specs = ctx.specs;
   const rawToml = flags.configPath
     ? await loadTomlOverrides(flags.configPath)
@@ -503,9 +522,18 @@ export async function runConfigure(
   const llmFromFlags = validateModelList(flags.llmModels, "llm");
   const sttFromFlags = validateModelList(flags.sttModels, "stt");
   const imageFromFlags = validateModelList(flags.imageModels, "image");
-  const llmFromToml = validateModelList(rawToml.selectedLlmModels, "llm");
-  const sttFromToml = validateModelList(rawToml.selectedSttModels, "stt");
-  const imageFromToml = validateModelList(rawToml.selectedImageModels, "image");
+  const llmFromToml = validateExternalModelList(
+    rawToml.selectedLlmModels,
+    "llm",
+  );
+  const sttFromToml = validateExternalModelList(
+    rawToml.selectedSttModels,
+    "stt",
+  );
+  const imageFromToml = validateExternalModelList(
+    rawToml.selectedImageModels,
+    "image",
+  );
   const parallelFromFlag = flags.parallel;
   const parallelInput = parallelFromFlag ?? rawToml.parallel;
   const parallel =
@@ -613,14 +641,18 @@ export async function runConfigure(
     );
 
   if (byId(config.activeLlmModel)?.kind !== "llm")
-    throw new Error(`Active LLM model is invalid: ${config.activeLlmModel}`);
+    throw new CliInputError(
+      `Active LLM model is invalid: ${config.activeLlmModel}`,
+    );
   if (config.activeSttModel && byId(config.activeSttModel)?.kind !== "stt")
-    throw new Error(`Active STT model is invalid: ${config.activeSttModel}`);
+    throw new CliInputError(
+      `Active STT model is invalid: ${config.activeSttModel}`,
+    );
   if (
     config.activeImageModel &&
     byId(config.activeImageModel)?.kind !== "image"
   )
-    throw new Error(
+    throw new CliInputError(
       `Active Image model is invalid: ${config.activeImageModel}`,
     );
 
@@ -628,17 +660,21 @@ export async function runConfigure(
 
   saveConfig(ctx.database, config);
   await syncContinueConfig(config);
-  console.log(`Saved configuration to ${config.root}/local-base.db`);
-  console.log(`Selected LLM models: ${config.selectedLlmModels.join(", ")}`);
-  console.log(`Selected STT models: ${config.selectedSttModels.join(", ")}`);
-  console.log(
+  execution.output.info(`Saved configuration to ${config.root}/local-base.db`);
+  execution.output.info(
+    `Selected LLM models: ${config.selectedLlmModels.join(", ")}`,
+  );
+  execution.output.info(
+    `Selected STT models: ${config.selectedSttModels.join(", ")}`,
+  );
+  execution.output.info(
     `Selected Image models: ${config.selectedImageModels.join(", ")}`,
   );
 
   const hasAnyKeys = loadApiKeys(ctx.database, config).some(
     (k) => !k.revokedAt,
   );
-  let createFirstKey = flags.createKey ?? true;
+  let createFirstKey = flags.createKey ?? !execution.global.json;
   if (flags.createKey === undefined && shouldAsk && !hasAnyKeys) {
     createFirstKey = await confirmPrompt(
       "No API keys found. Create one now",
@@ -646,13 +682,26 @@ export async function runConfigure(
     );
   }
 
+  let createdKey:
+    | (ReturnType<typeof publicApiKey> & { secret: string })
+    | undefined;
   if (!hasAnyKeys && createFirstKey) {
     const { record, rawKey } = createApiKey(ctx.database, config, "default");
-    console.log("\nCreated initial API key:");
-    console.log(`id=${record.id} name=${record.name} prefix=${record.prefix}`);
-    console.log(`secret=${rawKey}`);
-    console.log("Store this secret now. It is not shown again.");
+    execution.output.info("\nCreated initial API key:");
+    execution.output.info(
+      `id=${record.id} name=${record.name} prefix=${record.prefix}`,
+    );
+    if (!execution.global.json) {
+      execution.output.info(`secret=${rawKey}`);
+      execution.output.info("Store this secret now. It is not shown again.");
+    }
+    createdKey = { ...publicApiKey(record), secret: rawKey };
   }
 
-  return 0;
+  return {
+    data: {
+      configuration: publicConfiguration(config),
+      ...(createdKey ? { createdKey } : {}),
+    },
+  };
 }

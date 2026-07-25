@@ -8,7 +8,7 @@ export async function runInstall(
   input: InstallInput,
   ctx: AppContext,
   execution: CommandExecution,
-): Promise<number> {
+): Promise<{ data: { installed: Array<{ modelId: string; path: string }> } }> {
   if (input.all) {
     const modelsToInstall = [
       ...ctx.config.selectedLlmModels,
@@ -20,12 +20,13 @@ export async function runInstall(
       execution.output.info(
         "No models selected in the configuration to install.",
       );
-      return 0;
+      return { data: { installed: [] } };
     }
 
     execution.output.info(
       `Installing all ${modelsToInstall.length} selected models...`,
     );
+    const installed: Array<{ modelId: string; path: string }> = [];
     for (const modelId of modelsToInstall) {
       if (!byId(modelId)) {
         execution.output.info(
@@ -36,18 +37,19 @@ export async function runInstall(
       try {
         const path = await installModel(ctx.config, modelId);
         execution.output.info(`✅ Installed: ${path}`);
+        installed.push({ modelId, path });
       } catch (err) {
         execution.output.error(
           `❌ Failed to install "${modelId}": ${(err as Error).message}`,
         );
-        return 1;
+        throw err;
       }
     }
     execution.output.info("\n✅ All selected models installed successfully.");
-    return 0;
+    return { data: { installed } };
   }
 
   const path = await installModel(ctx.config, input.modelId!);
   execution.output.info(`Installed: ${path}`);
-  return 0;
+  return { data: { installed: [{ modelId: input.modelId!, path }] } };
 }

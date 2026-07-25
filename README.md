@@ -38,6 +38,29 @@ bun run build
 
 The gateway is available at `http://localhost:2273/v1`. Use `./dist/local-base --help` for command details. API keys can be created with `./dist/local-base keys create`.
 
+## Automation and JSON output
+
+Use the global `--json` option for automation. It may appear before or after a command, but not after `--`.
+
+```bash
+local-base --json models catalog
+local-base doctor --json
+```
+
+Finite commands write exactly one JSON document to stdout:
+
+```json
+{ "ok": true, "data": {} }
+```
+
+```json
+{ "ok": false, "error": { "code": "invalid_input", "message": "..." } }
+```
+
+Diagnostics, progress, and errors are written to stderr. Exit codes are `0` for success, `1` for operational failures, and `2` for invalid input. `--json` disables interactive prompts; destructive commands still require `--yes`, and `configure` creates an API key only with explicit `--create-key`.
+
+`serve --json` writes JSON Lines lifecycle events (`started`, `stopped`, and `error`) to stdout. Gateway logs remain on stderr; OpenAI-compatible HTTP and SSE responses are unchanged.
+
 ## Continue.dev integration
 
 If `~/.continue/config.json` exists, `configure` and `serve` synchronize LocalBase model entries, autocomplete, embeddings, API base, and calculated context settings with that file.

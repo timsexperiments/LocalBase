@@ -4,7 +4,9 @@ import {
   type ArgsDef,
   type CommandDef,
 } from "citty";
+import { z } from "zod";
 import type { AppContext } from "../../../context";
+import { byId, type ModelKind } from "../../../catalog";
 import {
   catalogInputSchema,
   configureInputSchema,
@@ -41,8 +43,25 @@ import {
   type ServeInput,
   type UninstallInput,
 } from "./inputs";
-import type { CommandOutput } from "./output";
+import type { CommandOutput, CommandResult } from "./output";
 import { CliInputError } from "./errors";
+import {
+  catalogResultSchema,
+  configureResultSchema,
+  doctorResultSchema,
+  initResultSchema,
+  installedResultSchema,
+  installResultSchema,
+  keyRevocationResultSchema,
+  keySecretResultSchema,
+  keysListResultSchema,
+  promptMutationResultSchema,
+  promptShowResultSchema,
+  recommendResultSchema,
+  resetResultSchema,
+  serveResultSchema,
+  uninstallResultSchema,
+} from "./results";
 
 export { CliInputError } from "./errors";
 
@@ -65,6 +84,8 @@ type LocalCommand<Input> = {
   args?: ArgsDef;
   positionals?: Positionals;
   requiresDatabase?: boolean;
+  longRunning?: boolean;
+  resultSchema: z.ZodType;
   citty: CittyCommand;
   parse(input: Record<string, unknown>, positionals: string[]): Input;
   validate?(input: Input, global: GlobalOptions): Input;
@@ -72,7 +93,7 @@ type LocalCommand<Input> = {
     input: Input,
     context: AppContext,
     execution: CommandExecution,
-  ): Promise<number> | number;
+  ): Promise<CommandResult> | CommandResult;
 };
 
 export type Command = LocalCommand<unknown>;
@@ -87,6 +108,10 @@ export const globalArgs = {
     type: "boolean",
     description: "Never open interactive prompts",
   },
+  json: {
+    type: "boolean",
+    description: "Emit machine-readable JSON",
+  },
 } satisfies ArgsDef;
 
 const modelKindArg = {
@@ -97,6 +122,16 @@ const modelKindArg = {
 
 const noPromptBoolean = (description: string, negativeDescription: string) =>
   ({ type: "boolean", description, negativeDescription }) as const;
+
+function assertCatalogModels(
+  modelIds: string[] | undefined,
+  kind: ModelKind,
+): void {
+  const invalid = modelIds?.filter((modelId) => byId(modelId)?.kind !== kind);
+  if (invalid?.length) {
+    throw new CliInputError(`Invalid ${kind} model ids: ${invalid.join(", ")}`);
+  }
+}
 
 function command<Input>(
   definition: Omit<LocalCommand<Input>, "citty">,
@@ -203,8 +238,12 @@ export const configureCommand = command<ConfigureInput>({
     if (global.nonInteractive && input.all) {
       throw new CliInputError("--all cannot be used with --non-interactive");
     }
+    assertCatalogModels(input.llmModels, "llm");
+    assertCatalogModels(input.sttModels, "stt");
+    assertCatalogModels(input.imageModels, "image");
     return input;
   },
+  resultSchema: configureResultSchema,
   run: async (input, context, execution) => {
     const { runConfigure } = await import("../../config/commands/configure");
     return await runConfigure(input, context, execution);
@@ -215,6 +254,7 @@ const initCommand = command<InitInput>({
   path: ["init"],
   description: "Initialize the LocalBase data directory",
   parse: (input) => initInputSchema.parse(input),
+  resultSchema: initResultSchema,
   run: async (input, context, execution) => {
     const { runInit } = await import("../../config/commands/init");
     return runInit(input, context, execution);
@@ -224,8 +264,8 @@ const initCommand = command<InitInput>({
 const doctorCommand = command<DoctorInput>({
   path: ["doctor"],
   description: "Run a system health check and print configuration details",
-  args: { json: { type: "boolean", description: "Output JSON" } },
   parse: (input) => doctorInputSchema.parse(input),
+  resultSchema: doctorResultSchema,
   run: async (input, context, execution) => {
     const { runDoctor } = await import("../../system/commands/doctor");
     return runDoctor(input, context, execution);
@@ -237,6 +277,7 @@ const catalogCommand = command<CatalogInput>({
   description: "List all supported models",
   args: { kind: modelKindArg },
   parse: (input) => catalogInputSchema.parse(input),
+  resultSchema: catalogResultSchema,
   run: async (input, context, execution) => {
     const { runCatalog } = await import("../../models/commands/catalog");
     return runCatalog(input, context, execution);
@@ -255,6 +296,7 @@ const recommendCommand = command<RecommendInput>({
     },
   },
   parse: (input) => recommendInputSchema.parse(input),
+  resultSchema: recommendResultSchema,
   run: async (input, context, execution) => {
     const { runRecommend } = await import("../../models/commands/recommend");
     return runRecommend(input, context, execution);
@@ -266,6 +308,7 @@ const listCommand = command<InstalledInput>({
   description: "List installed models",
   args: { kind: modelKindArg },
   parse: (input) => installedInputSchema.parse(input),
+  resultSchema: installedResultSchema,
   run: async (input, context, execution) => {
     const { runInstalled } = await import("../../models/commands/installed");
     return await runInstalled(input, context, execution);
@@ -289,6 +332,13 @@ const installCommand = command<InstallInput>({
   },
   positionals: { maximum: 1 },
   parse: (input) => installInputSchema.parse(input),
+  validate: (input) => {
+    if (input.modelId && !byId(input.modelId)) {
+      throw new CliInputError(`Unknown model id: ${input.modelId}`);
+    }
+    return input;
+  },
+  resultSchema: installResultSchema,
   run: async (input, context, execution) => {
     const { runInstall } = await import("../../models/commands/install");
     return await runInstall(input, context, execution);
@@ -377,6 +427,8 @@ const serveCommand = command<ServeInput>({
     },
   },
   parse: (input) => serveInputSchema.parse(input),
+  resultSchema: serveResultSchema,
+  longRunning: true,
   run: async (input, context, execution) => {
     const { runServe } = await import("../../runtime/commands/serve");
     return await runServe(input, context, execution);
@@ -387,6 +439,7 @@ const promptShowCommand = command<PromptShowInput>({
   path: ["prompt", "show"],
   description: "Display the active system prompt",
   parse: (input) => promptShowInputSchema.parse(input),
+  resultSchema: promptShowResultSchema,
   run: async (input, context, execution) => {
     const { runPromptShow } = await import("../../runtime/commands/prompt");
     return await runPromptShow(input, context, execution);
@@ -415,6 +468,7 @@ const promptSetCommand = command<PromptSetInput>({
   positionals: { maximum: Number.POSITIVE_INFINITY },
   parse: (input, positionals) =>
     promptSetInputSchema.parse({ ...input, text: positionals }),
+  resultSchema: promptMutationResultSchema,
   run: async (input, context, execution) => {
     const { runPromptSet } = await import("../../runtime/commands/prompt");
     return await runPromptSet(input, context, execution);
@@ -425,6 +479,7 @@ const promptResetCommand = command<PromptResetInput>({
   path: ["prompt", "reset"],
   description: "Reset the system prompt to its default",
   parse: (input) => promptResetInputSchema.parse(input),
+  resultSchema: promptMutationResultSchema,
   run: async (input, context, execution) => {
     const { runPromptReset } = await import("../../runtime/commands/prompt");
     return await runPromptReset(input, context, execution);
@@ -435,6 +490,7 @@ const keysListCommand = command<KeysListInput>({
   path: ["keys", "list"],
   description: "List API keys",
   parse: (input) => keysListInputSchema.parse(input),
+  resultSchema: keysListResultSchema,
   run: async (input, context, execution) => {
     const { runKeysList } = await import("../../auth/commands/keys");
     return runKeysList(input, context, execution);
@@ -453,6 +509,7 @@ const keysCreateCommand = command<KeysCreateInput>({
     },
   },
   parse: (input) => keysCreateInputSchema.parse(input),
+  resultSchema: keySecretResultSchema,
   run: async (input, context, execution) => {
     const { runKeysCreate } = await import("../../auth/commands/keys");
     return runKeysCreate(input, context, execution);
@@ -467,6 +524,7 @@ const keysRevokeCommand = command<KeyIdInput>({
   },
   positionals: { minimum: 1, maximum: 1 },
   parse: (input) => keyIdInputSchema.parse(input),
+  resultSchema: keyRevocationResultSchema,
   run: async (input, context, execution) => {
     const { runKeysRevoke } = await import("../../auth/commands/keys");
     return runKeysRevoke(input, context, execution);
@@ -481,6 +539,7 @@ const keysRotateCommand = command<KeyIdInput>({
   },
   positionals: { minimum: 1, maximum: 1 },
   parse: (input) => keyIdInputSchema.parse(input),
+  resultSchema: keySecretResultSchema,
   run: async (input, context, execution) => {
     const { runKeysRotate } = await import("../../auth/commands/keys");
     return runKeysRotate(input, context, execution);
@@ -495,6 +554,7 @@ const resetCommand = command<ResetInput>({
   },
   requiresDatabase: false,
   parse: (input) => resetInputSchema.parse(input),
+  resultSchema: resetResultSchema,
   run: async (input, context, execution) => {
     const { runReset } = await import("../../maintenance/commands/reset");
     return await runReset(input, context, execution);
@@ -509,6 +569,7 @@ const uninstallCommand = command<UninstallInput>({
   },
   requiresDatabase: false,
   parse: (input) => uninstallInputSchema.parse(input),
+  resultSchema: uninstallResultSchema,
   run: async (input, context, execution) => {
     const { runUninstall } =
       await import("../../maintenance/commands/uninstall");
