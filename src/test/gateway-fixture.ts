@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { byId, primaryArtifact } from "../catalog";
 import { defaultConfig, saveConfig, type LocalBaseConfig } from "../manager";
 import { DatabaseSession } from "../db/client";
 import { compileRuntimeFixture } from "./runtime-fixture";
@@ -24,10 +25,27 @@ type ControlledHeaderWait = {
   aborted: Promise<void>;
 };
 
+export async function writeCompleteCatalogArtifact(
+  directory: string,
+  modelId: string,
+): Promise<string> {
+  const model = byId(modelId);
+  if (!model) throw new Error(`Unknown catalog model: ${modelId}`);
+  const artifact = primaryArtifact(model);
+  if (artifact.expectedSizeBytes === undefined) {
+    throw new Error(`Catalog model ${modelId} has no expected artifact size.`);
+  }
+  const path = join(directory, artifact.filename);
+  await Bun.write(path, "");
+  truncateSync(path, artifact.expectedSizeBytes);
+  return path;
+}
+
 export type GatewayFixture = {
   baseUrl: string;
   root: string;
   upstreamRequests: UpstreamRequest[];
+  readLlmRuntimeLaunches: () => Promise<string[][]>;
   closeControlledStream: (id: string) => void;
   waitForControlledHeaderAbort: (id: string) => Promise<void>;
   stop: () => Promise<void>;
@@ -109,6 +127,110 @@ function startMockUpstream(
       const mode = request.headers.get("x-test-upstream");
       if (mode === "malformed") return new Response("not json");
       if (mode === "invalid-schema") return Response.json({ unexpected: true });
+      if (mode === "custom-tool-response") {
+        return Response.json({
+          id: "chatcmpl-custom-tool",
+          object: "chat.completion",
+          created: 0,
+          model: LLM_MODEL,
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "custom_1",
+                    type: "custom",
+                    custom: { name: "code_execution", input: "print(1)" },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+        });
+      }
+      if (mode === "deprecated-function-call-response") {
+        return Response.json({
+          id: "chatcmpl-function-call",
+          object: "chat.completion",
+          created: 0,
+          model: LLM_MODEL,
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                function_call: { name: "weather", arguments: "{}" },
+              },
+              finish_reason: "function_call",
+            },
+          ],
+        });
+      }
+      if (mode === "null-refusal-response") {
+        return Response.json({
+          id: "chatcmpl-null-refusal",
+          object: "chat.completion",
+          created: 0,
+          model: LLM_MODEL,
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: null, refusal: null },
+              finish_reason: "stop",
+            },
+          ],
+        });
+      }
+      if (mode === "tool-round-trip") {
+        const messages = JSON.parse(body) as {
+          messages?: Array<{ role?: string; tool_call_id?: string }>;
+        };
+        const hasToolResult = messages.messages?.some(
+          (message) =>
+            message.role === "tool" && message.tool_call_id === "call_weather",
+        );
+        return Response.json({
+          id: hasToolResult ? "chatcmpl-tool-result" : "chatcmpl-tool-call",
+          object: "chat.completion",
+          created: 0,
+          model: LLM_MODEL,
+          choices: [
+            hasToolResult
+              ? {
+                  index: 0,
+                  message: { role: "assistant", content: "73°F" },
+                  finish_reason: "stop",
+                }
+              : {
+                  index: 0,
+                  message: {
+                    role: "assistant",
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: "call_weather",
+                        type: "function",
+                        function: {
+                          name: "weather",
+                          arguments: '{"city":"Austin"}',
+                        },
+                        extra_content: {
+                          google: { thought_signature: "signature" },
+                        },
+                      },
+                    ],
+                    reasoning_content: "Looking up the weather.",
+                  },
+                  finish_reason: "tool_calls",
+                },
+          ],
+        });
+      }
       if (mode === "controlled-stream") {
         const id = request.headers.get("x-test-stream-id");
         if (!id) return new Response("Missing stream id", { status: 400 });
@@ -193,15 +315,6 @@ function startMockUpstream(
           usage: { prompt_tokens: 1, total_tokens: 1 },
         });
       }
-      if (path === "/v1/completions") {
-        return Response.json({
-          id: "cmpl-test",
-          object: "text_completion",
-          created: 0,
-          model: LLM_MODEL,
-          choices: [{ text: "ok", index: 0, finish_reason: "stop" }],
-        });
-      }
       return Response.json({
         id: "chatcmpl-test",
         object: "chat.completion",
@@ -272,6 +385,7 @@ async function waitForReady(
 export async function startGatewayFixture(): Promise<GatewayFixture> {
   const root = mkdtempSync(join(tmpdir(), "localbase-gateway-"));
   const runtimeDir = join(root, "test-runtimes");
+  const llmLaunchesPath = join(root, "llama-launches.jsonl");
   const cleanup = () => rmSync(root, { recursive: true, force: true });
   const upstreamRequests: UpstreamRequest[] = [];
   const controlledStreams = new Map<string, ControlledStream>();
@@ -315,10 +429,7 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
     mkdirSync(config.imageModelsDir, { recursive: true });
     mkdirSync(runtimeDir, { recursive: true });
     await Promise.all([
-      Bun.write(
-        join(config.llmModelsDir, `${LLM_MODEL}.gguf`),
-        "test model placeholder",
-      ),
+      writeCompleteCatalogArtifact(config.llmModelsDir, LLM_MODEL),
       Bun.write(
         join(config.sttModelsDir, "ggml-large-v3-turbo.bin"),
         "test model placeholder",
@@ -327,7 +438,11 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
         join(config.imageModelsDir, "v1-5-pruned-emaonly.safetensors"),
         "test model placeholder",
       ),
-      compileRuntimeFixture(join(runtimeDir, "llama-server")),
+      compileRuntimeFixture(
+        join(runtimeDir, "llama-server"),
+        undefined,
+        llmLaunchesPath,
+      ),
       compileRuntimeFixture(join(runtimeDir, "whisper-server")),
       compileRuntimeFixture(join(runtimeDir, "sd-server")),
     ]);
@@ -358,8 +473,6 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
         "127.0.0.1",
         "--port",
         String(port),
-        "--llm-model-file",
-        `${LLM_MODEL}.gguf`,
         "--llm-port",
         String(llmPort),
         "--stt-port",
@@ -427,6 +540,15 @@ export async function startGatewayFixture(): Promise<GatewayFixture> {
     baseUrl,
     root,
     upstreamRequests,
+    async readLlmRuntimeLaunches() {
+      const file = Bun.file(llmLaunchesPath);
+      if (!(await file.exists())) return [];
+      return (await file.text())
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as string[]);
+    },
     closeControlledStream(id) {
       const stream = controlledStreams.get(id);
       if (!stream) throw new Error(`Unknown controlled stream: ${id}`);

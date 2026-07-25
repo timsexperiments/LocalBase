@@ -120,18 +120,6 @@ test(
       expect(listed.stdout).not.toContain(createdData.secret);
       expect(listed.stdout).not.toContain("keyHash");
 
-      const prompt = "Private prompt content";
-      const updated = await runCli(executable, [
-        "--root",
-        root,
-        "--json",
-        "prompt",
-        "set",
-        prompt,
-      ]);
-      expect(updated.exitCode).toBe(0);
-      expect(updated.stdout).not.toContain(prompt);
-
       const doctor = await runCli(executable, [
         "--root",
         root,
@@ -140,59 +128,6 @@ test(
       ]);
       expect(doctor.exitCode).toBe(0);
       expect(doctor.stdout).not.toContain("private-token");
-      expect(doctor.stdout).not.toContain(prompt);
-      expect(doctor.stdout).not.toContain("systemPrompt");
-
-      const shownPrompt = await runCli(executable, [
-        "--root",
-        root,
-        "prompt",
-        "show",
-        "--json",
-      ]);
-      expect(jsonDocument(shownPrompt.stdout).data).toMatchObject({
-        prompt,
-        scope: "global",
-        source: "global",
-      });
-
-      const modelId = "qwen2.5-coder-7b-instruct-q4_k_m";
-      const modelPrompt = "Per-model prompt content";
-      const updatedModelPrompt = await runCli(executable, [
-        "--root",
-        root,
-        "--json",
-        "prompt",
-        "set",
-        "--model",
-        modelId,
-        modelPrompt,
-      ]);
-      expect(updatedModelPrompt.exitCode).toBe(0);
-      expect(updatedModelPrompt.stdout).not.toContain(modelPrompt);
-      expect(updatedModelPrompt.stderr).not.toContain(modelPrompt);
-      expect(jsonDocument(updatedModelPrompt.stdout).data).toEqual({
-        updated: true,
-        scope: "model",
-        modelId,
-      });
-
-      const shownModelPrompt = await runCli(executable, [
-        "--root",
-        root,
-        "--json",
-        "prompt",
-        "show",
-        "--model",
-        modelId,
-      ]);
-      expect(shownModelPrompt.exitCode).toBe(0);
-      expect(jsonDocument(shownModelPrompt.stdout).data).toMatchObject({
-        scope: "model",
-        modelId,
-        prompt: modelPrompt,
-        source: "model",
-      });
 
       const configureKeyRoot = join(directory, "configure-key-data");
       const configuredWithKey = await runCli(executable, [
@@ -217,7 +152,7 @@ test(
   { timeout: 30_000 },
 );
 
-test("JSON mode rejects prompts and destructive commands without consent", async () => {
+test("JSON mode rejects interactive and destructive commands without consent", async () => {
   const directory = mkdtempSync(join(tmpdir(), "local-base-json-input-"));
   const executable = join(directory, "local-base");
   const root = join(directory, "data");

@@ -1,14 +1,24 @@
+import { appendFileSync } from "node:fs";
+
+declare const __LOCALBASE_TEST_LAUNCHES_PATH__: string | undefined;
+
 export async function compileRuntimeFixture(
   outputPath: string,
   argsPath?: string,
+  launchesPath?: string,
 ): Promise<void> {
+  const define: Record<string, string> = {};
+  if (argsPath) {
+    define["process.env.LOCALBASE_TEST_ARGS_PATH"] = JSON.stringify(argsPath);
+  }
+  if (launchesPath) {
+    define.__LOCALBASE_TEST_LAUNCHES_PATH__ = JSON.stringify(launchesPath);
+  }
   const result = await Bun.build({
     entrypoints: [import.meta.path],
     target: "bun",
     compile: { outfile: outputPath },
-    define: argsPath
-      ? { "process.env.LOCALBASE_TEST_ARGS_PATH": JSON.stringify(argsPath) }
-      : undefined,
+    define: Object.keys(define).length > 0 ? define : undefined,
   });
   if (!result.success) {
     throw new Error(
@@ -20,6 +30,10 @@ export async function compileRuntimeFixture(
 async function runRuntimeFixture(): Promise<void> {
   const args = Bun.argv.slice(2);
   const argsPath = process.env.LOCALBASE_TEST_ARGS_PATH;
+  const launchesPath =
+    typeof __LOCALBASE_TEST_LAUNCHES_PATH__ === "string"
+      ? __LOCALBASE_TEST_LAUNCHES_PATH__
+      : process.env.LOCALBASE_TEST_LAUNCHES_PATH;
   const supplementaryPath = process.env.LOCALBASE_TEST_SUPPLEMENTARY_PATH;
   const pidPath = process.env.LOCALBASE_TEST_PID_PATH;
   const parentPidPath = process.env.LOCALBASE_TEST_PARENT_PID_PATH;
@@ -30,6 +44,9 @@ async function runRuntimeFixture(): Promise<void> {
   }
 
   if (argsPath) await Bun.write(argsPath, `${args.join("\n")}\n`);
+  if (launchesPath) {
+    appendFileSync(launchesPath, `${JSON.stringify(args)}\n`);
+  }
   if (pidPath) await Bun.write(pidPath, `${process.pid}\n`);
   if (parentPidPath) await Bun.write(parentPidPath, `${process.ppid}\n`);
 

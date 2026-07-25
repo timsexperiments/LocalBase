@@ -19,7 +19,6 @@ import {
 import type { AppContext } from "../../../context";
 import { syncContinueConfig } from "../../config/commands/configure";
 import { type ILogger } from "../../../utils/logger";
-import { effectiveSystemPrompt } from "./prompt";
 import { guardianProcessCommand } from "../backend-guardian";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ServeInput } from "../../app/commands/inputs";
@@ -245,35 +244,157 @@ function validationFailure(error: z.ZodError): Response {
   return badRequest(`Validation failed: ${issues}`);
 }
 
-const chatMessageSchema = z
+const chatToolCallSchema = z
   .object({
-    role: z.enum([
-      "system",
-      "user",
-      "assistant",
-      "function",
-      "tool",
-      "developer",
-    ]),
-    content: z
-      .union([
-        z.string(),
-        z.array(
-          z
-            .object({
-              type: z.string(),
-              text: z.string().optional(),
-              image_url: z.object({ url: z.string() }).optional(),
-            })
-            .passthrough(),
-        ),
-      ])
-      .optional(),
-    name: z.string().optional(),
-    tool_calls: z.array(z.unknown()).optional(),
-    tool_call_id: z.string().optional(),
+    id: z.string().min(1),
+    type: z.literal("function"),
+    function: z
+      .object({
+        name: z.string().min(1),
+        arguments: z.string(),
+      })
+      .passthrough(),
   })
   .passthrough();
+
+const jsonSchemaValueSchema: z.ZodType = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonSchemaValueSchema),
+    z.record(z.string(), jsonSchemaValueSchema),
+  ]),
+);
+
+const functionToolSchema = z
+  .object({
+    type: z.literal("function"),
+    function: z
+      .object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+        parameters: z.record(z.string(), jsonSchemaValueSchema).optional(),
+        strict: z.boolean().optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const textContentPartSchema = z
+  .object({ type: z.literal("text"), text: z.string() })
+  .passthrough();
+
+const chatFileSchema = z.union([
+  z.object({ file_id: z.string().min(1) }).strict(),
+  z
+    .object({
+      filename: z.string().min(1),
+      file_data: z.string().min(1),
+    })
+    .strict(),
+]);
+
+const userContentPartSchema = z.union([
+  textContentPartSchema,
+  z
+    .object({
+      type: z.literal("image_url"),
+      image_url: z
+        .object({
+          url: z.string().min(1),
+          detail: z.enum(["auto", "low", "high"]).optional(),
+        })
+        .passthrough(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("input_audio"),
+      input_audio: z
+        .object({
+          data: z.string().min(1),
+          format: z.enum(["wav", "mp3"]),
+        })
+        .passthrough(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("file"),
+      file: chatFileSchema,
+    })
+    .passthrough(),
+]);
+
+const userContentSchema = z.union([z.string(), z.array(userContentPartSchema)]);
+
+const systemDeveloperContentSchema = z.union([
+  z.string(),
+  z.array(textContentPartSchema).min(1),
+]);
+
+const assistantContentPartSchema = z.union([
+  textContentPartSchema,
+  z.object({ type: z.literal("refusal"), refusal: z.string() }).passthrough(),
+]);
+
+const assistantContentSchema = z.union([
+  z.string(),
+  z.null(),
+  z.array(assistantContentPartSchema),
+]);
+
+const toolResultContentSchema = z.union([
+  z.string(),
+  z.array(
+    z.object({ type: z.literal("text"), text: z.string() }).passthrough(),
+  ),
+]);
+
+const assistantMessageSchema = z
+  .object({
+    role: z.literal("assistant"),
+    content: assistantContentSchema.optional(),
+    name: z.string().optional(),
+    tool_calls: z.array(chatToolCallSchema).optional(),
+    refusal: z.string().nullable().optional(),
+    function_call: z.never().optional(),
+  })
+  .refine(
+    (message) =>
+      (message.content !== undefined && message.content !== null) ||
+      (message.tool_calls?.length ?? 0) > 0 ||
+      (message.refusal !== undefined && message.refusal !== null),
+    "assistant messages require content, tool_calls, or refusal",
+  )
+  .passthrough();
+
+const chatMessageSchema = z.discriminatedUnion("role", [
+  z
+    .object({
+      role: z.enum(["system", "developer"]),
+      content: systemDeveloperContentSchema,
+      name: z.string().optional(),
+    })
+    .passthrough(),
+  z
+    .object({
+      role: z.literal("user"),
+      content: userContentSchema,
+      name: z.string().optional(),
+    })
+    .passthrough(),
+  assistantMessageSchema,
+  z
+    .object({
+      role: z.literal("tool"),
+      content: toolResultContentSchema,
+      tool_call_id: z.string().min(1),
+    })
+    .passthrough(),
+]);
 
 const chatCompletionRequestSchema = z
   .object({
@@ -295,35 +416,18 @@ const chatCompletionRequestSchema = z
     response_format: z
       .object({ type: z.enum(["text", "json_object"]) })
       .optional(),
-    tools: z.array(z.unknown()).optional(),
+    tools: z.array(functionToolSchema).optional(),
     tool_choice: z
       .union([
-        z.string(),
-        z.object({
-          type: z.string(),
-          function: z.object({ name: z.string() }),
-        }),
+        z.enum(["none", "auto", "required"]),
+        z
+          .object({
+            type: z.literal("function"),
+            function: z.object({ name: z.string().min(1) }).strict(),
+          })
+          .strict(),
       ])
       .optional(),
-  })
-  .passthrough();
-
-const textCompletionRequestSchema = z
-  .object({
-    model: z.string(),
-    prompt: z.union([z.string(), z.array(z.string())]),
-    temperature: z.number().min(0).max(2).optional(),
-    top_p: z.number().min(0).max(1).optional(),
-    n: z.number().min(1).optional(),
-    stream: z.boolean().optional(),
-    stop: z
-      .union([z.string(), z.array(z.string())])
-      .nullable()
-      .optional(),
-    max_tokens: z.number().positive().optional(),
-    presence_penalty: z.number().min(-2).max(2).optional(),
-    frequency_penalty: z.number().min(-2).max(2).optional(),
-    user: z.string().optional(),
   })
   .passthrough();
 
@@ -373,14 +477,13 @@ const chatCompletionResponseSchema = z
     created: z.number(),
     model: z.string(),
     choices: z.array(
-      z.object({
-        index: z.number(),
-        message: z.object({
-          role: z.string(),
-          content: z.string().nullable().optional(),
-        }),
-        finish_reason: z.string().nullable().optional(),
-      }),
+      z
+        .object({
+          index: z.number(),
+          message: assistantMessageSchema,
+          finish_reason: z.string().nullable().optional(),
+        })
+        .passthrough(),
     ),
     usage: z
       .object({
@@ -388,29 +491,7 @@ const chatCompletionResponseSchema = z
         completion_tokens: z.number(),
         total_tokens: z.number(),
       })
-      .optional(),
-  })
-  .passthrough();
-
-const textCompletionResponseSchema = z
-  .object({
-    id: z.string(),
-    object: z.string(),
-    created: z.number(),
-    model: z.string(),
-    choices: z.array(
-      z.object({
-        text: z.string(),
-        index: z.number(),
-        finish_reason: z.string().nullable().optional(),
-      }),
-    ),
-    usage: z
-      .object({
-        prompt_tokens: z.number(),
-        completion_tokens: z.number(),
-        total_tokens: z.number(),
-      })
+      .passthrough()
       .optional(),
   })
   .passthrough();
@@ -998,7 +1079,6 @@ function serviceUnavailable(serviceName: string): Response {
 /**
  * Main command handler for 'serve'. Starts the unified proxy server.
  * Handles dynamic context sizing: min(recommendedForHardwareAndModel, maxContextCeiling).
- * Automatically maps OpenAI 'developer' role to 'system' role for tokenizer compatibility.
  * Maps client-side '/v1/slots|metrics|props|system_info' queries to standard llama-server root endpoints.
  * Automatically synchronizes active model specifications and context limits to OpenCode in real-time.
  */
@@ -1790,6 +1870,23 @@ export async function runServe(
       );
     }
 
+    if (
+      pathname === "/v1/completions" ||
+      pathname.startsWith("/v1/completions/")
+    ) {
+      return Response.json(
+        {
+          error: {
+            message: "This endpoint is not exposed by this gateway.",
+            type: "invalid_request_error",
+            param: null,
+            code: "route_disabled",
+          },
+        } satisfies OpenAIErrorResponse,
+        { status: 404 },
+      );
+    }
+
     if (pathname.startsWith("/tts")) {
       return Response.json(
         { error: "TTS service is not yet implemented. Stay tuned!" },
@@ -1835,50 +1932,14 @@ export async function runServe(
       if (!parsed.success) return parsed.response;
       return await withLlmRequestLease(
         parsed.data.model,
-        async (modelId) => {
-          const hasClientInstruction = parsed.data.messages.some(
-            (message) =>
-              message.role === "system" || message.role === "developer",
-          );
-          const messages = parsed.data.messages.map((message) =>
-            message.role === "developer"
-              ? { ...message, role: "system" as const }
-              : message,
-          );
-          if (!hasClientInstruction) {
-            const activeConfig = loadConfig(ctx.database, config.root);
-            const { prompt } = effectiveSystemPrompt(
-              { ...ctx, config: activeConfig },
-              modelId,
-            );
-            messages.unshift({ role: "system", content: prompt });
-          }
+        async () => {
           return await proxyRequest(
-            requestWithJsonBody(request, { ...parsed.data, messages }),
+            requestWithJsonBody(request, parsed.data),
             llmBase,
             undefined,
             chatCompletionResponseSchema,
           );
         },
-        request.signal,
-      );
-    }
-
-    if (pathname === "/v1/completions") {
-      const parsed = await parseJsonRequest(
-        request,
-        textCompletionRequestSchema,
-      );
-      if (!parsed.success) return parsed.response;
-      return await withLlmRequestLease(
-        parsed.data.model,
-        async () =>
-          await proxyRequest(
-            requestWithJsonBody(request, parsed.data),
-            llmBase,
-            undefined,
-            textCompletionResponseSchema,
-          ),
         request.signal,
       );
     }

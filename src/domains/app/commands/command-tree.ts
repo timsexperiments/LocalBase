@@ -18,9 +18,6 @@ import {
   keyIdInputSchema,
   keysCreateInputSchema,
   keysListInputSchema,
-  promptResetInputSchema,
-  promptSetInputSchema,
-  promptShowInputSchema,
   recommendInputSchema,
   resetInputSchema,
   serveInputSchema,
@@ -35,9 +32,6 @@ import {
   type KeyIdInput,
   type KeysCreateInput,
   type KeysListInput,
-  type PromptResetInput,
-  type PromptSetInput,
-  type PromptShowInput,
   type RecommendInput,
   type ResetInput,
   type ServeInput,
@@ -55,8 +49,6 @@ import {
   keyRevocationResultSchema,
   keySecretResultSchema,
   keysListResultSchema,
-  promptMutationResultSchema,
-  promptShowResultSchema,
   recommendResultSchema,
   resetResultSchema,
   serveResultSchema,
@@ -435,77 +427,6 @@ const serveCommand = command<ServeInput>({
   },
 });
 
-const promptShowCommand = command<PromptShowInput>({
-  path: ["prompt", "show"],
-  description: "Display the effective system prompt",
-  args: {
-    model: {
-      type: "string",
-      valueHint: "model-id",
-      description: "Display the prompt for a catalog LLM model",
-    },
-  },
-  parse: (input) => promptShowInputSchema.parse(input),
-  resultSchema: promptShowResultSchema,
-  run: async (input, context, execution) => {
-    const { runPromptShow } = await import("../../runtime/commands/prompt");
-    return await runPromptShow(input, context, execution);
-  },
-});
-
-const promptSetCommand = command<PromptSetInput>({
-  path: ["prompt", "set"],
-  description: "Set a custom system prompt",
-  examples: [
-    'local-base prompt set "Use concise responses"',
-    "local-base prompt set --file ./prompt.txt",
-    'local-base prompt set --model qwen2.5-coder-7b-instruct-q4_k_m "Use concise responses"',
-  ],
-  args: {
-    text: {
-      type: "positional",
-      required: false,
-      description: "Prompt text",
-    },
-    file: {
-      type: "string",
-      valueHint: "path",
-      description: "Read prompt text from a file",
-    },
-    model: {
-      type: "string",
-      valueHint: "model-id",
-      description: "Set the prompt for a catalog LLM model",
-    },
-  },
-  positionals: { maximum: Number.POSITIVE_INFINITY },
-  parse: (input, positionals) =>
-    promptSetInputSchema.parse({ ...input, text: positionals }),
-  resultSchema: promptMutationResultSchema,
-  run: async (input, context, execution) => {
-    const { runPromptSet } = await import("../../runtime/commands/prompt");
-    return await runPromptSet(input, context, execution);
-  },
-});
-
-const promptResetCommand = command<PromptResetInput>({
-  path: ["prompt", "reset"],
-  description: "Reset a system prompt to its fallback",
-  args: {
-    model: {
-      type: "string",
-      valueHint: "model-id",
-      description: "Reset the prompt override for a catalog LLM model",
-    },
-  },
-  parse: (input) => promptResetInputSchema.parse(input),
-  resultSchema: promptMutationResultSchema,
-  run: async (input, context, execution) => {
-    const { runPromptReset } = await import("../../runtime/commands/prompt");
-    return await runPromptReset(input, context, execution);
-  },
-});
-
 const keysListCommand = command<KeysListInput>({
   path: ["keys", "list"],
   description: "List API keys",
@@ -606,9 +527,6 @@ export const commands = [
   listCommand,
   installCommand,
   serveCommand,
-  promptShowCommand,
-  promptSetCommand,
-  promptResetCommand,
   keysListCommand,
   keysCreateCommand,
   keysRevokeCommand,
@@ -625,16 +543,6 @@ export const modelsCommand = defineCommand({
     recommend: recommendCommand.citty,
     list: listCommand.citty,
     install: installCommand.citty,
-  },
-});
-
-export const promptCommand = defineCommand({
-  meta: { name: "local-base prompt", description: "Manage the system prompt" },
-  args: globalArgs,
-  subCommands: {
-    show: promptShowCommand.citty,
-    set: promptSetCommand.citty,
-    reset: promptResetCommand.citty,
   },
 });
 
@@ -662,7 +570,6 @@ export const rootCommand = defineCommand({
     doctor: doctorCommand.citty,
     models: modelsCommand,
     serve: serveCommand.citty,
-    prompt: promptCommand,
     keys: keysCommand,
     reset: resetCommand.citty,
     uninstall: uninstallCommand.citty,
@@ -672,7 +579,6 @@ export const rootCommand = defineCommand({
 export function groupForPath(path: string[]): CittyCommand | undefined {
   if (path.length !== 1) return undefined;
   if (path[0] === "models") return modelsCommand;
-  if (path[0] === "prompt") return promptCommand;
   if (path[0] === "keys") return keysCommand;
   return undefined;
 }

@@ -1,18 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { generateText } from "ai";
+import { generateText, stepCountIs, tool } from "ai";
 import { join } from "node:path";
+import { z } from "zod";
+import { byId, primaryArtifact } from "../../catalog";
 import { loadConfig, saveConfig } from "../../manager";
 import { DatabaseSession } from "../../db/client";
-import { withDatabase } from "../../db/client";
-import {
-  deleteModelSystemPrompt,
-  saveModelSystemPrompt,
-} from "./model-system-prompts";
-import { DEFAULT_SYSTEM_PROMPT } from "./commands/prompt";
 import {
   startGatewayFixture,
   type GatewayFixture,
+  writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 import { httpBaseUrl, withResponseLease } from "./commands/serve";
 
@@ -22,6 +19,12 @@ type ValidationCase = {
   init: RequestInit;
   expectedPath: string;
 };
+
+function modelArtifactFile(modelId: string): string {
+  const model = byId(modelId);
+  if (!model) throw new Error(`Unknown catalog model: ${modelId}`);
+  return primaryArtifact(model).filename;
+}
 
 test("formats IPv4, hostnames, and IPv6 literals as HTTP base URLs", () => {
   expect(httpBaseUrl("127.0.0.1", 2273)).toBe("http://127.0.0.1:2273");
@@ -134,6 +137,30 @@ describe("API gateway integration", () => {
     throw new Error(`Upstream request ${id} did not start within two seconds.`);
   }
 
+  async function waitForLlmRuntimeLaunches(
+    offset: number,
+    count: number,
+  ): Promise<string[][]> {
+    const deadline = Date.now() + 2_000;
+    while (Date.now() < deadline) {
+      const launches = await gateway.readLlmRuntimeLaunches();
+      if (launches.length >= offset + count) return launches.slice(offset);
+      await Bun.sleep(10);
+    }
+    const launches = await gateway.readLlmRuntimeLaunches();
+    throw new Error(
+      `Expected ${count} LLM runtime launches, received ${launches.length - offset}: ${JSON.stringify(launches.slice(offset))}`,
+    );
+  }
+
+  function launchedModelPath(args: string[]): string {
+    const modelIndex = args.indexOf("-m");
+    if (modelIndex === -1 || !args[modelIndex + 1]) {
+      throw new Error(`Runtime launch did not include a model path: ${args}`);
+    }
+    return args[modelIndex + 1];
+  }
+
   function loadGatewayConfig() {
     const database = new DatabaseSession();
     try {
@@ -147,28 +174,6 @@ describe("API gateway integration", () => {
     const database = new DatabaseSession();
     try {
       saveConfig(database, config);
-    } finally {
-      database.close();
-    }
-  }
-
-  function saveGatewayModelPrompt(modelId: string, prompt: string): void {
-    const database = new DatabaseSession();
-    try {
-      withDatabase(database, gateway.root, (connection) => {
-        saveModelSystemPrompt(connection, { modelId, prompt });
-      });
-    } finally {
-      database.close();
-    }
-  }
-
-  function deleteGatewayModelPrompt(modelId: string): void {
-    const database = new DatabaseSession();
-    try {
-      withDatabase(database, gateway.root, (connection) => {
-        deleteModelSystemPrompt(connection, modelId);
-      });
     } finally {
       database.close();
     }
@@ -223,7 +228,7 @@ describe("API gateway integration", () => {
     });
   });
 
-  test("proxies normalized chat requests without gateway credentials", async () => {
+  test("proxies validated chat requests without gateway credentials", async () => {
     const response = await request("/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -234,7 +239,33 @@ describe("API gateway integration", () => {
       },
       body: JSON.stringify({
         model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
-        messages: [{ role: "developer", content: "hello" }],
+        messages: [
+          { role: "developer", content: "hello" },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "inspect this image" },
+              {
+                type: "image_url",
+                image_url: {
+                  url: "https://example.test/image.png",
+                  detail: "high",
+                  provider_option: "preserved",
+                },
+                provider_part_option: "preserved",
+              },
+              { type: "file", file: { file_id: "file_123" } },
+              {
+                type: "file",
+                file: {
+                  filename: "notes.txt",
+                  file_data: "data:text/plain;base64,bm90ZXM=",
+                },
+                provider_part_option: "preserved",
+              },
+            ],
+          },
+        ],
         provider_option: "preserved",
       }),
     });
@@ -251,212 +282,272 @@ describe("API gateway integration", () => {
     expect(JSON.parse(upstream?.body ?? "{}")).toMatchObject({
       model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
       provider_option: "preserved",
-      messages: [{ role: "system", content: "hello" }],
+      messages: [
+        { role: "developer", content: "hello" },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "inspect this image" },
+            {
+              type: "image_url",
+              image_url: {
+                url: "https://example.test/image.png",
+                detail: "high",
+                provider_option: "preserved",
+              },
+              provider_part_option: "preserved",
+            },
+            { type: "file", file: { file_id: "file_123" } },
+            {
+              type: "file",
+              file: {
+                filename: "notes.txt",
+                file_data: "data:text/plain;base64,bm90ZXM=",
+              },
+              provider_part_option: "preserved",
+            },
+          ],
+        },
+      ],
     });
   });
 
-  test("injects the model prompt for the canonical LLM serving each request", async () => {
-    const firstModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const secondModel = "qwen2.5-coder-7b-instruct-q4_k_m";
-    const original = loadGatewayConfig();
-    const configured = {
-      ...original,
-      activeLlmModel: firstModel,
-      selectedLlmModels: [firstModel, secondModel],
-      systemPrompt: "Global fallback",
-    };
-    saveGatewayConfig(configured);
-    await Bun.write(
-      join(configured.llmModelsDir, `${secondModel}.gguf`),
-      "test model placeholder",
-    );
-    saveGatewayModelPrompt(firstModel, "First model prompt");
-    saveGatewayModelPrompt(secondModel, "Second model prompt");
+  test("preserves ordered client system and developer messages", async () => {
+    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [
+          {
+            role: "system",
+            content: [
+              {
+                type: "text",
+                text: "Client system",
+                cache_control: { type: "ephemeral" },
+              },
+            ],
+          },
+          {
+            role: "developer",
+            content: [{ type: "text", text: "Client developer" }],
+          },
+          { role: "user", content: "hello" },
+        ],
+      }),
+    });
+    expect(response.status).toBe(200);
 
-    try {
-      for (const model of [firstModel, `openai/${secondModel}`]) {
-        const response = await request("/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: "user", content: "hello" }],
-          }),
-        });
-        expect(response.status).toBe(200);
-      }
-
-      const firstRequest = JSON.parse(
-        gateway.upstreamRequests.at(-2)?.body ?? "{}",
-      );
-      const secondRequest = JSON.parse(
-        gateway.upstreamRequests.at(-1)?.body ?? "{}",
-      );
-      expect(firstRequest.messages[0]).toEqual({
+    const body = JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}");
+    expect(body.messages).toEqual([
+      {
         role: "system",
-        content: "First model prompt",
-      });
-      expect(secondRequest.messages[0]).toEqual({
-        role: "system",
-        content: "Second model prompt",
-      });
-    } finally {
-      deleteGatewayModelPrompt(firstModel);
-      deleteGatewayModelPrompt(secondModel);
-      saveGatewayConfig(original);
-    }
+        content: [
+          {
+            type: "text",
+            text: "Client system",
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+      },
+      {
+        role: "developer",
+        content: [{ type: "text", text: "Client developer" }],
+      },
+      { role: "user", content: "hello" },
+    ]);
   });
 
-  test("preserves client system and developer messages without injecting prompts", async () => {
+  test("forwards user-only chat requests without injected instructions", async () => {
     const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const original = loadGatewayConfig();
-    saveGatewayConfig({ ...original, systemPrompt: "Global fallback" });
-    saveGatewayModelPrompt(modelId, "Model override");
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(
+      JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}").messages,
+    ).toEqual([{ role: "user", content: "hello" }]);
+  });
 
-    try {
-      const response = await request("/v1/chat/completions", {
+  test("rejects every removed text-completions route", async () => {
+    for (const path of [
+      "/v1/completions",
+      "/v1/completions/",
+      "/v1/completions/legacy",
+    ]) {
+      const response = await request(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: modelId,
-          messages: [
-            { role: "system", content: "Client system" },
-            { role: "developer", content: "Client developer" },
-            { role: "user", content: "hello" },
-          ],
-        }),
+        body: JSON.stringify({ model: "unused", prompt: "Raw completion" }),
       });
-      expect(response.status).toBe(200);
-
-      const body = JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}");
-      expect(body.messages).toEqual([
-        { role: "system", content: "Client system" },
-        { role: "system", content: "Client developer" },
-        { role: "user", content: "hello" },
-      ]);
-    } finally {
-      deleteGatewayModelPrompt(modelId);
-      saveGatewayConfig(original);
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          message: "This endpoint is not exposed by this gateway.",
+          type: "invalid_request_error",
+          param: null,
+          code: "route_disabled",
+        },
+      });
     }
   });
 
-  test("falls back from a model override to global and built-in prompts", async () => {
+  test("keeps AI SDK instructions and unconfigured requests transparent", async () => {
     const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const original = loadGatewayConfig();
-    deleteGatewayModelPrompt(modelId);
-    saveGatewayConfig({ ...original, systemPrompt: "Global fallback" });
-
-    try {
-      for (const systemPrompt of ["Global fallback", ""]) {
-        const current = loadGatewayConfig();
-        saveGatewayConfig({ ...current, systemPrompt });
-        const response = await request("/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: modelId,
-            messages: [{ role: "user", content: "hello" }],
-          }),
-        });
-        expect(response.status).toBe(200);
-      }
-
-      const globalRequest = JSON.parse(
-        gateway.upstreamRequests.at(-2)?.body ?? "{}",
-      );
-      const builtInRequest = JSON.parse(
-        gateway.upstreamRequests.at(-1)?.body ?? "{}",
-      );
-      expect(globalRequest.messages[0]).toEqual({
-        role: "system",
-        content: "Global fallback",
-      });
-      expect(builtInRequest.messages[0]).toEqual({
-        role: "system",
-        content: DEFAULT_SYSTEM_PROMPT,
-      });
-    } finally {
-      saveGatewayConfig(original);
-    }
-  });
-
-  test("does not modify legacy text-completion prompts", async () => {
-    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const original = loadGatewayConfig();
-    saveGatewayConfig({ ...original, systemPrompt: "Global fallback" });
-    saveGatewayModelPrompt(modelId, "Model override");
-
-    try {
-      const response = await request("/v1/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: modelId, prompt: "Raw completion" }),
-      });
-      expect(response.status).toBe(200);
-      expect(JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}")).toEqual(
-        expect.objectContaining({ model: modelId, prompt: "Raw completion" }),
-      );
-    } finally {
-      deleteGatewayModelPrompt(modelId);
-      saveGatewayConfig(original);
-    }
-  });
-
-  test("accepts an AI SDK system prompt without injecting LocalBase fallbacks", async () => {
-    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const original = loadGatewayConfig();
-    saveGatewayConfig({ ...original, systemPrompt: "Global fallback" });
-    saveGatewayModelPrompt(modelId, "Model override");
     const localbase = createOpenAICompatible({
       baseURL: `${gateway.baseUrl}/v1`,
       name: "localbase-test",
     });
 
-    try {
-      const result = await generateText({
-        model: localbase.chatModel(modelId),
-        system: "AI SDK system instruction",
-        prompt: "hello",
-      });
-      expect(result.text).toBe("ok");
+    const result = await generateText({
+      model: localbase.chatModel(modelId),
+      system: "AI SDK system instruction",
+      prompt: "hello",
+    });
+    expect(result.text).toBe("ok");
 
-      const body = JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}");
-      expect(body.messages).toEqual(
-        expect.arrayContaining([
-          { role: "system", content: "AI SDK system instruction" },
-          { role: "user", content: "hello" },
-        ]),
-      );
-      expect(body.messages).not.toContainEqual({
-        role: "system",
-        content: "Global fallback",
-      });
-      expect(body.messages).not.toContainEqual({
-        role: "system",
-        content: "Model override",
-      });
-    } finally {
-      deleteGatewayModelPrompt(modelId);
-      saveGatewayConfig(original);
-    }
+    const body = JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}");
+    expect(body.messages).toEqual([
+      { role: "system", content: "AI SDK system instruction" },
+      { role: "user", content: "hello" },
+    ]);
+
+    const transparent = await generateText({
+      model: localbase.chatModel(modelId),
+      prompt: "transparent",
+    });
+    expect(transparent.text).toBe("ok");
+    const transparentBody = JSON.parse(
+      gateway.upstreamRequests.at(-1)?.body ?? "{}",
+    );
+    expect(transparentBody.messages).toEqual([
+      { role: "user", content: "transparent" },
+    ]);
   });
 
-  test("returns a 502 OpenAI error for malformed successful upstream responses", async () => {
-    const response = await request("/v1/chat/completions", {
+  test("round-trips AI SDK tool calls and results", async () => {
+    const localbase = createOpenAICompatible({
+      baseURL: `${gateway.baseUrl}/v1`,
+      name: "localbase-test",
+    });
+
+    const rawResponse = await request("/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-test-upstream": "malformed",
+        "x-test-upstream": "tool-round-trip",
       },
       body: JSON.stringify({
         model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
-        messages: [{ role: "user", content: "hello" }],
+        messages: [{ role: "user", content: "Call the weather tool." }],
       }),
     });
-    expect(response.status).toBe(502);
-    expect(await response.json()).toMatchObject({
-      error: { type: "server_error", code: "upstream_error" },
+    expect(rawResponse.status).toBe(200);
+    const rawBody = (await rawResponse.json()) as {
+      choices: Array<{ message: unknown }>;
+    };
+    expect(rawBody.choices[0]?.message).toEqual({
+      role: "assistant",
+      content: null,
+      reasoning_content: "Looking up the weather.",
+      tool_calls: [
+        {
+          id: "call_weather",
+          type: "function",
+          function: {
+            name: "weather",
+            arguments: '{"city":"Austin"}',
+          },
+          extra_content: {
+            google: { thought_signature: "signature" },
+          },
+        },
+      ],
     });
+
+    const requestOffset = gateway.upstreamRequests.length;
+
+    const result = await generateText({
+      model: localbase.chatModel("qwen2.5-coder-1.5b-instruct-q4_k_m"),
+      headers: { "x-test-upstream": "tool-round-trip" },
+      prompt: "What is the weather in Austin?",
+      tools: {
+        weather: tool({
+          description: "Gets current weather by city.",
+          inputSchema: z.object({ city: z.string() }),
+          execute: async ({ city }) => ({ city, temperature: 73 }),
+        }),
+      },
+      stopWhen: stepCountIs(2),
+    });
+
+    expect(result.text).toBe("73°F");
+    const requests = gateway.upstreamRequests
+      .slice(requestOffset)
+      .map((upstream) => JSON.parse(upstream.body));
+    expect(requests).toHaveLength(2);
+    expect(requests[0].tools).toEqual([
+      expect.objectContaining({
+        type: "function",
+        function: expect.objectContaining({ name: "weather" }),
+      }),
+    ]);
+    expect(requests[1].messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            expect.objectContaining({
+              id: "call_weather",
+              type: "function",
+              function: {
+                name: "weather",
+                arguments: '{"city":"Austin"}',
+              },
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          role: "tool",
+          tool_call_id: "call_weather",
+          content: '{"city":"Austin","temperature":73}',
+        }),
+      ]),
+    );
+  });
+
+  test("rejects malformed and unsupported non-streaming upstream responses", async () => {
+    for (const mode of [
+      "malformed",
+      "invalid-schema",
+      "custom-tool-response",
+      "deprecated-function-call-response",
+      "null-refusal-response",
+    ]) {
+      const response = await request("/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-test-upstream": mode,
+        },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      });
+      expect(response.status).toBe(502);
+      expect(await response.json()).toMatchObject({
+        error: { type: "server_error", code: "upstream_error" },
+      });
+    }
   });
 
   test("passes SSE responses through without buffering or schema gating", async () => {
@@ -484,16 +575,13 @@ describe("API gateway integration", () => {
     }
   });
 
-  test("keeps each concurrent LLM request paired with its model prompt", async () => {
+  test("keeps concurrent LLM requests paired with their selected models", async () => {
     const initialConfig = loadGatewayConfig();
     const firstModel = initialConfig.activeLlmModel;
     const secondModel = "qwen2.5-coder-7b-instruct-q4_k_m";
     initialConfig.selectedLlmModels = [firstModel, secondModel];
     saveGatewayConfig(initialConfig);
-    await Bun.write(
-      join(initialConfig.llmModelsDir, `${secondModel}.gguf`),
-      "test model placeholder",
-    );
+    await writeCompleteCatalogArtifact(initialConfig.llmModelsDir, secondModel);
 
     const invalid = await request("/v1/chat/completions", {
       method: "POST",
@@ -505,49 +593,84 @@ describe("API gateway integration", () => {
       "qwen2.5-coder-1.5b-instruct-q4_k_m",
     );
 
-    saveGatewayModelPrompt(firstModel, "First concurrent model prompt");
-    saveGatewayModelPrompt(secondModel, "Second concurrent model prompt");
     const requestOffset = gateway.upstreamRequests.length;
+    const launchOffset = (await gateway.readLlmRuntimeLaunches()).length;
 
-    try {
-      const requestedModels = [secondModel, firstModel, secondModel];
-      const responses = await Promise.all(
-        requestedModels.map((model) =>
-          request("/v1/chat/completions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model,
-              messages: [{ role: "user", content: "hello" }],
-            }),
-          }),
-        ),
-      );
-      expect(responses.map((response) => response.status)).toEqual([
-        200, 200, 200,
-      ]);
+    const streamId = "runtime-pairing";
+    const firstResponse = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "controlled-stream",
+        "x-test-stream-id": streamId,
+      },
+      body: JSON.stringify({
+        model: secondModel,
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    const firstReader = firstResponse.body!.getReader();
+    expect((await firstReader.read()).done).toBe(false);
+    await waitForLlmRuntimeLaunches(launchOffset, 1);
 
-      const requestPairs = gateway.upstreamRequests
-        .slice(requestOffset)
-        .map((upstream) => {
-          const body = JSON.parse(upstream.body) as {
-            model: string;
-            messages: Array<{ role: string; content: string }>;
-          };
-          return `${body.model}:${body.messages[0]?.content}`;
-        })
-        .sort();
-      expect(requestPairs).toEqual(
-        [
-          `${firstModel}:First concurrent model prompt`,
-          `${secondModel}:Second concurrent model prompt`,
-          `${secondModel}:Second concurrent model prompt`,
-        ].sort(),
-      );
-    } finally {
-      deleteGatewayModelPrompt(firstModel);
-      deleteGatewayModelPrompt(secondModel);
-    }
+    const secondResponse = request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "controlled-stream",
+        "x-test-stream-id": "runtime-pairing-second",
+      },
+      body: JSON.stringify({
+        model: firstModel,
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    const thirdResponse = request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: secondModel,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    await Promise.all([
+      expectPromiseBlocked(secondResponse),
+      expectPromiseBlocked(thirdResponse),
+    ]);
+
+    gateway.closeControlledStream(streamId);
+    expect((await firstReader.read()).done).toBe(true);
+    const second = await within(secondResponse, "second model response");
+    expect(second.status).toBe(200);
+    const secondReader = second.body!.getReader();
+    expect((await secondReader.read()).done).toBe(false);
+    await waitForLlmRuntimeLaunches(launchOffset, 2);
+    await expectPromiseBlocked(thirdResponse);
+    expect(loadGatewayConfig().activeLlmModel).toBe(firstModel);
+
+    gateway.closeControlledStream("runtime-pairing-second");
+    expect((await secondReader.read()).done).toBe(true);
+    const third = await within(thirdResponse, "third model response");
+    expect(third.status).toBe(200);
+    await third.text();
+
+    const requests = gateway.upstreamRequests
+      .slice(requestOffset)
+      .map((upstream) => JSON.parse(upstream.body));
+    const requestedModels = [secondModel, firstModel, secondModel];
+    expect(requests.map((body) => body.model)).toEqual(requestedModels);
+    expect(requests.map((body) => body.messages)).toEqual(
+      requests.map(() => [{ role: "user", content: "hello" }]),
+    );
+
+    const launches = await waitForLlmRuntimeLaunches(launchOffset, 3);
+    expect(launches.map(launchedModelPath)).toEqual(
+      requestedModels.map((modelId) =>
+        join(initialConfig.llmModelsDir, modelArtifactFile(modelId)),
+      ),
+    );
   });
 
   test("holds model switches until streamed LLM responses end", async () => {
@@ -561,10 +684,7 @@ describe("API gateway integration", () => {
       ...config,
       selectedLlmModels: [modelA, modelB],
     });
-    await Bun.write(
-      join(config.llmModelsDir, `${modelB}.gguf`),
-      "test model placeholder",
-    );
+    await writeCompleteCatalogArtifact(config.llmModelsDir, modelB);
 
     const completeA = await request("/v1/chat/completions", {
       method: "POST",
@@ -624,10 +744,7 @@ describe("API gateway integration", () => {
       ...config,
       selectedLlmModels: [modelA, modelB],
     });
-    await Bun.write(
-      join(config.llmModelsDir, `${modelB}.gguf`),
-      "test model placeholder",
-    );
+    await writeCompleteCatalogArtifact(config.llmModelsDir, modelB);
 
     const headerWaitId = "llm-header-abort";
     const controller = new AbortController();
@@ -682,10 +799,7 @@ describe("API gateway integration", () => {
       ...config,
       selectedLlmModels: [modelA, modelB],
     });
-    await Bun.write(
-      join(config.llmModelsDir, `${modelB}.gguf`),
-      "test model placeholder",
-    );
+    await writeCompleteCatalogArtifact(config.llmModelsDir, modelB);
 
     const completeA = await request("/v1/chat/completions", {
       method: "POST",
@@ -790,6 +904,216 @@ describe("API gateway integration", () => {
         }),
       },
       expectedPath: "messages.0.role",
+    },
+    {
+      name: "tool messages require a tool call id",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "tool", content: "73°F" }],
+        }),
+      },
+      expectedPath: "messages.0.tool_call_id",
+    },
+    {
+      name: "chat completions reject unsupported content parts",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [
+            {
+              role: "user",
+              content: [{ type: "video_url", video_url: { url: "test" } }],
+            },
+          ],
+        }),
+      },
+      expectedPath: "messages.0.content",
+    },
+    {
+      name: "chat completions reject custom tool declarations",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+          tools: [{ type: "custom", custom: { name: "code_execution" } }],
+        }),
+      },
+      expectedPath: "tools.0.type",
+    },
+    {
+      name: "chat completions require JSON-schema-like tool parameters",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+          tools: [
+            {
+              type: "function",
+              function: { name: "weather", parameters: "not-a-schema" },
+            },
+          ],
+        }),
+      },
+      expectedPath: "tools.0.function.parameters",
+    },
+    {
+      name: "chat completions reject unsupported tool choices",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+          tool_choice: {
+            type: "allowed_tools",
+            allowed_tools: ["weather"],
+          },
+        }),
+      },
+      expectedPath: "tool_choice",
+    },
+    {
+      name: "chat completions reject arbitrary tool choices",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+          tool_choice: "force",
+        }),
+      },
+      expectedPath: "tool_choice",
+    },
+    {
+      name: "chat completions reject custom tool calls",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [
+            {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "custom_1",
+                  type: "custom",
+                  custom: { name: "code_execution" },
+                },
+              ],
+            },
+          ],
+        }),
+      },
+      expectedPath: "messages.0.tool_calls.0.type",
+    },
+    {
+      name: "chat completions require complete file payloads",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [
+            {
+              role: "user",
+              content: [{ type: "file", file: { filename: "notes.txt" } }],
+            },
+          ],
+        }),
+      },
+      expectedPath: "messages.0.content",
+    },
+    {
+      name: "chat completions reject ambiguous file payloads",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "file",
+                  file: {
+                    file_id: "file_123",
+                    filename: "notes.txt",
+                    file_data: "data:text/plain;base64,bm90ZXM=",
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      },
+      expectedPath: "messages.0.content",
+    },
+    {
+      name: "chat completions reject deprecated assistant function calls",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [
+            {
+              role: "assistant",
+              content: null,
+              function_call: { name: "weather", arguments: "{}" },
+            },
+          ],
+        }),
+      },
+      expectedPath: "messages.0.function_call",
+    },
+    {
+      name: "chat completions require assistant content, tool calls, or refusal",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "assistant", content: null, refusal: null }],
+        }),
+      },
+      expectedPath: "messages.0",
+    },
+    {
+      name: "chat completions require nonempty assistant tool calls",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "assistant", content: null, tool_calls: [] }],
+        }),
+      },
+      expectedPath: "messages.0",
     },
     {
       name: "image generations require a prompt",
