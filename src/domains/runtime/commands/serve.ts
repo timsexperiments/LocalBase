@@ -618,19 +618,35 @@ async function proxyRequest(
 }
 
 /** Keeps an active-model lease until the client finishes or cancels the response. */
-function withResponseLease(response: Response, release: () => void): Response {
+export function withResponseLease(
+  response: Response,
+  release: () => void,
+  requestSignal: AbortSignal,
+): Response {
   if (!response.body) {
     release();
     return response;
   }
 
   let released = false;
+  let removeAbortListener = () => {};
   const releaseOnce = () => {
     if (released) return;
     released = true;
+    removeAbortListener();
     release();
   };
   const reader = response.body.getReader();
+  const cancelForRequestAbort = () => {
+    releaseOnce();
+    void reader.cancel(requestSignal.reason);
+  };
+  requestSignal.addEventListener("abort", cancelForRequestAbort, {
+    once: true,
+  });
+  removeAbortListener = () =>
+    requestSignal.removeEventListener("abort", cancelForRequestAbort);
+  if (requestSignal.aborted) cancelForRequestAbort();
   const body = new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
@@ -1541,7 +1557,11 @@ export async function runServe(
           if (released) return;
           released = true;
           lease.count -= 1;
-          if (lease.count === 0) lease.resolveIdle();
+          if (lease.count === 0) {
+            lease.resolveIdle();
+            // A later request must create a fresh unresolved drain barrier.
+            if (activeLlmLeases === lease) activeLlmLeases = undefined;
+          }
         },
       };
     });
@@ -1550,6 +1570,7 @@ export async function runServe(
   const withLlmRequestLease = async (
     requestedModel: string | undefined,
     dispatch: (modelId: string) => Promise<Response>,
+    requestSignal: AbortSignal,
   ): Promise<Response> => {
     const acquired = await acquireLlmRequestLease(requestedModel);
     if (acquired instanceof Response) return acquired;
@@ -1557,6 +1578,7 @@ export async function runServe(
       return withResponseLease(
         await dispatch(acquired.modelId),
         acquired.release,
+        requestSignal,
       );
     } catch (error) {
       acquired.release();
@@ -1722,31 +1744,35 @@ export async function runServe(
         chatCompletionRequestSchema,
       );
       if (!parsed.success) return parsed.response;
-      return await withLlmRequestLease(parsed.data.model, async (modelId) => {
-        const hasClientInstruction = parsed.data.messages.some(
-          (message) =>
-            message.role === "system" || message.role === "developer",
-        );
-        const messages = parsed.data.messages.map((message) =>
-          message.role === "developer"
-            ? { ...message, role: "system" as const }
-            : message,
-        );
-        if (!hasClientInstruction) {
-          const activeConfig = loadConfig(ctx.database, config.root);
-          const { prompt } = effectiveSystemPrompt(
-            { ...ctx, config: activeConfig },
-            modelId,
+      return await withLlmRequestLease(
+        parsed.data.model,
+        async (modelId) => {
+          const hasClientInstruction = parsed.data.messages.some(
+            (message) =>
+              message.role === "system" || message.role === "developer",
           );
-          messages.unshift({ role: "system", content: prompt });
-        }
-        return await proxyRequest(
-          requestWithJsonBody(request, { ...parsed.data, messages }),
-          llmBase,
-          undefined,
-          chatCompletionResponseSchema,
-        );
-      });
+          const messages = parsed.data.messages.map((message) =>
+            message.role === "developer"
+              ? { ...message, role: "system" as const }
+              : message,
+          );
+          if (!hasClientInstruction) {
+            const activeConfig = loadConfig(ctx.database, config.root);
+            const { prompt } = effectiveSystemPrompt(
+              { ...ctx, config: activeConfig },
+              modelId,
+            );
+            messages.unshift({ role: "system", content: prompt });
+          }
+          return await proxyRequest(
+            requestWithJsonBody(request, { ...parsed.data, messages }),
+            llmBase,
+            undefined,
+            chatCompletionResponseSchema,
+          );
+        },
+        request.signal,
+      );
     }
 
     if (pathname === "/v1/completions") {
@@ -1764,6 +1790,7 @@ export async function runServe(
             undefined,
             textCompletionResponseSchema,
           ),
+        request.signal,
       );
     }
 
@@ -1779,6 +1806,7 @@ export async function runServe(
             undefined,
             embeddingsResponseSchema,
           ),
+        request.signal,
       );
     }
 
@@ -1812,12 +1840,14 @@ export async function runServe(
       return await withLlmRequestLease(
         undefined,
         async () => await proxyRequest(request, llmBase, upstreamPath),
+        request.signal,
       );
     }
 
     return await withLlmRequestLease(
       undefined,
       async () => await proxyRequest(request, llmBase),
+      request.signal,
     );
   };
 

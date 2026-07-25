@@ -14,7 +14,7 @@ import {
   startGatewayFixture,
   type GatewayFixture,
 } from "../../test/gateway-fixture";
-import { httpBaseUrl } from "./commands/serve";
+import { httpBaseUrl, withResponseLease } from "./commands/serve";
 
 type ValidationCase = {
   name: string;
@@ -27,6 +27,56 @@ test("formats IPv4, hostnames, and IPv6 literals as HTTP base URLs", () => {
   expect(httpBaseUrl("127.0.0.1", 2273)).toBe("http://127.0.0.1:2273");
   expect(httpBaseUrl("localhost", 2273)).toBe("http://localhost:2273");
   expect(httpBaseUrl("::1", 2273)).toBe("http://[::1]:2273");
+});
+
+test("releases a response lease when the stream or request is cancelled", async () => {
+  const createLeasedResponse = () => {
+    let resolveCancelled: () => void;
+    const cancelled = new Promise<void>((resolve) => {
+      resolveCancelled = resolve;
+    });
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1]));
+        },
+        cancel() {
+          resolveCancelled!();
+        },
+      }),
+    );
+    return { cancelled, response };
+  };
+
+  const streamCancellation = createLeasedResponse();
+  const streamAbort = new AbortController();
+  let streamReleases = 0;
+  const leasedStream = withResponseLease(
+    streamCancellation.response,
+    () => {
+      streamReleases += 1;
+    },
+    streamAbort.signal,
+  );
+  const streamReader = leasedStream.body!.getReader();
+  await streamReader.read();
+  await streamReader.cancel();
+  await streamCancellation.cancelled;
+  expect(streamReleases).toBe(1);
+
+  const requestCancellation = createLeasedResponse();
+  const requestAbort = new AbortController();
+  let requestReleases = 0;
+  withResponseLease(
+    requestCancellation.response,
+    () => {
+      requestReleases += 1;
+    },
+    requestAbort.signal,
+  );
+  requestAbort.abort();
+  await requestCancellation.cancelled;
+  expect(requestReleases).toBe(1);
 });
 
 describe("API gateway integration", () => {
@@ -48,6 +98,23 @@ describe("API gateway integration", () => {
 
   const request = (path: string, init?: RequestInit) =>
     fetch(`${gateway.baseUrl}${path}`, init);
+
+  async function expectResponseBlocked(response: Promise<Response>) {
+    const completed = await Promise.race([
+      response.then(() => true),
+      Bun.sleep(100).then(() => false),
+    ]);
+    expect(completed).toBe(false);
+  }
+
+  async function within<T>(promise: Promise<T>, label: string): Promise<T> {
+    return await Promise.race([
+      promise,
+      Bun.sleep(2_000).then(() => {
+        throw new Error(`${label} did not complete within two seconds.`);
+      }),
+    ]);
+  }
 
   function loadGatewayConfig() {
     const database = new DatabaseSession();
@@ -463,6 +530,69 @@ describe("API gateway integration", () => {
       deleteGatewayModelPrompt(firstModel);
       deleteGatewayModelPrompt(secondModel);
     }
+  });
+
+  test("holds model switches until streamed LLM responses end", async () => {
+    const config = loadGatewayConfig();
+    const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const modelA = config.activeLlmModel;
+    const modelB =
+      modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
+    saveGatewayConfig({
+      ...config,
+      selectedLlmModels: [modelA, modelB],
+    });
+    await Bun.write(
+      join(config.llmModelsDir, `${modelB}.gguf`),
+      "test model placeholder",
+    );
+
+    const completeA = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelA,
+        messages: [{ role: "user", content: "complete" }],
+      }),
+    });
+    expect(completeA.status).toBe(200);
+    await completeA.text();
+
+    const eofStreamId = "llm-lease-eof";
+    const slowA = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "controlled-stream",
+        "x-test-stream-id": eofStreamId,
+      },
+      body: JSON.stringify({
+        model: modelA,
+        stream: true,
+        messages: [{ role: "user", content: "hold" }],
+      }),
+    });
+    const slowAReader = slowA.body!.getReader();
+    expect((await slowAReader.read()).done).toBe(false);
+
+    const switchToB = request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelB,
+        messages: [{ role: "user", content: "switch" }],
+      }),
+    });
+    await expectResponseBlocked(switchToB);
+
+    gateway.closeControlledStream(eofStreamId);
+    expect(
+      (await within(slowAReader.read(), "EOF stream completion")).done,
+    ).toBe(true);
+    const completeB = await within(switchToB, "switch after EOF");
+    expect(completeB.status).toBe(200);
+    await completeB.text();
   });
 
   const jsonValidationCases: ValidationCase[] = [
