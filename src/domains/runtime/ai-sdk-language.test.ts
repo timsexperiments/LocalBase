@@ -169,6 +169,30 @@ describe("Vercel AI SDK language conformance", () => {
     await gateway.waitForControlledStreamAbort(streamId);
   });
 
+  test("surfaces a truncated upstream stream through the AI SDK", async () => {
+    const errors: unknown[] = [];
+    const result = streamText({
+      model: createLocalBaseAiSdkProvider(gateway).chatModel(PRIMARY_MODEL),
+      prompt: "Reject a stream without its terminator.",
+      headers: { "x-test-upstream": "truncated-ai-sdk-stream" },
+      onError: ({ error }) => {
+        errors.push(error);
+      },
+    });
+
+    let received = "";
+    for await (const text of result.textStream) received += text;
+    expect(received).toBe("partial");
+    expect(errors).toEqual([
+      {
+        message: "The upstream service returned an invalid event stream.",
+        type: "server_error",
+        param: null,
+        code: "upstream_error",
+      },
+    ]);
+  });
+
   test("uses canonical and aliased model IDs to select the requested local model", async () => {
     const config = gateway.readConfig();
     gateway.saveConfig({
@@ -203,9 +227,28 @@ describe("Vercel AI SDK language conformance", () => {
     );
   });
 
-  test("rejects unknown model IDs before dispatching to the backend", async () => {
+  test("rejects blank and unknown model IDs before dispatching to the backend", async () => {
     const requestOffset = gateway.upstreamRequests.length;
     const launchOffset = (await gateway.readLlmRuntimeLaunches()).length;
+
+    for (const model of ["", "   "]) {
+      const response = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: "Do not dispatch this." }],
+        }),
+      });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          type: "invalid_request_error",
+          param: null,
+          code: "validation_failed",
+        },
+      });
+    }
 
     const response = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
       method: "POST",

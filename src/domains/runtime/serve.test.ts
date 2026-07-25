@@ -18,6 +18,15 @@ type ValidationCase = {
   expectedPath: string;
 };
 
+const STREAM_VALIDATION_FAILURE = `data: ${JSON.stringify({
+  error: {
+    message: "The upstream service returned an invalid event stream.",
+    type: "server_error",
+    param: null,
+    code: "upstream_error",
+  },
+})}\n\ndata: [DONE]\n\n`;
+
 function modelArtifactFile(modelId: string): string {
   const model = byId(modelId);
   if (!model) throw new Error(`Unknown catalog model: ${modelId}`);
@@ -109,6 +118,12 @@ describe("API gateway integration", () => {
       Bun.sleep(100).then(() => false),
     ]);
     expect(completed).toBe(false);
+  }
+
+  async function drainReader(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+  ): Promise<void> {
+    while (!(await reader.read()).done) {}
   }
 
   async function within<T>(promise: Promise<T>, label: string): Promise<T> {
@@ -442,8 +457,33 @@ describe("API gateway integration", () => {
       }),
     });
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(response.headers.get("content-type")?.toLowerCase()).toBe(
+      "text/event-stream; charset=utf-8",
+    );
+    expect(response.headers.get("x-stream-fixture")).toBe("preserved");
     await expect(response.text()).resolves.toContain("[DONE]");
+  });
+
+  test("accepts strict llama.cpp reasoning, usage, and tool-call chunks", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "llama-wire-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "Use a tool." }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).toContain('"reasoning_content":"Considering tools."');
+    expect(stream).toContain('"tool_calls"');
+    expect(stream).toContain('"prompt_tokens_details":{"cached_tokens":1}');
+    expect(stream).toContain('"timings"');
+    expect(stream.endsWith("data: [DONE]\n\n")).toBe(true);
   });
 
   test("terminates invalid streamed chat events before they reach clients", async () => {
@@ -460,16 +500,45 @@ describe("API gateway integration", () => {
       }),
     });
     expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe(
-      `data: ${JSON.stringify({
-        error: {
-          message: "The upstream service returned an invalid event stream.",
-          type: "server_error",
-          param: null,
-          code: "upstream_error",
+    await expect(response.text()).resolves.toBe(STREAM_VALIDATION_FAILURE);
+  });
+
+  test("rejects duplicate terminators and events after the terminator", async () => {
+    for (const mode of ["duplicate-done-stream", "post-done-stream"]) {
+      const response = await request("/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-test-upstream": mode,
         },
-      })}\n\ndata: [DONE]\n\n`,
-    );
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          stream: true,
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      });
+      expect(response.status).toBe(200);
+      await expect(response.text()).resolves.toBe(STREAM_VALIDATION_FAILURE);
+    }
+  });
+
+  test("does not classify partial media-type matches as event streams", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "invalid-media-type-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { type: "server_error", code: "upstream_error" },
+    });
   });
 
   test("rejects removed raw backend namespaces", async () => {
@@ -545,7 +614,10 @@ describe("API gateway integration", () => {
     ]);
 
     gateway.closeControlledStream(streamId);
-    expect((await firstReader.read()).done).toBe(true);
+    await within(
+      drainReader(firstReader),
+      "first controlled stream completion",
+    );
     const second = await within(secondResponse, "second model response");
     expect(second.status).toBe(200);
     const secondReader = second.body!.getReader();
@@ -555,7 +627,10 @@ describe("API gateway integration", () => {
     expect(loadGatewayConfig().activeLlmModel).toBe(firstModel);
 
     gateway.closeControlledStream("runtime-pairing-second");
-    expect((await secondReader.read()).done).toBe(true);
+    await within(
+      drainReader(secondReader),
+      "second controlled stream completion",
+    );
     const third = await within(thirdResponse, "third model response");
     expect(third.status).toBe(200);
     await third.text();
@@ -629,9 +704,7 @@ describe("API gateway integration", () => {
     await expectPromiseBlocked(switchToB);
 
     gateway.closeControlledStream(eofStreamId);
-    expect(
-      (await within(slowAReader.read(), "EOF stream completion")).done,
-    ).toBe(true);
+    await within(drainReader(slowAReader), "EOF stream completion");
     const completeB = await within(switchToB, "switch after EOF");
     expect(completeB.status).toBe(200);
     await completeB.text();
@@ -754,9 +827,7 @@ describe("API gateway integration", () => {
     );
 
     gateway.closeControlledStream(streamId);
-    expect(
-      (await within(slowAReader.read(), "queued abort stream completion")).done,
-    ).toBe(true);
+    await within(drainReader(slowAReader), "queued abort stream completion");
     await Bun.sleep(100);
     expect(loadGatewayConfig().activeLlmModel).toBe(modelA);
     expect(

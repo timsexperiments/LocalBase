@@ -297,6 +297,8 @@ const functionToolSchema = z
   })
   .strict();
 
+const modelIdSchema = z.string().trim().min(1, "model must not be empty");
+
 const textContentPartSchema = z
   .object({ type: z.literal("text"), text: z.string() })
   .passthrough();
@@ -413,7 +415,7 @@ const chatMessageSchema = z.discriminatedUnion("role", [
 
 const chatCompletionRequestSchema = z
   .object({
-    model: z.string(),
+    model: modelIdSchema,
     messages: z.array(chatMessageSchema),
     temperature: z.number().min(0).max(2).optional(),
     top_p: z.number().min(0).max(1).optional(),
@@ -449,7 +451,7 @@ const chatCompletionRequestSchema = z
 const imageGenerationRequestSchema = z
   .object({
     prompt: z.string(),
-    model: z.string().optional(),
+    model: modelIdSchema.optional(),
     n: z.number().min(1).max(10).optional(),
     quality: z.enum(["standard", "hd"]).optional(),
     response_format: z.enum(["url", "b64_json"]).optional(),
@@ -463,7 +465,7 @@ const transcriptionRequestSchema = z.object({
   file: z.instanceof(Blob, {
     message: "file must be a valid File or Blob object",
   }),
-  model: z.string().optional(),
+  model: modelIdSchema.optional(),
   language: z.string().optional(),
   prompt: z.string().optional(),
   response_format: z
@@ -474,7 +476,7 @@ const transcriptionRequestSchema = z.object({
 
 const embeddingsRequestSchema = z
   .object({
-    model: z.string(),
+    model: modelIdSchema,
     input: z.union([
       z.string(),
       z.array(z.string()),
@@ -516,6 +518,94 @@ const chatCompletionStreamDeltaSchema = z
     role: z.literal("assistant").optional(),
     content: z.string().nullable().optional(),
     refusal: z.string().nullable().optional(),
+    reasoning_content: z.string().nullable().optional(),
+    tool_calls: z
+      .array(
+        z
+          .object({
+            index: z.number().int().nonnegative(),
+            id: z.string().min(1).optional(),
+            type: z.literal("function").optional(),
+            function: z
+              .object({
+                name: z.string().min(1).optional(),
+                arguments: z.string().optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict();
+
+const tokenLogprobSchema: z.ZodType = z.lazy(() =>
+  z
+    .object({
+      token: z.string(),
+      bytes: z.array(z.number().int().min(0).max(255)).nullable(),
+      logprob: z.number(),
+      top_logprobs: z.array(tokenLogprobSchema).optional(),
+    })
+    .strict(),
+);
+
+const chatCompletionStreamLogprobsSchema = z
+  .object({
+    content: z.array(tokenLogprobSchema).nullable(),
+    refusal: z.array(tokenLogprobSchema).nullable().optional(),
+  })
+  .strict();
+
+const promptTokensDetailsSchema = z
+  .object({
+    audio_tokens: z.number().int().nonnegative().optional(),
+    cached_tokens: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+const completionTokensDetailsSchema = z
+  .object({
+    accepted_prediction_tokens: z.number().int().nonnegative().optional(),
+    audio_tokens: z.number().int().nonnegative().optional(),
+    reasoning_tokens: z.number().int().nonnegative().optional(),
+    rejected_prediction_tokens: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+const chatCompletionUsageSchema = z
+  .object({
+    prompt_tokens: z.number().int().nonnegative(),
+    completion_tokens: z.number().int().nonnegative(),
+    total_tokens: z.number().int().nonnegative(),
+    prompt_tokens_details: promptTokensDetailsSchema.optional(),
+    completion_tokens_details: completionTokensDetailsSchema.optional(),
+  })
+  .strict();
+
+const llamaTimingsSchema = z
+  .object({
+    cache_n: z.number(),
+    prompt_n: z.number(),
+    prompt_ms: z.number(),
+    prompt_per_token_ms: z.number(),
+    prompt_per_second: z.number(),
+    predicted_n: z.number(),
+    predicted_ms: z.number(),
+    predicted_per_token_ms: z.number(),
+    predicted_per_second: z.number(),
+    draft_n: z.number().optional(),
+    draft_n_accepted: z.number().optional(),
+  })
+  .strict();
+
+const llamaPromptProgressSchema = z
+  .object({
+    total: z.number(),
+    cache: z.number(),
+    processed: z.number(),
+    time_ms: z.number(),
   })
   .strict();
 
@@ -531,20 +621,20 @@ const chatCompletionStreamEventSchema = z.union([
           .object({
             index: z.number(),
             delta: chatCompletionStreamDeltaSchema,
-            finish_reason: z.string().nullable().optional(),
+            finish_reason: z
+              .enum(["stop", "length", "tool_calls", "content_filter"])
+              .nullable(),
+            logprobs: chatCompletionStreamLogprobsSchema.nullable().optional(),
           })
-          .passthrough(),
+          .strict(),
       ),
-      usage: z
-        .object({
-          prompt_tokens: z.number(),
-          completion_tokens: z.number(),
-          total_tokens: z.number(),
-        })
-        .passthrough()
-        .optional(),
+      usage: chatCompletionUsageSchema.nullable().optional(),
+      system_fingerprint: z.string().nullable().optional(),
+      service_tier: z.string().nullable().optional(),
+      timings: llamaTimingsSchema.optional(),
+      prompt_progress: llamaPromptProgressSchema.optional(),
     })
-    .passthrough(),
+    .strict(),
   z
     .object({
       error: z
@@ -554,9 +644,9 @@ const chatCompletionStreamEventSchema = z.union([
           param: z.string().nullable().optional(),
           code: z.string().nullable().optional(),
         })
-        .passthrough(),
+        .strict(),
     })
-    .passthrough(),
+    .strict(),
 ]);
 
 const embeddingsResponseSchema = z
@@ -746,8 +836,10 @@ function filterProxyHeaders(headers: Headers): Headers {
 }
 
 function isEventStream(response: Response): boolean {
+  const contentType = response.headers.get("content-type");
+  if (!contentType) return false;
   return (
-    response.headers.get("content-type")?.includes("text/event-stream") ?? false
+    contentType.split(";", 1)[0]?.trim().toLowerCase() === "text/event-stream"
   );
 }
 
@@ -769,16 +861,8 @@ function validateEventStream(
   const encoder = new TextEncoder();
   const boundary = /(?:\r\n|\r|\n)(?:\r\n|\r|\n)/;
   let buffered = "";
-
-  const validate = (event: string): boolean => {
-    const data = eventData(event);
-    if (!data || data === "[DONE]") return true;
-    try {
-      const parsed = JSON.parse(data);
-      return schema.safeParse(parsed).success;
-    } catch {}
-    return false;
-  };
+  let doneEvent: string | undefined;
+  let failed = false;
 
   const validationFailure = `data: ${JSON.stringify({
     error: {
@@ -789,15 +873,44 @@ function validateEventStream(
     },
   })}\n\ndata: [DONE]\n\n`;
 
+  const fail = (
+    controller: TransformStreamDefaultController<Uint8Array>,
+    terminate: boolean,
+  ): false => {
+    if (!failed) controller.enqueue(encoder.encode(validationFailure));
+    failed = true;
+    if (terminate) controller.terminate();
+    return false;
+  };
+
   const flushEvent = (
     controller: TransformStreamDefaultController<Uint8Array>,
     event: string,
+    terminateOnFailure: boolean,
   ): boolean => {
-    if (!validate(event)) {
-      controller.enqueue(encoder.encode(validationFailure));
-      controller.terminate();
-      return false;
+    const hasFields = event.split(/\r\n|\r|\n/).some((line) => line.length > 0);
+    if (!hasFields) {
+      if (!doneEvent) controller.enqueue(encoder.encode(event));
+      return true;
     }
+
+    if (doneEvent) return fail(controller, terminateOnFailure);
+
+    const data = eventData(event);
+    if (data === "[DONE]") {
+      doneEvent = event;
+      return true;
+    }
+    if (data !== undefined) {
+      try {
+        if (!schema.safeParse(JSON.parse(data)).success) {
+          return fail(controller, terminateOnFailure);
+        }
+      } catch {
+        return fail(controller, terminateOnFailure);
+      }
+    }
+
     controller.enqueue(encoder.encode(event));
     return true;
   };
@@ -810,13 +923,19 @@ function validateEventStream(
           const match = boundary.exec(buffered);
           if (!match || match.index === undefined) return;
           const end = match.index + match[0].length;
-          if (!flushEvent(controller, buffered.slice(0, end))) return;
+          if (!flushEvent(controller, buffered.slice(0, end), true)) return;
           buffered = buffered.slice(end);
         }
       },
       flush(controller) {
         buffered += decoder.decode();
-        if (buffered) flushEvent(controller, buffered);
+        if (buffered && !flushEvent(controller, buffered, false)) return;
+        if (failed) return;
+        if (!doneEvent) {
+          fail(controller, false);
+          return;
+        }
+        controller.enqueue(encoder.encode(doneEvent));
       },
     }),
   );
@@ -1754,7 +1873,7 @@ export async function runServe(
     requestedModel: string | undefined,
   ): string | undefined => {
     const latestConfig = loadConfig(ctx.database, config.root);
-    if (!requestedModel) return latestConfig.activeLlmModel;
+    if (requestedModel === undefined) return latestConfig.activeLlmModel;
     const normalized = requestedModel.replace(
       /^(localbase|openai|ollama)\//i,
       "",

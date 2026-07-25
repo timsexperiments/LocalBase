@@ -296,6 +296,9 @@ function startMockUpstream(
                 if (closed) return;
                 closed = true;
                 request.signal.removeEventListener("abort", abort);
+                controller.enqueue(
+                  new TextEncoder().encode("data: [DONE]\n\n"),
+                );
                 controller.close();
               },
               aborted,
@@ -381,20 +384,214 @@ function startMockUpstream(
               },
             ],
           })}\n\ndata: [DONE]\n\n`,
-          { headers: { "content-type": "text/event-stream" } },
+          {
+            headers: {
+              "content-type": "Text/Event-Stream; charset=utf-8",
+              "x-stream-fixture": "preserved",
+            },
+          },
         );
       }
       if (mode === "invalid-stream") {
+        const invalidEvent = `data: ${JSON.stringify({
+          id: "chatcmpl-invalid-stream",
+          object: "chat.completion.chunk",
+          created: 0,
+          model: LLM_MODEL,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [{ index: 0, unexpected: true }],
+              },
+              finish_reason: null,
+            },
+          ],
+        })}\n\n`;
+        const splitAt = Math.floor(invalidEvent.length / 2);
         const body = new ReadableStream<Uint8Array>({
           start(controller) {
-            controller.enqueue(new TextEncoder().encode('data: {"ok"'));
-            controller.enqueue(new TextEncoder().encode(":true}\n\n"));
+            controller.enqueue(
+              new TextEncoder().encode(invalidEvent.slice(0, splitAt)),
+            );
+            controller.enqueue(
+              new TextEncoder().encode(invalidEvent.slice(splitAt)),
+            );
             controller.close();
           },
         });
         return new Response(body, {
           headers: { "content-type": "text/event-stream" },
         });
+      }
+      if (mode === "post-done-stream") {
+        return new Response(
+          `data: [DONE]\n\ndata: ${JSON.stringify({
+            id: "chatcmpl-after-done",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              {
+                index: 0,
+                delta: { content: "too late" },
+                finish_reason: null,
+              },
+            ],
+          })}\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      if (mode === "duplicate-done-stream") {
+        return new Response("data: [DONE]\n\ndata: [DONE]\n\n", {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      if (mode === "invalid-media-type-stream") {
+        return new Response(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-wrong-media-type",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              {
+                index: 0,
+                delta: { content: "not an SSE response" },
+                finish_reason: null,
+              },
+            ],
+          })}\n\ndata: [DONE]\n\n`,
+          { headers: { "content-type": "application/x-text/event-stream" } },
+        );
+      }
+      if (mode === "truncated-ai-sdk-stream") {
+        return new Response(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-truncated",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "partial" },
+                finish_reason: null,
+              },
+            ],
+            usage: null,
+          })}\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      if (mode === "llama-wire-stream") {
+        const chunks = [
+          {
+            id: "chatcmpl-llama-wire",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            system_fingerprint: "b9741",
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: null },
+                finish_reason: null,
+              },
+            ],
+            usage: null,
+          },
+          {
+            id: "chatcmpl-llama-wire",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            system_fingerprint: "b9741",
+            choices: [
+              {
+                index: 0,
+                delta: { reasoning_content: "Considering tools." },
+                finish_reason: null,
+              },
+            ],
+            usage: null,
+          },
+          {
+            id: "chatcmpl-llama-wire",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            system_fingerprint: "b9741",
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_weather",
+                      type: "function",
+                      function: { name: "weather" },
+                    },
+                  ],
+                },
+                finish_reason: null,
+              },
+            ],
+            usage: null,
+          },
+          {
+            id: "chatcmpl-llama-wire",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            system_fingerprint: "b9741",
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      function: { arguments: '{"city":"Austin"}' },
+                    },
+                  ],
+                },
+                finish_reason: null,
+              },
+            ],
+            usage: null,
+          },
+          {
+            id: "chatcmpl-llama-wire",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            system_fingerprint: "b9741",
+            choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+            usage: {
+              prompt_tokens: 3,
+              completion_tokens: 2,
+              total_tokens: 5,
+              prompt_tokens_details: { cached_tokens: 1 },
+            },
+            timings: {
+              cache_n: 1,
+              prompt_n: 2,
+              prompt_ms: 3,
+              prompt_per_token_ms: 1.5,
+              prompt_per_second: 666.67,
+              predicted_n: 2,
+              predicted_ms: 4,
+              predicted_per_token_ms: 2,
+              predicted_per_second: 500,
+            },
+          },
+        ];
+        return new Response(
+          `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
       }
       if (mode === "ai-sdk-stream") {
         const chunks = [
@@ -410,6 +607,7 @@ function startMockUpstream(
                 finish_reason: null,
               },
             ],
+            usage: null,
           },
           {
             id: "chatcmpl-stream",
@@ -423,6 +621,7 @@ function startMockUpstream(
                 finish_reason: null,
               },
             ],
+            usage: null,
           },
           {
             id: "chatcmpl-stream",
