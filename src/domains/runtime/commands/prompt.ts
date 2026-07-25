@@ -1,6 +1,12 @@
 import { type AppContext } from "../../../context";
-import { parseFlag } from "../../../utils/args";
 import { saveConfig } from "../../../manager";
+import type { CommandExecution } from "../../app/commands/framework";
+import { CliInputError } from "../../app/commands/errors";
+import type {
+  PromptResetInput,
+  PromptSetInput,
+  PromptShowInput,
+} from "../../app/commands/inputs";
 
 export const DEFAULT_SYSTEM_PROMPT = `You are an expert AI software engineer and system architect. You provide helpful, correct, and highly optimized code implementations.
 Guidelines:
@@ -10,7 +16,11 @@ Guidelines:
 - Formatting: Always format output in clear Markdown with appropriate syntax highlighting.
 - Output Policy: Respond directly in plain Markdown. Never start or wrap your responses with XML/HTML tags like <system-reminder>, unless explicitly instructed to do so.`;
 
-export async function runPromptShow(ctx: AppContext): Promise<number> {
+export async function runPromptShow(
+  _input: PromptShowInput,
+  ctx: AppContext,
+  _execution: CommandExecution,
+): Promise<number> {
   const config = ctx.config;
   const prompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
   const isCustom = !!config.systemPrompt;
@@ -29,53 +39,37 @@ export async function runPromptShow(ctx: AppContext): Promise<number> {
 }
 
 export async function runPromptSet(
-  args: string[],
+  input: PromptSetInput,
   ctx: AppContext,
+  _execution: CommandExecution,
 ): Promise<number> {
   const config = ctx.config;
   let promptText = "";
 
-  const file = parseFlag(args, "--file");
+  const file = input.file;
   if (file) {
     const promptFile = Bun.file(file);
     if (!(await promptFile.exists())) {
-      console.error(`Error: File not found at "${file}"`);
-      return 1;
+      throw new CliInputError(`File not found at "${file}"`);
     }
     promptText = (await promptFile.text()).trim();
   } else {
-    // Collect all positional arguments after 'prompt' and 'set'
-    const promptIdx = args.indexOf("prompt");
-    const setIdx = args.indexOf("set");
-    const startIdx = Math.max(promptIdx + 1, setIdx + 1);
-
-    const restArgs =
-      startIdx > 0
-        ? args.slice(startIdx).filter((a) => !a.startsWith("--"))
-        : [];
-
-    if (restArgs.length > 0) {
-      promptText = restArgs.join(" ").trim();
+    if (input.text.length > 0) {
+      promptText = input.text.join(" ").trim();
     } else {
       // Read from stdin if not a TTY
       if (!process.stdin.isTTY) {
         promptText = await readStdin();
       } else {
-        console.error(
-          "Error: Please provide a prompt string, specify --file <path>, or pipe to stdin.",
+        throw new CliInputError(
+          "Provide prompt text, specify --file <path>, or pipe text to stdin.",
         );
-        console.error(
-          'Usage: local-base prompt set "Your custom instructions"',
-        );
-        console.error("       local-base prompt set --file path/to/prompt.txt");
-        return 1;
       }
     }
   }
 
   if (!promptText) {
-    console.error("Error: Custom system prompt cannot be empty.");
-    return 1;
+    throw new CliInputError("Custom system prompt cannot be empty.");
   }
 
   config.systemPrompt = promptText;
@@ -84,7 +78,11 @@ export async function runPromptSet(
   return 0;
 }
 
-export async function runPromptReset(ctx: AppContext): Promise<number> {
+export async function runPromptReset(
+  _input: PromptResetInput,
+  ctx: AppContext,
+  _execution: CommandExecution,
+): Promise<number> {
   const config = ctx.config;
   config.systemPrompt = "";
   saveConfig(ctx.database, config);

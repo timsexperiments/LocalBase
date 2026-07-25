@@ -8,16 +8,18 @@ import {
 } from "../../../catalog";
 import {
   createApiKey,
-  defaultRoot,
   loadApiKeys,
   loadConfig,
   saveConfig,
   type LocalBaseConfig,
 } from "../../../manager";
-import type { AppContext } from "../../../context";
+import {
+  parseEnvironmentOverrides,
+  resolveEffectiveRoot,
+  type AppContext,
+} from "../../../context";
 import { detectSpecs } from "../../../system";
 import { validateModelList } from "../../models/model-selection";
-import { parseBool, parseFlag, parseList, toInt } from "../../../utils/args";
 import {
   confirmPrompt,
   multiSelectPrompt,
@@ -28,6 +30,9 @@ import {
 import { loadTomlOverrides } from "../../../utils/toml";
 import { parseParallelSlots } from "../parallel";
 import { z } from "zod";
+import { CliInputError } from "../../app/commands/errors";
+import type { CommandExecution } from "../../app/commands/framework";
+import type { ConfigureInput } from "../../app/commands/inputs";
 
 export const PARALLEL_SLOTS_PROMPT =
   "Parallel request slots count (type 'auto' for dynamic auto-allocation, or an integer like 1, 2, 4)";
@@ -39,52 +44,6 @@ const continueConfigSchema = z
     embeddingsProvider: z.unknown().optional(),
   })
   .passthrough();
-
-type ConfigureFlags = {
-  all: boolean;
-  defaults: boolean;
-  configPath?: string;
-  root?: string;
-  host?: string;
-  port?: string;
-  ctxSize?: string;
-  parallel?: string;
-  sttHost?: string;
-  sttPort?: string;
-  startupOnBoot?: string;
-  llmModels?: string;
-  sttModels?: string;
-  imageModels?: string;
-  activeLlm?: string;
-  activeStt?: string;
-  activeImage?: string;
-  hfToken?: string;
-  createKey?: string;
-};
-
-function parseConfigureFlags(args: string[]): ConfigureFlags {
-  return {
-    all: args.includes("--all"),
-    defaults: args.includes("--defaults"),
-    configPath: parseFlag(args, "--config"),
-    root: parseFlag(args, "--root"),
-    host: parseFlag(args, "--host"),
-    port: parseFlag(args, "--port"),
-    ctxSize: parseFlag(args, "--ctx-size"),
-    parallel: parseFlag(args, "--parallel"),
-    sttHost: parseFlag(args, "--stt-host"),
-    sttPort: parseFlag(args, "--stt-port"),
-    startupOnBoot: parseFlag(args, "--startup-on-boot"),
-    llmModels: parseFlag(args, "--llm-models"),
-    sttModels: parseFlag(args, "--stt-models"),
-    imageModels: parseFlag(args, "--image-models"),
-    activeLlm: parseFlag(args, "--active-llm"),
-    activeStt: parseFlag(args, "--active-stt"),
-    activeImage: parseFlag(args, "--active-image"),
-    hfToken: parseFlag(args, "--hf-token"),
-    createKey: parseFlag(args, "--create-key"),
-  };
-}
 
 function continueField(value: unknown, field: string): string {
   if (!value || typeof value !== "object" || Array.isArray(value)) return "";
@@ -377,7 +336,7 @@ async function interactiveConfigureSelective(
 
   if (useAll)
     console.log(
-      "\nTip: run `local-base catalog --kind <kind>` for full model details before final install.",
+      "\nTip: run `local-base models catalog --kind <kind>` for full model details before final install.",
     );
   return config;
 }
@@ -523,28 +482,27 @@ export async function syncContinueConfig(
 }
 
 export async function runConfigure(
-  args: string[],
+  flags: ConfigureInput,
   ctx: AppContext,
+  execution: CommandExecution,
 ): Promise<number> {
   const specs = ctx.specs;
-  const flags = parseConfigureFlags(args);
   const rawToml = flags.configPath
     ? await loadTomlOverrides(flags.configPath)
     : {};
-  const root = flags.root ?? rawToml.root;
-  const hasConfig = await Bun.file(
-    root ? `${root}/local-base.db` : `${defaultRoot()}/local-base.db`,
-  ).exists();
-
-  let config = root
-    ? loadConfig(ctx.database, root, specs.gpuVramGb)
-    : ctx.config;
-  const llmFromFlags = validateModelList(parseList(flags.llmModels), "llm");
-  const sttFromFlags = validateModelList(parseList(flags.sttModels), "stt");
-  const imageFromFlags = validateModelList(
-    parseList(flags.imageModels),
-    "image",
+  const environment = parseEnvironmentOverrides(process.env);
+  const configuredRoot = rawToml.root ?? ctx.config.root;
+  const root = resolveEffectiveRoot(
+    execution.global.root,
+    environment.root,
+    configuredRoot,
   );
+  const hasConfig = await Bun.file(`${root}/local-base.db`).exists();
+
+  let config = loadConfig(ctx.database, root, specs.gpuVramGb);
+  const llmFromFlags = validateModelList(flags.llmModels, "llm");
+  const sttFromFlags = validateModelList(flags.sttModels, "stt");
+  const imageFromFlags = validateModelList(flags.imageModels, "image");
   const llmFromToml = validateModelList(rawToml.selectedLlmModels, "llm");
   const sttFromToml = validateModelList(rawToml.selectedSttModels, "stt");
   const imageFromToml = validateModelList(rawToml.selectedImageModels, "image");
@@ -554,13 +512,37 @@ export async function runConfigure(
     parallelInput === undefined
       ? config.parallel
       : parseParallelSlots(parallelInput);
+  const selectedLlmModels =
+    llmFromFlags ?? llmFromToml ?? config.selectedLlmModels;
+  const selectedSttModels =
+    sttFromFlags ?? sttFromToml ?? config.selectedSttModels;
+  const selectedImageModels =
+    imageFromFlags ?? imageFromToml ?? config.selectedImageModels;
+  const activeLlmModel =
+    flags.activeLlm ??
+    rawToml.activeLlmModel ??
+    (selectedLlmModels.includes(config.activeLlmModel)
+      ? config.activeLlmModel
+      : selectedLlmModels[0]);
+  const activeSttModel =
+    flags.activeStt ??
+    rawToml.activeSttModel ??
+    (selectedSttModels.includes(config.activeSttModel)
+      ? config.activeSttModel
+      : (selectedSttModels[0] ?? ""));
+  const activeImageModel =
+    flags.activeImage ??
+    rawToml.activeImageModel ??
+    (selectedImageModels.includes(config.activeImageModel)
+      ? config.activeImageModel
+      : (selectedImageModels[0] ?? ""));
 
   const locked = new Set<keyof LocalBaseConfig>();
   const maybeLock = (key: keyof LocalBaseConfig, value: unknown): void => {
     if (value !== undefined) locked.add(key);
   };
 
-  maybeLock("root", flags.root ?? rawToml.root);
+  maybeLock("root", execution.global.root ?? environment.root ?? rawToml.root);
   maybeLock("host", flags.host ?? rawToml.host);
   maybeLock("port", flags.port ?? rawToml.port);
   maybeLock("ctxSize", flags.ctxSize ?? rawToml.ctxSize);
@@ -578,27 +560,21 @@ export async function runConfigure(
 
   config = {
     ...config,
-    root: flags.root ?? rawToml.root ?? config.root,
+    root,
     host: flags.host ?? rawToml.host ?? config.host,
-    port: toInt(flags.port, rawToml.port ?? config.port),
-    ctxSize: toInt(flags.ctxSize, rawToml.ctxSize ?? config.ctxSize),
+    port: flags.port ?? rawToml.port ?? config.port,
+    ctxSize: flags.ctxSize ?? rawToml.ctxSize ?? config.ctxSize,
     parallel,
     sttHost: flags.sttHost ?? rawToml.sttHost ?? config.sttHost,
-    sttPort: toInt(flags.sttPort, rawToml.sttPort ?? config.sttPort),
-    startupOnBoot: parseBool(
-      flags.startupOnBoot,
-      rawToml.startupOnBoot ?? config.startupOnBoot,
-    ),
-    selectedLlmModels: llmFromFlags ?? llmFromToml ?? config.selectedLlmModels,
-    selectedSttModels: sttFromFlags ?? sttFromToml ?? config.selectedSttModels,
-    selectedImageModels:
-      imageFromFlags ?? imageFromToml ?? config.selectedImageModels,
-    activeLlmModel:
-      flags.activeLlm ?? rawToml.activeLlmModel ?? config.activeLlmModel,
-    activeSttModel:
-      flags.activeStt ?? rawToml.activeSttModel ?? config.activeSttModel,
-    activeImageModel:
-      flags.activeImage ?? rawToml.activeImageModel ?? config.activeImageModel,
+    sttPort: flags.sttPort ?? rawToml.sttPort ?? config.sttPort,
+    startupOnBoot:
+      flags.startupOnBoot ?? rawToml.startupOnBoot ?? config.startupOnBoot,
+    selectedLlmModels,
+    selectedSttModels,
+    selectedImageModels,
+    activeLlmModel,
+    activeSttModel,
+    activeImageModel,
     hfToken:
       flags.hfToken ??
       rawToml.hfToken ??
@@ -616,8 +592,19 @@ export async function runConfigure(
     flags.defaults ||
     flags.configPath !== undefined ||
     locked.size > 0;
+  if (
+    execution.global.nonInteractive &&
+    !hasConfig &&
+    !flags.defaults &&
+    !flags.configPath
+  ) {
+    throw new CliInputError(
+      "Initial non-interactive configuration requires --defaults or --config.",
+    );
+  }
   const shouldAsk =
-    flags.all || (!flags.defaults && (!hasConfig || !explicitMode));
+    !execution.global.nonInteractive &&
+    (flags.all || (!flags.defaults && (!hasConfig || !explicitMode)));
   if (shouldAsk)
     config = await interactiveConfigureSelective(
       config,
@@ -651,9 +638,8 @@ export async function runConfigure(
   const hasAnyKeys = loadApiKeys(ctx.database, config).some(
     (k) => !k.revokedAt,
   );
-  const createKeyFlag = flags.createKey;
-  let createFirstKey = parseBool(createKeyFlag, true);
-  if (createKeyFlag === undefined && shouldAsk && !hasAnyKeys) {
+  let createFirstKey = flags.createKey ?? true;
+  if (flags.createKey === undefined && shouldAsk && !hasAnyKeys) {
     createFirstKey = await confirmPrompt(
       "No API keys found. Create one now",
       true,

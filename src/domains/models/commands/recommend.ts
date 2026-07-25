@@ -3,12 +3,17 @@ import {
   recommendedSttForVram,
   recommendedImageForVram,
 } from "../../../catalog";
-import { parseFlag, parseKind, toInt } from "../../../utils/args";
 import type { AppContext } from "../../../context";
+import type { CommandExecution } from "../../app/commands/framework";
+import type { RecommendInput } from "../../app/commands/inputs";
 
-export function runRecommend(args: string[], ctx: AppContext): number {
-  const kind = parseKind(parseFlag(args, "--kind")) ?? "llm";
-  const vram = toInt(parseFlag(args, "--vram"), ctx.specs.gpuVramGb);
+export function runRecommend(
+  input: RecommendInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+): number {
+  const kind = input.kind ?? "llm";
+  const vram = input.vram ?? ctx.specs.gpuVramGb;
 
   let picks = [];
   if (kind === "llm") {
@@ -19,11 +24,11 @@ export function runRecommend(args: string[], ctx: AppContext): number {
     picks = recommendedImageForVram(vram);
   }
 
-  console.log(
+  execution.output.info(
     `Recommended ${kind.toUpperCase()} models for <= ${vram}GB VRAM:`,
   );
   for (const model of picks.slice(0, 6)) {
-    console.log(
+    execution.output.info(
       `- ${model.modelId} (${model.storageGb.toFixed(2)} GB, features=${model.features.join("/")})`,
     );
   }

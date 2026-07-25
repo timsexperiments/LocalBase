@@ -4,69 +4,75 @@ import {
   revokeApiKey,
   rotateApiKey,
 } from "../../../../manager";
-import { parseFlag, toInt } from "../../../../utils/args";
 import type { AppContext } from "../../../../context";
+import type { CommandExecution } from "../../../app/commands/framework";
+import type {
+  KeyIdInput,
+  KeysCreateInput,
+  KeysListInput,
+} from "../../../app/commands/inputs";
 
-export function runKeys(args: string[], ctx: AppContext): number {
-  const sub = args[1] ?? "list";
-
-  if (sub === "list") {
-    const keys = loadApiKeys(ctx.database, ctx.config);
-    if (keys.length === 0) {
-      console.log(
-        "No API keys found. Create one with: local-base keys create --name default",
-      );
-      return 0;
-    }
-    for (const key of keys) {
-      console.log(
-        `${key.id} | ${key.name} | prefix=${key.prefix} | created=${key.createdAt} | rotated=${key.lastRotatedAt}${key.expiresAt ? ` | expires=${key.expiresAt}` : ""}${key.revokedAt ? ` | revoked=${key.revokedAt}` : ""}`,
-      );
-    }
-    return 0;
-  }
-
-  if (sub === "create") {
-    const name = parseFlag(args, "--name") ?? "manual";
-    const expiresDays = toInt(parseFlag(args, "--expires-days"), 0);
-    const { record, rawKey } = createApiKey(
-      ctx.database,
-      ctx.config,
-      name,
-      expiresDays > 0 ? expiresDays : undefined,
+export function runKeysList(
+  _input: KeysListInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+): number {
+  const keys = loadApiKeys(ctx.database, ctx.config);
+  if (keys.length === 0) {
+    execution.output.info(
+      "No API keys found. Create one with: local-base keys create --name default",
     );
-    console.log(
-      `Created key id=${record.id} name=${record.name} prefix=${record.prefix}`,
+    return 0;
+  }
+  for (const key of keys) {
+    execution.output.info(
+      `${key.id} | ${key.name} | prefix=${key.prefix} | created=${key.createdAt} | rotated=${key.lastRotatedAt}${key.expiresAt ? ` | expires=${key.expiresAt}` : ""}${key.revokedAt ? ` | revoked=${key.revokedAt}` : ""}`,
     );
-    console.log(`secret=${rawKey}`);
-    console.log("Store this secret now. It is not shown again.");
-    return 0;
   }
+  return 0;
+}
 
-  if (sub === "revoke") {
-    const id = args[2];
-    if (!id) {
-      console.error("keys revoke requires <key_id>");
-      return 2;
-    }
-    const record = revokeApiKey(ctx.database, ctx.config, id);
-    console.log(`Revoked key ${record.id} (${record.name})`);
-    return 0;
-  }
+export function runKeysCreate(
+  input: KeysCreateInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+): number {
+  const { record, rawKey } = createApiKey(
+    ctx.database,
+    ctx.config,
+    input.name,
+    input.expiresDays,
+  );
+  execution.output.info(
+    `Created key id=${record.id} name=${record.name} prefix=${record.prefix}`,
+  );
+  execution.output.info(`secret=${rawKey}`);
+  execution.output.info("Store this secret now. It is not shown again.");
+  return 0;
+}
 
-  if (sub === "rotate") {
-    const id = args[2];
-    if (!id) {
-      console.error("keys rotate requires <key_id>");
-      return 2;
-    }
-    const { record, rawKey } = rotateApiKey(ctx.database, ctx.config, id);
-    console.log(`Rotated key ${record.id} (${record.name})`);
-    console.log(`new_secret=${rawKey}`);
-    console.log("Store this secret now. It is not shown again.");
-    return 0;
-  }
+export function runKeysRevoke(
+  input: KeyIdInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+): number {
+  const record = revokeApiKey(ctx.database, ctx.config, input.keyId);
+  execution.output.info(`Revoked key ${record.id} (${record.name})`);
+  return 0;
+}
 
-  console.error(`Unknown keys subcommand: ${sub}`);
-  return 2;
+export function runKeysRotate(
+  input: KeyIdInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+): number {
+  const { record, rawKey } = rotateApiKey(
+    ctx.database,
+    ctx.config,
+    input.keyId,
+  );
+  execution.output.info(`Rotated key ${record.id} (${record.name})`);
+  execution.output.info(`new_secret=${rawKey}`);
+  execution.output.info("Store this secret now. It is not shown again.");
+  return 0;
 }
