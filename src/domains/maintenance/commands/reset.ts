@@ -2,17 +2,17 @@ import { resetDatabase } from "../../../manager";
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ResetInput } from "../../app/commands/inputs";
+import { CliInputError } from "../../app/commands/errors";
 
 export async function runReset(
   input: ResetInput,
   ctx: AppContext,
   execution: CommandExecution,
-): Promise<number> {
+): Promise<{ data: { reset: true; root: string } }> {
   if (!input.yes) {
-    execution.output.error(
+    throw new CliInputError(
       "reset is destructive. Re-run with --yes to confirm.",
     );
-    return 2;
   }
   const fresh = await resetDatabase(
     ctx.database,
@@ -21,5 +21,5 @@ export async function runReset(
   );
   execution.output.info(`Database reset complete at ${fresh.root}`);
   execution.output.info("Initialized default configuration.");
-  return 0;
+  return { data: { reset: true, root: fresh.root } };
 }

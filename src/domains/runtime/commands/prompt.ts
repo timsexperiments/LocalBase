@@ -19,30 +19,30 @@ Guidelines:
 export async function runPromptShow(
   _input: PromptShowInput,
   ctx: AppContext,
-  _execution: CommandExecution,
-): Promise<number> {
+  execution: CommandExecution,
+): Promise<{ data: { prompt: string; source: "custom" | "default" } }> {
   const config = ctx.config;
   const prompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
   const isCustom = !!config.systemPrompt;
 
-  console.log(
+  execution.output.info(
     `\nActive System Prompt (${isCustom ? "Custom" : "Default fallback"}):`,
   );
-  console.log(
+  execution.output.info(
     "--------------------------------------------------------------------------------",
   );
-  console.log(prompt);
-  console.log(
+  execution.output.info(prompt);
+  execution.output.info(
     "--------------------------------------------------------------------------------",
   );
-  return 0;
+  return { data: { prompt, source: isCustom ? "custom" : "default" } };
 }
 
 export async function runPromptSet(
   input: PromptSetInput,
   ctx: AppContext,
-  _execution: CommandExecution,
-): Promise<number> {
+  execution: CommandExecution,
+): Promise<{ data: { updated: true; configured: boolean } }> {
   const config = ctx.config;
   let promptText = "";
 
@@ -74,22 +74,22 @@ export async function runPromptSet(
 
   config.systemPrompt = promptText;
   saveConfig(ctx.database, config);
-  console.log("\n✅ Custom system prompt updated successfully.");
-  return 0;
+  execution.output.info("\n✅ Custom system prompt updated successfully.");
+  return { data: { updated: true, configured: true } };
 }
 
 export async function runPromptReset(
   _input: PromptResetInput,
   ctx: AppContext,
-  _execution: CommandExecution,
-): Promise<number> {
+  execution: CommandExecution,
+): Promise<{ data: { updated: true; configured: boolean } }> {
   const config = ctx.config;
   config.systemPrompt = "";
   saveConfig(ctx.database, config);
-  console.log(
+  execution.output.info(
     "\n✅ Custom system prompt reset back to default assistant persona.",
   );
-  return 0;
+  return { data: { updated: true, configured: false } };
 }
 
 async function readStdin(): Promise<string> {

@@ -279,6 +279,7 @@ test(
           "run",
           "src/cli.ts",
           "serve",
+          "--json",
           "--root",
           root,
           "--host",
@@ -355,6 +356,22 @@ test(
       expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(
         join(config.llmModelsDir, `${SWITCHED_MODEL}.gguf`),
       );
+
+      await stopProcess(gateway);
+      expect(await gateway.exited).toBe(0);
+      const events = (await gatewayStdout)
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { event: string });
+      expect(events).toEqual([
+        expect.objectContaining({
+          event: "started",
+          enabled: { llm: true, stt: false, image: false },
+        }),
+        { event: "stopped", exitCode: 0 },
+      ]);
+      expect(await gatewayStderr).toContain("Unified API wrapper started.");
     } finally {
       if (gateway) await stopProcess(gateway);
       await Promise.all([gatewayStdout, gatewayStderr].filter(Boolean));

@@ -15,7 +15,8 @@ import {
   type CittyCommand,
   type Command,
 } from "./command-tree";
-import { createCommandOutput } from "./output";
+import { createCommandOutput, type CommandOutput } from "./output";
+import type { CommandResult } from "./output";
 import { CliInputError, formatZodError, toCliInputError } from "./errors";
 
 export { CliInputError } from "./errors";
@@ -29,13 +30,19 @@ type ResolvedCommand =
       global: GlobalOptions;
       parent: CittyCommand;
     }
-  | { kind: "help"; command: CittyCommand; parent?: CittyCommand }
-  | { kind: "version" }
+  | {
+      kind: "help";
+      command: CittyCommand;
+      parent?: CittyCommand;
+      global: GlobalOptions;
+    }
+  | { kind: "version"; global: GlobalOptions }
   | {
       kind: "error";
       message: string;
       command?: CittyCommand;
       parent?: CittyCommand;
+      global?: GlobalOptions;
     };
 
 function camelCase(value: string): string {
@@ -125,6 +132,10 @@ function splitGlobalOptions(rawArgs: string[]): {
       globalInput.push(token);
       continue;
     }
+    if (token === "--json" || token.startsWith("--json=")) {
+      globalInput.push(token);
+      continue;
+    }
     if (token === "--root" || token.startsWith("--root=")) {
       globalInput.push(token);
       if (token === "--root" && index + 1 < rawArgs.length) {
@@ -171,6 +182,14 @@ function hasHelpFlag(args: string[]): boolean {
   return false;
 }
 
+function hasExplicitJsonFlag(args: string[]): boolean {
+  for (const token of args) {
+    if (token === "--") return false;
+    if (token === "--json") return true;
+  }
+  return false;
+}
+
 function parentFor(command: Command): CittyCommand {
   return command.path.length === 2
     ? groupForPath(command.path.slice(0, -1))!
@@ -180,10 +199,16 @@ function parentFor(command: Command): CittyCommand {
 export async function resolveCli(rawArgs: string[]): Promise<ResolvedCommand> {
   let usageCommand: CittyCommand = rootCommand;
   let usageParent: CittyCommand | undefined;
+  const explicitJson = hasExplicitJsonFlag(rawArgs);
+  let global: GlobalOptions | undefined = explicitJson
+    ? { json: true, nonInteractive: true }
+    : undefined;
   try {
-    const { args, global } = splitGlobalOptions(rawArgs);
+    const split = splitGlobalOptions(rawArgs);
+    const { args } = split;
+    global = split.global;
     if (args.length === 1 && ["--version", "-v"].includes(args[0])) {
-      return { kind: "version" };
+      return { kind: "version", global };
     }
     const { path, consumed } = findPath(args);
     const command = commandForPath(path);
@@ -194,20 +219,24 @@ export async function resolveCli(rawArgs: string[]): Promise<ResolvedCommand> {
           kind: "help",
           command: command.citty,
           parent: parentFor(command),
+          global,
         };
       }
-      if (group) return { kind: "help", command: group };
-      if (path.length === 0) return { kind: "help", command: rootCommand };
+      if (group) return { kind: "help", command: group, global };
+      if (path.length === 0)
+        return { kind: "help", command: rootCommand, global };
     }
     if (group) {
       const groupArgs = args.slice(consumed);
-      if (groupArgs.length === 0) return { kind: "help", command: group };
+      if (groupArgs.length === 0)
+        return { kind: "help", command: group, global };
       usageCommand = group;
       validateOptionSyntax(groupArgs, {});
       return {
         kind: "error",
         message: `Unknown command: ${groupArgs[0]}`,
         command: group,
+        global,
       };
     }
     const defaultCommand =
@@ -220,6 +249,7 @@ export async function resolveCli(rawArgs: string[]): Promise<ResolvedCommand> {
         kind: "error",
         message: `Unknown command: ${args[consumed] ?? args[0] ?? ""}`,
         command: rootCommand,
+        global,
       };
     }
     usageCommand = resolved.citty;
@@ -244,6 +274,7 @@ export async function resolveCli(rawArgs: string[]): Promise<ResolvedCommand> {
         (error instanceof Error ? error.message : String(error)),
       command: usageCommand,
       parent: usageParent,
+      global,
     };
   }
 }
@@ -293,9 +324,11 @@ export async function executeCommand(
   input: unknown,
   global: GlobalOptions,
   context: AppContext,
-): Promise<number> {
-  return await command.run(input, context, {
+  output: CommandOutput = createCommandOutput(global.json),
+): Promise<CommandResult> {
+  const result = await command.run(input, context, {
     global,
-    output: createCommandOutput(),
+    output,
   });
+  return { ...result, data: command.resultSchema.parse(result.data) };
 }

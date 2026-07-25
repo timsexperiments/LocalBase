@@ -6,6 +6,7 @@ import {
   startGatewayFixture,
   type GatewayFixture,
 } from "../../test/gateway-fixture";
+import { httpBaseUrl } from "./commands/serve";
 
 type ValidationCase = {
   name: string;
@@ -13,6 +14,12 @@ type ValidationCase = {
   init: RequestInit;
   expectedPath: string;
 };
+
+test("formats IPv4, hostnames, and IPv6 literals as HTTP base URLs", () => {
+  expect(httpBaseUrl("127.0.0.1", 2273)).toBe("http://127.0.0.1:2273");
+  expect(httpBaseUrl("localhost", 2273)).toBe("http://localhost:2273");
+  expect(httpBaseUrl("::1", 2273)).toBe("http://[::1]:2273");
+});
 
 describe("API gateway integration", () => {
   let gateway: GatewayFixture;
