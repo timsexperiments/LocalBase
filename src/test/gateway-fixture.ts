@@ -297,7 +297,21 @@ function startMockUpstream(
                 closed = true;
                 request.signal.removeEventListener("abort", abort);
                 controller.enqueue(
-                  new TextEncoder().encode("data: [DONE]\n\n"),
+                  new TextEncoder().encode(
+                    `data: ${JSON.stringify({
+                      id: "chatcmpl-controlled",
+                      object: "chat.completion.chunk",
+                      created: 0,
+                      model: LLM_MODEL,
+                      choices: [
+                        {
+                          index: 0,
+                          delta: {},
+                          finish_reason: "stop",
+                        },
+                      ],
+                    })}\n\ndata: [DONE]\n\n`,
+                  ),
                 );
                 controller.close();
               },
@@ -426,7 +440,14 @@ function startMockUpstream(
       }
       if (mode === "post-done-stream") {
         return new Response(
-          `data: [DONE]\n\ndata: ${JSON.stringify({
+          `data: ${JSON.stringify({
+            id: "chatcmpl-before-done",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: null,
+          })}\n\ndata: [DONE]\n\ndata: ${JSON.stringify({
             id: "chatcmpl-after-done",
             object: "chat.completion.chunk",
             created: 0,
@@ -443,9 +464,17 @@ function startMockUpstream(
         );
       }
       if (mode === "duplicate-done-stream") {
-        return new Response("data: [DONE]\n\ndata: [DONE]\n\n", {
-          headers: { "content-type": "text/event-stream" },
-        });
+        return new Response(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-before-duplicate-done",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: null,
+          })}\n\ndata: [DONE]\n\ndata: [DONE]\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
       }
       if (mode === "invalid-media-type-stream") {
         return new Response(
@@ -484,6 +513,67 @@ function startMockUpstream(
           { headers: { "content-type": "text/event-stream" } },
         );
       }
+      if (mode === "missing-finish-stream") {
+        return new Response(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-missing-finish",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "partial" },
+                finish_reason: null,
+              },
+            ],
+            usage: null,
+          })}\n\ndata: [DONE]\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      if (mode === "unterminated-done-stream") {
+        return new Response(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-unterminated-done",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: null,
+          })}\n\ndata: [DONE]`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      if (
+        mode === "backend-error-stream" ||
+        mode === "backend-string-error-stream"
+      ) {
+        return new Response(
+          `data: ${JSON.stringify({
+            error: {
+              message: "Backend rejected the request.",
+              type: "server_error",
+              param: null,
+              code: mode === "backend-error-stream" ? 500 : "backend_error",
+            },
+          })}\n\ndata: ${JSON.stringify({
+            id: "chatcmpl-after-error",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              {
+                index: 0,
+                delta: { content: "must not escape" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: null,
+          })}\n\ndata: [DONE]\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
       if (mode === "llama-wire-stream") {
         const chunks = [
           {
@@ -510,8 +600,29 @@ function startMockUpstream(
             choices: [
               {
                 index: 0,
-                delta: { reasoning_content: "Considering tools." },
+                delta: {
+                  reasoning_content: "Considering tools.",
+                  content: "weather",
+                },
                 finish_reason: null,
+                logprobs: {
+                  content: [
+                    {
+                      id: 1234,
+                      token: "weather",
+                      bytes: [119, 101, 97, 116, 104, 101, 114],
+                      logprob: -0.25,
+                      top_logprobs: [
+                        {
+                          id: 5678,
+                          token: "forecast",
+                          bytes: [102, 111, 114, 101, 99, 97, 115, 116],
+                          logprob: -1.5,
+                        },
+                      ],
+                    },
+                  ],
+                },
               },
             ],
             usage: null,
@@ -569,6 +680,15 @@ function startMockUpstream(
             model: LLM_MODEL,
             system_fingerprint: "b9741",
             choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+            usage: null,
+          },
+          {
+            id: "chatcmpl-llama-wire",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            system_fingerprint: "b9741",
+            choices: [],
             usage: {
               prompt_tokens: 3,
               completion_tokens: 2,
@@ -629,6 +749,14 @@ function startMockUpstream(
             created: 0,
             model: LLM_MODEL,
             choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: null,
+          },
+          {
+            id: "chatcmpl-stream",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [],
             usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
           },
         ];

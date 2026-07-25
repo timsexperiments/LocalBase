@@ -297,7 +297,9 @@ const functionToolSchema = z
   })
   .strict();
 
-const modelIdSchema = z.string().trim().min(1, "model must not be empty");
+const modelIdSchema = z
+  .string()
+  .refine((value) => value.trim().length > 0, "model must not be empty");
 
 const textContentPartSchema = z
   .object({ type: z.literal("text"), text: z.string() })
@@ -540,16 +542,24 @@ const chatCompletionStreamDeltaSchema = z
   })
   .strict();
 
-const tokenLogprobSchema: z.ZodType = z.lazy(() =>
-  z
-    .object({
-      token: z.string(),
-      bytes: z.array(z.number().int().min(0).max(255)).nullable(),
-      logprob: z.number(),
-      top_logprobs: z.array(tokenLogprobSchema).optional(),
-    })
-    .strict(),
-);
+const topTokenLogprobSchema = z
+  .object({
+    id: z.number().int(),
+    token: z.string(),
+    bytes: z.array(z.number().int().min(0).max(255)),
+    logprob: z.number(),
+  })
+  .strict();
+
+const tokenLogprobSchema = z
+  .object({
+    id: z.number().int(),
+    token: z.string(),
+    bytes: z.array(z.number().int().min(0).max(255)),
+    logprob: z.number(),
+    top_logprobs: z.array(topTokenLogprobSchema),
+  })
+  .strict();
 
 const chatCompletionStreamLogprobsSchema = z
   .object({
@@ -609,44 +619,48 @@ const llamaPromptProgressSchema = z
   })
   .strict();
 
-const chatCompletionStreamEventSchema = z.union([
-  z
-    .object({
-      id: z.string(),
-      object: z.literal("chat.completion.chunk"),
-      created: z.number(),
-      model: z.string(),
-      choices: z.array(
-        z
-          .object({
-            index: z.number(),
-            delta: chatCompletionStreamDeltaSchema,
-            finish_reason: z
-              .enum(["stop", "length", "tool_calls", "content_filter"])
-              .nullable(),
-            logprobs: chatCompletionStreamLogprobsSchema.nullable().optional(),
-          })
-          .strict(),
-      ),
-      usage: chatCompletionUsageSchema.nullable().optional(),
-      system_fingerprint: z.string().nullable().optional(),
-      service_tier: z.string().nullable().optional(),
-      timings: llamaTimingsSchema.optional(),
-      prompt_progress: llamaPromptProgressSchema.optional(),
-    })
-    .strict(),
-  z
-    .object({
-      error: z
+const chatCompletionStreamChunkSchema = z
+  .object({
+    id: z.string(),
+    object: z.literal("chat.completion.chunk"),
+    created: z.number(),
+    model: z.string(),
+    choices: z.array(
+      z
         .object({
-          message: z.string(),
-          type: z.string(),
-          param: z.string().nullable().optional(),
-          code: z.string().nullable().optional(),
+          index: z.number(),
+          delta: chatCompletionStreamDeltaSchema,
+          finish_reason: z
+            .enum(["stop", "length", "tool_calls", "content_filter"])
+            .nullable(),
+          logprobs: chatCompletionStreamLogprobsSchema.nullable().optional(),
         })
         .strict(),
-    })
-    .strict(),
+    ),
+    usage: chatCompletionUsageSchema.nullable().optional(),
+    system_fingerprint: z.string().nullable().optional(),
+    service_tier: z.string().nullable().optional(),
+    timings: llamaTimingsSchema.optional(),
+    prompt_progress: llamaPromptProgressSchema.optional(),
+  })
+  .strict();
+
+const chatCompletionStreamErrorSchema = z
+  .object({
+    error: z
+      .object({
+        message: z.string(),
+        type: z.string(),
+        param: z.string().nullable().optional(),
+        code: z.union([z.string(), z.number()]).nullable().optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const chatCompletionStreamEventSchema = z.union([
+  chatCompletionStreamChunkSchema,
+  chatCompletionStreamErrorSchema,
 ]);
 
 const embeddingsResponseSchema = z
@@ -863,6 +877,7 @@ function validateEventStream(
   let buffered = "";
   let doneEvent: string | undefined;
   let failed = false;
+  let sawTerminalFinish = false;
 
   const validationFailure = `data: ${JSON.stringify({
     error: {
@@ -887,6 +902,7 @@ function validateEventStream(
     controller: TransformStreamDefaultController<Uint8Array>,
     event: string,
     terminateOnFailure: boolean,
+    framed: boolean,
   ): boolean => {
     const hasFields = event.split(/\r\n|\r|\n/).some((line) => line.length > 0);
     if (!hasFields) {
@@ -898,13 +914,28 @@ function validateEventStream(
 
     const data = eventData(event);
     if (data === "[DONE]") {
+      if (!framed || !sawTerminalFinish) {
+        return fail(controller, terminateOnFailure);
+      }
       doneEvent = event;
       return true;
     }
     if (data !== undefined) {
       try {
-        if (!schema.safeParse(JSON.parse(data)).success) {
+        const parsed = schema.safeParse(JSON.parse(data));
+        if (!parsed.success) {
           return fail(controller, terminateOnFailure);
+        }
+        const value = parsed.data as
+          | z.infer<typeof chatCompletionStreamChunkSchema>
+          | z.infer<typeof chatCompletionStreamErrorSchema>;
+        if ("error" in value) {
+          controller.enqueue(encoder.encode(event));
+          controller.terminate();
+          return false;
+        }
+        if (value.choices.some((choice) => choice.finish_reason !== null)) {
+          sawTerminalFinish = true;
         }
       } catch {
         return fail(controller, terminateOnFailure);
@@ -923,13 +954,15 @@ function validateEventStream(
           const match = boundary.exec(buffered);
           if (!match || match.index === undefined) return;
           const end = match.index + match[0].length;
-          if (!flushEvent(controller, buffered.slice(0, end), true)) return;
+          if (!flushEvent(controller, buffered.slice(0, end), true, true)) {
+            return;
+          }
           buffered = buffered.slice(end);
         }
       },
       flush(controller) {
         buffered += decoder.decode();
-        if (buffered && !flushEvent(controller, buffered, false)) return;
+        if (buffered && !flushEvent(controller, buffered, false, false)) return;
         if (failed) return;
         if (!doneEvent) {
           fail(controller, false);

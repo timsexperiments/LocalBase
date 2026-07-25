@@ -193,6 +193,54 @@ describe("Vercel AI SDK language conformance", () => {
     ]);
   });
 
+  test("rejects a completed stream without a terminal finish reason", async () => {
+    const errors: unknown[] = [];
+    const result = streamText({
+      model: createLocalBaseAiSdkProvider(gateway).chatModel(PRIMARY_MODEL),
+      prompt: "Reject a stream without a finish reason.",
+      headers: { "x-test-upstream": "missing-finish-stream" },
+      onError: ({ error }) => {
+        errors.push(error);
+      },
+    });
+
+    let received = "";
+    for await (const text of result.textStream) received += text;
+    expect(received).toBe("partial");
+    expect(errors).toEqual([
+      {
+        message: "The upstream service returned an invalid event stream.",
+        type: "server_error",
+        param: null,
+        code: "upstream_error",
+      },
+    ]);
+  });
+
+  test("reports one backend stream error without requiring a terminator", async () => {
+    const errors: unknown[] = [];
+    const result = streamText({
+      model: createLocalBaseAiSdkProvider(gateway).chatModel(PRIMARY_MODEL),
+      prompt: "Surface one backend error.",
+      headers: { "x-test-upstream": "backend-error-stream" },
+      onError: ({ error }) => {
+        errors.push(error);
+      },
+    });
+
+    let received = "";
+    for await (const text of result.textStream) received += text;
+    expect(received).toBe("");
+    expect(errors).toEqual([
+      {
+        message: "Backend rejected the request.",
+        type: "server_error",
+        param: null,
+        code: 500,
+      },
+    ]);
+  });
+
   test("uses canonical and aliased model IDs to select the requested local model", async () => {
     const config = gateway.readConfig();
     gateway.saveConfig({
@@ -250,24 +298,26 @@ describe("Vercel AI SDK language conformance", () => {
       });
     }
 
-    const response = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "definitely-not-selected",
-        messages: [{ role: "user", content: "Do not dispatch this." }],
-      }),
-    });
+    for (const model of ["definitely-not-selected", ` ${PRIMARY_MODEL} `]) {
+      const response = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: "Do not dispatch this." }],
+        }),
+      });
 
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({
-      error: {
-        message: "The model 'definitely-not-selected' does not exist.",
-        type: "invalid_request_error",
-        param: "model",
-        code: "model_not_found",
-      },
-    });
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          message: `The model '${model}' does not exist.`,
+          type: "invalid_request_error",
+          param: "model",
+          code: "model_not_found",
+        },
+      });
+    }
     expect(gateway.upstreamRequests.slice(requestOffset)).toEqual([]);
     expect(
       (await gateway.readLlmRuntimeLaunches()).slice(launchOffset),

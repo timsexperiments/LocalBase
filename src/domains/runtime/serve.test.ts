@@ -481,6 +481,13 @@ describe("API gateway integration", () => {
     const stream = await response.text();
     expect(stream).toContain('"reasoning_content":"Considering tools."');
     expect(stream).toContain('"tool_calls"');
+    expect(stream).toContain(
+      '"id":1234,"token":"weather","bytes":[119,101,97,116,104,101,114]',
+    );
+    expect(stream).toContain(
+      '"id":5678,"token":"forecast","bytes":[102,111,114,101,99,97,115,116]',
+    );
+    expect(stream).toContain('"choices":[],"usage":{"prompt_tokens":3');
     expect(stream).toContain('"prompt_tokens_details":{"cached_tokens":1}');
     expect(stream).toContain('"timings"');
     expect(stream.endsWith("data: [DONE]\n\n")).toBe(true);
@@ -518,7 +525,60 @@ describe("API gateway integration", () => {
         }),
       });
       expect(response.status).toBe(200);
-      await expect(response.text()).resolves.toBe(STREAM_VALIDATION_FAILURE);
+      const stream = await response.text();
+      expect(stream).toContain('"finish_reason":"stop"');
+      expect(stream.endsWith(STREAM_VALIDATION_FAILURE)).toBe(true);
+      expect(stream).not.toContain("too late");
+    }
+  });
+
+  test("rejects an unterminated done event at end of stream", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "unterminated-done-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).toContain('"finish_reason":"stop"');
+    expect(stream.endsWith(STREAM_VALIDATION_FAILURE)).toBe(true);
+  });
+
+  test("forwards one backend error event and terminates before later events", async () => {
+    for (const [mode, code] of [
+      ["backend-error-stream", 500],
+      ["backend-string-error-stream", "backend_error"],
+    ] as const) {
+      const response = await request("/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-test-upstream": mode,
+        },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          stream: true,
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      });
+      expect(response.status).toBe(200);
+      await expect(response.text()).resolves.toBe(
+        `data: ${JSON.stringify({
+          error: {
+            message: "Backend rejected the request.",
+            type: "server_error",
+            param: null,
+            code,
+          },
+        })}\n\n`,
+      );
     }
   });
 
