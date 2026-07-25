@@ -27,6 +27,32 @@ const GatewayHealthSchema = z
 const TranscriptionResponseSchema = z
   .object({ text: z.string() })
   .passthrough();
+const OpenAIErrorResponseSchema = z
+  .object({
+    error: z
+      .object({
+        message: z.string(),
+        type: z.string(),
+        param: z.string().nullable(),
+        code: z.string().nullable(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+const TemporaryStartupErrorSchema = z
+  .object({
+    error: z
+      .object({
+        message: z
+          .string()
+          .regex(/^STT service is currently restarting or unavailable\./),
+        type: z.literal("api_error"),
+        param: z.null(),
+        code: z.literal("service_unavailable"),
+      })
+      .passthrough(),
+  })
+  .passthrough();
 const RuntimeReceiptSchema = z
   .object({ runtimes: z.record(z.string(), z.unknown()) })
   .passthrough();
@@ -199,25 +225,100 @@ function silentWav(): Uint8Array {
   return wav;
 }
 
-async function transcribe(baseUrl: string): Promise<void> {
-  const body = new FormData();
-  body.append(
-    "file",
-    new Blob([silentWav()], { type: "audio/wav" }),
-    "silence.wav",
-  );
-  body.append("model", STT_MODEL_ID);
-  const response = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
-    method: "POST",
-    body,
-    signal: AbortSignal.timeout(SMOKE_TIMEOUT_MS),
-  });
-  const payload = await response.json();
-  if (!response.ok || !TranscriptionResponseSchema.safeParse(payload).success) {
+function describeBody(payload: unknown): string {
+  return JSON.stringify(payload);
+}
+
+function describeValidation(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => `${issue.path.join(".") || "body"}: ${issue.message}`)
+    .join("; ");
+}
+
+async function readJsonBody(response: Response): Promise<unknown> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch (error) {
     throw new Error(
-      `Expected a successful Whisper transcription, received HTTP ${response.status}: ${JSON.stringify(payload)}`,
+      `Gateway returned invalid JSON for HTTP ${response.status}: ${text || "<empty body>"}`,
+      { cause: error },
     );
   }
+}
+
+function retryAfterMilliseconds(response: Response): number {
+  const value = response.headers.get("retry-after");
+  if (value === null) return 0;
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    throw new Error(`Gateway returned an invalid Retry-After header: ${value}`);
+  }
+  return seconds * 1_000;
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+export async function transcribe(baseUrl: string): Promise<void> {
+  const deadline = Date.now() + SMOKE_TIMEOUT_MS;
+  let attempts = 0;
+
+  while (Date.now() < deadline) {
+    attempts += 1;
+    const body = new FormData();
+    body.append(
+      "file",
+      new Blob([silentWav()], { type: "audio/wav" }),
+      "silence.wav",
+    );
+    body.append("model", STT_MODEL_ID);
+    const response = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
+      method: "POST",
+      body,
+      signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+    });
+    const payload = await readJsonBody(response).catch((error) => {
+      throw new Error(`Transcription attempt ${attempts} failed: ${error}`, {
+        cause: error,
+      });
+    });
+
+    if (response.ok) {
+      const transcription = TranscriptionResponseSchema.safeParse(payload);
+      if (transcription.success) return;
+      throw new Error(
+        `Expected a successful Whisper transcription, received HTTP ${response.status} with an invalid response body: ${describeValidation(transcription.error)} (${describeBody(payload)})`,
+      );
+    }
+
+    if (
+      response.status === 503 &&
+      TemporaryStartupErrorSchema.safeParse(payload).success
+    ) {
+      const delay = retryAfterMilliseconds(response);
+      const remaining = deadline - Date.now();
+      if (delay >= remaining) break;
+      // The gateway supplies the retry window; the smoke test does not invent a delay.
+      if (delay > 0) await wait(delay);
+      continue;
+    }
+
+    const errorResponse = OpenAIErrorResponseSchema.safeParse(payload);
+    if (!errorResponse.success) {
+      throw new Error(
+        `Transcription failed with HTTP ${response.status} and an invalid error body: ${describeValidation(errorResponse.error)} (${describeBody(payload)})`,
+      );
+    }
+    throw new Error(
+      `Transcription failed with HTTP ${response.status}, code ${errorResponse.data.error.code ?? "<none>"}: ${errorResponse.data.error.message}`,
+    );
+  }
+
+  throw new Error(
+    `Whisper did not become available within ${SMOKE_TIMEOUT_MS}ms after ${attempts} startup attempts.`,
+  );
 }
 
 async function stopGateway(gateway: RunningGateway): Promise<void> {
@@ -311,4 +412,4 @@ async function main(): Promise<void> {
   console.log("Runtime smoke test passed.");
 }
 
-await main();
+if (import.meta.main) await main();
