@@ -62,6 +62,51 @@ function cliCommand(): string[] {
   return binary ? [binary] : [process.execPath, "src/cli.ts"];
 }
 
+export function buildConfigureArgs(root: string): string[] {
+  return [
+    "--root",
+    root,
+    "--non-interactive",
+    "configure",
+    "--defaults",
+    "--stt-models",
+    STT_MODEL_ID,
+    "--active-stt",
+    STT_MODEL_ID,
+    "--no-create-key",
+  ];
+}
+
+export function buildServeArgs(
+  root: string,
+  gatewayPort: number,
+  sttPort: number,
+): string[] {
+  return [
+    "--root",
+    root,
+    "--non-interactive",
+    "serve",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(gatewayPort),
+    "--no-llm",
+    "--stt",
+    "--stt-host",
+    "127.0.0.1",
+    "--stt-port",
+    String(sttPort),
+    "--no-image",
+    "--no-auth",
+    "--bypass-memory-check",
+  ];
+}
+
+export function buildUninstallArgs(root: string): string[] {
+  return ["--root", root, "--non-interactive", "uninstall", "--yes"];
+}
+
 function commandEnvironment(): Record<string, string> {
   return {
     ...process.env,
@@ -92,6 +137,10 @@ async function runCli(args: string[]): Promise<CommandResult> {
 
 function describe(result: CommandResult): string {
   return `exit ${result.exitCode}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`;
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
 }
 
 async function expectCli(args: string[]): Promise<CommandResult> {
@@ -157,29 +206,7 @@ async function startGateway(root: string): Promise<RunningGateway> {
   const gatewayPort = reservePort();
   const sttPort = reservePort();
   const process = Bun.spawn(
-    [
-      ...cliCommand(),
-      "serve",
-      "--root",
-      root,
-      "--host",
-      "127.0.0.1",
-      "--port",
-      String(gatewayPort),
-      "--llm",
-      "false",
-      "--stt",
-      "true",
-      "--stt-host",
-      "127.0.0.1",
-      "--stt-port",
-      String(sttPort),
-      "--image",
-      "false",
-      "--auth",
-      "false",
-      "--bypass-memory-check",
-    ],
+    [...cliCommand(), ...buildServeArgs(root, gatewayPort, sttPort)],
     { env: commandEnvironment(), stdout: "pipe", stderr: "pipe" },
   );
   const stdout = outputOf(process.stdout);
@@ -377,22 +404,11 @@ async function verifyInstalledArtifacts(root: string): Promise<void> {
 async function main(): Promise<void> {
   const root = `${process.env.RUNNER_TEMP ?? "/tmp"}/localbase-runtime-smoke-${crypto.randomUUID()}`;
   const help = await expectCli(["--help"]);
-  if (!help.stdout.includes("local-base -")) {
+  if (!stripAnsi(help.stdout).includes("USAGE local-base ")) {
     throw new Error("CLI help did not produce the expected usage banner.");
   }
 
-  await expectCli([
-    "configure",
-    "--defaults",
-    "--root",
-    root,
-    "--stt-models",
-    STT_MODEL_ID,
-    "--active-stt",
-    STT_MODEL_ID,
-    "--create-key",
-    "false",
-  ]);
+  await expectCli(buildConfigureArgs(root));
 
   const running = await startGateway(root);
 
@@ -405,7 +421,7 @@ async function main(): Promise<void> {
     if (running.process.exitCode === null) await stopGateway(running);
   }
 
-  await expectCli(["uninstall", "--root", root, "--yes"]);
+  await expectCli(buildUninstallArgs(root));
   if (await Bun.file(root).exists()) {
     throw new Error("LocalBase uninstall did not remove the smoke-test root.");
   }
