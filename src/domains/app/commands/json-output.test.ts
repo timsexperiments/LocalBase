@@ -152,7 +152,46 @@ test(
       ]);
       expect(jsonDocument(shownPrompt.stdout).data).toMatchObject({
         prompt,
-        source: "custom",
+        scope: "global",
+        source: "global",
+      });
+
+      const modelId = "qwen2.5-coder-7b-instruct-q4_k_m";
+      const modelPrompt = "Per-model prompt content";
+      const updatedModelPrompt = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "prompt",
+        "set",
+        "--model",
+        modelId,
+        modelPrompt,
+      ]);
+      expect(updatedModelPrompt.exitCode).toBe(0);
+      expect(updatedModelPrompt.stdout).not.toContain(modelPrompt);
+      expect(updatedModelPrompt.stderr).not.toContain(modelPrompt);
+      expect(jsonDocument(updatedModelPrompt.stdout).data).toEqual({
+        updated: true,
+        scope: "model",
+        modelId,
+      });
+
+      const shownModelPrompt = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "prompt",
+        "show",
+        "--model",
+        modelId,
+      ]);
+      expect(shownModelPrompt.exitCode).toBe(0);
+      expect(jsonDocument(shownModelPrompt.stdout).data).toMatchObject({
+        scope: "model",
+        modelId,
+        prompt: modelPrompt,
+        source: "model",
       });
 
       const configureKeyRoot = join(directory, "configure-key-data");

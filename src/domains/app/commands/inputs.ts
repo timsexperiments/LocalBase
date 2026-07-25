@@ -1,6 +1,7 @@
 import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 import { parallelSlotsSchema } from "../../config/parallel";
+import { canonicalLlmModelIdSchema } from "../../runtime/model-system-prompts";
 
 export const modelKindSchema = z.enum(["llm", "stt", "image"]);
 
@@ -151,13 +152,16 @@ export const serveInputSchema = z.object({
 });
 export type ServeInput = z.infer<typeof serveInputSchema>;
 
-export const promptShowInputSchema = z.object({});
+export const promptShowInputSchema = z.object({
+  model: canonicalLlmModelIdSchema.optional(),
+});
 export type PromptShowInput = z.infer<typeof promptShowInputSchema>;
 
 export const promptSetInputSchema = z
   .object({
     file: z.string().min(1).optional(),
     text: z.array(z.string()).default([]),
+    model: canonicalLlmModelIdSchema.optional(),
   })
   .superRefine(({ file, text }, ctx) => {
     if (file && text.length > 0) {
@@ -170,7 +174,9 @@ export const promptSetInputSchema = z
   });
 export type PromptSetInput = z.infer<typeof promptSetInputSchema>;
 
-export const promptResetInputSchema = z.object({});
+export const promptResetInputSchema = z.object({
+  model: canonicalLlmModelIdSchema.optional(),
+});
 export type PromptResetInput = z.infer<typeof promptResetInputSchema>;
 
 export const doctorInputSchema = z.object({});

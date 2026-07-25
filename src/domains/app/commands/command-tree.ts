@@ -437,7 +437,14 @@ const serveCommand = command<ServeInput>({
 
 const promptShowCommand = command<PromptShowInput>({
   path: ["prompt", "show"],
-  description: "Display the active system prompt",
+  description: "Display the effective system prompt",
+  args: {
+    model: {
+      type: "string",
+      valueHint: "model-id",
+      description: "Display the prompt for a catalog LLM model",
+    },
+  },
   parse: (input) => promptShowInputSchema.parse(input),
   resultSchema: promptShowResultSchema,
   run: async (input, context, execution) => {
@@ -452,6 +459,7 @@ const promptSetCommand = command<PromptSetInput>({
   examples: [
     'local-base prompt set "Use concise responses"',
     "local-base prompt set --file ./prompt.txt",
+    'local-base prompt set --model qwen2.5-coder-7b-instruct-q4_k_m "Use concise responses"',
   ],
   args: {
     text: {
@@ -463,6 +471,11 @@ const promptSetCommand = command<PromptSetInput>({
       type: "string",
       valueHint: "path",
       description: "Read prompt text from a file",
+    },
+    model: {
+      type: "string",
+      valueHint: "model-id",
+      description: "Set the prompt for a catalog LLM model",
     },
   },
   positionals: { maximum: Number.POSITIVE_INFINITY },
@@ -477,7 +490,14 @@ const promptSetCommand = command<PromptSetInput>({
 
 const promptResetCommand = command<PromptResetInput>({
   path: ["prompt", "reset"],
-  description: "Reset the system prompt to its default",
+  description: "Reset a system prompt to its fallback",
+  args: {
+    model: {
+      type: "string",
+      valueHint: "model-id",
+      description: "Reset the prompt override for a catalog LLM model",
+    },
+  },
   parse: (input) => promptResetInputSchema.parse(input),
   resultSchema: promptMutationResultSchema,
   run: async (input, context, execution) => {

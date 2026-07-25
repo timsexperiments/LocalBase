@@ -35,3 +35,8 @@ export const apiKeysTable = sqliteTable("api_keys", {
   expiresAt: text("expires_at"),
   revokedAt: text("revoked_at"),
 });
+
+export const modelSystemPromptsTable = sqliteTable("model_system_prompts", {
+  modelId: text("model_id").primaryKey(),
+  prompt: text("prompt").notNull(),
+});

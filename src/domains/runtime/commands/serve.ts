@@ -19,7 +19,7 @@ import {
 import type { AppContext } from "../../../context";
 import { syncContinueConfig } from "../../config/commands/configure";
 import { type ILogger } from "../../../utils/logger";
-import { DEFAULT_SYSTEM_PROMPT } from "./prompt";
+import { effectiveSystemPrompt } from "./prompt";
 import { guardianProcessCommand } from "../backend-guardian";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ServeInput } from "../../app/commands/inputs";
@@ -463,6 +463,45 @@ const transcriptionResponseSchema = z.union([
 
 class PayloadTooLargeError extends Error {}
 
+class RequestAbortedError extends Error {
+  constructor() {
+    super("Request was aborted.");
+    this.name = "RequestAbortedError";
+  }
+}
+
+function throwIfRequestAborted(signal: AbortSignal): void {
+  if (signal.aborted) throw new RequestAbortedError();
+}
+
+function waitForRequestAbort<T>(
+  promise: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  if (signal.aborted) return Promise.reject(new RequestAbortedError());
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      callback();
+    };
+    const onAbort = () => finish(() => reject(new RequestAbortedError()));
+
+    signal.addEventListener("abort", onAbort, { once: true });
+    void promise.then(
+      (value) => finish(() => resolve(value)),
+      (error) => finish(() => reject(error)),
+    );
+  });
+}
+
+function requestAborted(): Response {
+  return new Response(null, { status: 499 });
+}
+
 function requestExceedsSizeLimit(request: Request): boolean {
   const contentLength = request.headers.get("content-length");
   if (!contentLength) return false;
@@ -530,6 +569,7 @@ function requestWithJsonBody(request: Request, body: unknown): Request {
     method: request.method,
     headers,
     body: JSON.stringify(body),
+    signal: request.signal,
   });
 }
 
@@ -588,6 +628,7 @@ async function proxyRequest(
       ]),
     });
   } catch {
+    if (request.signal.aborted) return requestAborted();
     return upstreamFailure("The upstream service could not be reached.");
   }
 
@@ -614,6 +655,64 @@ async function proxyRequest(
   return new Response(upstream.body, {
     status: upstream.status,
     headers: filterProxyHeaders(upstream.headers),
+  });
+}
+
+/** Keeps an active-model lease until the client finishes or cancels the response. */
+export function withResponseLease(
+  response: Response,
+  release: () => void,
+  requestSignal: AbortSignal,
+): Response {
+  if (!response.body) {
+    release();
+    return response;
+  }
+
+  let released = false;
+  let removeAbortListener = () => {};
+  const releaseOnce = () => {
+    if (released) return;
+    released = true;
+    removeAbortListener();
+    release();
+  };
+  const reader = response.body.getReader();
+  const cancelForRequestAbort = () => {
+    releaseOnce();
+    void reader.cancel(requestSignal.reason);
+  };
+  requestSignal.addEventListener("abort", cancelForRequestAbort, {
+    once: true,
+  });
+  removeAbortListener = () =>
+    requestSignal.removeEventListener("abort", cancelForRequestAbort);
+  if (requestSignal.aborted) cancelForRequestAbort();
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          releaseOnce();
+          controller.close();
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        releaseOnce();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      releaseOnce();
+      await reader.cancel(reason);
+    },
+  });
+
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
   });
 }
 
@@ -1351,49 +1450,115 @@ export async function runServe(
       )
     : null;
 
-  let modelSwitches = Promise.resolve();
-  const serializeModelSwitch = async (
+  let imageSwitches = Promise.resolve();
+  let llmLeaseLock = Promise.resolve();
+  let activeLlmLeases:
+    | {
+        modelId: string;
+        count: number;
+        idle: Promise<void>;
+        resolveIdle: () => void;
+      }
+    | undefined;
+
+  const serializeImageSwitch = async (
     work: () => Promise<void>,
   ): Promise<void> => {
-    const next = modelSwitches.then(work, work);
-    modelSwitches = next.catch(() => {});
+    const next = imageSwitches.then(work, work);
+    imageSwitches = next.catch(() => {});
     await next;
   };
 
-  const switchLlmModel = async (requestedModel: string): Promise<void> => {
-    if (!llmService) return;
-    await serializeModelSwitch(async () => {
-      const latestConfig = loadConfig(ctx.database, config.root);
-      const normalized = requestedModel.replace(
-        /^(localbase|openai|ollama)\//,
-        "",
-      );
-      const matchedModel = latestConfig.selectedLlmModels.find(
+  const withLlmLeaseLock = async <T>(
+    requestSignal: AbortSignal,
+    work: () => Promise<T>,
+  ): Promise<T> => {
+    throwIfRequestAborted(requestSignal);
+
+    let releaseLock: () => void;
+    let lockReleased = false;
+    let entered = false;
+    const next = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    const previous = llmLeaseLock;
+    llmLeaseLock = previous.then(
+      () => next,
+      () => next,
+    );
+    const releaseLockOnce = () => {
+      if (lockReleased) return;
+      lockReleased = true;
+      releaseLock!();
+    };
+    const releaseQueuedLock = () => {
+      if (!entered) releaseLockOnce();
+    };
+
+    requestSignal.addEventListener("abort", releaseQueuedLock, { once: true });
+    if (requestSignal.aborted) releaseQueuedLock();
+
+    const lockedWork = (async () => {
+      try {
+        await previous;
+        entered = true;
+        requestSignal.removeEventListener("abort", releaseQueuedLock);
+        throwIfRequestAborted(requestSignal);
+        return await work();
+      } finally {
+        requestSignal.removeEventListener("abort", releaseQueuedLock);
+        releaseLockOnce();
+      }
+    })();
+    // A caller can stop awaiting after its request aborts while startup finishes.
+    void lockedWork.catch(() => {});
+    return await waitForRequestAbort(lockedWork, requestSignal);
+  };
+
+  const requestedLlmModel = (requestedModel: string | undefined): string => {
+    const latestConfig = loadConfig(ctx.database, config.root);
+    if (!requestedModel) return latestConfig.activeLlmModel;
+    const normalized = requestedModel.replace(
+      /^(localbase|openai|ollama)\//,
+      "",
+    );
+    return (
+      latestConfig.selectedLlmModels.find(
         (model) => model.toLowerCase() === normalized.toLowerCase(),
-      );
-      if (!matchedModel || matchedModel === latestConfig.activeLlmModel) return;
+      ) ?? latestConfig.activeLlmModel
+    );
+  };
 
-      ctx.logger.info(
-        "llama-server",
-        `Switching active LLM from "${latestConfig.activeLlmModel}" to "${matchedModel}"`,
-      );
-      await llmService.kill();
-      latestConfig.activeLlmModel = matchedModel;
-      saveConfig(ctx.database, latestConfig);
+  const activateLlmModel = async (
+    modelId: string,
+    requestSignal: AbortSignal,
+  ): Promise<void> => {
+    if (!llmService) return;
+    throwIfRequestAborted(requestSignal);
+    const latestConfig = loadConfig(ctx.database, config.root);
+    if (latestConfig.activeLlmModel === modelId) return;
 
-      const spec = byId(matchedModel);
-      const recommendedCtx = spec
-        ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
-        : ctx.specs.gpuVramGb >= 32
-          ? 32768
-          : 8192;
-      const newCtxSize = Math.min(recommendedCtx, latestConfig.ctxSize);
-      void syncContinueConfig(latestConfig, newCtxSize).catch((error) => {
-        ctx.logger.warn(
-          "sync",
-          `Failed to sync Continue config: ${error.message}`,
-        );
-      });
+    ctx.logger.info(
+      "llama-server",
+      `Switching active LLM from "${latestConfig.activeLlmModel}" to "${modelId}"`,
+    );
+    await llmService.kill();
+    throwIfRequestAborted(requestSignal);
+    latestConfig.activeLlmModel = modelId;
+    saveConfig(ctx.database, latestConfig);
+
+    const spec = byId(modelId);
+    const recommendedCtx = spec
+      ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
+      : ctx.specs.gpuVramGb >= 32
+        ? 32768
+        : 8192;
+    const newCtxSize = Math.min(recommendedCtx, latestConfig.ctxSize);
+    void syncContinueConfig(latestConfig, newCtxSize).catch((error) => {
+      ctx.logger.warn(
+        "sync",
+        `Failed to sync Continue config: ${error.message}`,
+      );
     });
   };
 
@@ -1401,7 +1566,7 @@ export async function runServe(
     requestedModel: string | undefined,
   ): Promise<void> => {
     if (!imageService || !requestedModel) return;
-    await serializeModelSwitch(async () => {
+    await serializeImageSwitch(async () => {
       const latestConfig = loadConfig(ctx.database, config.root);
       const matchedModel = latestConfig.selectedImageModels.find(
         (model) => model.toLowerCase() === requestedModel.toLowerCase(),
@@ -1426,6 +1591,85 @@ export async function runServe(
       return null;
     } catch {
       return serviceUnavailable("LLM");
+    }
+  };
+
+  const acquireLlmRequestLease = async (
+    requestedModel: string | undefined,
+    requestSignal: AbortSignal,
+  ): Promise<{ modelId: string; release: () => void } | Response> => {
+    if (!enabled.llm || !llmService) return notConfigured("LLM");
+
+    return await withLlmLeaseLock(requestSignal, async () => {
+      const modelId = requestedLlmModel(requestedModel);
+      throwIfRequestAborted(requestSignal);
+      if (activeLlmLeases && activeLlmLeases.modelId !== modelId) {
+        if (activeLlmLeases.count > 0) {
+          await waitForRequestAbort(activeLlmLeases.idle, requestSignal);
+        }
+        throwIfRequestAborted(requestSignal);
+        activeLlmLeases = undefined;
+      }
+
+      await activateLlmModel(modelId, requestSignal);
+      const unavailable = await ensureLlm();
+      throwIfRequestAborted(requestSignal);
+      if (unavailable) return unavailable;
+
+      if (!activeLlmLeases) {
+        let resolveIdle: () => void;
+        const idle = new Promise<void>((resolve) => {
+          resolveIdle = resolve;
+        });
+        activeLlmLeases = {
+          modelId,
+          count: 0,
+          idle,
+          resolveIdle: resolveIdle!,
+        };
+      }
+      activeLlmLeases.count += 1;
+      const lease = activeLlmLeases;
+      let released = false;
+      return {
+        modelId,
+        release: () => {
+          if (released) return;
+          released = true;
+          lease.count -= 1;
+          if (lease.count === 0) {
+            lease.resolveIdle();
+            // A later request must create a fresh unresolved drain barrier.
+            if (activeLlmLeases === lease) activeLlmLeases = undefined;
+          }
+        },
+      };
+    });
+  };
+
+  const withLlmRequestLease = async (
+    requestedModel: string | undefined,
+    dispatch: (modelId: string) => Promise<Response>,
+    requestSignal: AbortSignal,
+  ): Promise<Response> => {
+    let acquired: { modelId: string; release: () => void } | Response;
+    try {
+      acquired = await acquireLlmRequestLease(requestedModel, requestSignal);
+    } catch (error) {
+      if (error instanceof RequestAbortedError) return requestAborted();
+      throw error;
+    }
+    if (acquired instanceof Response) return acquired;
+    try {
+      return withResponseLease(
+        await waitForRequestAbort(dispatch(acquired.modelId), requestSignal),
+        acquired.release,
+        requestSignal,
+      );
+    } catch (error) {
+      acquired.release();
+      if (error instanceof RequestAbortedError) return requestAborted();
+      throw error;
     }
   };
 
@@ -1475,6 +1719,7 @@ export async function runServe(
           method: request.method,
           headers: request.headers,
           body: multipartBody,
+          signal: request.signal,
         }).formData();
         const bodyObj: Record<
           string,
@@ -1505,6 +1750,7 @@ export async function runServe(
         request = new Request(request.url, {
           method: request.method,
           body: normalizedForm,
+          signal: request.signal,
         });
       } catch (e) {
         return e instanceof PayloadTooLargeError
@@ -1587,29 +1833,34 @@ export async function runServe(
         chatCompletionRequestSchema,
       );
       if (!parsed.success) return parsed.response;
-      await switchLlmModel(parsed.data.model);
-      const unavailable = await ensureLlm();
-      if (unavailable) return unavailable;
-
-      const messages = parsed.data.messages.map((message) =>
-        message.role === "developer"
-          ? { ...message, role: "system" as const }
-          : message,
-      );
-      const currentPrompt =
-        loadConfig(ctx.database, config.root).systemPrompt ||
-        DEFAULT_SYSTEM_PROMPT;
-      if (
-        !messages.some((message) => message.role === "system") &&
-        currentPrompt
-      ) {
-        messages.unshift({ role: "system", content: currentPrompt });
-      }
-      return proxyRequest(
-        requestWithJsonBody(request, { ...parsed.data, messages }),
-        llmBase,
-        undefined,
-        chatCompletionResponseSchema,
+      return await withLlmRequestLease(
+        parsed.data.model,
+        async (modelId) => {
+          const hasClientInstruction = parsed.data.messages.some(
+            (message) =>
+              message.role === "system" || message.role === "developer",
+          );
+          const messages = parsed.data.messages.map((message) =>
+            message.role === "developer"
+              ? { ...message, role: "system" as const }
+              : message,
+          );
+          if (!hasClientInstruction) {
+            const activeConfig = loadConfig(ctx.database, config.root);
+            const { prompt } = effectiveSystemPrompt(
+              { ...ctx, config: activeConfig },
+              modelId,
+            );
+            messages.unshift({ role: "system", content: prompt });
+          }
+          return await proxyRequest(
+            requestWithJsonBody(request, { ...parsed.data, messages }),
+            llmBase,
+            undefined,
+            chatCompletionResponseSchema,
+          );
+        },
+        request.signal,
       );
     }
 
@@ -1619,28 +1870,32 @@ export async function runServe(
         textCompletionRequestSchema,
       );
       if (!parsed.success) return parsed.response;
-      await switchLlmModel(parsed.data.model);
-      const unavailable = await ensureLlm();
-      if (unavailable) return unavailable;
-      return proxyRequest(
-        requestWithJsonBody(request, parsed.data),
-        llmBase,
-        undefined,
-        textCompletionResponseSchema,
+      return await withLlmRequestLease(
+        parsed.data.model,
+        async () =>
+          await proxyRequest(
+            requestWithJsonBody(request, parsed.data),
+            llmBase,
+            undefined,
+            textCompletionResponseSchema,
+          ),
+        request.signal,
       );
     }
 
     if (pathname === "/v1/embeddings") {
       const parsed = await parseJsonRequest(request, embeddingsRequestSchema);
       if (!parsed.success) return parsed.response;
-      await switchLlmModel(parsed.data.model);
-      const unavailable = await ensureLlm();
-      if (unavailable) return unavailable;
-      return proxyRequest(
-        requestWithJsonBody(request, parsed.data),
-        llmBase,
-        undefined,
-        embeddingsResponseSchema,
+      return await withLlmRequestLease(
+        parsed.data.model,
+        async () =>
+          await proxyRequest(
+            requestWithJsonBody(request, parsed.data),
+            llmBase,
+            undefined,
+            embeddingsResponseSchema,
+          ),
+        request.signal,
       );
     }
 
@@ -1671,14 +1926,18 @@ export async function runServe(
     };
     const upstreamPath = llmIntrospectionRoutes[pathname];
     if (upstreamPath) {
-      const unavailable = await ensureLlm();
-      if (unavailable) return unavailable;
-      return proxyRequest(request, llmBase, upstreamPath);
+      return await withLlmRequestLease(
+        undefined,
+        async () => await proxyRequest(request, llmBase, upstreamPath),
+        request.signal,
+      );
     }
 
-    const unavailable = await ensureLlm();
-    if (unavailable) return unavailable;
-    return proxyRequest(request, llmBase);
+    return await withLlmRequestLease(
+      undefined,
+      async () => await proxyRequest(request, llmBase),
+      request.signal,
+    );
   };
 
   const server = Bun.serve({

@@ -204,3 +204,39 @@ test("returns syntax failure and scoped help for an empty prompt", async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("returns syntax failures for unknown and non-LLM prompt models", async () => {
+  const root = mkdtempSync(join(tmpdir(), "local-base-prompt-model-"));
+  try {
+    for (const modelId of ["missing-model", "whisper-base-q8_0"]) {
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          "src/cli.ts",
+          "--root",
+          root,
+          "--non-interactive",
+          "prompt",
+          "set",
+          "--model",
+          modelId,
+          "Prompt",
+        ],
+        {
+          cwd: process.cwd(),
+          stdin: "ignore",
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      const [exitCode, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stderr).text(),
+      ]);
+      expect(exitCode).toBe(2);
+      expect(stderr).toContain("local-base prompt set");
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

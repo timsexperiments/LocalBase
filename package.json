@@ -16,9 +16,11 @@
     "smoke:runtime:docker": "bun run smoke:runtime:build-linux && docker build --platform linux/amd64 --file Dockerfile.runtime-smoke --tag localbase-runtime-smoke:local . && docker run --rm localbase-runtime-smoke:local"
   },
   "devDependencies": {
+    "@ai-sdk/openai-compatible": "3.0.14",
     "@types/bun": "^1.3.10",
     "@types/tar-stream": "^3.1.4",
     "@typescript/native-preview": "^7.0.0-dev.20260620.1",
+    "ai": "7.0.37",
     "drizzle-kit": "^0.31.10",
     "prettier": "3.9.6"
   },
