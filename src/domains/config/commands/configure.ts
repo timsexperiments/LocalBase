@@ -683,8 +683,7 @@ export async function runConfigure(
   }
 
   let createdKey:
-    | (ReturnType<typeof publicApiKey> & { secret: string })
-    | undefined;
+    (ReturnType<typeof publicApiKey> & { secret: string }) | undefined;
   if (!hasAnyKeys && createFirstKey) {
     const { record, rawKey } = createApiKey(ctx.database, config, "default");
     execution.output.info("\nCreated initial API key:");
