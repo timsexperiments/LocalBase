@@ -1,10 +1,58 @@
 import { afterEach, expect, test } from "bun:test";
-import { transcribe } from "./runtime-smoke";
+import {
+  buildConfigureArgs,
+  buildServeArgs,
+  buildUninstallArgs,
+  transcribe,
+} from "./runtime-smoke";
 
 const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+});
+
+test("builds smoke invocations for the current CLI contract", () => {
+  const root = "/tmp/localbase-smoke";
+
+  expect(buildConfigureArgs(root)).toEqual([
+    "--root",
+    root,
+    "--non-interactive",
+    "configure",
+    "--defaults",
+    "--stt-models",
+    "whisper-tiny-en-q8_0",
+    "--active-stt",
+    "whisper-tiny-en-q8_0",
+    "--no-create-key",
+  ]);
+  expect(buildServeArgs(root, 22_731, 22_732)).toEqual([
+    "--root",
+    root,
+    "--non-interactive",
+    "serve",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "22731",
+    "--no-llm",
+    "--stt",
+    "--stt-host",
+    "127.0.0.1",
+    "--stt-port",
+    "22732",
+    "--no-image",
+    "--no-auth",
+    "--bypass-memory-check",
+  ]);
+  expect(buildUninstallArgs(root)).toEqual([
+    "--root",
+    root,
+    "--non-interactive",
+    "uninstall",
+    "--yes",
+  ]);
 });
 
 function mockFetch(handler: (request: Request, attempt: number) => Response) {
