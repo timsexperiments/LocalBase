@@ -399,13 +399,11 @@ describe("API gateway integration", () => {
     }
   });
 
-  test("does not switch models for invalid requests and serializes valid switches", async () => {
+  test("keeps each concurrent LLM request paired with its model prompt", async () => {
     const initialConfig = loadGatewayConfig();
+    const firstModel = initialConfig.activeLlmModel;
     const secondModel = "qwen2.5-coder-7b-instruct-q4_k_m";
-    initialConfig.selectedLlmModels = [
-      initialConfig.activeLlmModel,
-      secondModel,
-    ];
+    initialConfig.selectedLlmModels = [firstModel, secondModel];
     saveGatewayConfig(initialConfig);
     await Bun.write(
       join(initialConfig.llmModelsDir, `${secondModel}.gguf`),
@@ -422,9 +420,14 @@ describe("API gateway integration", () => {
       "qwen2.5-coder-1.5b-instruct-q4_k_m",
     );
 
-    const responses = await Promise.all(
-      [secondModel, "qwen2.5-coder-1.5b-instruct-q4_k_m", secondModel].map(
-        (model) =>
+    saveGatewayModelPrompt(firstModel, "First concurrent model prompt");
+    saveGatewayModelPrompt(secondModel, "Second concurrent model prompt");
+    const requestOffset = gateway.upstreamRequests.length;
+
+    try {
+      const requestedModels = [secondModel, firstModel, secondModel];
+      const responses = await Promise.all(
+        requestedModels.map((model) =>
           request("/v1/chat/completions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -433,14 +436,33 @@ describe("API gateway integration", () => {
               messages: [{ role: "user", content: "hello" }],
             }),
           }),
-      ),
-    );
-    expect(responses.map((response) => response.status)).toEqual([
-      200, 200, 200,
-    ]);
-    expect([secondModel, "qwen2.5-coder-1.5b-instruct-q4_k_m"]).toContain(
-      loadGatewayConfig().activeLlmModel,
-    );
+        ),
+      );
+      expect(responses.map((response) => response.status)).toEqual([
+        200, 200, 200,
+      ]);
+
+      const requestPairs = gateway.upstreamRequests
+        .slice(requestOffset)
+        .map((upstream) => {
+          const body = JSON.parse(upstream.body) as {
+            model: string;
+            messages: Array<{ role: string; content: string }>;
+          };
+          return `${body.model}:${body.messages[0]?.content}`;
+        })
+        .sort();
+      expect(requestPairs).toEqual(
+        [
+          `${firstModel}:First concurrent model prompt`,
+          `${secondModel}:Second concurrent model prompt`,
+          `${secondModel}:Second concurrent model prompt`,
+        ].sort(),
+      );
+    } finally {
+      deleteGatewayModelPrompt(firstModel);
+      deleteGatewayModelPrompt(secondModel);
+    }
   });
 
   const jsonValidationCases: ValidationCase[] = [

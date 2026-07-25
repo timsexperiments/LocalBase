@@ -617,6 +617,48 @@ async function proxyRequest(
   });
 }
 
+/** Keeps an active-model lease until the client finishes or cancels the response. */
+function withResponseLease(response: Response, release: () => void): Response {
+  if (!response.body) {
+    release();
+    return response;
+  }
+
+  let released = false;
+  const releaseOnce = () => {
+    if (released) return;
+    released = true;
+    release();
+  };
+  const reader = response.body.getReader();
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          releaseOnce();
+          controller.close();
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        releaseOnce();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      releaseOnce();
+      await reader.cancel(reason);
+    },
+  });
+
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 /**
  * Supervisor that manages a model backend subprocess (e.g. llama-server).
  * Handles lazy loading, auto-restart crash recovery with exponential backoff,
@@ -1351,49 +1393,82 @@ export async function runServe(
       )
     : null;
 
-  let modelSwitches = Promise.resolve();
-  const serializeModelSwitch = async (
+  let imageSwitches = Promise.resolve();
+  let llmLeaseLock = Promise.resolve();
+  let activeLlmLeases:
+    | {
+        modelId: string;
+        count: number;
+        idle: Promise<void>;
+        resolveIdle: () => void;
+      }
+    | undefined;
+
+  const serializeImageSwitch = async (
     work: () => Promise<void>,
   ): Promise<void> => {
-    const next = modelSwitches.then(work, work);
-    modelSwitches = next.catch(() => {});
+    const next = imageSwitches.then(work, work);
+    imageSwitches = next.catch(() => {});
     await next;
   };
 
-  const switchLlmModel = async (requestedModel: string): Promise<void> => {
-    if (!llmService) return;
-    await serializeModelSwitch(async () => {
-      const latestConfig = loadConfig(ctx.database, config.root);
-      const normalized = requestedModel.replace(
-        /^(localbase|openai|ollama)\//,
-        "",
-      );
-      const matchedModel = latestConfig.selectedLlmModels.find(
+  const withLlmLeaseLock = async <T>(work: () => Promise<T>): Promise<T> => {
+    let releaseLock: () => void;
+    const next = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    const previous = llmLeaseLock;
+    llmLeaseLock = previous.then(
+      () => next,
+      () => next,
+    );
+    await previous;
+    try {
+      return await work();
+    } finally {
+      releaseLock!();
+    }
+  };
+
+  const requestedLlmModel = (requestedModel: string | undefined): string => {
+    const latestConfig = loadConfig(ctx.database, config.root);
+    if (!requestedModel) return latestConfig.activeLlmModel;
+    const normalized = requestedModel.replace(
+      /^(localbase|openai|ollama)\//,
+      "",
+    );
+    return (
+      latestConfig.selectedLlmModels.find(
         (model) => model.toLowerCase() === normalized.toLowerCase(),
-      );
-      if (!matchedModel || matchedModel === latestConfig.activeLlmModel) return;
+      ) ?? latestConfig.activeLlmModel
+    );
+  };
 
-      ctx.logger.info(
-        "llama-server",
-        `Switching active LLM from "${latestConfig.activeLlmModel}" to "${matchedModel}"`,
-      );
-      await llmService.kill();
-      latestConfig.activeLlmModel = matchedModel;
-      saveConfig(ctx.database, latestConfig);
+  const activateLlmModel = async (modelId: string): Promise<void> => {
+    if (!llmService) return;
+    const latestConfig = loadConfig(ctx.database, config.root);
+    if (latestConfig.activeLlmModel === modelId) return;
 
-      const spec = byId(matchedModel);
-      const recommendedCtx = spec
-        ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
-        : ctx.specs.gpuVramGb >= 32
-          ? 32768
-          : 8192;
-      const newCtxSize = Math.min(recommendedCtx, latestConfig.ctxSize);
-      void syncContinueConfig(latestConfig, newCtxSize).catch((error) => {
-        ctx.logger.warn(
-          "sync",
-          `Failed to sync Continue config: ${error.message}`,
-        );
-      });
+    ctx.logger.info(
+      "llama-server",
+      `Switching active LLM from "${latestConfig.activeLlmModel}" to "${modelId}"`,
+    );
+    await llmService.kill();
+    latestConfig.activeLlmModel = modelId;
+    saveConfig(ctx.database, latestConfig);
+
+    const spec = byId(modelId);
+    const recommendedCtx = spec
+      ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
+      : ctx.specs.gpuVramGb >= 32
+        ? 32768
+        : 8192;
+    const newCtxSize = Math.min(recommendedCtx, latestConfig.ctxSize);
+    void syncContinueConfig(latestConfig, newCtxSize).catch((error) => {
+      ctx.logger.warn(
+        "sync",
+        `Failed to sync Continue config: ${error.message}`,
+      );
     });
   };
 
@@ -1401,7 +1476,7 @@ export async function runServe(
     requestedModel: string | undefined,
   ): Promise<void> => {
     if (!imageService || !requestedModel) return;
-    await serializeModelSwitch(async () => {
+    await serializeImageSwitch(async () => {
       const latestConfig = loadConfig(ctx.database, config.root);
       const matchedModel = latestConfig.selectedImageModels.find(
         (model) => model.toLowerCase() === requestedModel.toLowerCase(),
@@ -1426,6 +1501,66 @@ export async function runServe(
       return null;
     } catch {
       return serviceUnavailable("LLM");
+    }
+  };
+
+  const acquireLlmRequestLease = async (
+    requestedModel: string | undefined,
+  ): Promise<{ modelId: string; release: () => void } | Response> => {
+    if (!enabled.llm || !llmService) return notConfigured("LLM");
+
+    return await withLlmLeaseLock(async () => {
+      const modelId = requestedLlmModel(requestedModel);
+      if (activeLlmLeases && activeLlmLeases.modelId !== modelId) {
+        if (activeLlmLeases.count > 0) await activeLlmLeases.idle;
+        activeLlmLeases = undefined;
+      }
+
+      await activateLlmModel(modelId);
+      const unavailable = await ensureLlm();
+      if (unavailable) return unavailable;
+
+      if (!activeLlmLeases) {
+        let resolveIdle: () => void;
+        const idle = new Promise<void>((resolve) => {
+          resolveIdle = resolve;
+        });
+        activeLlmLeases = {
+          modelId,
+          count: 0,
+          idle,
+          resolveIdle: resolveIdle!,
+        };
+      }
+      activeLlmLeases.count += 1;
+      const lease = activeLlmLeases;
+      let released = false;
+      return {
+        modelId,
+        release: () => {
+          if (released) return;
+          released = true;
+          lease.count -= 1;
+          if (lease.count === 0) lease.resolveIdle();
+        },
+      };
+    });
+  };
+
+  const withLlmRequestLease = async (
+    requestedModel: string | undefined,
+    dispatch: (modelId: string) => Promise<Response>,
+  ): Promise<Response> => {
+    const acquired = await acquireLlmRequestLease(requestedModel);
+    if (acquired instanceof Response) return acquired;
+    try {
+      return withResponseLease(
+        await dispatch(acquired.modelId),
+        acquired.release,
+      );
+    } catch (error) {
+      acquired.release();
+      throw error;
     }
   };
 
@@ -1587,32 +1722,31 @@ export async function runServe(
         chatCompletionRequestSchema,
       );
       if (!parsed.success) return parsed.response;
-      await switchLlmModel(parsed.data.model);
-      const unavailable = await ensureLlm();
-      if (unavailable) return unavailable;
-
-      const hasClientInstruction = parsed.data.messages.some(
-        (message) => message.role === "system" || message.role === "developer",
-      );
-      const messages = parsed.data.messages.map((message) =>
-        message.role === "developer"
-          ? { ...message, role: "system" as const }
-          : message,
-      );
-      if (!hasClientInstruction) {
-        const activeConfig = loadConfig(ctx.database, config.root);
-        const { prompt } = effectiveSystemPrompt(
-          { ...ctx, config: activeConfig },
-          activeConfig.activeLlmModel,
+      return await withLlmRequestLease(parsed.data.model, async (modelId) => {
+        const hasClientInstruction = parsed.data.messages.some(
+          (message) =>
+            message.role === "system" || message.role === "developer",
         );
-        messages.unshift({ role: "system", content: prompt });
-      }
-      return proxyRequest(
-        requestWithJsonBody(request, { ...parsed.data, messages }),
-        llmBase,
-        undefined,
-        chatCompletionResponseSchema,
-      );
+        const messages = parsed.data.messages.map((message) =>
+          message.role === "developer"
+            ? { ...message, role: "system" as const }
+            : message,
+        );
+        if (!hasClientInstruction) {
+          const activeConfig = loadConfig(ctx.database, config.root);
+          const { prompt } = effectiveSystemPrompt(
+            { ...ctx, config: activeConfig },
+            modelId,
+          );
+          messages.unshift({ role: "system", content: prompt });
+        }
+        return await proxyRequest(
+          requestWithJsonBody(request, { ...parsed.data, messages }),
+          llmBase,
+          undefined,
+          chatCompletionResponseSchema,
+        );
+      });
     }
 
     if (pathname === "/v1/completions") {
@@ -1621,28 +1755,30 @@ export async function runServe(
         textCompletionRequestSchema,
       );
       if (!parsed.success) return parsed.response;
-      await switchLlmModel(parsed.data.model);
-      const unavailable = await ensureLlm();
-      if (unavailable) return unavailable;
-      return proxyRequest(
-        requestWithJsonBody(request, parsed.data),
-        llmBase,
-        undefined,
-        textCompletionResponseSchema,
+      return await withLlmRequestLease(
+        parsed.data.model,
+        async () =>
+          await proxyRequest(
+            requestWithJsonBody(request, parsed.data),
+            llmBase,
+            undefined,
+            textCompletionResponseSchema,
+          ),
       );
     }
 
     if (pathname === "/v1/embeddings") {
       const parsed = await parseJsonRequest(request, embeddingsRequestSchema);
       if (!parsed.success) return parsed.response;
-      await switchLlmModel(parsed.data.model);
-      const unavailable = await ensureLlm();
-      if (unavailable) return unavailable;
-      return proxyRequest(
-        requestWithJsonBody(request, parsed.data),
-        llmBase,
-        undefined,
-        embeddingsResponseSchema,
+      return await withLlmRequestLease(
+        parsed.data.model,
+        async () =>
+          await proxyRequest(
+            requestWithJsonBody(request, parsed.data),
+            llmBase,
+            undefined,
+            embeddingsResponseSchema,
+          ),
       );
     }
 
@@ -1673,14 +1809,16 @@ export async function runServe(
     };
     const upstreamPath = llmIntrospectionRoutes[pathname];
     if (upstreamPath) {
-      const unavailable = await ensureLlm();
-      if (unavailable) return unavailable;
-      return proxyRequest(request, llmBase, upstreamPath);
+      return await withLlmRequestLease(
+        undefined,
+        async () => await proxyRequest(request, llmBase, upstreamPath),
+      );
     }
 
-    const unavailable = await ensureLlm();
-    if (unavailable) return unavailable;
-    return proxyRequest(request, llmBase);
+    return await withLlmRequestLease(
+      undefined,
+      async () => await proxyRequest(request, llmBase),
+    );
   };
 
   const server = Bun.serve({
