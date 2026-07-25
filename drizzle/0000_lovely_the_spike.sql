@@ -29,7 +29,6 @@ CREATE TABLE `config` (
 	`active_llm_model` text NOT NULL,
 	`active_stt_model` text NOT NULL,
 	`active_image_model` text NOT NULL,
-	`system_prompt` text NOT NULL,
 	`hf_token` text NOT NULL,
 	`parallel` text DEFAULT 'auto' NOT NULL
 );

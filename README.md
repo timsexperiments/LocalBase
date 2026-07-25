@@ -4,7 +4,7 @@ LocalBase is a Bun/TypeScript unified, OpenAI-compatible gateway for local AI ru
 
 ## Current capabilities
 
-- **LLM** chat and completions, including configured-model switching.
+- **LLM** OpenAI-compatible chat completions, including configured-model switching.
 - **Embeddings** for local indexing and search.
 - **STT** audio transcriptions and translations.
 - **Image generation** through the OpenAI-compatible `/v1/images/generations` endpoint.

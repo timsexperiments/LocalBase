@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { ApiKeyRecord, LocalBaseConfig } from "../../../manager";
 import { ModelSpecSchema } from "../../../catalog";
-import { canonicalLlmModelIdSchema } from "../../runtime/model-system-prompts";
 
 export const configurationOutputSchema = z
   .object({
@@ -91,33 +90,6 @@ export const installResultSchema = z
     ),
   })
   .strict();
-const globalPromptScopeResultSchema = z
-  .object({ scope: z.literal("global") })
-  .strict();
-
-const modelPromptScopeResultSchema = z
-  .object({ scope: z.literal("model"), modelId: canonicalLlmModelIdSchema })
-  .strict();
-
-export const promptShowResultSchema = z.discriminatedUnion("scope", [
-  globalPromptScopeResultSchema
-    .extend({
-      prompt: z.string(),
-      source: z.enum(["global", "built-in"]),
-    })
-    .strict(),
-  modelPromptScopeResultSchema
-    .extend({
-      prompt: z.string(),
-      source: z.enum(["model", "global", "built-in"]),
-    })
-    .strict(),
-]);
-
-export const promptMutationResultSchema = z.discriminatedUnion("scope", [
-  globalPromptScopeResultSchema.extend({ updated: z.literal(true) }).strict(),
-  modelPromptScopeResultSchema.extend({ updated: z.literal(true) }).strict(),
-]);
 export const keysListResultSchema = z
   .object({ keys: z.array(apiKeyMetadataOutputSchema) })
   .strict();
@@ -137,7 +109,7 @@ export const serveResultSchema = z
   .object({ exitCode: z.number().int().min(0) })
   .strict();
 
-/** Omits credentials and prompt content from general-purpose command output. */
+/** Omits credentials from general-purpose command output. */
 export function publicConfiguration(config: LocalBaseConfig) {
   return configurationOutputSchema.parse({
     root: config.root,

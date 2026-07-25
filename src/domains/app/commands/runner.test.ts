@@ -1,7 +1,4 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { defaultConfig } from "../../../manager";
 import type { AppContext } from "../../../context";
 import { parseEnvironmentOverrides } from "../../../context";
@@ -25,32 +22,8 @@ test("resolves nested commands and global options before context creation", asyn
   expect((await resolveCli(["keys"])).kind).toBe("help");
   expect((await resolveCli(["--help"])).kind).toBe("help");
 
-  const prompt = await resolveCli(["prompt", "set", "--", "--no-auth"]);
-  expect(prompt).toMatchObject({
-    kind: "command",
-    input: { text: ["--no-auth"] },
-  });
   const serve = await resolveCli(["serve", "--no-auth"]);
   expect(serve).toMatchObject({ kind: "command", input: { auth: false } });
-
-  const literalHelp = await resolveCli(["prompt", "set", "--", "--help"]);
-  expect(literalHelp).toMatchObject({
-    kind: "command",
-    input: { text: ["--help"] },
-  });
-
-  const literalJson = await resolveCli([
-    "--json",
-    "prompt",
-    "set",
-    "--",
-    "--json",
-  ]);
-  expect(literalJson).toMatchObject({
-    kind: "command",
-    global: { json: true, nonInteractive: true },
-    input: { text: ["--json"] },
-  });
 
   const emptyModelList = await resolveCli(["configure", "--stt-models", ""]);
   expect(emptyModelList).toMatchObject({
@@ -175,68 +148,4 @@ test("reports environment input failures as concise syntax errors", async () => 
   expect(errors[0]).toBe(
     "Error: LOCALBASE_PORT: LOCALBASE_PORT must be an integer",
   );
-});
-
-test("returns syntax failure and scoped help for an empty prompt", async () => {
-  const root = mkdtempSync(join(tmpdir(), "local-base-empty-prompt-"));
-  const child = Bun.spawn(
-    [
-      process.execPath,
-      "src/cli.ts",
-      "--root",
-      root,
-      "--non-interactive",
-      "prompt",
-      "set",
-    ],
-    { cwd: process.cwd(), stdin: "ignore", stdout: "pipe", stderr: "pipe" },
-  );
-
-  try {
-    const [exitCode, stderr] = await Promise.all([
-      child.exited,
-      new Response(child.stderr).text(),
-    ]);
-    expect(exitCode).toBe(2);
-    expect(stderr).toContain("Error: Custom system prompt cannot be empty.");
-    expect(stderr).toContain("local-base prompt set");
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("returns syntax failures for unknown and non-LLM prompt models", async () => {
-  const root = mkdtempSync(join(tmpdir(), "local-base-prompt-model-"));
-  try {
-    for (const modelId of ["missing-model", "whisper-base-q8_0"]) {
-      const child = Bun.spawn(
-        [
-          process.execPath,
-          "src/cli.ts",
-          "--root",
-          root,
-          "--non-interactive",
-          "prompt",
-          "set",
-          "--model",
-          modelId,
-          "Prompt",
-        ],
-        {
-          cwd: process.cwd(),
-          stdin: "ignore",
-          stdout: "pipe",
-          stderr: "pipe",
-        },
-      );
-      const [exitCode, stderr] = await Promise.all([
-        child.exited,
-        new Response(child.stderr).text(),
-      ]);
-      expect(exitCode).toBe(2);
-      expect(stderr).toContain("local-base prompt set");
-    }
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
 });
