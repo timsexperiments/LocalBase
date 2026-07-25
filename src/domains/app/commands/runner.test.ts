@@ -39,6 +39,19 @@ test("resolves nested commands and global options before context creation", asyn
     input: { text: ["--help"] },
   });
 
+  const literalJson = await resolveCli([
+    "--json",
+    "prompt",
+    "set",
+    "--",
+    "--json",
+  ]);
+  expect(literalJson).toMatchObject({
+    kind: "command",
+    global: { json: true, nonInteractive: true },
+    input: { text: ["--json"] },
+  });
+
   const emptyModelList = await resolveCli(["configure", "--stt-models", ""]);
   expect(emptyModelList).toMatchObject({
     kind: "command",

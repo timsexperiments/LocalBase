@@ -7,8 +7,9 @@ export function runCatalog(
   input: CatalogInput,
   _ctx: AppContext,
   execution: CommandExecution,
-): number {
-  for (const model of listModels(input.kind)) {
+): { data: { models: ReturnType<typeof listModels> } } {
+  const models = listModels(input.kind);
+  for (const model of models) {
     const coding =
       model.kind === "llm" ? ` | coding=${model.codingScore}/10` : "";
     execution.output.info(
@@ -19,5 +20,5 @@ export function runCatalog(
     );
     execution.output.info(`      catch: ${model.catch}`);
   }
-  return 0;
+  return { data: { models } };
 }

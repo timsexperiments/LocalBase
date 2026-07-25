@@ -6,8 +6,8 @@ import { DatabaseSession } from "../../../db/client";
 import type { CommandExecution } from "../../app/commands/framework";
 
 const execution: CommandExecution = {
-  global: { nonInteractive: false },
-  output: { info() {}, error() {} },
+  global: { nonInteractive: false, json: false },
+  output: { info() {}, error() {}, lifecycle() {} },
 };
 
 function makeContext(): AppContext {
@@ -36,38 +36,27 @@ function makeContext(): AppContext {
   };
 }
 
-function captureOutput(action: () => void): string[] {
+test("doctor prints configured parallel slots and returns a safe report", () => {
   const output: string[] = [];
-  const originalLog = console.log;
-  console.log = (message?: unknown) => output.push(String(message));
-
-  try {
-    action();
-  } finally {
-    console.log = originalLog;
-  }
-
-  return output;
-}
-
-test("doctor prints configured parallel slots", () => {
-  const output = captureOutput(() =>
-    runDoctor({ json: false }, makeContext(), execution),
-  );
+  runDoctor({}, makeContext(), {
+    ...execution,
+    output: {
+      info: (message) => output.push(message),
+      error() {},
+      lifecycle() {},
+    },
+  });
 
   expect(output).toContain("Parallel Slots: 2");
 });
 
-test("doctor JSON separates hardware from non-sensitive configuration", () => {
+test("doctor result separates hardware from non-sensitive configuration", () => {
   const context = makeContext();
   context.config.hfToken = "secret";
-  const output = captureOutput(() =>
-    runDoctor({ json: true }, context, execution),
-  );
-  const report = JSON.parse(output.join("\n"));
+  const report = runDoctor({}, context, execution).data;
 
-  expect(report.gpuVramGb).toBe(16);
+  expect(report.hardware.gpuVramGb).toBe(16);
   expect(report.hardware).toEqual(context.specs);
   expect(report.configuration.parallel).toBe(2);
-  expect(report.configuration.hfToken).toBeUndefined();
+  expect("hfToken" in report.configuration).toBe(false);
 });

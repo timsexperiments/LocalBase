@@ -36,12 +36,23 @@ const nonEmptyModelListSchema = modelListSchema.pipe(
   z.array(z.string()).min(1, "must include at least one model ID"),
 );
 
-export const globalOptionsSchema = z.object({
-  root: dataRootSchema.optional(),
-  nonInteractive: z.boolean().default(false),
-});
+export const globalOptionsSchema = z
+  .object({
+    root: dataRootSchema.optional(),
+    nonInteractive: z.boolean().default(false),
+    json: z.boolean().default(false),
+  })
+  .transform(({ json, nonInteractive, root }) => ({
+    root,
+    json,
+    nonInteractive: nonInteractive || json,
+  }));
 
-export type GlobalOptions = z.infer<typeof globalOptionsSchema>;
+export type GlobalOptions = {
+  root?: string;
+  nonInteractive: boolean;
+  json: boolean;
+};
 
 export const configureInputSchema = z.object({
   all: z.boolean().default(false),
@@ -162,9 +173,7 @@ export type PromptSetInput = z.infer<typeof promptSetInputSchema>;
 export const promptResetInputSchema = z.object({});
 export type PromptResetInput = z.infer<typeof promptResetInputSchema>;
 
-export const doctorInputSchema = z.object({
-  json: z.boolean().default(false),
-});
+export const doctorInputSchema = z.object({});
 export type DoctorInput = z.infer<typeof doctorInputSchema>;
 
 export const keysListInputSchema = z.object({});

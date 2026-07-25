@@ -3,6 +3,7 @@ import {
   recommendedSttForVram,
   recommendedImageForVram,
 } from "../../../catalog";
+import type { ModelSpec } from "../../../catalog";
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { RecommendInput } from "../../app/commands/inputs";
@@ -11,7 +12,9 @@ export function runRecommend(
   input: RecommendInput,
   ctx: AppContext,
   execution: CommandExecution,
-): number {
+): {
+  data: { kind: "llm" | "stt" | "image"; vramGb: number; models: ModelSpec[] };
+} {
   const kind = input.kind ?? "llm";
   const vram = input.vram ?? ctx.specs.gpuVramGb;
 
@@ -32,5 +35,5 @@ export function runRecommend(
       `- ${model.modelId} (${model.storageGb.toFixed(2)} GB, features=${model.features.join("/")})`,
     );
   }
-  return 0;
+  return { data: { kind, vramGb: vram, models: picks.slice(0, 6) } };
 }

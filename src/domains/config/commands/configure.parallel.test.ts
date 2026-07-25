@@ -10,8 +10,8 @@ import type { CommandExecution } from "../../app/commands/framework";
 import { configureInputSchema } from "../../app/commands/inputs";
 
 const nonInteractiveExecution: CommandExecution = {
-  global: { nonInteractive: true },
-  output: { info() {}, error() {} },
+  global: { nonInteractive: true, json: false },
+  output: { info() {}, error() {}, lifecycle() {} },
 };
 
 function makeContext(root: string, gpuVramGb = 16): AppContext {
@@ -104,7 +104,7 @@ test("configure gives the CLI root precedence over a configured root", async () 
         context,
         {
           ...nonInteractiveExecution,
-          global: { root: cliRoot, nonInteractive: true },
+          global: { root: cliRoot, nonInteractive: true, json: false },
         },
       );
     } finally {
