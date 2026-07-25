@@ -20,7 +20,6 @@ export const configTable = sqliteTable("config", {
   activeLlmModel: text("active_llm_model").notNull(),
   activeSttModel: text("active_stt_model").notNull(),
   activeImageModel: text("active_image_model").notNull(),
-  systemPrompt: text("system_prompt").notNull(),
   hfToken: text("hf_token").notNull(),
   parallel: text("parallel").default("auto").notNull(),
 });
@@ -34,9 +33,4 @@ export const apiKeysTable = sqliteTable("api_keys", {
   lastRotatedAt: text("last_rotated_at").notNull(),
   expiresAt: text("expires_at"),
   revokedAt: text("revoked_at"),
-});
-
-export const modelSystemPromptsTable = sqliteTable("model_system_prompts", {
-  modelId: text("model_id").primaryKey(),
-  prompt: text("prompt").notNull(),
 });

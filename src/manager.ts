@@ -69,7 +69,6 @@ export type LocalBaseConfig = {
   activeLlmModel: string;
   activeSttModel: string;
   activeImageModel: string;
-  systemPrompt: string;
   hfToken: string;
   parallel: ParallelSlots;
 };
@@ -122,7 +121,6 @@ const ConfigRowSchema = z
     activeLlmModel: z.string().min(1),
     activeSttModel: z.string(),
     activeImageModel: z.string(),
-    systemPrompt: z.string(),
     hfToken: z.string(),
     parallel: z.enum(["auto", "1", "2", "3", "4"]),
   })
@@ -197,7 +195,6 @@ function toConfigRow(config: LocalBaseConfig) {
     activeLlmModel: config.activeLlmModel,
     activeSttModel: config.activeSttModel,
     activeImageModel: config.activeImageModel,
-    systemPrompt: config.systemPrompt,
     hfToken: config.hfToken || "",
     parallel: String(parseParallelSlots(config.parallel)),
   };
@@ -365,7 +362,6 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     activeLlmModel: data.activeLlmModel,
     activeSttModel: data.activeSttModel,
     activeImageModel: data.activeImageModel,
-    systemPrompt: data.systemPrompt,
     hfToken: data.hfToken,
     parallel: parseParallelSlots(data.parallel),
   };
@@ -430,7 +426,6 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     activeLlmModel: llm,
     activeSttModel: stt,
     activeImageModel: "stable-diffusion-v1-5",
-    systemPrompt: "",
     hfToken: "",
     parallel: "auto",
   };
