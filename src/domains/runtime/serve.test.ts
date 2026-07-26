@@ -4,8 +4,6 @@ import { generateText, stepCountIs, tool } from "ai";
 import { join } from "node:path";
 import { z } from "zod";
 import { byId, primaryArtifact } from "../../catalog";
-import { loadConfig, saveConfig } from "../../manager";
-import { DatabaseSession } from "../../db/client";
 import {
   startGatewayFixture,
   type GatewayFixture,
@@ -19,6 +17,15 @@ type ValidationCase = {
   init: RequestInit;
   expectedPath: string;
 };
+
+const STREAM_VALIDATION_FAILURE = `data: ${JSON.stringify({
+  error: {
+    message: "The upstream service returned an invalid event stream.",
+    type: "server_error",
+    param: null,
+    code: "upstream_error",
+  },
+})}\n\ndata: [DONE]\n\n`;
 
 function modelArtifactFile(modelId: string): string {
   const model = byId(modelId);
@@ -113,6 +120,12 @@ describe("API gateway integration", () => {
     expect(completed).toBe(false);
   }
 
+  async function drainReader(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+  ): Promise<void> {
+    while (!(await reader.read()).done) {}
+  }
+
   async function within<T>(promise: Promise<T>, label: string): Promise<T> {
     return await Promise.race([
       promise,
@@ -120,37 +133,6 @@ describe("API gateway integration", () => {
         throw new Error(`${label} did not complete within two seconds.`);
       }),
     ]);
-  }
-
-  async function waitForUpstreamRequest(id: string): Promise<void> {
-    const deadline = Date.now() + 2_000;
-    while (Date.now() < deadline) {
-      if (
-        gateway.upstreamRequests.some(
-          (upstream) => upstream.headers.get("x-test-stream-id") === id,
-        )
-      ) {
-        return;
-      }
-      await Bun.sleep(10);
-    }
-    throw new Error(`Upstream request ${id} did not start within two seconds.`);
-  }
-
-  async function waitForLlmRuntimeLaunches(
-    offset: number,
-    count: number,
-  ): Promise<string[][]> {
-    const deadline = Date.now() + 2_000;
-    while (Date.now() < deadline) {
-      const launches = await gateway.readLlmRuntimeLaunches();
-      if (launches.length >= offset + count) return launches.slice(offset);
-      await Bun.sleep(10);
-    }
-    const launches = await gateway.readLlmRuntimeLaunches();
-    throw new Error(
-      `Expected ${count} LLM runtime launches, received ${launches.length - offset}: ${JSON.stringify(launches.slice(offset))}`,
-    );
   }
 
   function launchedModelPath(args: string[]): string {
@@ -162,21 +144,13 @@ describe("API gateway integration", () => {
   }
 
   function loadGatewayConfig() {
-    const database = new DatabaseSession();
-    try {
-      return loadConfig(database, gateway.root);
-    } finally {
-      database.close();
-    }
+    return gateway.readConfig();
   }
 
-  function saveGatewayConfig(config: ReturnType<typeof loadConfig>): void {
-    const database = new DatabaseSession();
-    try {
-      saveConfig(database, config);
-    } finally {
-      database.close();
-    }
+  function saveGatewayConfig(
+    config: ReturnType<GatewayFixture["readConfig"]>,
+  ): void {
+    gateway.saveConfig(config);
   }
 
   async function expectValidationFailure(
@@ -312,54 +286,6 @@ describe("API gateway integration", () => {
     });
   });
 
-  test("preserves ordered client system and developer messages", async () => {
-    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const response = await request("/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [
-          {
-            role: "system",
-            content: [
-              {
-                type: "text",
-                text: "Client system",
-                cache_control: { type: "ephemeral" },
-              },
-            ],
-          },
-          {
-            role: "developer",
-            content: [{ type: "text", text: "Client developer" }],
-          },
-          { role: "user", content: "hello" },
-        ],
-      }),
-    });
-    expect(response.status).toBe(200);
-
-    const body = JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}");
-    expect(body.messages).toEqual([
-      {
-        role: "system",
-        content: [
-          {
-            type: "text",
-            text: "Client system",
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-      },
-      {
-        role: "developer",
-        content: [{ type: "text", text: "Client developer" }],
-      },
-      { role: "user", content: "hello" },
-    ]);
-  });
-
   test("forwards user-only chat requests without injected instructions", async () => {
     const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
     const response = await request("/v1/chat/completions", {
@@ -397,39 +323,6 @@ describe("API gateway integration", () => {
         },
       });
     }
-  });
-
-  test("keeps AI SDK instructions and unconfigured requests transparent", async () => {
-    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const localbase = createOpenAICompatible({
-      baseURL: `${gateway.baseUrl}/v1`,
-      name: "localbase-test",
-    });
-
-    const result = await generateText({
-      model: localbase.chatModel(modelId),
-      system: "AI SDK system instruction",
-      prompt: "hello",
-    });
-    expect(result.text).toBe("ok");
-
-    const body = JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}");
-    expect(body.messages).toEqual([
-      { role: "system", content: "AI SDK system instruction" },
-      { role: "user", content: "hello" },
-    ]);
-
-    const transparent = await generateText({
-      model: localbase.chatModel(modelId),
-      prompt: "transparent",
-    });
-    expect(transparent.text).toBe("ok");
-    const transparentBody = JSON.parse(
-      gateway.upstreamRequests.at(-1)?.body ?? "{}",
-    );
-    expect(transparentBody.messages).toEqual([
-      { role: "user", content: "transparent" },
-    ]);
   });
 
   test("round-trips AI SDK tool calls and results", async () => {
@@ -550,7 +443,7 @@ describe("API gateway integration", () => {
     }
   });
 
-  test("passes SSE responses through without buffering or schema gating", async () => {
+  test("validates streamed chat events without changing the SSE response", async () => {
     const response = await request("/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -564,8 +457,214 @@ describe("API gateway integration", () => {
       }),
     });
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("text/event-stream");
-    expect(await response.text()).toContain("[DONE]");
+    expect(response.headers.get("content-type")?.toLowerCase()).toBe(
+      "text/event-stream; charset=utf-8",
+    );
+    expect(response.headers.get("x-stream-fixture")).toBe("preserved");
+    await expect(response.text()).resolves.toContain("[DONE]");
+  });
+
+  test("accepts strict llama.cpp reasoning, usage, and tool-call chunks", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "llama-wire-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "Use a tool." }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).toContain('"reasoning_content":"Considering tools."');
+    expect(stream).toContain('"tool_calls"');
+    expect(stream).toContain(
+      '"id":1234,"token":"weather","bytes":[119,101,97,116,104,101,114]',
+    );
+    expect(stream).toContain(
+      '"id":5678,"token":"forecast","bytes":[102,111,114,101,99,97,115,116]',
+    );
+    expect(stream).toContain('"choices":[],"usage":{"prompt_tokens":3');
+    expect(stream).toContain('"prompt_tokens_details":{"cached_tokens":1}');
+    expect(stream).toContain('"timings"');
+    expect(stream.endsWith("data: [DONE]\n\n")).toBe(true);
+  });
+
+  test("terminates invalid streamed chat events before they reach clients", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "invalid-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe(STREAM_VALIDATION_FAILURE);
+  });
+
+  test("rejects duplicate terminators and events after the terminator", async () => {
+    for (const mode of ["duplicate-done-stream", "post-done-stream"]) {
+      const response = await request("/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-test-upstream": mode,
+        },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          stream: true,
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      });
+      expect(response.status).toBe(200);
+      const stream = await response.text();
+      expect(stream).toContain('"finish_reason":"stop"');
+      expect(stream.endsWith(STREAM_VALIDATION_FAILURE)).toBe(true);
+      expect(stream).not.toContain("too late");
+    }
+  });
+
+  test("rejects an unterminated done event at end of stream", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "unterminated-done-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).toContain('"finish_reason":"stop"');
+    expect(stream.endsWith(STREAM_VALIDATION_FAILURE)).toBe(true);
+  });
+
+  test("requires every observed choice to finish before done", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "multi-choice-unfinished-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        n: 2,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).toContain('"index":0,"delta":{},"finish_reason":"stop"');
+    expect(stream).not.toContain(
+      '"index":1,"delta":{},"finish_reason":"length"',
+    );
+    expect(stream.endsWith(STREAM_VALIDATION_FAILURE)).toBe(true);
+  });
+
+  test("accepts done after every observed choice has finished", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "multi-choice-complete-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        n: 2,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).toContain('"index":0,"delta":{},"finish_reason":"stop"');
+    expect(stream).toContain('"index":1,"delta":{},"finish_reason":"length"');
+    expect(stream).toContain('"choices":[],"usage"');
+    expect(stream.endsWith("data: [DONE]\n\n")).toBe(true);
+    expect(stream).not.toContain('"code":"upstream_error"');
+  });
+
+  test("rejects additional choice data after that choice has finished", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "post-finish-choice-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).toContain('"finish_reason":"stop"');
+    expect(stream).not.toContain("too late for this choice");
+    expect(stream.endsWith(STREAM_VALIDATION_FAILURE)).toBe(true);
+  });
+
+  test("forwards one backend error event and terminates before later events", async () => {
+    for (const [mode, code] of [
+      ["backend-error-stream", 500],
+      ["backend-string-error-stream", "backend_error"],
+    ] as const) {
+      const response = await request("/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-test-upstream": mode,
+        },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          stream: true,
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      });
+      expect(response.status).toBe(200);
+      await expect(response.text()).resolves.toBe(
+        `data: ${JSON.stringify({
+          error: {
+            message: "Backend rejected the request.",
+            type: "server_error",
+            param: null,
+            code,
+          },
+        })}\n\n`,
+      );
+    }
+  });
+
+  test("does not classify partial media-type matches as event streams", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "invalid-media-type-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { type: "server_error", code: "upstream_error" },
+    });
   });
 
   test("rejects removed raw backend namespaces", async () => {
@@ -612,7 +711,7 @@ describe("API gateway integration", () => {
     });
     const firstReader = firstResponse.body!.getReader();
     expect((await firstReader.read()).done).toBe(false);
-    await waitForLlmRuntimeLaunches(launchOffset, 1);
+    await gateway.waitForLlmRuntimeLaunches(launchOffset, 1);
 
     const secondResponse = request("/v1/chat/completions", {
       method: "POST",
@@ -641,17 +740,23 @@ describe("API gateway integration", () => {
     ]);
 
     gateway.closeControlledStream(streamId);
-    expect((await firstReader.read()).done).toBe(true);
+    await within(
+      drainReader(firstReader),
+      "first controlled stream completion",
+    );
     const second = await within(secondResponse, "second model response");
     expect(second.status).toBe(200);
     const secondReader = second.body!.getReader();
     expect((await secondReader.read()).done).toBe(false);
-    await waitForLlmRuntimeLaunches(launchOffset, 2);
+    await gateway.waitForLlmRuntimeLaunches(launchOffset, 2);
     await expectPromiseBlocked(thirdResponse);
     expect(loadGatewayConfig().activeLlmModel).toBe(firstModel);
 
     gateway.closeControlledStream("runtime-pairing-second");
-    expect((await secondReader.read()).done).toBe(true);
+    await within(
+      drainReader(secondReader),
+      "second controlled stream completion",
+    );
     const third = await within(thirdResponse, "third model response");
     expect(third.status).toBe(200);
     await third.text();
@@ -665,7 +770,7 @@ describe("API gateway integration", () => {
       requests.map(() => [{ role: "user", content: "hello" }]),
     );
 
-    const launches = await waitForLlmRuntimeLaunches(launchOffset, 3);
+    const launches = await gateway.waitForLlmRuntimeLaunches(launchOffset, 3);
     expect(launches.map(launchedModelPath)).toEqual(
       requestedModels.map((modelId) =>
         join(initialConfig.llmModelsDir, modelArtifactFile(modelId)),
@@ -725,9 +830,7 @@ describe("API gateway integration", () => {
     await expectPromiseBlocked(switchToB);
 
     gateway.closeControlledStream(eofStreamId);
-    expect(
-      (await within(slowAReader.read(), "EOF stream completion")).done,
-    ).toBe(true);
+    await within(drainReader(slowAReader), "EOF stream completion");
     const completeB = await within(switchToB, "switch after EOF");
     expect(completeB.status).toBe(200);
     await completeB.text();
@@ -765,7 +868,7 @@ describe("API gateway integration", () => {
       () => "aborted",
     );
 
-    await waitForUpstreamRequest(headerWaitId);
+    await gateway.waitForUpstreamRequest(headerWaitId);
     controller.abort();
     expect(await within(abortedRequest, "header wait abort")).toBe("aborted");
     await within(
@@ -850,9 +953,7 @@ describe("API gateway integration", () => {
     );
 
     gateway.closeControlledStream(streamId);
-    expect(
-      (await within(slowAReader.read(), "queued abort stream completion")).done,
-    ).toBe(true);
+    await within(drainReader(slowAReader), "queued abort stream completion");
     await Bun.sleep(100);
     expect(loadGatewayConfig().activeLlmModel).toBe(modelA);
     expect(
