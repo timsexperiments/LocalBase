@@ -470,10 +470,16 @@ const transcriptionRequestSchema = z.object({
   model: modelIdSchema.optional(),
   language: z.string().optional(),
   prompt: z.string().optional(),
+  include: z.array(z.string()).optional(),
   response_format: z
     .enum(["json", "text", "srt", "verbose_json", "vtt"])
     .optional(),
-  temperature: z.number().min(0).max(1).optional(),
+  temperature: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() !== "" ? Number(value) : value,
+    z.number().min(0).max(1).optional(),
+  ),
+  timestamp_granularities: z.array(z.enum(["word", "segment"])).optional(),
 });
 
 const embeddingsRequestSchema = z
@@ -485,6 +491,8 @@ const embeddingsRequestSchema = z
       z.array(z.number()),
       z.array(z.array(z.number())),
     ]),
+    encoding_format: z.literal("float").optional(),
+    dimensions: z.number().int().positive().optional(),
     user: z.string().optional(),
   })
   .passthrough();
@@ -686,28 +694,39 @@ const imageGenerationResponseSchema = z
     created: z.number(),
     data: z.array(
       z.object({
-        url: z.string().optional(),
-        b64_json: z.string().optional(),
+        b64_json: z.string(),
         revised_prompt: z.string().optional(),
       }),
     ),
   })
   .passthrough();
 
-const transcriptionResponseSchema = z.union([
-  z.object({
+const transcriptionResponseSchema = z
+  .object({
+    task: z.string().optional(),
+    language: z.string().optional(),
+    duration: z.number().optional(),
     text: z.string(),
-  }),
-  z
-    .object({
-      task: z.string().optional(),
-      language: z.string().optional(),
-      duration: z.number().optional(),
-      text: z.string(),
-      segments: z.array(z.unknown()).optional(),
-    })
-    .passthrough(),
-]);
+    segments: z
+      .array(
+        z
+          .object({
+            id: z.number(),
+            seek: z.number(),
+            start: z.number(),
+            end: z.number(),
+            text: z.string(),
+            tokens: z.array(z.number()),
+            temperature: z.number(),
+            avg_logprob: z.number(),
+            compression_ratio: z.number(),
+            no_speech_prob: z.number(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+  })
+  .passthrough();
 
 class PayloadTooLargeError extends Error {}
 
@@ -1466,25 +1485,33 @@ export async function runServe(
     ).exists();
   }
 
-  let sttModelFile = input.sttModelFile;
-  if (!sttModelFile) {
-    const spec = byId(config.activeSttModel);
+  const resolveSttModelFile = async (
+    runtimeConfig: typeof config,
+    modelId: string,
+  ): Promise<string> => {
+    if (input.sttModelFile && modelId === config.activeSttModel) {
+      return input.sttModelFile;
+    }
+    const spec = byId(modelId);
     const primaryFilename = spec && primaryArtifact(spec).filename;
     if (
       primaryFilename &&
-      (await Bun.file(join(config.sttModelsDir, primaryFilename)).exists())
+      (await Bun.file(
+        join(runtimeConfig.sttModelsDir, primaryFilename),
+      ).exists())
     ) {
-      sttModelFile = primaryFilename;
+      return primaryFilename;
     } else if (
       await Bun.file(
-        join(config.sttModelsDir, `${config.activeSttModel}.bin`),
+        join(runtimeConfig.sttModelsDir, `${modelId}.bin`),
       ).exists()
     ) {
-      sttModelFile = `${config.activeSttModel}.bin`;
-    } else {
-      sttModelFile = `${config.activeSttModel}.gguf`;
+      return `${modelId}.bin`;
     }
-  }
+    return `${modelId}.gguf`;
+  };
+
+  let sttModelFile = await resolveSttModelFile(config, config.activeSttModel);
 
   let imageModelFile = input.imageModelFile;
   if (!imageModelFile) {
@@ -1798,7 +1825,24 @@ export async function runServe(
         "whisper-server",
         sttBase + "/health",
         ctx.logger,
-        () => startWhisperServerProcess(config, sttModelFile, sttHost, sttPort),
+        async () => {
+          const launchConfig = loadConfig(ctx.database, config.root);
+          const activeModel = launchConfig.activeSttModel;
+          const modelFile = await resolveSttModelFile(
+            launchConfig,
+            activeModel,
+          );
+          ctx.logger.info(
+            "whisper-server",
+            `Spawning STT model "${activeModel}" (file: ${modelFile}) on port ${sttPort}`,
+          );
+          return startWhisperServerProcess(
+            launchConfig,
+            modelFile,
+            sttHost,
+            sttPort,
+          );
+        },
         30000,
         fatalServiceExit,
       )
@@ -1845,6 +1889,7 @@ export async function runServe(
     : null;
 
   let imageSwitches = Promise.resolve();
+  let sttSwitches = Promise.resolve();
   let llmLeaseLock = Promise.resolve();
   let activeLlmLeases:
     | {
@@ -1860,6 +1905,14 @@ export async function runServe(
   ): Promise<void> => {
     const next = imageSwitches.then(work, work);
     imageSwitches = next.catch(() => {});
+    await next;
+  };
+
+  const serializeSttSwitch = async (
+    work: () => Promise<void>,
+  ): Promise<void> => {
+    const next = sttSwitches.then(work, work);
+    sttSwitches = next.catch(() => {});
     await next;
   };
 
@@ -1909,19 +1962,52 @@ export async function runServe(
     return await waitForRequestAbort(lockedWork, requestSignal);
   };
 
-  const requestedLlmModel = (
+  const requestedConfiguredModel = (
     requestedModel: string | undefined,
+    selectedModels: string[],
+    activeModel: string,
   ): string | undefined => {
-    const latestConfig = loadConfig(ctx.database, config.root);
-    if (requestedModel === undefined) return latestConfig.activeLlmModel;
+    if (requestedModel === undefined) return activeModel;
     const normalized = requestedModel.replace(
       /^(localbase|openai|ollama)\//i,
       "",
     );
-    return [
+    return [activeModel, ...selectedModels].find(
+      (model) => model.toLowerCase() === normalized.toLowerCase(),
+    );
+  };
+
+  const requestedLlmModel = (
+    requestedModel: string | undefined,
+  ): string | undefined => {
+    const latestConfig = loadConfig(ctx.database, config.root);
+    return requestedConfiguredModel(
+      requestedModel,
+      latestConfig.selectedLlmModels,
       latestConfig.activeLlmModel,
-      ...latestConfig.selectedLlmModels,
-    ].find((model) => model.toLowerCase() === normalized.toLowerCase());
+    );
+  };
+
+  const requestedImageModel = (
+    requestedModel: string | undefined,
+  ): string | undefined => {
+    const latestConfig = loadConfig(ctx.database, config.root);
+    return requestedConfiguredModel(
+      requestedModel,
+      latestConfig.selectedImageModels,
+      latestConfig.activeImageModel,
+    );
+  };
+
+  const requestedSttModel = (
+    requestedModel: string | undefined,
+  ): string | undefined => {
+    const latestConfig = loadConfig(ctx.database, config.root);
+    return requestedConfiguredModel(
+      requestedModel,
+      latestConfig.selectedSttModels,
+      latestConfig.activeSttModel,
+    );
   };
 
   const activateLlmModel = async (
@@ -1957,24 +2043,34 @@ export async function runServe(
     });
   };
 
-  const switchImageModel = async (
-    requestedModel: string | undefined,
-  ): Promise<void> => {
-    if (!imageService || !requestedModel) return;
+  const switchImageModel = async (modelId: string): Promise<void> => {
+    if (!imageService) return;
     await serializeImageSwitch(async () => {
       const latestConfig = loadConfig(ctx.database, config.root);
-      const matchedModel = latestConfig.selectedImageModels.find(
-        (model) => model.toLowerCase() === requestedModel.toLowerCase(),
-      );
-      if (!matchedModel || matchedModel === latestConfig.activeImageModel)
-        return;
+      if (modelId === latestConfig.activeImageModel) return;
 
       ctx.logger.info(
         "sd-server",
-        `Switching active Image model from "${latestConfig.activeImageModel}" to "${matchedModel}"`,
+        `Switching active Image model from "${latestConfig.activeImageModel}" to "${modelId}"`,
       );
       await imageService.kill();
-      latestConfig.activeImageModel = matchedModel;
+      latestConfig.activeImageModel = modelId;
+      saveConfig(ctx.database, latestConfig);
+    });
+  };
+
+  const switchSttModel = async (modelId: string): Promise<void> => {
+    if (!sttService) return;
+    await serializeSttSwitch(async () => {
+      const latestConfig = loadConfig(ctx.database, config.root);
+      if (modelId === latestConfig.activeSttModel) return;
+
+      ctx.logger.info(
+        "whisper-server",
+        `Switching active STT from "${latestConfig.activeSttModel}" to "${modelId}"`,
+      );
+      await sttService.kill();
+      latestConfig.activeSttModel = modelId;
       saveConfig(ctx.database, latestConfig);
     });
   };
@@ -2122,10 +2218,20 @@ export async function runServe(
           FormDataEntryValue | FormDataEntryValue[]
         > = {};
         for (const [key, value] of formData.entries()) {
-          const existing = bodyObj[key];
-          bodyObj[key] =
+          const repeatedField =
+            key === "include[]" || key === "timestamp_granularities[]";
+          const normalizedKey =
+            key === "include[]"
+              ? "include"
+              : key === "timestamp_granularities[]"
+                ? "timestamp_granularities"
+                : key;
+          const existing = bodyObj[normalizedKey];
+          bodyObj[normalizedKey] =
             existing === undefined
-              ? value
+              ? repeatedField
+                ? [value]
+                : value
               : Array.isArray(existing)
                 ? [...existing, value]
                 : [existing, value];
@@ -2135,13 +2241,23 @@ export async function runServe(
         if (!parsed.success) {
           return validationFailure(parsed.error);
         }
+        const sttModel = requestedSttModel(parsed.data.model);
+        if (!sttModel) return modelNotFound(parsed.data.model ?? "");
+        await switchSttModel(sttModel);
         const normalizedForm = new FormData();
         for (const [key, value] of Object.entries(parsed.data)) {
-          if (value !== undefined)
+          if (value === undefined) continue;
+          const formKey =
+            key === "include" || key === "timestamp_granularities"
+              ? `${key}[]`
+              : key;
+          const values = Array.isArray(value) ? value : [value];
+          for (const item of values) {
             normalizedForm.append(
-              key,
-              value instanceof Blob ? value : String(value),
+              formKey,
+              item instanceof Blob ? item : String(item),
             );
+          }
         }
         request = new Request(request.url, {
           method: request.method,
@@ -2226,7 +2342,9 @@ export async function runServe(
         imageGenerationRequestSchema,
       );
       if (!parsed.success) return parsed.response;
-      await switchImageModel(parsed.data.model);
+      const imageModel = requestedImageModel(parsed.data.model);
+      if (!imageModel) return modelNotFound(parsed.data.model ?? "");
+      await switchImageModel(imageModel);
       try {
         await imageService.ensureRunning();
       } catch {
