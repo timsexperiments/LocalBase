@@ -148,6 +148,7 @@ type OpenAIErrorType =
 
 type OpenAIErrorCode =
   | "invalid_api_key"
+  | "model_not_found"
   | "route_disabled"
   | "validation_failed"
   | "service_unavailable"
@@ -207,6 +208,20 @@ function badRequest(message: string): Response {
     },
   };
   return Response.json(body, { status: 400 });
+}
+
+function modelNotFound(model: string): Response {
+  return Response.json(
+    {
+      error: {
+        message: `The model '${model}' does not exist.`,
+        type: "invalid_request_error",
+        param: "model",
+        code: "model_not_found",
+      },
+    } satisfies OpenAIErrorResponse,
+    { status: 404 },
+  );
 }
 
 function payloadTooLarge(): Response {
@@ -281,6 +296,10 @@ const functionToolSchema = z
       .strict(),
   })
   .strict();
+
+const modelIdSchema = z
+  .string()
+  .refine((value) => value.trim().length > 0, "model must not be empty");
 
 const textContentPartSchema = z
   .object({ type: z.literal("text"), text: z.string() })
@@ -398,7 +417,7 @@ const chatMessageSchema = z.discriminatedUnion("role", [
 
 const chatCompletionRequestSchema = z
   .object({
-    model: z.string(),
+    model: modelIdSchema,
     messages: z.array(chatMessageSchema),
     temperature: z.number().min(0).max(2).optional(),
     top_p: z.number().min(0).max(1).optional(),
@@ -434,7 +453,7 @@ const chatCompletionRequestSchema = z
 const imageGenerationRequestSchema = z
   .object({
     prompt: z.string(),
-    model: z.string().optional(),
+    model: modelIdSchema.optional(),
     n: z.number().min(1).max(10).optional(),
     quality: z.enum(["standard", "hd"]).optional(),
     response_format: z.enum(["url", "b64_json"]).optional(),
@@ -448,7 +467,7 @@ const transcriptionRequestSchema = z.object({
   file: z.instanceof(Blob, {
     message: "file must be a valid File or Blob object",
   }),
-  model: z.string().optional(),
+  model: modelIdSchema.optional(),
   language: z.string().optional(),
   prompt: z.string().optional(),
   response_format: z
@@ -459,7 +478,7 @@ const transcriptionRequestSchema = z.object({
 
 const embeddingsRequestSchema = z
   .object({
-    model: z.string(),
+    model: modelIdSchema,
     input: z.union([
       z.string(),
       z.array(z.string()),
@@ -495,6 +514,154 @@ const chatCompletionResponseSchema = z
       .optional(),
   })
   .passthrough();
+
+const chatCompletionStreamDeltaSchema = z
+  .object({
+    role: z.literal("assistant").optional(),
+    content: z.string().nullable().optional(),
+    refusal: z.string().nullable().optional(),
+    reasoning_content: z.string().nullable().optional(),
+    tool_calls: z
+      .array(
+        z
+          .object({
+            index: z.number().int().nonnegative(),
+            id: z.string().min(1).optional(),
+            type: z.literal("function").optional(),
+            function: z
+              .object({
+                name: z.string().min(1).optional(),
+                arguments: z.string().optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict();
+
+const topTokenLogprobSchema = z
+  .object({
+    id: z.number().int(),
+    token: z.string(),
+    bytes: z.array(z.number().int().min(0).max(255)),
+    logprob: z.number(),
+  })
+  .strict();
+
+const tokenLogprobSchema = z
+  .object({
+    id: z.number().int(),
+    token: z.string(),
+    bytes: z.array(z.number().int().min(0).max(255)),
+    logprob: z.number(),
+    top_logprobs: z.array(topTokenLogprobSchema),
+  })
+  .strict();
+
+const chatCompletionStreamLogprobsSchema = z
+  .object({
+    content: z.array(tokenLogprobSchema).nullable(),
+    refusal: z.array(tokenLogprobSchema).nullable().optional(),
+  })
+  .strict();
+
+const promptTokensDetailsSchema = z
+  .object({
+    audio_tokens: z.number().int().nonnegative().optional(),
+    cached_tokens: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+const completionTokensDetailsSchema = z
+  .object({
+    accepted_prediction_tokens: z.number().int().nonnegative().optional(),
+    audio_tokens: z.number().int().nonnegative().optional(),
+    reasoning_tokens: z.number().int().nonnegative().optional(),
+    rejected_prediction_tokens: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+const chatCompletionUsageSchema = z
+  .object({
+    prompt_tokens: z.number().int().nonnegative(),
+    completion_tokens: z.number().int().nonnegative(),
+    total_tokens: z.number().int().nonnegative(),
+    prompt_tokens_details: promptTokensDetailsSchema.optional(),
+    completion_tokens_details: completionTokensDetailsSchema.optional(),
+  })
+  .strict();
+
+const llamaTimingsSchema = z
+  .object({
+    cache_n: z.number(),
+    prompt_n: z.number(),
+    prompt_ms: z.number(),
+    prompt_per_token_ms: z.number(),
+    prompt_per_second: z.number(),
+    predicted_n: z.number(),
+    predicted_ms: z.number(),
+    predicted_per_token_ms: z.number(),
+    predicted_per_second: z.number(),
+    draft_n: z.number().optional(),
+    draft_n_accepted: z.number().optional(),
+  })
+  .strict();
+
+const llamaPromptProgressSchema = z
+  .object({
+    total: z.number(),
+    cache: z.number(),
+    processed: z.number(),
+    time_ms: z.number(),
+  })
+  .strict();
+
+const chatCompletionStreamChunkSchema = z
+  .object({
+    id: z.string(),
+    object: z.literal("chat.completion.chunk"),
+    created: z.number(),
+    model: z.string(),
+    choices: z.array(
+      z
+        .object({
+          index: z.number(),
+          delta: chatCompletionStreamDeltaSchema,
+          finish_reason: z
+            .enum(["stop", "length", "tool_calls", "content_filter"])
+            .nullable(),
+          logprobs: chatCompletionStreamLogprobsSchema.nullable().optional(),
+        })
+        .strict(),
+    ),
+    usage: chatCompletionUsageSchema.nullable().optional(),
+    system_fingerprint: z.string().nullable().optional(),
+    service_tier: z.string().nullable().optional(),
+    timings: llamaTimingsSchema.optional(),
+    prompt_progress: llamaPromptProgressSchema.optional(),
+  })
+  .strict();
+
+const chatCompletionStreamErrorSchema = z
+  .object({
+    error: z
+      .object({
+        message: z.string(),
+        type: z.string(),
+        param: z.string().nullable().optional(),
+        code: z.union([z.string(), z.number()]).nullable().optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const chatCompletionStreamEventSchema = z.union([
+  chatCompletionStreamChunkSchema,
+  chatCompletionStreamErrorSchema,
+]);
 
 const embeddingsResponseSchema = z
   .object({
@@ -683,8 +850,134 @@ function filterProxyHeaders(headers: Headers): Headers {
 }
 
 function isEventStream(response: Response): boolean {
+  const contentType = response.headers.get("content-type");
+  if (!contentType) return false;
   return (
-    response.headers.get("content-type")?.includes("text/event-stream") ?? false
+    contentType.split(";", 1)[0]?.trim().toLowerCase() === "text/event-stream"
+  );
+}
+
+function eventData(event: string): string | undefined {
+  const values: string[] = [];
+  for (const line of event.split(/\r\n|\r|\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const value = line.slice("data:".length);
+    values.push(value.startsWith(" ") ? value.slice(1) : value);
+  }
+  return values.length > 0 ? values.join("\n") : undefined;
+}
+
+function validateEventStream(
+  body: ReadableStream<Uint8Array>,
+  schema: z.ZodType,
+): ReadableStream<Uint8Array> {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  const boundary = /(?:\r\n|\r|\n)(?:\r\n|\r|\n)/;
+  let buffered = "";
+  let doneEvent: string | undefined;
+  let failed = false;
+  const choiceFinished = new Map<number, boolean>();
+
+  const validationFailure = `data: ${JSON.stringify({
+    error: {
+      message: "The upstream service returned an invalid event stream.",
+      type: "server_error",
+      param: null,
+      code: "upstream_error",
+    },
+  })}\n\ndata: [DONE]\n\n`;
+
+  const fail = (
+    controller: TransformStreamDefaultController<Uint8Array>,
+    terminate: boolean,
+  ): false => {
+    if (!failed) controller.enqueue(encoder.encode(validationFailure));
+    failed = true;
+    if (terminate) controller.terminate();
+    return false;
+  };
+
+  const flushEvent = (
+    controller: TransformStreamDefaultController<Uint8Array>,
+    event: string,
+    terminateOnFailure: boolean,
+    framed: boolean,
+  ): boolean => {
+    const hasFields = event.split(/\r\n|\r|\n/).some((line) => line.length > 0);
+    if (!hasFields) {
+      if (!doneEvent) controller.enqueue(encoder.encode(event));
+      return true;
+    }
+
+    if (doneEvent) return fail(controller, terminateOnFailure);
+
+    const data = eventData(event);
+    if (data === "[DONE]") {
+      if (
+        !framed ||
+        choiceFinished.size === 0 ||
+        [...choiceFinished.values()].some((finished) => !finished)
+      ) {
+        return fail(controller, terminateOnFailure);
+      }
+      doneEvent = event;
+      return true;
+    }
+    if (data !== undefined) {
+      try {
+        const parsed = schema.safeParse(JSON.parse(data));
+        if (!parsed.success) {
+          return fail(controller, terminateOnFailure);
+        }
+        const value = parsed.data as
+          | z.infer<typeof chatCompletionStreamChunkSchema>
+          | z.infer<typeof chatCompletionStreamErrorSchema>;
+        if ("error" in value) {
+          controller.enqueue(encoder.encode(event));
+          controller.terminate();
+          return false;
+        }
+        for (const choice of value.choices) {
+          if (choiceFinished.get(choice.index)) {
+            return fail(controller, terminateOnFailure);
+          }
+          choiceFinished.set(choice.index, choice.finish_reason !== null);
+        }
+      } catch {
+        return fail(controller, terminateOnFailure);
+      }
+    }
+
+    controller.enqueue(encoder.encode(event));
+    return true;
+  };
+
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        buffered += decoder.decode(chunk, { stream: true });
+        while (true) {
+          const match = boundary.exec(buffered);
+          if (!match || match.index === undefined) return;
+          const end = match.index + match[0].length;
+          if (!flushEvent(controller, buffered.slice(0, end), true, true)) {
+            return;
+          }
+          buffered = buffered.slice(end);
+        }
+      },
+      flush(controller) {
+        buffered += decoder.decode();
+        if (buffered && !flushEvent(controller, buffered, false, false)) return;
+        if (failed) return;
+        if (!doneEvent) {
+          fail(controller, false);
+          return;
+        }
+        controller.enqueue(encoder.encode(doneEvent));
+      },
+    }),
   );
 }
 
@@ -693,6 +986,7 @@ async function proxyRequest(
   targetBase: string,
   pathOverride?: string,
   responseSchema?: z.ZodType,
+  eventStreamSchema?: z.ZodType,
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
@@ -711,6 +1005,26 @@ async function proxyRequest(
   } catch {
     if (request.signal.aborted) return requestAborted();
     return upstreamFailure("The upstream service could not be reached.");
+  }
+
+  if (
+    responseSchema &&
+    eventStreamSchema &&
+    isEventStream(upstream) &&
+    upstream.ok
+  ) {
+    if (!upstream.body) {
+      return upstreamFailure(
+        "The upstream service returned an invalid response.",
+      );
+    }
+    const headers = filterProxyHeaders(upstream.headers);
+    headers.delete("content-length");
+    return new Response(validateEventStream(upstream.body, eventStreamSchema), {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers,
+    });
   }
 
   if (responseSchema && !isEventStream(upstream) && upstream.ok) {
@@ -1595,18 +1909,19 @@ export async function runServe(
     return await waitForRequestAbort(lockedWork, requestSignal);
   };
 
-  const requestedLlmModel = (requestedModel: string | undefined): string => {
+  const requestedLlmModel = (
+    requestedModel: string | undefined,
+  ): string | undefined => {
     const latestConfig = loadConfig(ctx.database, config.root);
-    if (!requestedModel) return latestConfig.activeLlmModel;
+    if (requestedModel === undefined) return latestConfig.activeLlmModel;
     const normalized = requestedModel.replace(
-      /^(localbase|openai|ollama)\//,
+      /^(localbase|openai|ollama)\//i,
       "",
     );
-    return (
-      latestConfig.selectedLlmModels.find(
-        (model) => model.toLowerCase() === normalized.toLowerCase(),
-      ) ?? latestConfig.activeLlmModel
-    );
+    return [
+      latestConfig.activeLlmModel,
+      ...latestConfig.selectedLlmModels,
+    ].find((model) => model.toLowerCase() === normalized.toLowerCase());
   };
 
   const activateLlmModel = async (
@@ -1682,6 +1997,7 @@ export async function runServe(
 
     return await withLlmLeaseLock(requestSignal, async () => {
       const modelId = requestedLlmModel(requestedModel);
+      if (!modelId) return modelNotFound(requestedModel ?? "");
       throwIfRequestAborted(requestSignal);
       if (activeLlmLeases && activeLlmLeases.modelId !== modelId) {
         if (activeLlmLeases.count > 0) {
@@ -1938,6 +2254,7 @@ export async function runServe(
             llmBase,
             undefined,
             chatCompletionResponseSchema,
+            chatCompletionStreamEventSchema,
           );
         },
         request.signal,
