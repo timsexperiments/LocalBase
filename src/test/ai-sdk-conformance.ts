@@ -4,12 +4,14 @@ import type { GatewayFixture } from "./gateway-fixture";
 export function createLocalBaseAiSdkProvider(
   gateway: GatewayFixture,
   apiKey?: string,
+  options: { supportsStructuredOutputs?: boolean } = {},
 ) {
   return createOpenAICompatible({
     baseURL: `${gateway.baseUrl}/v1`,
     name: "localbase-conformance",
     apiKey,
     includeUsage: true,
+    supportsStructuredOutputs: options.supportsStructuredOutputs,
   });
 }
 

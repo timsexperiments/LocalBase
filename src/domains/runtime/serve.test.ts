@@ -1,8 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { generateText, stepCountIs, tool } from "ai";
 import { join } from "node:path";
-import { z } from "zod";
 import { byId, primaryArtifact } from "../../catalog";
 import {
   startGatewayFixture,
@@ -323,98 +320,6 @@ describe("API gateway integration", () => {
         },
       });
     }
-  });
-
-  test("round-trips AI SDK tool calls and results", async () => {
-    const localbase = createOpenAICompatible({
-      baseURL: `${gateway.baseUrl}/v1`,
-      name: "localbase-test",
-    });
-
-    const rawResponse = await request("/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-test-upstream": "tool-round-trip",
-      },
-      body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
-        messages: [{ role: "user", content: "Call the weather tool." }],
-      }),
-    });
-    expect(rawResponse.status).toBe(200);
-    const rawBody = (await rawResponse.json()) as {
-      choices: Array<{ message: unknown }>;
-    };
-    expect(rawBody.choices[0]?.message).toEqual({
-      role: "assistant",
-      content: null,
-      reasoning_content: "Looking up the weather.",
-      tool_calls: [
-        {
-          id: "call_weather",
-          type: "function",
-          function: {
-            name: "weather",
-            arguments: '{"city":"Austin"}',
-          },
-          extra_content: {
-            google: { thought_signature: "signature" },
-          },
-        },
-      ],
-    });
-
-    const requestOffset = gateway.upstreamRequests.length;
-
-    const result = await generateText({
-      model: localbase.chatModel("qwen2.5-coder-1.5b-instruct-q4_k_m"),
-      headers: { "x-test-upstream": "tool-round-trip" },
-      prompt: "What is the weather in Austin?",
-      tools: {
-        weather: tool({
-          description: "Gets current weather by city.",
-          inputSchema: z.object({ city: z.string() }),
-          execute: async ({ city }) => ({ city, temperature: 73 }),
-        }),
-      },
-      stopWhen: stepCountIs(2),
-    });
-
-    expect(result.text).toBe("73°F");
-    const requests = gateway.upstreamRequests
-      .slice(requestOffset)
-      .map((upstream) => JSON.parse(upstream.body));
-    expect(requests).toHaveLength(2);
-    expect(requests[0].tools).toEqual([
-      expect.objectContaining({
-        type: "function",
-        function: expect.objectContaining({ name: "weather" }),
-      }),
-    ]);
-    expect(requests[1].messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: "assistant",
-          content: null,
-          tool_calls: [
-            expect.objectContaining({
-              id: "call_weather",
-              type: "function",
-              function: {
-                name: "weather",
-                arguments: '{"city":"Austin"}',
-              },
-            }),
-          ],
-        }),
-        expect.objectContaining({
-          role: "tool",
-          tool_call_id: "call_weather",
-          content: '{"city":"Austin","temperature":73}',
-        }),
-      ]),
-    );
   });
 
   test("rejects malformed and unsupported non-streaming upstream responses", async () => {
@@ -1069,6 +974,43 @@ describe("API gateway integration", () => {
         }),
       },
       expectedPath: "tools.0.function.parameters",
+    },
+    {
+      name: "chat completions require a complete JSON-schema response format",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+          response_format: {
+            type: "json_schema",
+            json_schema: { name: "answer" },
+          },
+        }),
+      },
+      expectedPath: "response_format.json_schema.schema",
+    },
+    {
+      name: "chat completions reject invalid JSON-schema response formats",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "answer",
+              schema: "not-a-schema",
+            },
+          },
+        }),
+      },
+      expectedPath: "response_format.json_schema.schema",
     },
     {
       name: "chat completions reject unsupported tool choices",

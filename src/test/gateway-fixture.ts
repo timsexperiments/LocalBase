@@ -35,6 +35,69 @@ type ControlledHeaderWait = {
   aborted: Promise<void>;
 };
 
+function chatCompletionResponse(
+  id: string,
+  message: Record<string, unknown>,
+  finishReason: string,
+): Response {
+  return Response.json({
+    id,
+    object: "chat.completion",
+    created: 0,
+    model: LLM_MODEL,
+    choices: [{ index: 0, message, finish_reason: finishReason }],
+    usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+  });
+}
+
+function chatCompletionChunk(
+  id: string,
+  choices: unknown[],
+  includeUsage = false,
+): Record<string, unknown> {
+  return {
+    id,
+    object: "chat.completion.chunk",
+    created: 0,
+    model: LLM_MODEL,
+    choices,
+    ...(includeUsage
+      ? { usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 } }
+      : {}),
+  };
+}
+
+function eventStream(chunks: unknown[]): Response {
+  return new Response(
+    `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`,
+    { headers: { "content-type": "text/event-stream" } },
+  );
+}
+
+function hasToolResult(body: string, toolCallId: string): boolean {
+  const request = JSON.parse(body) as {
+    messages?: Array<{ role?: string; tool_call_id?: string }>;
+  };
+  return (
+    request.messages?.some(
+      (message) =>
+        message.role === "tool" && message.tool_call_id === toolCallId,
+    ) ?? false
+  );
+}
+
+function functionToolCall(
+  id: string,
+  name: string,
+  argumentsJson: string,
+): Record<string, unknown> {
+  return {
+    id,
+    type: "function",
+    function: { name, arguments: argumentsJson },
+  };
+}
+
 export async function writeCompleteCatalogArtifact(
   directory: string,
   modelId: string,
@@ -253,49 +316,235 @@ function startMockUpstream(
         });
       }
       if (mode === "tool-round-trip") {
-        const messages = JSON.parse(body) as {
-          messages?: Array<{ role?: string; tool_call_id?: string }>;
-        };
-        const hasToolResult = messages.messages?.some(
-          (message) =>
-            message.role === "tool" && message.tool_call_id === "call_weather",
-        );
-        return Response.json({
-          id: hasToolResult ? "chatcmpl-tool-result" : "chatcmpl-tool-call",
-          object: "chat.completion",
-          created: 0,
-          model: LLM_MODEL,
-          choices: [
-            hasToolResult
-              ? {
-                  index: 0,
-                  message: { role: "assistant", content: "73°F" },
-                  finish_reason: "stop",
-                }
-              : {
-                  index: 0,
-                  message: {
-                    role: "assistant",
-                    content: null,
-                    tool_calls: [
-                      {
-                        id: "call_weather",
-                        type: "function",
-                        function: {
-                          name: "weather",
-                          arguments: '{"city":"Austin"}',
-                        },
-                        extra_content: {
-                          google: { thought_signature: "signature" },
-                        },
-                      },
-                    ],
-                    reasoning_content: "Looking up the weather.",
-                  },
-                  finish_reason: "tool_calls",
+        if (hasToolResult(body, "call_weather")) {
+          return chatCompletionResponse(
+            "chatcmpl-tool-result",
+            { role: "assistant", content: "73°F" },
+            "stop",
+          );
+        }
+        return chatCompletionResponse(
+          "chatcmpl-tool-call",
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                ...functionToolCall(
+                  "call_weather",
+                  "weather",
+                  '{"city":"Austin"}',
+                ),
+                extra_content: {
+                  google: { thought_signature: "signature" },
                 },
-          ],
-        });
+              },
+            ],
+            reasoning_content: "Looking up the weather.",
+          },
+          "tool_calls",
+        );
+      }
+      if (mode === "multiple-tool-round-trip") {
+        const complete =
+          hasToolResult(body, "call_weather") &&
+          hasToolResult(body, "call_time");
+        return chatCompletionResponse(
+          complete ? "chatcmpl-multiple-result" : "chatcmpl-multiple-calls",
+          complete
+            ? { role: "assistant", content: "73°F at noon" }
+            : {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  functionToolCall(
+                    "call_weather",
+                    "weather",
+                    '{"city":"Austin"}',
+                  ),
+                  functionToolCall(
+                    "call_time",
+                    "time",
+                    '{"timezone":"America/Chicago"}',
+                  ),
+                ],
+              },
+          complete ? "stop" : "tool_calls",
+        );
+      }
+      if (mode === "malformed-tool-input") {
+        return chatCompletionResponse(
+          "chatcmpl-malformed-tool-input",
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              functionToolCall("call_weather", "weather", "not-json"),
+            ],
+          },
+          "tool_calls",
+        );
+      }
+      if (mode === "schema-invalid-tool-input") {
+        return chatCompletionResponse(
+          "chatcmpl-schema-invalid-tool-input",
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [functionToolCall("call_weather", "weather", "{}")],
+          },
+          "tool_calls",
+        );
+      }
+      if (mode === "unknown-tool") {
+        return chatCompletionResponse(
+          "chatcmpl-unknown-tool",
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [functionToolCall("call_unknown", "unknown", "{}")],
+          },
+          "tool_calls",
+        );
+      }
+      if (mode === "tool-execution-error") {
+        return chatCompletionResponse(
+          "chatcmpl-tool-error",
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              functionToolCall("call_weather", "weather", '{"city":"Austin"}'),
+            ],
+          },
+          "tool_calls",
+        );
+      }
+      if (mode === "structured-json") {
+        return chatCompletionResponse(
+          "chatcmpl-structured-json",
+          { role: "assistant", content: '{"answer":"hello"}' },
+          "stop",
+        );
+      }
+      if (mode === "structured-invalid-json") {
+        return chatCompletionResponse(
+          "chatcmpl-structured-invalid-json",
+          { role: "assistant", content: "not-json" },
+          "stop",
+        );
+      }
+      if (mode === "structured-invalid-schema") {
+        return chatCompletionResponse(
+          "chatcmpl-structured-invalid-schema",
+          { role: "assistant", content: '{"answer":42}' },
+          "stop",
+        );
+      }
+      if (mode === "tool-then-structured") {
+        if (hasToolResult(body, "call_weather")) {
+          return chatCompletionResponse(
+            "chatcmpl-tool-structured-result",
+            {
+              role: "assistant",
+              content: '{"forecast":"sunny","temperature":73}',
+            },
+            "stop",
+          );
+        }
+        return chatCompletionResponse(
+          "chatcmpl-tool-structured-call",
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              functionToolCall("call_weather", "weather", '{"city":"Austin"}'),
+            ],
+          },
+          "tool_calls",
+        );
+      }
+      if (mode === "streamed-tool-round-trip") {
+        if (hasToolResult(body, "call_weather")) {
+          return eventStream([
+            chatCompletionChunk("chatcmpl-streamed-tool-result", [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "complete" },
+                finish_reason: null,
+              },
+            ]),
+            chatCompletionChunk(
+              "chatcmpl-streamed-tool-result",
+              [{ index: 0, delta: {}, finish_reason: "stop" }],
+              true,
+            ),
+          ]);
+        }
+        return eventStream([
+          chatCompletionChunk("chatcmpl-streamed-tool-call", [
+            {
+              index: 0,
+              delta: {
+                role: "assistant",
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_weather",
+                    type: "function",
+                    function: { name: "weather", arguments: '{"city":"Aust' },
+                  },
+                  {
+                    index: 1,
+                    id: "call_time",
+                    type: "function",
+                    function: {
+                      name: "time",
+                      arguments: '{"timezone":"America/Ch',
+                    },
+                  },
+                ],
+              },
+              finish_reason: null,
+            },
+          ]),
+          chatCompletionChunk("chatcmpl-streamed-tool-call", [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  { index: 1, function: { arguments: 'icago"}' } },
+                  { index: 0, function: { arguments: 'in"}' } },
+                ],
+              },
+              finish_reason: null,
+            },
+          ]),
+          chatCompletionChunk(
+            "chatcmpl-streamed-tool-call",
+            [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+            true,
+          ),
+        ]);
+      }
+      if (mode === "structured-stream") {
+        return eventStream([
+          chatCompletionChunk("chatcmpl-structured-stream", [
+            {
+              index: 0,
+              delta: { role: "assistant", content: '{"answer":"hel' },
+              finish_reason: null,
+            },
+          ]),
+          chatCompletionChunk("chatcmpl-structured-stream", [
+            { index: 0, delta: { content: 'lo"}' }, finish_reason: null },
+          ]),
+          chatCompletionChunk(
+            "chatcmpl-structured-stream",
+            [{ index: 0, delta: {}, finish_reason: "stop" }],
+            true,
+          ),
+        ]);
       }
       if (mode === "controlled-stream" || mode === "ai-sdk-controlled-stream") {
         const id = request.headers.get("x-test-stream-id");
