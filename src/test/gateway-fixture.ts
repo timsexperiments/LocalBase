@@ -11,16 +11,19 @@ import {
 } from "../manager";
 import { DatabaseSession } from "../db/client";
 import { compileRuntimeFixture } from "./runtime-fixture";
+import { tinyPngBase64 } from "./media-fixtures";
 
 const LLM_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const STT_MODEL = "whisper-large-v3-turbo";
 const IMAGE_MODEL = "stable-diffusion-v1-5";
 const PROJECT_ROOT = join(import.meta.dirname, "../..");
 const MAX_START_ATTEMPTS = 5;
-type UpstreamRequest = {
+
+export type UpstreamRequest = {
   path: string;
   headers: Headers;
   body: string;
+  formData?: FormData;
 };
 
 type ControlledStream = {
@@ -57,6 +60,16 @@ export type GatewayFixture = {
   saveConfig: (config: LocalBaseConfig) => void;
   readLlmRuntimeLaunches: () => Promise<string[][]>;
   waitForLlmRuntimeLaunches: (
+    offset: number,
+    count: number,
+  ) => Promise<string[][]>;
+  readSttRuntimeLaunches: () => Promise<string[][]>;
+  waitForSttRuntimeLaunches: (
+    offset: number,
+    count: number,
+  ) => Promise<string[][]>;
+  readImageRuntimeLaunches: () => Promise<string[][]>;
+  waitForImageRuntimeLaunches: (
     offset: number,
     count: number,
   ) => Promise<string[][]>;
@@ -165,8 +178,18 @@ function startMockUpstream(
       const path = new URL(request.url).pathname;
       if (path === "/health") return Response.json({ status: "ok" });
 
+      const formData = request.headers
+        .get("content-type")
+        ?.includes("multipart/form-data")
+        ? await request.clone().formData()
+        : undefined;
       const body = await request.text();
-      requests.push({ path, headers: new Headers(request.headers), body });
+      requests.push({
+        path,
+        headers: new Headers(request.headers),
+        body,
+        formData,
+      });
       const mode = request.headers.get("x-test-upstream");
       if (mode === "malformed") return new Response("not json");
       if (mode === "invalid-schema") return Response.json({ unexpected: true });
@@ -851,15 +874,50 @@ function startMockUpstream(
         );
       }
       if (path === "/v1/images/generations") {
-        return Response.json({ created: 0, data: [{ b64_json: "test" }] });
+        const payload = JSON.parse(body) as { n?: number };
+        return Response.json({
+          created: 0,
+          data: Array.from({ length: payload.n ?? 1 }, () => ({
+            b64_json: tinyPngBase64,
+          })),
+        });
       }
-      if (path.startsWith("/v1/audio/")) return Response.json({ text: "ok" });
+      if (path === "/inference" || path.startsWith("/v1/audio/")) {
+        return Response.json({
+          task: "transcribe",
+          language: "english",
+          duration: 0.5,
+          text: "fixture transcript",
+          segments: [
+            {
+              id: 0,
+              seek: 0,
+              start: 0,
+              end: 0.5,
+              text: "fixture transcript",
+              tokens: [1],
+              temperature: 0,
+              avg_logprob: 0,
+              compression_ratio: 1,
+              no_speech_prob: 0,
+            },
+          ],
+        });
+      }
       if (path === "/v1/embeddings") {
+        const payload = JSON.parse(body) as { input: unknown };
+        const inputs = Array.isArray(payload.input)
+          ? payload.input
+          : [payload.input];
         return Response.json({
           object: "list",
-          data: [{ object: "embedding", index: 0, embedding: [0] }],
+          data: inputs.map((input, index) => ({
+            object: "embedding",
+            index,
+            embedding: [index, typeof input === "string" ? input.length : 0],
+          })),
           model: LLM_MODEL,
-          usage: { prompt_tokens: 1, total_tokens: 1 },
+          usage: { prompt_tokens: inputs.length, total_tokens: inputs.length },
         });
       }
       return Response.json({
@@ -937,6 +995,8 @@ export async function startGatewayFixture(
   const runtimeDir = join(root, "test-runtimes");
   const cliPath = join(root, "local-base");
   const llmLaunchesPath = join(root, "llama-launches.jsonl");
+  const sttLaunchesPath = join(root, "whisper-launches.jsonl");
+  const imageLaunchesPath = join(root, "sd-launches.jsonl");
   const cleanup = () => rmSync(root, { recursive: true, force: true });
   const upstreamRequests: UpstreamRequest[] = [];
   const controlledStreams = new Map<string, ControlledStream>();
@@ -982,6 +1042,7 @@ export async function startGatewayFixture(
     mkdirSync(config.llmModelsDir, { recursive: true });
     mkdirSync(config.sttModelsDir, { recursive: true });
     mkdirSync(config.imageModelsDir, { recursive: true });
+    mkdirSync(join(config.root, "bin"), { recursive: true });
     mkdirSync(runtimeDir, { recursive: true });
     await Promise.all([
       writeCompleteCatalogArtifact(config.llmModelsDir, LLM_MODEL),
@@ -998,8 +1059,16 @@ export async function startGatewayFixture(
         undefined,
         llmLaunchesPath,
       ),
-      compileRuntimeFixture(join(runtimeDir, "whisper-server")),
-      compileRuntimeFixture(join(runtimeDir, "sd-server")),
+      compileRuntimeFixture(
+        join(runtimeDir, "whisper-server"),
+        undefined,
+        sttLaunchesPath,
+      ),
+      compileRuntimeFixture(
+        join(runtimeDir, "sd-server"),
+        undefined,
+        imageLaunchesPath,
+      ),
       compileGatewayCli(cliPath),
     ]);
   } catch (error) {
@@ -1091,30 +1160,33 @@ export async function startGatewayFixture(
       : new Error("Gateway process was not created.");
   }
 
-  const readLlmRuntimeLaunches = async (): Promise<string[][]> => {
-    const file = Bun.file(llmLaunchesPath);
-    if (!(await file.exists())) return [];
-    return (await file.text())
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as string[]);
+  const runtimeLaunches = (path: string, name: string) => {
+    const read = async (): Promise<string[][]> => {
+      const file = Bun.file(path);
+      if (!(await file.exists())) return [];
+      return (await file.text())
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as string[]);
+    };
+    const wait = async (offset: number, count: number): Promise<string[][]> => {
+      const deadline = Date.now() + 2_000;
+      while (Date.now() < deadline) {
+        const launches = await read();
+        if (launches.length >= offset + count) return launches.slice(offset);
+        await Bun.sleep(10);
+      }
+      const launches = await read();
+      throw new Error(
+        `Expected ${count} ${name} runtime launches, received ${launches.length - offset}: ${JSON.stringify(launches.slice(offset))}`,
+      );
+    };
+    return { read, wait };
   };
-  const waitForLlmRuntimeLaunches = async (
-    offset: number,
-    count: number,
-  ): Promise<string[][]> => {
-    const deadline = Date.now() + 2_000;
-    while (Date.now() < deadline) {
-      const launches = await readLlmRuntimeLaunches();
-      if (launches.length >= offset + count) return launches.slice(offset);
-      await Bun.sleep(10);
-    }
-    const launches = await readLlmRuntimeLaunches();
-    throw new Error(
-      `Expected ${count} LLM runtime launches, received ${launches.length - offset}: ${JSON.stringify(launches.slice(offset))}`,
-    );
-  };
+  const llmRuntimeLaunches = runtimeLaunches(llmLaunchesPath, "LLM");
+  const sttRuntimeLaunches = runtimeLaunches(sttLaunchesPath, "STT");
+  const imageRuntimeLaunches = runtimeLaunches(imageLaunchesPath, "image");
 
   return {
     baseUrl,
@@ -1137,8 +1209,12 @@ export async function startGatewayFixture(
         database.close();
       }
     },
-    readLlmRuntimeLaunches,
-    waitForLlmRuntimeLaunches,
+    readLlmRuntimeLaunches: llmRuntimeLaunches.read,
+    waitForLlmRuntimeLaunches: llmRuntimeLaunches.wait,
+    readSttRuntimeLaunches: sttRuntimeLaunches.read,
+    waitForSttRuntimeLaunches: sttRuntimeLaunches.wait,
+    readImageRuntimeLaunches: imageRuntimeLaunches.read,
+    waitForImageRuntimeLaunches: imageRuntimeLaunches.wait,
     async waitForUpstreamRequest(id) {
       const deadline = Date.now() + 2_000;
       while (Date.now() < deadline) {
