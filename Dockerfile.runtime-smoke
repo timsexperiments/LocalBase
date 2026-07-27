@@ -2,12 +2,15 @@ FROM ubuntu:24.04
 
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends ca-certificates libgomp1 \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && install -d -m 0700 -o 65534 -g 65534 /home/localbase /run/localbase
 
 COPY dist/runtime-smoke/local-base-linux-x64 /usr/local/bin/local-base
 COPY dist/runtime-smoke/runtime-smoke-linux-x64 /usr/local/bin/localbase-runtime-smoke
 
-ENV LOCALBASE_SMOKE_CLI=/usr/local/bin/local-base
+ENV LOCALBASE_SMOKE_CLI=/usr/local/bin/local-base \
+  HOME=/home/localbase \
+  XDG_RUNTIME_DIR=/run/localbase
 
 USER 65534:65534
 

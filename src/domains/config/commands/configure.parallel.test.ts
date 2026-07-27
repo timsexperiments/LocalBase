@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AppContext } from "../../../context";
@@ -8,6 +8,7 @@ import { runConfigure } from "./configure";
 import { DatabaseSession } from "../../../db/client";
 import type { CommandExecution } from "../../app/commands/framework";
 import { configureInputSchema } from "../../app/commands/inputs";
+import { ensureLocalBaseRootMarker } from "../../../utils/root";
 
 const nonInteractiveExecution: CommandExecution = {
   global: { nonInteractive: true, json: false },
@@ -41,6 +42,7 @@ async function withTempRoot(
   action: (root: string) => Promise<void>,
 ): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "local-base-configure-"));
+  ensureLocalBaseRootMarker(root);
 
   try {
     await action(root);
@@ -112,7 +114,7 @@ test("configure gives the CLI root precedence over a configured root", async () 
     }
 
     const database = new DatabaseSession();
-    expect(loadConfig(database, cliRoot).root).toBe(cliRoot);
+    expect(loadConfig(database, cliRoot).root).toBe(realpathSync(cliRoot));
     database.close();
   });
 });

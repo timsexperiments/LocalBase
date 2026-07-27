@@ -1,14 +1,10 @@
-import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 import { parallelSlotsSchema } from "../../config/parallel";
+import { localBaseRootInputSchema } from "../../../utils/root";
 
 export const modelKindSchema = z.enum(["llm", "stt", "image"]);
 
-export const dataRootSchema = z
-  .string()
-  .min(1)
-  .refine(isAbsolute, "must be an absolute path")
-  .refine((value) => resolve(value) === value, "must be normalized");
+export const dataRootSchema = localBaseRootInputSchema;
 
 export const hostSchema = z
   .string()
@@ -73,7 +69,6 @@ export const configureInputSchema = z.object({
     .optional(),
   sttHost: hostSchema.optional(),
   sttPort: positiveInteger(65_535).optional(),
-  startupOnBoot: z.boolean().optional(),
   llmModels: nonEmptyModelListSchema.optional(),
   sttModels: modelListSchema.optional(),
   imageModels: modelListSchema.optional(),
@@ -153,6 +148,9 @@ export type ServeInput = z.infer<typeof serveInputSchema>;
 
 export const doctorInputSchema = z.object({});
 export type DoctorInput = z.infer<typeof doctorInputSchema>;
+
+export const serviceInputSchema = z.object({});
+export type ServiceInput = z.infer<typeof serviceInputSchema>;
 
 export const keysListInputSchema = z.object({});
 export type KeysListInput = z.infer<typeof keysListInputSchema>;

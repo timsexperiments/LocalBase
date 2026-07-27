@@ -38,6 +38,18 @@ bun run build
 
 The gateway is available at `http://localhost:2273/v1`. Use `./dist/local-base --help` for command details. API keys can be created with `./dist/local-base keys create`.
 
+## Run as a user service
+
+`serve` always runs in the foreground. `start` installs, enables, and starts a root-specific user service. `stop` stops and disables login startup without removing the definition. `restart` refreshes and enables the service. `status` reports manager state and gateway readiness without opening the LocalBase database.
+
+```bash
+./dist/local-base start
+./dist/local-base status
+./dist/local-base stop
+```
+
+macOS uses a launchd user agent and Linux uses a `systemd --user` service. `uninstall --yes` stops and removes the matching service before deleting that LocalBase root.
+
 ## Automation and JSON output
 
 Use the global `--json` option for automation. It may appear before or after a command, but not after `--`.

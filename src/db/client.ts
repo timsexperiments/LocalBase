@@ -6,11 +6,12 @@ import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { migrationsFolder } from "./migration-assets";
 import { validateMigrationJournal } from "./migration-integrity";
 import * as schema from "./schema";
+import { canonicalLocalBaseRoot } from "../utils/root";
 
 export type LocalBaseDatabase = BunSQLiteDatabase<typeof schema>;
 
 export function databasePath(root: string): string {
-  return join(root, "local-base.db");
+  return join(canonicalLocalBaseRoot(root), "local-base.db");
 }
 
 type OpenDatabase = {
@@ -22,16 +23,17 @@ export class DatabaseSession {
   private readonly openDatabases = new Map<string, OpenDatabase>();
 
   get(root: string): LocalBaseDatabase {
-    const path = databasePath(root);
+    const canonicalRoot = canonicalLocalBaseRoot(root);
+    const path = databasePath(canonicalRoot);
     const existing = this.openDatabases.get(path);
     if (existing) return existing.db;
 
-    mkdirSync(root, { recursive: true });
+    mkdirSync(canonicalRoot, { recursive: true });
     const sqlite = new Database(path);
     const db = drizzle({ client: sqlite, schema });
     try {
       migrate(db, { migrationsFolder: migrationsFolder() });
-      validateMigrationJournal(db, root);
+      validateMigrationJournal(db, canonicalRoot);
     } catch (error) {
       sqlite.close();
       throw error;

@@ -157,13 +157,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "startup_on_boot": {
-          "name": "startup_on_boot",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "selected_llm_models": {
           "name": "selected_llm_models",
           "type": "text",

@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test";
-import { parseEnvironmentOverrides, resolveEffectiveRoot } from "./context";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  createAppContext,
+  parseEnvironmentOverrides,
+  resolveEffectiveRoot,
+} from "./context";
+import { withRootOperation } from "./domains/service/ownership";
 
 test("validates environment overrides without mutating process state", () => {
   expect(() =>
@@ -33,4 +41,35 @@ test("resolves data roots with CLI, environment, and configured precedence", () 
   expect(resolveEffectiveRoot(undefined, undefined, "/tmp/configured")).toBe(
     "/tmp/configured",
   );
+});
+
+test("serve context initialization waits for the external root operation lock", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "local-base-context-lock-"));
+  const root = join(directory, "root");
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const holding = withRootOperation(root, "reset", async () => await blocked);
+
+  try {
+    await Bun.sleep(25);
+    const creating = createAppContext(
+      { root, nonInteractive: false, json: false },
+      true,
+      true,
+    );
+    await Bun.sleep(50);
+    expect(existsSync(root)).toBe(false);
+    release();
+    await holding;
+    const context = await creating;
+    expect(existsSync(join(root, "local-base.db"))).toBe(true);
+    await context.initializationOperation?.release();
+    context.database.close();
+  } finally {
+    release();
+    await holding;
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

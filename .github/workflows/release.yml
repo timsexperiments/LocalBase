@@ -57,8 +57,8 @@ jobs:
         if: matrix.target == 'macos-arm64'
         run: |
           mkdir -p build-cli
-          bun build src/cli.ts --compile --target=bun-darwin-arm64 --asset-naming='[dir]/[name].[ext]' --outfile build-cli/local-base-macos-arm64
-          bun build src/cli.ts --compile --target=bun-darwin-x64 --asset-naming='[dir]/[name].[ext]' --outfile build-cli/local-base-macos-x64
+          bun build src/cli.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --target=bun-darwin-arm64 --asset-naming='[dir]/[name].[ext]' --outfile build-cli/local-base-macos-arm64
+          bun build src/cli.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --target=bun-darwin-x64 --asset-naming='[dir]/[name].[ext]' --outfile build-cli/local-base-macos-x64
 
       - name: Build verified whisper-server
         run: bun run scripts/build-whisper.ts
@@ -138,10 +138,10 @@ jobs:
           mkdir -p release
 
           # Linux AMD64 (x64)
-          bun build src/cli.ts --compile --target=bun-linux-x64 --asset-naming='[dir]/[name].[ext]' --outfile release/local-base-linux-x64
+          bun build src/cli.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --target=bun-linux-x64 --asset-naming='[dir]/[name].[ext]' --outfile release/local-base-linux-x64
 
           # Linux ARM64
-          bun build src/cli.ts --compile --target=bun-linux-arm64 --asset-naming='[dir]/[name].[ext]' --outfile release/local-base-linux-arm64
+          bun build src/cli.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --target=bun-linux-arm64 --asset-naming='[dir]/[name].[ext]' --outfile release/local-base-linux-arm64
 
       - name: Download macOS ARM64 CLI binary
         uses: actions/download-artifact@v4

@@ -186,7 +186,6 @@ async function interactiveConfigureSelective(
     !locked.has("ctxSize") &&
     !locked.has("sttHost") &&
     !locked.has("sttPort") &&
-    !locked.has("startupOnBoot") &&
     !locked.has("selectedLlmModels") &&
     !locked.has("selectedSttModels") &&
     !locked.has("activeLlmModel") &&
@@ -206,13 +205,6 @@ async function interactiveConfigureSelective(
     config.sttHost = await textPrompt("STT host", config.sttHost);
   if (!locked.has("sttPort"))
     config.sttPort = await numberPrompt("STT port", config.sttPort);
-
-  if (!locked.has("startupOnBoot")) {
-    config.startupOnBoot = await confirmPrompt(
-      "Start services on boot",
-      config.startupOnBoot,
-    );
-  }
 
   if (!locked.has("selectedLlmModels")) {
     config.selectedLlmModels =
@@ -577,7 +569,6 @@ export async function runConfigure(
   maybeLock("parallel", parallelInput);
   maybeLock("sttHost", flags.sttHost ?? rawToml.sttHost);
   maybeLock("sttPort", flags.sttPort ?? rawToml.sttPort);
-  maybeLock("startupOnBoot", flags.startupOnBoot ?? rawToml.startupOnBoot);
   maybeLock("selectedLlmModels", llmFromFlags ?? llmFromToml);
   maybeLock("selectedSttModels", sttFromFlags ?? sttFromToml);
   maybeLock("selectedImageModels", imageFromFlags ?? imageFromToml);
@@ -595,8 +586,6 @@ export async function runConfigure(
     parallel,
     sttHost: flags.sttHost ?? rawToml.sttHost ?? config.sttHost,
     sttPort: flags.sttPort ?? rawToml.sttPort ?? config.sttPort,
-    startupOnBoot:
-      flags.startupOnBoot ?? rawToml.startupOnBoot ?? config.startupOnBoot,
     selectedLlmModels,
     selectedSttModels,
     selectedImageModels,

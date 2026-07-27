@@ -17,6 +17,7 @@ import {
 type CreateContext = (
   options: GlobalOptions,
   initializeDatabase: boolean,
+  initializeUnderOperationLock: boolean,
 ) => Promise<AppContext>;
 
 function errorCode(error: unknown): string {
@@ -87,7 +88,11 @@ export async function runCli(
   const output = createCommandOutput(global.json);
   let context: AppContext | undefined;
   try {
-    context = await createContext(global, command.requiresDatabase ?? true);
+    context = await createContext(
+      global,
+      command.requiresDatabase ?? true,
+      command.initializeUnderOperationLock ?? false,
+    );
     const result = await withJsonStdoutGuard(global.json, () =>
       executeCommand(command, resolution.input, global, context!, output),
     );
@@ -118,6 +123,7 @@ export async function runCli(
     console.error(`Error: ${message}`);
     return 1;
   } finally {
+    await context?.initializationOperation?.release();
     context?.database.close();
   }
 }

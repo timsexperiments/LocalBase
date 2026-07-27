@@ -20,6 +20,10 @@ import type { AppContext } from "../../../context";
 import { syncContinueConfig } from "../../config/commands/configure";
 import { type ILogger } from "../../../utils/logger";
 import { guardianProcessCommand } from "../backend-guardian";
+import {
+  acquireGatewayLease,
+  acquireGatewayLeaseForServe,
+} from "../../service/ownership";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ServeInput } from "../../app/commands/inputs";
 import { CliInputError } from "../../app/commands/errors";
@@ -1447,6 +1451,18 @@ export async function runServe(
   const imageHost = input.imageHost ?? "127.0.0.1";
   const imagePort = input.imagePort ?? 8090;
 
+  const serviceId = process.env.LOCALBASE_SERVICE_ID;
+  const serviceToken = process.env.LOCALBASE_SERVICE_TOKEN;
+  const endpoint = {
+    host: wrapperHost,
+    port: wrapperPort,
+    ...(serviceId || serviceToken ? { serviceId, serviceToken } : {}),
+  };
+  const gatewayLease = ctx.initializationOperation
+    ? await acquireGatewayLease(config.root, endpoint)
+    : await acquireGatewayLeaseForServe(config.root, endpoint);
+  await ctx.initializationOperation?.release();
+
   let ctxSize = input.ctxSize ?? 0;
   if (!ctxSize) {
     const spec = byId(config.activeLlmModel);
@@ -2188,8 +2204,28 @@ export async function runServe(
     const currentConfig = loadConfig(ctx.database, config.root);
 
     if (pathname === "/health") {
+      const presentedServiceToken = request.headers.get(
+        "x-localbase-service-token",
+      );
+      if (
+        presentedServiceToken !== null &&
+        presentedServiceToken !== gatewayLease.instance.serviceToken
+      ) {
+        return new Response("not found", { status: 404 });
+      }
+      const authenticatedManagedIdentity =
+        gatewayLease.instance.serviceToken === undefined ||
+        presentedServiceToken === gatewayLease.instance.serviceToken;
       return Response.json({
         status: "ok",
+        ...(authenticatedManagedIdentity
+          ? {
+              instance: {
+                id: gatewayLease.instance.instanceId,
+                rootHash: gatewayLease.instance.rootHash,
+              },
+            }
+          : {}),
         enabled,
         llmUpstream: enabled.llm ? llmBase : null,
         sttUpstream: enabled.stt ? sttBase : null,
@@ -2567,6 +2603,8 @@ export async function runServe(
               message: err instanceof Error ? err.message : String(err),
             },
           });
+        } finally {
+          await gatewayLease.release();
         }
         execution.output.lifecycle({
           event: "stopped",
