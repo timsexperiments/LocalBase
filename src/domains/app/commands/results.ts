@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { ApiKeyRecord, LocalBaseConfig } from "../../../manager";
 import { ModelSpecSchema } from "../../../catalog";
+import {
+  gatewayReadinessSchema,
+  serviceStatusSchema,
+} from "../../service/manager";
 
 export const configurationOutputSchema = z
   .object({
@@ -15,7 +19,6 @@ export const configurationOutputSchema = z
     ctxSize: z.number().int(),
     sttHost: z.string(),
     sttPort: z.number().int(),
-    startupOnBoot: z.boolean(),
     selectedLlmModels: z.array(z.string()),
     selectedSttModels: z.array(z.string()),
     selectedImageModels: z.array(z.string()),
@@ -68,6 +71,13 @@ export const doctorResultSchema = z
   .object({
     hardware: hardwareOutputSchema,
     configuration: configurationOutputSchema,
+  })
+  .strict();
+export const gatewayReadinessOutputSchema = gatewayReadinessSchema;
+export const serviceLifecycleResultSchema = z
+  .object({
+    service: serviceStatusSchema,
+    gateway: gatewayReadinessOutputSchema,
   })
   .strict();
 export const catalogResultSchema = z
@@ -123,7 +133,6 @@ export function publicConfiguration(config: LocalBaseConfig) {
     ctxSize: config.ctxSize,
     sttHost: config.sttHost,
     sttPort: config.sttPort,
-    startupOnBoot: config.startupOnBoot,
     selectedLlmModels: config.selectedLlmModels,
     selectedSttModels: config.selectedSttModels,
     selectedImageModels: config.selectedImageModels,

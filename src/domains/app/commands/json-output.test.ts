@@ -14,6 +14,8 @@ async function compileCli(outputPath: string): Promise<void> {
       "build",
       "src/cli.ts",
       "--compile",
+      "--no-compile-autoload-dotenv",
+      "--no-compile-autoload-bunfig",
       "--asset-naming=[dir]/[name].[ext]",
       `--outfile=${outputPath}`,
     ],

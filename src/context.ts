@@ -15,6 +15,11 @@ import {
   type GlobalOptions,
 } from "./domains/app/commands/inputs";
 import { CliInputError, formatZodError } from "./domains/app/commands/errors";
+import { canonicalLocalBaseRoot } from "./utils/root";
+import {
+  acquireServeInitializationLease,
+  type OperationLease,
+} from "./domains/service/ownership";
 
 /**
  * Dependency Injection (DI) Container for LocalBase application context.
@@ -24,6 +29,7 @@ export interface AppContext {
   specs: HostSpecs;
   config: LocalBaseConfig;
   database: DatabaseSession;
+  initializationOperation?: OperationLease;
 }
 
 const environmentOverridesSchema = z
@@ -98,13 +104,23 @@ export function resolveEffectiveRoot(
 export async function createAppContext(
   options: GlobalOptions,
   initializeDatabase = true,
+  initializeUnderOperationLock = false,
 ): Promise<AppContext> {
   const parsedOptions = globalOptionsSchema.parse(options);
   const overrides = parseEnvironmentOverrides(process.env);
   const database = new DatabaseSession();
+  let initializationOperation: OperationLease | undefined;
   try {
     const specs = await detectSpecs();
-    const root = resolveEffectiveRoot(parsedOptions.root, overrides.root);
+    const root = canonicalLocalBaseRoot(
+      resolveEffectiveRoot(parsedOptions.root, overrides.root),
+    );
+    if (initializeUnderOperationLock) {
+      initializationOperation = await acquireServeInitializationLease(
+        root,
+        process.env.LOCALBASE_SERVICE_TOKEN,
+      );
+    }
     const config: LocalBaseConfig = initializeDatabase
       ? loadConfig(database, root, specs.gpuVramGb)
       : defaultConfig(root, specs.gpuVramGb);
@@ -116,8 +132,15 @@ export async function createAppContext(
     if (overrides.ctxSize) config.ctxSize = overrides.ctxSize;
 
     const logger = createLogger(process.env.LOG_FORMAT);
-    return { logger, specs, config, database };
+    return {
+      logger,
+      specs,
+      config,
+      database,
+      ...(initializationOperation ? { initializationOperation } : {}),
+    };
   } catch (error) {
+    await initializationOperation?.release();
     database.close();
     throw error;
   }

@@ -13,7 +13,6 @@ export const configTable = sqliteTable("config", {
   ctxSize: integer("ctx_size").notNull(),
   sttHost: text("stt_host").notNull(),
   sttPort: integer("stt_port").notNull(),
-  startupOnBoot: integer("startup_on_boot").notNull(),
   selectedLlmModels: text("selected_llm_models").notNull(),
   selectedSttModels: text("selected_stt_models").notNull(),
   selectedImageModels: text("selected_image_models").notNull(),

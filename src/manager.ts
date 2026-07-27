@@ -6,7 +6,7 @@ import {
   rmSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import { extname, isAbsolute, join, relative } from "node:path";
 import { SafeFilenameSchema, verifyAuthoritativeFile } from "./utils/checksum";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -35,6 +35,12 @@ import {
   type ParallelSlots,
 } from "./domains/config/parallel";
 import { ensureBinary } from "./manager/binaries";
+import {
+  assertDestructiveLocalBaseRoot,
+  canonicalLocalBaseRoot,
+  canonicalLocalBaseRootSchema,
+  ensureLocalBaseRootMarker,
+} from "./utils/root";
 export {
   ensureBinary,
   managedRuntimeRelease,
@@ -62,7 +68,6 @@ export type LocalBaseConfig = {
   ctxSize: number;
   sttHost: string;
   sttPort: number;
-  startupOnBoot: boolean;
   selectedLlmModels: string[];
   selectedSttModels: string[];
   selectedImageModels: string[];
@@ -84,11 +89,7 @@ export type ApiKeyRecord = {
   revokedAt?: string;
 };
 
-const absolutePathSchema = z
-  .string()
-  .min(1)
-  .refine(isAbsolute, "must be an absolute path")
-  .refine((value) => resolve(value) === value, "must be normalized");
+const absolutePathSchema = canonicalLocalBaseRootSchema;
 const hostSchema = z
   .string()
   .min(1)
@@ -114,7 +115,6 @@ const ConfigRowSchema = z
     ctxSize: z.number().int().min(2048).max(2_147_483_647),
     sttHost: hostSchema,
     sttPort: portSchema,
-    startupOnBoot: z.union([z.literal(0), z.literal(1)]),
     selectedLlmModels: z.string(),
     selectedSttModels: z.string(),
     selectedImageModels: z.string(),
@@ -188,7 +188,6 @@ function toConfigRow(config: LocalBaseConfig) {
     ctxSize: config.ctxSize,
     sttHost: config.sttHost,
     sttPort: config.sttPort,
-    startupOnBoot: config.startupOnBoot ? 1 : 0,
     selectedLlmModels: JSON.stringify(config.selectedLlmModels),
     selectedSttModels: JSON.stringify(config.selectedSttModels),
     selectedImageModels: JSON.stringify(config.selectedImageModels),
@@ -355,7 +354,6 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     ctxSize: data.ctxSize,
     sttHost: data.sttHost,
     sttPort: data.sttPort,
-    startupOnBoot: data.startupOnBoot === 1,
     selectedLlmModels,
     selectedSttModels,
     selectedImageModels,
@@ -398,7 +396,7 @@ export function defaultRoot(): string {
 }
 
 export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
-  root = resolve(root);
+  root = canonicalLocalBaseRoot(root);
   const llm =
     recommendedForVram(vramGb)[0]?.modelId ??
     "qwen2.5-coder-7b-instruct-q4_k_m";
@@ -419,7 +417,6 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     ctxSize: defaultCtxSize,
     sttHost: "0.0.0.0",
     sttPort: 18080,
-    startupOnBoot: false,
     selectedLlmModels: [llm],
     selectedSttModels: [stt],
     selectedImageModels: ["stable-diffusion-v1-5"],
@@ -442,10 +439,18 @@ export function saveConfig(
   database: DatabaseSession,
   config: LocalBaseConfig,
 ): void {
-  const row = toConfigRow(config);
-  fromConfigRow(row, config.root);
-  ensureDirs(config);
-  withDatabase(database, config.root, (db) => {
+  const canonicalConfig = {
+    ...config,
+    root: canonicalLocalBaseRoot(config.root),
+    llmModelsDir: canonicalLocalBaseRoot(config.llmModelsDir),
+    sttModelsDir: canonicalLocalBaseRoot(config.sttModelsDir),
+    imageModelsDir: canonicalLocalBaseRoot(config.imageModelsDir),
+  };
+  const row = toConfigRow(canonicalConfig);
+  fromConfigRow(row, canonicalConfig.root);
+  ensureLocalBaseRootMarker(canonicalConfig.root);
+  ensureDirs(canonicalConfig);
+  withDatabase(database, canonicalConfig.root, (db) => {
     db.insert(configTable)
       .values(row)
       .onConflictDoUpdate({
@@ -461,8 +466,10 @@ export function initConfig(
   root?: string,
   vramGb?: number,
 ): LocalBaseConfig {
-  const selectedRoot = resolve(root ?? defaultRoot());
+  const selectedRoot = canonicalLocalBaseRoot(root ?? defaultRoot());
   const config = defaultConfig(selectedRoot, vramGb ?? 0);
+  ensureLocalBaseRootMarker(selectedRoot);
+  ensureDirs(config);
   saveConfig(database, config);
   return config;
 }
@@ -472,7 +479,8 @@ export function loadConfig(
   root?: string,
   vramGb?: number,
 ): LocalBaseConfig {
-  const selectedRoot = resolve(root ?? defaultRoot());
+  const selectedRoot = canonicalLocalBaseRoot(root ?? defaultRoot());
+  ensureLocalBaseRootMarker(selectedRoot);
   const row = withDatabase(database, selectedRoot, (db) =>
     db.select().from(configTable).where(eq(configTable.id, "default")).get(),
   );
@@ -480,6 +488,7 @@ export function loadConfig(
     return initConfig(database, selectedRoot, vramGb);
   }
   const config = fromConfigRow(row, selectedRoot);
+  assertDestructiveLocalBaseRoot(selectedRoot);
   ensureDirs(config);
   return config;
 }
@@ -489,7 +498,8 @@ export async function resetDatabase(
   root?: string,
   vramGb?: number,
 ): Promise<LocalBaseConfig> {
-  const selectedRoot = resolve(root ?? defaultRoot());
+  const selectedRoot = canonicalLocalBaseRoot(root ?? defaultRoot());
+  assertDestructiveLocalBaseRoot(selectedRoot);
   database.closeRoot(selectedRoot);
   await deleteFileIfExists(dbPath(selectedRoot));
   return initConfig(database, selectedRoot, vramGb);
@@ -499,7 +509,8 @@ export function uninstallManaged(
   database: DatabaseSession,
   root?: string,
 ): string {
-  const selectedRoot = resolve(root ?? defaultRoot());
+  const selectedRoot = canonicalLocalBaseRoot(root ?? defaultRoot());
+  assertDestructiveLocalBaseRoot(selectedRoot);
   database.closeRoot(selectedRoot);
   rmSync(selectedRoot, { recursive: true, force: true });
   return selectedRoot;

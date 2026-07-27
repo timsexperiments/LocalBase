@@ -20,6 +20,7 @@ import {
   keysListInputSchema,
   recommendInputSchema,
   resetInputSchema,
+  serviceInputSchema,
   serveInputSchema,
   uninstallInputSchema,
   type CatalogInput,
@@ -34,6 +35,7 @@ import {
   type KeysListInput,
   type RecommendInput,
   type ResetInput,
+  type ServiceInput,
   type ServeInput,
   type UninstallInput,
 } from "./inputs";
@@ -51,6 +53,7 @@ import {
   keysListResultSchema,
   recommendResultSchema,
   resetResultSchema,
+  serviceLifecycleResultSchema,
   serveResultSchema,
   uninstallResultSchema,
 } from "./results";
@@ -76,6 +79,7 @@ type LocalCommand<Input> = {
   args?: ArgsDef;
   positionals?: Positionals;
   requiresDatabase?: boolean;
+  initializeUnderOperationLock?: boolean;
   longRunning?: boolean;
   resultSchema: z.ZodType;
   citty: CittyCommand;
@@ -180,10 +184,6 @@ export const configureCommand = command<ConfigureInput>({
       valueHint: "port",
       description: "STT port",
     },
-    "startup-on-boot": noPromptBoolean(
-      "Enable startup on boot",
-      "Disable startup on boot",
-    ),
     "llm-models": {
       type: "string",
       valueHint: "id,...",
@@ -421,9 +421,58 @@ const serveCommand = command<ServeInput>({
   parse: (input) => serveInputSchema.parse(input),
   resultSchema: serveResultSchema,
   longRunning: true,
+  initializeUnderOperationLock: true,
   run: async (input, context, execution) => {
     const { runServe } = await import("../../runtime/commands/serve");
     return await runServe(input, context, execution);
+  },
+});
+
+const startCommand = command<ServiceInput>({
+  path: ["start"],
+  description: "Install, enable, and start the LocalBase user service",
+  requiresDatabase: false,
+  parse: (input) => serviceInputSchema.parse(input),
+  resultSchema: serviceLifecycleResultSchema,
+  run: async (input, context, execution) => {
+    const { runStart } = await import("../../service/commands/lifecycle");
+    return await runStart(input, context, execution);
+  },
+});
+
+const stopCommand = command<ServiceInput>({
+  path: ["stop"],
+  description: "Stop and disable the LocalBase user service",
+  requiresDatabase: false,
+  parse: (input) => serviceInputSchema.parse(input),
+  resultSchema: serviceLifecycleResultSchema,
+  run: async (input, context, execution) => {
+    const { runStop } = await import("../../service/commands/lifecycle");
+    return await runStop(input, context, execution);
+  },
+});
+
+const restartCommand = command<ServiceInput>({
+  path: ["restart"],
+  description: "Refresh, enable, and restart the LocalBase user service",
+  requiresDatabase: false,
+  parse: (input) => serviceInputSchema.parse(input),
+  resultSchema: serviceLifecycleResultSchema,
+  run: async (input, context, execution) => {
+    const { runRestart } = await import("../../service/commands/lifecycle");
+    return await runRestart(input, context, execution);
+  },
+});
+
+const statusCommand = command<ServiceInput>({
+  path: ["status"],
+  description: "Show LocalBase service and gateway readiness",
+  requiresDatabase: false,
+  parse: (input) => serviceInputSchema.parse(input),
+  resultSchema: serviceLifecycleResultSchema,
+  run: async (input, context, execution) => {
+    const { runStatus } = await import("../../service/commands/lifecycle");
+    return await runStatus(input, context, execution);
   },
 });
 
@@ -527,6 +576,10 @@ export const commands = [
   listCommand,
   installCommand,
   serveCommand,
+  startCommand,
+  stopCommand,
+  restartCommand,
+  statusCommand,
   keysListCommand,
   keysCreateCommand,
   keysRevokeCommand,
@@ -570,6 +623,10 @@ export const rootCommand = defineCommand({
     doctor: doctorCommand.citty,
     models: modelsCommand,
     serve: serveCommand.citty,
+    start: startCommand.citty,
+    stop: stopCommand.citty,
+    restart: restartCommand.citty,
+    status: statusCommand.citty,
     keys: keysCommand,
     reset: resetCommand.citty,
     uninstall: uninstallCommand.citty,

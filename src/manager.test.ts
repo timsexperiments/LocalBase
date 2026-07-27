@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -21,9 +29,11 @@ import {
   revokeApiKey,
   saveConfig,
   startLlamaServerProcess,
+  uninstallManaged,
   validateApiKey,
   type LocalBaseConfig,
 } from "./manager";
+import { ensureLocalBaseRootMarker } from "./utils/root";
 import { migrationsFolder } from "./db/migration-assets";
 import { DatabaseSession } from "./db/client";
 import {
@@ -205,6 +215,7 @@ function artifactPath(source: string, sourcePath: string): string {
 function createUnsupportedConfigRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "local-base-unsupported-"));
   testRoots.push(root);
+  ensureLocalBaseRootMarker(root);
   const db = new Database(join(root, "local-base.db"));
   db.exec("create table config (id text primary key, root text not null);");
   db.close();
@@ -669,6 +680,79 @@ describe.serial("Drizzle database migrations", () => {
     expect(() => loadConfig(testDatabase, config.root)).toThrow(
       "hashes or order do not match",
     );
+  });
+});
+
+describe.serial("destructive root protection", () => {
+  test("requires a valid root marker before removing managed data", async () => {
+    const managed = createInstallConfig();
+    loadConfig(testDatabase, managed.root);
+    const unrelated = mkdtempSync(join(tmpdir(), "local-base-unrelated-"));
+    const regularFile = join(unrelated, "file");
+    testRoots.push(unrelated);
+    writeFileSync(join(unrelated, "keep"), "keep");
+    writeFileSync(regularFile, "file");
+
+    expect(() => uninstallManaged(testDatabase, unrelated)).toThrow(
+      "uninitialized directory",
+    );
+    expect(await Bun.file(join(unrelated, "keep")).text()).toBe("keep");
+    expect(() => uninstallManaged(testDatabase, regularFile)).toThrow(
+      "real directory",
+    );
+    expect(() => uninstallManaged(testDatabase, "/")).toThrow(
+      "protected directory",
+    );
+    expect(() => uninstallManaged(testDatabase, process.env.HOME!)).toThrow(
+      "protected directory",
+    );
+
+    await Bun.write(
+      join(managed.root, ".localbase-root.json"),
+      JSON.stringify({ version: 1, root: unrelated, rootHash: "0".repeat(64) }),
+    );
+    expect(() => uninstallManaged(testDatabase, managed.root)).toThrow(
+      "marker is invalid",
+    );
+    expect(existsSync(managed.root)).toBe(true);
+  });
+
+  test("keeps the marker through database recovery and removes only marked roots", async () => {
+    const config = createInstallConfig();
+    loadConfig(testDatabase, config.root);
+    const reset = await resetDatabase(testDatabase, config.root, 16);
+    expect(reset.root).toBe(config.root);
+    expect(
+      await Bun.file(join(config.root, ".localbase-root.json")).exists(),
+    ).toBe(true);
+    expect(uninstallManaged(testDatabase, config.root)).toBe(config.root);
+    expect(existsSync(config.root)).toBe(false);
+  });
+});
+
+describe.serial("configuration root identity", () => {
+  test("round-trips one canonical configuration through symlink aliases", () => {
+    const directory = mkdtempSync(join(tmpdir(), "local-base-config-root-"));
+    const target = join(directory, "target");
+    const alias = join(directory, "alias");
+    mkdirSync(target);
+    symlinkSync(target, alias);
+    testRoots.push(directory);
+
+    const config = defaultConfig(alias);
+    const canonical = realpathSync(target);
+    expect(config.root).toBe(canonical);
+    expect(config.llmModelsDir).toBe(join(canonical, "models", "llm"));
+
+    saveConfig(testDatabase, {
+      ...config,
+      root: alias,
+      llmModelsDir: join(alias, "models", "llm"),
+      sttModelsDir: join(alias, "models", "stt"),
+      imageModelsDir: join(alias, "models", "image"),
+    });
+    expect(loadConfig(testDatabase, alias)).toEqual(config);
+    expect(loadConfig(testDatabase, target)).toEqual(config);
   });
 });
 
