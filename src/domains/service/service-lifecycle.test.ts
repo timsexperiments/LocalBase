@@ -884,7 +884,13 @@ describe.serial("compiled CLI service lifecycle", () => {
   });
 
   test("accepts transient launchd startup states and rejects immediate failure", async () => {
-    for (const transition of ["waiting", "scheduled", "running"] as const) {
+    for (const transition of [
+      "stopped",
+      "waiting",
+      "scheduled",
+      "xpcproxy",
+      "running",
+    ] as const) {
       const root = join(directory, `launchd-${transition}-root`);
       const started = await runCli(
         executable,
@@ -920,6 +926,59 @@ describe.serial("compiled CLI service lifecycle", () => {
     expect(failed.stdout).toContain(
       "LocalBase service manager reported failed after start.",
     );
+  });
+
+  test("launchd nonzero exit evidence wins unless a live process is running", async () => {
+    for (const transition of ["scheduled", "waiting", "xpcproxy"] as const) {
+      const failed = await runCli(
+        executable,
+        [
+          "--root",
+          join(directory, `launchd-${transition}-crash-loop-root`),
+          "start",
+          "--json",
+        ],
+        environment("darwin", {
+          LOCALBASE_TEST_LAUNCHD_START_TRANSITION: transition,
+          LOCALBASE_TEST_LAUNCHD_LAST_EXIT_CODE: "17",
+        }),
+      );
+      expect(failed.exitCode).toBe(1);
+      expect(failed.stdout).toContain(
+        "LocalBase service manager reported failed after start.",
+      );
+    }
+
+    const running = await runCli(
+      executable,
+      [
+        "--root",
+        join(directory, "launchd-running-after-prior-exit-root"),
+        "start",
+        "--json",
+      ],
+      environment("darwin", {
+        LOCALBASE_TEST_LAUNCHD_START_TRANSITION: "running",
+        LOCALBASE_TEST_LAUNCHD_LAST_EXIT_CODE: "17",
+      }),
+    );
+    expectCliSuccess(running);
+    expect(jsonDocument(running.stdout).data).toMatchObject({
+      service: { state: "starting", managerState: "running" },
+    });
+  });
+
+  test("fails launchd start when bootstrap times out", async () => {
+    const timedOut = await runCli(
+      executable,
+      ["--root", join(directory, "launchd-timeout-root"), "start", "--json"],
+      environment("darwin", {
+        LOCALBASE_TEST_SERVICE_MANAGER_TIMEOUT: "bootstrap",
+        LOCALBASE_TEST_SERVICE_COMMAND_TIMEOUT_MS: "100",
+      }),
+    );
+    expect(timedOut.exitCode).toBe(1);
+    expect(`${timedOut.stdout}${timedOut.stderr}`).toContain("timed out");
   });
 
   test("repairs a loaded launchd job that exited with failure", async () => {
