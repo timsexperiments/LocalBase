@@ -15,6 +15,7 @@ import {
   parseSystemdDefinition,
   resolveServiceInvocation,
   serviceIdentity,
+  serviceManifestPath,
   serviceMetadata,
   servicePlatform,
 } from "./definitions";
@@ -760,6 +761,111 @@ describe.serial("compiled CLI service lifecycle", () => {
     expect(malformed.exitCode).toBe(1);
     expect(`${malformed.stdout}${malformed.stderr}`).toContain(
       "malformed service state",
+    );
+  });
+
+  test("maintenance bypasses an unavailable manager only without service evidence", async () => {
+    const unavailableSystemd = environment("linux", {
+      LOCALBASE_TEST_SERVICE_MANAGER_UNAVAILABLE: "systemctl",
+    });
+    const resetRoot = join(directory, "unmanaged-unavailable-reset-root");
+    expectCliSuccess(
+      await runCli(
+        executable,
+        ["--root", resetRoot, "init", "--json"],
+        environment("linux"),
+      ),
+    );
+    expectCliSuccess(
+      await runCli(
+        executable,
+        ["--root", resetRoot, "reset", "--yes", "--json"],
+        unavailableSystemd,
+      ),
+    );
+    expect(existsSync(resetRoot)).toBe(true);
+
+    const uninstallRoot = join(
+      directory,
+      "unmanaged-unavailable-uninstall-root",
+    );
+    expectCliSuccess(
+      await runCli(
+        executable,
+        ["--root", uninstallRoot, "init", "--json"],
+        environment("linux"),
+      ),
+    );
+    expectCliSuccess(
+      await runCli(
+        executable,
+        ["--root", uninstallRoot, "uninstall", "--yes", "--json"],
+        unavailableSystemd,
+      ),
+    );
+    expect(existsSync(uninstallRoot)).toBe(false);
+
+    const installedRoot = join(directory, "managed-unavailable-root");
+    expectCliSuccess(
+      await runCli(
+        executable,
+        ["--root", installedRoot, "start", "--json"],
+        environment("linux"),
+      ),
+    );
+    await waitForGatewayReady(executable, installedRoot, environment("linux"));
+    expectCliSuccess(
+      await runCli(
+        executable,
+        ["--root", installedRoot, "stop", "--json"],
+        environment("linux"),
+      ),
+    );
+    const installedAttempt = await runCli(
+      executable,
+      ["--root", installedRoot, "uninstall", "--yes", "--json"],
+      unavailableSystemd,
+    );
+    expect(installedAttempt.exitCode).toBe(1);
+    expect(existsSync(installedRoot)).toBe(true);
+    expect(await Bun.file(serviceManifestPath(installedRoot)).exists()).toBe(
+      true,
+    );
+    expectCliSuccess(
+      await runCli(
+        executable,
+        ["--root", installedRoot, "uninstall", "--yes", "--json"],
+        environment("linux"),
+      ),
+    );
+
+    const activeRoot = join(directory, "active-unavailable-root");
+    expectCliSuccess(
+      await runCli(
+        executable,
+        ["--root", activeRoot, "start", "--json"],
+        environment("linux"),
+      ),
+    );
+    await waitForGatewayReady(executable, activeRoot, environment("linux"));
+    const activeAttempt = await runCli(
+      executable,
+      ["--root", activeRoot, "uninstall", "--yes", "--json"],
+      unavailableSystemd,
+    );
+    expect(activeAttempt.exitCode).toBe(1);
+    expect(existsSync(activeRoot)).toBe(true);
+    expect(
+      await Bun.file(
+        join(activeRoot, "runtime", "gateway.lock", "owner.json"),
+      ).exists(),
+    ).toBe(true);
+    expectCliSuccess(
+      await runCli(
+        executable,
+        ["--root", activeRoot, "uninstall", "--yes", "--json"],
+        environment("linux"),
+      ),
     );
   });
 

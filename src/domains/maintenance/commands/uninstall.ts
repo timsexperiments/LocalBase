@@ -29,7 +29,9 @@ export async function runUninstall(
     }),
   );
   execution.output.info(
-    `Removed LocalBase ${inspection.service.manager} service definition.`,
+    inspection
+      ? `Removed LocalBase ${inspection.service.manager} service definition.`
+      : "No managed user service was installed.",
   );
   execution.output.info(`Removed all local-base managed data at ${removed}`);
   return { data: { removed: true, root: removed } };

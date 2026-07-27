@@ -983,6 +983,16 @@ export async function removeService(root: string): Promise<ServiceInspection> {
   return await withRootOperation(root, "remove", removeServiceAtRoot);
 }
 
+async function hasServiceManagementEvidence(root: string): Promise<boolean> {
+  const metadata = await serviceMetadata(root);
+  const [definitionInstalled, manifestInstalled, owner] = await Promise.all([
+    Bun.file(metadata.definitionPath).exists(),
+    Bun.file(serviceManifestPath(root)).exists(),
+    getGatewayInstanceStateAtRoot(root),
+  ]);
+  return definitionInstalled || manifestInstalled || owner.state !== "missing";
+}
+
 export async function withServiceRootOperation<T>(
   root: string,
   operation: string,
@@ -993,12 +1003,16 @@ export async function withServiceRootOperation<T>(
 
 export async function removeServiceWithinOperation(
   canonicalRoot: string,
-): Promise<ServiceInspection> {
-  return await removeServiceAtRoot(canonicalRoot);
+): Promise<ServiceInspection | undefined> {
+  return (await hasServiceManagementEvidence(canonicalRoot))
+    ? await removeServiceAtRoot(canonicalRoot)
+    : undefined;
 }
 
 export async function stopServiceWithinOperation(
   canonicalRoot: string,
-): Promise<ServiceInspection> {
-  return await stopServiceAtRoot(canonicalRoot);
+): Promise<ServiceInspection | undefined> {
+  return (await hasServiceManagementEvidence(canonicalRoot))
+    ? await stopServiceAtRoot(canonicalRoot)
+    : undefined;
 }
