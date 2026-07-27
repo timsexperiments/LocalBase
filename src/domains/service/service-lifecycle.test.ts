@@ -243,6 +243,22 @@ test("renders secure definitions and preserves supported path characters", async
     });
     expect(systemd.contents).toContain("$$");
     expect(systemd.contents).toContain("%%");
+    const workingDirectoryLine = systemd.contents
+      .split("\n")
+      .find((line) => line.startsWith("WorkingDirectory="));
+    expect(workingDirectoryLine).toBe(
+      `WorkingDirectory=${canonical
+        .replaceAll("\\", "\\x5c")
+        .replaceAll('"', "\\x22")
+        .replaceAll(" ", "\\x20")
+        .replaceAll("%", "%%")}`,
+    );
+    expect(workingDirectoryLine).toContain("ü");
+    expect(workingDirectoryLine).toContain("$cash");
+    expect(workingDirectoryLine).not.toContain('WorkingDirectory="');
+    expect(() =>
+      parseSystemdDefinition(systemd.contents.replace("\\x20", "\\q")),
+    ).toThrow("Invalid systemd definition");
 
     await expect(
       createServiceDefinition(
@@ -284,7 +300,7 @@ test("renders secure definitions and preserves supported path characters", async
         "verify",
         unit,
       ]);
-      expect(verify.exitCode).toBe(0);
+      if (verify.exitCode !== 0) throw new Error(verify.output);
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });

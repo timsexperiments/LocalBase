@@ -349,6 +349,43 @@ function quoteSystemdValue(value: string, expandDollar: boolean): string {
   return `${encoded}"`;
 }
 
+function escapeSystemdPath(value: string): string {
+  assertSystemdValue(value);
+  let encoded = "";
+  for (const character of value) {
+    if (character === "%") encoded += "%%";
+    else if (character === " ") encoded += "\\x20";
+    else if (character === "\t") encoded += "\\x09";
+    else if (character === '"') encoded += "\\x22";
+    else if (character === "\\") encoded += "\\x5c";
+    else encoded += character;
+  }
+  return encoded;
+}
+
+function parseSystemdPath(value: string): string | undefined {
+  let decoded = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (character === "%") {
+      if (value[index + 1] !== "%") return undefined;
+      decoded += "%";
+      index += 1;
+      continue;
+    }
+    if (character === "\\") {
+      if (value[index + 1] !== "x") return undefined;
+      const hexadecimal = value.slice(index + 2, index + 4);
+      if (!/^[a-fA-F0-9]{2}$/.test(hexadecimal)) return undefined;
+      decoded += String.fromCharCode(Number.parseInt(hexadecimal, 16));
+      index += 3;
+      continue;
+    }
+    decoded += character;
+  }
+  return decoded;
+}
+
 function parseSystemdArguments(
   value: string,
   expandDollar: boolean,
@@ -465,7 +502,7 @@ export function renderSystemdDefinition(
     "[Service]",
     "Type=exec",
     `ExecStart=${execStart.map((value) => quoteSystemdValue(value, true)).join(" ")}`,
-    `WorkingDirectory=${quoteSystemdValue(workingDirectory, false)}`,
+    `WorkingDirectory=${escapeSystemdPath(workingDirectory)}`,
     "Restart=on-failure",
     "RestartSec=2s",
     "KillMode=mixed",
@@ -491,10 +528,9 @@ export function parseSystemdDefinition(contents: string) {
       systemdValue(contents, "ExecStart") ?? "",
       true,
     ),
-    workingDirectory: parseSystemdArguments(
+    workingDirectory: parseSystemdPath(
       systemdValue(contents, "WorkingDirectory") ?? "",
-      false,
-    )?.[0],
+    ),
     restart: systemdValue(contents, "Restart"),
     restartSec: systemdValue(contents, "RestartSec"),
     killMode: systemdValue(contents, "KillMode"),
