@@ -86,6 +86,34 @@ test("releases a response lease exactly once when the stream or request is cance
   expect(requestReleases).toBe(1);
 });
 
+test("managed health discloses identity only to the service token", async () => {
+  const gateway = await startGatewayFixture({ managedIdentity: true });
+  try {
+    const publicResponse = await fetch(`${gateway.baseUrl}/health`);
+    expect(publicResponse.status).toBe(200);
+    expect(await publicResponse.json()).not.toHaveProperty("instance");
+
+    const owner = (await Bun.file(
+      join(gateway.root, "runtime", "gateway.lock", "owner.json"),
+    ).json()) as { serviceToken: string; instanceId: string; rootHash: string };
+    const authenticated = await fetch(`${gateway.baseUrl}/health`, {
+      headers: { "x-localbase-service-token": owner.serviceToken },
+    });
+    expect(await authenticated.json()).toMatchObject({
+      instance: { id: owner.instanceId, rootHash: owner.rootHash },
+    });
+    expect(
+      (
+        await fetch(`${gateway.baseUrl}/health`, {
+          headers: { "x-localbase-service-token": crypto.randomUUID() },
+        })
+      ).status,
+    ).toBe(404);
+  } finally {
+    await gateway.stop();
+  }
+});
+
 describe("API gateway integration", () => {
   let gateway: GatewayFixture;
 
@@ -175,6 +203,32 @@ describe("API gateway integration", () => {
       status: "ok",
       enabled: { llm: true, stt: true, image: true },
     });
+  });
+
+  test("rejects a second serve process for the same canonical root", async () => {
+    const contender = Bun.spawn(
+      [
+        gateway.cliPath,
+        "serve",
+        "--root",
+        gateway.root,
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "2274",
+        "--no-auth",
+        "--bypass-memory-check",
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    const [exitCode, stdout, stderr] = await Promise.all([
+      contender.exited,
+      new Response(contender.stdout).text(),
+      new Response(contender.stderr).text(),
+    ]);
+
+    expect(exitCode).toBe(1);
+    expect(`${stdout}\n${stderr}`).toContain("already owns");
   });
 
   test("GET /v1/models lists the configured active model", async () => {

@@ -116,6 +116,7 @@ export async function writeCompleteCatalogArtifact(
 
 export type GatewayFixture = {
   baseUrl: string;
+  cliPath: string;
   root: string;
   apiKey?: string;
   upstreamRequests: UpstreamRequest[];
@@ -145,6 +146,7 @@ export type GatewayFixture = {
 
 export type GatewayFixtureOptions = {
   auth?: { mode?: "bearer" | "x-api-key" | "either" };
+  managedIdentity?: boolean;
 };
 
 async function readProcessOutput(
@@ -192,6 +194,8 @@ async function compileGatewayCli(outputPath: string): Promise<void> {
       "build",
       "src/cli.ts",
       "--compile",
+      "--no-compile-autoload-dotenv",
+      "--no-compile-autoload-bunfig",
       "--target=bun",
       "--asset-naming=[dir]/[name].[ext]",
       `--outfile=${outputPath}`,
@@ -1362,6 +1366,12 @@ export async function startGatewayFixture(
           ...process.env,
           PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
           LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
+          ...(options.managedIdentity
+            ? {
+                LOCALBASE_SERVICE_ID: `com.localbase.gateway.${new Bun.CryptoHasher("sha256").update(root).digest("hex")}`,
+                LOCALBASE_SERVICE_TOKEN: crypto.randomUUID(),
+              }
+            : {}),
         } as Record<string, string>,
         stdout: "pipe",
         stderr: "pipe",
@@ -1439,6 +1449,7 @@ export async function startGatewayFixture(
 
   return {
     baseUrl,
+    cliPath,
     root,
     apiKey,
     upstreamRequests,

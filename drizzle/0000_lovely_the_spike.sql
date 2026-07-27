@@ -22,7 +22,6 @@ CREATE TABLE `config` (
 	`ctx_size` integer NOT NULL,
 	`stt_host` text NOT NULL,
 	`stt_port` integer NOT NULL,
-	`startup_on_boot` integer NOT NULL,
 	`selected_llm_models` text NOT NULL,
 	`selected_stt_models` text NOT NULL,
 	`selected_image_models` text NOT NULL,

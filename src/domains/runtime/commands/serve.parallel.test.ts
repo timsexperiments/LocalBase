@@ -619,6 +619,8 @@ test(
           "build",
           join(PROJECT_ROOT, "src/cli.ts"),
           "--compile",
+          "--no-compile-autoload-dotenv",
+          "--no-compile-autoload-bunfig",
           "--target=bun",
           "--asset-naming=[dir]/[name].[ext]",
           `--outfile=${cliPath}`,

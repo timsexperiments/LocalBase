@@ -13,7 +13,6 @@ const configOverridesSchema = z
     parallel: parallelSlotsSchema.optional(),
     sttHost: z.string().min(1).optional(),
     sttPort: z.number().int().positive().optional(),
-    startupOnBoot: z.boolean().optional(),
     selectedLlmModels: z.array(z.string().min(1)).optional(),
     selectedSttModels: z.array(z.string().min(1)).optional(),
     selectedImageModels: z.array(z.string().min(1)).optional(),

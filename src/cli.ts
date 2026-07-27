@@ -9,10 +9,17 @@ async function main(): Promise<number> {
   if (args[0] === BACKEND_GUARDIAN_COMMAND) {
     return await runBackendGuardian(args.slice(1));
   }
-  return await runCli(args, async (options, initializeDatabase) => {
-    const { createAppContext } = await import("./context");
-    return await createAppContext(options, initializeDatabase);
-  });
+  return await runCli(
+    args,
+    async (options, initializeDatabase, initializeUnderOperationLock) => {
+      const { createAppContext } = await import("./context");
+      return await createAppContext(
+        options,
+        initializeDatabase,
+        initializeUnderOperationLock,
+      );
+    },
+  );
 }
 
 try {
