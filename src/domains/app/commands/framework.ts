@@ -4,7 +4,7 @@ import {
   type ArgDef,
   type ArgsDef,
 } from "citty";
-import type { AppContext } from "../../../context";
+import type { AppContext, MinimalAppContext } from "../../../context";
 import { globalOptionsSchema, type GlobalOptions } from "./inputs";
 import {
   commands,
@@ -319,16 +319,24 @@ export function rootCommandDefinition(): CittyCommand {
   return rootCommand;
 }
 
-export async function executeCommand(
-  command: Command,
+export async function executeFullCommand(
+  command: Extract<Command, { minimalContext?: false }>,
   input: unknown,
   global: GlobalOptions,
   context: AppContext,
   output: CommandOutput = createCommandOutput(global.json),
 ): Promise<CommandResult> {
-  const result = await command.run(input, context, {
-    global,
-    output,
-  });
+  const result = await command.run(input, context, { global, output });
+  return { ...result, data: command.resultSchema.parse(result.data) };
+}
+
+export async function executeMinimalCommand(
+  command: Extract<Command, { minimalContext: true }>,
+  input: unknown,
+  global: GlobalOptions,
+  context: MinimalAppContext,
+  output: CommandOutput = createCommandOutput(global.json),
+): Promise<CommandResult> {
+  const result = await command.run(input, context, { global, output });
   return { ...result, data: command.resultSchema.parse(result.data) };
 }

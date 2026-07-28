@@ -3,6 +3,7 @@ import {
   BACKEND_GUARDIAN_COMMAND,
   runBackendGuardian,
 } from "./domains/runtime/backend-guardian";
+import { redactExternalLogText } from "./domains/observability/logging";
 
 async function main(): Promise<number> {
   const args = Bun.argv.slice(2);
@@ -19,6 +20,10 @@ async function main(): Promise<number> {
         initializeUnderOperationLock,
       );
     },
+    async (options) => {
+      const { createMinimalAppContext } = await import("./context");
+      return createMinimalAppContext(options);
+    },
   );
 }
 
@@ -26,6 +31,6 @@ try {
   const code = await main();
   process.exit(code);
 } catch (error) {
-  console.error(`Error: ${(error as Error).message}`);
+  console.error(`Error: ${redactExternalLogText((error as Error).message)}`);
   process.exit(1);
 }

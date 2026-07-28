@@ -9,6 +9,7 @@ import {
   saveConfig,
   loadConfig,
 } from "../../../manager";
+import type { LocalBaseConfig } from "../../../manager";
 import {
   byId,
   evaluateModelFit,
@@ -18,7 +19,7 @@ import {
 } from "../../../catalog";
 import type { AppContext } from "../../../context";
 import { syncContinueConfig } from "../../config/commands/configure";
-import { type ILogger } from "../../../utils/logger";
+import { type ILogger } from "../../observability/logging";
 import { guardianProcessCommand } from "../backend-guardian";
 import {
   acquireGatewayLease,
@@ -1186,6 +1187,34 @@ class ManagedService {
     this.onFatal = onFatal;
   }
 
+  private lifecycle(
+    eventName:
+      | "backend.starting"
+      | "backend.ready"
+      | "backend.restart-backoff"
+      | "backend.crash"
+      | "backend.stopping"
+      | "backend.stopped",
+    severity: "info" | "warn" | "error",
+    attributes?: Record<string, unknown>,
+  ): void {
+    const normalized = this.name.toLowerCase();
+    const runtime = normalized.includes("whisper")
+      ? "stt"
+      : normalized.includes("image") || normalized.includes("sd")
+        ? "image"
+        : "llm";
+    this.logger.event({
+      severity,
+      eventName,
+      category: "runtime",
+      component: this.name,
+      runtime,
+      message: eventName,
+      attributes,
+    });
+  }
+
   /**
    * Lazily starts the service on first use, or awaits recovery if currently restarting.
    */
@@ -1215,10 +1244,10 @@ class ManagedService {
       const crashCount = this.crashTimes.length;
 
       if (crashCount >= 5) {
-        this.logger.error(
-          this.name,
-          `Service has crashed ${crashCount} times in 5 minutes. Stopping manager.`,
-        );
+        this.lifecycle("backend.crash", "error", {
+          crashCount,
+          crashLimitReached: true,
+        });
         void this.onFatal().catch((err) => {
           this.logger.error(this.name, "Failed to stop manager", err as Error);
         });
@@ -1227,14 +1256,14 @@ class ManagedService {
 
       if (crashCount > 0) {
         const backoffMs = Math.min(1000 * Math.pow(2, crashCount - 1), 16000);
-        this.logger.warn(
-          this.name,
-          `Crashed previously. Backing off for ${backoffMs}ms before restarting...`,
-        );
+        this.lifecycle("backend.restart-backoff", "warn", {
+          backoffMs,
+          crashCount,
+        });
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
       }
 
-      this.logger.info(this.name, "Starting subprocess...");
+      this.lifecycle("backend.starting", "info", { crashCount });
       try {
         const proc = await this.startFn();
         if (this.isShuttingDown) {
@@ -1258,9 +1287,24 @@ class ManagedService {
         if (!ok) {
           throw new Error("Health check failed to pass within timeout");
         }
-        this.logger.info(this.name, "Subprocess is healthy and ready.");
+        this.lifecycle("backend.ready", "info", { pid: proc.pid });
       } catch (err) {
-        this.logger.error(this.name, "Failed to start service", err as Error);
+        this.logger.event({
+          severity: "error",
+          eventName: "backend.start-failed",
+          category: "runtime",
+          component: this.name,
+          runtime: this.name.includes("whisper")
+            ? "stt"
+            : this.name.includes("sd")
+              ? "image"
+              : "llm",
+          message: "Backend startup failed.",
+          error: {
+            type: err instanceof Error ? err.name : "Error",
+            message: err instanceof Error ? err.message : String(err),
+          },
+        });
         this.crashTimes.push(Date.now());
         await this.kill();
         this.isRestarting = false;
@@ -1312,12 +1356,14 @@ class ManagedService {
   async shutdown(): Promise<void> {
     if (!this.shutdownPromise) {
       this.isShuttingDown = true;
+      this.lifecycle("backend.stopping", "info");
       const startup = this.restartPromise;
       this.shutdownPromise = (async () => {
         await this.stopCurrentProcess();
         if (startup) await startup.catch(() => {});
         await this.stopCurrentProcess();
         await this.stopAllGuardians();
+        this.lifecycle("backend.stopped", "info");
       })();
     }
     await this.shutdownPromise;
@@ -1397,10 +1443,10 @@ class ManagedService {
       proc.exitCode !== null &&
       !this.isRestarting
     ) {
-      this.logger.warn(
-        this.name,
-        `Subprocess exited unexpectedly with code ${proc.exitCode}. Triggering self-healing...`,
-      );
+      this.lifecycle("backend.crash", "error", {
+        exitCode: proc.exitCode,
+        crashCount: this.crashTimes.length + 1,
+      });
       this.crashTimes.push(Date.now());
       this.proc = null;
       this.start().catch(() => {});
@@ -1427,6 +1473,46 @@ function serviceUnavailable(serviceName: string): Response {
       "Retry-After": "5",
     },
   });
+}
+
+export async function finalizeGatewayShutdown(
+  logger: ILogger,
+  releaseLease: () => Promise<void>,
+  exitStatus: number,
+): Promise<number> {
+  let finalStatus = exitStatus;
+  try {
+    await releaseLease();
+  } catch (error) {
+    finalStatus = 1;
+    logger.event({
+      severity: "error",
+      eventName: "gateway.lease-release-failed",
+      category: "gateway",
+      component: "gateway",
+      runtime: "gateway",
+      message: "Gateway ownership release failed during shutdown.",
+      error: {
+        type: error instanceof Error ? error.name : "Error",
+        message: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
+  logger.event({
+    severity: "info",
+    eventName: "gateway.stopped",
+    category: "gateway",
+    component: "gateway",
+    runtime: "gateway",
+    message: "LocalBase gateway stopped.",
+    attributes: { exitCode: finalStatus },
+  });
+  try {
+    await logger.close();
+  } catch {
+    finalStatus = 1;
+  }
+  return finalStatus;
 }
 
 /**
@@ -1461,6 +1547,15 @@ export async function runServe(
   const gatewayLease = ctx.initializationOperation
     ? await acquireGatewayLease(config.root, endpoint)
     : await acquireGatewayLeaseForServe(config.root, endpoint);
+  await ctx.logger.enableFileLogging(config.root);
+  ctx.logger.event({
+    severity: "info",
+    eventName: "gateway.starting",
+    category: "gateway",
+    component: "gateway",
+    runtime: "gateway",
+    message: "Starting LocalBase gateway.",
+  });
   await ctx.initializationOperation?.release();
 
   let ctxSize = input.ctxSize ?? 0;
@@ -1771,6 +1866,50 @@ export async function runServe(
     await exitAfterShutdown(1);
   };
 
+  const installSelectedLlmModel = async (
+    launchConfig: LocalBaseConfig,
+    modelId: string,
+    reason: "incomplete" | "missing",
+  ): Promise<string> => {
+    ctx.logger.event({
+      severity: "info",
+      eventName: "model.installing",
+      category: "runtime",
+      component: "llama-server",
+      runtime: "llm",
+      message: `Installing a ${reason} selected model.`,
+      attributes: { model_id: modelId, reason },
+    });
+    try {
+      const installedPath = await installModel(launchConfig, modelId);
+      ctx.logger.event({
+        severity: "info",
+        eventName: "model.installed",
+        category: "runtime",
+        component: "llama-server",
+        runtime: "llm",
+        message: "Selected model installation completed.",
+        attributes: { model_id: modelId },
+      });
+      return installedPath;
+    } catch (error) {
+      ctx.logger.event({
+        severity: "error",
+        eventName: "model.install-failed",
+        category: "runtime",
+        component: "llama-server",
+        runtime: "llm",
+        message: "Selected model installation failed.",
+        error: {
+          type: error instanceof Error ? error.name : "Error",
+          message: error instanceof Error ? error.message : String(error),
+        },
+        attributes: { model_id: modelId },
+      });
+      throw error;
+    }
+  };
+
   const llmService = enabled.llm
     ? new ManagedService(
         "llama-server",
@@ -1788,13 +1927,10 @@ export async function runServe(
                 launchConfig.llmModelsDir,
               );
               if (!installation.complete) {
-                ctx.logger.info(
-                  "llama-server",
-                  `Model is incomplete for "${activeModel}". Automatically installing...`,
-                );
-                const installedPath = await installModel(
+                const installedPath = await installSelectedLlmModel(
                   launchConfig,
                   activeModel,
+                  "incomplete",
                 );
                 modelFile = basename(installedPath);
               } else {
@@ -1808,13 +1944,10 @@ export async function runServe(
                 : `${activeModel}.gguf`;
               const modelPath = join(launchConfig.llmModelsDir, expectedFile);
               if (!(await Bun.file(modelPath).exists())) {
-                ctx.logger.info(
-                  "llama-server",
-                  `Model file is missing for "${activeModel}". Automatically installing...`,
-                );
-                const installedPath = await installModel(
+                const installedPath = await installSelectedLlmModel(
                   launchConfig,
                   activeModel,
+                  "missing",
                 );
                 modelFile = basename(installedPath);
               } else {
@@ -2051,14 +2184,29 @@ export async function runServe(
     const latestConfig = loadConfig(ctx.database, config.root);
     if (latestConfig.activeLlmModel === modelId) return;
 
-    ctx.logger.info(
-      "llama-server",
-      `Switching active LLM from "${latestConfig.activeLlmModel}" to "${modelId}"`,
-    );
+    const previousModel = latestConfig.activeLlmModel;
+    ctx.logger.event({
+      severity: "info",
+      eventName: "model.switching",
+      category: "runtime",
+      component: "llama-server",
+      runtime: "llm",
+      message: "Switching the active language model.",
+      attributes: { from_model: previousModel, to_model: modelId },
+    });
     await llmService.kill();
     throwIfRequestAborted(requestSignal);
     latestConfig.activeLlmModel = modelId;
     saveConfig(ctx.database, latestConfig);
+    ctx.logger.event({
+      severity: "info",
+      eventName: "model.switched",
+      category: "runtime",
+      component: "llama-server",
+      runtime: "llm",
+      message: "Active language model switched.",
+      attributes: { from_model: previousModel, to_model: modelId },
+    });
 
     const spec = byId(modelId);
     const recommendedCtx = spec
@@ -2081,13 +2229,28 @@ export async function runServe(
       const latestConfig = loadConfig(ctx.database, config.root);
       if (modelId === latestConfig.activeImageModel) return;
 
-      ctx.logger.info(
-        "sd-server",
-        `Switching active Image model from "${latestConfig.activeImageModel}" to "${modelId}"`,
-      );
+      const previousModel = latestConfig.activeImageModel;
+      ctx.logger.event({
+        severity: "info",
+        eventName: "model.switching",
+        category: "runtime",
+        component: "sd-server",
+        runtime: "image",
+        message: "Switching the active image model.",
+        attributes: { from_model: previousModel, to_model: modelId },
+      });
       await imageService.kill();
       latestConfig.activeImageModel = modelId;
       saveConfig(ctx.database, latestConfig);
+      ctx.logger.event({
+        severity: "info",
+        eventName: "model.switched",
+        category: "runtime",
+        component: "sd-server",
+        runtime: "image",
+        message: "Active image model switched.",
+        attributes: { from_model: previousModel, to_model: modelId },
+      });
     });
   };
 
@@ -2097,13 +2260,28 @@ export async function runServe(
       const latestConfig = loadConfig(ctx.database, config.root);
       if (modelId === latestConfig.activeSttModel) return;
 
-      ctx.logger.info(
-        "whisper-server",
-        `Switching active STT from "${latestConfig.activeSttModel}" to "${modelId}"`,
-      );
+      const previousModel = latestConfig.activeSttModel;
+      ctx.logger.event({
+        severity: "info",
+        eventName: "model.switching",
+        category: "runtime",
+        component: "whisper-server",
+        runtime: "stt",
+        message: "Switching the active transcription model.",
+        attributes: { from_model: previousModel, to_model: modelId },
+      });
       await sttService.kill();
       latestConfig.activeSttModel = modelId;
       saveConfig(ctx.database, latestConfig);
+      ctx.logger.event({
+        severity: "info",
+        eventName: "model.switched",
+        category: "runtime",
+        component: "whisper-server",
+        runtime: "stt",
+        message: "Active transcription model switched.",
+        attributes: { from_model: previousModel, to_model: modelId },
+      });
     });
   };
 
@@ -2493,9 +2671,9 @@ export async function runServe(
     port: wrapperPort,
     fetch: async (request) => {
       const start = performance.now();
-      const ip = server.requestIP(request)?.address ?? "127.0.0.1";
       const { pathname } = new URL(request.url);
       const method = request.method;
+      const requestId = request.headers.get("x-request-id") ?? undefined;
 
       if (method === "OPTIONS") {
         return new Response(null, {
@@ -2543,8 +2721,30 @@ export async function runServe(
       });
 
       const durationMs = performance.now() - start;
-      ctx.logger.request(ip, method, pathname, corsResponse.status, durationMs);
+      ctx.logger.request(
+        method,
+        pathname,
+        corsResponse.status,
+        durationMs,
+        requestId,
+      );
       return corsResponse;
+    },
+  });
+
+  ctx.logger.event({
+    severity: "info",
+    eventName: "gateway.started",
+    category: "gateway",
+    component: "gateway",
+    runtime: "gateway",
+    message: "LocalBase gateway is listening.",
+    attributes: {
+      host: wrapperHost,
+      port: server.port ?? wrapperPort,
+      llmEnabled: enabled.llm,
+      sttEnabled: enabled.stt,
+      imageEnabled: enabled.image,
     },
   });
 
@@ -2575,6 +2775,14 @@ export async function runServe(
   const shutdown = (): Promise<void> => {
     if (!shutdownPromise) {
       shutdownPromise = (async () => {
+        ctx.logger.event({
+          severity: "info",
+          eventName: "gateway.stopping",
+          category: "gateway",
+          component: "gateway",
+          runtime: "gateway",
+          message: "Stopping LocalBase gateway.",
+        });
         ctx.logger.info("Manager", "Shutting down servers and subprocesses...");
         server.stop(true);
         await Promise.all([
@@ -2604,7 +2812,11 @@ export async function runServe(
             },
           });
         } finally {
-          await gatewayLease.release();
+          requestedExitStatus = await finalizeGatewayShutdown(
+            ctx.logger,
+            async () => await gatewayLease.release(),
+            requestedExitStatus,
+          );
         }
         execution.output.lifecycle({
           event: "stopped",

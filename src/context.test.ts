@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -8,6 +9,14 @@ import {
   resolveEffectiveRoot,
 } from "./context";
 import { withRootOperation } from "./domains/service/ownership";
+import {
+  ACTIVE_LOG_FILENAME,
+  bootstrapDiagnosticPath,
+  logDirectory,
+  logEventSchema,
+  readLogSnapshot,
+} from "./domains/observability/logging";
+import { ensureLocalBaseRootMarker } from "./utils/root";
 
 test("validates environment overrides without mutating process state", () => {
   expect(() =>
@@ -70,6 +79,47 @@ test("serve context initialization waits for the external root operation lock", 
   } finally {
     release();
     await holding;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("managed pre-context failures leave one bounded stable bootstrap record", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "local-base-bootstrap-"));
+  try {
+    for (const failure of ["logger", "database", "environment"] as const) {
+      const root = join(directory, failure);
+      ensureLocalBaseRootMarker(root);
+      if (failure === "logger") {
+        await mkdir(logDirectory(root), { mode: 0o700 });
+        const target = join(directory, "outside.log");
+        await writeFile(target, "");
+        await symlink(target, join(logDirectory(root), ACTIVE_LOG_FILENAME));
+      } else {
+        await writeFile(join(root, "local-base.db"), "not sqlite");
+      }
+
+      await expect(
+        createAppContext(
+          { root, nonInteractive: false, json: false },
+          true,
+          true,
+          {
+            ...process.env,
+            LOCALBASE_SERVICE_TOKEN: crypto.randomUUID(),
+            ...(failure === "environment"
+              ? { LOCALBASE_PORT: "not-a-port" }
+              : {}),
+          },
+        ),
+      ).rejects.toThrow();
+      const raw = await Bun.file(bootstrapDiagnosticPath(root)).text();
+      expect(Buffer.byteLength(raw)).toBeLessThan(256 * 1024);
+      const record = logEventSchema.parse(JSON.parse(raw));
+      expect(record.eventName).toBe("gateway.bootstrap-failed");
+      expect(await readLogSnapshot(root)).toContainEqual(record);
+      expect(await readLogSnapshot(root)).toContainEqual(record);
+    }
+  } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });
