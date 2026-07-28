@@ -402,14 +402,14 @@ async function inspectManager(
       };
     }
     const { state, pid, lastExitCode } = parseLaunchctlStatus(result.stdout);
-    const active =
-      (state === "running" && pid !== undefined && pid > 0) ||
-      state === "spawn scheduled";
+    const running = state === "running" && pid !== undefined && pid > 0;
+    const active = running || state === "spawn scheduled";
+    const failed = lastExitCode !== undefined && lastExitCode !== 0 && !running;
     return {
       manager: "launchd",
       loaded: true,
       active,
-      failed: !active && lastExitCode !== undefined && lastExitCode !== 0,
+      failed,
       state,
       ...(pid && pid > 0 ? { pid } : {}),
     };
@@ -452,6 +452,17 @@ function managerIsStopping(observation: ManagerObservation): boolean {
 
 function managerHasFailed(observation: ManagerObservation): boolean {
   return observation.failed;
+}
+
+function launchdAcceptedStart(observation: ManagerObservation): boolean {
+  return (
+    observation.manager === "launchd" &&
+    observation.loaded &&
+    !observation.failed &&
+    ["stopped", "waiting", "spawn scheduled", "xpcproxy", "running"].includes(
+      observation.state,
+    )
+  );
 }
 
 async function readManifest(
@@ -628,9 +639,7 @@ function statusFromObservations(
     state = "unknown";
   } else if (
     acceptedStart &&
-    manager.manager === "launchd" &&
-    manager.loaded &&
-    (manager.state === "waiting" || manager.state === "spawn scheduled") &&
+    launchdAcceptedStart(manager) &&
     (owner.state === "missing" ||
       (owner.state === "unknown" && owner.instance === undefined))
   ) {

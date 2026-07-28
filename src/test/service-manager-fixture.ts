@@ -32,9 +32,12 @@ const fixtureServiceSchema = z
       "active",
       "failed",
       "scheduled",
+      "stopped",
       "waiting",
+      "xpcproxy",
     ]),
     pid: z.number().int().positive().optional(),
+    lastExitCode: z.number().int().optional(),
   })
   .strict();
 
@@ -318,18 +321,24 @@ export function createServiceManagerFixtureRunner(): ServiceManagerCommandRunner
               ? "exited"
               : service.activeState === "scheduled"
                 ? "spawn scheduled"
-                : "waiting";
+                : service.activeState === "stopped"
+                  ? "stopped"
+                  : service.activeState === "xpcproxy"
+                    ? "xpcproxy"
+                    : "waiting";
         return success(
           [
             `${target} = {`,
             `\tstate = ${launchState}`,
             ...(service.pid ? [`\tpid = ${service.pid}`] : []),
             `\tlast exit code = ${
-              service.activeState === "scheduled"
-                ? "(never exited)"
-                : service.activeState === "failed"
-                  ? 1
-                  : 0
+              service.lastExitCode !== undefined
+                ? service.lastExitCode
+                : service.activeState === "scheduled"
+                  ? "(never exited)"
+                  : service.activeState === "failed"
+                    ? 1
+                    : 0
             }`,
             "\tcoalitions = {",
             "\t\tresource coalition = {",
@@ -362,9 +371,21 @@ export function createServiceManagerFixtureRunner(): ServiceManagerCommandRunner
         const existing = state.services[parsed.service.serviceId];
         if (existing?.loaded) return failure("already loaded");
         const transition = z
-          .enum(["waiting", "scheduled", "running", "failed"])
+          .enum([
+            "stopped",
+            "waiting",
+            "scheduled",
+            "xpcproxy",
+            "running",
+            "failed",
+          ])
           .optional()
           .parse(process.env.LOCALBASE_TEST_LAUNCHD_START_TRANSITION);
+        const lastExitCode = z.coerce
+          .number()
+          .int()
+          .optional()
+          .parse(process.env.LOCALBASE_TEST_LAUNCHD_LAST_EXIT_CODE);
         state.services[parsed.service.serviceId] = transition
           ? {
               ...parsed.service,
@@ -376,7 +397,11 @@ export function createServiceManagerFixtureRunner(): ServiceManagerCommandRunner
                   : transition === "running"
                     ? "active"
                     : transition,
-              pid: transition === "running" ? process.pid : undefined,
+              pid:
+                transition === "running" || transition === "xpcproxy"
+                  ? process.pid
+                  : undefined,
+              ...(lastExitCode !== undefined ? { lastExitCode } : {}),
             }
           : await startFixtureProcess(
               { ...parsed.service, enabled: true },
