@@ -152,6 +152,23 @@ export type DoctorInput = z.infer<typeof doctorInputSchema>;
 export const serviceInputSchema = z.object({});
 export type ServiceInput = z.infer<typeof serviceInputSchema>;
 
+export const logsInputSchema = z.object({
+  follow: z.boolean().default(false),
+  limit: z.coerce.number().int().min(1).max(5_000).default(200),
+  since: z.iso.datetime({ offset: true }).optional(),
+  level: z.enum(["debug", "info", "warn", "error"]).optional(),
+  runtime: z
+    .enum(["gateway", "llm", "stt", "image", "service", "cli"])
+    .optional(),
+  requestId: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[A-Za-z0-9._:-]+$/)
+    .optional(),
+});
+export type LogsInput = z.infer<typeof logsInputSchema>;
+
 export const keysListInputSchema = z.object({});
 export type KeysListInput = z.infer<typeof keysListInputSchema>;
 

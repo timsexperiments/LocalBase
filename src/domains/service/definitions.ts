@@ -251,8 +251,8 @@ export function renderLaunchdDefinition(
     parsedInvocation.program,
     ...parsedInvocation.arguments,
   ];
-  const stdoutPath = join(workingDirectory, "service", "stdout.log");
-  const stderrPath = join(workingDirectory, "service", "stderr.log");
+  const stdoutPath = "/dev/null";
+  const stderrPath = "/dev/null";
 
   launchdDefinitionSchema.parse({
     label: parsedMetadata.serviceId,
@@ -628,10 +628,6 @@ export async function resolveServiceInvocation(
 
 export function serviceManifestPath(root: string): string {
   return join(serviceRoot(root), "service", "manifest.json");
-}
-
-export function serviceLogDirectory(root: string): string {
-  return join(serviceRoot(root), "service");
 }
 
 export function serviceDefinitionDirectory(

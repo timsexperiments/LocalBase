@@ -1,5 +1,5 @@
 import { chmod, mkdir, rename, rm } from "node:fs/promises";
-import { basename, dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import {
   createServiceDefinition,
@@ -8,7 +8,6 @@ import {
   resolveServiceInvocation,
   serviceDefinitionDirectory,
   serviceInstanceTokenSchema,
-  serviceLogDirectory,
   serviceManifestPath,
   serviceManifestSchema,
   serviceMetadata,
@@ -520,8 +519,6 @@ async function writeDefinition(
   } else {
     parseSystemdDefinition(definition.contents);
   }
-  await mkdir(serviceLogDirectory(root), { recursive: true, mode: 0o700 });
-  await chmod(serviceLogDirectory(root), 0o700);
   await mkdir(serviceDefinitionDirectory(definition), {
     recursive: true,
     mode: 0o700,
@@ -530,6 +527,24 @@ async function writeDefinition(
   await atomicWrite(
     serviceManifestPath(root),
     JSON.stringify(definition.manifest),
+  );
+  await removeLegacyServiceFallbackLogs(root);
+}
+
+async function removeLegacyServiceFallbackLogs(root: string): Promise<void> {
+  const paths = [
+    join(root, "service", "stdout.log"),
+    join(root, "service", "stderr.log"),
+    join(root, "logs", "bootstrap.stderr.log"),
+  ];
+  await Promise.all(
+    paths.map(async (path) => {
+      try {
+        await Bun.file(path).delete();
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }),
   );
 }
 
@@ -1021,7 +1036,9 @@ export async function removeServiceWithinOperation(
 export async function stopServiceWithinOperation(
   canonicalRoot: string,
 ): Promise<ServiceInspection | undefined> {
-  return (await hasServiceManagementEvidence(canonicalRoot))
+  const inspection = (await hasServiceManagementEvidence(canonicalRoot))
     ? await stopServiceAtRoot(canonicalRoot)
     : undefined;
+  await removeLegacyServiceFallbackLogs(canonicalRoot);
+  return inspection;
 }
