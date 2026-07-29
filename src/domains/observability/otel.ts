@@ -51,6 +51,7 @@ import {
 import type { LocalBaseConfig } from "../../manager";
 import { redactExternalLogText, type LogEvent } from "./logging";
 import {
+  isOtlpTransportManagedHeader,
   otelEndpointSchema,
   parseOtelEnvironment,
   parseOtelHeaders,
@@ -69,6 +70,7 @@ export const OTEL_EXPORT_TIMEOUT_MS = 5_000;
 export const OTEL_CLOSE_DEADLINE_MS = 5_000;
 const OTEL_RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
 const OTEL_MAX_EXPORT_ATTEMPTS = 2;
+const OTEL_RETRY_BASE_DELAY_MS = 250;
 
 export type OtelConfiguration = {
   enabled: boolean;
@@ -186,38 +188,56 @@ class AbortableOtlpExporter<T> {
   }
 
   private async send(body: Uint8Array): Promise<boolean> {
+    const deadline = Date.now() + OTEL_EXPORT_TIMEOUT_MS;
     for (let attempt = 1; attempt <= OTEL_MAX_EXPORT_ATTEMPTS; attempt++) {
       if (this.closed) return false;
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return false;
       const controller = new AbortController();
       this.controllers.add(controller);
-      const timeout = setTimeout(
-        () => controller.abort(),
-        OTEL_EXPORT_TIMEOUT_MS,
-      );
+      const timeout = setTimeout(() => controller.abort(), remaining);
       try {
+        const headers = new Headers(this.headers);
+        for (const name of [...headers.keys()]) {
+          if (isOtlpTransportManagedHeader(name)) headers.delete(name);
+        }
+        headers.set("content-type", "application/x-protobuf");
         const response = await fetch(this.endpoint, {
           method: "POST",
-          headers: {
-            "content-type": "application/x-protobuf",
-            ...this.headers,
-          },
+          headers,
           body: Uint8Array.from(body).buffer,
           signal: controller.signal,
+          redirect: "error",
         });
+        const retryAfter = response.headers.get("retry-after");
         await response.body?.cancel();
         if (response.ok) return true;
         if (
           attempt < OTEL_MAX_EXPORT_ATTEMPTS &&
           OTEL_RETRYABLE_STATUS_CODES.has(response.status)
         ) {
-          await this.retryDelay(250 * attempt);
+          const delay = retryDelayMilliseconds(
+            retryAfter,
+            Date.now(),
+            deadline,
+            OTEL_RETRY_BASE_DELAY_MS * attempt,
+          );
+          if (delay === undefined) return false;
+          await this.retryDelay(delay);
           continue;
         }
         return false;
       } catch {
         if (this.closed || controller.signal.aborted) return false;
         if (attempt < OTEL_MAX_EXPORT_ATTEMPTS) {
-          await this.retryDelay(250 * attempt);
+          const delay = retryDelayMilliseconds(
+            null,
+            Date.now(),
+            deadline,
+            OTEL_RETRY_BASE_DELAY_MS * attempt,
+          );
+          if (delay === undefined) return false;
+          await this.retryDelay(delay);
           continue;
         }
         return false;
@@ -257,6 +277,33 @@ class AbortableOtlpExporter<T> {
     }
     await this.forceFlush();
   }
+}
+
+/**
+ * Invalid or past Retry-After values use the bounded local backoff. A valid
+ * delay that cannot fit inside this export's deadline suppresses the retry.
+ */
+export function retryDelayMilliseconds(
+  retryAfter: string | null,
+  now: number,
+  deadline: number,
+  fallback: number,
+): number | undefined {
+  let delay = fallback;
+  if (retryAfter !== null) {
+    if (/^\d+$/.test(retryAfter)) {
+      delay = Number(retryAfter) * 1_000;
+    } else if (!/^-\d+$/.test(retryAfter)) {
+      const retryAt = Date.parse(retryAfter);
+      if (Number.isFinite(retryAt) && retryAt >= now) {
+        delay = retryAt - now;
+      }
+    }
+  }
+  if (!Number.isFinite(delay) || delay < 0 || delay >= deadline - now) {
+    return undefined;
+  }
+  return delay;
 }
 
 class MonitoredExporter<T> {

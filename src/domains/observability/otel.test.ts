@@ -5,6 +5,7 @@ import {
   createOtelRuntime,
   normalizedOtelRoute,
   resolveOtelConfiguration,
+  retryDelayMilliseconds,
   serverSpanName,
   serverSpanOptions,
   type OtelRuntime,
@@ -149,6 +150,18 @@ describe("OpenTelemetry configuration", () => {
         OTEL_EXPORTER_OTLP_HEADERS: "authorization=bad%0Aheader",
       }),
     ).toThrow();
+    for (const name of [
+      "content-type",
+      "Content-Length",
+      "HOST",
+      "transfer-encoding",
+    ]) {
+      expect(() =>
+        resolveOtelConfiguration(config, {
+          OTEL_EXPORTER_OTLP_HEADERS: `${name}=unsafe`,
+        }),
+      ).toThrow(/managed by the transport/);
+    }
     expect(
       resolveOtelConfiguration(config, {
         OTEL_EXPORTER_OTLP_ENDPOINT: "https://collector.example/base/",
@@ -357,7 +370,12 @@ test("exports correlated OTLP logs and parented W3C spans to a collector", async
       enabled: true,
       tracesEndpoint: `${endpoint}/v1/traces`,
       logsEndpoint: `${endpoint}/v1/logs`,
-      headers: { "x-test": "collector" },
+      headers: {
+        "x-test": "collector",
+        "Content-Type": "text/plain",
+        "Content-Length": "1",
+        Host: "attacker.example",
+      },
       tracesHeaders: {},
       logsHeaders: {},
       sampleRatio: 1,
@@ -420,6 +438,23 @@ test("exports correlated OTLP logs and parented W3C spans to a collector", async
     expect(
       requests.every(
         (request) => request.headers.get("x-test") === "collector",
+      ),
+    ).toBe(true);
+    expect(
+      requests.every(
+        (request) =>
+          request.headers.get("content-type") === "application/x-protobuf",
+      ),
+    ).toBe(true);
+    expect(
+      requests.every(
+        (request) =>
+          request.headers.get("host") === `127.0.0.1:${collector.port}`,
+      ),
+    ).toBe(true);
+    expect(
+      requests.every(
+        (request) => Number(request.headers.get("content-length")) > 1,
       ),
     ).toBe(true);
     const tracePayload = requests.find(
@@ -490,6 +525,121 @@ test("collector outage never rejects application work or shutdown", async () => 
   expect(diagnostics.length).toBeGreaterThan(0);
   expect(diagnostics.length).toBeLessThanOrEqual(4);
 });
+
+test("honors delta-seconds and HTTP-date Retry-After values", async () => {
+  for (const form of ["delta", "date"] as const) {
+    const attempts: number[] = [];
+    const collector = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        await request.arrayBuffer();
+        attempts.push(Date.now());
+        if (attempts.length > 1) return new Response(null, { status: 200 });
+        const retryAfter =
+          form === "delta"
+            ? "1"
+            : new Date(
+                Math.ceil(Date.now() / 1_000) * 1_000 + 1_000,
+              ).toUTCString();
+        return new Response(null, {
+          status: 503,
+          headers: { "retry-after": retryAfter },
+        });
+      },
+    });
+    const endpoint = `http://127.0.0.1:${collector.port}`;
+    const runtime = createOtelRuntime({
+      enabled: true,
+      tracesEndpoint: `${endpoint}/v1/traces`,
+      headers: {},
+      tracesHeaders: {},
+      logsHeaders: {},
+      sampleRatio: 1,
+      sampler: "always_on",
+      source: "persistent",
+      displayEndpoint: endpoint,
+    });
+    try {
+      await runtime.withSpan(
+        `retry-after.${form}`,
+        serverSpanOptions("GET", "/health"),
+        () => {},
+      );
+      await runtime.forceFlush();
+      expect(attempts).toHaveLength(2);
+      const delay = attempts[1] - attempts[0];
+      expect(delay).toBeGreaterThanOrEqual(form === "delta" ? 900 : 800);
+      expect(delay).toBeLessThan(2_250);
+    } finally {
+      await runtime.shutdown();
+      collector.stop(true);
+    }
+  }
+});
+
+test(
+  "bounds Retry-After and cancels retry work at shutdown",
+  async () => {
+    const now = 10_000;
+    expect(retryDelayMilliseconds("invalid", now, now + 5_000, 250)).toBe(250);
+    expect(retryDelayMilliseconds("-1", now, now + 5_000, 250)).toBe(250);
+    expect(retryDelayMilliseconds("6", now, now + 5_000, 250)).toBeUndefined();
+
+    let attempts = 0;
+    let markFirstAttempt!: () => void;
+    const firstAttempt = new Promise<void>((resolve) => {
+      markFirstAttempt = resolve;
+    });
+    const collector = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        await request.arrayBuffer();
+        attempts++;
+        if (attempts === 1) {
+          markFirstAttempt();
+          return new Response(null, {
+            status: 503,
+            headers: { "retry-after": "4" },
+          });
+        }
+        return await new Promise<Response>(() => {});
+      },
+    });
+    const endpoint = `http://127.0.0.1:${collector.port}`;
+    const runtime = createOtelRuntime({
+      enabled: true,
+      tracesEndpoint: `${endpoint}/v1/traces`,
+      headers: {},
+      tracesHeaders: {},
+      logsHeaders: {},
+      sampleRatio: 1,
+      sampler: "always_on",
+      source: "persistent",
+      displayEndpoint: endpoint,
+    });
+    try {
+      await runtime.withSpan(
+        "retry-after.shutdown",
+        serverSpanOptions("GET", "/health"),
+        () => {},
+      );
+      const flush = runtime.forceFlush();
+      await firstAttempt;
+      await Bun.sleep(50);
+      const startedAt = performance.now();
+      await runtime.shutdown();
+      const elapsed = performance.now() - startedAt;
+      await flush;
+      expect(attempts).toBe(1);
+      expect(elapsed).toBeLessThan(1_000);
+    } finally {
+      collector.stop(true);
+    }
+  },
+  { timeout: 7_000 },
+);
 
 test(
   "bounds total shutdown time with a hung collector and saturated queues",

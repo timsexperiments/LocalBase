@@ -23,6 +23,24 @@ const headerNameSchema = z
   .max(128)
   .regex(/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/);
 
+const OTLP_TRANSPORT_MANAGED_HEADERS = new Set([
+  "connection",
+  "content-length",
+  "content-type",
+  "expect",
+  "host",
+  "keep-alive",
+  "proxy-connection",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+]);
+
+export function isOtlpTransportManagedHeader(name: string): boolean {
+  return OTLP_TRANSPORT_MANAGED_HEADERS.has(name.toLowerCase());
+}
+
 export function parseOtelHeaders(
   value: string | undefined,
 ): Record<string, string> {
@@ -31,6 +49,9 @@ export function parseOtelHeaders(
     const separator = entry.indexOf("=");
     if (separator < 1) throw new Error("OTLP headers must use key=value.");
     const name = headerNameSchema.parse(entry.slice(0, separator).trim());
+    if (isOtlpTransportManagedHeader(name)) {
+      throw new Error(`OTLP header ${name} is managed by the transport.`);
+    }
     const rawValue = entry.slice(separator + 1).trim();
     let decoded: string;
     try {
