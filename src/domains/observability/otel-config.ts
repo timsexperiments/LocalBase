@@ -25,6 +25,7 @@ const headerNameSchema = z
 
 const OTLP_TRANSPORT_MANAGED_HEADERS = new Set([
   "connection",
+  "content-encoding",
   "content-length",
   "content-type",
   "expect",

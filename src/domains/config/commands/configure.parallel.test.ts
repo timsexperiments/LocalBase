@@ -103,6 +103,7 @@ test("configure rejects malformed OTLP settings before persistence", async () =>
         { otelHeaders: "x-control=%1F" },
         { otelHeaders: "x-control=%7F" },
         { otelHeaders: "content-type=text/plain" },
+        { otelHeaders: "Content-Encoding=gzip" },
         { otelHeaders: "Content-Length=1" },
         { otelHeaders: "host=attacker.example" },
         { otelHeaders: "transfer-encoding=chunked" },

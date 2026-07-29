@@ -152,6 +152,7 @@ describe("OpenTelemetry configuration", () => {
     ).toThrow();
     for (const name of [
       "content-type",
+      "Content-Encoding",
       "Content-Length",
       "HOST",
       "transfer-encoding",
@@ -373,6 +374,7 @@ test("exports correlated OTLP logs and parented W3C spans to a collector", async
       headers: {
         "x-test": "collector",
         "Content-Type": "text/plain",
+        "Content-Encoding": "gzip",
         "Content-Length": "1",
         Host: "attacker.example",
       },
@@ -444,6 +446,11 @@ test("exports correlated OTLP logs and parented W3C spans to a collector", async
       requests.every(
         (request) =>
           request.headers.get("content-type") === "application/x-protobuf",
+      ),
+    ).toBe(true);
+    expect(
+      requests.every(
+        (request) => request.headers.get("content-encoding") === null,
       ),
     ).toBe(true);
     expect(
