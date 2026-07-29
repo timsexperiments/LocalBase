@@ -564,3 +564,51 @@ test(
   },
   { timeout: 10_000 },
 );
+
+test(
+  "cancels hung exports so a saturated child exits naturally",
+  async () => {
+    const collector = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch() {
+        return await new Promise<Response>(() => {});
+      },
+    });
+    const startedAt = Date.now();
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "run",
+        "src/test/otel-hung-shutdown.fixture.ts",
+        `http://127.0.0.1:${collector.port}`,
+      ],
+      { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" },
+    );
+
+    try {
+      const exitCode = await Promise.race([
+        child.exited,
+        Bun.sleep(12_000).then(() => {
+          throw new Error("Telemetry child retained event-loop resources.");
+        }),
+      ]);
+      const exitedAt = Date.now();
+      const stdout = await new Response(child.stdout).text();
+      const stderr = await new Response(child.stderr).text();
+      expect(exitCode, stderr).toBe(0);
+      const timing = JSON.parse(stdout.trim()) as {
+        shutdownMs: number;
+        shutdownReturnedAt: number;
+      };
+      expect(timing.shutdownMs).toBeGreaterThanOrEqual(4_500);
+      expect(timing.shutdownMs).toBeLessThan(5_750);
+      expect(exitedAt - timing.shutdownReturnedAt).toBeLessThan(1_000);
+      expect(exitedAt - startedAt).toBeLessThan(9_000);
+    } finally {
+      if (child.exitCode === null) child.kill();
+      collector.stop(true);
+    }
+  },
+  { timeout: 13_000 },
+);

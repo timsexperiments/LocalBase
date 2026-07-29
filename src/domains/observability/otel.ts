@@ -19,8 +19,11 @@ import {
   ExportResultCode,
   type ExportResult,
 } from "@opentelemetry/core";
-import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-proto";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
+import {
+  ProtobufLogsSerializer,
+  ProtobufTraceSerializer,
+  type ISerializer,
+} from "@opentelemetry/otlp-transformer";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   BatchLogRecordProcessor,
@@ -64,6 +67,8 @@ export const OTEL_EXPORT_DELAY_MS = 1_000;
 export const OTEL_EXPORT_TIMEOUT_MS = 5_000;
 /** Leaves headroom for the managed service's 15-second stop deadline. */
 export const OTEL_CLOSE_DEADLINE_MS = 5_000;
+const OTEL_RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
+const OTEL_MAX_EXPORT_ATTEMPTS = 2;
 
 export type OtelConfiguration = {
   enabled: boolean;
@@ -136,6 +141,123 @@ export type OtelDiagnostic = (
   message: string,
   attributes?: Record<string, unknown>,
 ) => void;
+
+/**
+ * Bun's Node HTTP compatibility layer can retain a timed-out exporter socket.
+ * This exporter keeps the official OTLP protobuf serializer and SDK processor
+ * contract while owning every fetch controller and retry timer so shutdown can
+ * cancel the underlying resources, not only stop awaiting them.
+ */
+class AbortableOtlpExporter<T> {
+  private readonly active = new Set<Promise<void>>();
+  private readonly controllers = new Set<AbortController>();
+  private readonly retryTimers = new Map<
+    ReturnType<typeof setTimeout>,
+    () => void
+  >();
+  private closed = false;
+
+  constructor(
+    private readonly endpoint: string,
+    private readonly headers: Record<string, string>,
+    private readonly serializer: ISerializer<T[], unknown>,
+  ) {}
+
+  export(items: T[], callback: (result: ExportResult) => void): void {
+    if (this.closed) {
+      callback({ code: ExportResultCode.FAILED });
+      return;
+    }
+    const body = this.serializer.serializeRequest(items);
+    if (!body) {
+      callback({ code: ExportResultCode.FAILED });
+      return;
+    }
+    let operation!: Promise<void>;
+    operation = this.send(body)
+      .then((success) =>
+        callback({
+          code: success ? ExportResultCode.SUCCESS : ExportResultCode.FAILED,
+        }),
+      )
+      .catch(() => callback({ code: ExportResultCode.FAILED }))
+      .finally(() => this.active.delete(operation));
+    this.active.add(operation);
+  }
+
+  private async send(body: Uint8Array): Promise<boolean> {
+    for (let attempt = 1; attempt <= OTEL_MAX_EXPORT_ATTEMPTS; attempt++) {
+      if (this.closed) return false;
+      const controller = new AbortController();
+      this.controllers.add(controller);
+      const timeout = setTimeout(
+        () => controller.abort(),
+        OTEL_EXPORT_TIMEOUT_MS,
+      );
+      try {
+        const response = await fetch(this.endpoint, {
+          method: "POST",
+          headers: {
+            "content-type": "application/x-protobuf",
+            ...this.headers,
+          },
+          body: Uint8Array.from(body).buffer,
+          signal: controller.signal,
+        });
+        await response.body?.cancel();
+        if (response.ok) return true;
+        if (
+          attempt < OTEL_MAX_EXPORT_ATTEMPTS &&
+          OTEL_RETRYABLE_STATUS_CODES.has(response.status)
+        ) {
+          await this.retryDelay(250 * attempt);
+          continue;
+        }
+        return false;
+      } catch {
+        if (this.closed || controller.signal.aborted) return false;
+        if (attempt < OTEL_MAX_EXPORT_ATTEMPTS) {
+          await this.retryDelay(250 * attempt);
+          continue;
+        }
+        return false;
+      } finally {
+        clearTimeout(timeout);
+        this.controllers.delete(controller);
+      }
+    }
+    return false;
+  }
+
+  private retryDelay(milliseconds: number): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.retryTimers.delete(timer);
+        resolve();
+      }, milliseconds);
+      this.retryTimers.set(timer, resolve);
+    });
+  }
+
+  async forceFlush(): Promise<void> {
+    await Promise.allSettled([...this.active]);
+  }
+
+  async shutdown(): Promise<void> {
+    if (!this.closed) {
+      this.closed = true;
+      for (const controller of this.controllers) controller.abort();
+      this.controllers.clear();
+      for (const [timer, resolve] of this.retryTimers) {
+        clearTimeout(timer);
+        resolve();
+      }
+      this.retryTimers.clear();
+    }
+    await this.forceFlush();
+  }
+}
 
 class MonitoredExporter<T> {
   private lastFailureAt = 0;
@@ -361,14 +483,14 @@ class ActiveOtelRuntime implements OtelRuntime {
     });
     const traceExporter = configuration.tracesEndpoint
       ? new MonitoredExporter<ReadableSpan>(
-          new OTLPTraceExporter({
-            url: configuration.tracesEndpoint,
-            headers: {
+          new AbortableOtlpExporter(
+            configuration.tracesEndpoint,
+            {
               ...configuration.headers,
               ...configuration.tracesHeaders,
             },
-            timeoutMillis: OTEL_EXPORT_TIMEOUT_MS,
-          }),
+            ProtobufTraceSerializer,
+          ),
           "traces",
           diagnostic,
         )
@@ -400,14 +522,14 @@ class ActiveOtelRuntime implements OtelRuntime {
 
     const logExporter = configuration.logsEndpoint
       ? new MonitoredExporter<ReadableLogRecord>(
-          new OTLPLogExporter({
-            url: configuration.logsEndpoint,
-            headers: {
+          new AbortableOtlpExporter(
+            configuration.logsEndpoint,
+            {
               ...configuration.headers,
               ...configuration.logsHeaders,
             },
-            timeoutMillis: OTEL_EXPORT_TIMEOUT_MS,
-          }),
+            ProtobufLogsSerializer,
+          ),
           "logs",
           diagnostic,
         )
@@ -530,10 +652,10 @@ class ActiveOtelRuntime implements OtelRuntime {
       this.diagnostic("warn", "OpenTelemetry shutdown deadline exceeded.", {
         deadlineMs: OTEL_CLOSE_DEADLINE_MS,
       });
-      void Promise.allSettled(
+      await Promise.allSettled(
         this.exporters.map((exporter) => exporter.shutdown()),
       );
-      void gracefulClose;
+      await gracefulClose;
     }
     // The process owns one runtime. Leaving the registered context manager
     // enabled avoids invalidating async work that was already handed to Bun.
