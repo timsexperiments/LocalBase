@@ -1,6 +1,10 @@
 import { type LocalBaseConfig } from "../manager";
 import { z } from "zod";
 import { parallelSlotsSchema } from "../domains/config/parallel";
+import {
+  otelEndpointSchema,
+  otelHeadersTextSchema,
+} from "../domains/observability/otel-config";
 
 export type ConfigOverrides = Partial<LocalBaseConfig>;
 
@@ -20,6 +24,9 @@ const configOverridesSchema = z
     activeSttModel: z.string().optional(),
     activeImageModel: z.string().optional(),
     hfToken: z.string().optional(),
+    otelEndpoint: z.union([z.literal(""), otelEndpointSchema]).optional(),
+    otelHeaders: otelHeadersTextSchema.optional(),
+    otelSampleRatio: z.number().int().min(0).max(100).optional(),
   })
   .strict();
 

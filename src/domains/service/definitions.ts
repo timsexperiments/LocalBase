@@ -4,6 +4,10 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 import { CliInputError } from "../app/commands/errors";
 import { canonicalRoot, canonicalRootHash } from "./ownership";
+import {
+  OTEL_ENVIRONMENT_NAMES,
+  otelServiceEnvironmentSchema,
+} from "../observability/otel-config";
 
 export const servicePlatformSchema = z.enum(["darwin", "linux"]);
 export type ServicePlatform = z.infer<typeof servicePlatformSchema>;
@@ -58,7 +62,22 @@ const serviceEnvironmentSchema = z
     LOCALBASE_SERVICE_ID: serviceIdSchema,
     LOCALBASE_SERVICE_TOKEN: serviceInstanceTokenSchema,
   })
-  .strict();
+  .catchall(z.string())
+  .superRefine((value, ctx) => {
+    const telemetry = Object.fromEntries(
+      Object.entries(value).filter(([name]) => name.startsWith("OTEL_")),
+    );
+    const parsed = otelServiceEnvironmentSchema.safeParse(telemetry);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        ctx.addIssue({
+          code: "custom",
+          path: issue.path,
+          message: issue.message,
+        });
+      }
+    }
+  });
 
 export const launchdDefinitionSchema = z
   .object({
@@ -228,7 +247,7 @@ function plistEnvironment(xml: string): unknown {
   const match = xml.match(
     /<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/,
   );
-  return {
+  const required = {
     LOCALBASE_SERVICE_ID: match
       ? plistString(match[1], "LOCALBASE_SERVICE_ID")
       : undefined,
@@ -236,6 +255,13 @@ function plistEnvironment(xml: string): unknown {
       ? plistString(match[1], "LOCALBASE_SERVICE_TOKEN")
       : undefined,
   };
+  const telemetry = Object.fromEntries(
+    OTEL_ENVIRONMENT_NAMES.flatMap((name) => {
+      const value = match ? plistString(match[1], name) : undefined;
+      return value === undefined ? [] : [[name, value]];
+    }),
+  );
+  return { ...required, ...telemetry };
 }
 
 export function renderLaunchdDefinition(
@@ -243,6 +269,7 @@ export function renderLaunchdDefinition(
   invocation: ServiceInvocation,
   root: string,
   serviceToken: string,
+  otelEnvironment: Record<string, string> = {},
 ): string {
   const parsedMetadata = serviceMetadataSchema.parse(metadata);
   const parsedInvocation = serviceInvocationSchema.parse(invocation);
@@ -253,6 +280,7 @@ export function renderLaunchdDefinition(
   ];
   const stdoutPath = "/dev/null";
   const stderrPath = "/dev/null";
+  const telemetry = otelServiceEnvironmentSchema.parse(otelEnvironment);
 
   launchdDefinitionSchema.parse({
     label: parsedMetadata.serviceId,
@@ -267,6 +295,7 @@ export function renderLaunchdDefinition(
     environment: {
       LOCALBASE_SERVICE_ID: parsedMetadata.serviceId,
       LOCALBASE_SERVICE_TOKEN: serviceInstanceTokenSchema.parse(serviceToken),
+      ...telemetry,
     },
     standardOutPath: stdoutPath,
     standardErrorPath: stderrPath,
@@ -295,6 +324,12 @@ export function renderLaunchdDefinition(
     "  <dict>",
     `    <key>LOCALBASE_SERVICE_ID</key><string>${xmlEscape(parsedMetadata.serviceId)}</string>`,
     `    <key>LOCALBASE_SERVICE_TOKEN</key><string>${xmlEscape(serviceToken)}</string>`,
+    ...Object.entries(telemetry)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(
+        ([name, value]) =>
+          `    <key>${xmlEscape(name)}</key><string>${xmlEscape(value)}</string>`,
+      ),
     "  </dict>",
     `  <key>StandardOutPath</key><string>${xmlEscape(stdoutPath)}</string>`,
     `  <key>StandardErrorPath</key><string>${xmlEscape(stderrPath)}</string>`,
@@ -468,11 +503,13 @@ export function renderSystemdDefinition(
   invocation: ServiceInvocation,
   root: string,
   serviceToken: string,
+  otelEnvironment: Record<string, string> = {},
 ): string {
   const parsedMetadata = serviceMetadataSchema.parse(metadata);
   const parsedInvocation = serviceInvocationSchema.parse(invocation);
   const workingDirectory = serviceRoot(root);
   const execStart = [parsedInvocation.program, ...parsedInvocation.arguments];
+  const telemetry = otelServiceEnvironmentSchema.parse(otelEnvironment);
 
   systemdDefinitionSchema.parse({
     description: "LocalBase gateway",
@@ -488,6 +525,7 @@ export function renderSystemdDefinition(
     environment: {
       LOCALBASE_SERVICE_ID: parsedMetadata.serviceId,
       LOCALBASE_SERVICE_TOKEN: serviceInstanceTokenSchema.parse(serviceToken),
+      ...telemetry,
     },
     standardOutput: "journal",
     standardError: "journal",
@@ -511,6 +549,12 @@ export function renderSystemdDefinition(
     "UMask=0077",
     `Environment=${quoteSystemdValue(`LOCALBASE_SERVICE_ID=${parsedMetadata.serviceId}`, false)}`,
     `Environment=${quoteSystemdValue(`LOCALBASE_SERVICE_TOKEN=${serviceToken}`, false)}`,
+    ...Object.entries(telemetry)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(
+        ([name, value]) =>
+          `Environment=${quoteSystemdValue(`${name}=${value}`, false)}`,
+      ),
     "StandardOutput=journal",
     "StandardError=journal",
     "",
@@ -555,6 +599,7 @@ export async function createServiceDefinition(
   invocation: ServiceInvocation,
   platform = servicePlatform(),
   serviceToken: string = crypto.randomUUID(),
+  otelEnvironment: Record<string, string> = {},
 ): Promise<ServiceDefinition> {
   const canonical = await canonicalRoot(root);
   const metadata = await serviceMetadata(canonical, platform);
@@ -570,12 +615,14 @@ export async function createServiceDefinition(
           parsedInvocation,
           canonical,
           serviceToken,
+          otelEnvironment,
         )
       : renderSystemdDefinition(
           metadata,
           parsedInvocation,
           canonical,
           serviceToken,
+          otelEnvironment,
         );
   const fingerprint = new Bun.CryptoHasher("sha256")
     .update(contents)

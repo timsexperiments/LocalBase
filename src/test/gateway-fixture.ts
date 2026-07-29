@@ -147,6 +147,7 @@ export type GatewayFixture = {
 export type GatewayFixtureOptions = {
   auth?: { mode?: "bearer" | "x-api-key" | "either" };
   managedIdentity?: boolean;
+  otelEndpoint?: string;
 };
 
 async function readProcessOutput(
@@ -1285,6 +1286,8 @@ export async function startGatewayFixture(
     config.selectedSttModels = [STT_MODEL];
     config.activeImageModel = IMAGE_MODEL;
     config.selectedImageModels = [IMAGE_MODEL];
+    config.otelEndpoint = options.otelEndpoint ?? "";
+    config.otelSampleRatio = 100;
     const database = new DatabaseSession();
     saveConfig(database, config);
     if (options.auth) {

@@ -193,6 +193,78 @@ test("compiled managed gateway writes redacted root-bound operational logs", asy
   }
 });
 
+test("compiled gateway continues W3C context and exports correlated telemetry", async () => {
+  const received: Array<{ path: string; body: Uint8Array }> = [];
+  const collector = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      received.push({
+        path: new URL(request.url).pathname,
+        body: new Uint8Array(await request.arrayBuffer()),
+      });
+      return new Response(new Uint8Array(), {
+        headers: { "content-type": "application/x-protobuf" },
+      });
+    },
+  });
+  const gateway = await startGatewayFixture({
+    otelEndpoint: `http://127.0.0.1:${collector.port}`,
+  });
+  const traceId = "0af7651916cd43dd8448eb211c80319c";
+  const parentId = "b7ad6b7169203331";
+  try {
+    const response = await fetch(
+      `${gateway.baseUrl}/v1/chat/completions?api_key=never-export-query`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          traceparent: `00-${traceId}-${parentId}-01`,
+          tracestate: "localbase=test",
+          baggage: "private=never-proxy-baggage",
+          "x-request-id": "otel-compiled-request",
+        },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "never-export-this-prompt" }],
+        }),
+      },
+    );
+    expect(response.status).toBe(200);
+    const upstream = gateway.upstreamRequests.find(
+      (request) => request.path === "/v1/chat/completions",
+    );
+    expect(upstream?.headers.get("traceparent")).toStartWith(`00-${traceId}-`);
+    expect(upstream?.headers.get("tracestate")).toBe("localbase=test");
+    expect(upstream?.headers.has("baggage")).toBe(false);
+  } finally {
+    await gateway.stop();
+    collector.stop(true);
+  }
+  const tracePayload = received.find(
+    (request) => request.path === "/v1/traces",
+  )?.body;
+  const logPayload = received.find(
+    (request) => request.path === "/v1/logs",
+  )?.body;
+  expect(tracePayload).toBeDefined();
+  expect(logPayload).toBeDefined();
+  expect(Buffer.from(tracePayload!).includes(Buffer.from(traceId, "hex"))).toBe(
+    true,
+  );
+  expect(Buffer.from(logPayload!).includes(Buffer.from(traceId, "hex"))).toBe(
+    true,
+  );
+  expect(new TextDecoder().decode(logPayload)).not.toContain(
+    "never-export-this-prompt",
+  );
+  const exportedTraceText = new TextDecoder().decode(tracePayload);
+  expect(exportedTraceText).toContain("POST /v1/chat/completions");
+  expect(exportedTraceText).not.toContain("never-export-query");
+  expect(exportedTraceText).not.toContain("never-proxy-baggage");
+});
+
 describe("API gateway integration", () => {
   let gateway: GatewayFixture;
 

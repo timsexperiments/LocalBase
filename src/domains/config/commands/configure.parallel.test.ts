@@ -9,6 +9,7 @@ import { DatabaseSession } from "../../../db/client";
 import type { CommandExecution } from "../../app/commands/framework";
 import { configureInputSchema } from "../../app/commands/inputs";
 import { ensureLocalBaseRootMarker } from "../../../utils/root";
+import { createOtelRuntime } from "../../observability/otel";
 
 const nonInteractiveExecution: CommandExecution = {
   global: { nonInteractive: true, json: false },
@@ -16,7 +17,19 @@ const nonInteractiveExecution: CommandExecution = {
 };
 
 function makeContext(root: string, gpuVramGb = 16): AppContext {
+  const otelConfiguration = {
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "parentbased_traceidratio" as const,
+    source: "persistent" as const,
+    displayEndpoint: "",
+  };
   return {
+    otel: createOtelRuntime(otelConfiguration),
+    otelConfiguration,
     database: new DatabaseSession(),
     config: defaultConfig(root, gpuVramGb),
     specs: {
@@ -64,6 +77,43 @@ test("configure input rejects malformed and out-of-range parallel values", () =>
       }).success,
     ).toBe(false);
   }
+});
+
+test("configure rejects malformed OTLP settings before persistence", async () => {
+  await withTempRoot(async (root) => {
+    const context = makeContext(root);
+    const valid = configureInputSchema.parse({
+      all: false,
+      defaults: true,
+      otelEndpoint: "https://collector.example",
+      otelHeaders: "authorization=Bearer%20safe",
+      createKey: false,
+    });
+
+    try {
+      await runConfigure(valid, context, nonInteractiveExecution);
+      const before = loadConfig(context.database, root);
+
+      for (const unsafe of [
+        { otelHeaders: "authorization" },
+        { otelHeaders: "authorization=Bearer%0Ainjected" },
+        { otelEndpoint: "https://user:password@collector.example" },
+        { otelEndpoint: "https://collector.example?token=secret" },
+        { otelEndpoint: "https://collector.example/#secret" },
+      ]) {
+        expect(
+          configureInputSchema.safeParse({
+            all: false,
+            defaults: true,
+            ...unsafe,
+          }).success,
+        ).toBe(false);
+        expect(loadConfig(context.database, root)).toEqual(before);
+      }
+    } finally {
+      context.database.close();
+    }
+  });
 });
 
 test("configure validates TOML parallel overrides and warns on low VRAM", async () => {

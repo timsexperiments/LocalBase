@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SpanStatusCode } from "@opentelemetry/api";
 import { join, basename } from "node:path";
 import {
   startLlamaServerProcess,
@@ -18,6 +19,7 @@ import {
   resolveCatalogInstallation,
 } from "../../../catalog";
 import type { AppContext } from "../../../context";
+import { activateContextOtel } from "../../../context";
 import { syncContinueConfig } from "../../config/commands/configure";
 import { type ILogger } from "../../observability/logging";
 import { guardianProcessCommand } from "../backend-guardian";
@@ -28,6 +30,13 @@ import {
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ServeInput } from "../../app/commands/inputs";
 import { CliInputError } from "../../app/commands/errors";
+import {
+  clientSpanOptions,
+  internalSpanOptions,
+  serverSpanName,
+  serverSpanOptions,
+  type OtelRuntime,
+} from "../../observability/otel";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
@@ -874,6 +883,7 @@ function filterProxyHeaders(headers: Headers): Headers {
     "authorization",
     "x-api-key",
     "proxy-authorization",
+    "baggage",
     "connection",
     "keep-alive",
     "proxy-authenticate",
@@ -1027,21 +1037,46 @@ async function proxyRequest(
   pathOverride?: string,
   responseSchema?: z.ZodType,
   eventStreamSchema?: z.ZodType,
+  otel?: OtelRuntime,
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
   const target = `${targetBase}${path}${incoming.search}`;
   let upstream: Response;
-  try {
-    upstream = await fetch(target, {
+  const fetchUpstream = async (): Promise<Response> => {
+    const headers = filterProxyHeaders(request.headers);
+    otel?.inject(headers);
+    return await fetch(target, {
       method: request.method,
-      headers: filterProxyHeaders(request.headers),
+      headers,
       body: request.body,
       signal: AbortSignal.any([
         request.signal,
         AbortSignal.timeout(UPSTREAM_PROXY_TIMEOUT_MS),
       ]),
     });
+  };
+  try {
+    upstream = otel
+      ? await otel.withSpan(
+          "localbase.backend.inference",
+          clientSpanOptions({
+            "server.address": new URL(targetBase).hostname,
+            "http.request.method": request.method,
+          }),
+          async (span) => {
+            const response = await fetchUpstream();
+            span.setAttribute("http.response.status_code", response.status);
+            if (response.status >= 500) {
+              span.setStatus({
+                code: SpanStatusCode.ERROR,
+                message: "Upstream returned a server error.",
+              });
+            }
+            return response;
+          },
+        )
+      : await fetchUpstream();
   } catch {
     if (request.signal.aborted) return requestAborted();
     return upstreamFailure("The upstream service could not be reached.");
@@ -1170,12 +1205,14 @@ class ManagedService {
   private guardians = new Map<number, Bun.Subprocess>();
   private onFatal: () => Promise<void>;
   private timeoutMs: number;
+  private otel: OtelRuntime;
 
   constructor(
     name: string,
     healthUrl: string,
     logger: ILogger,
     startFn: () => Promise<Bun.Subprocess>,
+    otel: OtelRuntime,
     timeoutMs = 30000,
     onFatal: () => Promise<void> = async () => {},
   ) {
@@ -1185,6 +1222,7 @@ class ManagedService {
     this.startFn = startFn;
     this.timeoutMs = timeoutMs;
     this.onFatal = onFatal;
+    this.otel = otel;
   }
 
   private lifecycle(
@@ -1265,7 +1303,13 @@ class ManagedService {
 
       this.lifecycle("backend.starting", "info", { crashCount });
       try {
-        const proc = await this.startFn();
+        const proc = await this.otel.withSpan(
+          "localbase.backend.start",
+          internalSpanOptions({
+            "localbase.backend": this.name,
+          }),
+          this.startFn,
+        );
         if (this.isShuttingDown) {
           await this.stopProcess(proc);
           return;
@@ -1283,7 +1327,13 @@ class ManagedService {
           this.handleCrash(proc);
         });
 
-        const ok = await this.waitHealthy();
+        const ok = await this.otel.withSpan(
+          "localbase.backend.model_load",
+          internalSpanOptions({
+            "localbase.backend": this.name,
+          }),
+          async () => await this.waitHealthy(),
+        );
         if (!ok) {
           throw new Error("Health check failed to pass within timeout");
         }
@@ -1548,6 +1598,9 @@ export async function runServe(
     ? await acquireGatewayLease(config.root, endpoint)
     : await acquireGatewayLeaseForServe(config.root, endpoint);
   await ctx.logger.enableFileLogging(config.root);
+  await ctx.initializationOperation?.release();
+  ctx.initializationOperation = undefined;
+  activateContextOtel(ctx);
   ctx.logger.event({
     severity: "info",
     eventName: "gateway.starting",
@@ -1556,7 +1609,6 @@ export async function runServe(
     runtime: "gateway",
     message: "Starting LocalBase gateway.",
   });
-  await ctx.initializationOperation?.release();
 
   let ctxSize = input.ctxSize ?? 0;
   if (!ctxSize) {
@@ -1980,6 +2032,7 @@ export async function runServe(
             { memoryGb: ctx.specs.gpuVramGb },
           );
         },
+        ctx.otel,
         llmTimeoutMs,
         fatalServiceExit,
       )
@@ -2008,6 +2061,7 @@ export async function runServe(
             sttPort,
           );
         },
+        ctx.otel,
         30000,
         fatalServiceExit,
       )
@@ -2048,6 +2102,7 @@ export async function runServe(
             imagePort,
           );
         },
+        ctx.otel,
         30000,
         fatalServiceExit,
       )
@@ -2509,6 +2564,8 @@ export async function runServe(
         sttBase,
         sttPath,
         transcriptionResponseSchema,
+        undefined,
+        ctx.otel,
       );
     }
 
@@ -2585,6 +2642,8 @@ export async function runServe(
         imageBase,
         undefined,
         imageGenerationResponseSchema,
+        undefined,
+        ctx.otel,
       );
     }
 
@@ -2603,6 +2662,7 @@ export async function runServe(
             undefined,
             chatCompletionResponseSchema,
             chatCompletionStreamEventSchema,
+            ctx.otel,
           );
         },
         request.signal,
@@ -2620,6 +2680,8 @@ export async function runServe(
             llmBase,
             undefined,
             embeddingsResponseSchema,
+            undefined,
+            ctx.otel,
           ),
         request.signal,
       );
@@ -2654,14 +2716,30 @@ export async function runServe(
     if (upstreamPath) {
       return await withLlmRequestLease(
         undefined,
-        async () => await proxyRequest(request, llmBase, upstreamPath),
+        async () =>
+          await proxyRequest(
+            request,
+            llmBase,
+            upstreamPath,
+            undefined,
+            undefined,
+            ctx.otel,
+          ),
         request.signal,
       );
     }
 
     return await withLlmRequestLease(
       undefined,
-      async () => await proxyRequest(request, llmBase),
+      async () =>
+        await proxyRequest(
+          request,
+          llmBase,
+          undefined,
+          undefined,
+          undefined,
+          ctx.otel,
+        ),
       request.signal,
     );
   };
@@ -2674,61 +2752,74 @@ export async function runServe(
       const { pathname } = new URL(request.url);
       const method = request.method;
       const requestId = request.headers.get("x-request-id") ?? undefined;
+      const parent = ctx.otel.extract(request.headers);
+      return await ctx.otel.withSpan(
+        serverSpanName(method, pathname),
+        serverSpanOptions(method, pathname),
+        async (span) => {
+          if (method === "OPTIONS") {
+            span.setAttribute("http.response.status_code", 204);
+            return new Response(null, {
+              status: 204,
+              headers: {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods":
+                  "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers":
+                  "Content-Type, Authorization, x-api-key",
+                "Access-Control-Max-Age": "86400",
+              },
+            });
+          }
 
-      if (method === "OPTIONS") {
-        return new Response(null, {
-          status: 204,
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers":
-              "Content-Type, Authorization, x-api-key",
-            "Access-Control-Max-Age": "86400",
-          },
-        });
-      }
+          let response: Response;
+          try {
+            response = await handleRequest(request, pathname);
+          } catch (err) {
+            ctx.logger.error(
+              "HTTP",
+              `Error handling request ${method} ${pathname}`,
+              err as Error,
+            );
+            response = Response.json(
+              { error: "Internal Server Error" },
+              { status: 500 },
+            );
+          }
 
-      let response: Response;
-      try {
-        response = await handleRequest(request, pathname);
-      } catch (err) {
-        ctx.logger.error(
-          "HTTP",
-          `Error handling request ${method} ${pathname}`,
-          err as Error,
-        );
-        response = Response.json(
-          { error: "Internal Server Error" },
-          { status: 500 },
-        );
-      }
+          const headers = new Headers(response.headers);
+          headers.set("Access-Control-Allow-Origin", "*");
+          headers.set(
+            "Access-Control-Allow-Methods",
+            "GET, POST, PUT, DELETE, OPTIONS",
+          );
+          headers.set(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization, x-api-key",
+          );
 
-      const headers = new Headers(response.headers);
-      headers.set("Access-Control-Allow-Origin", "*");
-      headers.set(
-        "Access-Control-Allow-Methods",
-        "GET, POST, PUT, DELETE, OPTIONS",
+          const corsResponse = new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers,
+          });
+
+          const durationMs = performance.now() - start;
+          span.setAttribute("http.response.status_code", corsResponse.status);
+          if (corsResponse.status >= 500) {
+            span.setStatus({ code: SpanStatusCode.ERROR });
+          }
+          ctx.logger.request(
+            method,
+            pathname,
+            corsResponse.status,
+            durationMs,
+            requestId,
+          );
+          return corsResponse;
+        },
+        parent,
       );
-      headers.set(
-        "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, x-api-key",
-      );
-
-      const corsResponse = new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
-
-      const durationMs = performance.now() - start;
-      ctx.logger.request(
-        method,
-        pathname,
-        corsResponse.status,
-        durationMs,
-        requestId,
-      );
-      return corsResponse;
     },
   });
 

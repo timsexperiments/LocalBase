@@ -15,6 +15,7 @@ import {
   type ServiceManifest,
   type ServiceMetadata,
 } from "./definitions";
+import { otelServiceEnvironment } from "../observability/otel-config";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
   canonicalRootHash,
@@ -924,6 +925,7 @@ async function startServiceAtRoot(
     await resolveServiceInvocation(root),
     undefined,
     serviceToken,
+    otelServiceEnvironment(process.env),
   );
   let owner = await getGatewayInstanceStateAtRoot(root);
   assertControllableOwner(

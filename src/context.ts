@@ -28,6 +28,12 @@ import {
   acquireServeInitializationLease,
   type OperationLease,
 } from "./domains/service/ownership";
+import {
+  createOtelRuntime,
+  resolveOtelConfiguration,
+  type OtelConfiguration,
+  type OtelRuntime,
+} from "./domains/observability/otel";
 
 /**
  * Dependency Injection (DI) Container for LocalBase application context.
@@ -38,11 +44,43 @@ export interface AppContext {
   config: LocalBaseConfig;
   database: DatabaseSession;
   initializationOperation?: OperationLease;
+  otel: OtelRuntime;
+  otelConfiguration: OtelConfiguration;
 }
 
 export interface MinimalAppContext {
   logger: ILogger;
   config: Pick<LocalBaseConfig, "root">;
+}
+
+function otelDiagnostic(logger: ILogger) {
+  return (
+    severity: "warn" | "error",
+    message: string,
+    attributes?: Record<string, unknown>,
+  ): void => {
+    const event = {
+      severity,
+      eventName: "observability.export-failed",
+      category: "logging",
+      component: "otel",
+      runtime: "gateway",
+      message,
+      attributes,
+    } as const;
+    if (logger.localDiagnostic) logger.localDiagnostic(event);
+    else logger.event(event);
+  };
+}
+
+export function activateContextOtel(ctx: AppContext): void {
+  if (ctx.otel.enabled || !ctx.otelConfiguration.enabled) return;
+  const runtime = createOtelRuntime(
+    ctx.otelConfiguration,
+    otelDiagnostic(ctx.logger),
+  );
+  ctx.otel = runtime;
+  ctx.logger.setOtelRuntime?.(runtime);
 }
 
 const environmentOverridesSchema = z
@@ -176,6 +214,15 @@ export async function createAppContext(
     const config: LocalBaseConfig = initializeDatabase
       ? loadConfig(database, root, specs.gpuVramGb)
       : defaultConfig(root, specs.gpuVramGb);
+    const otelConfiguration = resolveOtelConfiguration(config, environment);
+    // Exporters are activated by serve after startup ownership is released.
+    // Other commands resolve effective settings without opening network sinks.
+    const otel = createOtelRuntime({
+      ...otelConfiguration,
+      enabled: false,
+      tracesEndpoint: undefined,
+      logsEndpoint: undefined,
+    });
     if (initializeUnderOperationLock) {
       await logger.enableFileLogging(root);
       await clearBootstrapDiagnostic(root);
@@ -192,6 +239,8 @@ export async function createAppContext(
       specs,
       config,
       database,
+      otel,
+      otelConfiguration,
       ...(initializationOperation ? { initializationOperation } : {}),
     };
   } catch (error) {

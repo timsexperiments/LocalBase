@@ -20,6 +20,7 @@ import {
   readExact,
   syncOwnedPrivateDirectory,
 } from "./secure-log-files";
+import type { OtelRuntime } from "./otel";
 
 export const LOG_SCHEMA_VERSION = 1 as const;
 export const LOG_DIRECTORY_NAME = "logs";
@@ -152,6 +153,14 @@ export const logEventSchema = z
       .max(MAX_REQUEST_ID_LENGTH)
       .regex(/^[A-Za-z0-9._:-]+$/)
       .optional(),
+    traceId: z
+      .string()
+      .regex(/^[0-9a-f]{32}$/)
+      .optional(),
+    spanId: z
+      .string()
+      .regex(/^[0-9a-f]{16}$/)
+      .optional(),
     http: logHttpMetadataSchema.optional(),
     error: logErrorMetadataSchema.optional(),
     attributes: logAttributesSchema.optional(),
@@ -177,6 +186,8 @@ export type LogEventInput = {
     code?: unknown;
   };
   attributes?: Record<string, unknown>;
+  traceId?: string;
+  spanId?: string;
 };
 
 const sensitiveKeyPattern =
@@ -329,6 +340,8 @@ export function createLogEvent(input: LogEventInput): LogEvent {
     runtime: input.runtime,
     message: boundedText(input.message),
     ...(requestId ? { requestId } : {}),
+    ...(input.traceId ? { traceId: input.traceId } : {}),
+    ...(input.spanId ? { spanId: input.spanId } : {}),
     ...(parsedHttp?.success ? { http: parsedHttp.data } : {}),
     ...(error ? { error } : {}),
     ...(attributes ? { attributes } : {}),
@@ -836,6 +849,7 @@ export interface ILogger {
     attributes?: Record<string, unknown>,
   ): void;
   event(input: LogEventInput): void;
+  localDiagnostic?(input: LogEventInput): void;
   request(
     method: string,
     path: string,
@@ -845,6 +859,7 @@ export interface ILogger {
   ): void;
   pipeStream(stream: ReadableStream<Uint8Array>, component: string): void;
   enableFileLogging(root: string): Promise<void>;
+  setOtelRuntime?(runtime: OtelRuntime): void;
   close(): Promise<void>;
 }
 
@@ -852,6 +867,7 @@ export interface ILogger {
 export class LocalBaseLogger implements ILogger {
   private readonly format: "human" | "json";
   private writer: RotatingLogWriter | undefined;
+  private otel: OtelRuntime | undefined;
 
   constructor(format?: string) {
     this.format =
@@ -862,9 +878,19 @@ export class LocalBaseLogger implements ILogger {
   }
 
   event(input: LogEventInput): void {
-    const event = createLogEvent(input);
+    this.writeEvent(input, true);
+  }
+
+  localDiagnostic(input: LogEventInput): void {
+    this.writeEvent(input, false);
+  }
+
+  private writeEvent(input: LogEventInput, exportOtel: boolean): void {
+    const correlation = this.otel?.activeCorrelation();
+    const event = createLogEvent({ ...input, ...correlation });
     consoleWrite(event, this.format);
     this.writer?.enqueue(event);
+    if (exportOtel) this.otel?.emit(event);
   }
 
   info(
@@ -993,9 +1019,15 @@ export class LocalBaseLogger implements ILogger {
     this.writer = writer;
   }
 
+  setOtelRuntime(runtime: OtelRuntime): void {
+    this.otel = runtime;
+  }
+
   async close(): Promise<void> {
     await this.writer?.close();
     this.writer = undefined;
+    await this.otel?.shutdown();
+    this.otel = undefined;
   }
 }
 

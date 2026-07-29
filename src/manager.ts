@@ -41,6 +41,10 @@ import {
   canonicalLocalBaseRootSchema,
   ensureLocalBaseRootMarker,
 } from "./utils/root";
+import {
+  otelEndpointSchema,
+  otelHeadersTextSchema,
+} from "./domains/observability/otel-config";
 export {
   ensureBinary,
   managedRuntimeRelease,
@@ -76,6 +80,10 @@ export type LocalBaseConfig = {
   activeImageModel: string;
   hfToken: string;
   parallel: ParallelSlots;
+  otelEndpoint: string;
+  otelHeaders: string;
+  /** Integer percentage to keep persisted configuration deterministic. */
+  otelSampleRatio: number;
 };
 
 export type ApiKeyRecord = {
@@ -123,6 +131,9 @@ const ConfigRowSchema = z
     activeImageModel: z.string(),
     hfToken: z.string(),
     parallel: z.enum(["auto", "1", "2", "3", "4"]),
+    otelEndpoint: z.union([z.literal(""), otelEndpointSchema]),
+    otelHeaders: otelHeadersTextSchema,
+    otelSampleRatio: z.number().int().min(0).max(100),
   })
   .strict();
 
@@ -196,6 +207,9 @@ function toConfigRow(config: LocalBaseConfig) {
     activeImageModel: config.activeImageModel,
     hfToken: config.hfToken || "",
     parallel: String(parseParallelSlots(config.parallel)),
+    otelEndpoint: config.otelEndpoint,
+    otelHeaders: config.otelHeaders,
+    otelSampleRatio: config.otelSampleRatio,
   };
 }
 
@@ -362,6 +376,9 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     activeImageModel: data.activeImageModel,
     hfToken: data.hfToken,
     parallel: parseParallelSlots(data.parallel),
+    otelEndpoint: data.otelEndpoint,
+    otelHeaders: data.otelHeaders,
+    otelSampleRatio: data.otelSampleRatio,
   };
 }
 
@@ -425,6 +442,9 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     activeImageModel: "stable-diffusion-v1-5",
     hfToken: "",
     parallel: "auto",
+    otelEndpoint: "",
+    otelHeaders: "",
+    otelSampleRatio: 100,
   };
 }
 
