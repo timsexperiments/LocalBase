@@ -1,16 +1,15 @@
-import { readdirSync } from "node:fs";
-
 export const migrationAssetsPath = "src/db/migration-assets.ts";
 const migrationsDir = "drizzle";
 const journalPath = `${migrationsDir}/meta/_journal.json`;
 const migrationFilePattern = /^(\d+_.+)\.sql$/;
+const migrationGlob = new Bun.Glob("*.sql");
 
 type MigrationJournal = {
   entries: Array<{ idx: number; tag: string }>;
 };
 
 function migrationTags(): string[] {
-  return readdirSync(migrationsDir)
+  return [...migrationGlob.scanSync({ cwd: migrationsDir, onlyFiles: true })]
     .flatMap((name) => {
       const match = migrationFilePattern.exec(name);
       return match ? [match[1]] : [];
