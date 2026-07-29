@@ -1,7 +1,8 @@
-import type { AppContext } from "../../../context";
+import type { AppContext, MinimalAppContext } from "../../../context";
 import {
   commandHelpText,
-  executeCommand,
+  executeFullCommand,
+  executeMinimalCommand,
   printCommandHelp,
   resolveCli,
   rootCommandDefinition,
@@ -13,12 +14,16 @@ import {
   writeJsonError,
   writeJsonSuccess,
 } from "./output";
+import { redactExternalLogText } from "../../observability/logging";
 
 type CreateContext = (
   options: GlobalOptions,
   initializeDatabase: boolean,
   initializeUnderOperationLock: boolean,
 ) => Promise<AppContext>;
+type CreateMinimalContext = (
+  options: GlobalOptions,
+) => MinimalAppContext | Promise<MinimalAppContext>;
 
 function errorCode(error: unknown): string {
   return toCliInputError(error) ? "invalid_input" : "operational_error";
@@ -30,6 +35,7 @@ async function reportError(
   parent?: Parameters<typeof commandHelpText>[1],
   json = false,
 ): Promise<number> {
+  message = redactExternalLogText(message, 2_048);
   if (json) writeJsonError("invalid_input", message);
   console.error(`Error: ${message}`);
   if (command) console.error(await commandHelpText(command, parent));
@@ -55,6 +61,7 @@ async function withJsonStdoutGuard<T>(
 export async function runCli(
   args: string[],
   createContext: CreateContext,
+  createMinimalContext?: CreateMinimalContext,
 ): Promise<number> {
   const resolution = await resolveCli(args);
   if (resolution.kind === "error") {
@@ -86,24 +93,49 @@ export async function runCli(
 
   const { command, global } = resolution;
   const output = createCommandOutput(global.json);
-  let context: AppContext | undefined;
+  const streaming =
+    command.longRunning || command.streaming?.(resolution.input);
+  let context: AppContext | MinimalAppContext | undefined;
   try {
-    context = await createContext(
-      global,
-      command.requiresDatabase ?? true,
-      command.initializeUnderOperationLock ?? false,
-    );
-    const result = await withJsonStdoutGuard(global.json, () =>
-      executeCommand(command, resolution.input, global, context!, output),
-    );
+    const result = await withJsonStdoutGuard(global.json, async () => {
+      if (command.minimalContext) {
+        if (!createMinimalContext) {
+          throw new Error("Minimal command context is unavailable.");
+        }
+        const minimal = await createMinimalContext(global);
+        context = minimal;
+        return await executeMinimalCommand(
+          command,
+          resolution.input,
+          global,
+          minimal,
+          output,
+        );
+      }
+      const full = await createContext(
+        global,
+        command.requiresDatabase ?? true,
+        command.initializeUnderOperationLock ?? false,
+      );
+      context = full;
+      return await executeFullCommand(
+        command,
+        resolution.input,
+        global,
+        full,
+        output,
+      );
+    });
     const exitCode = result.exitCode ?? 0;
-    if (global.json && !command.longRunning) writeJsonSuccess(result.data);
+    if (global.json && !streaming) writeJsonSuccess(result.data);
     return exitCode;
   } catch (error) {
     const inputError = toCliInputError(error);
-    const message =
+    const message = redactExternalLogText(
       inputError?.message ??
-      (error instanceof Error ? error.message : String(error));
+        (error instanceof Error ? error.message : String(error)),
+      2_048,
+    );
     if (command.longRunning && global.json) {
       output.lifecycle({
         event: "error",
@@ -123,7 +155,10 @@ export async function runCli(
     console.error(`Error: ${message}`);
     return 1;
   } finally {
-    await context?.initializationOperation?.release();
-    context?.database.close();
+    if (context && "database" in context) {
+      await context.initializationOperation?.release();
+      context.database.close();
+    }
+    await context?.logger.close?.();
   }
 }

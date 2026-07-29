@@ -30,8 +30,11 @@ function makeContext(): AppContext {
       info() {},
       warn() {},
       error() {},
+      event() {},
       request() {},
       pipeStream() {},
+      async enableFileLogging() {},
+      async close() {},
     },
   };
 }

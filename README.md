@@ -50,6 +50,19 @@ The gateway is available at `http://localhost:2273/v1`. Use `./dist/local-base -
 
 macOS uses a launchd user agent and Linux uses a `systemd --user` service. `uninstall --yes` stops and removes the matching service before deleting that LocalBase root.
 
+## Operational logs
+
+`serve` is the single writer of redacted JSON Lines events under `$LOCALBASE_ROOT/logs`. The active file rotates at 10 MiB and retains five archives. These files are the primary operational record for foreground and managed services. A managed startup failure before the primary sink is available atomically records one private, bounded structured bootstrap event. launchd output is discarded; the systemd journal remains a secondary Linux fallback.
+
+```bash
+./dist/local-base logs --level error
+./dist/local-base logs --limit 500 --since 2026-01-01T00:00:00Z
+./dist/local-base logs --follow --runtime llm
+./dist/local-base --json logs --request-id req-123
+```
+
+Finite `logs --json` calls return the normal JSON command envelope and default to the newest 200 matching events (maximum 5,000). `logs --follow --json` streams one validated log event per JSONL line to stdout. Log records redact credentials, cookies, secret URL values, request identifiers that resemble credentials, and request or model content before they reach any sink.
+
 ## Automation and JSON output
 
 Use the global `--json` option for automation. It may appear before or after a command, but not after `--`.

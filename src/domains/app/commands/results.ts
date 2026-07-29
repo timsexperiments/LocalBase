@@ -5,6 +5,7 @@ import {
   gatewayReadinessSchema,
   serviceStatusSchema,
 } from "../../service/manager";
+import { logEventSchema } from "../../observability/logging";
 
 export const configurationOutputSchema = z
   .object({
@@ -79,6 +80,9 @@ export const serviceLifecycleResultSchema = z
     service: serviceStatusSchema,
     gateway: gatewayReadinessOutputSchema,
   })
+  .strict();
+export const logsResultSchema = z
+  .object({ events: z.array(logEventSchema) })
   .strict();
 export const catalogResultSchema = z
   .object({ models: z.array(modelOutputSchema) })

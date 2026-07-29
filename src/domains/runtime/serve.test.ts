@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { byId, primaryArtifact } from "../../catalog";
 import {
@@ -6,7 +8,13 @@ import {
   type GatewayFixture,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
-import { httpBaseUrl, withResponseLease } from "./commands/serve";
+import { LocalBaseLogger, readLogSnapshot } from "../observability/logging";
+import { ensureLocalBaseRootMarker } from "../../utils/root";
+import {
+  finalizeGatewayShutdown,
+  httpBaseUrl,
+  withResponseLease,
+} from "./commands/serve";
 
 type ValidationCase = {
   name: string;
@@ -86,6 +94,32 @@ test("releases a response lease exactly once when the stream or request is cance
   expect(requestReleases).toBe(1);
 });
 
+test("shutdown records lease release failure, flushes stopped, and resolves", async () => {
+  const root = mkdtempSync(join(tmpdir(), "local-base-shutdown-log-"));
+  ensureLocalBaseRootMarker(root);
+  const logger = new LocalBaseLogger("json");
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await logger.enableFileLogging(root);
+    const status = await finalizeGatewayShutdown(
+      logger,
+      async () => {
+        throw new Error("lease release failed");
+      },
+      0,
+    );
+    expect(status).toBe(1);
+    expect(
+      (await readLogSnapshot(root)).map((event) => event.eventName),
+    ).toEqual(["gateway.lease-release-failed", "gateway.stopped"]);
+  } finally {
+    console.log = originalLog;
+    await logger.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("managed health discloses identity only to the service token", async () => {
   const gateway = await startGatewayFixture({ managedIdentity: true });
   try {
@@ -109,6 +143,51 @@ test("managed health discloses identity only to the service token", async () => 
         })
       ).status,
     ).toBe(404);
+  } finally {
+    await gateway.stop({ preserveRoot: true });
+    const stoppedEvents = await readLogSnapshot(gateway.root);
+    expect(
+      stoppedEvents.some((event) => event.eventName === "gateway.stopped"),
+    ).toBe(true);
+    rmSync(gateway.root, { recursive: true, force: true });
+  }
+});
+
+test("compiled managed gateway writes redacted root-bound operational logs", async () => {
+  const gateway = await startGatewayFixture({ managedIdentity: true });
+  try {
+    const response = await fetch(`${gateway.baseUrl}/health`, {
+      headers: {
+        "x-request-id": "compiled-managed-request",
+        authorization: "Bearer private-token",
+      },
+    });
+    expect(response.status).toBe(200);
+
+    const deadline = Date.now() + 3_000;
+    let events = await readLogSnapshot(gateway.root);
+    while (
+      Date.now() < deadline &&
+      !events.some(
+        (event) =>
+          event.eventName === "http.request" &&
+          event.requestId === "compiled-managed-request",
+      )
+    ) {
+      await Bun.sleep(25);
+      events = await readLogSnapshot(gateway.root);
+    }
+    expect(events.some((event) => event.eventName === "gateway.started")).toBe(
+      true,
+    );
+    expect(
+      events.some(
+        (event) =>
+          event.eventName === "http.request" &&
+          event.requestId === "compiled-managed-request",
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(events)).not.toContain("private-token");
   } finally {
     await gateway.stop();
   }

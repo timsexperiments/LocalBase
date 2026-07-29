@@ -141,7 +141,7 @@ export type GatewayFixture = {
   closeControlledStream: (id: string) => void;
   waitForControlledStreamAbort: (id: string) => Promise<void>;
   waitForControlledHeaderAbort: (id: string) => Promise<void>;
-  stop: () => Promise<void>;
+  stop: (options?: { preserveRoot?: boolean }) => Promise<void>;
 };
 
 export type GatewayFixtureOptions = {
@@ -1506,13 +1506,13 @@ export async function startGatewayFixture(
       if (!headerWait) throw new Error(`Unknown controlled header wait: ${id}`);
       return headerWait.aborted;
     },
-    stop: async () => {
+    stop: async (stopOptions) => {
       await stopProcess(serverProcess);
       await Promise.all([stdout, stderr]);
       llmUpstream.stop(true);
       sttUpstream.stop(true);
       imageUpstream.stop(true);
-      cleanup();
+      if (!stopOptions?.preserveRoot) cleanup();
     },
   };
 }

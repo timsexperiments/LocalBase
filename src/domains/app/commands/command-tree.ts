@@ -5,7 +5,7 @@ import {
   type CommandDef,
 } from "citty";
 import { z } from "zod";
-import type { AppContext } from "../../../context";
+import type { AppContext, MinimalAppContext } from "../../../context";
 import { byId, type ModelKind } from "../../../catalog";
 import {
   catalogInputSchema,
@@ -18,6 +18,7 @@ import {
   keyIdInputSchema,
   keysCreateInputSchema,
   keysListInputSchema,
+  logsInputSchema,
   recommendInputSchema,
   resetInputSchema,
   serviceInputSchema,
@@ -33,6 +34,7 @@ import {
   type KeyIdInput,
   type KeysCreateInput,
   type KeysListInput,
+  type LogsInput,
   type RecommendInput,
   type ResetInput,
   type ServiceInput,
@@ -51,6 +53,7 @@ import {
   keyRevocationResultSchema,
   keySecretResultSchema,
   keysListResultSchema,
+  logsResultSchema,
   recommendResultSchema,
   resetResultSchema,
   serviceLifecycleResultSchema,
@@ -72,7 +75,7 @@ type Positionals = {
 
 export type CittyCommand = CommandDef<any>;
 
-type LocalCommand<Input> = {
+type CommandBase<Input> = {
   path: readonly string[];
   description: string;
   examples?: readonly string[];
@@ -81,16 +84,32 @@ type LocalCommand<Input> = {
   requiresDatabase?: boolean;
   initializeUnderOperationLock?: boolean;
   longRunning?: boolean;
+  streaming?(input: Input): boolean;
   resultSchema: z.ZodType;
   citty: CittyCommand;
   parse(input: Record<string, unknown>, positionals: string[]): Input;
   validate?(input: Input, global: GlobalOptions): Input;
+};
+
+type FullCommand<Input> = CommandBase<Input> & {
+  minimalContext?: false;
   run(
     input: Input,
     context: AppContext,
     execution: CommandExecution,
   ): Promise<CommandResult> | CommandResult;
 };
+
+type MinimalCommand<Input> = CommandBase<Input> & {
+  minimalContext: true;
+  run(
+    input: Input,
+    context: MinimalAppContext,
+    execution: CommandExecution,
+  ): Promise<CommandResult> | CommandResult;
+};
+
+type LocalCommand<Input> = FullCommand<Input> | MinimalCommand<Input>;
 
 export type Command = LocalCommand<unknown>;
 
@@ -130,7 +149,14 @@ function assertCatalogModels(
 }
 
 function command<Input>(
-  definition: Omit<LocalCommand<Input>, "citty">,
+  definition: Omit<FullCommand<Input>, "citty">,
+): FullCommand<Input>;
+function command<Input>(
+  definition: Omit<MinimalCommand<Input>, "citty">,
+): MinimalCommand<Input>;
+function command<Input>(
+  definition:
+    Omit<FullCommand<Input>, "citty"> | Omit<MinimalCommand<Input>, "citty">,
 ): LocalCommand<Input> {
   return {
     ...definition,
@@ -476,6 +502,52 @@ const statusCommand = command<ServiceInput>({
   },
 });
 
+const logsCommand = command<LogsInput>({
+  path: ["logs"],
+  description: "Read structured LocalBase operational logs",
+  examples: [
+    "local-base logs --level error",
+    "local-base logs --follow --runtime llm",
+  ],
+  args: {
+    follow: { type: "boolean", description: "Continue streaming new events" },
+    limit: {
+      type: "string",
+      valueHint: "count",
+      description: "Maximum snapshot events (default 200, max 5000)",
+    },
+    since: {
+      type: "string",
+      valueHint: "ISO-8601",
+      description: "Include events at or after this timestamp",
+    },
+    level: {
+      type: "enum",
+      options: ["debug", "info", "warn", "error"],
+      description: "Filter by severity",
+    },
+    runtime: {
+      type: "enum",
+      options: ["gateway", "llm", "stt", "image", "service", "cli"],
+      description: "Filter by runtime",
+    },
+    "request-id": {
+      type: "string",
+      valueHint: "id",
+      description: "Filter by request ID",
+    },
+  },
+  requiresDatabase: false,
+  minimalContext: true,
+  parse: (input) => logsInputSchema.parse(input),
+  streaming: (input) => input.follow,
+  resultSchema: logsResultSchema,
+  run: async (input, context, execution) => {
+    const { runLogs } = await import("../../observability/commands/logs");
+    return await runLogs(input, context, execution);
+  },
+});
+
 const keysListCommand = command<KeysListInput>({
   path: ["keys", "list"],
   description: "List API keys",
@@ -580,6 +652,7 @@ export const commands = [
   stopCommand,
   restartCommand,
   statusCommand,
+  logsCommand,
   keysListCommand,
   keysCreateCommand,
   keysRevokeCommand,
@@ -627,6 +700,7 @@ export const rootCommand = defineCommand({
     stop: stopCommand.citty,
     restart: restartCommand.citty,
     status: statusCommand.citty,
+    logs: logsCommand.citty,
     keys: keysCommand,
     reset: resetCommand.citty,
     uninstall: uninstallCommand.citty,

@@ -365,8 +365,8 @@ export function ensureLocalBaseRootMarker(root: string): LocalBaseRootMarker {
   );
 }
 
-/** Validates that a destructive command targets an initialized LocalBase root. */
-export function assertDestructiveLocalBaseRoot(
+/** Validates an initialized LocalBase root without creating files or opening SQLite. */
+export function assertInitializedLocalBaseRoot(
   root: string,
 ): LocalBaseRootMarker {
   const canonical = canonicalLocalBaseRoot(root);
@@ -379,4 +379,11 @@ export function assertDestructiveLocalBaseRoot(
     );
   }
   return marker;
+}
+
+/** Validates that a destructive command targets an initialized LocalBase root. */
+export function assertDestructiveLocalBaseRoot(
+  root: string,
+): LocalBaseRootMarker {
+  return assertInitializedLocalBaseRoot(root);
 }
