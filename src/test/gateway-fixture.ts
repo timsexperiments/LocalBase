@@ -261,6 +261,12 @@ function startMockUpstream(
       const mode = request.headers.get("x-test-upstream");
       if (mode === "malformed") return new Response("not json");
       if (mode === "invalid-schema") return Response.json({ unexpected: true });
+      if (mode === "server-error") {
+        return Response.json(
+          { error: { message: "fixture upstream failure" } },
+          { status: 503 },
+        );
+      }
       if (mode === "custom-tool-response") {
         return Response.json({
           id: "chatcmpl-custom-tool",

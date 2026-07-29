@@ -38,7 +38,11 @@ export function parseOtelHeaders(
     } catch {
       throw new Error(`OTLP header ${name} is not valid percent-encoding.`);
     }
-    if (!decoded || decoded.length > 4_096 || /[\r\n]/.test(decoded)) {
+    if (
+      !decoded ||
+      decoded.length > 4_096 ||
+      /[\u0000-\u0008\u000a-\u001f\u007f]/.test(decoded)
+    ) {
       throw new Error(`OTLP header ${name} has an invalid value.`);
     }
     return [name, decoded] as const;

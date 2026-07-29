@@ -86,17 +86,22 @@ test("configure rejects malformed OTLP settings before persistence", async () =>
       all: false,
       defaults: true,
       otelEndpoint: "https://collector.example",
-      otelHeaders: "authorization=Bearer%20safe",
+      otelHeaders: "x-label=left%09right",
       createKey: false,
     });
 
     try {
       await runConfigure(valid, context, nonInteractiveExecution);
       const before = loadConfig(context.database, root);
+      expect(before.otelHeaders).toBe("x-label=left%09right");
 
       for (const unsafe of [
         { otelHeaders: "authorization" },
         { otelHeaders: "authorization=Bearer%0Ainjected" },
+        { otelHeaders: "x-control=%00" },
+        { otelHeaders: "x-control=%01" },
+        { otelHeaders: "x-control=%1F" },
+        { otelHeaders: "x-control=%7F" },
         { otelEndpoint: "https://user:password@collector.example" },
         { otelEndpoint: "https://collector.example?token=secret" },
         { otelEndpoint: "https://collector.example/#secret" },

@@ -8,13 +8,16 @@ import {
   type GatewayFixture,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
+import { decodeOtlpTraceSpans } from "../../test/otlp-fixture";
 import { LocalBaseLogger, readLogSnapshot } from "../observability/logging";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
   finalizeGatewayShutdown,
   httpBaseUrl,
+  ManagedService,
   withResponseLease,
 } from "./commands/serve";
+import { createOtelRuntime } from "../observability/otel";
 
 type ValidationCase = {
   name: string;
@@ -117,6 +120,61 @@ test("shutdown records lease release failure, flushes stopped, and resolves", as
     console.log = originalLog;
     await logger.close();
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("backend health failure exports an error model-load span", async () => {
+  const traces: Uint8Array[] = [];
+  const collector = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      if (new URL(request.url).pathname === "/v1/traces") {
+        traces.push(new Uint8Array(await request.arrayBuffer()));
+      }
+      return new Response(new Uint8Array(), {
+        headers: { "content-type": "application/x-protobuf" },
+      });
+    },
+  });
+  const endpoint = `http://127.0.0.1:${collector.port}`;
+  const otel = createOtelRuntime({
+    enabled: true,
+    tracesEndpoint: `${endpoint}/v1/traces`,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: endpoint,
+  });
+  const logger = new LocalBaseLogger("json");
+  const service = new ManagedService(
+    "llama-server",
+    "http://127.0.0.1:1/health",
+    logger,
+    async () => Bun.spawn(["/bin/sleep", "60"]),
+    otel,
+    10,
+  );
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await expect(service.ensureRunning()).rejects.toThrow(
+      "Backend health check timed out.",
+    );
+    await otel.forceFlush();
+    const modelLoad = traces
+      .flatMap(decodeOtlpTraceSpans)
+      .find((span) => span.name === "localbase.backend.model_load");
+    expect(modelLoad?.statusCode).toBe(2);
+  } finally {
+    await service.shutdown();
+    await otel.shutdown();
+    await logger.close();
+    console.log = originalLog;
+    collector.stop(true);
   }
 });
 
@@ -238,6 +296,19 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
     expect(upstream?.headers.get("traceparent")).toStartWith(`00-${traceId}-`);
     expect(upstream?.headers.get("tracestate")).toBe("localbase=test");
     expect(upstream?.headers.has("baggage")).toBe(false);
+
+    const failed = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-test-upstream": "server-error",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [{ role: "user", content: "failure probe" }],
+      }),
+    });
+    expect(failed.status).toBeGreaterThanOrEqual(500);
   } finally {
     await gateway.stop();
     collector.stop(true);
@@ -263,6 +334,18 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   expect(exportedTraceText).toContain("POST /v1/chat/completions");
   expect(exportedTraceText).not.toContain("never-export-query");
   expect(exportedTraceText).not.toContain("never-proxy-baggage");
+  const inferenceError = received
+    .filter((request) => request.path === "/v1/traces")
+    .flatMap((request) => decodeOtlpTraceSpans(request.body))
+    .find(
+      (span) =>
+        span.name === "localbase.backend.inference" &&
+        span.attributes["http.response.status_code"] === 503,
+    );
+  expect(inferenceError).toMatchObject({
+    statusCode: 2,
+    attributes: { "http.response.status_code": 503 },
+  });
 });
 
 describe("API gateway integration", () => {

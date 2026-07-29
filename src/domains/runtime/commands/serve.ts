@@ -1191,7 +1191,7 @@ export function withResponseLease(
  * Handles lazy loading, auto-restart crash recovery with exponential backoff,
  * sliding-window crash limits, stdout/stderr log piping, and startup readiness checks.
  */
-class ManagedService {
+export class ManagedService {
   private proc: Bun.Subprocess | null = null;
   private name: string;
   private startFn: () => Promise<Bun.Subprocess>;
@@ -1327,16 +1327,17 @@ class ManagedService {
           this.handleCrash(proc);
         });
 
-        const ok = await this.otel.withSpan(
+        await this.otel.withSpan(
           "localbase.backend.model_load",
           internalSpanOptions({
             "localbase.backend": this.name,
           }),
-          async () => await this.waitHealthy(),
+          async () => {
+            if (!(await this.waitHealthy())) {
+              throw new Error("Backend health check timed out.");
+            }
+          },
         );
-        if (!ok) {
-          throw new Error("Health check failed to pass within timeout");
-        }
         this.lifecycle("backend.ready", "info", { pid: proc.pid });
       } catch (err) {
         this.logger.event({

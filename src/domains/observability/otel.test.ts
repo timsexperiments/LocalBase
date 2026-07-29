@@ -490,3 +490,77 @@ test("collector outage never rejects application work or shutdown", async () => 
   expect(diagnostics.length).toBeGreaterThan(0);
   expect(diagnostics.length).toBeLessThanOrEqual(4);
 });
+
+test(
+  "bounds total shutdown time with a hung collector and saturated queues",
+  async () => {
+    let markRequestStarted!: () => void;
+    const requestStarted = new Promise<void>((resolve) => {
+      markRequestStarted = resolve;
+    });
+    const collector = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch() {
+        markRequestStarted();
+        return await new Promise<Response>(() => {});
+      },
+    });
+    const diagnostics: string[] = [];
+    const endpoint = `http://127.0.0.1:${collector.port}`;
+    const runtime = createOtelRuntime(
+      {
+        enabled: true,
+        tracesEndpoint: `${endpoint}/v1/traces`,
+        logsEndpoint: `${endpoint}/v1/logs`,
+        headers: {},
+        tracesHeaders: {},
+        logsHeaders: {},
+        sampleRatio: 1,
+        sampler: "always_on",
+        source: "persistent",
+        displayEndpoint: endpoint,
+      },
+      (_severity, message) => diagnostics.push(message),
+    );
+    runtimes.push(runtime);
+
+    try {
+      const event = createLogEvent({
+        severity: "info",
+        eventName: "observability.test",
+        category: "logging",
+        component: "otel",
+        runtime: "gateway",
+        message: "Queue saturation probe.",
+      });
+      for (let index = 0; index < 5_000; index++) {
+        runtime.emit(event);
+        await runtime.withSpan(
+          "shutdown.saturation",
+          serverSpanOptions("GET", "/health"),
+          () => {},
+        );
+      }
+      await Promise.race([
+        requestStarted,
+        Bun.sleep(2_000).then(() => {
+          throw new Error("Hung collector did not receive an export.");
+        }),
+      ]);
+
+      const startedAt = performance.now();
+      await runtime.shutdown();
+      const elapsedMs = performance.now() - startedAt;
+
+      expect(elapsedMs).toBeGreaterThanOrEqual(4_500);
+      expect(elapsedMs).toBeLessThan(5_750);
+      expect(diagnostics).toContain(
+        "OpenTelemetry shutdown deadline exceeded.",
+      );
+    } finally {
+      collector.stop(true);
+    }
+  },
+  { timeout: 10_000 },
+);

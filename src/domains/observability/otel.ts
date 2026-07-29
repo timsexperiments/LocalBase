@@ -62,6 +62,8 @@ export const OTEL_MAX_QUEUE_SIZE = 2_048;
 export const OTEL_MAX_BATCH_SIZE = 256;
 export const OTEL_EXPORT_DELAY_MS = 1_000;
 export const OTEL_EXPORT_TIMEOUT_MS = 5_000;
+/** Leaves headroom for the managed service's 15-second stop deadline. */
+export const OTEL_CLOSE_DEADLINE_MS = 5_000;
 
 export type OtelConfiguration = {
   enabled: boolean;
@@ -316,9 +318,12 @@ class ActiveOtelRuntime implements OtelRuntime {
   private readonly otelLogger?: ReturnType<LoggerProvider["getLogger"]>;
   private readonly tracer;
   private readonly contextManager = new AsyncLocalStorageContextManager();
+  private readonly exporters: Array<{ shutdown(): Promise<void> }> = [];
+  private readonly diagnostic: OtelDiagnostic;
   private closed = false;
 
   constructor(configuration: OtelConfiguration, diagnostic: OtelDiagnostic) {
+    this.diagnostic = diagnostic;
     const diagnosticTimes = new Map<string, number>();
     const reportSdkDiagnostic = (
       severity: "warn" | "error",
@@ -354,28 +359,29 @@ class ActiveOtelRuntime implements OtelRuntime {
       [ATTR_SERVICE_NAMESPACE]: OTEL_SERVICE_NAMESPACE,
       [ATTR_SERVICE_VERSION]: OTEL_SERVICE_VERSION,
     });
-    const traceProcessors = configuration.tracesEndpoint
-      ? [
-          new BatchSpanProcessor(
-            new MonitoredExporter<ReadableSpan>(
-              new OTLPTraceExporter({
-                url: configuration.tracesEndpoint,
-                headers: {
-                  ...configuration.headers,
-                  ...configuration.tracesHeaders,
-                },
-                timeoutMillis: OTEL_EXPORT_TIMEOUT_MS,
-              }),
-              "traces",
-              diagnostic,
-            ) satisfies SpanExporter,
-            {
-              maxQueueSize: OTEL_MAX_QUEUE_SIZE,
-              maxExportBatchSize: OTEL_MAX_BATCH_SIZE,
-              scheduledDelayMillis: OTEL_EXPORT_DELAY_MS,
-              exportTimeoutMillis: OTEL_EXPORT_TIMEOUT_MS,
+    const traceExporter = configuration.tracesEndpoint
+      ? new MonitoredExporter<ReadableSpan>(
+          new OTLPTraceExporter({
+            url: configuration.tracesEndpoint,
+            headers: {
+              ...configuration.headers,
+              ...configuration.tracesHeaders,
             },
-          ),
+            timeoutMillis: OTEL_EXPORT_TIMEOUT_MS,
+          }),
+          "traces",
+          diagnostic,
+        )
+      : undefined;
+    if (traceExporter) this.exporters.push(traceExporter);
+    const traceProcessors = traceExporter
+      ? [
+          new BatchSpanProcessor(traceExporter satisfies SpanExporter, {
+            maxQueueSize: OTEL_MAX_QUEUE_SIZE,
+            maxExportBatchSize: OTEL_MAX_BATCH_SIZE,
+            scheduledDelayMillis: OTEL_EXPORT_DELAY_MS,
+            exportTimeoutMillis: OTEL_EXPORT_TIMEOUT_MS,
+          }),
         ]
       : [];
     this.tracerProvider = new BasicTracerProvider({
@@ -392,23 +398,27 @@ class ActiveOtelRuntime implements OtelRuntime {
       OTEL_SERVICE_VERSION,
     );
 
-    if (configuration.logsEndpoint) {
+    const logExporter = configuration.logsEndpoint
+      ? new MonitoredExporter<ReadableLogRecord>(
+          new OTLPLogExporter({
+            url: configuration.logsEndpoint,
+            headers: {
+              ...configuration.headers,
+              ...configuration.logsHeaders,
+            },
+            timeoutMillis: OTEL_EXPORT_TIMEOUT_MS,
+          }),
+          "logs",
+          diagnostic,
+        )
+      : undefined;
+    if (logExporter) {
+      this.exporters.push(logExporter);
       this.loggerProvider = new LoggerProvider({
         resource,
         processors: [
           new BatchLogRecordProcessor({
-            exporter: new MonitoredExporter<ReadableLogRecord>(
-              new OTLPLogExporter({
-                url: configuration.logsEndpoint,
-                headers: {
-                  ...configuration.headers,
-                  ...configuration.logsHeaders,
-                },
-                timeoutMillis: OTEL_EXPORT_TIMEOUT_MS,
-              }),
-              "logs",
-              diagnostic,
-            ) satisfies LogRecordExporter,
+            exporter: logExporter satisfies LogRecordExporter,
             maxQueueSize: OTEL_MAX_QUEUE_SIZE,
             maxExportBatchSize: OTEL_MAX_BATCH_SIZE,
             scheduledDelayMillis: OTEL_EXPORT_DELAY_MS,
@@ -500,11 +510,31 @@ class ActiveOtelRuntime implements OtelRuntime {
   async shutdown(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
-    await this.forceFlush();
-    await Promise.allSettled([
-      this.tracerProvider.shutdown(),
-      this.loggerProvider?.shutdown(),
+    const gracefulClose = (async () => {
+      await this.forceFlush();
+      await Promise.allSettled([
+        this.tracerProvider.shutdown(),
+        this.loggerProvider?.shutdown(),
+      ]);
+    })();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<"deadline">((resolve) => {
+      timer = setTimeout(() => resolve("deadline"), OTEL_CLOSE_DEADLINE_MS);
+    });
+    const result = await Promise.race([
+      gracefulClose.then(() => "closed" as const),
+      deadline,
     ]);
+    if (timer) clearTimeout(timer);
+    if (result === "deadline") {
+      this.diagnostic("warn", "OpenTelemetry shutdown deadline exceeded.", {
+        deadlineMs: OTEL_CLOSE_DEADLINE_MS,
+      });
+      void Promise.allSettled(
+        this.exporters.map((exporter) => exporter.shutdown()),
+      );
+      void gracefulClose;
+    }
     // The process owns one runtime. Leaving the registered context manager
     // enabled avoids invalidating async work that was already handed to Bun.
   }
