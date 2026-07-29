@@ -1,21 +1,9 @@
-import { readdirSync } from "node:fs";
+import { migrationAssetSource, migrationAssetsPath } from "./migration-assets";
 
-const expected = readdirSync("drizzle")
-  .filter((name) => /^\d+_.+\.sql$/.test(name))
-  .sort()
-  .map((name) => `../../drizzle/${name}`);
-const assets = await Bun.file("src/db/migration-assets.ts").text();
-
-if (!assets.includes("../../drizzle/meta/_journal.json")) {
-  throw new Error(
-    "src/db/migration-assets.ts is missing the migration journal; run bun run db:generate.",
-  );
+const file = Bun.file(migrationAssetsPath);
+if (!(await file.exists())) {
+  throw new Error(`${migrationAssetsPath} is missing; run bun run db:prepare.`);
 }
-
-for (const path of expected) {
-  if (!assets.includes(path)) {
-    throw new Error(
-      `src/db/migration-assets.ts is missing ${path}; run bun run db:generate.`,
-    );
-  }
+if ((await file.text()) !== (await migrationAssetSource())) {
+  throw new Error(`${migrationAssetsPath} is stale; run bun run db:prepare.`);
 }
