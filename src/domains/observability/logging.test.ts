@@ -497,17 +497,34 @@ test("atomically replaces bootstrap diagnostics without missing or invalid reads
   const root = createRoot();
   await writeBootstrapDiagnostic(root, new Error("initial failure"));
   const path = bootstrapDiagnosticPath(root);
-  const failures: unknown[] = [];
+  const observations = {
+    validReads: 0,
+    missingReads: 0,
+    invalidReads: 0,
+    samples: [] as string[],
+  };
   let replacing = true;
   const reader = (async () => {
     while (replacing) {
       try {
         const contents = await Bun.file(path).text();
         const lines = contents.trimEnd().split("\n");
-        expect(lines).toHaveLength(1);
+        if (lines.length !== 1) {
+          throw new Error(`expected one record, received ${lines.length}`);
+        }
         logEventSchema.parse(JSON.parse(lines[0]!));
+        observations.validReads += 1;
       } catch (error) {
-        failures.push(error);
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          observations.missingReads += 1;
+        } else {
+          observations.invalidReads += 1;
+        }
+        if (observations.samples.length < 5) {
+          observations.samples.push(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
       }
       await Bun.sleep(0);
     }
@@ -519,7 +536,12 @@ test("atomically replaces bootstrap diagnostics without missing or invalid reads
   );
   replacing = false;
   await reader;
-  expect(failures).toEqual([]);
+  expect(observations.validReads).toBeGreaterThan(0);
+  expect({
+    missingReads: observations.missingReads,
+    invalidReads: observations.invalidReads,
+    samples: observations.samples,
+  }).toEqual({ missingReads: 0, invalidReads: 0, samples: [] });
   logEventSchema.parse(JSON.parse((await Bun.file(path).text()).trimEnd()));
   expect(
     (await readdir(logDirectory(root))).filter((name) =>
