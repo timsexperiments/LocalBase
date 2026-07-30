@@ -53,11 +53,14 @@ export function assertMigrationAgreement(
   }
 }
 
-export async function migrationAssetSource(): Promise<string> {
+export async function validateMigrationAuthority(): Promise<string[]> {
   const files = migrationTags();
   const journal = await journalTags();
   assertMigrationAgreement(files, journal);
+  return journal;
+}
 
+export function renderMigrationAssetSource(journal: string[]): string {
   const imports = [
     'import journalPath from "../../drizzle/meta/_journal.json" with { type: "file" };',
     ...journal.map(
@@ -85,4 +88,8 @@ export function migrationsFolder(): string {
   );
 }
 `;
+}
+
+export async function migrationAssetSource(): Promise<string> {
+  return renderMigrationAssetSource(await validateMigrationAuthority());
 }

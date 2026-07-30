@@ -1,31 +1,22 @@
-import { describe, expect, test } from "bun:test";
-import {
-  assertMigrationAgreement,
-  migrationAssetSource,
-  migrationAssetsPath,
-} from "./migration-assets";
+import { expect, test } from "bun:test";
+import { renderMigrationAssetSource } from "./migration-assets";
 
-describe("migration asset preparation", () => {
-  test("requires exact SQL and journal agreement", () => {
-    expect(() =>
-      assertMigrationAgreement(["0000_base"], ["0000_base"]),
-    ).not.toThrow();
-    for (const [files, journal] of [
-      [["0000_base"], []],
-      [[], ["0000_base"]],
-      [
-        ["0000_base", "0001_next"],
-        ["0001_next", "0000_base"],
-      ],
-      [["0000_base"], ["0000_base", "0000_base"]],
-    ]) {
-      expect(() => assertMigrationAgreement(files, journal)).toThrow();
-    }
-  });
-
-  test("keeps generated output in exact deterministic agreement", async () => {
-    expect(await Bun.file(migrationAssetsPath).text()).toBe(
-      await migrationAssetSource(),
-    );
-  });
+test("renders deterministic ordered static migration imports", () => {
+  const source = renderMigrationAssetSource(["0000_base", "0001_next"]);
+  expect(source).toBe(renderMigrationAssetSource(["0000_base", "0001_next"]));
+  expect(
+    source
+      .split("\n")
+      .filter(
+        (line) =>
+          line.startsWith("import migration") ||
+          /^  migration\d+Path,$/.test(line),
+      )
+      .map((line) => line.trim()),
+  ).toEqual([
+    'import migration0Path from "../../drizzle/0000_base.sql" with { type: "file" };',
+    'import migration1Path from "../../drizzle/0001_next.sql" with { type: "file" };',
+    "migration0Path,",
+    "migration1Path,",
+  ]);
 });

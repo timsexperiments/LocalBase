@@ -119,7 +119,7 @@ bun run build
 
 `bun run check` formats-checks the source, type-checks the project, and runs the CLI help smoke test. `bun run build` produces `dist/local-base`.
 
-Database changes use Drizzle. Run `bun run db:generate` to create SQL migrations and `bun run db:check` in verification. Build preparation generates the ignored migration asset module from tracked SQL and journal files; compiled CLIs embed those assets and migrate without a source tree.
+Database changes use Drizzle. Run `bun run db:generate` to create SQL migrations and `bun run db:check` to validate the tracked SQL and journal. Install and build preparation generate the ignored asset module embedded by compiled CLIs.
 
 ## Contributing
 
