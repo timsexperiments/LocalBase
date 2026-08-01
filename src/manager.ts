@@ -82,7 +82,7 @@ export type LocalBaseConfig = {
   parallel: ParallelSlots;
   otelEndpoint: string;
   otelHeaders: string;
-  /** Integer percentage to keep persisted configuration deterministic. */
+  /** Integer percentage preserves deterministic persisted configuration. */
   otelSampleRatio: number;
 };
 

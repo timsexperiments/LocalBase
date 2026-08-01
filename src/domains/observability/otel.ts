@@ -150,9 +150,9 @@ export type OtelDiagnostic = (
 
 /**
  * Bun's Node HTTP compatibility layer can retain a timed-out exporter socket.
- * This exporter keeps the official OTLP protobuf serializer and SDK processor
- * contract while owning every fetch controller and retry timer so shutdown can
- * cancel the underlying resources, not only stop awaiting them.
+ * This exporter uses the official OTLP protobuf serializer and SDK processor
+ * contract while owning fetch controllers and retry timers so shutdown can
+ * cancel their resources.
  */
 class AbortableOtlpExporter<T> {
   private readonly active = new Set<Promise<void>>();
@@ -619,7 +619,7 @@ class ActiveOtelRuntime implements OtelRuntime {
         context: context.active(),
       });
     } catch {
-      // Local JSONL remains authoritative when the secondary sink fails.
+      // Local JSONL is authoritative when the secondary sink fails.
     }
   }
 
@@ -709,8 +709,7 @@ class ActiveOtelRuntime implements OtelRuntime {
       );
       await gracefulClose;
     }
-    // The process owns one runtime. Leaving the registered context manager
-    // enabled avoids invalidating async work that was already handed to Bun.
+    // Keep the registered context manager enabled: disabling it invalidates in-flight asynchronous work.
   }
 }
 

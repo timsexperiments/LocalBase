@@ -65,7 +65,7 @@ Finite `logs --json` calls return the normal JSON command envelope and default t
 
 ### OpenTelemetry export
 
-Local JSONL remains authoritative. Version 2 records sampled trace correlation as one `trace` object. Setting an OTLP/HTTP endpoint enables bounded asynchronous export of logs and traces:
+Local JSONL is the durable log record. Records with sampled span context include `trace: { traceId, spanId }`. An OTLP/HTTP endpoint enables bounded asynchronous log and trace export:
 
 ```bash
 ./dist/local-base configure --otel-endpoint http://localhost:4318 --otel-sample-ratio 25
@@ -119,7 +119,7 @@ bun run build
 
 `bun run check` formats-checks the source, type-checks the project, and runs the CLI help smoke test. `bun run build` produces `dist/local-base`.
 
-Database changes use Drizzle. Run `bun run db:generate` to create SQL migrations and `bun run db:check` to validate the tracked SQL and journal. Install and build preparation generate the ignored asset module embedded by compiled CLIs.
+Database changes use Drizzle. Run `bun run db:generate` to create SQL migrations and `bun run db:check` to validate the tracked SQL and journal. Installation and builds generate the ignored asset module embedded by compiled CLIs.
 
 ## Contributing
 

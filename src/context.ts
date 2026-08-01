@@ -215,8 +215,7 @@ export async function createAppContext(
       ? loadConfig(database, root, specs.gpuVramGb)
       : defaultConfig(root, specs.gpuVramGb);
     const otelConfiguration = resolveOtelConfiguration(config, environment);
-    // Exporters are activated by serve after startup ownership is released.
-    // Other commands resolve effective settings without opening network sinks.
+    // Serve activates exporters after releasing the startup ownership lock; other commands do not create network sinks.
     const otel = createOtelRuntime({
       ...otelConfiguration,
       enabled: false,

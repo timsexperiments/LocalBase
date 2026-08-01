@@ -80,7 +80,7 @@ ${paths.join("\n")}
 ];
 
 export function migrationsFolder(): string {
-  // Referencing every asset keeps the generated SQL and journal in compiled CLIs.
+  // Static references embed the SQL files and journal in compiled CLIs.
   void embeddedMigrationFiles;
   return migrationJournalPath.slice(
     0,
