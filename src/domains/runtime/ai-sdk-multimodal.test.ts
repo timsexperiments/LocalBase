@@ -17,6 +17,7 @@ import {
 import {
   startGatewayFixture,
   type GatewayFixture,
+  type GatewayFixtureOptions,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 import { minimalWav, tinyPng, tinyPngBase64 } from "../../test/media-fixtures";
@@ -40,6 +41,47 @@ function runtimeModelPath(args: string[], flag: "-m" | "--model"): string {
     throw new Error(`Runtime launch did not include ${flag}: ${args}`);
   }
   return args[index + 1];
+}
+
+async function startSwitchingGateway(
+  options: Pick<
+    GatewayFixtureOptions,
+    "sttBackendHealthy" | "imageBackendHealthy"
+  >,
+): Promise<GatewayFixture> {
+  const gateway = await startGatewayFixture(options);
+  const config = gateway.readConfig();
+  gateway.saveConfig({
+    ...config,
+    selectedSttModels: [PRIMARY_STT_MODEL, SWITCHED_STT_MODEL],
+    selectedImageModels: [PRIMARY_IMAGE_MODEL, SWITCHED_IMAGE_MODEL],
+  });
+  await Promise.all([
+    writeCompleteCatalogArtifact(config.sttModelsDir, SWITCHED_STT_MODEL),
+    writeCompleteCatalogArtifact(config.imageModelsDir, SWITCHED_IMAGE_MODEL),
+  ]);
+  return gateway;
+}
+
+function transcribe(gateway: GatewayFixture, model: string): Promise<Response> {
+  const form = new FormData();
+  form.append("model", model);
+  form.append(
+    "file",
+    new File([minimalWav], "fixture.wav", { type: "audio/wav" }),
+  );
+  return fetch(`${gateway.baseUrl}/v1/audio/transcriptions`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+function generate(gateway: GatewayFixture, model: string): Promise<Response> {
+  return fetch(`${gateway.baseUrl}/v1/images/generations`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ model, prompt: "A one-pixel sunset" }),
+  });
 }
 
 describe("Vercel AI SDK multimodal conformance", () => {
@@ -230,5 +272,69 @@ describe("Vercel AI SDK multimodal conformance", () => {
     expect(runtimeModelPath(launch, "--model")).toBe(
       artifactPath(gateway.readConfig().sttModelsDir, SWITCHED_STT_MODEL),
     );
+  });
+
+  test("switches STT models while the previous startup is waiting for health", async () => {
+    const switchingGateway = await startSwitchingGateway({
+      sttBackendHealthy: false,
+    });
+    try {
+      const offset = (await switchingGateway.readSttRuntimeLaunches()).length;
+      const first = transcribe(switchingGateway, PRIMARY_STT_MODEL);
+      await switchingGateway.waitForSttRuntimeLaunches(offset, 1);
+
+      const switched = transcribe(switchingGateway, SWITCHED_STT_MODEL);
+      expect((await first).status).toBe(503);
+      const launches = await switchingGateway.waitForSttRuntimeLaunches(
+        offset,
+        2,
+      );
+      switchingGateway.setSttBackendHealthy(true);
+
+      expect((await switched).status).toBe(200);
+      expect(switchingGateway.readConfig().activeSttModel).toBe(
+        SWITCHED_STT_MODEL,
+      );
+      expect(runtimeModelPath(launches[1]!, "--model")).toBe(
+        artifactPath(
+          switchingGateway.readConfig().sttModelsDir,
+          SWITCHED_STT_MODEL,
+        ),
+      );
+    } finally {
+      await switchingGateway.stop();
+    }
+  });
+
+  test("switches image models while the previous startup is waiting for health", async () => {
+    const switchingGateway = await startSwitchingGateway({
+      imageBackendHealthy: false,
+    });
+    try {
+      const offset = (await switchingGateway.readImageRuntimeLaunches()).length;
+      const first = generate(switchingGateway, PRIMARY_IMAGE_MODEL);
+      await switchingGateway.waitForImageRuntimeLaunches(offset, 1);
+
+      const switched = generate(switchingGateway, SWITCHED_IMAGE_MODEL);
+      expect((await first).status).toBe(503);
+      const launches = await switchingGateway.waitForImageRuntimeLaunches(
+        offset,
+        2,
+      );
+      switchingGateway.setImageBackendHealthy(true);
+
+      expect((await switched).status).toBe(200);
+      expect(switchingGateway.readConfig().activeImageModel).toBe(
+        SWITCHED_IMAGE_MODEL,
+      );
+      expect(runtimeModelPath(launches[1]!, "-m")).toBe(
+        artifactPath(
+          switchingGateway.readConfig().imageModelsDir,
+          SWITCHED_IMAGE_MODEL,
+        ),
+      );
+    } finally {
+      await switchingGateway.stop();
+    }
   });
 });

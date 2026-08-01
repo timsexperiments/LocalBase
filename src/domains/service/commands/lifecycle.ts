@@ -17,7 +17,16 @@ function printStatus(
   const { service, gateway } = inspection;
   execution.output.info(`Service: ${service.state} (${service.manager})`);
   execution.output.info(
+    `Manager: ${service.managerAvailable ? (service.managerState ?? "unknown") : "unavailable"}`,
+  );
+  execution.output.info(
     `Definition: ${service.definitionInstalled ? "installed" : "not installed"} (${service.definitionPath})`,
+  );
+  execution.output.info(
+    `Process: ${service.pid === null ? "not running" : `pid ${service.pid}${service.uptimeSeconds === null ? "" : `, uptime ${service.uptimeSeconds}s`}`}`,
+  );
+  execution.output.info(
+    `Restarts: ${service.restartCount === null ? "unavailable" : service.restartCount}`,
   );
   execution.output.info(
     `Gateway: ${gateway.state}${gateway.state === "ready" ? "" : ` (${gateway.detail})`}`,

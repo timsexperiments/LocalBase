@@ -10,6 +10,7 @@ import {
   type LocalBaseConfig,
 } from "../manager";
 import { DatabaseSession } from "../db/client";
+import { gatewayHealthSchema } from "../domains/runtime/health";
 import { compileRuntimeFixture } from "./runtime-fixture";
 import { tinyPngBase64 } from "./media-fixtures";
 
@@ -137,6 +138,8 @@ export type GatewayFixture = {
     offset: number,
     count: number,
   ) => Promise<string[][]>;
+  setSttBackendHealthy: (healthy: boolean) => void;
+  setImageBackendHealthy: (healthy: boolean) => void;
   waitForUpstreamRequest: (id: string) => Promise<void>;
   closeControlledStream: (id: string) => void;
   waitForControlledStreamAbort: (id: string) => Promise<void>;
@@ -148,6 +151,10 @@ export type GatewayFixtureOptions = {
   auth?: { mode?: "bearer" | "x-api-key" | "either" };
   managedIdentity?: boolean;
   otelEndpoint?: string;
+  llmBackendHealthy?: boolean;
+  sttBackendHealthy?: boolean;
+  imageBackendHealthy?: boolean;
+  llmRuntimeExitOnStart?: boolean;
 };
 
 async function readProcessOutput(
@@ -239,12 +246,19 @@ function startMockUpstream(
   requests: UpstreamRequest[],
   controlledStreams: Map<string, ControlledStream>,
   controlledHeaderWaits: Map<string, ControlledHeaderWait>,
-): Bun.Server<undefined> {
+  healthy = true,
+): { server: Bun.Server<undefined>; setHealthy: (healthy: boolean) => void } {
+  let healthState = healthy;
   const options = {
     hostname: "127.0.0.1",
     async fetch(request: Request) {
       const path = new URL(request.url).pathname;
-      if (path === "/health") return Response.json({ status: "ok" });
+      if (path === "/health" || path === "/") {
+        return Response.json(
+          { status: healthState ? "ok" : "unavailable" },
+          { status: healthState ? 200 : 503 },
+        );
+      }
 
       const formData = request.headers
         .get("content-type")
@@ -1198,7 +1212,10 @@ function startMockUpstream(
   };
   for (let attempt = 0; attempt < MAX_START_ATTEMPTS; attempt++) {
     try {
-      return Bun.serve({ ...options, port: reservePort() });
+      return {
+        server: Bun.serve({ ...options, port: reservePort() }),
+        setHealthy: (next) => (healthState = next),
+      };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
     }
@@ -1232,8 +1249,8 @@ async function waitForReady(
       });
       lastStatus = `HTTP ${response.status}`;
       if (response.ok) {
-        const body = (await response.json()) as { status?: string };
-        if (body.status === "ok") return;
+        const body = gatewayHealthSchema.safeParse(await response.json());
+        if (body.success && body.data.status === "ok") return;
         lastStatus = `unexpected health payload: ${JSON.stringify(body)}`;
       }
     } catch (error) {
@@ -1265,20 +1282,23 @@ export async function startGatewayFixture(
     upstreamRequests,
     controlledStreams,
     controlledHeaderWaits,
+    options.llmBackendHealthy ?? true,
   );
   const sttUpstream = startMockUpstream(
     upstreamRequests,
     controlledStreams,
     controlledHeaderWaits,
+    options.sttBackendHealthy ?? true,
   );
   const imageUpstream = startMockUpstream(
     upstreamRequests,
     controlledStreams,
     controlledHeaderWaits,
+    options.imageBackendHealthy ?? true,
   );
-  const llmPort = boundPort(llmUpstream);
-  const sttPort = boundPort(sttUpstream);
-  const imagePort = boundPort(imageUpstream);
+  const llmPort = boundPort(llmUpstream.server);
+  const sttPort = boundPort(sttUpstream.server);
+  const imagePort = boundPort(imageUpstream.server);
 
   let config: LocalBaseConfig;
   let apiKey: string | undefined;
@@ -1320,6 +1340,7 @@ export async function startGatewayFixture(
         join(runtimeDir, "llama-server"),
         undefined,
         llmLaunchesPath,
+        options.llmRuntimeExitOnStart,
       ),
       compileRuntimeFixture(
         join(runtimeDir, "whisper-server"),
@@ -1334,9 +1355,9 @@ export async function startGatewayFixture(
       compileGatewayCli(cliPath),
     ]);
   } catch (error) {
-    llmUpstream.stop(true);
-    sttUpstream.stop(true);
-    imageUpstream.stop(true);
+    llmUpstream.server.stop(true);
+    sttUpstream.server.stop(true);
+    imageUpstream.server.stop(true);
     cleanup();
     throw error;
   }
@@ -1419,9 +1440,9 @@ export async function startGatewayFixture(
   }
 
   if (!serverProcess || !stdout || !stderr) {
-    llmUpstream.stop(true);
-    sttUpstream.stop(true);
-    imageUpstream.stop(true);
+    llmUpstream.server.stop(true);
+    sttUpstream.server.stop(true);
+    imageUpstream.server.stop(true);
     cleanup();
     throw lastError instanceof Error
       ? lastError
@@ -1484,6 +1505,8 @@ export async function startGatewayFixture(
     waitForSttRuntimeLaunches: sttRuntimeLaunches.wait,
     readImageRuntimeLaunches: imageRuntimeLaunches.read,
     waitForImageRuntimeLaunches: imageRuntimeLaunches.wait,
+    setSttBackendHealthy: sttUpstream.setHealthy,
+    setImageBackendHealthy: imageUpstream.setHealthy,
     async waitForUpstreamRequest(id) {
       const deadline = Date.now() + 2_000;
       while (Date.now() < deadline) {
@@ -1518,9 +1541,9 @@ export async function startGatewayFixture(
     stop: async (stopOptions) => {
       await stopProcess(serverProcess);
       await Promise.all([stdout, stderr]);
-      llmUpstream.stop(true);
-      sttUpstream.stop(true);
-      imageUpstream.stop(true);
+      llmUpstream.server.stop(true);
+      sttUpstream.server.stop(true);
+      imageUpstream.server.stop(true);
       if (!stopOptions?.preserveRoot) cleanup();
     },
   };

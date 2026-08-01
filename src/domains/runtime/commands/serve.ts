@@ -37,6 +37,12 @@ import {
   serverSpanOptions,
   type OtelRuntime,
 } from "../../observability/otel";
+import {
+  gatewayHealthSchema,
+  gatewayIdentitySchema,
+  type ModalityLifecycleState,
+} from "../health";
+import { LOCALBASE_VERSION } from "../../../version";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
@@ -56,6 +62,26 @@ const CHILD_STOP_GRACE_MS = 500;
 const HEALTH_PROBE_TIMEOUT_MS = 2_000;
 const UPSTREAM_PROXY_TIMEOUT_MS = 120_000;
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
+
+class StartupCancelledError extends Error {
+  constructor(name: string) {
+    super(`${name} startup was cancelled.`);
+    this.name = "StartupCancelledError";
+  }
+}
+
+class CrashLimitReachedError extends Error {
+  constructor(name: string) {
+    super(`${name} is unavailable after repeated failures.`);
+    this.name = "CrashLimitReachedError";
+  }
+}
+
+type StartupAttempt = {
+  generation: number;
+  controller: AbortController;
+  cancelled: boolean;
+};
 
 function parseAuthMode(raw: AuthMode | undefined): AuthMode {
   if (!raw) return "either";
@@ -162,6 +188,7 @@ type OpenAIErrorType =
 
 type OpenAIErrorCode =
   | "invalid_api_key"
+  | "method_not_allowed"
   | "model_not_found"
   | "route_disabled"
   | "validation_failed"
@@ -222,6 +249,20 @@ function badRequest(message: string): Response {
     },
   };
   return Response.json(body, { status: 400 });
+}
+
+function methodNotAllowed(allow: string): Response {
+  return Response.json(
+    {
+      error: {
+        message: "Method not allowed.",
+        type: "invalid_request_error",
+        param: null,
+        code: "method_not_allowed",
+      },
+    },
+    { status: 405, headers: { Allow: allow } },
+  );
 }
 
 function modelNotFound(model: string): Response {
@@ -1203,9 +1244,13 @@ export class ManagedService {
   private isShuttingDown = false;
   private shutdownPromise: Promise<void> | null = null;
   private guardians = new Map<number, Bun.Subprocess>();
+  private expectedStops = new WeakSet<Bun.Subprocess>();
+  private startupGeneration = 0;
+  private startup: StartupAttempt | null = null;
   private onFatal: () => Promise<void>;
   private timeoutMs: number;
   private otel: OtelRuntime;
+  private lifecycleState: ModalityLifecycleState = "idle";
 
   constructor(
     name: string,
@@ -1253,6 +1298,59 @@ export class ManagedService {
     });
   }
 
+  state(): ModalityLifecycleState {
+    return this.lifecycleState;
+  }
+
+  private exited(proc: Bun.Subprocess): boolean {
+    return proc.exitCode !== null || proc.signalCode != null;
+  }
+
+  private unavailableError(): Error {
+    return new Error(`${this.name} is unavailable after repeated failures.`);
+  }
+
+  private failed(): boolean {
+    return this.lifecycleState === "failed";
+  }
+
+  private startupIsActive(attempt: StartupAttempt): boolean {
+    return (
+      this.startup?.generation === attempt.generation && !attempt.cancelled
+    );
+  }
+
+  private assertStartupActive(attempt: StartupAttempt): void {
+    if (!this.startupIsActive(attempt)) {
+      throw new StartupCancelledError(this.name);
+    }
+  }
+
+  private cancelStartup(): void {
+    const attempt = this.startup;
+    if (!attempt || attempt.cancelled) return;
+    attempt.cancelled = true;
+    attempt.controller.abort();
+  }
+
+  private async waitForStartupPoll(
+    attempt: StartupAttempt,
+    intervalMs: number,
+  ): Promise<void> {
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(finish, intervalMs);
+      const onAbort = () => finish();
+      function finish() {
+        clearTimeout(timer);
+        attempt.controller.signal.removeEventListener("abort", onAbort);
+        resolve();
+      }
+      attempt.controller.signal.addEventListener("abort", onAbort, {
+        once: true,
+      });
+    });
+  }
+
   /**
    * Lazily starts the service on first use, or awaits recovery if currently restarting.
    */
@@ -1260,12 +1358,14 @@ export class ManagedService {
     if (this.isShuttingDown) {
       throw new Error(`${this.name} is shutting down`);
     }
-    if (this.proc && this.proc.exitCode === null) {
+    if (this.failed()) throw this.unavailableError();
+    if (this.proc && !this.exited(this.proc)) {
       return;
     }
     if (this.isRestarting) {
       await this.restartPromise;
-      return;
+      if (this.failed()) throw this.unavailableError();
+      return await this.ensureRunning();
     }
     await this.start();
   }
@@ -1275,56 +1375,72 @@ export class ManagedService {
    * Employs exponential backoff on retry and exits the manager if crash limits are hit.
    */
   private async start(): Promise<void> {
+    const attempt: StartupAttempt = {
+      generation: ++this.startupGeneration,
+      controller: new AbortController(),
+      cancelled: false,
+    };
+    this.startup = attempt;
+    this.lifecycleState = "starting";
     this.isRestarting = true;
     this.restartPromise = (async () => {
+      let proc: Bun.Subprocess | null = null;
       const now = Date.now();
       this.crashTimes = this.crashTimes.filter((t) => now - t < 300000); // 5 min window
       const crashCount = this.crashTimes.length;
 
-      if (crashCount >= 5) {
-        this.lifecycle("backend.crash", "error", {
-          crashCount,
-          crashLimitReached: true,
-        });
-        void this.onFatal().catch((err) => {
-          this.logger.error(this.name, "Failed to stop manager", err as Error);
-        });
-        return;
-      }
-
-      if (crashCount > 0) {
-        const backoffMs = Math.min(1000 * Math.pow(2, crashCount - 1), 16000);
-        this.lifecycle("backend.restart-backoff", "warn", {
-          backoffMs,
-          crashCount,
-        });
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
-      }
-
-      this.lifecycle("backend.starting", "info", { crashCount });
       try {
-        const proc = await this.otel.withSpan(
+        if (crashCount >= 5) {
+          this.lifecycleState = "failed";
+          this.lifecycle("backend.crash", "error", {
+            crashCount,
+            crashLimitReached: true,
+          });
+          void this.onFatal().catch((err) => {
+            this.logger.error(
+              this.name,
+              "Failed to stop manager",
+              err as Error,
+            );
+          });
+          throw new CrashLimitReachedError(this.name);
+        }
+
+        if (crashCount > 0) {
+          const backoffMs = Math.min(1000 * Math.pow(2, crashCount - 1), 16000);
+          this.lifecycle("backend.restart-backoff", "warn", {
+            backoffMs,
+            crashCount,
+          });
+          await this.waitForStartupPoll(attempt, backoffMs);
+        }
+
+        this.assertStartupActive(attempt);
+        this.lifecycle("backend.starting", "info", { crashCount });
+        proc = await this.otel.withSpan(
           "localbase.backend.start",
           internalSpanOptions({
             "localbase.backend": this.name,
           }),
           this.startFn,
         );
-        if (this.isShuttingDown) {
-          await this.stopProcess(proc);
-          return;
+        const startedProcess = proc;
+        if (!this.startupIsActive(attempt) || this.isShuttingDown) {
+          this.expectedStops.add(startedProcess);
+          await this.stopProcess(startedProcess);
+          throw new StartupCancelledError(this.name);
         }
 
-        this.proc = proc;
-        this.startGuardian(proc);
+        this.proc = startedProcess;
+        this.startGuardian(startedProcess);
         if (this.proc.stdout && typeof this.proc.stdout !== "number")
           this.logger.pipeStream(this.proc.stdout, this.name);
         if (this.proc.stderr && typeof this.proc.stderr !== "number")
           this.logger.pipeStream(this.proc.stderr, this.name);
 
-        proc.exited.then(() => {
-          void this.stopGuardian(proc);
-          this.handleCrash(proc);
+        startedProcess.exited.then(() => {
+          void this.stopGuardian(startedProcess);
+          this.handleCrash(startedProcess);
         });
 
         await this.otel.withSpan(
@@ -1333,13 +1449,25 @@ export class ManagedService {
             "localbase.backend": this.name,
           }),
           async () => {
-            if (!(await this.waitHealthy())) {
-              throw new Error("Backend health check timed out.");
-            }
+            await this.waitHealthy(startedProcess, attempt);
           },
         );
-        this.lifecycle("backend.ready", "info", { pid: proc.pid });
+        this.assertStartupActive(attempt);
+        this.lifecycle("backend.ready", "info", { pid: startedProcess.pid });
+        this.lifecycleState = "running";
       } catch (err) {
+        if (err instanceof StartupCancelledError || attempt.cancelled) {
+          if (proc && this.proc === proc) {
+            await this.stopCurrentProcess();
+          } else if (proc) {
+            this.expectedStops.add(proc);
+            await this.stopProcess(proc);
+          }
+          throw err instanceof StartupCancelledError
+            ? err
+            : new StartupCancelledError(this.name);
+        }
+        if (err instanceof CrashLimitReachedError) throw err;
         this.logger.event({
           severity: "error",
           eventName: "backend.start-failed",
@@ -1357,11 +1485,18 @@ export class ManagedService {
           },
         });
         this.crashTimes.push(Date.now());
-        await this.kill();
-        this.isRestarting = false;
+        await this.stopCurrentProcess();
+        this.lifecycleState = "failed";
         throw err;
+      } finally {
+        if (this.startup === attempt) {
+          this.startup = null;
+          this.isRestarting = false;
+          if (attempt.cancelled && !this.isShuttingDown) {
+            this.lifecycleState = "idle";
+          }
+        }
       }
-      this.isRestarting = false;
     })();
     await this.restartPromise;
   }
@@ -1369,47 +1504,70 @@ export class ManagedService {
   /**
    * Polls the backend's /health endpoint until it is online or startup times out.
    */
-  private async waitHealthy(): Promise<boolean> {
+  private async waitHealthy(
+    proc: Bun.Subprocess,
+    attempt: StartupAttempt,
+  ): Promise<void> {
     const timeout = this.timeoutMs;
     const interval = 200; // 200ms
     const start = Date.now();
 
     while (Date.now() - start < timeout) {
-      if (this.isShuttingDown) return false;
-      if (this.proc?.exitCode !== null) {
+      this.assertStartupActive(attempt);
+      if (this.isShuttingDown) throw new Error(`${this.name} is shutting down`);
+      if (this.exited(proc)) {
+        const exit =
+          proc.signalCode == null
+            ? `exit code ${proc.exitCode}`
+            : `signal ${proc.signalCode}`;
         this.logger.error(
           this.name,
-          `Subprocess exited during startup with code ${this.proc?.exitCode}`,
+          `Subprocess exited during startup with ${exit}`,
         );
-        return false;
+        throw new Error(`${this.name} exited during startup (${exit}).`);
       }
       try {
         const res = await fetch(this.healthUrl, {
-          signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
+          signal: AbortSignal.any([
+            AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
+            attempt.controller.signal,
+          ]),
         });
-        if (res.ok) return true;
+        if (res.ok) return;
       } catch (e) {
+        this.assertStartupActive(attempt);
         // Expected network failures while booting
       }
-      await new Promise((resolve) => setTimeout(resolve, interval));
+      await this.waitForStartupPoll(attempt, interval);
     }
-    return false;
+    throw new Error("Backend health check timed out.");
   }
 
   /**
    * Stops a backend for a model switch without triggering crash recovery.
    */
   async kill(): Promise<void> {
+    if (!this.isShuttingDown) this.lifecycleState = "stopping";
+    const startup = this.isRestarting ? this.restartPromise : null;
+    this.cancelStartup();
     await this.stopCurrentProcess();
+    if (startup) {
+      await startup.catch((error) => {
+        if (!(error instanceof StartupCancelledError)) throw error;
+      });
+    }
+    if (!this.isShuttingDown) this.lifecycleState = "idle";
   }
 
   /** Prevents future restarts and waits for an active startup to finish stopping. */
   async shutdown(): Promise<void> {
     if (!this.shutdownPromise) {
       this.isShuttingDown = true;
+      this.lifecycleState = "stopping";
       this.lifecycle("backend.stopping", "info");
       const startup = this.restartPromise;
       this.shutdownPromise = (async () => {
+        this.cancelStartup();
         await this.stopCurrentProcess();
         if (startup) await startup.catch(() => {});
         await this.stopCurrentProcess();
@@ -1423,6 +1581,7 @@ export class ManagedService {
   private async stopCurrentProcess(): Promise<void> {
     const p = this.proc;
     if (p) {
+      this.expectedStops.add(p);
       this.proc = null;
       await this.stopProcess(p);
       await this.stopGuardian(p);
@@ -1459,7 +1618,7 @@ export class ManagedService {
 
   /** Gracefully terminates a subprocess, then forcefully reaps it if needed. */
   private async stopProcess(p: Bun.Subprocess): Promise<void> {
-    if (p.exitCode !== null) return;
+    if (this.exited(p)) return;
 
     try {
       p.kill(15);
@@ -1474,7 +1633,7 @@ export class ManagedService {
       ),
       Bun.sleep(CHILD_STOP_GRACE_MS).then(() => false),
     ]);
-    if (exitedDuringGrace || p.exitCode !== null) return;
+    if (exitedDuringGrace || this.exited(p)) return;
 
     try {
       p.kill(9);
@@ -1490,8 +1649,9 @@ export class ManagedService {
   handleCrash(proc: Bun.Subprocess): void {
     if (
       !this.isShuttingDown &&
+      !this.expectedStops.has(proc) &&
       this.proc === proc &&
-      proc.exitCode !== null &&
+      this.exited(proc) &&
       !this.isRestarting
     ) {
       this.lifecycle("backend.crash", "error", {
@@ -1500,6 +1660,7 @@ export class ManagedService {
       });
       this.crashTimes.push(Date.now());
       this.proc = null;
+      this.lifecycleState = "starting";
       this.start().catch(() => {});
     }
   }
@@ -2109,6 +2270,31 @@ export async function runServe(
       )
     : null;
 
+  const gatewayStartedAt = Date.now();
+  let gatewayStopping = false;
+  const modalityHealth = (
+    configured: boolean,
+    service: ManagedService | null,
+  ) => ({
+    configured,
+    state: configured && service ? service.state() : "disabled",
+  });
+  const healthSnapshot = () =>
+    gatewayHealthSchema.parse({
+      status: gatewayStopping ? "error" : "ok",
+      version: LOCALBASE_VERSION,
+      uptimeSeconds: Math.max(
+        0,
+        Math.floor((Date.now() - gatewayStartedAt) / 1_000),
+      ),
+      modalities: {
+        llm: modalityHealth(enabled.llm, llmService),
+        stt: modalityHealth(enabled.stt, sttService),
+        image: modalityHealth(enabled.image, imageService),
+      },
+      ...(gatewayStopping ? { error: "gateway_stopping" } : {}),
+    });
+
   let imageSwitches = Promise.resolve();
   let sttSwitches = Promise.resolve();
   let llmLeaseLock = Promise.resolve();
@@ -2435,39 +2621,37 @@ export async function runServe(
     request: Request,
     pathname: string,
   ): Promise<Response> => {
-    const currentConfig = loadConfig(ctx.database, config.root);
-
     if (pathname === "/health") {
-      const presentedServiceToken = request.headers.get(
-        "x-localbase-service-token",
-      );
-      if (
-        presentedServiceToken !== null &&
-        presentedServiceToken !== gatewayLease.instance.serviceToken
-      ) {
-        return new Response("not found", { status: 404 });
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return methodNotAllowed("GET, HEAD");
       }
-      const authenticatedManagedIdentity =
-        gatewayLease.instance.serviceToken === undefined ||
-        presentedServiceToken === gatewayLease.instance.serviceToken;
-      return Response.json({
-        status: "ok",
-        ...(authenticatedManagedIdentity
-          ? {
-              instance: {
-                id: gatewayLease.instance.instanceId,
-                rootHash: gatewayLease.instance.rootHash,
-              },
-            }
-          : {}),
-        enabled,
-        llmUpstream: enabled.llm ? llmBase : null,
-        sttUpstream: enabled.stt ? sttBase : null,
-        imageUpstream: enabled.image ? imageBase : null,
-        authRequired,
-        authMode,
+      const health = healthSnapshot();
+      const body = JSON.stringify(health);
+      return new Response(request.method === "HEAD" ? null : body, {
+        status: health.status === "ok" ? 200 : 503,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": String(new TextEncoder().encode(body).byteLength),
+        },
       });
     }
+
+    if (pathname === "/_localbase/instance") {
+      if (
+        request.headers.get("x-localbase-instance-token") !==
+        gatewayLease.instance.instanceToken
+      ) {
+        return new Response(null, { status: 404 });
+      }
+      return Response.json(
+        gatewayIdentitySchema.parse({
+          instanceId: gatewayLease.instance.instanceId,
+          rootHash: gatewayLease.instance.rootHash,
+        }),
+      );
+    }
+
+    const currentConfig = loadConfig(ctx.database, config.root);
 
     if (authRequired) {
       const token = extractAuthToken(request, authMode);
@@ -2876,6 +3060,7 @@ export async function runServe(
           message: "Stopping LocalBase gateway.",
         });
         ctx.logger.info("Manager", "Shutting down servers and subprocesses...");
+        gatewayStopping = true;
         server.stop(true);
         await Promise.all([
           llmService?.shutdown(),

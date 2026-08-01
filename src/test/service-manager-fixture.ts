@@ -12,6 +12,11 @@ import {
   gatewayInstanceSchema,
 } from "../domains/service/ownership";
 import {
+  gatewayHealthSchema,
+  gatewayIdentitySchema,
+} from "../domains/runtime/health";
+import { LOCALBASE_VERSION } from "../version";
+import {
   managerCommandResultSchema,
   type ManagerCommandResult,
   type ServiceManagerCommandRunner,
@@ -259,6 +264,7 @@ function systemdOutput(service: FixtureService | undefined): string {
       "MainPID=0",
       "ExecMainCode=0",
       "ExecMainStatus=0",
+      "NRestarts=0",
       "",
     ].join("\n");
   }
@@ -269,6 +275,7 @@ function systemdOutput(service: FixtureService | undefined): string {
     `MainPID=${service.pid ?? 0}`,
     "ExecMainCode=0",
     `ExecMainStatus=${service.activeState === "failed" ? 1 : 0}`,
+    "NRestarts=0",
     "",
   ].join("\n");
 }
@@ -352,6 +359,15 @@ export function createServiceManagerFixtureRunner(): ServiceManagerCommandRunner
           ].join("\n"),
         );
       }
+      if (action === "print-disabled") {
+        const disabled = Object.values(state.services)
+          .filter((service) => service.manager === "launchd")
+          .map(
+            (service) =>
+              `\t"${service.serviceId}" => ${service.enabled ? "enabled" : "disabled"}`,
+          );
+        return success(["{", ...disabled, "}", ""].join("\n"));
+      }
       if (action === "enable" || action === "disable") {
         const serviceId = targetServiceId(actionArgs[1] ?? "");
         const service = state.services[serviceId];
@@ -432,6 +448,10 @@ export function createServiceManagerFixtureRunner(): ServiceManagerCommandRunner
     }
     if (action === "show") {
       return success(systemdOutput(state.services[actionArgs[1] ?? ""]));
+    }
+    if (action === "is-enabled") {
+      const service = state.services[actionArgs[1] ?? ""];
+      return success(service?.enabled ? "enabled\n" : "disabled\n");
     }
     if (action === "daemon-reload") {
       for (const [key, service] of Object.entries(state.services)) {
@@ -532,8 +552,8 @@ export async function runManagedGatewayFixture(
     hostname: "127.0.0.1",
     port: reservePort(),
     fetch: (request) => {
-      const token = request.headers.get("x-localbase-service-token");
       const pathname = new URL(request.url).pathname;
+      const token = request.headers.get("x-localbase-service-token");
       if (pathname === "/__fixture/stop") {
         if (
           !lease?.instance.serviceToken ||
@@ -544,23 +564,35 @@ export async function runManagedGatewayFixture(
         setTimeout(shutdown, 25);
         return new Response(null, { status: 204 });
       }
-      if (token !== null && token !== lease?.instance.serviceToken) {
-        return new Response("not found", { status: 404 });
+      if (pathname === "/_localbase/instance") {
+        if (
+          request.headers.get("x-localbase-instance-token") !==
+          lease?.instance.instanceToken
+        ) {
+          return new Response(null, { status: 404 });
+        }
+        return Response.json(
+          gatewayIdentitySchema.parse({
+            instanceId: lease.instance.instanceId,
+            rootHash: lease.instance.rootHash,
+          }),
+        );
       }
-      return lease
-        ? Response.json({
+      if (pathname === "/health" && lease) {
+        return Response.json(
+          gatewayHealthSchema.parse({
             status: "ok",
-            ...(lease.instance.serviceToken === undefined ||
-            token === lease.instance.serviceToken
-              ? {
-                  instance: {
-                    id: lease.instance.instanceId,
-                    rootHash: lease.instance.rootHash,
-                  },
-                }
-              : {}),
-          })
-        : new Response("starting", { status: 503 });
+            version: LOCALBASE_VERSION,
+            uptimeSeconds: 0,
+            modalities: {
+              llm: { configured: true, state: "idle" },
+              stt: { configured: false, state: "disabled" },
+              image: { configured: false, state: "disabled" },
+            },
+          }),
+        );
+      }
+      return new Response(null, { status: 404 });
     },
   });
   const port = server.port;
