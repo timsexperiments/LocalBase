@@ -149,6 +149,8 @@ export type GatewayFixtureOptions = {
   auth?: { mode?: "bearer" | "x-api-key" | "either" };
   managedIdentity?: boolean;
   otelEndpoint?: string;
+  llmBackendHealthy?: boolean;
+  llmRuntimeExitOnStart?: boolean;
 };
 
 async function readProcessOutput(
@@ -240,12 +242,18 @@ function startMockUpstream(
   requests: UpstreamRequest[],
   controlledStreams: Map<string, ControlledStream>,
   controlledHeaderWaits: Map<string, ControlledHeaderWait>,
+  healthy = true,
 ): Bun.Server<undefined> {
   const options = {
     hostname: "127.0.0.1",
     async fetch(request: Request) {
       const path = new URL(request.url).pathname;
-      if (path === "/health") return Response.json({ status: "ok" });
+      if (path === "/health") {
+        return Response.json(
+          { status: healthy ? "ok" : "unavailable" },
+          { status: healthy ? 200 : 503 },
+        );
+      }
 
       const formData = request.headers
         .get("content-type")
@@ -1266,6 +1274,7 @@ export async function startGatewayFixture(
     upstreamRequests,
     controlledStreams,
     controlledHeaderWaits,
+    options.llmBackendHealthy ?? true,
   );
   const sttUpstream = startMockUpstream(
     upstreamRequests,
@@ -1321,6 +1330,7 @@ export async function startGatewayFixture(
         join(runtimeDir, "llama-server"),
         undefined,
         llmLaunchesPath,
+        options.llmRuntimeExitOnStart,
       ),
       compileRuntimeFixture(
         join(runtimeDir, "whisper-server"),

@@ -362,7 +362,10 @@ export function createServiceManagerFixtureRunner(): ServiceManagerCommandRunner
       if (action === "print-disabled") {
         const disabled = Object.values(state.services)
           .filter((service) => service.manager === "launchd")
-          .map((service) => `\t${service.serviceId} => ${!service.enabled}`);
+          .map(
+            (service) =>
+              `\t"${service.serviceId}" => ${service.enabled ? "enabled" : "disabled"}`,
+          );
         return success(["{", ...disabled, "}", ""].join("\n"));
       }
       if (action === "enable" || action === "disable") {

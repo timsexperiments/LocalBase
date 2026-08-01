@@ -168,6 +168,7 @@ type OpenAIErrorType =
 
 type OpenAIErrorCode =
   | "invalid_api_key"
+  | "method_not_allowed"
   | "model_not_found"
   | "route_disabled"
   | "validation_failed"
@@ -228,6 +229,20 @@ function badRequest(message: string): Response {
     },
   };
   return Response.json(body, { status: 400 });
+}
+
+function methodNotAllowed(allow: string): Response {
+  return Response.json(
+    {
+      error: {
+        message: "Method not allowed.",
+        type: "invalid_request_error",
+        param: null,
+        code: "method_not_allowed",
+      },
+    },
+    { status: 405, headers: { Allow: allow } },
+  );
 }
 
 function modelNotFound(model: string): Response {
@@ -1209,6 +1224,7 @@ export class ManagedService {
   private isShuttingDown = false;
   private shutdownPromise: Promise<void> | null = null;
   private guardians = new Map<number, Bun.Subprocess>();
+  private expectedStops = new WeakSet<Bun.Subprocess>();
   private onFatal: () => Promise<void>;
   private timeoutMs: number;
   private otel: OtelRuntime;
@@ -1264,6 +1280,18 @@ export class ManagedService {
     return this.lifecycleState;
   }
 
+  private exited(proc: Bun.Subprocess): boolean {
+    return proc.exitCode !== null || proc.signalCode != null;
+  }
+
+  private unavailableError(): Error {
+    return new Error(`${this.name} is unavailable after repeated failures.`);
+  }
+
+  private failed(): boolean {
+    return this.lifecycleState === "failed";
+  }
+
   /**
    * Lazily starts the service on first use, or awaits recovery if currently restarting.
    */
@@ -1271,11 +1299,13 @@ export class ManagedService {
     if (this.isShuttingDown) {
       throw new Error(`${this.name} is shutting down`);
     }
-    if (this.proc && this.proc.exitCode === null) {
+    if (this.failed()) throw this.unavailableError();
+    if (this.proc && !this.exited(this.proc)) {
       return;
     }
     if (this.isRestarting) {
       await this.restartPromise;
+      if (this.failed()) throw this.unavailableError();
       return;
     }
     await this.start();
@@ -1303,7 +1333,7 @@ export class ManagedService {
         void this.onFatal().catch((err) => {
           this.logger.error(this.name, "Failed to stop manager", err as Error);
         });
-        return;
+        throw this.unavailableError();
       }
 
       if (crashCount > 0) {
@@ -1347,9 +1377,7 @@ export class ManagedService {
             "localbase.backend": this.name,
           }),
           async () => {
-            if (!(await this.waitHealthy())) {
-              throw new Error("Backend health check timed out.");
-            }
+            await this.waitHealthy();
           },
         );
         this.lifecycle("backend.ready", "info", { pid: proc.pid });
@@ -1385,31 +1413,35 @@ export class ManagedService {
   /**
    * Polls the backend's /health endpoint until it is online or startup times out.
    */
-  private async waitHealthy(): Promise<boolean> {
+  private async waitHealthy(): Promise<void> {
     const timeout = this.timeoutMs;
     const interval = 200; // 200ms
     const start = Date.now();
 
     while (Date.now() - start < timeout) {
-      if (this.isShuttingDown) return false;
-      if (this.proc?.exitCode !== null) {
+      if (this.isShuttingDown) throw new Error(`${this.name} is shutting down`);
+      if (this.proc && this.exited(this.proc)) {
+        const exit =
+          this.proc.signalCode == null
+            ? `exit code ${this.proc.exitCode}`
+            : `signal ${this.proc.signalCode}`;
         this.logger.error(
           this.name,
-          `Subprocess exited during startup with code ${this.proc?.exitCode}`,
+          `Subprocess exited during startup with ${exit}`,
         );
-        return false;
+        throw new Error(`${this.name} exited during startup (${exit}).`);
       }
       try {
         const res = await fetch(this.healthUrl, {
           signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
         });
-        if (res.ok) return true;
+        if (res.ok) return;
       } catch (e) {
         // Expected network failures while booting
       }
       await new Promise((resolve) => setTimeout(resolve, interval));
     }
-    return false;
+    throw new Error("Backend health check timed out.");
   }
 
   /**
@@ -1442,6 +1474,7 @@ export class ManagedService {
   private async stopCurrentProcess(): Promise<void> {
     const p = this.proc;
     if (p) {
+      this.expectedStops.add(p);
       this.proc = null;
       await this.stopProcess(p);
       await this.stopGuardian(p);
@@ -1478,7 +1511,7 @@ export class ManagedService {
 
   /** Gracefully terminates a subprocess, then forcefully reaps it if needed. */
   private async stopProcess(p: Bun.Subprocess): Promise<void> {
-    if (p.exitCode !== null) return;
+    if (this.exited(p)) return;
 
     try {
       p.kill(15);
@@ -1493,7 +1526,7 @@ export class ManagedService {
       ),
       Bun.sleep(CHILD_STOP_GRACE_MS).then(() => false),
     ]);
-    if (exitedDuringGrace || p.exitCode !== null) return;
+    if (exitedDuringGrace || this.exited(p)) return;
 
     try {
       p.kill(9);
@@ -1509,8 +1542,9 @@ export class ManagedService {
   handleCrash(proc: Bun.Subprocess): void {
     if (
       !this.isShuttingDown &&
+      !this.expectedStops.has(proc) &&
       this.proc === proc &&
-      (proc.exitCode !== null || proc.signalCode !== null) &&
+      this.exited(proc) &&
       !this.isRestarting
     ) {
       this.lifecycle("backend.crash", "error", {
@@ -2481,8 +2515,17 @@ export async function runServe(
     pathname: string,
   ): Promise<Response> => {
     if (pathname === "/health") {
-      return Response.json(healthSnapshot(), {
-        status: gatewayStopping ? 503 : 200,
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return methodNotAllowed("GET, HEAD");
+      }
+      const health = healthSnapshot();
+      const body = JSON.stringify(health);
+      return new Response(request.method === "HEAD" ? null : body, {
+        status: health.status === "ok" ? 200 : 503,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": String(new TextEncoder().encode(body).byteLength),
+        },
       });
     }
 

@@ -213,12 +213,21 @@ export function parseLaunchctlStatus(output: string): {
   return parsed.data;
 }
 
-function launchdEnabled(output: string, serviceId: string): boolean | null {
+export function parseLaunchdEnabled(
+  output: string,
+  serviceId: string,
+): boolean | null {
   for (const line of output.split(/\r?\n/)) {
-    if (!line.includes(serviceId) || !line.includes("=>")) continue;
-    const value = line.split("=>").at(-1)?.trim().replace(/;$/, "");
-    if (value === "false") return true;
-    if (value === "true") return false;
+    const separator = line.indexOf("=>");
+    if (separator === -1) continue;
+    const label = line.slice(0, separator).trim().replace(/^"|"$/g, "");
+    if (label !== serviceId) continue;
+    const value = line
+      .slice(separator + 2)
+      .trim()
+      .replace(/;$/, "");
+    if (value === "enabled") return true;
+    if (value === "disabled") return false;
   }
   return null;
 }
@@ -439,7 +448,7 @@ async function inspectManager(
     ]);
     const enabled =
       disabled.exitCode === 0
-        ? launchdEnabled(disabled.stdout, metadata.serviceId)
+        ? parseLaunchdEnabled(disabled.stdout, metadata.serviceId)
         : null;
     if (result.exitCode !== 0) {
       return {

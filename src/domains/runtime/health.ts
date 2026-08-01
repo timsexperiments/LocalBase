@@ -20,9 +20,8 @@ export const gatewayModalityHealthSchema = z
   })
   .strict();
 
-export const gatewayHealthSchema = z
+const gatewayHealthBaseSchema = z
   .object({
-    status: z.enum(["ok", "error"]),
     version: z.literal(LOCALBASE_VERSION),
     uptimeSeconds: z.number().int().nonnegative(),
     modalities: z
@@ -32,9 +31,18 @@ export const gatewayHealthSchema = z
         image: gatewayModalityHealthSchema,
       })
       .strict(),
-    error: z.enum(["gateway_stopping"]).optional(),
   })
   .strict();
+
+export const gatewayHealthSchema = z.discriminatedUnion("status", [
+  gatewayHealthBaseSchema.extend({ status: z.literal("ok") }).strict(),
+  gatewayHealthBaseSchema
+    .extend({
+      status: z.literal("error"),
+      error: z.literal("gateway_stopping"),
+    })
+    .strict(),
+]);
 export type GatewayHealth = z.infer<typeof gatewayHealthSchema>;
 
 export const gatewayIdentitySchema = z

@@ -22,7 +22,7 @@ import {
 import { canonicalRoot, canonicalRootHash } from "./ownership";
 import { stopFixtureServices } from "../../test/service-manager-fixture";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
-import { parseLaunchctlStatus } from "./manager";
+import { parseLaunchctlStatus, parseLaunchdEnabled } from "./manager";
 
 const projectRoot = join(import.meta.dirname, "../../..");
 
@@ -66,6 +66,22 @@ test("parses the launchd never-exited sentinel as no exit code", () => {
   last exit code = unknown
 }`),
   ).toThrow("invalid service state");
+});
+
+test("parses captured launchd enablement without guessing", () => {
+  const output = `{
+  "com.localbase.gateway.enabled" => enabled
+  "com.localbase.gateway.disabled" => disabled
+}`;
+  expect(parseLaunchdEnabled(output, "com.localbase.gateway.enabled")).toBe(
+    true,
+  );
+  expect(parseLaunchdEnabled(output, "com.localbase.gateway.disabled")).toBe(
+    false,
+  );
+  expect(parseLaunchdEnabled(output, "com.localbase.gateway.unknown")).toBe(
+    null,
+  );
 });
 
 type CliResult = { exitCode: number; stdout: string; stderr: string };
@@ -153,7 +169,7 @@ async function waitForGatewayReady(
   root: string,
   environment: Record<string, string>,
 ): Promise<Record<string, unknown>> {
-  const deadline = Date.now() + 3_000;
+  const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     const status = await runCli(
       executable,

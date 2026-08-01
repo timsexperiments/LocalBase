@@ -1,11 +1,13 @@
 import { appendFileSync } from "node:fs";
 
 declare const __LOCALBASE_TEST_LAUNCHES_PATH__: string | undefined;
+declare const __LOCALBASE_TEST_EXIT_ON_START__: boolean | undefined;
 
 export async function compileRuntimeFixture(
   outputPath: string,
   argsPath?: string,
   launchesPath?: string,
+  exitOnStart = false,
 ): Promise<void> {
   const define: Record<string, string> = {};
   if (argsPath) {
@@ -14,6 +16,7 @@ export async function compileRuntimeFixture(
   if (launchesPath) {
     define.__LOCALBASE_TEST_LAUNCHES_PATH__ = JSON.stringify(launchesPath);
   }
+  if (exitOnStart) define.__LOCALBASE_TEST_EXIT_ON_START__ = "true";
   const result = await Bun.build({
     entrypoints: [import.meta.path],
     target: "bun",
@@ -49,6 +52,12 @@ async function runRuntimeFixture(): Promise<void> {
   }
   if (pidPath) await Bun.write(pidPath, `${process.pid}\n`);
   if (parentPidPath) await Bun.write(parentPidPath, `${process.ppid}\n`);
+  if (
+    typeof __LOCALBASE_TEST_EXIT_ON_START__ === "boolean" &&
+    __LOCALBASE_TEST_EXIT_ON_START__
+  ) {
+    process.exit(1);
+  }
 
   const keepAlive = setInterval(() => {}, 60_000);
   process.on("SIGTERM", () => {

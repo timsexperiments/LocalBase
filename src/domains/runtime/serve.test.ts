@@ -180,6 +180,113 @@ test("backend health failure exports an error model-load span", async () => {
   }
 });
 
+test("backend signal exit fails startup without waiting for the health timeout", async () => {
+  const otel = createOtelRuntime({
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: "disabled",
+  });
+  const logger = new LocalBaseLogger("json");
+  const service = new ManagedService(
+    "llama-server",
+    "http://127.0.0.1:1/health",
+    logger,
+    async () => {
+      const child = Bun.spawn([
+        process.execPath,
+        "-e",
+        "setInterval(() => {}, 1000)",
+      ]);
+      setTimeout(() => child.kill(15), 25);
+      return child;
+    },
+    otel,
+    5_000,
+  );
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await expect(service.ensureRunning()).rejects.toThrow("signal SIGTERM");
+    expect(service.state()).toBe("failed");
+  } finally {
+    await service.shutdown();
+    console.log = originalLog;
+    await otel.shutdown();
+    await logger.close();
+  }
+});
+
+test("terminal crash limits reject future backend work", async () => {
+  const otel = createOtelRuntime({
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: "disabled",
+  });
+  const logger = new LocalBaseLogger("json");
+  let starts = 0;
+  const service = new ManagedService(
+    "llama-server",
+    "http://127.0.0.1:1/health",
+    logger,
+    async () => {
+      starts += 1;
+      return Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"]);
+    },
+    otel,
+  );
+  (service as unknown as { crashTimes: number[] }).crashTimes = Array.from(
+    { length: 5 },
+    () => Date.now(),
+  );
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await expect(service.ensureRunning()).rejects.toThrow("repeated failures");
+    expect(service.state()).toBe("failed");
+    await expect(service.ensureRunning()).rejects.toThrow("repeated failures");
+    expect(starts).toBe(0);
+  } finally {
+    await service.shutdown();
+    console.log = originalLog;
+    await otel.shutdown();
+    await logger.close();
+  }
+});
+
+test("gateway returns service unavailable without proxying a failed backend", async () => {
+  const gateway = await startGatewayFixture({
+    llmBackendHealthy: false,
+    llmRuntimeExitOnStart: true,
+  });
+  try {
+    const response = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "service_unavailable" },
+    });
+    expect(gateway.upstreamRequests).toEqual([]);
+  } finally {
+    await gateway.stop();
+  }
+});
+
 test("managed service reports startup, running, recovery, and stopping states", async () => {
   const backend = Bun.serve({
     hostname: "127.0.0.1",
@@ -507,7 +614,7 @@ describe("API gateway integration", () => {
     expect(body.error.message).toContain(`${expectedPath}:`);
   }
 
-  test("GET /health reports an in-memory gateway snapshot without starting models", async () => {
+  test("health allows GET and HEAD without starting models", async () => {
     expect(await gateway.readLlmRuntimeLaunches()).toEqual([]);
     const response = await request("/health");
     expect(response.status).toBe(200);
@@ -519,7 +626,50 @@ describe("API gateway integration", () => {
         image: { configured: true, state: "idle" },
       },
     });
+    const head = await request("/health", { method: "HEAD" });
+    expect(head.status).toBe(response.status);
+    expect(
+      [...head.headers].filter(([name]) => name !== "date").sort(),
+    ).toEqual([...response.headers].filter(([name]) => name !== "date").sort());
+    expect(await head.text()).toBe("");
     expect(await gateway.readLlmRuntimeLaunches()).toEqual([]);
+
+    const post = await request("/health", { method: "POST" });
+    expect(post.status).toBe(405);
+    expect(post.headers.get("allow")).toBe("GET, HEAD");
+    await expect(post.json()).resolves.toEqual({
+      error: {
+        message: "Method not allowed.",
+        type: "invalid_request_error",
+        param: null,
+        code: "method_not_allowed",
+      },
+    });
+    expect(
+      gatewayHealthSchema.safeParse({
+        status: "ok",
+        version: "0.1.0",
+        uptimeSeconds: 0,
+        modalities: {
+          llm: { configured: true, state: "idle" },
+          stt: { configured: false, state: "disabled" },
+          image: { configured: false, state: "disabled" },
+        },
+        error: "gateway_stopping",
+      }).success,
+    ).toBe(false);
+    expect(
+      gatewayHealthSchema.safeParse({
+        status: "error",
+        version: "0.1.0",
+        uptimeSeconds: 0,
+        modalities: {
+          llm: { configured: true, state: "idle" },
+          stt: { configured: false, state: "disabled" },
+          image: { configured: false, state: "disabled" },
+        },
+      }).success,
+    ).toBe(false);
   });
 
   test("rejects a second serve process for the same canonical root", async () => {
@@ -974,6 +1124,7 @@ describe("API gateway integration", () => {
 
     const requestOffset = gateway.upstreamRequests.length;
     const launchOffset = (await gateway.readLlmRuntimeLaunches()).length;
+    const eventOffset = (await readLogSnapshot(gateway.root)).length;
 
     const streamId = "runtime-pairing";
     const firstResponse = await request("/v1/chat/completions", {
@@ -1056,6 +1207,11 @@ describe("API gateway integration", () => {
         join(initialConfig.llmModelsDir, modelArtifactFile(modelId)),
       ),
     );
+    expect(
+      (await readLogSnapshot(gateway.root))
+        .slice(eventOffset)
+        .filter((event) => event.eventName === "backend.restart-backoff"),
+    ).toEqual([]);
   });
 
   test("holds model switches until streamed LLM responses end", async () => {
