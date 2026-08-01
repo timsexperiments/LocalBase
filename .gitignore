@@ -1,3 +1,4 @@
 node_modules/
 dist/
 .env
+src/db/migration-assets.ts

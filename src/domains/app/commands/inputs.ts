@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { parallelSlotsSchema } from "../../config/parallel";
 import { localBaseRootInputSchema } from "../../../utils/root";
+import {
+  otelEndpointSchema,
+  otelHeadersTextSchema,
+} from "../../observability/otel-config";
 
 export const modelKindSchema = z.enum(["llm", "stt", "image"]);
 
@@ -76,6 +80,11 @@ export const configureInputSchema = z.object({
   activeStt: z.string().min(1).optional(),
   activeImage: z.string().min(1).optional(),
   hfToken: z.string().optional(),
+  otelEndpoint: z.union([z.literal(""), otelEndpointSchema]).optional(),
+  otelHeaders: otelHeadersTextSchema.optional(),
+  otelSampleRatio: positiveInteger(100)
+    .or(z.literal("0").transform(Number))
+    .optional(),
   createKey: z.boolean().optional(),
 });
 

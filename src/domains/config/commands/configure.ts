@@ -34,6 +34,7 @@ import { CliInputError } from "../../app/commands/errors";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ConfigureInput } from "../../app/commands/inputs";
 import { publicApiKey, publicConfiguration } from "../../app/commands/results";
+import { resolveOtelConfiguration } from "../../observability/otel";
 
 export const PARALLEL_SLOTS_PROMPT =
   "Parallel request slots count (type 'auto' for dynamic auto-allocation, or an integer like 1, 2, 4)";
@@ -339,6 +340,24 @@ async function interactiveConfigureSelective(
       config.hfToken || process.env.HF_TOKEN || "",
     );
   }
+  if (!locked.has("otelEndpoint")) {
+    config.otelEndpoint = await textPrompt(
+      "OTLP/HTTP endpoint (empty disables export)",
+      config.otelEndpoint,
+    );
+  }
+  if (config.otelEndpoint && !locked.has("otelHeaders")) {
+    config.otelHeaders = await textPrompt(
+      "OTLP headers (key=value,...; optional)",
+      config.otelHeaders,
+    );
+  }
+  if (config.otelEndpoint && !locked.has("otelSampleRatio")) {
+    config.otelSampleRatio = await numberPrompt(
+      "Root trace sample percentage (0-100)",
+      config.otelSampleRatio,
+    );
+  }
 
   if (useAll)
     console.log(
@@ -576,6 +595,12 @@ export async function runConfigure(
   maybeLock("activeSttModel", flags.activeStt ?? rawToml.activeSttModel);
   maybeLock("activeImageModel", flags.activeImage ?? rawToml.activeImageModel);
   maybeLock("hfToken", flags.hfToken ?? rawToml.hfToken);
+  maybeLock("otelEndpoint", flags.otelEndpoint ?? rawToml.otelEndpoint);
+  maybeLock("otelHeaders", flags.otelHeaders ?? rawToml.otelHeaders);
+  maybeLock(
+    "otelSampleRatio",
+    flags.otelSampleRatio ?? rawToml.otelSampleRatio,
+  );
 
   config = {
     ...config,
@@ -598,6 +623,13 @@ export async function runConfigure(
       config.hfToken ??
       process.env.HF_TOKEN ??
       "",
+    otelEndpoint:
+      flags.otelEndpoint ?? rawToml.otelEndpoint ?? config.otelEndpoint,
+    otelHeaders: flags.otelHeaders ?? rawToml.otelHeaders ?? config.otelHeaders,
+    otelSampleRatio:
+      flags.otelSampleRatio ??
+      rawToml.otelSampleRatio ??
+      config.otelSampleRatio,
   };
 
   config.llmModelsDir = `${config.root}/models/llm`;
@@ -688,7 +720,10 @@ export async function runConfigure(
 
   return {
     data: {
-      configuration: publicConfiguration(config),
+      configuration: publicConfiguration(
+        config,
+        resolveOtelConfiguration(config, process.env),
+      ),
       ...(createdKey ? { createdKey } : {}),
     },
   };

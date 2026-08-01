@@ -147,6 +147,7 @@ export type GatewayFixture = {
 export type GatewayFixtureOptions = {
   auth?: { mode?: "bearer" | "x-api-key" | "either" };
   managedIdentity?: boolean;
+  otelEndpoint?: string;
 };
 
 async function readProcessOutput(
@@ -260,6 +261,12 @@ function startMockUpstream(
       const mode = request.headers.get("x-test-upstream");
       if (mode === "malformed") return new Response("not json");
       if (mode === "invalid-schema") return Response.json({ unexpected: true });
+      if (mode === "server-error") {
+        return Response.json(
+          { error: { message: "fixture upstream failure" } },
+          { status: 503 },
+        );
+      }
       if (mode === "custom-tool-response") {
         return Response.json({
           id: "chatcmpl-custom-tool",
@@ -1285,6 +1292,8 @@ export async function startGatewayFixture(
     config.selectedSttModels = [STT_MODEL];
     config.activeImageModel = IMAGE_MODEL;
     config.selectedImageModels = [IMAGE_MODEL];
+    config.otelEndpoint = options.otelEndpoint ?? "";
+    config.otelSampleRatio = 100;
     const database = new DatabaseSession();
     saveConfig(database, config);
     if (options.auth) {

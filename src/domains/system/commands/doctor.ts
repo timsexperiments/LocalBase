@@ -25,6 +25,13 @@ export function runDoctor(
     execution.output.info(`GPU VRAM: ${specs.gpuVramGb} GB (Discrete Memory)`);
   }
   execution.output.info(`Parallel Slots: ${ctx.config.parallel}`);
+  execution.output.info(
+    `OpenTelemetry: ${
+      ctx.otelConfiguration.enabled
+        ? `enabled via ${ctx.otelConfiguration.source} (${ctx.otelConfiguration.displayEndpoint})`
+        : "disabled"
+    }`,
+  );
 
   if (specs.isAppleSilicon) {
     if (specs.ramGb >= 64) {
@@ -64,6 +71,9 @@ export function runDoctor(
     }
   }
   return {
-    data: { hardware: specs, configuration: publicConfiguration(ctx.config) },
+    data: {
+      hardware: specs,
+      configuration: publicConfiguration(ctx.config, ctx.otelConfiguration),
+    },
   };
 }

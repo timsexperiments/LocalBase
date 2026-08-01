@@ -198,10 +198,22 @@ test("renders secure definitions and preserves supported path characters", async
     program: "/bin/true",
     arguments: ["--root", root, `argument\twith "quotes" \\ $ %`, "serve"],
   };
+  const telemetry = {
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318",
+    OTEL_EXPORTER_OTLP_HEADERS: "authorization=Bearer%20service-secret",
+    OTEL_TRACES_SAMPLER: "parentbased_traceidratio",
+    OTEL_TRACES_SAMPLER_ARG: "0.25",
+  };
 
   try {
     const canonical = await canonicalRoot(root);
-    const launchd = await createServiceDefinition(root, invocation, "darwin");
+    const launchd = await createServiceDefinition(
+      root,
+      invocation,
+      "darwin",
+      crypto.randomUUID(),
+      telemetry,
+    );
     expect(launchd.manifest.invocation.serviceToken).toBe(launchd.serviceToken);
     expect(parseLaunchdDefinition(launchd.contents)).toEqual({
       label: launchd.serviceId,
@@ -216,12 +228,19 @@ test("renders secure definitions and preserves supported path characters", async
       environment: {
         LOCALBASE_SERVICE_ID: launchd.serviceId,
         LOCALBASE_SERVICE_TOKEN: launchd.serviceToken,
+        ...telemetry,
       },
       standardOutPath: "/dev/null",
       standardErrorPath: "/dev/null",
     });
 
-    const systemd = await createServiceDefinition(root, invocation, "linux");
+    const systemd = await createServiceDefinition(
+      root,
+      invocation,
+      "linux",
+      crypto.randomUUID(),
+      telemetry,
+    );
     expect(systemd.manifest.invocation.serviceToken).toBe(systemd.serviceToken);
     expect(parseSystemdDefinition(systemd.contents)).toEqual({
       description: "LocalBase gateway",
@@ -237,6 +256,7 @@ test("renders secure definitions and preserves supported path characters", async
       environment: {
         LOCALBASE_SERVICE_ID: systemd.serviceId,
         LOCALBASE_SERVICE_TOKEN: systemd.serviceToken,
+        ...telemetry,
       },
       standardOutput: "journal",
       standardError: "journal",
@@ -254,6 +274,11 @@ test("renders secure definitions and preserves supported path characters", async
         .replaceAll(" ", "\\x20")
         .replaceAll("%", "%%")}`,
     );
+    await expect(
+      createServiceDefinition(root, invocation, "darwin", crypto.randomUUID(), {
+        UNRELATED_SECRET: "must-not-pass",
+      }),
+    ).rejects.toThrow("unsupported OTEL environment variable");
     expect(workingDirectoryLine).toContain("ü");
     expect(workingDirectoryLine).toContain("$cash");
     expect(workingDirectoryLine).not.toContain('WorkingDirectory="');
@@ -369,10 +394,14 @@ describe.serial("compiled CLI service lifecycle", () => {
 
   test("starts one root idempotently and reloads a changed definition", async () => {
     const root = join(directory, "darwin-root");
+    const telemetryEnvironment = environment("darwin", {
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318",
+      OTEL_TRACES_SAMPLER: "always_on",
+    });
     const first = await runCli(
       executable,
       ["--root", root, "start", "--json"],
-      environment("darwin"),
+      telemetryEnvironment,
     );
     expect(first.exitCode).toBe(0);
     const firstData = jsonDocument(first.stdout).data as {
@@ -388,7 +417,7 @@ describe.serial("compiled CLI service lifecycle", () => {
     const ready = (await waitForGatewayReady(
       executable,
       root,
-      environment("darwin"),
+      telemetryEnvironment,
     )) as typeof firstData;
     expect(ready.service.state).toBe("running");
     expect(ready.gateway.state).toBe("ready");
@@ -397,16 +426,40 @@ describe.serial("compiled CLI service lifecycle", () => {
     expect(
       parseLaunchdDefinition(
         await Bun.file(firstData.service.definitionPath).text(),
-      ).programArguments,
-    ).toEqual([realpathSync(executable), "--root", canonical, "serve"]);
+      ),
+    ).toMatchObject({
+      programArguments: [
+        realpathSync(executable),
+        "--root",
+        canonical,
+        "serve",
+      ],
+      environment: {
+        OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318",
+        OTEL_TRACES_SAMPLER: "always_on",
+      },
+    });
 
     const repeated = await runCli(
       executable,
       ["--root", root, "start", "--json"],
-      environment("darwin"),
+      telemetryEnvironment,
     );
     expect(repeated.exitCode).toBe(0);
     expect((await ownerRecord(root)).instanceId).toBe(firstOwner.instanceId);
+
+    const staleOverrideRemoved = await runCli(
+      executable,
+      ["--root", root, "start", "--json"],
+      environment("darwin"),
+    );
+    expect(staleOverrideRemoved.exitCode).toBe(0);
+    await waitForGatewayReady(executable, root, environment("darwin"));
+    expect(
+      parseLaunchdDefinition(
+        await Bun.file(firstData.service.definitionPath).text(),
+      ).environment,
+    ).not.toHaveProperty("OTEL_EXPORTER_OTLP_ENDPOINT");
 
     await Bun.write(
       firstData.service.definitionPath,
@@ -439,7 +492,7 @@ describe.serial("compiled CLI service lifecycle", () => {
     ).toBe(false);
 
     const calls = (await Bun.file(darwinCallsPath).json()) as string[][];
-    expect(calls.filter((args) => args[1] === "bootstrap")).toHaveLength(2);
+    expect(calls.filter((args) => args[1] === "bootstrap")).toHaveLength(3);
     expect(
       calls.filter((args) => args[1] === "bootout").length,
     ).toBeGreaterThan(0);

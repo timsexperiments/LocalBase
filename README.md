@@ -63,6 +63,16 @@ macOS uses a launchd user agent and Linux uses a `systemd --user` service. `unin
 
 Finite `logs --json` calls return the normal JSON command envelope and default to the newest 200 matching events (maximum 5,000). `logs --follow --json` streams one validated log event per JSONL line to stdout. Log records redact credentials, cookies, secret URL values, request identifiers that resemble credentials, and request or model content before they reach any sink.
 
+### OpenTelemetry export
+
+Local JSONL is the durable log record. Records with sampled span context include `trace: { traceId, spanId }`. An OTLP/HTTP endpoint enables bounded asynchronous log and trace export:
+
+```bash
+./dist/local-base configure --otel-endpoint http://localhost:4318 --otel-sample-ratio 25
+```
+
+Standard `OTEL_EXPORTER_OTLP_ENDPOINT`, signal-specific endpoint/header variables, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_TRACES_SAMPLER`, and `OTEL_TRACES_SAMPLER_ARG` override persisted settings. LocalBase uses W3C `traceparent` and `tracestate`, propagates valid request context to backends, and correlates local logs with sampled spans. Baggage, prompts, responses, credentials, and arbitrary headers are never exported. Collector outages can drop bounded telemetry but do not delay or fail inference; shutdown gives all telemetry signals one shared five-second flush deadline.
+
 ## Automation and JSON output
 
 Use the global `--json` option for automation. It may appear before or after a command, but not after `--`.
@@ -109,7 +119,7 @@ bun run build
 
 `bun run check` formats-checks the source, type-checks the project, and runs the CLI help smoke test. `bun run build` produces `dist/local-base`.
 
-Database changes use Drizzle. Run `bun run db:generate` to create SQL migrations and refresh their compiled-CLI asset manifest; run `bun run db:check` in verification. The generated SQL and journal are embedded in `dist/local-base`, so the single-file CLI can migrate databases without a source-tree migration folder.
+Database changes use Drizzle. Run `bun run db:generate` to create SQL migrations and `bun run db:check` to validate the tracked SQL and journal. Installation and builds generate the ignored asset module embedded by compiled CLIs.
 
 ## Contributing
 
