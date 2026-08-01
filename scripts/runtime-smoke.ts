@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { gatewayHealthSchema } from "../src/domains/runtime/health";
 
 type CommandResult = {
   exitCode: number;
@@ -18,12 +19,6 @@ const SMOKE_TIMEOUT_MS = 60_000;
 const STARTUP_TIMEOUT_MS = 20_000;
 const STT_MODEL_ID = "whisper-tiny-en-q8_0";
 const STT_MODEL_FILE = "ggml-tiny.en-q8_0.bin";
-const GatewayHealthSchema = z
-  .object({
-    status: z.literal("ok"),
-    enabled: z.object({ stt: z.literal(true) }).passthrough(),
-  })
-  .passthrough();
 const TranscriptionResponseSchema = z
   .object({ text: z.string() })
   .passthrough();
@@ -189,8 +184,8 @@ async function waitForHealthyGateway(
       const response = await fetch(`${baseUrl}/health`, {
         signal: AbortSignal.timeout(500),
       });
-      const body = GatewayHealthSchema.safeParse(await response.json());
-      if (response.ok && body.success) {
+      const body = gatewayHealthSchema.safeParse(await response.json());
+      if (response.ok && body.success && body.data.modalities.stt.configured) {
         return;
       }
       lastError = `unexpected health response: HTTP ${response.status}`;

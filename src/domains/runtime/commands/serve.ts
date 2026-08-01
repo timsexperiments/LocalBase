@@ -37,6 +37,12 @@ import {
   serverSpanOptions,
   type OtelRuntime,
 } from "../../observability/otel";
+import {
+  gatewayHealthSchema,
+  gatewayIdentitySchema,
+  type ModalityLifecycleState,
+} from "../health";
+import { LOCALBASE_VERSION } from "../../../version";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
@@ -1206,6 +1212,7 @@ export class ManagedService {
   private onFatal: () => Promise<void>;
   private timeoutMs: number;
   private otel: OtelRuntime;
+  private lifecycleState: ModalityLifecycleState = "idle";
 
   constructor(
     name: string,
@@ -1253,6 +1260,10 @@ export class ManagedService {
     });
   }
 
+  state(): ModalityLifecycleState {
+    return this.lifecycleState;
+  }
+
   /**
    * Lazily starts the service on first use, or awaits recovery if currently restarting.
    */
@@ -1275,6 +1286,7 @@ export class ManagedService {
    * Employs exponential backoff on retry and exits the manager if crash limits are hit.
    */
   private async start(): Promise<void> {
+    this.lifecycleState = "starting";
     this.isRestarting = true;
     this.restartPromise = (async () => {
       const now = Date.now();
@@ -1282,6 +1294,8 @@ export class ManagedService {
       const crashCount = this.crashTimes.length;
 
       if (crashCount >= 5) {
+        this.lifecycleState = "failed";
+        this.isRestarting = false;
         this.lifecycle("backend.crash", "error", {
           crashCount,
           crashLimitReached: true,
@@ -1339,6 +1353,7 @@ export class ManagedService {
           },
         );
         this.lifecycle("backend.ready", "info", { pid: proc.pid });
+        this.lifecycleState = "running";
       } catch (err) {
         this.logger.event({
           severity: "error",
@@ -1358,6 +1373,7 @@ export class ManagedService {
         });
         this.crashTimes.push(Date.now());
         await this.kill();
+        this.lifecycleState = "failed";
         this.isRestarting = false;
         throw err;
       }
@@ -1400,13 +1416,16 @@ export class ManagedService {
    * Stops a backend for a model switch without triggering crash recovery.
    */
   async kill(): Promise<void> {
+    if (!this.isShuttingDown) this.lifecycleState = "stopping";
     await this.stopCurrentProcess();
+    if (!this.isShuttingDown) this.lifecycleState = "idle";
   }
 
   /** Prevents future restarts and waits for an active startup to finish stopping. */
   async shutdown(): Promise<void> {
     if (!this.shutdownPromise) {
       this.isShuttingDown = true;
+      this.lifecycleState = "stopping";
       this.lifecycle("backend.stopping", "info");
       const startup = this.restartPromise;
       this.shutdownPromise = (async () => {
@@ -1491,7 +1510,7 @@ export class ManagedService {
     if (
       !this.isShuttingDown &&
       this.proc === proc &&
-      proc.exitCode !== null &&
+      (proc.exitCode !== null || proc.signalCode !== null) &&
       !this.isRestarting
     ) {
       this.lifecycle("backend.crash", "error", {
@@ -1500,6 +1519,7 @@ export class ManagedService {
       });
       this.crashTimes.push(Date.now());
       this.proc = null;
+      this.lifecycleState = "starting";
       this.start().catch(() => {});
     }
   }
@@ -2109,6 +2129,31 @@ export async function runServe(
       )
     : null;
 
+  const gatewayStartedAt = Date.now();
+  let gatewayStopping = false;
+  const modalityHealth = (
+    configured: boolean,
+    service: ManagedService | null,
+  ) => ({
+    configured,
+    state: configured && service ? service.state() : "disabled",
+  });
+  const healthSnapshot = () =>
+    gatewayHealthSchema.parse({
+      status: gatewayStopping ? "error" : "ok",
+      version: LOCALBASE_VERSION,
+      uptimeSeconds: Math.max(
+        0,
+        Math.floor((Date.now() - gatewayStartedAt) / 1_000),
+      ),
+      modalities: {
+        llm: modalityHealth(enabled.llm, llmService),
+        stt: modalityHealth(enabled.stt, sttService),
+        image: modalityHealth(enabled.image, imageService),
+      },
+      ...(gatewayStopping ? { error: "gateway_stopping" } : {}),
+    });
+
   let imageSwitches = Promise.resolve();
   let sttSwitches = Promise.resolve();
   let llmLeaseLock = Promise.resolve();
@@ -2435,39 +2480,28 @@ export async function runServe(
     request: Request,
     pathname: string,
   ): Promise<Response> => {
-    const currentConfig = loadConfig(ctx.database, config.root);
-
     if (pathname === "/health") {
-      const presentedServiceToken = request.headers.get(
-        "x-localbase-service-token",
-      );
-      if (
-        presentedServiceToken !== null &&
-        presentedServiceToken !== gatewayLease.instance.serviceToken
-      ) {
-        return new Response("not found", { status: 404 });
-      }
-      const authenticatedManagedIdentity =
-        gatewayLease.instance.serviceToken === undefined ||
-        presentedServiceToken === gatewayLease.instance.serviceToken;
-      return Response.json({
-        status: "ok",
-        ...(authenticatedManagedIdentity
-          ? {
-              instance: {
-                id: gatewayLease.instance.instanceId,
-                rootHash: gatewayLease.instance.rootHash,
-              },
-            }
-          : {}),
-        enabled,
-        llmUpstream: enabled.llm ? llmBase : null,
-        sttUpstream: enabled.stt ? sttBase : null,
-        imageUpstream: enabled.image ? imageBase : null,
-        authRequired,
-        authMode,
+      return Response.json(healthSnapshot(), {
+        status: gatewayStopping ? 503 : 200,
       });
     }
+
+    if (pathname === "/_localbase/instance") {
+      if (
+        request.headers.get("x-localbase-instance-token") !==
+        gatewayLease.instance.instanceToken
+      ) {
+        return new Response(null, { status: 404 });
+      }
+      return Response.json(
+        gatewayIdentitySchema.parse({
+          instanceId: gatewayLease.instance.instanceId,
+          rootHash: gatewayLease.instance.rootHash,
+        }),
+      );
+    }
+
+    const currentConfig = loadConfig(ctx.database, config.root);
 
     if (authRequired) {
       const token = extractAuthToken(request, authMode);
@@ -2876,6 +2910,7 @@ export async function runServe(
           message: "Stopping LocalBase gateway.",
         });
         ctx.logger.info("Manager", "Shutting down servers and subprocesses...");
+        gatewayStopping = true;
         server.stop(true);
         await Promise.all([
           llmService?.shutdown(),

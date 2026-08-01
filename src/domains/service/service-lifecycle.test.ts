@@ -702,7 +702,7 @@ describe.serial("compiled CLI service lifecycle", () => {
     writeFileSync(
       join(lock, "owner.json"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         instanceId: crypto.randomUUID(),
         root: canonical,
         rootHash: canonicalRootHash(canonical),
@@ -710,6 +710,7 @@ describe.serial("compiled CLI service lifecycle", () => {
         startedAt: new Date().toISOString(),
         host: "127.0.0.1",
         port: 65_534,
+        instanceToken: crypto.randomUUID(),
       }),
     );
     const ambiguous = await runCli(
@@ -735,7 +736,7 @@ describe.serial("compiled CLI service lifecycle", () => {
     writeFileSync(
       join(lock, "owner.json"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         instanceId: crypto.randomUUID(),
         root: canonical,
         rootHash: canonicalRootHash(canonical),
@@ -743,6 +744,7 @@ describe.serial("compiled CLI service lifecycle", () => {
         startedAt: new Date().toISOString(),
         host: "127.0.0.1",
         port: 65_533,
+        instanceToken: crypto.randomUUID(),
       }),
     );
 
@@ -810,10 +812,18 @@ describe.serial("compiled CLI service lifecycle", () => {
         LOCALBASE_TEST_SERVICE_MANAGER_UNAVAILABLE: "launchctl",
       }),
     );
-    expect(unavailable.exitCode).toBe(1);
-    expect(jsonDocument(unavailable.stdout)).toMatchObject({
-      ok: false,
-      error: { code: "operational_error" },
+    expectCliSuccess(unavailable);
+    expect(jsonDocument(unavailable.stdout).data).toMatchObject({
+      service: {
+        state: "unknown",
+        managerAvailable: false,
+        managerState: null,
+        enabled: null,
+        pid: null,
+        uptimeSeconds: null,
+        restartCount: null,
+      },
+      gateway: { state: "not_ready" },
     });
 
     const timeout = await runCli(
@@ -824,8 +834,10 @@ describe.serial("compiled CLI service lifecycle", () => {
         LOCALBASE_TEST_SERVICE_COMMAND_TIMEOUT_MS: "100",
       }),
     );
-    expect(timeout.exitCode).toBe(1);
-    expect(`${timeout.stdout}${timeout.stderr}`).toContain("timed out");
+    expectCliSuccess(timeout);
+    expect(jsonDocument(timeout.stdout).data).toMatchObject({
+      service: { state: "unknown", managerAvailable: false },
+    });
 
     const malformed = await runCli(
       executable,
@@ -834,10 +846,10 @@ describe.serial("compiled CLI service lifecycle", () => {
         LOCALBASE_TEST_SERVICE_MANAGER_MALFORMED: "show",
       }),
     );
-    expect(malformed.exitCode).toBe(1);
-    expect(`${malformed.stdout}${malformed.stderr}`).toContain(
-      "malformed service state",
-    );
+    expectCliSuccess(malformed);
+    expect(jsonDocument(malformed.stdout).data).toMatchObject({
+      service: { state: "unknown", managerAvailable: false },
+    });
   });
 
   test("maintenance bypasses an unavailable manager only without service evidence", async () => {
@@ -1246,6 +1258,26 @@ describe.serial("compiled CLI service lifecycle", () => {
       realpathSync(root),
       "serve",
     ]);
+    const status = await runCli(
+      executable,
+      ["--root", root, "status", "--json"],
+      environment("linux"),
+    );
+    expectCliSuccess(status);
+    expect(jsonDocument(status.stdout).data).toMatchObject({
+      service: {
+        state: "running",
+        enabled: true,
+        managerAvailable: true,
+        restartCount: 0,
+      },
+      gateway: {
+        state: "ready",
+        health: {
+          modalities: { llm: { configured: true, state: "idle" } },
+        },
+      },
+    });
 
     const firstOwner = await ownerRecord(root);
     const restarted = await runCli(

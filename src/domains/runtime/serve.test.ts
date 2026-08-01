@@ -10,6 +10,7 @@ import {
 } from "../../test/gateway-fixture";
 import { decodeOtlpTraceSpans } from "../../test/otlp-fixture";
 import { LocalBaseLogger, readLogSnapshot } from "../observability/logging";
+import { gatewayHealthSchema } from "./health";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
   finalizeGatewayShutdown,
@@ -164,6 +165,7 @@ test("backend health failure exports an error model-load span", async () => {
     await expect(service.ensureRunning()).rejects.toThrow(
       "Backend health check timed out.",
     );
+    expect(service.state()).toBe("failed");
     await otel.forceFlush();
     const modelLoad = traces
       .flatMap(decodeOtlpTraceSpans)
@@ -178,26 +180,101 @@ test("backend health failure exports an error model-load span", async () => {
   }
 });
 
-test("managed health discloses identity only to the service token", async () => {
+test("managed service reports startup, running, recovery, and stopping states", async () => {
+  const backend = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response(null, { status: 200 }),
+  });
+  const otel = createOtelRuntime({
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: "disabled",
+  });
+  const logger = new LocalBaseLogger("json");
+  const processes: Bun.Subprocess[] = [];
+  const service = new ManagedService(
+    "llama-server",
+    `http://127.0.0.1:${backend.port}/health`,
+    logger,
+    async () => {
+      const child = Bun.spawn([
+        process.execPath,
+        "-e",
+        "setInterval(() => {}, 1000)",
+      ]);
+      processes.push(child);
+      return child;
+    },
+    otel,
+  );
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    const starting = service.ensureRunning();
+    expect(service.state()).toBe("starting");
+    await starting;
+    expect(service.state()).toBe("running");
+
+    processes[0]?.kill(15);
+    await processes[0]?.exited;
+    const recoveryDeadline = Date.now() + 2_000;
+    while (service.state() !== "starting" && Date.now() < recoveryDeadline) {
+      await Bun.sleep(10);
+    }
+    expect(service.state()).toBe("starting");
+
+    const stopping = service.shutdown();
+    expect(service.state()).toBe("stopping");
+    await stopping;
+    expect(service.state()).toBe("stopping");
+  } finally {
+    await service.shutdown();
+    console.log = originalLog;
+    await otel.shutdown();
+    await logger.close();
+    backend.stop(true);
+  }
+});
+
+test("health is public while instance identity requires its private token", async () => {
   const gateway = await startGatewayFixture({ managedIdentity: true });
   try {
     const publicResponse = await fetch(`${gateway.baseUrl}/health`);
     expect(publicResponse.status).toBe(200);
-    expect(await publicResponse.json()).not.toHaveProperty("instance");
+    expect(await publicResponse.json()).toMatchObject({
+      status: "ok",
+      modalities: {
+        llm: { configured: true, state: "idle" },
+      },
+    });
 
     const owner = (await Bun.file(
       join(gateway.root, "runtime", "gateway.lock", "owner.json"),
-    ).json()) as { serviceToken: string; instanceId: string; rootHash: string };
-    const authenticated = await fetch(`${gateway.baseUrl}/health`, {
-      headers: { "x-localbase-service-token": owner.serviceToken },
-    });
+    ).json()) as {
+      instanceToken: string;
+      instanceId: string;
+      rootHash: string;
+    };
+    const authenticated = await fetch(
+      `${gateway.baseUrl}/_localbase/instance`,
+      {
+        headers: { "x-localbase-instance-token": owner.instanceToken },
+      },
+    );
     expect(await authenticated.json()).toMatchObject({
-      instance: { id: owner.instanceId, rootHash: owner.rootHash },
+      instanceId: owner.instanceId,
+      rootHash: owner.rootHash,
     });
     expect(
       (
-        await fetch(`${gateway.baseUrl}/health`, {
-          headers: { "x-localbase-service-token": crypto.randomUUID() },
+        await fetch(`${gateway.baseUrl}/_localbase/instance`, {
+          headers: { "x-localbase-instance-token": crypto.randomUUID() },
         })
       ).status,
     ).toBe(404);
@@ -430,13 +507,19 @@ describe("API gateway integration", () => {
     expect(body.error.message).toContain(`${expectedPath}:`);
   }
 
-  test("GET /health reports the enabled modalities", async () => {
+  test("GET /health reports an in-memory gateway snapshot without starting models", async () => {
+    expect(await gateway.readLlmRuntimeLaunches()).toEqual([]);
     const response = await request("/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    expect(gatewayHealthSchema.parse(await response.json())).toMatchObject({
       status: "ok",
-      enabled: { llm: true, stt: true, image: true },
+      modalities: {
+        llm: { configured: true, state: "idle" },
+        stt: { configured: true, state: "idle" },
+        image: { configured: true, state: "idle" },
+      },
     });
+    expect(await gateway.readLlmRuntimeLaunches()).toEqual([]);
   });
 
   test("rejects a second serve process for the same canonical root", async () => {
@@ -569,6 +652,10 @@ describe("API gateway integration", () => {
         },
       ],
     });
+    const health = gatewayHealthSchema.parse(
+      await (await request("/health")).json(),
+    );
+    expect(health.modalities.llm.state).toBe("running");
   });
 
   test("forwards user-only chat requests without injected instructions", async () => {

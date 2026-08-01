@@ -16,12 +16,14 @@ import {
   type ServiceMetadata,
 } from "./definitions";
 import { otelServiceEnvironment } from "../observability/otel-config";
+import { gatewayHealthSchema, type GatewayHealth } from "../runtime/health";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
   canonicalRootHash,
   clearStaleGatewayLeaseAtRoot,
   gatewayHealthUrl,
   getGatewayInstanceStateAtRoot,
+  readGatewayHealth,
   waitForGatewayStoppedAtRoot,
   withServiceStartHandoff,
   withRootOperation,
@@ -62,20 +64,31 @@ export const serviceStatusSchema = z
     root: z.string().min(1),
     definitionPath: z.string().min(1),
     definitionInstalled: z.boolean(),
+    enabled: z.boolean().nullable(),
     state: serviceStateSchema,
-    managerState: z.string().min(1),
-    pid: z.number().int().positive().optional(),
+    managerAvailable: z.boolean(),
+    managerState: z.string().min(1).nullable(),
+    pid: z.number().int().positive().nullable(),
+    uptimeSeconds: z.number().int().nonnegative().nullable(),
+    restartCount: z.number().int().nonnegative().nullable(),
     baseUrl: z.string().url().optional(),
   })
   .strict();
 
 export const gatewayReadinessSchema = z.discriminatedUnion("state", [
-  z.object({ state: z.literal("ready"), url: z.string().url() }).strict(),
+  z
+    .object({
+      state: z.literal("ready"),
+      url: z.string().url(),
+      health: gatewayHealthSchema,
+    })
+    .strict(),
   z
     .object({
       state: z.literal("not_ready"),
       url: z.string().url().optional(),
       detail: z.string().min(1),
+      health: gatewayHealthSchema.optional(),
     })
     .strict(),
 ]);
@@ -105,6 +118,7 @@ const systemdStatusSchema = z
     MainPID: z.string().regex(/^\d+$/).transform(Number),
     ExecMainCode: z.string().regex(/^\d+$/).transform(Number),
     ExecMainStatus: z.string().regex(/^\d+$/).transform(Number),
+    NRestarts: z.string().regex(/^\d+$/).transform(Number).optional(),
   })
   .strict();
 
@@ -119,6 +133,8 @@ const launchdStatusSchema = z
 type ManagerObservation =
   | {
       manager: "launchd";
+      available: boolean;
+      enabled: boolean | null;
       loaded: boolean;
       active: boolean;
       failed: boolean;
@@ -127,12 +143,15 @@ type ManagerObservation =
     }
   | {
       manager: "systemd-user";
+      available: boolean;
+      enabled: boolean | null;
       loaded: boolean;
       active: boolean;
       stopping: boolean;
       failed: boolean;
       state: string;
       pid?: number;
+      restartCount?: number;
     };
 
 export class ServiceManagerError extends Error {
@@ -192,6 +211,32 @@ export function parseLaunchctlStatus(output: string): {
     );
   }
   return parsed.data;
+}
+
+function launchdEnabled(output: string, serviceId: string): boolean | null {
+  for (const line of output.split(/\r?\n/)) {
+    if (!line.includes(serviceId) || !line.includes("=>")) continue;
+    const value = line.split("=>").at(-1)?.trim().replace(/;$/, "");
+    if (value === "false") return true;
+    if (value === "true") return false;
+  }
+  return null;
+}
+
+function systemdEnabled(result: ManagerCommandResult): boolean | null {
+  const value = result.stdout.trim();
+  if (
+    result.exitCode === 0 &&
+    ["enabled", "enabled-runtime", "linked", "linked-runtime"].includes(value)
+  ) {
+    return true;
+  }
+  if (
+    ["disabled", "masked", "static", "indirect", "generated"].includes(value)
+  ) {
+    return false;
+  }
+  return null;
 }
 
 async function boundedText(
@@ -388,13 +433,19 @@ async function inspectManager(
         'The launchd GUI user domain is unavailable. Sign in to a macOS user session or use foreground "local-base serve".',
       );
     }
-    const result = await runManagerCommand(metadata, [
-      "print",
-      launchdTarget(metadata),
+    const [result, disabled] = await Promise.all([
+      runManagerCommand(metadata, ["print", launchdTarget(metadata)]),
+      runManagerCommand(metadata, ["print-disabled", launchdDomain()]),
     ]);
+    const enabled =
+      disabled.exitCode === 0
+        ? launchdEnabled(disabled.stdout, metadata.serviceId)
+        : null;
     if (result.exitCode !== 0) {
       return {
         manager: "launchd",
+        available: true,
+        enabled,
         loaded: false,
         active: false,
         failed: false,
@@ -407,6 +458,8 @@ async function inspectManager(
     const failed = lastExitCode !== undefined && lastExitCode !== 0 && !running;
     return {
       manager: "launchd",
+      available: true,
+      enabled,
       loaded: true,
       active,
       failed,
@@ -415,12 +468,15 @@ async function inspectManager(
     };
   }
 
-  const result = await runManagerCommand(metadata, [
-    "--user",
-    "show",
-    metadata.unitName,
-    "--property=LoadState,ActiveState,SubState,MainPID,ExecMainCode,ExecMainStatus",
-    "--no-pager",
+  const [result, enabled] = await Promise.all([
+    runManagerCommand(metadata, [
+      "--user",
+      "show",
+      metadata.unitName,
+      "--property=LoadState,ActiveState,SubState,MainPID,ExecMainCode,ExecMainStatus,NRestarts",
+      "--no-pager",
+    ]),
+    runManagerCommand(metadata, ["--user", "is-enabled", metadata.unitName]),
   ]);
   if (result.exitCode !== 0) {
     throw new ServiceManagerError(
@@ -433,12 +489,17 @@ async function inspectManager(
   );
   return {
     manager: "systemd-user",
+    available: true,
+    enabled: systemdEnabled(enabled),
     loaded: status.LoadState === "loaded",
     active,
     stopping: status.ActiveState === "deactivating",
     failed: status.ActiveState === "failed" || status.LoadState === "error",
     state: `${status.LoadState}/${status.ActiveState}/${status.SubState}`,
     ...(status.MainPID > 0 ? { pid: status.MainPID } : {}),
+    ...(status.NRestarts === undefined
+      ? {}
+      : { restartCount: status.NRestarts }),
   };
 }
 
@@ -452,6 +513,30 @@ function managerIsStopping(observation: ManagerObservation): boolean {
 
 function managerHasFailed(observation: ManagerObservation): boolean {
   return observation.failed;
+}
+
+function unavailableManager(metadata: ServiceMetadata): ManagerObservation {
+  if (metadata.manager === "launchd") {
+    return {
+      manager: "launchd",
+      available: false,
+      enabled: null,
+      loaded: false,
+      active: false,
+      failed: false,
+      state: "unavailable",
+    };
+  }
+  return {
+    manager: "systemd-user",
+    available: false,
+    enabled: null,
+    loaded: false,
+    active: false,
+    stopping: false,
+    failed: false,
+    state: "unavailable",
+  };
 }
 
 function launchdAcceptedStart(observation: ManagerObservation): boolean {
@@ -551,9 +636,22 @@ async function removeLegacyServiceFallbackLogs(root: string): Promise<void> {
 
 function readinessFromOwner(
   owner: GatewayInstanceState,
+  health: GatewayHealth | undefined,
 ): z.infer<typeof gatewayReadinessSchema> {
+  if (owner.state === "active" && health?.status === "ok") {
+    return {
+      state: "ready",
+      url: gatewayHealthUrl(owner.instance),
+      health,
+    };
+  }
   if (owner.state === "active") {
-    return { state: "ready", url: gatewayHealthUrl(owner.instance) };
+    return {
+      state: "not_ready",
+      url: gatewayHealthUrl(owner.instance),
+      detail: "gateway health endpoint is unavailable",
+      ...(health ? { health } : {}),
+    };
   }
   if (owner.state === "unknown" && owner.instance !== undefined) {
     return {
@@ -590,7 +688,7 @@ function statusFromObservations(
   owner: GatewayInstanceState,
   acceptedStart = false,
 ): ServiceStatus {
-  const managerState = manager.state;
+  const managerState = manager.available ? manager.state : null;
   const activeInstance = owner.state === "active" ? owner.instance : undefined;
   const recordedInstance =
     owner.state === "active" ||
@@ -626,7 +724,9 @@ function statusFromObservations(
       (definitionInstalled || manager.loaded || ownedByService));
 
   let state: z.infer<typeof serviceStateSchema>;
-  if (owner.state === "invalid") {
+  if (!manager.available) {
+    state = "unknown";
+  } else if (owner.state === "invalid") {
     state = "unknown";
   } else if (managedIdentityMismatch) {
     state = "unknown";
@@ -677,18 +777,35 @@ function statusFromObservations(
     root,
     definitionPath: metadata.definitionPath,
     definitionInstalled,
+    enabled: manager.enabled,
     state,
+    managerAvailable: manager.available,
     managerState:
-      owner.state === "invalid"
-        ? `${managerState}/owner-invalid`
-        : managedIdentityMismatch
-          ? `${managerState}/managed-identity-mismatch`
-          : owner.state === "unknown"
-            ? `${managerState}/owner-unverified`
-            : manifestIssue
-              ? `${managerState}/manifest-mismatch`
-              : managerState,
-    ...(activeInstance ? { pid: activeInstance.pid } : {}),
+      managerState === null
+        ? null
+        : owner.state === "invalid"
+          ? `${managerState}/owner-invalid`
+          : managedIdentityMismatch
+            ? `${managerState}/managed-identity-mismatch`
+            : owner.state === "unknown"
+              ? `${managerState}/owner-unverified`
+              : manifestIssue
+                ? `${managerState}/manifest-mismatch`
+                : managerState,
+    pid: activeInstance?.pid ?? null,
+    uptimeSeconds:
+      activeInstance === undefined
+        ? null
+        : Math.max(
+            0,
+            Math.floor(
+              (Date.now() - Date.parse(activeInstance.startedAt)) / 1000,
+            ),
+          ),
+    restartCount:
+      manager.manager === "systemd-user"
+        ? (manager.restartCount ?? null)
+        : null,
     ...(recordedInstance
       ? {
           baseUrl: gatewayHealthUrl(recordedInstance).replace(/\/health$/, ""),
@@ -704,13 +821,17 @@ async function inspectServiceAtRoot(
   const metadata = await serviceMetadata(root);
   const definitionInstalled = await Bun.file(metadata.definitionPath).exists();
   const [manager, owner, manifest, installedFingerprint] = await Promise.all([
-    inspectManager(metadata),
+    inspectManager(metadata).catch(() => unavailableManager(metadata)),
     getGatewayInstanceStateAtRoot(root),
     readManifest(root),
     definitionInstalled
       ? definitionFingerprint(metadata.definitionPath)
       : Promise.resolve(undefined),
   ]);
+  const health =
+    owner.state === "active"
+      ? await readGatewayHealth(owner.instance)
+      : undefined;
   return serviceInspectionSchema.parse({
     service: statusFromObservations(
       root,
@@ -722,7 +843,7 @@ async function inspectServiceAtRoot(
       owner,
       acceptedStart,
     ),
-    gateway: readinessFromOwner(owner),
+    gateway: readinessFromOwner(owner, health),
   });
 }
 

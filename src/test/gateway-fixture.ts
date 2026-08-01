@@ -10,6 +10,7 @@ import {
   type LocalBaseConfig,
 } from "../manager";
 import { DatabaseSession } from "../db/client";
+import { gatewayHealthSchema } from "../domains/runtime/health";
 import { compileRuntimeFixture } from "./runtime-fixture";
 import { tinyPngBase64 } from "./media-fixtures";
 
@@ -1232,8 +1233,8 @@ async function waitForReady(
       });
       lastStatus = `HTTP ${response.status}`;
       if (response.ok) {
-        const body = (await response.json()) as { status?: string };
-        if (body.status === "ok") return;
+        const body = gatewayHealthSchema.safeParse(await response.json());
+        if (body.success && body.data.status === "ok") return;
         lastStatus = `unexpected health payload: ${JSON.stringify(body)}`;
       }
     } catch (error) {

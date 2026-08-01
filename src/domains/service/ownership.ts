@@ -6,6 +6,11 @@ import {
   canonicalLocalBaseRoot as canonicalRoot,
   canonicalLocalBaseRootSchema,
 } from "../../utils/root";
+import {
+  gatewayHealthSchema,
+  gatewayIdentitySchema,
+  type GatewayHealth,
+} from "../runtime/health";
 
 export { canonicalLocalBaseRoot as canonicalRoot } from "../../utils/root";
 
@@ -18,7 +23,7 @@ const serviceIdSchema = z
 
 export const gatewayInstanceSchema = z
   .object({
-    version: z.literal(1),
+    version: z.literal(2),
     instanceId: z.uuid(),
     root: canonicalRootSchema,
     rootHash: rootHashSchema,
@@ -26,6 +31,7 @@ export const gatewayInstanceSchema = z
     startedAt: z.iso.datetime({ offset: true }),
     host: z.string().min(1).max(253),
     port: z.number().int().min(1).max(65_535),
+    instanceToken: z.uuid(),
     serviceId: serviceIdSchema.optional(),
     serviceToken: z.uuid().optional(),
   })
@@ -56,18 +62,6 @@ const operationOwnerSchema = z
       (owner.handoffExpiresAt === undefined),
     "operation handoff requires both token and expiration",
   );
-
-const healthResponseSchema = z
-  .object({
-    status: z.literal("ok"),
-    instance: z
-      .object({
-        id: z.uuid(),
-        rootHash: rootHashSchema,
-      })
-      .strict(),
-  })
-  .passthrough();
 
 export type GatewayInstance = z.infer<typeof gatewayInstanceSchema>;
 
@@ -222,6 +216,10 @@ export function gatewayHealthUrl(instance: GatewayInstance): string {
   return `http://${gatewayHost(instance.host)}:${instance.port}/health`;
 }
 
+function gatewayIdentityUrl(instance: GatewayInstance): string {
+  return `http://${gatewayHost(instance.host)}:${instance.port}/_localbase/instance`;
+}
+
 async function readGatewayInstanceAtRoot(
   root: string,
 ): Promise<
@@ -268,21 +266,34 @@ async function readGatewayInstanceAtRoot(
 
 async function healthMatches(instance: GatewayInstance): Promise<boolean> {
   try {
-    const response = await fetch(gatewayHealthUrl(instance), {
-      headers: instance.serviceToken
-        ? { "x-localbase-service-token": instance.serviceToken }
-        : undefined,
+    const response = await fetch(gatewayIdentityUrl(instance), {
+      headers: { "x-localbase-instance-token": instance.instanceToken },
       signal: AbortSignal.timeout(750),
     });
     if (!response.ok) return false;
-    const parsed = healthResponseSchema.safeParse(await response.json());
+    const parsed = gatewayIdentitySchema.safeParse(await response.json());
     return (
       parsed.success &&
-      parsed.data.instance.id === instance.instanceId &&
-      parsed.data.instance.rootHash === instance.rootHash
+      parsed.data.instanceId === instance.instanceId &&
+      parsed.data.rootHash === instance.rootHash
     );
   } catch {
     return false;
+  }
+}
+
+export async function readGatewayHealth(
+  instance: GatewayInstance,
+): Promise<GatewayHealth | undefined> {
+  try {
+    const response = await fetch(gatewayHealthUrl(instance), {
+      signal: AbortSignal.timeout(750),
+    });
+    if (!response.ok) return undefined;
+    const parsed = gatewayHealthSchema.safeParse(await response.json());
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -398,7 +409,7 @@ export async function acquireGatewayLease(
     try {
       await mkdir(paths.gatewayLockDir, { mode: 0o700 });
       const instance = gatewayInstanceSchema.parse({
-        version: 1,
+        version: 2,
         instanceId: crypto.randomUUID(),
         root: canonical,
         rootHash: canonicalRootHash(canonical),
@@ -406,6 +417,7 @@ export async function acquireGatewayLease(
         startedAt: new Date().toISOString(),
         host: parsedEndpoint.host,
         port: parsedEndpoint.port,
+        instanceToken: crypto.randomUUID(),
         ...(parsedEndpoint.serviceId
           ? {
               serviceId: parsedEndpoint.serviceId,

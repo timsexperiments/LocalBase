@@ -36,11 +36,11 @@ bun run build
 ./dist/local-base serve
 ```
 
-The gateway is available at `http://localhost:2273/v1`. Use `./dist/local-base --help` for command details. API keys can be created with `./dist/local-base keys create`.
+The gateway is available at `http://localhost:2273/v1`. `GET /health` is unauthenticated and returns a small in-memory gateway and modality lifecycle snapshot without starting or probing backends. Use `./dist/local-base --help` for command details. API keys can be created with `./dist/local-base keys create`.
 
 ## Run as a user service
 
-`serve` always runs in the foreground. `start` installs, enables, and starts a root-specific user service. `stop` stops and disables login startup without removing the definition. `restart` refreshes and enables the service. `status` reports manager state and gateway readiness without opening the LocalBase database.
+`serve` always runs in the foreground. `start` installs, enables, and starts a root-specific user service. `stop` stops and disables login startup without removing the definition. `restart` refreshes and enables the service. `status --json` reports best-effort manager availability, installation and enablement, process details, gateway reachability, and modality lifecycle without opening the LocalBase database. Unavailable manager data is represented as `null` or an explicit availability flag.
 
 ```bash
 ./dist/local-base start
