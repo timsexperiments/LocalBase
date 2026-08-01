@@ -9,7 +9,12 @@ import {
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 import { decodeOtlpTraceSpans } from "../../test/otlp-fixture";
-import { LocalBaseLogger, readLogSnapshot } from "../observability/logging";
+import {
+  type ILogger,
+  LocalBaseLogger,
+  readLogSnapshot,
+} from "../observability/logging";
+import { gatewayHealthSchema } from "./health";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
   finalizeGatewayShutdown,
@@ -39,6 +44,21 @@ function modelArtifactFile(modelId: string): string {
   const model = byId(modelId);
   if (!model) throw new Error(`Unknown catalog model: ${modelId}`);
   return primaryArtifact(model).filename;
+}
+
+function recordingLogger(eventNames: string[]): ILogger {
+  return {
+    info() {},
+    warn() {},
+    error() {},
+    event(input) {
+      eventNames.push(input.eventName);
+    },
+    request() {},
+    pipeStream() {},
+    async enableFileLogging() {},
+    async close() {},
+  };
 }
 
 test("formats IPv4, hostnames, and IPv6 literals as HTTP base URLs", () => {
@@ -164,6 +184,7 @@ test("backend health failure exports an error model-load span", async () => {
     await expect(service.ensureRunning()).rejects.toThrow(
       "Backend health check timed out.",
     );
+    expect(service.state()).toBe("failed");
     await otel.forceFlush();
     const modelLoad = traces
       .flatMap(decodeOtlpTraceSpans)
@@ -178,26 +199,325 @@ test("backend health failure exports an error model-load span", async () => {
   }
 });
 
-test("managed health discloses identity only to the service token", async () => {
+test("backend signal exit fails startup without waiting for the health timeout", async () => {
+  const otel = createOtelRuntime({
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: "disabled",
+  });
+  const logger = new LocalBaseLogger("json");
+  const service = new ManagedService(
+    "llama-server",
+    "http://127.0.0.1:1/health",
+    logger,
+    async () => {
+      const child = Bun.spawn([
+        process.execPath,
+        "-e",
+        "setInterval(() => {}, 1000)",
+      ]);
+      setTimeout(() => child.kill(15), 25);
+      return child;
+    },
+    otel,
+    5_000,
+  );
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await expect(service.ensureRunning()).rejects.toThrow("signal SIGTERM");
+    expect(service.state()).toBe("failed");
+  } finally {
+    await service.shutdown();
+    console.log = originalLog;
+    await otel.shutdown();
+    await logger.close();
+  }
+});
+
+test("intentional startup cancellation settles idle without recording a failure", async () => {
+  let healthy = false;
+  let markStarted: () => void;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const backend = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response(null, { status: healthy ? 200 : 503 }),
+  });
+  const events: string[] = [];
+  const otel = createOtelRuntime({
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: "disabled",
+  });
+  let starts = 0;
+  const service = new ManagedService(
+    "whisper-server",
+    `http://127.0.0.1:${backend.port}/health`,
+    recordingLogger(events),
+    async () => {
+      starts += 1;
+      const child = Bun.spawn([
+        process.execPath,
+        "-e",
+        "setInterval(() => {}, 1000)",
+      ]);
+      if (starts === 1) markStarted!();
+      return child;
+    },
+    otel,
+  );
+  try {
+    const cancelled = service.ensureRunning();
+    await started;
+    await service.kill();
+    await expect(cancelled).rejects.toThrow("startup was cancelled");
+    expect(service.state()).toBe("idle");
+    expect(events).not.toContain("backend.start-failed");
+    expect(events).not.toContain("backend.crash");
+
+    healthy = true;
+    await service.ensureRunning();
+    expect(service.state()).toBe("running");
+    expect(starts).toBe(2);
+  } finally {
+    await service.shutdown();
+    await otel.shutdown();
+    backend.stop(true);
+  }
+});
+
+test("a cancelled startup generation cannot publish a stale process", async () => {
+  let healthy = false;
+  let markStartEntered: () => void;
+  const startEntered = new Promise<void>((resolve) => {
+    markStartEntered = resolve;
+  });
+  let releaseFirstStart: () => void;
+  const firstStartReleased = new Promise<void>((resolve) => {
+    releaseFirstStart = resolve;
+  });
+  const backend = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response(null, { status: healthy ? 200 : 503 }),
+  });
+  const otel = createOtelRuntime({
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: "disabled",
+  });
+  let starts = 0;
+  const service = new ManagedService(
+    "sd-server",
+    `http://127.0.0.1:${backend.port}/health`,
+    recordingLogger([]),
+    async () => {
+      starts += 1;
+      if (starts === 1) {
+        markStartEntered!();
+        await firstStartReleased;
+      }
+      return Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"]);
+    },
+    otel,
+  );
+  try {
+    const staleStartup = service.ensureRunning();
+    await startEntered;
+    const killing = service.kill();
+    releaseFirstStart!();
+    await killing;
+    await expect(staleStartup).rejects.toThrow("startup was cancelled");
+    expect(service.state()).toBe("idle");
+
+    healthy = true;
+    await service.ensureRunning();
+    expect(service.state()).toBe("running");
+    expect(starts).toBe(2);
+  } finally {
+    await service.shutdown();
+    await otel.shutdown();
+    backend.stop(true);
+  }
+});
+
+test("terminal crash limits reject future backend work", async () => {
+  const otel = createOtelRuntime({
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: "disabled",
+  });
+  const events: string[] = [];
+  let starts = 0;
+  const service = new ManagedService(
+    "llama-server",
+    "http://127.0.0.1:1/health",
+    recordingLogger(events),
+    async () => {
+      starts += 1;
+      return Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"]);
+    },
+    otel,
+  );
+  (service as unknown as { crashTimes: number[] }).crashTimes = Array.from(
+    { length: 5 },
+    () => Date.now(),
+  );
+  try {
+    await expect(service.ensureRunning()).rejects.toThrow("repeated failures");
+    expect(service.state()).toBe("failed");
+    await expect(service.ensureRunning()).rejects.toThrow("repeated failures");
+    expect(starts).toBe(0);
+    expect(events).toContain("backend.crash");
+    expect(events).not.toContain("backend.start-failed");
+  } finally {
+    await service.shutdown();
+    await otel.shutdown();
+  }
+});
+
+test("gateway returns service unavailable without proxying a failed backend", async () => {
+  const gateway = await startGatewayFixture({
+    llmBackendHealthy: false,
+    llmRuntimeExitOnStart: true,
+  });
+  try {
+    const response = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "service_unavailable" },
+    });
+    expect(gateway.upstreamRequests).toEqual([]);
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test("managed service reports startup, running, recovery, and stopping states", async () => {
+  const backend = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response(null, { status: 200 }),
+  });
+  const otel = createOtelRuntime({
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: "disabled",
+  });
+  const logger = new LocalBaseLogger("json");
+  const processes: Bun.Subprocess[] = [];
+  const service = new ManagedService(
+    "llama-server",
+    `http://127.0.0.1:${backend.port}/health`,
+    logger,
+    async () => {
+      const child = Bun.spawn([
+        process.execPath,
+        "-e",
+        "setInterval(() => {}, 1000)",
+      ]);
+      processes.push(child);
+      return child;
+    },
+    otel,
+  );
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    const starting = service.ensureRunning();
+    expect(service.state()).toBe("starting");
+    await starting;
+    expect(service.state()).toBe("running");
+
+    processes[0]?.kill(15);
+    await processes[0]?.exited;
+    const recoveryDeadline = Date.now() + 2_000;
+    while (service.state() !== "starting" && Date.now() < recoveryDeadline) {
+      await Bun.sleep(10);
+    }
+    expect(service.state()).toBe("starting");
+
+    const stopping = service.shutdown();
+    expect(service.state()).toBe("stopping");
+    await stopping;
+    expect(service.state()).toBe("stopping");
+  } finally {
+    await service.shutdown();
+    console.log = originalLog;
+    await otel.shutdown();
+    await logger.close();
+    backend.stop(true);
+  }
+});
+
+test("health is public while instance identity requires its private token", async () => {
   const gateway = await startGatewayFixture({ managedIdentity: true });
   try {
     const publicResponse = await fetch(`${gateway.baseUrl}/health`);
     expect(publicResponse.status).toBe(200);
-    expect(await publicResponse.json()).not.toHaveProperty("instance");
+    expect(await publicResponse.json()).toMatchObject({
+      status: "ok",
+      modalities: {
+        llm: { configured: true, state: "idle" },
+      },
+    });
 
     const owner = (await Bun.file(
       join(gateway.root, "runtime", "gateway.lock", "owner.json"),
-    ).json()) as { serviceToken: string; instanceId: string; rootHash: string };
-    const authenticated = await fetch(`${gateway.baseUrl}/health`, {
-      headers: { "x-localbase-service-token": owner.serviceToken },
-    });
+    ).json()) as {
+      instanceToken: string;
+      instanceId: string;
+      rootHash: string;
+    };
+    const authenticated = await fetch(
+      `${gateway.baseUrl}/_localbase/instance`,
+      {
+        headers: { "x-localbase-instance-token": owner.instanceToken },
+      },
+    );
     expect(await authenticated.json()).toMatchObject({
-      instance: { id: owner.instanceId, rootHash: owner.rootHash },
+      instanceId: owner.instanceId,
+      rootHash: owner.rootHash,
     });
     expect(
       (
-        await fetch(`${gateway.baseUrl}/health`, {
-          headers: { "x-localbase-service-token": crypto.randomUUID() },
+        await fetch(`${gateway.baseUrl}/_localbase/instance`, {
+          headers: { "x-localbase-instance-token": crypto.randomUUID() },
         })
       ).status,
     ).toBe(404);
@@ -430,13 +750,62 @@ describe("API gateway integration", () => {
     expect(body.error.message).toContain(`${expectedPath}:`);
   }
 
-  test("GET /health reports the enabled modalities", async () => {
+  test("health allows GET and HEAD without starting models", async () => {
+    expect(await gateway.readLlmRuntimeLaunches()).toEqual([]);
     const response = await request("/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    expect(gatewayHealthSchema.parse(await response.json())).toMatchObject({
       status: "ok",
-      enabled: { llm: true, stt: true, image: true },
+      modalities: {
+        llm: { configured: true, state: "idle" },
+        stt: { configured: true, state: "idle" },
+        image: { configured: true, state: "idle" },
+      },
     });
+    const head = await request("/health", { method: "HEAD" });
+    expect(head.status).toBe(response.status);
+    expect(
+      [...head.headers].filter(([name]) => name !== "date").sort(),
+    ).toEqual([...response.headers].filter(([name]) => name !== "date").sort());
+    expect(await head.text()).toBe("");
+    expect(await gateway.readLlmRuntimeLaunches()).toEqual([]);
+
+    const post = await request("/health", { method: "POST" });
+    expect(post.status).toBe(405);
+    expect(post.headers.get("allow")).toBe("GET, HEAD");
+    await expect(post.json()).resolves.toEqual({
+      error: {
+        message: "Method not allowed.",
+        type: "invalid_request_error",
+        param: null,
+        code: "method_not_allowed",
+      },
+    });
+    expect(
+      gatewayHealthSchema.safeParse({
+        status: "ok",
+        version: "0.1.0",
+        uptimeSeconds: 0,
+        modalities: {
+          llm: { configured: true, state: "idle" },
+          stt: { configured: false, state: "disabled" },
+          image: { configured: false, state: "disabled" },
+        },
+        error: "gateway_stopping",
+      }).success,
+    ).toBe(false);
+    expect(
+      gatewayHealthSchema.safeParse({
+        status: "error",
+        version: "0.1.0",
+        uptimeSeconds: 0,
+        modalities: {
+          llm: { configured: true, state: "idle" },
+          stt: { configured: false, state: "disabled" },
+          image: { configured: false, state: "disabled" },
+        },
+      }).success,
+    ).toBe(false);
   });
 
   test("rejects a second serve process for the same canonical root", async () => {
@@ -569,6 +938,10 @@ describe("API gateway integration", () => {
         },
       ],
     });
+    const health = gatewayHealthSchema.parse(
+      await (await request("/health")).json(),
+    );
+    expect(health.modalities.llm.state).toBe("running");
   });
 
   test("forwards user-only chat requests without injected instructions", async () => {
@@ -887,6 +1260,7 @@ describe("API gateway integration", () => {
 
     const requestOffset = gateway.upstreamRequests.length;
     const launchOffset = (await gateway.readLlmRuntimeLaunches()).length;
+    const eventOffset = (await readLogSnapshot(gateway.root)).length;
 
     const streamId = "runtime-pairing";
     const firstResponse = await request("/v1/chat/completions", {
@@ -969,6 +1343,11 @@ describe("API gateway integration", () => {
         join(initialConfig.llmModelsDir, modelArtifactFile(modelId)),
       ),
     );
+    expect(
+      (await readLogSnapshot(gateway.root))
+        .slice(eventOffset)
+        .filter((event) => event.eventName === "backend.restart-backoff"),
+    ).toEqual([]);
   });
 
   test("holds model switches until streamed LLM responses end", async () => {

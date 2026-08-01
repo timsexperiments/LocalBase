@@ -18,6 +18,8 @@ import {
   withServiceStartHandoff,
   withRootOperation,
 } from "./ownership";
+import { gatewayHealthSchema, gatewayIdentitySchema } from "../runtime/health";
+import { LOCALBASE_VERSION } from "../../version";
 
 function reservePort(): number {
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -49,16 +51,38 @@ test("uses one authenticated gateway lease for canonical root aliases", async ()
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: reservePort(),
-    fetch: () =>
-      lease
-        ? Response.json({
+    fetch: (request) => {
+      const pathname = new URL(request.url).pathname;
+      if (pathname === "/_localbase/instance" && lease) {
+        if (
+          request.headers.get("x-localbase-instance-token") !==
+          lease.instance.instanceToken
+        ) {
+          return new Response(null, { status: 404 });
+        }
+        return Response.json(
+          gatewayIdentitySchema.parse({
+            instanceId: lease.instance.instanceId,
+            rootHash: lease.instance.rootHash,
+          }),
+        );
+      }
+      if (pathname === "/health" && lease) {
+        return Response.json(
+          gatewayHealthSchema.parse({
             status: "ok",
-            instance: {
-              id: lease.instance.instanceId,
-              rootHash: lease.instance.rootHash,
+            version: LOCALBASE_VERSION,
+            uptimeSeconds: 0,
+            modalities: {
+              llm: { configured: true, state: "idle" },
+              stt: { configured: false, state: "disabled" },
+              image: { configured: false, state: "disabled" },
             },
-          })
-        : new Response("starting", { status: 503 }),
+          }),
+        );
+      }
+      return new Response(null, { status: 404 });
+    },
   });
 
   try {

@@ -40,7 +40,7 @@ The gateway is available at `http://localhost:2273/v1`. Use `./dist/local-base -
 
 ## Run as a user service
 
-`serve` always runs in the foreground. `start` installs, enables, and starts a root-specific user service. `stop` stops and disables login startup without removing the definition. `restart` refreshes and enables the service. `status` reports manager state and gateway readiness without opening the LocalBase database.
+`serve` always runs in the foreground. `start` installs, enables, and starts a root-specific user service. `stop` stops and disables login startup without removing the definition. `restart` refreshes and enables the service. `status` reports service-manager, process, gateway, and modality state without opening the LocalBase database.
 
 ```bash
 ./dist/local-base start

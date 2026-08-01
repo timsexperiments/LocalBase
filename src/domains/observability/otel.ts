@@ -49,6 +49,7 @@ import {
   ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
 import type { LocalBaseConfig } from "../../manager";
+import { LOCALBASE_VERSION } from "../../version";
 import {
   redactExternalLogText,
   type LogEvent,
@@ -65,7 +66,7 @@ import {
 
 export const OTEL_SERVICE_NAME = "local-base";
 export const OTEL_SERVICE_NAMESPACE = "localbase";
-export const OTEL_SERVICE_VERSION = "0.1.0";
+export const OTEL_SERVICE_VERSION = LOCALBASE_VERSION;
 export const OTEL_MAX_QUEUE_SIZE = 2_048;
 export const OTEL_MAX_BATCH_SIZE = 256;
 export const OTEL_EXPORT_DELAY_MS = 1_000;
