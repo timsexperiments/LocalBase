@@ -63,6 +63,26 @@ const HEALTH_PROBE_TIMEOUT_MS = 2_000;
 const UPSTREAM_PROXY_TIMEOUT_MS = 120_000;
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
 
+class StartupCancelledError extends Error {
+  constructor(name: string) {
+    super(`${name} startup was cancelled.`);
+    this.name = "StartupCancelledError";
+  }
+}
+
+class CrashLimitReachedError extends Error {
+  constructor(name: string) {
+    super(`${name} is unavailable after repeated failures.`);
+    this.name = "CrashLimitReachedError";
+  }
+}
+
+type StartupAttempt = {
+  generation: number;
+  controller: AbortController;
+  cancelled: boolean;
+};
+
 function parseAuthMode(raw: AuthMode | undefined): AuthMode {
   if (!raw) return "either";
   if (raw === "bearer" || raw === "x-api-key" || raw === "either") return raw;
@@ -1225,6 +1245,8 @@ export class ManagedService {
   private shutdownPromise: Promise<void> | null = null;
   private guardians = new Map<number, Bun.Subprocess>();
   private expectedStops = new WeakSet<Bun.Subprocess>();
+  private startupGeneration = 0;
+  private startup: StartupAttempt | null = null;
   private onFatal: () => Promise<void>;
   private timeoutMs: number;
   private otel: OtelRuntime;
@@ -1292,6 +1314,43 @@ export class ManagedService {
     return this.lifecycleState === "failed";
   }
 
+  private startupIsActive(attempt: StartupAttempt): boolean {
+    return (
+      this.startup?.generation === attempt.generation && !attempt.cancelled
+    );
+  }
+
+  private assertStartupActive(attempt: StartupAttempt): void {
+    if (!this.startupIsActive(attempt)) {
+      throw new StartupCancelledError(this.name);
+    }
+  }
+
+  private cancelStartup(): void {
+    const attempt = this.startup;
+    if (!attempt || attempt.cancelled) return;
+    attempt.cancelled = true;
+    attempt.controller.abort();
+  }
+
+  private async waitForStartupPoll(
+    attempt: StartupAttempt,
+    intervalMs: number,
+  ): Promise<void> {
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(finish, intervalMs);
+      const onAbort = () => finish();
+      function finish() {
+        clearTimeout(timer);
+        attempt.controller.signal.removeEventListener("abort", onAbort);
+        resolve();
+      }
+      attempt.controller.signal.addEventListener("abort", onAbort, {
+        once: true,
+      });
+    });
+  }
+
   /**
    * Lazily starts the service on first use, or awaits recovery if currently restarting.
    */
@@ -1306,7 +1365,7 @@ export class ManagedService {
     if (this.isRestarting) {
       await this.restartPromise;
       if (this.failed()) throw this.unavailableError();
-      return;
+      return await this.ensureRunning();
     }
     await this.start();
   }
@@ -1316,59 +1375,72 @@ export class ManagedService {
    * Employs exponential backoff on retry and exits the manager if crash limits are hit.
    */
   private async start(): Promise<void> {
+    const attempt: StartupAttempt = {
+      generation: ++this.startupGeneration,
+      controller: new AbortController(),
+      cancelled: false,
+    };
+    this.startup = attempt;
     this.lifecycleState = "starting";
     this.isRestarting = true;
     this.restartPromise = (async () => {
+      let proc: Bun.Subprocess | null = null;
       const now = Date.now();
       this.crashTimes = this.crashTimes.filter((t) => now - t < 300000); // 5 min window
       const crashCount = this.crashTimes.length;
 
-      if (crashCount >= 5) {
-        this.lifecycleState = "failed";
-        this.isRestarting = false;
-        this.lifecycle("backend.crash", "error", {
-          crashCount,
-          crashLimitReached: true,
-        });
-        void this.onFatal().catch((err) => {
-          this.logger.error(this.name, "Failed to stop manager", err as Error);
-        });
-        throw this.unavailableError();
-      }
-
-      if (crashCount > 0) {
-        const backoffMs = Math.min(1000 * Math.pow(2, crashCount - 1), 16000);
-        this.lifecycle("backend.restart-backoff", "warn", {
-          backoffMs,
-          crashCount,
-        });
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
-      }
-
-      this.lifecycle("backend.starting", "info", { crashCount });
       try {
-        const proc = await this.otel.withSpan(
+        if (crashCount >= 5) {
+          this.lifecycleState = "failed";
+          this.lifecycle("backend.crash", "error", {
+            crashCount,
+            crashLimitReached: true,
+          });
+          void this.onFatal().catch((err) => {
+            this.logger.error(
+              this.name,
+              "Failed to stop manager",
+              err as Error,
+            );
+          });
+          throw new CrashLimitReachedError(this.name);
+        }
+
+        if (crashCount > 0) {
+          const backoffMs = Math.min(1000 * Math.pow(2, crashCount - 1), 16000);
+          this.lifecycle("backend.restart-backoff", "warn", {
+            backoffMs,
+            crashCount,
+          });
+          await this.waitForStartupPoll(attempt, backoffMs);
+        }
+
+        this.assertStartupActive(attempt);
+        this.lifecycle("backend.starting", "info", { crashCount });
+        proc = await this.otel.withSpan(
           "localbase.backend.start",
           internalSpanOptions({
             "localbase.backend": this.name,
           }),
           this.startFn,
         );
-        if (this.isShuttingDown) {
-          await this.stopProcess(proc);
-          return;
+        const startedProcess = proc;
+        if (!this.startupIsActive(attempt) || this.isShuttingDown) {
+          this.expectedStops.add(startedProcess);
+          await this.stopProcess(startedProcess);
+          throw new StartupCancelledError(this.name);
         }
 
-        this.proc = proc;
-        this.startGuardian(proc);
+        this.proc = startedProcess;
+        this.startGuardian(startedProcess);
         if (this.proc.stdout && typeof this.proc.stdout !== "number")
           this.logger.pipeStream(this.proc.stdout, this.name);
         if (this.proc.stderr && typeof this.proc.stderr !== "number")
           this.logger.pipeStream(this.proc.stderr, this.name);
 
-        proc.exited.then(() => {
-          void this.stopGuardian(proc);
-          this.handleCrash(proc);
+        startedProcess.exited.then(() => {
+          void this.stopGuardian(startedProcess);
+          this.handleCrash(startedProcess);
         });
 
         await this.otel.withSpan(
@@ -1377,12 +1449,25 @@ export class ManagedService {
             "localbase.backend": this.name,
           }),
           async () => {
-            await this.waitHealthy();
+            await this.waitHealthy(startedProcess, attempt);
           },
         );
-        this.lifecycle("backend.ready", "info", { pid: proc.pid });
+        this.assertStartupActive(attempt);
+        this.lifecycle("backend.ready", "info", { pid: startedProcess.pid });
         this.lifecycleState = "running";
       } catch (err) {
+        if (err instanceof StartupCancelledError || attempt.cancelled) {
+          if (proc && this.proc === proc) {
+            await this.stopCurrentProcess();
+          } else if (proc) {
+            this.expectedStops.add(proc);
+            await this.stopProcess(proc);
+          }
+          throw err instanceof StartupCancelledError
+            ? err
+            : new StartupCancelledError(this.name);
+        }
+        if (err instanceof CrashLimitReachedError) throw err;
         this.logger.event({
           severity: "error",
           eventName: "backend.start-failed",
@@ -1400,12 +1485,18 @@ export class ManagedService {
           },
         });
         this.crashTimes.push(Date.now());
-        await this.kill();
+        await this.stopCurrentProcess();
         this.lifecycleState = "failed";
-        this.isRestarting = false;
         throw err;
+      } finally {
+        if (this.startup === attempt) {
+          this.startup = null;
+          this.isRestarting = false;
+          if (attempt.cancelled && !this.isShuttingDown) {
+            this.lifecycleState = "idle";
+          }
+        }
       }
-      this.isRestarting = false;
     })();
     await this.restartPromise;
   }
@@ -1413,18 +1504,22 @@ export class ManagedService {
   /**
    * Polls the backend's /health endpoint until it is online or startup times out.
    */
-  private async waitHealthy(): Promise<void> {
+  private async waitHealthy(
+    proc: Bun.Subprocess,
+    attempt: StartupAttempt,
+  ): Promise<void> {
     const timeout = this.timeoutMs;
     const interval = 200; // 200ms
     const start = Date.now();
 
     while (Date.now() - start < timeout) {
+      this.assertStartupActive(attempt);
       if (this.isShuttingDown) throw new Error(`${this.name} is shutting down`);
-      if (this.proc && this.exited(this.proc)) {
+      if (this.exited(proc)) {
         const exit =
-          this.proc.signalCode == null
-            ? `exit code ${this.proc.exitCode}`
-            : `signal ${this.proc.signalCode}`;
+          proc.signalCode == null
+            ? `exit code ${proc.exitCode}`
+            : `signal ${proc.signalCode}`;
         this.logger.error(
           this.name,
           `Subprocess exited during startup with ${exit}`,
@@ -1433,13 +1528,17 @@ export class ManagedService {
       }
       try {
         const res = await fetch(this.healthUrl, {
-          signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
+          signal: AbortSignal.any([
+            AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
+            attempt.controller.signal,
+          ]),
         });
         if (res.ok) return;
       } catch (e) {
+        this.assertStartupActive(attempt);
         // Expected network failures while booting
       }
-      await new Promise((resolve) => setTimeout(resolve, interval));
+      await this.waitForStartupPoll(attempt, interval);
     }
     throw new Error("Backend health check timed out.");
   }
@@ -1449,7 +1548,14 @@ export class ManagedService {
    */
   async kill(): Promise<void> {
     if (!this.isShuttingDown) this.lifecycleState = "stopping";
+    const startup = this.isRestarting ? this.restartPromise : null;
+    this.cancelStartup();
     await this.stopCurrentProcess();
+    if (startup) {
+      await startup.catch((error) => {
+        if (!(error instanceof StartupCancelledError)) throw error;
+      });
+    }
     if (!this.isShuttingDown) this.lifecycleState = "idle";
   }
 
@@ -1461,6 +1567,7 @@ export class ManagedService {
       this.lifecycle("backend.stopping", "info");
       const startup = this.restartPromise;
       this.shutdownPromise = (async () => {
+        this.cancelStartup();
         await this.stopCurrentProcess();
         if (startup) await startup.catch(() => {});
         await this.stopCurrentProcess();

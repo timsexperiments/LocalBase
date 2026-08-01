@@ -9,7 +9,11 @@ import {
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 import { decodeOtlpTraceSpans } from "../../test/otlp-fixture";
-import { LocalBaseLogger, readLogSnapshot } from "../observability/logging";
+import {
+  type ILogger,
+  LocalBaseLogger,
+  readLogSnapshot,
+} from "../observability/logging";
 import { gatewayHealthSchema } from "./health";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
@@ -40,6 +44,21 @@ function modelArtifactFile(modelId: string): string {
   const model = byId(modelId);
   if (!model) throw new Error(`Unknown catalog model: ${modelId}`);
   return primaryArtifact(model).filename;
+}
+
+function recordingLogger(eventNames: string[]): ILogger {
+  return {
+    info() {},
+    warn() {},
+    error() {},
+    event(input) {
+      eventNames.push(input.eventName);
+    },
+    request() {},
+    pipeStream() {},
+    async enableFileLogging() {},
+    async close() {},
+  };
 }
 
 test("formats IPv4, hostnames, and IPv6 literals as HTTP base URLs", () => {
@@ -221,6 +240,125 @@ test("backend signal exit fails startup without waiting for the health timeout",
   }
 });
 
+test("intentional startup cancellation settles idle without recording a failure", async () => {
+  let healthy = false;
+  let markStarted: () => void;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const backend = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response(null, { status: healthy ? 200 : 503 }),
+  });
+  const events: string[] = [];
+  const otel = createOtelRuntime({
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: "disabled",
+  });
+  let starts = 0;
+  const service = new ManagedService(
+    "whisper-server",
+    `http://127.0.0.1:${backend.port}/health`,
+    recordingLogger(events),
+    async () => {
+      starts += 1;
+      const child = Bun.spawn([
+        process.execPath,
+        "-e",
+        "setInterval(() => {}, 1000)",
+      ]);
+      if (starts === 1) markStarted!();
+      return child;
+    },
+    otel,
+  );
+  try {
+    const cancelled = service.ensureRunning();
+    await started;
+    await service.kill();
+    await expect(cancelled).rejects.toThrow("startup was cancelled");
+    expect(service.state()).toBe("idle");
+    expect(events).not.toContain("backend.start-failed");
+    expect(events).not.toContain("backend.crash");
+
+    healthy = true;
+    await service.ensureRunning();
+    expect(service.state()).toBe("running");
+    expect(starts).toBe(2);
+  } finally {
+    await service.shutdown();
+    await otel.shutdown();
+    backend.stop(true);
+  }
+});
+
+test("a cancelled startup generation cannot publish a stale process", async () => {
+  let healthy = false;
+  let markStartEntered: () => void;
+  const startEntered = new Promise<void>((resolve) => {
+    markStartEntered = resolve;
+  });
+  let releaseFirstStart: () => void;
+  const firstStartReleased = new Promise<void>((resolve) => {
+    releaseFirstStart = resolve;
+  });
+  const backend = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response(null, { status: healthy ? 200 : 503 }),
+  });
+  const otel = createOtelRuntime({
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: "disabled",
+  });
+  let starts = 0;
+  const service = new ManagedService(
+    "sd-server",
+    `http://127.0.0.1:${backend.port}/health`,
+    recordingLogger([]),
+    async () => {
+      starts += 1;
+      if (starts === 1) {
+        markStartEntered!();
+        await firstStartReleased;
+      }
+      return Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"]);
+    },
+    otel,
+  );
+  try {
+    const staleStartup = service.ensureRunning();
+    await startEntered;
+    const killing = service.kill();
+    releaseFirstStart!();
+    await killing;
+    await expect(staleStartup).rejects.toThrow("startup was cancelled");
+    expect(service.state()).toBe("idle");
+
+    healthy = true;
+    await service.ensureRunning();
+    expect(service.state()).toBe("running");
+    expect(starts).toBe(2);
+  } finally {
+    await service.shutdown();
+    await otel.shutdown();
+    backend.stop(true);
+  }
+});
+
 test("terminal crash limits reject future backend work", async () => {
   const otel = createOtelRuntime({
     enabled: false,
@@ -232,12 +370,12 @@ test("terminal crash limits reject future backend work", async () => {
     source: "persistent",
     displayEndpoint: "disabled",
   });
-  const logger = new LocalBaseLogger("json");
+  const events: string[] = [];
   let starts = 0;
   const service = new ManagedService(
     "llama-server",
     "http://127.0.0.1:1/health",
-    logger,
+    recordingLogger(events),
     async () => {
       starts += 1;
       return Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"]);
@@ -248,18 +386,16 @@ test("terminal crash limits reject future backend work", async () => {
     { length: 5 },
     () => Date.now(),
   );
-  const originalLog = console.log;
-  console.log = () => {};
   try {
     await expect(service.ensureRunning()).rejects.toThrow("repeated failures");
     expect(service.state()).toBe("failed");
     await expect(service.ensureRunning()).rejects.toThrow("repeated failures");
     expect(starts).toBe(0);
+    expect(events).toContain("backend.crash");
+    expect(events).not.toContain("backend.start-failed");
   } finally {
     await service.shutdown();
-    console.log = originalLog;
     await otel.shutdown();
-    await logger.close();
   }
 });
 
