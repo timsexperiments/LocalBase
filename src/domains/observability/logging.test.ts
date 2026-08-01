@@ -19,6 +19,7 @@ import {
   bootstrapDiagnosticPath,
   createLogEvent,
   followLogEvents,
+  formatHumanLogEvent,
   logEventSchema,
   logDirectory,
   matchesLogFilters,
@@ -145,6 +146,46 @@ test("validates one redacted event contract before console or file sinks", () =>
       }).requestId,
     ).toBeUndefined();
   }
+});
+
+test("models trace correlation as one opaque local object", () => {
+  const traced = {
+    ...event(1),
+    trace: { traceId: "sdk-trace", spanId: "sdk-span" },
+  };
+
+  expect(logEventSchema.parse(traced).trace).toEqual(traced.trace);
+  expect(formatHumanLogEvent(logEventSchema.parse(traced))).toContain(
+    "trace=sdk-trace/sdk-span",
+  );
+  expect(
+    logEventSchema.safeParse({
+      ...traced,
+      trace: { traceId: "sdk-trace" },
+    }).success,
+  ).toBe(false);
+  expect(
+    logEventSchema.safeParse({
+      ...traced,
+      trace: { spanId: "sdk-span" },
+    }).success,
+  ).toBe(false);
+  expect(
+    logEventSchema.safeParse({
+      ...traced,
+      trace: {
+        traceId: "sdk-trace",
+        spanId: "sdk-span",
+        traceFlags: 1,
+      },
+    }).success,
+  ).toBe(false);
+  expect(
+    logEventSchema.safeParse({
+      ...traced,
+      traceId: "sdk-trace",
+    }).success,
+  ).toBe(false);
 });
 
 test("never persists raw backend output", async () => {
@@ -497,17 +538,34 @@ test("atomically replaces bootstrap diagnostics without missing or invalid reads
   const root = createRoot();
   await writeBootstrapDiagnostic(root, new Error("initial failure"));
   const path = bootstrapDiagnosticPath(root);
-  const failures: unknown[] = [];
+  const observations = {
+    validReads: 0,
+    missingReads: 0,
+    invalidReads: 0,
+    samples: [] as string[],
+  };
   let replacing = true;
   const reader = (async () => {
     while (replacing) {
       try {
         const contents = await Bun.file(path).text();
         const lines = contents.trimEnd().split("\n");
-        expect(lines).toHaveLength(1);
+        if (lines.length !== 1) {
+          throw new Error(`expected one record, received ${lines.length}`);
+        }
         logEventSchema.parse(JSON.parse(lines[0]!));
+        observations.validReads += 1;
       } catch (error) {
-        failures.push(error);
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          observations.missingReads += 1;
+        } else {
+          observations.invalidReads += 1;
+        }
+        if (observations.samples.length < 5) {
+          observations.samples.push(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
       }
       await Bun.sleep(0);
     }
@@ -519,7 +577,12 @@ test("atomically replaces bootstrap diagnostics without missing or invalid reads
   );
   replacing = false;
   await reader;
-  expect(failures).toEqual([]);
+  expect(observations.validReads).toBeGreaterThan(0);
+  expect({
+    missingReads: observations.missingReads,
+    invalidReads: observations.invalidReads,
+    samples: observations.samples,
+  }).toEqual({ missingReads: 0, invalidReads: 0, samples: [] });
   logEventSchema.parse(JSON.parse((await Bun.file(path).text()).trimEnd()));
   expect(
     (await readdir(logDirectory(root))).filter((name) =>

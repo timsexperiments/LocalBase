@@ -21,6 +21,9 @@ export const configTable = sqliteTable("config", {
   activeImageModel: text("active_image_model").notNull(),
   hfToken: text("hf_token").notNull(),
   parallel: text("parallel").default("auto").notNull(),
+  otelEndpoint: text("otel_endpoint").default("").notNull(),
+  otelHeaders: text("otel_headers").default("").notNull(),
+  otelSampleRatio: integer("otel_sample_ratio").default(100).notNull(),
 });
 
 export const apiKeysTable = sqliteTable("api_keys", {

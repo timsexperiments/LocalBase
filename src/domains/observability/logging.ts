@@ -20,8 +20,9 @@ import {
   readExact,
   syncOwnedPrivateDirectory,
 } from "./secure-log-files";
+import type { OtelRuntime } from "./otel";
 
-export const LOG_SCHEMA_VERSION = 1 as const;
+export const LOG_SCHEMA_VERSION = 2 as const;
 export const LOG_DIRECTORY_NAME = "logs";
 export const ACTIVE_LOG_FILENAME = "events.jsonl";
 export const MAX_ACTIVE_LOG_BYTES = 10 * 1024 * 1024;
@@ -134,6 +135,14 @@ export const logErrorMetadataSchema = z
   })
   .strict();
 
+export const logTraceCorrelationSchema = z
+  .object({
+    traceId: z.string(),
+    spanId: z.string(),
+  })
+  .strict();
+export type LogTraceCorrelation = z.infer<typeof logTraceCorrelationSchema>;
+
 /** Stable structured event contract shared by local files and future OTLP export. */
 export const logEventSchema = z
   .object({
@@ -152,6 +161,7 @@ export const logEventSchema = z
       .max(MAX_REQUEST_ID_LENGTH)
       .regex(/^[A-Za-z0-9._:-]+$/)
       .optional(),
+    trace: logTraceCorrelationSchema.optional(),
     http: logHttpMetadataSchema.optional(),
     error: logErrorMetadataSchema.optional(),
     attributes: logAttributesSchema.optional(),
@@ -300,7 +310,10 @@ export function redactLogAttributes(
 }
 
 /** Creates one validated, redacted event; sinks never receive unvalidated data. */
-export function createLogEvent(input: LogEventInput): LogEvent {
+export function createLogEvent(
+  input: LogEventInput,
+  trace?: LogTraceCorrelation,
+): LogEvent {
   const error = input.error
     ? {
         type: boundedText(input.error.type || "Error", 128),
@@ -329,6 +342,7 @@ export function createLogEvent(input: LogEventInput): LogEvent {
     runtime: input.runtime,
     message: boundedText(input.message),
     ...(requestId ? { requestId } : {}),
+    ...(trace ? { trace } : {}),
     ...(parsedHttp?.success ? { http: parsedHttp.data } : {}),
     ...(error ? { error } : {}),
     ...(attributes ? { attributes } : {}),
@@ -836,6 +850,7 @@ export interface ILogger {
     attributes?: Record<string, unknown>,
   ): void;
   event(input: LogEventInput): void;
+  localDiagnostic?(input: LogEventInput): void;
   request(
     method: string,
     path: string,
@@ -845,6 +860,7 @@ export interface ILogger {
   ): void;
   pipeStream(stream: ReadableStream<Uint8Array>, component: string): void;
   enableFileLogging(root: string): Promise<void>;
+  setOtelRuntime?(runtime: OtelRuntime): void;
   close(): Promise<void>;
 }
 
@@ -852,6 +868,7 @@ export interface ILogger {
 export class LocalBaseLogger implements ILogger {
   private readonly format: "human" | "json";
   private writer: RotatingLogWriter | undefined;
+  private otel: OtelRuntime | undefined;
 
   constructor(format?: string) {
     this.format =
@@ -862,9 +879,18 @@ export class LocalBaseLogger implements ILogger {
   }
 
   event(input: LogEventInput): void {
-    const event = createLogEvent(input);
+    this.writeEvent(input, true);
+  }
+
+  localDiagnostic(input: LogEventInput): void {
+    this.writeEvent(input, false);
+  }
+
+  private writeEvent(input: LogEventInput, exportOtel: boolean): void {
+    const event = createLogEvent(input, this.otel?.activeCorrelation());
     consoleWrite(event, this.format);
     this.writer?.enqueue(event);
+    if (exportOtel) this.otel?.emit(event);
   }
 
   info(
@@ -993,9 +1019,15 @@ export class LocalBaseLogger implements ILogger {
     this.writer = writer;
   }
 
+  setOtelRuntime(runtime: OtelRuntime): void {
+    this.otel = runtime;
+  }
+
   async close(): Promise<void> {
     await this.writer?.close();
     this.writer = undefined;
+    await this.otel?.shutdown();
+    this.otel = undefined;
   }
 }
 
@@ -1427,8 +1459,11 @@ export async function followLogEvents(
 }
 
 export function formatHumanLogEvent(event: LogEvent): string {
+  const trace = event.trace
+    ? ` trace=${event.trace.traceId}/${event.trace.spanId}`
+    : "";
   const request = event.http
     ? ` ${event.http.method} ${event.http.path} ${event.http.status} ${event.http.durationMs.toFixed(1)}ms`
     : "";
-  return `${event.timestamp} ${event.severity.toUpperCase()} ${event.component} ${event.message}${request}`;
+  return `${event.timestamp} ${event.severity.toUpperCase()} ${event.component} ${event.message}${trace}${request}`;
 }

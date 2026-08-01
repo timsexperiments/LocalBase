@@ -29,5 +29,8 @@ CREATE TABLE `config` (
 	`active_stt_model` text NOT NULL,
 	`active_image_model` text NOT NULL,
 	`hf_token` text NOT NULL,
-	`parallel` text DEFAULT 'auto' NOT NULL
+	`parallel` text DEFAULT 'auto' NOT NULL,
+	`otel_endpoint` text DEFAULT '' NOT NULL,
+	`otel_headers` text DEFAULT '' NOT NULL,
+	`otel_sample_ratio` integer DEFAULT 100 NOT NULL
 );

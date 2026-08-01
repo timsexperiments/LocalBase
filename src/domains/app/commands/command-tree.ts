@@ -200,6 +200,21 @@ export const configureCommand = command<ConfigureInput>({
       valueHint: "auto|1-4",
       description: "Parallel request slots",
     },
+    "otel-endpoint": {
+      type: "string",
+      valueHint: "url",
+      description: "OTLP/HTTP base endpoint; empty disables export",
+    },
+    "otel-headers": {
+      type: "string",
+      valueHint: "key=value,...",
+      description: "OTLP exporter headers",
+    },
+    "otel-sample-ratio": {
+      type: "string",
+      valueHint: "0-100",
+      description: "Percentage of root traces to sample",
+    },
     "stt-host": {
       type: "string",
       valueHint: "host",

@@ -6,6 +6,8 @@ import {
   serviceStatusSchema,
 } from "../../service/manager";
 import { logEventSchema } from "../../observability/logging";
+import type { OtelConfiguration } from "../../observability/otel";
+import { sanitizedOtelEndpoint } from "../../observability/otel-config";
 
 export const configurationOutputSchema = z
   .object({
@@ -28,6 +30,23 @@ export const configurationOutputSchema = z
     activeImageModel: z.string(),
     parallel: z.union([z.literal("auto"), z.number().int().min(1).max(4)]),
     hfTokenConfigured: z.boolean(),
+    observability: z
+      .object({
+        enabled: z.boolean(),
+        source: z.enum(["disabled", "persistent", "environment"]),
+        endpoint: z.string(),
+        persistedEndpoint: z.string(),
+        sampler: z.enum([
+          "always_on",
+          "always_off",
+          "traceidratio",
+          "parentbased_always_on",
+          "parentbased_always_off",
+          "parentbased_traceidratio",
+        ]),
+        sampleRatio: z.number().min(0).max(1),
+      })
+      .strict(),
   })
   .strict();
 
@@ -124,7 +143,11 @@ export const serveResultSchema = z
   .strict();
 
 /** Omits credentials from general-purpose command output. */
-export function publicConfiguration(config: LocalBaseConfig) {
+export function publicConfiguration(
+  config: LocalBaseConfig,
+  effective?: OtelConfiguration,
+) {
+  const enabled = effective?.enabled ?? Boolean(config.otelEndpoint);
   return configurationOutputSchema.parse({
     root: config.root,
     llmModelsDir: config.llmModelsDir,
@@ -145,6 +168,16 @@ export function publicConfiguration(config: LocalBaseConfig) {
     activeImageModel: config.activeImageModel,
     parallel: config.parallel,
     hfTokenConfigured: Boolean(config.hfToken),
+    observability: {
+      enabled,
+      source: enabled ? (effective?.source ?? "persistent") : "disabled",
+      endpoint:
+        effective?.displayEndpoint ??
+        sanitizedOtelEndpoint(config.otelEndpoint),
+      persistedEndpoint: sanitizedOtelEndpoint(config.otelEndpoint),
+      sampler: effective?.sampler ?? "parentbased_traceidratio",
+      sampleRatio: effective?.sampleRatio ?? config.otelSampleRatio / 100,
+    },
   });
 }
 
