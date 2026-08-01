@@ -49,7 +49,11 @@ import {
   ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
 import type { LocalBaseConfig } from "../../manager";
-import { redactExternalLogText, type LogEvent } from "./logging";
+import {
+  redactExternalLogText,
+  type LogEvent,
+  type LogTraceCorrelation,
+} from "./logging";
 import {
   isOtlpTransportManagedHeader,
   otelEndpointSchema,
@@ -363,7 +367,7 @@ export interface OtelRuntime {
     operation: (span: Span) => Promise<T> | T,
     parent?: Context,
   ): Promise<T>;
-  activeCorrelation(): { traceId: string; spanId: string } | undefined;
+  activeCorrelation(): LogTraceCorrelation | undefined;
   forceFlush(): Promise<void>;
   shutdown(): Promise<void>;
 }
@@ -612,6 +616,7 @@ class ActiveOtelRuntime implements OtelRuntime {
         severityText: event.severity.toUpperCase(),
         body: event.message,
         attributes: eventAttributes(event),
+        context: context.active(),
       });
     } catch {
       // Local JSONL remains authoritative when the secondary sink fails.
@@ -660,7 +665,7 @@ class ActiveOtelRuntime implements OtelRuntime {
     }
   }
 
-  activeCorrelation(): { traceId: string; spanId: string } | undefined {
+  activeCorrelation(): LogTraceCorrelation | undefined {
     const activeSpan = trace.getActiveSpan();
     if (!activeSpan?.isRecording()) return undefined;
     const spanContext = activeSpan.spanContext();

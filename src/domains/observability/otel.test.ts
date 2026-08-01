@@ -404,22 +404,24 @@ test("exports correlated OTLP logs and parented W3C spans to a collector", async
         const correlation = runtime.activeCorrelation()!;
         serverSpanId = correlation.spanId;
         const event = logEventSchema.parse(
-          createLogEvent({
-            severity: "info",
-            eventName: "http.request",
-            category: "http",
-            component: "gateway",
-            runtime: "gateway",
-            message: "Request finished.",
-            requestId: "safe-request",
-            traceId: correlation.traceId,
-            spanId: correlation.spanId,
-            attributes: {
-              authorization: "Bearer secret-value",
-              prompt: "do not export",
+          createLogEvent(
+            {
+              severity: "info",
+              eventName: "http.request",
+              category: "http",
+              component: "gateway",
+              runtime: "gateway",
+              message: "Request finished.",
+              requestId: "safe-request",
+              attributes: {
+                authorization: "Bearer secret-value",
+                prompt: "do not export",
+              },
             },
-          }),
+            correlation,
+          ),
         );
+        expect(event.trace).toEqual(correlation);
         runtime.emit(event);
         await runtime.withSpan(
           "localbase.backend.inference",

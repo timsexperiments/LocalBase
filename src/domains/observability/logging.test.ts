@@ -19,6 +19,7 @@ import {
   bootstrapDiagnosticPath,
   createLogEvent,
   followLogEvents,
+  formatHumanLogEvent,
   logEventSchema,
   logDirectory,
   matchesLogFilters,
@@ -145,6 +146,46 @@ test("validates one redacted event contract before console or file sinks", () =>
       }).requestId,
     ).toBeUndefined();
   }
+});
+
+test("models trace correlation as one opaque local object", () => {
+  const traced = {
+    ...event(1),
+    trace: { traceId: "sdk-trace", spanId: "sdk-span" },
+  };
+
+  expect(logEventSchema.parse(traced).trace).toEqual(traced.trace);
+  expect(formatHumanLogEvent(logEventSchema.parse(traced))).toContain(
+    "trace=sdk-trace/sdk-span",
+  );
+  expect(
+    logEventSchema.safeParse({
+      ...traced,
+      trace: { traceId: "sdk-trace" },
+    }).success,
+  ).toBe(false);
+  expect(
+    logEventSchema.safeParse({
+      ...traced,
+      trace: { spanId: "sdk-span" },
+    }).success,
+  ).toBe(false);
+  expect(
+    logEventSchema.safeParse({
+      ...traced,
+      trace: {
+        traceId: "sdk-trace",
+        spanId: "sdk-span",
+        traceFlags: 1,
+      },
+    }).success,
+  ).toBe(false);
+  expect(
+    logEventSchema.safeParse({
+      ...traced,
+      traceId: "sdk-trace",
+    }).success,
+  ).toBe(false);
 });
 
 test("never persists raw backend output", async () => {

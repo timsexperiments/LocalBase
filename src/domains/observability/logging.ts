@@ -22,7 +22,7 @@ import {
 } from "./secure-log-files";
 import type { OtelRuntime } from "./otel";
 
-export const LOG_SCHEMA_VERSION = 1 as const;
+export const LOG_SCHEMA_VERSION = 2 as const;
 export const LOG_DIRECTORY_NAME = "logs";
 export const ACTIVE_LOG_FILENAME = "events.jsonl";
 export const MAX_ACTIVE_LOG_BYTES = 10 * 1024 * 1024;
@@ -135,6 +135,14 @@ export const logErrorMetadataSchema = z
   })
   .strict();
 
+export const logTraceCorrelationSchema = z
+  .object({
+    traceId: z.string(),
+    spanId: z.string(),
+  })
+  .strict();
+export type LogTraceCorrelation = z.infer<typeof logTraceCorrelationSchema>;
+
 /** Stable structured event contract shared by local files and future OTLP export. */
 export const logEventSchema = z
   .object({
@@ -153,14 +161,7 @@ export const logEventSchema = z
       .max(MAX_REQUEST_ID_LENGTH)
       .regex(/^[A-Za-z0-9._:-]+$/)
       .optional(),
-    traceId: z
-      .string()
-      .regex(/^[0-9a-f]{32}$/)
-      .optional(),
-    spanId: z
-      .string()
-      .regex(/^[0-9a-f]{16}$/)
-      .optional(),
+    trace: logTraceCorrelationSchema.optional(),
     http: logHttpMetadataSchema.optional(),
     error: logErrorMetadataSchema.optional(),
     attributes: logAttributesSchema.optional(),
@@ -186,8 +187,6 @@ export type LogEventInput = {
     code?: unknown;
   };
   attributes?: Record<string, unknown>;
-  traceId?: string;
-  spanId?: string;
 };
 
 const sensitiveKeyPattern =
@@ -311,7 +310,10 @@ export function redactLogAttributes(
 }
 
 /** Creates one validated, redacted event; sinks never receive unvalidated data. */
-export function createLogEvent(input: LogEventInput): LogEvent {
+export function createLogEvent(
+  input: LogEventInput,
+  trace?: LogTraceCorrelation,
+): LogEvent {
   const error = input.error
     ? {
         type: boundedText(input.error.type || "Error", 128),
@@ -340,8 +342,7 @@ export function createLogEvent(input: LogEventInput): LogEvent {
     runtime: input.runtime,
     message: boundedText(input.message),
     ...(requestId ? { requestId } : {}),
-    ...(input.traceId ? { traceId: input.traceId } : {}),
-    ...(input.spanId ? { spanId: input.spanId } : {}),
+    ...(trace ? { trace } : {}),
     ...(parsedHttp?.success ? { http: parsedHttp.data } : {}),
     ...(error ? { error } : {}),
     ...(attributes ? { attributes } : {}),
@@ -886,8 +887,7 @@ export class LocalBaseLogger implements ILogger {
   }
 
   private writeEvent(input: LogEventInput, exportOtel: boolean): void {
-    const correlation = this.otel?.activeCorrelation();
-    const event = createLogEvent({ ...input, ...correlation });
+    const event = createLogEvent(input, this.otel?.activeCorrelation());
     consoleWrite(event, this.format);
     this.writer?.enqueue(event);
     if (exportOtel) this.otel?.emit(event);
@@ -1459,8 +1459,11 @@ export async function followLogEvents(
 }
 
 export function formatHumanLogEvent(event: LogEvent): string {
+  const trace = event.trace
+    ? ` trace=${event.trace.traceId}/${event.trace.spanId}`
+    : "";
   const request = event.http
     ? ` ${event.http.method} ${event.http.path} ${event.http.status} ${event.http.durationMs.toFixed(1)}ms`
     : "";
-  return `${event.timestamp} ${event.severity.toUpperCase()} ${event.component} ${event.message}${request}`;
+  return `${event.timestamp} ${event.severity.toUpperCase()} ${event.component} ${event.message}${trace}${request}`;
 }

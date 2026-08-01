@@ -65,7 +65,7 @@ Finite `logs --json` calls return the normal JSON command envelope and default t
 
 ### OpenTelemetry export
 
-Local JSONL remains authoritative. Setting an OTLP/HTTP endpoint enables bounded asynchronous export of logs and traces:
+Local JSONL remains authoritative. Version 2 records sampled trace correlation as one `trace` object. Setting an OTLP/HTTP endpoint enables bounded asynchronous export of logs and traces:
 
 ```bash
 ./dist/local-base configure --otel-endpoint http://localhost:4318 --otel-sample-ratio 25
