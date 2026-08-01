@@ -103,6 +103,17 @@ export const serviceLifecycleResultSchema = z
 export const logsResultSchema = z
   .object({ events: z.array(logEventSchema) })
   .strict();
+export const diagnosticsResultSchema = z
+  .object({
+    archive: z
+      .object({
+        path: z.string().min(1),
+        entries: z.number().int().nonnegative(),
+        bytes: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
 export const catalogResultSchema = z
   .object({ models: z.array(modelOutputSchema) })
   .strict();

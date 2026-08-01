@@ -19,6 +19,7 @@ import { otelServiceEnvironment } from "../observability/otel-config";
 import { gatewayHealthSchema, type GatewayHealth } from "../runtime/health";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
+  canonicalRoot,
   canonicalRootHash,
   clearStaleGatewayLeaseAtRoot,
   gatewayHealthUrl,
@@ -860,6 +861,12 @@ export async function getServiceInspection(
   root: string,
 ): Promise<ServiceInspection> {
   return await withRootOperation(root, "status", inspectServiceAtRoot);
+}
+
+export async function getServiceInspectionReadOnly(
+  root: string,
+): Promise<ServiceInspection> {
+  return await inspectServiceAtRoot(await canonicalRoot(root));
 }
 
 export async function getServiceStatus(root: string): Promise<ServiceStatus> {

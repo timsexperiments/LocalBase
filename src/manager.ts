@@ -7,6 +7,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { extname, isAbsolute, join, relative } from "node:path";
+import { Database } from "bun:sqlite";
 import { SafeFilenameSchema, verifyAuthoritativeFile } from "./utils/checksum";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -510,6 +511,56 @@ export function loadConfig(
   assertDestructiveLocalBaseRoot(selectedRoot);
   ensureDirs(config);
   return config;
+}
+
+export async function readConfig(root?: string): Promise<LocalBaseConfig> {
+  const selectedRoot = canonicalLocalBaseRoot(root ?? defaultRoot());
+  const path = dbPath(selectedRoot);
+  if (!(await Bun.file(path).exists())) {
+    throw invalidConfiguration(
+      selectedRoot,
+      "configuration database is missing",
+    );
+  }
+  let sqlite: Database | undefined;
+  try {
+    sqlite = new Database(path, { readonly: true, create: false });
+    const raw = sqlite
+      .query("SELECT * FROM config WHERE id = ?")
+      .get("default") as Record<string, unknown> | null;
+    const row = raw
+      ? {
+          id: raw.id,
+          root: raw.root,
+          llmModelsDir: raw.llm_models_dir,
+          sttModelsDir: raw.stt_models_dir,
+          imageModelsDir: raw.image_models_dir,
+          runtimeBackend: raw.runtime_backend,
+          sttBackend: raw.stt_backend,
+          host: raw.host,
+          port: raw.port,
+          ctxSize: raw.ctx_size,
+          sttHost: raw.stt_host,
+          sttPort: raw.stt_port,
+          selectedLlmModels: raw.selected_llm_models,
+          selectedSttModels: raw.selected_stt_models,
+          selectedImageModels: raw.selected_image_models,
+          activeLlmModel: raw.active_llm_model,
+          activeSttModel: raw.active_stt_model,
+          activeImageModel: raw.active_image_model,
+          hfToken: raw.hf_token,
+          parallel: raw.parallel,
+          otelEndpoint: raw.otel_endpoint,
+          otelHeaders: raw.otel_headers,
+          otelSampleRatio: raw.otel_sample_ratio,
+        }
+      : null;
+    if (!row)
+      throw invalidConfiguration(selectedRoot, "configuration row is missing");
+    return fromConfigRow(row, selectedRoot);
+  } finally {
+    sqlite?.close();
+  }
 }
 
 export async function resetDatabase(

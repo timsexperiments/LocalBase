@@ -10,6 +10,7 @@ import { byId, type ModelKind } from "../../../catalog";
 import {
   catalogInputSchema,
   configureInputSchema,
+  diagnosticsInputSchema,
   doctorInputSchema,
   globalOptionsSchema,
   initInputSchema,
@@ -26,6 +27,7 @@ import {
   uninstallInputSchema,
   type CatalogInput,
   type ConfigureInput,
+  type DiagnosticsInput,
   type DoctorInput,
   type GlobalOptions,
   type InitInput,
@@ -46,6 +48,7 @@ import { CliInputError } from "./errors";
 import {
   catalogResultSchema,
   configureResultSchema,
+  diagnosticsResultSchema,
   doctorResultSchema,
   initResultSchema,
   installedResultSchema,
@@ -563,6 +566,31 @@ const logsCommand = command<LogsInput>({
   },
 });
 
+const diagnosticsCommand = command<DiagnosticsInput>({
+  path: ["diagnostics"],
+  description: "Create a redacted LocalBase diagnostics bundle",
+  examples: [
+    "local-base diagnostics",
+    "local-base diagnostics --output report.zip",
+  ],
+  args: {
+    output: {
+      type: "string",
+      valueHint: "path.zip",
+      description: "Output ZIP path",
+    },
+  },
+  requiresDatabase: false,
+  minimalContext: true,
+  parse: (input) => diagnosticsInputSchema.parse(input),
+  resultSchema: diagnosticsResultSchema,
+  run: async (input, context, execution) => {
+    const { runDiagnostics } =
+      await import("../../diagnostics/commands/diagnostics");
+    return await runDiagnostics(input, context, execution);
+  },
+});
+
 const keysListCommand = command<KeysListInput>({
   path: ["keys", "list"],
   description: "List API keys",
@@ -668,6 +696,7 @@ export const commands = [
   restartCommand,
   statusCommand,
   logsCommand,
+  diagnosticsCommand,
   keysListCommand,
   keysCreateCommand,
   keysRevokeCommand,
@@ -716,6 +745,7 @@ export const rootCommand = defineCommand({
     restart: restartCommand.citty,
     status: statusCommand.citty,
     logs: logsCommand.citty,
+    diagnostics: diagnosticsCommand.citty,
     keys: keysCommand,
     reset: resetCommand.citty,
     uninstall: uninstallCommand.citty,
