@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  attestations: write
 
 jobs:
   preflight:
@@ -30,6 +31,9 @@ jobs:
         run: |
           bun run typecheck
           bun run check
+
+      - name: Validate release tag and version
+        run: bun run scripts/release-preflight.ts "$GITHUB_REF_NAME"
 
   qualify:
     name: Build and qualify ${{ matrix.target }}
@@ -119,13 +123,13 @@ jobs:
       - name: Sign macOS CLI
         if: matrix.platform == 'macos'
         run: |
-          codesign --force --options runtime --sign "Developer ID Application:" \
+          codesign --force --options runtime --timestamp --sign "Developer ID Application:" \
             release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}
 
       - name: Sign managed macOS whisper-server
         if: matrix.target == 'macos-arm64'
         run: |
-          codesign --force --options runtime --sign "Developer ID Application:" \
+          codesign --force --options runtime --timestamp --sign "Developer ID Application:" \
             release-artifacts/macos-arm64/whisper-server
 
       - name: Notarize macOS CLI
@@ -185,6 +189,32 @@ jobs:
             --output release-artifacts/${{ matrix.target }} \
             --extracted extracted/${{ matrix.target }}
 
+      - name: Verify Linux x64 architecture and dependencies
+        if: matrix.target == 'linux-x64'
+        run: |
+          set -euo pipefail
+          cli=extracted/linux-x64/local-base-linux-x64
+          machine="$(readelf -h "$cli" | awk -F: '$1 ~ /^[[:space:]]*Machine$/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2}')"
+          test "$machine" = "Advanced Micro Devices X86-64"
+          ldd_output="$(ldd "$cli" 2>&1 || true)"
+          printf '%s\n' "$ldd_output"
+          if grep -q "not found" <<<"$ldd_output"; then
+            exit 1
+          fi
+
+      - name: Verify packaged macOS CLI architecture and trust
+        if: matrix.platform == 'macos'
+        run: |
+          set -euo pipefail
+          cli=extracted/${{ matrix.target }}/local-base-${{ matrix.target }}
+          expected_architecture=arm64
+          if [ "${{ matrix.target }}" = "macos-x64" ]; then
+            expected_architecture=x86_64
+          fi
+          test "$(lipo -archs "$cli")" = "$expected_architecture"
+          codesign --verify --strict --verbose=2 "$cli"
+          spctl --assess --type execute "$cli"
+
       - name: Make exact artifacts executable
         run: |
           chmod +x \
@@ -235,6 +265,15 @@ jobs:
             --build-arg SMOKE_RUNNER_FILENAME=localbase-runtime-smoke-linux-arm64 \
             --file Dockerfile.runtime-smoke \
             --tag localbase-runtime-smoke:linux-arm64 .
+
+      - name: Verify Linux ARM64 architecture and dependencies
+        if: matrix.target == 'linux-arm64'
+        run: |
+          set -euo pipefail
+          readelf -h extracted/linux-arm64/local-base-linux-arm64 | grep -Eq '^[[:space:]]*Machine:[[:space:]]+AArch64$'
+          docker run --rm --platform linux/arm64 \
+            --entrypoint /bin/sh localbase-runtime-smoke:linux-arm64 \
+            -c 'set -eu; ldd_output="$(ldd /usr/local/bin/local-base 2>&1 || true)"; printf "%s\\n" "$ldd_output"; ! printf "%s\\n" "$ldd_output" | grep -q "not found"'
 
       - name: Execute exact Linux ARM64 smoke runner through Docker/QEMU
         if: matrix.smoke == 'qemu'
@@ -306,6 +345,16 @@ jobs:
             --input qualified/macos-arm64 \
             --input qualified/macos-x64 \
             --output release
+
+      - name: Attest canonical release packages and checksums
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            release/local-base-macos-arm64.zip
+            release/local-base-macos-x64.zip
+            release/local-base-linux-x64.tar.gz
+            release/local-base-linux-arm64.tar.gz
+            release/checksums.txt
 
       - name: Append managed runtime checksums to final manifest
         run: |
