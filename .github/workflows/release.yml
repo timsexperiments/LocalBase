@@ -46,7 +46,6 @@ jobs:
             runner: macos-14
             host-architecture: arm64
             platform: macos
-            managed: true
             smoke: native
           - target: macos-x64
             runner: macos-14
@@ -58,7 +57,6 @@ jobs:
             runner: ubuntu-24.04
             host-architecture: x86_64
             platform: linux
-            managed: true
             smoke: native
           - target: linux-arm64
             runner: ubuntu-24.04
@@ -113,24 +111,11 @@ jobs:
             -C release-artifacts/${{ matrix.target }} \
             local-base-${{ matrix.target }}
 
-      - name: Build verified whisper-server
-        if: matrix.managed
-        run: |
-          bun run scripts/build-whisper.ts
-          cp build-whisper/whisper-server \
-            release-artifacts/${{ matrix.target }}/whisper-server
-
       - name: Sign macOS CLI
         if: matrix.platform == 'macos'
         run: |
           codesign --force --options runtime --timestamp --sign "Developer ID Application:" \
             release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}
-
-      - name: Sign managed macOS whisper-server
-        if: matrix.target == 'macos-arm64'
-        run: |
-          codesign --force --options runtime --timestamp --sign "Developer ID Application:" \
-            release-artifacts/macos-arm64/whisper-server
 
       - name: Notarize macOS CLI
         if: matrix.platform == 'macos'
@@ -142,21 +127,6 @@ jobs:
           zip -j release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}.zip \
             release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}
           xcrun notarytool submit release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}.zip \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_PASSWORD" \
-            --team-id "$TEAM_ID" \
-            --wait
-
-      - name: Notarize managed macOS whisper-server
-        if: matrix.target == 'macos-arm64'
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          zip -j whisper-server-macos-arm64.zip \
-            release-artifacts/macos-arm64/whisper-server
-          xcrun notarytool submit whisper-server-macos-arm64.zip \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_PASSWORD" \
             --team-id "$TEAM_ID" \
@@ -356,15 +326,6 @@ jobs:
             release/local-base-linux-arm64.tar.gz
             release/checksums.txt
 
-      - name: Append managed runtime checksums to final manifest
-        run: |
-          cp qualified/linux-x64/whisper-server release/whisper-server-linux-x64
-          cp qualified/macos-arm64/whisper-server release/whisper-server-macos-arm64
-          (
-            cd release
-            sha256sum whisper-server-* >> checksums.txt
-          )
-
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -373,7 +334,5 @@ jobs:
             release/local-base-macos-x64.zip
             release/local-base-linux-x64.tar.gz
             release/local-base-linux-arm64.tar.gz
-            release/whisper-server-macos-arm64
-            release/whisper-server-linux-x64
             release/checksums.txt
           generate_release_notes: true

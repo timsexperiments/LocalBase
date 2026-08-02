@@ -27,6 +27,8 @@ CLI-only compatibility is available for macOS x64 and Linux ARM64. These release
 
 Linux managed-runtime releases are built and qualified against an Ubuntu 24.04-compatible userspace and require the GNU OpenMP runtime (`libgomp`, packaged as `libgomp1` on Ubuntu).
 
+Managed runtime versions are pinned independently from LocalBase CLI releases.
+
 ## Quick start
 
 Download the canonical archive for your target from the [GitHub releases](https://github.com/timsexperiments/LocalBase/releases), then verify it before installation:
