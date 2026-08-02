@@ -170,6 +170,26 @@ export const logEventSchema = z
 
 export type LogEvent = z.infer<typeof logEventSchema>;
 
+export const diagnosticsLogEventSchema = z
+  .object({
+    schemaVersion: z.literal(LOG_SCHEMA_VERSION),
+    id: z.uuid(),
+    timestamp: z.iso.datetime({ offset: true }),
+    severity: logSeveritySchema,
+    eventName: identifierSchema,
+    category: logCategorySchema,
+    component: componentSchema,
+    runtime: logRuntimeSchema,
+    message: z.string().min(1).max(MAX_EVENT_MESSAGE_LENGTH),
+    error: z
+      .object({ message: z.string().min(1).max(MAX_EVENT_MESSAGE_LENGTH) })
+      .strict()
+      .optional(),
+    attributes: logAttributesSchema.optional(),
+  })
+  .strict();
+export type DiagnosticsLogEvent = z.infer<typeof diagnosticsLogEventSchema>;
+
 export type LogEventInput = {
   severity: LogSeverity;
   eventName: string;
@@ -228,6 +248,52 @@ function boundedText(
 /** Redacts and bounds an external string before any diagnostic sink. */
 export function redactExternalLogText(value: unknown, maximum = 512): string {
   return boundedText(value, maximum);
+}
+
+function diagnosticIdentifier(
+  value: string,
+  fallback: string,
+  maximum: number,
+): string {
+  const redacted = redactExternalLogText(value, maximum);
+  return redacted.includes(REDACTED) ? fallback : redacted;
+}
+
+export function redactLogEventForDiagnostics(
+  event: LogEvent,
+): DiagnosticsLogEvent {
+  return diagnosticsLogEventSchema.parse({
+    schemaVersion: event.schemaVersion,
+    id: event.id,
+    timestamp: event.timestamp,
+    severity: event.severity,
+    eventName: diagnosticIdentifier(
+      event.eventName,
+      "diagnostics.event",
+      MAX_EVENT_NAME_LENGTH,
+    ),
+    category: event.category,
+    component: diagnosticIdentifier(
+      event.component,
+      "diagnostics",
+      MAX_COMPONENT_LENGTH,
+    ),
+    runtime: event.runtime,
+    message: redactExternalLogText(event.message, MAX_EVENT_MESSAGE_LENGTH),
+    ...(event.error
+      ? {
+          error: {
+            message: redactExternalLogText(
+              event.error.message,
+              MAX_EVENT_MESSAGE_LENGTH,
+            ),
+          },
+        }
+      : {}),
+    ...(event.attributes
+      ? { attributes: redactLogAttributes(event.attributes) }
+      : {}),
+  });
 }
 
 function normalizedComponent(value: string): string {
