@@ -15,12 +15,12 @@ export const ReleaseTargetSchema = z.enum([
 ]);
 export type ReleaseTarget = z.infer<typeof ReleaseTargetSchema>;
 
-type ReleaseTargetSpec = { bunTarget: string };
+type ReleaseTargetSpec = { bunTarget: string; architecture: "arm64" | "x64" };
 const releaseTargets: Record<ReleaseTarget, ReleaseTargetSpec> = {
-  "macos-arm64": { bunTarget: "bun-darwin-arm64" },
-  "macos-x64": { bunTarget: "bun-darwin-x64" },
-  "linux-x64": { bunTarget: "bun-linux-x64" },
-  "linux-arm64": { bunTarget: "bun-linux-arm64" },
+  "macos-arm64": { bunTarget: "bun-darwin-arm64", architecture: "arm64" },
+  "macos-x64": { bunTarget: "bun-darwin-x64", architecture: "x64" },
+  "linux-x64": { bunTarget: "bun-linux-x64", architecture: "x64" },
+  "linux-arm64": { bunTarget: "bun-linux-arm64", architecture: "arm64" },
 };
 
 const ArtifactSchema = z
@@ -31,27 +31,52 @@ const ArtifactSchema = z
   })
   .strict();
 
+const PackageArtifactSchema = ArtifactSchema.extend({
+  format: z.enum(["zip", "tar.gz"]),
+}).strict();
+
+const CliArtifactSchema = ArtifactSchema.extend({
+  architecture: z.enum(["arm64", "x64"]),
+}).strict();
+
+const cliFilename = (target: ReleaseTarget) => `local-base-${target}`;
+const runnerFilename = (target: ReleaseTarget) =>
+  `localbase-runtime-smoke-${target}`;
+export const releasePackageFilename = (target: ReleaseTarget) =>
+  target.startsWith("macos-")
+    ? `local-base-${target}.zip`
+    : `local-base-${target}.tar.gz`;
+const packageFormat = (target: ReleaseTarget) =>
+  target.startsWith("macos-") ? "zip" : "tar.gz";
+
 export const releaseArtifactManifestSchema = z
   .object({
-    version: z.literal(1),
+    version: z.literal(2),
     target: ReleaseTargetSchema,
-    artifacts: z.array(ArtifactSchema).min(1).max(2),
+    package: PackageArtifactSchema,
+    cli: CliArtifactSchema,
   })
   .strict()
   .superRefine((manifest, ctx) => {
-    const expected = new Set(releaseArtifactFilenames(manifest.target));
-    const actual = new Set(
-      manifest.artifacts.map((artifact) => artifact.filename),
-    );
+    const expectedTarget = releaseTargets[manifest.target];
     if (
-      actual.size !== manifest.artifacts.length ||
-      [...actual].some((filename) => !expected.has(filename)) ||
-      !actual.has(cliFilename(manifest.target))
+      manifest.package.filename !== releasePackageFilename(manifest.target) ||
+      manifest.package.format !== packageFormat(manifest.target)
     ) {
       ctx.addIssue({
         code: "custom",
-        path: ["artifacts"],
-        message: "must describe the target CLI and smoke runner",
+        path: ["package"],
+        message: "must describe the target canonical package",
+      });
+    }
+    if (
+      manifest.cli.filename !== cliFilename(manifest.target) ||
+      manifest.cli.architecture !== expectedTarget.architecture
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["cli"],
+        message: "must describe the target CLI architecture",
       });
     }
   });
@@ -61,7 +86,7 @@ export type ReleaseArtifactManifest = z.infer<
 
 const QualificationReceiptSchema = z
   .object({
-    version: z.literal(1),
+    version: z.literal(2),
     target: ReleaseTargetSchema,
     manifestSha256: Sha256Schema,
   })
@@ -71,17 +96,8 @@ export const ARTIFACT_MANIFEST_FILENAME = "release-artifact-manifest.json";
 export const QUALIFICATION_RECEIPT_FILENAME =
   "release-artifact-qualification.json";
 
-const cliFilename = (target: ReleaseTarget) => `local-base-${target}`;
-const runnerFilename = (target: ReleaseTarget) =>
-  `localbase-runtime-smoke-${target}`;
-
-export function releaseArtifactFilenames(
-  target: ReleaseTarget,
-  includeSmokeRunner = true,
-): string[] {
-  return includeSmokeRunner
-    ? [cliFilename(target), runnerFilename(target)]
-    : [cliFilename(target)];
+export function releaseArtifactFilenames(target: ReleaseTarget): string[] {
+  return [cliFilename(target), runnerFilename(target)];
 }
 
 function artifactPath(directory: string, filename: string): string {
@@ -103,6 +119,13 @@ async function artifactEntry(directory: string, filename: string) {
   });
 }
 
+function matchesArtifact(
+  actual: z.infer<typeof ArtifactSchema>,
+  expected: z.infer<typeof ArtifactSchema>,
+): boolean {
+  return actual.size === expected.size && actual.sha256 === expected.sha256;
+}
+
 async function readJson(path: string, description: string): Promise<unknown> {
   try {
     return JSON.parse(await Bun.file(path).text());
@@ -122,21 +145,32 @@ async function readManifest(
   );
 }
 
+function targetManifest(
+  manifest: ReleaseArtifactManifest,
+  target: ReleaseTarget,
+): ReleaseArtifactManifest {
+  if (manifest.target !== target) {
+    throw new Error(
+      `Release artifact manifest is for ${manifest.target}, expected ${target}.`,
+    );
+  }
+  return manifest;
+}
+
 export async function writeArtifactManifest(
   target: ReleaseTarget,
   directory: string,
 ) {
-  const files = [];
-  for (const filename of releaseArtifactFilenames(target)) {
-    if (await Bun.file(artifactPath(directory, filename)).exists())
-      files.push(filename);
-  }
+  const packageEntry = await artifactEntry(
+    directory,
+    releasePackageFilename(target),
+  );
+  const cliEntry = await artifactEntry(directory, cliFilename(target));
   const manifest = releaseArtifactManifestSchema.parse({
-    version: 1,
+    version: 2,
     target,
-    artifacts: await Promise.all(
-      files.map((filename) => artifactEntry(directory, filename)),
-    ),
+    package: { ...packageEntry, format: packageFormat(target) },
+    cli: { ...cliEntry, architecture: releaseTargets[target].architecture },
   });
   await Bun.write(
     artifactPath(directory, ARTIFACT_MANIFEST_FILENAME),
@@ -149,19 +183,70 @@ export async function verifyArtifactDirectory(
   target: ReleaseTarget,
   directory: string,
 ) {
-  const manifest = await readManifest(directory);
-  if (manifest.target !== target) {
+  const manifest = targetManifest(await readManifest(directory), target);
+  const actual = await artifactEntry(directory, manifest.package.filename);
+  if (!matchesArtifact(actual, manifest.package)) {
     throw new Error(
-      `Release artifact manifest at ${directory} is for ${manifest.target}, expected ${target}.`,
+      `Release package ${manifest.package.filename} digest mismatch: expected ${manifest.package.sha256} (${manifest.package.size} bytes), received ${actual.sha256} (${actual.size} bytes).`,
     );
   }
-  for (const expected of manifest.artifacts) {
-    const actual = await artifactEntry(directory, expected.filename);
-    if (actual.size !== expected.size || actual.sha256 !== expected.sha256) {
-      throw new Error(
-        `Release artifact ${expected.filename} digest mismatch: expected ${expected.sha256} (${expected.size} bytes), received ${actual.sha256} (${actual.size} bytes).`,
-      );
-    }
+  return manifest;
+}
+
+function readUInt32LE(bytes: Uint8Array, offset: number): number {
+  return (
+    (bytes[offset]! |
+      (bytes[offset + 1]! << 8) |
+      (bytes[offset + 2]! << 16) |
+      (bytes[offset + 3]! << 24)) >>>
+    0
+  );
+}
+
+function isExpectedArchitecture(
+  target: ReleaseTarget,
+  bytes: Uint8Array,
+): boolean {
+  const architecture = releaseTargets[target].architecture;
+  if (target.startsWith("linux-")) {
+    return (
+      bytes.length >= 20 &&
+      bytes[0] === 0x7f &&
+      bytes[1] === 0x45 &&
+      bytes[2] === 0x4c &&
+      bytes[3] === 0x46 &&
+      bytes[18] === (architecture === "x64" ? 0x3e : 0xb7) &&
+      bytes[19] === 0
+    );
+  }
+  return (
+    bytes.length >= 8 &&
+    readUInt32LE(bytes, 0) === 0xfeedfacf &&
+    readUInt32LE(bytes, 4) ===
+      (architecture === "x64" ? 0x01000007 : 0x0100000c)
+  );
+}
+
+export async function verifyReleasePackage(
+  target: ReleaseTarget,
+  directory: string,
+  extractedDirectory: string,
+) {
+  const manifest = await verifyArtifactDirectory(target, directory);
+  const actual = await artifactEntry(extractedDirectory, manifest.cli.filename);
+  if (!matchesArtifact(actual, manifest.cli)) {
+    throw new Error(
+      `Packaged CLI ${manifest.cli.filename} digest mismatch: expected ${manifest.cli.sha256} (${manifest.cli.size} bytes), received ${actual.sha256} (${actual.size} bytes).`,
+    );
+  }
+  const binary = Bun.file(
+    artifactPath(extractedDirectory, manifest.cli.filename),
+  );
+  const header = new Uint8Array(await binary.slice(0, 32).arrayBuffer());
+  if (!isExpectedArchitecture(target, header)) {
+    throw new Error(
+      `Packaged CLI ${manifest.cli.filename} does not match ${target} architecture.`,
+    );
   }
   return manifest;
 }
@@ -169,7 +254,6 @@ export async function verifyArtifactDirectory(
 export async function buildReleaseArtifacts(
   target: ReleaseTarget,
   directory: string,
-  options: { includeSmokeRunner?: boolean } = {},
 ): Promise<void> {
   await mkdir(directory, { recursive: true });
   const targetFlag = `--target=${releaseTargets[target].bunTarget}`;
@@ -189,26 +273,23 @@ export async function buildReleaseArtifacts(
         "--asset-naming=[dir]/[name].[ext]",
         `--outfile=${artifactPath(directory, filename)}`,
       ],
-      {
-        stdout: "inherit",
-        stderr: "inherit",
-      },
+      { stdout: "inherit", stderr: "inherit" },
     );
     if ((await child.exited) !== 0)
       throw new Error(`bun build failed for ${filename}.`);
   };
   await build("src/cli.ts", cliFilename(target));
-  if (options.includeSmokeRunner ?? true)
-    await build("scripts/runtime-smoke.ts", runnerFilename(target));
+  await build("scripts/runtime-smoke.ts", runnerFilename(target));
 }
 
 export async function qualifyArtifactDirectory(
   target: ReleaseTarget,
   directory: string,
+  extractedDirectory: string,
 ): Promise<void> {
-  const manifest = await verifyArtifactDirectory(target, directory);
+  await verifyReleasePackage(target, directory, extractedDirectory);
   const receipt = QualificationReceiptSchema.parse({
-    version: 1,
+    version: 2,
     target,
     manifestSha256: await computeSha256(
       artifactPath(directory, ARTIFACT_MANIFEST_FILENAME),
@@ -218,8 +299,6 @@ export async function qualifyArtifactDirectory(
     artifactPath(directory, QUALIFICATION_RECEIPT_FILENAME),
     `${JSON.stringify(receipt, null, 2)}\n`,
   );
-  if (manifest.target !== target)
-    throw new Error(`Qualification target mismatch for ${target}.`);
 }
 
 async function verifyQualified(directory: string, target: ReleaseTarget) {
@@ -265,7 +344,7 @@ export async function stageReleaseArtifacts(
     ReleaseTargetSchema.options.some((target) => !targets.has(target))
   ) {
     throw new Error(
-      "Release staging requires exactly one qualified artifact for every supported target.",
+      "Release staging requires exactly one qualified package for every supported target.",
     );
   }
   await mkdir(outputDirectory, { recursive: true });
@@ -273,24 +352,22 @@ export async function stageReleaseArtifacts(
   for (const { directory, manifest } of qualified.sort((a, b) =>
     a.manifest.target.localeCompare(b.manifest.target),
   )) {
-    const filename = cliFilename(manifest.target);
-    const source = artifactPath(directory, filename);
-    const destination = artifactPath(outputDirectory, filename);
-    await Bun.write(destination, Bun.file(source));
-    const staged = await artifactEntry(outputDirectory, filename);
-    const expected = manifest.artifacts.find(
-      (artifact) => artifact.filename === filename,
+    const source = artifactPath(directory, manifest.package.filename);
+    const destination = artifactPath(
+      outputDirectory,
+      manifest.package.filename,
     );
-    if (
-      !expected ||
-      staged.size !== expected.size ||
-      staged.sha256 !== expected.sha256
-    ) {
+    await Bun.write(destination, Bun.file(source));
+    const staged = await artifactEntry(
+      outputDirectory,
+      manifest.package.filename,
+    );
+    if (!matchesArtifact(staged, manifest.package)) {
       throw new Error(
-        `Staged release artifact ${filename} does not match its qualified digest.`,
+        `Staged release package ${manifest.package.filename} does not match its qualified digest.`,
       );
     }
-    checksums.push(`${staged.sha256}  ${filename}`);
+    checksums.push(`${staged.sha256}  ${manifest.package.filename}`);
   }
   await Bun.write(
     artifactPath(outputDirectory, "checksums.txt"),
@@ -302,6 +379,7 @@ const CommandSchema = z.enum([
   "build",
   "manifest",
   "verify",
+  "verify-package",
   "qualify",
   "stage",
 ]);
@@ -336,7 +414,12 @@ async function main() {
   if (command === "build") await buildReleaseArtifacts(target, output);
   else if (command === "manifest") await writeArtifactManifest(target, output);
   else if (command === "verify") await verifyArtifactDirectory(target, output);
-  else await qualifyArtifactDirectory(target, output);
+  else {
+    const extracted = z.string().min(1).parse(raw.extracted);
+    if (command === "verify-package")
+      await verifyReleasePackage(target, output, extracted);
+    else await qualifyArtifactDirectory(target, output, extracted);
+  }
 }
 
 if (import.meta.main)

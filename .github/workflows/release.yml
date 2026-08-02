@@ -102,6 +102,13 @@ jobs:
             --target ${{ matrix.target }} \
             --output release-artifacts/${{ matrix.target }}
 
+      - name: Package Linux CLI
+        if: matrix.platform == 'linux'
+        run: |
+          tar -czf release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}.tar.gz \
+            -C release-artifacts/${{ matrix.target }} \
+            local-base-${{ matrix.target }}
+
       - name: Build verified whisper-server
         if: matrix.managed
         run: |
@@ -128,9 +135,9 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          zip -j local-base-${{ matrix.target }}.zip \
+          zip -j release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}.zip \
             release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}
-          xcrun notarytool submit local-base-${{ matrix.target }}.zip \
+          xcrun notarytool submit release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}.zip \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_PASSWORD" \
             --team-id "$TEAM_ID" \
@@ -160,10 +167,28 @@ jobs:
             --target ${{ matrix.target }} \
             --output release-artifacts/${{ matrix.target }}
 
+      - name: Extract canonical CLI package
+        run: |
+          mkdir -p extracted/${{ matrix.target }}
+          if [ "${{ matrix.platform }}" = "macos" ]; then
+            unzip -q release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}.zip \
+              -d extracted/${{ matrix.target }}
+          else
+            tar -xzf release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}.tar.gz \
+              -C extracted/${{ matrix.target }}
+          fi
+
+      - name: Verify extracted CLI package
+        run: |
+          bun run scripts/release-artifacts.ts verify-package \
+            --target ${{ matrix.target }} \
+            --output release-artifacts/${{ matrix.target }} \
+            --extracted extracted/${{ matrix.target }}
+
       - name: Make exact artifacts executable
         run: |
           chmod +x \
-            release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }} \
+            extracted/${{ matrix.target }}/local-base-${{ matrix.target }} \
             release-artifacts/${{ matrix.target }}/localbase-runtime-smoke-${{ matrix.target }}
 
       - name: Verify Rosetta translation
@@ -178,7 +203,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ runner.temp }}/localbase-config-${{ matrix.target }}
           RUNNER_TEMP: ${{ runner.temp }}/localbase-runner-${{ matrix.target }}
           LOCALBASE_SMOKE_TARGET: ${{ matrix.target }}
-          LOCALBASE_SMOKE_CLI: ${{ github.workspace }}/release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}
+          LOCALBASE_SMOKE_CLI: ${{ github.workspace }}/extracted/${{ matrix.target }}/local-base-${{ matrix.target }}
         run: |
           mkdir -p "$HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$RUNNER_TEMP"
           cd "$RUNNER_TEMP"
@@ -192,7 +217,7 @@ jobs:
           XDG_CONFIG_HOME: ${{ runner.temp }}/localbase-config-macos-x64
           RUNNER_TEMP: ${{ runner.temp }}/localbase-runner-macos-x64
           LOCALBASE_SMOKE_TARGET: macos-x64
-          LOCALBASE_SMOKE_CLI: ${{ github.workspace }}/release-artifacts/macos-x64/local-base-macos-x64
+          LOCALBASE_SMOKE_CLI: ${{ github.workspace }}/extracted/macos-x64/local-base-macos-x64
         run: |
           mkdir -p "$HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$RUNNER_TEMP"
           cd "$RUNNER_TEMP"
@@ -202,8 +227,10 @@ jobs:
       - name: Build Linux ARM64 qualification image (Docker/QEMU)
         if: matrix.smoke == 'qemu'
         run: |
+          cp release-artifacts/linux-arm64/localbase-runtime-smoke-linux-arm64 \
+            extracted/linux-arm64/
           docker build --platform linux/arm64 \
-            --build-arg ARTIFACT_DIR=release-artifacts/linux-arm64 \
+            --build-arg ARTIFACT_DIR=extracted/linux-arm64 \
             --build-arg ARTIFACT_TARGET=linux-arm64 \
             --build-arg SMOKE_RUNNER_FILENAME=localbase-runtime-smoke-linux-arm64 \
             --file Dockerfile.runtime-smoke \
@@ -217,7 +244,8 @@ jobs:
         run: |
           bun run scripts/release-artifacts.ts qualify \
             --target ${{ matrix.target }} \
-            --output release-artifacts/${{ matrix.target }}
+            --output release-artifacts/${{ matrix.target }} \
+            --extracted extracted/${{ matrix.target }}
 
       - name: Upload qualified artifacts
         uses: actions/upload-artifact@v4
@@ -292,10 +320,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release/local-base-macos-arm64
-            release/local-base-macos-x64
-            release/local-base-linux-x64
-            release/local-base-linux-arm64
+            release/local-base-macos-arm64.zip
+            release/local-base-macos-x64.zip
+            release/local-base-linux-x64.tar.gz
+            release/local-base-linux-arm64.tar.gz
             release/whisper-server-macos-arm64
             release/whisper-server-linux-x64
             release/checksums.txt
