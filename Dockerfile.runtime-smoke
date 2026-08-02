@@ -1,14 +1,19 @@
 FROM ubuntu:24.04
 
+ARG ARTIFACT_DIR=dist/runtime-smoke
+ARG ARTIFACT_TARGET=linux-x64
+ARG SMOKE_RUNNER_FILENAME=runtime-smoke-linux-x64
+
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends ca-certificates libgomp1 \
   && rm -rf /var/lib/apt/lists/* \
   && install -d -m 0700 -o 65534 -g 65534 /home/localbase /run/localbase
 
-COPY dist/runtime-smoke/local-base-linux-x64 /usr/local/bin/local-base
-COPY dist/runtime-smoke/runtime-smoke-linux-x64 /usr/local/bin/localbase-runtime-smoke
+COPY ${ARTIFACT_DIR}/local-base-${ARTIFACT_TARGET} /usr/local/bin/local-base
+COPY ${ARTIFACT_DIR}/${SMOKE_RUNNER_FILENAME} /usr/local/bin/localbase-runtime-smoke
 
 ENV LOCALBASE_SMOKE_CLI=/usr/local/bin/local-base \
+  LOCALBASE_SMOKE_TARGET=${ARTIFACT_TARGET} \
   HOME=/home/localbase \
   XDG_RUNTIME_DIR=/run/localbase
 
