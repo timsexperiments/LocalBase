@@ -1,13 +1,58 @@
+import { mkdir, rm } from "node:fs/promises";
 import { z } from "zod";
 import { unzipSync } from "fflate";
 import { gatewayHealthSchema } from "../src/domains/runtime/health";
 import { diagnosticsManifestSchema } from "../src/domains/diagnostics/commands/diagnostics";
+import { serviceLifecycleResultSchema } from "../src/domains/app/commands/results";
+import { commandSuccessSchema } from "../src/domains/app/commands/output";
 
 type CommandResult = {
   exitCode: number;
   stdout: string;
   stderr: string;
 };
+
+export type SmokeTarget =
+  "macos-arm64" | "linux-x64" | "macos-x64" | "linux-arm64";
+
+function hostSmokeTarget(): SmokeTarget {
+  if (process.platform === "darwin" && process.arch === "arm64") {
+    return "macos-arm64";
+  }
+  if (process.platform === "darwin" && process.arch === "x64") {
+    return "macos-x64";
+  }
+  if (process.platform === "linux" && process.arch === "x64") {
+    return "linux-x64";
+  }
+  if (process.platform === "linux" && process.arch === "arm64") {
+    return "linux-arm64";
+  }
+  throw new Error(
+    `Runtime smoke is unsupported on ${process.platform}/${process.arch}.`,
+  );
+}
+
+export function resolveSmokeTarget(
+  value = process.env.LOCALBASE_SMOKE_TARGET,
+): SmokeTarget {
+  if (value === undefined) return hostSmokeTarget();
+  if (
+    value === "macos-arm64" ||
+    value === "linux-x64" ||
+    value === "macos-x64" ||
+    value === "linux-arm64"
+  ) {
+    return value;
+  }
+  throw new Error(
+    `LOCALBASE_SMOKE_TARGET must be one of macos-arm64, linux-x64, macos-x64, or linux-arm64; received ${value ?? "<unset>"}.`,
+  );
+}
+
+function isManagedTarget(target: SmokeTarget): boolean {
+  return target === "macos-arm64" || target === "linux-x64";
+}
 
 type RunningGateway = {
   process: Bun.Subprocess;
@@ -21,6 +66,7 @@ const SMOKE_TIMEOUT_MS = 60_000;
 const STARTUP_TIMEOUT_MS = 20_000;
 const STT_MODEL_ID = "whisper-tiny-en-q8_0";
 const STT_MODEL_FILE = "ggml-tiny.en-q8_0.bin";
+const CLI_ONLY_LLM_MODEL_FILE = "runtime-smoke-llm.gguf";
 const TranscriptionResponseSchema = z
   .object({ text: z.string() })
   .passthrough();
@@ -59,25 +105,38 @@ function cliCommand(): string[] {
   return binary ? [binary] : [process.execPath, "src/cli.ts"];
 }
 
-export function buildConfigureArgs(root: string): string[] {
-  return [
+export function buildConfigureArgs(
+  root: string,
+  target: SmokeTarget = "linux-x64",
+): string[] {
+  const args = [
     "--root",
     root,
     "--non-interactive",
     "configure",
     "--defaults",
-    "--stt-models",
-    STT_MODEL_ID,
-    "--active-stt",
-    STT_MODEL_ID,
     "--no-create-key",
   ];
+  if (isManagedTarget(target)) {
+    args.splice(
+      -1,
+      0,
+      "--stt-models",
+      STT_MODEL_ID,
+      "--active-stt",
+      STT_MODEL_ID,
+    );
+  } else {
+    args.splice(-1, 0, "--stt-models", "", "--image-models", "");
+  }
+  return args;
 }
 
 export function buildServeArgs(
   root: string,
   gatewayPort: number,
   sttPort: number,
+  target: SmokeTarget = "linux-x64",
 ): string[] {
   return [
     "--root",
@@ -88,12 +147,10 @@ export function buildServeArgs(
     "127.0.0.1",
     "--port",
     String(gatewayPort),
-    "--no-llm",
-    "--stt",
-    "--stt-host",
-    "127.0.0.1",
-    "--stt-port",
-    String(sttPort),
+    ...(isManagedTarget(target) ? ["--no-llm"] : []),
+    ...(isManagedTarget(target)
+      ? ["--stt", "--stt-host", "127.0.0.1", "--stt-port", String(sttPort)]
+      : ["--no-stt", "--llm-model-file", CLI_ONLY_LLM_MODEL_FILE]),
     "--no-image",
     "--no-auth",
     "--bypass-memory-check",
@@ -116,9 +173,13 @@ export function buildDiagnosticsArgs(root: string, output: string): string[] {
   ];
 }
 
-function commandEnvironment(): Record<string, string> {
+function commandEnvironment(root: string): Record<string, string> {
   return {
     ...process.env,
+    HOME: `${root}.home`,
+    TMPDIR: `${root}.tmp`,
+    XDG_CONFIG_HOME: `${root}.config`,
+    LOCALBASE_ROOT: root,
     LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
   } as Record<string, string>;
 }
@@ -130,9 +191,9 @@ async function outputOf(
   return await new Response(stream).text();
 }
 
-async function runCli(args: string[]): Promise<CommandResult> {
+async function runCli(args: string[], root: string): Promise<CommandResult> {
   const process = Bun.spawn([...cliCommand(), ...args], {
-    env: commandEnvironment(),
+    env: commandEnvironment(root),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -144,6 +205,10 @@ async function runCli(args: string[]): Promise<CommandResult> {
   return { exitCode, stdout, stderr };
 }
 
+async function prepareCliOnlyLlmFixture(root: string): Promise<void> {
+  await Bun.write(`${root}/models/llm/${CLI_ONLY_LLM_MODEL_FILE}`, "smoke");
+}
+
 function describe(result: CommandResult): string {
   return `exit ${result.exitCode}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`;
 }
@@ -152,8 +217,8 @@ function stripAnsi(value: string): string {
   return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
 }
 
-async function expectCli(args: string[]): Promise<CommandResult> {
-  const result = await runCli(args);
+async function expectCli(args: string[], root: string): Promise<CommandResult> {
+  const result = await runCli(args, root);
   if (result.exitCode !== 0) {
     throw new Error(
       `local-base ${args.join(" ")} failed:\n${describe(result)}`,
@@ -185,6 +250,7 @@ function reservePort(): number {
 async function waitForHealthyGateway(
   gateway: Bun.Subprocess,
   baseUrl: string,
+  target: SmokeTarget,
 ): Promise<void> {
   const deadline = Date.now() + STARTUP_TIMEOUT_MS;
   let lastError = "no response";
@@ -199,7 +265,14 @@ async function waitForHealthyGateway(
         signal: AbortSignal.timeout(500),
       });
       const body = gatewayHealthSchema.safeParse(await response.json());
-      if (response.ok && body.success && body.data.modalities.stt.configured) {
+      const ready =
+        body.success &&
+        (isManagedTarget(target)
+          ? body.data.modalities.stt.configured
+          : body.data.modalities.llm.configured &&
+            !body.data.modalities.stt.configured &&
+            !body.data.modalities.image.configured);
+      if (response.ok && ready) {
         return;
       }
       lastError = `unexpected health response: HTTP ${response.status}`;
@@ -211,21 +284,24 @@ async function waitForHealthyGateway(
   throw new Error(`Gateway did not become ready: ${lastError}`);
 }
 
-async function startGateway(root: string): Promise<RunningGateway> {
+async function startGateway(
+  root: string,
+  target: SmokeTarget,
+): Promise<RunningGateway> {
   const gatewayPort = reservePort();
-  const sttPort = reservePort();
+  const sttPort = isManagedTarget(target) ? reservePort() : 0;
   const process = Bun.spawn(
-    [...cliCommand(), ...buildServeArgs(root, gatewayPort, sttPort)],
-    { env: commandEnvironment(), stdout: "pipe", stderr: "pipe" },
+    [...cliCommand(), ...buildServeArgs(root, gatewayPort, sttPort, target)],
+    { env: commandEnvironment(root), stdout: "pipe", stderr: "pipe" },
   );
   const stdout = outputOf(process.stdout);
   const stderr = outputOf(process.stderr);
   try {
     const baseUrl = `http://127.0.0.1:${gatewayPort}`;
-    await waitForHealthyGateway(process, baseUrl);
+    await waitForHealthyGateway(process, baseUrl, target);
     return { process, stdout, stderr, baseUrl, sttPort };
   } catch (error) {
-    if (process.exitCode === null) process.kill(15);
+    if (process.exitCode === null) process.kill(9);
     const [out, err] = await Promise.all([stdout, stderr]);
     throw new Error(`${error}\nstdout:\n${out}\nstderr:\n${err}`, {
       cause: error,
@@ -359,12 +435,18 @@ export async function transcribe(baseUrl: string): Promise<void> {
 
 async function stopGateway(gateway: RunningGateway): Promise<void> {
   if (gateway.process.exitCode === null) gateway.process.kill(15);
-  await Promise.race([
-    gateway.process.exited,
-    Bun.sleep(STARTUP_TIMEOUT_MS).then(() => {
-      throw new Error("Gateway did not exit after SIGTERM.");
-    }),
-  ]);
+  try {
+    await Promise.race([
+      gateway.process.exited,
+      Bun.sleep(STARTUP_TIMEOUT_MS).then(() => {
+        throw new Error("Gateway did not exit after SIGTERM.");
+      }),
+    ]);
+  } catch (error) {
+    if (gateway.process.exitCode === null) gateway.process.kill(9);
+    await gateway.process.exited;
+    throw error;
+  }
   const [stdout, stderr] = await Promise.all([gateway.stdout, gateway.stderr]);
   if (gateway.process.exitCode !== 0) {
     throw new Error(
@@ -424,41 +506,84 @@ async function verifyDiagnosticsArchive(path: string): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
-  const root = `${process.env.RUNNER_TEMP ?? "/tmp"}/localbase-runtime-smoke-${crypto.randomUUID()}`;
-  const help = await expectCli(["--help"]);
-  if (!stripAnsi(help.stdout).includes("USAGE local-base ")) {
-    throw new Error("CLI help did not produce the expected usage banner.");
-  }
-
-  await expectCli(buildConfigureArgs(root));
-  await expectCli(
-    buildDiagnosticsArgs(root, `${root}/diagnostics-configured.zip`),
-  );
-  await verifyDiagnosticsArchive(`${root}/diagnostics-configured.zip`);
-
-  const running = await startGateway(root);
-
+function verifyStatusResult(result: CommandResult): void {
+  let payload: unknown;
   try {
-    await expectCli(
-      buildDiagnosticsArgs(root, `${root}/diagnostics-running.zip`),
+    payload = JSON.parse(result.stdout);
+  } catch (error) {
+    throw new Error("Status did not return valid JSON.", { cause: error });
+  }
+  const envelope = commandSuccessSchema.safeParse(payload);
+  if (
+    !envelope.success ||
+    !serviceLifecycleResultSchema.safeParse(envelope.data.data).success
+  ) {
+    throw new Error("Status returned an invalid lifecycle response.");
+  }
+}
+
+async function main(): Promise<void> {
+  const target = resolveSmokeTarget();
+  const root = `${process.env.RUNNER_TEMP ?? "/tmp"}/localbase-runtime-smoke-${crypto.randomUUID()}`;
+  try {
+    await Promise.all([
+      mkdir(`${root}.home`, { recursive: true }),
+      mkdir(`${root}.tmp`, { recursive: true }),
+      mkdir(`${root}.config`, { recursive: true }),
+    ]);
+    const help = await expectCli(["--help"], root);
+    if (!stripAnsi(help.stdout).includes("USAGE local-base ")) {
+      throw new Error("CLI help did not produce the expected usage banner.");
+    }
+
+    await expectCli(buildConfigureArgs(root, target), root);
+    if (!isManagedTarget(target)) await prepareCliOnlyLlmFixture(root);
+    verifyStatusResult(
+      await expectCli(["--root", root, "status", "--json"], root),
     );
-    await verifyDiagnosticsArchive(`${root}/diagnostics-running.zip`);
-    await transcribe(running.baseUrl);
-    await verifyInstalledArtifacts(root);
-    await stopGateway(running);
-    await waitForClosedPort(running.sttPort);
+    await expectCli(
+      buildDiagnosticsArgs(root, `${root}/diagnostics-configured.zip`),
+      root,
+    );
+    await verifyDiagnosticsArchive(`${root}/diagnostics-configured.zip`);
+
+    const running = await startGateway(root, target);
+    try {
+      verifyStatusResult(
+        await expectCli(["--root", root, "status", "--json"], root),
+      );
+      await expectCli(
+        buildDiagnosticsArgs(root, `${root}/diagnostics-running.zip`),
+        root,
+      );
+      await verifyDiagnosticsArchive(`${root}/diagnostics-running.zip`);
+      if (isManagedTarget(target)) {
+        await transcribe(running.baseUrl);
+        await verifyInstalledArtifacts(root);
+      }
+      await stopGateway(running);
+      if (isManagedTarget(target)) await waitForClosedPort(running.sttPort);
+    } finally {
+      if (running.process.exitCode === null) await stopGateway(running);
+    }
+
     await expectCli(
       buildDiagnosticsArgs(root, `${root}/diagnostics-stopped.zip`),
+      root,
     );
     await verifyDiagnosticsArchive(`${root}/diagnostics-stopped.zip`);
+    await expectCli(buildUninstallArgs(root), root);
+    if (await Bun.file(root).exists()) {
+      throw new Error(
+        "LocalBase uninstall did not remove the smoke-test root.",
+      );
+    }
   } finally {
-    if (running.process.exitCode === null) await stopGateway(running);
-  }
-
-  await expectCli(buildUninstallArgs(root));
-  if (await Bun.file(root).exists()) {
-    throw new Error("LocalBase uninstall did not remove the smoke-test root.");
+    await Promise.all(
+      [root, `${root}.home`, `${root}.tmp`, `${root}.config`].map((path) =>
+        rm(path, { recursive: true, force: true }),
+      ),
+    );
   }
   console.log("Runtime smoke test passed.");
 }
