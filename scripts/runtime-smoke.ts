@@ -15,9 +15,28 @@ type CommandResult = {
 export type SmokeTarget =
   "macos-arm64" | "linux-x64" | "macos-x64" | "linux-arm64";
 
+function hostSmokeTarget(): SmokeTarget {
+  if (process.platform === "darwin" && process.arch === "arm64") {
+    return "macos-arm64";
+  }
+  if (process.platform === "darwin" && process.arch === "x64") {
+    return "macos-x64";
+  }
+  if (process.platform === "linux" && process.arch === "x64") {
+    return "linux-x64";
+  }
+  if (process.platform === "linux" && process.arch === "arm64") {
+    return "linux-arm64";
+  }
+  throw new Error(
+    `Runtime smoke is unsupported on ${process.platform}/${process.arch}.`,
+  );
+}
+
 export function resolveSmokeTarget(
   value = process.env.LOCALBASE_SMOKE_TARGET,
 ): SmokeTarget {
+  if (value === undefined) return hostSmokeTarget();
   if (
     value === "macos-arm64" ||
     value === "linux-x64" ||
@@ -47,6 +66,7 @@ const SMOKE_TIMEOUT_MS = 60_000;
 const STARTUP_TIMEOUT_MS = 20_000;
 const STT_MODEL_ID = "whisper-tiny-en-q8_0";
 const STT_MODEL_FILE = "ggml-tiny.en-q8_0.bin";
+const CLI_ONLY_LLM_MODEL_FILE = "runtime-smoke-llm.gguf";
 const TranscriptionResponseSchema = z
   .object({ text: z.string() })
   .passthrough();
@@ -127,10 +147,10 @@ export function buildServeArgs(
     "127.0.0.1",
     "--port",
     String(gatewayPort),
-    "--no-llm",
+    ...(isManagedTarget(target) ? ["--no-llm"] : []),
     ...(isManagedTarget(target)
       ? ["--stt", "--stt-host", "127.0.0.1", "--stt-port", String(sttPort)]
-      : ["--no-stt"]),
+      : ["--no-stt", "--llm-model-file", CLI_ONLY_LLM_MODEL_FILE]),
     "--no-image",
     "--no-auth",
     "--bypass-memory-check",
@@ -183,6 +203,10 @@ async function runCli(args: string[], root: string): Promise<CommandResult> {
     process.exited,
   ]);
   return { exitCode, stdout, stderr };
+}
+
+async function prepareCliOnlyLlmFixture(root: string): Promise<void> {
+  await Bun.write(`${root}/models/llm/${CLI_ONLY_LLM_MODEL_FILE}`, "smoke");
 }
 
 function describe(result: CommandResult): string {
@@ -245,7 +269,7 @@ async function waitForHealthyGateway(
         body.success &&
         (isManagedTarget(target)
           ? body.data.modalities.stt.configured
-          : !body.data.modalities.llm.configured &&
+          : body.data.modalities.llm.configured &&
             !body.data.modalities.stt.configured &&
             !body.data.modalities.image.configured);
       if (response.ok && ready) {
@@ -513,6 +537,7 @@ async function main(): Promise<void> {
     }
 
     await expectCli(buildConfigureArgs(root, target), root);
+    if (!isManagedTarget(target)) await prepareCliOnlyLlmFixture(root);
     verifyStatusResult(
       await expectCli(["--root", root, "status", "--json"], root),
     );
@@ -524,6 +549,9 @@ async function main(): Promise<void> {
 
     const running = await startGateway(root, target);
     try {
+      verifyStatusResult(
+        await expectCli(["--root", root, "status", "--json"], root),
+      );
       await expectCli(
         buildDiagnosticsArgs(root, `${root}/diagnostics-running.zip`),
         root,
