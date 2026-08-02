@@ -3,6 +3,7 @@ import {
   buildConfigureArgs,
   buildServeArgs,
   buildUninstallArgs,
+  resolveSmokeTarget,
   transcribe,
 } from "./runtime-smoke";
 
@@ -46,6 +47,33 @@ test("builds smoke invocations for the current CLI contract", () => {
     "--no-auth",
     "--bypass-memory-check",
   ]);
+  expect(buildConfigureArgs(root, "linux-arm64")).toEqual([
+    "--root",
+    root,
+    "--non-interactive",
+    "configure",
+    "--defaults",
+    "--stt-models",
+    "",
+    "--image-models",
+    "",
+    "--no-create-key",
+  ]);
+  expect(buildServeArgs(root, 22_731, 22_732, "macos-x64")).toEqual([
+    "--root",
+    root,
+    "--non-interactive",
+    "serve",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "22731",
+    "--no-llm",
+    "--no-stt",
+    "--no-image",
+    "--no-auth",
+    "--bypass-memory-check",
+  ]);
   expect(buildUninstallArgs(root)).toEqual([
     "--root",
     root,
@@ -53,6 +81,16 @@ test("builds smoke invocations for the current CLI contract", () => {
     "uninstall",
     "--yes",
   ]);
+});
+
+test("accepts only release qualification targets", () => {
+  expect(resolveSmokeTarget("macos-arm64")).toBe("macos-arm64");
+  expect(resolveSmokeTarget("linux-x64")).toBe("linux-x64");
+  expect(resolveSmokeTarget("macos-x64")).toBe("macos-x64");
+  expect(resolveSmokeTarget("linux-arm64")).toBe("linux-arm64");
+  expect(() => resolveSmokeTarget("windows-x64")).toThrow(
+    "LOCALBASE_SMOKE_TARGET",
+  );
 });
 
 function mockFetch(handler: (request: Request, attempt: number) => Response) {
