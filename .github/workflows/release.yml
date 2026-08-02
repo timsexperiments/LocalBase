@@ -200,7 +200,8 @@ jobs:
           LOCALBASE_SMOKE_CLI: ${{ github.workspace }}/qualified/linux-x64/local-base-linux-x64
         run: |
           mkdir -p "$HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$RUNNER_TEMP"
-          ./qualified/linux-x64/localbase-runtime-smoke-linux-x64
+          cd "$RUNNER_TEMP"
+          "$GITHUB_WORKSPACE/qualified/linux-x64/localbase-runtime-smoke-linux-x64"
 
       - name: Qualify tested Linux x64 artifacts
         run: bun run scripts/release-artifacts.ts qualify --target linux-x64 --output qualified/linux-x64
@@ -261,7 +262,8 @@ jobs:
           LOCALBASE_SMOKE_CLI: ${{ github.workspace }}/qualified/macos-arm64/local-base-macos-arm64
         run: |
           mkdir -p "$HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$RUNNER_TEMP"
-          ./qualified/macos-arm64/localbase-runtime-smoke-macos-arm64
+          cd "$RUNNER_TEMP"
+          "$GITHUB_WORKSPACE/qualified/macos-arm64/localbase-runtime-smoke-macos-arm64"
 
       - name: Execute exact macOS x64 smoke runner under Rosetta (translated)
         env:
@@ -273,7 +275,8 @@ jobs:
           LOCALBASE_SMOKE_CLI: ${{ github.workspace }}/qualified/macos-x64/local-base-macos-x64
         run: |
           mkdir -p "$HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$RUNNER_TEMP"
-          /usr/bin/arch -x86_64 ./qualified/macos-x64/localbase-runtime-smoke-macos-x64
+          cd "$RUNNER_TEMP"
+          /usr/bin/arch -x86_64 "$GITHUB_WORKSPACE/qualified/macos-x64/localbase-runtime-smoke-macos-x64"
 
       - name: Qualify tested macOS artifacts
         run: |
