@@ -1,5 +1,4 @@
-import { chmod, link, lstat, mkdir, unlink } from "node:fs/promises";
-import { dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { basename, extname, isAbsolute, join, resolve } from "node:path";
 import { zipSync } from "fflate";
 import { z } from "zod";
 import {
@@ -14,9 +13,8 @@ import type { CommandExecution } from "../../app/commands/framework";
 import type { DiagnosticsInput } from "../../app/commands/inputs";
 import { diagnosticsResultSchema } from "../../app/commands/results";
 import {
-  redactExternalLogText,
-  redactLogAttributes,
-  logEventSchema,
+  redactLogEventForDiagnostics,
+  type DiagnosticsLogEvent,
   readLogSnapshot,
   type LogEvent,
 } from "../../observability/logging";
@@ -29,6 +27,10 @@ import {
   type ServiceInspection,
 } from "../../service/manager";
 import { LOCALBASE_VERSION } from "../../../version";
+import {
+  openSecureDirectory,
+  outputParent,
+} from "../../../utils/secure-file-publication";
 
 const MAX_LOG_EVENTS = 500;
 const MAX_LOG_BYTES = 2 * 1024 * 1024;
@@ -65,11 +67,7 @@ const configurationSchema = z
   .object({
     runtimeBackend: z.string().min(1),
     sttBackend: z.string().min(1),
-    host: z.string().min(1),
-    port: z.number().int().positive(),
     contextSize: z.number().int().positive(),
-    sttHost: z.string().min(1),
-    sttPort: z.number().int().positive(),
     parallel: z.union([z.literal("auto"), z.number().int().min(1).max(4)]),
     selectedModels: z
       .object({
@@ -189,11 +187,7 @@ function configurationData(config: LocalBaseConfig) {
   return configurationSchema.parse({
     runtimeBackend: config.runtimeBackend,
     sttBackend: config.sttBackend,
-    host: config.host,
-    port: config.port,
     contextSize: config.ctxSize,
-    sttHost: config.sttHost,
-    sttPort: config.sttPort,
     parallel: config.parallel,
     selectedModels: {
       llm: config.selectedLlmModels,
@@ -281,36 +275,19 @@ function observabilityData(
   });
 }
 
-function sanitizeEvent(event: LogEvent): LogEvent {
-  return logEventSchema.parse({
-    ...event,
-    message: redactExternalLogText(event.message, 512),
-    ...(event.error
-      ? {
-          error: {
-            ...event.error,
-            message: redactExternalLogText(event.error.message, 512),
-          },
-        }
-      : {}),
-    ...(event.attributes
-      ? { attributes: redactLogAttributes(event.attributes) }
-      : {}),
-  });
-}
-
 function boundedLogContents(events: LogEvent[]): {
-  events: LogEvent[];
+  events: DiagnosticsLogEvent[];
   bytes: number;
 } {
-  const chosen: LogEvent[] = [];
+  const chosen: DiagnosticsLogEvent[] = [];
   let bytes = 0;
   for (const event of [...events].reverse()) {
-    const line = `${JSON.stringify(sanitizeEvent(event))}\n`;
+    const sanitized = redactLogEventForDiagnostics(event);
+    const line = `${JSON.stringify(sanitized)}\n`;
     const lineBytes = new TextEncoder().encode(line).byteLength;
     if (chosen.length >= MAX_LOG_EVENTS || bytes + lineBytes > MAX_LOG_BYTES)
       break;
-    chosen.unshift(sanitizeEvent(event));
+    chosen.unshift(sanitized);
     bytes += lineBytes;
   }
   return { events: chosen, bytes };
@@ -335,38 +312,6 @@ function outputPath(requested?: string): string {
   return value;
 }
 
-async function ensureOutputParent(path: string): Promise<void> {
-  const parent = dirname(path);
-  let current = parent;
-  while (true) {
-    try {
-      const ancestor = await lstat(current);
-      if (ancestor.isSymbolicLink()) {
-        throw new Error(
-          "Diagnostics output path cannot contain symbolic links.",
-        );
-      }
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      const next = dirname(current);
-      if (next === current) break;
-      current = next;
-    }
-  }
-  await mkdir(parent, { recursive: true, mode: 0o700 });
-  const info = await lstat(parent);
-  if (!info.isDirectory() || info.isSymbolicLink()) {
-    throw new Error("Diagnostics output parent must be a real directory.");
-  }
-  try {
-    await lstat(path);
-    throw new Error("Diagnostics output already exists.");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
-}
-
 async function writeArchive(
   path: string,
   entries: ArchiveEntry[],
@@ -385,15 +330,23 @@ async function writeArchive(
   if (archive.byteLength > MAX_ARCHIVE_BYTES) {
     throw new Error("Diagnostics archive exceeds the size limit.");
   }
-  await ensureOutputParent(path);
-  const temporary = `${path}.${crypto.randomUUID()}.tmp`;
+  const directory = openSecureDirectory(outputParent(path));
+  const temporary = `.localbase-diagnostics-${crypto.randomUUID()}.tmp`;
+  let file: number | undefined;
   try {
-    await Bun.write(temporary, archive);
-    await chmod(temporary, 0o600);
-    await link(temporary, path);
+    file = directory.createExclusiveFile(temporary, 0o600);
+    directory.write(file, archive);
+    directory.sync(file);
+    directory.closeFile(file);
+    file = undefined;
+    directory.publish(temporary, basename(path));
+    directory.remove(temporary);
+    directory.syncDirectory();
     return archive.byteLength;
   } finally {
-    await unlink(temporary).catch(() => {});
+    if (file !== undefined) directory.closeFile(file);
+    directory.remove(temporary);
+    directory.close();
   }
 }
 
@@ -438,7 +391,7 @@ export async function runDiagnostics(
         .catch(() => unavailable("otel_unavailable"))
     : Promise.resolve(unavailable("otel_unavailable"));
 
-  let capturedEvents: LogEvent[] = [];
+  let capturedEvents: DiagnosticsLogEvent[] = [];
   const logResult = await readLogSnapshot(root, {}, MAX_LOG_EVENTS)
     .then((events) => {
       const bounded = boundedLogContents(events);
