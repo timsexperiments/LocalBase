@@ -178,6 +178,11 @@ export const logsInputSchema = z.object({
 });
 export type LogsInput = z.infer<typeof logsInputSchema>;
 
+export const diagnosticsInputSchema = z
+  .object({ output: z.string().min(1).max(4_096).optional() })
+  .strict();
+export type DiagnosticsInput = z.infer<typeof diagnosticsInputSchema>;
+
 export const keysListInputSchema = z.object({});
 export type KeysListInput = z.infer<typeof keysListInputSchema>;
 

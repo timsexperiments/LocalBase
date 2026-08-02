@@ -12,6 +12,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   databasePath as dbPath,
+  openReadOnlyDatabase,
   type DatabaseSession,
   withDatabase,
 } from "./db/client";
@@ -510,6 +511,30 @@ export function loadConfig(
   assertDestructiveLocalBaseRoot(selectedRoot);
   ensureDirs(config);
   return config;
+}
+
+export async function readConfig(root?: string): Promise<LocalBaseConfig> {
+  const selectedRoot = canonicalLocalBaseRoot(root ?? defaultRoot());
+  const path = dbPath(selectedRoot);
+  if (!(await Bun.file(path).exists())) {
+    throw invalidConfiguration(
+      selectedRoot,
+      "configuration database is missing",
+    );
+  }
+  const readonly = openReadOnlyDatabase(selectedRoot);
+  try {
+    const row = readonly.db
+      .select()
+      .from(configTable)
+      .where(eq(configTable.id, "default"))
+      .get();
+    if (!row)
+      throw invalidConfiguration(selectedRoot, "configuration row is missing");
+    return fromConfigRow(row, selectedRoot);
+  } finally {
+    readonly.close();
+  }
 }
 
 export async function resetDatabase(

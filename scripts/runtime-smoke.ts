@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { unzipSync } from "fflate";
 import { gatewayHealthSchema } from "../src/domains/runtime/health";
+import { diagnosticsManifestSchema } from "../src/domains/diagnostics/commands/diagnostics";
 
 type CommandResult = {
   exitCode: number;
@@ -100,6 +102,18 @@ export function buildServeArgs(
 
 export function buildUninstallArgs(root: string): string[] {
   return ["--root", root, "--non-interactive", "uninstall", "--yes"];
+}
+
+export function buildDiagnosticsArgs(root: string, output: string): string[] {
+  return [
+    "--root",
+    root,
+    "--non-interactive",
+    "diagnostics",
+    "--output",
+    output,
+    "--json",
+  ];
 }
 
 function commandEnvironment(): Record<string, string> {
@@ -396,6 +410,20 @@ async function verifyInstalledArtifacts(root: string): Promise<void> {
   }
 }
 
+async function verifyDiagnosticsArchive(path: string): Promise<void> {
+  const archive = unzipSync(await Bun.file(path).bytes());
+  const names = Object.keys(archive);
+  if (names.join(",") !== "manifest.json,logs/events.jsonl") {
+    throw new Error(`Diagnostics archive entries were unexpected: ${names}`);
+  }
+  const manifest = diagnosticsManifestSchema.safeParse(
+    JSON.parse(new TextDecoder().decode(archive["manifest.json"]!)),
+  );
+  if (!manifest.success) {
+    throw new Error("Diagnostics archive manifest failed schema validation.");
+  }
+}
+
 async function main(): Promise<void> {
   const root = `${process.env.RUNNER_TEMP ?? "/tmp"}/localbase-runtime-smoke-${crypto.randomUUID()}`;
   const help = await expectCli(["--help"]);
@@ -404,14 +432,26 @@ async function main(): Promise<void> {
   }
 
   await expectCli(buildConfigureArgs(root));
+  await expectCli(
+    buildDiagnosticsArgs(root, `${root}/diagnostics-configured.zip`),
+  );
+  await verifyDiagnosticsArchive(`${root}/diagnostics-configured.zip`);
 
   const running = await startGateway(root);
 
   try {
+    await expectCli(
+      buildDiagnosticsArgs(root, `${root}/diagnostics-running.zip`),
+    );
+    await verifyDiagnosticsArchive(`${root}/diagnostics-running.zip`);
     await transcribe(running.baseUrl);
     await verifyInstalledArtifacts(root);
     await stopGateway(running);
     await waitForClosedPort(running.sttPort);
+    await expectCli(
+      buildDiagnosticsArgs(root, `${root}/diagnostics-stopped.zip`),
+    );
+    await verifyDiagnosticsArchive(`${root}/diagnostics-stopped.zip`);
   } finally {
     if (running.process.exitCode === null) await stopGateway(running);
   }

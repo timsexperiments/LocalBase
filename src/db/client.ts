@@ -54,6 +54,20 @@ export class DatabaseSession {
   }
 }
 
+export function openReadOnlyDatabase(root: string): {
+  db: LocalBaseDatabase;
+  close: () => void;
+} {
+  const sqlite = new Database(databasePath(root), {
+    readonly: true,
+    create: false,
+  });
+  return {
+    db: drizzle({ client: sqlite, schema }),
+    close: () => sqlite.close(),
+  };
+}
+
 export function withDatabase<T>(
   session: DatabaseSession,
   root: string,
