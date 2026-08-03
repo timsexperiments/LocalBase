@@ -98,7 +98,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security list-keychains -d user -s $KEYCHAIN_PATH
 
-      - name: Build CLI and smoke runner
+      - name: Build CLI
         run: |
           bun run scripts/release-artifacts.ts build \
             --target ${{ matrix.target }} \
@@ -185,54 +185,29 @@ jobs:
           codesign --verify --strict --verbose=2 "$cli"
           spctl --assess --type execute "$cli"
 
-      - name: Make exact artifacts executable
-        run: |
-          chmod +x \
-            extracted/${{ matrix.target }}/local-base-${{ matrix.target }} \
-            release-artifacts/${{ matrix.target }}/localbase-runtime-smoke-${{ matrix.target }}
+      - name: Make exact CLI executable
+        run: chmod +x extracted/${{ matrix.target }}/local-base-${{ matrix.target }}
 
       - name: Verify Rosetta translation
         if: matrix.smoke == 'rosetta'
         run: /usr/bin/arch -x86_64 /usr/bin/true
 
-      - name: Execute exact artifact smoke runner (native)
-        if: matrix.smoke == 'native'
+      - name: Run exact CLI runtime smoke with host Bun
+        if: matrix.smoke != 'qemu'
         env:
-          HOME: ${{ runner.temp }}/localbase-home-${{ matrix.target }}
-          TMPDIR: ${{ runner.temp }}/localbase-tmp-${{ matrix.target }}
-          XDG_CONFIG_HOME: ${{ runner.temp }}/localbase-config-${{ matrix.target }}
-          RUNNER_TEMP: ${{ runner.temp }}/localbase-runner-${{ matrix.target }}
+          RUNNER_TEMP: ${{ runner.temp }}/localbase-runtime-smoke-${{ matrix.target }}
           LOCALBASE_SMOKE_TARGET: ${{ matrix.target }}
           LOCALBASE_SMOKE_CLI: ${{ github.workspace }}/extracted/${{ matrix.target }}/local-base-${{ matrix.target }}
         run: |
-          mkdir -p "$HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$RUNNER_TEMP"
-          cd "$RUNNER_TEMP"
-          "$GITHUB_WORKSPACE/release-artifacts/${{ matrix.target }}/localbase-runtime-smoke-${{ matrix.target }}"
+          mkdir -p "$RUNNER_TEMP"
+          bun test --timeout 120000 scripts/runtime-smoke.test.ts
 
-      - name: Execute exact macOS x64 smoke runner under Rosetta
-        if: matrix.smoke == 'rosetta'
-        env:
-          HOME: ${{ runner.temp }}/localbase-home-macos-x64
-          TMPDIR: ${{ runner.temp }}/localbase-tmp-macos-x64
-          XDG_CONFIG_HOME: ${{ runner.temp }}/localbase-config-macos-x64
-          RUNNER_TEMP: ${{ runner.temp }}/localbase-runner-macos-x64
-          LOCALBASE_SMOKE_TARGET: macos-x64
-          LOCALBASE_SMOKE_CLI: ${{ github.workspace }}/extracted/macos-x64/local-base-macos-x64
-        run: |
-          mkdir -p "$HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$RUNNER_TEMP"
-          cd "$RUNNER_TEMP"
-          /usr/bin/arch -x86_64 \
-            "$GITHUB_WORKSPACE/release-artifacts/macos-x64/localbase-runtime-smoke-macos-x64"
-
-      - name: Build Linux ARM64 qualification image (Docker/QEMU)
+      - name: Build Linux ARM64 runtime smoke image (Docker/QEMU)
         if: matrix.smoke == 'qemu'
         run: |
-          cp release-artifacts/linux-arm64/localbase-runtime-smoke-linux-arm64 \
-            extracted/linux-arm64/
           docker build --platform linux/arm64 \
             --build-arg ARTIFACT_DIR=extracted/linux-arm64 \
             --build-arg ARTIFACT_TARGET=linux-arm64 \
-            --build-arg SMOKE_RUNNER_FILENAME=localbase-runtime-smoke-linux-arm64 \
             --file Dockerfile.runtime-smoke \
             --tag localbase-runtime-smoke:linux-arm64 .
 
@@ -243,9 +218,9 @@ jobs:
           readelf -h extracted/linux-arm64/local-base-linux-arm64 | grep -Eq '^[[:space:]]*Machine:[[:space:]]+AArch64$'
           docker run --rm --platform linux/arm64 \
             --entrypoint /bin/sh localbase-runtime-smoke:linux-arm64 \
-            -c 'set -eu; ldd_output="$(ldd /usr/local/bin/local-base 2>&1 || true)"; printf "%s\\n" "$ldd_output"; ! printf "%s\\n" "$ldd_output" | grep -q "not found"'
+            -c 'set -eu; ldd_output="$(ldd /opt/localbase/local-base 2>&1 || true)"; printf "%s\\n" "$ldd_output"; ! printf "%s\\n" "$ldd_output" | grep -q "not found"'
 
-      - name: Execute exact Linux ARM64 smoke runner through Docker/QEMU
+      - name: Run exact CLI runtime smoke with Bun through Docker/QEMU
         if: matrix.smoke == 'qemu'
         run: docker run --rm --platform linux/arm64 localbase-runtime-smoke:linux-arm64
 
