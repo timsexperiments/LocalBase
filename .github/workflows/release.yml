@@ -185,7 +185,7 @@ jobs:
           codesign --verify --strict --verbose=2 "$cli"
           spctl --assess --type execute "$cli"
 
-      - name: Make exact CLI executable
+      - name: Make CLI executable
         run: chmod +x extracted/${{ matrix.target }}/local-base-${{ matrix.target }}
 
       - name: Verify Rosetta translation
