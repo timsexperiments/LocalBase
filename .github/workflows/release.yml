@@ -192,7 +192,7 @@ jobs:
         if: matrix.smoke == 'rosetta'
         run: /usr/bin/arch -x86_64 /usr/bin/true
 
-      - name: Run exact CLI runtime smoke with host Bun
+      - name: Run CLI runtime smoke test
         if: matrix.smoke != 'qemu'
         env:
           RUNNER_TEMP: ${{ runner.temp }}/localbase-runtime-smoke-${{ matrix.target }}
@@ -220,7 +220,7 @@ jobs:
             --entrypoint /bin/sh localbase-runtime-smoke:linux-arm64 \
             -c 'set -eu; ldd_output="$(ldd /opt/localbase/local-base 2>&1 || true)"; printf "%s\\n" "$ldd_output"; ! printf "%s\\n" "$ldd_output" | grep -q "not found"'
 
-      - name: Run exact CLI runtime smoke with Bun through Docker/QEMU
+      - name: Run CLI runtime smoke test
         if: matrix.smoke == 'qemu'
         run: docker run --rm --platform linux/arm64 localbase-runtime-smoke:linux-arm64
 

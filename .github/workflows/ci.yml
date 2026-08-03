@@ -51,7 +51,7 @@ jobs:
             --output extracted/linux-x64
           chmod +x extracted/linux-x64/local-base-linux-x64
 
-      - name: Run exact CLI runtime smoke
+      - name: Run CLI runtime smoke test
         env:
           RUNNER_TEMP: ${{ runner.temp }}/localbase-runtime-smoke-linux-x64
           LOCALBASE_SMOKE_TARGET: linux-x64
