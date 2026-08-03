@@ -2,12 +2,13 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
-  ARTIFACT_MANIFEST_FILENAME,
   qualifyArtifactDirectory,
   releaseArtifactFilenames,
+  releasePackageFilename,
   ReleaseTargetSchema,
   stageReleaseArtifacts,
   verifyArtifactDirectory,
+  verifyReleasePackage,
   writeArtifactManifest,
   type ReleaseTarget,
 } from "./release-artifacts";
@@ -27,58 +28,77 @@ function temp() {
   return directory;
 }
 
-async function artifacts(target: ReleaseTarget, parent = temp()) {
-  const directory = join(parent, target);
-  mkdirSync(directory, { recursive: true });
-  const [cli, runner] = releaseArtifactFilenames(target);
-  await Bun.write(join(directory, cli!), `cli:${target}`);
-  await Bun.write(join(directory, runner!), `runner:${target}`);
-  await writeArtifactManifest(target, directory);
-  return directory;
+function binaryHeader(target: ReleaseTarget) {
+  if (target.startsWith("linux-")) {
+    const header = new Uint8Array(32);
+    header.set([0x7f, 0x45, 0x4c, 0x46]);
+    header[18] = target.endsWith("x64") ? 0x3e : 0xb7;
+    return header;
+  }
+  const header = new Uint8Array(32);
+  header.set([0xcf, 0xfa, 0xed, 0xfe]);
+  header[4] = target.endsWith("x64") ? 0x07 : 0x0c;
+  header[7] = 0x01;
+  return header;
 }
 
-test("rejects a changed artifact", async () => {
-  const directory = await artifacts("linux-x64");
-  const [cli] = releaseArtifactFilenames("linux-x64");
-  await Bun.write(join(directory, cli!), "tampered");
+async function artifacts(target: ReleaseTarget, parent = temp()) {
+  const directory = join(parent, target);
+  const extracted = join(parent, `${target}-extracted`);
+  mkdirSync(directory, { recursive: true });
+  mkdirSync(extracted, { recursive: true });
+  const [cli, runner] = releaseArtifactFilenames(target);
+  const binary = binaryHeader(target);
+  await Bun.write(join(directory, cli!), binary);
+  await Bun.write(join(directory, runner!), "runner");
+  await Bun.write(join(extracted, cli!), binary);
+  await Bun.write(join(directory, releasePackageFilename(target)), "package");
+  await writeArtifactManifest(target, directory);
+  return { directory, extracted };
+}
+
+test("rejects a changed canonical package", async () => {
+  const { directory } = await artifacts("linux-x64");
+  await Bun.write(
+    join(directory, releasePackageFilename("linux-x64")),
+    "tampered",
+  );
   await expect(verifyArtifactDirectory("linux-x64", directory)).rejects.toThrow(
-    "digest mismatch",
+    "package local-base-linux-x64.tar.gz digest mismatch",
   );
 });
 
-test("invalidates a qualification receipt when the manifest changes", async () => {
-  const parent = temp();
-  const inputs = await Promise.all(
-    ReleaseTargetSchema.options.map((target) => artifacts(target, parent)),
-  );
-  await Promise.all(
-    inputs.map((directory, index) =>
-      qualifyArtifactDirectory(ReleaseTargetSchema.options[index]!, directory),
-    ),
-  );
-  const manifest = join(inputs[0]!, ARTIFACT_MANIFEST_FILENAME);
-  await Bun.write(manifest, `${await Bun.file(manifest).text()}\n`);
+test("rejects a package whose extracted CLI differs from the manifest", async () => {
+  const { directory, extracted } = await artifacts("macos-arm64");
+  await Bun.write(join(extracted, "local-base-macos-arm64"), "tampered");
   await expect(
-    stageReleaseArtifacts(inputs, join(temp(), "stage")),
-  ).rejects.toThrow("changed after qualification");
+    verifyReleasePackage("macos-arm64", directory, extracted),
+  ).rejects.toThrow("Packaged CLI local-base-macos-arm64 digest mismatch");
 });
 
-test("stages one unchanged CLI for every target and writes checksums", async () => {
+test("stages unchanged qualified canonical packages", async () => {
   const parent = temp();
   const inputs = await Promise.all(
     ReleaseTargetSchema.options.map((target) => artifacts(target, parent)),
   );
   await Promise.all(
-    inputs.map((directory, index) =>
-      qualifyArtifactDirectory(ReleaseTargetSchema.options[index]!, directory),
+    inputs.map(({ directory, extracted }, index) =>
+      qualifyArtifactDirectory(
+        ReleaseTargetSchema.options[index]!,
+        directory,
+        extracted,
+      ),
     ),
   );
   const output = join(parent, "stage");
-  await stageReleaseArtifacts(inputs, output);
+  await stageReleaseArtifacts(
+    inputs.map(({ directory }) => directory),
+    output,
+  );
   const checksums = await Bun.file(join(output, "checksums.txt")).text();
   for (const target of ReleaseTargetSchema.options) {
-    const [cli] = releaseArtifactFilenames(target);
-    expect(await Bun.file(join(output, cli!)).text()).toBe(`cli:${target}`);
-    expect(checksums).toContain(`  ${cli}`);
+    const filename = releasePackageFilename(target);
+    expect(await Bun.file(join(output, filename)).text()).toBe("package");
+    expect(checksums).toContain(`  ${filename}`);
   }
 });
