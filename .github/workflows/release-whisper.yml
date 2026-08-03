@@ -129,7 +129,7 @@ jobs:
           zip -j whisper-server-macos-arm64.zip build-whisper/whisper-server
           xcrun notarytool submit whisper-server-macos-arm64.zip --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$TEAM_ID" --wait
 
-      - name: Verify exact macOS package and runtime trust
+      - name: Verify macOS package and runtime trust
         run: |
           set -euo pipefail
           mkdir extracted

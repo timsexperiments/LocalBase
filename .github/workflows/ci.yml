@@ -44,15 +44,18 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build Linux smoke-test artifacts
-        run: bun run smoke:runtime:build-linux
-
-      - name: Run native Ubuntu runtime smoke test
-        env:
-          LOCALBASE_SMOKE_CLI: ${{ github.workspace }}/dist/runtime-smoke/local-base-linux-x64
-        run: ./dist/runtime-smoke/runtime-smoke-linux-x64
-
-      - name: Run minimal Linux container runtime smoke test
+      - name: Build Linux x64 CLI
         run: |
-          docker build --platform linux/amd64 --file Dockerfile.runtime-smoke --tag localbase-runtime-smoke:ci .
-          docker run --rm localbase-runtime-smoke:ci
+          bun run scripts/release-artifacts.ts build \
+            --target linux-x64 \
+            --output extracted/linux-x64
+          chmod +x extracted/linux-x64/local-base-linux-x64
+
+      - name: Run CLI runtime smoke test
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}/localbase-runtime-smoke-linux-x64
+          LOCALBASE_SMOKE_TARGET: linux-x64
+          LOCALBASE_SMOKE_CLI: ${{ github.workspace }}/extracted/linux-x64/local-base-linux-x64
+        run: |
+          mkdir -p "$RUNNER_TEMP"
+          bun test --timeout 120000 scripts/runtime-smoke.test.ts

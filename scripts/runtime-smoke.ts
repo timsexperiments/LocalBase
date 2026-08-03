@@ -102,7 +102,12 @@ const RuntimeReceiptSchema = z
 
 function cliCommand(): string[] {
   const binary = process.env.LOCALBASE_SMOKE_CLI;
-  return binary ? [binary] : [process.execPath, "src/cli.ts"];
+  if (!binary?.startsWith("/")) {
+    throw new Error(
+      "LOCALBASE_SMOKE_CLI must be the absolute path to the extracted CLI.",
+    );
+  }
+  return [binary];
 }
 
 export function buildConfigureArgs(
@@ -492,6 +497,17 @@ async function verifyInstalledArtifacts(root: string): Promise<void> {
   }
 }
 
+async function verifyCliOnlyArtifacts(root: string): Promise<void> {
+  if (
+    (await Bun.file(`${root}/bin/whisper-server`).exists()) ||
+    (await Bun.file(`${root}/bin/.managed-binaries.json`).exists())
+  ) {
+    throw new Error(
+      "A CLI-only target attempted to install a managed runtime.",
+    );
+  }
+}
+
 async function verifyDiagnosticsArchive(path: string): Promise<void> {
   const archive = unzipSync(await Bun.file(path).bytes());
   const names = Object.keys(archive);
@@ -522,7 +538,7 @@ function verifyStatusResult(result: CommandResult): void {
   }
 }
 
-async function main(): Promise<void> {
+export async function runRuntimeSmoke(): Promise<void> {
   const target = resolveSmokeTarget();
   const root = `${process.env.RUNNER_TEMP ?? "/tmp"}/localbase-runtime-smoke-${crypto.randomUUID()}`;
   try {
@@ -537,6 +553,9 @@ async function main(): Promise<void> {
     }
 
     await expectCli(buildConfigureArgs(root, target), root);
+    if (!(await Bun.file(`${root}/local-base.db`).exists())) {
+      throw new Error("The compiled CLI did not create its migrated database.");
+    }
     if (!isManagedTarget(target)) await prepareCliOnlyLlmFixture(root);
     verifyStatusResult(
       await expectCli(["--root", root, "status", "--json"], root),
@@ -560,6 +579,8 @@ async function main(): Promise<void> {
       if (isManagedTarget(target)) {
         await transcribe(running.baseUrl);
         await verifyInstalledArtifacts(root);
+      } else {
+        await verifyCliOnlyArtifacts(root);
       }
       await stopGateway(running);
       if (isManagedTarget(target)) await waitForClosedPort(running.sttPort);
@@ -585,7 +606,4 @@ async function main(): Promise<void> {
       ),
     );
   }
-  console.log("Runtime smoke test passed.");
 }
-
-if (import.meta.main) await main();

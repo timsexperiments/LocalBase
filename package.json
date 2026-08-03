@@ -13,10 +13,7 @@
     "db:check": "bunx drizzle-kit check && bun run scripts/check-migration-assets.ts",
     "typecheck": "bunx tsgo --noEmit",
     "prebuild": "bun run db:prepare",
-    "build": "bun build src/cli.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --asset-naming='[dir]/[name].[ext]' --outfile dist/local-base",
-    "smoke:runtime": "bun run scripts/runtime-smoke.ts",
-    "smoke:runtime:build-linux": "bun build src/cli.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --target=bun-linux-x64 --asset-naming='[dir]/[name].[ext]' --outfile dist/runtime-smoke/local-base-linux-x64 && bun build scripts/runtime-smoke.ts --compile --target=bun-linux-x64 --outfile dist/runtime-smoke/runtime-smoke-linux-x64",
-    "smoke:runtime:docker": "bun run smoke:runtime:build-linux && docker build --platform linux/amd64 --file Dockerfile.runtime-smoke --tag localbase-runtime-smoke:local . && docker run --rm localbase-runtime-smoke:local"
+    "build": "bun build src/cli.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --asset-naming='[dir]/[name].[ext]' --outfile dist/local-base"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.20",

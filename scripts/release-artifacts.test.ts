@@ -47,10 +47,9 @@ async function artifacts(target: ReleaseTarget, parent = temp()) {
   const extracted = join(parent, `${target}-extracted`);
   mkdirSync(directory, { recursive: true });
   mkdirSync(extracted, { recursive: true });
-  const [cli, runner] = releaseArtifactFilenames(target);
+  const [cli] = releaseArtifactFilenames(target);
   const binary = binaryHeader(target);
   await Bun.write(join(directory, cli!), binary);
-  await Bun.write(join(directory, runner!), "runner");
   await Bun.write(join(extracted, cli!), binary);
   await Bun.write(join(directory, releasePackageFilename(target)), "package");
   await writeArtifactManifest(target, directory);
