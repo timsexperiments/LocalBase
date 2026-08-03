@@ -1,9 +1,10 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   buildConfigureArgs,
   buildServeArgs,
   buildUninstallArgs,
   resolveSmokeTarget,
+  runRuntimeSmoke,
   transcribe,
 } from "./runtime-smoke";
 
@@ -13,7 +14,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-test("builds smoke invocations for the current CLI contract", () => {
+test("builds runtime smoke invocations for the current CLI contract", () => {
   const root = "/tmp/localbase-smoke";
 
   expect(buildConfigureArgs(root)).toEqual([
@@ -168,3 +169,11 @@ test("fails immediately for a malformed successful response", async () => {
   );
   expect(fixture.attempts()).toBe(1);
 });
+
+if (process.env.LOCALBASE_SMOKE_CLI) {
+  describe("exact compiled CLI runtime smoke", () => {
+    test("completes the configured platform lifecycle", async () => {
+      await expect(runRuntimeSmoke()).resolves.toBeUndefined();
+    }, 120_000);
+  });
+}

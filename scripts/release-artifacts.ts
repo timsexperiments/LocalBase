@@ -40,8 +40,6 @@ const CliArtifactSchema = ArtifactSchema.extend({
 }).strict();
 
 const cliFilename = (target: ReleaseTarget) => `local-base-${target}`;
-const runnerFilename = (target: ReleaseTarget) =>
-  `localbase-runtime-smoke-${target}`;
 export const releasePackageFilename = (target: ReleaseTarget) =>
   target.startsWith("macos-")
     ? `local-base-${target}.zip`
@@ -97,7 +95,7 @@ export const QUALIFICATION_RECEIPT_FILENAME =
   "release-artifact-qualification.json";
 
 export function releaseArtifactFilenames(target: ReleaseTarget): string[] {
-  return [cliFilename(target), runnerFilename(target)];
+  return [cliFilename(target)];
 }
 
 function artifactPath(directory: string, filename: string): string {
@@ -279,7 +277,6 @@ export async function buildReleaseArtifacts(
       throw new Error(`bun build failed for ${filename}.`);
   };
   await build("src/cli.ts", cliFilename(target));
-  await build("scripts/runtime-smoke.ts", runnerFilename(target));
 }
 
 export async function qualifyArtifactDirectory(
