@@ -25,29 +25,66 @@ Full managed support includes the CLI and automatic backend management:
 
 CLI-only compatibility is available for macOS x64 and Linux ARM64. These releases publish the Bun CLI but no LocalBase-built `whisper-server` or `sd-server` runtime. Put compatible user-managed backend executables on `PATH`, outside `$LOCALBASE_ROOT/bin` (by default `~/.local/share/local-base/bin`). Pinned upstream `llama.cpp` downloads remain available only where that upstream release provides them.
 
-Windows is unsupported.
+Linux managed-runtime releases are built and qualified against an Ubuntu 24.04-compatible userspace and require the GNU OpenMP runtime (`libgomp`, packaged as `libgomp1` on Ubuntu).
+
+Managed runtime versions are pinned independently from LocalBase CLI releases.
 
 ## Quick start
 
+Download the canonical archive for your target from the [GitHub releases](https://github.com/timsexperiments/LocalBase/releases), then verify it before installation:
+
 ```bash
-bun install
-bun run build
-./dist/local-base configure
-./dist/local-base serve
+set -eu
+
+VERSION=v0.1.0
+TARGET=macos-arm64 # macos-arm64, macos-x64, linux-x64, or linux-arm64
+BASE_URL="https://github.com/timsexperiments/LocalBase/releases/download/$VERSION"
+
+case "$TARGET" in
+  macos-*) ARCHIVE="local-base-$TARGET.zip" ;;
+  linux-*) ARCHIVE="local-base-$TARGET.tar.gz" ;;
+  *) echo "Unsupported target: $TARGET" >&2; exit 2 ;;
+esac
+
+curl -fL "$BASE_URL/$ARCHIVE" -o "$ARCHIVE"
+curl -fL "$BASE_URL/checksums.txt" -o checksums.txt
+grep -F "  $ARCHIVE" checksums.txt > "$ARCHIVE.sha256"
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256sum -c "$ARCHIVE.sha256"
+else
+  shasum -a 256 -c "$ARCHIVE.sha256"
+fi
+
+INSTALL_DIR="$HOME/.local/bin"
+mkdir -p "$INSTALL_DIR"
+case "$ARCHIVE" in
+  *.zip) unzip -q "$ARCHIVE" -d "$INSTALL_DIR" ;;
+  *.tar.gz) tar -xzf "$ARCHIVE" -C "$INSTALL_DIR" ;;
+esac
+mv -f "$INSTALL_DIR/local-base-$TARGET" "$INSTALL_DIR/local-base"
+chmod +x "$INSTALL_DIR/local-base"
+export PATH="$INSTALL_DIR:$PATH"
+
+local-base --version
+local-base --help
 ```
 
-The gateway is available at `http://localhost:2273/v1`. Use `./dist/local-base --help` for command details. API keys can be created with `./dist/local-base keys create`.
+For optional provenance verification, install the [GitHub CLI](https://cli.github.com/) and run `gh attestation verify "$ARCHIVE" --repo timsexperiments/LocalBase`. The GitHub CLI is not required for normal installation.
+
+The gateway is available at `http://localhost:2273/v1`. API keys can be created with `local-base keys create`.
 
 ## Run as a user service
 
 `serve` always runs in the foreground. `start` installs, enables, and starts a root-specific user service. `stop` stops and disables login startup without removing the definition. `restart` refreshes and enables the service. `status` reports service-manager, process, gateway, and modality state without opening the LocalBase database.
 
-Create a redacted diagnostics bundle with `./dist/local-base diagnostics` or choose a destination with `--output report.zip`.
+Detached Linux commands require a functioning `systemd --user` manager. Foreground `local-base serve` does not.
+
+Create a redacted diagnostics bundle with `local-base diagnostics` or choose a destination with `--output report.zip`.
 
 ```bash
-./dist/local-base start
-./dist/local-base status
-./dist/local-base stop
+local-base start
+local-base status
+local-base stop
 ```
 
 macOS uses a launchd user agent and Linux uses a `systemd --user` service. `uninstall --yes` stops and removes the matching service before deleting that LocalBase root.
@@ -57,10 +94,10 @@ macOS uses a launchd user agent and Linux uses a `systemd --user` service. `unin
 `serve` is the single writer of redacted JSON Lines events under `$LOCALBASE_ROOT/logs`. The active file rotates at 10 MiB and retains five archives. These files are the primary operational record for foreground and managed services. A managed startup failure before the primary sink is available atomically records one private, bounded structured bootstrap event. launchd output is discarded; the systemd journal remains a secondary Linux fallback.
 
 ```bash
-./dist/local-base logs --level error
-./dist/local-base logs --limit 500 --since 2026-01-01T00:00:00Z
-./dist/local-base logs --follow --runtime llm
-./dist/local-base --json logs --request-id req-123
+local-base logs --level error
+local-base logs --limit 500 --since 2026-01-01T00:00:00Z
+local-base logs --follow --runtime llm
+local-base --json logs --request-id req-123
 ```
 
 Finite `logs --json` calls return the normal JSON command envelope and default to the newest 200 matching events (maximum 5,000). `logs --follow --json` streams one validated log event per JSONL line to stdout. Log records redact credentials, cookies, secret URL values, request identifiers that resemble credentials, and request or model content before they reach any sink.
@@ -70,7 +107,7 @@ Finite `logs --json` calls return the normal JSON command envelope and default t
 Local JSONL is the durable log record. Records with sampled span context include `trace: { traceId, spanId }`. An OTLP/HTTP endpoint enables bounded asynchronous log and trace export:
 
 ```bash
-./dist/local-base configure --otel-endpoint http://localhost:4318 --otel-sample-ratio 25
+local-base configure --otel-endpoint http://localhost:4318 --otel-sample-ratio 25
 ```
 
 Standard `OTEL_EXPORTER_OTLP_ENDPOINT`, signal-specific endpoint/header variables, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_TRACES_SAMPLER`, and `OTEL_TRACES_SAMPLER_ARG` override persisted settings. LocalBase uses W3C `traceparent` and `tracestate`, propagates valid request context to backends, and correlates local logs with sampled spans. Baggage, prompts, responses, credentials, and arbitrary headers are never exported. Collector outages can drop bounded telemetry but do not delay or fail inference; shutdown gives all telemetry signals one shared five-second flush deadline.
