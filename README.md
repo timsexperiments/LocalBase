@@ -31,45 +31,13 @@ Managed runtime versions are pinned independently from LocalBase CLI releases.
 
 ## Quick start
 
-Download the canonical archive for your target from the [GitHub releases](https://github.com/timsexperiments/LocalBase/releases), then verify it before installation:
+Download the archive matching your platform—macOS ARM64, macOS x64, Linux x64, or Linux ARM64—and `checksums.txt` from the [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases) page. Verify the archive’s SHA-256 entry with `shasum -a 256` on macOS or `sha256sum` on Linux before extracting it. For optional provenance verification, install the [GitHub CLI](https://cli.github.com/) and run `gh attestation verify <archive> --repo timsexperiments/LocalBase`.
+
+Extract the archive, rename the executable to `local-base`, and install it in a directory on your `PATH` such as `$HOME/.local/bin`. Then run:
 
 ```bash
-set -eu
-
-VERSION=v0.1.0
-TARGET=macos-arm64 # macos-arm64, macos-x64, linux-x64, or linux-arm64
-BASE_URL="https://github.com/timsexperiments/LocalBase/releases/download/$VERSION"
-
-case "$TARGET" in
-  macos-*) ARCHIVE="local-base-$TARGET.zip" ;;
-  linux-*) ARCHIVE="local-base-$TARGET.tar.gz" ;;
-  *) echo "Unsupported target: $TARGET" >&2; exit 2 ;;
-esac
-
-curl -fL "$BASE_URL/$ARCHIVE" -o "$ARCHIVE"
-curl -fL "$BASE_URL/checksums.txt" -o checksums.txt
-grep -F "  $ARCHIVE" checksums.txt > "$ARCHIVE.sha256"
-if command -v sha256sum >/dev/null 2>&1; then
-  sha256sum -c "$ARCHIVE.sha256"
-else
-  shasum -a 256 -c "$ARCHIVE.sha256"
-fi
-
-INSTALL_DIR="$HOME/.local/bin"
-mkdir -p "$INSTALL_DIR"
-case "$ARCHIVE" in
-  *.zip) unzip -q "$ARCHIVE" -d "$INSTALL_DIR" ;;
-  *.tar.gz) tar -xzf "$ARCHIVE" -C "$INSTALL_DIR" ;;
-esac
-mv -f "$INSTALL_DIR/local-base-$TARGET" "$INSTALL_DIR/local-base"
-chmod +x "$INSTALL_DIR/local-base"
-export PATH="$INSTALL_DIR:$PATH"
-
-local-base --version
 local-base --help
 ```
-
-For optional provenance verification, install the [GitHub CLI](https://cli.github.com/) and run `gh attestation verify "$ARCHIVE" --repo timsexperiments/LocalBase`. The GitHub CLI is not required for normal installation.
 
 The gateway is available at `http://localhost:2273/v1`. API keys can be created with `local-base keys create`.
 
