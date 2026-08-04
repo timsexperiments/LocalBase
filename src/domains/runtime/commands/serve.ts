@@ -10,7 +10,7 @@ import {
   resolveCatalogInstallation,
 } from "../../../catalog";
 import type { AppContext } from "../../../context";
-import { activateContextOtel, reconcileContextOtel } from "../../../context";
+import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
 import { type ILogger } from "../../observability/logging";
 import type { RuntimeModality } from "../modality";
@@ -37,7 +37,6 @@ import { CliInputError } from "../../app/commands/errors";
 import {
   clientSpanOptions,
   internalSpanOptions,
-  type OtelRuntimeLease,
   serverSpanName,
   serverSpanOptions,
   type OtelRuntime,
@@ -1658,13 +1657,7 @@ export async function runServe(
     supervisors,
     factory,
     ctx.logger,
-    {
-      replace: async (snapshot) => {
-        await reconcileContextOtel(ctx, snapshot.config);
-      },
-    },
   );
-  ctx.logger.setConfigurationRevision?.(() => reconciler.read().revision);
 
   const gatewayStartedAt = Date.now();
   let gatewayStopping = false;
@@ -1675,7 +1668,6 @@ export async function runServe(
       stopping: gatewayStopping,
       configured: reconciler.configuredModalities(),
       supervisors,
-      configurationRevision: reconciler.read().revision,
     });
 
   const proxyWithAdmission = async (
@@ -1707,7 +1699,6 @@ export async function runServe(
   const handleRequest = async (
     request: Request,
     pathname: string,
-    otel: OtelRuntimeLease,
   ): Promise<Response> => {
     const route = selectGatewayRoute(pathname);
     if (route === "health") {
@@ -1847,7 +1838,7 @@ export async function runServe(
             sttPath,
             transcriptionResponseSchema,
             undefined,
-            otel,
+            ctx.otel,
           ),
       );
     }
@@ -1886,7 +1877,7 @@ export async function runServe(
             undefined,
             imageGenerationResponseSchema,
             undefined,
-            otel,
+            ctx.otel,
           ),
       );
     }
@@ -1925,7 +1916,7 @@ export async function runServe(
             undefined,
             chatCompletionResponseSchema,
             chatCompletionStreamEventSchema,
-            otel,
+            ctx.otel,
           ),
       );
     }
@@ -1961,7 +1952,7 @@ export async function runServe(
             undefined,
             embeddingsResponseSchema,
             undefined,
-            otel,
+            ctx.otel,
           ),
       );
     }
@@ -1996,81 +1987,74 @@ export async function runServe(
       const { pathname } = new URL(request.url);
       const method = request.method;
       const requestId = request.headers.get("x-request-id") ?? undefined;
-      const otel = ctx.otel.acquire();
-      try {
-        const parent = otel.extract(request.headers);
-        const response = await otel.withSpan(
-          serverSpanName(method, pathname),
-          serverSpanOptions(method, pathname),
-          async (span) => {
-            if (method === "OPTIONS") {
-              span.setAttribute("http.response.status_code", 204);
-              return new Response(null, {
-                status: 204,
-                headers: {
-                  "Access-Control-Allow-Origin": "*",
-                  "Access-Control-Allow-Methods":
-                    "GET, POST, PUT, DELETE, OPTIONS",
-                  "Access-Control-Allow-Headers":
-                    "Content-Type, Authorization, x-api-key",
-                  "Access-Control-Max-Age": "86400",
-                },
-              });
-            }
-
-            let response: Response;
-            try {
-              response = await handleRequest(request, pathname, otel);
-            } catch (err) {
-              ctx.logger.error(
-                "HTTP",
-                `Error handling request ${method} ${pathname}`,
-                err as Error,
-              );
-              response = Response.json(
-                { error: "Internal Server Error" },
-                { status: 500 },
-              );
-            }
-
-            const headers = new Headers(response.headers);
-            headers.set("Access-Control-Allow-Origin", "*");
-            headers.set(
-              "Access-Control-Allow-Methods",
-              "GET, POST, PUT, DELETE, OPTIONS",
-            );
-            headers.set(
-              "Access-Control-Allow-Headers",
-              "Content-Type, Authorization, x-api-key",
-            );
-
-            const corsResponse = new Response(response.body, {
-              status: response.status,
-              statusText: response.statusText,
-              headers,
+      const parent = ctx.otel.extract(request.headers);
+      return await ctx.otel.withSpan(
+        serverSpanName(method, pathname),
+        serverSpanOptions(method, pathname),
+        async (span) => {
+          if (method === "OPTIONS") {
+            span.setAttribute("http.response.status_code", 204);
+            return new Response(null, {
+              status: 204,
+              headers: {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods":
+                  "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers":
+                  "Content-Type, Authorization, x-api-key",
+                "Access-Control-Max-Age": "86400",
+              },
             });
+          }
 
-            const durationMs = performance.now() - start;
-            span.setAttribute("http.response.status_code", corsResponse.status);
-            if (corsResponse.status >= 500) {
-              span.setStatus({ code: SpanStatusCode.ERROR });
-            }
-            ctx.logger.request(
-              method,
-              pathname,
-              corsResponse.status,
-              durationMs,
-              requestId,
+          let response: Response;
+          try {
+            response = await handleRequest(request, pathname);
+          } catch (err) {
+            ctx.logger.error(
+              "HTTP",
+              `Error handling request ${method} ${pathname}`,
+              err as Error,
             );
-            return corsResponse;
-          },
-          parent,
-        );
-        return withResponseLease(response, otel.release, request.signal);
-      } catch (error) {
-        otel.release();
-        throw error;
-      }
+            response = Response.json(
+              { error: "Internal Server Error" },
+              { status: 500 },
+            );
+          }
+
+          const headers = new Headers(response.headers);
+          headers.set("Access-Control-Allow-Origin", "*");
+          headers.set(
+            "Access-Control-Allow-Methods",
+            "GET, POST, PUT, DELETE, OPTIONS",
+          );
+          headers.set(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization, x-api-key",
+          );
+
+          const corsResponse = new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers,
+          });
+
+          const durationMs = performance.now() - start;
+          span.setAttribute("http.response.status_code", corsResponse.status);
+          if (corsResponse.status >= 500) {
+            span.setStatus({ code: SpanStatusCode.ERROR });
+          }
+          ctx.logger.request(
+            method,
+            pathname,
+            corsResponse.status,
+            durationMs,
+            requestId,
+          );
+          return corsResponse;
+        },
+        parent,
+      );
     },
   });
 

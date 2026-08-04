@@ -76,65 +76,13 @@ function otelDiagnostic(logger: ILogger) {
   };
 }
 
-function sameRecord(
-  left: Record<string, string>,
-  right: Record<string, string>,
-): boolean {
-  const leftEntries = Object.entries(left).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
-  const rightEntries = Object.entries(right).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
-  return (
-    leftEntries.length === rightEntries.length &&
-    leftEntries.every(
-      ([key, value], index) =>
-        key === rightEntries[index]?.[0] && value === rightEntries[index]?.[1],
-    )
-  );
-}
-
-function sameOtelConfiguration(
-  left: OtelConfiguration,
-  right: OtelConfiguration,
-): boolean {
-  return (
-    left.enabled === right.enabled &&
-    left.tracesEndpoint === right.tracesEndpoint &&
-    left.logsEndpoint === right.logsEndpoint &&
-    left.sampleRatio === right.sampleRatio &&
-    left.sampler === right.sampler &&
-    left.source === right.source &&
-    sameRecord(left.headers, right.headers) &&
-    sameRecord(left.tracesHeaders, right.tracesHeaders) &&
-    sameRecord(left.logsHeaders, right.logsHeaders)
-  );
-}
-
-function contextOtelRuntime(ctx: AppContext, configuration: OtelConfiguration) {
-  return createOtelRuntime(configuration, otelDiagnostic(ctx.logger));
-}
-
 export async function activateContextOtel(ctx: AppContext): Promise<void> {
   if (ctx.otel.enabled || !ctx.otelConfiguration.enabled) return;
-  await ctx.otel.replace(contextOtelRuntime(ctx, ctx.otelConfiguration));
-}
-
-/** Replaces telemetry only after resolving and constructing a complete runtime. */
-export async function reconcileContextOtel(
-  ctx: AppContext,
-  config: Pick<
-    LocalBaseConfig,
-    "otelEndpoint" | "otelHeaders" | "otelSampleRatio"
-  >,
-): Promise<boolean> {
-  const configuration = resolveOtelConfiguration(config);
-  if (sameOtelConfiguration(ctx.otelConfiguration, configuration)) return false;
-  const runtime = contextOtelRuntime(ctx, configuration);
+  const runtime = createOtelRuntime(
+    ctx.otelConfiguration,
+    otelDiagnostic(ctx.logger),
+  );
   await ctx.otel.replace(runtime);
-  ctx.otelConfiguration = configuration;
-  return true;
 }
 
 const environmentOverridesSchema = z
