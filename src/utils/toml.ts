@@ -1,50 +1,42 @@
 import { type LocalBaseConfig } from "../manager";
 import { z } from "zod";
 import { parallelSlotsSchema } from "../domains/config/parallel";
+import { hostSchema, portSchema } from "../domains/config/schema";
+import {
+  modelIdSchema,
+  selectedModelsSchema,
+} from "../domains/models/model-selection";
 import {
   otelEndpointSchema,
   otelHeadersTextSchema,
 } from "../domains/observability/otel-config";
+import { CliInputError, formatZodError } from "../domains/app/commands/errors";
 
 export type ConfigOverrides = Partial<LocalBaseConfig>;
 
 const configOverridesSchema = z
   .object({
     root: z.string().min(1).optional(),
-    host: z.string().min(1).optional(),
-    port: z.number().int().positive().optional(),
+    host: hostSchema.optional(),
+    port: portSchema.optional(),
     ctxSize: z.number().int().positive().optional(),
     parallel: parallelSlotsSchema.optional(),
-    sttHost: z.string().min(1).optional(),
-    sttPort: z.number().int().positive().optional(),
-    selectedLlmModels: z.array(z.string().min(1)).optional(),
-    selectedSttModels: z.array(z.string().min(1)).optional(),
-    selectedImageModels: z.array(z.string().min(1)).optional(),
-    activeLlmModel: z.string().min(1).optional(),
-    activeSttModel: z.string().optional(),
-    activeImageModel: z.string().optional(),
+    sttHost: hostSchema.optional(),
+    sttPort: portSchema.optional(),
+    selectedLlmModels: selectedModelsSchema("llm", true).optional(),
+    selectedSttModels: selectedModelsSchema("stt", false).optional(),
+    selectedImageModels: selectedModelsSchema("image", false).optional(),
+    activeLlmModel: modelIdSchema("llm").optional(),
+    activeSttModel: z.union([z.literal(""), modelIdSchema("stt")]).optional(),
+    activeImageModel: z
+      .union([z.literal(""), modelIdSchema("image")])
+      .optional(),
     hfToken: z.string().optional(),
     otelEndpoint: z.union([z.literal(""), otelEndpointSchema]).optional(),
     otelHeaders: otelHeadersTextSchema.optional(),
     otelSampleRatio: z.number().int().min(0).max(100).optional(),
   })
   .strict();
-
-function parseTomlValue(value: string): string | number | boolean | string[] {
-  const trimmed = value.trim();
-  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-    const inner = trimmed.slice(1, -1).trim();
-    if (!inner) return [];
-    return inner
-      .split(",")
-      .map((entry) => entry.trim().replace(/^"|"$/g, ""))
-      .filter(Boolean);
-  }
-  if (trimmed === "true") return true;
-  if (trimmed === "false") return false;
-  if (/^-?\d+$/.test(trimmed)) return Number(trimmed);
-  return trimmed.replace(/^"|"$/g, "");
-}
 
 export async function loadTomlOverrides(
   path: string,
@@ -53,18 +45,15 @@ export async function loadTomlOverrides(
   if (!(await file.exists())) throw new Error(`Config file not found: ${path}`);
 
   const raw = await file.text();
-  const values: Record<string, string | number | boolean | string[]> = {};
-
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("["))
-      continue;
-    const idx = trimmed.indexOf("=");
-    if (idx === -1) continue;
-    const key = trimmed.slice(0, idx).trim();
-    const value = trimmed.slice(idx + 1).trim();
-    values[key] = parseTomlValue(value);
+  let values: unknown;
+  try {
+    values = Bun.TOML.parse(raw);
+  } catch (error) {
+    throw new CliInputError(
+      `Invalid TOML configuration: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
-
-  return configOverridesSchema.parse(values);
+  const parsed = configOverridesSchema.safeParse(values);
+  if (!parsed.success) throw new CliInputError(formatZodError(parsed.error));
+  return parsed.data;
 }

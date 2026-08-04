@@ -11,6 +11,7 @@ import { configureInputSchema } from "../../app/commands/inputs";
 import { ensureLocalBaseRootMarker } from "../../../utils/root";
 import { createOtelRuntime, OtelRuntimeHolder } from "../../observability/otel";
 import { RuntimeConfigController } from "../../runtime/config-snapshot";
+import { CliInputError } from "../../app/commands/errors";
 
 const nonInteractiveExecution: CommandExecution = {
   global: { nonInteractive: true, json: false },
@@ -209,5 +210,36 @@ test("configure clears the active STT model when selection is intentionally empt
     database.close();
     expect(config.selectedSttModels).toEqual([]);
     expect(config.activeSttModel).toBe("");
+  });
+});
+
+test("configure rejects invalid composed model selections before persistence", async () => {
+  await withTempRoot(async (root) => {
+    const context = makeContext(root);
+    try {
+      const before = loadConfig(context.database, root);
+      const llm = "qwen2.5-coder-7b-instruct-q4_k_m";
+      const cases = [
+        { llmModels: [llm, llm] },
+        {
+          llmModels: [llm],
+          activeLlm: "mistral-nemo-12b-instruct-q4_k_m",
+        },
+        { llmModels: [llm], activeLlm: "whisper-base-q8_0" },
+      ];
+
+      for (const values of cases) {
+        await expect(
+          runConfigure(
+            { all: false, defaults: true, createKey: false, ...values },
+            context,
+            nonInteractiveExecution,
+          ),
+        ).rejects.toBeInstanceOf(CliInputError);
+        expect(loadConfig(context.database, root)).toEqual(before);
+      }
+    } finally {
+      context.database.close();
+    }
   });
 });

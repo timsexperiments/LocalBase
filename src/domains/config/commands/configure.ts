@@ -17,7 +17,10 @@ import {
   resolveEffectiveRoot,
   type AppContext,
 } from "../../../context";
-import { validateModelList } from "../../models/model-selection";
+import {
+  modelConfigurationSchema,
+  validateModelList,
+} from "../../models/model-selection";
 import {
   confirmPrompt,
   multiSelectPrompt,
@@ -27,7 +30,7 @@ import {
 } from "../../../utils/prompt";
 import { loadTomlOverrides } from "../../../utils/toml";
 import { parseParallelSlots } from "../parallel";
-import { CliInputError } from "../../app/commands/errors";
+import { CliInputError, formatZodError } from "../../app/commands/errors";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ConfigureInput } from "../../app/commands/inputs";
 import { publicApiKey, publicConfiguration } from "../../app/commands/results";
@@ -47,6 +50,18 @@ function validateExternalModelList(
       error instanceof Error ? error.message : String(error),
     );
   }
+}
+
+function validateComposedModelConfiguration(config: LocalBaseConfig): void {
+  const result = modelConfigurationSchema.safeParse({
+    selectedLlmModels: config.selectedLlmModels,
+    selectedSttModels: config.selectedSttModels,
+    selectedImageModels: config.selectedImageModels,
+    activeLlmModel: config.activeLlmModel,
+    activeSttModel: config.activeSttModel,
+    activeImageModel: config.activeImageModel,
+  });
+  if (!result.success) throw new CliInputError(formatZodError(result.error));
 }
 
 function warnAboutParallelOomRisk(
@@ -371,21 +386,12 @@ export async function runConfigure(
   const hasConfig = await Bun.file(`${root}/local-base.db`).exists();
 
   let config = loadConfig(ctx.database, root, specs.gpuVramGb);
-  const llmFromFlags = validateModelList(flags.llmModels, "llm");
-  const sttFromFlags = validateModelList(flags.sttModels, "stt");
-  const imageFromFlags = validateModelList(flags.imageModels, "image");
-  const llmFromToml = validateExternalModelList(
-    rawToml.selectedLlmModels,
-    "llm",
-  );
-  const sttFromToml = validateExternalModelList(
-    rawToml.selectedSttModels,
-    "stt",
-  );
-  const imageFromToml = validateExternalModelList(
-    rawToml.selectedImageModels,
-    "image",
-  );
+  const llmFromFlags = validateExternalModelList(flags.llmModels, "llm");
+  const sttFromFlags = validateExternalModelList(flags.sttModels, "stt");
+  const imageFromFlags = validateExternalModelList(flags.imageModels, "image");
+  const llmFromToml = rawToml.selectedLlmModels;
+  const sttFromToml = rawToml.selectedSttModels;
+  const imageFromToml = rawToml.selectedImageModels;
   const parallelFromFlag = flags.parallel;
   const parallelInput = parallelFromFlag ?? rawToml.parallel;
   const parallel =
@@ -500,21 +506,7 @@ export async function runConfigure(
       specs.gpuVramGb,
     );
 
-  if (byId(config.activeLlmModel)?.kind !== "llm")
-    throw new CliInputError(
-      `Active LLM model is invalid: ${config.activeLlmModel}`,
-    );
-  if (config.activeSttModel && byId(config.activeSttModel)?.kind !== "stt")
-    throw new CliInputError(
-      `Active STT model is invalid: ${config.activeSttModel}`,
-    );
-  if (
-    config.activeImageModel &&
-    byId(config.activeImageModel)?.kind !== "image"
-  )
-    throw new CliInputError(
-      `Active Image model is invalid: ${config.activeImageModel}`,
-    );
+  validateComposedModelConfiguration(config);
 
   warnAboutParallelOomRisk(config.parallel, specs.gpuVramGb);
 

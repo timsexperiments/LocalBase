@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parallelSlotsSchema } from "../../config/parallel";
+import { hostSchema, portSchema } from "../../config/schema";
 import { localBaseRootInputSchema } from "../../../utils/root";
 import {
   otelEndpointSchema,
@@ -10,20 +11,18 @@ export const modelKindSchema = z.enum(["llm", "stt", "image"]);
 
 export const dataRootSchema = localBaseRootInputSchema;
 
-export const hostSchema = z
-  .string()
-  .min(1)
-  .max(253)
-  .refine((value) => value === value.trim() && !/\s/.test(value), {
-    message: "must not contain whitespace",
-  });
-
 const positiveInteger = (maximum = 2_147_483_647) =>
   z
     .string()
     .regex(/^\d+$/, "must be an integer")
     .transform(Number)
     .pipe(z.number().int().min(1).max(maximum));
+
+const portInputSchema = z
+  .string()
+  .regex(/^\d+$/, "must be an integer")
+  .transform(Number)
+  .pipe(portSchema);
 
 const modelListSchema = z.string().transform((value) =>
   value
@@ -59,7 +58,7 @@ export const configureInputSchema = z.object({
   defaults: z.boolean().default(false),
   configPath: z.string().min(1).optional(),
   host: hostSchema.optional(),
-  port: positiveInteger(65_535).optional(),
+  port: portInputSchema.optional(),
   ctxSize: positiveInteger().optional(),
   parallel: z
     .union([
@@ -72,7 +71,7 @@ export const configureInputSchema = z.object({
     .pipe(parallelSlotsSchema)
     .optional(),
   sttHost: hostSchema.optional(),
-  sttPort: positiveInteger(65_535).optional(),
+  sttPort: portInputSchema.optional(),
   llmModels: nonEmptyModelListSchema.optional(),
   sttModels: modelListSchema.optional(),
   imageModels: modelListSchema.optional(),
@@ -134,16 +133,16 @@ export type InstallInput = z.infer<typeof installInputSchema>;
 
 export const serveInputSchema = z.object({
   host: hostSchema.optional(),
-  port: positiveInteger(65_535).optional(),
+  port: portInputSchema.optional(),
   llm: z.boolean().optional(),
   stt: z.boolean().optional(),
   image: z.boolean().optional(),
   llmHost: hostSchema.optional(),
-  llmPort: positiveInteger(65_535).optional(),
+  llmPort: portInputSchema.optional(),
   sttHost: hostSchema.optional(),
-  sttPort: positiveInteger(65_535).optional(),
+  sttPort: portInputSchema.optional(),
   imageHost: hostSchema.optional(),
-  imagePort: positiveInteger(65_535).optional(),
+  imagePort: portInputSchema.optional(),
   ctxSize: positiveInteger().optional(),
   sttPath: z.string().min(1).optional(),
   llmModelFile: z.string().min(1).optional(),
