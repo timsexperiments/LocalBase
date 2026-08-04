@@ -1,19 +1,15 @@
 import { mkdirSync, mkdtempSync, rmSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
 import { byId, primaryArtifact } from "../catalog";
 import {
   createApiKey,
   defaultConfig,
   loadConfig,
-  revokeApiKey,
-  rotateApiKey,
   saveConfig,
   type LocalBaseConfig,
 } from "../manager";
 import { DatabaseSession } from "../db/client";
-import { apiKeysTable } from "../db/schema";
 import { gatewayHealthSchema } from "../domains/runtime/health";
 import { compileRuntimeFixture } from "./runtime-fixture";
 import { tinyPngBase64 } from "./media-fixtures";
@@ -124,13 +120,6 @@ export type GatewayFixture = {
   cliPath: string;
   root: string;
   apiKey?: string;
-  createApiKey: (
-    name: string,
-    expiresDays?: number,
-  ) => { id: string; rawKey: string };
-  revokeApiKey: (id: string) => void;
-  rotateApiKey: (id: string) => { rawKey: string };
-  expireApiKey: (id: string) => void;
   upstreamRequests: UpstreamRequest[];
   readConfig: () => LocalBaseConfig;
   saveConfig: (config: LocalBaseConfig) => void;
@@ -1501,51 +1490,6 @@ export async function startGatewayFixture(
     cliPath,
     root,
     apiKey,
-    createApiKey(name, expiresDays) {
-      const database = new DatabaseSession();
-      try {
-        const created = createApiKey(
-          database,
-          loadConfig(database, root),
-          name,
-          expiresDays,
-        );
-        return { id: created.record.id, rawKey: created.rawKey };
-      } finally {
-        database.close();
-      }
-    },
-    revokeApiKey(id) {
-      const database = new DatabaseSession();
-      try {
-        revokeApiKey(database, loadConfig(database, root), id);
-      } finally {
-        database.close();
-      }
-    },
-    rotateApiKey(id) {
-      const database = new DatabaseSession();
-      try {
-        return {
-          rawKey: rotateApiKey(database, loadConfig(database, root), id).rawKey,
-        };
-      } finally {
-        database.close();
-      }
-    },
-    expireApiKey(id) {
-      const database = new DatabaseSession();
-      try {
-        database
-          .get(root)
-          .update(apiKeysTable)
-          .set({ expiresAt: new Date(0).toISOString() })
-          .where(eq(apiKeysTable.id, id))
-          .run();
-      } finally {
-        database.close();
-      }
-    },
     upstreamRequests,
     readConfig() {
       const database = new DatabaseSession();
