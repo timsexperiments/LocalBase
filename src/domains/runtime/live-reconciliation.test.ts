@@ -161,11 +161,14 @@ test(
         expect(response.status).toBe(200);
         await response.text();
       }
-      const [llmOffset, sttOffset, imageOffset] = await Promise.all([
-        gateway.readLlmRuntimeLaunches().then((launches) => launches.length),
-        gateway.readSttRuntimeLaunches().then((launches) => launches.length),
-        gateway.readImageRuntimeLaunches().then((launches) => launches.length),
+      const [initialLlm, initialStt, initialImage] = await Promise.all([
+        gateway.waitForLlmRuntimeLaunches(0, 1),
+        gateway.waitForSttRuntimeLaunches(0, 1),
+        gateway.waitForImageRuntimeLaunches(0, 1),
       ]);
+      const llmOffset = initialLlm.length;
+      const sttOffset = initialStt.length;
+      const imageOffset = initialImage.length;
 
       const config = gateway.readConfig();
       config.parallel = config.parallel === 2 ? 3 : 2;
