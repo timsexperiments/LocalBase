@@ -20,7 +20,6 @@ import {
 } from "../../../catalog";
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
-import { syncContinueConfig } from "../../config/commands/configure";
 import { type ILogger } from "../../observability/logging";
 import { guardianProcessCommand } from "../backend-guardian";
 import {
@@ -207,6 +206,20 @@ interface OpenAIError {
 
 interface OpenAIErrorResponse {
   error: OpenAIError;
+}
+
+function routeNotFound(): Response {
+  return Response.json(
+    {
+      error: {
+        message: "This endpoint is not exposed by this gateway.",
+        type: "invalid_request_error",
+        param: null,
+        code: "route_disabled",
+      },
+    } satisfies OpenAIErrorResponse,
+    { status: 404 },
+  );
 }
 
 function unauthorized(mode: AuthMode): Response {
@@ -1727,12 +1740,6 @@ export async function finalizeGatewayShutdown(
   return finalStatus;
 }
 
-/**
- * Main command handler for 'serve'. Starts the unified proxy server.
- * Handles dynamic context sizing: min(recommendedForHardwareAndModel, maxContextCeiling).
- * Maps client-side '/v1/slots|metrics|props|system_info' queries to standard llama-server root endpoints.
- * Automatically synchronizes active model specifications and context limits to OpenCode in real-time.
- */
 export async function runServe(
   input: ServeInput,
   ctx: AppContext,
@@ -1791,8 +1798,6 @@ export async function runServe(
     );
   }
 
-  // Automatically synchronize active model and calculated context size with Continue configuration
-  await syncContinueConfig(config, ctxSize);
   const sttPath = input.sttPath ?? "/inference";
   const authRequired = input.auth ?? true;
   const authMode = parseAuthMode(input.authMode);
@@ -2449,20 +2454,6 @@ export async function runServe(
       message: "Active language model switched.",
       attributes: { from_model: previousModel, to_model: modelId },
     });
-
-    const spec = byId(modelId);
-    const recommendedCtx = spec
-      ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
-      : ctx.specs.gpuVramGb >= 32
-        ? 32768
-        : 8192;
-    const newCtxSize = Math.min(recommendedCtx, latestConfig.ctxSize);
-    void syncContinueConfig(latestConfig, newCtxSize).catch((error) => {
-      ctx.logger.warn(
-        "sync",
-        `Failed to sync Continue config: ${error.message}`,
-      );
-    });
   };
 
   const switchImageModel = async (modelId: string): Promise<void> => {
@@ -2754,59 +2745,6 @@ export async function runServe(
       );
     }
 
-    if (
-      ["/llm", "/stt", "/image"].some(
-        (namespace) =>
-          pathname === namespace || pathname.startsWith(`${namespace}/`),
-      )
-    ) {
-      return Response.json(
-        {
-          error: {
-            message:
-              "Raw backend passthrough routes are not exposed by this gateway.",
-            type: "invalid_request_error",
-            param: null,
-            code: "route_disabled",
-          },
-        } satisfies OpenAIErrorResponse,
-        { status: 404 },
-      );
-    }
-
-    if (
-      pathname === "/v1/completions" ||
-      pathname.startsWith("/v1/completions/")
-    ) {
-      return Response.json(
-        {
-          error: {
-            message: "This endpoint is not exposed by this gateway.",
-            type: "invalid_request_error",
-            param: null,
-            code: "route_disabled",
-          },
-        } satisfies OpenAIErrorResponse,
-        { status: 404 },
-      );
-    }
-
-    if (pathname.startsWith("/tts")) {
-      return Response.json(
-        { error: "TTS service is not yet implemented. Stay tuned!" },
-        { status: 501 },
-      );
-    }
-
-    if (pathname.startsWith("/video")) {
-      return Response.json(
-        {
-          error: "Video generation service is not yet implemented. Stay tuned!",
-        },
-        { status: 501 },
-      );
-    }
-
     if (pathname === "/v1/images/generations") {
       if (!enabled.image || !imageService) return notConfigured("Image");
       const parsed = await parseJsonRequest(
@@ -2891,42 +2829,7 @@ export async function runServe(
       });
     }
 
-    const llmIntrospectionRoutes: Record<string, string> = {
-      "/v1/slots": "/slots",
-      "/v1/metrics": "/metrics",
-      "/v1/props": "/props",
-      "/v1/system_info": "/system_info",
-    };
-    const upstreamPath = llmIntrospectionRoutes[pathname];
-    if (upstreamPath) {
-      return await withLlmRequestLease(
-        undefined,
-        async () =>
-          await proxyRequest(
-            request,
-            llmBase,
-            upstreamPath,
-            undefined,
-            undefined,
-            ctx.otel,
-          ),
-        request.signal,
-      );
-    }
-
-    return await withLlmRequestLease(
-      undefined,
-      async () =>
-        await proxyRequest(
-          request,
-          llmBase,
-          undefined,
-          undefined,
-          undefined,
-          ctx.otel,
-        ),
-      request.signal,
-    );
+    return routeNotFound();
   };
 
   const server = Bun.serve({

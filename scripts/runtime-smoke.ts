@@ -185,7 +185,6 @@ function commandEnvironment(root: string): Record<string, string> {
     TMPDIR: `${root}.tmp`,
     XDG_CONFIG_HOME: `${root}.config`,
     LOCALBASE_ROOT: root,
-    LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
   } as Record<string, string>;
 }
 
