@@ -17,7 +17,6 @@ import {
   resolveEffectiveRoot,
   type AppContext,
 } from "../../../context";
-import { detectSpecs } from "../../../system";
 import { validateModelList } from "../../models/model-selection";
 import {
   confirmPrompt,
