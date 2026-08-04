@@ -182,7 +182,7 @@ function ownedFields(
   return fields;
 }
 
-function configured(
+export function configuredRuntimeModality(
   modality: RuntimeModality,
   config: RuntimeConfigSnapshot["config"],
   overrides: RuntimeOverrideOwnership,
@@ -201,8 +201,16 @@ function modalityPlan(
   ownership: RuntimeOverrideOwnership,
   overrides: ReadonlySet<RuntimeConfigField>,
 ): ModalityReconciliationPlan {
-  const sourceConfigured = configured(modality, source.config, ownership);
-  const targetConfigured = configured(modality, target.config, ownership);
+  const sourceConfigured = configuredRuntimeModality(
+    modality,
+    source.config,
+    ownership,
+  );
+  const targetConfigured = configuredRuntimeModality(
+    modality,
+    target.config,
+    ownership,
+  );
   const changedLaunchFields = changedFields(
     source,
     target,
@@ -229,7 +237,6 @@ function modalityPlan(
   });
 }
 
-/** Builds a detached description of changes for a later runtime reconciler. */
 export function createRuntimeReconciliationPlan(
   source: RuntimeConfigSnapshot,
   target: RuntimeConfigSnapshot,
