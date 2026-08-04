@@ -12,11 +12,6 @@ CREATE TABLE `api_keys` (
 CREATE TABLE `config` (
 	`id` text PRIMARY KEY NOT NULL,
 	`root` text NOT NULL,
-	`llm_models_dir` text NOT NULL,
-	`stt_models_dir` text NOT NULL,
-	`image_models_dir` text NOT NULL,
-	`runtime_backend` text NOT NULL,
-	`stt_backend` text NOT NULL,
 	`host` text NOT NULL,
 	`port` integer NOT NULL,
 	`ctx_size` integer NOT NULL,

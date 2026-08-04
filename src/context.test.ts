@@ -16,7 +16,10 @@ import {
   logEventSchema,
   readLogSnapshot,
 } from "./domains/observability/logging";
-import { ensureLocalBaseRootMarker } from "./utils/root";
+import {
+  canonicalLocalBaseRoot,
+  ensureLocalBaseRootMarker,
+} from "./utils/root";
 
 test("validates environment overrides without mutating process state", () => {
   expect(() =>
@@ -50,6 +53,36 @@ test("resolves data roots with CLI, environment, and configured precedence", () 
   expect(resolveEffectiveRoot(undefined, undefined, "/tmp/configured")).toBe(
     "/tmp/configured",
   );
+});
+
+test("supports non-mutating default and persisted configuration contexts", async () => {
+  const directory = mkdtempSync(
+    join(tmpdir(), "local-base-read-only-context-"),
+  );
+  const root = join(directory, "root");
+  const options = { root, nonInteractive: false, json: false };
+
+  try {
+    const defaults = await createAppContext(options, false);
+    expect(defaults.config.root).toBe(canonicalLocalBaseRoot(root));
+    expect(existsSync(root)).toBe(false);
+    defaults.database.close();
+    await defaults.logger.close();
+
+    const readonly = await createAppContext(
+      options,
+      false,
+      false,
+      process.env,
+      true,
+    );
+    expect(readonly.config.root).toBe(canonicalLocalBaseRoot(root));
+    readonly.database.close();
+    await readonly.logger.close();
+    expect(existsSync(root)).toBe(false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("serve context initialization waits for the external root operation lock", async () => {

@@ -3,11 +3,6 @@ import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 export const configTable = sqliteTable("config", {
   id: text("id").primaryKey(),
   root: text("root").notNull(),
-  llmModelsDir: text("llm_models_dir").notNull(),
-  sttModelsDir: text("stt_models_dir").notNull(),
-  imageModelsDir: text("image_models_dir").notNull(),
-  runtimeBackend: text("runtime_backend").notNull(),
-  sttBackend: text("stt_backend").notNull(),
   host: text("host").notNull(),
   port: integer("port").notNull(),
   ctxSize: integer("ctx_size").notNull(),

@@ -6,7 +6,7 @@ import {
   rmSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { extname, isAbsolute, join, relative } from "node:path";
+import { extname, join } from "node:path";
 import { SafeFilenameSchema, verifyAuthoritativeFile } from "./utils/checksum";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -66,8 +66,6 @@ export type LocalBaseConfig = {
   llmModelsDir: string;
   sttModelsDir: string;
   imageModelsDir: string;
-  runtimeBackend: "llama.cpp";
-  sttBackend: "whisper.cpp";
   host: string;
   port: number;
   ctxSize: number;
@@ -113,11 +111,6 @@ const ConfigRowSchema = z
   .object({
     id: z.literal("default"),
     root: absolutePathSchema,
-    llmModelsDir: absolutePathSchema,
-    sttModelsDir: absolutePathSchema,
-    imageModelsDir: absolutePathSchema,
-    runtimeBackend: z.literal("llama.cpp"),
-    sttBackend: z.literal("whisper.cpp"),
     host: hostSchema,
     port: portSchema,
     ctxSize: z.number().int().min(2048).max(2_147_483_647),
@@ -189,11 +182,6 @@ function toConfigRow(config: LocalBaseConfig) {
   return {
     id: "default",
     root: config.root,
-    llmModelsDir: config.llmModelsDir,
-    sttModelsDir: config.sttModelsDir,
-    imageModelsDir: config.imageModelsDir,
-    runtimeBackend: config.runtimeBackend,
-    sttBackend: config.sttBackend,
     host: config.host,
     port: config.port,
     ctxSize: config.ctxSize,
@@ -273,9 +261,15 @@ function parseSelectedModels(
   return parsed.data;
 }
 
-function pathWithin(root: string, path: string): boolean {
-  const child = relative(root, path);
-  return child !== "" && !child.startsWith("..") && !isAbsolute(child);
+export function modelDirectories(
+  root: string,
+): Pick<LocalBaseConfig, "llmModelsDir" | "sttModelsDir" | "imageModelsDir"> {
+  const canonicalRoot = canonicalLocalBaseRoot(root);
+  return {
+    llmModelsDir: join(canonicalRoot, "models", "llm"),
+    sttModelsDir: join(canonicalRoot, "models", "stt"),
+    imageModelsDir: join(canonicalRoot, "models", "image"),
+  };
 }
 
 function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
@@ -290,19 +284,6 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
       `root is ${JSON.stringify(data.root)} but this database was opened for ${JSON.stringify(openedRoot)}`,
     );
   }
-  for (const [field, path] of [
-    ["llmModelsDir", data.llmModelsDir],
-    ["sttModelsDir", data.sttModelsDir],
-    ["imageModelsDir", data.imageModelsDir],
-  ] as const) {
-    if (!pathWithin(openedRoot, path)) {
-      throw invalidConfiguration(
-        openedRoot,
-        `${field} must be inside the configured root`,
-      );
-    }
-  }
-
   const selectedLlmModels = parseSelectedModels(
     data.selectedLlmModels,
     "selectedLlmModels",
@@ -358,11 +339,7 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
 
   return {
     root: data.root,
-    llmModelsDir: data.llmModelsDir,
-    sttModelsDir: data.sttModelsDir,
-    imageModelsDir: data.imageModelsDir,
-    runtimeBackend: data.runtimeBackend,
-    sttBackend: data.sttBackend,
+    ...modelDirectories(data.root),
     host: data.host,
     port: data.port,
     ctxSize: data.ctxSize,
@@ -424,11 +401,7 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
   const defaultCtxSize = 131072;
   return {
     root,
-    llmModelsDir: join(root, "models", "llm"),
-    sttModelsDir: join(root, "models", "stt"),
-    imageModelsDir: join(root, "models", "image"),
-    runtimeBackend: "llama.cpp",
-    sttBackend: "whisper.cpp",
+    ...modelDirectories(root),
     host: "0.0.0.0",
     port: 18000,
     ctxSize: defaultCtxSize,
@@ -462,9 +435,7 @@ export function saveConfig(
   const canonicalConfig = {
     ...config,
     root: canonicalLocalBaseRoot(config.root),
-    llmModelsDir: canonicalLocalBaseRoot(config.llmModelsDir),
-    sttModelsDir: canonicalLocalBaseRoot(config.sttModelsDir),
-    imageModelsDir: canonicalLocalBaseRoot(config.imageModelsDir),
+    ...modelDirectories(config.root),
   };
   const row = toConfigRow(canonicalConfig);
   fromConfigRow(row, canonicalConfig.root);
@@ -537,6 +508,14 @@ export async function readConfig(root?: string): Promise<LocalBaseConfig> {
   }
 }
 
+export async function readConfigIfPresent(
+  root?: string,
+): Promise<LocalBaseConfig | undefined> {
+  const selectedRoot = canonicalLocalBaseRoot(root ?? defaultRoot());
+  if (!(await Bun.file(dbPath(selectedRoot)).exists())) return undefined;
+  return await readConfig(selectedRoot);
+}
+
 export async function resetDatabase(
   database: DatabaseSession,
   root?: string,
@@ -545,8 +524,13 @@ export async function resetDatabase(
   const selectedRoot = canonicalLocalBaseRoot(root ?? defaultRoot());
   assertDestructiveLocalBaseRoot(selectedRoot);
   database.closeRoot(selectedRoot);
-  await deleteFileIfExists(dbPath(selectedRoot));
+  await Promise.all(sqliteDatabaseFiles(selectedRoot).map(deleteFileIfExists));
   return initConfig(database, selectedRoot, vramGb);
+}
+
+function sqliteDatabaseFiles(root: string): string[] {
+  const path = dbPath(root);
+  return [path, `${path}-journal`, `${path}-wal`, `${path}-shm`];
 }
 
 export function uninstallManaged(

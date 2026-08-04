@@ -3,6 +3,7 @@ import {
   defaultConfig,
   defaultRoot,
   loadConfig,
+  readConfigIfPresent,
   type LocalBaseConfig,
 } from "./manager";
 import {
@@ -173,6 +174,7 @@ export async function createAppContext(
   initializeDatabase = true,
   initializeUnderOperationLock = false,
   environment: Record<string, string | undefined> = process.env,
+  readOnlyConfiguration = false,
 ): Promise<AppContext> {
   const parsedOptions = globalOptionsSchema.parse(options);
   const environmentRoot = dataRootSchema
@@ -213,7 +215,10 @@ export async function createAppContext(
     const specs = await detectSpecs();
     const config: LocalBaseConfig = initializeDatabase
       ? loadConfig(database, root, specs.gpuVramGb)
-      : defaultConfig(root, specs.gpuVramGb);
+      : readOnlyConfiguration
+        ? ((await readConfigIfPresent(root)) ??
+          defaultConfig(root, specs.gpuVramGb))
+        : defaultConfig(root, specs.gpuVramGb);
     const otelConfiguration = resolveOtelConfiguration(config, environment);
     // Serve activates exporters after releasing the startup ownership lock; other commands do not create network sinks.
     const otel = createOtelRuntime({

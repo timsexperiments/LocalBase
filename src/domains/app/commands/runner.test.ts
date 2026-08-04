@@ -22,6 +22,19 @@ test("resolves nested commands and global options before context creation", asyn
   expect((await resolveCli(["keys"])).kind).toBe("help");
   expect((await resolveCli(["--help"])).kind).toBe("help");
 
+  await expect(resolveCli(["models", "catalog"])).resolves.toMatchObject({
+    kind: "command",
+    command: { requiresDatabase: false },
+  });
+  await expect(resolveCli(["models", "recommend"])).resolves.toMatchObject({
+    kind: "command",
+    command: { requiresDatabase: false },
+  });
+  await expect(resolveCli(["doctor"])).resolves.toMatchObject({
+    kind: "command",
+    command: { requiresDatabase: false, readOnlyConfiguration: true },
+  });
+
   const serve = await resolveCli(["serve", "--no-auth"]);
   expect(serve).toMatchObject({ kind: "command", input: { auth: false } });
 

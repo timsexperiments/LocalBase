@@ -8,6 +8,7 @@ import {
   createApiKey,
   loadApiKeys,
   loadConfig,
+  modelDirectories,
   saveConfig,
   type LocalBaseConfig,
 } from "../../../manager";
@@ -177,8 +178,6 @@ async function interactiveConfigureSelective(
 
   if (!locked.has("root"))
     config.root = await textPrompt("Root directory", config.root);
-  config.llmModelsDir = `${config.root}/models/llm`;
-  config.sttModelsDir = `${config.root}/models/stt`;
 
   if (!locked.has("host"))
     config.host = await textPrompt("LLM host", config.host);
@@ -475,9 +474,7 @@ export async function runConfigure(
       config.otelSampleRatio,
   };
 
-  config.llmModelsDir = `${config.root}/models/llm`;
-  config.sttModelsDir = `${config.root}/models/stt`;
-  config.imageModelsDir = `${config.root}/models/image`;
+  config = { ...config, ...modelDirectories(config.root) };
 
   const explicitMode =
     flags.all ||
