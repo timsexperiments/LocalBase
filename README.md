@@ -29,42 +29,125 @@ Linux managed-runtime releases are built and qualified against an Ubuntu 24.04-c
 
 Managed runtime versions are pinned independently from LocalBase CLI releases.
 
-## Quick start
+## Getting started
 
-Download the archive matching your platform—macOS ARM64, macOS x64, Linux x64, or Linux ARM64—and `checksums.txt` from the [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases) page. Verify the archive’s SHA-256 entry with `shasum -a 256` on macOS or `sha256sum` on Linux before extracting it. For optional provenance verification, install the [GitHub CLI](https://cli.github.com/) and run `gh attestation verify <archive> --repo timsexperiments/LocalBase`.
+### Download and verify
 
-Extract the archive, rename the executable to `local-base`, and install it in a directory on your `PATH` such as `$HOME/.local/bin`. Then run:
+Download one archive and `checksums.txt` from [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases):
+
+- `local-base-macos-arm64.zip`
+- `local-base-macos-x64.zip`
+- `local-base-linux-x64.tar.gz`
+- `local-base-linux-arm64.tar.gz`
+
+In the download directory, set `ARCHIVE` to the downloaded archive and verify its checksum:
 
 ```bash
+ARCHIVE=local-base-macos-arm64.zip
+grep -F "  $ARCHIVE" checksums.txt > "$ARCHIVE.sha256"
+shasum -a 256 -c "$ARCHIVE.sha256" # macOS
+sha256sum -c "$ARCHIVE.sha256"    # Linux
+```
+
+Optionally verify the GitHub build attestation:
+
+```bash
+gh attestation verify "$ARCHIVE" --repo timsexperiments/LocalBase
+```
+
+### Install the CLI
+
+Extract the archive, install the target-specific executable, and ensure `$HOME/.local/bin` is on `PATH`:
+
+```bash
+case "$ARCHIVE" in
+  *.zip) unzip "$ARCHIVE"; CLI="${ARCHIVE%.zip}" ;;
+  *.tar.gz) tar -xzf "$ARCHIVE"; CLI="${ARCHIVE%.tar.gz}" ;;
+esac
+mkdir -p "$HOME/.local/bin"
+install -m 755 "$CLI" "$HOME/.local/bin/local-base"
+export PATH="$HOME/.local/bin:$PATH"
 local-base --help
 ```
 
-The gateway is available at `http://localhost:2273/v1`. API keys can be created with `local-base keys create`.
+Add `export PATH="$HOME/.local/bin:$PATH"` to the shell profile to retain the path in new shells.
 
-## Run as a user service
+Run the system check:
 
-`serve` always runs in the foreground. `start` installs, enables, and starts a root-specific user service. `stop` stops and disables login startup without removing the definition. `restart` refreshes and enables the service. `status` reports service-manager, process, gateway, and modality state without opening the LocalBase database.
+```bash
+local-base doctor
+```
 
-Detached Linux commands require a functioning `systemd --user` manager. Foreground `local-base serve` does not.
+### Configure and install a model
 
-Create a redacted diagnostics bundle with `local-base diagnostics` or choose a destination with `--output report.zip`.
+Configure an LLM-only gateway with an initial API key:
+
+```bash
+local-base --non-interactive configure --defaults \
+  --llm-models qwen2.5-coder-1.5b-instruct-q4_k_m \
+  --active-llm qwen2.5-coder-1.5b-instruct-q4_k_m \
+  --stt-models '' \
+  --image-models '' \
+  --parallel auto \
+  --create-key
+```
+
+The API key secret is displayed once. Store it securely.
+
+Install the selected model before starting the service so download and checksum progress remain visible in the foreground:
+
+```bash
+local-base --non-interactive models install qwen2.5-coder-1.5b-instruct-q4_k_m
+```
+
+### Start and use the gateway
+
+Start the user service and verify its state:
 
 ```bash
 local-base start
 local-base status
-local-base stop
+local-base models list
 ```
 
-macOS uses a launchd user agent and Linux uses a `systemd --user` service. `uninstall --yes` stops and removes the matching service before deleting that LocalBase root.
+Set the API key created during configuration and send an OpenAI-compatible request:
 
-## Operational logs
+```bash
+export LOCALBASE_API_KEY='lb_...'
+
+curl http://localhost:2273/v1/chat/completions \
+  -H "Authorization: Bearer $LOCALBASE_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+    "messages": [{"role": "user", "content": "Say hello in two words."}]
+  }'
+```
+
+## Operations
+
+`serve` runs in the foreground. `start` installs, enables, and starts the user service. `restart` refreshes and enables it. `stop` stops it and disables login startup. `status` reports service-manager, process, gateway, and modality state without opening the LocalBase database.
+
+macOS uses a launchd user agent. Linux uses a `systemd --user` service; detached commands require a functioning user manager. Foreground `local-base serve` does not.
+
+```bash
+local-base logs --follow
+local-base restart
+local-base stop
+local-base diagnostics
+local-base uninstall --yes
+```
+
+`uninstall --yes` stops and removes the matching user service before deleting that LocalBase root.
+
+## Logs
 
 `serve` is the single writer of redacted JSON Lines events under `$LOCALBASE_ROOT/logs`. The active file rotates at 10 MiB and retains five archives. These files are the primary operational record for foreground and managed services. A managed startup failure before the primary sink is available atomically records one private, bounded structured bootstrap event. launchd output is discarded; the systemd journal remains a secondary Linux fallback.
 
 ```bash
 local-base logs --level error
 local-base logs --limit 500 --since 2026-01-01T00:00:00Z
-local-base logs --follow --runtime llm
+local-base logs --runtime llm
 local-base --json logs --request-id req-123
 ```
 
