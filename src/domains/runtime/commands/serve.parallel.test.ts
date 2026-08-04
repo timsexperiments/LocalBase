@@ -156,8 +156,6 @@ const cliArgs = Bun.argv.slice(2);
 if (cliArgs[0] === BACKEND_GUARDIAN_COMMAND) {
   process.exit(await runBackendGuardian(cliArgs.slice(1)));
 }
-process.env.LOCALBASE_TEST_DISABLE_CONTINUE_SYNC = "1";
-
 const testModel = validateCatalog([
   JSON.parse(process.env.LOCALBASE_TEST_MODEL!),
 ])[0];
@@ -300,7 +298,6 @@ test(
           env: {
             ...process.env,
             PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
-            LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
             LOCALBASE_TEST_ARGS_PATH: argsPath,
           } as Record<string, string>,
           stdout: "pipe",
@@ -331,7 +328,6 @@ test(
           env: {
             ...process.env,
             PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
-            LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
           } as Record<string, string>,
           stdout: "ignore",
           stderr: "ignore",
@@ -507,7 +503,6 @@ test(
         env: {
           ...process.env,
           PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
-          LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
           LOCALBASE_TEST_MODEL: JSON.stringify(model),
           LOCALBASE_TEST_ARGS: JSON.stringify(serveArgs),
           LOCALBASE_TEST_SUPPLEMENTARY_PATH: join(
@@ -662,7 +657,6 @@ test(
           env: {
             ...process.env,
             PATH: runtimeDir,
-            LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
             LOCALBASE_TEST_ARGS_PATH: argsPath,
             LOCALBASE_TEST_PID_PATH: pidPath,
             LOCALBASE_TEST_PARENT_PID_PATH: parentPidPath,

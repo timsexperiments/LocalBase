@@ -103,10 +103,6 @@ Diagnostics, progress, and errors are written to stderr. Exit codes are `0` for 
 
 `serve --json` writes JSON Lines lifecycle events (`started`, `stopped`, and `error`) to stdout. Gateway logs remain on stderr; OpenAI-compatible HTTP and SSE responses are unchanged.
 
-## Continue.dev integration
-
-If `~/.continue/config.json` exists, `configure` and `serve` synchronize LocalBase model entries, autocomplete, embeddings, API base, and calculated context settings with that file.
-
 ## Development
 
 Install dependencies and run the source CLI with Bun:

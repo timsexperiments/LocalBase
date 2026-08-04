@@ -1,5 +1,3 @@
-import { join } from "node:path";
-import { homedir } from "node:os";
 import {
   byId,
   listModels,
@@ -29,7 +27,6 @@ import {
 } from "../../../utils/prompt";
 import { loadTomlOverrides } from "../../../utils/toml";
 import { parseParallelSlots } from "../parallel";
-import { z } from "zod";
 import { CliInputError } from "../../app/commands/errors";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ConfigureInput } from "../../app/commands/inputs";
@@ -50,20 +47,6 @@ function validateExternalModelList(
       error instanceof Error ? error.message : String(error),
     );
   }
-}
-
-const continueConfigSchema = z
-  .object({
-    models: z.array(z.unknown()).optional(),
-    tabAutocompleteModel: z.unknown().optional(),
-    embeddingsProvider: z.unknown().optional(),
-  })
-  .passthrough();
-
-function continueField(value: unknown, field: string): string {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
-  const candidate = (value as Record<string, unknown>)[field];
-  return typeof candidate === "string" ? candidate : "";
 }
 
 function warnAboutParallelOomRisk(
@@ -366,146 +349,6 @@ async function interactiveConfigureSelective(
   return config;
 }
 
-export async function syncContinueConfig(
-  config: LocalBaseConfig,
-  activeModelCtxSizeOverride?: number,
-): Promise<void> {
-  // Gateway tests must not mutate a contributor's Continue configuration.
-  if (process.env.LOCALBASE_TEST_DISABLE_CONTINUE_SYNC === "1") return;
-
-  const continueDir = join(homedir(), ".continue");
-  const configPath = join(continueDir, "config.json");
-
-  if (!(await Bun.file(configPath).exists())) {
-    return;
-  }
-
-  try {
-    const raw = Bun.file(configPath);
-    const text = await raw.text();
-    const cleaned = text.replace(
-      /("([^"\\]|\\.)*")|(\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g,
-      (_match, g1) => {
-        if (g1) return g1;
-        return "";
-      },
-    );
-    const data = continueConfigSchema.parse(JSON.parse(cleaned));
-    const models = data.models ?? [];
-
-    const host = config.host === "0.0.0.0" ? "localhost" : config.host;
-    const wrapperPort = 2273;
-    const apiKey = process.env.LOCALBASE_API_KEY || "";
-
-    // Filter out existing LocalBase model entries to avoid duplicates
-    data.models = models.filter((model) => {
-      const title = continueField(model, "title").toLowerCase();
-      const apiBase = continueField(model, "apiBase").toLowerCase();
-      return (
-        !title.includes("localbase") &&
-        !apiBase.includes(":2273/v1") &&
-        !apiBase.includes(":18787/v1") &&
-        !apiBase.includes(":8787/v1") &&
-        !apiBase.includes("local-base")
-      );
-    });
-
-    const activeModel = config.activeLlmModel;
-    const vramGb = (await detectSpecs()).gpuVramGb;
-
-    // Ensure the active model is placed at the front of the list
-    const sortedSelectedModels = [
-      activeModel,
-      ...config.selectedLlmModels.filter((m) => m !== activeModel),
-    ];
-
-    for (const modelId of sortedSelectedModels) {
-      if (!config.selectedLlmModels.includes(modelId)) continue;
-      const spec = byId(modelId);
-      const displayName = spec
-        ? `LocalBase (${spec.family} ${spec.version})`
-        : `LocalBase (${modelId})`;
-      const recommendedCtx = spec
-        ? calculateMaxSafeContextSize(spec, vramGb)
-        : config.ctxSize;
-      const actualCtx =
-        modelId === activeModel
-          ? (activeModelCtxSizeOverride ?? config.ctxSize)
-          : Math.min(recommendedCtx, config.ctxSize);
-
-      data.models.unshift({
-        title: displayName,
-        provider: "openai",
-        model: modelId,
-        apiBase: `http://${host}:${wrapperPort}/v1`,
-        apiKey: apiKey || undefined,
-        completionOptions: {
-          contextLength: actualCtx,
-        },
-      });
-    }
-
-    // Configure tab autocomplete if not set or if pointing to LocalBase
-    const currentTabTitle = continueField(
-      data.tabAutocompleteModel,
-      "title",
-    ).toLowerCase();
-    const currentTabBase = continueField(
-      data.tabAutocompleteModel,
-      "apiBase",
-    ).toLowerCase();
-    if (
-      !data.tabAutocompleteModel ||
-      currentTabTitle.includes("localbase") ||
-      currentTabBase.includes(":2273/v1") ||
-      currentTabBase.includes(":18787/v1") ||
-      currentTabBase.includes(":8787/v1")
-    ) {
-      data.tabAutocompleteModel = {
-        title: `LocalBase Autocomplete (${activeModel})`,
-        provider: "openai",
-        model: activeModel,
-        apiBase: `http://${host}:${wrapperPort}/v1`,
-        apiKey: apiKey || undefined,
-      };
-    }
-
-    // Configure embeddings provider if not set or if pointing to LocalBase
-    const currentEmbeddingsProvider = continueField(
-      data.embeddingsProvider,
-      "provider",
-    ).toLowerCase();
-    const currentEmbeddingsBase = continueField(
-      data.embeddingsProvider,
-      "apiBase",
-    ).toLowerCase();
-    if (
-      !data.embeddingsProvider ||
-      currentEmbeddingsProvider === "openai" ||
-      currentEmbeddingsBase.includes(":2273/v1") ||
-      currentEmbeddingsBase.includes(":18787/v1") ||
-      currentEmbeddingsBase.includes(":8787/v1")
-    ) {
-      data.embeddingsProvider = {
-        provider: "openai",
-        model: activeModel,
-        apiBase: `http://${host}:${wrapperPort}/v1`,
-        apiKey: apiKey || undefined,
-      };
-    }
-
-    await Bun.write(configPath, JSON.stringify(data, null, 2));
-    console.log(
-      `\n🔄 Automatically synchronized model configs and autocomplete/embeddings to ${configPath}`,
-    );
-  } catch (err) {
-    console.warn(
-      "\n⚠️  Could not automatically synchronize config with Continue:",
-      (err as Error).message,
-    );
-  }
-}
-
 export async function runConfigure(
   flags: ConfigureInput,
   ctx: AppContext,
@@ -680,7 +523,6 @@ export async function runConfigure(
   warnAboutParallelOomRisk(config.parallel, specs.gpuVramGb);
 
   saveConfig(ctx.database, config);
-  await syncContinueConfig(config);
   execution.output.info(`Saved configuration to ${config.root}/local-base.db`);
   execution.output.info(
     `Selected LLM models: ${config.selectedLlmModels.join(", ")}`,

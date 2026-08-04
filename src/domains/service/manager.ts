@@ -624,24 +624,6 @@ async function writeDefinition(
     serviceManifestPath(root),
     JSON.stringify(definition.manifest),
   );
-  await removeLegacyServiceFallbackLogs(root);
-}
-
-async function removeLegacyServiceFallbackLogs(root: string): Promise<void> {
-  const paths = [
-    join(root, "service", "stdout.log"),
-    join(root, "service", "stderr.log"),
-    join(root, "logs", "bootstrap.stderr.log"),
-  ];
-  await Promise.all(
-    paths.map(async (path) => {
-      try {
-        await Bun.file(path).delete();
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      }
-    }),
-  );
 }
 
 function readinessFromOwner(
@@ -1178,6 +1160,5 @@ export async function stopServiceWithinOperation(
   const inspection = (await hasServiceManagementEvidence(canonicalRoot))
     ? await stopServiceAtRoot(canonicalRoot)
     : undefined;
-  await removeLegacyServiceFallbackLogs(canonicalRoot);
   return inspection;
 }
