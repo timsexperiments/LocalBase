@@ -9,7 +9,8 @@ import { DatabaseSession } from "../../../db/client";
 import type { CommandExecution } from "../../app/commands/framework";
 import { configureInputSchema } from "../../app/commands/inputs";
 import { ensureLocalBaseRootMarker } from "../../../utils/root";
-import { createOtelRuntime } from "../../observability/otel";
+import { createOtelRuntime, OtelRuntimeHolder } from "../../observability/otel";
+import { RuntimeConfigController } from "../../runtime/config-snapshot";
 
 const nonInteractiveExecution: CommandExecution = {
   global: { nonInteractive: true, json: false },
@@ -17,6 +18,8 @@ const nonInteractiveExecution: CommandExecution = {
 };
 
 function makeContext(root: string, gpuVramGb = 16): AppContext {
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, gpuVramGb);
   const otelConfiguration = {
     enabled: false,
     headers: {},
@@ -28,10 +31,11 @@ function makeContext(root: string, gpuVramGb = 16): AppContext {
     displayEndpoint: "",
   };
   return {
-    otel: createOtelRuntime(otelConfiguration),
+    otel: new OtelRuntimeHolder(createOtelRuntime(otelConfiguration)),
     otelConfiguration,
-    database: new DatabaseSession(),
-    config: defaultConfig(root, gpuVramGb),
+    database,
+    config,
+    runtimeConfig: new RuntimeConfigController(database, root, config),
     specs: {
       osName: "Test OS",
       ramGb: 32,

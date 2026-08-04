@@ -4,7 +4,8 @@ import type { AppContext } from "../../../context";
 import { runDoctor } from "./doctor";
 import { DatabaseSession } from "../../../db/client";
 import type { CommandExecution } from "../../app/commands/framework";
-import { createOtelRuntime } from "../../observability/otel";
+import { createOtelRuntime, OtelRuntimeHolder } from "../../observability/otel";
+import { RuntimeConfigController } from "../../runtime/config-snapshot";
 
 const execution: CommandExecution = {
   global: { nonInteractive: false, json: false },
@@ -14,6 +15,7 @@ const execution: CommandExecution = {
 function makeContext(): AppContext {
   const config = defaultConfig("/tmp/local-base-doctor", 16);
   config.parallel = 2;
+  const database = new DatabaseSession();
 
   const otelConfiguration = {
     enabled: false,
@@ -26,10 +28,11 @@ function makeContext(): AppContext {
     displayEndpoint: "",
   };
   return {
-    otel: createOtelRuntime(otelConfiguration),
+    otel: new OtelRuntimeHolder(createOtelRuntime(otelConfiguration)),
     otelConfiguration,
-    database: new DatabaseSession(),
+    database,
     config,
+    runtimeConfig: new RuntimeConfigController(database, config.root, config),
     specs: {
       osName: "Test OS",
       ramGb: 32,
