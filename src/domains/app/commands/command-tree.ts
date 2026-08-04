@@ -12,7 +12,6 @@ import {
   configureInputSchema,
   diagnosticsInputSchema,
   doctorInputSchema,
-  globalOptionsSchema,
   initInputSchema,
   installedInputSchema,
   installInputSchema,

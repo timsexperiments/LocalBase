@@ -1,5 +1,5 @@
 import { chmod, mkdir, rename, rm } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname } from "node:path";
 import { z } from "zod";
 import {
   createServiceDefinition,

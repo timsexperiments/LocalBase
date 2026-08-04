@@ -26,7 +26,6 @@ import {
   managedRuntimeRelease,
   platformSupportTier,
   type ManagedRuntimeRelease,
-  type PlatformSupportTier,
   type PlatformTarget,
   type RuntimeName,
 } from "./managed-runtime-manifest";
