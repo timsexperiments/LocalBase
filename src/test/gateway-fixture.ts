@@ -138,6 +138,8 @@ export type GatewayFixture = {
     offset: number,
     count: number,
   ) => Promise<string[][]>;
+  setLlmBackendHealthy: (healthy: boolean) => void;
+  setLlmRuntimeFailure: (enabled: boolean) => Promise<void>;
   setSttBackendHealthy: (healthy: boolean) => void;
   setImageBackendHealthy: (healthy: boolean) => void;
   waitForUpstreamRequest: (id: string) => Promise<void>;
@@ -155,6 +157,8 @@ export type GatewayFixtureOptions = {
   sttBackendHealthy?: boolean;
   imageBackendHealthy?: boolean;
   llmRuntimeExitOnStart?: boolean;
+  sttEnabled?: boolean;
+  imageEnabled?: boolean;
 };
 
 async function readProcessOutput(
@@ -1274,6 +1278,7 @@ export async function startGatewayFixture(
   const llmLaunchesPath = join(root, "llama-launches.jsonl");
   const sttLaunchesPath = join(root, "whisper-launches.jsonl");
   const imageLaunchesPath = join(root, "sd-launches.jsonl");
+  const llmFailureMarkerPath = join(root, "llama-runtime-failure");
   const cleanup = () => rmSync(root, { recursive: true, force: true });
   const upstreamRequests: UpstreamRequest[] = [];
   const controlledStreams = new Map<string, ControlledStream>();
@@ -1309,9 +1314,12 @@ export async function startGatewayFixture(
     config.activeLlmModel = LLM_MODEL;
     config.selectedLlmModels = [LLM_MODEL];
     config.activeSttModel = STT_MODEL;
-    config.selectedSttModels = [STT_MODEL];
+    config.selectedSttModels = options.sttEnabled === false ? [] : [STT_MODEL];
+    if (options.sttEnabled === false) config.activeSttModel = "";
     config.activeImageModel = IMAGE_MODEL;
-    config.selectedImageModels = [IMAGE_MODEL];
+    config.selectedImageModels =
+      options.imageEnabled === false ? [] : [IMAGE_MODEL];
+    if (options.imageEnabled === false) config.activeImageModel = "";
     config.otelEndpoint = options.otelEndpoint ?? "";
     config.otelSampleRatio = 100;
     const database = new DatabaseSession();
@@ -1341,6 +1349,7 @@ export async function startGatewayFixture(
         undefined,
         llmLaunchesPath,
         options.llmRuntimeExitOnStart,
+        llmFailureMarkerPath,
       ),
       compileRuntimeFixture(
         join(runtimeDir, "whisper-server"),
@@ -1504,6 +1513,15 @@ export async function startGatewayFixture(
     waitForSttRuntimeLaunches: sttRuntimeLaunches.wait,
     readImageRuntimeLaunches: imageRuntimeLaunches.read,
     waitForImageRuntimeLaunches: imageRuntimeLaunches.wait,
+    setLlmBackendHealthy: llmUpstream.setHealthy,
+    async setLlmRuntimeFailure(enabled) {
+      const marker = Bun.file(llmFailureMarkerPath);
+      if (enabled) {
+        await Bun.write(marker, "fail");
+      } else if (await marker.exists()) {
+        await marker.delete();
+      }
+    },
     setSttBackendHealthy: sttUpstream.setHealthy,
     setImageBackendHealthy: imageUpstream.setHealthy,
     async waitForUpstreamRequest(id) {
