@@ -5,14 +5,13 @@ import {
   SpanStatusCode,
   context,
   diag,
-  propagation,
   trace,
   type Attributes,
   type Context,
   type Span,
   type SpanOptions,
 } from "@opentelemetry/api";
-import { logs, SeverityNumber } from "@opentelemetry/api-logs";
+import { SeverityNumber } from "@opentelemetry/api-logs";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import {
   W3CTraceContextPropagator,
@@ -76,6 +75,10 @@ export const OTEL_CLOSE_DEADLINE_MS = 5_000;
 const OTEL_RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
 const OTEL_MAX_EXPORT_ATTEMPTS = 2;
 const OTEL_RETRY_BASE_DELAY_MS = 250;
+
+const sharedContextManager = new AsyncLocalStorageContextManager().enable();
+const traceContextPropagator = new W3CTraceContextPropagator();
+context.setGlobalContextManager(sharedContextManager);
 
 export type OtelConfiguration = {
   enabled: boolean;
@@ -373,14 +376,25 @@ export interface OtelRuntime {
   shutdown(): Promise<void>;
 }
 
+export interface OtelRuntimeLease extends OtelRuntime {
+  release(): void;
+}
+
+type OtelRuntimeLeaseState = {
+  active: number;
+  idle: Promise<void>;
+  resolveIdle?: () => void;
+};
+
 /** Keeps request instrumentation and log export bound to one replaceable runtime. */
 export class OtelRuntimeHolder implements OtelRuntime {
   private closePromise: Promise<void> | undefined;
-  private lifecycle = Promise.resolve();
   private readonly activeOperations = new Map<
     OtelRuntime,
     Set<Promise<unknown>>
   >();
+  private readonly activeLeases = new Map<OtelRuntime, OtelRuntimeLeaseState>();
+  private readonly retirements = new Map<OtelRuntime, Promise<void>>();
 
   constructor(private runtime: OtelRuntime) {}
 
@@ -418,6 +432,46 @@ export class OtelRuntimeHolder implements OtelRuntime {
     return await result;
   }
 
+  /** Captures one telemetry owner for the full lifetime of a gateway request. */
+  acquire(): OtelRuntimeLease {
+    const runtime = this.runtime;
+    let state = this.activeLeases.get(runtime);
+    if (!state) {
+      let resolveIdle: (() => void) | undefined;
+      const idle = new Promise<void>((resolve) => {
+        resolveIdle = resolve;
+      });
+      state = { active: 0, idle, resolveIdle };
+      this.activeLeases.set(runtime, state);
+    }
+    state.active += 1;
+    let released = false;
+    return {
+      enabled: runtime.enabled,
+      emit: (event) => runtime.emit(event),
+      extract: (headers) => runtime.extract(headers),
+      inject: (headers, activeContext) =>
+        runtime.inject(headers, activeContext),
+      withSpan: (name, options, operation, parent) =>
+        runtime.withSpan(name, options, operation, parent),
+      activeCorrelation: () => runtime.activeCorrelation(),
+      forceFlush: () => runtime.forceFlush(),
+      shutdown: () => runtime.shutdown(),
+      release: () => {
+        if (released) return;
+        released = true;
+        const current = this.activeLeases.get(runtime);
+        if (!current) return;
+        current.active -= 1;
+        if (current.active === 0) {
+          this.activeLeases.delete(runtime);
+          current.resolveIdle?.();
+          current.resolveIdle = undefined;
+        }
+      },
+    };
+  }
+
   activeCorrelation(): LogTraceCorrelation | undefined {
     return this.runtime.activeCorrelation();
   }
@@ -433,19 +487,17 @@ export class OtelRuntimeHolder implements OtelRuntime {
     }
     const previous = this.runtime;
     this.runtime = runtime;
-    await this.enqueue(async () => {
-      await this.waitForOperations(previous);
-      await previous.shutdown();
-    });
+    this.retire(previous);
   }
 
   async shutdown(): Promise<void> {
     if (!this.closePromise) {
-      const runtime = this.runtime;
-      this.closePromise = this.enqueue(async () => {
-        await this.waitForOperations(runtime);
-        await runtime.shutdown();
-      });
+      for (const state of this.activeLeases.values()) state.resolveIdle?.();
+      this.activeLeases.clear();
+      this.retire(this.runtime);
+      this.closePromise = Promise.allSettled([
+        ...this.retirements.values(),
+      ]).then(() => {});
     }
     await this.closePromise;
   }
@@ -465,10 +517,23 @@ export class OtelRuntimeHolder implements OtelRuntime {
     if (operations?.size) await Promise.allSettled([...operations]);
   }
 
-  private enqueue(work: () => Promise<void>): Promise<void> {
-    const next = this.lifecycle.then(work, work);
-    this.lifecycle = next.catch(() => {});
-    return next;
+  private async waitForLeases(runtime: OtelRuntime): Promise<void> {
+    await this.activeLeases.get(runtime)?.idle;
+  }
+
+  private retire(runtime: OtelRuntime): Promise<void> {
+    const existing = this.retirements.get(runtime);
+    if (existing) return existing;
+    const retirement = (async () => {
+      await this.waitForOperations(runtime);
+      await this.waitForLeases(runtime);
+      await runtime.shutdown();
+    })();
+    this.retirements.set(runtime, retirement);
+    void retirement
+      .catch(() => {})
+      .finally(() => this.retirements.delete(runtime));
+    return retirement;
   }
 }
 
@@ -590,7 +655,6 @@ class ActiveOtelRuntime implements OtelRuntime {
   private readonly loggerProvider?: LoggerProvider;
   private readonly otelLogger?: ReturnType<LoggerProvider["getLogger"]>;
   private readonly tracer;
-  private readonly contextManager = new AsyncLocalStorageContextManager();
   private readonly exporters: Array<{ shutdown(): Promise<void> }> = [];
   private readonly diagnostic: OtelDiagnostic;
   private closed = false;
@@ -608,10 +672,9 @@ class ActiveOtelRuntime implements OtelRuntime {
         )
         .join(" ")
         .slice(0, 1_024);
-      const key = severity;
       const now = Date.now();
-      if (now - (diagnosticTimes.get(key) ?? 0) < 60_000) return;
-      diagnosticTimes.set(key, now);
+      if (now - (diagnosticTimes.get(severity) ?? 0) < 60_000) return;
+      diagnosticTimes.set(severity, now);
       diagnostic(severity, "OpenTelemetry SDK diagnostic.", {
         signal: "sdk",
         detail,
@@ -662,10 +725,6 @@ class ActiveOtelRuntime implements OtelRuntime {
       sampler: samplerFor(configuration),
       spanProcessors: traceProcessors,
     });
-    this.contextManager.enable();
-    context.setGlobalContextManager(this.contextManager);
-    trace.setGlobalTracerProvider(this.tracerProvider);
-    propagation.setGlobalPropagator(new W3CTraceContextPropagator());
     this.tracer = this.tracerProvider.getTracer(
       OTEL_SERVICE_NAME,
       OTEL_SERVICE_VERSION,
@@ -699,7 +758,6 @@ class ActiveOtelRuntime implements OtelRuntime {
           }),
         ],
       });
-      logs.setGlobalLoggerProvider(this.loggerProvider);
       this.otelLogger = this.loggerProvider.getLogger(
         OTEL_SERVICE_NAME,
         OTEL_SERVICE_VERSION,
@@ -724,18 +782,22 @@ class ActiveOtelRuntime implements OtelRuntime {
   }
 
   extract(headers: Headers): Context {
-    return propagation.extract(context.active(), headers, {
-      get(carrier, key) {
-        return carrier.get(key) ?? undefined;
+    return traceContextPropagator.extract(
+      sharedContextManager.active(),
+      headers,
+      {
+        get(carrier, key) {
+          return carrier.get(key) ?? undefined;
+        },
+        keys(carrier) {
+          return [...carrier.keys()];
+        },
       },
-      keys(carrier) {
-        return [...carrier.keys()];
-      },
-    });
+    );
   }
 
   inject(headers: Headers, activeContext = context.active()): void {
-    propagation.inject(activeContext, headers, {
+    traceContextPropagator.inject(activeContext, headers, {
       set(carrier, key, value) {
         carrier.set(key, value);
       },
@@ -746,12 +808,17 @@ class ActiveOtelRuntime implements OtelRuntime {
     name: string,
     options: SpanOptions,
     operation: (span: Span) => Promise<T> | T,
-    parent = context.active(),
+    parent = sharedContextManager.active(),
   ): Promise<T> {
     const span = this.tracer.startSpan(name, options, parent);
     const activeContext = trace.setSpan(parent, span);
     try {
-      return await context.with(activeContext, operation, undefined, span);
+      return await sharedContextManager.with(
+        activeContext,
+        operation,
+        undefined,
+        span,
+      );
     } catch (error) {
       const sanitized = sanitizeTraceError(error);
       span.recordException(sanitized);
@@ -766,7 +833,7 @@ class ActiveOtelRuntime implements OtelRuntime {
   }
 
   activeCorrelation(): LogTraceCorrelation | undefined {
-    const activeSpan = trace.getActiveSpan();
+    const activeSpan = trace.getSpan(sharedContextManager.active());
     if (!activeSpan?.isRecording()) return undefined;
     const spanContext = activeSpan.spanContext();
     if (!spanContext || !trace.isSpanContextValid(spanContext))

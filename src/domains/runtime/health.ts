@@ -25,6 +25,7 @@ const gatewayHealthBaseSchema = z
   .object({
     version: z.literal(LOCALBASE_VERSION),
     uptimeSeconds: z.number().int().nonnegative(),
+    configurationRevision: z.number().int().nonnegative(),
     modalities: z
       .object({
         llm: gatewayModalityHealthSchema,

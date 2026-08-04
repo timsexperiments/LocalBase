@@ -18,6 +18,7 @@ test("composes health from configured modalities and supervisor state", () => {
       startedAtMs: 10_000,
       nowMs: 12_900,
       stopping: false,
+      configurationRevision: 4,
       configured: { llm: true, stt: false, image: false },
       supervisors,
     }),
@@ -25,6 +26,7 @@ test("composes health from configured modalities and supervisor state", () => {
     status: "ok",
     version: LOCALBASE_VERSION,
     uptimeSeconds: 2,
+    configurationRevision: 4,
     modalities: {
       llm: { configured: true, state: "running" },
       stt: { configured: false, state: "disabled" },
@@ -39,6 +41,7 @@ test("reports stopping without a negative uptime", () => {
       startedAtMs: 10_000,
       nowMs: 9_000,
       stopping: true,
+      configurationRevision: 2,
       configured: { llm: true, stt: true, image: true },
       supervisors,
     }),

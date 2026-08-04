@@ -927,6 +927,7 @@ export interface ILogger {
   pipeStream(stream: ReadableStream<Uint8Array>, component: string): void;
   enableFileLogging(root: string): Promise<void>;
   setOtelRuntime?(runtime: OtelRuntime): void;
+  setConfigurationRevision?(revision: () => number): void;
   close(): Promise<void>;
 }
 
@@ -935,6 +936,7 @@ export class LocalBaseLogger implements ILogger {
   private readonly format: "human" | "json";
   private writer: RotatingLogWriter | undefined;
   private otel: OtelRuntime | undefined;
+  private configurationRevision: (() => number) | undefined;
 
   constructor(format?: string) {
     this.format =
@@ -953,7 +955,20 @@ export class LocalBaseLogger implements ILogger {
   }
 
   private writeEvent(input: LogEventInput, exportOtel: boolean): void {
-    const event = createLogEvent(input, this.otel?.activeCorrelation());
+    const revision = this.configurationRevision?.();
+    const event = createLogEvent(
+      {
+        ...input,
+        attributes:
+          Number.isInteger(revision) && revision! >= 0
+            ? {
+                ...input.attributes,
+                "localbase.config_revision": revision,
+              }
+            : input.attributes,
+      },
+      this.otel?.activeCorrelation(),
+    );
     consoleWrite(event, this.format);
     this.writer?.enqueue(event);
     if (exportOtel) this.otel?.emit(event);
@@ -1087,6 +1102,10 @@ export class LocalBaseLogger implements ILogger {
 
   setOtelRuntime(runtime: OtelRuntime): void {
     this.otel = runtime;
+  }
+
+  setConfigurationRevision(revision: () => number): void {
+    this.configurationRevision = revision;
   }
 
   async close(): Promise<void> {

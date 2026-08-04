@@ -214,7 +214,7 @@ test("normalizes server span routes through a closed allowlist", () => {
   );
 });
 
-test("telemetry runtime replacement waits for active spans and closes each owner once", async () => {
+test("telemetry runtime replacement swaps immediately and retires each owner once", async () => {
   const calls: string[] = [];
   let releaseActiveSpan!: () => void;
   const activeSpan = new Promise<void>((resolve) => {
@@ -243,7 +243,8 @@ test("telemetry runtime replacement waits for active spans and closes each owner
   const second = runtime("second");
   const holder = new OtelRuntimeHolder(first);
 
-  const inFlight = holder.withSpan("active", {}, async () => await activeSpan);
+  const request = holder.acquire();
+  const inFlight = request.withSpan("active", {}, async () => await activeSpan);
   const replacing = holder.replace(second);
   await Bun.sleep(0);
   expect(calls).toEqual(["first:span"]);
@@ -252,8 +253,12 @@ test("telemetry runtime replacement waits for active spans and closes each owner
   expect(calls).toEqual(["first:span", "second:span"]);
   releaseActiveSpan();
   await Promise.all([inFlight, replacing]);
+  expect(calls).toEqual(["first:span", "second:span"]);
+  request.release();
+  await Bun.sleep(10);
   expect(calls).toEqual(["first:span", "second:span", "first:close"]);
 
+  const activeAtShutdown = holder.acquire();
   await Promise.all([holder.shutdown(), holder.shutdown()]);
   expect(calls).toEqual([
     "first:span",
@@ -261,6 +266,7 @@ test("telemetry runtime replacement waits for active spans and closes each owner
     "first:close",
     "second:close",
   ]);
+  activeAtShutdown.release();
 });
 
 test("redacts decoded exported trace exception and status fields", async () => {

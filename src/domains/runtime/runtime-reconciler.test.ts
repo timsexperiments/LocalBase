@@ -68,9 +68,26 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
   const initialLlm = factory.create("llm", controller.read());
   const registry = new SupervisorRegistry({ llm: initialLlm });
   const events: string[] = [];
-  const reconciler = new RuntimeReconciler(controller, {}, registry, factory, {
-    event: ({ eventName }: LogEventInput) => events.push(eventName),
-  } as never);
+  let activeTelemetryOwner = "initial";
+  let failTelemetryReplacement = false;
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    registry,
+    factory,
+    {
+      event: ({ eventName }: LogEventInput) => events.push(eventName),
+    } as never,
+    {
+      async replace(snapshot) {
+        const candidate = snapshot.config.otelEndpoint;
+        if (failTelemetryReplacement) {
+          throw new Error("Telemetry runtime construction failed");
+        }
+        activeTelemetryOwner = candidate;
+      },
+    },
+  );
 
   try {
     const enableStt = controller.copy();
@@ -116,6 +133,21 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
     expect(records.filter(({ modality }) => modality === "stt")).toHaveLength(
       2,
     );
+
+    const enabledTelemetry = controller.copy();
+    enabledTelemetry.otelEndpoint = "http://collector.example";
+    saveConfig(database, enabledTelemetry);
+    await reconciler.refresh();
+    expect(activeTelemetryOwner).toBe("http://collector.example");
+
+    failTelemetryReplacement = true;
+    const failedTelemetry = controller.copy();
+    failedTelemetry.otelHeaders = "x-tenant=next";
+    saveConfig(database, failedTelemetry);
+    await expect(reconciler.refresh()).resolves.toBeDefined();
+    expect(activeTelemetryOwner).toBe("http://collector.example");
+    expect(registry.state("llm", true).state).toBe("idle");
+    expect(events).toContain("observability.reconciliation-failed");
   } finally {
     database.close();
     rmSync(root, { recursive: true, force: true });
