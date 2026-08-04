@@ -2,7 +2,6 @@ import { z } from "zod";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { join, basename } from "node:path";
 import { validateApiKey, installModel } from "../../../manager";
-import type { LocalBaseConfig } from "../../../manager";
 import {
   byId,
   evaluateModelFit,
@@ -14,19 +13,18 @@ import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
 import { type ILogger } from "../../observability/logging";
-import {
-  resolveImageLaunchPlan,
-  resolveLlmLaunchPlan,
-  resolveSttLaunchPlan,
-} from "../launch-plan";
-import {
-  startLlamaServerProcess,
-  startSdServerProcess,
-  startWhisperServerProcess,
-} from "../launcher";
 import type { RuntimeModality } from "../modality";
+import {
+  RuntimeReconciler,
+  RuntimeRequestAbortedError,
+  type RuntimeAdmission,
+} from "../runtime-reconciler";
+import { type RuntimeOverrideOwnership } from "../reconciliation-plan";
+import {
+  createRuntimeSupervisorFactory,
+  runtimeLaunchOverrides,
+} from "../supervisor-factory";
 import { SupervisorRegistry } from "../supervisor-registry";
-import { ManagedService } from "../supervisor";
 import { composeGatewayHealth } from "../gateway-health";
 import { selectGatewayRoute } from "../route-dispatch";
 import {
@@ -1603,244 +1601,63 @@ export async function runServe(
     console.log("Image route auto-disabled (no local Image model file found).");
   }
 
-  const llmBase = `http://${llmHost}:${llmPort}`;
-  const sttBase = `http://${sttHost}:${sttPort}`;
-  const imageBase = `http://${imageHost}:${imagePort}`;
-
-  const activeLlmSpec = byId(config.activeLlmModel);
-  const llmTimeoutMs =
-    activeLlmSpec && activeLlmSpec.minVramGb >= 16 ? 180000 : 60000;
-
-  let exitAfterShutdown: ((status: number) => Promise<number>) | undefined;
-  const fatalServiceExit = async (): Promise<void> => {
-    if (!exitAfterShutdown) {
-      throw new Error("Serve shutdown is not initialized");
-    }
-    execution.output.lifecycle({
-      event: "error",
-      error: {
-        code: "operational_error",
-        message: "A managed runtime exited and could not be recovered.",
-      },
-    });
-    await exitAfterShutdown(1);
+  const configuredOverrides: RuntimeOverrideOwnership = {
+    configFields: [
+      ...(input.llmHost || process.env.LOCALBASE_HOST ? ["host" as const] : []),
+      ...(input.llmPort || process.env.LOCALBASE_PORT ? ["port" as const] : []),
+      ...(input.ctxSize || process.env.LOCALBASE_CTX_SIZE
+        ? ["ctxSize" as const]
+        : []),
+      ...(input.sttHost || process.env.LOCALBASE_STT_HOST
+        ? ["sttHost" as const]
+        : []),
+      ...(input.sttPort || process.env.LOCALBASE_STT_PORT
+        ? ["sttPort" as const]
+        : []),
+      ...(input.llmModelFile ? ["activeLlmModel" as const] : []),
+      ...(input.sttModelFile ? ["activeSttModel" as const] : []),
+      ...(input.imageModelFile ? ["activeImageModel" as const] : []),
+    ],
+    configuredModalities: {
+      ...(input.llm === undefined ? {} : { llm: input.llm }),
+      ...(input.stt === undefined ? {} : { stt: input.stt }),
+      ...(input.image === undefined ? {} : { image: input.image }),
+    },
   };
-
-  const installSelectedLlmModel = async (
-    launchConfig: LocalBaseConfig,
-    modelId: string,
-    reason: "incomplete" | "missing",
-  ): Promise<string> => {
-    ctx.logger.event({
-      severity: "info",
-      eventName: "model.installing",
-      category: "runtime",
-      component: "llama-server",
-      runtime: "llm",
-      message: `Installing a ${reason} selected model.`,
-      attributes: { model_id: modelId, reason },
-    });
-    try {
-      const installedPath = await installModel(launchConfig, modelId);
-      ctx.logger.event({
-        severity: "info",
-        eventName: "model.installed",
-        category: "runtime",
-        component: "llama-server",
-        runtime: "llm",
-        message: "Selected model installation completed.",
-        attributes: { model_id: modelId },
-      });
-      return installedPath;
-    } catch (error) {
-      ctx.logger.event({
-        severity: "error",
-        eventName: "model.install-failed",
-        category: "runtime",
-        component: "llama-server",
-        runtime: "llm",
-        message: "Selected model installation failed.",
-        error: {
-          type: error instanceof Error ? error.name : "Error",
-          message: error instanceof Error ? error.message : String(error),
-        },
-        attributes: { model_id: modelId },
-      });
-      throw error;
-    }
-  };
-
-  const llmService = enabled.llm
-    ? new ManagedService({
-        modality: "llm",
-        component: "llama-server",
-        healthUrl: llmBase + "/health",
-        logger: ctx.logger,
-        start: async () => {
-          await ctx.runtimeConfig.refresh();
-          const launchConfig = ctx.runtimeConfig.copy();
-          const activeModel = launchConfig.activeLlmModel;
-          let modelFile = llmModelFileOverride;
-          if (!modelFile) {
-            const spec = byId(activeModel);
-            if (spec) {
-              const installation = await resolveCatalogInstallation(
-                spec,
-                launchConfig.llmModelsDir,
-              );
-              if (!installation.complete) {
-                const installedPath = await installSelectedLlmModel(
-                  launchConfig,
-                  activeModel,
-                  "incomplete",
-                );
-                modelFile = basename(installedPath);
-              } else {
-                modelFile = primaryArtifact(spec).filename;
-              }
-            } else {
-              const expectedFile = (await Bun.file(
-                join(launchConfig.llmModelsDir, `${activeModel}.bin`),
-              ).exists())
-                ? `${activeModel}.bin`
-                : `${activeModel}.gguf`;
-              const modelPath = join(launchConfig.llmModelsDir, expectedFile);
-              if (!(await Bun.file(modelPath).exists())) {
-                const installedPath = await installSelectedLlmModel(
-                  launchConfig,
-                  activeModel,
-                  "missing",
-                );
-                modelFile = basename(installedPath);
-              } else {
-                modelFile = expectedFile;
-              }
-            }
-          }
-
-          let finalCtxSize = input.ctxSize ?? 0;
-          if (!finalCtxSize) {
-            const spec = byId(activeModel);
-            const recommendedCtx = spec
-              ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
-              : ctx.specs.gpuVramGb >= 32
-                ? 32768
-                : 8192;
-            finalCtxSize = Math.min(recommendedCtx, launchConfig.ctxSize);
-          }
-
-          ctx.logger.info(
-            "llama-server",
-            `Spawning model "${activeModel}" (file: ${modelFile}, context: ${finalCtxSize} tokens)`,
-          );
-          return await startLlamaServerProcess(
-            resolveLlmLaunchPlan({
-              root: launchConfig.root,
-              modelsDirectory: launchConfig.llmModelsDir,
-              modelId: activeModel,
-              modelFile,
-              host: llmHost,
-              port: llmPort,
-              ctxSize: finalCtxSize,
-              parallel: launchConfig.parallel,
-              modelRequirementGb: byId(activeModel)?.minVramGb,
-              hardware: { memoryGb: ctx.specs.gpuVramGb },
-            }),
-          );
-        },
-        otel: ctx.otel,
-        startupTimeoutMs: llmTimeoutMs,
-        onFatal: fatalServiceExit,
-      })
-    : null;
-
-  const sttService = enabled.stt
-    ? new ManagedService({
-        modality: "stt",
-        component: "whisper-server",
-        healthUrl: sttBase + "/health",
-        logger: ctx.logger,
-        start: async () => {
-          await ctx.runtimeConfig.refresh();
-          const launchConfig = ctx.runtimeConfig.copy();
-          const activeModel = launchConfig.activeSttModel;
-          const modelFile = await resolveSttModelFile(
-            launchConfig,
-            activeModel,
-          );
-          ctx.logger.info(
-            "whisper-server",
-            `Spawning STT model "${activeModel}" (file: ${modelFile}) on port ${sttPort}`,
-          );
-          return await startWhisperServerProcess(
-            resolveSttLaunchPlan({
-              root: launchConfig.root,
-              modelsDirectory: launchConfig.sttModelsDir,
-              modelId: activeModel,
-              modelFile,
-              host: sttHost,
-              port: sttPort,
-            }),
-          );
-        },
-        otel: ctx.otel,
-        startupTimeoutMs: 30000,
-        onFatal: fatalServiceExit,
-      })
-    : null;
-
-  const imageService = enabled.image
-    ? new ManagedService({
-        modality: "image",
-        component: "sd-server",
-        healthUrl: imageBase + "/",
-        logger: ctx.logger,
-        start: async () => {
-          await ctx.runtimeConfig.refresh();
-          const launchConfig = ctx.runtimeConfig.copy();
-          const activeModel = launchConfig.activeImageModel;
-          let modelFile = input.imageModelFile;
-          if (!modelFile) {
-            const spec = byId(activeModel);
-            let expectedFile = spec
-              ? primaryArtifact(spec).filename
-              : undefined;
-            if (!expectedFile) {
-              expectedFile = `${activeModel}.safetensors`;
-            }
-            const modelPath = join(launchConfig.imageModelsDir, expectedFile);
-            if (!(await Bun.file(modelPath).exists())) {
-              throw new Error(`Image model file missing at ${modelPath}`);
-            }
-            modelFile = expectedFile;
-          }
-
-          ctx.logger.info(
-            "sd-server",
-            `Spawning image model "${activeModel}" (file: ${modelFile}) on port ${imagePort}`,
-          );
-          return await startSdServerProcess(
-            resolveImageLaunchPlan({
-              root: launchConfig.root,
-              modelsDirectory: launchConfig.imageModelsDir,
-              modelId: activeModel,
-              modelFile,
-              host: imageHost,
-              port: imagePort,
-            }),
-          );
-        },
-        otel: ctx.otel,
-        startupTimeoutMs: 30000,
-        onFatal: fatalServiceExit,
-      })
-    : null;
-
-  const supervisors = new SupervisorRegistry({
-    ...(llmService ? { llm: llmService } : {}),
-    ...(sttService ? { stt: sttService } : {}),
-    ...(imageService ? { image: imageService } : {}),
+  const launchOverrides = Object.freeze({
+    ...runtimeLaunchOverrides(input),
+    ...(input.llmHost || !process.env.LOCALBASE_HOST
+      ? {}
+      : { llmHost: config.host }),
+    ...(input.llmPort || !process.env.LOCALBASE_PORT
+      ? {}
+      : { llmPort: config.port }),
+    ...(input.ctxSize || !process.env.LOCALBASE_CTX_SIZE
+      ? {}
+      : { ctxSize: config.ctxSize }),
+    ...(input.sttHost || !process.env.LOCALBASE_STT_HOST
+      ? {}
+      : { sttHost: config.sttHost }),
+    ...(input.sttPort || !process.env.LOCALBASE_STT_PORT
+      ? {}
+      : { sttPort: config.sttPort }),
   });
+  const factory = createRuntimeSupervisorFactory(ctx, launchOverrides);
+  const initialSnapshot = ctx.runtimeConfig.read();
+  const supervisors = new SupervisorRegistry({
+    ...(enabled.llm ? { llm: factory.create("llm", initialSnapshot) } : {}),
+    ...(enabled.stt ? { stt: factory.create("stt", initialSnapshot) } : {}),
+    ...(enabled.image
+      ? { image: factory.create("image", initialSnapshot) }
+      : {}),
+  });
+  const reconciler = new RuntimeReconciler(
+    ctx.runtimeConfig,
+    configuredOverrides,
+    supervisors,
+    factory,
+    ctx.logger,
+  );
 
   const gatewayStartedAt = Date.now();
   let gatewayStopping = false;
@@ -1849,322 +1666,33 @@ export async function runServe(
       startedAtMs: gatewayStartedAt,
       nowMs: Date.now(),
       stopping: gatewayStopping,
-      configured: enabled,
+      configured: reconciler.configuredModalities(),
       supervisors,
     });
 
-  let imageSwitches = Promise.resolve();
-  let sttSwitches = Promise.resolve();
-  let llmLeaseLock = Promise.resolve();
-  let activeLlmLeases:
-    | {
-        modelId: string;
-        count: number;
-        idle: Promise<void>;
-        resolveIdle: () => void;
-      }
-    | undefined;
-
-  const serializeImageSwitch = async (
-    work: () => Promise<void>,
-  ): Promise<void> => {
-    const next = imageSwitches.then(work, work);
-    imageSwitches = next.catch(() => {});
-    await next;
-  };
-
-  const serializeSttSwitch = async (
-    work: () => Promise<void>,
-  ): Promise<void> => {
-    const next = sttSwitches.then(work, work);
-    sttSwitches = next.catch(() => {});
-    await next;
-  };
-
-  const withLlmLeaseLock = async <T>(
+  const proxyWithAdmission = async (
+    admission: RuntimeAdmission,
+    serviceName: string,
     requestSignal: AbortSignal,
-    work: () => Promise<T>,
-  ): Promise<T> => {
-    throwIfRequestAborted(requestSignal);
-
-    let releaseLock: () => void;
-    let lockReleased = false;
-    let entered = false;
-    const next = new Promise<void>((resolve) => {
-      releaseLock = resolve;
-    });
-    const previous = llmLeaseLock;
-    llmLeaseLock = previous.then(
-      () => next,
-      () => next,
-    );
-    const releaseLockOnce = () => {
-      if (lockReleased) return;
-      lockReleased = true;
-      releaseLock!();
-    };
-    const releaseQueuedLock = () => {
-      if (!entered) releaseLockOnce();
-    };
-
-    requestSignal.addEventListener("abort", releaseQueuedLock, { once: true });
-    if (requestSignal.aborted) releaseQueuedLock();
-
-    const lockedWork = (async () => {
-      try {
-        await previous;
-        entered = true;
-        requestSignal.removeEventListener("abort", releaseQueuedLock);
-        throwIfRequestAborted(requestSignal);
-        return await work();
-      } finally {
-        requestSignal.removeEventListener("abort", releaseQueuedLock);
-        releaseLockOnce();
-      }
-    })();
-    // A caller can stop awaiting after its request aborts while startup finishes.
-    void lockedWork.catch(() => {});
-    return await waitForRequestAbort(lockedWork, requestSignal);
-  };
-
-  const requestedConfiguredModel = (
-    requestedModel: string | undefined,
-    selectedModels: readonly string[],
-    activeModel: string,
-  ): string | undefined => {
-    if (requestedModel === undefined) return activeModel;
-    const normalized = requestedModel.replace(
-      /^(localbase|openai|ollama)\//i,
-      "",
-    );
-    return [activeModel, ...selectedModels].find(
-      (model) => model.toLowerCase() === normalized.toLowerCase(),
-    );
-  };
-
-  const requestedLlmModel = (
-    requestedModel: string | undefined,
-  ): string | undefined => {
-    const latestConfig = ctx.runtimeConfig.read().config;
-    return requestedConfiguredModel(
-      requestedModel,
-      latestConfig.selectedLlmModels,
-      latestConfig.activeLlmModel,
-    );
-  };
-
-  const requestedImageModel = (
-    requestedModel: string | undefined,
-  ): string | undefined => {
-    const latestConfig = ctx.runtimeConfig.read().config;
-    return requestedConfiguredModel(
-      requestedModel,
-      latestConfig.selectedImageModels,
-      latestConfig.activeImageModel,
-    );
-  };
-
-  const requestedSttModel = (
-    requestedModel: string | undefined,
-  ): string | undefined => {
-    const latestConfig = ctx.runtimeConfig.read().config;
-    return requestedConfiguredModel(
-      requestedModel,
-      latestConfig.selectedSttModels,
-      latestConfig.activeSttModel,
-    );
-  };
-
-  const activateLlmModel = async (
-    modelId: string,
-    requestSignal: AbortSignal,
-  ): Promise<void> => {
-    const service = supervisors.get("llm");
-    if (!service) return;
-    throwIfRequestAborted(requestSignal);
-    const latestConfig = ctx.runtimeConfig.read().config;
-    if (latestConfig.activeLlmModel === modelId) return;
-
-    const previousModel = latestConfig.activeLlmModel;
-    ctx.logger.event({
-      severity: "info",
-      eventName: "model.switching",
-      category: "runtime",
-      component: "llama-server",
-      runtime: "llm",
-      message: "Switching the active language model.",
-      attributes: { from_model: previousModel, to_model: modelId },
-    });
-    await service.kill();
-    throwIfRequestAborted(requestSignal);
-    ctx.runtimeConfig.update((nextConfig) => {
-      nextConfig.activeLlmModel = modelId;
-    });
-    ctx.logger.event({
-      severity: "info",
-      eventName: "model.switched",
-      category: "runtime",
-      component: "llama-server",
-      runtime: "llm",
-      message: "Active language model switched.",
-      attributes: { from_model: previousModel, to_model: modelId },
-    });
-  };
-
-  const switchImageModel = async (modelId: string): Promise<void> => {
-    const service = supervisors.get("image");
-    if (!service) return;
-    await serializeImageSwitch(async () => {
-      const latestConfig = ctx.runtimeConfig.read().config;
-      if (modelId === latestConfig.activeImageModel) return;
-
-      const previousModel = latestConfig.activeImageModel;
-      ctx.logger.event({
-        severity: "info",
-        eventName: "model.switching",
-        category: "runtime",
-        component: "sd-server",
-        runtime: "image",
-        message: "Switching the active image model.",
-        attributes: { from_model: previousModel, to_model: modelId },
-      });
-      await service.kill();
-      ctx.runtimeConfig.update((nextConfig) => {
-        nextConfig.activeImageModel = modelId;
-      });
-      ctx.logger.event({
-        severity: "info",
-        eventName: "model.switched",
-        category: "runtime",
-        component: "sd-server",
-        runtime: "image",
-        message: "Active image model switched.",
-        attributes: { from_model: previousModel, to_model: modelId },
-      });
-    });
-  };
-
-  const switchSttModel = async (modelId: string): Promise<void> => {
-    const service = supervisors.get("stt");
-    if (!service) return;
-    await serializeSttSwitch(async () => {
-      const latestConfig = ctx.runtimeConfig.read().config;
-      if (modelId === latestConfig.activeSttModel) return;
-
-      const previousModel = latestConfig.activeSttModel;
-      ctx.logger.event({
-        severity: "info",
-        eventName: "model.switching",
-        category: "runtime",
-        component: "whisper-server",
-        runtime: "stt",
-        message: "Switching the active transcription model.",
-        attributes: { from_model: previousModel, to_model: modelId },
-      });
-      await service.kill();
-      ctx.runtimeConfig.update((nextConfig) => {
-        nextConfig.activeSttModel = modelId;
-      });
-      ctx.logger.event({
-        severity: "info",
-        eventName: "model.switched",
-        category: "runtime",
-        component: "whisper-server",
-        runtime: "stt",
-        message: "Active transcription model switched.",
-        attributes: { from_model: previousModel, to_model: modelId },
-      });
-    });
-  };
-
-  const ensureLlm = async (): Promise<Response | null> => {
-    const service = supervisors.get("llm");
-    if (!enabled.llm || !service) return notConfigured("LLM");
-    try {
-      await service.ensureRunning();
-      return null;
-    } catch {
-      return serviceUnavailable("LLM");
-    }
-  };
-
-  const acquireLlmRequestLease = async (
-    requestedModel: string | undefined,
-    requestSignal: AbortSignal,
-  ): Promise<{ modelId: string; release: () => void } | Response> => {
-    if (!enabled.llm || !supervisors.get("llm")) return notConfigured("LLM");
-
-    return await withLlmLeaseLock(requestSignal, async () => {
-      const modelId = requestedLlmModel(requestedModel);
-      if (!modelId) return modelNotFound(requestedModel ?? "");
-      throwIfRequestAborted(requestSignal);
-      if (activeLlmLeases && activeLlmLeases.modelId !== modelId) {
-        if (activeLlmLeases.count > 0) {
-          await waitForRequestAbort(activeLlmLeases.idle, requestSignal);
-        }
-        throwIfRequestAborted(requestSignal);
-        activeLlmLeases = undefined;
-      }
-
-      await activateLlmModel(modelId, requestSignal);
-      const unavailable = await ensureLlm();
-      throwIfRequestAborted(requestSignal);
-      if (unavailable) return unavailable;
-
-      if (!activeLlmLeases) {
-        let resolveIdle: () => void;
-        const idle = new Promise<void>((resolve) => {
-          resolveIdle = resolve;
-        });
-        activeLlmLeases = {
-          modelId,
-          count: 0,
-          idle,
-          resolveIdle: resolveIdle!,
-        };
-      }
-      activeLlmLeases.count += 1;
-      const lease = activeLlmLeases;
-      let released = false;
-      return {
-        modelId,
-        release: () => {
-          if (released) return;
-          released = true;
-          lease.count -= 1;
-          if (lease.count === 0) {
-            lease.resolveIdle();
-            // A later request must create a fresh unresolved drain barrier.
-            if (activeLlmLeases === lease) activeLlmLeases = undefined;
-          }
-        },
-      };
-    });
-  };
-
-  const withLlmRequestLease = async (
-    requestedModel: string | undefined,
-    dispatch: (modelId: string) => Promise<Response>,
-    requestSignal: AbortSignal,
+    dispatch: () => Promise<Response>,
   ): Promise<Response> => {
-    let acquired: { modelId: string; release: () => void } | Response;
     try {
-      acquired = await acquireLlmRequestLease(requestedModel, requestSignal);
-    } catch (error) {
-      if (error instanceof RequestAbortedError) return requestAborted();
-      throw error;
-    }
-    if (acquired instanceof Response) return acquired;
-    try {
-      return withResponseLease(
-        await waitForRequestAbort(dispatch(acquired.modelId), requestSignal),
-        acquired.release,
+      admission.onDetach(() => {
+        if (admission.supervisor.state() === "starting") {
+          void admission.supervisor.kill();
+        }
+      });
+      await waitForRequestAbort(
+        admission.supervisor.ensureRunning(),
         requestSignal,
       );
+      const response = await waitForRequestAbort(dispatch(), requestSignal);
+      admission.markResponseStarted();
+      return withResponseLease(response, admission.release, requestSignal);
     } catch (error) {
-      acquired.release();
+      admission.release();
       if (error instanceof RequestAbortedError) return requestAborted();
-      throw error;
+      return serviceUnavailable(serviceName);
     }
   };
 
@@ -2188,6 +1716,9 @@ export async function runServe(
       });
     }
 
+    await reconciler.refresh();
+    const currentConfig = ctx.runtimeConfig.copy();
+
     if (route === "instance") {
       if (
         request.headers.get("x-localbase-instance-token") !==
@@ -2202,9 +1733,6 @@ export async function runServe(
         }),
       );
     }
-
-    await ctx.runtimeConfig.refresh();
-    const currentConfig = ctx.runtimeConfig.copy();
 
     if (authRequired) {
       const token = extractAuthToken(request, authMode);
@@ -2222,8 +1750,7 @@ export async function runServe(
     if (requestExceedsSizeLimit(request)) return payloadTooLarge();
 
     if (route === "transcription") {
-      const supervisor = supervisors.get("stt");
-      if (!enabled.stt || !supervisor) return notConfigured("STT");
+      let admission: RuntimeAdmission | undefined;
       try {
         const body = await readBoundedRequestBody(request);
         const multipartBody = new ArrayBuffer(body.byteLength);
@@ -2262,9 +1789,17 @@ export async function runServe(
         if (!parsed.success) {
           return validationFailure(parsed.error);
         }
-        const sttModel = requestedSttModel(parsed.data.model);
-        if (!sttModel) return modelNotFound(parsed.data.model ?? "");
-        await switchSttModel(sttModel);
+        const selected = await reconciler.admitModel(
+          "stt",
+          parsed.data.model,
+          request.signal,
+        );
+        if (selected.kind === "not-configured") return notConfigured("STT");
+        if (selected.kind === "model-not-found") {
+          return modelNotFound(parsed.data.model ?? "");
+        }
+        if (selected.kind === "unavailable") return serviceUnavailable("STT");
+        admission = selected.value.admission;
         const normalizedForm = new FormData();
         for (const [key, value] of Object.entries(parsed.data)) {
           if (value === undefined) continue;
@@ -2286,48 +1821,64 @@ export async function runServe(
           signal: request.signal,
         });
       } catch (e) {
+        admission?.release();
+        if (e instanceof RuntimeRequestAbortedError) return requestAborted();
         return e instanceof PayloadTooLargeError
           ? payloadTooLarge()
           : badRequest("Invalid form data payload.");
       }
-      try {
-        await supervisor.ensureRunning();
-      } catch (err) {
-        return serviceUnavailable("STT");
-      }
-      return proxyRequest(
-        request,
-        sttBase,
-        sttPath,
-        transcriptionResponseSchema,
-        undefined,
-        ctx.otel,
+      return await proxyWithAdmission(
+        admission!,
+        "STT",
+        request.signal,
+        async () =>
+          await proxyRequest(
+            request,
+            factory.baseUrl("stt", admission!.snapshot),
+            sttPath,
+            transcriptionResponseSchema,
+            undefined,
+            ctx.otel,
+          ),
       );
     }
 
     if (route === "imageGeneration") {
-      const supervisor = supervisors.get("image");
-      if (!enabled.image || !supervisor) return notConfigured("Image");
       const parsed = await parseJsonRequest(
         request,
         imageGenerationRequestSchema,
       );
       if (!parsed.success) return parsed.response;
-      const imageModel = requestedImageModel(parsed.data.model);
-      if (!imageModel) return modelNotFound(parsed.data.model ?? "");
-      await switchImageModel(imageModel);
+      let selected;
       try {
-        await supervisor.ensureRunning();
-      } catch {
-        return serviceUnavailable("Image");
+        selected = await reconciler.admitModel(
+          "image",
+          parsed.data.model,
+          request.signal,
+        );
+      } catch (error) {
+        if (error instanceof RuntimeRequestAbortedError)
+          return requestAborted();
+        throw error;
       }
-      return proxyRequest(
-        requestWithJsonBody(request, parsed.data),
-        imageBase,
-        undefined,
-        imageGenerationResponseSchema,
-        undefined,
-        ctx.otel,
+      if (selected.kind === "not-configured") return notConfigured("Image");
+      if (selected.kind === "model-not-found") {
+        return modelNotFound(parsed.data.model ?? "");
+      }
+      if (selected.kind === "unavailable") return serviceUnavailable("Image");
+      return await proxyWithAdmission(
+        selected.value.admission,
+        "Image",
+        request.signal,
+        async () =>
+          await proxyRequest(
+            requestWithJsonBody(request, parsed.data),
+            factory.baseUrl("image", selected.value.admission.snapshot),
+            undefined,
+            imageGenerationResponseSchema,
+            undefined,
+            ctx.otel,
+          ),
       );
     }
 
@@ -2337,37 +1888,72 @@ export async function runServe(
         chatCompletionRequestSchema,
       );
       if (!parsed.success) return parsed.response;
-      return await withLlmRequestLease(
-        parsed.data.model,
-        async () => {
-          return await proxyRequest(
+      let selected;
+      try {
+        selected = await reconciler.admitModel(
+          "llm",
+          parsed.data.model,
+          request.signal,
+        );
+      } catch (error) {
+        if (error instanceof RuntimeRequestAbortedError)
+          return requestAborted();
+        throw error;
+      }
+      if (selected.kind === "not-configured") return notConfigured("LLM");
+      if (selected.kind === "model-not-found") {
+        return modelNotFound(parsed.data.model ?? "");
+      }
+      if (selected.kind === "unavailable") return serviceUnavailable("LLM");
+      return await proxyWithAdmission(
+        selected.value.admission,
+        "LLM",
+        request.signal,
+        async () =>
+          await proxyRequest(
             requestWithJsonBody(request, parsed.data),
-            llmBase,
+            factory.baseUrl("llm", selected.value.admission.snapshot),
             undefined,
             chatCompletionResponseSchema,
             chatCompletionStreamEventSchema,
             ctx.otel,
-          );
-        },
-        request.signal,
+          ),
       );
     }
 
     if (route === "embeddings") {
       const parsed = await parseJsonRequest(request, embeddingsRequestSchema);
       if (!parsed.success) return parsed.response;
-      return await withLlmRequestLease(
-        parsed.data.model,
+      let selected;
+      try {
+        selected = await reconciler.admitModel(
+          "llm",
+          parsed.data.model,
+          request.signal,
+        );
+      } catch (error) {
+        if (error instanceof RuntimeRequestAbortedError)
+          return requestAborted();
+        throw error;
+      }
+      if (selected.kind === "not-configured") return notConfigured("LLM");
+      if (selected.kind === "model-not-found") {
+        return modelNotFound(parsed.data.model ?? "");
+      }
+      if (selected.kind === "unavailable") return serviceUnavailable("LLM");
+      return await proxyWithAdmission(
+        selected.value.admission,
+        "LLM",
+        request.signal,
         async () =>
           await proxyRequest(
             requestWithJsonBody(request, parsed.data),
-            llmBase,
+            factory.baseUrl("llm", selected.value.admission.snapshot),
             undefined,
             embeddingsResponseSchema,
             undefined,
             ctx.otel,
           ),
-        request.signal,
       );
     }
 
@@ -2507,6 +2093,7 @@ export async function runServe(
 
   let shutdownPromise: Promise<void> | null = null;
   let exitPromise: Promise<number> | null = null;
+  let exitAfterShutdown: ((status: number) => Promise<number>) | undefined;
   let requestedExitStatus = 0;
   let resolveServeExit: (status: number) => void;
   const serveExit = new Promise<number>((resolve) => {

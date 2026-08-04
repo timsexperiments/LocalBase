@@ -6,6 +6,7 @@ export const modalityLifecycleStateSchema = z.enum([
   "idle",
   "starting",
   "running",
+  "draining",
   "stopping",
   "failed",
 ]);
