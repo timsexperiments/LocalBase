@@ -26,6 +26,7 @@ import {
   getServiceInspectionReadOnly,
   type ServiceInspection,
 } from "../../service/manager";
+import { gatewayHealthSchema } from "../../runtime/health";
 import { LOCALBASE_VERSION } from "../../../version";
 import {
   openSecureDirectory,
@@ -115,7 +116,7 @@ const serviceSchema = z
     gateway: z
       .object({
         state: z.enum(["ready", "not_ready"]),
-        health: z.unknown().optional(),
+        health: gatewayHealthSchema.optional(),
       })
       .strict(),
   })

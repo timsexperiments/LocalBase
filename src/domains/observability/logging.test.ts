@@ -444,6 +444,31 @@ test("flushes gateway events before shutdown", async () => {
   expect(await readLogSnapshot(root)).toHaveLength(1);
 });
 
+test("records the effective configuration revision with gateway events", async () => {
+  const root = createRoot();
+  const logger = new LocalBaseLogger("json");
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await logger.enableFileLogging(root);
+    logger.setConfigurationRevision(() => 7);
+    logger.event({
+      severity: "info",
+      eventName: "gateway.test",
+      category: "gateway",
+      component: "gateway",
+      runtime: "gateway",
+      message: "Gateway event.",
+    });
+    await logger.close();
+  } finally {
+    console.log = originalLog;
+  }
+
+  const [logged] = await readLogSnapshot(root);
+  expect(logged?.attributes).toEqual({ "localbase.config_revision": 7 });
+});
+
 test("fails closed for active, archive, and dangling log symlinks", async () => {
   const targetRoot = createRoot();
   const target = join(targetRoot, "target.log");

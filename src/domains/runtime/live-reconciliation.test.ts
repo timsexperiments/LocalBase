@@ -6,6 +6,11 @@ import {
   type GatewayFixture,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
+import {
+  decodeOtlpTraceSpans,
+  startOtlpFixture,
+  type OtlpFixture,
+} from "../../test/otlp-fixture";
 import { gatewayHealthSchema } from "./health";
 
 const STT_MODEL = "whisper-large-v3-turbo";
@@ -44,6 +49,12 @@ async function chatRequest(
     }),
     ...init,
   });
+}
+
+function traceCount(fixture: OtlpFixture): number {
+  return fixture.requests
+    .filter((request) => request.path === "/v1/traces")
+    .flatMap((request) => decodeOtlpTraceSpans(request.body)).length;
 }
 
 test.each([
@@ -124,6 +135,7 @@ test.each([
       const snapshot = gatewayHealthSchema.parse(
         await (await fetch(`${gateway.baseUrl}/health`)).json(),
       );
+      expect(snapshot.configurationRevision).toBe(2);
       expect(snapshot.modalities[health]).toEqual({
         configured: false,
         state: "disabled",
@@ -252,7 +264,13 @@ test(
       gateway.saveConfig(selected);
       const models = await fetch(`${gateway.baseUrl}/v1/models`);
       expect(models.status).toBe(200);
-      await models.text();
+      expect(
+        (
+          (await models.json()) as {
+            data: Array<{ id: string }>;
+          }
+        ).data.map((model) => model.id),
+      ).toContain(replacementModel);
       expect(await Bun.file(selectedPath).exists()).toBe(false);
       expect((await gateway.readLlmRuntimeLaunches()).length).toBe(
         initialLlmLaunches,
@@ -287,3 +305,101 @@ test(
   },
   { timeout: 15_000 },
 );
+
+test(
+  "swaps OTLP ownership without interrupting admitted streams",
+  async () => {
+    const firstCollector = startOtlpFixture();
+    const secondCollector = startOtlpFixture();
+    const gateway = await startGatewayFixture({
+      otelEndpoint: firstCollector.endpoint,
+    });
+    try {
+      const streamId = "telemetry-owner";
+      const stream = await chatRequest(gateway, {
+        headers: {
+          "x-test-upstream": "controlled-stream",
+          "x-test-stream-id": streamId,
+        },
+      });
+      const reader = stream.body!.getReader();
+      expect((await reader.read()).done).toBe(false);
+
+      const config = gateway.readConfig();
+      config.otelEndpoint = secondCollector.endpoint;
+      config.otelHeaders = "x-telemetry-owner=second";
+      gateway.saveConfig(config);
+      const refreshed = await fetch(`${gateway.baseUrl}/v1/models`);
+      expect(refreshed.status).toBe(200);
+      await refreshed.text();
+
+      const next = await chatRequest(gateway);
+      expect(next.status).toBe(200);
+      await next.text();
+      await secondCollector.waitFor(
+        (request) =>
+          request.path === "/v1/traces" &&
+          request.headers.get("x-telemetry-owner") === "second",
+      );
+
+      gateway.closeControlledStream(streamId);
+      while (!(await reader.read()).done) {}
+      await firstCollector.waitFor((request) => request.path === "/v1/traces");
+
+      const sampledConfig = gateway.readConfig();
+      sampledConfig.otelSampleRatio = 0;
+      gateway.saveConfig(sampledConfig);
+      const rotated = await fetch(`${gateway.baseUrl}/v1/models`);
+      expect(rotated.status).toBe(200);
+      await rotated.text();
+      await Bun.sleep(1_100);
+      const tracesBeforeUnsampledRequest = traceCount(secondCollector);
+
+      const unsampled = await chatRequest(gateway);
+      expect(unsampled.status).toBe(200);
+      await unsampled.text();
+      await Bun.sleep(1_100);
+      expect(traceCount(secondCollector)).toBe(tracesBeforeUnsampledRequest);
+    } finally {
+      await gateway.stop();
+      firstCollector.stop();
+      secondCollector.stop();
+    }
+  },
+  { timeout: 15_000 },
+);
+
+test("reads created, rotated, revoked, and expired API keys without restart", async () => {
+  const gateway = await startGatewayFixture({ auth: { mode: "bearer" } });
+  const request = async (key: string) =>
+    await chatRequest(gateway, {
+      headers: { authorization: `Bearer ${key}` },
+    });
+  try {
+    const created = gateway.createApiKey("live-config");
+    const initial = await request(created.rawKey);
+    expect(initial.status).toBe(200);
+    await initial.text();
+
+    const rotated = gateway.rotateApiKey(created.id);
+    const oldKey = await request(created.rawKey);
+    expect(oldKey.status).toBe(401);
+    await oldKey.text();
+    const replacement = await request(rotated.rawKey);
+    expect(replacement.status).toBe(200);
+    await replacement.text();
+
+    gateway.revokeApiKey(created.id);
+    const revoked = await request(rotated.rawKey);
+    expect(revoked.status).toBe(401);
+    await revoked.text();
+
+    const expiring = gateway.createApiKey("expiry");
+    gateway.expireApiKey(expiring.id);
+    const expired = await request(expiring.rawKey);
+    expect(expired.status).toBe(401);
+    await expired.text();
+  } finally {
+    await gateway.stop();
+  }
+});
