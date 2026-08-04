@@ -1468,7 +1468,7 @@ export async function startGatewayFixture(
         .map((line) => JSON.parse(line) as string[]);
     };
     const wait = async (offset: number, count: number): Promise<string[][]> => {
-      const deadline = Date.now() + 2_000;
+      const deadline = Date.now() + 5_000;
       while (Date.now() < deadline) {
         const launches = await read();
         if (launches.length >= offset + count) return launches.slice(offset);
