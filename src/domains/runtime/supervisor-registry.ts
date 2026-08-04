@@ -13,8 +13,15 @@ export type ModalitySupervisorState = {
   state: ModalityLifecycleState;
 };
 
+export type SupervisorStateReader = {
+  state(
+    modality: RuntimeModality,
+    configured: boolean,
+  ): ModalitySupervisorState;
+};
+
 /** Owns configured modality supervisors for one gateway instance. */
-export class SupervisorRegistry {
+export class SupervisorRegistry implements SupervisorStateReader {
   private readonly services: Partial<
     Record<RuntimeModality, RuntimeSupervisor>
   >;

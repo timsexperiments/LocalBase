@@ -27,6 +27,8 @@ import {
 import type { RuntimeModality } from "../modality";
 import { SupervisorRegistry } from "../supervisor-registry";
 import { ManagedService } from "../supervisor";
+import { composeGatewayHealth } from "../gateway-health";
+import { selectGatewayRoute } from "../route-dispatch";
 import {
   acquireGatewayLease,
   acquireGatewayLeaseForServe,
@@ -41,12 +43,7 @@ import {
   serverSpanOptions,
   type OtelRuntime,
 } from "../../observability/otel";
-import {
-  gatewayHealthSchema,
-  gatewayIdentitySchema,
-  type ModalityLifecycleState,
-} from "../health";
-import { LOCALBASE_VERSION } from "../../../version";
+import { gatewayIdentitySchema } from "../health";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
@@ -1848,19 +1845,12 @@ export async function runServe(
   const gatewayStartedAt = Date.now();
   let gatewayStopping = false;
   const healthSnapshot = () =>
-    gatewayHealthSchema.parse({
-      status: gatewayStopping ? "error" : "ok",
-      version: LOCALBASE_VERSION,
-      uptimeSeconds: Math.max(
-        0,
-        Math.floor((Date.now() - gatewayStartedAt) / 1_000),
-      ),
-      modalities: {
-        llm: supervisors.state("llm", enabled.llm),
-        stt: supervisors.state("stt", enabled.stt),
-        image: supervisors.state("image", enabled.image),
-      },
-      ...(gatewayStopping ? { error: "gateway_stopping" } : {}),
+    composeGatewayHealth({
+      startedAtMs: gatewayStartedAt,
+      nowMs: Date.now(),
+      stopping: gatewayStopping,
+      configured: enabled,
+      supervisors,
     });
 
   let imageSwitches = Promise.resolve();
@@ -2182,7 +2172,8 @@ export async function runServe(
     request: Request,
     pathname: string,
   ): Promise<Response> => {
-    if (pathname === "/health") {
+    const route = selectGatewayRoute(pathname);
+    if (route === "health") {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return methodNotAllowed("GET, HEAD");
       }
@@ -2197,7 +2188,7 @@ export async function runServe(
       });
     }
 
-    if (pathname === "/_localbase/instance") {
+    if (route === "instance") {
       if (
         request.headers.get("x-localbase-instance-token") !==
         gatewayLease.instance.instanceToken
@@ -2230,10 +2221,7 @@ export async function runServe(
 
     if (requestExceedsSizeLimit(request)) return payloadTooLarge();
 
-    if (
-      pathname === "/v1/audio/transcriptions" ||
-      pathname === "/v1/audio/translations"
-    ) {
+    if (route === "transcription") {
       const supervisor = supervisors.get("stt");
       if (!enabled.stt || !supervisor) return notConfigured("STT");
       try {
@@ -2317,7 +2305,7 @@ export async function runServe(
       );
     }
 
-    if (pathname === "/v1/images/generations") {
+    if (route === "imageGeneration") {
       const supervisor = supervisors.get("image");
       if (!enabled.image || !supervisor) return notConfigured("Image");
       const parsed = await parseJsonRequest(
@@ -2343,7 +2331,7 @@ export async function runServe(
       );
     }
 
-    if (pathname === "/v1/chat/completions") {
+    if (route === "chatCompletion") {
       const parsed = await parseJsonRequest(
         request,
         chatCompletionRequestSchema,
@@ -2365,7 +2353,7 @@ export async function runServe(
       );
     }
 
-    if (pathname === "/v1/embeddings") {
+    if (route === "embeddings") {
       const parsed = await parseJsonRequest(request, embeddingsRequestSchema);
       if (!parsed.success) return parsed.response;
       return await withLlmRequestLease(
@@ -2383,7 +2371,7 @@ export async function runServe(
       );
     }
 
-    if (pathname === "/v1/models") {
+    if (route === "models") {
       const modelsList = [
         ...new Set([
           currentConfig.activeLlmModel,
