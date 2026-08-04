@@ -29,10 +29,12 @@ import {
   recommendedForVram,
   recommendedSttForVram,
 } from "./catalog";
+import { modelConfigurationSchema } from "./domains/models/model-selection";
 import {
   parseParallelSlots,
   type ParallelSlots,
 } from "./domains/config/parallel";
+import { hostSchema, portSchema } from "./domains/config/schema";
 import {
   assertDestructiveLocalBaseRoot,
   canonicalLocalBaseRoot,
@@ -93,15 +95,6 @@ export type ApiKeyRecord = {
 };
 
 const absolutePathSchema = canonicalLocalBaseRootSchema;
-const hostSchema = z
-  .string()
-  .min(1)
-  .max(253)
-  .refine(
-    (value) => value === value.trim() && !/\s/.test(value),
-    "must not contain whitespace",
-  );
-const portSchema = z.number().int().min(1).max(65535);
 const timestampSchema = z.iso.datetime({ offset: true });
 
 const ConfigRowSchema = z
@@ -198,64 +191,18 @@ function toConfigRow(config: LocalBaseConfig) {
   };
 }
 
-function modelHasExpectedModalities(
-  model: ModelSpec,
-  kind: ModelKind,
-): boolean {
-  const expected =
-    kind === "llm"
-      ? { input: "text", output: "text" }
-      : kind === "stt"
-        ? { input: "audio", output: "text" }
-        : { input: "text", output: "image" };
-  return (
-    model.inputModalities.includes(expected.input) &&
-    model.outputModalities.includes(expected.output)
-  );
-}
-
-function selectedModelsSchema(kind: ModelKind, requireOne: boolean) {
-  const schema = z
-    .array(
-      z.string().refine(
-        (id) => {
-          const model = byId(id);
-          return (
-            !!model &&
-            model.kind === kind &&
-            modelHasExpectedModalities(model, kind)
-          );
-        },
-        {
-          message: `must name a catalog ${kind} model with compatible modalities`,
-        },
-      ),
-    )
-    .refine(
-      (ids) => new Set(ids).size === ids.length,
-      "must not contain duplicates",
-    );
-  return requireOne ? schema.min(1) : schema;
-}
-
 function parseSelectedModels(
   value: string,
   field: string,
-  kind: ModelKind,
-  requireOne: boolean,
   root: string,
-): string[] {
+): unknown {
   let json: unknown;
   try {
     json = JSON.parse(value);
   } catch (error) {
     throw invalidConfiguration(root, `${field} contains malformed JSON`, error);
   }
-  const parsed = selectedModelsSchema(kind, requireOne).safeParse(json);
-  if (!parsed.success) {
-    throw invalidConfiguration(root, `${field}: ${issueSummary(parsed.error)}`);
-  }
-  return parsed.data;
+  return json;
 }
 
 export function modelDirectories(
@@ -284,54 +231,28 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
   const selectedLlmModels = parseSelectedModels(
     data.selectedLlmModels,
     "selectedLlmModels",
-    "llm",
-    true,
     openedRoot,
   );
   const selectedSttModels = parseSelectedModels(
     data.selectedSttModels,
     "selectedSttModels",
-    "stt",
-    false,
     openedRoot,
   );
   const selectedImageModels = parseSelectedModels(
     data.selectedImageModels,
     "selectedImageModels",
-    "image",
-    false,
     openedRoot,
   );
-  const activeModels = [
-    ["activeLlmModel", data.activeLlmModel, "llm", selectedLlmModels, false],
-    ["activeSttModel", data.activeSttModel, "stt", selectedSttModels, true],
-    [
-      "activeImageModel",
-      data.activeImageModel,
-      "image",
-      selectedImageModels,
-      true,
-    ],
-  ] as const;
-  for (const [field, id, kind, selected, optional] of activeModels) {
-    if (optional && id === "") continue;
-    const model = byId(id);
-    if (
-      !model ||
-      model.kind !== kind ||
-      !modelHasExpectedModalities(model, kind)
-    ) {
-      throw invalidConfiguration(
-        openedRoot,
-        `${field} must name a catalog ${kind} model with compatible modalities`,
-      );
-    }
-    if (!selected.includes(id)) {
-      throw invalidConfiguration(
-        openedRoot,
-        `${field} must also be present in its selected model list`,
-      );
-    }
+  const models = modelConfigurationSchema.safeParse({
+    selectedLlmModels,
+    selectedSttModels,
+    selectedImageModels,
+    activeLlmModel: data.activeLlmModel,
+    activeSttModel: data.activeSttModel,
+    activeImageModel: data.activeImageModel,
+  });
+  if (!models.success) {
+    throw invalidConfiguration(openedRoot, issueSummary(models.error));
   }
 
   return {
@@ -342,12 +263,7 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     ctxSize: data.ctxSize,
     sttHost: data.sttHost,
     sttPort: data.sttPort,
-    selectedLlmModels,
-    selectedSttModels,
-    selectedImageModels,
-    activeLlmModel: data.activeLlmModel,
-    activeSttModel: data.activeSttModel,
-    activeImageModel: data.activeImageModel,
+    ...models.data,
     hfToken: data.hfToken,
     parallel: parseParallelSlots(data.parallel),
     otelEndpoint: data.otelEndpoint,
