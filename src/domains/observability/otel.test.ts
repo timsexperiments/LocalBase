@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { SpanKind } from "@opentelemetry/api";
+import {
+  INVALID_SPAN_CONTEXT,
+  SpanKind,
+  context,
+  trace,
+} from "@opentelemetry/api";
 import { createLogEvent, logEventSchema } from "./logging";
 import {
   createOtelRuntime,
   normalizedOtelRoute,
+  OtelRuntimeHolder,
   resolveOtelConfiguration,
   retryDelayMilliseconds,
   serverSpanName,
@@ -206,6 +212,55 @@ test("normalizes server span routes through a closed allowlist", () => {
   expect(serverSpanName("get", "/private/path?token=secret")).toBe(
     "GET unmatched-route",
   );
+});
+
+test("telemetry runtime replacement waits for active spans and closes each owner once", async () => {
+  const calls: string[] = [];
+  let releaseActiveSpan!: () => void;
+  const activeSpan = new Promise<void>((resolve) => {
+    releaseActiveSpan = resolve;
+  });
+  const runtime = (name: string): OtelRuntime => ({
+    enabled: true,
+    emit() {},
+    extract() {
+      return context.active();
+    },
+    inject() {},
+    async withSpan(_name, _options, operation) {
+      calls.push(`${name}:span`);
+      return await operation(trace.wrapSpanContext(INVALID_SPAN_CONTEXT));
+    },
+    activeCorrelation() {
+      return undefined;
+    },
+    async forceFlush() {},
+    async shutdown() {
+      calls.push(`${name}:close`);
+    },
+  });
+  const first = runtime("first");
+  const second = runtime("second");
+  const holder = new OtelRuntimeHolder(first);
+
+  const inFlight = holder.withSpan("active", {}, async () => await activeSpan);
+  const replacing = holder.replace(second);
+  await Bun.sleep(0);
+  expect(calls).toEqual(["first:span"]);
+
+  await holder.withSpan("new", {}, async () => {});
+  expect(calls).toEqual(["first:span", "second:span"]);
+  releaseActiveSpan();
+  await Promise.all([inFlight, replacing]);
+  expect(calls).toEqual(["first:span", "second:span", "first:close"]);
+
+  await Promise.all([holder.shutdown(), holder.shutdown()]);
+  expect(calls).toEqual([
+    "first:span",
+    "second:span",
+    "first:close",
+    "second:close",
+  ]);
 });
 
 test("redacts decoded exported trace exception and status fields", async () => {
