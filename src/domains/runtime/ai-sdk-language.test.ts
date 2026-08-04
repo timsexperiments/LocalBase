@@ -241,7 +241,7 @@ describe("Vercel AI SDK language conformance", () => {
     ]);
   });
 
-  test("uses canonical and aliased model IDs to select the requested local model", async () => {
+  test("uses exact model IDs to select the requested local model", async () => {
     const config = gateway.readConfig();
     gateway.saveConfig({
       ...config,
@@ -257,14 +257,14 @@ describe("Vercel AI SDK language conformance", () => {
     expect(canonical.text).toBe("ok");
 
     const launchOffset = (await gateway.readLlmRuntimeLaunches()).length;
-    const aliased = await generateText({
-      model: localbase.chatModel(`openai/${SWITCHED_MODEL}`),
-      prompt: "Use the aliased model ID",
+    const selected = await generateText({
+      model: localbase.chatModel(SWITCHED_MODEL),
+      prompt: "Use the selected model ID",
     });
-    expect(aliased.text).toBe("ok");
+    expect(selected.text).toBe("ok");
     expect(gateway.readConfig().activeLlmModel).toBe(SWITCHED_MODEL);
     expect(latestUpstreamRequestBody(gateway)).toMatchObject({
-      model: `openai/${SWITCHED_MODEL}`,
+      model: SWITCHED_MODEL,
     });
 
     const launches = await gateway.waitForLlmRuntimeLaunches(launchOffset, 1);
@@ -298,7 +298,14 @@ describe("Vercel AI SDK language conformance", () => {
       });
     }
 
-    for (const model of ["definitely-not-selected", ` ${PRIMARY_MODEL} `]) {
+    for (const model of [
+      "definitely-not-selected",
+      ` ${PRIMARY_MODEL} `,
+      PRIMARY_MODEL.toUpperCase(),
+      ...["localbase", "openai", "ollama"].map(
+        (provider) => `${provider}/${PRIMARY_MODEL}`,
+      ),
+    ]) {
       const response = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

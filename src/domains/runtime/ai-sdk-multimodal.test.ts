@@ -116,12 +116,13 @@ describe("Vercel AI SDK multimodal conformance", () => {
     { timeout: 10_000 },
   );
 
-  test("embed forwards float encoding, dimensions, and an aliased selected model", async () => {
+  test("embed forwards float encoding, dimensions, and the selected model", async () => {
     const launchOffset = (await gateway.readLlmRuntimeLaunches()).length;
     const result = await embed({
-      model: createLocalBaseAiSdkProvider(gateway).embeddingModel(
-        `openai/${SWITCHED_LLM_MODEL}`,
-      ),
+      model:
+        createLocalBaseAiSdkProvider(gateway).embeddingModel(
+          SWITCHED_LLM_MODEL,
+        ),
       value: "alpha",
       providerOptions: { openaiCompatible: { dimensions: 2 } },
     });
@@ -129,7 +130,7 @@ describe("Vercel AI SDK multimodal conformance", () => {
     expect(result.embedding).toEqual([0, 5]);
     expect(result.usage).toEqual({ tokens: 1 });
     expect(latestUpstreamRequestBody(gateway)).toMatchObject({
-      model: `openai/${SWITCHED_LLM_MODEL}`,
+      model: SWITCHED_LLM_MODEL,
       input: ["alpha"],
       encoding_format: "float",
       dimensions: 2,
@@ -165,9 +166,8 @@ describe("Vercel AI SDK multimodal conformance", () => {
   test("generateImage returns base64 PNGs and selects the requested local image model", async () => {
     const launchOffset = (await gateway.readImageRuntimeLaunches()).length;
     const result = await generateImage({
-      model: createLocalBaseAiSdkProvider(gateway).imageModel(
-        `openai/${SWITCHED_IMAGE_MODEL}`,
-      ),
+      model:
+        createLocalBaseAiSdkProvider(gateway).imageModel(SWITCHED_IMAGE_MODEL),
       prompt: "A one-pixel sunset",
       n: 2,
       size: "512x512",
@@ -179,7 +179,7 @@ describe("Vercel AI SDK multimodal conformance", () => {
       tinyPngBase64,
     ]);
     expect(latestUpstreamRequestBody(gateway)).toMatchObject({
-      model: `openai/${SWITCHED_IMAGE_MODEL}`,
+      model: SWITCHED_IMAGE_MODEL,
       prompt: "A one-pixel sunset",
       n: 2,
       size: "512x512",
@@ -231,7 +231,7 @@ describe("Vercel AI SDK multimodal conformance", () => {
       name: "localbase",
     });
     const result = await experimental_transcribe({
-      model: localbase.transcription(`openai/${SWITCHED_STT_MODEL}`),
+      model: localbase.transcription(SWITCHED_STT_MODEL),
       audio: minimalWav,
       providerOptions: {
         openai: {
@@ -253,7 +253,7 @@ describe("Vercel AI SDK multimodal conformance", () => {
       ],
     });
     const formData = latestUpstreamMultipartFormData(gateway);
-    expect(formData.get("model")).toBe(`openai/${SWITCHED_STT_MODEL}`);
+    expect(formData.get("model")).toBe(SWITCHED_STT_MODEL);
     expect(formData.get("language")).toBe("en");
     expect(formData.get("prompt")).toBe("Fixture prompt");
     expect(formData.get("temperature")).toBe("0.25");

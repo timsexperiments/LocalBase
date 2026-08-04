@@ -2,6 +2,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { z } from "zod";
 import { unzipSync } from "fflate";
 import { gatewayHealthSchema } from "../src/domains/runtime/health";
+import { openAIErrorResponseSchema } from "../src/domains/runtime/openai-error";
 import { diagnosticsManifestSchema } from "../src/domains/diagnostics/commands/diagnostics";
 import { serviceLifecycleResultSchema } from "../src/domains/app/commands/results";
 import { commandSuccessSchema } from "../src/domains/app/commands/output";
@@ -69,18 +70,6 @@ const STT_MODEL_FILE = "ggml-tiny.en-q8_0.bin";
 const CLI_ONLY_LLM_MODEL_FILE = "runtime-smoke-llm.gguf";
 const TranscriptionResponseSchema = z
   .object({ text: z.string() })
-  .passthrough();
-const OpenAIErrorResponseSchema = z
-  .object({
-    error: z
-      .object({
-        message: z.string(),
-        type: z.string(),
-        param: z.string().nullable(),
-        code: z.string().nullable(),
-      })
-      .passthrough(),
-  })
   .passthrough();
 const TemporaryStartupErrorSchema = z
   .object({
@@ -421,7 +410,7 @@ export async function transcribe(baseUrl: string): Promise<void> {
       continue;
     }
 
-    const errorResponse = OpenAIErrorResponseSchema.safeParse(payload);
+    const errorResponse = openAIErrorResponseSchema.safeParse(payload);
     if (!errorResponse.success) {
       throw new Error(
         `Transcription failed with HTTP ${response.status} and an invalid error body: ${describeValidation(errorResponse.error)} (${describeBody(payload)})`,
