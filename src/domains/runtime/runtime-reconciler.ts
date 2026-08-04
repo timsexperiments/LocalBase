@@ -39,10 +39,6 @@ export type ModelAdmissionResult =
 
 type ConfiguredModalities = Record<RuntimeModality, boolean>;
 
-export type RuntimeObservabilityController = Readonly<{
-  replace: (snapshot: RuntimeConfigSnapshot) => Promise<void>;
-}>;
-
 export class RuntimeRequestAbortedError extends Error {
   constructor() {
     super("Request aborted before runtime admission.");
@@ -105,7 +101,6 @@ export class RuntimeReconciler {
     private readonly supervisors: SupervisorRegistry,
     private readonly factory: RuntimeSupervisorFactory,
     private readonly logger: ILogger,
-    private readonly observability?: RuntimeObservabilityController,
   ) {
     this.snapshot = controller.read();
     this.configured = configuredModalities(this.snapshot, ownership);
@@ -303,37 +298,7 @@ export class RuntimeReconciler {
     for (const modality of runtimeModalities) {
       await this.applyModality(modality, plan, target);
     }
-    await this.applyObservability(plan, target);
     this.snapshot = target;
-  }
-
-  private async applyObservability(
-    plan: ReturnType<typeof createRuntimeReconciliationPlan>,
-    target: RuntimeConfigSnapshot,
-  ): Promise<void> {
-    if (plan.observability.action === "unchanged" || !this.observability) {
-      return;
-    }
-    try {
-      await this.observability.replace(target);
-    } catch (error) {
-      this.logger.event({
-        severity: "error",
-        eventName: "observability.reconciliation-failed",
-        category: "logging",
-        component: "otel",
-        runtime: "gateway",
-        message: "OpenTelemetry runtime replacement failed.",
-        error: {
-          type: error instanceof Error ? error.name : "Error",
-          message: error instanceof Error ? error.message : String(error),
-        },
-        attributes: {
-          revision: target.revision,
-          changed_fields: plan.observability.changedFields.join(","),
-        },
-      });
-    }
   }
 
   private async applyModality(
