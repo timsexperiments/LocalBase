@@ -34,6 +34,20 @@ export class SupervisorRegistry implements SupervisorStateReader {
     return this.services[modality];
   }
 
+  add(modality: RuntimeModality, service: RuntimeSupervisor): void {
+    if (this.get(modality)) {
+      throw new Error(`${modality} supervisor is already configured.`);
+    }
+    this.services[modality] = service;
+  }
+
+  take(modality: RuntimeModality): RuntimeSupervisor | undefined {
+    const service = this.get(modality);
+    if (!service) return undefined;
+    delete this.services[modality];
+    return service;
+  }
+
   state(
     modality: RuntimeModality,
     configured: boolean,
