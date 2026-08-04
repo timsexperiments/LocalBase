@@ -29,183 +29,55 @@ Linux managed-runtime releases are built and qualified against an Ubuntu 24.04-c
 
 Managed runtime versions are pinned independently from LocalBase CLI releases.
 
-## Setup
+## Getting started
 
-### Select a release archive
-
-Use an immutable GitHub Releases tag that contains the current archive set. Do not use a moving `latest` URL.
-
-| Host        | Archive                         | Support tier | Runtime requirements                                                                                                    |
-| ----------- | ------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| macOS ARM64 | `local-base-macos-arm64.zip`    | Managed      | LocalBase manages `llama-server`, `whisper-server`, and `sd-server`.                                                    |
-| macOS x64   | `local-base-macos-x64.zip`      | CLI-only     | LocalBase can install pinned `llama-server`; provide compatible `whisper-server` and `sd-server` executables on `PATH`. |
-| Linux x64   | `local-base-linux-x64.tar.gz`   | Managed      | Ubuntu 24.04-compatible userspace and `libgomp1` are required.                                                          |
-| Linux ARM64 | `local-base-linux-arm64.tar.gz` | CLI-only     | LocalBase can install pinned `llama-server`; provide compatible `whisper-server` and `sd-server` executables on `PATH`. |
-
-CLI-only user-managed runtimes must be outside `$LOCALBASE_ROOT/bin` and are not verified by LocalBase. Managed Linux runtimes are qualified against an Ubuntu 24.04-compatible userspace. Windows is unsupported.
-
-### Download and verify
-
-Replace `vX.Y.Z` with an immutable tag shown on [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases). Do not use `latest` or another moving reference. Then download the archive and checksum manifest:
+Download the archive for the host from an immutable tag on [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases), along with `checksums.txt`.
 
 ```bash
-RELEASE_TAG=vX.Y.Z # replace with an immutable GitHub Releases tag
-ARCHIVE=local-base-macos-arm64.zip # select the archive for this host
-BASE_URL="https://github.com/timsexperiments/LocalBase/releases/download/$RELEASE_TAG"
-curl -fLO "$BASE_URL/$ARCHIVE"
-curl -fLO "$BASE_URL/checksums.txt"
+ARCHIVE=local-base-macos-arm64.zip
 grep -F "  $ARCHIVE" checksums.txt > "$ARCHIVE.sha256"
-test -s "$ARCHIVE.sha256"
-```
-
-Verify the checksum before extraction:
-
-```bash
 shasum -a 256 -c "$ARCHIVE.sha256" # macOS
 sha256sum -c "$ARCHIVE.sha256"     # Linux
 ```
 
-GitHub build attestations are published for each canonical archive and `checksums.txt`. Verify the downloaded subjects with the GitHub CLI:
+Extract and install the CLI:
 
 ```bash
-gh attestation verify "$ARCHIVE" --repo timsexperiments/LocalBase
-gh attestation verify checksums.txt --repo timsexperiments/LocalBase
+unzip "$ARCHIVE"                    # macOS
+# tar -xzf "$ARCHIVE"              # Linux
+mkdir -p "$HOME/.local/bin"
+install -m 755 "${ARCHIVE%.zip}" "$HOME/.local/bin/local-base"
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-macOS archives contain a signed and notarized executable. After extraction, verify its embedded signature:
+For Linux archives, install `"${ARCHIVE%.tar.gz}"` instead. Add the `PATH` export to the active shell profile to make it permanent.
 
-```bash
-MACOS_CLI="${ARCHIVE%.zip}"
-codesign --verify --strict --verbose=2 "$MACOS_CLI"
-spctl --assess --type execute "$MACOS_CLI"
-```
-
-No detached signature file is published for Linux archives.
-
-### Install the CLI
-
-Extract the archive and install the executable as `local-base`. `$HOME/.local/bin` is the recommended non-root default; set `INSTALL_DIR` to another absolute directory when needed:
-
-```bash
-case "$ARCHIVE" in
-  local-base-macos-*.zip)
-    unzip -q "$ARCHIVE"
-    CLI="${ARCHIVE%.zip}"
-    ;;
-  local-base-linux-*.tar.gz)
-    tar -xzf "$ARCHIVE"
-    CLI="${ARCHIVE%.tar.gz}"
-    ;;
-  *)
-    echo "Unsupported archive: $ARCHIVE" >&2
-    exit 1
-    ;;
-esac
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
-mkdir -p "$INSTALL_DIR"
-install -m 755 "$CLI" "$INSTALL_DIR/local-base"
-```
-
-Add the selected install directory to the current shell only when it is absent:
-
-```bash
-case ":$PATH:" in
-  *":$INSTALL_DIR:"*) ;;
-  *) export PATH="$INSTALL_DIR:$PATH" ;;
-esac
-command -v local-base
-local-base --help
-```
-
-If the directory is not already in `PATH`, persist it by running the command for the active shell. These commands intentionally edit the selected shell startup file for the recommended `$HOME/.local/bin` directory:
-
-```bash
-# zsh
-grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.zshrc" 2>/dev/null || printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
-source "$HOME/.zshrc"
-
-# bash
-grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.bashrc" 2>/dev/null || printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
-source "$HOME/.bashrc"
-```
-
-For a non-default `INSTALL_DIR`, replace `$HOME/.local/bin` in the shell configuration command with the selected directory.
-
-### Initialize, configure, and install models
-
-Initialize the data directory and inspect hardware:
+Configure a small LLM and create an API key:
 
 ```bash
 local-base init
-local-base doctor
-```
-
-List the catalog before choosing models:
-
-```bash
-local-base models catalog --kind llm
-local-base models catalog --kind stt
-local-base models catalog --kind image
-```
-
-Configure one model from each supported category when the host has sufficient resources. The example uses the smallest catalog entries in each category and creates an API key whose secret is displayed once:
-
-```bash
 local-base --non-interactive configure --defaults \
   --llm-models qwen2.5-coder-1.5b-instruct-q4_k_m \
   --active-llm qwen2.5-coder-1.5b-instruct-q4_k_m \
-  --stt-models whisper-tiny-en-q8_0 \
-  --active-stt whisper-tiny-en-q8_0 \
-  --image-models stable-diffusion-v1-5 \
-  --active-image stable-diffusion-v1-5 \
+  --stt-models '' \
+  --image-models '' \
   --parallel auto \
   --create-key
-```
-
-Store the displayed API key securely. Use `local-base configure --all` for interactive configuration, or `local-base keys create --name default` to create another key.
-
-Install selected models in the foreground so download and checksum progress remain visible:
-
-```bash
-local-base --non-interactive models install qwen2.5-coder-1.5b-instruct-q4_k_m
-local-base --non-interactive models install whisper-tiny-en-q8_0
-local-base --non-interactive models install stable-diffusion-v1-5
-local-base models list
-```
-
-### Start and verify inference
-
-Start the detached user service and inspect its state:
-
-```bash
+local-base models install qwen2.5-coder-1.5b-instruct-q4_k_m
 local-base start
-local-base status
 ```
 
-Set the API key and send an authenticated OpenAI-compatible request:
+Store the displayed API key, then verify inference:
 
 ```bash
 export LOCALBASE_API_KEY='lb_...'
-
 curl http://127.0.0.1:2273/v1/chat/completions \
   -H "Authorization: Bearer $LOCALBASE_API_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{
-    "model": "qwen2.5-coder-1.5b-instruct-q4_k_m",
-    "messages": [{"role": "user", "content": "Say hello in two words."}]
-  }'
+  -d '{"model":"qwen2.5-coder-1.5b-instruct-q4_k_m","messages":[{"role":"user","content":"Say hello in two words."}]}'
 ```
 
-`local-base serve` runs the gateway in the foreground. `start` installs, enables, and starts the macOS launchd or Linux `systemd --user` service. `stop` stops and disables the user service. `restart` refreshes and restarts it.
-
-```bash
-local-base logs --follow
-local-base diagnostics --output local-base-diagnostics.zip
-local-base stop
-local-base uninstall --yes
-```
-
-`uninstall --yes` stops and removes the matching user service before deleting the LocalBase data root.
+Use `local-base status` to inspect the service and `local-base logs --follow` to stream logs.
 
 ## Logs
 
