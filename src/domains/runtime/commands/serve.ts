@@ -1,13 +1,7 @@
 import { z } from "zod";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { join, basename } from "node:path";
-import {
-  startLlamaServerProcess,
-  startWhisperServerProcess,
-  startSdServerProcess,
-  validateApiKey,
-  installModel,
-} from "../../../manager";
+import { validateApiKey, installModel } from "../../../manager";
 import type { LocalBaseConfig } from "../../../manager";
 import {
   byId,
@@ -20,7 +14,19 @@ import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
 import { type ILogger } from "../../observability/logging";
-import { guardianProcessCommand } from "../backend-guardian";
+import {
+  resolveImageLaunchPlan,
+  resolveLlmLaunchPlan,
+  resolveSttLaunchPlan,
+} from "../launch-plan";
+import {
+  startLlamaServerProcess,
+  startSdServerProcess,
+  startWhisperServerProcess,
+} from "../launcher";
+import type { RuntimeModality } from "../modality";
+import { SupervisorRegistry } from "../supervisor-registry";
+import { ManagedService } from "../supervisor";
 import {
   acquireGatewayLease,
   acquireGatewayLeaseForServe,
@@ -44,11 +50,7 @@ import { LOCALBASE_VERSION } from "../../../version";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
-type ModalityState = {
-  llm: boolean;
-  stt: boolean;
-  image: boolean;
-};
+type ModalityState = Record<RuntimeModality, boolean>;
 
 export function httpBaseUrl(host: string, port: number): string {
   const urlHost =
@@ -56,30 +58,8 @@ export function httpBaseUrl(host: string, port: number): string {
   return `http://${urlHost}:${port}`;
 }
 
-const CHILD_STOP_GRACE_MS = 500;
-const HEALTH_PROBE_TIMEOUT_MS = 2_000;
 const UPSTREAM_PROXY_TIMEOUT_MS = 120_000;
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
-
-class StartupCancelledError extends Error {
-  constructor(name: string) {
-    super(`${name} startup was cancelled.`);
-    this.name = "StartupCancelledError";
-  }
-}
-
-class CrashLimitReachedError extends Error {
-  constructor(name: string) {
-    super(`${name} is unavailable after repeated failures.`);
-    this.name = "CrashLimitReachedError";
-  }
-}
-
-type StartupAttempt = {
-  generation: number;
-  controller: AbortController;
-  cancelled: boolean;
-};
 
 function parseAuthMode(raw: AuthMode | undefined): AuthMode {
   if (!raw) return "either";
@@ -1240,445 +1220,6 @@ export function withResponseLease(
 }
 
 /**
- * Supervisor that manages a model backend subprocess (e.g. llama-server).
- * Handles lazy loading, auto-restart crash recovery with exponential backoff,
- * sliding-window crash limits, stdout/stderr log piping, and startup readiness checks.
- */
-export class ManagedService {
-  private proc: Bun.Subprocess | null = null;
-  private name: string;
-  private startFn: () => Promise<Bun.Subprocess>;
-  private healthUrl: string;
-  private logger: ILogger;
-  private crashTimes: number[] = [];
-  private isRestarting = false;
-  private restartPromise: Promise<void> | null = null;
-  private isShuttingDown = false;
-  private shutdownPromise: Promise<void> | null = null;
-  private guardians = new Map<number, Bun.Subprocess>();
-  private expectedStops = new WeakSet<Bun.Subprocess>();
-  private startupGeneration = 0;
-  private startup: StartupAttempt | null = null;
-  private onFatal: () => Promise<void>;
-  private timeoutMs: number;
-  private otel: OtelRuntime;
-  private lifecycleState: ModalityLifecycleState = "idle";
-
-  constructor(
-    name: string,
-    healthUrl: string,
-    logger: ILogger,
-    startFn: () => Promise<Bun.Subprocess>,
-    otel: OtelRuntime,
-    timeoutMs = 30000,
-    onFatal: () => Promise<void> = async () => {},
-  ) {
-    this.name = name;
-    this.healthUrl = healthUrl;
-    this.logger = logger;
-    this.startFn = startFn;
-    this.timeoutMs = timeoutMs;
-    this.onFatal = onFatal;
-    this.otel = otel;
-  }
-
-  private lifecycle(
-    eventName:
-      | "backend.starting"
-      | "backend.ready"
-      | "backend.restart-backoff"
-      | "backend.crash"
-      | "backend.stopping"
-      | "backend.stopped",
-    severity: "info" | "warn" | "error",
-    attributes?: Record<string, unknown>,
-  ): void {
-    const normalized = this.name.toLowerCase();
-    const runtime = normalized.includes("whisper")
-      ? "stt"
-      : normalized.includes("image") || normalized.includes("sd")
-        ? "image"
-        : "llm";
-    this.logger.event({
-      severity,
-      eventName,
-      category: "runtime",
-      component: this.name,
-      runtime,
-      message: eventName,
-      attributes,
-    });
-  }
-
-  state(): ModalityLifecycleState {
-    return this.lifecycleState;
-  }
-
-  private exited(proc: Bun.Subprocess): boolean {
-    return proc.exitCode !== null || proc.signalCode != null;
-  }
-
-  private unavailableError(): Error {
-    return new Error(`${this.name} is unavailable after repeated failures.`);
-  }
-
-  private failed(): boolean {
-    return this.lifecycleState === "failed";
-  }
-
-  private startupIsActive(attempt: StartupAttempt): boolean {
-    return (
-      this.startup?.generation === attempt.generation && !attempt.cancelled
-    );
-  }
-
-  private assertStartupActive(attempt: StartupAttempt): void {
-    if (!this.startupIsActive(attempt)) {
-      throw new StartupCancelledError(this.name);
-    }
-  }
-
-  private cancelStartup(): void {
-    const attempt = this.startup;
-    if (!attempt || attempt.cancelled) return;
-    attempt.cancelled = true;
-    attempt.controller.abort();
-  }
-
-  private async waitForStartupPoll(
-    attempt: StartupAttempt,
-    intervalMs: number,
-  ): Promise<void> {
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(finish, intervalMs);
-      const onAbort = () => finish();
-      function finish() {
-        clearTimeout(timer);
-        attempt.controller.signal.removeEventListener("abort", onAbort);
-        resolve();
-      }
-      attempt.controller.signal.addEventListener("abort", onAbort, {
-        once: true,
-      });
-    });
-  }
-
-  /**
-   * Lazily starts the service on first use, or awaits recovery if currently restarting.
-   */
-  async ensureRunning(): Promise<void> {
-    if (this.isShuttingDown) {
-      throw new Error(`${this.name} is shutting down`);
-    }
-    if (this.failed()) throw this.unavailableError();
-    if (this.proc && !this.exited(this.proc)) {
-      return;
-    }
-    if (this.isRestarting) {
-      await this.restartPromise;
-      if (this.failed()) throw this.unavailableError();
-      return await this.ensureRunning();
-    }
-    await this.start();
-  }
-
-  /**
-   * Spawns the subprocess, registers crash handlers, pipes logs, and awaits healthy status.
-   * Employs exponential backoff on retry and exits the manager if crash limits are hit.
-   */
-  private async start(): Promise<void> {
-    const attempt: StartupAttempt = {
-      generation: ++this.startupGeneration,
-      controller: new AbortController(),
-      cancelled: false,
-    };
-    this.startup = attempt;
-    this.lifecycleState = "starting";
-    this.isRestarting = true;
-    this.restartPromise = (async () => {
-      let proc: Bun.Subprocess | null = null;
-      const now = Date.now();
-      this.crashTimes = this.crashTimes.filter((t) => now - t < 300000); // 5 min window
-      const crashCount = this.crashTimes.length;
-
-      try {
-        if (crashCount >= 5) {
-          this.lifecycleState = "failed";
-          this.lifecycle("backend.crash", "error", {
-            crashCount,
-            crashLimitReached: true,
-          });
-          void this.onFatal().catch((err) => {
-            this.logger.error(
-              this.name,
-              "Failed to stop manager",
-              err as Error,
-            );
-          });
-          throw new CrashLimitReachedError(this.name);
-        }
-
-        if (crashCount > 0) {
-          const backoffMs = Math.min(1000 * Math.pow(2, crashCount - 1), 16000);
-          this.lifecycle("backend.restart-backoff", "warn", {
-            backoffMs,
-            crashCount,
-          });
-          await this.waitForStartupPoll(attempt, backoffMs);
-        }
-
-        this.assertStartupActive(attempt);
-        this.lifecycle("backend.starting", "info", { crashCount });
-        proc = await this.otel.withSpan(
-          "localbase.backend.start",
-          internalSpanOptions({
-            "localbase.backend": this.name,
-          }),
-          this.startFn,
-        );
-        const startedProcess = proc;
-        if (!this.startupIsActive(attempt) || this.isShuttingDown) {
-          this.expectedStops.add(startedProcess);
-          await this.stopProcess(startedProcess);
-          throw new StartupCancelledError(this.name);
-        }
-
-        this.proc = startedProcess;
-        this.startGuardian(startedProcess);
-        if (this.proc.stdout && typeof this.proc.stdout !== "number")
-          this.logger.pipeStream(this.proc.stdout, this.name);
-        if (this.proc.stderr && typeof this.proc.stderr !== "number")
-          this.logger.pipeStream(this.proc.stderr, this.name);
-
-        startedProcess.exited.then(() => {
-          void this.stopGuardian(startedProcess);
-          this.handleCrash(startedProcess);
-        });
-
-        await this.otel.withSpan(
-          "localbase.backend.model_load",
-          internalSpanOptions({
-            "localbase.backend": this.name,
-          }),
-          async () => {
-            await this.waitHealthy(startedProcess, attempt);
-          },
-        );
-        this.assertStartupActive(attempt);
-        this.lifecycle("backend.ready", "info", { pid: startedProcess.pid });
-        this.lifecycleState = "running";
-      } catch (err) {
-        if (err instanceof StartupCancelledError || attempt.cancelled) {
-          if (proc && this.proc === proc) {
-            await this.stopCurrentProcess();
-          } else if (proc) {
-            this.expectedStops.add(proc);
-            await this.stopProcess(proc);
-          }
-          throw err instanceof StartupCancelledError
-            ? err
-            : new StartupCancelledError(this.name);
-        }
-        if (err instanceof CrashLimitReachedError) throw err;
-        this.logger.event({
-          severity: "error",
-          eventName: "backend.start-failed",
-          category: "runtime",
-          component: this.name,
-          runtime: this.name.includes("whisper")
-            ? "stt"
-            : this.name.includes("sd")
-              ? "image"
-              : "llm",
-          message: "Backend startup failed.",
-          error: {
-            type: err instanceof Error ? err.name : "Error",
-            message: err instanceof Error ? err.message : String(err),
-          },
-        });
-        this.crashTimes.push(Date.now());
-        await this.stopCurrentProcess();
-        this.lifecycleState = "failed";
-        throw err;
-      } finally {
-        if (this.startup === attempt) {
-          this.startup = null;
-          this.isRestarting = false;
-          if (attempt.cancelled && !this.isShuttingDown) {
-            this.lifecycleState = "idle";
-          }
-        }
-      }
-    })();
-    await this.restartPromise;
-  }
-
-  /**
-   * Polls the backend's /health endpoint until it is online or startup times out.
-   */
-  private async waitHealthy(
-    proc: Bun.Subprocess,
-    attempt: StartupAttempt,
-  ): Promise<void> {
-    const timeout = this.timeoutMs;
-    const interval = 200; // 200ms
-    const start = Date.now();
-
-    while (Date.now() - start < timeout) {
-      this.assertStartupActive(attempt);
-      if (this.isShuttingDown) throw new Error(`${this.name} is shutting down`);
-      if (this.exited(proc)) {
-        const exit =
-          proc.signalCode == null
-            ? `exit code ${proc.exitCode}`
-            : `signal ${proc.signalCode}`;
-        this.logger.error(
-          this.name,
-          `Subprocess exited during startup with ${exit}`,
-        );
-        throw new Error(`${this.name} exited during startup (${exit}).`);
-      }
-      try {
-        const res = await fetch(this.healthUrl, {
-          signal: AbortSignal.any([
-            AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
-            attempt.controller.signal,
-          ]),
-        });
-        if (res.ok) return;
-      } catch (e) {
-        this.assertStartupActive(attempt);
-        // Expected network failures while booting
-      }
-      await this.waitForStartupPoll(attempt, interval);
-    }
-    throw new Error("Backend health check timed out.");
-  }
-
-  /**
-   * Stops a backend for a model switch without triggering crash recovery.
-   */
-  async kill(): Promise<void> {
-    if (!this.isShuttingDown) this.lifecycleState = "stopping";
-    const startup = this.isRestarting ? this.restartPromise : null;
-    this.cancelStartup();
-    await this.stopCurrentProcess();
-    if (startup) {
-      await startup.catch((error) => {
-        if (!(error instanceof StartupCancelledError)) throw error;
-      });
-    }
-    if (!this.isShuttingDown) this.lifecycleState = "idle";
-  }
-
-  /** Prevents future restarts and waits for an active startup to finish stopping. */
-  async shutdown(): Promise<void> {
-    if (!this.shutdownPromise) {
-      this.isShuttingDown = true;
-      this.lifecycleState = "stopping";
-      this.lifecycle("backend.stopping", "info");
-      const startup = this.restartPromise;
-      this.shutdownPromise = (async () => {
-        this.cancelStartup();
-        await this.stopCurrentProcess();
-        if (startup) await startup.catch(() => {});
-        await this.stopCurrentProcess();
-        await this.stopAllGuardians();
-        this.lifecycle("backend.stopped", "info");
-      })();
-    }
-    await this.shutdownPromise;
-  }
-
-  private async stopCurrentProcess(): Promise<void> {
-    const p = this.proc;
-    if (p) {
-      this.expectedStops.add(p);
-      this.proc = null;
-      await this.stopProcess(p);
-      await this.stopGuardian(p);
-    }
-  }
-
-  private startGuardian(proc: Bun.Subprocess): void {
-    const guardian = Bun.spawn(guardianProcessCommand(process.pid, proc.pid), {
-      stdin: "ignore",
-      stdout: "ignore",
-      stderr: "ignore",
-      detached: true,
-    });
-    this.guardians.set(proc.pid, guardian);
-    guardian.exited.then(() => {
-      if (this.guardians.get(proc.pid) === guardian) {
-        this.guardians.delete(proc.pid);
-      }
-    });
-  }
-
-  private async stopGuardian(proc: Bun.Subprocess): Promise<void> {
-    const guardian = this.guardians.get(proc.pid);
-    if (!guardian) return;
-    this.guardians.delete(proc.pid);
-    await this.stopProcess(guardian);
-  }
-
-  private async stopAllGuardians(): Promise<void> {
-    const guardians = [...this.guardians.values()];
-    this.guardians.clear();
-    await Promise.all(guardians.map((guardian) => this.stopProcess(guardian)));
-  }
-
-  /** Gracefully terminates a subprocess, then forcefully reaps it if needed. */
-  private async stopProcess(p: Bun.Subprocess): Promise<void> {
-    if (this.exited(p)) return;
-
-    try {
-      p.kill(15);
-    } catch {
-      return;
-    }
-
-    const exitedDuringGrace = await Promise.race([
-      p.exited.then(
-        () => true,
-        () => true,
-      ),
-      Bun.sleep(CHILD_STOP_GRACE_MS).then(() => false),
-    ]);
-    if (exitedDuringGrace || this.exited(p)) return;
-
-    try {
-      p.kill(9);
-    } catch {
-      return;
-    }
-    await p.exited.catch(() => {});
-  }
-
-  /**
-   * Initiates asynchronous process recovery when a running subprocess exits.
-   */
-  handleCrash(proc: Bun.Subprocess): void {
-    if (
-      !this.isShuttingDown &&
-      !this.expectedStops.has(proc) &&
-      this.proc === proc &&
-      this.exited(proc) &&
-      !this.isRestarting
-    ) {
-      this.lifecycle("backend.crash", "error", {
-        exitCode: proc.exitCode,
-        crashCount: this.crashTimes.length + 1,
-      });
-      this.crashTimes.push(Date.now());
-      this.proc = null;
-      this.lifecycleState = "starting";
-      this.start().catch(() => {});
-    }
-  }
-}
-
-/**
  * Returns a standard HTTP 503 service unavailable response.
  */
 function serviceUnavailable(serviceName: string): Response {
@@ -2133,11 +1674,12 @@ export async function runServe(
   };
 
   const llmService = enabled.llm
-    ? new ManagedService(
-        "llama-server",
-        llmBase + "/health",
-        ctx.logger,
-        async () => {
+    ? new ManagedService({
+        modality: "llm",
+        component: "llama-server",
+        healthUrl: llmBase + "/health",
+        logger: ctx.logger,
+        start: async () => {
           await ctx.runtimeConfig.refresh();
           const launchConfig = ctx.runtimeConfig.copy();
           const activeModel = launchConfig.activeLlmModel;
@@ -2194,27 +1736,34 @@ export async function runServe(
             "llama-server",
             `Spawning model "${activeModel}" (file: ${modelFile}, context: ${finalCtxSize} tokens)`,
           );
-          return startLlamaServerProcess(
-            launchConfig,
-            modelFile,
-            llmHost,
-            llmPort,
-            finalCtxSize,
-            { memoryGb: ctx.specs.gpuVramGb },
+          return await startLlamaServerProcess(
+            resolveLlmLaunchPlan({
+              root: launchConfig.root,
+              modelsDirectory: launchConfig.llmModelsDir,
+              modelId: activeModel,
+              modelFile,
+              host: llmHost,
+              port: llmPort,
+              ctxSize: finalCtxSize,
+              parallel: launchConfig.parallel,
+              modelRequirementGb: byId(activeModel)?.minVramGb,
+              hardware: { memoryGb: ctx.specs.gpuVramGb },
+            }),
           );
         },
-        ctx.otel,
-        llmTimeoutMs,
-        fatalServiceExit,
-      )
+        otel: ctx.otel,
+        startupTimeoutMs: llmTimeoutMs,
+        onFatal: fatalServiceExit,
+      })
     : null;
 
   const sttService = enabled.stt
-    ? new ManagedService(
-        "whisper-server",
-        sttBase + "/health",
-        ctx.logger,
-        async () => {
+    ? new ManagedService({
+        modality: "stt",
+        component: "whisper-server",
+        healthUrl: sttBase + "/health",
+        logger: ctx.logger,
+        start: async () => {
           await ctx.runtimeConfig.refresh();
           const launchConfig = ctx.runtimeConfig.copy();
           const activeModel = launchConfig.activeSttModel;
@@ -2226,25 +1775,30 @@ export async function runServe(
             "whisper-server",
             `Spawning STT model "${activeModel}" (file: ${modelFile}) on port ${sttPort}`,
           );
-          return startWhisperServerProcess(
-            launchConfig,
-            modelFile,
-            sttHost,
-            sttPort,
+          return await startWhisperServerProcess(
+            resolveSttLaunchPlan({
+              root: launchConfig.root,
+              modelsDirectory: launchConfig.sttModelsDir,
+              modelId: activeModel,
+              modelFile,
+              host: sttHost,
+              port: sttPort,
+            }),
           );
         },
-        ctx.otel,
-        30000,
-        fatalServiceExit,
-      )
+        otel: ctx.otel,
+        startupTimeoutMs: 30000,
+        onFatal: fatalServiceExit,
+      })
     : null;
 
   const imageService = enabled.image
-    ? new ManagedService(
-        "sd-server",
-        imageBase + "/",
-        ctx.logger,
-        async () => {
+    ? new ManagedService({
+        modality: "image",
+        component: "sd-server",
+        healthUrl: imageBase + "/",
+        logger: ctx.logger,
+        start: async () => {
           await ctx.runtimeConfig.refresh();
           const launchConfig = ctx.runtimeConfig.copy();
           const activeModel = launchConfig.activeImageModel;
@@ -2268,28 +1822,31 @@ export async function runServe(
             "sd-server",
             `Spawning image model "${activeModel}" (file: ${modelFile}) on port ${imagePort}`,
           );
-          return startSdServerProcess(
-            launchConfig,
-            modelFile,
-            imageHost,
-            imagePort,
+          return await startSdServerProcess(
+            resolveImageLaunchPlan({
+              root: launchConfig.root,
+              modelsDirectory: launchConfig.imageModelsDir,
+              modelId: activeModel,
+              modelFile,
+              host: imageHost,
+              port: imagePort,
+            }),
           );
         },
-        ctx.otel,
-        30000,
-        fatalServiceExit,
-      )
+        otel: ctx.otel,
+        startupTimeoutMs: 30000,
+        onFatal: fatalServiceExit,
+      })
     : null;
+
+  const supervisors = new SupervisorRegistry({
+    ...(llmService ? { llm: llmService } : {}),
+    ...(sttService ? { stt: sttService } : {}),
+    ...(imageService ? { image: imageService } : {}),
+  });
 
   const gatewayStartedAt = Date.now();
   let gatewayStopping = false;
-  const modalityHealth = (
-    configured: boolean,
-    service: ManagedService | null,
-  ) => ({
-    configured,
-    state: configured && service ? service.state() : "disabled",
-  });
   const healthSnapshot = () =>
     gatewayHealthSchema.parse({
       status: gatewayStopping ? "error" : "ok",
@@ -2299,9 +1856,9 @@ export async function runServe(
         Math.floor((Date.now() - gatewayStartedAt) / 1_000),
       ),
       modalities: {
-        llm: modalityHealth(enabled.llm, llmService),
-        stt: modalityHealth(enabled.stt, sttService),
-        image: modalityHealth(enabled.image, imageService),
+        llm: supervisors.state("llm", enabled.llm),
+        stt: supervisors.state("stt", enabled.stt),
+        image: supervisors.state("image", enabled.image),
       },
       ...(gatewayStopping ? { error: "gateway_stopping" } : {}),
     });
@@ -2432,7 +1989,8 @@ export async function runServe(
     modelId: string,
     requestSignal: AbortSignal,
   ): Promise<void> => {
-    if (!llmService) return;
+    const service = supervisors.get("llm");
+    if (!service) return;
     throwIfRequestAborted(requestSignal);
     const latestConfig = ctx.runtimeConfig.read().config;
     if (latestConfig.activeLlmModel === modelId) return;
@@ -2447,7 +2005,7 @@ export async function runServe(
       message: "Switching the active language model.",
       attributes: { from_model: previousModel, to_model: modelId },
     });
-    await llmService.kill();
+    await service.kill();
     throwIfRequestAborted(requestSignal);
     ctx.runtimeConfig.update((nextConfig) => {
       nextConfig.activeLlmModel = modelId;
@@ -2464,7 +2022,8 @@ export async function runServe(
   };
 
   const switchImageModel = async (modelId: string): Promise<void> => {
-    if (!imageService) return;
+    const service = supervisors.get("image");
+    if (!service) return;
     await serializeImageSwitch(async () => {
       const latestConfig = ctx.runtimeConfig.read().config;
       if (modelId === latestConfig.activeImageModel) return;
@@ -2479,7 +2038,7 @@ export async function runServe(
         message: "Switching the active image model.",
         attributes: { from_model: previousModel, to_model: modelId },
       });
-      await imageService.kill();
+      await service.kill();
       ctx.runtimeConfig.update((nextConfig) => {
         nextConfig.activeImageModel = modelId;
       });
@@ -2496,7 +2055,8 @@ export async function runServe(
   };
 
   const switchSttModel = async (modelId: string): Promise<void> => {
-    if (!sttService) return;
+    const service = supervisors.get("stt");
+    if (!service) return;
     await serializeSttSwitch(async () => {
       const latestConfig = ctx.runtimeConfig.read().config;
       if (modelId === latestConfig.activeSttModel) return;
@@ -2511,7 +2071,7 @@ export async function runServe(
         message: "Switching the active transcription model.",
         attributes: { from_model: previousModel, to_model: modelId },
       });
-      await sttService.kill();
+      await service.kill();
       ctx.runtimeConfig.update((nextConfig) => {
         nextConfig.activeSttModel = modelId;
       });
@@ -2528,9 +2088,10 @@ export async function runServe(
   };
 
   const ensureLlm = async (): Promise<Response | null> => {
-    if (!enabled.llm || !llmService) return notConfigured("LLM");
+    const service = supervisors.get("llm");
+    if (!enabled.llm || !service) return notConfigured("LLM");
     try {
-      await llmService.ensureRunning();
+      await service.ensureRunning();
       return null;
     } catch {
       return serviceUnavailable("LLM");
@@ -2541,7 +2102,7 @@ export async function runServe(
     requestedModel: string | undefined,
     requestSignal: AbortSignal,
   ): Promise<{ modelId: string; release: () => void } | Response> => {
-    if (!enabled.llm || !llmService) return notConfigured("LLM");
+    if (!enabled.llm || !supervisors.get("llm")) return notConfigured("LLM");
 
     return await withLlmLeaseLock(requestSignal, async () => {
       const modelId = requestedLlmModel(requestedModel);
@@ -2673,7 +2234,8 @@ export async function runServe(
       pathname === "/v1/audio/transcriptions" ||
       pathname === "/v1/audio/translations"
     ) {
-      if (!enabled.stt || !sttService) return notConfigured("STT");
+      const supervisor = supervisors.get("stt");
+      if (!enabled.stt || !supervisor) return notConfigured("STT");
       try {
         const body = await readBoundedRequestBody(request);
         const multipartBody = new ArrayBuffer(body.byteLength);
@@ -2741,7 +2303,7 @@ export async function runServe(
           : badRequest("Invalid form data payload.");
       }
       try {
-        await sttService.ensureRunning();
+        await supervisor.ensureRunning();
       } catch (err) {
         return serviceUnavailable("STT");
       }
@@ -2756,7 +2318,8 @@ export async function runServe(
     }
 
     if (pathname === "/v1/images/generations") {
-      if (!enabled.image || !imageService) return notConfigured("Image");
+      const supervisor = supervisors.get("image");
+      if (!enabled.image || !supervisor) return notConfigured("Image");
       const parsed = await parseJsonRequest(
         request,
         imageGenerationRequestSchema,
@@ -2766,7 +2329,7 @@ export async function runServe(
       if (!imageModel) return modelNotFound(parsed.data.model ?? "");
       await switchImageModel(imageModel);
       try {
-        await imageService.ensureRunning();
+        await supervisor.ensureRunning();
       } catch {
         return serviceUnavailable("Image");
       }
@@ -2975,11 +2538,7 @@ export async function runServe(
         ctx.logger.info("Manager", "Shutting down servers and subprocesses...");
         gatewayStopping = true;
         server.stop(true);
-        await Promise.all([
-          llmService?.shutdown(),
-          sttService?.shutdown(),
-          imageService?.shutdown(),
-        ]);
+        await supervisors.shutdown();
       })();
     }
     return shutdownPromise;

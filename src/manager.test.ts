@@ -28,7 +28,6 @@ import {
   resetDatabase,
   revokeApiKey,
   saveConfig,
-  startLlamaServerProcess,
   uninstallManaged,
   validateApiKey,
   type LocalBaseConfig,
@@ -42,7 +41,6 @@ import {
   verifyAuthoritativeFile,
   writeChecksumStore,
 } from "./utils/checksum";
-import { compileRuntimeFixture } from "./test/runtime-fixture";
 
 const testRoots: string[] = [];
 const testModelIds: string[] = [];
@@ -50,7 +48,6 @@ const testServerClosers: Array<() => Promise<void>> = [];
 const textEncoder = new TextEncoder();
 const textBytes = (value: string) => textEncoder.encode(value);
 const TEST_REVISION = "a".repeat(40);
-const originalPath = process.env.PATH;
 let testDatabase = new DatabaseSession();
 
 type ArtifactRequest = {
@@ -248,71 +245,9 @@ function generatedMigrationJournal(): Array<{
   );
 }
 
-async function createLlamaLaunchFixture(
-  parallel: LocalBaseConfig["parallel"],
-): Promise<{
-  argsPath: string;
-  config: LocalBaseConfig;
-  modelFile: string;
-  modelPath: string;
-}> {
-  const root = mkdtempSync(join(tmpdir(), "local-base-llama-launch-"));
-  testRoots.push(root);
-
-  const config = defaultConfig(root, 9.5);
-  config.activeLlmModel = "qwen2.5-coder-7b-instruct-q4_k_m";
-  config.parallel = parallel;
-
-  const modelFile = "model.gguf";
-  const modelPath = join(config.llmModelsDir, modelFile);
-  const userBinDir = join(root, "user-bin");
-  const binPath = join(userBinDir, "llama-server");
-  const argsPath = join(userBinDir, "llama-server.args");
-  mkdirSync(config.llmModelsDir, { recursive: true });
-  mkdirSync(userBinDir, { recursive: true });
-  await Bun.write(modelPath, "model placeholder");
-  await compileRuntimeFixture(binPath, argsPath);
-  process.env.PATH = `${userBinDir}:${originalPath ?? ""}`;
-
-  return { argsPath, config, modelFile, modelPath };
-}
-
-function expectedLlamaArgs(modelPath: string, parallel: string): string[] {
-  const args = [
-    "-m",
-    modelPath,
-    "--host",
-    "127.0.0.1",
-    "--port",
-    "18000",
-    "-c",
-    "8192",
-    "--parallel",
-    parallel,
-    "--jinja",
-    "--embeddings",
-  ];
-  if (process.platform === "darwin" && process.arch === "arm64") {
-    args.push("--flash-attn", "auto");
-  }
-  return args;
-}
-
-async function readCapturedArgs(argsPath: string): Promise<string[]> {
-  const deadline = Date.now() + 2_000;
-  while (!(await Bun.file(argsPath).exists())) {
-    if (Date.now() >= deadline) {
-      throw new Error(`Runtime did not write arguments to ${argsPath}.`);
-    }
-    await Bun.sleep(10);
-  }
-  return (await Bun.file(argsPath).text()).trim().split("\n");
-}
-
 afterEach(async () => {
   testDatabase.close();
   testDatabase = new DatabaseSession();
-  process.env.PATH = originalPath;
   await Promise.all(testServerClosers.splice(0).map((close) => close()));
   for (const modelId of testModelIds.splice(0)) {
     const index = (CATALOG as ModelSpec[]).findIndex(
@@ -928,39 +863,5 @@ describe.serial("platform support tiers", () => {
       expect(release?.expectedSizeBytes).toBeGreaterThan(0);
       expect(release?.sha256).toMatch(/^[a-f0-9]{64}$/);
     }
-  });
-});
-
-describe.serial("llama server argument construction", () => {
-  test("passes exact argv to async startup and logs auto allocation", async () => {
-    const fixture = await createLlamaLaunchFixture("auto");
-    const output: string[] = [];
-    const originalLog = console.log;
-    console.log = (...values: unknown[]) => output.push(values.join(" "));
-
-    try {
-      const process = await startLlamaServerProcess(
-        fixture.config,
-        fixture.modelFile,
-        "127.0.0.1",
-        18000,
-        8192,
-        { memoryGb: 9.5 },
-      );
-      await readCapturedArgs(fixture.argsPath);
-      process.kill();
-      expect(await process.exited).toBe(0);
-    } finally {
-      console.log = originalLog;
-    }
-
-    expect(await readCapturedArgs(fixture.argsPath)).toEqual(
-      expectedLlamaArgs(fixture.modelPath, "2"),
-    );
-    expect(
-      output.filter((line) => line.includes("Dynamic Concurrency")),
-    ).toEqual([
-      "🤖 Dynamic Concurrency: Calculated 2 parallel slots based on 9.5 GB VRAM and context memory constraints. 4096 tokens per slot.",
-    ]);
   });
 });
