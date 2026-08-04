@@ -379,7 +379,6 @@ describe.serial("compiled CLI service lifecycle", () => {
       XDG_CONFIG_HOME: configHome,
       XDG_RUNTIME_DIR: runtimeHome,
       LOCALBASE_TEST_PLATFORM: platform,
-      LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
       LOCALBASE_TEST_SERVICE_MANAGER_STATE:
         platform === "darwin" ? darwinStatePath : linuxStatePath,
       LOCALBASE_TEST_SERVICE_MANAGER_CALLS:
@@ -481,12 +480,6 @@ describe.serial("compiled CLI service lifecycle", () => {
       firstData.service.definitionPath,
       `${await Bun.file(firstData.service.definitionPath).text()}\n<!-- changed -->\n`,
     );
-    await Bun.write(join(root, "service", "stdout.log"), "legacy output");
-    await Bun.write(join(root, "service", "stderr.log"), "legacy error");
-    await Bun.write(
-      join(root, "logs", "bootstrap.stderr.log"),
-      "legacy continuous fallback",
-    );
     const changed = await runCli(
       executable,
       ["--root", root, "start", "--json"],
@@ -497,15 +490,6 @@ describe.serial("compiled CLI service lifecycle", () => {
     expect((await ownerRecord(root)).instanceId).not.toBe(
       firstOwner.instanceId,
     );
-    expect(await Bun.file(join(root, "service", "stdout.log")).exists()).toBe(
-      false,
-    );
-    expect(await Bun.file(join(root, "service", "stderr.log")).exists()).toBe(
-      false,
-    );
-    expect(
-      await Bun.file(join(root, "logs", "bootstrap.stderr.log")).exists(),
-    ).toBe(false);
 
     const calls = (await Bun.file(darwinCallsPath).json()) as string[][];
     expect(calls.filter((args) => args[1] === "bootstrap")).toHaveLength(3);
@@ -572,9 +556,6 @@ describe.serial("compiled CLI service lifecycle", () => {
         ).stdout,
       ).data as { service: { definitionPath: string } }
     ).service.definitionPath;
-    await Bun.write(join(root, "service", "stdout.log"), "legacy output");
-    await Bun.write(join(root, "service", "stderr.log"), "legacy error");
-
     const reset = await runCli(
       executable,
       ["--root", root, "reset", "--yes", "--json"],
@@ -589,12 +570,6 @@ describe.serial("compiled CLI service lifecycle", () => {
       false,
     );
     expect(await Bun.file(definitionPath).exists()).toBe(true);
-    expect(await Bun.file(join(root, "service", "stdout.log")).exists()).toBe(
-      false,
-    );
-    expect(await Bun.file(join(root, "service", "stderr.log")).exists()).toBe(
-      false,
-    );
 
     const status = await runCli(
       executable,

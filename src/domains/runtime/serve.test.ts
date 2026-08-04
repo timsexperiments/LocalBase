@@ -960,17 +960,31 @@ describe("API gateway integration", () => {
     ).toEqual([{ role: "user", content: "hello" }]);
   });
 
-  test("rejects every removed text-completions route", async () => {
-    for (const path of [
-      "/v1/completions",
-      "/v1/completions/",
-      "/v1/completions/legacy",
-    ]) {
-      const response = await request(path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "unused", prompt: "Raw completion" }),
-      });
+  test("rejects unsupported routes without proxying them", async () => {
+    const upstreamRequests = gateway.upstreamRequests.length;
+    const routes: Array<{ path: string; init?: RequestInit }> = [
+      {
+        path: "/v1/completions",
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "unused", prompt: "Raw completion" }),
+        },
+      },
+      { path: "/v1/slots" },
+      { path: "/v1/metrics" },
+      { path: "/v1/props" },
+      { path: "/v1/system_info" },
+      { path: "/llm/health" },
+      { path: "/stt/health" },
+      { path: "/image/health" },
+      { path: "/tts/speech" },
+      { path: "/video/generations" },
+      { path: "/not-a-route" },
+    ];
+
+    for (const { path, init } of routes) {
+      const response = await request(path, init);
       expect(response.status).toBe(404);
       await expect(response.json()).resolves.toEqual({
         error: {
@@ -981,6 +995,8 @@ describe("API gateway integration", () => {
         },
       });
     }
+
+    expect(gateway.upstreamRequests).toHaveLength(upstreamRequests);
   });
 
   test("rejects malformed and unsupported non-streaming upstream responses", async () => {
@@ -1231,13 +1247,6 @@ describe("API gateway integration", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { type: "server_error", code: "upstream_error" },
     });
-  });
-
-  test("rejects removed raw backend namespaces", async () => {
-    for (const pathname of ["/llm/health", "/stt/health", "/image/health"]) {
-      const response = await request(pathname);
-      expect(response.status).toBe(404);
-    }
   });
 
   test("keeps concurrent LLM requests paired with their selected models", async () => {

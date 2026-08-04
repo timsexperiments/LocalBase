@@ -1395,7 +1395,6 @@ export async function startGatewayFixture(
         env: {
           ...process.env,
           PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
-          LOCALBASE_TEST_DISABLE_CONTINUE_SYNC: "1",
           ...(options.managedIdentity
             ? {
                 LOCALBASE_SERVICE_ID: `com.localbase.gateway.${new Bun.CryptoHasher("sha256").update(root).digest("hex")}`,
