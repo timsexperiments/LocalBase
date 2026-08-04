@@ -85,6 +85,7 @@ type CommandBase<Input> = {
   args?: ArgsDef;
   positionals?: Positionals;
   requiresDatabase?: boolean;
+  readOnlyConfiguration?: boolean;
   initializeUnderOperationLock?: boolean;
   longRunning?: boolean;
   streaming?(input: Input): boolean;
@@ -300,6 +301,8 @@ const initCommand = command<InitInput>({
 const doctorCommand = command<DoctorInput>({
   path: ["doctor"],
   description: "Run a system health check and print configuration details",
+  requiresDatabase: false,
+  readOnlyConfiguration: true,
   parse: (input) => doctorInputSchema.parse(input),
   resultSchema: doctorResultSchema,
   run: async (input, context, execution) => {
@@ -311,6 +314,7 @@ const doctorCommand = command<DoctorInput>({
 const catalogCommand = command<CatalogInput>({
   path: ["models", "catalog"],
   description: "List all supported models",
+  requiresDatabase: false,
   args: { kind: modelKindArg },
   parse: (input) => catalogInputSchema.parse(input),
   resultSchema: catalogResultSchema,
@@ -323,6 +327,7 @@ const catalogCommand = command<CatalogInput>({
 const recommendCommand = command<RecommendInput>({
   path: ["models", "recommend"],
   description: "Recommend models for available VRAM",
+  requiresDatabase: false,
   args: {
     kind: modelKindArg,
     vram: {

@@ -720,11 +720,23 @@ describe.serial("destructive root protection", () => {
   test("keeps the marker through database recovery and removes only marked roots", async () => {
     const config = createInstallConfig();
     loadConfig(testDatabase, config.root);
+    await Promise.all(
+      ["-journal", "-wal", "-shm"].map((suffix) =>
+        Bun.write(`${join(config.root, "local-base.db")}${suffix}`, "stale"),
+      ),
+    );
     const reset = await resetDatabase(testDatabase, config.root, 16);
     expect(reset.root).toBe(config.root);
     expect(
       await Bun.file(join(config.root, ".localbase-root.json")).exists(),
     ).toBe(true);
+    await expect(
+      Promise.all(
+        ["-journal", "-wal", "-shm"].map((suffix) =>
+          Bun.file(`${join(config.root, "local-base.db")}${suffix}`).exists(),
+        ),
+      ),
+    ).resolves.toEqual([false, false, false]);
     expect(uninstallManaged(testDatabase, config.root)).toBe(config.root);
     expect(existsSync(config.root)).toBe(false);
   });
@@ -744,20 +756,14 @@ describe.serial("configuration root identity", () => {
     expect(config.root).toBe(canonical);
     expect(config.llmModelsDir).toBe(join(canonical, "models", "llm"));
 
-    saveConfig(testDatabase, {
-      ...config,
-      root: alias,
-      llmModelsDir: join(alias, "models", "llm"),
-      sttModelsDir: join(alias, "models", "stt"),
-      imageModelsDir: join(alias, "models", "image"),
-    });
+    saveConfig(testDatabase, { ...config, root: alias });
     expect(loadConfig(testDatabase, alias)).toEqual(config);
     expect(loadConfig(testDatabase, target)).toEqual(config);
   });
 });
 
 describe.serial("LocalBase database validation", () => {
-  test("fails closed on invalid roots, paths, ports, and selected models", () => {
+  test("fails closed on invalid roots, ports, and selected models", () => {
     const incompatibleId = installFixtureModel("https://example.com/models", [
       artifact("incompatible.gguf", textBytes("model"), "primary"),
     ]);
@@ -767,11 +773,6 @@ describe.serial("LocalBase database validation", () => {
     incompatible.outputModalities = ["image"];
     const cases = [
       { column: "root", value: "/tmp/other-root", message: "root is" },
-      {
-        column: "llm_models_dir",
-        value: "/tmp/models",
-        message: "llmModelsDir",
-      },
       { column: "port", value: 0, message: "port" },
       {
         column: "selected_llm_models",
