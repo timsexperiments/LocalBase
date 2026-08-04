@@ -31,58 +31,31 @@ Managed runtime versions are pinned independently from LocalBase CLI releases.
 
 ## Getting started
 
-### Download and verify
-
-Download one archive and `checksums.txt` from [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases):
-
-- `local-base-macos-arm64.zip`
-- `local-base-macos-x64.zip`
-- `local-base-linux-x64.tar.gz`
-- `local-base-linux-arm64.tar.gz`
-
-In the download directory, set `ARCHIVE` to the downloaded archive and verify its checksum:
+Download the archive for the host from an immutable tag on [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases), along with `checksums.txt`.
 
 ```bash
 ARCHIVE=local-base-macos-arm64.zip
 grep -F "  $ARCHIVE" checksums.txt > "$ARCHIVE.sha256"
 shasum -a 256 -c "$ARCHIVE.sha256" # macOS
-sha256sum -c "$ARCHIVE.sha256"    # Linux
+sha256sum -c "$ARCHIVE.sha256"     # Linux
 ```
 
-Optionally verify the GitHub build attestation:
+Extract and install the CLI:
 
 ```bash
-gh attestation verify "$ARCHIVE" --repo timsexperiments/LocalBase
-```
-
-### Install the CLI
-
-Extract the archive, install the target-specific executable, and ensure `$HOME/.local/bin` is on `PATH`:
-
-```bash
-case "$ARCHIVE" in
-  *.zip) unzip "$ARCHIVE"; CLI="${ARCHIVE%.zip}" ;;
-  *.tar.gz) tar -xzf "$ARCHIVE"; CLI="${ARCHIVE%.tar.gz}" ;;
-esac
+unzip "$ARCHIVE"                    # macOS
+# tar -xzf "$ARCHIVE"              # Linux
 mkdir -p "$HOME/.local/bin"
-install -m 755 "$CLI" "$HOME/.local/bin/local-base"
+install -m 755 "${ARCHIVE%.zip}" "$HOME/.local/bin/local-base"
 export PATH="$HOME/.local/bin:$PATH"
-local-base --help
 ```
 
-Add `export PATH="$HOME/.local/bin:$PATH"` to the shell profile to retain the path in new shells.
+For Linux archives, install `"${ARCHIVE%.tar.gz}"` instead. Add the `PATH` export to the active shell profile to make it permanent.
 
-Run the system check:
-
-```bash
-local-base doctor
-```
-
-### Configure and install a model
-
-Configure an LLM-only gateway with an initial API key:
+Configure a small LLM and create an API key:
 
 ```bash
+local-base init
 local-base --non-interactive configure --defaults \
   --llm-models qwen2.5-coder-1.5b-instruct-q4_k_m \
   --active-llm qwen2.5-coder-1.5b-instruct-q4_k_m \
@@ -90,55 +63,21 @@ local-base --non-interactive configure --defaults \
   --image-models '' \
   --parallel auto \
   --create-key
-```
-
-The API key secret is displayed once. Store it securely.
-
-Install the selected model before starting the service so download and checksum progress remain visible in the foreground:
-
-```bash
-local-base --non-interactive models install qwen2.5-coder-1.5b-instruct-q4_k_m
-```
-
-### Start and use the gateway
-
-Start the user service and verify its state:
-
-```bash
+local-base models install qwen2.5-coder-1.5b-instruct-q4_k_m
 local-base start
-local-base status
-local-base models list
 ```
 
-Set the API key created during configuration and send an OpenAI-compatible request:
+Store the displayed API key, then verify inference:
 
 ```bash
 export LOCALBASE_API_KEY='lb_...'
-
-curl http://localhost:2273/v1/chat/completions \
+curl http://127.0.0.1:2273/v1/chat/completions \
   -H "Authorization: Bearer $LOCALBASE_API_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{
-    "model": "qwen2.5-coder-1.5b-instruct-q4_k_m",
-    "messages": [{"role": "user", "content": "Say hello in two words."}]
-  }'
+  -d '{"model":"qwen2.5-coder-1.5b-instruct-q4_k_m","messages":[{"role":"user","content":"Say hello in two words."}]}'
 ```
 
-## Operations
-
-`serve` runs in the foreground. `start` installs, enables, and starts the user service. `restart` refreshes and enables it. `stop` stops it and disables login startup. `status` reports service-manager, process, gateway, and modality state without opening the LocalBase database.
-
-macOS uses a launchd user agent. Linux uses a `systemd --user` service; detached commands require a functioning user manager. Foreground `local-base serve` does not.
-
-```bash
-local-base logs --follow
-local-base restart
-local-base stop
-local-base diagnostics
-local-base uninstall --yes
-```
-
-`uninstall --yes` stops and removes the matching user service before deleting that LocalBase root.
+Use `local-base status` to inspect the service and `local-base logs --follow` to stream logs.
 
 ## Logs
 
