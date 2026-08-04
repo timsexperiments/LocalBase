@@ -36,7 +36,6 @@ import type { ServeInput } from "../../app/commands/inputs";
 import { CliInputError } from "../../app/commands/errors";
 import {
   clientSpanOptions,
-  internalSpanOptions,
   serverSpanName,
   serverSpanOptions,
   type OtelRuntime,
@@ -795,10 +794,6 @@ class RequestAbortedError extends Error {
   }
 }
 
-function throwIfRequestAborted(signal: AbortSignal): void {
-  if (signal.aborted) throw new RequestAbortedError();
-}
-
 function waitForRequestAbort<T>(
   promise: Promise<T>,
   signal: AbortSignal,
@@ -1284,11 +1279,8 @@ export async function runServe(
   const wrapperHost = input.host ?? "0.0.0.0";
   const wrapperPort = input.port ?? 2273;
 
-  const llmHost = input.llmHost ?? "127.0.0.1";
   const llmPort = input.llmPort ?? config.port;
-  const sttHost = input.sttHost ?? "127.0.0.1";
   const sttPort = input.sttPort ?? config.sttPort;
-  const imageHost = input.imageHost ?? "127.0.0.1";
   const imagePort = input.imagePort ?? 8090;
 
   const serviceId = process.env.LOCALBASE_SERVICE_ID;

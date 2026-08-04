@@ -106,15 +106,6 @@ function activeModel(
   return config.activeImageModel;
 }
 
-function modelDirectory(
-  modality: RuntimeModality,
-  config: RuntimeConfigSnapshot["config"],
-): string {
-  if (modality === "llm") return config.llmModelsDir;
-  if (modality === "stt") return config.sttModelsDir;
-  return config.imageModelsDir;
-}
-
 function configuredModelFile(
   config: LocalBaseConfig,
   modelId: string,
