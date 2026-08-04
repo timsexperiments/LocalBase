@@ -1,5 +1,54 @@
 type ProtobufField = { wire: number; value: Uint8Array | number };
 
+export type OtlpFixtureRequest = {
+  path: string;
+  headers: Headers;
+  body: Uint8Array;
+};
+
+export type OtlpFixture = {
+  endpoint: string;
+  requests: OtlpFixtureRequest[];
+  waitFor: (
+    predicate: (request: OtlpFixtureRequest) => boolean,
+    count?: number,
+  ) => Promise<void>;
+  stop: () => void;
+};
+
+export function startOtlpFixture(): OtlpFixture {
+  const requests: OtlpFixtureRequest[] = [];
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      requests.push({
+        path: new URL(request.url).pathname,
+        headers: new Headers(request.headers),
+        body: new Uint8Array(await request.arrayBuffer()),
+      });
+      return new Response(new Uint8Array(), {
+        headers: { "content-type": "application/x-protobuf" },
+      });
+    },
+  });
+  if (!server.port) throw new Error("OTLP fixture did not bind a port.");
+
+  return {
+    endpoint: `http://127.0.0.1:${server.port}`,
+    requests,
+    async waitFor(predicate, count = 1) {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        if (requests.filter(predicate).length >= count) return;
+        await Bun.sleep(10);
+      }
+      throw new Error("OTLP fixture did not receive the expected requests.");
+    },
+    stop: () => server.stop(true),
+  };
+}
+
 function protobufFields(bytes: Uint8Array): Map<number, ProtobufField[]> {
   const fields = new Map<number, ProtobufField[]>();
   let offset = 0;

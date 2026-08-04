@@ -15,6 +15,7 @@ export type GatewayHealthInput = Readonly<{
   startedAtMs: number;
   nowMs: number;
   stopping: boolean;
+  configurationRevision: number;
   configured: GatewayModalityConfiguration;
   supervisors: SupervisorStateReader;
 }>;
@@ -35,6 +36,7 @@ export function composeGatewayHealth(input: GatewayHealthInput): GatewayHealth {
       0,
       Math.floor((input.nowMs - input.startedAtMs) / 1_000),
     ),
+    configurationRevision: input.configurationRevision,
     modalities: {
       llm: modality("llm"),
       stt: modality("stt"),

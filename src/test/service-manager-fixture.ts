@@ -584,6 +584,7 @@ export async function runManagedGatewayFixture(
             status: "ok",
             version: LOCALBASE_VERSION,
             uptimeSeconds: 0,
+            configurationRevision: 0,
             modalities: {
               llm: { configured: true, state: "idle" },
               stt: { configured: false, state: "disabled" },
