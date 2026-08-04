@@ -65,8 +65,6 @@ const hardwareSchema = z
 
 const configurationSchema = z
   .object({
-    runtimeBackend: z.string().min(1),
-    sttBackend: z.string().min(1),
     contextSize: z.number().int().positive(),
     parallel: z.union([z.literal("auto"), z.number().int().min(1).max(4)]),
     selectedModels: z
@@ -185,8 +183,6 @@ function hardwareData(specs: HostSpecs) {
 
 function configurationData(config: LocalBaseConfig) {
   return configurationSchema.parse({
-    runtimeBackend: config.runtimeBackend,
-    sttBackend: config.sttBackend,
     contextSize: config.ctxSize,
     parallel: config.parallel,
     selectedModels: {

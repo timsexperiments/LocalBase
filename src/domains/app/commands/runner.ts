@@ -20,6 +20,7 @@ type CreateContext = (
   options: GlobalOptions,
   initializeDatabase: boolean,
   initializeUnderOperationLock: boolean,
+  readOnlyConfiguration: boolean,
 ) => Promise<AppContext>;
 type CreateMinimalContext = (
   options: GlobalOptions,
@@ -116,6 +117,7 @@ export async function runCli(
         global,
         command.requiresDatabase ?? true,
         command.initializeUnderOperationLock ?? false,
+        command.readOnlyConfiguration ?? false,
       );
       context = full;
       return await executeFullCommand(
