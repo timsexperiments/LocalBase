@@ -6,6 +6,7 @@ import {
   readConfigIfPresent,
   type LocalBaseConfig,
 } from "./manager";
+import { RuntimeConfigController } from "./domains/runtime/config-snapshot";
 import {
   clearBootstrapDiagnostic,
   createLogger,
@@ -31,9 +32,9 @@ import {
 } from "./domains/service/ownership";
 import {
   createOtelRuntime,
+  OtelRuntimeHolder,
   resolveOtelConfiguration,
   type OtelConfiguration,
-  type OtelRuntime,
 } from "./domains/observability/otel";
 
 /**
@@ -45,7 +46,8 @@ export interface AppContext {
   config: LocalBaseConfig;
   database: DatabaseSession;
   initializationOperation?: OperationLease;
-  otel: OtelRuntime;
+  otel: OtelRuntimeHolder;
+  runtimeConfig: RuntimeConfigController;
   otelConfiguration: OtelConfiguration;
 }
 
@@ -74,14 +76,13 @@ function otelDiagnostic(logger: ILogger) {
   };
 }
 
-export function activateContextOtel(ctx: AppContext): void {
+export async function activateContextOtel(ctx: AppContext): Promise<void> {
   if (ctx.otel.enabled || !ctx.otelConfiguration.enabled) return;
   const runtime = createOtelRuntime(
     ctx.otelConfiguration,
     otelDiagnostic(ctx.logger),
   );
-  ctx.otel = runtime;
-  ctx.logger.setOtelRuntime?.(runtime);
+  await ctx.otel.replace(runtime);
 }
 
 const environmentOverridesSchema = z
@@ -213,20 +214,29 @@ export async function createAppContext(
     }
     const overrides = parseEnvironmentOverrides(environment);
     const specs = await detectSpecs();
-    const config: LocalBaseConfig = initializeDatabase
+    const persistedConfig: LocalBaseConfig = initializeDatabase
       ? loadConfig(database, root, specs.gpuVramGb)
       : readOnlyConfiguration
         ? ((await readConfigIfPresent(root)) ??
           defaultConfig(root, specs.gpuVramGb))
         : defaultConfig(root, specs.gpuVramGb);
+    const config = { ...persistedConfig };
+    const runtimeConfig = new RuntimeConfigController(
+      database,
+      root,
+      persistedConfig,
+    );
     const otelConfiguration = resolveOtelConfiguration(config, environment);
     // Serve activates exporters after releasing the startup ownership lock; other commands do not create network sinks.
-    const otel = createOtelRuntime({
-      ...otelConfiguration,
-      enabled: false,
-      tracesEndpoint: undefined,
-      logsEndpoint: undefined,
-    });
+    const otel = new OtelRuntimeHolder(
+      createOtelRuntime({
+        ...otelConfiguration,
+        enabled: false,
+        tracesEndpoint: undefined,
+        logsEndpoint: undefined,
+      }),
+    );
+    logger.setOtelRuntime?.(otel);
     if (initializeUnderOperationLock) {
       await logger.enableFileLogging(root);
       await clearBootstrapDiagnostic(root);
@@ -244,6 +254,7 @@ export async function createAppContext(
       config,
       database,
       otel,
+      runtimeConfig,
       otelConfiguration,
       ...(initializationOperation ? { initializationOperation } : {}),
     };

@@ -373,6 +373,105 @@ export interface OtelRuntime {
   shutdown(): Promise<void>;
 }
 
+/** Keeps request instrumentation and log export bound to one replaceable runtime. */
+export class OtelRuntimeHolder implements OtelRuntime {
+  private closePromise: Promise<void> | undefined;
+  private lifecycle = Promise.resolve();
+  private readonly activeOperations = new Map<
+    OtelRuntime,
+    Set<Promise<unknown>>
+  >();
+
+  constructor(private runtime: OtelRuntime) {}
+
+  get enabled(): boolean {
+    return this.runtime.enabled;
+  }
+
+  emit(event: LogEvent): void {
+    this.runtime.emit(event);
+  }
+
+  extract(headers: Headers): Context {
+    return this.runtime.extract(headers);
+  }
+
+  inject(headers: Headers, activeContext?: Context): void {
+    this.runtime.inject(headers, activeContext);
+  }
+
+  async withSpan<T>(
+    name: string,
+    options: SpanOptions,
+    operation: (span: Span) => Promise<T> | T,
+    parent?: Context,
+  ): Promise<T> {
+    const runtime = this.runtime;
+    const result = runtime.withSpan(name, options, operation, parent);
+    const operations = this.activeOperations.get(runtime) ?? new Set();
+    this.activeOperations.set(runtime, operations);
+    operations.add(result);
+    void result.then(
+      () => this.removeOperation(runtime, result),
+      () => this.removeOperation(runtime, result),
+    );
+    return await result;
+  }
+
+  activeCorrelation(): LogTraceCorrelation | undefined {
+    return this.runtime.activeCorrelation();
+  }
+
+  async forceFlush(): Promise<void> {
+    await this.runtime.forceFlush();
+  }
+
+  async replace(runtime: OtelRuntime): Promise<void> {
+    if (this.closePromise) {
+      await runtime.shutdown();
+      return;
+    }
+    const previous = this.runtime;
+    this.runtime = runtime;
+    await this.enqueue(async () => {
+      await this.waitForOperations(previous);
+      await previous.shutdown();
+    });
+  }
+
+  async shutdown(): Promise<void> {
+    if (!this.closePromise) {
+      const runtime = this.runtime;
+      this.closePromise = this.enqueue(async () => {
+        await this.waitForOperations(runtime);
+        await runtime.shutdown();
+      });
+    }
+    await this.closePromise;
+  }
+
+  private removeOperation(
+    runtime: OtelRuntime,
+    operation: Promise<unknown>,
+  ): void {
+    const operations = this.activeOperations.get(runtime);
+    if (!operations) return;
+    operations.delete(operation);
+    if (operations.size === 0) this.activeOperations.delete(runtime);
+  }
+
+  private async waitForOperations(runtime: OtelRuntime): Promise<void> {
+    const operations = this.activeOperations.get(runtime);
+    if (operations?.size) await Promise.allSettled([...operations]);
+  }
+
+  private enqueue(work: () => Promise<void>): Promise<void> {
+    const next = this.lifecycle.then(work, work);
+    this.lifecycle = next.catch(() => {});
+    return next;
+  }
+}
+
 class NoopOtelRuntime implements OtelRuntime {
   readonly enabled = false;
   emit(): void {}

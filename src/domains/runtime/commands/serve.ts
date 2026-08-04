@@ -7,8 +7,6 @@ import {
   startSdServerProcess,
   validateApiKey,
   installModel,
-  saveConfig,
-  loadConfig,
 } from "../../../manager";
 import type { LocalBaseConfig } from "../../../manager";
 import {
@@ -20,6 +18,7 @@ import {
 } from "../../../catalog";
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
+import { runtimeProcessSettings } from "../config-snapshot";
 import { type ILogger } from "../../observability/logging";
 import { guardianProcessCommand } from "../backend-guardian";
 import {
@@ -1758,18 +1757,22 @@ export async function runServe(
 
   const serviceId = process.env.LOCALBASE_SERVICE_ID;
   const serviceToken = process.env.LOCALBASE_SERVICE_TOKEN;
-  const endpoint = {
+  const processSettings = runtimeProcessSettings(config.root, {
     host: wrapperHost,
     port: wrapperPort,
+  });
+  const endpoint = {
+    host: processSettings.gateway.host,
+    port: processSettings.gateway.port,
     ...(serviceId || serviceToken ? { serviceId, serviceToken } : {}),
   };
   const gatewayLease = ctx.initializationOperation
-    ? await acquireGatewayLease(config.root, endpoint)
-    : await acquireGatewayLeaseForServe(config.root, endpoint);
-  await ctx.logger.enableFileLogging(config.root);
+    ? await acquireGatewayLease(processSettings.root, endpoint)
+    : await acquireGatewayLeaseForServe(processSettings.root, endpoint);
+  await ctx.logger.enableFileLogging(processSettings.root);
   await ctx.initializationOperation?.release();
   ctx.initializationOperation = undefined;
-  activateContextOtel(ctx);
+  await activateContextOtel(ctx);
   ctx.logger.event({
     severity: "info",
     eventName: "gateway.starting",
@@ -2135,7 +2138,8 @@ export async function runServe(
         llmBase + "/health",
         ctx.logger,
         async () => {
-          const launchConfig = loadConfig(ctx.database, config.root);
+          await ctx.runtimeConfig.refresh();
+          const launchConfig = ctx.runtimeConfig.copy();
           const activeModel = launchConfig.activeLlmModel;
           let modelFile = llmModelFileOverride;
           if (!modelFile) {
@@ -2211,7 +2215,8 @@ export async function runServe(
         sttBase + "/health",
         ctx.logger,
         async () => {
-          const launchConfig = loadConfig(ctx.database, config.root);
+          await ctx.runtimeConfig.refresh();
+          const launchConfig = ctx.runtimeConfig.copy();
           const activeModel = launchConfig.activeSttModel;
           const modelFile = await resolveSttModelFile(
             launchConfig,
@@ -2240,7 +2245,8 @@ export async function runServe(
         imageBase + "/",
         ctx.logger,
         async () => {
-          const launchConfig = loadConfig(ctx.database, config.root);
+          await ctx.runtimeConfig.refresh();
+          const launchConfig = ctx.runtimeConfig.copy();
           const activeModel = launchConfig.activeImageModel;
           let modelFile = input.imageModelFile;
           if (!modelFile) {
@@ -2376,7 +2382,7 @@ export async function runServe(
 
   const requestedConfiguredModel = (
     requestedModel: string | undefined,
-    selectedModels: string[],
+    selectedModels: readonly string[],
     activeModel: string,
   ): string | undefined => {
     if (requestedModel === undefined) return activeModel;
@@ -2392,7 +2398,7 @@ export async function runServe(
   const requestedLlmModel = (
     requestedModel: string | undefined,
   ): string | undefined => {
-    const latestConfig = loadConfig(ctx.database, config.root);
+    const latestConfig = ctx.runtimeConfig.read().config;
     return requestedConfiguredModel(
       requestedModel,
       latestConfig.selectedLlmModels,
@@ -2403,7 +2409,7 @@ export async function runServe(
   const requestedImageModel = (
     requestedModel: string | undefined,
   ): string | undefined => {
-    const latestConfig = loadConfig(ctx.database, config.root);
+    const latestConfig = ctx.runtimeConfig.read().config;
     return requestedConfiguredModel(
       requestedModel,
       latestConfig.selectedImageModels,
@@ -2414,7 +2420,7 @@ export async function runServe(
   const requestedSttModel = (
     requestedModel: string | undefined,
   ): string | undefined => {
-    const latestConfig = loadConfig(ctx.database, config.root);
+    const latestConfig = ctx.runtimeConfig.read().config;
     return requestedConfiguredModel(
       requestedModel,
       latestConfig.selectedSttModels,
@@ -2428,7 +2434,7 @@ export async function runServe(
   ): Promise<void> => {
     if (!llmService) return;
     throwIfRequestAborted(requestSignal);
-    const latestConfig = loadConfig(ctx.database, config.root);
+    const latestConfig = ctx.runtimeConfig.read().config;
     if (latestConfig.activeLlmModel === modelId) return;
 
     const previousModel = latestConfig.activeLlmModel;
@@ -2443,8 +2449,9 @@ export async function runServe(
     });
     await llmService.kill();
     throwIfRequestAborted(requestSignal);
-    latestConfig.activeLlmModel = modelId;
-    saveConfig(ctx.database, latestConfig);
+    ctx.runtimeConfig.update((nextConfig) => {
+      nextConfig.activeLlmModel = modelId;
+    });
     ctx.logger.event({
       severity: "info",
       eventName: "model.switched",
@@ -2459,7 +2466,7 @@ export async function runServe(
   const switchImageModel = async (modelId: string): Promise<void> => {
     if (!imageService) return;
     await serializeImageSwitch(async () => {
-      const latestConfig = loadConfig(ctx.database, config.root);
+      const latestConfig = ctx.runtimeConfig.read().config;
       if (modelId === latestConfig.activeImageModel) return;
 
       const previousModel = latestConfig.activeImageModel;
@@ -2473,8 +2480,9 @@ export async function runServe(
         attributes: { from_model: previousModel, to_model: modelId },
       });
       await imageService.kill();
-      latestConfig.activeImageModel = modelId;
-      saveConfig(ctx.database, latestConfig);
+      ctx.runtimeConfig.update((nextConfig) => {
+        nextConfig.activeImageModel = modelId;
+      });
       ctx.logger.event({
         severity: "info",
         eventName: "model.switched",
@@ -2490,7 +2498,7 @@ export async function runServe(
   const switchSttModel = async (modelId: string): Promise<void> => {
     if (!sttService) return;
     await serializeSttSwitch(async () => {
-      const latestConfig = loadConfig(ctx.database, config.root);
+      const latestConfig = ctx.runtimeConfig.read().config;
       if (modelId === latestConfig.activeSttModel) return;
 
       const previousModel = latestConfig.activeSttModel;
@@ -2504,8 +2512,9 @@ export async function runServe(
         attributes: { from_model: previousModel, to_model: modelId },
       });
       await sttService.kill();
-      latestConfig.activeSttModel = modelId;
-      saveConfig(ctx.database, latestConfig);
+      ctx.runtimeConfig.update((nextConfig) => {
+        nextConfig.activeSttModel = modelId;
+      });
       ctx.logger.event({
         severity: "info",
         eventName: "model.switched",
@@ -2642,7 +2651,8 @@ export async function runServe(
       );
     }
 
-    const currentConfig = loadConfig(ctx.database, config.root);
+    await ctx.runtimeConfig.refresh();
+    const currentConfig = ctx.runtimeConfig.copy();
 
     if (authRequired) {
       const token = extractAuthToken(request, authMode);
