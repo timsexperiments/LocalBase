@@ -29,93 +29,165 @@ Linux managed-runtime releases are built and qualified against an Ubuntu 24.04-c
 
 Managed runtime versions are pinned independently from LocalBase CLI releases.
 
-## Getting started
+## Setup
+
+### Select a release archive
+
+Use an immutable GitHub Releases tag that contains the current archive set. Do not use a moving `latest` URL.
+
+| Host        | Archive                         | Support tier | Runtime requirements                                                                                                    |
+| ----------- | ------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| macOS ARM64 | `local-base-macos-arm64.zip`    | Managed      | LocalBase manages `llama-server`, `whisper-server`, and `sd-server`.                                                    |
+| macOS x64   | `local-base-macos-x64.zip`      | CLI-only     | LocalBase can install pinned `llama-server`; provide compatible `whisper-server` and `sd-server` executables on `PATH`. |
+| Linux x64   | `local-base-linux-x64.tar.gz`   | Managed      | Ubuntu 24.04-compatible userspace and `libgomp1` are required.                                                          |
+| Linux ARM64 | `local-base-linux-arm64.tar.gz` | CLI-only     | LocalBase can install pinned `llama-server`; provide compatible `whisper-server` and `sd-server` executables on `PATH`. |
+
+CLI-only user-managed runtimes must be outside `$LOCALBASE_ROOT/bin` and are not verified by LocalBase. Managed Linux runtimes are qualified against an Ubuntu 24.04-compatible userspace. Windows is unsupported.
 
 ### Download and verify
 
-Download one archive and `checksums.txt` from [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases):
-
-- `local-base-macos-arm64.zip`
-- `local-base-macos-x64.zip`
-- `local-base-linux-x64.tar.gz`
-- `local-base-linux-arm64.tar.gz`
-
-In the download directory, set `ARCHIVE` to the downloaded archive and verify its checksum:
+Replace `vX.Y.Z` with an immutable tag shown on [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases). Do not use `latest` or another moving reference. Then download the archive and checksum manifest:
 
 ```bash
-ARCHIVE=local-base-macos-arm64.zip
+RELEASE_TAG=vX.Y.Z # replace with an immutable GitHub Releases tag
+ARCHIVE=local-base-macos-arm64.zip # select the archive for this host
+BASE_URL="https://github.com/timsexperiments/LocalBase/releases/download/$RELEASE_TAG"
+curl -fLO "$BASE_URL/$ARCHIVE"
+curl -fLO "$BASE_URL/checksums.txt"
 grep -F "  $ARCHIVE" checksums.txt > "$ARCHIVE.sha256"
-shasum -a 256 -c "$ARCHIVE.sha256" # macOS
-sha256sum -c "$ARCHIVE.sha256"    # Linux
+test -s "$ARCHIVE.sha256"
 ```
 
-Optionally verify the GitHub build attestation:
+Verify the checksum before extraction:
+
+```bash
+shasum -a 256 -c "$ARCHIVE.sha256" # macOS
+sha256sum -c "$ARCHIVE.sha256"     # Linux
+```
+
+GitHub build attestations are published for each canonical archive and `checksums.txt`. Verify the downloaded subjects with the GitHub CLI:
 
 ```bash
 gh attestation verify "$ARCHIVE" --repo timsexperiments/LocalBase
+gh attestation verify checksums.txt --repo timsexperiments/LocalBase
 ```
+
+macOS archives contain a signed and notarized executable. After extraction, verify its embedded signature:
+
+```bash
+MACOS_CLI="${ARCHIVE%.zip}"
+codesign --verify --strict --verbose=2 "$MACOS_CLI"
+spctl --assess --type execute "$MACOS_CLI"
+```
+
+No detached signature file is published for Linux archives.
 
 ### Install the CLI
 
-Extract the archive, install the target-specific executable, and ensure `$HOME/.local/bin` is on `PATH`:
+Extract the archive and install the executable as `local-base`. `$HOME/.local/bin` is the recommended non-root default; set `INSTALL_DIR` to another absolute directory when needed:
 
 ```bash
 case "$ARCHIVE" in
-  *.zip) unzip "$ARCHIVE"; CLI="${ARCHIVE%.zip}" ;;
-  *.tar.gz) tar -xzf "$ARCHIVE"; CLI="${ARCHIVE%.tar.gz}" ;;
+  local-base-macos-*.zip)
+    unzip -q "$ARCHIVE"
+    CLI="${ARCHIVE%.zip}"
+    ;;
+  local-base-linux-*.tar.gz)
+    tar -xzf "$ARCHIVE"
+    CLI="${ARCHIVE%.tar.gz}"
+    ;;
+  *)
+    echo "Unsupported archive: $ARCHIVE" >&2
+    exit 1
+    ;;
 esac
-mkdir -p "$HOME/.local/bin"
-install -m 755 "$CLI" "$HOME/.local/bin/local-base"
-export PATH="$HOME/.local/bin:$PATH"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
+mkdir -p "$INSTALL_DIR"
+install -m 755 "$CLI" "$INSTALL_DIR/local-base"
+```
+
+Add the selected install directory to the current shell only when it is absent:
+
+```bash
+case ":$PATH:" in
+  *":$INSTALL_DIR:"*) ;;
+  *) export PATH="$INSTALL_DIR:$PATH" ;;
+esac
+command -v local-base
 local-base --help
 ```
 
-Add `export PATH="$HOME/.local/bin:$PATH"` to the shell profile to retain the path in new shells.
-
-Run the system check:
+If the directory is not already in `PATH`, persist it by running the command for the active shell. These commands intentionally edit the selected shell startup file for the recommended `$HOME/.local/bin` directory:
 
 ```bash
+# zsh
+grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.zshrc" 2>/dev/null || printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
+source "$HOME/.zshrc"
+
+# bash
+grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.bashrc" 2>/dev/null || printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+source "$HOME/.bashrc"
+```
+
+For a non-default `INSTALL_DIR`, replace `$HOME/.local/bin` in the shell configuration command with the selected directory.
+
+### Initialize, configure, and install models
+
+Initialize the data directory and inspect hardware:
+
+```bash
+local-base init
 local-base doctor
 ```
 
-### Configure and install a model
+List the catalog before choosing models:
 
-Configure an LLM-only gateway with an initial API key:
+```bash
+local-base models catalog --kind llm
+local-base models catalog --kind stt
+local-base models catalog --kind image
+```
+
+Configure one model from each supported category when the host has sufficient resources. The example uses the smallest catalog entries in each category and creates an API key whose secret is displayed once:
 
 ```bash
 local-base --non-interactive configure --defaults \
   --llm-models qwen2.5-coder-1.5b-instruct-q4_k_m \
   --active-llm qwen2.5-coder-1.5b-instruct-q4_k_m \
-  --stt-models '' \
-  --image-models '' \
+  --stt-models whisper-tiny-en-q8_0 \
+  --active-stt whisper-tiny-en-q8_0 \
+  --image-models stable-diffusion-v1-5 \
+  --active-image stable-diffusion-v1-5 \
   --parallel auto \
   --create-key
 ```
 
-The API key secret is displayed once. Store it securely.
+Store the displayed API key securely. Use `local-base configure --all` for interactive configuration, or `local-base keys create --name default` to create another key.
 
-Install the selected model before starting the service so download and checksum progress remain visible in the foreground:
+Install selected models in the foreground so download and checksum progress remain visible:
 
 ```bash
 local-base --non-interactive models install qwen2.5-coder-1.5b-instruct-q4_k_m
+local-base --non-interactive models install whisper-tiny-en-q8_0
+local-base --non-interactive models install stable-diffusion-v1-5
+local-base models list
 ```
 
-### Start and use the gateway
+### Start and verify inference
 
-Start the user service and verify its state:
+Start the detached user service and inspect its state:
 
 ```bash
 local-base start
 local-base status
-local-base models list
 ```
 
-Set the API key created during configuration and send an OpenAI-compatible request:
+Set the API key and send an authenticated OpenAI-compatible request:
 
 ```bash
 export LOCALBASE_API_KEY='lb_...'
 
-curl http://localhost:2273/v1/chat/completions \
+curl http://127.0.0.1:2273/v1/chat/completions \
   -H "Authorization: Bearer $LOCALBASE_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -124,21 +196,16 @@ curl http://localhost:2273/v1/chat/completions \
   }'
 ```
 
-## Operations
-
-`serve` runs in the foreground. `start` installs, enables, and starts the user service. `restart` refreshes and enables it. `stop` stops it and disables login startup. `status` reports service-manager, process, gateway, and modality state without opening the LocalBase database.
-
-macOS uses a launchd user agent. Linux uses a `systemd --user` service; detached commands require a functioning user manager. Foreground `local-base serve` does not.
+`local-base serve` runs the gateway in the foreground. `start` installs, enables, and starts the macOS launchd or Linux `systemd --user` service. `stop` stops and disables the user service. `restart` refreshes and restarts it.
 
 ```bash
 local-base logs --follow
-local-base restart
+local-base diagnostics --output local-base-diagnostics.zip
 local-base stop
-local-base diagnostics
 local-base uninstall --yes
 ```
 
-`uninstall --yes` stops and removes the matching user service before deleting that LocalBase root.
+`uninstall --yes` stops and removes the matching user service before deleting the LocalBase data root.
 
 ## Logs
 
