@@ -11,6 +11,7 @@ function withController(
     controller: RuntimeConfigController,
     database: DatabaseSession,
     root: string,
+    config: ReturnType<typeof defaultConfig>,
   ) => Promise<void> | void,
 ): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "local-base-runtime-config-"));
@@ -18,19 +19,22 @@ function withController(
   const config = defaultConfig(root, 16);
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
-  return Promise.resolve(run(controller, database, root)).finally(() => {
-    database.close();
-    rmSync(root, { recursive: true, force: true });
-  });
+  return Promise.resolve(run(controller, database, root, config)).finally(
+    () => {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    },
+  );
 }
 
 test("runtime configuration snapshots are immutable and detached from inputs", async () => {
-  await withController((controller, _database, _root) => {
-    const source = controller.copy();
+  await withController((controller, _database, _root, source) => {
     const snapshot = controller.read();
     source.selectedLlmModels.push("other-model");
+    source.parallel = 2;
 
     expect(snapshot.config.selectedLlmModels).not.toContain("other-model");
+    expect(snapshot.config.parallel).toBe("auto");
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot.config)).toBe(true);
     expect(Object.isFrozen(snapshot.config.selectedLlmModels)).toBe(true);
