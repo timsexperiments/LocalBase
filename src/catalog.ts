@@ -1014,6 +1014,67 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     notes: "Excellent 12B model with large 128k context window.",
   },
   {
+    modelId: "qwen3.5-27b-q4_k_m",
+    kind: "llm",
+    provider: "Qwen",
+    family: "Qwen3.5",
+    version: "3.5",
+    size: "27B",
+    quant: "Q4_K_M",
+    minVramGb: 20,
+    storageGb: 18.5,
+    source: "https://huggingface.co/bartowski/Qwen_Qwen3.5-27B-GGUF",
+    repositoryRevision: "d7b113c40283f4d99f4eb0ec20d126ad653cc736",
+    artifacts: [
+      {
+        sourcePath: "Qwen_Qwen3.5-27B-Q4_K_M.gguf",
+        filename: "Qwen_Qwen3.5-27B-Q4_K_M.gguf",
+        expectedSizeBytes: 17984872928,
+        sha256:
+          "81657841d62f1821c748d0fea6c260b7d3508844fe4e9250253ef81c4e4d9edf",
+        role: "primary",
+      },
+    ],
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    features: ["reasoning", "tool-calling", "long-context"],
+    commercialStatus: "open",
+    catch: "Apache 2.0.",
+    notes:
+      "Text-only LocalBase entry; official 262k-token context. Base revision fc05daec18b0a78c049392ed2e771dde82bdf654.",
+  },
+  {
+    modelId: "mistral-small-3.2-24b-instruct-q4_k_m",
+    kind: "llm",
+    provider: "Mistral",
+    family: "Mistral Small",
+    version: "3.2",
+    size: "24B",
+    quant: "Q4_K_M",
+    minVramGb: 18,
+    storageGb: 14.8,
+    source:
+      "https://huggingface.co/bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF",
+    repositoryRevision: "b3592d09be469bedab6be51f577824b3b6b76ba1",
+    artifacts: [
+      {
+        sourcePath: "mistralai_Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf",
+        filename: "mistralai_Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf",
+        expectedSizeBytes: 14333915264,
+        sha256:
+          "80f5bda68f156f12650ca03a0a2dbfae06a215ac41caa773b8631a479f82415e",
+        role: "primary",
+      },
+    ],
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    features: ["tool-calling", "long-context"],
+    commercialStatus: "open",
+    catch: "Apache 2.0.",
+    notes:
+      "Text-only LocalBase entry; official 131k-token context. Base revision 95a6d26c4bfb886c58daf9d3f7332c857cb27b43.",
+  },
+  {
     modelId: "whisper-large-v3-turbo",
     kind: "stt",
     provider: "OpenAI/ggml",
