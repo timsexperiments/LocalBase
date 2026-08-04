@@ -18,9 +18,9 @@ import { z } from "zod";
 import {
   dataRootSchema,
   globalOptionsSchema,
-  hostSchema,
   type GlobalOptions,
 } from "./domains/app/commands/inputs";
+import { hostSchema, portSchema } from "./domains/config/schema";
 import { CliInputError, formatZodError } from "./domains/app/commands/errors";
 import {
   assertInitializedLocalBaseRoot,
@@ -93,14 +93,14 @@ const environmentOverridesSchema = z
       .string()
       .regex(/^\d+$/, "LOCALBASE_PORT must be an integer")
       .transform(Number)
-      .pipe(z.number().int().min(1).max(65_535))
+      .pipe(portSchema)
       .optional(),
     sttHost: hostSchema.optional(),
     sttPort: z
       .string()
       .regex(/^\d+$/, "LOCALBASE_STT_PORT must be an integer")
       .transform(Number)
-      .pipe(z.number().int().min(1).max(65_535))
+      .pipe(portSchema)
       .optional(),
     ctxSize: z
       .string()

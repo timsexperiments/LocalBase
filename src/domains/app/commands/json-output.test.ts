@@ -235,6 +235,24 @@ test("JSON mode rejects interactive and destructive commands without consent", a
       error: { code: "invalid_input" },
     });
 
+    const incompatibleSelection = await runCli(executable, [
+      "--root",
+      root,
+      "--json",
+      "configure",
+      "--defaults",
+      "--no-create-key",
+      "--llm-models",
+      "qwen2.5-coder-7b-instruct-q4_k_m",
+      "--active-llm",
+      "mistral-nemo-12b-instruct-q4_k_m",
+    ]);
+    expect(incompatibleSelection.exitCode).toBe(2);
+    expect(jsonDocument(incompatibleSelection.stdout)).toMatchObject({
+      ok: false,
+      error: { code: "invalid_input" },
+    });
+
     const disabledServe = await runCli(executable, [
       "--root",
       root,
