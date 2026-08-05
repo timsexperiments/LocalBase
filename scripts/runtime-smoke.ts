@@ -68,10 +68,10 @@ const STARTUP_TIMEOUT_MS = 20_000;
 const STT_MODEL_ID = "whisper-tiny-en-q8_0";
 const STT_MODEL_FILE = "ggml-tiny.en-q8_0.bin";
 const CLI_ONLY_LLM_MODEL_FILE = "runtime-smoke-llm.gguf";
-const TranscriptionResponseSchema = z
+const transcriptionResponseSchema = z
   .object({ text: z.string() })
   .passthrough();
-const TemporaryStartupErrorSchema = z
+const temporaryStartupErrorSchema = z
   .object({
     error: z
       .object({
@@ -85,7 +85,7 @@ const TemporaryStartupErrorSchema = z
       .passthrough(),
   })
   .passthrough();
-const RuntimeReceiptSchema = z
+const runtimeReceiptSchema = z
   .object({ runtimes: z.record(z.string(), z.unknown()) })
   .passthrough();
 
@@ -391,7 +391,7 @@ export async function transcribe(baseUrl: string): Promise<void> {
     });
 
     if (response.ok) {
-      const transcription = TranscriptionResponseSchema.safeParse(payload);
+      const transcription = transcriptionResponseSchema.safeParse(payload);
       if (transcription.success) return;
       throw new Error(
         `Expected a successful Whisper transcription, received HTTP ${response.status} with an invalid response body: ${describeValidation(transcription.error)} (${describeBody(payload)})`,
@@ -400,7 +400,7 @@ export async function transcribe(baseUrl: string): Promise<void> {
 
     if (
       response.status === 503 &&
-      TemporaryStartupErrorSchema.safeParse(payload).success
+      temporaryStartupErrorSchema.safeParse(payload).success
     ) {
       const delay = retryAfterMilliseconds(response);
       const remaining = deadline - Date.now();
@@ -474,7 +474,7 @@ async function verifyInstalledArtifacts(root: string): Promise<void> {
       "LocalBase did not install the pinned Whisper runtime and model.",
     );
   }
-  const installed = RuntimeReceiptSchema.safeParse(await receipt.json());
+  const installed = runtimeReceiptSchema.safeParse(await receipt.json());
   if (
     !installed.success ||
     !Object.hasOwn(installed.data.runtimes, "whisper-server")

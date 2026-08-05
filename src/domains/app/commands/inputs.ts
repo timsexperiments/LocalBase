@@ -6,7 +6,7 @@ import {
   otelEndpointSchema,
   otelHeadersTextSchema,
 } from "../../observability/otel-config";
-import { SafeFilenameSchema } from "../../../utils/checksum";
+import { safeFilenameSchema } from "../../../utils/checksum";
 
 export const modelKindSchema = z.enum(["llm", "stt", "image"]);
 
@@ -146,9 +146,9 @@ export const serveInputSchema = z.object({
   imagePort: portInputSchema.optional(),
   ctxSize: positiveInteger().optional(),
   sttPath: z.string().min(1).optional(),
-  llmModelFile: SafeFilenameSchema.optional(),
-  sttModelFile: SafeFilenameSchema.optional(),
-  imageModelFile: SafeFilenameSchema.optional(),
+  llmModelFile: safeFilenameSchema.optional(),
+  sttModelFile: safeFilenameSchema.optional(),
+  imageModelFile: safeFilenameSchema.optional(),
   auth: z.boolean().optional(),
   authMode: z.enum(["bearer", "x-api-key", "either"]).optional(),
   bypassMemoryCheck: z.boolean().default(false),

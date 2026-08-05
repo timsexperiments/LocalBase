@@ -2,7 +2,7 @@ import packageJson from "../package.json";
 import { z } from "zod";
 import { LOCALBASE_VERSION } from "../src/version";
 
-const PackageMetadataSchema = z
+const packageMetadataSchema = z
   .object({ version: z.string().min(1) })
   .passthrough();
 
@@ -60,7 +60,7 @@ export function validateReleasePreflight(
 }
 
 export function runReleasePreflight(gitTag: unknown): void {
-  const packageVersion = PackageMetadataSchema.parse(packageJson).version;
+  const packageVersion = packageMetadataSchema.parse(packageJson).version;
   validateReleasePreflight(gitTag, packageVersion);
   console.log(`Release preflight passed for ${gitTag}.`);
 }

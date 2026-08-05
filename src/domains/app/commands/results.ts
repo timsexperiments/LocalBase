@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ApiKeyRecord, LocalBaseConfig } from "../../../manager";
-import { ModelSpecSchema } from "../../../catalog";
+import { modelSpecSchema } from "../../../catalog";
 import {
   gatewayReadinessSchema,
   serviceStatusSchema,
@@ -60,7 +60,7 @@ export const hardwareOutputSchema = z
   })
   .strict();
 
-export const modelOutputSchema = ModelSpecSchema.strict();
+export const modelOutputSchema = modelSpecSchema.strict();
 
 export const apiKeyMetadataOutputSchema = z
   .object({

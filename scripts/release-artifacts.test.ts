@@ -5,7 +5,7 @@ import {
   qualifyArtifactDirectory,
   releaseArtifactFilenames,
   releasePackageFilename,
-  ReleaseTargetSchema,
+  releaseTargetSchema,
   stageReleaseArtifacts,
   verifyArtifactDirectory,
   verifyReleasePackage,
@@ -78,12 +78,12 @@ test("rejects a package whose extracted CLI differs from the manifest", async ()
 test("stages unchanged qualified canonical packages", async () => {
   const parent = temp();
   const inputs = await Promise.all(
-    ReleaseTargetSchema.options.map((target) => artifacts(target, parent)),
+    releaseTargetSchema.options.map((target) => artifacts(target, parent)),
   );
   await Promise.all(
     inputs.map(({ directory, extracted }, index) =>
       qualifyArtifactDirectory(
-        ReleaseTargetSchema.options[index]!,
+        releaseTargetSchema.options[index]!,
         directory,
         extracted,
       ),
@@ -95,7 +95,7 @@ test("stages unchanged qualified canonical packages", async () => {
     output,
   );
   const checksums = await Bun.file(join(output, "checksums.txt")).text();
-  for (const target of ReleaseTargetSchema.options) {
+  for (const target of releaseTargetSchema.options) {
     const filename = releasePackageFilename(target);
     expect(await Bun.file(join(output, filename)).text()).toBe("package");
     expect(checksums).toContain(`  ${filename}`);
