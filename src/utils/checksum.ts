@@ -2,8 +2,8 @@ import { statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 
-export const Sha256Schema = z.string().regex(/^[a-fA-F0-9]{64}$/);
-export const SafeFilenameSchema = z
+export const sha256Schema = z.string().regex(/^[a-fA-F0-9]{64}$/);
+export const safeFilenameSchema = z
   .string()
   .min(1)
   .refine(
@@ -17,7 +17,7 @@ export const SafeFilenameSchema = z
     "must be a safe basename without path separators or control characters",
   );
 
-const FileIdentitySchema = z
+const fileIdentitySchema = z
   .object({
     size: z.number().int().nonnegative(),
     mtimeMs: z.number().nonnegative(),
@@ -27,22 +27,22 @@ const FileIdentitySchema = z
   })
   .strict();
 
-const VerificationEntrySchema = z
+const verificationEntrySchema = z
   .object({
-    authoritativeSha256: Sha256Schema,
+    authoritativeSha256: sha256Schema,
     expectedSizeBytes: z.number().int().positive(),
-    file: FileIdentitySchema,
+    file: fileIdentitySchema,
   })
   .strict();
 
-export const ChecksumStoreSchema = z
+export const checksumStoreSchema = z
   .object({
     version: z.literal(1),
-    entries: z.record(SafeFilenameSchema, VerificationEntrySchema),
+    entries: z.record(safeFilenameSchema, verificationEntrySchema),
   })
   .strict();
 
-export type ChecksumStore = z.infer<typeof ChecksumStoreSchema>;
+export type ChecksumStore = z.infer<typeof checksumStoreSchema>;
 
 export type AuthoritativeChecksum = {
   filename: string;
@@ -60,7 +60,7 @@ function issueSummary(error: z.ZodError): string {
     .join("; ");
 }
 
-function fileIdentity(filePath: string): z.infer<typeof FileIdentitySchema> {
+function fileIdentity(filePath: string): z.infer<typeof fileIdentitySchema> {
   const stat = statSync(filePath);
   return {
     size: stat.size,
@@ -85,7 +85,7 @@ export async function verifyChecksum(
   expected: string,
   label: string,
 ): Promise<void> {
-  const digest = Sha256Schema.parse(expected).toLowerCase();
+  const digest = sha256Schema.parse(expected).toLowerCase();
   console.log(`🔍 Verifying checksum for ${label}...`);
   const actual = await computeSha256(filePath);
   if (actual !== digest) {
@@ -109,7 +109,7 @@ export function parseChecksumFile(content: string): Map<string, string> {
       throw new Error(`Invalid checksums.txt entry on line ${index + 1}.`);
     }
     const parsed = z
-      .object({ digest: Sha256Schema, filename: SafeFilenameSchema })
+      .object({ digest: sha256Schema, filename: safeFilenameSchema })
       .strict()
       .safeParse({ digest: match[1], filename: match[2] });
     if (!parsed.success) {
@@ -146,7 +146,7 @@ export async function readChecksumStore(dir: string): Promise<ChecksumStore> {
       { cause: error },
     );
   }
-  const parsed = ChecksumStoreSchema.safeParse(value);
+  const parsed = checksumStoreSchema.safeParse(value);
   if (!parsed.success) {
     throw new Error(
       `Invalid continuity checksum cache at ${filePath}: ${issueSummary(parsed.error)}. Delete the cache and retry authoritative verification.`,
@@ -159,7 +159,7 @@ export async function writeChecksumStore(
   dir: string,
   store: ChecksumStore,
 ): Promise<void> {
-  const parsed = ChecksumStoreSchema.safeParse(store);
+  const parsed = checksumStoreSchema.safeParse(store);
   if (!parsed.success) {
     throw new Error(
       `Invalid continuity checksum cache: ${issueSummary(parsed.error)}.`,
@@ -176,9 +176,9 @@ export async function verifyAuthoritativeFile(
 ): Promise<void> {
   const parsed = z
     .object({
-      filename: SafeFilenameSchema,
+      filename: safeFilenameSchema,
       expectedSizeBytes: z.number().int().positive(),
-      sha256: Sha256Schema,
+      sha256: sha256Schema,
     })
     .strict()
     .parse(authority);
