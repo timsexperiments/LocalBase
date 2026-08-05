@@ -486,8 +486,13 @@ async function verifyInstalledArtifacts(root: string): Promise<void> {
 }
 
 async function verifyCliOnlyArtifacts(root: string): Promise<void> {
+  const managedBinaries = await Promise.all(
+    ["llama-server", "whisper-server", "sd-server"].map((name) =>
+      Bun.file(`${root}/bin/${name}`).exists(),
+    ),
+  );
   if (
-    (await Bun.file(`${root}/bin/whisper-server`).exists()) ||
+    managedBinaries.some(Boolean) ||
     (await Bun.file(`${root}/bin/.managed-binaries.json`).exists())
   ) {
     throw new Error(

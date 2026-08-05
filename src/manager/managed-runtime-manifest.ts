@@ -21,8 +21,18 @@ const managedRuntimeArtifactSchema = z
     expectedSizeBytes: z.number().int().positive(),
     sha256: sha256Schema,
     format: z.enum(["binary", "tar.gz", "zip"]),
+    stripComponents: z.number().int().nonnegative(),
   })
-  .strict();
+  .strict()
+  .superRefine((artifact, ctx) => {
+    if (artifact.format === "binary" && artifact.stripComponents !== 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "binary artifacts must use zero strip components",
+        path: ["stripComponents"],
+      });
+    }
+  });
 
 const manifestTargetSchema = z
   .object({
@@ -35,7 +45,7 @@ const manifestTargetSchema = z
 
 export const managedRuntimeManifestSchema = z
   .object({
-    version: z.literal(1),
+    version: z.literal(2),
     targets: z.array(manifestTargetSchema).length(4),
   })
   .strict()
@@ -80,17 +90,12 @@ export const managedRuntimeManifestSchema = z
             });
           }
         }
-      } else {
-        for (const name of ["whisper-server", "sd-server"] as const) {
-          if (target.runtimes[name]) {
-            ctx.addIssue({
-              code: "custom",
-              message:
-                "CLI-only targets cannot define LocalBase-managed runtimes",
-              path: ["targets", index, "runtimes", name],
-            });
-          }
-        }
+      } else if (Object.keys(target.runtimes).length > 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: "CLI-only targets cannot define LocalBase-managed runtimes",
+          path: ["targets", index, "runtimes"],
+        });
       }
     }
 

@@ -58,6 +58,8 @@ const receiptEntrySchema = z
     url: z.string().url(),
     expectedSizeBytes: z.number().int().positive(),
     authoritativeSha256: sha256Schema,
+    format: z.enum(["binary", "tar.gz", "zip"]),
+    stripComponents: z.number().int().nonnegative(),
     binarySha256: sha256Schema,
     file: fileIdentitySchema,
   })
@@ -65,7 +67,7 @@ const receiptEntrySchema = z
 
 const receiptSchema = z
   .object({
-    version: z.literal(1),
+    version: z.literal(2),
     runtimes: z.partialRecord(
       z.enum(["llama-server", "whisper-server", "sd-server"]),
       receiptEntrySchema,
@@ -100,7 +102,7 @@ function platformLabel(target: PlatformTarget): string {
 }
 
 export function managedRuntimeUnavailableError(
-  name: "whisper-server" | "sd-server",
+  name: RuntimeName,
   target: PlatformTarget,
   binDir: string,
 ): Error {
@@ -179,7 +181,9 @@ function releaseMatches(
     entry.assetName === release.assetName &&
     entry.url === release.url &&
     entry.expectedSizeBytes === release.expectedSizeBytes &&
-    entry.authoritativeSha256.toLowerCase() === release.sha256
+    entry.authoritativeSha256.toLowerCase() === release.sha256 &&
+    entry.format === release.format &&
+    entry.stripComponents === release.stripComponents
   );
 }
 
@@ -283,50 +287,71 @@ function archiveLinkTarget(
 async function extractTarGz(
   archivePath: string,
   stagingDir: string,
+  stripComponents: number,
 ): Promise<void> {
   const extractor = createTarExtractor();
   const symlinks: Array<{ destination: string; target: string }> = [];
+  let extractionError: unknown;
   const completed = new Promise<void>((resolveExtraction, rejectExtraction) => {
-    extractor.once("finish", resolveExtraction);
+    extractor.once("finish", () => {
+      if (extractionError) {
+        rejectExtraction(extractionError);
+      } else {
+        resolveExtraction();
+      }
+    });
     extractor.once("error", rejectExtraction);
     extractor.on(
       "entry",
       (header: Headers, entry: Readable, next: (error?: unknown) => void) => {
         void (async () => {
           try {
-            const destination = archiveDestination(stagingDir, header.name, 1);
+            if (extractionError) {
+              entry.resume();
+              next();
+              return;
+            }
+            const destination = archiveDestination(
+              stagingDir,
+              header.name,
+              stripComponents,
+            );
             if (header.type === "directory") {
               if (destination) mkdirSync(destination, { recursive: true });
             } else if (!header.type || header.type === "file") {
-              if (destination) {
-                mkdirSync(dirname(destination), { recursive: true });
-                const chunks: Uint8Array[] = [];
-                for await (const chunk of entry) chunks.push(chunk);
-                const size = chunks.reduce(
-                  (total, chunk) => total + chunk.byteLength,
-                  0,
+              if (!destination) {
+                throw new Error(
+                  `Archive file is removed by stripComponents: ${JSON.stringify(header.name)}.`,
                 );
-                const contents = new Uint8Array(size);
-                let offset = 0;
-                for (const chunk of chunks) {
-                  contents.set(chunk, offset);
-                  offset += chunk.byteLength;
-                }
-                await Bun.write(destination, contents);
-              } else {
-                entry.resume();
               }
+              mkdirSync(dirname(destination), { recursive: true });
+              const chunks: Uint8Array[] = [];
+              for await (const chunk of entry) chunks.push(chunk);
+              const size = chunks.reduce(
+                (total, chunk) => total + chunk.byteLength,
+                0,
+              );
+              const contents = new Uint8Array(size);
+              let offset = 0;
+              for (const chunk of chunks) {
+                contents.set(chunk, offset);
+                offset += chunk.byteLength;
+              }
+              await Bun.write(destination, contents);
             } else if (header.type === "symlink") {
-              if (destination) {
-                symlinks.push({
-                  destination,
-                  target: archiveLinkTarget(
-                    stagingDir,
-                    destination,
-                    header.linkname,
-                  ),
-                });
+              if (!destination) {
+                throw new Error(
+                  `Archive symlink is removed by stripComponents: ${JSON.stringify(header.name)}.`,
+                );
               }
+              symlinks.push({
+                destination,
+                target: archiveLinkTarget(
+                  stagingDir,
+                  destination,
+                  header.linkname,
+                ),
+              });
               entry.resume();
             } else if (
               header.type !== "pax-header" &&
@@ -342,8 +367,9 @@ async function extractTarGz(
             }
             next();
           } catch (error) {
+            extractionError ??= error;
             entry.resume();
-            next(error);
+            next();
           }
         })();
       },
@@ -372,14 +398,23 @@ async function unzipArchive(archivePath: string) {
 async function extractZip(
   archivePath: string,
   stagingDir: string,
+  stripComponents: number,
 ): Promise<void> {
   const files = await unzipArchive(archivePath);
   for (const [archivePath, contents] of Object.entries(files)) {
-    const destination = archiveDestination(stagingDir, archivePath, 0);
-    if (!destination) continue;
+    const destination = archiveDestination(
+      stagingDir,
+      archivePath,
+      stripComponents,
+    );
     if (archivePath.endsWith("/")) {
-      mkdirSync(destination, { recursive: true });
+      if (destination) mkdirSync(destination, { recursive: true });
       continue;
+    }
+    if (!destination) {
+      throw new Error(
+        `Archive file is removed by stripComponents: ${JSON.stringify(archivePath)}.`,
+      );
     }
     mkdirSync(dirname(destination), { recursive: true });
     await Bun.write(destination, contents);
@@ -393,9 +428,9 @@ async function extractRelease(
 ): Promise<void> {
   try {
     if (release.format === "tar.gz") {
-      await extractTarGz(archivePath, stagingDir);
+      await extractTarGz(archivePath, stagingDir, release.stripComponents);
     } else {
-      await extractZip(archivePath, stagingDir);
+      await extractZip(archivePath, stagingDir, release.stripComponents);
     }
   } catch (error) {
     throw new Error(`Failed to extract ${release.assetName}.`, {
@@ -472,13 +507,15 @@ export async function installManagedRuntime(
 
     chmodSync(destPath, statSync(destPath).mode | 0o111);
 
-    const receipt = (await readReceipt(binDir)) ?? { version: 1, runtimes: {} };
+    const receipt = (await readReceipt(binDir)) ?? { version: 2, runtimes: {} };
     receipt.runtimes[release.name] = {
       tag: release.tag,
       assetName: release.assetName,
       url: release.url,
       expectedSizeBytes: release.expectedSizeBytes,
       authoritativeSha256: release.sha256,
+      format: release.format,
+      stripComponents: release.stripComponents,
       binarySha256: await computeSha256(destPath),
       file: identity(destPath),
     };
@@ -530,13 +567,7 @@ export async function ensureBinary(
     return userManagedBinary;
   }
   if (!release) {
-    if (name === "whisper-server" || name === "sd-server") {
-      throw managedRuntimeUnavailableError(name, target, binDir);
-    }
-    throw new Error(
-      `No pinned upstream llama.cpp binary is available for ${platformLabel(target)}. ` +
-        `Provide a user-managed llama-server on PATH; LocalBase will not call it verified.`,
-    );
+    throw managedRuntimeUnavailableError(name, target, binDir);
   }
   return installManagedRuntime(config, release);
 }

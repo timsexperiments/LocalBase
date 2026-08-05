@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "targets": [
     {
       "platform": "darwin",
@@ -12,7 +12,8 @@
           "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9741/llama-b9741-bin-macos-arm64.tar.gz",
           "expectedSizeBytes": 10944022,
           "sha256": "8d8a9476a105b6c49682fd99e5653033469dba0f3f16495bcbc446838f2a96d1",
-          "format": "tar.gz"
+          "format": "tar.gz",
+          "stripComponents": 1
         },
         "whisper-server": {
           "tag": "v0.0.1",
@@ -20,7 +21,8 @@
           "url": "https://github.com/timsexperiments/LocalBase/releases/download/v0.0.1/whisper-server-macos-arm64",
           "expectedSizeBytes": 3604256,
           "sha256": "9164615ceab08d41a0f6eef914ddda18ffe3608fda68a50f33933e9f8be6277e",
-          "format": "binary"
+          "format": "binary",
+          "stripComponents": 0
         },
         "sd-server": {
           "tag": "master-778-c00a9e9",
@@ -28,7 +30,8 @@
           "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-778-c00a9e9/sd-master-c00a9e9-bin-Darwin-macOS-26.4-arm64.zip",
           "expectedSizeBytes": 49263580,
           "sha256": "aeb478142401abba31a356550ba1cb5ff1dbd59ed694860c88a1c79910a1e516",
-          "format": "zip"
+          "format": "zip",
+          "stripComponents": 0
         }
       }
     },
@@ -36,16 +39,7 @@
       "platform": "darwin",
       "architecture": "x64",
       "tier": "cli-only",
-      "runtimes": {
-        "llama-server": {
-          "tag": "b9741",
-          "assetName": "llama-b9741-bin-macos-x64.tar.gz",
-          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9741/llama-b9741-bin-macos-x64.tar.gz",
-          "expectedSizeBytes": 11242503,
-          "sha256": "4f0caef6b6a5776fdccf64e1e8c53ba224c4e9cd311be2998d587d89d42e162f",
-          "format": "tar.gz"
-        }
-      }
+      "runtimes": {}
     },
     {
       "platform": "linux",
@@ -58,7 +52,8 @@
           "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9741/llama-b9741-bin-ubuntu-x64.tar.gz",
           "expectedSizeBytes": 15601179,
           "sha256": "68a9ab90359d6ecdba0e4a8e34c34aa2cca3b5b4b6e483c2fe52c4fbba62a255",
-          "format": "tar.gz"
+          "format": "tar.gz",
+          "stripComponents": 1
         },
         "whisper-server": {
           "tag": "v0.0.1",
@@ -66,7 +61,8 @@
           "url": "https://github.com/timsexperiments/LocalBase/releases/download/v0.0.1/whisper-server-linux-x64",
           "expectedSizeBytes": 3254120,
           "sha256": "465c4b9071666ddf68843af741c6264d5a216698aee147c18ef0023b1f18ae28",
-          "format": "binary"
+          "format": "binary",
+          "stripComponents": 0
         },
         "sd-server": {
           "tag": "master-778-c00a9e9",
@@ -74,7 +70,8 @@
           "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-778-c00a9e9/sd-master-c00a9e9-bin-Linux-Ubuntu-24.04-x86_64.zip",
           "expectedSizeBytes": 32263875,
           "sha256": "da223f809e56d7d24bebfe0ebcfa279394f3549eb557385e3ba8c443a8f8ac5e",
-          "format": "zip"
+          "format": "zip",
+          "stripComponents": 0
         }
       }
     },
@@ -82,16 +79,7 @@
       "platform": "linux",
       "architecture": "arm64",
       "tier": "cli-only",
-      "runtimes": {
-        "llama-server": {
-          "tag": "b9741",
-          "assetName": "llama-b9741-bin-ubuntu-arm64.tar.gz",
-          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9741/llama-b9741-bin-ubuntu-arm64.tar.gz",
-          "expectedSizeBytes": 12619136,
-          "sha256": "8dce6449c0629e1166cce24d3264779945b31bbd2d6edbc18e1167f6f9a6ba43",
-          "format": "tar.gz"
-        }
-      }
+      "runtimes": {}
     }
   ]
 }
