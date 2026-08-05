@@ -80,6 +80,16 @@ test("rejects invalid CLI structure and contradictory interaction options", asyn
     kind: "error",
     message: expect.stringContaining("host"),
   });
+  for (const [flag, value] of [
+    ["--llm-model-file", "../outside.gguf"],
+    ["--stt-model-file", "/tmp/model.bin"],
+    ["--image-model-file", "nested/model.safetensors"],
+  ]) {
+    await expect(resolveCli(["serve", flag, value])).resolves.toMatchObject({
+      kind: "error",
+      message: expect.stringContaining("safe basename"),
+    });
+  }
   await expect(
     resolveCli(["configure", "--active-stt", ""]),
   ).resolves.toMatchObject({

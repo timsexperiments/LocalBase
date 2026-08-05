@@ -15,6 +15,7 @@ import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
   finalizeGatewayShutdown,
   httpBaseUrl,
+  internalGatewayFailure,
   withResponseLease,
 } from "./commands/serve";
 
@@ -44,6 +45,19 @@ test("formats IPv4, hostnames, and IPv6 literals as HTTP base URLs", () => {
   expect(httpBaseUrl("127.0.0.1", 2273)).toBe("http://127.0.0.1:2273");
   expect(httpBaseUrl("localhost", 2273)).toBe("http://localhost:2273");
   expect(httpBaseUrl("::1", 2273)).toBe("http://[::1]:2273");
+});
+
+test("normalizes unexpected gateway errors into an OpenAI error envelope", async () => {
+  const response = internalGatewayFailure();
+  expect(response.status).toBe(500);
+  await expect(response.json()).resolves.toEqual({
+    error: {
+      message: "The gateway encountered an unexpected error.",
+      type: "server_error",
+      param: null,
+      code: "gateway_error",
+    },
+  });
 });
 
 test("releases a response lease exactly once when the stream or request is cancelled", async () => {
@@ -682,6 +696,58 @@ describe("API gateway integration", () => {
       expect(response.status).toBe(502);
       expect(await response.json()).toMatchObject({
         error: { type: "server_error", code: "upstream_error" },
+      });
+    }
+  });
+
+  test("preserves valid upstream OpenAI errors without upstream headers", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "openai-error",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("x-upstream-secret")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        message: "Fixture rate limit exceeded.",
+        type: "rate_limit_error",
+        param: null,
+        code: "rate_limit_exceeded",
+      },
+    });
+  });
+
+  test("normalizes malformed upstream error responses", async () => {
+    for (const mode of ["malformed-error", "non-json-error"]) {
+      const response = await request("/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-test-upstream": mode,
+        },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      });
+
+      expect(response.status).toBe(502);
+      expect(response.headers.get("x-upstream-secret")).toBeNull();
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          message: "The upstream service returned an invalid error response.",
+          type: "server_error",
+          param: null,
+          code: "upstream_error",
+        },
       });
     }
   });
