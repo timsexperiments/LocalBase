@@ -1,17 +1,17 @@
 import { join } from "node:path";
 import { z } from "zod";
 
-export const ModelKindSchema = z.enum(["llm", "stt", "image"]);
-export type ModelKind = z.infer<typeof ModelKindSchema>;
+export const modelKindSchema = z.enum(["llm", "stt", "image"]);
+export type ModelKind = z.infer<typeof modelKindSchema>;
 
-export const CommercialStatusSchema = z.enum([
+export const commercialStatusSchema = z.enum([
   "open",
   "conditional",
   "prohibited",
 ]);
-export type CommercialStatus = z.infer<typeof CommercialStatusSchema>;
+export type CommercialStatus = z.infer<typeof commercialStatusSchema>;
 
-export const ModelArtifactSchema = z.object({
+export const modelArtifactSchema = z.object({
   sourcePath: z.string().min(1),
   filename: z.string().min(1),
   expectedSizeBytes: z.number().int().positive(),
@@ -28,10 +28,10 @@ export type ModelArtifact = {
   role: "primary" | "supplementary";
 };
 
-export const ModelSpecSchema = z
+export const modelSpecSchema = z
   .object({
     modelId: z.string().min(1),
-    kind: ModelKindSchema,
+    kind: modelKindSchema,
     provider: z.string().min(1),
     family: z.string().min(1),
     version: z.string().min(1),
@@ -42,11 +42,11 @@ export const ModelSpecSchema = z
     storageGb: z.number().positive(),
     source: z.string().url(),
     repositoryRevision: z.string().regex(/^[a-fA-F0-9]{40}$/),
-    artifacts: z.array(ModelArtifactSchema).min(1),
+    artifacts: z.array(modelArtifactSchema).min(1),
     inputModalities: z.array(z.string().min(1)),
     outputModalities: z.array(z.string().min(1)),
     features: z.array(z.string().min(1)),
-    commercialStatus: CommercialStatusSchema,
+    commercialStatus: commercialStatusSchema,
     catch: z.string(),
     notes: z.string(),
   })
@@ -74,7 +74,7 @@ export const ModelSpecSchema = z
       });
     }
   });
-export type ModelSpec = Omit<z.infer<typeof ModelSpecSchema>, "artifacts"> & {
+export type ModelSpec = Omit<z.infer<typeof modelSpecSchema>, "artifacts"> & {
   artifacts: ModelArtifact[];
 };
 
@@ -83,10 +83,10 @@ export type CatalogInstallationState = {
   primaryPath: string;
 };
 
-export const CatalogSchema = z.array(ModelSpecSchema);
+export const catalogSchema = z.array(modelSpecSchema);
 
 export function validateCatalog(catalog: unknown): ModelSpec[] {
-  return CatalogSchema.parse(catalog);
+  return catalogSchema.parse(catalog);
 }
 
 export const CATALOG: readonly ModelSpec[] = validateCatalog([

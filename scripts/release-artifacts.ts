@@ -3,17 +3,17 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import {
   computeSha256,
-  SafeFilenameSchema,
-  Sha256Schema,
+  safeFilenameSchema,
+  sha256Schema,
 } from "../src/utils/checksum";
 
-export const ReleaseTargetSchema = z.enum([
+export const releaseTargetSchema = z.enum([
   "macos-arm64",
   "macos-x64",
   "linux-x64",
   "linux-arm64",
 ]);
-export type ReleaseTarget = z.infer<typeof ReleaseTargetSchema>;
+export type ReleaseTarget = z.infer<typeof releaseTargetSchema>;
 
 type ReleaseTargetSpec = { bunTarget: string; architecture: "arm64" | "x64" };
 const releaseTargets: Record<ReleaseTarget, ReleaseTargetSpec> = {
@@ -23,21 +23,25 @@ const releaseTargets: Record<ReleaseTarget, ReleaseTargetSpec> = {
   "linux-arm64": { bunTarget: "bun-linux-arm64", architecture: "arm64" },
 };
 
-const ArtifactSchema = z
+const artifactSchema = z
   .object({
-    filename: SafeFilenameSchema,
+    filename: safeFilenameSchema,
     size: z.number().int().positive(),
-    sha256: Sha256Schema,
+    sha256: sha256Schema,
   })
   .strict();
 
-const PackageArtifactSchema = ArtifactSchema.extend({
-  format: z.enum(["zip", "tar.gz"]),
-}).strict();
+const packageArtifactSchema = artifactSchema
+  .extend({
+    format: z.enum(["zip", "tar.gz"]),
+  })
+  .strict();
 
-const CliArtifactSchema = ArtifactSchema.extend({
-  architecture: z.enum(["arm64", "x64"]),
-}).strict();
+const cliArtifactSchema = artifactSchema
+  .extend({
+    architecture: z.enum(["arm64", "x64"]),
+  })
+  .strict();
 
 const cliFilename = (target: ReleaseTarget) => `local-base-${target}`;
 export const releasePackageFilename = (target: ReleaseTarget) =>
@@ -50,9 +54,9 @@ const packageFormat = (target: ReleaseTarget) =>
 export const releaseArtifactManifestSchema = z
   .object({
     version: z.literal(2),
-    target: ReleaseTargetSchema,
-    package: PackageArtifactSchema,
-    cli: CliArtifactSchema,
+    target: releaseTargetSchema,
+    package: packageArtifactSchema,
+    cli: cliArtifactSchema,
   })
   .strict()
   .superRefine((manifest, ctx) => {
@@ -82,11 +86,11 @@ export type ReleaseArtifactManifest = z.infer<
   typeof releaseArtifactManifestSchema
 >;
 
-const QualificationReceiptSchema = z
+const qualificationReceiptSchema = z
   .object({
     version: z.literal(2),
-    target: ReleaseTargetSchema,
-    manifestSha256: Sha256Schema,
+    target: releaseTargetSchema,
+    manifestSha256: sha256Schema,
   })
   .strict();
 
@@ -99,7 +103,7 @@ export function releaseArtifactFilenames(target: ReleaseTarget): string[] {
 }
 
 function artifactPath(directory: string, filename: string): string {
-  return join(resolve(directory), SafeFilenameSchema.parse(filename));
+  return join(resolve(directory), safeFilenameSchema.parse(filename));
 }
 
 async function artifactEntry(directory: string, filename: string) {
@@ -110,7 +114,7 @@ async function artifactEntry(directory: string, filename: string) {
   const stat = await file.stat();
   if (!stat.isFile() || stat.size <= 0)
     throw new Error(`Release artifact ${path} is not a non-empty file.`);
-  return ArtifactSchema.parse({
+  return artifactSchema.parse({
     filename,
     size: stat.size,
     sha256: await computeSha256(path),
@@ -118,8 +122,8 @@ async function artifactEntry(directory: string, filename: string) {
 }
 
 function matchesArtifact(
-  actual: z.infer<typeof ArtifactSchema>,
-  expected: z.infer<typeof ArtifactSchema>,
+  actual: z.infer<typeof artifactSchema>,
+  expected: z.infer<typeof artifactSchema>,
 ): boolean {
   return actual.size === expected.size && actual.sha256 === expected.sha256;
 }
@@ -285,7 +289,7 @@ export async function qualifyArtifactDirectory(
   extractedDirectory: string,
 ): Promise<void> {
   await verifyReleasePackage(target, directory, extractedDirectory);
-  const receipt = QualificationReceiptSchema.parse({
+  const receipt = qualificationReceiptSchema.parse({
     version: 2,
     target,
     manifestSha256: await computeSha256(
@@ -300,7 +304,7 @@ export async function qualifyArtifactDirectory(
 
 async function verifyQualified(directory: string, target: ReleaseTarget) {
   const manifest = await verifyArtifactDirectory(target, directory);
-  const receipt = QualificationReceiptSchema.parse(
+  const receipt = qualificationReceiptSchema.parse(
     await readJson(
       artifactPath(directory, QUALIFICATION_RECEIPT_FILENAME),
       "release artifact qualification receipt",
@@ -321,7 +325,7 @@ export async function stageReleaseArtifacts(
   inputDirectories: string[],
   outputDirectory: string,
 ): Promise<void> {
-  if (inputDirectories.length !== ReleaseTargetSchema.options.length) {
+  if (inputDirectories.length !== releaseTargetSchema.options.length) {
     throw new Error(
       "Release staging requires exactly one artifact directory for every supported target.",
     );
@@ -337,8 +341,8 @@ export async function stageReleaseArtifacts(
   );
   const targets = new Set(qualified.map(({ manifest }) => manifest.target));
   if (
-    targets.size !== ReleaseTargetSchema.options.length ||
-    ReleaseTargetSchema.options.some((target) => !targets.has(target))
+    targets.size !== releaseTargetSchema.options.length ||
+    releaseTargetSchema.options.some((target) => !targets.has(target))
   ) {
     throw new Error(
       "Release staging requires exactly one qualified package for every supported target.",
@@ -372,7 +376,7 @@ export async function stageReleaseArtifacts(
   );
 }
 
-const CommandSchema = z.enum([
+const commandSchema = z.enum([
   "build",
   "manifest",
   "verify",
@@ -395,7 +399,7 @@ function options(args: string[]) {
 }
 
 async function main() {
-  const command = CommandSchema.parse(Bun.argv[2]);
+  const command = commandSchema.parse(Bun.argv[2]);
   const raw = options(Bun.argv.slice(3));
   if (command === "stage") {
     const input = Array.isArray(raw.input)
@@ -406,7 +410,7 @@ async function main() {
     await stageReleaseArtifacts(input, z.string().min(1).parse(raw.output));
     return;
   }
-  const target = ReleaseTargetSchema.parse(raw.target);
+  const target = releaseTargetSchema.parse(raw.target);
   const output = z.string().min(1).parse(raw.output);
   if (command === "build") await buildReleaseArtifacts(target, output);
   else if (command === "manifest") await writeArtifactManifest(target, output);

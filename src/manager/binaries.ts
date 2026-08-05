@@ -18,8 +18,8 @@ import { extract as createTarExtractor, type Headers } from "tar-stream";
 import { z } from "zod";
 import {
   computeSha256,
-  SafeFilenameSchema,
-  Sha256Schema,
+  safeFilenameSchema,
+  sha256Schema,
   verifyAuthoritativeFile,
 } from "../utils/checksum";
 import {
@@ -41,7 +41,7 @@ export {
 
 export type RuntimeConfig = { root: string };
 
-const FileIdentitySchema = z
+const fileIdentitySchema = z
   .object({
     size: z.number().int().nonnegative(),
     mtimeMs: z.number().nonnegative(),
@@ -51,29 +51,29 @@ const FileIdentitySchema = z
   })
   .strict();
 
-const ReceiptEntrySchema = z
+const receiptEntrySchema = z
   .object({
     tag: z.string().min(1),
-    assetName: SafeFilenameSchema,
+    assetName: safeFilenameSchema,
     url: z.string().url(),
     expectedSizeBytes: z.number().int().positive(),
-    authoritativeSha256: Sha256Schema,
-    binarySha256: Sha256Schema,
-    file: FileIdentitySchema,
+    authoritativeSha256: sha256Schema,
+    binarySha256: sha256Schema,
+    file: fileIdentitySchema,
   })
   .strict();
 
-const ReceiptSchema = z
+const receiptSchema = z
   .object({
     version: z.literal(1),
     runtimes: z.partialRecord(
       z.enum(["llama-server", "whisper-server", "sd-server"]),
-      ReceiptEntrySchema,
+      receiptEntrySchema,
     ),
   })
   .strict();
 
-type Receipt = z.infer<typeof ReceiptSchema>;
+type Receipt = z.infer<typeof receiptSchema>;
 
 function currentPlatformTarget(): PlatformTarget {
   return { os: process.platform, cpu: process.arch };
@@ -117,7 +117,7 @@ export function managedRuntimeUnavailableError(
   );
 }
 
-function identity(path: string): z.infer<typeof FileIdentitySchema> {
+function identity(path: string): z.infer<typeof fileIdentitySchema> {
   const stat = statSync(path);
   return {
     size: stat.size,
@@ -129,8 +129,8 @@ function identity(path: string): z.infer<typeof FileIdentitySchema> {
 }
 
 function sameIdentity(
-  left: z.infer<typeof FileIdentitySchema>,
-  right: z.infer<typeof FileIdentitySchema>,
+  left: z.infer<typeof fileIdentitySchema>,
+  right: z.infer<typeof fileIdentitySchema>,
 ): boolean {
   return Object.entries(left).every(
     ([key, value]) => right[key as keyof typeof right] === value,
@@ -154,7 +154,7 @@ async function readReceipt(binDir: string): Promise<Receipt | undefined> {
       { cause: error },
     );
   }
-  const parsed = ReceiptSchema.safeParse(value);
+  const parsed = receiptSchema.safeParse(value);
   if (!parsed.success) {
     throw new Error(
       `Invalid managed runtime receipt at ${path}. Remove the managed bin directory and reinstall.`,
@@ -166,12 +166,12 @@ async function readReceipt(binDir: string): Promise<Receipt | undefined> {
 async function writeReceipt(binDir: string, receipt: Receipt): Promise<void> {
   await Bun.write(
     receiptPath(binDir),
-    JSON.stringify(ReceiptSchema.parse(receipt), null, 2),
+    JSON.stringify(receiptSchema.parse(receipt), null, 2),
   );
 }
 
 function releaseMatches(
-  entry: z.infer<typeof ReceiptEntrySchema>,
+  entry: z.infer<typeof receiptEntrySchema>,
   release: ManagedRuntimeRelease,
 ): boolean {
   return (

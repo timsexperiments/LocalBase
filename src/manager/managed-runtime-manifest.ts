@@ -1,48 +1,48 @@
 import rawManifest from "./managed-runtime-manifest.json";
 import { z } from "zod";
-import { SafeFilenameSchema, Sha256Schema } from "../utils/checksum";
+import { safeFilenameSchema, sha256Schema } from "../utils/checksum";
 
-export const RuntimeNameSchema = z.enum([
+export const runtimeNameSchema = z.enum([
   "llama-server",
   "whisper-server",
   "sd-server",
 ]);
-export type RuntimeName = z.infer<typeof RuntimeNameSchema>;
+export type RuntimeName = z.infer<typeof runtimeNameSchema>;
 
-const PlatformSchema = z.enum(["darwin", "linux"]);
-const ArchitectureSchema = z.enum(["arm64", "x64"]);
-const PlatformSupportTierSchema = z.enum(["managed", "cli-only"]);
+const platformSchema = z.enum(["darwin", "linux"]);
+const architectureSchema = z.enum(["arm64", "x64"]);
+const platformSupportTierSchema = z.enum(["managed", "cli-only"]);
 
-const ManagedRuntimeArtifactSchema = z
+const managedRuntimeArtifactSchema = z
   .object({
     tag: z.string().min(1),
-    assetName: SafeFilenameSchema,
+    assetName: safeFilenameSchema,
     url: z.string().url(),
     expectedSizeBytes: z.number().int().positive(),
-    sha256: Sha256Schema,
+    sha256: sha256Schema,
     format: z.enum(["binary", "tar.gz", "zip"]),
   })
   .strict();
 
-const ManifestTargetSchema = z
+const manifestTargetSchema = z
   .object({
-    platform: PlatformSchema,
-    architecture: ArchitectureSchema,
-    tier: PlatformSupportTierSchema,
-    runtimes: z.partialRecord(RuntimeNameSchema, ManagedRuntimeArtifactSchema),
+    platform: platformSchema,
+    architecture: architectureSchema,
+    tier: platformSupportTierSchema,
+    runtimes: z.partialRecord(runtimeNameSchema, managedRuntimeArtifactSchema),
   })
   .strict();
 
-export const ManagedRuntimeManifestSchema = z
+export const managedRuntimeManifestSchema = z
   .object({
     version: z.literal(1),
-    targets: z.array(ManifestTargetSchema).length(4),
+    targets: z.array(manifestTargetSchema).length(4),
   })
   .strict()
   .superRefine((manifest, ctx) => {
     const expectedTargets = new Map<
       string,
-      z.infer<typeof PlatformSupportTierSchema>
+      z.infer<typeof platformSupportTierSchema>
     >([
       ["darwin:arm64", "managed"],
       ["darwin:x64", "cli-only"],
@@ -71,7 +71,7 @@ export const ManagedRuntimeManifestSchema = z
       }
 
       if (target.tier === "managed") {
-        for (const name of RuntimeNameSchema.options) {
+        for (const name of runtimeNameSchema.options) {
           if (!target.runtimes[name]) {
             ctx.addIssue({
               code: "custom",
@@ -108,11 +108,11 @@ export const ManagedRuntimeManifestSchema = z
 export type PlatformTarget = { os: string; cpu: string };
 export type PlatformSupportTier = "managed" | "cli-only" | "unsupported";
 export type ManagedRuntimeRelease = z.infer<
-  typeof ManagedRuntimeArtifactSchema
+  typeof managedRuntimeArtifactSchema
 > & { name: RuntimeName };
 
 export function parseManagedRuntimeManifest(input: unknown) {
-  return ManagedRuntimeManifestSchema.parse(input);
+  return managedRuntimeManifestSchema.parse(input);
 }
 
 const managedRuntimeManifest = parseManagedRuntimeManifest(rawManifest);

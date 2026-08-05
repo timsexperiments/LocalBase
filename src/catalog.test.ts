@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   CATALOG,
-  CatalogSchema,
+  catalogSchema,
   modelDownloadUrl,
   primaryArtifact,
 } from "./catalog";
@@ -59,7 +59,7 @@ describe("catalog artifact validation", () => {
       },
     ]);
 
-    expect(CatalogSchema.safeParse([singleFile, sharded]).success).toBe(true);
+    expect(catalogSchema.safeParse([singleFile, sharded]).success).toBe(true);
   });
 
   test("rejects invalid artifact boundaries", () => {
@@ -121,7 +121,7 @@ describe("catalog artifact validation", () => {
     ];
 
     for (const artifacts of invalidArtifacts) {
-      expect(CatalogSchema.safeParse([model(artifacts)]).success).toBe(false);
+      expect(catalogSchema.safeParse([model(artifacts)]).success).toBe(false);
     }
   });
 

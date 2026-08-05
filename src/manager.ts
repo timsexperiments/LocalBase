@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join } from "node:path";
-import { SafeFilenameSchema, verifyAuthoritativeFile } from "./utils/checksum";
+import { safeFilenameSchema, verifyAuthoritativeFile } from "./utils/checksum";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -97,7 +97,7 @@ export type ApiKeyRecord = {
 const absolutePathSchema = canonicalLocalBaseRootSchema;
 const timestampSchema = z.iso.datetime({ offset: true });
 
-const ConfigRowSchema = z
+const configRowSchema = z
   .object({
     id: z.literal("default"),
     root: absolutePathSchema,
@@ -120,7 +120,7 @@ const ConfigRowSchema = z
   })
   .strict();
 
-const ApiKeyRowSchema = z
+const apiKeyRowSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
@@ -217,7 +217,7 @@ export function modelDirectories(
 }
 
 function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
-  const parsed = ConfigRowSchema.safeParse(row);
+  const parsed = configRowSchema.safeParse(row);
   if (!parsed.success) {
     throw invalidConfiguration(openedRoot, issueSummary(parsed.error));
   }
@@ -731,7 +731,7 @@ async function installArtifact(
   targetDir: string,
   filename: string,
 ): Promise<void> {
-  SafeFilenameSchema.parse(filename);
+  safeFilenameSchema.parse(filename);
   const authority = authoritativeArtifact(artifact, spec.modelId);
   const output = join(targetDir, filename);
   const partial = `${output}.partial`;
@@ -870,7 +870,7 @@ export function loadApiKeys(
 }
 
 function fromApiKeyRow(row: unknown, root: string): ApiKeyRecord {
-  const parsed = ApiKeyRowSchema.safeParse(row);
+  const parsed = apiKeyRowSchema.safeParse(row);
   if (!parsed.success) {
     const id =
       row && typeof row === "object" && "id" in row
