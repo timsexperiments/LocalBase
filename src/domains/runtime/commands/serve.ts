@@ -41,6 +41,7 @@ import {
   type OtelRuntime,
 } from "../../observability/otel";
 import { gatewayIdentitySchema } from "../health";
+import { openAIErrorResponseSchema, type OpenAIError } from "../openai-error";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
@@ -152,144 +153,124 @@ function extractAuthToken(request: Request, mode: AuthMode): string | null {
   );
 }
 
-type OpenAIErrorType =
-  | "invalid_request_error"
-  | "api_error"
-  | "invalid_authentication_error"
-  | "server_error";
-
-type OpenAIErrorCode =
-  | "invalid_api_key"
-  | "method_not_allowed"
-  | "model_not_found"
-  | "route_disabled"
-  | "validation_failed"
-  | "service_unavailable"
-  | "payload_too_large"
-  | "upstream_error";
-
-interface OpenAIError {
-  message: string;
-  type: OpenAIErrorType;
-  param: string | null;
-  code: OpenAIErrorCode | null;
-  expected?: string;
-  hint?: string;
-}
-
-interface OpenAIErrorResponse {
-  error: OpenAIError;
+function openAIErrorResponse(
+  error: OpenAIError,
+  status: number,
+  headers?: HeadersInit,
+): Response {
+  return Response.json(openAIErrorResponseSchema.parse({ error }), {
+    status,
+    headers,
+  });
 }
 
 function routeNotFound(): Response {
-  return Response.json(
+  return openAIErrorResponse(
     {
-      error: {
-        message: "This endpoint is not exposed by this gateway.",
-        type: "invalid_request_error",
-        param: null,
-        code: "route_disabled",
-      },
-    } satisfies OpenAIErrorResponse,
-    { status: 404 },
+      message: "This endpoint is not exposed by this gateway.",
+      type: "invalid_request_error",
+      param: null,
+      code: "route_disabled",
+    },
+    404,
   );
 }
 
-function unauthorized(mode: AuthMode): Response {
-  const hint = mode === "x-api-key" ? "x-api-key" : "Bearer";
-  const body: OpenAIErrorResponse = {
-    error: {
+function unauthorized(): Response {
+  return openAIErrorResponse(
+    {
       message: "Unauthorized: Invalid or missing API key.",
       type: "invalid_request_error",
       param: null,
       code: "invalid_api_key",
-      expected: mode === "either" ? "Bearer or x-api-key" : hint,
     },
-  };
-  return Response.json(body, {
-    status: 401,
-    headers: { "www-authenticate": "Bearer" },
-  });
+    401,
+    { "www-authenticate": "Bearer" },
+  );
 }
 
 function notConfigured(feature: string): Response {
-  const body: OpenAIErrorResponse = {
-    error: {
+  return openAIErrorResponse(
+    {
       message: `${feature} route is disabled.`,
       type: "invalid_request_error",
       param: null,
       code: "route_disabled",
-      hint: `Set --${feature.toLowerCase()} true and configure upstream/model to enable this route`,
     },
-  };
-  return Response.json(body, { status: 501 });
+    501,
+  );
 }
 
 function badRequest(message: string): Response {
-  const body: OpenAIErrorResponse = {
-    error: {
+  return openAIErrorResponse(
+    {
       message,
       type: "invalid_request_error",
       param: null,
       code: "validation_failed",
     },
-  };
-  return Response.json(body, { status: 400 });
+    400,
+  );
 }
 
 function methodNotAllowed(allow: string): Response {
-  return Response.json(
+  return openAIErrorResponse(
     {
-      error: {
-        message: "Method not allowed.",
-        type: "invalid_request_error",
-        param: null,
-        code: "method_not_allowed",
-      },
+      message: "Method not allowed.",
+      type: "invalid_request_error",
+      param: null,
+      code: "method_not_allowed",
     },
-    { status: 405, headers: { Allow: allow } },
+    405,
+    { Allow: allow },
   );
 }
 
 function modelNotFound(model: string): Response {
-  return Response.json(
+  return openAIErrorResponse(
     {
-      error: {
-        message: `The model '${model}' does not exist.`,
-        type: "invalid_request_error",
-        param: "model",
-        code: "model_not_found",
-      },
-    } satisfies OpenAIErrorResponse,
-    { status: 404 },
+      message: `The model '${model}' does not exist.`,
+      type: "invalid_request_error",
+      param: "model",
+      code: "model_not_found",
+    },
+    404,
   );
 }
 
 function payloadTooLarge(): Response {
-  return Response.json(
+  return openAIErrorResponse(
     {
-      error: {
-        message: `Request body exceeds the ${MAX_REQUEST_BYTES / (1024 * 1024)} MiB limit.`,
-        type: "invalid_request_error",
-        param: null,
-        code: "payload_too_large",
-      },
-    } satisfies OpenAIErrorResponse,
-    { status: 413 },
+      message: `Request body exceeds the ${MAX_REQUEST_BYTES / (1024 * 1024)} MiB limit.`,
+      type: "invalid_request_error",
+      param: null,
+      code: "payload_too_large",
+    },
+    413,
   );
 }
 
 function upstreamFailure(message: string): Response {
-  return Response.json(
+  return openAIErrorResponse(
     {
-      error: {
-        message,
-        type: "server_error",
-        param: null,
-        code: "upstream_error",
-      },
-    } satisfies OpenAIErrorResponse,
-    { status: 502 },
+      message,
+      type: "server_error",
+      param: null,
+      code: "upstream_error",
+    },
+    502,
+  );
+}
+
+export function internalGatewayFailure(): Response {
+  return openAIErrorResponse(
+    {
+      message: "The gateway encountered an unexpected error.",
+      type: "server_error",
+      param: null,
+      code: "gateway_error",
+    },
+    500,
   );
 }
 
@@ -710,22 +691,9 @@ const chatCompletionStreamChunkSchema = z
   })
   .strict();
 
-const chatCompletionStreamErrorSchema = z
-  .object({
-    error: z
-      .object({
-        message: z.string(),
-        type: z.string(),
-        param: z.string().nullable().optional(),
-        code: z.union([z.string(), z.number()]).nullable().optional(),
-      })
-      .strict(),
-  })
-  .strict();
-
 const chatCompletionStreamEventSchema = z.union([
   chatCompletionStreamChunkSchema,
-  chatCompletionStreamErrorSchema,
+  openAIErrorResponseSchema,
 ]);
 
 const embeddingsResponseSchema = z
@@ -1005,7 +973,7 @@ function validateEventStream(
         }
         const value = parsed.data as
           | z.infer<typeof chatCompletionStreamChunkSchema>
-          | z.infer<typeof chatCompletionStreamErrorSchema>;
+          | z.infer<typeof openAIErrorResponseSchema>;
         if ("error" in value) {
           controller.enqueue(encoder.encode(event));
           controller.terminate();
@@ -1145,10 +1113,18 @@ async function proxyRequest(
     }
   }
 
-  return new Response(upstream.body, {
-    status: upstream.status,
-    headers: filterProxyHeaders(upstream.headers),
-  });
+  if (upstream.status >= 400 && upstream.status <= 599) {
+    try {
+      const parsed = openAIErrorResponseSchema.safeParse(await upstream.json());
+      if (parsed.success) {
+        return openAIErrorResponse(parsed.data.error, upstream.status);
+      }
+    } catch {}
+  }
+
+  return upstreamFailure(
+    "The upstream service returned an invalid error response.",
+  );
 }
 
 /** Keeps an active-model lease until the client finishes or cancels the response. */
@@ -1213,21 +1189,16 @@ export function withResponseLease(
  * Returns a standard HTTP 503 service unavailable response.
  */
 function serviceUnavailable(serviceName: string): Response {
-  const body: OpenAIErrorResponse = {
-    error: {
+  return openAIErrorResponse(
+    {
       message: `${serviceName} service is currently restarting or unavailable. Please try again shortly.`,
       type: "api_error",
       param: null,
       code: "service_unavailable",
     },
-  };
-  return new Response(JSON.stringify(body), {
-    status: 503,
-    headers: {
-      "Content-Type": "application/json",
-      "Retry-After": "5",
-    },
-  });
+    503,
+    { "Retry-After": "5" },
+  );
 }
 
 export async function finalizeGatewayShutdown(
@@ -1735,7 +1706,7 @@ export async function runServe(
         !token ||
         (!isMasterKey && !validateApiKey(ctx.database, currentConfig, token))
       ) {
-        return unauthorized(authMode);
+        return unauthorized();
       }
     }
 
@@ -2008,10 +1979,7 @@ export async function runServe(
               `Error handling request ${method} ${pathname}`,
               err as Error,
             );
-            response = Response.json(
-              { error: "Internal Server Error" },
-              { status: 500 },
-            );
+            response = internalGatewayFailure();
           }
 
           const headers = new Headers(response.headers);

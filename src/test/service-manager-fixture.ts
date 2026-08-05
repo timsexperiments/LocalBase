@@ -281,244 +281,262 @@ function systemdOutput(service: FixtureService | undefined): string {
 }
 
 export function createServiceManagerFixtureRunner(): ServiceManagerCommandRunner {
+  let priorCommand = Promise.resolve();
   return async (command) => {
-    const statePath = requiredEnvironment(
-      "LOCALBASE_TEST_SERVICE_MANAGER_STATE",
-    );
-    const callsPath = requiredEnvironment(
-      "LOCALBASE_TEST_SERVICE_MANAGER_CALLS",
-    );
-    const args = [...command];
-    const executable = basename(args.shift() ?? "");
-    const actionArgs = executable === "systemctl" ? args.slice(1) : args;
-    const action = actionArgs[0] ?? "";
-
-    const calls = await readJson(callsPath, callsSchema, []);
-    calls.push([executable, ...args]);
-    await writeJson(callsPath, calls);
-
-    if (process.env.LOCALBASE_TEST_SERVICE_MANAGER_UNAVAILABLE === executable) {
-      return failure(`${executable} unavailable`);
-    }
-    if (process.env.LOCALBASE_TEST_SERVICE_MANAGER_FAIL === action) {
-      return failure(`fixture failure for ${action}`);
-    }
-    if (process.env.LOCALBASE_TEST_SERVICE_MANAGER_MALFORMED === action) {
-      return success("malformed manager response\n");
-    }
-    if (process.env.LOCALBASE_TEST_SERVICE_MANAGER_TIMEOUT === action) {
-      return await new Promise<ManagerCommandResult>(() => {});
-    }
-
-    const state = await readJson<FixtureState>(statePath, fixtureStateSchema, {
-      version: 1,
-      services: {},
+    let releaseCommand!: () => void;
+    const currentCommand = new Promise<void>((resolve) => {
+      releaseCommand = resolve;
     });
+    const waitForPriorCommand = priorCommand;
+    priorCommand = currentCommand;
+    await waitForPriorCommand;
+    try {
+      const statePath = requiredEnvironment(
+        "LOCALBASE_TEST_SERVICE_MANAGER_STATE",
+      );
+      const callsPath = requiredEnvironment(
+        "LOCALBASE_TEST_SERVICE_MANAGER_CALLS",
+      );
+      const args = [...command];
+      const executable = basename(args.shift() ?? "");
+      const actionArgs = executable === "systemctl" ? args.slice(1) : args;
+      const action = actionArgs[0] ?? "";
 
-    if (executable === "launchctl") {
-      if (action === "print") {
-        const target = actionArgs[1] ?? "";
-        if (target.split("/").length === 2) return success();
-        const service = state.services[targetServiceId(target)];
-        if (!service?.loaded) return failure("service not loaded");
-        const launchState =
-          service.activeState === "active"
-            ? "running"
-            : service.activeState === "failed"
-              ? "exited"
-              : service.activeState === "scheduled"
-                ? "spawn scheduled"
-                : service.activeState === "stopped"
-                  ? "stopped"
-                  : service.activeState === "xpcproxy"
-                    ? "xpcproxy"
-                    : "waiting";
-        return success(
-          [
-            `${target} = {`,
-            `\tstate = ${launchState}`,
-            ...(service.pid ? [`\tpid = ${service.pid}`] : []),
-            `\tlast exit code = ${
-              service.lastExitCode !== undefined
-                ? service.lastExitCode
+      const calls = await readJson(callsPath, callsSchema, []);
+      calls.push([executable, ...args]);
+      await writeJson(callsPath, calls);
+
+      if (
+        process.env.LOCALBASE_TEST_SERVICE_MANAGER_UNAVAILABLE === executable
+      ) {
+        return failure(`${executable} unavailable`);
+      }
+      if (process.env.LOCALBASE_TEST_SERVICE_MANAGER_FAIL === action) {
+        return failure(`fixture failure for ${action}`);
+      }
+      if (process.env.LOCALBASE_TEST_SERVICE_MANAGER_MALFORMED === action) {
+        return success("malformed manager response\n");
+      }
+      if (process.env.LOCALBASE_TEST_SERVICE_MANAGER_TIMEOUT === action) {
+        return await new Promise<ManagerCommandResult>(() => {});
+      }
+
+      const state = await readJson<FixtureState>(
+        statePath,
+        fixtureStateSchema,
+        {
+          version: 1,
+          services: {},
+        },
+      );
+
+      if (executable === "launchctl") {
+        if (action === "print") {
+          const target = actionArgs[1] ?? "";
+          if (target.split("/").length === 2) return success();
+          const service = state.services[targetServiceId(target)];
+          if (!service?.loaded) return failure("service not loaded");
+          const launchState =
+            service.activeState === "active"
+              ? "running"
+              : service.activeState === "failed"
+                ? "exited"
                 : service.activeState === "scheduled"
-                  ? "(never exited)"
-                  : service.activeState === "failed"
-                    ? 1
-                    : 0
-            }`,
-            "\tcoalitions = {",
-            "\t\tresource coalition = {",
-            "\t\t\tstate = active",
-            "\t\t\tpid = 99999",
-            "\t\t\tlast exit code = 42",
-            "\t\t}",
-            "\t}",
-            "}",
-            "",
-          ].join("\n"),
-        );
-      }
-      if (action === "print-disabled") {
-        const disabled = Object.values(state.services)
-          .filter((service) => service.manager === "launchd")
-          .map(
-            (service) =>
-              `\t"${service.serviceId}" => ${service.enabled ? "enabled" : "disabled"}`,
+                  ? "spawn scheduled"
+                  : service.activeState === "stopped"
+                    ? "stopped"
+                    : service.activeState === "xpcproxy"
+                      ? "xpcproxy"
+                      : "waiting";
+          return success(
+            [
+              `${target} = {`,
+              `\tstate = ${launchState}`,
+              ...(service.pid ? [`\tpid = ${service.pid}`] : []),
+              `\tlast exit code = ${
+                service.lastExitCode !== undefined
+                  ? service.lastExitCode
+                  : service.activeState === "scheduled"
+                    ? "(never exited)"
+                    : service.activeState === "failed"
+                      ? 1
+                      : 0
+              }`,
+              "\tcoalitions = {",
+              "\t\tresource coalition = {",
+              "\t\t\tstate = active",
+              "\t\t\tpid = 99999",
+              "\t\t\tlast exit code = 42",
+              "\t\t}",
+              "\t}",
+              "}",
+              "",
+            ].join("\n"),
           );
-        return success(["{", ...disabled, "}", ""].join("\n"));
-      }
-      if (action === "enable" || action === "disable") {
-        const serviceId = targetServiceId(actionArgs[1] ?? "");
-        const service = state.services[serviceId];
-        if (service) {
+        }
+        if (action === "print-disabled") {
+          const disabled = Object.values(state.services)
+            .filter((service) => service.manager === "launchd")
+            .map(
+              (service) =>
+                `\t"${service.serviceId}" => ${service.enabled ? "enabled" : "disabled"}`,
+            );
+          return success(["{", ...disabled, "}", ""].join("\n"));
+        }
+        if (action === "enable" || action === "disable") {
+          const serviceId = targetServiceId(actionArgs[1] ?? "");
+          const service = state.services[serviceId];
+          if (service) {
+            state.services[serviceId] = {
+              ...service,
+              enabled: action === "enable",
+            };
+            await writeJson(statePath, state);
+          }
+          return success();
+        }
+        if (action === "bootstrap") {
+          const definitionPath = actionArgs[2];
+          if (!definitionPath) return failure("missing definition");
+          const parsed = await launchdService(definitionPath);
+          const existing = state.services[parsed.service.serviceId];
+          if (existing?.loaded) return failure("already loaded");
+          const transition = z
+            .enum([
+              "stopped",
+              "waiting",
+              "scheduled",
+              "xpcproxy",
+              "running",
+              "failed",
+            ])
+            .optional()
+            .parse(process.env.LOCALBASE_TEST_LAUNCHD_START_TRANSITION);
+          const lastExitCode = z.coerce
+            .number()
+            .int()
+            .optional()
+            .parse(process.env.LOCALBASE_TEST_LAUNCHD_LAST_EXIT_CODE);
+          state.services[parsed.service.serviceId] = transition
+            ? {
+                ...parsed.service,
+                enabled: true,
+                loaded: true,
+                activeState:
+                  transition === "scheduled"
+                    ? "scheduled"
+                    : transition === "running"
+                      ? "active"
+                      : transition,
+                pid:
+                  transition === "running" || transition === "xpcproxy"
+                    ? process.pid
+                    : undefined,
+                ...(lastExitCode !== undefined ? { lastExitCode } : {}),
+              }
+            : await startFixtureProcess(
+                { ...parsed.service, enabled: true },
+                parsed.invocation,
+              );
+          await writeJson(statePath, state);
+          return success();
+        }
+        if (action === "bootout") {
+          const serviceId = targetServiceId(actionArgs[1] ?? "");
+          const service = state.services[serviceId];
+          if (!service?.loaded) return failure("service not loaded");
+          await stopFixtureProcess(service);
           state.services[serviceId] = {
             ...service,
-            enabled: action === "enable",
+            loaded: false,
+            activeState: "inactive",
+            pid: undefined,
           };
           await writeJson(statePath, state);
+          return success();
         }
-        return success();
+        return failure(`unsupported launchctl action ${action}`);
       }
-      if (action === "bootstrap") {
-        const definitionPath = actionArgs[2];
-        if (!definitionPath) return failure("missing definition");
-        const parsed = await launchdService(definitionPath);
-        const existing = state.services[parsed.service.serviceId];
-        if (existing?.loaded) return failure("already loaded");
-        const transition = z
-          .enum([
-            "stopped",
-            "waiting",
-            "scheduled",
-            "xpcproxy",
-            "running",
-            "failed",
-          ])
-          .optional()
-          .parse(process.env.LOCALBASE_TEST_LAUNCHD_START_TRANSITION);
-        const lastExitCode = z.coerce
-          .number()
-          .int()
-          .optional()
-          .parse(process.env.LOCALBASE_TEST_LAUNCHD_LAST_EXIT_CODE);
-        state.services[parsed.service.serviceId] = transition
-          ? {
-              ...parsed.service,
-              enabled: true,
-              loaded: true,
-              activeState:
-                transition === "scheduled"
-                  ? "scheduled"
-                  : transition === "running"
-                    ? "active"
-                    : transition,
-              pid:
-                transition === "running" || transition === "xpcproxy"
-                  ? process.pid
-                  : undefined,
-              ...(lastExitCode !== undefined ? { lastExitCode } : {}),
-            }
-          : await startFixtureProcess(
-              { ...parsed.service, enabled: true },
-              parsed.invocation,
-            );
+
+      if (executable !== "systemctl" || args[0] !== "--user") {
+        return failure("unsupported manager command");
+      }
+      if (action === "show") {
+        return success(systemdOutput(state.services[actionArgs[1] ?? ""]));
+      }
+      if (action === "is-enabled") {
+        const service = state.services[actionArgs[1] ?? ""];
+        return success(service?.enabled ? "enabled\n" : "disabled\n");
+      }
+      if (action === "daemon-reload") {
+        for (const [key, service] of Object.entries(state.services)) {
+          if (
+            service.manager === "systemd-user" &&
+            !(await Bun.file(service.definitionPath).exists())
+          ) {
+            state.services[key] = { ...service, loaded: false };
+          }
+        }
         await writeJson(statePath, state);
         return success();
       }
-      if (action === "bootout") {
-        const serviceId = targetServiceId(actionArgs[1] ?? "");
-        const service = state.services[serviceId];
-        if (!service?.loaded) return failure("service not loaded");
+      if (action === "enable") {
+        const unitName = actionArgs[1];
+        if (!unitName) return failure("missing unit");
+        const existing = state.services[unitName];
+        const parsed = existing ? undefined : await systemdService(unitName);
+        state.services[unitName] = {
+          ...(existing ?? parsed?.service),
+          enabled: true,
+        } as FixtureService;
+        await writeJson(statePath, state);
+        return success();
+      }
+      if (action === "disable") {
+        const unitName = actionArgs[1];
+        const service = unitName ? state.services[unitName] : undefined;
+        if (!unitName) return failure("missing unit");
+        if (!service) {
+          return process.env.LOCALBASE_TEST_SYSTEMD_DISABLE_MISSING === "1"
+            ? failure(`Unit file ${unitName} does not exist.`)
+            : success();
+        }
+        state.services[unitName] = { ...service, enabled: false };
+        await writeJson(statePath, state);
+        return success();
+      }
+      if (action === "start" || action === "restart") {
+        const unitName = actionArgs[1];
+        if (!unitName) return failure("missing unit");
+        const parsed = await systemdService(unitName);
+        const existing = state.services[unitName];
+        state.services[unitName] = await startFixtureProcess(
+          {
+            ...parsed.service,
+            enabled: existing?.enabled ?? true,
+          },
+          parsed.invocation,
+        );
+        await writeJson(statePath, state);
+        return success();
+      }
+      if (action === "stop") {
+        const unitName = actionArgs[1];
+        const service = unitName ? state.services[unitName] : undefined;
+        if (!unitName || !service) return success();
         await stopFixtureProcess(service);
-        state.services[serviceId] = {
+        state.services[unitName] = {
           ...service,
-          loaded: false,
           activeState: "inactive",
           pid: undefined,
         };
         await writeJson(statePath, state);
         return success();
       }
-      return failure(`unsupported launchctl action ${action}`);
+      return failure(`unsupported systemctl action ${action}`);
+    } finally {
+      releaseCommand();
     }
-
-    if (executable !== "systemctl" || args[0] !== "--user") {
-      return failure("unsupported manager command");
-    }
-    if (action === "show") {
-      return success(systemdOutput(state.services[actionArgs[1] ?? ""]));
-    }
-    if (action === "is-enabled") {
-      const service = state.services[actionArgs[1] ?? ""];
-      return success(service?.enabled ? "enabled\n" : "disabled\n");
-    }
-    if (action === "daemon-reload") {
-      for (const [key, service] of Object.entries(state.services)) {
-        if (
-          service.manager === "systemd-user" &&
-          !(await Bun.file(service.definitionPath).exists())
-        ) {
-          state.services[key] = { ...service, loaded: false };
-        }
-      }
-      await writeJson(statePath, state);
-      return success();
-    }
-    if (action === "enable") {
-      const unitName = actionArgs[1];
-      if (!unitName) return failure("missing unit");
-      const existing = state.services[unitName];
-      const parsed = existing ? undefined : await systemdService(unitName);
-      state.services[unitName] = {
-        ...(existing ?? parsed?.service),
-        enabled: true,
-      } as FixtureService;
-      await writeJson(statePath, state);
-      return success();
-    }
-    if (action === "disable") {
-      const unitName = actionArgs[1];
-      const service = unitName ? state.services[unitName] : undefined;
-      if (!unitName) return failure("missing unit");
-      if (!service) {
-        return process.env.LOCALBASE_TEST_SYSTEMD_DISABLE_MISSING === "1"
-          ? failure(`Unit file ${unitName} does not exist.`)
-          : success();
-      }
-      state.services[unitName] = { ...service, enabled: false };
-      await writeJson(statePath, state);
-      return success();
-    }
-    if (action === "start" || action === "restart") {
-      const unitName = actionArgs[1];
-      if (!unitName) return failure("missing unit");
-      const parsed = await systemdService(unitName);
-      const existing = state.services[unitName];
-      state.services[unitName] = await startFixtureProcess(
-        {
-          ...parsed.service,
-          enabled: existing?.enabled ?? true,
-        },
-        parsed.invocation,
-      );
-      await writeJson(statePath, state);
-      return success();
-    }
-    if (action === "stop") {
-      const unitName = actionArgs[1];
-      const service = unitName ? state.services[unitName] : undefined;
-      if (!unitName || !service) return success();
-      await stopFixtureProcess(service);
-      state.services[unitName] = {
-        ...service,
-        activeState: "inactive",
-        pid: undefined,
-      };
-      await writeJson(statePath, state);
-      return success();
-    }
-    return failure(`unsupported systemctl action ${action}`);
   };
 }
 

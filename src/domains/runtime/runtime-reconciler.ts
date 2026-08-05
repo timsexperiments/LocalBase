@@ -82,10 +82,6 @@ function selectedModels(
   return config.selectedImageModels;
 }
 
-function normalizedModelId(modelId: string): string {
-  return modelId.replace(/^(localbase|openai|ollama)\//i, "");
-}
-
 /** Applies persisted runtime changes while preserving the gateway listener. */
 export class RuntimeReconciler {
   private readonly barriers: Record<RuntimeModality, ModalityAdmissionBarrier>;
@@ -215,9 +211,8 @@ export class RuntimeReconciler {
   ): string | undefined {
     const active = activeModel(modality, this.snapshot.config);
     if (requestedModel === undefined) return active;
-    const requested = normalizedModelId(requestedModel).toLowerCase();
     return [active, ...selectedModels(modality, this.snapshot.config)].find(
-      (modelId) => modelId.toLowerCase() === requested,
+      (modelId) => modelId === requestedModel,
     );
   }
 

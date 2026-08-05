@@ -285,6 +285,31 @@ function startMockUpstream(
           { status: 503 },
         );
       }
+      if (mode === "openai-error") {
+        return Response.json(
+          {
+            error: {
+              message: "Fixture rate limit exceeded.",
+              type: "rate_limit_error",
+              param: null,
+              code: "rate_limit_exceeded",
+            },
+          },
+          { status: 429, headers: { "x-upstream-secret": "do-not-forward" } },
+        );
+      }
+      if (mode === "malformed-error") {
+        return Response.json(
+          { error: { message: "/private/fixture/model.gguf" } },
+          { status: 503, headers: { "x-upstream-secret": "do-not-forward" } },
+        );
+      }
+      if (mode === "non-json-error") {
+        return new Response("api-key=fixture-secret", {
+          status: 500,
+          headers: { "x-upstream-secret": "do-not-forward" },
+        });
+      }
       if (mode === "custom-tool-response") {
         return Response.json({
           id: "chatcmpl-custom-tool",

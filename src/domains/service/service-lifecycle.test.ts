@@ -468,7 +468,7 @@ describe.serial("compiled CLI service lifecycle", () => {
       ["--root", root, "start", "--json"],
       environment("darwin"),
     );
-    expect(staleOverrideRemoved.exitCode).toBe(0);
+    expectCliSuccess(staleOverrideRemoved);
     await waitForGatewayReady(executable, root, environment("darwin"));
     expect(
       parseLaunchdDefinition(
