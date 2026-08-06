@@ -827,6 +827,15 @@ describe.serial("platform support tiers", () => {
   test("explains how to provide missing CLI-only runtimes", () => {
     expect(
       managedRuntimeUnavailableError(
+        "llama-server",
+        { os: "darwin", cpu: "x64" },
+        "/tmp/local-base/bin",
+      ).message,
+    ).toBe(
+      "LocalBase CLI-only compatibility on macOS x64 does not include a managed llama-server runtime. Place a compatible llama-server executable on PATH outside /tmp/local-base/bin; it will be treated as user-managed and unverified.",
+    );
+    expect(
+      managedRuntimeUnavailableError(
         "whisper-server",
         { os: "darwin", cpu: "x64" },
         "/tmp/local-base/bin",

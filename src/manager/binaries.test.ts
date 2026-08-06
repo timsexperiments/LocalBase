@@ -39,6 +39,7 @@ function release(
   format: ManagedRuntimeRelease["format"],
   asset: Uint8Array,
   url: string,
+  stripComponents: number,
 ): ManagedRuntimeRelease {
   return {
     name,
@@ -48,6 +49,7 @@ function release(
     expectedSizeBytes: asset.byteLength,
     sha256: sha256(asset),
     format,
+    stripComponents,
   };
 }
 
@@ -112,7 +114,7 @@ test("installs a verified tar.gz runtime with its staged support files", async (
   await withArchive(archive, async (url) => {
     const installed = await installManagedRuntime(
       { root },
-      release("llama-server", "tar.gz", archive, url),
+      release("llama-server", "tar.gz", archive, url, 1),
     );
 
     expect(await Bun.file(installed).bytes()).toEqual(binary);
@@ -127,12 +129,33 @@ test("installs a verified tar.gz runtime with its staged support files", async (
       await Bun.file(join(root, "bin", ".managed-binaries.json")).json(),
     ).toMatchObject({
       version: 1,
-      runtimes: { "llama-server": { authoritativeSha256: sha256(archive) } },
+      runtimes: {
+        "llama-server": {
+          authoritativeSha256: sha256(archive),
+          format: "tar.gz",
+          stripComponents: 1,
+        },
+      },
     });
   });
 });
 
-test("installs a verified ZIP runtime without host archive utilities", async () => {
+test("installs a verified root-level tar.gz runtime", async () => {
+  const binary = new TextEncoder().encode("whisper executable");
+  const archive = await tarGz({ "whisper-server": binary });
+  const root = createRoot();
+
+  await withArchive(archive, async (url) => {
+    const installed = await installManagedRuntime(
+      { root },
+      release("whisper-server", "tar.gz", archive, url, 0),
+    );
+
+    expect(await Bun.file(installed).bytes()).toEqual(binary);
+  });
+});
+
+test("installs a verified root-level ZIP runtime without host archive utilities", async () => {
   const binary = new TextEncoder().encode("sd executable");
   const model = new TextEncoder().encode("runtime support file");
   const archive = zipSync({
@@ -144,7 +167,7 @@ test("installs a verified ZIP runtime without host archive utilities", async () 
   await withArchive(archive, async (url) => {
     const installed = await installManagedRuntime(
       { root },
-      release("sd-server", "zip", archive, url),
+      release("sd-server", "zip", archive, url, 0),
     );
 
     expect(await Bun.file(installed).bytes()).toEqual(binary);
@@ -159,7 +182,7 @@ test("rejects unverified downloads before they reach the managed bin directory",
   const root = createRoot();
 
   await withArchive(archive, async (url) => {
-    const pinned = release("whisper-server", "binary", archive, url);
+    const pinned = release("whisper-server", "binary", archive, url, 0);
     pinned.sha256 = "0".repeat(64);
 
     await expect(installManagedRuntime({ root }, pinned)).rejects.toThrow(
@@ -187,7 +210,7 @@ test("rejects archive paths that would escape the staging directory", async () =
     await expect(
       installManagedRuntime(
         { root },
-        release("sd-server", "zip", archive, url),
+        release("sd-server", "zip", archive, url, 0),
       ),
     ).rejects.toThrow("Failed to extract");
     expect(await Bun.file(join(root, "outside")).exists()).toBe(false);
@@ -206,9 +229,28 @@ test("rejects archive symlinks that would escape the staging directory", async (
     await expect(
       installManagedRuntime(
         { root },
-        release("llama-server", "tar.gz", archive, url),
+        release("llama-server", "tar.gz", archive, url, 1),
       ),
     ).rejects.toThrow("Failed to extract");
     expect(await Bun.file(join(root, "outside")).exists()).toBe(false);
+  });
+});
+
+test("rejects archive files removed by stripComponents", async () => {
+  const archive = await tarGz({
+    "llama-server": new TextEncoder().encode("llama executable"),
+  });
+  const root = createRoot();
+
+  await withArchive(archive, async (url) => {
+    await expect(
+      installManagedRuntime(
+        { root },
+        release("llama-server", "tar.gz", archive, url, 1),
+      ),
+    ).rejects.toThrow("Failed to extract");
+    expect(await Bun.file(join(root, "bin", "llama-server")).exists()).toBe(
+      false,
+    );
   });
 });
