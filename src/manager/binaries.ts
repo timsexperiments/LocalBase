@@ -67,7 +67,7 @@ const receiptEntrySchema = z
 
 const receiptSchema = z
   .object({
-    version: z.literal(2),
+    version: z.literal(1),
     runtimes: z.partialRecord(
       z.enum(["llama-server", "whisper-server", "sd-server"]),
       receiptEntrySchema,
@@ -507,7 +507,7 @@ export async function installManagedRuntime(
 
     chmodSync(destPath, statSync(destPath).mode | 0o111);
 
-    const receipt = (await readReceipt(binDir)) ?? { version: 2, runtimes: {} };
+    const receipt = (await readReceipt(binDir)) ?? { version: 1, runtimes: {} };
     receipt.runtimes[release.name] = {
       tag: release.tag,
       assetName: release.assetName,

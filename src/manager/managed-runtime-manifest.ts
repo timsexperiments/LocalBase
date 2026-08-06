@@ -45,7 +45,7 @@ const manifestTargetSchema = z
 
 export const managedRuntimeManifestSchema = z
   .object({
-    version: z.literal(2),
+    version: z.literal(1),
     targets: z.array(manifestTargetSchema).length(4),
   })
   .strict()

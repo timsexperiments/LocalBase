@@ -128,7 +128,7 @@ test("installs a verified tar.gz runtime with its staged support files", async (
     expect(
       await Bun.file(join(root, "bin", ".managed-binaries.json")).json(),
     ).toMatchObject({
-      version: 2,
+      version: 1,
       runtimes: {
         "llama-server": {
           authoritativeSha256: sha256(archive),
