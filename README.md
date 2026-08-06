@@ -23,7 +23,7 @@ Full managed support includes the CLI and automatic backend management:
 - macOS ARM64.
 - Linux x64.
 
-CLI-only compatibility is available for macOS x64 and Linux ARM64. These releases publish the Bun CLI but no LocalBase-built `whisper-server` or `sd-server` runtime. Put compatible user-managed backend executables on `PATH`, outside `$LOCALBASE_ROOT/bin` (by default `~/.local/share/local-base/bin`). Pinned upstream `llama.cpp` downloads remain available only where that upstream release provides them.
+CLI-only compatibility is available for macOS x64 and Linux ARM64. These releases publish the Bun CLI only; LocalBase does not download, install, or verify backend runtimes. Put compatible user-managed backend executables on `PATH`, outside `$LOCALBASE_ROOT/bin` (by default `~/.local/share/local-base/bin`).
 
 Linux managed-runtime releases are built and qualified against an Ubuntu 24.04-compatible userspace and require the GNU OpenMP runtime (`libgomp`, packaged as `libgomp1` on Ubuntu).
 
