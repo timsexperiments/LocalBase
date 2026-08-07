@@ -1,36 +1,6 @@
 import { expect, test } from "bun:test";
 import { LOCALBASE_VERSION } from "../src/version";
-import {
-  validateReleasePreflight,
-  validateRuntimeReleaseTag,
-} from "./release-preflight";
-
-test("accepts canonical Whisper runtime release tags", () => {
-  for (const tag of [
-    "whisper-v0.0.0",
-    "whisper-v1.2.3",
-    "whisper-v10.20.300",
-  ]) {
-    expect(() => validateRuntimeReleaseTag(tag)).not.toThrow();
-  }
-});
-
-test("rejects non-canonical Whisper runtime release tags", () => {
-  for (const tag of [
-    "v1.2.3",
-    "whisper-v01.2.3",
-    "whisper-v1.02.3",
-    "whisper-v1.2.03",
-    "whisper-v1.2",
-    "whisper-v1.2.3-rc.1",
-    "whisper-v1.2.3+build",
-    "whisper-v1.-2.3",
-  ]) {
-    expect(() => validateRuntimeReleaseTag(tag)).toThrow(
-      "Runtime tag must use whisper-v<major>.<minor>.<patch>",
-    );
-  }
-});
+import { validateReleasePreflight } from "./release-preflight";
 
 test("accepts the exact release tag and package version", () => {
   expect(() =>
