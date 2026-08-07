@@ -35,6 +35,7 @@ import type { CommandExecution } from "../../app/commands/framework";
 import type { ConfigureInput } from "../../app/commands/inputs";
 import { publicApiKey, publicConfiguration } from "../../app/commands/results";
 import { resolveOtelConfiguration } from "../../observability/otel";
+import { memorySafetyConfigSchema } from "../../runtime/memory-safety";
 
 export const PARALLEL_SLOTS_PROMPT =
   "Parallel request slots count (type 'auto' for dynamic auto-allocation, or an integer like 1, 2, 4)";
@@ -448,6 +449,18 @@ export async function runConfigure(
     "otelSampleRatio",
     flags.otelSampleRatio ?? rawToml.otelSampleRatio,
   );
+  maybeLock("memory", rawToml.memory);
+
+  const memory = memorySafetyConfigSchema.parse({
+    systemReserve: {
+      ...config.memory.systemReserve,
+      ...rawToml.memory?.systemReserve,
+    },
+    acceleratorReserve: {
+      ...config.memory.acceleratorReserve,
+      ...rawToml.memory?.acceleratorReserve,
+    },
+  });
 
   config = {
     ...config,
@@ -477,6 +490,7 @@ export async function runConfigure(
       flags.otelSampleRatio ??
       rawToml.otelSampleRatio ??
       config.otelSampleRatio,
+    memory,
   };
 
   config = { ...config, ...modelDirectories(config.root) };

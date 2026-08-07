@@ -277,14 +277,14 @@ export class RuntimeReconciler {
       target,
       this.ownership,
     );
-    if (plan.processIdentity.action === "restart-required") {
+    if (plan.restartRequired.action === "restart-required") {
       this.logger.event({
         severity: "error",
         eventName: "runtime.reconciliation-failed",
         category: "runtime",
         component: "gateway",
         runtime: "gateway",
-        message: "Runtime configuration changed process identity.",
+        message: "Runtime configuration change requires a gateway restart.",
         attributes: { revision: target.revision },
       });
       return;

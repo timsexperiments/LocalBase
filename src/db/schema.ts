@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const configTable = sqliteTable("config", {
   id: text("id").primaryKey(),
@@ -19,6 +19,16 @@ export const configTable = sqliteTable("config", {
   otelEndpoint: text("otel_endpoint").default("").notNull(),
   otelHeaders: text("otel_headers").default("").notNull(),
   otelSampleRatio: integer("otel_sample_ratio").default(100).notNull(),
+  memorySystemReservePercent: real("memory_system_reserve_percent").notNull(),
+  memorySystemReserveMinimumGb: real(
+    "memory_system_reserve_minimum_gb",
+  ).notNull(),
+  memoryAcceleratorReservePercent: real(
+    "memory_accelerator_reserve_percent",
+  ).notNull(),
+  memoryAcceleratorReserveMinimumGb: real(
+    "memory_accelerator_reserve_minimum_gb",
+  ).notNull(),
 });
 
 export const apiKeysTable = sqliteTable("api_keys", {

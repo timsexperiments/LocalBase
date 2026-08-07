@@ -32,12 +32,15 @@ test("runtime configuration snapshots are immutable and detached from inputs", a
     const snapshot = controller.read();
     source.selectedLlmModels.push("other-model");
     source.parallel = 2;
+    source.memory.systemReserve.percent = 20;
 
     expect(snapshot.config.selectedLlmModels).not.toContain("other-model");
     expect(snapshot.config.parallel).toBe("auto");
+    expect(snapshot.config.memory.systemReserve.percent).toBe(15);
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot.config)).toBe(true);
     expect(Object.isFrozen(snapshot.config.selectedLlmModels)).toBe(true);
+    expect(Object.isFrozen(snapshot.config.memory)).toBe(true);
     expect(() => {
       Reflect.apply(Array.prototype.push, snapshot.config.selectedLlmModels, [
         "other-model",
