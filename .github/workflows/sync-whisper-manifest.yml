@@ -1,0 +1,149 @@
+name: Synchronize Whisper Runtime Manifest
+
+on:
+  workflow_call:
+    inputs:
+      runtime_tag:
+        description: Immutable published Whisper runtime release tag
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      runtime_tag:
+        description: Immutable published Whisper runtime release tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  synchronize:
+    name: Synchronize managed Whisper release
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Create release automation token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.RELEASE_AUTOMATION_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Validate runtime tag
+        id: runtime
+        env:
+          RUNTIME_TAG: ${{ inputs.runtime_tag }}
+        run: >-
+          bun run scripts/whisper-release.ts validate-tag --tag "$RUNTIME_TAG"
+          --github-output "$GITHUB_OUTPUT"
+      - name: Verify published runtime release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: >-
+          bun run scripts/whisper-release.ts verify-published-release
+          --repository "$GITHUB_REPOSITORY" --tag "${{ steps.runtime.outputs.tag }}"
+          --output "$RUNNER_TEMP/whisper-release-receipt.json"
+      - name: Read default branch manifest
+        env:
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch origin "$BASE_BRANCH"
+          git show "origin/$BASE_BRANCH:src/manager/managed-runtime-manifest.json" > "$RUNNER_TEMP/default-managed-runtime-manifest.json"
+      - name: Check default branch manifest
+        id: default-manifest
+        run: >-
+          bun run scripts/whisper-release.ts manifest-status
+          --manifest "$RUNNER_TEMP/default-managed-runtime-manifest.json"
+          --receipt "$RUNNER_TEMP/whisper-release-receipt.json"
+          --github-output "$GITHUB_OUTPUT"
+      - name: Reconcile automation branch
+        id: branch
+        if: steps.default-manifest.outputs.synchronized == 'false'
+        env:
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          MANIFEST_BRANCH: ${{ steps.runtime.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git config user.name "LocalBase Release Automation"
+          git config user.email "release-automation@users.noreply.github.com"
+          remote_line="$(git ls-remote --heads origin "refs/heads/$MANIFEST_BRANCH")"
+          if [ -n "$remote_line" ]; then
+            remote_sha="${remote_line%% *}"
+            git fetch origin "$MANIFEST_BRANCH"
+            test "$remote_sha" = "$(git rev-parse "origin/$MANIFEST_BRANCH")"
+            printf '%s\n' "$remote_sha" > "$RUNNER_TEMP/whisper-manifest-remote-sha"
+            git switch --create "$MANIFEST_BRANCH" "origin/$BASE_BRANCH"
+            printf 'exists=true\n' >> "$GITHUB_OUTPUT"
+          else
+            git switch --create "$MANIFEST_BRANCH" "origin/$BASE_BRANCH"
+            printf 'exists=false\n' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Update managed runtime manifest
+        if: steps.default-manifest.outputs.synchronized == 'false'
+        run: >-
+          bun run scripts/whisper-release.ts update-manifest
+          --manifest src/manager/managed-runtime-manifest.json
+          --receipt "$RUNNER_TEMP/whisper-release-receipt.json"
+      - name: Verify managed runtime manifest
+        if: steps.default-manifest.outputs.synchronized == 'false'
+        run: >-
+          bun run scripts/whisper-release.ts verify-manifest
+          --manifest src/manager/managed-runtime-manifest.json
+          --receipt "$RUNNER_TEMP/whisper-release-receipt.json"
+      - name: Commit manifest update
+        id: commit
+        if: steps.default-manifest.outputs.synchronized == 'false'
+        run: |
+          if git diff --quiet -- src/manager/managed-runtime-manifest.json; then
+            printf 'changed=false\n' >> "$GITHUB_OUTPUT"
+          else
+            git add src/manager/managed-runtime-manifest.json
+            git commit -m "chore: pin ${{ steps.runtime.outputs.tag }} runtime archives"
+            printf 'changed=true\n' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Push manifest branch
+        if: steps.default-manifest.outputs.synchronized == 'false' && steps.commit.outputs.changed == 'true'
+        env:
+          MANIFEST_BRANCH: ${{ steps.runtime.outputs.branch }}
+          BRANCH_EXISTS: ${{ steps.branch.outputs.exists }}
+        run: |
+          set -euo pipefail
+          if [ "$BRANCH_EXISTS" = "false" ]; then
+            git push origin "HEAD:refs/heads/$MANIFEST_BRANCH"
+            exit 0
+          fi
+          remote_sha="$(cat "$RUNNER_TEMP/whisper-manifest-remote-sha")"
+          if git merge-base --is-ancestor "$remote_sha" HEAD; then
+            git push origin "HEAD:refs/heads/$MANIFEST_BRANCH"
+          else
+            git push --force-with-lease="refs/heads/$MANIFEST_BRANCH:$remote_sha" origin "HEAD:refs/heads/$MANIFEST_BRANCH"
+          fi
+      - name: Open or update manifest pull request
+        if: steps.default-manifest.outputs.synchronized == 'false' && steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          MANIFEST_BRANCH: ${{ steps.runtime.outputs.branch }}
+          RUNTIME_TAG: ${{ steps.runtime.outputs.tag }}
+        run: |
+          set -euo pipefail
+          pr_number="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&head=$GITHUB_REPOSITORY_OWNER:$MANIFEST_BRANCH" --jq '.[0].number')"
+          title="chore: pin $RUNTIME_TAG Whisper runtime archives"
+          body="Pins verified Whisper runtime archive metadata from $RUNTIME_TAG."
+          if [ -n "$pr_number" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/pulls/$pr_number" -f title="$title" -f body="$body" >/dev/null
+          else
+            gh pr create --base "$BASE_BRANCH" --head "$MANIFEST_BRANCH" --title "$title" --body "$body"
+          fi
