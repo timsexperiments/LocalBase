@@ -160,6 +160,27 @@ test("configure validates TOML parallel overrides and warns on low VRAM", async 
   });
 });
 
+test("configure merges partial TOML memory reserves with persisted defaults", async () => {
+  await withTempRoot(async (root) => {
+    const configPath = join(root, "local-base.toml");
+    await Bun.write(configPath, "[memory.systemReserve]\npercent = 20\n");
+    const context = makeContext(root);
+    try {
+      await runConfigure(
+        { all: false, defaults: true, configPath, createKey: false },
+        context,
+        nonInteractiveExecution,
+      );
+      expect(loadConfig(context.database, root).memory).toEqual({
+        systemReserve: { percent: 20, minimumGb: 8 },
+        acceleratorReserve: { percent: 10, minimumGb: 2 },
+      });
+    } finally {
+      context.database.close();
+    }
+  });
+});
+
 test("configure gives the CLI root precedence over a configured root", async () => {
   await withTempRoot(async (baseRoot) => {
     const cliRoot = join(baseRoot, "cli-root");
