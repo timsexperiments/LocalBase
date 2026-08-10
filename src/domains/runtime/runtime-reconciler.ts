@@ -12,6 +12,7 @@ import {
   type RuntimeOverrideOwnership,
 } from "./reconciliation-plan";
 import type { RuntimeSupervisorFactory } from "./supervisor-factory";
+import { RuntimeMemoryAdmissionError } from "./memory-controller";
 import {
   SupervisorRegistry,
   type RuntimeSupervisor,
@@ -35,6 +36,10 @@ export type ModelAdmissionResult =
   | Readonly<{ kind: "admitted"; value: ModelAdmission }>
   | Readonly<{ kind: "not-configured" }>
   | Readonly<{ kind: "model-not-found" }>
+  | Readonly<{
+      kind: "resource-unavailable";
+      decision: RuntimeMemoryAdmissionError["decision"];
+    }>
   | Readonly<{ kind: "unavailable" }>;
 
 type ConfiguredModalities = Record<RuntimeModality, boolean>;
@@ -163,14 +168,15 @@ export class RuntimeReconciler {
       this.throwIfAborted(signal);
       const admission = this.acquire(modality);
       if (!admission) return { kind: "unavailable" };
-      if (modality === "llm") {
-        try {
-          await this.waitForAbort(admission.supervisor.ensureRunning(), signal);
-        } catch (error) {
-          admission.release();
-          if (error instanceof RuntimeRequestAbortedError) throw error;
-          return { kind: "unavailable" };
+      try {
+        await this.waitForAbort(admission.supervisor.ensureRunning(), signal);
+      } catch (error) {
+        admission.release();
+        if (error instanceof RuntimeRequestAbortedError) throw error;
+        if (error instanceof RuntimeMemoryAdmissionError) {
+          return { kind: "resource-unavailable", decision: error.decision };
         }
+        return { kind: "unavailable" };
       }
       return { kind: "admitted", value: { modelId, admission } };
     });

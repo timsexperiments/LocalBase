@@ -20,6 +20,7 @@ import {
   startWhisperServerProcess,
 } from "./launcher";
 import type { RuntimeModality } from "./modality";
+import type { MemorySafetyController } from "./memory-controller";
 import { ManagedService } from "./supervisor";
 import type { RuntimeSupervisor } from "./supervisor-registry";
 
@@ -45,6 +46,10 @@ export type RuntimeSupervisorFactory = Readonly<{
     modality: RuntimeModality,
     snapshot: RuntimeConfigSnapshot,
   ) => string;
+}>;
+
+export type RuntimeSupervisorFactoryDependencies = Readonly<{
+  memorySafety: MemorySafetyController;
 }>;
 
 function endpoint(host: string, port: number): string {
@@ -127,6 +132,19 @@ function configuredModelFile(
     .then((exists) => (exists ? fallback : ""));
 }
 
+async function artifactBytes(
+  modelId: string,
+  directory: string,
+  modelFile: string,
+): Promise<number> {
+  const spec = byId(modelId);
+  const expectedSizeBytes = spec
+    ? primaryArtifact(spec).expectedSizeBytes
+    : undefined;
+  if (expectedSizeBytes !== undefined) return expectedSizeBytes;
+  return (await Bun.file(join(directory, modelFile)).stat()).size;
+}
+
 function createLoggerEvent(
   ctx: AppContext,
   modality: RuntimeModality,
@@ -204,7 +222,9 @@ export function runtimeLaunchOverrides(
 export function createRuntimeSupervisorFactory(
   ctx: AppContext,
   overrides: RuntimeLaunchOverrides,
+  dependencies: RuntimeSupervisorFactoryDependencies,
 ): RuntimeSupervisorFactory {
+  let nextRuntimeGeneration = 0;
   const baseUrl = (
     modality: RuntimeModality,
     snapshot: RuntimeConfigSnapshot,
@@ -231,14 +251,16 @@ export function createRuntimeSupervisorFactory(
     const config = structuredClone(snapshot.config) as LocalBaseConfig;
     const modelId = activeModel(modality, snapshot.config);
     const base = baseUrl(modality, snapshot);
+    const runtimeId = `${modality}:${modelId}:${++nextRuntimeGeneration}`;
 
     if (modality === "llm") {
       return new ManagedService({
+        runtimeId,
         modality,
         component: "llama-server",
         healthUrl: `${base}/health`,
         logger: ctx.logger,
-        start: async () => {
+        launch: async () => {
           let modelFile = overrides.llmModelFile;
           if (!modelFile) {
             const spec = byId(modelId);
@@ -292,21 +314,32 @@ export function createRuntimeSupervisorFactory(
             "llama-server",
             `Spawning model "${modelId}" (file: ${modelFile}, context: ${ctxSize} tokens)`,
           );
-          return await startLlamaServerProcess(
-            resolveLlmLaunchPlan({
-              root: config.root,
-              modelsDirectory: config.llmModelsDir,
+          return resolveLlmLaunchPlan({
+            runtimeId,
+            root: config.root,
+            modelsDirectory: config.llmModelsDir,
+            modelId,
+            modelFile,
+            host: llmHost(snapshot.config, overrides),
+            port: llmPort(snapshot.config, overrides),
+            ctxSize,
+            parallel: config.parallel,
+            modelRequirementGb: spec?.minVramGb,
+            artifactBytes: await artifactBytes(
               modelId,
+              config.llmModelsDir,
               modelFile,
-              host: llmHost(snapshot.config, overrides),
-              port: llmPort(snapshot.config, overrides),
-              ctxSize,
-              parallel: config.parallel,
-              modelRequirementGb: spec?.minVramGb,
-              hardware: { memoryGb: ctx.specs.gpuVramGb },
-            }),
-          );
+            ),
+            hardware: { memoryGb: ctx.specs.gpuVramGb },
+          });
         },
+        start: async (plan) => {
+          if (plan.component !== "llama-server") {
+            throw new Error("Expected llama-server launch plan.");
+          }
+          return await startLlamaServerProcess(plan);
+        },
+        memorySafety: dependencies.memorySafety,
         otel: ctx.otel,
         startupTimeoutMs:
           byId(modelId)?.minVramGb && byId(modelId)!.minVramGb >= 16
@@ -317,11 +350,12 @@ export function createRuntimeSupervisorFactory(
 
     if (modality === "stt") {
       return new ManagedService({
+        runtimeId,
         modality,
         component: "whisper-server",
         healthUrl: `${base}/health`,
         logger: ctx.logger,
-        start: async () => {
+        launch: async () => {
           let modelFile = overrides.sttModelFile;
           if (!modelFile) {
             modelFile = await configuredModelFile(config, modelId, modality);
@@ -341,28 +375,42 @@ export function createRuntimeSupervisorFactory(
             "whisper-server",
             `Spawning STT model "${modelId}" (file: ${modelFile})`,
           );
-          return await startWhisperServerProcess(
-            resolveSttLaunchPlan({
-              root: config.root,
-              modelsDirectory: config.sttModelsDir,
+          const spec = byId(modelId);
+          return resolveSttLaunchPlan({
+            runtimeId,
+            root: config.root,
+            modelsDirectory: config.sttModelsDir,
+            modelId,
+            modelFile,
+            host: sttHost(snapshot.config, overrides),
+            port: sttPort(snapshot.config, overrides),
+            modelRequirementGb: spec?.minVramGb,
+            artifactBytes: await artifactBytes(
               modelId,
+              config.sttModelsDir,
               modelFile,
-              host: sttHost(snapshot.config, overrides),
-              port: sttPort(snapshot.config, overrides),
-            }),
-          );
+            ),
+          });
         },
+        start: async (plan) => {
+          if (plan.component !== "whisper-server") {
+            throw new Error("Expected whisper-server launch plan.");
+          }
+          return await startWhisperServerProcess(plan);
+        },
+        memorySafety: dependencies.memorySafety,
         otel: ctx.otel,
         startupTimeoutMs: 30000,
       });
     }
 
     return new ManagedService({
+      runtimeId,
       modality,
       component: "sd-server",
       healthUrl: `${base}/`,
       logger: ctx.logger,
-      start: async () => {
+      launch: async () => {
         let modelFile = overrides.imageModelFile;
         if (!modelFile) {
           modelFile = await configuredModelFile(config, modelId, modality);
@@ -382,17 +430,30 @@ export function createRuntimeSupervisorFactory(
           "sd-server",
           `Spawning image model "${modelId}" (file: ${modelFile})`,
         );
-        return await startSdServerProcess(
-          resolveImageLaunchPlan({
-            root: config.root,
-            modelsDirectory: config.imageModelsDir,
+        const spec = byId(modelId);
+        return resolveImageLaunchPlan({
+          runtimeId,
+          root: config.root,
+          modelsDirectory: config.imageModelsDir,
+          modelId,
+          modelFile,
+          host: imageHost(overrides),
+          port: imagePort(overrides),
+          modelRequirementGb: spec?.minVramGb,
+          artifactBytes: await artifactBytes(
             modelId,
+            config.imageModelsDir,
             modelFile,
-            host: imageHost(overrides),
-            port: imagePort(overrides),
-          }),
-        );
+          ),
+        });
       },
+      start: async (plan) => {
+        if (plan.component !== "sd-server") {
+          throw new Error("Expected sd-server launch plan.");
+        }
+        return await startSdServerProcess(plan);
+      },
+      memorySafety: dependencies.memorySafety,
       otel: ctx.otel,
       startupTimeoutMs: 30000,
     });

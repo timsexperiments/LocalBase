@@ -24,6 +24,8 @@ import {
   createRuntimeSupervisorFactory,
   runtimeLaunchOverrides,
 } from "../supervisor-factory";
+import { MemorySafetyController } from "../memory-controller";
+import { createHostMemoryProvider } from "../memory/host-memory-provider";
 import { SupervisorRegistry } from "../supervisor-registry";
 import { composeGatewayHealth } from "../gateway-health";
 import { selectGatewayRoute } from "../route-dispatch";
@@ -1201,6 +1203,20 @@ function serviceUnavailable(serviceName: string): Response {
   );
 }
 
+export function resourceUnavailable(): Response {
+  return openAIErrorResponse(
+    {
+      message:
+        "Insufficient available memory to start the requested runtime. Please try again shortly.",
+      type: "api_error",
+      param: null,
+      code: "insufficient_memory",
+    },
+    503,
+    { "Retry-After": "5" },
+  );
+}
+
 export async function finalizeGatewayShutdown(
   logger: ILogger,
   releaseLease: () => Promise<void>,
@@ -1605,7 +1621,15 @@ export async function runServe(
       ? {}
       : { sttPort: config.sttPort }),
   });
-  const factory = createRuntimeSupervisorFactory(ctx, launchOverrides);
+  const memoryProvider = createHostMemoryProvider();
+  const memorySafety = new MemorySafetyController(
+    memoryProvider,
+    ctx.config.memory,
+    bypassCheck,
+  );
+  const factory = createRuntimeSupervisorFactory(ctx, launchOverrides, {
+    memorySafety,
+  });
   const initialSnapshot = ctx.runtimeConfig.read();
   const supervisors = new SupervisorRegistry({
     ...(enabled.llm ? { llm: factory.create("llm", initialSnapshot) } : {}),
@@ -1761,6 +1785,9 @@ export async function runServe(
         if (selected.kind === "model-not-found") {
           return modelNotFound(parsed.data.model ?? "");
         }
+        if (selected.kind === "resource-unavailable") {
+          return resourceUnavailable();
+        }
         if (selected.kind === "unavailable") return serviceUnavailable("STT");
         admission = selected.value.admission;
         const normalizedForm = new FormData();
@@ -1828,6 +1855,9 @@ export async function runServe(
       if (selected.kind === "model-not-found") {
         return modelNotFound(parsed.data.model ?? "");
       }
+      if (selected.kind === "resource-unavailable") {
+        return resourceUnavailable();
+      }
       if (selected.kind === "unavailable") return serviceUnavailable("Image");
       return await proxyWithAdmission(
         selected.value.admission,
@@ -1867,6 +1897,9 @@ export async function runServe(
       if (selected.kind === "model-not-found") {
         return modelNotFound(parsed.data.model ?? "");
       }
+      if (selected.kind === "resource-unavailable") {
+        return resourceUnavailable();
+      }
       if (selected.kind === "unavailable") return serviceUnavailable("LLM");
       return await proxyWithAdmission(
         selected.value.admission,
@@ -1902,6 +1935,9 @@ export async function runServe(
       if (selected.kind === "not-configured") return notConfigured("LLM");
       if (selected.kind === "model-not-found") {
         return modelNotFound(parsed.data.model ?? "");
+      }
+      if (selected.kind === "resource-unavailable") {
+        return resourceUnavailable();
       }
       if (selected.kind === "unavailable") return serviceUnavailable("LLM");
       return await proxyWithAdmission(
@@ -2073,7 +2109,11 @@ export async function runServe(
         ctx.logger.info("Manager", "Shutting down servers and subprocesses...");
         gatewayStopping = true;
         server.stop(true);
-        await supervisors.shutdown();
+        try {
+          await supervisors.shutdown();
+        } finally {
+          await memoryProvider.close();
+        }
       })();
     }
     return shutdownPromise;

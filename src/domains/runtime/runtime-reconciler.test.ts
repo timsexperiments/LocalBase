@@ -7,6 +7,7 @@ import type { LogEventInput } from "../observability/logging";
 import { defaultConfig, saveConfig } from "../../manager";
 import { RuntimeConfigController } from "./config-snapshot";
 import { RuntimeReconciler } from "./runtime-reconciler";
+import { RuntimeMemoryAdmissionError } from "./memory-controller";
 import type { RuntimeSupervisorFactory } from "./supervisor-factory";
 import {
   SupervisorRegistry,
@@ -56,6 +57,7 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
           snapshot.config.memory.systemReserve.percent,
         shutdowns: 0,
         service: {
+          runtimeId: () => `${modality}:${modelId}`,
           state: () => "idle",
           async ensureRunning() {},
           async kill() {},
@@ -140,6 +142,49 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
     expect(events.at(-1)).toMatchObject({
       eventName: "runtime.reconciliation-failed",
       message: "Runtime configuration change requires a gateway restart.",
+    });
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("returns a typed memory admission rejection", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-memory-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  const rejection = new RuntimeMemoryAdmissionError({
+    kind: "rejected",
+    reason: "system-memory",
+    poolId: "system",
+  });
+  const service: RuntimeSupervisor = {
+    runtimeId: () => "llm:model:1",
+    state: () => "idle",
+    async ensureRunning() {
+      throw rejection;
+    },
+    async kill() {},
+    async shutdown() {},
+  };
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create: () => service,
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: service }),
+    factory,
+    { event() {} } as never,
+  );
+
+  try {
+    expect(await reconciler.admitModel("llm", config.activeLlmModel)).toEqual({
+      kind: "resource-unavailable",
+      decision: rejection.decision,
     });
   } finally {
     database.close();

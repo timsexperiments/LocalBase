@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { byId } from "../../../catalog";
+import { byId, primaryArtifact } from "../../../catalog";
 import { defaultConfig, loadConfig, saveConfig } from "../../../manager";
 import { DatabaseSession } from "../../../db/client";
 import { compileRuntimeFixture } from "../../../test/runtime-fixture";
@@ -80,6 +80,114 @@ async function waitForGateway(
   }
   throw new Error("Gateway did not become ready");
 }
+
+test(
+  "rejects memory admission before launching or proxying",
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), "local-base-memory-admission-"));
+    const runtimeDir = join(root, "test-runtimes");
+    const argsPath = join(root, "llama-server.args");
+    const wrapperPort = reservePort();
+    const backendPort = reservePort();
+    let upstreamRequests = 0;
+    const backend = Bun.serve({
+      hostname: "127.0.0.1",
+      port: backendPort,
+      fetch() {
+        upstreamRequests += 1;
+        return Response.json({ status: "ok" });
+      },
+    });
+    let gateway: Bun.Subprocess | undefined;
+
+    try {
+      const config = defaultConfig(root, 16);
+      config.port = backendPort;
+      config.activeLlmModel = INITIAL_MODEL;
+      config.selectedLlmModels = [INITIAL_MODEL];
+      config.activeSttModel = "";
+      config.selectedSttModels = [];
+      config.activeImageModel = "";
+      config.selectedImageModels = [];
+      config.memory.systemReserve = { percent: 0, minimumGb: 1024 };
+      saveTestConfig(config);
+
+      const model = byId(INITIAL_MODEL);
+      if (!model) throw new Error(`Missing ${INITIAL_MODEL} catalog model.`);
+      const artifact = primaryArtifact(model);
+      if (artifact.expectedSizeBytes === undefined) {
+        throw new Error(`Missing ${INITIAL_MODEL} artifact size.`);
+      }
+      mkdirSync(config.llmModelsDir, { recursive: true });
+      mkdirSync(runtimeDir, { recursive: true });
+      await Bun.write(join(config.llmModelsDir, artifact.filename), "");
+      truncateSync(
+        join(config.llmModelsDir, artifact.filename),
+        artifact.expectedSizeBytes,
+      );
+      await compileRuntimeFixture(join(runtimeDir, "llama-server"), argsPath);
+      chmodSync(join(runtimeDir, "llama-server"), 0o755);
+
+      gateway = Bun.spawn(
+        [
+          process.execPath,
+          "run",
+          "src/cli.ts",
+          "serve",
+          "--root",
+          root,
+          "--host",
+          "127.0.0.1",
+          "--port",
+          String(wrapperPort),
+          "--llm-port",
+          String(backendPort),
+          "--no-stt",
+          "--no-image",
+          "--no-auth",
+        ],
+        {
+          cwd: PROJECT_ROOT,
+          env: {
+            ...process.env,
+            PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
+          } as Record<string, string>,
+          stdout: "ignore",
+          stderr: "ignore",
+        },
+      );
+      const baseUrl = `http://127.0.0.1:${wrapperPort}`;
+      await waitForGateway(gateway, baseUrl);
+
+      const response = await fetch(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: INITIAL_MODEL,
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      });
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Retry-After")).toBe("5");
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          message:
+            "Insufficient available memory to start the requested runtime. Please try again shortly.",
+          type: "api_error",
+          param: null,
+          code: "insufficient_memory",
+        },
+      });
+      expect(await Bun.file(argsPath).exists()).toBe(false);
+      expect(upstreamRequests).toBe(0);
+    } finally {
+      if (gateway) await stopProcess(gateway);
+      backend.stop(true);
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+  { timeout: 20_000 },
+);
 
 async function readProcessOutput(
   stream: ReadableStream<Uint8Array> | number | undefined,
@@ -595,7 +703,7 @@ test(
     try {
       const config = defaultConfig(root, 64);
       config.port = backendPort;
-      config.activeLlmModel = "qwen3-coder-next-q4_k_m";
+      config.activeLlmModel = INITIAL_MODEL;
       config.selectedLlmModels = [config.activeLlmModel];
       config.activeSttModel = "";
       config.selectedSttModels = [];

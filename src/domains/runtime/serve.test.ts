@@ -16,6 +16,7 @@ import {
   finalizeGatewayShutdown,
   httpBaseUrl,
   internalGatewayFailure,
+  resourceUnavailable,
   withResponseLease,
 } from "./commands/serve";
 
@@ -56,6 +57,22 @@ test("normalizes unexpected gateway errors into an OpenAI error envelope", async
       type: "server_error",
       param: null,
       code: "gateway_error",
+    },
+  });
+});
+
+test("formats memory admission rejection as a retryable OpenAI error", async () => {
+  const response = resourceUnavailable();
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).toBe("5");
+  await expect(response.json()).resolves.toEqual({
+    error: {
+      message:
+        "Insufficient available memory to start the requested runtime. Please try again shortly.",
+      type: "api_error",
+      param: null,
+      code: "insufficient_memory",
     },
   });
 });

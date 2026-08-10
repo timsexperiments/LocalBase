@@ -2,7 +2,13 @@ import type { ILogger } from "../observability/logging";
 import { internalSpanOptions, type OtelRuntime } from "../observability/otel";
 import { guardianProcessCommand } from "./backend-guardian";
 import type { ModalityLifecycleState } from "./health";
+import {
+  RuntimeMemoryAdmissionError,
+  type MemorySafetyController,
+  type RuntimeMemoryReservation,
+} from "./memory-controller";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
+import type { RuntimeLaunchPlan } from "./launch-plan";
 
 const CHILD_STOP_GRACE_MS = 500;
 const HEALTH_PROBE_TIMEOUT_MS = 2_000;
@@ -28,11 +34,14 @@ type StartupAttempt = {
 };
 
 export type ManagedServiceOptions = {
+  runtimeId: string;
   modality: RuntimeModality;
   component: RuntimeComponent;
   healthUrl: string;
   logger: ILogger;
-  start: () => Promise<Bun.Subprocess>;
+  launch: () => Promise<RuntimeLaunchPlan>;
+  start: (plan: RuntimeLaunchPlan) => Promise<Bun.Subprocess>;
+  memorySafety: MemorySafetyController;
   otel: OtelRuntime;
   startupTimeoutMs?: number;
   onFatal?: () => Promise<void>;
@@ -51,6 +60,7 @@ export class ManagedService {
   private startupGeneration = 0;
   private startup: StartupAttempt | null = null;
   private lifecycleState: ModalityLifecycleState = "idle";
+  private reservation: RuntimeMemoryReservation | null = null;
 
   constructor(private readonly options: ManagedServiceOptions) {}
 
@@ -82,6 +92,10 @@ export class ManagedService {
 
   state(): ModalityLifecycleState {
     return this.lifecycleState;
+  }
+
+  runtimeId(): string {
+    return this.options.runtimeId;
   }
 
   private exited(proc: Bun.Subprocess): boolean {
@@ -158,6 +172,7 @@ export class ManagedService {
     this.isRestarting = true;
     this.restartPromise = (async () => {
       let proc: Bun.Subprocess | null = null;
+      let reservation: RuntimeMemoryReservation | null = null;
       const now = Date.now();
       this.crashTimes = this.crashTimes.filter((t) => now - t < 300000);
       const crashCount = this.crashTimes.length;
@@ -190,10 +205,21 @@ export class ManagedService {
 
         this.assertStartupActive(attempt);
         this.lifecycle("backend.starting", "info", { crashCount });
+        const plan = await this.options.launch();
+        this.assertStartupActive(attempt);
+        if (plan.runtimeId !== this.options.runtimeId) {
+          throw new Error("Backend launch plan has an unexpected runtime ID.");
+        }
+        reservation = await this.options.memorySafety.reserve({
+          runtimeId: plan.runtimeId,
+          demand: plan.memoryDemand,
+        });
+        this.reservation = reservation;
+        this.assertStartupActive(attempt);
         proc = await this.options.otel.withSpan(
           "localbase.backend.start",
           internalSpanOptions({ "localbase.backend": this.name }),
-          this.options.start,
+          async () => await this.options.start(plan),
         );
         const startedProcess = proc;
         if (!this.startupIsActive(attempt) || this.isShuttingDown) {
@@ -213,6 +239,7 @@ export class ManagedService {
 
         startedProcess.exited.then(() => {
           void this.stopGuardian(startedProcess);
+          this.releaseReservation(reservation);
           this.handleCrash(startedProcess);
         });
 
@@ -222,6 +249,7 @@ export class ManagedService {
           async () => await this.waitHealthy(startedProcess, attempt),
         );
         this.assertStartupActive(attempt);
+        reservation.materialize();
         this.lifecycle("backend.ready", "info", { pid: startedProcess.pid });
         this.lifecycleState = "running";
       } catch (err) {
@@ -232,11 +260,17 @@ export class ManagedService {
             this.expectedStops.add(proc);
             await this.stopProcess(proc);
           }
+          this.releaseReservation(reservation);
           throw err instanceof StartupCancelledError
             ? err
             : new StartupCancelledError(this.name);
         }
         if (err instanceof CrashLimitReachedError) throw err;
+        if (err instanceof RuntimeMemoryAdmissionError) {
+          this.releaseReservation(reservation);
+          this.lifecycleState = "idle";
+          throw err;
+        }
         this.options.logger.event({
           severity: "error",
           eventName: "backend.start-failed",
@@ -251,6 +285,7 @@ export class ManagedService {
         });
         this.crashTimes.push(Date.now());
         await this.stopCurrentProcess();
+        this.releaseReservation(reservation);
         this.lifecycleState = "failed";
         throw err;
       } finally {
@@ -338,8 +373,17 @@ export class ManagedService {
     if (!process) return;
     this.expectedStops.add(process);
     this.proc = null;
+    this.releaseReservation();
     await this.stopProcess(process);
     await this.stopGuardian(process);
+  }
+
+  private releaseReservation(
+    reservation: RuntimeMemoryReservation | null = this.reservation,
+  ): void {
+    if (!reservation) return;
+    reservation.release();
+    if (this.reservation === reservation) this.reservation = null;
   }
 
   private startGuardian(proc: Bun.Subprocess): void {
