@@ -77,6 +77,7 @@ test("doctor result separates hardware from non-sensitive configuration", () => 
   expect(report.hardware.gpuVramGb).toBe(16);
   expect(report.hardware).toEqual(context.specs);
   expect(report.configuration.parallel).toBe(2);
+  expect(report.configuration.memory).toEqual(context.config.memory);
   expect("hfToken" in report.configuration).toBe(false);
 });
 

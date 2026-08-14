@@ -37,10 +37,10 @@ function planFor(
 
 test("assigns every persisted configuration field to one reconciliation owner", () => {
   expect(configFieldOwnership).toEqual({
-    root: "process-identity",
-    llmModelsDir: "process-identity",
-    sttModelsDir: "process-identity",
-    imageModelsDir: "process-identity",
+    root: "restart-required",
+    llmModelsDir: "restart-required",
+    sttModelsDir: "restart-required",
+    imageModelsDir: "restart-required",
     host: "llm-launch",
     port: "llm-launch",
     ctxSize: "llm-launch",
@@ -57,26 +57,45 @@ test("assigns every persisted configuration field to one reconciliation owner", 
     otelEndpoint: "observability",
     otelHeaders: "observability",
     otelSampleRatio: "observability",
+    memory: "restart-required",
   });
   expect(Object.keys(configFieldOwnership).sort()).toEqual(
     Object.keys(defaultConfig(root)).sort(),
   );
 });
 
-test("requires a gateway restart only when process identity changes", () => {
+test("requires a gateway restart for restart-required configuration", () => {
   const nextRoot = "/tmp/local-base-reconciliation-next";
   const plan = planFor((config) => {
     config.root = nextRoot;
     Object.assign(config, modelDirectories(nextRoot));
   });
 
-  expect(plan.processIdentity).toEqual({
+  expect(plan.restartRequired).toEqual({
     sourceRevision: 3,
     targetRevision: 4,
     action: "restart-required",
     changedFields: ["root", "llmModelsDir", "sttModelsDir", "imageModelsDir"],
   });
   expect(plan.modalities.llm.action).toBe("unchanged");
+});
+
+test("requires a gateway restart when memory policy changes", () => {
+  const plan = planFor((config) => {
+    config.memory = {
+      ...config.memory,
+      systemReserve: { ...config.memory.systemReserve, percent: 20 },
+    };
+  });
+
+  expect(plan.restartRequired).toEqual({
+    sourceRevision: 3,
+    targetRevision: 4,
+    action: "restart-required",
+    changedFields: ["memory"],
+  });
+  expect(plan.modalities.llm.action).toBe("unchanged");
+  expect(plan.observability.action).toBe("unchanged");
 });
 
 test.each([
@@ -113,7 +132,7 @@ test.each([
   },
 ])("plans an LLM replacement for $field", ({ field, update }) => {
   const plan = planFor(update);
-  expect(plan.processIdentity.action).toBe("unchanged");
+  expect(plan.restartRequired.action).toBe("unchanged");
   expect(plan.modalities.llm.action).toBe("drain-and-replace");
   expect(plan.modalities.llm.changedLaunchFields).toEqual([field]);
 });
@@ -309,7 +328,7 @@ test("respects serve-time ownership for optional modality selection", () => {
   });
 });
 
-test("does not allow overrides to mask process identity changes", () => {
+test("does not allow overrides to mask restart-required changes", () => {
   expect(() =>
     createRuntimeReconciliationPlan(snapshot(3), snapshot(4), {
       configFields: ["root"],

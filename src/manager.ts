@@ -45,6 +45,11 @@ import {
   otelEndpointSchema,
   otelHeadersTextSchema,
 } from "./domains/observability/otel-config";
+import {
+  defaultMemorySafetyConfig,
+  memorySafetyConfigSchema,
+  type MemorySafetyConfig,
+} from "./domains/runtime/memory-safety";
 export {
   ensureBinary,
   managedRuntimeRelease,
@@ -81,6 +86,7 @@ export type LocalBaseConfig = {
   otelEndpoint: string;
   otelHeaders: string;
   otelSampleRatio: number;
+  memory: MemorySafetyConfig;
 };
 
 export type ApiKeyRecord = {
@@ -117,6 +123,10 @@ const configRowSchema = z
     otelEndpoint: z.union([z.literal(""), otelEndpointSchema]),
     otelHeaders: otelHeadersTextSchema,
     otelSampleRatio: z.number().int().min(0).max(100),
+    memorySystemReservePercent: z.number().finite().min(0).max(100),
+    memorySystemReserveMinimumGb: z.number().finite().nonnegative(),
+    memoryAcceleratorReservePercent: z.number().finite().min(0).max(100),
+    memoryAcceleratorReserveMinimumGb: z.number().finite().nonnegative(),
   })
   .strict();
 
@@ -188,6 +198,11 @@ function toConfigRow(config: LocalBaseConfig) {
     otelEndpoint: config.otelEndpoint,
     otelHeaders: config.otelHeaders,
     otelSampleRatio: config.otelSampleRatio,
+    memorySystemReservePercent: config.memory.systemReserve.percent,
+    memorySystemReserveMinimumGb: config.memory.systemReserve.minimumGb,
+    memoryAcceleratorReservePercent: config.memory.acceleratorReserve.percent,
+    memoryAcceleratorReserveMinimumGb:
+      config.memory.acceleratorReserve.minimumGb,
   };
 }
 
@@ -269,6 +284,16 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     otelEndpoint: data.otelEndpoint,
     otelHeaders: data.otelHeaders,
     otelSampleRatio: data.otelSampleRatio,
+    memory: memorySafetyConfigSchema.parse({
+      systemReserve: {
+        percent: data.memorySystemReservePercent,
+        minimumGb: data.memorySystemReserveMinimumGb,
+      },
+      acceleratorReserve: {
+        percent: data.memoryAcceleratorReservePercent,
+        minimumGb: data.memoryAcceleratorReserveMinimumGb,
+      },
+    }),
   };
 }
 
@@ -331,6 +356,7 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     otelEndpoint: "",
     otelHeaders: "",
     otelSampleRatio: 100,
+    memory: defaultMemorySafetyConfig(),
   };
 }
 

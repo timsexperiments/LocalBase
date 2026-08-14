@@ -3,7 +3,7 @@ import type { RuntimeConfigSnapshot } from "./config-snapshot";
 import { runtimeModalities, type RuntimeModality } from "./modality";
 
 export type ConfigFieldOwnership =
-  | "process-identity"
+  | "restart-required"
   | "llm-launch"
   | "stt-launch"
   | "image-launch"
@@ -11,10 +11,10 @@ export type ConfigFieldOwnership =
   | "observability";
 
 export const configFieldOwnership = {
-  root: "process-identity",
-  llmModelsDir: "process-identity",
-  sttModelsDir: "process-identity",
-  imageModelsDir: "process-identity",
+  root: "restart-required",
+  llmModelsDir: "restart-required",
+  sttModelsDir: "restart-required",
+  imageModelsDir: "restart-required",
   host: "llm-launch",
   port: "llm-launch",
   ctxSize: "llm-launch",
@@ -31,13 +31,14 @@ export const configFieldOwnership = {
   otelEndpoint: "observability",
   otelHeaders: "observability",
   otelSampleRatio: "observability",
+  memory: "restart-required",
 } as const satisfies Record<keyof LocalBaseConfig, ConfigFieldOwnership>;
 
 export type RuntimeConfigField = keyof LocalBaseConfig;
 
 export type RuntimeOverrideConfigField = Exclude<
   RuntimeConfigField,
-  "root" | "llmModelsDir" | "sttModelsDir" | "imageModelsDir"
+  "root" | "llmModelsDir" | "sttModelsDir" | "imageModelsDir" | "memory"
 >;
 
 export type RuntimeOverrideOwnership = Readonly<{
@@ -45,12 +46,12 @@ export type RuntimeOverrideOwnership = Readonly<{
   configuredModalities?: Partial<Readonly<Record<RuntimeModality, boolean>>>;
 }>;
 
-export type ProcessIdentityPlan = Readonly<{
+export type RestartRequiredPlan = Readonly<{
   sourceRevision: number;
   targetRevision: number;
   action: "unchanged" | "restart-required";
   changedFields: readonly (
-    "root" | "llmModelsDir" | "sttModelsDir" | "imageModelsDir"
+    "root" | "llmModelsDir" | "sttModelsDir" | "imageModelsDir" | "memory"
   )[];
 }>;
 
@@ -90,17 +91,18 @@ export type RequestScopeReconciliationPlan = Readonly<{
 export type RuntimeReconciliationPlan = Readonly<{
   sourceRevision: number;
   targetRevision: number;
-  processIdentity: ProcessIdentityPlan;
+  restartRequired: RestartRequiredPlan;
   modalities: Readonly<Record<RuntimeModality, ModalityReconciliationPlan>>;
   requestScope: RequestScopeReconciliationPlan;
   observability: ObservabilityReconciliationPlan;
 }>;
 
-const processIdentityFields = [
+const restartRequiredFields = [
   "root",
   "llmModelsDir",
   "sttModelsDir",
   "imageModelsDir",
+  "memory",
 ] as const;
 
 const rootDerivedDirectoryFields = [
@@ -141,6 +143,22 @@ function valuesEqual(left: unknown, right: unknown): boolean {
       left.every((value, index) => valuesEqual(value, right[index]))
     );
   }
+  if (left && right && typeof left === "object" && typeof right === "object") {
+    const leftEntries = Object.entries(left).sort(([leftKey], [rightKey]) =>
+      leftKey.localeCompare(rightKey),
+    );
+    const rightEntries = Object.entries(right).sort(([leftKey], [rightKey]) =>
+      leftKey.localeCompare(rightKey),
+    );
+    return (
+      leftEntries.length === rightEntries.length &&
+      leftEntries.every(
+        ([key, value], index) =>
+          key === rightEntries[index]?.[0] &&
+          valuesEqual(value, rightEntries[index]?.[1]),
+      )
+    );
+  }
   return left === right;
 }
 
@@ -174,7 +192,7 @@ function ownedFields(
   ownership: RuntimeOverrideOwnership,
 ): ReadonlySet<RuntimeConfigField> {
   const fields = new Set<RuntimeConfigField>(ownership.configFields ?? []);
-  for (const field of processIdentityFields) {
+  for (const field of restartRequiredFields) {
     if (fields.has(field)) {
       throw new Error(`${field} cannot be owned by an in-process override.`);
     }
@@ -245,10 +263,10 @@ export function createRuntimeReconciliationPlan(
   assertRootDerivedDirectories(source);
   assertRootDerivedDirectories(target);
   const overrides = ownedFields(ownership);
-  const processChanges = changedFields(
+  const restartRequiredChanges = changedFields(
     source,
     target,
-    processIdentityFields,
+    restartRequiredFields,
     overrides,
   );
   const requestScopeChanges = changedFields(
@@ -273,11 +291,12 @@ export function createRuntimeReconciliationPlan(
   return Object.freeze({
     sourceRevision: source.revision,
     targetRevision: target.revision,
-    processIdentity: Object.freeze({
+    restartRequired: Object.freeze({
       sourceRevision: source.revision,
       targetRevision: target.revision,
-      action: processChanges.length === 0 ? "unchanged" : "restart-required",
-      changedFields: processChanges,
+      action:
+        restartRequiredChanges.length === 0 ? "unchanged" : "restart-required",
+      changedFields: restartRequiredChanges,
     }),
     modalities: Object.freeze(modalities),
     requestScope: Object.freeze({

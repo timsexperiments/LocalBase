@@ -16,6 +16,7 @@ import {
 type ServiceRecord = {
   modality: "llm" | "stt" | "image";
   modelId: string;
+  memorySystemReservePercent: number;
   shutdowns: number;
   service: RuntimeSupervisor;
 };
@@ -51,6 +52,8 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
       const record: ServiceRecord = {
         modality,
         modelId,
+        memorySystemReservePercent:
+          snapshot.config.memory.systemReserve.percent,
         shutdowns: 0,
         service: {
           state: () => "idle",
@@ -67,9 +70,9 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
   };
   const initialLlm = factory.create("llm", controller.read());
   const registry = new SupervisorRegistry({ llm: initialLlm });
-  const events: string[] = [];
+  const events: LogEventInput[] = [];
   const reconciler = new RuntimeReconciler(controller, {}, registry, factory, {
-    event: ({ eventName }: LogEventInput) => events.push(eventName),
+    event: (event: LogEventInput) => events.push(event),
   } as never);
 
   try {
@@ -105,7 +108,9 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
     saveConfig(database, failedStt);
     await reconciler.refresh();
     expect(registry.state("stt", true).state).toBe("failed");
-    expect(events).toContain("runtime.reconciliation-failed");
+    expect(events.map(({ eventName }) => eventName)).toContain(
+      "runtime.reconciliation-failed",
+    );
 
     const recoveredStt = controller.copy();
     recoveredStt.activeSttModel = "whisper-large-v3-turbo";
@@ -116,6 +121,26 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
     expect(records.filter(({ modality }) => modality === "stt")).toHaveLength(
       2,
     );
+
+    const restartRequired = controller.copy();
+    restartRequired.memory = {
+      ...restartRequired.memory,
+      systemReserve: { ...restartRequired.memory.systemReserve, percent: 20 },
+    };
+    const recordsBeforeRestartRequired = records.length;
+    saveConfig(database, restartRequired);
+    await reconciler.refresh();
+    expect(records).toHaveLength(recordsBeforeRestartRequired);
+    expect(
+      records.map(
+        ({ memorySystemReservePercent }) => memorySystemReservePercent,
+      ),
+    ).toEqual(Array(recordsBeforeRestartRequired).fill(15));
+    expect(reconciler.read().config.memory.systemReserve.percent).toBe(15);
+    expect(events.at(-1)).toMatchObject({
+      eventName: "runtime.reconciliation-failed",
+      message: "Runtime configuration change requires a gateway restart.",
+    });
   } finally {
     database.close();
     rmSync(root, { recursive: true, force: true });

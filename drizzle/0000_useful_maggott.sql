@@ -27,5 +27,9 @@ CREATE TABLE `config` (
 	`parallel` text DEFAULT 'auto' NOT NULL,
 	`otel_endpoint` text DEFAULT '' NOT NULL,
 	`otel_headers` text DEFAULT '' NOT NULL,
-	`otel_sample_ratio` integer DEFAULT 100 NOT NULL
+	`otel_sample_ratio` integer DEFAULT 100 NOT NULL,
+	`memory_system_reserve_percent` real NOT NULL,
+	`memory_system_reserve_minimum_gb` real NOT NULL,
+	`memory_accelerator_reserve_percent` real NOT NULL,
+	`memory_accelerator_reserve_minimum_gb` real NOT NULL
 );

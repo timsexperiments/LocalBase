@@ -21,7 +21,7 @@ async function withToml(
 
 test("parses standard TOML arrays and inline comments", async () => {
   await withToml(
-    'host = "127.0.0.1" # gateway bind address\nport = 2273 # gateway port\nparallel = "auto"\nselectedLlmModels = [\n  "qwen2.5-coder-7b-instruct-q4_k_m",\n]\nselectedImageModels = ["stable-diffusion-v1-5"]\n',
+    'host = "127.0.0.1" # gateway bind address\nport = 2273 # gateway port\nparallel = "auto"\nselectedLlmModels = [\n  "qwen2.5-coder-7b-instruct-q4_k_m",\n]\nselectedImageModels = ["stable-diffusion-v1-5"]\n[memory.systemReserve]\npercent = 20\n',
     async (path) => {
       await expect(loadTomlOverrides(path)).resolves.toEqual({
         host: "127.0.0.1",
@@ -29,6 +29,9 @@ test("parses standard TOML arrays and inline comments", async () => {
         parallel: "auto",
         selectedLlmModels: ["qwen2.5-coder-7b-instruct-q4_k_m"],
         selectedImageModels: ["stable-diffusion-v1-5"],
+        memory: {
+          systemReserve: { percent: 20 },
+        },
       });
     },
   );
@@ -45,6 +48,7 @@ test("rejects unknown fields and invalid shared configuration values", async () 
     "unsupported = true\n",
     'host = "not a host"\n',
     "port = 65536\n",
+    "[memory.systemReserve]\npercent = -1\nminimumGb = 1\n",
   ]) {
     await withToml(contents, async (path) => {
       await expect(loadTomlOverrides(path)).rejects.toBeInstanceOf(

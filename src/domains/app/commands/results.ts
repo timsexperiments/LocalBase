@@ -8,6 +8,7 @@ import {
 import { logEventSchema } from "../../observability/logging";
 import type { OtelConfiguration } from "../../observability/otel";
 import { sanitizedOtelEndpoint } from "../../observability/otel-config";
+import { memorySafetyConfigSchema } from "../../runtime/memory-safety";
 
 export const configurationOutputSchema = z
   .object({
@@ -27,6 +28,7 @@ export const configurationOutputSchema = z
     activeSttModel: z.string(),
     activeImageModel: z.string(),
     parallel: z.union([z.literal("auto"), z.number().int().min(1).max(4)]),
+    memory: memorySafetyConfigSchema,
     hfTokenConfigured: z.boolean(),
     observability: z
       .object({
@@ -174,6 +176,7 @@ export function publicConfiguration(
     activeSttModel: config.activeSttModel,
     activeImageModel: config.activeImageModel,
     parallel: config.parallel,
+    memory: config.memory,
     hfTokenConfigured: Boolean(config.hfToken),
     observability: {
       enabled,

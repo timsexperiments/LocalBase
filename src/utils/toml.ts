@@ -1,4 +1,3 @@
-import { type LocalBaseConfig } from "../manager";
 import { z } from "zod";
 import { parallelSlotsSchema } from "../domains/config/parallel";
 import { hostSchema, portSchema } from "../domains/config/schema";
@@ -12,7 +11,12 @@ import {
 } from "../domains/observability/otel-config";
 import { CliInputError, formatZodError } from "../domains/app/commands/errors";
 
-export type ConfigOverrides = Partial<LocalBaseConfig>;
+const memoryReserveOverridesSchema = z
+  .object({
+    percent: z.number().finite().min(0).max(100).optional(),
+    minimumGb: z.number().finite().nonnegative().optional(),
+  })
+  .strict();
 
 const configOverridesSchema = z
   .object({
@@ -35,8 +39,17 @@ const configOverridesSchema = z
     otelEndpoint: z.union([z.literal(""), otelEndpointSchema]).optional(),
     otelHeaders: otelHeadersTextSchema.optional(),
     otelSampleRatio: z.number().int().min(0).max(100).optional(),
+    memory: z
+      .object({
+        systemReserve: memoryReserveOverridesSchema.optional(),
+        acceleratorReserve: memoryReserveOverridesSchema.optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
+
+export type ConfigOverrides = z.infer<typeof configOverridesSchema>;
 
 export async function loadTomlOverrides(
   path: string,
