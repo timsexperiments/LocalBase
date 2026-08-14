@@ -581,6 +581,20 @@ describe.serial("parallel configuration persistence", () => {
   });
 });
 
+describe.serial("memory safety configuration persistence", () => {
+  test("round-trips validated memory reserves", () => {
+    const config = createInstallConfig();
+    loadConfig(testDatabase, config.root);
+    config.memory = {
+      systemReserve: { percent: 20, minimumGb: 12 },
+      acceleratorReserve: { percent: 15, minimumGb: 3 },
+    };
+    saveConfig(testDatabase, config);
+
+    expect(loadConfig(testDatabase, config.root).memory).toEqual(config.memory);
+  });
+});
+
 describe.serial("Drizzle database migrations", () => {
   test("migrates an empty database with the generated history", () => {
     const config = createInstallConfig();
