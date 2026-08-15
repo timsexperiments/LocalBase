@@ -109,7 +109,7 @@ export type MemorySafetyTransition = Readonly<{
 }>;
 
 export const memorySafetyRecoverySamples = 3;
-export const memorySafetyConstrainedReserveMultiplier = 2;
+export const memorySafetyWarningReserveMultiplier = 1.25;
 
 export function defaultMemorySafetyConfig(): MemorySafetyConfig {
   return {
@@ -203,7 +203,7 @@ function pressureForPool(
   if (observed.availableBytes < reserve) return "critical";
   if (
     observed.availableBytes <
-    reserve * memorySafetyConstrainedReserveMultiplier
+    reserve * memorySafetyWarningReserveMultiplier
   ) {
     return "constrained";
   }

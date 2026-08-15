@@ -280,6 +280,31 @@ describe("runtime memory safety", () => {
     ).toEqual({ poolId: "system", pressure: "unknown" });
   });
 
+  test("keeps the default 16 GiB warning range below 10 GiB", () => {
+    const topology: MemoryTopology = {
+      kind: "unified",
+      system: { id: "system", capacityBytes: 16 * gibibyte },
+    };
+    const pressureAt = (availableGb: number) =>
+      observeMemoryPressure({
+        topology,
+        config: defaultMemorySafetyConfig(),
+        snapshot: snapshot([
+          {
+            poolId: "system",
+            availability: "available",
+            availableBytes: availableGb * gibibyte,
+            pressure: "normal",
+          },
+        ]),
+      }).pressure;
+
+    expect(pressureAt(11)).toBe("normal");
+    expect(pressureAt(10)).toBe("normal");
+    expect(pressureAt(9)).toBe("constrained");
+    expect(pressureAt(7)).toBe("critical");
+  });
+
   test.each([
     {
       topology: unifiedTopology,

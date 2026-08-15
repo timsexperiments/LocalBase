@@ -209,7 +209,7 @@ describe("memory controller", () => {
 
   test("blocks starts while constrained until three normal samples recover", async () => {
     const source = sequencedProvider([
-      14 * gibibyte,
+      9 * gibibyte,
       32 * gibibyte,
       32 * gibibyte,
       32 * gibibyte,
