@@ -5,9 +5,11 @@ import {
   evaluateMemoryAdmission,
   gibibyte,
   memorySafetyConfigSchema,
+  observeMemoryPressure,
   projectRuntimeMemoryDemand,
   transitionMemorySafetyState,
   type HostMemorySnapshot,
+  type MemoryPressure,
   type MemorySafetyHysteresis,
   type MemoryTopology,
   type RuntimeMemoryDemand,
@@ -180,6 +182,102 @@ describe("runtime memory safety", () => {
       reason: "memory-pressure",
       poolId: "system",
     });
+  });
+
+  test("derives continuous pressure from reserves and uses the worst pool", () => {
+    const topology: MemoryTopology = {
+      kind: "discrete",
+      system: { id: "system", capacityBytes: 100 * gibibyte },
+      accelerators: [{ id: "gpu-0", capacityBytes: 20 * gibibyte }],
+    };
+    const config = {
+      systemReserve: { percent: 0, minimumGb: 10 },
+      acceleratorReserve: { percent: 0, minimumGb: 2 },
+    };
+    const system = (
+      availableBytes: number,
+      pressure: MemoryPressure = "normal",
+    ) => ({
+      poolId: "system",
+      availability: "available" as const,
+      availableBytes,
+      pressure,
+    });
+    const accelerator = (
+      availableBytes: number,
+      pressure: MemoryPressure = "normal",
+    ) => ({
+      poolId: "gpu-0",
+      availability: "available" as const,
+      availableBytes,
+      pressure,
+    });
+
+    expect(
+      observeMemoryPressure({
+        topology,
+        config,
+        snapshot: snapshot([system(20 * gibibyte), accelerator(4 * gibibyte)]),
+      }),
+    ).toEqual({ poolId: "system", pressure: "normal" });
+    expect(
+      observeMemoryPressure({
+        topology,
+        config,
+        snapshot: snapshot([system(10 * gibibyte), accelerator(4 * gibibyte)]),
+      }),
+    ).toEqual({ poolId: "system", pressure: "constrained" });
+    expect(
+      observeMemoryPressure({
+        topology,
+        config,
+        snapshot: snapshot([system(9 * gibibyte), accelerator(4 * gibibyte)]),
+      }),
+    ).toEqual({ poolId: "system", pressure: "critical" });
+    expect(
+      observeMemoryPressure({
+        topology,
+        config,
+        snapshot: snapshot([
+          system(20 * gibibyte, "constrained"),
+          accelerator(4 * gibibyte),
+        ]),
+      }),
+    ).toEqual({ poolId: "system", pressure: "constrained" });
+    expect(
+      observeMemoryPressure({
+        topology,
+        config,
+        snapshot: snapshot([
+          system(20 * gibibyte, "constrained"),
+          accelerator(1 * gibibyte),
+        ]),
+      }),
+    ).toEqual({ poolId: "gpu-0", pressure: "critical" });
+    expect(
+      observeMemoryPressure({
+        topology,
+        config,
+        snapshot: snapshot([
+          system(20 * gibibyte),
+          { poolId: "gpu-0", availability: "unavailable", pressure: "unknown" },
+        ]),
+      }),
+    ).toEqual({ poolId: "system", pressure: "normal" });
+    expect(
+      observeMemoryPressure({
+        topology,
+        config,
+        snapshot: snapshot([
+          {
+            poolId: "system",
+            availability: "unavailable",
+            pressure: "unknown",
+          },
+          accelerator(4 * gibibyte),
+        ]),
+      }),
+    ).toEqual({ poolId: "system", pressure: "unknown" });
   });
 
   test.each([

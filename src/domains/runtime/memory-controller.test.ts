@@ -57,6 +57,33 @@ function provider(availableBytes = 32 * gibibyte) {
   };
 }
 
+function sequencedProvider(availableBytes: readonly number[]) {
+  let snapshotCount = 0;
+  return {
+    provider: {
+      topology,
+      async snapshot() {
+        const available =
+          availableBytes[Math.min(snapshotCount, availableBytes.length - 1)]!;
+        snapshotCount += 1;
+        return {
+          capturedAtMs: snapshotCount,
+          pools: [
+            {
+              poolId: "system",
+              availability: "available" as const,
+              availableBytes: available,
+              pressure: "normal" as const,
+            },
+          ],
+        };
+      },
+      async close() {},
+    },
+    snapshotCount: () => snapshotCount,
+  };
+}
+
 function discreteProvider(
   accelerators: readonly { id: string; availableBytes: number }[] = [
     { id: "gpu-a", availableBytes: 4 * gibibyte },
@@ -154,8 +181,9 @@ describe("memory controller", () => {
 
   test("honors the explicit memory-check bypass", async () => {
     const unavailable = provider();
+    let snapshotCount = 0;
     unavailable.snapshot = async () => ({
-      capturedAtMs: 1,
+      capturedAtMs: ++snapshotCount,
       pools: [
         {
           poolId: "system",
@@ -170,11 +198,86 @@ describe("memory controller", () => {
       true,
     );
 
+    expect(await controller.poll()).toMatchObject({ action: "allow" });
     const reservation = await controller.reserve({
       runtimeId: "llm:model:1",
       demand,
     });
     reservation.release();
+    expect(snapshotCount).toBe(0);
+  });
+
+  test("blocks starts while constrained until three normal samples recover", async () => {
+    const source = sequencedProvider([
+      14 * gibibyte,
+      32 * gibibyte,
+      32 * gibibyte,
+      32 * gibibyte,
+    ]);
+    const controller = new MemorySafetyController(
+      source.provider,
+      defaultMemorySafetyConfig(),
+    );
+
+    expect(await controller.poll()).toMatchObject({
+      current: { state: "constrained", consecutiveNormalSnapshots: 0 },
+      action: "constrain",
+    });
+    for (let index = 1; index <= 2; index += 1) {
+      await expect(
+        controller.reserve({ runtimeId: `llm:model:${index}`, demand }),
+      ).rejects.toMatchObject({
+        decision: {
+          kind: "rejected",
+          reason: "memory-pressure",
+          poolId: "system",
+        },
+      });
+    }
+
+    const reservation = await controller.reserve({
+      runtimeId: "llm:model:3",
+      demand,
+    });
+    reservation.release();
+    expect(source.snapshotCount()).toBe(4);
+  });
+
+  test("enters critical immediately and rejects new starts", async () => {
+    const source = sequencedProvider([7 * gibibyte]);
+    const controller = new MemorySafetyController(
+      source.provider,
+      defaultMemorySafetyConfig(),
+    );
+
+    expect(await controller.poll()).toMatchObject({
+      current: { state: "critical", consecutiveNormalSnapshots: 0 },
+      action: "emergency-stop",
+    });
+    await expect(
+      controller.reserve({ runtimeId: "llm:model:1", demand }),
+    ).rejects.toMatchObject({
+      decision: {
+        kind: "rejected",
+        reason: "memory-pressure",
+        poolId: "system",
+      },
+    });
+  });
+
+  test("uses one snapshot for pressure and admission", async () => {
+    const source = sequencedProvider([32 * gibibyte]);
+    const controller = new MemorySafetyController(
+      source.provider,
+      defaultMemorySafetyConfig(),
+    );
+
+    const reservation = await controller.reserve({
+      runtimeId: "llm:model:1",
+      demand,
+    });
+    reservation.release();
+    expect(source.snapshotCount()).toBe(1);
   });
 
   test("rejects ambiguous multi-accelerator placement", async () => {
