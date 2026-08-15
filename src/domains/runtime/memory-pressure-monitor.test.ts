@@ -44,6 +44,7 @@ describe("memory pressure monitor", () => {
         transition("critical", "healthy"),
         transition("healthy", "critical"),
       ]),
+      onElevatedPressure: () => {},
       onTransition: ({ current }) => {
         observed.push(current.state);
       },
@@ -74,6 +75,7 @@ describe("memory pressure monitor", () => {
           return transition("healthy", "healthy");
         },
       },
+      onElevatedPressure: () => {},
       onTransition: () => {},
       onError: () => {},
     });
@@ -95,6 +97,7 @@ describe("memory pressure monitor", () => {
         transition("healthy", "healthy"),
         new Error("unavailable"),
       ]),
+      onElevatedPressure: () => {},
       onTransition: () => {},
       onError: (error) => {
         errors.push((error as Error).message);
@@ -116,17 +119,21 @@ describe("memory pressure monitor", () => {
       current: string;
     }> = [];
     const successfulActions: string[] = [];
+    const telemetry: string[] = [];
     let attempts = 0;
     const monitor = new MemoryPressureMonitor({
       controller: controller([
         transition("healthy", "critical"),
         transition("critical", "critical"),
       ]),
-      onTransition: ({ previous, current }) => {
+      onElevatedPressure: ({ previous, current }) => {
         transitions.push({ previous: previous.state, current: current.state });
         attempts += 1;
         if (attempts === 1) throw new Error("eviction failed");
         successfulActions.push(current.state);
+      },
+      onTransition: ({ current }) => {
+        telemetry.push(current.state);
       },
       onError: (error) => {
         errors.push((error as Error).message);
@@ -141,7 +148,37 @@ describe("memory pressure monitor", () => {
       { previous: "healthy", current: "critical" },
     ]);
     expect(successfulActions).toEqual(["critical"]);
+    expect(telemetry).toEqual(["critical"]);
     expect(errors).toEqual(["eviction failed"]);
+  });
+
+  test("rechecks idle runtimes while constrained without repeating telemetry", async () => {
+    let pressureChecks = 0;
+    let idleEvictions = 0;
+    const telemetry: string[] = [];
+    const monitor = new MemoryPressureMonitor({
+      controller: controller([
+        transition("healthy", "constrained"),
+        transition("constrained", "constrained"),
+      ]),
+      onElevatedPressure: () => {
+        pressureChecks += 1;
+        if (pressureChecks === 2) idleEvictions += 1;
+      },
+      onTransition: ({ current }) => {
+        telemetry.push(current.state);
+      },
+      onError: () => {},
+    });
+
+    await monitor.poll();
+    await monitor.poll();
+
+    expect({ pressureChecks, idleEvictions }).toEqual({
+      pressureChecks: 2,
+      idleEvictions: 1,
+    });
+    expect(telemetry).toEqual(["constrained"]);
   });
 
   test("polls immediately when started", async () => {
@@ -153,6 +190,7 @@ describe("memory pressure monitor", () => {
           return transition("healthy", "healthy");
         },
       },
+      onElevatedPressure: () => {},
       onTransition: () => {},
       onError: () => {},
     });

@@ -5,6 +5,9 @@ export const memoryPressurePollIntervalMs = 2_000;
 
 export type MemoryPressureMonitorOptions = Readonly<{
   controller: Pick<MemorySafetyController, "poll">;
+  onElevatedPressure: (
+    transition: MemorySafetyTransition,
+  ) => Promise<void> | void;
   onTransition: (transition: MemorySafetyTransition) => Promise<void> | void;
   onError: (error: unknown) => Promise<void> | void;
   intervalMs?: number;
@@ -50,13 +53,21 @@ export class MemoryPressureMonitor {
   private async observe(): Promise<void> {
     try {
       const transition = await this.options.controller.poll();
-      if (this.lastApplied.state !== transition.current.state) {
-        await this.options.onTransition({
-          previous: this.lastApplied,
-          current: transition.current,
-          action: transition.action,
-        });
+      const stateChanged = this.lastApplied.state !== transition.current.state;
+      const appliedTransition = {
+        previous: this.lastApplied,
+        current: transition.current,
+        action: transition.action,
+      } satisfies MemorySafetyTransition;
+      if (
+        transition.current.state === "constrained" ||
+        (transition.current.state === "critical" && stateChanged)
+      ) {
+        await this.options.onElevatedPressure(appliedTransition);
+      }
+      if (stateChanged) {
         this.lastApplied = transition.current;
+        await this.options.onTransition(appliedTransition);
       }
       this.reportedError = false;
     } catch (error) {

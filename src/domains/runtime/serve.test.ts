@@ -13,11 +13,12 @@ import { LocalBaseLogger, readLogSnapshot } from "../observability/logging";
 import { gatewayHealthSchema } from "./health";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
+  applyElevatedMemoryPressure,
   finalizeGatewayShutdown,
   httpBaseUrl,
   internalGatewayFailure,
-  applyMemoryPressureTransition,
   proxyWithAdmission,
+  reportMemoryPressureTransition,
   withResponseLease,
 } from "./commands/serve";
 import { RuntimeMemoryAdmissionError } from "./memory-controller";
@@ -135,21 +136,15 @@ test("evicts runtimes only for elevated memory-pressure transitions", async () =
           : "allow",
   });
 
-  await applyMemoryPressureTransition(
-    logger,
-    reconciler,
+  const transitions = [
     transition("healthy", "constrained"),
-  );
-  await applyMemoryPressureTransition(
-    logger,
-    reconciler,
     transition("constrained", "critical"),
-  );
-  await applyMemoryPressureTransition(
-    logger,
-    reconciler,
     transition("critical", "healthy"),
-  );
+  ];
+  for (const value of transitions) {
+    await applyElevatedMemoryPressure(reconciler, value);
+    reportMemoryPressureTransition(logger, value);
+  }
 
   expect({ idleEvictions, allEvictions }).toEqual({
     idleEvictions: 1,
@@ -176,28 +171,6 @@ test("evicts runtimes only for elevated memory-pressure transitions", async () =
       attributes: { previous_state: "critical", current_state: "healthy" },
     },
   ]);
-});
-
-test("does not log an unapplied memory-pressure transition", async () => {
-  const events: unknown[] = [];
-  await expect(
-    applyMemoryPressureTransition(
-      { event: (event: unknown) => events.push(event) },
-      {
-        async evictIdleRuntimes() {},
-        async evictAllRuntimes() {
-          throw new Error("eviction failed");
-        },
-      },
-      {
-        previous: { state: "healthy", consecutiveNormalSnapshots: 0 },
-        current: { state: "critical", consecutiveNormalSnapshots: 0 },
-        action: "emergency-stop",
-      },
-    ),
-  ).rejects.toThrow("eviction failed");
-
-  expect(events).toEqual([]);
 });
 
 test("releases a response lease exactly once when the stream or request is cancelled", async () => {

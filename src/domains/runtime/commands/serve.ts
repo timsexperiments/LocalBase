@@ -1283,17 +1283,23 @@ export async function finalizeGatewayShutdown(
   return finalStatus;
 }
 
-export async function applyMemoryPressureTransition(
-  logger: Pick<ILogger, "event">,
+export async function applyElevatedMemoryPressure(
   reconciler: Pick<RuntimeReconciler, "evictIdleRuntimes" | "evictAllRuntimes">,
   transition: MemorySafetyTransition,
 ): Promise<void> {
-  const { current, previous } = transition;
+  const { current } = transition;
   if (current.state === "constrained") {
     await reconciler.evictIdleRuntimes();
   } else if (current.state === "critical") {
     await reconciler.evictAllRuntimes();
   }
+}
+
+export function reportMemoryPressureTransition(
+  logger: Pick<ILogger, "event">,
+  transition: MemorySafetyTransition,
+): void {
+  const { current, previous } = transition;
   logger.event({
     severity:
       current.state === "healthy"
@@ -1703,8 +1709,10 @@ export async function runServe(
   );
   const memoryPressureMonitor = new MemoryPressureMonitor({
     controller: memorySafety,
-    onTransition: async (transition) =>
-      await applyMemoryPressureTransition(ctx.logger, reconciler, transition),
+    onElevatedPressure: async (transition) =>
+      await applyElevatedMemoryPressure(reconciler, transition),
+    onTransition: (transition) =>
+      reportMemoryPressureTransition(ctx.logger, transition),
     onError: (error) => {
       ctx.logger.event({
         severity: "error",
