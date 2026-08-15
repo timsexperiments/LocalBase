@@ -16,9 +16,10 @@ import {
   finalizeGatewayShutdown,
   httpBaseUrl,
   internalGatewayFailure,
-  resourceUnavailable,
+  proxyWithAdmission,
   withResponseLease,
 } from "./commands/serve";
+import { RuntimeMemoryAdmissionError } from "./memory-controller";
 
 type ValidationCase = {
   name: string;
@@ -62,10 +63,38 @@ test("normalizes unexpected gateway errors into an OpenAI error envelope", async
 });
 
 test("formats memory admission rejection as a retryable OpenAI error", async () => {
-  const response = resourceUnavailable();
+  let releases = 0;
+  let dispatched = false;
+  const response = await proxyWithAdmission(
+    {
+      modality: "llm",
+      snapshot: {} as never,
+      supervisor: {} as never,
+      ready: Promise.reject(
+        new RuntimeMemoryAdmissionError({
+          kind: "rejected",
+          reason: "system-memory",
+          poolId: "system",
+        }),
+      ),
+      onDetach() {},
+      markResponseStarted() {},
+      release() {
+        releases += 1;
+      },
+    },
+    "LLM",
+    new AbortController().signal,
+    async () => {
+      dispatched = true;
+      return new Response();
+    },
+  );
 
   expect(response.status).toBe(503);
   expect(response.headers.get("Retry-After")).toBe("5");
+  expect(releases).toBe(1);
+  expect(dispatched).toBe(false);
   await expect(response.json()).resolves.toEqual({
     error: {
       message:
@@ -1046,18 +1075,7 @@ describe("API gateway integration", () => {
         messages: [{ role: "user", content: "hello" }],
       }),
     });
-    const thirdResponse = request("/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: secondModel,
-        messages: [{ role: "user", content: "hello" }],
-      }),
-    });
-    await Promise.all([
-      expectPromiseBlocked(secondResponse),
-      expectPromiseBlocked(thirdResponse),
-    ]);
+    await expectPromiseBlocked(secondResponse);
 
     gateway.closeControlledStream(streamId);
     await within(
@@ -1069,6 +1087,14 @@ describe("API gateway integration", () => {
     const secondReader = second.body!.getReader();
     expect((await secondReader.read()).done).toBe(false);
     await gateway.waitForLlmRuntimeLaunches(launchOffset, 2);
+    const thirdResponse = request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: secondModel,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
     await expectPromiseBlocked(thirdResponse);
     expect(loadGatewayConfig().activeLlmModel).toBe(firstModel);
 

@@ -6,8 +6,10 @@ import { DatabaseSession } from "../../db/client";
 import type { LogEventInput } from "../observability/logging";
 import { defaultConfig, saveConfig } from "../../manager";
 import { RuntimeConfigController } from "./config-snapshot";
-import { RuntimeReconciler } from "./runtime-reconciler";
-import { RuntimeMemoryAdmissionError } from "./memory-controller";
+import {
+  RuntimeReconciler,
+  RuntimeRequestAbortedError,
+} from "./runtime-reconciler";
 import type { RuntimeSupervisorFactory } from "./supervisor-factory";
 import {
   SupervisorRegistry,
@@ -149,43 +151,93 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
   }
 });
 
-test("returns a typed memory admission rejection", async () => {
-  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-memory-"));
+test("releases transition ownership before waiting for backend readiness", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-admission-"));
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
+  const switchedModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [config.activeLlmModel, switchedModel];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
-  const rejection = new RuntimeMemoryAdmissionError({
-    kind: "rejected",
-    reason: "system-memory",
-    poolId: "system",
+  const lifecycle = { state: "idle" as "idle" | "starting" };
+  let rejectStartup: (error: Error) => void;
+  const startup = new Promise<void>((_resolve, reject) => {
+    rejectStartup = reject;
   });
-  const service: RuntimeSupervisor = {
+  let kills = 0;
+  const initial: RuntimeSupervisor = {
     runtimeId: () => "llm:model:1",
-    state: () => "idle",
+    state: () => lifecycle.state,
     async ensureRunning() {
-      throw rejection;
+      lifecycle.state = "starting";
+      await startup;
     },
-    async kill() {},
+    async kill() {
+      kills += 1;
+      rejectStartup!(new Error("Startup cancelled."));
+    },
     async shutdown() {},
   };
+  let replacements = 0;
+  let abortNextStartup: AbortController | undefined;
   const factory: RuntimeSupervisorFactory = {
     baseUrl: () => "http://127.0.0.1:1",
-    create: () => service,
+    create: () => {
+      replacements += 1;
+      return {
+        runtimeId: () => `llm:model:${replacements + 1}`,
+        state: () => "idle",
+        async ensureRunning() {
+          abortNextStartup?.abort();
+          abortNextStartup = undefined;
+        },
+        async kill() {},
+        async shutdown() {},
+      };
+    },
   };
   const reconciler = new RuntimeReconciler(
     controller,
     {},
-    new SupervisorRegistry({ llm: service }),
+    new SupervisorRegistry({ llm: initial }),
     factory,
     { event() {} } as never,
   );
 
   try {
-    expect(await reconciler.admitModel("llm", config.activeLlmModel)).toEqual({
-      kind: "resource-unavailable",
-      decision: rejection.decision,
+    const first = await reconciler.admitModel("llm", config.activeLlmModel);
+    if (first.kind !== "admitted") throw new Error("Expected admission.");
+    expect(lifecycle.state).toBe("starting");
+    const firstStartup = first.value.admission.ready.finally(
+      first.value.admission.release,
+    );
+
+    const switched = await reconciler.admitModel("llm", switchedModel);
+
+    await expect(firstStartup).rejects.toThrow("Startup cancelled.");
+    expect(kills).toBe(1);
+    expect(switched).toMatchObject({
+      kind: "admitted",
+      value: { modelId: switchedModel },
     });
+    if (switched.kind !== "admitted") throw new Error("Expected admission.");
+    await switched.value.admission.ready;
+    switched.value.admission.release();
+
+    const abortController = new AbortController();
+    abortNextStartup = abortController;
+    await expect(
+      reconciler.admitModel(
+        "llm",
+        config.activeLlmModel,
+        abortController.signal,
+      ),
+    ).rejects.toBeInstanceOf(RuntimeRequestAbortedError);
+
+    const recovered = await reconciler.admitModel("llm", switchedModel);
+    if (recovered.kind !== "admitted") throw new Error("Expected admission.");
+    await recovered.value.admission.ready;
+    recovered.value.admission.release();
   } finally {
     database.close();
     rmSync(root, { recursive: true, force: true });

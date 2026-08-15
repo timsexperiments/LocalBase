@@ -46,7 +46,7 @@ function runtimeModelPath(args: string[], flag: "-m" | "--model"): string {
 async function startSwitchingGateway(
   options: Pick<
     GatewayFixtureOptions,
-    "sttBackendHealthy" | "imageBackendHealthy"
+    "sttHealthControlled" | "imageHealthControlled"
   >,
 ): Promise<GatewayFixture> {
   const gateway = await startGatewayFixture(options);
@@ -276,30 +276,41 @@ describe("Vercel AI SDK multimodal conformance", () => {
 
   test("switches STT models while the previous startup is waiting for health", async () => {
     const switchingGateway = await startSwitchingGateway({
-      sttBackendHealthy: false,
+      sttHealthControlled: true,
     });
     try {
-      const offset = (await switchingGateway.readSttRuntimeLaunches()).length;
       const first = transcribe(switchingGateway, PRIMARY_STT_MODEL);
-      await switchingGateway.waitForSttRuntimeLaunches(offset, 1);
-
+      await switchingGateway.waitForSttHealthProbe();
+      expect(
+        runtimeModelPath(
+          await switchingGateway.waitForSttRuntimeStart(),
+          "--model",
+        ),
+      ).toBe(
+        artifactPath(
+          switchingGateway.readConfig().sttModelsDir,
+          PRIMARY_STT_MODEL,
+        ),
+      );
       const switched = transcribe(switchingGateway, SWITCHED_STT_MODEL);
       expect((await first).status).toBe(503);
-      const launches = await switchingGateway.waitForSttRuntimeLaunches(
-        offset,
-        2,
-      );
-      switchingGateway.setSttBackendHealthy(true);
-
-      expect((await switched).status).toBe(200);
-      expect(switchingGateway.readConfig().activeSttModel).toBe(
-        SWITCHED_STT_MODEL,
-      );
-      expect(runtimeModelPath(launches[1]!, "--model")).toBe(
+      const replacementHealth = await switchingGateway.waitForSttHealthProbe();
+      expect(
+        runtimeModelPath(
+          await switchingGateway.waitForSttRuntimeStart(),
+          "--model",
+        ),
+      ).toBe(
         artifactPath(
           switchingGateway.readConfig().sttModelsDir,
           SWITCHED_STT_MODEL,
         ),
+      );
+      replacementHealth.release(true);
+
+      expect((await switched).status).toBe(200);
+      expect(switchingGateway.readConfig().activeSttModel).toBe(
+        SWITCHED_STT_MODEL,
       );
     } finally {
       await switchingGateway.stop();
@@ -308,30 +319,42 @@ describe("Vercel AI SDK multimodal conformance", () => {
 
   test("switches image models while the previous startup is waiting for health", async () => {
     const switchingGateway = await startSwitchingGateway({
-      imageBackendHealthy: false,
+      imageHealthControlled: true,
     });
     try {
-      const offset = (await switchingGateway.readImageRuntimeLaunches()).length;
       const first = generate(switchingGateway, PRIMARY_IMAGE_MODEL);
-      await switchingGateway.waitForImageRuntimeLaunches(offset, 1);
-
+      await switchingGateway.waitForImageHealthProbe();
+      expect(
+        runtimeModelPath(
+          await switchingGateway.waitForImageRuntimeStart(),
+          "-m",
+        ),
+      ).toBe(
+        artifactPath(
+          switchingGateway.readConfig().imageModelsDir,
+          PRIMARY_IMAGE_MODEL,
+        ),
+      );
       const switched = generate(switchingGateway, SWITCHED_IMAGE_MODEL);
       expect((await first).status).toBe(503);
-      const launches = await switchingGateway.waitForImageRuntimeLaunches(
-        offset,
-        2,
-      );
-      switchingGateway.setImageBackendHealthy(true);
-
-      expect((await switched).status).toBe(200);
-      expect(switchingGateway.readConfig().activeImageModel).toBe(
-        SWITCHED_IMAGE_MODEL,
-      );
-      expect(runtimeModelPath(launches[1]!, "-m")).toBe(
+      const replacementHealth =
+        await switchingGateway.waitForImageHealthProbe();
+      expect(
+        runtimeModelPath(
+          await switchingGateway.waitForImageRuntimeStart(),
+          "-m",
+        ),
+      ).toBe(
         artifactPath(
           switchingGateway.readConfig().imageModelsDir,
           SWITCHED_IMAGE_MODEL,
         ),
+      );
+      replacementHealth.release(true);
+
+      expect((await switched).status).toBe(200);
+      expect(switchingGateway.readConfig().activeImageModel).toBe(
+        SWITCHED_IMAGE_MODEL,
       );
     } finally {
       await switchingGateway.stop();

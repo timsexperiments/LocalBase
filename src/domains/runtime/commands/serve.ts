@@ -24,7 +24,10 @@ import {
   createRuntimeSupervisorFactory,
   runtimeLaunchOverrides,
 } from "../supervisor-factory";
-import { MemorySafetyController } from "../memory-controller";
+import {
+  MemorySafetyController,
+  RuntimeMemoryAdmissionError,
+} from "../memory-controller";
 import { createHostMemoryProvider } from "../memory/host-memory-provider";
 import { SupervisorRegistry } from "../supervisor-registry";
 import { composeGatewayHealth } from "../gateway-health";
@@ -1217,6 +1220,27 @@ export function resourceUnavailable(): Response {
   );
 }
 
+export async function proxyWithAdmission(
+  admission: RuntimeAdmission,
+  serviceName: string,
+  requestSignal: AbortSignal,
+  dispatch: () => Promise<Response>,
+): Promise<Response> {
+  try {
+    await waitForRequestAbort(admission.ready, requestSignal);
+    const response = await waitForRequestAbort(dispatch(), requestSignal);
+    admission.markResponseStarted();
+    return withResponseLease(response, admission.release, requestSignal);
+  } catch (error) {
+    admission.release();
+    if (error instanceof RequestAbortedError) return requestAborted();
+    if (error instanceof RuntimeMemoryAdmissionError) {
+      return resourceUnavailable();
+    }
+    return serviceUnavailable(serviceName);
+  }
+}
+
 export async function finalizeGatewayShutdown(
   logger: ILogger,
   releaseLease: () => Promise<void>,
@@ -1657,32 +1681,6 @@ export async function runServe(
       supervisors,
     });
 
-  const proxyWithAdmission = async (
-    admission: RuntimeAdmission,
-    serviceName: string,
-    requestSignal: AbortSignal,
-    dispatch: () => Promise<Response>,
-  ): Promise<Response> => {
-    try {
-      admission.onDetach(() => {
-        if (admission.supervisor.state() === "starting") {
-          void admission.supervisor.kill();
-        }
-      });
-      await waitForRequestAbort(
-        admission.supervisor.ensureRunning(),
-        requestSignal,
-      );
-      const response = await waitForRequestAbort(dispatch(), requestSignal);
-      admission.markResponseStarted();
-      return withResponseLease(response, admission.release, requestSignal);
-    } catch (error) {
-      admission.release();
-      if (error instanceof RequestAbortedError) return requestAborted();
-      return serviceUnavailable(serviceName);
-    }
-  };
-
   const handleRequest = async (
     request: Request,
     pathname: string,
@@ -1785,9 +1783,6 @@ export async function runServe(
         if (selected.kind === "model-not-found") {
           return modelNotFound(parsed.data.model ?? "");
         }
-        if (selected.kind === "resource-unavailable") {
-          return resourceUnavailable();
-        }
         if (selected.kind === "unavailable") return serviceUnavailable("STT");
         admission = selected.value.admission;
         const normalizedForm = new FormData();
@@ -1855,9 +1850,6 @@ export async function runServe(
       if (selected.kind === "model-not-found") {
         return modelNotFound(parsed.data.model ?? "");
       }
-      if (selected.kind === "resource-unavailable") {
-        return resourceUnavailable();
-      }
       if (selected.kind === "unavailable") return serviceUnavailable("Image");
       return await proxyWithAdmission(
         selected.value.admission,
@@ -1897,9 +1889,6 @@ export async function runServe(
       if (selected.kind === "model-not-found") {
         return modelNotFound(parsed.data.model ?? "");
       }
-      if (selected.kind === "resource-unavailable") {
-        return resourceUnavailable();
-      }
       if (selected.kind === "unavailable") return serviceUnavailable("LLM");
       return await proxyWithAdmission(
         selected.value.admission,
@@ -1935,9 +1924,6 @@ export async function runServe(
       if (selected.kind === "not-configured") return notConfigured("LLM");
       if (selected.kind === "model-not-found") {
         return modelNotFound(parsed.data.model ?? "");
-      }
-      if (selected.kind === "resource-unavailable") {
-        return resourceUnavailable();
       }
       if (selected.kind === "unavailable") return serviceUnavailable("LLM");
       return await proxyWithAdmission(
