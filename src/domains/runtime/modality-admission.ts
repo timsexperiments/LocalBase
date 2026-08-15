@@ -31,6 +31,12 @@ export class ModalityAdmissionBarrier {
     this.accepting = false;
   }
 
+  detachIfIdle(): boolean {
+    if (!this.accepting || this.active !== 0) return false;
+    this.accepting = false;
+    return true;
+  }
+
   acquire<Value>(value: Value): ModalityAdmission<Value> | undefined {
     if (!this.accepting) return undefined;
     if (this.active === 0) {

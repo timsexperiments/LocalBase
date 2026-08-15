@@ -136,6 +136,62 @@ export class RuntimeReconciler {
     return await this.sharedRefresh;
   }
 
+  async evictIdleRuntimes(): Promise<void> {
+    await this.exclusive(async () => {
+      const evictions = runtimeModalities.flatMap((modality) => {
+        const supervisor = this.supervisors.get(modality);
+        if (!supervisor || supervisor.state() !== "running") return [];
+        const barrier = this.barriers[modality];
+        if (!barrier.detachIfIdle()) return [];
+        return [{ barrier, supervisor }];
+      });
+
+      await Promise.all(
+        evictions.map(async ({ barrier, supervisor }) => {
+          try {
+            await supervisor.kill();
+          } finally {
+            barrier.attach();
+          }
+        }),
+      );
+    });
+  }
+
+  async evictAllRuntimes(): Promise<void> {
+    await this.exclusive(async () => {
+      const runtimes = runtimeModalities.flatMap((modality) => {
+        const supervisor = this.supervisors.get(modality);
+        if (!supervisor) return [];
+        this.supervisors.markDraining(modality);
+        return [
+          {
+            barrier: this.barriers[modality],
+            modality,
+            supervisor,
+            drain: this.barriers[modality].drain(),
+          },
+        ];
+      });
+
+      const kills = await Promise.allSettled(
+        runtimes.map(async ({ supervisor }) => await supervisor.kill()),
+      );
+      await Promise.all(runtimes.map(async ({ drain }) => await drain));
+
+      for (const { barrier, modality } of runtimes) {
+        this.supervisors.clearDraining(modality);
+        if (this.configured[modality]) barrier.attach();
+      }
+
+      const failedKill = kills.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      if (failedKill) throw failedKill.reason;
+    });
+  }
+
   async admit(
     modality: RuntimeModality,
   ): Promise<RuntimeAdmission | undefined> {

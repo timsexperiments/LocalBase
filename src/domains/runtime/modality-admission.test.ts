@@ -26,11 +26,26 @@ test("detaches new admission, cancels startup work, and drains active responses"
   expect(barrier.acquire("new")).toBeUndefined();
 
   startup.release();
-  await Bun.sleep(0);
+  await Promise.resolve();
   expect(drained).toBe(false);
   response.release();
   await drain;
 
   barrier.attach();
   expect(barrier.acquire("replacement")?.value).toBe("replacement");
+});
+
+test("detaches atomically only when no requests are admitted", () => {
+  const barrier = new ModalityAdmissionBarrier("llm", true);
+
+  const admission = barrier.acquire("active");
+  expect(admission).toBeDefined();
+  expect(barrier.detachIfIdle()).toBe(false);
+
+  admission!.release();
+  expect(barrier.detachIfIdle()).toBe(true);
+  expect(barrier.acquire("rejected")).toBeUndefined();
+
+  barrier.attach();
+  expect(barrier.acquire("accepted")?.value).toBe("accepted");
 });

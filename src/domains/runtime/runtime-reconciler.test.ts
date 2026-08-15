@@ -243,3 +243,147 @@ test("releases transition ownership before waiting for backend readiness", async
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("evicts only running runtimes without admitted requests", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-eviction-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  config.selectedSttModels = [];
+  config.activeSttModel = "";
+  config.selectedImageModels = [];
+  config.activeImageModel = "";
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let kills = 0;
+  const service: RuntimeSupervisor = {
+    runtimeId: () => "llm:test:1",
+    state: () => "running",
+    async ensureRunning() {},
+    async kill() {
+      kills += 1;
+    },
+    async shutdown() {},
+  };
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create: () => service,
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: service }),
+    factory,
+    { event() {} } as never,
+  );
+
+  try {
+    const active = await reconciler.admitModel("llm", config.activeLlmModel);
+    if (active.kind !== "admitted") throw new Error("Expected admission.");
+
+    await reconciler.evictIdleRuntimes();
+    expect(kills).toBe(0);
+
+    active.value.admission.release();
+    await reconciler.evictIdleRuntimes();
+    expect(kills).toBe(1);
+
+    const reattached = await reconciler.admitModel(
+      "llm",
+      config.activeLlmModel,
+    );
+    expect(reattached.kind).toBe("admitted");
+    if (reattached.kind === "admitted") reattached.value.admission.release();
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("kills critical runtimes before awaiting active leases and reattaches", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-critical-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  config.selectedSttModels = [config.activeSttModel];
+  config.selectedImageModels = [];
+  config.activeImageModel = "";
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  const events: string[] = [];
+  let releaseActive!: () => void;
+  let resolveStartup!: () => void;
+  const startup = new Promise<void>((resolve) => {
+    resolveStartup = resolve;
+  });
+  let sttKills = 0;
+  let sttState: "starting" | "idle" = "starting";
+  const llm: RuntimeSupervisor = {
+    runtimeId: () => "llm:test:1",
+    state: () => "running",
+    async ensureRunning() {},
+    async kill() {
+      events.push("llm-kill");
+      releaseActive();
+    },
+    async shutdown() {},
+  };
+  const stt: RuntimeSupervisor = {
+    runtimeId: () => "stt:test:1",
+    state: () => sttState,
+    async ensureRunning() {
+      await startup;
+    },
+    async kill() {
+      sttKills += 1;
+      if (sttState === "starting") events.push("stt-pending-kill");
+      else events.push("stt-kill");
+      sttState = "idle";
+      resolveStartup();
+    },
+    async shutdown() {},
+  };
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create: (modality) => (modality === "llm" ? llm : stt),
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm, stt }),
+    factory,
+    { event() {} } as never,
+  );
+
+  try {
+    const active = await reconciler.admitModel("llm", config.activeLlmModel);
+    if (active.kind !== "admitted") throw new Error("Expected LLM admission.");
+    active.value.admission.markResponseStarted();
+    releaseActive = () => {
+      events.push("llm-release");
+      active.value.admission.release();
+    };
+
+    const pending = await reconciler.admitModel("stt", config.activeSttModel);
+    if (pending.kind !== "admitted") throw new Error("Expected STT admission.");
+    void pending.value.admission.ready.finally(pending.value.admission.release);
+
+    await reconciler.evictAllRuntimes();
+
+    expect(events).toEqual([
+      "stt-pending-kill",
+      "llm-kill",
+      "llm-release",
+      "stt-kill",
+    ]);
+    expect(sttKills).toBe(2);
+
+    const reattached = await reconciler.admitModel(
+      "llm",
+      config.activeLlmModel,
+    );
+    expect(reattached.kind).toBe("admitted");
+    if (reattached.kind === "admitted") reattached.value.admission.release();
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
