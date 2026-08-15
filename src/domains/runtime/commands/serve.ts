@@ -29,6 +29,8 @@ import {
   RuntimeMemoryAdmissionError,
 } from "../memory-controller";
 import { createHostMemoryProvider } from "../memory/host-memory-provider";
+import { MemoryPressureMonitor } from "../memory-pressure-monitor";
+import type { MemorySafetyTransition } from "../memory-safety";
 import { SupervisorRegistry } from "../supervisor-registry";
 import { composeGatewayHealth } from "../gateway-health";
 import { selectGatewayRoute } from "../route-dispatch";
@@ -1281,6 +1283,36 @@ export async function finalizeGatewayShutdown(
   return finalStatus;
 }
 
+export async function applyMemoryPressureTransition(
+  logger: Pick<ILogger, "event">,
+  reconciler: Pick<RuntimeReconciler, "evictIdleRuntimes" | "evictAllRuntimes">,
+  transition: MemorySafetyTransition,
+): Promise<void> {
+  const { current, previous } = transition;
+  logger.event({
+    severity:
+      current.state === "healthy"
+        ? "info"
+        : current.state === "critical"
+          ? "error"
+          : "warn",
+    eventName: "runtime.memory-pressure-changed",
+    category: "runtime",
+    component: "memory-safety",
+    runtime: "gateway",
+    message: "Runtime memory pressure changed.",
+    attributes: {
+      previous_state: previous.state,
+      current_state: current.state,
+    },
+  });
+  if (current.state === "constrained") {
+    await reconciler.evictIdleRuntimes();
+  } else if (current.state === "critical") {
+    await reconciler.evictAllRuntimes();
+  }
+}
+
 export async function runServe(
   input: ServeInput,
   ctx: AppContext,
@@ -1669,6 +1701,25 @@ export async function runServe(
     factory,
     ctx.logger,
   );
+  const memoryPressureMonitor = new MemoryPressureMonitor({
+    controller: memorySafety,
+    onTransition: async (transition) =>
+      await applyMemoryPressureTransition(ctx.logger, reconciler, transition),
+    onError: (error) => {
+      ctx.logger.event({
+        severity: "error",
+        eventName: "runtime.memory-pressure-monitor-failed",
+        category: "runtime",
+        component: "memory-safety",
+        runtime: "gateway",
+        message: "Runtime memory pressure monitoring failed.",
+        error: {
+          type: error instanceof Error ? error.name : "Error",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    },
+  });
 
   const gatewayStartedAt = Date.now();
   let gatewayStopping = false;
@@ -2055,6 +2106,7 @@ export async function runServe(
       imageEnabled: enabled.image,
     },
   });
+  memoryPressureMonitor.start();
 
   printUnifiedNextSteps(
     wrapperHost,
@@ -2096,6 +2148,7 @@ export async function runServe(
         gatewayStopping = true;
         server.stop(true);
         try {
+          await memoryPressureMonitor.stop();
           await supervisors.shutdown();
         } finally {
           await memoryProvider.close();
