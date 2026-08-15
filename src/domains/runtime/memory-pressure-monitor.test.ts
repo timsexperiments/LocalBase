@@ -109,6 +109,41 @@ describe("memory pressure monitor", () => {
     expect(errors).toEqual(["unavailable", "unavailable"]);
   });
 
+  test("retries a failed critical transition from the last applied state", async () => {
+    const errors: string[] = [];
+    const transitions: Array<{
+      previous: string;
+      current: string;
+    }> = [];
+    const successfulActions: string[] = [];
+    let attempts = 0;
+    const monitor = new MemoryPressureMonitor({
+      controller: controller([
+        transition("healthy", "critical"),
+        transition("critical", "critical"),
+      ]),
+      onTransition: ({ previous, current }) => {
+        transitions.push({ previous: previous.state, current: current.state });
+        attempts += 1;
+        if (attempts === 1) throw new Error("eviction failed");
+        successfulActions.push(current.state);
+      },
+      onError: (error) => {
+        errors.push((error as Error).message);
+      },
+    });
+
+    await expect(monitor.poll()).rejects.toThrow("eviction failed");
+    await monitor.poll();
+
+    expect(transitions).toEqual([
+      { previous: "healthy", current: "critical" },
+      { previous: "healthy", current: "critical" },
+    ]);
+    expect(successfulActions).toEqual(["critical"]);
+    expect(errors).toEqual(["eviction failed"]);
+  });
+
   test("polls immediately when started", async () => {
     let polls = 0;
     const monitor = new MemoryPressureMonitor({

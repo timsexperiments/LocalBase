@@ -15,6 +15,10 @@ export class MemoryPressureMonitor {
   private interval: ReturnType<typeof setInterval> | undefined;
   private running: Promise<void> | undefined;
   private reportedError = false;
+  private lastApplied: MemorySafetyTransition["current"] = {
+    state: "healthy",
+    consecutiveNormalSnapshots: 0,
+  };
 
   constructor(private readonly options: MemoryPressureMonitorOptions) {}
 
@@ -46,10 +50,15 @@ export class MemoryPressureMonitor {
   private async observe(): Promise<void> {
     try {
       const transition = await this.options.controller.poll();
-      this.reportedError = false;
-      if (transition.previous.state !== transition.current.state) {
-        await this.options.onTransition(transition);
+      if (this.lastApplied.state !== transition.current.state) {
+        await this.options.onTransition({
+          previous: this.lastApplied,
+          current: transition.current,
+          action: transition.action,
+        });
+        this.lastApplied = transition.current;
       }
+      this.reportedError = false;
     } catch (error) {
       if (!this.reportedError) {
         this.reportedError = true;

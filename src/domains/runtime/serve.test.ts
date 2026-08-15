@@ -178,6 +178,28 @@ test("evicts runtimes only for elevated memory-pressure transitions", async () =
   ]);
 });
 
+test("does not log an unapplied memory-pressure transition", async () => {
+  const events: unknown[] = [];
+  await expect(
+    applyMemoryPressureTransition(
+      { event: (event: unknown) => events.push(event) },
+      {
+        async evictIdleRuntimes() {},
+        async evictAllRuntimes() {
+          throw new Error("eviction failed");
+        },
+      },
+      {
+        previous: { state: "healthy", consecutiveNormalSnapshots: 0 },
+        current: { state: "critical", consecutiveNormalSnapshots: 0 },
+        action: "emergency-stop",
+      },
+    ),
+  ).rejects.toThrow("eviction failed");
+
+  expect(events).toEqual([]);
+});
+
 test("releases a response lease exactly once when the stream or request is cancelled", async () => {
   const createLeasedResponse = () => {
     let resolveCancelled: () => void;

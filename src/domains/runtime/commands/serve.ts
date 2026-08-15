@@ -1289,6 +1289,11 @@ export async function applyMemoryPressureTransition(
   transition: MemorySafetyTransition,
 ): Promise<void> {
   const { current, previous } = transition;
+  if (current.state === "constrained") {
+    await reconciler.evictIdleRuntimes();
+  } else if (current.state === "critical") {
+    await reconciler.evictAllRuntimes();
+  }
   logger.event({
     severity:
       current.state === "healthy"
@@ -1306,11 +1311,6 @@ export async function applyMemoryPressureTransition(
       current_state: current.state,
     },
   });
-  if (current.state === "constrained") {
-    await reconciler.evictIdleRuntimes();
-  } else if (current.state === "critical") {
-    await reconciler.evictAllRuntimes();
-  }
 }
 
 export async function runServe(
