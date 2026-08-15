@@ -24,6 +24,11 @@ import {
   createRuntimeSupervisorFactory,
   runtimeLaunchOverrides,
 } from "../supervisor-factory";
+import {
+  MemorySafetyController,
+  RuntimeMemoryAdmissionError,
+} from "../memory-controller";
+import { createHostMemoryProvider } from "../memory/host-memory-provider";
 import { SupervisorRegistry } from "../supervisor-registry";
 import { composeGatewayHealth } from "../gateway-health";
 import { selectGatewayRoute } from "../route-dispatch";
@@ -1201,6 +1206,41 @@ function serviceUnavailable(serviceName: string): Response {
   );
 }
 
+export function resourceUnavailable(): Response {
+  return openAIErrorResponse(
+    {
+      message:
+        "Insufficient available memory to start the requested runtime. Please try again shortly.",
+      type: "api_error",
+      param: null,
+      code: "insufficient_memory",
+    },
+    503,
+    { "Retry-After": "5" },
+  );
+}
+
+export async function proxyWithAdmission(
+  admission: RuntimeAdmission,
+  serviceName: string,
+  requestSignal: AbortSignal,
+  dispatch: () => Promise<Response>,
+): Promise<Response> {
+  try {
+    await waitForRequestAbort(admission.ready, requestSignal);
+    const response = await waitForRequestAbort(dispatch(), requestSignal);
+    admission.markResponseStarted();
+    return withResponseLease(response, admission.release, requestSignal);
+  } catch (error) {
+    admission.release();
+    if (error instanceof RequestAbortedError) return requestAborted();
+    if (error instanceof RuntimeMemoryAdmissionError) {
+      return resourceUnavailable();
+    }
+    return serviceUnavailable(serviceName);
+  }
+}
+
 export async function finalizeGatewayShutdown(
   logger: ILogger,
   releaseLease: () => Promise<void>,
@@ -1605,7 +1645,15 @@ export async function runServe(
       ? {}
       : { sttPort: config.sttPort }),
   });
-  const factory = createRuntimeSupervisorFactory(ctx, launchOverrides);
+  const memoryProvider = createHostMemoryProvider();
+  const memorySafety = new MemorySafetyController(
+    memoryProvider,
+    ctx.config.memory,
+    bypassCheck,
+  );
+  const factory = createRuntimeSupervisorFactory(ctx, launchOverrides, {
+    memorySafety,
+  });
   const initialSnapshot = ctx.runtimeConfig.read();
   const supervisors = new SupervisorRegistry({
     ...(enabled.llm ? { llm: factory.create("llm", initialSnapshot) } : {}),
@@ -1632,32 +1680,6 @@ export async function runServe(
       configured: reconciler.configuredModalities(),
       supervisors,
     });
-
-  const proxyWithAdmission = async (
-    admission: RuntimeAdmission,
-    serviceName: string,
-    requestSignal: AbortSignal,
-    dispatch: () => Promise<Response>,
-  ): Promise<Response> => {
-    try {
-      admission.onDetach(() => {
-        if (admission.supervisor.state() === "starting") {
-          void admission.supervisor.kill();
-        }
-      });
-      await waitForRequestAbort(
-        admission.supervisor.ensureRunning(),
-        requestSignal,
-      );
-      const response = await waitForRequestAbort(dispatch(), requestSignal);
-      admission.markResponseStarted();
-      return withResponseLease(response, admission.release, requestSignal);
-    } catch (error) {
-      admission.release();
-      if (error instanceof RequestAbortedError) return requestAborted();
-      return serviceUnavailable(serviceName);
-    }
-  };
 
   const handleRequest = async (
     request: Request,
@@ -2073,7 +2095,11 @@ export async function runServe(
         ctx.logger.info("Manager", "Shutting down servers and subprocesses...");
         gatewayStopping = true;
         server.stop(true);
-        await supervisors.shutdown();
+        try {
+          await supervisors.shutdown();
+        } finally {
+          await memoryProvider.close();
+        }
       })();
     }
     return shutdownPromise;

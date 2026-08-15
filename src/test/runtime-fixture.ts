@@ -9,13 +9,14 @@ const runtimeFixtureEntrypoint = join(
 declare const __LOCALBASE_TEST_LAUNCHES_PATH__: string | undefined;
 declare const __LOCALBASE_TEST_EXIT_ON_START__: boolean | undefined;
 declare const __LOCALBASE_TEST_FAILURE_MARKER_PATH__: string | undefined;
-
+declare const __LOCALBASE_TEST_LAUNCH_REPORT_URL__: string | undefined;
 export async function compileRuntimeFixture(
   outputPath: string,
   argsPath?: string,
   launchesPath?: string,
   exitOnStart = false,
   failureMarkerPath?: string,
+  launchReportUrl?: string,
 ): Promise<void> {
   const define: Record<string, string> = {};
   if (argsPath) {
@@ -28,6 +29,10 @@ export async function compileRuntimeFixture(
   if (failureMarkerPath) {
     define.__LOCALBASE_TEST_FAILURE_MARKER_PATH__ =
       JSON.stringify(failureMarkerPath);
+  }
+  if (launchReportUrl) {
+    define.__LOCALBASE_TEST_LAUNCH_REPORT_URL__ =
+      JSON.stringify(launchReportUrl);
   }
   const result = await Bun.build({
     entrypoints: [runtimeFixtureEntrypoint],
@@ -61,6 +66,14 @@ async function runRuntimeFixture(): Promise<void> {
   if (argsPath) await Bun.write(argsPath, `${args.join("\n")}\n`);
   if (launchesPath) {
     appendFileSync(launchesPath, `${JSON.stringify(args)}\n`);
+  }
+  if (typeof __LOCALBASE_TEST_LAUNCH_REPORT_URL__ === "string") {
+    const response = await fetch(__LOCALBASE_TEST_LAUNCH_REPORT_URL__, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(args),
+    });
+    if (!response.ok) throw new Error("Could not report runtime startup.");
   }
   if (pidPath) await Bun.write(pidPath, `${process.pid}\n`);
   if (parentPidPath) await Bun.write(parentPidPath, `${process.ppid}\n`);

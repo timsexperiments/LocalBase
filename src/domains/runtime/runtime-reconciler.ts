@@ -21,10 +21,13 @@ export type RuntimeAdmission = Readonly<{
   modality: RuntimeModality;
   snapshot: RuntimeConfigSnapshot;
   supervisor: RuntimeSupervisor;
+  ready: Promise<void>;
   onDetach: (callback: () => void) => void;
   markResponseStarted: () => void;
   release: () => void;
 }>;
+
+type RuntimeLease = Omit<RuntimeAdmission, "ready">;
 
 type ModelAdmission = Readonly<{
   modelId: string;
@@ -138,7 +141,8 @@ export class RuntimeReconciler {
   ): Promise<RuntimeAdmission | undefined> {
     return await this.exclusive(async () => {
       await this.reconcile(await this.controller.refresh());
-      return this.acquire(modality);
+      const admission = this.acquire(modality);
+      return admission ? this.prepare(admission) : undefined;
     });
   }
 
@@ -163,18 +167,24 @@ export class RuntimeReconciler {
       this.throwIfAborted(signal);
       const admission = this.acquire(modality);
       if (!admission) return { kind: "unavailable" };
-      if (modality === "llm") {
-        try {
-          await this.waitForAbort(admission.supervisor.ensureRunning(), signal);
-        } catch (error) {
-          admission.release();
-          if (error instanceof RuntimeRequestAbortedError) throw error;
-          return { kind: "unavailable" };
-        }
-      }
-      return { kind: "admitted", value: { modelId, admission } };
+      return {
+        kind: "admitted",
+        value: { modelId, admission: this.prepare(admission) },
+      };
     });
-    return await this.waitForAbort(admitted, signal);
+    try {
+      return await this.waitForAbort(admitted, signal);
+    } catch (error) {
+      if (error instanceof RuntimeRequestAbortedError) {
+        void admitted.then(
+          (result) => {
+            if (result.kind === "admitted") result.value.admission.release();
+          },
+          () => {},
+        );
+      }
+      throw error;
+    }
   }
 
   private async exclusive<Value>(work: () => Promise<Value>): Promise<Value> {
@@ -186,7 +196,7 @@ export class RuntimeReconciler {
     return await next;
   }
 
-  private acquire(modality: RuntimeModality): RuntimeAdmission | undefined {
+  private acquire(modality: RuntimeModality): RuntimeLease | undefined {
     if (!this.configured[modality]) return undefined;
     const supervisor = this.supervisors.get(modality);
     if (!supervisor) return undefined;
@@ -203,6 +213,25 @@ export class RuntimeReconciler {
       markResponseStarted: lease.markResponseStarted,
       release: lease.release,
     };
+  }
+
+  private prepare(admission: RuntimeLease): RuntimeAdmission {
+    let startupPending = true;
+    admission.onDetach(() => {
+      if (startupPending && admission.supervisor.state() === "starting") {
+        void admission.supervisor.kill();
+      }
+    });
+    const ready = admission.supervisor.ensureRunning();
+    void ready.then(
+      () => {
+        startupPending = false;
+      },
+      () => {
+        startupPending = false;
+      },
+    );
+    return Object.freeze({ ...admission, ready });
   }
 
   private resolveRequestedModel(

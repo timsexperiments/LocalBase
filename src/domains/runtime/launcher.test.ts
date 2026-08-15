@@ -88,6 +88,7 @@ describe.serial("llama runtime launch", () => {
     try {
       const process = await startLlamaServerProcess(
         resolveLlmLaunchPlan({
+          runtimeId: "llm:test:1",
           root: fixture.config.root,
           modelsDirectory: fixture.config.llmModelsDir,
           modelId: fixture.config.activeLlmModel,
@@ -97,6 +98,7 @@ describe.serial("llama runtime launch", () => {
           ctxSize: 8192,
           parallel: fixture.config.parallel,
           modelRequirementGb: byId(fixture.config.activeLlmModel)?.minVramGb,
+          artifactBytes: 4 * 1024 ** 3,
           hardware: { memoryGb: 9.5 },
         }),
       );

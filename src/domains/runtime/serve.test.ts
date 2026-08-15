@@ -16,8 +16,10 @@ import {
   finalizeGatewayShutdown,
   httpBaseUrl,
   internalGatewayFailure,
+  proxyWithAdmission,
   withResponseLease,
 } from "./commands/serve";
+import { RuntimeMemoryAdmissionError } from "./memory-controller";
 
 type ValidationCase = {
   name: string;
@@ -56,6 +58,50 @@ test("normalizes unexpected gateway errors into an OpenAI error envelope", async
       type: "server_error",
       param: null,
       code: "gateway_error",
+    },
+  });
+});
+
+test("formats memory admission rejection as a retryable OpenAI error", async () => {
+  let releases = 0;
+  let dispatched = false;
+  const response = await proxyWithAdmission(
+    {
+      modality: "llm",
+      snapshot: {} as never,
+      supervisor: {} as never,
+      ready: Promise.reject(
+        new RuntimeMemoryAdmissionError({
+          kind: "rejected",
+          reason: "system-memory",
+          poolId: "system",
+        }),
+      ),
+      onDetach() {},
+      markResponseStarted() {},
+      release() {
+        releases += 1;
+      },
+    },
+    "LLM",
+    new AbortController().signal,
+    async () => {
+      dispatched = true;
+      return new Response();
+    },
+  );
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).toBe("5");
+  expect(releases).toBe(1);
+  expect(dispatched).toBe(false);
+  await expect(response.json()).resolves.toEqual({
+    error: {
+      message:
+        "Insufficient available memory to start the requested runtime. Please try again shortly.",
+      type: "api_error",
+      param: null,
+      code: "insufficient_memory",
     },
   });
 });
@@ -1029,18 +1075,7 @@ describe("API gateway integration", () => {
         messages: [{ role: "user", content: "hello" }],
       }),
     });
-    const thirdResponse = request("/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: secondModel,
-        messages: [{ role: "user", content: "hello" }],
-      }),
-    });
-    await Promise.all([
-      expectPromiseBlocked(secondResponse),
-      expectPromiseBlocked(thirdResponse),
-    ]);
+    await expectPromiseBlocked(secondResponse);
 
     gateway.closeControlledStream(streamId);
     await within(
@@ -1052,6 +1087,14 @@ describe("API gateway integration", () => {
     const secondReader = second.body!.getReader();
     expect((await secondReader.read()).done).toBe(false);
     await gateway.waitForLlmRuntimeLaunches(launchOffset, 2);
+    const thirdResponse = request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: secondModel,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
     await expectPromiseBlocked(thirdResponse);
     expect(loadGatewayConfig().activeLlmModel).toBe(firstModel);
 

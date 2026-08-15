@@ -595,7 +595,7 @@ test(
     try {
       const config = defaultConfig(root, 64);
       config.port = backendPort;
-      config.activeLlmModel = "qwen3-coder-next-q4_k_m";
+      config.activeLlmModel = INITIAL_MODEL;
       config.selectedLlmModels = [config.activeLlmModel];
       config.activeSttModel = "";
       config.selectedSttModels = [];
