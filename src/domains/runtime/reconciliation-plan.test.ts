@@ -347,6 +347,7 @@ test("rejects snapshots with model directories that are not derived from root", 
 
 function service(name: string, calls: string[]): RuntimeSupervisor {
   return {
+    runtimeId: () => name,
     state: () => "idle",
     async ensureRunning() {},
     async kill() {},

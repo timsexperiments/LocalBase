@@ -14,6 +14,7 @@ describe("runtime launch plans", () => {
       name: "llm",
       resolve: () =>
         resolveLlmLaunchPlan({
+          runtimeId: "llm:model:1",
           root,
           modelsDirectory: `${root}/models/llm`,
           modelId: "model",
@@ -23,6 +24,7 @@ describe("runtime launch plans", () => {
           ctxSize: 8192,
           parallel: "auto",
           modelRequirementGb: 4,
+          artifactBytes: 4 * 1024 ** 3,
           hardware: { memoryGb: 16 },
         }),
       expected: {
@@ -30,42 +32,51 @@ describe("runtime launch plans", () => {
         component: "llama-server",
         modelPath: `${root}/models/llm/model.gguf`,
         healthUrl: "http://127.0.0.1:8080/health",
+        memoryDemand: { unifiedBytes: 7 * 1024 ** 3 },
       },
     },
     {
       name: "stt",
       resolve: () =>
         resolveSttLaunchPlan({
+          runtimeId: "stt:model:1",
           root,
           modelsDirectory: `${root}/models/stt`,
           modelId: "model",
           modelFile: "model.bin",
           host: "127.0.0.1",
           port: 8081,
+          modelRequirementGb: 1,
+          artifactBytes: 1024 ** 3,
         }),
       expected: {
         modality: "stt",
         component: "whisper-server",
         modelPath: `${root}/models/stt/model.bin`,
         healthUrl: "http://127.0.0.1:8081/health",
+        memoryDemand: { unifiedBytes: 1.5 * 1024 ** 3 },
       },
     },
     {
       name: "image",
       resolve: () =>
         resolveImageLaunchPlan({
+          runtimeId: "image:model:1",
           root,
           modelsDirectory: `${root}/models/image`,
           modelId: "model",
           modelFile: "model.safetensors",
           host: "127.0.0.1",
           port: 8082,
+          modelRequirementGb: 2,
+          artifactBytes: 2 * 1024 ** 3,
         }),
       expected: {
         modality: "image",
         component: "sd-server",
         modelPath: `${root}/models/image/model.safetensors`,
         healthUrl: "http://127.0.0.1:8082/",
+        memoryDemand: { unifiedBytes: 2.5 * 1024 ** 3 },
       },
     },
   ])("resolves $name launch settings without I/O", ({ resolve, expected }) => {
@@ -75,6 +86,7 @@ describe("runtime launch plans", () => {
   test("detaches and freezes launch inputs", () => {
     const hardware = { memoryGb: 16 };
     const plan = resolveLlmLaunchPlan({
+      runtimeId: "llm:model:1",
       root,
       modelsDirectory: `${root}/models/llm`,
       modelId: "model",
@@ -84,6 +96,7 @@ describe("runtime launch plans", () => {
       ctxSize: 8192,
       parallel: "auto",
       modelRequirementGb: 4,
+      artifactBytes: 4 * 1024 ** 3,
       hardware,
     });
     hardware.memoryGb = 32;
@@ -97,6 +110,7 @@ describe("runtime launch plans", () => {
 test("supervisor registry reports configured state and shuts down each supervisor", async () => {
   let shutdowns = 0;
   const service = {
+    runtimeId: () => "test",
     state: () => "running" as const,
     async ensureRunning() {},
     async kill() {},

@@ -36,6 +36,10 @@ type ControlledHeaderWait = {
   aborted: Promise<void>;
 };
 
+export type ControlledHealthProbe = Readonly<{
+  release: (healthy: boolean) => void;
+}>;
+
 function chatCompletionResponse(
   id: string,
   message: Record<string, unknown>,
@@ -138,10 +142,12 @@ export type GatewayFixture = {
     offset: number,
     count: number,
   ) => Promise<string[][]>;
+  waitForSttRuntimeStart: () => Promise<string[]>;
+  waitForImageRuntimeStart: () => Promise<string[]>;
   setLlmBackendHealthy: (healthy: boolean) => void;
   setLlmRuntimeFailure: (enabled: boolean) => Promise<void>;
-  setSttBackendHealthy: (healthy: boolean) => void;
-  setImageBackendHealthy: (healthy: boolean) => void;
+  waitForSttHealthProbe: () => Promise<ControlledHealthProbe>;
+  waitForImageHealthProbe: () => Promise<ControlledHealthProbe>;
   waitForUpstreamRequest: (id: string) => Promise<void>;
   closeControlledStream: (id: string) => void;
   waitForControlledStreamAbort: (id: string) => Promise<void>;
@@ -154,8 +160,8 @@ export type GatewayFixtureOptions = {
   managedIdentity?: boolean;
   otelEndpoint?: string;
   llmBackendHealthy?: boolean;
-  sttBackendHealthy?: boolean;
-  imageBackendHealthy?: boolean;
+  sttHealthControlled?: boolean;
+  imageHealthControlled?: boolean;
   llmRuntimeExitOnStart?: boolean;
   sttEnabled?: boolean;
   imageEnabled?: boolean;
@@ -246,18 +252,82 @@ async function readGatewayBaseUrl(
   throw new Error(`Gateway did not report its bound URL. Output:\n${output}`);
 }
 
+function createControlledHealthProbe() {
+  const waiting: ControlledHealthProbe[] = [];
+  const observers: Array<(probe: ControlledHealthProbe) => void> = [];
+
+  const respond = async (signal: AbortSignal): Promise<Response> =>
+    await new Promise<Response>((resolve) => {
+      let settled = false;
+      const finish = (healthy: boolean) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", onAbort);
+        resolve(
+          Response.json(
+            { status: healthy ? "ok" : "unavailable" },
+            { status: healthy ? 200 : 503 },
+          ),
+        );
+      };
+      const onAbort = () => finish(false);
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      const probe = Object.freeze({ release: finish });
+      const observer = observers.shift();
+      if (observer) observer(probe);
+      else waiting.push(probe);
+    });
+
+  const wait = async (): Promise<ControlledHealthProbe> => {
+    const probe = waiting.shift();
+    if (probe) return probe;
+    return await new Promise<ControlledHealthProbe>((resolve) => {
+      observers.push(resolve);
+    });
+  };
+
+  return Object.freeze({ respond, wait });
+}
+
 function startMockUpstream(
   requests: UpstreamRequest[],
   controlledStreams: Map<string, ControlledStream>,
   controlledHeaderWaits: Map<string, ControlledHeaderWait>,
   healthy = true,
-): { server: Bun.Server<undefined>; setHealthy: (healthy: boolean) => void } {
+  controlledHealth = false,
+): {
+  server: Bun.Server<undefined>;
+  setHealthy: (healthy: boolean) => void;
+  waitForHealthProbe: () => Promise<ControlledHealthProbe>;
+  waitForRuntimeStart: () => Promise<string[]>;
+} {
   let healthState = healthy;
+  const healthProbe = controlledHealth ? createControlledHealthProbe() : null;
+  const runtimeStarts: string[][] = [];
+  const runtimeStartObservers: Array<(args: string[]) => void> = [];
   const options = {
     hostname: "127.0.0.1",
     async fetch(request: Request) {
       const path = new URL(request.url).pathname;
+      if (path === "/__runtime-started" && request.method === "POST") {
+        const args = await request.json();
+        if (
+          !Array.isArray(args) ||
+          !args.every((arg) => typeof arg === "string")
+        ) {
+          return new Response(null, { status: 400 });
+        }
+        const observer = runtimeStartObservers.shift();
+        if (observer) observer(args);
+        else runtimeStarts.push(args);
+        return new Response(null, { status: 204 });
+      }
       if (path === "/health" || path === "/") {
+        if (healthProbe) return await healthProbe.respond(request.signal);
         return Response.json(
           { status: healthState ? "ok" : "unavailable" },
           { status: healthState ? 200 : 503 },
@@ -1244,6 +1314,19 @@ function startMockUpstream(
       return {
         server: Bun.serve({ ...options, port: reservePort() }),
         setHealthy: (next) => (healthState = next),
+        waitForHealthProbe: async () => {
+          if (!healthProbe) {
+            throw new Error("Mock upstream health is not controlled.");
+          }
+          return await healthProbe.wait();
+        },
+        waitForRuntimeStart: async () => {
+          const args = runtimeStarts.shift();
+          if (args) return args;
+          return await new Promise<string[]>((resolve) => {
+            runtimeStartObservers.push(resolve);
+          });
+        },
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
@@ -1318,13 +1401,15 @@ export async function startGatewayFixture(
     upstreamRequests,
     controlledStreams,
     controlledHeaderWaits,
-    options.sttBackendHealthy ?? true,
+    true,
+    options.sttHealthControlled,
   );
   const imageUpstream = startMockUpstream(
     upstreamRequests,
     controlledStreams,
     controlledHeaderWaits,
-    options.imageBackendHealthy ?? true,
+    true,
+    options.imageHealthControlled,
   );
   const llmPort = boundPort(llmUpstream.server);
   const sttPort = boundPort(sttUpstream.server);
@@ -1380,11 +1465,21 @@ export async function startGatewayFixture(
         join(runtimeDir, "whisper-server"),
         undefined,
         sttLaunchesPath,
+        false,
+        undefined,
+        options.sttHealthControlled
+          ? `http://127.0.0.1:${sttPort}/__runtime-started`
+          : undefined,
       ),
       compileRuntimeFixture(
         join(runtimeDir, "sd-server"),
         undefined,
         imageLaunchesPath,
+        false,
+        undefined,
+        options.imageHealthControlled
+          ? `http://127.0.0.1:${imagePort}/__runtime-started`
+          : undefined,
       ),
       compileGatewayCli(cliPath),
     ]);
@@ -1538,6 +1633,8 @@ export async function startGatewayFixture(
     waitForSttRuntimeLaunches: sttRuntimeLaunches.wait,
     readImageRuntimeLaunches: imageRuntimeLaunches.read,
     waitForImageRuntimeLaunches: imageRuntimeLaunches.wait,
+    waitForSttRuntimeStart: sttUpstream.waitForRuntimeStart,
+    waitForImageRuntimeStart: imageUpstream.waitForRuntimeStart,
     setLlmBackendHealthy: llmUpstream.setHealthy,
     async setLlmRuntimeFailure(enabled) {
       const marker = Bun.file(llmFailureMarkerPath);
@@ -1547,8 +1644,8 @@ export async function startGatewayFixture(
         await marker.delete();
       }
     },
-    setSttBackendHealthy: sttUpstream.setHealthy,
-    setImageBackendHealthy: imageUpstream.setHealthy,
+    waitForSttHealthProbe: sttUpstream.waitForHealthProbe,
+    waitForImageHealthProbe: imageUpstream.waitForHealthProbe,
     async waitForUpstreamRequest(id) {
       const deadline = Date.now() + 2_000;
       while (Date.now() < deadline) {

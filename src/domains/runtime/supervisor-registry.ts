@@ -2,6 +2,7 @@ import type { ModalityLifecycleState } from "./health";
 import { runtimeModalities, type RuntimeModality } from "./modality";
 
 export type RuntimeSupervisor = {
+  runtimeId(): string;
   state(): ModalityLifecycleState;
   ensureRunning(): Promise<void>;
   kill(): Promise<void>;
