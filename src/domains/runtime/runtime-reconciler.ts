@@ -169,7 +169,7 @@ export class RuntimeReconciler {
             barrier: this.barriers[modality],
             modality,
             supervisor,
-            drain: this.barriers[modality].drain(),
+            drain: this.barriers[modality].drainWithoutCancellation(),
           },
         ];
       });

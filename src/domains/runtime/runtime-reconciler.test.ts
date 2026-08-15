@@ -334,8 +334,7 @@ test("kills critical runtimes before awaiting active leases and reattaches", asy
     },
     async kill() {
       sttKills += 1;
-      if (sttState === "starting") events.push("stt-pending-kill");
-      else events.push("stt-kill");
+      events.push("stt-kill");
       sttState = "idle";
       resolveStartup();
     },
@@ -368,13 +367,8 @@ test("kills critical runtimes before awaiting active leases and reattaches", asy
 
     await reconciler.evictAllRuntimes();
 
-    expect(events).toEqual([
-      "stt-pending-kill",
-      "llm-kill",
-      "llm-release",
-      "stt-kill",
-    ]);
-    expect(sttKills).toBe(2);
+    expect(events).toEqual(["llm-kill", "llm-release", "stt-kill"]);
+    expect(sttKills).toBe(1);
 
     const reattached = await reconciler.admitModel(
       "llm",

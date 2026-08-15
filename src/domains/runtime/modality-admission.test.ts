@@ -49,3 +49,20 @@ test("detaches atomically only when no requests are admitted", () => {
   barrier.attach();
   expect(barrier.acquire("accepted")?.value).toBe("accepted");
 });
+
+test("drains leases without invoking pending cancellation", async () => {
+  const barrier = new ModalityAdmissionBarrier("image", true);
+  const admission = barrier.acquire("pending");
+  if (!admission) throw new Error("Expected admission.");
+  let cancellations = 0;
+  admission.onDetach(() => {
+    cancellations += 1;
+  });
+
+  const drain = barrier.drainWithoutCancellation();
+  expect(cancellations).toBe(0);
+  expect(barrier.acquire("rejected")).toBeUndefined();
+
+  admission.release();
+  await drain;
+});

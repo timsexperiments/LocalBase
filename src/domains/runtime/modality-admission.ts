@@ -74,11 +74,21 @@ export class ModalityAdmissionBarrier {
     };
   }
 
-  async drain(): Promise<void> {
+  private drainLeases(cancelPending: boolean): Promise<void> {
     this.detach();
-    for (const cancelPendingResponse of this.pendingResponses) {
-      cancelPendingResponse();
+    if (cancelPending) {
+      for (const cancelPendingResponse of this.pendingResponses) {
+        cancelPendingResponse();
+      }
     }
-    await this.idle;
+    return this.idle;
+  }
+
+  drain(): Promise<void> {
+    return this.drainLeases(true);
+  }
+
+  drainWithoutCancellation(): Promise<void> {
+    return this.drainLeases(false);
   }
 }
