@@ -13,13 +13,16 @@ import { LocalBaseLogger, readLogSnapshot } from "../observability/logging";
 import { gatewayHealthSchema } from "./health";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
+  applyElevatedMemoryPressure,
   finalizeGatewayShutdown,
   httpBaseUrl,
   internalGatewayFailure,
   proxyWithAdmission,
+  reportMemoryPressureTransition,
   withResponseLease,
 } from "./commands/serve";
 import { RuntimeMemoryAdmissionError } from "./memory-controller";
+import type { MemorySafetyTransition } from "./memory-safety";
 
 type ValidationCase = {
   name: string;
@@ -104,6 +107,70 @@ test("formats memory admission rejection as a retryable OpenAI error", async () 
       code: "insufficient_memory",
     },
   });
+});
+
+test("evicts runtimes only for elevated memory-pressure transitions", async () => {
+  const events: unknown[] = [];
+  let idleEvictions = 0;
+  let allEvictions = 0;
+  const logger = { event: (event: unknown) => events.push(event) };
+  const reconciler = {
+    async evictIdleRuntimes() {
+      idleEvictions += 1;
+    },
+    async evictAllRuntimes() {
+      allEvictions += 1;
+    },
+  };
+  const transition = (
+    previous: MemorySafetyTransition["previous"]["state"],
+    current: MemorySafetyTransition["current"]["state"],
+  ): MemorySafetyTransition => ({
+    previous: { state: previous, consecutiveNormalSnapshots: 0 },
+    current: { state: current, consecutiveNormalSnapshots: 0 },
+    action:
+      current === "critical"
+        ? "emergency-stop"
+        : current === "constrained"
+          ? "constrain"
+          : "allow",
+  });
+
+  const transitions = [
+    transition("healthy", "constrained"),
+    transition("constrained", "critical"),
+    transition("critical", "healthy"),
+  ];
+  for (const value of transitions) {
+    await applyElevatedMemoryPressure(reconciler, value);
+    reportMemoryPressureTransition(logger, value);
+  }
+
+  expect({ idleEvictions, allEvictions }).toEqual({
+    idleEvictions: 1,
+    allEvictions: 1,
+  });
+  expect(events).toHaveLength(3);
+  expect(events).toMatchObject([
+    {
+      severity: "warn",
+      eventName: "runtime.memory-pressure-changed",
+      attributes: { previous_state: "healthy", current_state: "constrained" },
+    },
+    {
+      severity: "error",
+      eventName: "runtime.memory-pressure-changed",
+      attributes: {
+        previous_state: "constrained",
+        current_state: "critical",
+      },
+    },
+    {
+      severity: "info",
+      eventName: "runtime.memory-pressure-changed",
+      attributes: { previous_state: "critical", current_state: "healthy" },
+    },
+  ]);
 });
 
 test("releases a response lease exactly once when the stream or request is cancelled", async () => {

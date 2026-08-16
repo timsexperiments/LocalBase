@@ -44,6 +44,11 @@ export type MemoryTopology =
 
 export type MemoryPressure = "normal" | "constrained" | "critical" | "unknown";
 
+export type MemoryPressureObservation = Readonly<{
+  poolId: string;
+  pressure: MemoryPressure;
+}>;
+
 export type MemoryPoolSnapshot =
   | Readonly<{
       poolId: string;
@@ -104,6 +109,7 @@ export type MemorySafetyTransition = Readonly<{
 }>;
 
 export const memorySafetyRecoverySamples = 3;
+export const memorySafetyWarningReserveMultiplier = 1.25;
 
 export function defaultMemorySafetyConfig(): MemorySafetyConfig {
   return {
@@ -175,6 +181,84 @@ function reserveForPool(
       : config.acceleratorReserve,
     pool.capacityBytes,
   );
+}
+
+function pressureRank(pressure: MemoryPressure): number {
+  if (pressure === "critical") return 2;
+  if (pressure === "constrained") return 1;
+  return pressure === "normal" ? 0 : -1;
+}
+
+function pressureForPool(
+  topology: MemoryTopology,
+  config: MemorySafetyConfig,
+  pool: MemoryPool,
+  observed: Extract<MemoryPoolSnapshot, { availability: "available" }>,
+): Exclude<MemoryPressure, "unknown"> {
+  if (observed.pressure === "critical" || observed.pressure === "constrained") {
+    return observed.pressure;
+  }
+
+  const reserve = reserveForPool(topology, config, pool);
+  if (observed.availableBytes < reserve) return "critical";
+  if (
+    observed.availableBytes <
+    reserve * memorySafetyWarningReserveMultiplier
+  ) {
+    return "constrained";
+  }
+  return "normal";
+}
+
+/** Returns the most severe continuously observed memory-pressure condition. */
+export function observeMemoryPressure(input: {
+  topology: MemoryTopology;
+  snapshot: HostMemorySnapshot;
+  config: MemorySafetyConfig;
+}): MemoryPressureObservation {
+  const snapshots = new Map(
+    input.snapshot.pools.map((pool) => [pool.poolId, pool]),
+  );
+  const system = snapshots.get(input.topology.system.id);
+  if (
+    !system ||
+    system.availability === "unavailable" ||
+    system.pressure === "unknown"
+  ) {
+    return { poolId: input.topology.system.id, pressure: "unknown" };
+  }
+
+  let result: MemoryPressureObservation = {
+    poolId: input.topology.system.id,
+    pressure: pressureForPool(
+      input.topology,
+      input.config,
+      input.topology.system,
+      system,
+    ),
+  };
+  if (input.topology.kind !== "discrete") return result;
+
+  for (const pool of input.topology.accelerators) {
+    const observed = snapshots.get(pool.id);
+    if (
+      !observed ||
+      observed.availability === "unavailable" ||
+      observed.pressure === "unknown"
+    ) {
+      continue;
+    }
+    const pressure = pressureForPool(
+      input.topology,
+      input.config,
+      pool,
+      observed,
+    );
+    if (pressureRank(pressure) > pressureRank(result.pressure)) {
+      result = { poolId: pool.id, pressure };
+    }
+  }
+  return result;
 }
 
 export function evaluateMemoryAdmission(input: {

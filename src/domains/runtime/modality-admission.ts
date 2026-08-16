@@ -31,6 +31,12 @@ export class ModalityAdmissionBarrier {
     this.accepting = false;
   }
 
+  detachIfIdle(): boolean {
+    if (!this.accepting || this.active !== 0) return false;
+    this.accepting = false;
+    return true;
+  }
+
   acquire<Value>(value: Value): ModalityAdmission<Value> | undefined {
     if (!this.accepting) return undefined;
     if (this.active === 0) {
@@ -68,11 +74,21 @@ export class ModalityAdmissionBarrier {
     };
   }
 
-  async drain(): Promise<void> {
+  private drainLeases(cancelPending: boolean): Promise<void> {
     this.detach();
-    for (const cancelPendingResponse of this.pendingResponses) {
-      cancelPendingResponse();
+    if (cancelPending) {
+      for (const cancelPendingResponse of this.pendingResponses) {
+        cancelPendingResponse();
+      }
     }
-    await this.idle;
+    return this.idle;
+  }
+
+  drain(): Promise<void> {
+    return this.drainLeases(true);
+  }
+
+  drainWithoutCancellation(): Promise<void> {
+    return this.drainLeases(false);
   }
 }
