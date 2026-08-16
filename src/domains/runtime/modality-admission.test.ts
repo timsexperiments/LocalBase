@@ -12,13 +12,13 @@ test("detaches new admission, cancels one pending startup, and drains active res
 
   let startupCancelled = 0;
   let responseCancelled = 0;
-  startup.onDetach(() => {
+  startup.onPendingDetach(() => {
     startupCancelled += 1;
   });
-  waitingStartup.onDetach(() => {
+  waitingStartup.onPendingDetach(() => {
     startupCancelled += 1;
   });
-  response.onDetach(() => {
+  response.onPendingDetach(() => {
     responseCancelled += 1;
   });
   response.markResponseStarted();
@@ -65,10 +65,10 @@ test("cancels an orphaned runtime after all shared admissions settle", () => {
   if (!cancelled || !completed) throw new Error("Expected admissions.");
 
   let cancellations = 0;
-  cancelled.onDetach(() => {
+  cancelled.onIdleCancellation(() => {
     cancellations += 1;
   });
-  completed.onDetach(() => {
+  completed.onIdleCancellation(() => {
     cancellations += 1;
   });
 
@@ -84,7 +84,7 @@ test("cancels immediately when the final admission is cancelled", () => {
   const admission = barrier.acquire("cancelled");
   if (!admission) throw new Error("Expected admission.");
   let cancellations = 0;
-  admission.onDetach(() => {
+  admission.onIdleCancellation(() => {
     cancellations += 1;
   });
 
@@ -98,7 +98,7 @@ test("drains leases without invoking pending cancellation", async () => {
   const admission = barrier.acquire("pending");
   if (!admission) throw new Error("Expected admission.");
   let cancellations = 0;
-  admission.onDetach(() => {
+  admission.onPendingDetach(() => {
     cancellations += 1;
   });
 

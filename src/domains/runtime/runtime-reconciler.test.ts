@@ -244,6 +244,76 @@ test("releases transition ownership before waiting for backend readiness", async
   }
 });
 
+test("does not stop a ready runtime while a model switch drains admission", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-ready-drain-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const switchedModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [config.activeLlmModel, switchedModel];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let state: "idle" | "running" = "idle";
+  let kills = 0;
+  const initial: RuntimeSupervisor = {
+    runtimeId: () => "llm:model:1",
+    state: () => state,
+    async ensureRunning() {
+      state = "running";
+    },
+    async kill() {
+      kills += 1;
+    },
+    async shutdown() {},
+  };
+  const replacement: RuntimeSupervisor = {
+    runtimeId: () => "llm:model:2",
+    state: () => "idle",
+    async ensureRunning() {},
+    async kill() {},
+    async shutdown() {},
+  };
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create: () => replacement,
+  };
+  let markSwitching!: () => void;
+  const switching = new Promise<void>((resolve) => {
+    markSwitching = resolve;
+  });
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: initial }),
+    factory,
+    {
+      event(event) {
+        if (event.eventName === "model.switching") markSwitching();
+      },
+    } as never,
+  );
+
+  try {
+    const active = await reconciler.admitModel("llm", config.activeLlmModel);
+    if (active.kind !== "admitted") throw new Error("Expected admission.");
+    await active.value.admission.ready;
+    expect(state).toBe("running");
+
+    const switched = reconciler.admitModel("llm", switchedModel);
+    await switching;
+    expect(kills).toBe(0);
+
+    active.value.admission.release();
+    const replacementAdmission = await switched;
+    if (replacementAdmission.kind !== "admitted") {
+      throw new Error("Expected replacement admission.");
+    }
+    replacementAdmission.value.admission.release();
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("cancels an orphaned running runtime after shared admissions settle", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-runtime-cancellation-"));
   const database = new DatabaseSession();

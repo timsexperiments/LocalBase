@@ -22,7 +22,8 @@ export type RuntimeAdmission = Readonly<{
   snapshot: RuntimeConfigSnapshot;
   supervisor: RuntimeSupervisor;
   ready: Promise<void>;
-  onDetach: (callback: () => void) => void;
+  onPendingDetach: (callback: () => void) => void;
+  onIdleCancellation: (callback: () => void) => void;
   markResponseStarted: () => void;
   cancel: () => void;
   release: () => void;
@@ -266,7 +267,8 @@ export class RuntimeReconciler {
       modality,
       snapshot: lease.value.snapshot,
       supervisor: lease.value.supervisor,
-      onDetach: lease.onDetach,
+      onPendingDetach: lease.onPendingDetach,
+      onIdleCancellation: lease.onIdleCancellation,
       markResponseStarted: lease.markResponseStarted,
       cancel: lease.cancel,
       release: lease.release,
@@ -274,13 +276,31 @@ export class RuntimeReconciler {
   }
 
   private prepare(admission: RuntimeLease): RuntimeAdmission {
-    admission.onDetach(() => {
+    let startupPending = true;
+    let stopRequested = false;
+    const stop = (allowRunning: boolean) => {
+      if (stopRequested) return;
       const state = admission.supervisor.state();
-      if (state === "starting" || state === "running") {
+      if (state === "starting" || (allowRunning && state === "running")) {
+        stopRequested = true;
         void admission.supervisor.kill();
       }
+    };
+    admission.onPendingDetach(() => {
+      if (startupPending) stop(false);
+    });
+    admission.onIdleCancellation(() => {
+      stop(true);
     });
     const ready = admission.supervisor.ensureRunning();
+    void ready.then(
+      () => {
+        startupPending = false;
+      },
+      () => {
+        startupPending = false;
+      },
+    );
     return Object.freeze({ ...admission, ready });
   }
 

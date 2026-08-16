@@ -3,7 +3,8 @@ import type { RuntimeModality } from "./modality";
 export type ModalityAdmission<Value> = Readonly<{
   modality: RuntimeModality;
   value: Value;
-  onDetach: (callback: () => void) => void;
+  onPendingDetach: (callback: () => void) => void;
+  onIdleCancellation: (callback: () => void) => void;
   markResponseStarted: () => void;
   cancel: () => void;
   release: () => void;
@@ -16,9 +17,9 @@ export class ModalityAdmissionBarrier {
   private idle = Promise.resolve();
   private resolveIdle: (() => void) | undefined;
   private cancellationRequested = false;
-  private cancellationCallbackInvoked = false;
-  private readonly cancellationCallbacks = new Set<() => void>();
-  private readonly pendingCancellationCallbacks = new Set<() => void>();
+  private pendingDetachCallbackInvoked = false;
+  private readonly idleCancellationCallbacks = new Set<() => void>();
+  private readonly pendingDetachCallbacks = new Set<() => void>();
 
   constructor(
     private readonly modality: RuntimeModality,
@@ -51,78 +52,73 @@ export class ModalityAdmissionBarrier {
     this.active += 1;
     let released = false;
     let responseStarted = false;
-    let onDetach: (() => void) | undefined;
+    let onPendingDetach: (() => void) | undefined;
+    let onIdleCancellation: (() => void) | undefined;
     return {
       modality: this.modality,
       value,
-      onDetach: (callback) => {
-        if (released || onDetach) return;
-        onDetach = callback;
-        this.cancellationCallbacks.add(callback);
-        if (!responseStarted) {
-          this.pendingCancellationCallbacks.add(callback);
-        }
+      onPendingDetach: (callback) => {
+        if (released || responseStarted || onPendingDetach) return;
+        onPendingDetach = callback;
+        this.pendingDetachCallbacks.add(callback);
+      },
+      onIdleCancellation: (callback) => {
+        if (released || onIdleCancellation) return;
+        onIdleCancellation = callback;
+        this.idleCancellationCallbacks.add(callback);
       },
       markResponseStarted: () => {
         if (responseStarted) return;
         responseStarted = true;
-        if (onDetach) {
-          this.pendingCancellationCallbacks.delete(onDetach);
+        if (onPendingDetach) {
+          this.pendingDetachCallbacks.delete(onPendingDetach);
         }
       },
       cancel: () => {
         if (released) return;
         released = true;
         this.cancellationRequested = true;
-        this.release(onDetach);
+        this.release(onPendingDetach);
       },
       release: () => {
         if (released) return;
         released = true;
-        this.release(onDetach);
+        this.release(onPendingDetach);
       },
     };
   }
 
   private release(callback: (() => void) | undefined): void {
-    if (callback) this.pendingCancellationCallbacks.delete(callback);
+    if (callback) this.pendingDetachCallbacks.delete(callback);
     this.active -= 1;
     if (this.active !== 0) return;
 
     const cancellation = this.cancellationRequested
-      ? this.takeCancellationCallback(this.cancellationCallbacks)
+      ? this.idleCancellationCallbacks.values().next().value
       : undefined;
     this.cancellationRequested = false;
-    this.cancellationCallbacks.clear();
-    this.pendingCancellationCallbacks.clear();
+    this.idleCancellationCallbacks.clear();
+    this.pendingDetachCallbacks.clear();
     this.resolveIdle?.();
     this.resolveIdle = undefined;
     try {
       cancellation?.();
     } finally {
-      this.cancellationCallbackInvoked = false;
+      this.pendingDetachCallbackInvoked = false;
     }
   }
 
-  private cancelPending(): void {
-    const cancellation = this.takeCancellationCallback(
-      this.pendingCancellationCallbacks,
-    );
-    cancellation?.();
+  private detachPending(): void {
+    if (this.pendingDetachCallbackInvoked) return;
+    const callback = this.pendingDetachCallbacks.values().next().value;
+    if (!callback) return;
+    this.pendingDetachCallbackInvoked = true;
+    callback();
   }
 
-  private takeCancellationCallback(
-    callbacks: ReadonlySet<() => void>,
-  ): (() => void) | undefined {
-    if (this.cancellationCallbackInvoked) return undefined;
-    const callback = callbacks.values().next().value;
-    if (callback) this.cancellationCallbackInvoked = true;
-    return callback;
-  }
-
-  private drainLeases(cancelPending: boolean): Promise<void> {
+  private drainLeases(detachPending: boolean): Promise<void> {
     this.detach();
-    if (cancelPending) this.cancelPending();
+    if (detachPending) this.detachPending();
     return this.idle;
   }
 
