@@ -3,8 +3,10 @@ import type { RuntimeModality } from "./modality";
 export type ModalityAdmission<Value> = Readonly<{
   modality: RuntimeModality;
   value: Value;
-  onDetach: (callback: () => void) => void;
+  onPendingDetach: (callback: () => void) => void;
+  onIdleCancellation: (callback: () => void) => void;
   markResponseStarted: () => void;
+  cancel: () => void;
   release: () => void;
 }>;
 
@@ -14,7 +16,10 @@ export class ModalityAdmissionBarrier {
   private active = 0;
   private idle = Promise.resolve();
   private resolveIdle: (() => void) | undefined;
-  private readonly pendingResponses = new Set<() => void>();
+  private cancellationRequested = false;
+  private pendingDetachCallbackInvoked = false;
+  private readonly idleCancellationCallbacks = new Set<() => void>();
+  private readonly pendingDetachCallbacks = new Set<() => void>();
 
   constructor(
     private readonly modality: RuntimeModality,
@@ -47,40 +52,74 @@ export class ModalityAdmissionBarrier {
     this.active += 1;
     let released = false;
     let responseStarted = false;
-    let onDetach: (() => void) | undefined;
+    let onPendingDetach: (() => void) | undefined;
+    let onIdleCancellation: (() => void) | undefined;
     return {
       modality: this.modality,
       value,
-      onDetach: (callback) => {
-        if (released || responseStarted) return;
-        onDetach = callback;
-        this.pendingResponses.add(callback);
+      onPendingDetach: (callback) => {
+        if (released || responseStarted || onPendingDetach) return;
+        onPendingDetach = callback;
+        this.pendingDetachCallbacks.add(callback);
+      },
+      onIdleCancellation: (callback) => {
+        if (released || onIdleCancellation) return;
+        onIdleCancellation = callback;
+        this.idleCancellationCallbacks.add(callback);
       },
       markResponseStarted: () => {
         if (responseStarted) return;
         responseStarted = true;
-        if (onDetach) this.pendingResponses.delete(onDetach);
+        if (onPendingDetach) {
+          this.pendingDetachCallbacks.delete(onPendingDetach);
+        }
+      },
+      cancel: () => {
+        if (released) return;
+        released = true;
+        this.cancellationRequested = true;
+        this.release(onPendingDetach);
       },
       release: () => {
         if (released) return;
         released = true;
-        if (onDetach) this.pendingResponses.delete(onDetach);
-        this.active -= 1;
-        if (this.active === 0) {
-          this.resolveIdle?.();
-          this.resolveIdle = undefined;
-        }
+        this.release(onPendingDetach);
       },
     };
   }
 
-  private drainLeases(cancelPending: boolean): Promise<void> {
-    this.detach();
-    if (cancelPending) {
-      for (const cancelPendingResponse of this.pendingResponses) {
-        cancelPendingResponse();
-      }
+  private release(callback: (() => void) | undefined): void {
+    if (callback) this.pendingDetachCallbacks.delete(callback);
+    this.active -= 1;
+    if (this.active !== 0) return;
+
+    const cancellation = this.cancellationRequested
+      ? this.idleCancellationCallbacks.values().next().value
+      : undefined;
+    if (cancellation) this.detach();
+    this.cancellationRequested = false;
+    this.idleCancellationCallbacks.clear();
+    this.pendingDetachCallbacks.clear();
+    this.resolveIdle?.();
+    this.resolveIdle = undefined;
+    try {
+      cancellation?.();
+    } finally {
+      this.pendingDetachCallbackInvoked = false;
     }
+  }
+
+  private detachPending(): void {
+    if (this.pendingDetachCallbackInvoked) return;
+    const callback = this.pendingDetachCallbacks.values().next().value;
+    if (!callback) return;
+    this.pendingDetachCallbackInvoked = true;
+    callback();
+  }
+
+  private drainLeases(detachPending: boolean): Promise<void> {
+    this.detach();
+    if (detachPending) this.detachPending();
     return this.idle;
   }
 

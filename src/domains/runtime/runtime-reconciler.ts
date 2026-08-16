@@ -22,8 +22,10 @@ export type RuntimeAdmission = Readonly<{
   snapshot: RuntimeConfigSnapshot;
   supervisor: RuntimeSupervisor;
   ready: Promise<void>;
-  onDetach: (callback: () => void) => void;
+  onPendingDetach: (callback: () => void) => void;
+  onIdleCancellation: (callback: () => void) => void;
   markResponseStarted: () => void;
+  cancel: () => void;
   release: () => void;
 }>;
 
@@ -234,7 +236,7 @@ export class RuntimeReconciler {
       if (error instanceof RuntimeRequestAbortedError) {
         void admitted.then(
           (result) => {
-            if (result.kind === "admitted") result.value.admission.release();
+            if (result.kind === "admitted") result.value.admission.cancel();
           },
           () => {},
         );
@@ -265,18 +267,66 @@ export class RuntimeReconciler {
       modality,
       snapshot: lease.value.snapshot,
       supervisor: lease.value.supervisor,
-      onDetach: lease.onDetach,
+      onPendingDetach: lease.onPendingDetach,
+      onIdleCancellation: lease.onIdleCancellation,
       markResponseStarted: lease.markResponseStarted,
+      cancel: lease.cancel,
       release: lease.release,
     };
   }
 
   private prepare(admission: RuntimeLease): RuntimeAdmission {
     let startupPending = true;
-    admission.onDetach(() => {
-      if (startupPending && admission.supervisor.state() === "starting") {
+    let stopRequested = false;
+    const stop = (allowRunning: boolean) => {
+      if (stopRequested) return;
+      const state = admission.supervisor.state();
+      if (state === "starting" || (allowRunning && state === "running")) {
+        stopRequested = true;
         void admission.supervisor.kill();
       }
+    };
+    admission.onPendingDetach(() => {
+      if (startupPending) stop(false);
+    });
+    admission.onIdleCancellation(() => {
+      if (stopRequested) return;
+      stopRequested = true;
+      void this.exclusive(async () => {
+        try {
+          if (
+            this.supervisors.get(admission.modality) === admission.supervisor &&
+            ["starting", "running"].includes(admission.supervisor.state())
+          ) {
+            await admission.supervisor.kill();
+          }
+        } catch (error) {
+          this.logger.event({
+            severity: "error",
+            eventName: "runtime.cancellation-failed",
+            category: "runtime",
+            component:
+              admission.modality === "llm"
+                ? "llama-server"
+                : admission.modality === "stt"
+                  ? "whisper-server"
+                  : "sd-server",
+            runtime: admission.modality,
+            message: "Runtime cancellation failed.",
+            error: {
+              type: error instanceof Error ? error.name : "Error",
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        } finally {
+          if (
+            this.configured[admission.modality] &&
+            this.supervisors.get(admission.modality) === admission.supervisor
+          ) {
+            this.barriers[admission.modality].attach();
+          }
+        }
+      });
     });
     const ready = admission.supervisor.ensureRunning();
     void ready.then(

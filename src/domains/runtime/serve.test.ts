@@ -80,8 +80,10 @@ test("formats memory admission rejection as a retryable OpenAI error", async () 
           poolId: "system",
         }),
       ),
-      onDetach() {},
+      onPendingDetach() {},
+      onIdleCancellation() {},
       markResponseStarted() {},
+      cancel() {},
       release() {
         releases += 1;
       },
@@ -173,7 +175,7 @@ test("evicts runtimes only for elevated memory-pressure transitions", async () =
   ]);
 });
 
-test("releases a response lease exactly once when the stream or request is cancelled", async () => {
+test("cancels response leases on cancellation and releases them on completion", async () => {
   const createLeasedResponse = () => {
     let resolveCancelled: () => void;
     const cancelled = new Promise<void>((resolve) => {
@@ -195,10 +197,14 @@ test("releases a response lease exactly once when the stream or request is cance
   const streamCancellation = createLeasedResponse();
   const streamAbort = new AbortController();
   let streamReleases = 0;
+  let streamCancels = 0;
   const leasedStream = withResponseLease(
     streamCancellation.response,
     () => {
       streamReleases += 1;
+    },
+    () => {
+      streamCancels += 1;
     },
     streamAbort.signal,
   );
@@ -206,21 +212,85 @@ test("releases a response lease exactly once when the stream or request is cance
   await streamReader.read();
   await streamReader.cancel();
   await streamCancellation.cancelled;
-  expect(streamReleases).toBe(1);
+  expect(streamReleases).toBe(0);
+  expect(streamCancels).toBe(1);
 
   const requestCancellation = createLeasedResponse();
   const requestAbort = new AbortController();
   let requestReleases = 0;
+  let requestCancels = 0;
   withResponseLease(
     requestCancellation.response,
     () => {
       requestReleases += 1;
     },
+    () => {
+      requestCancels += 1;
+    },
     requestAbort.signal,
   );
   requestAbort.abort();
   await requestCancellation.cancelled;
-  expect(requestReleases).toBe(1);
+  expect(requestReleases).toBe(0);
+  expect(requestCancels).toBe(1);
+
+  let completedReleases = 0;
+  let completedCancels = 0;
+  const completed = withResponseLease(
+    new Response(new Uint8Array([1])),
+    () => {
+      completedReleases += 1;
+    },
+    () => {
+      completedCancels += 1;
+    },
+    new AbortController().signal,
+  );
+  await completed.arrayBuffer();
+  expect(completedReleases).toBe(1);
+  expect(completedCancels).toBe(0);
+});
+
+test("does not dispatch an aborted admitted request", async () => {
+  const controller = new AbortController();
+  let resolveReady: () => void = () => {};
+  let dispatched = false;
+  let cancelled = 0;
+  let released = 0;
+  const admission = {
+    modality: "llm" as const,
+    snapshot: {} as never,
+    supervisor: {} as never,
+    ready: new Promise<void>((resolve) => {
+      resolveReady = resolve;
+    }),
+    onPendingDetach() {},
+    onIdleCancellation() {},
+    markResponseStarted() {},
+    cancel() {
+      cancelled += 1;
+    },
+    release() {
+      released += 1;
+    },
+  };
+  const pendingResponse = proxyWithAdmission(
+    admission,
+    "LLM",
+    controller.signal,
+    async () => {
+      dispatched = true;
+      return new Response();
+    },
+  );
+  resolveReady();
+  queueMicrotask(() => controller.abort());
+  const response = await pendingResponse;
+
+  expect(response.status).toBe(499);
+  expect(dispatched).toBe(false);
+  expect(cancelled).toBe(1);
+  expect(released).toBe(0);
 });
 
 test("shutdown records lease release failure, flushes stopped, and resolves", async () => {
