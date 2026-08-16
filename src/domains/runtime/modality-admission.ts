@@ -96,6 +96,7 @@ export class ModalityAdmissionBarrier {
     const cancellation = this.cancellationRequested
       ? this.idleCancellationCallbacks.values().next().value
       : undefined;
+    if (cancellation) this.detach();
     this.cancellationRequested = false;
     this.idleCancellationCallbacks.clear();
     this.pendingDetachCallbacks.clear();

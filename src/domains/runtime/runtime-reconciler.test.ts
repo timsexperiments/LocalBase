@@ -321,12 +321,17 @@ test("cancels an orphaned running runtime after shared admissions settle", async
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
   let kills = 0;
+  let markKilled: () => void = () => {};
+  const killed = new Promise<void>((resolve) => {
+    markKilled = resolve;
+  });
   const supervisor: RuntimeSupervisor = {
     runtimeId: () => "llm:test:1",
     state: () => "running",
     async ensureRunning() {},
     async kill() {
       kills += 1;
+      markKilled();
     },
     async shutdown() {},
   };
@@ -353,7 +358,67 @@ test("cancels an orphaned running runtime after shared admissions settle", async
     expect(kills).toBe(0);
 
     completed.value.admission.release();
+    await killed;
     expect(kills).toBe(1);
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("holds replacement admissions until runtime cancellation settles", async () => {
+  const root = mkdtempSync(
+    join(tmpdir(), "localbase-runtime-cancellation-race-"),
+  );
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let resolveKill: () => void = () => {};
+  const killPending = new Promise<void>((resolve) => {
+    resolveKill = resolve;
+  });
+  let ensureCalls = 0;
+  const supervisor: RuntimeSupervisor = {
+    runtimeId: () => "llm:test:1",
+    state: () => "running",
+    async ensureRunning() {
+      ensureCalls += 1;
+    },
+    async kill() {
+      await killPending;
+    },
+    async shutdown() {},
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: supervisor }),
+    { baseUrl: () => "http://127.0.0.1:1", create: () => supervisor },
+    { event() {} } as never,
+  );
+
+  try {
+    const cancelled = await reconciler.admitModel("llm", config.activeLlmModel);
+    if (cancelled.kind !== "admitted") throw new Error("Expected admission.");
+    cancelled.value.admission.cancel();
+
+    let replacementResolved = false;
+    const replacement = reconciler
+      .admitModel("llm", config.activeLlmModel)
+      .then((result) => {
+        replacementResolved = true;
+        return result;
+      });
+    await Promise.resolve();
+    expect(replacementResolved).toBe(false);
+    expect(ensureCalls).toBe(1);
+
+    resolveKill();
+    const admitted = await replacement;
+    expect(admitted.kind).toBe("admitted");
+    expect(ensureCalls).toBe(2);
+    if (admitted.kind === "admitted") admitted.value.admission.release();
   } finally {
     database.close();
     rmSync(root, { recursive: true, force: true });

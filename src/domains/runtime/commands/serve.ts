@@ -1241,13 +1241,9 @@ export async function proxyWithAdmission(
 ): Promise<Response> {
   try {
     await waitForRequestAbort(admission.ready, requestSignal);
-    const response = await waitForRequestAbort(
-      Promise.resolve().then(() => {
-        if (requestSignal.aborted) throw new RequestAbortedError();
-        return dispatch();
-      }),
-      requestSignal,
-    );
+    await Promise.resolve();
+    if (requestSignal.aborted) throw new RequestAbortedError();
+    const response = await waitForRequestAbort(dispatch(), requestSignal);
     admission.markResponseStarted();
     return withResponseLease(
       response,

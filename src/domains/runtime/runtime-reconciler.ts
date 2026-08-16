@@ -290,7 +290,43 @@ export class RuntimeReconciler {
       if (startupPending) stop(false);
     });
     admission.onIdleCancellation(() => {
-      stop(true);
+      if (stopRequested) return;
+      stopRequested = true;
+      void this.exclusive(async () => {
+        try {
+          if (
+            this.supervisors.get(admission.modality) === admission.supervisor &&
+            ["starting", "running"].includes(admission.supervisor.state())
+          ) {
+            await admission.supervisor.kill();
+          }
+        } catch (error) {
+          this.logger.event({
+            severity: "error",
+            eventName: "runtime.cancellation-failed",
+            category: "runtime",
+            component:
+              admission.modality === "llm"
+                ? "llama-server"
+                : admission.modality === "stt"
+                  ? "whisper-server"
+                  : "sd-server",
+            runtime: admission.modality,
+            message: "Runtime cancellation failed.",
+            error: {
+              type: error instanceof Error ? error.name : "Error",
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        } finally {
+          if (
+            this.configured[admission.modality] &&
+            this.supervisors.get(admission.modality) === admission.supervisor
+          ) {
+            this.barriers[admission.modality].attach();
+          }
+        }
+      });
     });
     const ready = admission.supervisor.ensureRunning();
     void ready.then(

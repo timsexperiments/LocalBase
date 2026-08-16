@@ -253,6 +253,7 @@ test("cancels response leases on cancellation and releases them on completion", 
 
 test("does not dispatch an aborted admitted request", async () => {
   const controller = new AbortController();
+  let resolveReady: () => void = () => {};
   let dispatched = false;
   let cancelled = 0;
   let released = 0;
@@ -260,7 +261,9 @@ test("does not dispatch an aborted admitted request", async () => {
     modality: "llm" as const,
     snapshot: {} as never,
     supervisor: {} as never,
-    ready: Promise.resolve(),
+    ready: new Promise<void>((resolve) => {
+      resolveReady = resolve;
+    }),
     onPendingDetach() {},
     onIdleCancellation() {},
     markResponseStarted() {},
@@ -271,9 +274,7 @@ test("does not dispatch an aborted admitted request", async () => {
       released += 1;
     },
   };
-  controller.abort();
-
-  const response = await proxyWithAdmission(
+  const pendingResponse = proxyWithAdmission(
     admission,
     "LLM",
     controller.signal,
@@ -282,6 +283,9 @@ test("does not dispatch an aborted admitted request", async () => {
       return new Response();
     },
   );
+  resolveReady();
+  queueMicrotask(() => controller.abort());
+  const response = await pendingResponse;
 
   expect(response.status).toBe(499);
   expect(dispatched).toBe(false);
