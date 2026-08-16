@@ -286,7 +286,7 @@ test("does not stop a ready runtime while a model switch drains admission", asyn
     new SupervisorRegistry({ llm: initial }),
     factory,
     {
-      event(event) {
+      event(event: LogEventInput) {
         if (event.eventName === "model.switching") markSwitching();
       },
     } as never,
@@ -296,7 +296,7 @@ test("does not stop a ready runtime while a model switch drains admission", asyn
     const active = await reconciler.admitModel("llm", config.activeLlmModel);
     if (active.kind !== "admitted") throw new Error("Expected admission.");
     await active.value.admission.ready;
-    expect(state).toBe("running");
+    expect(initial.state()).toBe("running");
 
     const switched = reconciler.admitModel("llm", switchedModel);
     await switching;
