@@ -1,12 +1,16 @@
 import type { HostMemoryProvider } from "./memory/host-memory-provider";
 import {
   evaluateMemoryAdmission,
+  observeMemoryPressure,
   type HostMemorySnapshot,
   type MemoryAdmissionDecision,
   type MemoryPoolSnapshot,
   type MemorySafetyConfig,
+  type MemorySafetyHysteresis,
+  type MemorySafetyTransition,
   type ProjectedMemoryDemand,
   type RuntimeMemoryDemand,
+  transitionMemorySafetyState,
 } from "./memory-safety";
 
 export type RuntimeMemoryReservationRequest = Readonly<{
@@ -68,12 +72,26 @@ export class RuntimeMemoryAdmissionError extends Error {
 export class MemorySafetyController {
   private readonly reservations = new Map<string, ReservationEntry>();
   private operations = Promise.resolve();
+  private hysteresis: MemorySafetyHysteresis = {
+    state: "healthy",
+    consecutiveNormalSnapshots: 0,
+  };
+  private pressurePoolId: string;
 
   constructor(
     private readonly provider: HostMemoryProvider,
     private readonly config: MemorySafetyConfig,
     private readonly bypassAdmission = false,
-  ) {}
+  ) {
+    this.pressurePoolId = provider.topology.system.id;
+  }
+
+  async poll(): Promise<MemorySafetyTransition> {
+    if (this.bypassAdmission) return this.currentTransition();
+    return await this.exclusive(async () =>
+      this.observe(await this.provider.snapshot()),
+    );
+  }
 
   async reserve(
     request: RuntimeMemoryReservationRequest,
@@ -87,7 +105,7 @@ export class MemorySafetyController {
 
       const projectedDemand = this.bypassAdmission
         ? []
-        : await this.evaluate(request);
+        : this.evaluate(request, await this.provider.snapshot());
 
       const token = Symbol(request.runtimeId);
       this.reservations.set(request.runtimeId, {
@@ -108,14 +126,19 @@ export class MemorySafetyController {
     if (current?.token === token) current.state = "resident";
   }
 
-  private async evaluate(
+  private evaluate(
     request: RuntimeMemoryReservationRequest,
-  ): Promise<readonly ProjectedMemoryDemand[]> {
+    snapshot: HostMemorySnapshot,
+  ): readonly ProjectedMemoryDemand[] {
     const topology = this.provider.topology;
-    const snapshot = subtractReservations(
-      await this.provider.snapshot(),
-      this.reservations.values(),
-    );
+    const transition = this.observe(snapshot);
+    if (transition.action !== "allow") {
+      throw new RuntimeMemoryAdmissionError({
+        kind: "rejected",
+        reason: "memory-pressure",
+        poolId: this.pressurePoolId,
+      });
+    }
 
     const requiresAccelerator =
       topology.kind === "discrete" && request.demand.acceleratorBytes > 0;
@@ -132,7 +155,7 @@ export class MemorySafetyController {
 
     const decision = evaluateMemoryAdmission({
       topology,
-      snapshot,
+      snapshot: subtractReservations(snapshot, this.reservations.values()),
       config: this.config,
       demand: request.demand,
       ...(acceleratorPoolId ? { acceleratorPoolId } : {}),
@@ -141,6 +164,31 @@ export class MemorySafetyController {
       throw new RuntimeMemoryAdmissionError(decision);
     }
     return decision.projectedDemand;
+  }
+
+  private observe(snapshot: HostMemorySnapshot): MemorySafetyTransition {
+    const observation = observeMemoryPressure({
+      topology: this.provider.topology,
+      snapshot,
+      config: this.config,
+    });
+    const transition = transitionMemorySafetyState(
+      this.hysteresis,
+      observation.pressure,
+    );
+    this.hysteresis = transition.current;
+    if (observation.pressure !== "normal") {
+      this.pressurePoolId = observation.poolId;
+    }
+    return transition;
+  }
+
+  private currentTransition(): MemorySafetyTransition {
+    return {
+      previous: this.hysteresis,
+      current: this.hysteresis,
+      action: "allow",
+    };
   }
 
   private release(runtimeId: string, token: symbol): void {
