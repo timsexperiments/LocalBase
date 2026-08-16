@@ -244,6 +244,52 @@ test("releases transition ownership before waiting for backend readiness", async
   }
 });
 
+test("cancels an orphaned running runtime after shared admissions settle", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-cancellation-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let kills = 0;
+  const supervisor: RuntimeSupervisor = {
+    runtimeId: () => "llm:test:1",
+    state: () => "running",
+    async ensureRunning() {},
+    async kill() {
+      kills += 1;
+    },
+    async shutdown() {},
+  };
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create: () => supervisor,
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: supervisor }),
+    factory,
+    { event() {} } as never,
+  );
+
+  try {
+    const cancelled = await reconciler.admitModel("llm", config.activeLlmModel);
+    const completed = await reconciler.admitModel("llm", config.activeLlmModel);
+    if (cancelled.kind !== "admitted" || completed.kind !== "admitted") {
+      throw new Error("Expected admissions.");
+    }
+
+    cancelled.value.admission.cancel();
+    expect(kills).toBe(0);
+
+    completed.value.admission.release();
+    expect(kills).toBe(1);
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("evicts only running runtimes without admitted requests", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-runtime-eviction-"));
   const database = new DatabaseSession();

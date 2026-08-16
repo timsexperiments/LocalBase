@@ -24,6 +24,7 @@ export type RuntimeAdmission = Readonly<{
   ready: Promise<void>;
   onDetach: (callback: () => void) => void;
   markResponseStarted: () => void;
+  cancel: () => void;
   release: () => void;
 }>;
 
@@ -234,7 +235,7 @@ export class RuntimeReconciler {
       if (error instanceof RuntimeRequestAbortedError) {
         void admitted.then(
           (result) => {
-            if (result.kind === "admitted") result.value.admission.release();
+            if (result.kind === "admitted") result.value.admission.cancel();
           },
           () => {},
         );
@@ -267,26 +268,19 @@ export class RuntimeReconciler {
       supervisor: lease.value.supervisor,
       onDetach: lease.onDetach,
       markResponseStarted: lease.markResponseStarted,
+      cancel: lease.cancel,
       release: lease.release,
     };
   }
 
   private prepare(admission: RuntimeLease): RuntimeAdmission {
-    let startupPending = true;
     admission.onDetach(() => {
-      if (startupPending && admission.supervisor.state() === "starting") {
+      const state = admission.supervisor.state();
+      if (state === "starting" || state === "running") {
         void admission.supervisor.kill();
       }
     });
     const ready = admission.supervisor.ensureRunning();
-    void ready.then(
-      () => {
-        startupPending = false;
-      },
-      () => {
-        startupPending = false;
-      },
-    );
     return Object.freeze({ ...admission, ready });
   }
 
