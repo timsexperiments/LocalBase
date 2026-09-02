@@ -1442,7 +1442,20 @@ describe("API gateway integration", () => {
 
     gateway.closeControlledStream(streamId);
     await within(drainReader(slowAReader), "queued abort stream completion");
-    await Bun.sleep(100);
+
+    const currentModel = await within(
+      request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelA,
+          messages: [{ role: "user", content: "continue current model" }],
+        }),
+      }),
+      "current model after queued abort",
+    );
+    expect(currentModel.status).toBe(200);
+    await currentModel.text();
     expect(loadGatewayConfig().activeLlmModel).toBe(modelA);
     expect(
       gateway.upstreamRequests

@@ -60,7 +60,6 @@ export function httpBaseUrl(host: string, port: number): string {
   return `http://${urlHost}:${port}`;
 }
 
-const UPSTREAM_PROXY_TIMEOUT_MS = 120_000;
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
 
 function parseAuthMode(raw: AuthMode | undefined): AuthMode {
@@ -1051,10 +1050,7 @@ async function proxyRequest(
       method: request.method,
       headers,
       body: request.body,
-      signal: AbortSignal.any([
-        request.signal,
-        AbortSignal.timeout(UPSTREAM_PROXY_TIMEOUT_MS),
-      ]),
+      signal: request.signal,
     });
   };
   try {
@@ -1119,6 +1115,7 @@ async function proxyRequest(
         headers,
       });
     } catch {
+      if (request.signal.aborted) return requestAborted();
       return upstreamFailure("The upstream service returned malformed JSON.");
     }
   }
