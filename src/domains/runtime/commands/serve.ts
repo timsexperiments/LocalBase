@@ -1046,12 +1046,14 @@ async function proxyRequest(
   const fetchUpstream = async (): Promise<Response> => {
     const headers = filterProxyHeaders(request.headers);
     otel?.inject(headers);
-    return await fetch(target, {
+    const options = {
       method: request.method,
       headers,
       body: request.body,
       signal: request.signal,
-    });
+      timeout: false,
+    } satisfies BunFetchRequestInit & { timeout: false };
+    return await fetch(target, options);
   };
   try {
     upstream = otel
