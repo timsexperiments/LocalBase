@@ -10,6 +10,7 @@ import { gatewayHealthSchema } from "./health";
 
 const STT_MODEL = "whisper-large-v3-turbo";
 const IMAGE_MODEL = "stable-diffusion-v1-5";
+const REPLACEMENT_LLM_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
 
 async function imageRequest(gateway: GatewayFixture): Promise<Response> {
   return await fetch(`${gateway.baseUrl}/v1/images/generations`, {
@@ -224,6 +225,46 @@ test(
       expect(next.status).toBe(200);
       await next.text();
       await gateway.waitForLlmRuntimeLaunches(launchOffset + 1, 1);
+    } finally {
+      await gateway.stop();
+    }
+  },
+  { timeout: 15_000 },
+);
+
+test(
+  "holds concurrent requests for a replacement LLM until it becomes ready",
+  async () => {
+    const gateway = await startGatewayFixture({ llmHealthControlled: true });
+    try {
+      const initial = chatRequest(gateway);
+      const initialHealth = await gateway.waitForLlmHealthProbe();
+      initialHealth.release(true);
+      const initialResponse = await initial;
+      expect(initialResponse.status).toBe(200);
+      await initialResponse.text();
+
+      const config = gateway.readConfig();
+      const previousModel = config.activeLlmModel;
+      config.activeLlmModel = REPLACEMENT_LLM_MODEL;
+      config.selectedLlmModels = [previousModel, REPLACEMENT_LLM_MODEL];
+      gateway.saveConfig(config);
+      await writeCompleteCatalogArtifact(
+        config.llmModelsDir,
+        REPLACEMENT_LLM_MODEL,
+      );
+
+      const first = chatRequest(gateway, {}, REPLACEMENT_LLM_MODEL);
+      const replacementHealth = await gateway.waitForLlmHealthProbe();
+      const concurrent = chatRequest(gateway, {}, REPLACEMENT_LLM_MODEL);
+      replacementHealth.release(true);
+
+      const firstResponse = await first;
+      expect(firstResponse.status).toBe(200);
+      await firstResponse.text();
+      const concurrentResponse = await concurrent;
+      expect(concurrentResponse.status).toBe(200);
+      await concurrentResponse.text();
     } finally {
       await gateway.stop();
     }

@@ -152,12 +152,12 @@ export class ManagedService {
       throw new Error(`${this.name} is shutting down`);
     }
     if (this.failed()) throw this.unavailableError();
-    if (this.proc && !this.exited(this.proc)) return;
     if (this.isRestarting) {
       await this.restartPromise;
       if (this.failed()) throw this.unavailableError();
       return await this.ensureRunning();
     }
+    if (this.proc && !this.exited(this.proc)) return;
     await this.start();
   }
 
