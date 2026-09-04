@@ -7,11 +7,11 @@
       "tier": "managed",
       "runtimes": {
         "llama-server": {
-          "tag": "b9741",
-          "assetName": "llama-b9741-bin-macos-arm64.tar.gz",
-          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9741/llama-b9741-bin-macos-arm64.tar.gz",
-          "expectedSizeBytes": 10944022,
-          "sha256": "8d8a9476a105b6c49682fd99e5653033469dba0f3f16495bcbc446838f2a96d1",
+          "tag": "b10419",
+          "assetName": "llama-b10419-bin-macos-arm64.tar.gz",
+          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b10419/llama-b10419-bin-macos-arm64.tar.gz",
+          "expectedSizeBytes": 11080871,
+          "sha256": "10e16c9092b193b26b02326079776c7b5605e67b70e21d3230e9970b1cccb0c0",
           "format": "tar.gz",
           "stripComponents": 1
         },
@@ -47,11 +47,11 @@
       "tier": "managed",
       "runtimes": {
         "llama-server": {
-          "tag": "b9741",
-          "assetName": "llama-b9741-bin-ubuntu-x64.tar.gz",
-          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9741/llama-b9741-bin-ubuntu-x64.tar.gz",
-          "expectedSizeBytes": 15601179,
-          "sha256": "68a9ab90359d6ecdba0e4a8e34c34aa2cca3b5b4b6e483c2fe52c4fbba62a255",
+          "tag": "b10419",
+          "assetName": "llama-b10419-bin-ubuntu-x64.tar.gz",
+          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b10419/llama-b10419-bin-ubuntu-x64.tar.gz",
+          "expectedSizeBytes": 16601937,
+          "sha256": "778fd429cd4f7a4c010009f88aac8f41b95113a0267d8973958a0039d8fcfe75",
           "format": "tar.gz",
           "stripComponents": 1
         },
