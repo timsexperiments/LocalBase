@@ -146,6 +146,7 @@ export type GatewayFixture = {
   waitForImageRuntimeStart: () => Promise<string[]>;
   setLlmBackendHealthy: (healthy: boolean) => void;
   setLlmRuntimeFailure: (enabled: boolean) => Promise<void>;
+  waitForLlmHealthProbe: () => Promise<ControlledHealthProbe>;
   waitForSttHealthProbe: () => Promise<ControlledHealthProbe>;
   waitForImageHealthProbe: () => Promise<ControlledHealthProbe>;
   waitForUpstreamRequest: (id: string) => Promise<void>;
@@ -160,6 +161,7 @@ export type GatewayFixtureOptions = {
   managedIdentity?: boolean;
   otelEndpoint?: string;
   llmBackendHealthy?: boolean;
+  llmHealthControlled?: boolean;
   sttHealthControlled?: boolean;
   imageHealthControlled?: boolean;
   llmRuntimeExitOnStart?: boolean;
@@ -1396,6 +1398,7 @@ export async function startGatewayFixture(
     controlledStreams,
     controlledHeaderWaits,
     options.llmBackendHealthy ?? true,
+    options.llmHealthControlled,
   );
   const sttUpstream = startMockUpstream(
     upstreamRequests,
@@ -1460,6 +1463,9 @@ export async function startGatewayFixture(
         llmLaunchesPath,
         options.llmRuntimeExitOnStart,
         llmFailureMarkerPath,
+        options.llmHealthControlled
+          ? `http://127.0.0.1:${llmPort}/__runtime-started`
+          : undefined,
       ),
       compileRuntimeFixture(
         join(runtimeDir, "whisper-server"),
@@ -1644,6 +1650,7 @@ export async function startGatewayFixture(
         await marker.delete();
       }
     },
+    waitForLlmHealthProbe: llmUpstream.waitForHealthProbe,
     waitForSttHealthProbe: sttUpstream.waitForHealthProbe,
     waitForImageHealthProbe: imageUpstream.waitForHealthProbe,
     async waitForUpstreamRequest(id) {

@@ -60,7 +60,6 @@ export function httpBaseUrl(host: string, port: number): string {
   return `http://${urlHost}:${port}`;
 }
 
-const UPSTREAM_PROXY_TIMEOUT_MS = 120_000;
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
 
 function parseAuthMode(raw: AuthMode | undefined): AuthMode {
@@ -846,6 +845,9 @@ async function parseJsonRequest<T extends z.ZodType>(
       ? { success: true, data: parsed.data }
       : { success: false, response: validationFailure(parsed.error) };
   } catch (error) {
+    if (request.signal.aborted) {
+      return { success: false, response: requestAborted() };
+    }
     return {
       success: false,
       response:
@@ -1048,10 +1050,7 @@ async function proxyRequest(
       method: request.method,
       headers,
       body: request.body,
-      signal: AbortSignal.any([
-        request.signal,
-        AbortSignal.timeout(UPSTREAM_PROXY_TIMEOUT_MS),
-      ]),
+      signal: request.signal,
     });
   };
   try {
@@ -1116,6 +1115,7 @@ async function proxyRequest(
         headers,
       });
     } catch {
+      if (request.signal.aborted) return requestAborted();
       return upstreamFailure("The upstream service returned malformed JSON.");
     }
   }
@@ -1138,24 +1138,32 @@ async function proxyRequest(
 export function withResponseLease(
   response: Response,
   release: () => void,
+  cancel: () => void,
   requestSignal: AbortSignal,
 ): Response {
   if (!response.body) {
-    release();
+    if (requestSignal.aborted) cancel();
+    else release();
     return response;
   }
 
-  let released = false;
+  let completed = false;
   let removeAbortListener = () => {};
   const releaseOnce = () => {
-    if (released) return;
-    released = true;
+    if (completed) return;
+    completed = true;
     removeAbortListener();
     release();
   };
+  const cancelOnce = () => {
+    if (completed) return;
+    completed = true;
+    removeAbortListener();
+    cancel();
+  };
   const reader = response.body.getReader();
   const cancelForRequestAbort = () => {
-    releaseOnce();
+    cancelOnce();
     void reader.cancel(requestSignal.reason);
   };
   requestSignal.addEventListener("abort", cancelForRequestAbort, {
@@ -1175,12 +1183,12 @@ export function withResponseLease(
         }
         controller.enqueue(value);
       } catch (error) {
-        releaseOnce();
+        cancelOnce();
         controller.error(error);
       }
     },
     async cancel(reason) {
-      releaseOnce();
+      cancelOnce();
       await reader.cancel(reason);
     },
   });
@@ -1230,12 +1238,22 @@ export async function proxyWithAdmission(
 ): Promise<Response> {
   try {
     await waitForRequestAbort(admission.ready, requestSignal);
+    await Promise.resolve();
+    if (requestSignal.aborted) throw new RequestAbortedError();
     const response = await waitForRequestAbort(dispatch(), requestSignal);
     admission.markResponseStarted();
-    return withResponseLease(response, admission.release, requestSignal);
+    return withResponseLease(
+      response,
+      admission.release,
+      admission.cancel,
+      requestSignal,
+    );
   } catch (error) {
+    if (error instanceof RequestAbortedError) {
+      admission.cancel();
+      return requestAborted();
+    }
     admission.release();
-    if (error instanceof RequestAbortedError) return requestAborted();
     if (error instanceof RuntimeMemoryAdmissionError) {
       return resourceUnavailable();
     }
@@ -1865,8 +1883,11 @@ export async function runServe(
           signal: request.signal,
         });
       } catch (e) {
+        if (request.signal.aborted || e instanceof RuntimeRequestAbortedError) {
+          admission?.cancel();
+          return requestAborted();
+        }
         admission?.release();
-        if (e instanceof RuntimeRequestAbortedError) return requestAborted();
         return e instanceof PayloadTooLargeError
           ? payloadTooLarge()
           : badRequest("Invalid form data payload.");
