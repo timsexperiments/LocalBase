@@ -52,6 +52,7 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
       if (modality === "stt" && modelId === failSttModel) {
         throw new Error("STT launch plan is invalid");
       }
+      const runtimeId = `${modality}:${modelId}:${records.length + 1}`;
       const record: ServiceRecord = {
         modality,
         modelId,
@@ -59,7 +60,7 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
           snapshot.config.memory.systemReserve.percent,
         shutdowns: 0,
         service: {
-          runtimeId: () => `${modality}:${modelId}`,
+          runtimeId: () => runtimeId,
           state: () => "idle",
           async ensureRunning() {},
           async kill() {},
@@ -80,6 +81,20 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
   } as never);
 
   try {
+    expect(reconciler.lifecycleSnapshot()).toMatchObject({
+      llm: {
+        configured: true,
+        state: "idle",
+        modelId: config.activeLlmModel,
+        admission: { kind: "known", accepting: true, activeCount: 0 },
+        configuredSlots: null,
+      },
+      stt: { configured: false, state: "disabled" },
+    });
+    registry.markDraining("llm");
+    expect(reconciler.lifecycleSnapshot().llm.state).toBe("draining");
+    registry.clearDraining("llm");
+
     const enableStt = controller.copy();
     enableStt.activeSttModel = "whisper-large-v3-turbo";
     enableStt.selectedSttModels = [enableStt.activeSttModel];
@@ -92,7 +107,13 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
     expect(records.filter(({ modality }) => modality === "stt")).toHaveLength(
       1,
     );
+    expect(reconciler.lifecycleSnapshot().stt).toMatchObject({
+      configured: true,
+      state: "idle",
+      modelId: enableStt.activeSttModel,
+    });
 
+    const beforeReplacement = reconciler.lifecycleSnapshot().llm.runtimeId;
     const replaceLlm = controller.copy();
     replaceLlm.parallel = 2;
     saveConfig(database, replaceLlm);
@@ -104,6 +125,9 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
       1,
     );
     expect(records[0]!.shutdowns).toBe(1);
+    expect(reconciler.lifecycleSnapshot().llm.runtimeId).not.toBe(
+      beforeReplacement,
+    );
 
     failSttModel = "whisper-tiny-en-q8_0";
     const failedStt = controller.copy();
@@ -112,6 +136,7 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
     saveConfig(database, failedStt);
     await reconciler.refresh();
     expect(registry.state("stt", true).state).toBe("failed");
+    expect(reconciler.lifecycleSnapshot().stt.state).toBe("failed");
     expect(events.map(({ eventName }) => eventName)).toContain(
       "runtime.reconciliation-failed",
     );

@@ -5,7 +5,7 @@ import {
   type ModalityLifecycleState,
 } from "./health";
 import type { RuntimeModality } from "./modality";
-import type { SupervisorStateReader } from "./supervisor-registry";
+import type { SupervisorLifecycleReader } from "./supervisor-registry";
 
 export type GatewayModalityConfiguration = Readonly<
   Record<RuntimeModality, boolean>
@@ -16,7 +16,7 @@ export type GatewayHealthInput = Readonly<{
   nowMs: number;
   stopping: boolean;
   configured: GatewayModalityConfiguration;
-  supervisors: SupervisorStateReader;
+  supervisors: SupervisorLifecycleReader;
 }>;
 
 /** Composes the externally exposed gateway health payload from supervisor state. */
@@ -26,7 +26,14 @@ export function composeGatewayHealth(input: GatewayHealthInput): GatewayHealth {
   ): {
     configured: boolean;
     state: ModalityLifecycleState;
-  } => input.supervisors.state(name, input.configured[name]);
+  } => {
+    const snapshot = input.supervisors.lifecycleSnapshot({
+      modality: name,
+      configured: input.configured[name],
+      modelId: null,
+    });
+    return { configured: snapshot.configured, state: snapshot.state };
+  };
 
   return gatewayHealthSchema.parse({
     status: input.stopping ? "error" : "ok",

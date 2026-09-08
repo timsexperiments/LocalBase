@@ -23,7 +23,7 @@ function testLaunchPlan(runtimeId: string): RuntimeLaunchPlan {
     port: 1,
     healthUrl: "http://127.0.0.1:1/health",
     ctxSize: 8192,
-    parallel: 1,
+    parallel: { slots: 1, isAuto: false, contextPerSlot: 8192 },
     modelRequirementGb: 1,
     hardware: { memoryGb: 1 },
     memoryDemand: {
@@ -223,6 +223,7 @@ test("startup failure releases its reservation", async () => {
   });
   try {
     await expect(service.ensureRunning()).rejects.toThrow("spawn failed");
+    expect(service.resolvedSlots()).toBeUndefined();
     expect(memory.reserves).toEqual(["llm:failure:1"]);
     expect(memory.releases).toEqual(["llm:failure:1"]);
   } finally {
@@ -390,9 +391,13 @@ test("managed processes reacquire and release reservations across stop and crash
     otel,
   });
   try {
+    expect(service.resolvedSlots()).toBeUndefined();
     await service.ensureRunning();
+    expect(service.resolvedSlots()).toBe(1);
     await service.kill();
+    expect(service.resolvedSlots()).toBeUndefined();
     await service.ensureRunning();
+    expect(service.resolvedSlots()).toBe(1);
     processes[1]?.kill(15);
     const deadline = Date.now() + 2_000;
     while (processes.length < 3 && Date.now() < deadline) {

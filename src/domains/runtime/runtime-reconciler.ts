@@ -5,6 +5,7 @@ import {
   type RuntimeConfigSnapshot,
 } from "./config-snapshot";
 import { ModalityAdmissionBarrier } from "./modality-admission";
+import type { RuntimeLifecycleSnapshot } from "./lifecycle-snapshot";
 import { runtimeModalities, type RuntimeModality } from "./modality";
 import {
   configuredRuntimeModality,
@@ -112,6 +113,9 @@ export class RuntimeReconciler {
         new ModalityAdmissionBarrier(modality, this.configured[modality]),
       ]),
     ) as Record<RuntimeModality, ModalityAdmissionBarrier>;
+    this.supervisors.setAdmissionReader((modality) =>
+      this.barriers[modality].snapshot(),
+    );
   }
 
   read(): RuntimeConfigSnapshot {
@@ -120,6 +124,24 @@ export class RuntimeReconciler {
 
   configuredModalities(): Readonly<ConfiguredModalities> {
     return Object.freeze({ ...this.configured });
+  }
+
+  lifecycleSnapshot(): Readonly<
+    Record<RuntimeModality, RuntimeLifecycleSnapshot>
+  > {
+    return Object.freeze(
+      Object.fromEntries(
+        runtimeModalities.map((modality) => [
+          modality,
+          this.supervisors.lifecycleSnapshot({
+            modality,
+            configured: this.configured[modality],
+            modelId: activeModel(modality, this.snapshot.config) || null,
+            admission: this.barriers[modality].snapshot(),
+          }),
+        ]),
+      ) as Record<RuntimeModality, RuntimeLifecycleSnapshot>,
+    );
   }
 
   async refresh(): Promise<RuntimeConfigSnapshot> {

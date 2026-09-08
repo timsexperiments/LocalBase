@@ -3,6 +3,7 @@ import {
   allocateParallelSlots,
   CONTEXT_MEMORY_GB_PER_8K_TOKENS,
   PARALLEL_SLOT_OVERHEAD_GB,
+  type ParallelAllocation,
   type ParallelSlots,
 } from "../config/parallel";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
@@ -31,7 +32,7 @@ type LaunchPlanBase<
 
 export type LlmLaunchPlan = LaunchPlanBase<"llm", "llama-server"> & {
   readonly ctxSize: number;
-  readonly parallel: ParallelSlots;
+  readonly parallel: ParallelAllocation;
   readonly modelRequirementGb: number | undefined;
   readonly hardware: Readonly<RuntimeHardware>;
 };
@@ -74,20 +75,14 @@ function llmMemoryDemand(input: {
   artifactBytes: number;
   modelRequirementGb: number | undefined;
   ctxSize: number;
-  parallel: ParallelSlots;
+  parallel: ParallelAllocation;
   hardware: RuntimeHardware;
 }): RuntimeMemoryDemand {
-  const parallel = allocateParallelSlots({
-    parallel: input.parallel,
-    memoryGb: input.hardware.memoryGb,
-    modelRequirementGb: input.modelRequirementGb,
-    ctxSize: input.ctxSize,
-  });
   const contextBytes = Math.ceil(
     (input.ctxSize / 8192) * CONTEXT_MEMORY_GB_PER_8K_TOKENS * gibibyte,
   );
   const slotBytes = Math.ceil(
-    parallel.slots * PARALLEL_SLOT_OVERHEAD_GB * gibibyte,
+    input.parallel.slots * PARALLEL_SLOT_OVERHEAD_GB * gibibyte,
   );
   const requirementBytes = modelBytes(
     input.artifactBytes,
@@ -116,6 +111,12 @@ export function resolveLlmLaunchPlan(input: {
   artifactBytes: number;
   hardware: RuntimeHardware;
 }): LlmLaunchPlan {
+  const parallel = allocateParallelSlots({
+    parallel: input.parallel,
+    memoryGb: input.hardware.memoryGb,
+    modelRequirementGb: input.modelRequirementGb,
+    ctxSize: input.ctxSize,
+  });
   return Object.freeze({
     runtimeId: input.runtimeId,
     modality: "llm",
@@ -128,10 +129,10 @@ export function resolveLlmLaunchPlan(input: {
     port: input.port,
     healthUrl: `http://${input.host}:${input.port}/health`,
     ctxSize: input.ctxSize,
-    parallel: input.parallel,
+    parallel: Object.freeze({ ...parallel }),
     modelRequirementGb: input.modelRequirementGb,
     hardware: Object.freeze({ ...input.hardware }),
-    memoryDemand: llmMemoryDemand(input),
+    memoryDemand: llmMemoryDemand({ ...input, parallel }),
   });
 }
 
