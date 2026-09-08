@@ -249,6 +249,22 @@ test("cancels response leases on cancellation and releases them on completion", 
   await completed.arrayBuffer();
   expect(completedReleases).toBe(1);
   expect(completedCancels).toBe(0);
+
+  let bodylessReleases = 0;
+  const bodylessOutcomes: string[] = [];
+  withResponseLease(
+    new Response(null, { status: 204 }),
+    () => {
+      bodylessReleases += 1;
+    },
+    () => {},
+    new AbortController().signal,
+    (outcome) => bodylessOutcomes.push(outcome),
+  );
+  expect({ bodylessReleases, bodylessOutcomes }).toEqual({
+    bodylessReleases: 1,
+    bodylessOutcomes: ["completed"],
+  });
 });
 
 test("does not dispatch an aborted admitted request", async () => {
@@ -399,6 +415,8 @@ test("compiled managed gateway writes redacted root-bound operational logs", asy
       },
     });
     expect(response.status).toBe(200);
+    const localRequestId = response.headers.get("x-localbase-request-id");
+    expect(localRequestId).toMatch(/^lbreq_/);
 
     const deadline = Date.now() + 3_000;
     let events = await readLogSnapshot(gateway.root);
@@ -407,7 +425,7 @@ test("compiled managed gateway writes redacted root-bound operational logs", asy
       !events.some(
         (event) =>
           event.eventName === "http.request" &&
-          event.requestId === "compiled-managed-request",
+          event.requestId === localRequestId,
       )
     ) {
       await Bun.sleep(25);
@@ -420,7 +438,7 @@ test("compiled managed gateway writes redacted root-bound operational logs", asy
       events.some(
         (event) =>
           event.eventName === "http.request" &&
-          event.requestId === "compiled-managed-request",
+          event.requestId === localRequestId,
       ),
     ).toBe(true);
     expect(JSON.stringify(events)).not.toContain("private-token");
@@ -449,6 +467,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   });
   const traceId = "0af7651916cd43dd8448eb211c80319c";
   const parentId = "b7ad6b7169203331";
+  let requestId: string | null;
   try {
     const response = await fetch(
       `${gateway.baseUrl}/v1/chat/completions?api_key=never-export-query`,
@@ -468,6 +487,24 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
       },
     );
     expect(response.status).toBe(200);
+    requestId = response.headers.get("x-localbase-request-id");
+    expect(requestId).toMatch(/^lbreq_/);
+    await response.json();
+
+    const streamed = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-test-upstream": "llama-wire-stream",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "private stream prompt" }],
+      }),
+    });
+    expect(streamed.status).toBe(200);
+    await streamed.text();
     const upstream = gateway.upstreamRequests.find(
       (request) => request.path === "/v1/chat/completions",
     );
@@ -487,6 +524,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
       }),
     });
     expect(failed.status).toBeGreaterThanOrEqual(500);
+    await failed.text();
   } finally {
     await gateway.stop();
     collector.stop(true);
@@ -524,6 +562,37 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
     statusCode: 2,
     attributes: { "http.response.status_code": 503 },
   });
+  const inferenceSpans = received
+    .filter((request) => request.path === "/v1/traces")
+    .flatMap((request) => decodeOtlpTraceSpans(request.body))
+    .filter((span) => span.name === "localbase.inference");
+  expect(inferenceSpans).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          "localbase.inference.model_id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          "localbase.request_id": requestId!,
+          "gen_ai.usage.input_tokens": 3,
+          "gen_ai.usage.output_tokens": 2,
+          "localbase.inference.outcome": "completed",
+        }),
+      }),
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          "localbase.inference.backend.prompt.duration_ms": 3,
+          "localbase.inference.backend.predicted.duration_ms": 4,
+          "localbase.inference.finish_reasons": "tool_calls",
+        }),
+      }),
+      expect.objectContaining({
+        attributes: expect.objectContaining({
+          "localbase.inference.outcome": "error",
+        }),
+      }),
+    ]),
+  );
+  expect(JSON.stringify(inferenceSpans)).not.toContain("/private/tmp/");
+  expect(JSON.stringify(inferenceSpans)).not.toContain("private stream prompt");
 });
 
 describe("API gateway integration", () => {
@@ -623,8 +692,24 @@ describe("API gateway integration", () => {
     const head = await request("/health", { method: "HEAD" });
     expect(head.status).toBe(response.status);
     expect(
-      [...head.headers].filter(([name]) => name !== "date").sort(),
-    ).toEqual([...response.headers].filter(([name]) => name !== "date").sort());
+      [...head.headers]
+        .filter(
+          ([name]) =>
+            name !== "date" &&
+            name !== "x-localbase-request-id" &&
+            name !== "server-timing",
+        )
+        .sort(),
+    ).toEqual(
+      [...response.headers]
+        .filter(
+          ([name]) =>
+            name !== "date" &&
+            name !== "x-localbase-request-id" &&
+            name !== "server-timing",
+        )
+        .sort(),
+    );
     expect(await head.text()).toBe("");
     expect(await gateway.readLlmRuntimeLaunches()).toEqual([]);
 
