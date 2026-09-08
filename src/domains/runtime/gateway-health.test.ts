@@ -1,14 +1,20 @@
 import { expect, test } from "bun:test";
 import { LOCALBASE_VERSION } from "../../version";
 import { composeGatewayHealth } from "./gateway-health";
-import type { SupervisorStateReader } from "./supervisor-registry";
+import { createRuntimeLifecycleSnapshot } from "./lifecycle-snapshot";
+import type { SupervisorLifecycleReader } from "./supervisor-registry";
 
-const supervisors: SupervisorStateReader = {
-  state(modality, configured) {
-    return {
+const supervisors: SupervisorLifecycleReader = {
+  lifecycleSnapshot({ modality, configured }) {
+    return createRuntimeLifecycleSnapshot({
+      modality,
       configured,
       state: modality === "llm" && configured ? "running" : "disabled",
-    };
+      modelId: null,
+      runtimeId: null,
+      admission: { kind: "unknown" },
+      configuredSlots: null,
+    });
   },
 };
 
