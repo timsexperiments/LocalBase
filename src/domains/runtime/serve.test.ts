@@ -623,8 +623,24 @@ describe("API gateway integration", () => {
     const head = await request("/health", { method: "HEAD" });
     expect(head.status).toBe(response.status);
     expect(
-      [...head.headers].filter(([name]) => name !== "date").sort(),
-    ).toEqual([...response.headers].filter(([name]) => name !== "date").sort());
+      [...head.headers]
+        .filter(
+          ([name]) =>
+            name !== "date" &&
+            name !== "x-localbase-request-id" &&
+            name !== "server-timing",
+        )
+        .sort(),
+    ).toEqual(
+      [...response.headers]
+        .filter(
+          ([name]) =>
+            name !== "date" &&
+            name !== "x-localbase-request-id" &&
+            name !== "server-timing",
+        )
+        .sort(),
+    );
     expect(await head.text()).toBe("");
     expect(await gateway.readLlmRuntimeLaunches()).toEqual([]);
 

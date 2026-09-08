@@ -13,6 +13,7 @@ import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
 import { type ILogger } from "../../observability/logging";
+import { InferenceTelemetry } from "../../observability/inference";
 import type { RuntimeModality } from "../modality";
 import {
   RuntimeReconciler,
@@ -920,6 +921,7 @@ function eventData(event: string): string | undefined {
 function validateEventStream(
   body: ReadableStream<Uint8Array>,
   schema: z.ZodType,
+  onValidatedEvent?: (value: unknown) => void,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -988,6 +990,7 @@ function validateEventStream(
           controller.terminate();
           return false;
         }
+        onValidatedEvent?.(parsed.data);
         for (const choice of value.choices) {
           if (choiceFinished.get(choice.index)) {
             return fail(controller, terminateOnFailure);
@@ -1038,6 +1041,7 @@ async function proxyRequest(
   responseSchema?: z.ZodType,
   eventStreamSchema?: z.ZodType,
   otel?: OtelRuntime,
+  onValidatedEvent?: (value: unknown) => void,
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
@@ -1094,11 +1098,14 @@ async function proxyRequest(
     }
     const headers = filterProxyHeaders(upstream.headers);
     headers.delete("content-length");
-    return new Response(validateEventStream(upstream.body, eventStreamSchema), {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers,
-    });
+    return new Response(
+      validateEventStream(upstream.body, eventStreamSchema, onValidatedEvent),
+      {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers,
+      },
+    );
   }
 
   if (responseSchema && !isEventStream(upstream) && upstream.ok) {
@@ -1142,6 +1149,7 @@ export function withResponseLease(
   release: () => void,
   cancel: () => void,
   requestSignal: AbortSignal,
+  onSettled?: (outcome: "completed" | "cancelled") => void,
 ): Response {
   if (!response.body) {
     if (requestSignal.aborted) cancel();
@@ -1156,12 +1164,14 @@ export function withResponseLease(
     completed = true;
     removeAbortListener();
     release();
+    onSettled?.("completed");
   };
   const cancelOnce = () => {
     if (completed) return;
     completed = true;
     removeAbortListener();
     cancel();
+    onSettled?.("cancelled");
   };
   const reader = response.body.getReader();
   const cancelForRequestAbort = () => {
@@ -1237,6 +1247,7 @@ export async function proxyWithAdmission(
   serviceName: string,
   requestSignal: AbortSignal,
   dispatch: () => Promise<Response>,
+  onSettled?: (outcome: "completed" | "cancelled") => void,
 ): Promise<Response> {
   try {
     await waitForRequestAbort(admission.ready, requestSignal);
@@ -1249,6 +1260,7 @@ export async function proxyWithAdmission(
       admission.release,
       admission.cancel,
       requestSignal,
+      onSettled,
     );
   } catch (error) {
     if (error instanceof RequestAbortedError) {
@@ -1763,6 +1775,8 @@ export async function runServe(
   const handleRequest = async (
     request: Request,
     pathname: string,
+    requestId: string,
+    startedAt: number,
   ): Promise<Response> => {
     const route = selectGatewayRoute(pathname);
     if (route === "health") {
@@ -1972,6 +1986,16 @@ export async function runServe(
         return modelNotFound(parsed.data.model ?? "");
       }
       if (selected.kind === "unavailable") return serviceUnavailable("LLM");
+      const inference = new InferenceTelemetry({
+        modelId: selected.value.modelId,
+        requestId,
+        startedAt,
+        logger: ctx.logger,
+        span: ctx.otel.startSpan?.(
+          "localbase.inference",
+          clientSpanOptions({ "http.request.method": request.method }),
+        ),
+      });
       return await proxyWithAdmission(
         selected.value.admission,
         "LLM",
@@ -1984,7 +2008,9 @@ export async function runServe(
             chatCompletionResponseSchema,
             chatCompletionStreamEventSchema,
             ctx.otel,
+            (value) => inference.observeValidatedChatEvent(value),
           ),
+        (outcome) => inference.finish(outcome),
       );
     }
 
@@ -2053,7 +2079,8 @@ export async function runServe(
       const start = performance.now();
       const { pathname } = new URL(request.url);
       const method = request.method;
-      const requestId = request.headers.get("x-request-id") ?? undefined;
+      const clientRequestId = request.headers.get("x-request-id") ?? undefined;
+      const requestId = `lbreq_${crypto.randomUUID()}`;
       const parent = ctx.otel.extract(request.headers);
       return await ctx.otel.withSpan(
         serverSpanName(method, pathname),
@@ -2076,7 +2103,7 @@ export async function runServe(
 
           let response: Response;
           try {
-            response = await handleRequest(request, pathname);
+            response = await handleRequest(request, pathname, requestId, start);
           } catch (err) {
             ctx.logger.error(
               "HTTP",
@@ -2092,18 +2119,24 @@ export async function runServe(
             "Access-Control-Allow-Methods",
             "GET, POST, PUT, DELETE, OPTIONS",
           );
+          headers.set("x-localbase-request-id", requestId);
           headers.set(
             "Access-Control-Allow-Headers",
             "Content-Type, Authorization, x-api-key",
           );
 
+          const durationMs = performance.now() - start;
+          if (!isEventStream(response)) {
+            headers.set(
+              "server-timing",
+              `localbase;dur=${durationMs.toFixed(2)}`,
+            );
+          }
           const corsResponse = new Response(response.body, {
             status: response.status,
             statusText: response.statusText,
             headers,
           });
-
-          const durationMs = performance.now() - start;
           span.setAttribute("http.response.status_code", corsResponse.status);
           if (corsResponse.status >= 500) {
             span.setStatus({ code: SpanStatusCode.ERROR });
@@ -2113,7 +2146,7 @@ export async function runServe(
             pathname,
             corsResponse.status,
             durationMs,
-            requestId,
+            clientRequestId ?? requestId,
           );
           return corsResponse;
         },
