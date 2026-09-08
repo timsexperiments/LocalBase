@@ -227,6 +227,9 @@ test("telemetry runtime replacement waits for active spans and closes each owner
       return context.active();
     },
     inject() {},
+    startSpan() {
+      return trace.wrapSpanContext(INVALID_SPAN_CONTEXT);
+    },
     async withSpan(_name, _options, operation) {
       calls.push(`${name}:span`);
       return await operation(trace.wrapSpanContext(INVALID_SPAN_CONTEXT));

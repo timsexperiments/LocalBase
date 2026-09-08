@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SpanStatusCode } from "@opentelemetry/api";
+import { SpanStatusCode, context, trace } from "@opentelemetry/api";
 import { join, basename } from "node:path";
 import { validateApiKey, installModel } from "../../../manager";
 import {
@@ -13,6 +13,8 @@ import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
 import { type ILogger } from "../../observability/logging";
+import { InferenceTelemetry } from "../../observability/inference";
+import type { InferenceOutcome } from "../../observability/inference";
 import type { RuntimeModality } from "../modality";
 import {
   RuntimeReconciler,
@@ -702,6 +704,10 @@ const chatCompletionStreamEventSchema = z.union([
   openAIErrorResponseSchema,
 ]);
 
+type ChatTelemetryResponse =
+  | z.output<typeof chatCompletionResponseSchema>
+  | z.output<typeof chatCompletionStreamEventSchema>;
+
 const embeddingsResponseSchema = z
   .object({
     object: z.string(),
@@ -919,7 +925,11 @@ function eventData(event: string): string | undefined {
 
 function validateEventStream(
   body: ReadableStream<Uint8Array>,
-  schema: z.ZodType,
+  schema: z.ZodType<z.output<typeof chatCompletionStreamEventSchema>>,
+  onValidatedEvent?: (
+    value: z.output<typeof chatCompletionStreamEventSchema>,
+  ) => void,
+  onInvalidEvent?: () => void,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -942,7 +952,10 @@ function validateEventStream(
     controller: TransformStreamDefaultController<Uint8Array>,
     terminate: boolean,
   ): false => {
-    if (!failed) controller.enqueue(encoder.encode(validationFailure));
+    if (!failed) {
+      onInvalidEvent?.();
+      controller.enqueue(encoder.encode(validationFailure));
+    }
     failed = true;
     if (terminate) controller.terminate();
     return false;
@@ -980,9 +993,8 @@ function validateEventStream(
         if (!parsed.success) {
           return fail(controller, terminateOnFailure);
         }
-        const value = parsed.data as
-          | z.infer<typeof chatCompletionStreamChunkSchema>
-          | z.infer<typeof openAIErrorResponseSchema>;
+        const value = parsed.data;
+        onValidatedEvent?.(value);
         if ("error" in value) {
           controller.enqueue(encoder.encode(event));
           controller.terminate();
@@ -1036,8 +1048,12 @@ async function proxyRequest(
   targetBase: string,
   pathOverride?: string,
   responseSchema?: z.ZodType,
-  eventStreamSchema?: z.ZodType,
+  eventStreamSchema?: z.ZodType<
+    z.output<typeof chatCompletionStreamEventSchema>
+  >,
   otel?: OtelRuntime,
+  onValidatedEvent?: (value: ChatTelemetryResponse) => void,
+  onInvalidEvent?: () => void,
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
@@ -1094,11 +1110,19 @@ async function proxyRequest(
     }
     const headers = filterProxyHeaders(upstream.headers);
     headers.delete("content-length");
-    return new Response(validateEventStream(upstream.body, eventStreamSchema), {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers,
-    });
+    return new Response(
+      validateEventStream(
+        upstream.body,
+        eventStreamSchema,
+        onValidatedEvent,
+        onInvalidEvent,
+      ),
+      {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers,
+      },
+    );
   }
 
   if (responseSchema && !isEventStream(upstream) && upstream.ok) {
@@ -1109,6 +1133,9 @@ async function proxyRequest(
           "The upstream service returned an invalid response.",
         );
       }
+
+      const chatResponse = chatCompletionResponseSchema.safeParse(parsed.data);
+      if (chatResponse.success) onValidatedEvent?.(chatResponse.data);
 
       const headers = filterProxyHeaders(upstream.headers);
       headers.delete("content-length");
@@ -1142,10 +1169,16 @@ export function withResponseLease(
   release: () => void,
   cancel: () => void,
   requestSignal: AbortSignal,
+  onSettled?: (outcome: InferenceOutcome) => void,
 ): Response {
   if (!response.body) {
-    if (requestSignal.aborted) cancel();
-    else release();
+    if (requestSignal.aborted) {
+      cancel();
+      onSettled?.("cancelled");
+    } else {
+      release();
+      onSettled?.("completed");
+    }
     return response;
   }
 
@@ -1156,12 +1189,14 @@ export function withResponseLease(
     completed = true;
     removeAbortListener();
     release();
+    onSettled?.("completed");
   };
   const cancelOnce = () => {
     if (completed) return;
     completed = true;
     removeAbortListener();
     cancel();
+    onSettled?.(requestSignal.aborted ? "cancelled" : "error");
   };
   const reader = response.body.getReader();
   const cancelForRequestAbort = () => {
@@ -1237,6 +1272,7 @@ export async function proxyWithAdmission(
   serviceName: string,
   requestSignal: AbortSignal,
   dispatch: () => Promise<Response>,
+  onSettled?: (outcome: InferenceOutcome) => void,
 ): Promise<Response> {
   try {
     await waitForRequestAbort(admission.ready, requestSignal);
@@ -1249,13 +1285,19 @@ export async function proxyWithAdmission(
       admission.release,
       admission.cancel,
       requestSignal,
+      (outcome) =>
+        onSettled?.(
+          outcome === "completed" && response.status >= 400 ? "error" : outcome,
+        ),
     );
   } catch (error) {
     if (error instanceof RequestAbortedError) {
       admission.cancel();
+      onSettled?.("cancelled");
       return requestAborted();
     }
     admission.release();
+    onSettled?.("error");
     if (error instanceof RuntimeMemoryAdmissionError) {
       return resourceUnavailable();
     }
@@ -1763,6 +1805,8 @@ export async function runServe(
   const handleRequest = async (
     request: Request,
     pathname: string,
+    requestId: string,
+    startedAt: number,
   ): Promise<Response> => {
     const route = selectGatewayRoute(pathname);
     if (route === "health") {
@@ -1972,6 +2016,16 @@ export async function runServe(
         return modelNotFound(parsed.data.model ?? "");
       }
       if (selected.kind === "unavailable") return serviceUnavailable("LLM");
+      const inference = new InferenceTelemetry({
+        modelId: selected.value.modelId,
+        requestId,
+        startedAt,
+        logger: ctx.logger,
+        span: ctx.otel.startSpan?.(
+          "localbase.inference",
+          clientSpanOptions({ "http.request.method": request.method }),
+        ),
+      });
       return await proxyWithAdmission(
         selected.value.admission,
         "LLM",
@@ -1984,7 +2038,13 @@ export async function runServe(
             chatCompletionResponseSchema,
             chatCompletionStreamEventSchema,
             ctx.otel,
+            (value) => {
+              if ("error" in value) inference.finish("error");
+              else inference.observeValidatedChatEvent(value);
+            },
+            () => inference.finish("error"),
           ),
+        (outcome) => inference.finish(outcome),
       );
     }
 
@@ -2053,71 +2113,91 @@ export async function runServe(
       const start = performance.now();
       const { pathname } = new URL(request.url);
       const method = request.method;
-      const requestId = request.headers.get("x-request-id") ?? undefined;
+      const requestId = `lbreq_${crypto.randomUUID()}`;
       const parent = ctx.otel.extract(request.headers);
-      return await ctx.otel.withSpan(
+      const span = ctx.otel.startSpan(
         serverSpanName(method, pathname),
         serverSpanOptions(method, pathname),
-        async (span) => {
-          if (method === "OPTIONS") {
-            span.setAttribute("http.response.status_code", 204);
-            return new Response(null, {
-              status: 204,
-              headers: {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods":
-                  "GET, POST, PUT, DELETE, OPTIONS",
-                "Access-Control-Allow-Headers":
-                  "Content-Type, Authorization, x-api-key",
-                "Access-Control-Max-Age": "86400",
-              },
-            });
-          }
-
-          let response: Response;
-          try {
-            response = await handleRequest(request, pathname);
-          } catch (err) {
-            ctx.logger.error(
-              "HTTP",
-              `Error handling request ${method} ${pathname}`,
-              err as Error,
-            );
-            response = internalGatewayFailure();
-          }
-
-          const headers = new Headers(response.headers);
-          headers.set("Access-Control-Allow-Origin", "*");
-          headers.set(
-            "Access-Control-Allow-Methods",
-            "GET, POST, PUT, DELETE, OPTIONS",
-          );
-          headers.set(
-            "Access-Control-Allow-Headers",
-            "Content-Type, Authorization, x-api-key",
-          );
-
-          const corsResponse = new Response(response.body, {
-            status: response.status,
-            statusText: response.statusText,
-            headers,
-          });
-
-          const durationMs = performance.now() - start;
-          span.setAttribute("http.response.status_code", corsResponse.status);
-          if (corsResponse.status >= 500) {
-            span.setStatus({ code: SpanStatusCode.ERROR });
-          }
-          ctx.logger.request(
-            method,
-            pathname,
-            corsResponse.status,
-            durationMs,
-            requestId,
-          );
-          return corsResponse;
-        },
         parent,
+      );
+      if (method === "OPTIONS") {
+        span.setAttribute("http.response.status_code", 204);
+        span.end();
+        return new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers":
+              "Content-Type, Authorization, x-api-key",
+            "Access-Control-Max-Age": "86400",
+          },
+        });
+      }
+
+      let response: Response;
+      try {
+        response = await context.with(
+          trace.setSpan(parent, span),
+          async () => await handleRequest(request, pathname, requestId, start),
+        );
+      } catch (err) {
+        ctx.logger.error(
+          "HTTP",
+          `Error handling request ${method} ${pathname}`,
+          err as Error,
+        );
+        response = internalGatewayFailure();
+      }
+
+      const headers = new Headers(response.headers);
+      headers.set("Access-Control-Allow-Origin", "*");
+      headers.set(
+        "Access-Control-Allow-Methods",
+        "GET, POST, PUT, DELETE, OPTIONS",
+      );
+      headers.set("x-localbase-request-id", requestId);
+      headers.set(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, x-api-key",
+      );
+
+      const durationMs = performance.now() - start;
+      if (!isEventStream(response)) {
+        headers.set("server-timing", `localbase;dur=${durationMs.toFixed(2)}`);
+      }
+      const corsResponse = new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+      span.setAttribute("http.response.status_code", corsResponse.status);
+      if (corsResponse.status >= 500) {
+        span.setStatus({ code: SpanStatusCode.ERROR });
+      }
+      const settle = (outcome: InferenceOutcome) => {
+        const settledDurationMs = performance.now() - start;
+        span.setAttribute(
+          "localbase.http.response.duration_ms",
+          settledDurationMs,
+        );
+        if (outcome !== "completed" || corsResponse.status >= 500) {
+          span.setStatus({ code: SpanStatusCode.ERROR });
+        }
+        ctx.logger.request(
+          method,
+          pathname,
+          corsResponse.status,
+          settledDurationMs,
+          requestId,
+        );
+        span.end();
+      };
+      return withResponseLease(
+        corsResponse,
+        () => settle("completed"),
+        () => settle(request.signal.aborted ? "cancelled" : "error"),
+        request.signal,
       );
     },
   });

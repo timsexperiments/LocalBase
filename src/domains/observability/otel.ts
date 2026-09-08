@@ -362,6 +362,7 @@ export interface OtelRuntime {
   emit(event: LogEvent): void;
   extract(headers: Headers): Context;
   inject(headers: Headers, activeContext?: Context): void;
+  startSpan(name: string, options: SpanOptions, parent?: Context): Span;
   withSpan<T>(
     name: string,
     options: SpanOptions,
@@ -398,6 +399,10 @@ export class OtelRuntimeHolder implements OtelRuntime {
 
   inject(headers: Headers, activeContext?: Context): void {
     this.runtime.inject(headers, activeContext);
+  }
+
+  startSpan(name: string, options: SpanOptions, parent?: Context): Span {
+    return this.runtime.startSpan(name, options, parent);
   }
 
   async withSpan<T>(
@@ -479,6 +484,9 @@ class NoopOtelRuntime implements OtelRuntime {
     return context.active();
   }
   inject(): void {}
+  startSpan(): Span {
+    return trace.wrapSpanContext(INVALID_SPAN_CONTEXT);
+  }
   async withSpan<T>(
     _name: string,
     _options: SpanOptions,
@@ -740,6 +748,14 @@ class ActiveOtelRuntime implements OtelRuntime {
         carrier.set(key, value);
       },
     });
+  }
+
+  startSpan(
+    name: string,
+    options: SpanOptions,
+    parent = context.active(),
+  ): Span {
+    return this.tracer.startSpan(name, options, parent);
   }
 
   async withSpan<T>(
