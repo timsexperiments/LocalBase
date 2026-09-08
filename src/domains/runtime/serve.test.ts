@@ -468,6 +468,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   const traceId = "0af7651916cd43dd8448eb211c80319c";
   const parentId = "b7ad6b7169203331";
   let requestId: string | null;
+  let cancelledRequestId: string | null;
   try {
     const response = await fetch(
       `${gateway.baseUrl}/v1/chat/completions?api_key=never-export-query`,
@@ -525,6 +526,51 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
     });
     expect(failed.status).toBeGreaterThanOrEqual(500);
     await failed.text();
+
+    const abort = new AbortController();
+    const streamId = "telemetry-cancelled-stream";
+    const cancelled = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      signal: abort.signal,
+      headers: {
+        "content-type": "application/json",
+        "x-test-upstream": "controlled-stream",
+        "x-test-stream-id": streamId,
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "cancel this stream" }],
+      }),
+    });
+    cancelledRequestId = cancelled.headers.get("x-localbase-request-id");
+    expect(cancelledRequestId).toMatch(/^lbreq_/);
+    await cancelled.body!.getReader().read();
+    abort.abort();
+    await gateway.waitForControlledStreamAbort(streamId);
+
+    const unavailableGateway = await startGatewayFixture({
+      otelEndpoint: `http://127.0.0.1:${collector.port}`,
+      llmBackendHealthy: false,
+      llmRuntimeExitOnStart: true,
+    });
+    try {
+      const unavailable = await fetch(
+        `${unavailableGateway.baseUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+            messages: [{ role: "user", content: "fail startup" }],
+          }),
+        },
+      );
+      expect(unavailable.status).toBe(503);
+      await unavailable.text();
+    } finally {
+      await unavailableGateway.stop();
+    }
   } finally {
     await gateway.stop();
     collector.stop(true);
@@ -593,6 +639,18 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   );
   expect(JSON.stringify(inferenceSpans)).not.toContain("/private/tmp/");
   expect(JSON.stringify(inferenceSpans)).not.toContain("private stream prompt");
+  expect(
+    inferenceSpans.filter(
+      (span) =>
+        span.attributes["localbase.inference.outcome"] === "cancelled" &&
+        span.attributes["localbase.request_id"] === cancelledRequestId,
+    ),
+  ).toHaveLength(1);
+  expect(
+    inferenceSpans.filter(
+      (span) => span.attributes["localbase.inference.outcome"] === "error",
+    ),
+  ).toHaveLength(2);
 });
 
 describe("API gateway integration", () => {
