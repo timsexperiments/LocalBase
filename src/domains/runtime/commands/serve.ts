@@ -1285,7 +1285,10 @@ export async function proxyWithAdmission(
       admission.release,
       admission.cancel,
       requestSignal,
-      onSettled,
+      (outcome) =>
+        onSettled?.(
+          outcome === "completed" && response.status >= 400 ? "error" : outcome,
+        ),
     );
   } catch (error) {
     if (error instanceof RequestAbortedError) {
