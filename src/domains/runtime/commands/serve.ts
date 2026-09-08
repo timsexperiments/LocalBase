@@ -929,6 +929,7 @@ function validateEventStream(
   onValidatedEvent?: (
     value: z.output<typeof chatCompletionStreamEventSchema>,
   ) => void,
+  onInvalidEvent?: () => void,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -951,7 +952,10 @@ function validateEventStream(
     controller: TransformStreamDefaultController<Uint8Array>,
     terminate: boolean,
   ): false => {
-    if (!failed) controller.enqueue(encoder.encode(validationFailure));
+    if (!failed) {
+      onInvalidEvent?.();
+      controller.enqueue(encoder.encode(validationFailure));
+    }
     failed = true;
     if (terminate) controller.terminate();
     return false;
@@ -990,12 +994,12 @@ function validateEventStream(
           return fail(controller, terminateOnFailure);
         }
         const value = parsed.data;
+        onValidatedEvent?.(value);
         if ("error" in value) {
           controller.enqueue(encoder.encode(event));
           controller.terminate();
           return false;
         }
-        onValidatedEvent?.(parsed.data);
         for (const choice of value.choices) {
           if (choiceFinished.get(choice.index)) {
             return fail(controller, terminateOnFailure);
@@ -1049,6 +1053,7 @@ async function proxyRequest(
   >,
   otel?: OtelRuntime,
   onValidatedEvent?: (value: ChatTelemetryResponse) => void,
+  onInvalidEvent?: () => void,
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
@@ -1106,7 +1111,12 @@ async function proxyRequest(
     const headers = filterProxyHeaders(upstream.headers);
     headers.delete("content-length");
     return new Response(
-      validateEventStream(upstream.body, eventStreamSchema, onValidatedEvent),
+      validateEventStream(
+        upstream.body,
+        eventStreamSchema,
+        onValidatedEvent,
+        onInvalidEvent,
+      ),
       {
         status: upstream.status,
         statusText: upstream.statusText,
@@ -2025,7 +2035,11 @@ export async function runServe(
             chatCompletionResponseSchema,
             chatCompletionStreamEventSchema,
             ctx.otel,
-            (value) => inference.observeValidatedChatEvent(value),
+            (value) => {
+              if ("error" in value) inference.finish("error");
+              else inference.observeValidatedChatEvent(value);
+            },
+            () => inference.finish("error"),
           ),
         (outcome) => inference.finish(outcome),
       );
