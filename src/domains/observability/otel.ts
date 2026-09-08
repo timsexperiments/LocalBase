@@ -362,7 +362,7 @@ export interface OtelRuntime {
   emit(event: LogEvent): void;
   extract(headers: Headers): Context;
   inject(headers: Headers, activeContext?: Context): void;
-  startSpan?(name: string, options: SpanOptions, parent?: Context): Span;
+  startSpan(name: string, options: SpanOptions, parent?: Context): Span;
   withSpan<T>(
     name: string,
     options: SpanOptions,
@@ -402,10 +402,7 @@ export class OtelRuntimeHolder implements OtelRuntime {
   }
 
   startSpan(name: string, options: SpanOptions, parent?: Context): Span {
-    return (
-      this.runtime.startSpan?.(name, options, parent) ??
-      trace.wrapSpanContext(INVALID_SPAN_CONTEXT)
-    );
+    return this.runtime.startSpan(name, options, parent);
   }
 
   async withSpan<T>(

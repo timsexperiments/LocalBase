@@ -399,6 +399,8 @@ test("compiled managed gateway writes redacted root-bound operational logs", asy
       },
     });
     expect(response.status).toBe(200);
+    const localRequestId = response.headers.get("x-localbase-request-id");
+    expect(localRequestId).toMatch(/^lbreq_/);
 
     const deadline = Date.now() + 3_000;
     let events = await readLogSnapshot(gateway.root);
@@ -407,7 +409,7 @@ test("compiled managed gateway writes redacted root-bound operational logs", asy
       !events.some(
         (event) =>
           event.eventName === "http.request" &&
-          event.requestId === "compiled-managed-request",
+          event.requestId === localRequestId,
       )
     ) {
       await Bun.sleep(25);
@@ -420,7 +422,7 @@ test("compiled managed gateway writes redacted root-bound operational logs", asy
       events.some(
         (event) =>
           event.eventName === "http.request" &&
-          event.requestId === "compiled-managed-request",
+          event.requestId === localRequestId,
       ),
     ).toBe(true);
     expect(JSON.stringify(events)).not.toContain("private-token");

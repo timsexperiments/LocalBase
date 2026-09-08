@@ -1,4 +1,5 @@
 import { SpanStatusCode, type Span } from "@opentelemetry/api";
+import { z } from "zod";
 import type { ILogger } from "./logging";
 
 type Usage = Readonly<{
@@ -8,6 +9,34 @@ type Usage = Readonly<{
 }>;
 
 type Timings = Readonly<{ promptMs: number; predictedMs: number }>;
+
+export type InferenceOutcome = "completed" | "cancelled" | "error";
+
+const completionMetadataSchema = z
+  .object({
+    choices: z
+      .array(
+        z
+          .object({ finish_reason: z.string().nullable().optional() })
+          .passthrough(),
+      )
+      .optional(),
+    usage: z
+      .object({
+        prompt_tokens: z.unknown().optional(),
+        completion_tokens: z.unknown().optional(),
+        total_tokens: z.unknown().optional(),
+      })
+      .nullable()
+      .optional(),
+    timings: z
+      .object({
+        prompt_ms: z.unknown().optional(),
+        predicted_ms: z.unknown().optional(),
+      })
+      .optional(),
+  })
+  .passthrough();
 
 function finiteNonnegative(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
@@ -20,6 +49,7 @@ export class InferenceTelemetry {
   private usage: Usage | undefined;
   private timings: Timings | undefined;
   private readonly finishReasons = new Set<string>();
+  private finished = false;
 
   constructor(
     private readonly input: Readonly<{
@@ -27,24 +57,17 @@ export class InferenceTelemetry {
       requestId: string;
       startedAt: number;
       logger: Pick<ILogger, "event">;
-      span?: Span;
+      span: Span;
     }>,
   ) {
-    input.span?.setAttribute("localbase.inference.model_id", input.modelId);
-    input.span?.setAttribute("localbase.request_id", input.requestId);
+    input.span.setAttribute("localbase.inference.model_id", input.modelId);
+    input.span.setAttribute("localbase.request_id", input.requestId);
   }
 
   observeValidatedChatEvent(value: unknown): void {
-    if (!value || typeof value !== "object" || "error" in value) return;
-    const event = value as {
-      choices?: Array<{ finish_reason?: string | null }>;
-      usage?: {
-        prompt_tokens?: unknown;
-        completion_tokens?: unknown;
-        total_tokens?: unknown;
-      } | null;
-      timings?: { prompt_ms?: unknown; predicted_ms?: unknown };
-    };
+    const parsed = completionMetadataSchema.safeParse(value);
+    if (!parsed.success) return;
+    const event = parsed.data;
     for (const choice of event.choices ?? []) {
       if (typeof choice.finish_reason === "string")
         this.finishReasons.add(choice.finish_reason);
@@ -66,27 +89,29 @@ export class InferenceTelemetry {
     }
   }
 
-  finish(outcome: "completed" | "cancelled" | "error"): void {
+  finish(outcome: InferenceOutcome): void {
+    if (this.finished) return;
+    this.finished = true;
     const totalMs = Math.max(0, performance.now() - this.input.startedAt);
     const attributes: Record<string, string | number | boolean> = {
       model_id: this.input.modelId,
       outcome,
       total_duration_ms: Number(totalMs.toFixed(2)),
     };
-    this.input.span?.setAttribute(
+    this.input.span.setAttribute(
       "localbase.inference.total.duration_ms",
       totalMs,
     );
-    this.input.span?.setAttribute("localbase.inference.outcome", outcome);
+    this.input.span.setAttribute("localbase.inference.outcome", outcome);
     if (this.usage) {
       attributes.prompt_tokens = this.usage.promptTokens;
       attributes.completion_tokens = this.usage.completionTokens;
       attributes.total_tokens = this.usage.totalTokens;
-      this.input.span?.setAttribute(
+      this.input.span.setAttribute(
         "gen_ai.usage.input_tokens",
         this.usage.promptTokens,
       );
-      this.input.span?.setAttribute(
+      this.input.span.setAttribute(
         "gen_ai.usage.output_tokens",
         this.usage.completionTokens,
       );
@@ -94,11 +119,11 @@ export class InferenceTelemetry {
     if (this.timings) {
       attributes.prompt_duration_ms = this.timings.promptMs;
       attributes.predicted_duration_ms = this.timings.predictedMs;
-      this.input.span?.setAttribute(
+      this.input.span.setAttribute(
         "localbase.inference.backend.prompt.duration_ms",
         this.timings.promptMs,
       );
-      this.input.span?.setAttribute(
+      this.input.span.setAttribute(
         "localbase.inference.backend.predicted.duration_ms",
         this.timings.predictedMs,
       );
@@ -106,13 +131,13 @@ export class InferenceTelemetry {
     if (this.finishReasons.size) {
       const finishReasons = [...this.finishReasons].sort().join(",");
       attributes.finish_reasons = finishReasons;
-      this.input.span?.setAttribute(
+      this.input.span.setAttribute(
         "localbase.inference.finish_reasons",
         finishReasons,
       );
     }
     if (outcome !== "completed")
-      this.input.span?.setStatus({ code: SpanStatusCode.ERROR });
+      this.input.span.setStatus({ code: SpanStatusCode.ERROR });
     this.input.logger.event({
       severity: outcome === "completed" ? "info" : "warn",
       eventName: "inference.completed",
@@ -123,6 +148,6 @@ export class InferenceTelemetry {
       requestId: this.input.requestId,
       attributes,
     });
-    this.input.span?.end();
+    this.input.span.end();
   }
 }
