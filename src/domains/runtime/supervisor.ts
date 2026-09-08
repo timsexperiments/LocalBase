@@ -61,6 +61,7 @@ export class ManagedService {
   private startup: StartupAttempt | null = null;
   private lifecycleState: ModalityLifecycleState = "idle";
   private reservation: RuntimeMemoryReservation | null = null;
+  private resolvedPlan: RuntimeLaunchPlan | undefined;
 
   constructor(private readonly options: ManagedServiceOptions) {}
 
@@ -96,6 +97,11 @@ export class ManagedService {
 
   runtimeId(): string {
     return this.options.runtimeId;
+  }
+
+  resolvedSlots(): number | undefined {
+    const plan = this.resolvedPlan;
+    return plan?.modality === "llm" ? plan.parallel.slots : undefined;
   }
 
   private exited(proc: Bun.Subprocess): boolean {
@@ -162,6 +168,7 @@ export class ManagedService {
   }
 
   private async start(): Promise<void> {
+    this.resolvedPlan = undefined;
     const attempt: StartupAttempt = {
       generation: ++this.startupGeneration,
       controller: new AbortController(),
@@ -210,6 +217,7 @@ export class ManagedService {
         if (plan.runtimeId !== this.options.runtimeId) {
           throw new Error("Backend launch plan has an unexpected runtime ID.");
         }
+        this.resolvedPlan = plan;
         reservation = await this.options.memorySafety.reserve({
           runtimeId: plan.runtimeId,
           demand: plan.memoryDemand,
@@ -253,6 +261,7 @@ export class ManagedService {
         this.lifecycle("backend.ready", "info", { pid: startedProcess.pid });
         this.lifecycleState = "running";
       } catch (err) {
+        this.resolvedPlan = undefined;
         if (err instanceof StartupCancelledError || attempt.cancelled) {
           if (proc && this.proc === proc) {
             await this.stopCurrentProcess();
@@ -369,6 +378,7 @@ export class ManagedService {
   }
 
   private async stopCurrentProcess(): Promise<void> {
+    this.resolvedPlan = undefined;
     const process = this.proc;
     if (!process) return;
     this.expectedStops.add(process);

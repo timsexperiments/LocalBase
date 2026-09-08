@@ -103,7 +103,13 @@ describe("runtime launch plans", () => {
 
     expect(Object.isFrozen(plan)).toBe(true);
     expect(Object.isFrozen(plan.hardware)).toBe(true);
+    expect(Object.isFrozen(plan.parallel)).toBe(true);
     expect(plan.hardware.memoryGb).toBe(16);
+    expect(plan.parallel).toEqual({
+      slots: 4,
+      isAuto: true,
+      contextPerSlot: 2048,
+    });
   });
 });
 
@@ -131,6 +137,13 @@ test("supervisor registry reports configured state and shuts down each superviso
     configured: false,
     state: "disabled",
   });
+  expect(
+    registry.lifecycleSnapshot({
+      modality: "llm",
+      configured: true,
+      modelId: "model",
+    }).admission,
+  ).toEqual({ kind: "unknown" });
   await registry.shutdown();
   expect(shutdowns).toBe(2);
 });

@@ -1,7 +1,4 @@
-import {
-  allocateParallelSlots,
-  type ParallelAllocation,
-} from "../config/parallel";
+import type { ParallelAllocation } from "../config/parallel";
 import { ensureBinary } from "../../manager/binaries";
 import type {
   ImageLaunchPlan,
@@ -36,12 +33,6 @@ export function buildLlamaServerArgs(
     | "hardware"
   >,
 ): LlamaServerArgs {
-  const parallel = allocateParallelSlots({
-    parallel: plan.parallel,
-    memoryGb: plan.hardware.memoryGb,
-    modelRequirementGb: plan.modelRequirementGb,
-    ctxSize: plan.ctxSize,
-  });
   const args = [
     "-m",
     plan.modelPath,
@@ -52,7 +43,7 @@ export function buildLlamaServerArgs(
     "-c",
     String(plan.ctxSize),
     "--parallel",
-    String(parallel.slots),
+    String(plan.parallel.slots),
     "--jinja",
     "--embeddings",
   ];
@@ -61,7 +52,7 @@ export function buildLlamaServerArgs(
     args.push("--flash-attn", "auto");
   }
 
-  return { args, parallel };
+  return { args, parallel: plan.parallel };
 }
 
 export async function startLlamaServerProcess(

@@ -1,4 +1,5 @@
 import type { RuntimeModality } from "./modality";
+import type { RuntimeAdmissionSnapshot } from "./lifecycle-snapshot";
 
 export type ModalityAdmission<Value> = Readonly<{
   modality: RuntimeModality;
@@ -40,6 +41,14 @@ export class ModalityAdmissionBarrier {
     if (!this.accepting || this.active !== 0) return false;
     this.accepting = false;
     return true;
+  }
+
+  snapshot(): RuntimeAdmissionSnapshot {
+    return Object.freeze({
+      kind: "known",
+      accepting: this.accepting,
+      activeCount: this.active,
+    });
   }
 
   acquire<Value>(value: Value): ModalityAdmission<Value> | undefined {
