@@ -44,6 +44,12 @@ export type ModelAdmissionResult =
   | Readonly<{ kind: "unavailable" }>;
 
 type ConfiguredModalities = Record<RuntimeModality, boolean>;
+type ModalityTransitions = Record<RuntimeModality, Promise<void>>;
+
+type CoordinatedSnapshot = Readonly<{
+  snapshot: RuntimeConfigSnapshot;
+  transitions: Readonly<ModalityTransitions>;
+}>;
 
 export class RuntimeRequestAbortedError extends Error {
   constructor() {
@@ -95,6 +101,10 @@ export class RuntimeReconciler {
   private configured: ConfiguredModalities;
   private snapshot: RuntimeConfigSnapshot;
   private transitions = Promise.resolve();
+  private readonly modalityTransitions: ModalityTransitions =
+    Object.fromEntries(
+      runtimeModalities.map((modality) => [modality, Promise.resolve()]),
+    ) as Record<RuntimeModality, Promise<void>>;
   private sharedRefresh: Promise<RuntimeConfigSnapshot> | undefined;
 
   constructor(
@@ -146,10 +156,7 @@ export class RuntimeReconciler {
 
   async refresh(): Promise<RuntimeConfigSnapshot> {
     if (!this.sharedRefresh) {
-      const refresh = this.exclusive(async () => {
-        await this.reconcile(await this.controller.refresh());
-        return this.snapshot;
-      });
+      const refresh = this.coordinateRefresh();
       this.sharedRefresh = refresh;
       void refresh
         .finally(() => {
@@ -161,67 +168,58 @@ export class RuntimeReconciler {
   }
 
   async evictIdleRuntimes(): Promise<void> {
-    await this.exclusive(async () => {
-      const evictions = runtimeModalities.flatMap((modality) => {
-        const supervisor = this.supervisors.get(modality);
-        if (!supervisor || supervisor.state() !== "running") return [];
-        const barrier = this.barriers[modality];
-        if (!barrier.detachIfIdle()) return [];
-        return [{ barrier, supervisor }];
-      });
-
-      await Promise.all(
-        evictions.map(async ({ barrier, supervisor }) => {
+    await Promise.all(
+      runtimeModalities.map((modality) =>
+        this.exclusiveModality(modality, async () => {
+          const supervisor = this.supervisors.get(modality);
+          if (!supervisor || supervisor.state() !== "running") return;
+          const barrier = this.barriers[modality];
+          if (!barrier.detachIfIdle()) return;
           try {
             await supervisor.kill();
           } finally {
             barrier.attach();
           }
         }),
-      );
-    });
+      ),
+    );
   }
 
   async evictAllRuntimes(): Promise<void> {
-    await this.exclusive(async () => {
-      const runtimes = runtimeModalities.flatMap((modality) => {
-        const supervisor = this.supervisors.get(modality);
-        if (!supervisor) return [];
-        this.supervisors.markDraining(modality);
-        return [
-          {
-            barrier: this.barriers[modality],
-            modality,
-            supervisor,
-            drain: this.barriers[modality].drainWithoutCancellation(),
-          },
-        ];
-      });
-
-      const kills = await Promise.allSettled(
-        runtimes.map(async ({ supervisor }) => await supervisor.kill()),
-      );
-      await Promise.all(runtimes.map(async ({ drain }) => await drain));
-
-      for (const { barrier, modality } of runtimes) {
-        this.supervisors.clearDraining(modality);
-        if (this.configured[modality]) barrier.attach();
-      }
-
-      const failedKill = kills.find(
-        (result): result is PromiseRejectedResult =>
-          result.status === "rejected",
-      );
-      if (failedKill) throw failedKill.reason;
-    });
+    const results = await Promise.allSettled(
+      runtimeModalities.map((modality) =>
+        this.exclusiveModality(modality, async () => {
+          const supervisor = this.supervisors.get(modality);
+          if (!supervisor) return;
+          this.supervisors.markDraining(modality);
+          const barrier = this.barriers[modality];
+          const drain = barrier.drainWithoutCancellation();
+          let killError: unknown;
+          try {
+            await supervisor.kill();
+          } catch (error) {
+            killError = error;
+          }
+          await drain;
+          this.supervisors.clearDraining(modality);
+          if (this.configured[modality]) barrier.attach();
+          if (killError) throw killError;
+        }),
+      ),
+    );
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failure) throw failure.reason;
   }
 
   async admit(
     modality: RuntimeModality,
   ): Promise<RuntimeAdmission | undefined> {
-    return await this.exclusive(async () => {
-      await this.reconcile(await this.controller.refresh());
-      const admission = this.acquire(modality);
+    const coordinated = await this.coordinate();
+    return await this.exclusiveModality(modality, async () => {
+      await coordinated.transitions[modality];
+      const admission = this.acquire(modality, coordinated.snapshot);
       return admission ? this.prepare(admission) : undefined;
     });
   }
@@ -231,27 +229,7 @@ export class RuntimeReconciler {
     requestedModel: string | undefined,
     signal?: AbortSignal,
   ): Promise<ModelAdmissionResult> {
-    const admitted = this.exclusive<ModelAdmissionResult>(async () => {
-      this.throwIfAborted(signal);
-      await this.reconcile(await this.controller.refresh());
-      this.throwIfAborted(signal);
-      if (!this.configured[modality]) return { kind: "not-configured" };
-      const modelId = this.resolveRequestedModel(modality, requestedModel);
-      if (!modelId) return { kind: "model-not-found" };
-      if (
-        modelId !== activeModel(modality, this.snapshot.config) &&
-        !this.ownedFields.has(activeModelField(modality))
-      ) {
-        await this.activateModel(modality, modelId, signal);
-      }
-      this.throwIfAborted(signal);
-      const admission = this.acquire(modality);
-      if (!admission) return { kind: "unavailable" };
-      return {
-        kind: "admitted",
-        value: { modelId, admission: this.prepare(admission) },
-      };
-    });
+    const admitted = this.coordinateAdmission(modality, requestedModel, signal);
     try {
       return await this.waitForAbort(admitted, signal);
     } catch (error) {
@@ -267,6 +245,52 @@ export class RuntimeReconciler {
     }
   }
 
+  private async coordinateAdmission(
+    modality: RuntimeModality,
+    requestedModel: string | undefined,
+    signal: AbortSignal | undefined,
+  ): Promise<ModelAdmissionResult> {
+    const coordinated = await this.coordinate();
+    return await this.exclusiveModality(modality, async () => {
+      await coordinated.transitions[modality];
+      this.throwIfAborted(signal);
+      if (
+        !configuredRuntimeModality(
+          modality,
+          coordinated.snapshot.config,
+          this.ownership,
+        )
+      ) {
+        return { kind: "not-configured" };
+      }
+      const modelId = this.resolveRequestedModel(
+        modality,
+        requestedModel,
+        coordinated.snapshot,
+      );
+      if (!modelId) return { kind: "model-not-found" };
+      let admissionSnapshot = coordinated.snapshot;
+      if (
+        modelId !== activeModel(modality, coordinated.snapshot.config) &&
+        !this.ownedFields.has(activeModelField(modality))
+      ) {
+        admissionSnapshot = await this.activateModel(
+          modality,
+          modelId,
+          coordinated.snapshot,
+          signal,
+        );
+      }
+      this.throwIfAborted(signal);
+      const admission = this.acquire(modality, admissionSnapshot);
+      if (!admission) return { kind: "unavailable" };
+      return {
+        kind: "admitted",
+        value: { modelId, admission: this.prepare(admission) },
+      };
+    });
+  }
+
   private async exclusive<Value>(work: () => Promise<Value>): Promise<Value> {
     const next = this.transitions.then(work, work);
     this.transitions = next.then(
@@ -276,12 +300,42 @@ export class RuntimeReconciler {
     return await next;
   }
 
-  private acquire(modality: RuntimeModality): RuntimeLease | undefined {
-    if (!this.configured[modality]) return undefined;
+  private async exclusiveModality<Value>(
+    modality: RuntimeModality,
+    work: () => Promise<Value>,
+  ): Promise<Value> {
+    const previous = this.modalityTransitions[modality];
+    const next = previous.then(work, work);
+    this.modalityTransitions[modality] = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return await next;
+  }
+
+  private async coordinate(): Promise<CoordinatedSnapshot> {
+    return await this.exclusive(async () =>
+      this.scheduleReconciliation(await this.controller.refresh()),
+    );
+  }
+
+  private async coordinateRefresh(): Promise<RuntimeConfigSnapshot> {
+    const coordinated = await this.coordinate();
+    await Promise.all(Object.values(coordinated.transitions));
+    return coordinated.snapshot;
+  }
+
+  private acquire(
+    modality: RuntimeModality,
+    snapshot: RuntimeConfigSnapshot,
+  ): RuntimeLease | undefined {
+    if (!configuredRuntimeModality(modality, snapshot.config, this.ownership)) {
+      return undefined;
+    }
     const supervisor = this.supervisors.get(modality);
     if (!supervisor) return undefined;
     const lease = this.barriers[modality].acquire({
-      snapshot: this.snapshot,
+      snapshot,
       supervisor,
     });
     if (!lease) return undefined;
@@ -314,7 +368,7 @@ export class RuntimeReconciler {
     admission.onIdleCancellation(() => {
       if (stopRequested) return;
       stopRequested = true;
-      void this.exclusive(async () => {
+      void this.exclusiveModality(admission.modality, async () => {
         try {
           if (
             this.supervisors.get(admission.modality) === admission.supervisor &&
@@ -365,10 +419,11 @@ export class RuntimeReconciler {
   private resolveRequestedModel(
     modality: RuntimeModality,
     requestedModel: string | undefined,
+    snapshot: RuntimeConfigSnapshot,
   ): string | undefined {
-    const active = activeModel(modality, this.snapshot.config);
+    const active = activeModel(modality, snapshot.config);
     if (requestedModel === undefined) return active;
-    return [active, ...selectedModels(modality, this.snapshot.config)].find(
+    return [active, ...selectedModels(modality, snapshot.config)].find(
       (modelId) => modelId === requestedModel,
     );
   }
@@ -376,10 +431,11 @@ export class RuntimeReconciler {
   private async activateModel(
     modality: RuntimeModality,
     modelId: string,
+    source: RuntimeConfigSnapshot,
     signal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<RuntimeConfigSnapshot> {
     const field = activeModelField(modality);
-    const previousModel = activeModel(modality, this.snapshot.config);
+    const previousModel = activeModel(modality, source.config);
     this.logger.event({
       severity: "info",
       eventName: "model.switching",
@@ -407,10 +463,18 @@ export class RuntimeReconciler {
       }
       throw error;
     }
-    this.controller.update((config) => {
-      config[field] = modelId;
+    const target = await this.exclusive(async () => {
+      const target = this.controller.update((config) => {
+        config[field] = modelId;
+      });
+      this.snapshot = target;
+      this.configured = configuredModalities(target, this.ownership);
+      return target;
     });
-    await this.reconcile(this.controller.read());
+    const previous = this.supervisors.take(modality);
+    await previous?.shutdown();
+    this.supervisors.add(modality, this.factory.create(modality, target));
+    this.barriers[modality].attach();
     this.logger.event({
       severity: "info",
       eventName: "model.switched",
@@ -425,10 +489,18 @@ export class RuntimeReconciler {
       message: "Active model switched.",
       attributes: { from_model: previousModel, to_model: modelId },
     });
+    return target;
   }
 
-  private async reconcile(target: RuntimeConfigSnapshot): Promise<void> {
-    if (target.revision === this.snapshot.revision) return;
+  private scheduleReconciliation(
+    target: RuntimeConfigSnapshot,
+  ): CoordinatedSnapshot {
+    if (target.revision === this.snapshot.revision) {
+      return Object.freeze({
+        snapshot: this.snapshot,
+        transitions: Object.freeze({ ...this.modalityTransitions }),
+      });
+    }
     const plan = createRuntimeReconciliationPlan(
       this.snapshot,
       target,
@@ -444,13 +516,24 @@ export class RuntimeReconciler {
         message: "Runtime configuration change requires a gateway restart.",
         attributes: { revision: target.revision },
       });
-      return;
+      return Object.freeze({
+        snapshot: this.snapshot,
+        transitions: Object.freeze({ ...this.modalityTransitions }),
+      });
     }
 
-    for (const modality of runtimeModalities) {
-      await this.applyModality(modality, plan, target);
-    }
     this.snapshot = target;
+    this.configured = configuredModalities(target, this.ownership);
+    for (const modality of runtimeModalities) {
+      if (plan.modalities[modality].action === "unchanged") continue;
+      void this.exclusiveModality(modality, async () => {
+        await this.applyModality(modality, plan, target);
+      });
+    }
+    return Object.freeze({
+      snapshot: target,
+      transitions: Object.freeze({ ...this.modalityTransitions }),
+    });
   }
 
   private async applyModality(
@@ -459,7 +542,6 @@ export class RuntimeReconciler {
     target: RuntimeConfigSnapshot,
   ): Promise<void> {
     const action = plan.modalities[modality];
-    this.configured[modality] = action.targetConfigured;
     if (action.action === "unchanged") return;
 
     try {

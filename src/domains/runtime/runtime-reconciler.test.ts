@@ -176,6 +176,71 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
   }
 });
 
+test("does not block STT admission while LLM replacement drains", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-independent-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  config.selectedSttModels = [config.activeSttModel];
+  config.selectedImageModels = [];
+  config.activeImageModel = "";
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let llmShutdowns = 0;
+  const supervisor = (modality: "llm" | "stt"): RuntimeSupervisor => ({
+    runtimeId: () => `${modality}:test`,
+    state: () => "running",
+    async ensureRunning() {},
+    async kill() {},
+    async shutdown() {
+      if (modality === "llm") llmShutdowns += 1;
+    },
+  });
+  const llm = supervisor("llm");
+  const stt = supervisor("stt");
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm, stt }),
+    {
+      baseUrl: () => "http://127.0.0.1:1",
+      create: (modality) => supervisor(modality === "llm" ? "llm" : "stt"),
+    },
+    { event() {} } as never,
+  );
+
+  try {
+    const activeLlm = await reconciler.admitModel("llm", config.activeLlmModel);
+    if (activeLlm.kind !== "admitted") throw new Error("Expected admission.");
+
+    const replacement = controller.copy();
+    replacement.parallel = 2;
+    saveConfig(database, replacement);
+    let refreshSettled = false;
+    const refresh = reconciler.refresh().then(() => {
+      refreshSettled = true;
+    });
+    await Promise.resolve();
+
+    const sttAdmission = await reconciler.admitModel(
+      "stt",
+      config.activeSttModel,
+    );
+    expect(sttAdmission.kind).toBe("admitted");
+    expect(refreshSettled).toBe(false);
+    expect(llmShutdowns).toBe(0);
+    if (sttAdmission.kind === "admitted") {
+      sttAdmission.value.admission.release();
+    }
+
+    activeLlm.value.admission.release();
+    await refresh;
+    expect(llmShutdowns).toBe(1);
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("releases transition ownership before waiting for backend readiness", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-runtime-admission-"));
   const database = new DatabaseSession();
