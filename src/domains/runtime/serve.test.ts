@@ -469,6 +469,8 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   const parentId = "b7ad6b7169203331";
   let requestId: string | null;
   let cancelledRequestId: string | null;
+  let backendErrorRequestId: string | null;
+  let admissionFailureRequestId: string | null;
   try {
     const response = await fetch(
       `${gateway.baseUrl}/v1/chat/completions?api_key=never-export-query`,
@@ -525,6 +527,8 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
       }),
     });
     expect(failed.status).toBeGreaterThanOrEqual(500);
+    backendErrorRequestId = failed.headers.get("x-localbase-request-id");
+    expect(backendErrorRequestId).toMatch(/^lbreq_/);
     await failed.text();
 
     const abort = new AbortController();
@@ -567,6 +571,10 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
         },
       );
       expect(unavailable.status).toBe(503);
+      admissionFailureRequestId = unavailable.headers.get(
+        "x-localbase-request-id",
+      );
+      expect(admissionFailureRequestId).toMatch(/^lbreq_/);
       await unavailable.text();
     } finally {
       await unavailableGateway.stop();
@@ -575,43 +583,40 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
     await gateway.stop();
     collector.stop(true);
   }
-  const tracePayload = received.find(
-    (request) => request.path === "/v1/traces",
-  )?.body;
-  const logPayload = received.find(
-    (request) => request.path === "/v1/logs",
-  )?.body;
-  expect(tracePayload).toBeDefined();
-  expect(logPayload).toBeDefined();
-  expect(Buffer.from(tracePayload!).includes(Buffer.from(traceId, "hex"))).toBe(
-    true,
-  );
-  expect(Buffer.from(logPayload!).includes(Buffer.from(traceId, "hex"))).toBe(
-    true,
-  );
-  expect(new TextDecoder().decode(logPayload)).not.toContain(
+  const tracePayloads = received
+    .filter((request) => request.path === "/v1/traces")
+    .map((request) => request.body);
+  const logPayloads = received
+    .filter((request) => request.path === "/v1/logs")
+    .map((request) => request.body);
+  const traceBytes = Buffer.concat(tracePayloads);
+  const logBytes = Buffer.concat(logPayloads);
+  expect(tracePayloads).not.toEqual([]);
+  expect(logPayloads).not.toEqual([]);
+  expect(traceBytes.includes(Buffer.from(traceId, "hex"))).toBe(true);
+  expect(logBytes.includes(Buffer.from(traceId, "hex"))).toBe(true);
+  expect(new TextDecoder().decode(logBytes)).not.toContain(
     "never-export-this-prompt",
   );
-  const exportedTraceText = new TextDecoder().decode(tracePayload);
+  const exportedTraceText = new TextDecoder().decode(traceBytes);
   expect(exportedTraceText).toContain("POST /v1/chat/completions");
   expect(exportedTraceText).not.toContain("never-export-query");
   expect(exportedTraceText).not.toContain("never-proxy-baggage");
-  const inferenceError = received
-    .filter((request) => request.path === "/v1/traces")
-    .flatMap((request) => decodeOtlpTraceSpans(request.body))
-    .find(
-      (span) =>
-        span.name === "localbase.backend.inference" &&
-        span.attributes["http.response.status_code"] === 503,
-    );
+  const traceSpans = tracePayloads.flatMap((payload) =>
+    decodeOtlpTraceSpans(payload),
+  );
+  const inferenceError = traceSpans.find(
+    (span) =>
+      span.name === "localbase.backend.inference" &&
+      span.attributes["http.response.status_code"] === 503,
+  );
   expect(inferenceError).toMatchObject({
     statusCode: 2,
     attributes: { "http.response.status_code": 503 },
   });
-  const inferenceSpans = received
-    .filter((request) => request.path === "/v1/traces")
-    .flatMap((request) => decodeOtlpTraceSpans(request.body))
-    .filter((span) => span.name === "localbase.inference");
+  const inferenceSpans = traceSpans.filter(
+    (span) => span.name === "localbase.inference",
+  );
   expect(inferenceSpans).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
@@ -648,9 +653,18 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   ).toHaveLength(1);
   expect(
     inferenceSpans.filter(
-      (span) => span.attributes["localbase.inference.outcome"] === "error",
+      (span) =>
+        span.attributes["localbase.inference.outcome"] === "error" &&
+        span.attributes["localbase.request_id"] === backendErrorRequestId,
     ),
-  ).toHaveLength(2);
+  ).toHaveLength(1);
+  expect(
+    inferenceSpans.filter(
+      (span) =>
+        span.attributes["localbase.inference.outcome"] === "error" &&
+        span.attributes["localbase.request_id"] === admissionFailureRequestId,
+    ),
+  ).toHaveLength(1);
 });
 
 describe("API gateway integration", () => {
