@@ -187,7 +187,7 @@ test(
 );
 
 test(
-  "drains a streamed response before replacing its configured LLM",
+  "coordinates immediately while a streamed response delays LLM replacement",
   async () => {
     const gateway = await startGatewayFixture();
     try {
@@ -206,20 +206,19 @@ test(
       const config = gateway.readConfig();
       config.parallel = config.parallel === 2 ? 3 : 2;
       gateway.saveConfig(config);
-      let settled = false;
-      const reconciliation = fetch(`${gateway.baseUrl}/v1/models`).then(
-        async (models) => {
-          settled = true;
-          await models.text();
-          return models;
-        },
+      const models = await fetch(`${gateway.baseUrl}/v1/models`);
+      expect(models.status).toBe(200);
+      await models.text();
+      const draining = gatewayHealthSchema.parse(
+        await (await fetch(`${gateway.baseUrl}/health`)).json(),
       );
-      await Bun.sleep(75);
-      expect(settled).toBe(false);
+      expect(draining.modalities.llm.state).toBe("draining");
+      expect(await gateway.readLlmRuntimeLaunches()).toHaveLength(
+        launchOffset + 1,
+      );
 
       gateway.closeControlledStream(streamId);
       while (!(await reader.read()).done) {}
-      expect((await reconciliation).status).toBe(200);
 
       const next = await chatRequest(gateway);
       expect(next.status).toBe(200);

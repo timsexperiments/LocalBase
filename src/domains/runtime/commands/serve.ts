@@ -1824,7 +1824,7 @@ export async function runServe(
       });
     }
 
-    await reconciler.refresh();
+    await reconciler.refreshConfiguration();
     const currentConfig = ctx.runtimeConfig.copy();
 
     if (route === "instance") {

@@ -176,6 +176,301 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
   }
 });
 
+test("does not block STT admission while LLM replacement drains", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-independent-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  config.selectedSttModels = [config.activeSttModel];
+  config.selectedImageModels = [];
+  config.activeImageModel = "";
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let llmShutdowns = 0;
+  const supervisor = (modality: "llm" | "stt"): RuntimeSupervisor => ({
+    runtimeId: () => `${modality}:test`,
+    state: () => "running",
+    async ensureRunning() {},
+    async kill() {},
+    async shutdown() {
+      if (modality === "llm") llmShutdowns += 1;
+    },
+  });
+  const llm = supervisor("llm");
+  const stt = supervisor("stt");
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm, stt }),
+    {
+      baseUrl: () => "http://127.0.0.1:1",
+      create: (modality) => supervisor(modality === "llm" ? "llm" : "stt"),
+    },
+    { event() {} } as never,
+  );
+
+  try {
+    const activeLlm = await reconciler.admitModel("llm", config.activeLlmModel);
+    if (activeLlm.kind !== "admitted") throw new Error("Expected admission.");
+
+    const replacement = controller.copy();
+    replacement.parallel = 2;
+    saveConfig(database, replacement);
+    let refreshSettled = false;
+    const refresh = reconciler.refresh().then(() => {
+      refreshSettled = true;
+    });
+    await Promise.resolve();
+    await Promise.all(
+      Array.from({ length: 50 }, async () => {
+        await reconciler.refreshConfiguration();
+      }),
+    );
+
+    const sttAdmission = await reconciler.admitModel(
+      "stt",
+      config.activeSttModel,
+    );
+    expect(sttAdmission.kind).toBe("admitted");
+    expect(refreshSettled).toBe(false);
+    expect(llmShutdowns).toBe(0);
+    if (sttAdmission.kind === "admitted") {
+      sttAdmission.value.admission.release();
+    }
+
+    activeLlm.value.admission.release();
+    await refresh;
+    expect(llmShutdowns).toBe(1);
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("advances applied generations only inside the modality owner", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-owner-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let appliedPort = config.port;
+  let creations = 0;
+  let releaseKill!: () => void;
+  let markKillEntered!: () => void;
+  const killEntered = new Promise<void>((resolve) => {
+    markKillEntered = resolve;
+  });
+  const killBlocked = new Promise<void>((resolve) => {
+    releaseKill = resolve;
+  });
+  const createSupervisor = (
+    snapshot: ReturnType<RuntimeConfigController["read"]>,
+    modality: "llm" | "stt" | "image" = "llm",
+  ): RuntimeSupervisor => {
+    const port = snapshot.config.port;
+    if (modality === "llm") creations += 1;
+    return {
+      runtimeId: () => `${modality}:${port}`,
+      state: () => "running",
+      async ensureRunning() {
+        appliedPort = port;
+      },
+      async kill() {
+        markKillEntered();
+        await killBlocked;
+      },
+      async shutdown() {},
+    };
+  };
+  const registry = new SupervisorRegistry({
+    llm: createSupervisor(controller.read()),
+  });
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    registry,
+    {
+      baseUrl: () => "http://127.0.0.1:1",
+      create: (modality, snapshot) => createSupervisor(snapshot, modality),
+    },
+    { event() {} } as never,
+  );
+
+  try {
+    const eviction = reconciler.evictIdleRuntimes();
+    await killEntered;
+    const launchChange = controller.copy();
+    launchChange.port += 1;
+    saveConfig(database, launchChange);
+    await reconciler.refreshConfiguration();
+    const unrelated = controller.copy();
+    unrelated.hfToken = "owner-regression";
+    saveConfig(database, unrelated);
+    await reconciler.refreshConfiguration();
+    releaseKill();
+    await eviction;
+    await reconciler.refresh();
+    const admission = await reconciler.admitModel("llm", config.activeLlmModel);
+    if (admission.kind !== "admitted") throw new Error("Expected admission.");
+    await admission.value.admission.ready;
+    expect(admission.value.admission.snapshot.config.port).toBe(
+      launchChange.port,
+    );
+    expect(appliedPort).toBe(launchChange.port);
+    expect(creations).toBe(2);
+    admission.value.admission.release();
+  } finally {
+    releaseKill?.();
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps queued admissions paired with the applied model generation", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-generation-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelA = config.activeLlmModel;
+  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [modelA, modelB];
+  config.selectedSttModels = [config.activeSttModel];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let markSwitching!: () => void;
+  const switching = new Promise<void>((resolve) => {
+    markSwitching = resolve;
+  });
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(modality, snapshot) {
+      const modelId = activeModel(modality, snapshot.config);
+      return {
+        runtimeId: () => `${modality}:${modelId}`,
+        state: () => "running",
+        async ensureRunning() {},
+        async kill() {},
+        async shutdown() {},
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({
+      llm: factory.create("llm", controller.read()),
+      stt: factory.create("stt", controller.read()),
+    }),
+    factory,
+    {
+      event(event: LogEventInput) {
+        if (event.eventName === "model.switching") markSwitching();
+      },
+    } as never,
+  );
+
+  try {
+    const active = await reconciler.admitModel("llm", modelA);
+    if (active.kind !== "admitted") throw new Error("Expected admission.");
+    active.value.admission.markResponseStarted();
+    const switchToB = reconciler.admitModel("llm", modelB);
+    await switching;
+    expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+      modelId: modelA,
+      runtimeId: `llm:${modelA}`,
+    });
+    const queuedA = reconciler.admitModel("llm", modelA);
+    const stt = await reconciler.admitModel("stt", undefined);
+    if (stt.kind === "admitted") stt.value.admission.release();
+    active.value.admission.release();
+    const admittedB = await switchToB;
+    if (admittedB.kind !== "admitted") throw new Error("Expected B.");
+    admittedB.value.admission.release();
+    const admittedA = await queuedA;
+    if (admittedA.kind !== "admitted") throw new Error("Expected A.");
+    expect(admittedA.value.modelId).toBe(modelA);
+    expect(admittedA.value.admission.snapshot.config.activeLlmModel).toBe(
+      modelA,
+    );
+    expect(admittedA.value.admission.supervisor.runtimeId()).toBe(
+      `llm:${modelA}`,
+    );
+    admittedA.value.admission.release();
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("rebases queued replacement work after a model activation", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-rebase-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelA = config.activeLlmModel;
+  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [modelA, modelB];
+  config.selectedSttModels = [config.activeSttModel];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  const created: string[] = [];
+  let markSwitching!: () => void;
+  const switching = new Promise<void>((resolve) => {
+    markSwitching = resolve;
+  });
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(modality, snapshot) {
+      const modelId = activeModel(modality, snapshot.config);
+      if (modality === "llm") created.push(modelId);
+      return {
+        runtimeId: () => `${modality}:${modelId}`,
+        state: () => "running",
+        async ensureRunning() {},
+        async kill() {},
+        async shutdown() {},
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({
+      llm: factory.create("llm", controller.read()),
+      stt: factory.create("stt", controller.read()),
+    }),
+    factory,
+    {
+      event(event: LogEventInput) {
+        if (event.eventName === "model.switching") markSwitching();
+      },
+    } as never,
+  );
+  try {
+    const active = await reconciler.admitModel("llm", modelA);
+    if (active.kind !== "admitted") throw new Error("Expected admission.");
+    active.value.admission.markResponseStarted();
+    const switchToB = reconciler.admitModel("llm", modelB);
+    await switching;
+    const replacement = controller.copy();
+    replacement.parallel = 2;
+    saveConfig(database, replacement);
+    const stt = await reconciler.admitModel("stt", undefined);
+    if (stt.kind === "admitted") stt.value.admission.release();
+    active.value.admission.release();
+    const switched = await switchToB;
+    if (switched.kind !== "admitted") throw new Error("Expected B.");
+    switched.value.admission.release();
+    await reconciler.refresh();
+    const next = await reconciler.admitModel("llm", modelB);
+    if (next.kind !== "admitted") throw new Error("Expected B.");
+    expect(next.value.admission.snapshot.config.activeLlmModel).toBe(modelB);
+    expect(next.value.admission.supervisor.runtimeId()).toBe(`llm:${modelB}`);
+    expect(created.at(-1)).toBe(modelB);
+    next.value.admission.release();
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("releases transition ownership before waiting for backend readiness", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-runtime-admission-"));
   const database = new DatabaseSession();
