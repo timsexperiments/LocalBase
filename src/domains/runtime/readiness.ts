@@ -35,15 +35,6 @@ export type GatewayReadinessInput = Readonly<{
 
 function canAdmitRequest(snapshot: RuntimeLifecycleSnapshot): boolean {
   if (!snapshot.configured) return false;
-  if (
-    snapshot.state !== "idle" &&
-    snapshot.state !== "starting" &&
-    snapshot.state !== "running"
-  ) {
-    return false;
-  }
-  if (snapshot.admission.kind !== "known" || !snapshot.admission.accepting)
-    return false;
   const queue = snapshot.queue;
   return queue !== null && queue.accepting && queue.waiting < queue.capacity;
 }

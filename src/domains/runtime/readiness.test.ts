@@ -104,7 +104,26 @@ test("recovers readiness when a saturated queue regains bounded capacity", () =>
   });
 });
 
-test("does not claim readiness for closed, unavailable, draining, or failed admission", () => {
+test("reports a draining replacement ready while its queue can accept bounded waiting", () => {
+  const result = composeGatewayReadiness(
+    input(
+      lifecycle("llm", {
+        configured: true,
+        state: "draining",
+        admission: { kind: "known", accepting: false, activeCount: 1 },
+        queue: openQueue({ waiting: 1, capacity: 2 }),
+      }),
+    ),
+  );
+
+  expect(result).toEqual({
+    status: "ready",
+    reason: "request_admission_available",
+    modalities: ["llm"],
+  });
+});
+
+test("does not claim readiness for closed, unavailable, or failed closed queues", () => {
   const unavailable = [
     lifecycle("llm", {
       configured: true,
@@ -120,15 +139,9 @@ test("does not claim readiness for closed, unavailable, draining, or failed admi
     }),
     lifecycle("llm", {
       configured: true,
-      state: "draining",
-      admission: { kind: "known", accepting: false, activeCount: 1 },
-      queue: openQueue(),
-    }),
-    lifecycle("llm", {
-      configured: true,
       state: "failed",
-      admission: { kind: "known", accepting: true, activeCount: 0 },
-      queue: openQueue(),
+      admission: { kind: "known", accepting: false, activeCount: 1 },
+      queue: openQueue({ accepting: false }),
     }),
   ];
 
