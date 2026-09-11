@@ -13,11 +13,29 @@ function queue(
   modality: "llm" | "stt" | "image" = "llm",
   options: Readonly<{ maxWaiting?: number; waitMs?: number }> = {},
 ) {
-  return new InferenceQueue<Result>(modality, {
+  const inferenceQueue = new InferenceQueue<Result>(modality, {
     ...options,
     isAdmitted: ({ admitted }) => admitted,
     resolvedSlots: ({ slots }) => slots,
   });
+  return {
+    snapshot: () => inferenceQueue.snapshot(),
+    rejectPending: (error?: Error) => inferenceQueue.rejectPending(error),
+    close: (error?: Error) => inferenceQueue.close(error),
+    acquire: (
+      modelId: string,
+      dispatch: () => Promise<Result>,
+      signal?: AbortSignal,
+    ) =>
+      inferenceQueue.acquire(
+        modelId,
+        async (lease) => {
+          lease.start();
+          return await dispatch();
+        },
+        signal,
+      ),
+  };
 }
 
 test("wakes same-model waiters when a cold LLM resolves more slots", async () => {
@@ -31,13 +49,17 @@ test("wakes same-model waiters when a cold LLM resolves more slots", async () =>
     resolvedSlots: () => slots,
     whenSlotsResolved: async () => await ready,
   });
-  const first = await inferenceQueue.acquire("a", async () => ({
-    admitted: true,
-    slots: 1,
-    id: "first",
-  }));
+  const first = await inferenceQueue.acquire("a", async (lease) => {
+    lease.start();
+    return {
+      admitted: true,
+      slots: 1,
+      id: "first",
+    };
+  });
   let secondDispatched = false;
-  const second = inferenceQueue.acquire("a", async () => {
+  const second = inferenceQueue.acquire("a", async (lease) => {
+    lease.start();
     secondDispatched = true;
     return { admitted: true, slots: 3, id: "second" };
   });
@@ -198,7 +220,8 @@ test("measures queue wait at dispatch rather than after activation", async () =>
     resolvedSlots: ({ slots }) => slots,
     now: () => now,
   });
-  const admission = inferenceQueue.acquire("a", async () => {
+  const admission = inferenceQueue.acquire("a", async (lease) => {
+    lease.start();
     await dispatchBlocked;
     return { admitted: true, slots: 1, id: "activated" };
   });
@@ -221,15 +244,14 @@ test("deadline and close retain ownership until dispatch actually starts", async
       waitMs: 20,
       isAdmitted: ({ admitted }) => admitted,
       resolvedSlots: ({ slots }) => slots,
-      dispatchControlsStart: true,
       discard: () => {
         throw new Error("cancelled dispatch must not produce admission");
       },
     });
-    const admission = inferenceQueue.acquire("a", async (dispatchStarted) => {
+    const admission = inferenceQueue.acquire("a", async (lease) => {
       await ownerBlocked;
-      started = dispatchStarted();
-      if (!started) throw new InferenceQueueUnavailableError("cancelled");
+      lease.start();
+      started = true;
       return { admitted: true, slots: 1, id: "late" };
     });
     if (close) inferenceQueue.close();
@@ -243,6 +265,39 @@ test("deadline and close retain ownership until dispatch actually starts", async
     expect(started).toBe(false);
     expect(inferenceQueue.snapshot().active).toBe(0);
   }
+});
+
+test("close invalidates an in-flight dispatch before backend startup", async () => {
+  let resume!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  let backendStarted = false;
+  const inferenceQueue = new InferenceQueue<Result>("llm", {
+    isAdmitted: ({ admitted }) => admitted,
+    resolvedSlots: ({ slots }) => slots,
+  });
+  const admission = inferenceQueue.acquire("a", async (lease) => {
+    lease.start();
+    await blocked;
+    lease.throwIfCancelled();
+    backendStarted = true;
+    return { admitted: true, slots: 1, id: "late" };
+  });
+  await Promise.resolve();
+  inferenceQueue.close();
+  await expect(admission).rejects.toBeInstanceOf(
+    InferenceQueueUnavailableError,
+  );
+  resume();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(backendStarted).toBe(false);
+  expect(inferenceQueue.snapshot()).toMatchObject({
+    active: 0,
+    waiting: 0,
+    accepting: false,
+  });
 });
 
 test("atomically rejects pending work without dispatching during teardown", async () => {

@@ -40,16 +40,24 @@ export type QueuedLease<Value> = Readonly<{
   queueWaitMs: number;
   release: () => void;
 }>;
+export type InferenceDispatchLease = Readonly<{
+  signal: AbortSignal;
+  start: () => void;
+  throwIfCancelled: () => void;
+  queueWaitMs: () => number;
+}>;
 type Pending<Value> = {
   modelId: string;
   signal?: AbortSignal;
-  dispatch: (dispatchStarted: () => boolean) => Promise<Value>;
+  dispatch: (lease: InferenceDispatchLease) => Promise<Value>;
   resolve: (lease: QueuedLease<Value>) => void;
   reject: (error: Error) => void;
   timer?: ReturnType<typeof setTimeout>;
   removeAbort?: () => void;
   enqueuedAt: number;
   queueWaitMs?: number;
+  cancellation: AbortController;
+  cancellationError?: Error;
 };
 
 /** Owns bounded FIFO permits for one inference modality. */
@@ -71,7 +79,6 @@ export class InferenceQueue<Value> {
       resolvedSlots: (value: Value) => number;
       whenSlotsResolved?: (value: Value) => Promise<void>;
       discard?: (value: Value) => void;
-      dispatchControlsStart?: boolean;
       now?: () => number;
     }>,
   ) {}
@@ -88,7 +95,7 @@ export class InferenceQueue<Value> {
 
   acquire(
     modelId: string,
-    dispatch: (dispatchStarted: () => boolean) => Promise<Value>,
+    dispatch: (lease: InferenceDispatchLease) => Promise<Value>,
     signal?: AbortSignal,
   ): Promise<QueuedLease<Value>> {
     if (signal?.aborted)
@@ -107,6 +114,7 @@ export class InferenceQueue<Value> {
         resolve,
         reject,
         enqueuedAt: this.now(),
+        cancellation: new AbortController(),
       };
       item.timer = setTimeout(
         () => this.remove(item, new InferenceQueueTimeoutError()),
@@ -127,6 +135,8 @@ export class InferenceQueue<Value> {
     for (const item of rejected) {
       if (item.timer) clearTimeout(item.timer);
       item.removeAbort?.();
+      item.cancellationError = error;
+      item.cancellation.abort(error);
       item.reject(error);
     }
   }
@@ -145,6 +155,8 @@ export class InferenceQueue<Value> {
     else if (!this.inFlight.delete(item)) return;
     if (item.timer) clearTimeout(item.timer);
     item.removeAbort?.();
+    item.cancellationError = error;
+    item.cancellation.abort(error);
     item.reject(error);
     if (this.canDispatchHead()) void this.pump();
   }
@@ -169,22 +181,41 @@ export class InferenceQueue<Value> {
           continue;
         }
         try {
-          const dispatchStarted = () => {
-            if (this.pending[0] !== item || this.closedError) return false;
+          const throwIfCancelled = () => {
+            if (item.cancellationError) throw item.cancellationError;
+          };
+          const start = () => {
+            throwIfCancelled();
+            if (this.pending[0] !== item || this.closedError)
+              throw new InferenceQueueUnavailableError(
+                "Inference admission is no longer owned by the queue.",
+              );
+            if (item.queueWaitMs !== undefined) return;
             this.pending.shift();
             this.inFlight.add(item);
             item.queueWaitMs = Math.max(0, this.now() - item.enqueuedAt);
             if (item.timer) clearTimeout(item.timer);
-            return true;
           };
-          if (!this.options.dispatchControlsStart) dispatchStarted();
-          const value = await item.dispatch(dispatchStarted);
+          const value = await item.dispatch(
+            Object.freeze({
+              signal: item.cancellation.signal,
+              start,
+              throwIfCancelled,
+              queueWaitMs: () => {
+                if (item.queueWaitMs === undefined)
+                  throw new Error("Inference dispatch has not started.");
+                return item.queueWaitMs;
+              },
+            }),
+          );
           if (!this.inFlight.delete(item)) {
             this.options.discard?.(value);
             continue;
           }
           item.removeAbort?.();
-          const queueWaitMs = item.queueWaitMs ?? 0;
+          const queueWaitMs = item.queueWaitMs;
+          if (queueWaitMs === undefined)
+            throw new Error("Inference dispatch completed before start.");
           if (!this.options.isAdmitted(value)) {
             item.resolve({
               value,

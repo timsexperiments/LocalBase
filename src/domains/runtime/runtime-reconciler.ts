@@ -10,6 +10,7 @@ import {
   InferenceQueue,
   InferenceQueueAbortedError,
   InferenceQueueUnavailableError,
+  type InferenceDispatchLease,
 } from "./inference-queue";
 import { runtimeModalities, type RuntimeModality } from "./modality";
 import {
@@ -160,7 +161,6 @@ export class RuntimeReconciler {
           discard: (result) => {
             if (result.kind === "admitted") result.value.admission.cancel();
           },
-          dispatchControlsStart: true,
         }),
       ]),
     ) as Record<RuntimeModality, InferenceQueue<ModelAdmissionResult>>;
@@ -298,13 +298,13 @@ export class RuntimeReconciler {
       requestedModel ?? activeModel(modality, captured.snapshot.config);
     const queuedAdmission = this.queues[modality].acquire(
       modelId,
-      async (dispatchStarted) =>
+      async (dispatchLease) =>
         await this.coordinateAdmission(
           modality,
           modelId,
           signal,
           captured,
-          dispatchStarted,
+          dispatchLease,
         ),
       signal,
     );
@@ -367,16 +367,14 @@ export class RuntimeReconciler {
     requestedModel: string | undefined,
     signal: AbortSignal | undefined,
     coordinated?: CoordinatedSnapshot,
-    dispatchStarted?: () => boolean,
+    dispatchLease?: InferenceDispatchLease,
   ): Promise<ModelAdmissionResult> {
     coordinated ??= await this.coordinate();
     return await this.exclusiveModality(modality, async () => {
       await coordinated.transitions[modality];
       this.throwIfAborted(signal);
-      if (dispatchStarted && !dispatchStarted())
-        throw new InferenceQueueUnavailableError(
-          "Inference admission was cancelled before dispatch.",
-        );
+      dispatchLease?.throwIfCancelled();
+      dispatchLease?.start();
       const desiredSnapshot = this.snapshot;
       if (
         !configuredRuntimeModality(
@@ -403,14 +401,24 @@ export class RuntimeReconciler {
           modelId,
           desiredSnapshot,
           signal,
+          dispatchLease,
         );
       }
       this.throwIfAborted(signal);
+      dispatchLease?.throwIfCancelled();
       const admission = this.acquire(modality, admissionSnapshot);
       if (!admission) return { kind: "unavailable" };
+      dispatchLease?.throwIfCancelled();
+      const prepared = this.prepare(admission);
+      try {
+        dispatchLease?.throwIfCancelled();
+      } catch (error) {
+        prepared.cancel();
+        throw error;
+      }
       return {
         kind: "admitted",
-        value: { modelId, admission: this.prepare(admission) },
+        value: { modelId, admission: prepared },
       };
     });
   }
@@ -557,6 +565,7 @@ export class RuntimeReconciler {
     modelId: string,
     source: RuntimeConfigSnapshot,
     signal?: AbortSignal,
+    dispatchLease?: InferenceDispatchLease,
   ): Promise<RuntimeConfigSnapshot> {
     const field = activeModelField(modality);
     const previousModel = activeModel(modality, source.config);
@@ -579,6 +588,7 @@ export class RuntimeReconciler {
     try {
       await this.waitForAbort(drain, signal);
       this.throwIfAborted(signal);
+      dispatchLease?.throwIfCancelled();
     } catch (error) {
       if (error instanceof RuntimeRequestAbortedError) {
         await drain;
@@ -588,6 +598,7 @@ export class RuntimeReconciler {
       throw error;
     }
     const target = await this.exclusive(async () => {
+      dispatchLease?.throwIfCancelled();
       const target = this.controller.update((config) => {
         config[field] = modelId;
       });
@@ -595,8 +606,10 @@ export class RuntimeReconciler {
       this.configured = configuredModalities(target, this.ownership);
       return target;
     });
+    dispatchLease?.throwIfCancelled();
     const previous = this.supervisors.take(modality);
     await previous?.shutdown();
+    dispatchLease?.throwIfCancelled();
     this.supervisors.add(modality, this.factory.create(modality, target));
     this.appliedSnapshots[modality] = target;
     this.barriers[modality].attach();
