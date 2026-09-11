@@ -617,6 +617,37 @@ function startMockUpstream(
           "stop",
         );
       }
+      if (mode === "structured-refusal") {
+        return chatCompletionResponse(
+          "chatcmpl-structured-refusal",
+          {
+            role: "assistant",
+            content: null,
+            refusal: "I cannot help with that request.",
+          },
+          "stop",
+        );
+      }
+      if (mode === "structured-length") {
+        return chatCompletionResponse(
+          "chatcmpl-structured-length",
+          { role: "assistant", content: "{" },
+          "length",
+        );
+      }
+      if (mode === "structured-tool-call") {
+        return chatCompletionResponse(
+          "chatcmpl-structured-tool-call",
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              functionToolCall("call_weather", "weather", '{"city":"Austin"}'),
+            ],
+          },
+          "tool_calls",
+        );
+      }
       if (mode === "tool-then-structured") {
         if (hasToolResult(body, "call_weather")) {
           return chatCompletionResponse(

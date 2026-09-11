@@ -62,6 +62,14 @@ import {
 } from "../../observability/otel";
 import { gatewayIdentitySchema } from "../health";
 import { openAIErrorResponseSchema, type OpenAIError } from "../openai-error";
+import {
+  chatResponseFormatSchema,
+  completedStructuredOutputMatchesSchema,
+  jsonSchemaValueSchema,
+  prepareStructuredOutput,
+  type StructuredOutputErrorCode,
+  type StructuredOutputValidator,
+} from "../structured-output";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
@@ -232,6 +240,21 @@ function badRequest(message: string): Response {
   );
 }
 
+function structuredOutputRequestFailure(
+  message: string,
+  code: StructuredOutputErrorCode,
+): Response {
+  return openAIErrorResponse(
+    {
+      message,
+      type: "invalid_request_error",
+      param: "response_format.json_schema.schema",
+      code,
+    },
+    400,
+  );
+}
+
 function methodNotAllowed(allow: string): Response {
   return openAIErrorResponse(
     {
@@ -281,6 +304,19 @@ function upstreamFailure(message: string): Response {
   );
 }
 
+function structuredOutputValidationFailure(): Response {
+  return openAIErrorResponse(
+    {
+      message:
+        "The backend returned a completed response that did not match the requested JSON Schema.",
+      type: "server_error",
+      param: null,
+      code: "structured_output_validation_failed",
+    },
+    502,
+  );
+}
+
 export function internalGatewayFailure(): Response {
   return openAIErrorResponse(
     {
@@ -313,17 +349,6 @@ const chatToolCallSchema = z
   })
   .passthrough();
 
-const jsonSchemaValueSchema: z.ZodType = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.null(),
-    z.array(jsonSchemaValueSchema),
-    z.record(z.string(), jsonSchemaValueSchema),
-  ]),
-);
-
 const functionToolSchema = z
   .object({
     type: z.literal("function"),
@@ -337,24 +362,6 @@ const functionToolSchema = z
       .strict(),
   })
   .strict();
-
-const chatResponseFormatSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("text") }).strict(),
-  z.object({ type: z.literal("json_object") }).strict(),
-  z
-    .object({
-      type: z.literal("json_schema"),
-      json_schema: z
-        .object({
-          name: z.string().min(1),
-          description: z.string().optional(),
-          schema: z.record(z.string(), jsonSchemaValueSchema),
-          strict: z.boolean().optional(),
-        })
-        .strict(),
-    })
-    .strict(),
-]);
 
 const modelIdSchema = z
   .string()
@@ -1091,6 +1098,7 @@ async function proxyRequest(
   otel?: OtelRuntime,
   onValidatedEvent?: (value: ChatTelemetryResponse) => void,
   onInvalidEvent?: () => void,
+  structuredOutputValidator?: StructuredOutputValidator,
   canonicalChatModelId?: string,
 ): Promise<Response> {
   const incoming = new URL(request.url);
@@ -1174,6 +1182,17 @@ async function proxyRequest(
       }
 
       const chatResponse = chatCompletionResponseSchema.safeParse(parsed.data);
+      if (
+        structuredOutputValidator &&
+        (!chatResponse.success ||
+          !completedStructuredOutputMatchesSchema(
+            chatResponse.data,
+            structuredOutputValidator,
+          ))
+      ) {
+        onInvalidEvent?.();
+        return structuredOutputValidationFailure();
+      }
       if (chatResponse.success) onValidatedEvent?.(chatResponse.data);
 
       const headers = filterProxyHeaders(upstream.headers);
@@ -2109,6 +2128,15 @@ export async function runServe(
         chatCompletionRequestSchema,
       );
       if (!parsed.success) return parsed.response;
+      const structuredOutput = prepareStructuredOutput(
+        parsed.data.response_format,
+      );
+      if (structuredOutput.kind === "rejected") {
+        return structuredOutputRequestFailure(
+          structuredOutput.message,
+          structuredOutput.code,
+        );
+      }
       let selected;
       try {
         selected = await reconciler.admitModel(
@@ -2156,6 +2184,9 @@ export async function runServe(
               else inference.observeValidatedChatEvent(value);
             },
             () => inference.finish("error"),
+            parsed.data.stream !== true && structuredOutput.kind === "ready"
+              ? structuredOutput.validator
+              : undefined,
             selected.value.modelId,
           ),
         (outcome) => inference.finish(outcome),

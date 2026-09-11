@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   generateText,
   InvalidToolInputError,
-  NoObjectGeneratedError,
   NoSuchToolError,
   Output,
   stepCountIs,
@@ -328,7 +327,7 @@ describe("Vercel AI SDK tools and structured output conformance", () => {
     });
   });
 
-  test("rejects malformed and schema-invalid structured output", async () => {
+  test("surfaces backend rejection of malformed and schema-invalid structured output", async () => {
     const output = Output.object({ schema: z.object({ answer: z.string() }) });
     const model = createLocalBaseAiSdkProvider(gateway, undefined, {
       supportsStructuredOutputs: true,
@@ -344,8 +343,9 @@ describe("Vercel AI SDK tools and structured output conformance", () => {
           headers: { "x-test-upstream": mode },
           prompt: "Return an answer.",
           output,
+          maxRetries: 0,
         }),
-      ).rejects.toBeInstanceOf(NoObjectGeneratedError);
+      ).rejects.toMatchObject({ statusCode: 502 });
     }
   });
 
