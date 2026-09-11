@@ -975,6 +975,28 @@ describe("API gateway integration", () => {
     ).toEqual([{ role: "user", content: "hello" }]);
   });
 
+  test("returns the admitted model instead of a backend model path", async () => {
+    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "unsafe-model",
+      },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const completion = await response.json();
+    expect(completion).toMatchObject({
+      model: modelId,
+      choices: [{ message: { content: "safe content" } }],
+    });
+    expect(JSON.stringify(completion)).not.toContain("/private/tmp/");
+  });
+
   test("rejects unsupported routes without proxying them", async () => {
     const upstreamRequests = gateway.upstreamRequests.length;
     const routes: Array<{ path: string; init?: RequestInit }> = [
@@ -1111,6 +1133,32 @@ describe("API gateway integration", () => {
     );
     expect(response.headers.get("x-stream-fixture")).toBe("preserved");
     await expect(response.text()).resolves.toContain("[DONE]");
+  });
+
+  test("returns the admitted model in every streamed chat event", async () => {
+    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "unsafe-model-stream",
+      },
+      body: JSON.stringify({
+        model: modelId,
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    const models = [...stream.matchAll(/"model":"([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    expect(models).toEqual([modelId, modelId, modelId]);
+    expect(stream).not.toContain("/private/tmp/");
+    expect(stream).toContain('"content":"safe content"');
+    expect(stream).toContain('"choices":[],"usage"');
+    expect(stream).toContain('"usage":{"prompt_tokens":3');
   });
 
   test("accepts strict llama.cpp reasoning, usage, and tool-call chunks", async () => {

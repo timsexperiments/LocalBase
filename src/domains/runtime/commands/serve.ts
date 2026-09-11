@@ -929,6 +929,28 @@ function eventData(event: string): string | undefined {
   return values.length > 0 ? values.join("\n") : undefined;
 }
 
+function withCanonicalModel(
+  event: string,
+  value: z.output<typeof chatCompletionStreamChunkSchema>,
+  modelId: string,
+): string {
+  const newline = event.includes("\r\n")
+    ? "\r\n"
+    : event.includes("\r")
+      ? "\r"
+      : "\n";
+  let replaced = false;
+  return event
+    .split(/\r\n|\r|\n/)
+    .flatMap((line) => {
+      if (!line.startsWith("data:")) return [line];
+      if (replaced) return [];
+      replaced = true;
+      return [`data: ${JSON.stringify({ ...value, model: modelId })}`];
+    })
+    .join(newline);
+}
+
 function validateEventStream(
   body: ReadableStream<Uint8Array>,
   schema: z.ZodType<z.output<typeof chatCompletionStreamEventSchema>>,
@@ -936,6 +958,7 @@ function validateEventStream(
     value: z.output<typeof chatCompletionStreamEventSchema>,
   ) => void,
   onInvalidEvent?: () => void,
+  canonicalModelId?: string,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -1012,6 +1035,9 @@ function validateEventStream(
           }
           choiceFinished.set(choice.index, choice.finish_reason !== null);
         }
+        if (canonicalModelId) {
+          event = withCanonicalModel(event, value, canonicalModelId);
+        }
       } catch {
         return fail(controller, terminateOnFailure);
       }
@@ -1060,6 +1086,7 @@ async function proxyRequest(
   otel?: OtelRuntime,
   onValidatedEvent?: (value: ChatTelemetryResponse) => void,
   onInvalidEvent?: () => void,
+  canonicalChatModelId?: string,
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
@@ -1122,6 +1149,7 @@ async function proxyRequest(
         eventStreamSchema,
         onValidatedEvent,
         onInvalidEvent,
+        canonicalChatModelId,
       ),
       {
         status: upstream.status,
@@ -1145,10 +1173,15 @@ async function proxyRequest(
 
       const headers = filterProxyHeaders(upstream.headers);
       headers.delete("content-length");
-      return Response.json(parsed.data, {
-        status: upstream.status,
-        headers,
-      });
+      return Response.json(
+        chatResponse.success && canonicalChatModelId
+          ? { ...chatResponse.data, model: canonicalChatModelId }
+          : parsed.data,
+        {
+          status: upstream.status,
+          headers,
+        },
+      );
     } catch {
       if (request.signal.aborted) return requestAborted();
       return upstreamFailure("The upstream service returned malformed JSON.");
@@ -2083,6 +2116,7 @@ export async function runServe(
               else inference.observeValidatedChatEvent(value);
             },
             () => inference.finish("error"),
+            selected.value.modelId,
           ),
         (outcome) => inference.finish(outcome),
       );
