@@ -10,6 +10,8 @@ declare const __LOCALBASE_TEST_LAUNCHES_PATH__: string | undefined;
 declare const __LOCALBASE_TEST_EXIT_ON_START__: boolean | undefined;
 declare const __LOCALBASE_TEST_FAILURE_MARKER_PATH__: string | undefined;
 declare const __LOCALBASE_TEST_LAUNCH_REPORT_URL__: string | undefined;
+declare const __LOCALBASE_TEST_HTTP_BACKEND__: boolean | undefined;
+declare const __LOCALBASE_TEST_FIRST_EVENT_REPORT_URL__: string | undefined;
 export async function compileRuntimeFixture(
   outputPath: string,
   argsPath?: string,
@@ -17,6 +19,8 @@ export async function compileRuntimeFixture(
   exitOnStart = false,
   failureMarkerPath?: string,
   launchReportUrl?: string,
+  httpBackend = false,
+  firstEventReportUrl?: string,
 ): Promise<void> {
   const define: Record<string, string> = {};
   if (argsPath) {
@@ -34,6 +38,11 @@ export async function compileRuntimeFixture(
     define.__LOCALBASE_TEST_LAUNCH_REPORT_URL__ =
       JSON.stringify(launchReportUrl);
   }
+  define.__LOCALBASE_TEST_HTTP_BACKEND__ = httpBackend ? "true" : "false";
+  if (firstEventReportUrl) {
+    define.__LOCALBASE_TEST_FIRST_EVENT_REPORT_URL__ =
+      JSON.stringify(firstEventReportUrl);
+  }
   const result = await Bun.build({
     entrypoints: [runtimeFixtureEntrypoint],
     target: "bun",
@@ -45,6 +54,15 @@ export async function compileRuntimeFixture(
       `Could not compile runtime fixture: ${result.logs.map((log) => log.message).join("\n")}`,
     );
   }
+}
+
+function runtimePort(args: string[]): number {
+  const index = args.indexOf("--port");
+  const port = index === -1 ? NaN : Number(args[index + 1]);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+    throw new Error("Runtime fixture requires a valid --port argument.");
+  }
+  return port;
 }
 
 async function runRuntimeFixture(): Promise<void> {
@@ -82,6 +100,42 @@ async function runRuntimeFixture(): Promise<void> {
     __LOCALBASE_TEST_EXIT_ON_START__
   ) {
     process.exit(1);
+  }
+  if (__LOCALBASE_TEST_HTTP_BACKEND__) {
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: runtimePort(args),
+      async fetch(request) {
+        const path = new URL(request.url).pathname;
+        if (path === "/health") return new Response(null, { status: 200 });
+        if (path !== "/v1/chat/completions")
+          return new Response(null, { status: 404 });
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            if (typeof __LOCALBASE_TEST_FIRST_EVENT_REPORT_URL__ === "string") {
+              const response = await fetch(
+                __LOCALBASE_TEST_FIRST_EVENT_REPORT_URL__,
+                { method: "POST" },
+              );
+              if (!response.ok) {
+                throw new Error("Could not report the first stream event.");
+              }
+            }
+            controller.enqueue(
+              new TextEncoder().encode(
+                'data: {"id":"fixture","object":"chat.completion.chunk","created":0,"model":"fixture","choices":[{"index":0,"delta":{"role":"assistant","content":"waiting"},"finish_reason":null}]}\n\n',
+              ),
+            );
+          },
+        });
+        return new Response(stream, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      },
+    });
+    await new Promise<void>((resolve) => process.once("SIGTERM", resolve));
+    server.stop(true);
+    return;
   }
   if (
     typeof __LOCALBASE_TEST_FAILURE_MARKER_PATH__ === "string" &&

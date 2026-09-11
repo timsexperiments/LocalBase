@@ -142,11 +142,14 @@ export type GatewayFixture = {
     offset: number,
     count: number,
   ) => Promise<string[][]>;
+  waitForLlmRuntimeStart: () => Promise<string[]>;
   waitForSttRuntimeStart: () => Promise<string[]>;
   waitForImageRuntimeStart: () => Promise<string[]>;
   setLlmBackendHealthy: (healthy: boolean) => void;
   setLlmRuntimeFailure: (enabled: boolean) => Promise<void>;
   waitForLlmHealthProbe: () => Promise<ControlledHealthProbe>;
+  waitForLlmFirstEvent: () => Promise<void>;
+  crashLlmRuntime: () => Promise<void>;
   waitForSttHealthProbe: () => Promise<ControlledHealthProbe>;
   waitForImageHealthProbe: () => Promise<ControlledHealthProbe>;
   waitForUpstreamRequest: (id: string) => Promise<void>;
@@ -165,6 +168,7 @@ export type GatewayFixtureOptions = {
   sttHealthControlled?: boolean;
   imageHealthControlled?: boolean;
   llmRuntimeExitOnStart?: boolean;
+  llmRuntimeHttpBackend?: boolean;
   sttEnabled?: boolean;
   imageEnabled?: boolean;
 };
@@ -306,11 +310,14 @@ function startMockUpstream(
   setHealthy: (healthy: boolean) => void;
   waitForHealthProbe: () => Promise<ControlledHealthProbe>;
   waitForRuntimeStart: () => Promise<string[]>;
+  waitForRuntimeStreamStart: () => Promise<void>;
 } {
   let healthState = healthy;
   const healthProbe = controlledHealth ? createControlledHealthProbe() : null;
   const runtimeStarts: string[][] = [];
   const runtimeStartObservers: Array<(args: string[]) => void> = [];
+  let runtimeStreamStarted = false;
+  const runtimeStreamStartObservers: Array<() => void> = [];
   const options = {
     hostname: "127.0.0.1",
     async fetch(request: Request) {
@@ -326,6 +333,11 @@ function startMockUpstream(
         const observer = runtimeStartObservers.shift();
         if (observer) observer(args);
         else runtimeStarts.push(args);
+        return new Response(null, { status: 204 });
+      }
+      if (path === "/__runtime-stream-started" && request.method === "POST") {
+        runtimeStreamStarted = true;
+        runtimeStreamStartObservers.shift()?.();
         return new Response(null, { status: 204 });
       }
       if (path === "/health" || path === "/") {
@@ -1329,6 +1341,12 @@ function startMockUpstream(
             runtimeStartObservers.push(resolve);
           });
         },
+        waitForRuntimeStreamStart: async () => {
+          if (runtimeStreamStarted) return;
+          await new Promise<void>((resolve) => {
+            runtimeStreamStartObservers.push(resolve);
+          });
+        },
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
@@ -1389,6 +1407,7 @@ export async function startGatewayFixture(
   const sttLaunchesPath = join(root, "whisper-launches.jsonl");
   const imageLaunchesPath = join(root, "sd-launches.jsonl");
   const llmFailureMarkerPath = join(root, "llama-runtime-failure");
+  const llmRuntimePidPath = join(root, "llama-runtime.pid");
   const cleanup = () => rmSync(root, { recursive: true, force: true });
   const upstreamRequests: UpstreamRequest[] = [];
   const controlledStreams = new Map<string, ControlledStream>();
@@ -1414,7 +1433,10 @@ export async function startGatewayFixture(
     true,
     options.imageHealthControlled,
   );
-  const llmPort = boundPort(llmUpstream.server);
+  const llmUpstreamPort = boundPort(llmUpstream.server);
+  const llmPort = options.llmRuntimeHttpBackend
+    ? reservePort()
+    : llmUpstreamPort;
   const sttPort = boundPort(sttUpstream.server);
   const imagePort = boundPort(imageUpstream.server);
 
@@ -1463,8 +1485,12 @@ export async function startGatewayFixture(
         llmLaunchesPath,
         options.llmRuntimeExitOnStart,
         llmFailureMarkerPath,
-        options.llmHealthControlled
-          ? `http://127.0.0.1:${llmPort}/__runtime-started`
+        options.llmHealthControlled || options.llmRuntimeHttpBackend
+          ? `http://127.0.0.1:${llmUpstreamPort}/__runtime-started`
+          : undefined,
+        options.llmRuntimeHttpBackend,
+        options.llmRuntimeHttpBackend
+          ? `http://127.0.0.1:${llmUpstreamPort}/__runtime-stream-started`
           : undefined,
       ),
       compileRuntimeFixture(
@@ -1530,6 +1556,9 @@ export async function startGatewayFixture(
         env: {
           ...process.env,
           PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
+          ...(options.llmRuntimeHttpBackend
+            ? { LOCALBASE_TEST_PID_PATH: llmRuntimePidPath }
+            : {}),
           ...(options.managedIdentity
             ? {
                 LOCALBASE_SERVICE_ID: `com.localbase.gateway.${new Bun.CryptoHasher("sha256").update(root).digest("hex")}`,
@@ -1641,6 +1670,7 @@ export async function startGatewayFixture(
     waitForImageRuntimeLaunches: imageRuntimeLaunches.wait,
     waitForSttRuntimeStart: sttUpstream.waitForRuntimeStart,
     waitForImageRuntimeStart: imageUpstream.waitForRuntimeStart,
+    waitForLlmRuntimeStart: llmUpstream.waitForRuntimeStart,
     setLlmBackendHealthy: llmUpstream.setHealthy,
     async setLlmRuntimeFailure(enabled) {
       const marker = Bun.file(llmFailureMarkerPath);
@@ -1651,6 +1681,13 @@ export async function startGatewayFixture(
       }
     },
     waitForLlmHealthProbe: llmUpstream.waitForHealthProbe,
+    waitForLlmFirstEvent: llmUpstream.waitForRuntimeStreamStart,
+    async crashLlmRuntime() {
+      const pid = Number((await Bun.file(llmRuntimePidPath).text()).trim());
+      if (!Number.isSafeInteger(pid) || pid <= 0)
+        throw new Error("LLM runtime did not publish a valid process ID.");
+      process.kill(pid, "SIGKILL");
+    },
     waitForSttHealthProbe: sttUpstream.waitForHealthProbe,
     waitForImageHealthProbe: imageUpstream.waitForHealthProbe,
     async waitForUpstreamRequest(id) {
