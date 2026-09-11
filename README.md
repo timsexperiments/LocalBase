@@ -14,7 +14,7 @@ LocalBase is a Bun/TypeScript unified, OpenAI-compatible gateway for local AI ru
 - SQLite-backed configuration and API-key storage.
 - Hardware-aware context sizing and llama-server parallel-slot configuration.
 
-The runtime currently keeps one active model per service. Dynamic model pools and eviction are future work.
+The runtime keeps one active model per service. Memory pressure can evict idle runtimes or stop all runtimes in an emergency. Simultaneous multi-model process pools are not supported.
 
 ### Model metadata
 
@@ -92,6 +92,8 @@ Chat completions accept OpenAI-compatible `response_format.type: "json_schema"` 
 The supported contract includes primitive and nullable types, strict object properties, object-valued array items, array bounds and string maximum lengths up to 10,000, safe integral integer bounds, scalar `enum` and `const` values matching their declared type, `anyOf`, and direct `#/$defs/name` or `#/definitions/name` references with ASCII identifier names. LocalBase rejects string minimum lengths, formats, remote or deeper references, other dialects, and keywords or combinations that the managed runtime would ignore.
 
 For non-streaming responses, LocalBase validates ordinary assistant content when `finish_reason` is `stop`. A mismatch returns HTTP 502 with code `structured_output_validation_failed`. Refusals, tool calls, and truncated choices retain their original response semantics. Streaming remains incremental and relies on the runtime grammar rather than whole-response buffering.
+
+See [Operating LocalBase](docs/operations.md) for queue limits, model-switch behavior, cancellation, telemetry, metadata, and compiled runtime qualification.
 
 ## Logs
 
