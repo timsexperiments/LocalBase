@@ -215,8 +215,10 @@ test("cancels response leases on cancellation and releases them on completion", 
 
   const streamCancellation = createLeasedResponse();
   const streamAbort = new AbortController();
+  const responseAbort = new AbortController();
   let streamReleases = 0;
   let streamCancels = 0;
+  const streamOutcomes: string[] = [];
   const leasedStream = withResponseLease(
     streamCancellation.response,
     () => {
@@ -224,8 +226,10 @@ test("cancels response leases on cancellation and releases them on completion", 
     },
     () => {
       streamCancels += 1;
+      responseAbort.abort();
     },
     streamAbort.signal,
+    (outcome) => streamOutcomes.push(outcome),
   );
   const streamReader = leasedStream.body!.getReader();
   await streamReader.read();
@@ -233,11 +237,14 @@ test("cancels response leases on cancellation and releases them on completion", 
   await streamCancellation.cancelled;
   expect(streamReleases).toBe(0);
   expect(streamCancels).toBe(1);
+  expect(responseAbort.signal.aborted).toBe(true);
+  expect(streamOutcomes).toEqual(["cancelled"]);
 
   const requestCancellation = createLeasedResponse();
   const requestAbort = new AbortController();
   let requestReleases = 0;
   let requestCancels = 0;
+  const requestOutcomes: string[] = [];
   withResponseLease(
     requestCancellation.response,
     () => {
@@ -247,11 +254,13 @@ test("cancels response leases on cancellation and releases them on completion", 
       requestCancels += 1;
     },
     requestAbort.signal,
+    (outcome) => requestOutcomes.push(outcome),
   );
   requestAbort.abort();
   await requestCancellation.cancelled;
   expect(requestReleases).toBe(0);
   expect(requestCancels).toBe(1);
+  expect(requestOutcomes).toEqual(["cancelled"]);
 
   let completedReleases = 0;
   let completedCancels = 0;
@@ -268,6 +277,33 @@ test("cancels response leases on cancellation and releases them on completion", 
   await completed.arrayBuffer();
   expect(completedReleases).toBe(1);
   expect(completedCancels).toBe(0);
+
+  let failedReleases = 0;
+  let failedCancels = 0;
+  const failedOutcomes: string[] = [];
+  const failed = withResponseLease(
+    new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.error(new Error("upstream read failed"));
+        },
+      }),
+    ),
+    () => {
+      failedReleases += 1;
+    },
+    () => {
+      failedCancels += 1;
+    },
+    new AbortController().signal,
+    (outcome) => failedOutcomes.push(outcome),
+  );
+  await expect(failed.arrayBuffer()).rejects.toThrow("upstream read failed");
+  expect({ failedReleases, failedCancels, failedOutcomes }).toEqual({
+    failedReleases: 0,
+    failedCancels: 1,
+    failedOutcomes: ["error"],
+  });
 
   let bodylessReleases = 0;
   const bodylessOutcomes: string[] = [];
@@ -716,6 +752,29 @@ describe("API gateway integration", () => {
       Bun.sleep(100).then(() => false),
     ]);
     expect(completed).toBe(false);
+  }
+
+  async function waitForClientSignal(
+    client: Bun.Subprocess,
+    signal: string,
+  ): Promise<void> {
+    if (!client.stdout || typeof client.stdout === "number") {
+      throw new Error("Expected cancellation client stdout.");
+    }
+    const reader = client.stdout.getReader();
+    const decoder = new TextDecoder();
+    let output = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        output += decoder.decode(value, { stream: true });
+        if (output.includes(signal)) return;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    throw new Error(`Cancellation client exited before ${signal}.`);
   }
 
   async function drainReader(
@@ -1658,6 +1717,72 @@ describe("API gateway integration", () => {
     );
     expect(switched.status).toBe(200);
     await switched.text();
+  });
+
+  test("releases a disconnected stream before replacing its model", async () => {
+    const config = loadGatewayConfig();
+    const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const modelA = config.activeLlmModel;
+    const modelB =
+      modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
+    saveGatewayConfig({
+      ...config,
+      selectedLlmModels: [modelA, modelB],
+    });
+    await writeCompleteCatalogArtifact(config.llmModelsDir, modelB);
+
+    const streamId = "reader-cancel-replacement";
+    const client = Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        [
+          'const model = Bun.argv.at(-2); if (!model) throw new Error("Missing model.");',
+          'const response = await fetch(Bun.argv.at(-1), { method: "POST", headers: { "content-type": "application/json", "x-test-upstream": "controlled-stream", "x-test-stream-id": "reader-cancel-replacement" }, body: JSON.stringify({ model, stream: true, messages: [{ role: "user", content: "hold" }] }) });',
+          'if (!response.body) throw new Error("Expected a streaming response.");',
+          "const reader = response.body.getReader();",
+          'if ((await reader.read()).done) throw new Error("Expected the first stream chunk.");',
+          "await reader.cancel();",
+          'process.stdout.write("reader-cancelled\\n");',
+          "await new Promise(() => {});",
+        ].join(""),
+        modelA,
+        `${gateway.baseUrl}/v1/chat/completions`,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    try {
+      await within(
+        gateway.waitForUpstreamRequest(streamId),
+        "controlled stream request",
+      );
+      await within(
+        waitForClientSignal(client, "reader-cancelled"),
+        "client reader cancellation",
+      );
+    } finally {
+      if (client.exitCode === null) client.kill();
+      await client.exited;
+    }
+    await within(
+      gateway.waitForControlledStreamAbort(streamId),
+      "upstream stream cancellation",
+    );
+
+    const replacement = await within(
+      request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelB,
+          messages: [{ role: "user", content: "replace" }],
+        }),
+      }),
+      "model replacement after stream cancellation",
+    );
+    expect(replacement.status).toBe(200);
+    await replacement.text();
   });
 
   test("abandons queued LLM model switches before dispatch", async () => {
