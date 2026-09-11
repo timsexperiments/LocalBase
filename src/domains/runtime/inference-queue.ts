@@ -1,0 +1,214 @@
+import type { RuntimeModality } from "./modality";
+
+export const DEFAULT_MAX_WAITING_INFERENCES = 16;
+export const DEFAULT_INFERENCE_QUEUE_WAIT_MS = 60_000;
+
+export class InferenceQueueCapacityError extends Error {
+  constructor() {
+    super("Inference queue capacity exceeded.");
+    this.name = "InferenceQueueCapacityError";
+  }
+}
+export class InferenceQueueTimeoutError extends Error {
+  constructor() {
+    super("Inference queue wait timed out.");
+    this.name = "InferenceQueueTimeoutError";
+  }
+}
+export class InferenceQueueUnavailableError extends Error {
+  constructor(message = "Inference queue is unavailable.") {
+    super(message);
+    this.name = "InferenceQueueUnavailableError";
+  }
+}
+export class InferenceQueueAbortedError extends Error {
+  constructor() {
+    super("Request aborted while waiting for inference admission.");
+    this.name = "InferenceQueueAbortedError";
+  }
+}
+
+export type InferenceQueueSnapshot = Readonly<{
+  waiting: number;
+  active: number;
+  capacity: number;
+  maxWaitMs: number;
+}>;
+export type QueuedLease<Value> = Readonly<{
+  value: Value;
+  queueWaitMs: number;
+  release: () => void;
+}>;
+type Pending<Value> = {
+  modelId: string;
+  signal?: AbortSignal;
+  dispatch: () => Promise<Value>;
+  resolve: (lease: QueuedLease<Value>) => void;
+  reject: (error: Error) => void;
+  timer?: ReturnType<typeof setTimeout>;
+  removeAbort?: () => void;
+  enqueuedAt: number;
+};
+
+/** Owns bounded FIFO permits for one inference modality. */
+export class InferenceQueue<Value> {
+  private readonly pending: Pending<Value>[] = [];
+  private active = 0;
+  private activeModel: string | undefined;
+  private slots = 1;
+  private dispatching = false;
+  private closedError: Error | undefined;
+
+  constructor(
+    readonly modality: RuntimeModality,
+    private readonly options: Readonly<{
+      maxWaiting?: number;
+      waitMs?: number;
+      isAdmitted: (value: Value) => boolean;
+      resolvedSlots: (value: Value) => number;
+      whenSlotsResolved?: (value: Value) => Promise<void>;
+      now?: () => number;
+    }>,
+  ) {}
+
+  snapshot(): InferenceQueueSnapshot {
+    return Object.freeze({
+      waiting: this.pending.length,
+      active: this.active,
+      capacity: this.options.maxWaiting ?? DEFAULT_MAX_WAITING_INFERENCES,
+      maxWaitMs: this.options.waitMs ?? DEFAULT_INFERENCE_QUEUE_WAIT_MS,
+    });
+  }
+
+  acquire(
+    modelId: string,
+    dispatch: () => Promise<Value>,
+    signal?: AbortSignal,
+  ): Promise<QueuedLease<Value>> {
+    if (signal?.aborted)
+      return Promise.reject(new InferenceQueueAbortedError());
+    if (this.closedError) return Promise.reject(this.closedError);
+    if (
+      this.pending.length >=
+      (this.options.maxWaiting ?? DEFAULT_MAX_WAITING_INFERENCES)
+    )
+      return Promise.reject(new InferenceQueueCapacityError());
+    return new Promise((resolve, reject) => {
+      const item: Pending<Value> = {
+        modelId,
+        signal,
+        dispatch,
+        resolve,
+        reject,
+        enqueuedAt: this.now(),
+      };
+      item.timer = setTimeout(
+        () => this.remove(item, new InferenceQueueTimeoutError()),
+        this.options.waitMs ?? DEFAULT_INFERENCE_QUEUE_WAIT_MS,
+      );
+      const abort = () => this.remove(item, new InferenceQueueAbortedError());
+      signal?.addEventListener("abort", abort, { once: true });
+      item.removeAbort = () => signal?.removeEventListener("abort", abort);
+      this.pending.push(item);
+      void this.pump();
+    });
+  }
+
+  rejectPending(error = new InferenceQueueUnavailableError()): void {
+    for (const item of [...this.pending]) this.remove(item, error);
+  }
+  close(
+    error = new InferenceQueueUnavailableError("Gateway is shutting down."),
+  ): void {
+    this.closedError = error;
+    this.rejectPending(error);
+  }
+  private now(): number {
+    return this.options.now?.() ?? performance.now();
+  }
+  private remove(item: Pending<Value>, error: Error): void {
+    const index = this.pending.indexOf(item);
+    if (index < 0) return;
+    this.pending.splice(index, 1);
+    if (item.timer) clearTimeout(item.timer);
+    item.removeAbort?.();
+    item.reject(error);
+    if (this.canDispatchHead()) void this.pump();
+  }
+
+  private canDispatchHead(): boolean {
+    const head = this.pending[0];
+    if (!head || this.active >= this.slots) return false;
+    return this.activeModel === undefined || this.activeModel === head.modelId;
+  }
+
+  private async pump(): Promise<void> {
+    if (this.dispatching) return;
+    this.dispatching = true;
+    try {
+      while (true) {
+        if (!this.canDispatchHead()) return;
+        const item = this.pending[0];
+        if (!item) return;
+        this.pending.shift();
+        if (item.timer) clearTimeout(item.timer);
+        item.removeAbort?.();
+        const queueWaitMs = Math.max(0, this.now() - item.enqueuedAt);
+        if (item.signal?.aborted) {
+          item.reject(new InferenceQueueAbortedError());
+          continue;
+        }
+        try {
+          const value = await item.dispatch();
+          if (!this.options.isAdmitted(value)) {
+            item.resolve({
+              value,
+              queueWaitMs,
+              release() {},
+            });
+            continue;
+          }
+          this.activeModel = item.modelId;
+          this.active += 1;
+          this.slots = Math.max(
+            1,
+            this.modality === "llm" ? this.options.resolvedSlots(value) : 1,
+          );
+          void this.options.whenSlotsResolved?.(value).then(
+            () => {
+              if (this.activeModel !== item.modelId) return;
+              this.slots = Math.max(1, this.options.resolvedSlots(value));
+              void this.pump();
+            },
+            () => {},
+          );
+          let released = false;
+          item.resolve(
+            Object.freeze({
+              value,
+              queueWaitMs,
+              release: () => {
+                if (released) return;
+                released = true;
+                this.active -= 1;
+                if (this.active === 0) {
+                  this.activeModel = undefined;
+                  this.slots = 1;
+                }
+                void this.pump();
+              },
+            }),
+          );
+        } catch (error) {
+          if (this.active === 0) this.activeModel = undefined;
+          item.reject(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+        }
+      }
+    } finally {
+      this.dispatching = false;
+      if (this.canDispatchHead()) void this.pump();
+    }
+  }
+}

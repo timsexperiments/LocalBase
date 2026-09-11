@@ -88,6 +88,7 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
         modelId: config.activeLlmModel,
         admission: { kind: "known", accepting: true, activeCount: 0 },
         configuredSlots: null,
+        queue: { waiting: 0, active: 0, capacity: 16, maxWaitMs: 60_000 },
       },
       stt: { configured: false, state: "disabled" },
     });
@@ -335,10 +336,6 @@ test("keeps queued admissions paired with the applied model generation", async (
   config.selectedSttModels = [config.activeSttModel];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
-  let markSwitching!: () => void;
-  const switching = new Promise<void>((resolve) => {
-    markSwitching = resolve;
-  });
   const factory: RuntimeSupervisorFactory = {
     baseUrl: () => "http://127.0.0.1:1",
     create(modality, snapshot) {
@@ -360,11 +357,7 @@ test("keeps queued admissions paired with the applied model generation", async (
       stt: factory.create("stt", controller.read()),
     }),
     factory,
-    {
-      event(event: LogEventInput) {
-        if (event.eventName === "model.switching") markSwitching();
-      },
-    } as never,
+    { event() {} } as never,
   );
 
   try {
@@ -372,7 +365,6 @@ test("keeps queued admissions paired with the applied model generation", async (
     if (active.kind !== "admitted") throw new Error("Expected admission.");
     active.value.admission.markResponseStarted();
     const switchToB = reconciler.admitModel("llm", modelB);
-    await switching;
     expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
       modelId: modelA,
       runtimeId: `llm:${modelA}`,
@@ -411,10 +403,6 @@ test("rebases queued replacement work after a model activation", async () => {
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
   const created: string[] = [];
-  let markSwitching!: () => void;
-  const switching = new Promise<void>((resolve) => {
-    markSwitching = resolve;
-  });
   const factory: RuntimeSupervisorFactory = {
     baseUrl: () => "http://127.0.0.1:1",
     create(modality, snapshot) {
@@ -437,18 +425,13 @@ test("rebases queued replacement work after a model activation", async () => {
       stt: factory.create("stt", controller.read()),
     }),
     factory,
-    {
-      event(event: LogEventInput) {
-        if (event.eventName === "model.switching") markSwitching();
-      },
-    } as never,
+    { event() {} } as never,
   );
   try {
     const active = await reconciler.admitModel("llm", modelA);
     if (active.kind !== "admitted") throw new Error("Expected admission.");
     active.value.admission.markResponseStarted();
     const switchToB = reconciler.admitModel("llm", modelB);
-    await switching;
     const replacement = controller.copy();
     replacement.parallel = 2;
     saveConfig(database, replacement);
@@ -531,11 +514,10 @@ test("releases transition ownership before waiting for backend readiness", async
     const firstStartup = first.value.admission.ready.finally(
       first.value.admission.release,
     );
-
-    const switched = await reconciler.admitModel("llm", switchedModel);
-
+    first.value.admission.cancel();
     await expect(firstStartup).rejects.toThrow("Startup cancelled.");
     expect(kills).toBe(1);
+    const switched = await reconciler.admitModel("llm", switchedModel);
     expect(switched).toMatchObject({
       kind: "admitted",
       value: { modelId: switchedModel },
@@ -596,20 +578,12 @@ test("does not stop a ready runtime while a model switch drains admission", asyn
     baseUrl: () => "http://127.0.0.1:1",
     create: () => replacement,
   };
-  let markSwitching!: () => void;
-  const switching = new Promise<void>((resolve) => {
-    markSwitching = resolve;
-  });
   const reconciler = new RuntimeReconciler(
     controller,
     {},
     new SupervisorRegistry({ llm: initial }),
     factory,
-    {
-      event(event: LogEventInput) {
-        if (event.eventName === "model.switching") markSwitching();
-      },
-    } as never,
+    { event() {} } as never,
   );
 
   try {
@@ -618,9 +592,20 @@ test("does not stop a ready runtime while a model switch drains admission", asyn
     await active.value.admission.ready;
     expect(initial.state()).toBe("running");
 
-    const switched = reconciler.admitModel("llm", switchedModel);
-    await switching;
+    let switchedSettled = false;
+    const switched = reconciler.admitModel("llm", switchedModel).finally(() => {
+      switchedSettled = true;
+    });
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (reconciler.lifecycleSnapshot().llm.queue.waiting === 1) break;
+      await Bun.sleep(1);
+    }
+    expect(switchedSettled).toBe(false);
     expect(kills).toBe(0);
+    expect(reconciler.lifecycleSnapshot().llm.queue).toMatchObject({
+      active: 1,
+      waiting: 1,
+    });
 
     active.value.admission.release();
     const replacementAdmission = await switched;
@@ -648,6 +633,7 @@ test("cancels an orphaned running runtime after shared admissions settle", async
   const supervisor: RuntimeSupervisor = {
     runtimeId: () => "llm:test:1",
     state: () => "running",
+    resolvedSlots: () => 2,
     async ensureRunning() {},
     async kill() {
       kills += 1;

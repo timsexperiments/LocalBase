@@ -5,6 +5,11 @@ import {
   type RuntimeLifecycleSnapshot,
 } from "./lifecycle-snapshot";
 import { runtimeModalities, type RuntimeModality } from "./modality";
+import {
+  DEFAULT_INFERENCE_QUEUE_WAIT_MS,
+  DEFAULT_MAX_WAITING_INFERENCES,
+  type InferenceQueueSnapshot,
+} from "./inference-queue";
 
 export type RuntimeSupervisor = {
   runtimeId(): string;
@@ -114,6 +119,7 @@ export class SupervisorRegistry implements SupervisorStateReader {
       configured: boolean;
       modelId: string | null;
       admission?: RuntimeAdmissionSnapshot;
+      queue?: InferenceQueueSnapshot;
     }>,
   ): RuntimeLifecycleSnapshot {
     const service = this.get(input.modality);
@@ -133,6 +139,12 @@ export class SupervisorRegistry implements SupervisorStateReader {
       admission: input.admission ??
         this.admissionReader?.(input.modality) ?? { kind: "unknown" },
       configuredSlots: service?.resolvedSlots?.() ?? null,
+      queue: input.queue ?? {
+        waiting: 0,
+        active: 0,
+        capacity: DEFAULT_MAX_WAITING_INFERENCES,
+        maxWaitMs: DEFAULT_INFERENCE_QUEUE_WAIT_MS,
+      },
     });
   }
 

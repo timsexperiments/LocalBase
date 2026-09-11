@@ -145,6 +145,8 @@ export const serveInputSchema = z.object({
   imageHost: hostSchema.optional(),
   imagePort: portInputSchema.optional(),
   ctxSize: positiveInteger().optional(),
+  inferenceQueueCapacity: positiveInteger(10_000).optional(),
+  inferenceQueueTimeoutMs: positiveInteger(600_000).optional(),
   sttPath: z.string().min(1).optional(),
   llmModelFile: safeFilenameSchema.optional(),
   sttModelFile: safeFilenameSchema.optional(),

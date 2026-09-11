@@ -432,6 +432,16 @@ const serveCommand = command<ServeInput>({
       valueHint: "tokens",
       description: "LLM context limit",
     },
+    "inference-queue-capacity": {
+      type: "string",
+      valueHint: "requests",
+      description: "Maximum waiting requests per inference type",
+    },
+    "inference-queue-timeout-ms": {
+      type: "string",
+      valueHint: "milliseconds",
+      description: "Maximum inference queue wait",
+    },
     "stt-path": {
       type: "string",
       valueHint: "path",
