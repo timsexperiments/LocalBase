@@ -103,6 +103,7 @@ describe.serial("llama runtime launch", () => {
         }),
       );
       await readCapturedArgs(fixture.argsPath);
+      expect(process.exitCode).toBeNull();
       process.kill();
       expect(await process.exited).toBe(0);
     } finally {
