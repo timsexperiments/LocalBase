@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { SpanStatusCode, context, trace } from "@opentelemetry/api";
 import { join, basename } from "node:path";
-import { validateApiKey, installModel } from "../../../manager";
+import {
+  validateApiKey,
+  installModel,
+  type LocalBaseConfig,
+} from "../../../manager";
 import {
   byId,
   CATALOG,
@@ -1482,6 +1486,17 @@ export async function runServe(
   const sttPath = input.sttPath ?? "/inference";
   const authRequired = input.auth ?? true;
   const authMode = parseAuthMode(input.authMode);
+  const hasValidGatewayCredentials = (
+    request: Request,
+    config: LocalBaseConfig,
+  ): boolean => {
+    const token = extractAuthToken(request, authMode);
+    return Boolean(
+      token &&
+      (token === process.env.LOCALBASE_API_KEY ||
+        validateApiKey(ctx.database, config, token)),
+    );
+  };
 
   const llmModelFileOverride = input.llmModelFile;
   let llmModelFile = llmModelFileOverride;
@@ -1866,16 +1881,8 @@ export async function runServe(
     if (route === "modelMetadataList" || route === "modelMetadataDetail") {
       const currentConfig = ctx.runtimeConfig.copy();
       const runtimes = reconciler.lifecycleSnapshot();
-      const token = extractAuthToken(request, authMode);
-      const isMasterKey =
-        process.env.LOCALBASE_API_KEY &&
-        token === process.env.LOCALBASE_API_KEY;
-      if (
-        !token ||
-        (!isMasterKey && !validateApiKey(ctx.database, currentConfig, token))
-      ) {
+      if (!hasValidGatewayCredentials(request, currentConfig))
         return unauthorized();
-      }
       if (request.method !== "GET") return methodNotAllowed("GET");
 
       const metadataInput = {
@@ -1916,16 +1923,8 @@ export async function runServe(
     }
 
     if (authRequired) {
-      const token = extractAuthToken(request, authMode);
-      const isMasterKey =
-        process.env.LOCALBASE_API_KEY &&
-        token === process.env.LOCALBASE_API_KEY;
-      if (
-        !token ||
-        (!isMasterKey && !validateApiKey(ctx.database, currentConfig, token))
-      ) {
+      if (!hasValidGatewayCredentials(request, currentConfig))
         return unauthorized();
-      }
     }
 
     if (requestExceedsSizeLimit(request)) return payloadTooLarge();
