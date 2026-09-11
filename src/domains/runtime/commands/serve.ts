@@ -1233,23 +1233,17 @@ export function withResponseLease(
 
   let completed = false;
   let removeAbortListener = () => {};
-  const releaseOnce = () => {
+  const settleOnce = (outcome: InferenceOutcome) => {
     if (completed) return;
     completed = true;
     removeAbortListener();
-    release();
-    onSettled?.("completed");
-  };
-  const cancelOnce = () => {
-    if (completed) return;
-    completed = true;
-    removeAbortListener();
-    cancel();
-    onSettled?.(requestSignal.aborted ? "cancelled" : "error");
+    if (outcome === "completed") release();
+    else cancel();
+    onSettled?.(outcome);
   };
   const reader = response.body.getReader();
   const cancelForRequestAbort = () => {
-    cancelOnce();
+    settleOnce("cancelled");
     void reader.cancel(requestSignal.reason);
   };
   requestSignal.addEventListener("abort", cancelForRequestAbort, {
@@ -1263,18 +1257,18 @@ export function withResponseLease(
       try {
         const { done, value } = await reader.read();
         if (done) {
-          releaseOnce();
+          settleOnce("completed");
           controller.close();
           return;
         }
         controller.enqueue(value);
       } catch (error) {
-        cancelOnce();
+        settleOnce("error");
         controller.error(error);
       }
     },
     async cancel(reason) {
-      cancelOnce();
+      settleOnce("cancelled");
       await reader.cancel(reason);
     },
   });
@@ -2271,11 +2265,20 @@ export async function runServe(
         });
       }
 
+      const responseAbortController = new AbortController();
+      const lifecycleSignal = AbortSignal.any([
+        request.signal,
+        responseAbortController.signal,
+      ]);
+      const lifecycleRequest = new Request(request, {
+        signal: lifecycleSignal,
+      });
       let response: Response;
       try {
         response = await context.with(
           trace.setSpan(parent, span),
-          async () => await handleRequest(request, pathname, requestId, start),
+          async () =>
+            await handleRequest(lifecycleRequest, pathname, requestId, start),
         );
       } catch (err) {
         ctx.logger.error(
@@ -2331,9 +2334,12 @@ export async function runServe(
       };
       return withResponseLease(
         corsResponse,
-        () => settle("completed"),
-        () => settle(request.signal.aborted ? "cancelled" : "error"),
-        request.signal,
+        () => {},
+        () => {
+          responseAbortController.abort();
+        },
+        lifecycleSignal,
+        (outcome) => settle(outcome),
       );
     },
   });
