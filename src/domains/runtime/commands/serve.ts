@@ -2271,11 +2271,20 @@ export async function runServe(
         });
       }
 
+      const responseAbortController = new AbortController();
+      const lifecycleSignal = AbortSignal.any([
+        request.signal,
+        responseAbortController.signal,
+      ]);
+      const lifecycleRequest = new Request(request, {
+        signal: lifecycleSignal,
+      });
       let response: Response;
       try {
         response = await context.with(
           trace.setSpan(parent, span),
-          async () => await handleRequest(request, pathname, requestId, start),
+          async () =>
+            await handleRequest(lifecycleRequest, pathname, requestId, start),
         );
       } catch (err) {
         ctx.logger.error(
@@ -2332,8 +2341,11 @@ export async function runServe(
       return withResponseLease(
         corsResponse,
         () => settle("completed"),
-        () => settle(request.signal.aborted ? "cancelled" : "error"),
-        request.signal,
+        () => {
+          responseAbortController.abort();
+          settle(lifecycleSignal.aborted ? "cancelled" : "error");
+        },
+        lifecycleSignal,
       );
     },
   });
