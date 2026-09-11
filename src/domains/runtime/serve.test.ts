@@ -218,6 +218,7 @@ test("cancels response leases on cancellation and releases them on completion", 
   const responseAbort = new AbortController();
   let streamReleases = 0;
   let streamCancels = 0;
+  const streamOutcomes: string[] = [];
   const leasedStream = withResponseLease(
     streamCancellation.response,
     () => {
@@ -228,6 +229,7 @@ test("cancels response leases on cancellation and releases them on completion", 
       responseAbort.abort();
     },
     streamAbort.signal,
+    (outcome) => streamOutcomes.push(outcome),
   );
   const streamReader = leasedStream.body!.getReader();
   await streamReader.read();
@@ -236,11 +238,13 @@ test("cancels response leases on cancellation and releases them on completion", 
   expect(streamReleases).toBe(0);
   expect(streamCancels).toBe(1);
   expect(responseAbort.signal.aborted).toBe(true);
+  expect(streamOutcomes).toEqual(["cancelled"]);
 
   const requestCancellation = createLeasedResponse();
   const requestAbort = new AbortController();
   let requestReleases = 0;
   let requestCancels = 0;
+  const requestOutcomes: string[] = [];
   withResponseLease(
     requestCancellation.response,
     () => {
@@ -250,11 +254,13 @@ test("cancels response leases on cancellation and releases them on completion", 
       requestCancels += 1;
     },
     requestAbort.signal,
+    (outcome) => requestOutcomes.push(outcome),
   );
   requestAbort.abort();
   await requestCancellation.cancelled;
   expect(requestReleases).toBe(0);
   expect(requestCancels).toBe(1);
+  expect(requestOutcomes).toEqual(["cancelled"]);
 
   let completedReleases = 0;
   let completedCancels = 0;
@@ -271,6 +277,33 @@ test("cancels response leases on cancellation and releases them on completion", 
   await completed.arrayBuffer();
   expect(completedReleases).toBe(1);
   expect(completedCancels).toBe(0);
+
+  let failedReleases = 0;
+  let failedCancels = 0;
+  const failedOutcomes: string[] = [];
+  const failed = withResponseLease(
+    new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.error(new Error("upstream read failed"));
+        },
+      }),
+    ),
+    () => {
+      failedReleases += 1;
+    },
+    () => {
+      failedCancels += 1;
+    },
+    new AbortController().signal,
+    (outcome) => failedOutcomes.push(outcome),
+  );
+  await expect(failed.arrayBuffer()).rejects.toThrow("upstream read failed");
+  expect({ failedReleases, failedCancels, failedOutcomes }).toEqual({
+    failedReleases: 0,
+    failedCancels: 1,
+    failedOutcomes: ["error"],
+  });
 
   let bodylessReleases = 0;
   const bodylessOutcomes: string[] = [];

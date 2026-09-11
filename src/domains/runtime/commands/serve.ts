@@ -1233,23 +1233,17 @@ export function withResponseLease(
 
   let completed = false;
   let removeAbortListener = () => {};
-  const releaseOnce = () => {
+  const settleOnce = (outcome: InferenceOutcome) => {
     if (completed) return;
     completed = true;
     removeAbortListener();
-    release();
-    onSettled?.("completed");
-  };
-  const cancelOnce = () => {
-    if (completed) return;
-    completed = true;
-    removeAbortListener();
-    cancel();
-    onSettled?.(requestSignal.aborted ? "cancelled" : "error");
+    if (outcome === "completed") release();
+    else cancel();
+    onSettled?.(outcome);
   };
   const reader = response.body.getReader();
   const cancelForRequestAbort = () => {
-    cancelOnce();
+    settleOnce("cancelled");
     void reader.cancel(requestSignal.reason);
   };
   requestSignal.addEventListener("abort", cancelForRequestAbort, {
@@ -1263,18 +1257,18 @@ export function withResponseLease(
       try {
         const { done, value } = await reader.read();
         if (done) {
-          releaseOnce();
+          settleOnce("completed");
           controller.close();
           return;
         }
         controller.enqueue(value);
       } catch (error) {
-        cancelOnce();
+        settleOnce("error");
         controller.error(error);
       }
     },
     async cancel(reason) {
-      cancelOnce();
+      settleOnce("cancelled");
       await reader.cancel(reason);
     },
   });
@@ -2340,12 +2334,12 @@ export async function runServe(
       };
       return withResponseLease(
         corsResponse,
-        () => settle("completed"),
+        () => {},
         () => {
           responseAbortController.abort();
-          settle(lifecycleSignal.aborted ? "cancelled" : "error");
         },
         lifecycleSignal,
+        (outcome) => settle(outcome),
       );
     },
   });
