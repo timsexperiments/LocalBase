@@ -69,6 +69,32 @@ describe("structured output schemas", () => {
     });
     expect(missingRef).toMatchObject({ kind: "rejected" });
 
+    for (const schema of [
+      {
+        type: "object",
+        properties: { $ref: { type: "string" } },
+        required: ["$ref"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+        $defs: { $ref: { type: "string" } },
+      },
+      {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+        definitions: { $ref: { type: "string" } },
+      },
+    ]) {
+      expect(prepare(schema)).toMatchObject({
+        kind: "rejected",
+        code: "unsupported_json_schema",
+      });
+    }
+
     for (const property of [
       { type: "string", pattern: "^ok$" },
       { type: "number", minimum: 0 },

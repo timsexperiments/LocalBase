@@ -106,7 +106,8 @@ function childSchemas(schema: JsonObject): JsonObject[] | null {
     schema.definitions,
   ]) {
     if (container === undefined) continue;
-    if (!isObject(container)) return null;
+    // b10419 mistakes dictionary entries named "$ref" for schema references.
+    if (!isObject(container) || Object.hasOwn(container, "$ref")) return null;
     for (const child of Object.values(container as JsonObject)) {
       if (!isObject(child)) return null;
       children.push(child);
