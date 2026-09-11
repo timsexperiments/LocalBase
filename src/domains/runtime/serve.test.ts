@@ -215,6 +215,7 @@ test("cancels response leases on cancellation and releases them on completion", 
 
   const streamCancellation = createLeasedResponse();
   const streamAbort = new AbortController();
+  const responseAbort = new AbortController();
   let streamReleases = 0;
   let streamCancels = 0;
   const leasedStream = withResponseLease(
@@ -224,6 +225,7 @@ test("cancels response leases on cancellation and releases them on completion", 
     },
     () => {
       streamCancels += 1;
+      responseAbort.abort();
     },
     streamAbort.signal,
   );
@@ -233,6 +235,7 @@ test("cancels response leases on cancellation and releases them on completion", 
   await streamCancellation.cancelled;
   expect(streamReleases).toBe(0);
   expect(streamCancels).toBe(1);
+  expect(responseAbort.signal.aborted).toBe(true);
 
   const requestCancellation = createLeasedResponse();
   const requestAbort = new AbortController();
@@ -716,6 +719,29 @@ describe("API gateway integration", () => {
       Bun.sleep(100).then(() => false),
     ]);
     expect(completed).toBe(false);
+  }
+
+  async function waitForClientSignal(
+    client: Bun.Subprocess,
+    signal: string,
+  ): Promise<void> {
+    if (!client.stdout || typeof client.stdout === "number") {
+      throw new Error("Expected cancellation client stdout.");
+    }
+    const reader = client.stdout.getReader();
+    const decoder = new TextDecoder();
+    let output = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        output += decoder.decode(value, { stream: true });
+        if (output.includes(signal)) return;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    throw new Error(`Cancellation client exited before ${signal}.`);
   }
 
   async function drainReader(
@@ -1660,7 +1686,7 @@ describe("API gateway integration", () => {
     await switched.text();
   });
 
-  test("releases a cancelled stream before replacing its model", async () => {
+  test("releases a disconnected stream before replacing its model", async () => {
     const config = loadGatewayConfig();
     const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
     const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
@@ -1674,25 +1700,38 @@ describe("API gateway integration", () => {
     await writeCompleteCatalogArtifact(config.llmModelsDir, modelB);
 
     const streamId = "reader-cancel-replacement";
-    const response = await request("/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-test-upstream": "controlled-stream",
-        "x-test-stream-id": streamId,
-      },
-      body: JSON.stringify({
-        model: modelA,
-        stream: true,
-        messages: [{ role: "user", content: "hold" }],
-      }),
-    });
-    expect(response.status).toBe(200);
-    const reader = response.body?.getReader();
-    expect(reader).toBeDefined();
-    if (!reader) throw new Error("Expected a streaming response.");
-    expect((await reader.read()).done).toBe(false);
-    await reader.cancel();
+    const client = Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        [
+          'const model = Bun.argv.at(-2); if (!model) throw new Error("Missing model.");',
+          'const response = await fetch(Bun.argv.at(-1), { method: "POST", headers: { "content-type": "application/json", "x-test-upstream": "controlled-stream", "x-test-stream-id": "reader-cancel-replacement" }, body: JSON.stringify({ model, stream: true, messages: [{ role: "user", content: "hold" }] }) });',
+          'if (!response.body) throw new Error("Expected a streaming response.");',
+          "const reader = response.body.getReader();",
+          'if ((await reader.read()).done) throw new Error("Expected the first stream chunk.");',
+          "await reader.cancel();",
+          'process.stdout.write("reader-cancelled\\n");',
+          "await new Promise(() => {});",
+        ].join(""),
+        modelA,
+        `${gateway.baseUrl}/v1/chat/completions`,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    try {
+      await within(
+        gateway.waitForUpstreamRequest(streamId),
+        "controlled stream request",
+      );
+      await within(
+        waitForClientSignal(client, "reader-cancelled"),
+        "client reader cancellation",
+      );
+    } finally {
+      if (client.exitCode === null) client.kill();
+      await client.exited;
+    }
     await within(
       gateway.waitForControlledStreamAbort(streamId),
       "upstream stream cancellation",
