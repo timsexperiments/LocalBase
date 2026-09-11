@@ -23,8 +23,12 @@ import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
 import { type ILogger } from "../../observability/logging";
-import { InferenceTelemetry } from "../../observability/inference";
-import type { InferenceOutcome } from "../../observability/inference";
+import {
+  InferenceTelemetry,
+  recordStructuredOutputPreparation,
+  type InferenceOutcome,
+  type StructuredOutputValidationTelemetry,
+} from "../../observability/inference";
 import type { RuntimeModality } from "../modality";
 import {
   RuntimeReconciler,
@@ -69,9 +73,10 @@ import { gatewayIdentitySchema } from "../health";
 import { openAIErrorResponseSchema, type OpenAIError } from "../openai-error";
 import {
   chatResponseFormatSchema,
-  completedStructuredOutputMatchesSchema,
   jsonSchemaValueSchema,
   prepareStructuredOutput,
+  validateCompletedStructuredOutput,
+  type CompletedStructuredOutputValidation,
   type StructuredOutputErrorCode,
   type StructuredOutputValidator,
 } from "../structured-output";
@@ -1103,7 +1108,10 @@ async function proxyRequest(
   otel?: OtelRuntime,
   onValidatedEvent?: (value: ChatTelemetryResponse) => void,
   onInvalidEvent?: () => void,
-  structuredOutputValidator?: StructuredOutputValidator,
+  structuredOutput?: Readonly<{
+    validator: StructuredOutputValidator;
+    onValidation: (result: CompletedStructuredOutputValidation) => void;
+  }>,
   canonicalChatModelId?: string,
 ): Promise<Response> {
   const incoming = new URL(request.url);
@@ -1147,7 +1155,6 @@ async function proxyRequest(
     if (request.signal.aborted) return requestAborted();
     return upstreamFailure("The upstream service could not be reached.");
   }
-
   if (
     responseSchema &&
     eventStreamSchema &&
@@ -1187,16 +1194,19 @@ async function proxyRequest(
       }
 
       const chatResponse = chatCompletionResponseSchema.safeParse(parsed.data);
-      if (
-        structuredOutputValidator &&
-        (!chatResponse.success ||
-          !completedStructuredOutputMatchesSchema(
-            chatResponse.data,
-            structuredOutputValidator,
-          ))
-      ) {
-        onInvalidEvent?.();
-        return structuredOutputValidationFailure();
+      if (structuredOutput) {
+        const validation: StructuredOutputValidationTelemetry =
+          chatResponse.success
+            ? validateCompletedStructuredOutput(
+                chatResponse.data,
+                structuredOutput.validator,
+              )
+            : { outcome: "failed", skipReasons: [] };
+        structuredOutput.onValidation(validation);
+        if (validation.outcome === "failed") {
+          onInvalidEvent?.();
+          return structuredOutputValidationFailure();
+        }
       }
       if (chatResponse.success) onValidatedEvent?.(chatResponse.data);
 
@@ -2142,9 +2152,26 @@ export async function runServe(
         chatCompletionRequestSchema,
       );
       if (!parsed.success) return parsed.response;
+      const preparationStartedAt = performance.now();
       const structuredOutput = prepareStructuredOutput(
         parsed.data.response_format,
       );
+      const preparationDurationMs = Math.max(
+        0,
+        performance.now() - preparationStartedAt,
+      );
+      if (structuredOutput.kind !== "none") {
+        recordStructuredOutputPreparation(trace.getSpan(context.active()), {
+          outcome:
+            structuredOutput.kind === "ready"
+              ? "supported"
+              : structuredOutput.code === "invalid_json_schema"
+                ? "invalid"
+                : "unsupported",
+          durationMs: preparationDurationMs,
+          requestId,
+        });
+      }
       if (structuredOutput.kind === "rejected") {
         return structuredOutputRequestFailure(
           structuredOutput.message,
@@ -2175,6 +2202,14 @@ export async function runServe(
         requestId,
         startedAt,
         queueWaitMs: selected.value.queueWaitMs,
+        ...(structuredOutput.kind === "ready"
+          ? {
+              structuredOutput: {
+                preparationDurationMs,
+                streaming: parsed.data.stream === true,
+              },
+            }
+          : {}),
         logger: ctx.logger,
         span: ctx.otel.startSpan?.(
           "localbase.inference",
@@ -2199,7 +2234,11 @@ export async function runServe(
             },
             () => inference.finish("error"),
             parsed.data.stream !== true && structuredOutput.kind === "ready"
-              ? structuredOutput.validator
+              ? {
+                  validator: structuredOutput.validator,
+                  onValidation: (result) =>
+                    inference.observeStructuredOutputValidation(result),
+                }
               : undefined,
             selected.value.modelId,
           ),
