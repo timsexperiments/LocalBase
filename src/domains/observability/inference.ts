@@ -56,12 +56,19 @@ export class InferenceTelemetry {
       modelId: string;
       requestId: string;
       startedAt: number;
+      queueWaitMs?: number;
       logger: Pick<ILogger, "event">;
       span: Span;
     }>,
   ) {
     input.span.setAttribute("localbase.inference.model_id", input.modelId);
     input.span.setAttribute("localbase.request_id", input.requestId);
+    if (input.queueWaitMs !== undefined) {
+      input.span.setAttribute(
+        "localbase.inference.queue.duration_ms",
+        input.queueWaitMs,
+      );
+    }
   }
 
   observeValidatedChatEvent(value: unknown): void {
@@ -97,6 +104,9 @@ export class InferenceTelemetry {
       model_id: this.input.modelId,
       outcome,
       total_duration_ms: Number(totalMs.toFixed(2)),
+      ...(this.input.queueWaitMs === undefined
+        ? {}
+        : { queue_wait_ms: Number(this.input.queueWaitMs.toFixed(2)) }),
     };
     this.input.span.setAttribute(
       "localbase.inference.total.duration_ms",

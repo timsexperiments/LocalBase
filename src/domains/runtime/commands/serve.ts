@@ -39,6 +39,11 @@ import {
 import { createHostMemoryProvider } from "../memory/host-memory-provider";
 import { MemoryPressureMonitor } from "../memory-pressure-monitor";
 import type { MemorySafetyTransition } from "../memory-safety";
+import {
+  InferenceQueueCapacityError,
+  InferenceQueueTimeoutError,
+  InferenceQueueUnavailableError,
+} from "../inference-queue";
 import { SupervisorRegistry } from "../supervisor-registry";
 import { composeGatewayHealth } from "../gateway-health";
 import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
@@ -1292,6 +1297,30 @@ function serviceUnavailable(serviceName: string): Response {
   );
 }
 
+export function inferenceQueueError(error: unknown): Response | undefined {
+  if (
+    error instanceof InferenceQueueCapacityError ||
+    error instanceof InferenceQueueTimeoutError
+  ) {
+    const timedOut = error instanceof InferenceQueueTimeoutError;
+    return openAIErrorResponse(
+      {
+        message: timedOut
+          ? "The inference request exceeded its queue wait deadline."
+          : "The inference queue is full. Please try again shortly.",
+        type: "rate_limit_error",
+        param: null,
+        code: timedOut ? "inference_queue_timeout" : "inference_queue_full",
+      },
+      429,
+      { "Retry-After": "1" },
+    );
+  }
+  if (error instanceof InferenceQueueUnavailableError)
+    return serviceUnavailable("Inference");
+  return undefined;
+}
+
 export function resourceUnavailable(): Response {
   return openAIErrorResponse(
     {
@@ -1807,6 +1836,10 @@ export async function runServe(
     supervisors,
     factory,
     ctx.logger,
+    {
+      maxWaiting: input.inferenceQueueCapacity,
+      waitMs: input.inferenceQueueTimeoutMs,
+    },
   );
   const memoryPressureMonitor = new MemoryPressureMonitor({
     controller: memorySafety,
@@ -2007,6 +2040,8 @@ export async function runServe(
           return requestAborted();
         }
         admission?.release();
+        const queueError = inferenceQueueError(e);
+        if (queueError) return queueError;
         return e instanceof PayloadTooLargeError
           ? payloadTooLarge()
           : badRequest("Invalid form data payload.");
@@ -2043,6 +2078,8 @@ export async function runServe(
       } catch (error) {
         if (error instanceof RuntimeRequestAbortedError)
           return requestAborted();
+        const queueError = inferenceQueueError(error);
+        if (queueError) return queueError;
         throw error;
       }
       if (selected.kind === "not-configured") return notConfigured("Image");
@@ -2082,6 +2119,8 @@ export async function runServe(
       } catch (error) {
         if (error instanceof RuntimeRequestAbortedError)
           return requestAborted();
+        const queueError = inferenceQueueError(error);
+        if (queueError) return queueError;
         throw error;
       }
       if (selected.kind === "not-configured") return notConfigured("LLM");
@@ -2093,6 +2132,7 @@ export async function runServe(
         modelId: selected.value.modelId,
         requestId,
         startedAt,
+        queueWaitMs: selected.value.queueWaitMs,
         logger: ctx.logger,
         span: ctx.otel.startSpan?.(
           "localbase.inference",
@@ -2135,6 +2175,8 @@ export async function runServe(
       } catch (error) {
         if (error instanceof RuntimeRequestAbortedError)
           return requestAborted();
+        const queueError = inferenceQueueError(error);
+        if (queueError) return queueError;
         throw error;
       }
       if (selected.kind === "not-configured") return notConfigured("LLM");
@@ -2331,6 +2373,7 @@ export async function runServe(
         });
         ctx.logger.info("Manager", "Shutting down servers and subprocesses...");
         gatewayStopping = true;
+        reconciler.closeQueues();
         server.stop(true);
         try {
           await memoryPressureMonitor.stop();

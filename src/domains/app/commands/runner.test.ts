@@ -37,6 +37,18 @@ test("resolves nested commands and global options before context creation", asyn
 
   const serve = await resolveCli(["serve", "--no-auth"]);
   expect(serve).toMatchObject({ kind: "command", input: { auth: false } });
+  await expect(
+    resolveCli([
+      "serve",
+      "--inference-queue-capacity",
+      "24",
+      "--inference-queue-timeout-ms",
+      "45000",
+    ]),
+  ).resolves.toMatchObject({
+    kind: "command",
+    input: { inferenceQueueCapacity: 24, inferenceQueueTimeoutMs: 45_000 },
+  });
 
   const emptyModelList = await resolveCli(["configure", "--stt-models", ""]);
   expect(emptyModelList).toMatchObject({

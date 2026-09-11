@@ -5,6 +5,7 @@ import {
   type RuntimeLifecycleSnapshot,
 } from "./lifecycle-snapshot";
 import { runtimeModalities, type RuntimeModality } from "./modality";
+import type { InferenceQueueSnapshot } from "./inference-queue";
 
 export type RuntimeSupervisor = {
   runtimeId(): string;
@@ -114,6 +115,7 @@ export class SupervisorRegistry implements SupervisorStateReader {
       configured: boolean;
       modelId: string | null;
       admission?: RuntimeAdmissionSnapshot;
+      queue?: InferenceQueueSnapshot;
     }>,
   ): RuntimeLifecycleSnapshot {
     const service = this.get(input.modality);
@@ -133,6 +135,7 @@ export class SupervisorRegistry implements SupervisorStateReader {
       admission: input.admission ??
         this.admissionReader?.(input.modality) ?? { kind: "unknown" },
       configuredSlots: service?.resolvedSlots?.() ?? null,
+      queue: input.queue ?? null,
     });
   }
 
