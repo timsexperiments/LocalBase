@@ -1832,6 +1832,7 @@ export async function runServe(
 
     if (route === "modelMetadataList" || route === "modelMetadataDetail") {
       const currentConfig = ctx.runtimeConfig.copy();
+      const runtimes = reconciler.lifecycleSnapshot();
       const token = extractAuthToken(request, authMode);
       const isMasterKey =
         process.env.LOCALBASE_API_KEY &&
@@ -1844,16 +1845,14 @@ export async function runServe(
       }
       if (request.method !== "GET") return methodNotAllowed("GET");
 
-      const snapshot = reconciler.modelMetadataSnapshot();
-
       const metadataInput = {
         catalog: CATALOG,
-        selectedModels: snapshot.selectedModels,
+        config: currentConfig,
         installations: await inspectCatalogInstallations(
           currentConfig,
           CATALOG,
         ),
-        runtimes: snapshot.runtimes,
+        runtimes,
       };
       if (route === "modelMetadataList") {
         return Response.json(projectModelMetadataList(metadataInput));

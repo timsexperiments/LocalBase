@@ -51,11 +51,6 @@ type CoordinatedSnapshot = Readonly<{
   transitions: Readonly<ModalityTransitions>;
 }>;
 
-export type RuntimeModelMetadataSnapshot = Readonly<{
-  selectedModels: Readonly<Record<RuntimeModality, readonly string[]>>;
-  runtimes: Readonly<Record<RuntimeModality, RuntimeLifecycleSnapshot>>;
-}>;
-
 export class RuntimeRequestAbortedError extends Error {
   constructor() {
     super("Request aborted before runtime admission.");
@@ -176,23 +171,6 @@ export class RuntimeReconciler {
         ]),
       ) as Record<RuntimeModality, RuntimeLifecycleSnapshot>,
     );
-  }
-
-  modelMetadataSnapshot(): RuntimeModelMetadataSnapshot {
-    return Object.freeze({
-      selectedModels: Object.freeze({
-        llm: Object.freeze([
-          ...this.appliedSnapshots.llm.config.selectedLlmModels,
-        ]),
-        stt: Object.freeze([
-          ...this.appliedSnapshots.stt.config.selectedSttModels,
-        ]),
-        image: Object.freeze([
-          ...this.appliedSnapshots.image.config.selectedImageModels,
-        ]),
-      }),
-      runtimes: this.lifecycleSnapshot(),
-    });
   }
 
   async refresh(): Promise<RuntimeConfigSnapshot> {

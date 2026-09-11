@@ -150,19 +150,29 @@ test("requires an API key when inference authentication is disabled", async () =
 
     const unauthorized = await fetch(`${gateway.baseUrl}/_localbase/models`);
     expect(unauthorized.status).toBe(401);
+    const unauthorizedDetail = await fetch(
+      `${gateway.baseUrl}/_localbase/models/${modelId}`,
+    );
+    expect(unauthorizedDetail.status).toBe(401);
 
     const authorized = await fetch(`${gateway.baseUrl}/_localbase/models`, {
       headers: apiKeyHeaders(apiKey),
     });
     expect(authorized.status).toBe(200);
     modelMetadataListSchema.parse(await authorized.json());
+    const authorizedDetail = await fetch(
+      `${gateway.baseUrl}/_localbase/models/${modelId}`,
+      { headers: apiKeyHeaders(apiKey) },
+    );
+    expect(authorizedDetail.status).toBe(200);
+    modelMetadataSchema.parse(await authorizedDetail.json());
   } finally {
     await gateway.stop();
   }
 });
 
 test(
-  "pairs selection with the draining runtime's applied generation",
+  "reports configured selection with the draining applied runtime",
   async () => {
     const gateway = await startGatewayFixture({ auth: { mode: "either" } });
     try {
@@ -229,11 +239,11 @@ test(
         throw new Error("Expected both LLM models in metadata.");
       }
       expect(original.device).toMatchObject({
-        selected: true,
+        selected: false,
         runtime: { state: "draining" },
       });
       expect(replacementModel.device).toMatchObject({
-        selected: false,
+        selected: true,
         runtime: null,
       });
 
