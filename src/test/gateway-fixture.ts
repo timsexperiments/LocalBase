@@ -44,12 +44,13 @@ function chatCompletionResponse(
   id: string,
   message: Record<string, unknown>,
   finishReason: string,
+  model = LLM_MODEL,
 ): Response {
   return Response.json({
     id,
     object: "chat.completion",
     created: 0,
-    model: LLM_MODEL,
+    model,
     choices: [{ index: 0, message, finish_reason: finishReason }],
     usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
   });
@@ -59,12 +60,13 @@ function chatCompletionChunk(
   id: string,
   choices: unknown[],
   includeUsage = false,
+  model = LLM_MODEL,
 ): Record<string, unknown> {
   return {
     id,
     object: "chat.completion.chunk",
     created: 0,
-    model: LLM_MODEL,
+    model,
     choices,
     ...(includeUsage
       ? { usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 } }
@@ -393,6 +395,42 @@ function startMockUpstream(
           status: 500,
           headers: { "x-upstream-secret": "do-not-forward" },
         });
+      }
+      if (mode === "unsafe-model") {
+        return chatCompletionResponse(
+          "chatcmpl-unsafe-model",
+          { role: "assistant", content: "safe content" },
+          "stop",
+          "/private/tmp/backend-model.gguf",
+        );
+      }
+      if (mode === "unsafe-model-stream") {
+        return eventStream([
+          chatCompletionChunk(
+            "chatcmpl-unsafe-model",
+            [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "safe content" },
+                finish_reason: null,
+              },
+            ],
+            false,
+            "/private/tmp/backend-model.gguf",
+          ),
+          chatCompletionChunk(
+            "chatcmpl-unsafe-model",
+            [{ index: 0, delta: {}, finish_reason: "stop" }],
+            false,
+            "/private/tmp/backend-model.gguf",
+          ),
+          chatCompletionChunk(
+            "chatcmpl-unsafe-model",
+            [],
+            true,
+            "/private/tmp/backend-model.gguf",
+          ),
+        ]);
       }
       if (mode === "custom-tool-response") {
         return Response.json({
