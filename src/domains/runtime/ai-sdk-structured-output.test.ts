@@ -23,7 +23,7 @@ const responseFormat = {
       required: ["answer"],
       additionalProperties: false,
       $defs: {
-        answer: { type: "string", minLength: 1, maxLength: 20 },
+        answer: { type: "string", maxLength: 20 },
       },
     },
   },

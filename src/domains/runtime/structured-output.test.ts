@@ -73,8 +73,11 @@ describe("structured output schemas", () => {
       { type: "string", pattern: "^ok$" },
       { type: "number", minimum: 0 },
       { type: "integer", minimum: 1.5 },
+      { type: "integer", minimum: 2, maximum: 1 },
+      { type: "integer", exclusiveMinimum: 1, maximum: 1 },
       { type: "string", enum: [42] },
       { type: "string", format: "date" },
+      { type: "string", minLength: 2, maxLength: 2 },
       { type: "array", maxItems: 0 },
       {
         type: "array",
@@ -111,6 +114,21 @@ describe("structured output schemas", () => {
               items: { type: "integer" },
             },
           },
+        },
+      }),
+    ).toMatchObject({
+      kind: "rejected",
+      code: "unsupported_json_schema",
+    });
+    expect(
+      prepare({
+        type: "object",
+        properties: { value: { $ref: "#/$defs/%61" } },
+        required: ["value"],
+        additionalProperties: false,
+        $defs: {
+          a: { type: "integer", minimum: 10 },
+          "%61": { type: "string" },
         },
       }),
     ).toMatchObject({

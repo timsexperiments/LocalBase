@@ -153,7 +153,7 @@ function hasOnlyType(schema: JsonObject, expected: string): boolean {
 function isSupportedReference(value: JsonValue | undefined): value is string {
   return (
     typeof value === "string" &&
-    /^#\/(?:\$defs|definitions)\/[^/~]+$/.test(value)
+    /^#\/(?:\$defs|definitions)\/[A-Za-z0-9_-]+$/.test(value)
   );
 }
 
@@ -296,6 +296,9 @@ function inspectNativeCompatibility(
   if (stringLengthKeywords && !hasOnlyType(schema, "string")) {
     return "Structured output string lengths require a string or nullable string type.";
   }
+  if (schema.minLength !== undefined) {
+    return "Structured output schema minLength is unsupported by the managed runtime contract.";
+  }
   const stringRepetitionIssue = repetitionIssue(
     schema,
     "minLength",
@@ -331,6 +334,33 @@ function inspectNativeCompatibility(
       (schema.maximum !== undefined && schema.exclusiveMaximum !== undefined)
     ) {
       return "Structured output integer bounds cannot combine inclusive and exclusive limits on the same side.";
+    }
+    const inclusiveMinimum =
+      schema.minimum !== undefined
+        ? (schema.minimum as number)
+        : schema.exclusiveMinimum !== undefined
+          ? (schema.exclusiveMinimum as number) + 1
+          : undefined;
+    const inclusiveMaximum =
+      schema.maximum !== undefined
+        ? (schema.maximum as number)
+        : schema.exclusiveMaximum !== undefined
+          ? (schema.exclusiveMaximum as number) - 1
+          : undefined;
+    if (
+      (inclusiveMinimum !== undefined &&
+        !Number.isSafeInteger(inclusiveMinimum)) ||
+      (inclusiveMaximum !== undefined &&
+        !Number.isSafeInteger(inclusiveMaximum))
+    ) {
+      return "Structured output exclusive integer bounds must remain within the safe integer range.";
+    }
+    if (
+      inclusiveMinimum !== undefined &&
+      inclusiveMaximum !== undefined &&
+      inclusiveMinimum > inclusiveMaximum
+    ) {
+      return "Structured output integer bounds must contain at least one value.";
     }
   }
 
