@@ -12,6 +12,37 @@ type Timings = Readonly<{ promptMs: number; predictedMs: number }>;
 
 export type InferenceOutcome = "completed" | "cancelled" | "error";
 
+export type StructuredOutputValidationTelemetry = Readonly<{
+  outcome: "passed" | "failed" | "skipped";
+  skipReasons: readonly ("refusal" | "tool_calls" | "truncation")[];
+}>;
+
+type StructuredOutputTelemetry = Readonly<{
+  preparationDurationMs: number;
+  streaming: boolean;
+}>;
+
+export function recordStructuredOutputPreparation(
+  span: Span | undefined,
+  input: Readonly<{
+    outcome: "supported" | "invalid" | "unsupported";
+    durationMs: number;
+    requestId: string;
+  }>,
+): void {
+  if (!span) return;
+  span.setAttribute("localbase.request_id", input.requestId);
+  span.setAttribute("localbase.json_schema.requested", true);
+  span.setAttribute(
+    "localbase.json_schema.preparation.duration_ms",
+    input.durationMs,
+  );
+  span.setAttribute("localbase.json_schema.preparation.outcome", input.outcome);
+  if (input.outcome !== "supported") {
+    span.setAttribute("localbase.json_schema.native_mode", "not_started");
+  }
+}
+
 const completionMetadataSchema = z
   .object({
     choices: z
@@ -49,6 +80,14 @@ export class InferenceTelemetry {
   private usage: Usage | undefined;
   private timings: Timings | undefined;
   private readonly finishReasons = new Set<string>();
+  private structuredOutputValidation:
+    | "passed"
+    | "failed"
+    | "skipped"
+    | "not_performed"
+    | "not_performed_streaming"
+    | undefined;
+  private structuredOutputSkipReasons: string | undefined;
   private finished = false;
 
   constructor(
@@ -57,6 +96,7 @@ export class InferenceTelemetry {
       requestId: string;
       startedAt: number;
       queueWaitMs?: number;
+      structuredOutput?: StructuredOutputTelemetry;
       logger: Pick<ILogger, "event">;
       span: Span;
     }>,
@@ -67,6 +107,23 @@ export class InferenceTelemetry {
       input.span.setAttribute(
         "localbase.inference.queue.duration_ms",
         input.queueWaitMs,
+      );
+    }
+    if (input.structuredOutput) {
+      this.structuredOutputValidation = input.structuredOutput.streaming
+        ? "not_performed_streaming"
+        : "not_performed";
+      input.span.setAttribute(
+        "localbase.inference.json_schema.requested",
+        true,
+      );
+      input.span.setAttribute(
+        "localbase.inference.json_schema.native_mode",
+        "requested",
+      );
+      input.span.setAttribute(
+        "localbase.inference.json_schema.preparation.duration_ms",
+        input.structuredOutput.preparationDurationMs,
       );
     }
   }
@@ -96,6 +153,17 @@ export class InferenceTelemetry {
     }
   }
 
+  observeStructuredOutputValidation(
+    result: StructuredOutputValidationTelemetry,
+  ): void {
+    if (!this.input.structuredOutput || this.finished) return;
+    this.structuredOutputValidation = result.outcome;
+    const reasons = [...new Set(result.skipReasons)].sort();
+    this.structuredOutputSkipReasons = reasons.length
+      ? reasons.join(",")
+      : undefined;
+  }
+
   finish(outcome: InferenceOutcome): void {
     if (this.finished) return;
     this.finished = true;
@@ -113,6 +181,25 @@ export class InferenceTelemetry {
       totalMs,
     );
     this.input.span.setAttribute("localbase.inference.outcome", outcome);
+    if (this.input.structuredOutput && this.structuredOutputValidation) {
+      attributes.json_schema_requested = true;
+      attributes.json_schema_native_mode = "requested";
+      attributes.json_schema_preparation_ms = Number(
+        this.input.structuredOutput.preparationDurationMs.toFixed(2),
+      );
+      attributes.json_schema_validation = this.structuredOutputValidation;
+      this.input.span.setAttribute(
+        "localbase.inference.json_schema.validation",
+        this.structuredOutputValidation,
+      );
+      if (this.structuredOutputSkipReasons) {
+        attributes.json_schema_skip_reasons = this.structuredOutputSkipReasons;
+        this.input.span.setAttribute(
+          "localbase.inference.json_schema.skip_reasons",
+          this.structuredOutputSkipReasons,
+        );
+      }
+    }
     if (this.usage) {
       attributes.prompt_tokens = this.usage.promptTokens;
       attributes.completion_tokens = this.usage.completionTokens;

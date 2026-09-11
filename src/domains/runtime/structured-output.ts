@@ -473,26 +473,48 @@ type ChatCompletionForStructuredOutput = {
   }>;
 };
 
-export function completedStructuredOutputMatchesSchema(
+export type StructuredOutputSkipReason =
+  "refusal" | "tool_calls" | "truncation";
+
+export type CompletedStructuredOutputValidation = Readonly<{
+  outcome: "passed" | "failed" | "skipped";
+  skipReasons: readonly StructuredOutputSkipReason[];
+}>;
+
+export function validateCompletedStructuredOutput(
   response: ChatCompletionForStructuredOutput,
   validator: StructuredOutputValidator,
-): boolean {
+): CompletedStructuredOutputValidation {
+  const skipReasons = new Set<StructuredOutputSkipReason>();
+  let validated = false;
+  const result = (
+    outcome: CompletedStructuredOutputValidation["outcome"],
+  ): CompletedStructuredOutputValidation => ({
+    outcome,
+    skipReasons: [...skipReasons].sort(),
+  });
   for (const choice of response.choices) {
-    if (
-      choice.finish_reason !== "stop" ||
-      choice.message.refusal != null ||
-      (choice.message.tool_calls?.length ?? 0) > 0
-    ) {
+    if (choice.message.refusal != null) {
+      skipReasons.add("refusal");
       continue;
     }
-    if (typeof choice.message.content !== "string") return false;
+    if ((choice.message.tool_calls?.length ?? 0) > 0) {
+      skipReasons.add("tool_calls");
+      continue;
+    }
+    if (choice.finish_reason !== "stop") {
+      skipReasons.add("truncation");
+      continue;
+    }
+    if (typeof choice.message.content !== "string") return result("failed");
     let value: unknown;
     try {
       value = JSON.parse(choice.message.content);
     } catch {
-      return false;
+      return result("failed");
     }
-    if (!validator(value)) return false;
+    if (!validator(value)) return result("failed");
+    validated = true;
   }
-  return true;
+  return result(validated ? "passed" : "skipped");
 }

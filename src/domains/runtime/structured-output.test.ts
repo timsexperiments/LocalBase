@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   chatResponseFormatSchema,
-  completedStructuredOutputMatchesSchema,
   prepareStructuredOutput,
+  validateCompletedStructuredOutput,
+  type StructuredOutputSkipReason,
 } from "./structured-output";
 
 function prepare(schema: unknown) {
@@ -219,7 +220,7 @@ describe("structured output schemas", () => {
     if (prepared.kind !== "ready") return;
 
     expect(
-      completedStructuredOutputMatchesSchema(
+      validateCompletedStructuredOutput(
         {
           choices: [
             {
@@ -230,9 +231,9 @@ describe("structured output schemas", () => {
         },
         prepared.validator,
       ),
-    ).toBe(true);
+    ).toEqual({ outcome: "passed", skipReasons: [] });
     expect(
-      completedStructuredOutputMatchesSchema(
+      validateCompletedStructuredOutput(
         {
           choices: [
             { finish_reason: "stop", message: { content: '{"answer":1}' } },
@@ -240,28 +241,40 @@ describe("structured output schemas", () => {
         },
         prepared.validator,
       ),
-    ).toBe(false);
+    ).toEqual({ outcome: "failed", skipReasons: [] });
 
-    for (const choice of [
+    const skippedChoices: Array<{
+      choice: Parameters<
+        typeof validateCompletedStructuredOutput
+      >[0]["choices"][number];
+      reason: StructuredOutputSkipReason;
+    }> = [
       {
-        finish_reason: "length",
-        message: { content: "{" },
+        choice: { finish_reason: "length", message: { content: "{" } },
+        reason: "truncation",
       },
       {
-        finish_reason: "stop",
-        message: { content: null, refusal: "refused" },
+        choice: {
+          finish_reason: "stop",
+          message: { content: null, refusal: "refused" },
+        },
+        reason: "refusal",
       },
       {
-        finish_reason: "tool_calls",
-        message: { content: null, tool_calls: [{}] },
+        choice: {
+          finish_reason: "tool_calls",
+          message: { content: null, tool_calls: [{}] },
+        },
+        reason: "tool_calls",
       },
-    ]) {
+    ];
+    for (const { choice, reason } of skippedChoices) {
       expect(
-        completedStructuredOutputMatchesSchema(
+        validateCompletedStructuredOutput(
           { choices: [choice] },
           prepared.validator,
         ),
-      ).toBe(true);
+      ).toEqual({ outcome: "skipped", skipReasons: [reason] });
     }
   });
 });

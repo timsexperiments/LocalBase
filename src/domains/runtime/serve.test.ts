@@ -526,6 +526,8 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   let cancelledRequestId: string | null;
   let backendErrorRequestId: string | null;
   let admissionFailureRequestId: string | null;
+  let invalidSchemaRequestId: string | null = null;
+  let unsupportedSchemaRequestId: string | null = null;
   try {
     const response = await fetch(
       `${gateway.baseUrl}/v1/chat/completions?api_key=never-export-query`,
@@ -570,6 +572,55 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
     expect(upstream?.headers.get("tracestate")).toBe("localbase=test");
     expect(upstream?.headers.has("baggage")).toBe(false);
 
+    for (const { name, schema, expectedStatus } of [
+      {
+        name: "never_export_invalid_schema_name",
+        schema: {
+          type: "object",
+          properties: { value: { $ref: "#/$defs/never-export-ref" } },
+          required: ["value"],
+          additionalProperties: false,
+        },
+        expectedStatus: "invalid",
+      },
+      {
+        name: "never_export_unsupported_schema_name",
+        schema: {
+          type: "object",
+          properties: {
+            value: { type: "string", pattern: "never-export-pattern" },
+          },
+          required: ["value"],
+          additionalProperties: false,
+        },
+        expectedStatus: "unsupported",
+      },
+    ] as const) {
+      const rejected = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [
+            { role: "user", content: "never-export-rejected-content" },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: { name, strict: true, schema },
+          },
+        }),
+      });
+      expect(rejected.status).toBe(400);
+      const rejectedRequestId = rejected.headers.get("x-localbase-request-id");
+      expect(rejectedRequestId).toMatch(/^lbreq_/);
+      if (expectedStatus === "invalid") {
+        invalidSchemaRequestId = rejectedRequestId;
+      } else {
+        unsupportedSchemaRequestId = rejectedRequestId;
+      }
+      await rejected.text();
+    }
+
     const failed = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
       method: "POST",
       headers: {
@@ -579,6 +630,19 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
       body: JSON.stringify({
         model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
         messages: [{ role: "user", content: "failure probe" }],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "telemetry_failure",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {},
+              required: [],
+              additionalProperties: false,
+            },
+          },
+        },
       }),
     });
     expect(failed.status).toBeGreaterThanOrEqual(500);
@@ -657,6 +721,12 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   expect(exportedTraceText).toContain("POST /v1/chat/completions");
   expect(exportedTraceText).not.toContain("never-export-query");
   expect(exportedTraceText).not.toContain("never-proxy-baggage");
+  expect(exportedTraceText).not.toContain("never_export_invalid_schema_name");
+  expect(exportedTraceText).not.toContain(
+    "never_export_unsupported_schema_name",
+  );
+  expect(exportedTraceText).not.toContain("never-export-pattern");
+  expect(exportedTraceText).not.toContain("never-export-rejected-content");
   const traceSpans = tracePayloads.flatMap((payload) =>
     decodeOtlpTraceSpans(payload),
   );
@@ -672,6 +742,30 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   const inferenceSpans = traceSpans.filter(
     (span) => span.name === "localbase.inference",
   );
+  for (const [requestId, outcome] of [
+    [invalidSchemaRequestId, "invalid"],
+    [unsupportedSchemaRequestId, "unsupported"],
+  ] as const) {
+    expect(
+      traceSpans.find(
+        (span) =>
+          span.name === "POST /v1/chat/completions" &&
+          span.attributes["localbase.request_id"] === requestId,
+      ),
+    ).toMatchObject({
+      attributes: {
+        "localbase.json_schema.requested": true,
+        "localbase.json_schema.preparation.duration_ms": expect.any(Number),
+        "localbase.json_schema.preparation.outcome": outcome,
+        "localbase.json_schema.native_mode": "not_started",
+      },
+    });
+    expect(
+      inferenceSpans.some(
+        (span) => span.attributes["localbase.request_id"] === requestId,
+      ),
+    ).toBe(false);
+  }
   expect(inferenceSpans).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
@@ -707,6 +801,19 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
         span.attributes["localbase.request_id"] === cancelledRequestId,
     ),
   ).toHaveLength(1);
+  expect(
+    inferenceSpans.find(
+      (span) =>
+        span.attributes["localbase.request_id"] === backendErrorRequestId,
+    ),
+  ).toMatchObject({
+    attributes: {
+      "localbase.inference.json_schema.requested": true,
+      "localbase.inference.json_schema.native_mode": "requested",
+      "localbase.inference.json_schema.validation": "not_performed",
+      "localbase.inference.outcome": "error",
+    },
+  });
   expect(
     inferenceSpans.filter(
       (span) =>
