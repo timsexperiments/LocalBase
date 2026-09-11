@@ -874,3 +874,100 @@ test("kills critical runtimes before awaiting active leases and reattaches", asy
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("cancels queued model activation during emergency eviction and recovers", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-emergency-race-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelA = config.activeLlmModel;
+  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [modelA, modelB];
+  config.selectedSttModels = [];
+  config.activeSttModel = "";
+  config.selectedImageModels = [];
+  config.activeImageModel = "";
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let releaseShutdown = () => {};
+  let markShutdownEntered = () => {};
+  const shutdownEntered = new Promise<void>((resolve) => {
+    markShutdownEntered = resolve;
+  });
+  const shutdownBlocked = new Promise<void>((resolve) => {
+    releaseShutdown = resolve;
+  });
+  const created: string[] = [];
+  const starts: string[] = [];
+  const initial: RuntimeSupervisor = {
+    runtimeId: () => `llm:${modelA}`,
+    state: () => "running",
+    async ensureRunning() {
+      starts.push(modelA);
+    },
+    async kill() {},
+    async shutdown() {
+      markShutdownEntered();
+      await shutdownBlocked;
+    },
+  };
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(_modality, snapshot) {
+      const modelId = snapshot.config.activeLlmModel;
+      created.push(modelId);
+      return {
+        runtimeId: () => `llm:${modelId}`,
+        state: () => "idle",
+        async ensureRunning() {
+          starts.push(modelId);
+        },
+        async kill() {},
+        async shutdown() {},
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: initial }),
+    factory,
+    { event() {} } as never,
+  );
+
+  try {
+    const activating = reconciler.admitModel("llm", modelB);
+    await shutdownEntered;
+    const eviction = reconciler.evictAllRuntimes();
+    await expect(activating).rejects.toThrow(
+      "Inference rejected by memory emergency.",
+    );
+
+    releaseShutdown();
+    await eviction;
+    expect(created).toEqual([]);
+    expect(starts).toEqual([]);
+    expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+      admission: { kind: "known", activeCount: 0 },
+      queue: { waiting: 0, active: 0 },
+    });
+
+    const recovered = await reconciler.admitModel("llm", modelB);
+    if (recovered.kind !== "admitted") throw new Error("Expected admission.");
+    await recovered.value.admission.ready;
+    expect(recovered.value.modelId).toBe(modelB);
+    expect(recovered.value.admission.supervisor.runtimeId()).toBe(
+      `llm:${modelB}`,
+    );
+    recovered.value.admission.release();
+    expect(created).toEqual([modelB]);
+    expect(starts).toEqual([modelB]);
+    expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+      admission: { kind: "known", activeCount: 0 },
+      queue: { waiting: 0, active: 0 },
+    });
+  } finally {
+    releaseShutdown();
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
