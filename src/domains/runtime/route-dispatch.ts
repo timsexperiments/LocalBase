@@ -1,5 +1,6 @@
 export type GatewayRoute =
   | "health"
+  | "readiness"
   | "instance"
   | "transcription"
   | "imageGeneration"
@@ -28,6 +29,8 @@ export function selectGatewayRoute(pathname: string): GatewayRoute {
   switch (pathname) {
     case "/health":
       return "health";
+    case "/health/ready":
+      return "readiness";
     case "/_localbase/instance":
       return "instance";
     case "/_localbase/models":

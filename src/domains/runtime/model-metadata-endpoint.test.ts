@@ -79,7 +79,13 @@ describe("authenticated model metadata endpoints", () => {
       device: {
         selected: true,
         installed: true,
-        runtime: { configured: true, state: "idle", effectiveSlots: null },
+        runtime: {
+          configured: true,
+          state: "idle",
+          effectiveSlots: null,
+          availableCapacity: 16,
+          queueDepth: 0,
+        },
       },
     });
     expect(JSON.stringify(body)).not.toContain(fixture.root);
@@ -130,7 +136,13 @@ describe("authenticated model metadata endpoints", () => {
 
     expect(applied.device).toMatchObject({
       selected: true,
-      runtime: { configured: true, state: "idle", effectiveSlots: null },
+      runtime: {
+        configured: true,
+        state: "idle",
+        effectiveSlots: null,
+        availableCapacity: 16,
+        queueDepth: 0,
+      },
     });
     expect(pending.device).toMatchObject({
       selected: false,
