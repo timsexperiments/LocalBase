@@ -1409,6 +1409,62 @@ describe("API gateway integration", () => {
     await completeB.text();
   });
 
+  test("serves STT while an LLM configuration replacement drains", async () => {
+    const transcribe = () => {
+      const body = new FormData();
+      body.append(
+        "file",
+        new Blob(["fixture"], { type: "audio/wav" }),
+        "a.wav",
+      );
+      return request("/v1/audio/transcriptions", { method: "POST", body });
+    };
+    const warm = await transcribe();
+    expect(warm.status).toBe(200);
+    await warm.text();
+
+    const streamId = "cross-modality-refresh";
+    const llm = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "controlled-stream",
+        "x-test-stream-id": streamId,
+      },
+      body: JSON.stringify({
+        model: loadGatewayConfig().activeLlmModel,
+        stream: true,
+        messages: [{ role: "user", content: "hold" }],
+      }),
+    });
+    const reader = llm.body!.getReader();
+    expect((await reader.read()).done).toBe(false);
+
+    const config = loadGatewayConfig();
+    saveGatewayConfig({ ...config, parallel: config.parallel === 2 ? 3 : 2 });
+    const refresh = request("/v1/models");
+    await within(
+      (async () => {
+        while (true) {
+          const health = gatewayHealthSchema.parse(
+            await (await request("/health")).json(),
+          );
+          if (health.modalities.llm.state === "draining") return;
+          await Bun.sleep(10);
+        }
+      })(),
+      "LLM draining state",
+    );
+
+    const stt = await within(transcribe(), "STT during LLM drain");
+    expect(stt.status).toBe(200);
+    await stt.text();
+
+    gateway.closeControlledStream(streamId);
+    await within(drainReader(reader), "LLM drain completion");
+    await (await within(refresh, "configuration refresh completion")).text();
+  });
+
   test("forwards aborts while waiting for rewritten LLM response headers", async () => {
     const config = loadGatewayConfig();
     const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";

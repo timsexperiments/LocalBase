@@ -220,6 +220,11 @@ test("does not block STT admission while LLM replacement drains", async () => {
       refreshSettled = true;
     });
     await Promise.resolve();
+    await Promise.all(
+      Array.from({ length: 50 }, async () => {
+        await reconciler.refreshConfiguration();
+      }),
+    );
 
     const sttAdmission = await reconciler.admitModel(
       "stt",
@@ -235,6 +240,152 @@ test("does not block STT admission while LLM replacement drains", async () => {
     activeLlm.value.admission.release();
     await refresh;
     expect(llmShutdowns).toBe(1);
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps queued admissions paired with the applied model generation", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-generation-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelA = config.activeLlmModel;
+  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [modelA, modelB];
+  config.selectedSttModels = [config.activeSttModel];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let markSwitching!: () => void;
+  const switching = new Promise<void>((resolve) => {
+    markSwitching = resolve;
+  });
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(modality, snapshot) {
+      const modelId = activeModel(modality, snapshot.config);
+      return {
+        runtimeId: () => `${modality}:${modelId}`,
+        state: () => "running",
+        async ensureRunning() {},
+        async kill() {},
+        async shutdown() {},
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({
+      llm: factory.create("llm", controller.read()),
+      stt: factory.create("stt", controller.read()),
+    }),
+    factory,
+    {
+      event(event: LogEventInput) {
+        if (event.eventName === "model.switching") markSwitching();
+      },
+    } as never,
+  );
+
+  try {
+    const active = await reconciler.admitModel("llm", modelA);
+    if (active.kind !== "admitted") throw new Error("Expected admission.");
+    active.value.admission.markResponseStarted();
+    const switchToB = reconciler.admitModel("llm", modelB);
+    await switching;
+    expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+      modelId: modelA,
+      runtimeId: `llm:${modelA}`,
+    });
+    const queuedA = reconciler.admitModel("llm", modelA);
+    const stt = await reconciler.admitModel("stt", undefined);
+    if (stt.kind === "admitted") stt.value.admission.release();
+    active.value.admission.release();
+    const admittedB = await switchToB;
+    if (admittedB.kind !== "admitted") throw new Error("Expected B.");
+    admittedB.value.admission.release();
+    const admittedA = await queuedA;
+    if (admittedA.kind !== "admitted") throw new Error("Expected A.");
+    expect(admittedA.value.modelId).toBe(modelA);
+    expect(admittedA.value.admission.snapshot.config.activeLlmModel).toBe(
+      modelA,
+    );
+    expect(admittedA.value.admission.supervisor.runtimeId()).toBe(
+      `llm:${modelA}`,
+    );
+    admittedA.value.admission.release();
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("rebases queued replacement work after a model activation", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-rebase-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelA = config.activeLlmModel;
+  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [modelA, modelB];
+  config.selectedSttModels = [config.activeSttModel];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  const created: string[] = [];
+  let markSwitching!: () => void;
+  const switching = new Promise<void>((resolve) => {
+    markSwitching = resolve;
+  });
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(modality, snapshot) {
+      const modelId = activeModel(modality, snapshot.config);
+      if (modality === "llm") created.push(modelId);
+      return {
+        runtimeId: () => `${modality}:${modelId}`,
+        state: () => "running",
+        async ensureRunning() {},
+        async kill() {},
+        async shutdown() {},
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({
+      llm: factory.create("llm", controller.read()),
+      stt: factory.create("stt", controller.read()),
+    }),
+    factory,
+    {
+      event(event: LogEventInput) {
+        if (event.eventName === "model.switching") markSwitching();
+      },
+    } as never,
+  );
+  try {
+    const active = await reconciler.admitModel("llm", modelA);
+    if (active.kind !== "admitted") throw new Error("Expected admission.");
+    active.value.admission.markResponseStarted();
+    const switchToB = reconciler.admitModel("llm", modelB);
+    await switching;
+    const replacement = controller.copy();
+    replacement.parallel = 2;
+    saveConfig(database, replacement);
+    const stt = await reconciler.admitModel("stt", undefined);
+    if (stt.kind === "admitted") stt.value.admission.release();
+    active.value.admission.release();
+    const switched = await switchToB;
+    if (switched.kind !== "admitted") throw new Error("Expected B.");
+    switched.value.admission.release();
+    await reconciler.refresh();
+    const next = await reconciler.admitModel("llm", modelB);
+    if (next.kind !== "admitted") throw new Error("Expected B.");
+    expect(next.value.admission.snapshot.config.activeLlmModel).toBe(modelB);
+    expect(next.value.admission.supervisor.runtimeId()).toBe(`llm:${modelB}`);
+    expect(created.at(-1)).toBe(modelB);
+    next.value.admission.release();
   } finally {
     database.close();
     rmSync(root, { recursive: true, force: true });
