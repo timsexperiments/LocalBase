@@ -1660,6 +1660,59 @@ describe("API gateway integration", () => {
     await switched.text();
   });
 
+  test("releases a cancelled stream before replacing its model", async () => {
+    const config = loadGatewayConfig();
+    const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const modelA = config.activeLlmModel;
+    const modelB =
+      modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
+    saveGatewayConfig({
+      ...config,
+      selectedLlmModels: [modelA, modelB],
+    });
+    await writeCompleteCatalogArtifact(config.llmModelsDir, modelB);
+
+    const streamId = "reader-cancel-replacement";
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "controlled-stream",
+        "x-test-stream-id": streamId,
+      },
+      body: JSON.stringify({
+        model: modelA,
+        stream: true,
+        messages: [{ role: "user", content: "hold" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+    if (!reader) throw new Error("Expected a streaming response.");
+    expect((await reader.read()).done).toBe(false);
+    await reader.cancel();
+    await within(
+      gateway.waitForControlledStreamAbort(streamId),
+      "upstream stream cancellation",
+    );
+
+    const replacement = await within(
+      request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: modelB,
+          messages: [{ role: "user", content: "replace" }],
+        }),
+      }),
+      "model replacement after stream cancellation",
+    );
+    expect(replacement.status).toBe(200);
+    await replacement.text();
+  });
+
   test("abandons queued LLM model switches before dispatch", async () => {
     const config = loadGatewayConfig();
     const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
