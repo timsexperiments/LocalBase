@@ -18,7 +18,9 @@ The runtime currently keeps one active model per service. Dynamic model pools an
 
 ### Model metadata
 
-Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` return catalog identity, every declared artifact checksum and size, catalog memory estimates, and local selection, installation, and runtime state. `selected` reports configured selection. `runtime` reports the observed applied supervisor, so a replacement may be selected while the previous model drains. The gateway captures both before file inspection. `runtime.effectiveSlots` is the lifecycle snapshot's resolved launch-plan count, not available request capacity. Reads do not start runtimes or hash model files. Capabilities, context, and output limits are `null` because LocalBase has no authoritative source for them.
+Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` return catalog identity, every declared artifact checksum and size, catalog memory estimates, and local selection, installation, and runtime state. `selected` reports configured selection. `runtime` reports the observed applied supervisor, so a replacement may be selected while the previous model drains. The gateway captures both before file inspection. `runtime.effectiveSlots` is the lifecycle snapshot's resolved launch-plan count, not available request capacity; `availableCapacity` and `queueDepth` come from the queue snapshot and are `null` when unavailable. Reads do not start runtimes or hash model files. Capabilities, context, and output limits are `null` because LocalBase has no authoritative source for them.
+
+Public `GET` and `HEAD /health/ready` report whether at least one configured modality can admit a request, including bounded queue waiting. `/health` remains process liveness.
 
 ## Supported platforms
 
