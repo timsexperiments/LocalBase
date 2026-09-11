@@ -14,7 +14,9 @@ export type InferenceOutcome = "completed" | "cancelled" | "error";
 
 export type StructuredOutputValidationTelemetry = Readonly<{
   outcome: "passed" | "failed" | "skipped";
-  skipReasons: readonly ("refusal" | "tool_calls" | "truncation")[];
+  skipReasons: readonly (
+    "content_filter" | "non_completed" | "refusal" | "tool_calls" | "truncation"
+  )[];
 }>;
 
 type StructuredOutputTelemetry = Readonly<{

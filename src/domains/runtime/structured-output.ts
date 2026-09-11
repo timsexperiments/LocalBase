@@ -474,7 +474,7 @@ type ChatCompletionForStructuredOutput = {
 };
 
 export type StructuredOutputSkipReason =
-  "refusal" | "tool_calls" | "truncation";
+  "content_filter" | "non_completed" | "refusal" | "tool_calls" | "truncation";
 
 export type CompletedStructuredOutputValidation = Readonly<{
   outcome: "passed" | "failed" | "skipped";
@@ -502,8 +502,16 @@ export function validateCompletedStructuredOutput(
       skipReasons.add("tool_calls");
       continue;
     }
-    if (choice.finish_reason !== "stop") {
+    if (choice.finish_reason === "length") {
       skipReasons.add("truncation");
+      continue;
+    }
+    if (choice.finish_reason !== "stop") {
+      skipReasons.add(
+        choice.finish_reason === "content_filter"
+          ? "content_filter"
+          : "non_completed",
+      );
       continue;
     }
     if (typeof choice.message.content !== "string") return result("failed");

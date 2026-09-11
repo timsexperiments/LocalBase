@@ -255,6 +255,21 @@ describe("structured output schemas", () => {
       },
       {
         choice: {
+          finish_reason: "content_filter",
+          message: { content: null },
+        },
+        reason: "content_filter",
+      },
+      {
+        choice: { finish_reason: null, message: { content: null } },
+        reason: "non_completed",
+      },
+      {
+        choice: { message: { content: null } },
+        reason: "non_completed",
+      },
+      {
+        choice: {
           finish_reason: "stop",
           message: { content: null, refusal: "refused" },
         },

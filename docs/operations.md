@@ -28,6 +28,8 @@ For streaming responses, LocalBase holds the active runtime lease until the resp
 
 For chat completions, the `inference.completed` JSONL event includes `total_duration_ms`, `outcome`, and `queue_wait_ms` when the request used the queue. Sampled chat spans record the same queue time as `localbase.inference.queue.duration_ms` and total time as `localbase.inference.total.duration_ms`. Validated chat events may add token counts, backend prompt and generation timing, and finish reasons. These inference completion fields are not emitted for speech-to-text, image, or embedding requests.
 
+For JSON Schema response formats, `inference.completed` adds `json_schema_requested`, `json_schema_native_mode` (`requested` records intent, not proof that generation completed), `json_schema_preparation_ms`, and `json_schema_validation` (`passed`, `failed`, `skipped`, `not_performed`, or `not_performed_streaming`), with bounded `json_schema_skip_reasons` when applicable. Sampled inference spans use the equivalent `localbase.inference.json_schema.*` attributes; invalid or unsupported schemas instead record `localbase.json_schema.preparation.outcome`, `localbase.json_schema.preparation.duration_ms`, and native mode `not_started` on the pre-admission HTTP span without creating an inference span. Telemetry never records the schema, schema name, response content, or validator errors.
+
 Inference telemetry does not record prompts, generated content, credentials, baggage, or arbitrary request headers. See [OpenTelemetry export](../README.md#opentelemetry-export) for transport and sampling settings.
 
 ## Model metadata
