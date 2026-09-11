@@ -50,6 +50,7 @@ import {
 } from "../inference-queue";
 import { SupervisorRegistry } from "../supervisor-registry";
 import { composeGatewayHealth } from "../gateway-health";
+import { composeGatewayReadiness } from "../readiness";
 import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
 import {
   acquireGatewayLease,
@@ -1888,6 +1889,11 @@ export async function runServe(
       configured: reconciler.configuredModalities(),
       supervisors,
     });
+  const readinessSnapshot = () =>
+    composeGatewayReadiness({
+      stopping: gatewayStopping,
+      lifecycles: reconciler.lifecycleSnapshot(),
+    });
 
   const handleRequest = async (
     request: Request,
@@ -1904,6 +1910,21 @@ export async function runServe(
       const body = JSON.stringify(health);
       return new Response(request.method === "HEAD" ? null : body, {
         status: health.status === "ok" ? 200 : 503,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": String(new TextEncoder().encode(body).byteLength),
+        },
+      });
+    }
+
+    if (route === "readiness") {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return methodNotAllowed("GET, HEAD");
+      }
+      const readiness = readinessSnapshot();
+      const body = JSON.stringify(readiness);
+      return new Response(request.method === "HEAD" ? null : body, {
+        status: readiness.status === "ready" ? 200 : 503,
         headers: {
           "content-type": "application/json; charset=utf-8",
           "content-length": String(new TextEncoder().encode(body).byteLength),

@@ -52,6 +52,8 @@ export const modelMetadataSchema = z
             configured: z.boolean(),
             state: modalityLifecycleStateSchema,
             effectiveSlots: z.number().int().positive().nullable(),
+            availableCapacity: z.number().int().nonnegative().nullable(),
+            queueDepth: z.number().int().nonnegative().nullable(),
           })
           .strict()
           .nullable(),
@@ -91,16 +93,27 @@ function selectedModelIds(
   ]);
 }
 
+function availableQueueCapacity(
+  queue: RuntimeLifecycleSnapshot["queue"],
+): number | null {
+  if (queue === null) return null;
+  if (!queue.accepting) return 0;
+  return Math.max(0, queue.capacity - queue.waiting);
+}
+
 function runtimeForModel(
   model: ModelSpec,
   runtimes: ModelMetadataProjectionInput["runtimes"],
 ): ModelMetadata["device"]["runtime"] {
   const runtime = runtimes[model.kind];
   if (runtime.modelId !== model.modelId) return null;
+  const queue = runtime.queue;
   return {
     configured: runtime.configured,
     state: runtime.state,
     effectiveSlots: runtime.configuredSlots,
+    availableCapacity: availableQueueCapacity(queue),
+    queueDepth: queue?.waiting ?? null,
   };
 }
 
