@@ -246,6 +246,85 @@ test("does not block STT admission while LLM replacement drains", async () => {
   }
 });
 
+test("advances applied generations only inside the modality owner", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-owner-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let appliedPort = config.port;
+  let creations = 0;
+  let releaseKill!: () => void;
+  let markKillEntered!: () => void;
+  const killEntered = new Promise<void>((resolve) => {
+    markKillEntered = resolve;
+  });
+  const killBlocked = new Promise<void>((resolve) => {
+    releaseKill = resolve;
+  });
+  const createSupervisor = (
+    snapshot: ReturnType<RuntimeConfigController["read"]>,
+    modality: "llm" | "stt" | "image" = "llm",
+  ): RuntimeSupervisor => {
+    const port = snapshot.config.port;
+    if (modality === "llm") creations += 1;
+    return {
+      runtimeId: () => `${modality}:${port}`,
+      state: () => "running",
+      async ensureRunning() {
+        appliedPort = port;
+      },
+      async kill() {
+        markKillEntered();
+        await killBlocked;
+      },
+      async shutdown() {},
+    };
+  };
+  const registry = new SupervisorRegistry({
+    llm: createSupervisor(controller.read()),
+  });
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    registry,
+    {
+      baseUrl: () => "http://127.0.0.1:1",
+      create: (modality, snapshot) => createSupervisor(snapshot, modality),
+    },
+    { event() {} } as never,
+  );
+
+  try {
+    const eviction = reconciler.evictIdleRuntimes();
+    await killEntered;
+    const launchChange = controller.copy();
+    launchChange.port += 1;
+    saveConfig(database, launchChange);
+    await reconciler.refreshConfiguration();
+    const unrelated = controller.copy();
+    unrelated.hfToken = "owner-regression";
+    saveConfig(database, unrelated);
+    await reconciler.refreshConfiguration();
+    releaseKill();
+    await eviction;
+    await reconciler.refresh();
+    const admission = await reconciler.admitModel("llm", config.activeLlmModel);
+    if (admission.kind !== "admitted") throw new Error("Expected admission.");
+    await admission.value.admission.ready;
+    expect(admission.value.admission.snapshot.config.port).toBe(
+      launchChange.port,
+    );
+    expect(appliedPort).toBe(launchChange.port);
+    expect(creations).toBe(2);
+    admission.value.admission.release();
+  } finally {
+    releaseKill?.();
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("keeps queued admissions paired with the applied model generation", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-runtime-generation-"));
   const database = new DatabaseSession();

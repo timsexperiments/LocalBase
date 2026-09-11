@@ -549,13 +549,7 @@ export class RuntimeReconciler {
 
     this.snapshot = target;
     this.configured = configuredModalities(target, this.ownership);
-    for (const modality of runtimeModalities) {
-      if (plan.modalities[modality].action === "unchanged") {
-        this.appliedSnapshots[modality] = target;
-        continue;
-      }
-      this.scheduleModality(modality);
-    }
+    for (const modality of runtimeModalities) this.scheduleModality(modality);
     return Object.freeze({
       snapshot: target,
       transitions: Object.freeze({ ...this.modalityTransitions }),
