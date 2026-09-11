@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { CATALOG } from "../../catalog";
+import { DatabaseSession } from "../../db/client";
+import { createApiKey } from "../../manager";
 import {
   modelMetadataListSchema,
   modelMetadataSchema,
@@ -7,10 +9,22 @@ import {
 import {
   startGatewayFixture,
   type GatewayFixture,
+  writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 
 const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const alternateModelId = "qwen2.5-coder-3b-instruct-q4_k_m";
+
+function apiKeyHeaders(apiKey: string): Record<string, string> {
+  return { Authorization: `Bearer ${apiKey}` };
+}
+
+function metadataById(
+  metadata: ReturnType<typeof modelMetadataListSchema.parse>,
+  id: string,
+) {
+  return metadata.data.find((model) => model.id === id);
+}
 
 describe("authenticated model metadata endpoints", () => {
   let gateway: GatewayFixture | undefined;
@@ -31,7 +45,7 @@ describe("authenticated model metadata endpoints", () => {
   function authHeaders(): HeadersInit {
     const fixture = activeGateway();
     if (!fixture.apiKey) throw new Error("Expected gateway API key.");
-    return { Authorization: `Bearer ${fixture.apiKey}` };
+    return apiKeyHeaders(fixture.apiKey);
   }
 
   test("requires the gateway API key", async () => {
@@ -125,3 +139,112 @@ describe("authenticated model metadata endpoints", () => {
     expect(await fixture.readLlmRuntimeLaunches()).toEqual([]);
   });
 });
+
+test("requires an API key when inference authentication is disabled", async () => {
+  const gateway = await startGatewayFixture();
+  try {
+    const config = gateway.readConfig();
+    const database = new DatabaseSession();
+    const apiKey = createApiKey(database, config, "metadata").rawKey;
+    database.close();
+
+    const unauthorized = await fetch(`${gateway.baseUrl}/_localbase/models`);
+    expect(unauthorized.status).toBe(401);
+
+    const authorized = await fetch(`${gateway.baseUrl}/_localbase/models`, {
+      headers: apiKeyHeaders(apiKey),
+    });
+    expect(authorized.status).toBe(200);
+    modelMetadataListSchema.parse(await authorized.json());
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test(
+  "pairs selection with the draining runtime's applied generation",
+  async () => {
+    const gateway = await startGatewayFixture({ auth: { mode: "either" } });
+    try {
+      if (!gateway.apiKey) throw new Error("Expected gateway API key.");
+      const streamId = "metadata-applied-generation";
+      const headers = apiKeyHeaders(gateway.apiKey);
+      const active = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+          "x-test-upstream": "controlled-stream",
+          "x-test-stream-id": streamId,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [{ role: "user", content: "hold this stream" }],
+        }),
+      });
+      expect(active.status).toBe(200);
+      if (!active.body) throw new Error("Expected a streaming response.");
+      const reader = active.body.getReader();
+      expect((await reader.read()).done).toBe(false);
+      await gateway.waitForUpstreamRequest(streamId);
+
+      const pending = gateway.readConfig();
+      pending.selectedLlmModels = [alternateModelId];
+      pending.activeLlmModel = alternateModelId;
+      await writeCompleteCatalogArtifact(
+        pending.llmModelsDir,
+        alternateModelId,
+      );
+      gateway.saveConfig(pending);
+
+      const replacement = fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: alternateModelId,
+          messages: [{ role: "user", content: "switch models" }],
+        }),
+      });
+
+      const deadline = Date.now() + 3_000;
+      let applied: ReturnType<typeof modelMetadataListSchema.parse> | undefined;
+      while (Date.now() < deadline) {
+        const response = await fetch(`${gateway.baseUrl}/_localbase/models`, {
+          headers,
+        });
+        expect(response.status).toBe(200);
+        const metadata = modelMetadataListSchema.parse(await response.json());
+        const original = metadataById(metadata, modelId);
+        if (original?.device.runtime?.state === "draining") {
+          applied = metadata;
+          break;
+        }
+        await Bun.sleep(10);
+      }
+      if (!applied) throw new Error("Expected the original runtime to drain.");
+
+      const original = metadataById(applied, modelId);
+      const replacementModel = metadataById(applied, alternateModelId);
+      if (!original || !replacementModel) {
+        throw new Error("Expected both LLM models in metadata.");
+      }
+      expect(original.device).toMatchObject({
+        selected: true,
+        runtime: { state: "draining" },
+      });
+      expect(replacementModel.device).toMatchObject({
+        selected: false,
+        runtime: null,
+      });
+
+      gateway.closeControlledStream(streamId);
+      while (!(await reader.read()).done) {}
+      const replacementResponse = await replacement;
+      expect(replacementResponse.status).toBe(200);
+      await replacementResponse.text();
+    } finally {
+      await gateway.stop();
+    }
+  },
+  { timeout: 15_000 },
+);

@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import { byId } from "../../catalog";
-import { defaultConfig } from "../../manager";
 import { createRuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
 import {
   modelMetadataSchema,
@@ -50,13 +49,9 @@ function runtimeSnapshots() {
 }
 
 test("projects catalog facts separately from observed device state", () => {
-  const config = defaultConfig("/tmp/localbase-model-metadata");
-  config.selectedLlmModels = [modelId];
-  config.selectedSttModels = [];
-  config.selectedImageModels = [];
   const metadata = projectModelMetadata(catalogModel(), {
     catalog: [catalogModel()],
-    config,
+    selectedModels: { llm: [modelId], stt: [], image: [] },
     installations: new Map([[modelId, true]]),
     runtimes: runtimeSnapshots(),
   });
@@ -84,10 +79,9 @@ test("projects catalog facts separately from observed device state", () => {
 
 test("includes every declared artifact in multi-file model identity", () => {
   const model = catalogModel(multipartModelId);
-  const config = defaultConfig("/tmp/localbase-model-metadata-artifacts");
   const metadata = projectModelMetadata(model, {
     catalog: [model],
-    config,
+    selectedModels: { llm: [modelId], stt: [], image: [] },
     installations: new Map([[multipartModelId, false]]),
     runtimes: runtimeSnapshots(),
   });
@@ -103,10 +97,9 @@ test("includes every declared artifact in multi-file model identity", () => {
 
 test("uses the strict response schemas for lists and entries", () => {
   const model = catalogModel();
-  const config = defaultConfig("/tmp/localbase-model-metadata-strict");
   const input = {
     catalog: [model],
-    config,
+    selectedModels: { llm: [modelId], stt: [], image: [] },
     installations: new Map([[modelId, false]]),
     runtimes: runtimeSnapshots(),
   };

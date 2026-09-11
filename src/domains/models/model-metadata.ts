@@ -73,21 +73,18 @@ export type ModelInstallation = readonly [modelId: string, complete: boolean];
 
 export type ModelMetadataProjectionInput = Readonly<{
   catalog: readonly ModelSpec[];
-  config: Pick<
-    LocalBaseConfig,
-    "selectedLlmModels" | "selectedSttModels" | "selectedImageModels"
-  >;
+  selectedModels: Readonly<Record<RuntimeModality, readonly string[]>>;
   installations: ReadonlyMap<string, boolean>;
   runtimes: Readonly<Record<RuntimeModality, RuntimeLifecycleSnapshot>>;
 }>;
 
 function selectedModelIds(
-  config: ModelMetadataProjectionInput["config"],
+  selectedModels: ModelMetadataProjectionInput["selectedModels"],
 ): ReadonlySet<string> {
   return new Set([
-    ...config.selectedLlmModels,
-    ...config.selectedSttModels,
-    ...config.selectedImageModels,
+    ...selectedModels.llm,
+    ...selectedModels.stt,
+    ...selectedModels.image,
   ]);
 }
 
@@ -131,7 +128,7 @@ export function projectModelMetadata(
       maxOutputTokens: null,
     },
     device: {
-      selected: selectedModelIds(input.config).has(model.modelId),
+      selected: selectedModelIds(input.selectedModels).has(model.modelId),
       installed: input.installations.get(model.modelId) ?? false,
       runtime: runtimeForModel(model, input.runtimes),
     },

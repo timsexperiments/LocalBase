@@ -18,7 +18,7 @@ The runtime currently keeps one active model per service. Dynamic model pools an
 
 ### Model metadata
 
-Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` return catalog identity, every declared artifact checksum and size, catalog memory estimates, and observed local selection, installation, and runtime state. `runtime.effectiveSlots` is the lifecycle snapshot's resolved launch-plan count, not available request capacity. Reads do not start runtimes or hash model files. Capabilities, context, and output limits are `null` because LocalBase has no authoritative source for them.
+Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` return catalog identity, every declared artifact checksum and size, catalog memory estimates, and observed local selection, installation, and runtime state. Selection and lifecycle state come from the same applied service generation. `runtime.effectiveSlots` is the lifecycle snapshot's resolved launch-plan count, not available request capacity. Reads do not start runtimes or hash model files. Capabilities, context, and output limits are `null` because LocalBase has no authoritative source for them.
 
 ## Supported platforms
 

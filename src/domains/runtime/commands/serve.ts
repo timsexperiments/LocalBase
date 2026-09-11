@@ -1832,28 +1832,28 @@ export async function runServe(
 
     if (route === "modelMetadataList" || route === "modelMetadataDetail") {
       const currentConfig = ctx.runtimeConfig.copy();
-      if (authRequired) {
-        const token = extractAuthToken(request, authMode);
-        const isMasterKey =
-          process.env.LOCALBASE_API_KEY &&
-          token === process.env.LOCALBASE_API_KEY;
-        if (
-          !token ||
-          (!isMasterKey && !validateApiKey(ctx.database, currentConfig, token))
-        ) {
-          return unauthorized();
-        }
+      const token = extractAuthToken(request, authMode);
+      const isMasterKey =
+        process.env.LOCALBASE_API_KEY &&
+        token === process.env.LOCALBASE_API_KEY;
+      if (
+        !token ||
+        (!isMasterKey && !validateApiKey(ctx.database, currentConfig, token))
+      ) {
+        return unauthorized();
       }
       if (request.method !== "GET") return methodNotAllowed("GET");
 
+      const snapshot = reconciler.modelMetadataSnapshot();
+
       const metadataInput = {
         catalog: CATALOG,
-        config: currentConfig,
+        selectedModels: snapshot.selectedModels,
         installations: await inspectCatalogInstallations(
           currentConfig,
           CATALOG,
         ),
-        runtimes: reconciler.lifecycleSnapshot(),
+        runtimes: snapshot.runtimes,
       };
       if (route === "modelMetadataList") {
         return Response.json(projectModelMetadataList(metadataInput));
