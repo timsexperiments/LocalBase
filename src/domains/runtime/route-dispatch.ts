@@ -6,7 +6,22 @@ export type GatewayRoute =
   | "chatCompletion"
   | "embeddings"
   | "models"
+  | "modelMetadataList"
+  | "modelMetadataDetail"
   | "notFound";
+
+const modelMetadataPrefix = "/_localbase/models/";
+
+export function modelMetadataIdFromPath(pathname: string): string | undefined {
+  if (!pathname.startsWith(modelMetadataPrefix)) return undefined;
+  const encodedModelId = pathname.slice(modelMetadataPrefix.length);
+  if (!encodedModelId || encodedModelId.includes("/")) return undefined;
+  try {
+    return decodeURIComponent(encodedModelId);
+  } catch {
+    return undefined;
+  }
+}
 
 /** Selects the gateway handler for an exact public path. */
 export function selectGatewayRoute(pathname: string): GatewayRoute {
@@ -15,6 +30,8 @@ export function selectGatewayRoute(pathname: string): GatewayRoute {
       return "health";
     case "/_localbase/instance":
       return "instance";
+    case "/_localbase/models":
+      return "modelMetadataList";
     case "/v1/audio/transcriptions":
     case "/v1/audio/translations":
       return "transcription";
@@ -27,6 +44,8 @@ export function selectGatewayRoute(pathname: string): GatewayRoute {
     case "/v1/models":
       return "models";
     default:
-      return "notFound";
+      return modelMetadataIdFromPath(pathname)
+        ? "modelMetadataDetail"
+        : "notFound";
   }
 }

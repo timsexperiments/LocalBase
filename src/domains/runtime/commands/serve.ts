@@ -4,11 +4,17 @@ import { join, basename } from "node:path";
 import { validateApiKey, installModel } from "../../../manager";
 import {
   byId,
+  CATALOG,
   evaluateModelFit,
   calculateMaxSafeContextSize,
   primaryArtifact,
   resolveCatalogInstallation,
 } from "../../../catalog";
+import {
+  inspectCatalogInstallations,
+  modelMetadataById,
+  projectModelMetadataList,
+} from "../../models/model-metadata";
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
@@ -35,7 +41,7 @@ import { MemoryPressureMonitor } from "../memory-pressure-monitor";
 import type { MemorySafetyTransition } from "../memory-safety";
 import { SupervisorRegistry } from "../supervisor-registry";
 import { composeGatewayHealth } from "../gateway-health";
-import { selectGatewayRoute } from "../route-dispatch";
+import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
 import {
   acquireGatewayLease,
   acquireGatewayLeaseForServe,
@@ -1822,6 +1828,41 @@ export async function runServe(
           "content-length": String(new TextEncoder().encode(body).byteLength),
         },
       });
+    }
+
+    if (route === "modelMetadataList" || route === "modelMetadataDetail") {
+      const currentConfig = ctx.runtimeConfig.copy();
+      if (authRequired) {
+        const token = extractAuthToken(request, authMode);
+        const isMasterKey =
+          process.env.LOCALBASE_API_KEY &&
+          token === process.env.LOCALBASE_API_KEY;
+        if (
+          !token ||
+          (!isMasterKey && !validateApiKey(ctx.database, currentConfig, token))
+        ) {
+          return unauthorized();
+        }
+      }
+      if (request.method !== "GET") return methodNotAllowed("GET");
+
+      const metadataInput = {
+        catalog: CATALOG,
+        config: currentConfig,
+        installations: await inspectCatalogInstallations(
+          currentConfig,
+          CATALOG,
+        ),
+        runtimes: reconciler.lifecycleSnapshot(),
+      };
+      if (route === "modelMetadataList") {
+        return Response.json(projectModelMetadataList(metadataInput));
+      }
+
+      const modelId = modelMetadataIdFromPath(pathname);
+      if (!modelId) return routeNotFound();
+      const metadata = modelMetadataById(modelId, metadataInput);
+      return metadata ? Response.json(metadata) : modelNotFound(modelId);
     }
 
     await reconciler.refreshConfiguration();

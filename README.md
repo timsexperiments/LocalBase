@@ -16,6 +16,10 @@ LocalBase is a Bun/TypeScript unified, OpenAI-compatible gateway for local AI ru
 
 The runtime currently keeps one active model per service. Dynamic model pools and eviction are future work.
 
+### Model metadata
+
+Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` return catalog identity, artifact checksums and sizes, memory estimates, and observed local selection, installation, and runtime state. They do not start runtimes or hash model files. Capabilities, context and output limits, warm status, slots, readiness, and queue state are `null` until LocalBase has an authoritative source for them.
+
 ## Supported platforms
 
 Full managed support includes the CLI and automatic backend management:

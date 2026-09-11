@@ -4,6 +4,10 @@ import { selectGatewayRoute } from "./route-dispatch";
 test("selects each supported gateway route by its exact path", () => {
   expect(selectGatewayRoute("/health")).toBe("health");
   expect(selectGatewayRoute("/_localbase/instance")).toBe("instance");
+  expect(selectGatewayRoute("/_localbase/models")).toBe("modelMetadataList");
+  expect(selectGatewayRoute("/_localbase/models/qwen%2Ftest")).toBe(
+    "modelMetadataDetail",
+  );
   expect(selectGatewayRoute("/v1/audio/transcriptions")).toBe("transcription");
   expect(selectGatewayRoute("/v1/audio/translations")).toBe("transcription");
   expect(selectGatewayRoute("/v1/images/generations")).toBe("imageGeneration");
@@ -16,4 +20,6 @@ test("classifies unexposed and near-match paths as not found", () => {
   expect(selectGatewayRoute("/v1/completions")).toBe("notFound");
   expect(selectGatewayRoute("/health/")).toBe("notFound");
   expect(selectGatewayRoute("/v1/models/")).toBe("notFound");
+  expect(selectGatewayRoute("/_localbase/models/")).toBe("notFound");
+  expect(selectGatewayRoute("/_localbase/models/not/a-model")).toBe("notFound");
 });
