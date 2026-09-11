@@ -157,6 +157,10 @@ export class RuntimeReconciler {
           whenSlotsResolved: async (result) => {
             if (result.kind === "admitted") await result.value.admission.ready;
           },
+          discard: (result) => {
+            if (result.kind === "admitted") result.value.admission.cancel();
+          },
+          dispatchControlsStart: true,
         }),
       ]),
     ) as Record<RuntimeModality, InferenceQueue<ModelAdmissionResult>>;
@@ -294,8 +298,14 @@ export class RuntimeReconciler {
       requestedModel ?? activeModel(modality, captured.snapshot.config);
     const queuedAdmission = this.queues[modality].acquire(
       modelId,
-      async () =>
-        await this.coordinateAdmission(modality, modelId, signal, captured),
+      async (dispatchStarted) =>
+        await this.coordinateAdmission(
+          modality,
+          modelId,
+          signal,
+          captured,
+          dispatchStarted,
+        ),
       signal,
     );
     try {
@@ -357,11 +367,16 @@ export class RuntimeReconciler {
     requestedModel: string | undefined,
     signal: AbortSignal | undefined,
     coordinated?: CoordinatedSnapshot,
+    dispatchStarted?: () => boolean,
   ): Promise<ModelAdmissionResult> {
     coordinated ??= await this.coordinate();
     return await this.exclusiveModality(modality, async () => {
       await coordinated.transitions[modality];
       this.throwIfAborted(signal);
+      if (dispatchStarted && !dispatchStarted())
+        throw new InferenceQueueUnavailableError(
+          "Inference admission was cancelled before dispatch.",
+        );
       const desiredSnapshot = this.snapshot;
       if (
         !configuredRuntimeModality(

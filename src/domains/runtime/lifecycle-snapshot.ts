@@ -24,12 +24,12 @@ export type RuntimeLifecycleSnapshot = Readonly<{
   runtimeId: string | null;
   admission: RuntimeAdmissionSnapshot;
   configuredSlots: number | null;
-  queue: InferenceQueueSnapshot;
+  queue: InferenceQueueSnapshot | null;
 }>;
 
 export function createRuntimeLifecycleSnapshot(
   input: Omit<RuntimeLifecycleSnapshot, "queue"> & {
-    queue?: InferenceQueueSnapshot;
+    queue?: InferenceQueueSnapshot | null;
   },
 ): RuntimeLifecycleSnapshot {
   return Object.freeze({
@@ -43,13 +43,6 @@ export function createRuntimeLifecycleSnapshot(
         ? Object.freeze({ ...input.admission })
         : Object.freeze({ kind: "unknown" }),
     configuredSlots: input.configuredSlots,
-    queue: Object.freeze({
-      ...(input.queue ?? {
-        waiting: 0,
-        active: 0,
-        capacity: 16,
-        maxWaitMs: 60_000,
-      }),
-    }),
+    queue: input.queue ? Object.freeze({ ...input.queue }) : null,
   });
 }

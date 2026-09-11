@@ -33,6 +33,7 @@ export type InferenceQueueSnapshot = Readonly<{
   active: number;
   capacity: number;
   maxWaitMs: number;
+  accepting: boolean;
 }>;
 export type QueuedLease<Value> = Readonly<{
   value: Value;
@@ -42,17 +43,19 @@ export type QueuedLease<Value> = Readonly<{
 type Pending<Value> = {
   modelId: string;
   signal?: AbortSignal;
-  dispatch: () => Promise<Value>;
+  dispatch: (dispatchStarted: () => boolean) => Promise<Value>;
   resolve: (lease: QueuedLease<Value>) => void;
   reject: (error: Error) => void;
   timer?: ReturnType<typeof setTimeout>;
   removeAbort?: () => void;
   enqueuedAt: number;
+  queueWaitMs?: number;
 };
 
 /** Owns bounded FIFO permits for one inference modality. */
 export class InferenceQueue<Value> {
   private readonly pending: Pending<Value>[] = [];
+  private readonly inFlight = new Set<Pending<Value>>();
   private active = 0;
   private activeModel: string | undefined;
   private slots = 1;
@@ -67,6 +70,8 @@ export class InferenceQueue<Value> {
       isAdmitted: (value: Value) => boolean;
       resolvedSlots: (value: Value) => number;
       whenSlotsResolved?: (value: Value) => Promise<void>;
+      discard?: (value: Value) => void;
+      dispatchControlsStart?: boolean;
       now?: () => number;
     }>,
   ) {}
@@ -77,12 +82,13 @@ export class InferenceQueue<Value> {
       active: this.active,
       capacity: this.options.maxWaiting ?? DEFAULT_MAX_WAITING_INFERENCES,
       maxWaitMs: this.options.waitMs ?? DEFAULT_INFERENCE_QUEUE_WAIT_MS,
+      accepting: this.closedError === undefined,
     });
   }
 
   acquire(
     modelId: string,
-    dispatch: () => Promise<Value>,
+    dispatch: (dispatchStarted: () => boolean) => Promise<Value>,
     signal?: AbortSignal,
   ): Promise<QueuedLease<Value>> {
     if (signal?.aborted)
@@ -115,7 +121,14 @@ export class InferenceQueue<Value> {
   }
 
   rejectPending(error = new InferenceQueueUnavailableError()): void {
-    for (const item of [...this.pending]) this.remove(item, error);
+    const rejected = this.pending.splice(0);
+    rejected.push(...this.inFlight);
+    this.inFlight.clear();
+    for (const item of rejected) {
+      if (item.timer) clearTimeout(item.timer);
+      item.removeAbort?.();
+      item.reject(error);
+    }
   }
   close(
     error = new InferenceQueueUnavailableError("Gateway is shutting down."),
@@ -128,8 +141,8 @@ export class InferenceQueue<Value> {
   }
   private remove(item: Pending<Value>, error: Error): void {
     const index = this.pending.indexOf(item);
-    if (index < 0) return;
-    this.pending.splice(index, 1);
+    if (index >= 0) this.pending.splice(index, 1);
+    else if (!this.inFlight.delete(item)) return;
     if (item.timer) clearTimeout(item.timer);
     item.removeAbort?.();
     item.reject(error);
@@ -137,6 +150,7 @@ export class InferenceQueue<Value> {
   }
 
   private canDispatchHead(): boolean {
+    if (this.closedError) return false;
     const head = this.pending[0];
     if (!head || this.active >= this.slots) return false;
     return this.activeModel === undefined || this.activeModel === head.modelId;
@@ -150,16 +164,27 @@ export class InferenceQueue<Value> {
         if (!this.canDispatchHead()) return;
         const item = this.pending[0];
         if (!item) return;
-        this.pending.shift();
-        if (item.timer) clearTimeout(item.timer);
-        item.removeAbort?.();
-        const queueWaitMs = Math.max(0, this.now() - item.enqueuedAt);
         if (item.signal?.aborted) {
           item.reject(new InferenceQueueAbortedError());
           continue;
         }
         try {
-          const value = await item.dispatch();
+          const dispatchStarted = () => {
+            if (this.pending[0] !== item || this.closedError) return false;
+            this.pending.shift();
+            this.inFlight.add(item);
+            item.queueWaitMs = Math.max(0, this.now() - item.enqueuedAt);
+            if (item.timer) clearTimeout(item.timer);
+            return true;
+          };
+          if (!this.options.dispatchControlsStart) dispatchStarted();
+          const value = await item.dispatch(dispatchStarted);
+          if (!this.inFlight.delete(item)) {
+            this.options.discard?.(value);
+            continue;
+          }
+          item.removeAbort?.();
+          const queueWaitMs = item.queueWaitMs ?? 0;
           if (!this.options.isAdmitted(value)) {
             item.resolve({
               value,
@@ -200,6 +225,11 @@ export class InferenceQueue<Value> {
             }),
           );
         } catch (error) {
+          const pendingIndex = this.pending.indexOf(item);
+          if (pendingIndex >= 0) this.pending.splice(pendingIndex, 1);
+          else if (!this.inFlight.delete(item)) continue;
+          if (item.timer) clearTimeout(item.timer);
+          item.removeAbort?.();
           if (this.active === 0) this.activeModel = undefined;
           item.reject(
             error instanceof Error ? error : new Error(String(error)),

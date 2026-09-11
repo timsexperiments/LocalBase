@@ -280,7 +280,7 @@ describe("Vercel AI SDK multimodal conformance", () => {
     });
     try {
       const first = transcribe(switchingGateway, PRIMARY_STT_MODEL);
-      await switchingGateway.waitForSttHealthProbe();
+      const firstHealth = await switchingGateway.waitForSttHealthProbe();
       expect(
         runtimeModelPath(
           await switchingGateway.waitForSttRuntimeStart(),
@@ -293,7 +293,14 @@ describe("Vercel AI SDK multimodal conformance", () => {
         ),
       );
       const switched = transcribe(switchingGateway, SWITCHED_STT_MODEL);
-      expect((await first).status).toBe(503);
+      let switchedSettled = false;
+      void switched.finally(() => {
+        switchedSettled = true;
+      });
+      await Bun.sleep(20);
+      expect(switchedSettled).toBe(false);
+      firstHealth.release(true);
+      expect((await first).status).toBe(200);
       const replacementHealth = await switchingGateway.waitForSttHealthProbe();
       expect(
         runtimeModelPath(
@@ -323,7 +330,7 @@ describe("Vercel AI SDK multimodal conformance", () => {
     });
     try {
       const first = generate(switchingGateway, PRIMARY_IMAGE_MODEL);
-      await switchingGateway.waitForImageHealthProbe();
+      const firstHealth = await switchingGateway.waitForImageHealthProbe();
       expect(
         runtimeModelPath(
           await switchingGateway.waitForImageRuntimeStart(),
@@ -336,7 +343,14 @@ describe("Vercel AI SDK multimodal conformance", () => {
         ),
       );
       const switched = generate(switchingGateway, SWITCHED_IMAGE_MODEL);
-      expect((await first).status).toBe(503);
+      let switchedSettled = false;
+      void switched.finally(() => {
+        switchedSettled = true;
+      });
+      await Bun.sleep(20);
+      expect(switchedSettled).toBe(false);
+      firstHealth.release(true);
+      expect((await first).status).toBe(200);
       const replacementHealth =
         await switchingGateway.waitForImageHealthProbe();
       expect(

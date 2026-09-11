@@ -123,6 +123,7 @@ test("bounds waiting work with captured capacity and deadline", async () => {
     active: 1,
     capacity: 1,
     maxWaitMs: 20,
+    accepting: true,
   });
   await expect(timedOut).rejects.toBeInstanceOf(InferenceQueueTimeoutError);
   first.release();
@@ -209,24 +210,66 @@ test("measures queue wait at dispatch rather than after activation", async () =>
   lease.release();
 });
 
-test("rejects pending work on disable, emergency, and shutdown", async () => {
+test("deadline and close retain ownership until dispatch actually starts", async () => {
+  for (const close of [false, true]) {
+    let enterOwner!: () => void;
+    const ownerBlocked = new Promise<void>((resolve) => {
+      enterOwner = resolve;
+    });
+    let started = false;
+    const inferenceQueue = new InferenceQueue<Result>("llm", {
+      waitMs: 20,
+      isAdmitted: ({ admitted }) => admitted,
+      resolvedSlots: ({ slots }) => slots,
+      dispatchControlsStart: true,
+      discard: () => {
+        throw new Error("cancelled dispatch must not produce admission");
+      },
+    });
+    const admission = inferenceQueue.acquire("a", async (dispatchStarted) => {
+      await ownerBlocked;
+      started = dispatchStarted();
+      if (!started) throw new InferenceQueueUnavailableError("cancelled");
+      return { admitted: true, slots: 1, id: "late" };
+    });
+    if (close) inferenceQueue.close();
+    await expect(admission).rejects.toBeInstanceOf(
+      close ? InferenceQueueUnavailableError : InferenceQueueTimeoutError,
+    );
+    expect(inferenceQueue.snapshot().waiting).toBe(0);
+    enterOwner();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(started).toBe(false);
+    expect(inferenceQueue.snapshot().active).toBe(0);
+  }
+});
+
+test("atomically rejects pending work without dispatching during teardown", async () => {
   for (const close of [false, true]) {
     const inferenceQueue = queue();
     const first = await inferenceQueue.acquire("a", async () => ({
       admitted: true,
-      slots: 1,
+      slots: 2,
       id: "first",
     }));
-    const waiting = inferenceQueue.acquire("a", async () => ({
-      admitted: true,
-      slots: 1,
-      id: "waiting",
-    }));
+    let dispatched = false;
+    const blockedSwitch = inferenceQueue.acquire("b", async () => {
+      dispatched = true;
+      return { admitted: true, slots: 2, id: "blocked-switch" };
+    });
+    const laterSameModel = inferenceQueue.acquire("a", async () => {
+      dispatched = true;
+      return { admitted: true, slots: 2, id: "later-same-model" };
+    });
     const error = new InferenceQueueUnavailableError(
       close ? "shutdown" : "disabled",
     );
     close ? inferenceQueue.close(error) : inferenceQueue.rejectPending(error);
-    await expect(waiting).rejects.toBe(error);
+    await expect(blockedSwitch).rejects.toBe(error);
+    await expect(laterSameModel).rejects.toBe(error);
+    expect(dispatched).toBe(false);
+    expect(inferenceQueue.snapshot().accepting).toBe(!close);
     if (close) {
       await expect(
         inferenceQueue.acquire("a", async () => ({
@@ -235,6 +278,14 @@ test("rejects pending work on disable, emergency, and shutdown", async () => {
           id: "late",
         })),
       ).rejects.toBe(error);
+    } else {
+      const admitted = await inferenceQueue.acquire("a", async () => ({
+        admitted: true,
+        slots: 2,
+        id: "new-work",
+      }));
+      expect(admitted.value.id).toBe("new-work");
+      admitted.release();
     }
     first.release();
   }

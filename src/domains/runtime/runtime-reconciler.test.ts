@@ -88,7 +88,13 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
         modelId: config.activeLlmModel,
         admission: { kind: "known", accepting: true, activeCount: 0 },
         configuredSlots: null,
-        queue: { waiting: 0, active: 0, capacity: 16, maxWaitMs: 60_000 },
+        queue: {
+          waiting: 0,
+          active: 0,
+          capacity: 16,
+          maxWaitMs: 60_000,
+          accepting: true,
+        },
       },
       stt: { configured: false, state: "disabled" },
     });
@@ -597,7 +603,7 @@ test("does not stop a ready runtime while a model switch drains admission", asyn
       switchedSettled = true;
     });
     for (let attempt = 0; attempt < 100; attempt += 1) {
-      if (reconciler.lifecycleSnapshot().llm.queue.waiting === 1) break;
+      if (reconciler.lifecycleSnapshot().llm.queue?.waiting === 1) break;
       await Bun.sleep(1);
     }
     expect(switchedSettled).toBe(false);
