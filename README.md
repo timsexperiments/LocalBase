@@ -85,9 +85,9 @@ Use `local-base status` to inspect the service and `local-base logs --follow` to
 
 ## Structured outputs
 
-Chat completions accept OpenAI-compatible `response_format.type: "json_schema"` requests. LocalBase compiles the schema before starting a model and forwards the response format unchanged to the managed llama runtime. Schemas must use a root object, require every declared property, set `additionalProperties: false`, and fit within 10 nesting levels and 256 KiB.
+Chat completions accept OpenAI-compatible `response_format.type: "json_schema"` requests. LocalBase compiles the schema before starting a model and forwards the response format unchanged to the managed llama runtime. Schemas must use a root object, require every declared property, set `additionalProperties: false`, and fit within 10 nesting levels, 5,000 properties, 1,000 local references, and 256 KiB.
 
-The supported contract includes primitive and nullable types, object properties, array items and size bounds, string length bounds, integer bounds, `enum`, `const`, `anyOf`, `definitions` or `$defs`, and simple `#/...` local references. Supported string formats are `date`, `time`, `date-time`, and `uuid`. LocalBase rejects remote references, other dialects, and keywords or combinations that the managed runtime would ignore.
+The supported contract includes primitive and nullable types, strict object properties, object-valued array items, array and string bounds up to 10,000, safe integral integer bounds, scalar `enum` and `const` values matching their declared type, `anyOf`, and direct `#/$defs/name` or `#/definitions/name` references. LocalBase rejects formats, remote or deeper references, other dialects, and keywords or combinations that the managed runtime would ignore.
 
 For non-streaming responses, LocalBase validates ordinary assistant content when `finish_reason` is `stop`. A mismatch returns HTTP 502 with code `structured_output_validation_failed`. Refusals, tool calls, and truncated choices retain their original response semantics. Streaming remains incremental and relies on the runtime grammar rather than whole-response buffering.
 

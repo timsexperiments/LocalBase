@@ -1,5 +1,4 @@
-import Ajv, { MissingRefError, type ValidateFunction } from "ajv";
-import addFormats from "ajv-formats";
+import Ajv, { type ValidateFunction } from "ajv";
 import { z } from "zod";
 
 type JsonValue =
@@ -59,8 +58,13 @@ export type StructuredOutputPreparation =
 
 // OpenAI strict schemas allow at most ten nested schema levels.
 const MAX_SCHEMA_DEPTH = 10;
+// OpenAI strict schemas allow at most 5,000 object properties.
+const MAX_SCHEMA_PROPERTIES = 5_000;
 // LocalBase caps the JSON text to bound synchronous compilation before admission.
 const MAX_SCHEMA_BYTES = 256 * 1024;
+// LocalBase bounds reference resolution and native grammar repetition work.
+const MAX_SCHEMA_REFERENCES = 1_000;
+const MAX_NATIVE_REPETITION = 10_000;
 
 const ANNOTATION_KEYWORDS = new Set([
   "$comment",
@@ -90,8 +94,6 @@ const SUPPORTED_KEYWORDS = new Set([
   "required",
   "type",
 ]);
-const SUPPORTED_FORMATS = new Set(["date", "date-time", "time", "uuid"]);
-
 function isObject(value: JsonValue | undefined): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -104,6 +106,7 @@ function childSchemas(schema: JsonObject): JsonObject[] | null {
     schema.definitions,
   ]) {
     if (container === undefined) continue;
+    if (!isObject(container)) return null;
     for (const child of Object.values(container as JsonObject)) {
       if (!isObject(child)) return null;
       children.push(child);
@@ -114,6 +117,7 @@ function childSchemas(schema: JsonObject): JsonObject[] | null {
     children.push(schema.items);
   }
   if (schema.anyOf !== undefined) {
+    if (!Array.isArray(schema.anyOf)) return null;
     for (const child of schema.anyOf as JsonValue[]) {
       if (!isObject(child)) return null;
       children.push(child);
@@ -141,13 +145,93 @@ function schemaTypes(schema: JsonObject): string[] {
     : ((schema.type as string[] | undefined) ?? []);
 }
 
+function hasOnlyType(schema: JsonObject, expected: string): boolean {
+  const nonNullTypes = schemaTypes(schema).filter((type) => type !== "null");
+  return nonNullTypes.length === 1 && nonNullTypes[0] === expected;
+}
+
+function isSupportedReference(value: JsonValue | undefined): value is string {
+  return (
+    typeof value === "string" &&
+    /^#\/(?:\$defs|definitions)\/[^/~]+$/.test(value)
+  );
+}
+
+function precompileBudgetIssue(root: JsonObject): string | null {
+  let propertyCount = 0;
+  let referenceCount = 0;
+  const pending = [{ schema: root, depth: 1 }];
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) break;
+    if (current.depth > MAX_SCHEMA_DEPTH) {
+      return "Structured output schema exceeds OpenAI's nesting limit.";
+    }
+    if (isObject(current.schema.properties)) {
+      propertyCount += Object.keys(current.schema.properties).length;
+      if (propertyCount > MAX_SCHEMA_PROPERTIES) {
+        return "Structured output schema exceeds OpenAI's property limit.";
+      }
+    }
+    if (current.schema.$ref !== undefined) {
+      referenceCount += 1;
+      if (referenceCount > MAX_SCHEMA_REFERENCES) {
+        return "Structured output schema exceeds LocalBase's reference limit.";
+      }
+      if (
+        typeof current.schema.$ref === "string" &&
+        !isSupportedReference(current.schema.$ref)
+      ) {
+        return "Structured output schema references must target direct local definitions.";
+      }
+    }
+    const children = childSchemas(current.schema);
+    if (!children) continue;
+    for (const child of children) {
+      pending.push({ schema: child, depth: current.depth + 1 });
+    }
+  }
+  return null;
+}
+
+function isScalar(value: JsonValue): boolean {
+  return value === null || typeof value !== "object";
+}
+
+function literalsMatchDeclaredType(schema: JsonObject, ajv: Ajv): boolean {
+  const values = (
+    schema.enum !== undefined ? schema.enum : [schema.const]
+  ) as JsonValue[];
+  if (!values.every(isScalar)) return false;
+  if (schema.type === undefined) return true;
+  const validatesType = ajv.compile({ type: schema.type });
+  return values.every((value) => validatesType(value));
+}
+
+function repetitionIssue(
+  schema: JsonObject,
+  minimumKey: "minItems" | "minLength",
+  maximumKey: "maxItems" | "maxLength",
+): string | null {
+  const minimum = schema[minimumKey] as number | undefined;
+  const maximum = schema[maximumKey] as number | undefined;
+  if (
+    (minimum !== undefined && minimum > MAX_NATIVE_REPETITION) ||
+    (maximum !== undefined && maximum > MAX_NATIVE_REPETITION)
+  ) {
+    return `Structured output schema ${minimumKey}/${maximumKey} exceeds LocalBase's native repetition limit.`;
+  }
+  if (minimum !== undefined && maximum !== undefined && minimum > maximum) {
+    return `Structured output schema ${minimumKey} cannot exceed ${maximumKey}.`;
+  }
+  return null;
+}
+
 function inspectNativeCompatibility(
   schema: JsonObject,
-  depth: number,
+  ajv: Ajv,
 ): string | null {
-  if (depth > MAX_SCHEMA_DEPTH) {
-    return "Structured output schema exceeds OpenAI's nesting limit.";
-  }
   for (const keyword of Object.keys(schema)) {
     if (!SUPPORTED_KEYWORDS.has(keyword) && !ANNOTATION_KEYWORDS.has(keyword)) {
       return `Structured output schema uses unsupported keyword '${keyword}'.`;
@@ -155,9 +239,8 @@ function inspectNativeCompatibility(
   }
 
   if (schema.$ref !== undefined) {
-    const reference = schema.$ref as string;
-    if (!reference.startsWith("#/") || reference.includes("~")) {
-      return "Structured output schema references must be simple local JSON pointers.";
+    if (!isSupportedReference(schema.$ref)) {
+      return "Structured output schema references must target direct local definitions.";
     }
     return hasValidationSiblings(schema, "$ref", false)
       ? "Structured output schema reference siblings are unsupported."
@@ -177,16 +260,48 @@ function inspectNativeCompatibility(
     if (hasValidationSiblings(schema, primary, true)) {
       return `Structured output schema ${primary} cannot be combined with other constraints.`;
     }
+    if (!literalsMatchDeclaredType(schema, ajv)) {
+      return `Structured output schema ${primary} values must be scalar and satisfy the declared type.`;
+    }
   }
 
   if (schema.format !== undefined) {
-    if (!SUPPORTED_FORMATS.has(schema.format as string)) {
-      return "Structured output schema uses a string format unsupported by the managed runtime.";
-    }
-    if (schema.minLength !== undefined || schema.maxLength !== undefined) {
-      return "Structured output schema cannot combine format with string-length constraints.";
-    }
+    return "Structured output schema formats are unsupported by the managed runtime contract.";
   }
+
+  const objectKeywords = [
+    schema.properties,
+    schema.required,
+    schema.additionalProperties,
+  ].some((value) => value !== undefined);
+  if (objectKeywords && !hasOnlyType(schema, "object")) {
+    return "Structured output object constraints require an object or nullable object type.";
+  }
+
+  const arrayKeywords = [schema.items, schema.minItems, schema.maxItems].some(
+    (value) => value !== undefined,
+  );
+  if (arrayKeywords && !hasOnlyType(schema, "array")) {
+    return "Structured output array constraints require an array or nullable array type.";
+  }
+  if (schemaTypes(schema).includes("array") && !isObject(schema.items)) {
+    return "Structured output arrays require an object-valued items schema.";
+  }
+  const arrayRepetitionIssue = repetitionIssue(schema, "minItems", "maxItems");
+  if (arrayRepetitionIssue) return arrayRepetitionIssue;
+
+  const stringLengthKeywords = [schema.minLength, schema.maxLength].some(
+    (value) => value !== undefined,
+  );
+  if (stringLengthKeywords && !hasOnlyType(schema, "string")) {
+    return "Structured output string lengths require a string or nullable string type.";
+  }
+  const stringRepetitionIssue = repetitionIssue(
+    schema,
+    "minLength",
+    "maxLength",
+  );
+  if (stringRepetitionIssue) return stringRepetitionIssue;
 
   const hasNumericBounds = [
     schema.minimum,
@@ -195,9 +310,21 @@ function inspectNativeCompatibility(
     schema.exclusiveMaximum,
   ].some((value) => value !== undefined);
   if (hasNumericBounds) {
-    const nonNullTypes = schemaTypes(schema).filter((type) => type !== "null");
-    if (nonNullTypes.length !== 1 || nonNullTypes[0] !== "integer") {
+    if (!hasOnlyType(schema, "integer")) {
       return "The managed runtime supports numeric bounds only for integer schemas.";
+    }
+    const bounds = [
+      schema.minimum,
+      schema.maximum,
+      schema.exclusiveMinimum,
+      schema.exclusiveMaximum,
+    ] as Array<number | undefined>;
+    if (
+      !bounds.every(
+        (value) => value === undefined || Number.isSafeInteger(value),
+      )
+    ) {
+      return "Structured output integer bounds must be safe integers.";
     }
     if (
       (schema.minimum !== undefined && schema.exclusiveMinimum !== undefined) ||
@@ -230,7 +357,7 @@ function inspectNativeCompatibility(
     return "The managed runtime requires object-valued subschemas.";
   }
   for (const child of children) {
-    const issue = inspectNativeCompatibility(child, depth + 1);
+    const issue = inspectNativeCompatibility(child, ajv);
     if (issue) return issue;
   }
   return null;
@@ -258,19 +385,16 @@ function compileSchema(schema: JsonObject): StructuredOutputPreparation {
     const ajv = new Ajv({
       allErrors: false,
       allowUnionTypes: true,
+      inlineRefs: false,
+      logger: false,
       strict: true,
       strictRequired: true,
-      validateFormats: true,
+      validateFormats: false,
     });
-    addFormats(ajv);
     validator = ajv.compile<unknown>(schema);
-  } catch (error) {
-    if (error instanceof MissingRefError && !error.missingRef.startsWith("#")) {
-      return rejected(
-        "unsupported_json_schema",
-        "Structured output schema references must be simple local JSON pointers.",
-      );
-    }
+    const issue = inspectNativeCompatibility(schema, ajv);
+    if (issue) return rejected("unsupported_json_schema", issue);
+  } catch {
     return rejected(
       "invalid_json_schema",
       "Structured output schema is not valid JSON Schema draft 7.",
@@ -283,10 +407,7 @@ function compileSchema(schema: JsonObject): StructuredOutputPreparation {
       "Structured output schema root must be an object type.",
     );
   }
-  const issue = inspectNativeCompatibility(schema, 1);
-  return issue
-    ? rejected("unsupported_json_schema", issue)
-    : { kind: "ready", validator };
+  return { kind: "ready", validator };
 }
 
 export function prepareStructuredOutput(
@@ -305,6 +426,8 @@ export function prepareStructuredOutput(
       "Structured output schema exceeds LocalBase's 256 KiB compile limit.",
     );
   }
+  const budgetIssue = precompileBudgetIssue(schema);
+  if (budgetIssue) return rejected("unsupported_json_schema", budgetIssue);
   return compileSchema(schema);
 }
 

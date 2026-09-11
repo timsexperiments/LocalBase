@@ -72,6 +72,15 @@ describe("structured output schemas", () => {
     for (const property of [
       { type: "string", pattern: "^ok$" },
       { type: "number", minimum: 0 },
+      { type: "integer", minimum: 1.5 },
+      { type: "string", enum: [42] },
+      { type: "string", format: "date" },
+      { type: "array", maxItems: 0 },
+      {
+        type: "array",
+        minItems: 4_294_967_296,
+        items: { type: "integer" },
+      },
       { type: "array", items: { type: "string" }, uniqueItems: true },
       {
         allOf: [{ type: "string" }, { type: "string", maxLength: 2 }],
@@ -87,6 +96,72 @@ describe("structured output schemas", () => {
         }),
       ).toMatchObject({ kind: "rejected" });
     }
+
+    expect(
+      prepare({
+        type: "object",
+        properties: { value: { $ref: "#/$defs/payload/const" } },
+        required: ["value"],
+        additionalProperties: false,
+        $defs: {
+          payload: {
+            const: {
+              type: "array",
+              uniqueItems: true,
+              items: { type: "integer" },
+            },
+          },
+        },
+      }),
+    ).toMatchObject({
+      kind: "rejected",
+      code: "unsupported_json_schema",
+    });
+    expect(
+      prepare({
+        type: "object",
+        properties: {
+          value: { const: { $ref: "https://example.invalid/remote" } },
+        },
+        required: ["value"],
+        additionalProperties: false,
+      }),
+    ).toMatchObject({
+      kind: "rejected",
+      code: "unsupported_json_schema",
+    });
+  });
+
+  test("compiles repeated local refs without schema inlining", async () => {
+    const source = `
+      import { chatResponseFormatSchema, prepareStructuredOutput } from "./src/domains/runtime/structured-output.ts";
+      const leaf = {
+        type: "object",
+        properties: Object.fromEntries(Array.from({ length: 100 }, (_, index) => ["p" + index, { type: "string" }])),
+        required: Array.from({ length: 100 }, (_, index) => "p" + index),
+        additionalProperties: false,
+      };
+      const schema = {
+        type: "object",
+        properties: Object.fromEntries(Array.from({ length: 500 }, (_, index) => ["p" + index, { $ref: "#/$defs/leaf" }])),
+        required: Array.from({ length: 500 }, (_, index) => "p" + index),
+        additionalProperties: false,
+        $defs: { leaf },
+      };
+      const prepared = prepareStructuredOutput(chatResponseFormatSchema.parse({
+        type: "json_schema",
+        json_schema: { name: "bounded", schema },
+      }));
+      if (prepared.kind !== "ready") process.exit(1);
+    `;
+    const child = Bun.spawn([process.execPath, "-e", source], {
+      cwd: `${import.meta.dir}/../../..`,
+      stderr: "pipe",
+      stdout: "pipe",
+      signal: AbortSignal.timeout(3_000),
+    });
+    const stderr = await new Response(child.stderr).text();
+    expect(await child.exited, stderr).toBe(0);
   });
 
   test("validates only ordinary assistant content completed with stop", () => {

@@ -37,7 +37,6 @@
     "@opentelemetry/sdk-trace-base": "2.10.0",
     "@opentelemetry/semantic-conventions": "1.43.0",
     "ajv": "8.17.1",
-    "ajv-formats": "3.0.1",
     "citty": "0.2.2",
     "drizzle-orm": "^0.44.5",
     "fflate": "^0.8.3",
