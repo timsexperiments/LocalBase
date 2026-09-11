@@ -1,6 +1,5 @@
 import { z } from "zod";
 import {
-  primaryArtifact,
   resolveCatalogInstallation,
   type ModelKind,
   type ModelSpec,
@@ -22,16 +21,21 @@ export const modelMetadataSchema = z
         revision: z.string().min(1),
         kind: z.enum(["llm", "stt", "image"]),
         quantization: z.string().min(1),
-        artifact: z
-          .object({
-            sha256: z.string().nullable(),
-            sizeBytes: nullableNumberSchema,
-          })
-          .strict(),
+        artifacts: z
+          .array(
+            z
+              .object({
+                role: z.enum(["primary", "supplementary"]),
+                sha256: z.string().nullable(),
+                sizeBytes: nullableNumberSchema,
+              })
+              .strict(),
+          )
+          .min(1),
         memory: z
           .object({
-            minimumVramGb: z.number().nonnegative(),
-            storageGb: z.number().positive(),
+            minimumVramEstimateGb: z.number().nonnegative(),
+            storageEstimateGb: z.number().positive(),
           })
           .strict(),
         capabilities: z.null(),
@@ -47,13 +51,10 @@ export const modelMetadataSchema = z
           .object({
             configured: z.boolean(),
             state: modalityLifecycleStateSchema,
+            effectiveSlots: z.number().int().positive().nullable(),
           })
           .strict()
           .nullable(),
-        warm: z.null(),
-        slots: z.null(),
-        readiness: z.null(),
-        queue: z.null(),
       })
       .strict(),
   })
@@ -96,7 +97,11 @@ function runtimeForModel(
 ): ModelMetadata["device"]["runtime"] {
   const runtime = runtimes[model.kind];
   if (runtime.modelId !== model.modelId) return null;
-  return { configured: runtime.configured, state: runtime.state };
+  return {
+    configured: runtime.configured,
+    state: runtime.state,
+    effectiveSlots: runtime.configuredSlots,
+  };
 }
 
 /** Projects catalog facts and observed device state without initiating runtime work. */
@@ -104,7 +109,6 @@ export function projectModelMetadata(
   model: ModelSpec,
   input: ModelMetadataProjectionInput,
 ): ModelMetadata {
-  const artifact = primaryArtifact(model);
   return modelMetadataSchema.parse({
     object: "localbase.model",
     id: model.modelId,
@@ -113,13 +117,14 @@ export function projectModelMetadata(
       revision: model.repositoryRevision,
       kind: model.kind,
       quantization: model.quant,
-      artifact: {
+      artifacts: model.artifacts.map((artifact) => ({
+        role: artifact.role,
         sha256: artifact.sha256 ?? null,
         sizeBytes: artifact.expectedSizeBytes ?? null,
-      },
+      })),
       memory: {
-        minimumVramGb: model.minVramGb,
-        storageGb: model.storageGb,
+        minimumVramEstimateGb: model.minVramGb,
+        storageEstimateGb: model.storageGb,
       },
       capabilities: null,
       contextWindowTokens: null,
@@ -129,10 +134,6 @@ export function projectModelMetadata(
       selected: selectedModelIds(input.config).has(model.modelId),
       installed: input.installations.get(model.modelId) ?? false,
       runtime: runtimeForModel(model, input.runtimes),
-      warm: null,
-      slots: null,
-      readiness: null,
-      queue: null,
     },
   });
 }

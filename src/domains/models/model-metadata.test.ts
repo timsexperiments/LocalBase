@@ -9,10 +9,11 @@ import {
 } from "./model-metadata";
 
 const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+const multipartModelId = "qwen3-coder-next-q4_k_m";
 
-function catalogModel() {
-  const model = byId(modelId);
-  if (!model) throw new Error(`Expected catalog model ${modelId}.`);
+function catalogModel(id = modelId) {
+  const model = byId(id);
+  if (!model) throw new Error(`Expected catalog model ${id}.`);
   return model;
 }
 
@@ -73,16 +74,31 @@ test("projects catalog facts separately from observed device state", () => {
     device: {
       selected: true,
       installed: true,
-      runtime: { configured: true, state: "running" },
-      warm: null,
-      slots: null,
-      readiness: null,
-      queue: null,
+      runtime: { configured: true, state: "running", effectiveSlots: 4 },
     },
   });
-  expect(metadata.catalog.artifact.sha256).toMatch(/^[a-f0-9]{64}$/);
-  expect(metadata.catalog.artifact.sizeBytes).toBeGreaterThan(0);
+  expect(metadata.catalog.artifacts[0]?.sha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(metadata.catalog.artifacts[0]?.sizeBytes).toBeGreaterThan(0);
   expect(metadata.catalog.revision).toMatch(/^[a-f0-9]{40}$/);
+});
+
+test("includes every declared artifact in multi-file model identity", () => {
+  const model = catalogModel(multipartModelId);
+  const config = defaultConfig("/tmp/localbase-model-metadata-artifacts");
+  const metadata = projectModelMetadata(model, {
+    catalog: [model],
+    config,
+    installations: new Map([[multipartModelId, false]]),
+    runtimes: runtimeSnapshots(),
+  });
+
+  expect(metadata.catalog.artifacts).toHaveLength(4);
+  expect(metadata.catalog.artifacts).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ role: "primary" }),
+      expect.objectContaining({ role: "supplementary" }),
+    ]),
+  );
 });
 
 test("uses the strict response schemas for lists and entries", () => {
