@@ -163,6 +163,8 @@ export type GatewayFixture = {
 
 export type GatewayFixtureOptions = {
   auth?: { mode?: "bearer" | "x-api-key" | "either" };
+  inferenceQueueCapacity?: number;
+  inferenceQueueTimeoutMs?: number;
   managedIdentity?: boolean;
   otelEndpoint?: string;
   llmBackendHealthy?: boolean;
@@ -1587,6 +1589,18 @@ export async function startGatewayFixture(
         ...(options.auth
           ? ["--auth-mode", options.auth.mode ?? "bearer"]
           : ["--no-auth"]),
+        ...(options.inferenceQueueCapacity === undefined
+          ? []
+          : [
+              "--inference-queue-capacity",
+              String(options.inferenceQueueCapacity),
+            ]),
+        ...(options.inferenceQueueTimeoutMs === undefined
+          ? []
+          : [
+              "--inference-queue-timeout-ms",
+              String(options.inferenceQueueTimeoutMs),
+            ]),
         "--bypass-memory-check",
       ],
       {
