@@ -17,10 +17,15 @@ import {
   finalizeGatewayShutdown,
   httpBaseUrl,
   internalGatewayFailure,
+  inferenceQueueError,
   proxyWithAdmission,
   reportMemoryPressureTransition,
   withResponseLease,
 } from "./commands/serve";
+import {
+  InferenceQueueCapacityError,
+  InferenceQueueTimeoutError,
+} from "./inference-queue";
 import { RuntimeMemoryAdmissionError } from "./memory-controller";
 import type { MemorySafetyTransition } from "./memory-safety";
 
@@ -63,6 +68,20 @@ test("normalizes unexpected gateway errors into an OpenAI error envelope", async
       code: "gateway_error",
     },
   });
+});
+
+test("formats queue saturation and deadlines as stable retryable errors", async () => {
+  for (const [error, code] of [
+    [new InferenceQueueCapacityError(), "inference_queue_full"],
+    [new InferenceQueueTimeoutError(), "inference_queue_timeout"],
+  ] as const) {
+    const response = inferenceQueueError(error);
+    expect(response?.status).toBe(429);
+    expect(response?.headers.get("Retry-After")).toBe("1");
+    await expect(response?.json()).resolves.toMatchObject({
+      error: { type: "rate_limit_error", code },
+    });
+  }
 });
 
 test("formats memory admission rejection as a retryable OpenAI error", async () => {
@@ -623,6 +642,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
         attributes: expect.objectContaining({
           "localbase.inference.model_id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
           "localbase.request_id": requestId!,
+          "localbase.inference.queue.duration_ms": expect.any(Number),
           "gen_ai.usage.input_tokens": 3,
           "gen_ai.usage.output_tokens": 2,
           "localbase.inference.outcome": "completed",
