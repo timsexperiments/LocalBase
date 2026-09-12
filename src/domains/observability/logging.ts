@@ -48,6 +48,14 @@ const MAX_COMPONENT_LENGTH = 64;
 const MAX_REQUEST_ID_LENGTH = 128;
 const REDACTED = "[REDACTED]";
 
+const operationalMetricAttributeKeys = [
+  "prompt_tokens",
+  "completion_tokens",
+  "total_tokens",
+  "prompt_duration_ms",
+  "predicted_duration_ms",
+] as const satisfies readonly string[];
+
 export const logSeveritySchema = z.enum(["debug", "info", "warn", "error"]);
 export type LogSeverity = z.infer<typeof logSeveritySchema>;
 
@@ -350,6 +358,16 @@ function recognizedHttpRoute(
   return parsed.success ? parsed.data : "unmatched-route";
 }
 
+function isOperationalMetricAttributeKey(
+  value: string,
+): value is (typeof operationalMetricAttributeKeys)[number] {
+  return operationalMetricAttributeKeys.some((key) => key === value);
+}
+
+function isFiniteNonnegativeNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
 /** Redacts values before an event reaches either console or file sinks. */
 export function redactLogAttributes(
   attributes: Record<string, unknown> | undefined,
@@ -360,6 +378,12 @@ export function redactLogAttributes(
     if (Object.keys(result).length >= MAX_ATTRIBUTE_COUNT) break;
     if (!/^[a-z][a-z0-9_.-]*$/i.test(key) || key.length > 64) continue;
     const normalizedKey = key.toLowerCase();
+    if (isOperationalMetricAttributeKey(normalizedKey)) {
+      result[normalizedKey] = isFiniteNonnegativeNumber(value)
+        ? value
+        : REDACTED;
+      continue;
+    }
     if (sensitiveKeyPattern.test(key) || contentKeyPattern.test(key)) {
       result[normalizedKey] = REDACTED;
       continue;
