@@ -10,6 +10,8 @@ import {
   ensureBinary,
   installModel,
   type LocalBaseConfig,
+  type ModelInstallEvent,
+  type ModelInstallReporter,
 } from "../../manager";
 import type { ServeInput } from "../app/commands/inputs";
 import type { RuntimeConfigSnapshot } from "./config-snapshot";
@@ -161,61 +163,121 @@ async function artifactBytes(
   return (await Bun.file(join(directory, modelFile)).stat()).size;
 }
 
-function createLoggerEvent(
-  ctx: AppContext,
+function createModelInstallReporter(
+  ctx: Pick<AppContext, "logger">,
   modality: RuntimeModality,
-  eventName: "model.installing" | "model.installed" | "model.install-failed",
-  modelId: string,
-  reason?: "incomplete" | "missing",
-  error?: unknown,
-): void {
-  ctx.logger.event({
-    severity: eventName === "model.install-failed" ? "error" : "info",
-    eventName,
-    category: "runtime",
-    component: component(modality),
-    runtime: modality,
-    message:
-      eventName === "model.installing"
-        ? "Installing a selected model."
-        : eventName === "model.installed"
-          ? "Selected model installation completed."
-          : "Selected model installation failed.",
-    ...(error
-      ? {
-          error: {
-            type: error instanceof Error ? error.name : "Error",
-            message: error instanceof Error ? error.message : String(error),
+  reason: "incomplete" | "missing",
+): ModelInstallReporter {
+  const emit = (
+    event: ModelInstallEvent,
+    input: Omit<
+      Parameters<AppContext["logger"]["event"]>[0],
+      "category" | "component" | "runtime"
+    >,
+  ): void => {
+    ctx.logger.event({
+      ...input,
+      category: "runtime",
+      component: component(modality),
+      runtime: modality,
+      attributes: {
+        model_id: event.modelId,
+        reason,
+        ...input.attributes,
+      },
+    });
+  };
+
+  return (event) => {
+    switch (event.kind) {
+      case "started":
+        emit(event, {
+          severity: "info",
+          eventName: "model.installing",
+          message: `Installing selected model ${event.modelId} (${event.artifactCount} ${event.artifactCount === 1 ? "artifact" : "artifacts"}).`,
+          attributes: { artifact_count: event.artifactCount },
+        });
+        return;
+      case "download-progress":
+        emit(event, {
+          severity: "info",
+          eventName: "model.install-progress",
+          message: `Downloading ${event.modelId} artifact ${event.artifactIndex}/${event.artifactCount} (${event.artifactFilename}): ${event.percent}%.`,
+          attributes: {
+            artifact_filename: event.artifactFilename,
+            artifact_index: event.artifactIndex,
+            artifact_count: event.artifactCount,
+            downloaded_bytes: event.downloadedBytes,
+            total_bytes: event.totalBytes,
+            percent: event.percent,
           },
-        }
-      : {}),
-    attributes: { model_id: modelId, ...(reason ? { reason } : {}) },
-  });
+        });
+        return;
+      case "verification-started":
+        emit(event, {
+          severity: "info",
+          eventName: "model.install-verifying",
+          message: `Validating ${event.modelId} artifact ${event.artifactIndex}/${event.artifactCount} (${event.artifactFilename}) against authoritative size and checksum state.`,
+          attributes: {
+            artifact_filename: event.artifactFilename,
+            artifact_index: event.artifactIndex,
+            artifact_count: event.artifactCount,
+          },
+        });
+        return;
+      case "verification-completed":
+        emit(event, {
+          severity: "info",
+          eventName: "model.install-verified",
+          message:
+            event.verification === "sha256"
+              ? `${event.modelId} artifact ${event.artifactIndex}/${event.artifactCount} (${event.artifactFilename}) checksum verified.`
+              : `${event.modelId} artifact ${event.artifactIndex}/${event.artifactCount} (${event.artifactFilename}) matched cached authoritative verification.`,
+          attributes: {
+            artifact_filename: event.artifactFilename,
+            artifact_index: event.artifactIndex,
+            artifact_count: event.artifactCount,
+            verification_method: event.verification,
+          },
+        });
+        return;
+      case "completed":
+        emit(event, {
+          severity: "info",
+          eventName: "model.installed",
+          message: `Selected model ${event.modelId} installation completed.`,
+        });
+        return;
+      case "failed":
+        emit(event, {
+          severity: "error",
+          eventName: "model.install-failed",
+          message: `Selected model ${event.modelId} installation failed during ${event.phase}.`,
+          error: {
+            type: "ModelInstallError",
+            message: "Selected model installation failed.",
+          },
+          attributes: { phase: event.phase },
+        });
+        return;
+    }
+    event satisfies never;
+  };
 }
 
-async function installSelectedModel(
-  ctx: AppContext,
+export async function installSelectedModel(
+  ctx: Pick<AppContext, "logger">,
   config: LocalBaseConfig,
   modality: RuntimeModality,
   modelId: string,
   reason: "incomplete" | "missing",
 ): Promise<string> {
-  createLoggerEvent(ctx, modality, "model.installing", modelId, reason);
-  try {
-    const installed = await installModel(config, modelId);
-    createLoggerEvent(ctx, modality, "model.installed", modelId);
-    return installed;
-  } catch (error) {
-    createLoggerEvent(
-      ctx,
-      modality,
-      "model.install-failed",
-      modelId,
-      reason,
-      error,
-    );
-    throw error;
-  }
+  return await installModel(
+    config,
+    modelId,
+    undefined,
+    createModelInstallReporter(ctx, modality, reason),
+  );
 }
 
 export function runtimeLaunchOverrides(

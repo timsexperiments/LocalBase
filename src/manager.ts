@@ -7,7 +7,11 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join } from "node:path";
-import { safeFilenameSchema, verifyAuthoritativeFile } from "./utils/checksum";
+import {
+  safeFilenameSchema,
+  verifyAuthoritativeFile,
+  type AuthoritativeVerification,
+} from "./utils/checksum";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -560,34 +564,97 @@ export async function installedModels(
   return installed.sort();
 }
 
+type ModelInstallArtifact = Readonly<{
+  modelId: string;
+  artifactFilename: string;
+  artifactIndex: number;
+  artifactCount: number;
+}>;
+
+export type ModelInstallFailurePhase =
+  "preparing" | "downloading" | "verifying" | "publishing";
+
+export type ModelInstallEvent =
+  | Readonly<{ kind: "started"; modelId: string; artifactCount: number }>
+  | (ModelInstallArtifact &
+      Readonly<{
+        kind: "download-progress";
+        downloadedBytes: number;
+        totalBytes: number;
+        percent: number;
+      }>)
+  | (ModelInstallArtifact & Readonly<{ kind: "verification-started" }>)
+  | (ModelInstallArtifact &
+      Readonly<{
+        kind: "verification-completed";
+        verification: AuthoritativeVerification;
+      }>)
+  | Readonly<{ kind: "completed"; modelId: string }>
+  | Readonly<{
+      kind: "failed";
+      modelId: string;
+      phase: ModelInstallFailurePhase;
+      error: unknown;
+    }>;
+
+export type ModelInstallReporter = (event: ModelInstallEvent) => void;
+
 export async function installModel(
   config: LocalBaseConfig,
   modelId: string,
   filename?: string,
+  reporter?: ModelInstallReporter,
 ): Promise<string> {
-  const spec = byId(modelId);
-  if (!spec) {
-    throw new Error(`Unknown model id: ${modelId}`);
+  let failurePhase: ModelInstallFailurePhase = "preparing";
+  try {
+    const spec = byId(modelId);
+    if (!spec) {
+      throw new Error(`Unknown model id: ${modelId}`);
+    }
+
+    const targetDir = kindDir(config, spec.kind);
+    ensureDirs(config);
+    mkdirSync(targetDir, { recursive: true });
+
+    if (filename && spec.artifacts.length > 1) {
+      throw new Error(
+        "A filename override is not supported for multi-artifact models because it breaks shard discovery.",
+      );
+    }
+
+    const primaryFilename = filename ?? primaryArtifact(spec).filename;
+    reporter?.({
+      kind: "started",
+      modelId,
+      artifactCount: spec.artifacts.length,
+    });
+    for (const [artifactOffset, artifact] of spec.artifacts.entries()) {
+      const artifactFilename =
+        spec.artifacts.length === 1 ? primaryFilename : artifact.filename;
+      await installArtifact(
+        config,
+        spec,
+        artifact,
+        targetDir,
+        artifactFilename,
+        artifactOffset + 1,
+        reporter,
+        (phase) => {
+          failurePhase = phase;
+        },
+      );
+    }
+
+    reporter?.({ kind: "completed", modelId });
+    return join(targetDir, primaryFilename);
+  } catch (error) {
+    try {
+      reporter?.({ kind: "failed", modelId, phase: failurePhase, error });
+    } catch {
+      // Preserve the installation failure when failure reporting also fails.
+    }
+    throw error;
   }
-
-  const targetDir = kindDir(config, spec.kind);
-  ensureDirs(config);
-  mkdirSync(targetDir, { recursive: true });
-
-  if (filename && spec.artifacts.length > 1) {
-    throw new Error(
-      "A filename override is not supported for multi-artifact models because it breaks shard discovery.",
-    );
-  }
-
-  const primaryFilename = filename ?? primaryArtifact(spec).filename;
-  for (const artifact of spec.artifacts) {
-    const artifactFilename =
-      spec.artifacts.length === 1 ? primaryFilename : artifact.filename;
-    await installArtifact(config, spec, artifact, targetDir, artifactFilename);
-  }
-
-  return join(targetDir, primaryFilename);
 }
 
 type AuthoritativeArtifact = ModelArtifact & {
@@ -615,8 +682,8 @@ async function validateArtifact(
   artifact: AuthoritativeArtifact,
   filename: string,
   cacheDir: string,
-): Promise<void> {
-  await verifyAuthoritativeFile(
+): Promise<AuthoritativeVerification> {
+  return await verifyAuthoritativeFile(
     path,
     {
       filename,
@@ -625,6 +692,29 @@ async function validateArtifact(
     },
     cacheDir,
   );
+}
+
+type ArtifactValidationResult =
+  | Readonly<{
+      kind: "valid";
+      verification: AuthoritativeVerification;
+    }>
+  | Readonly<{ kind: "invalid"; error: unknown }>;
+
+async function attemptArtifactValidation(
+  path: string,
+  artifact: AuthoritativeArtifact,
+  filename: string,
+  cacheDir: string,
+): Promise<ArtifactValidationResult> {
+  try {
+    return {
+      kind: "valid",
+      verification: await validateArtifact(path, artifact, filename, cacheDir),
+    };
+  } catch (error) {
+    return { kind: "invalid", error };
+  }
 }
 
 async function deleteFileIfExists(path: string): Promise<void> {
@@ -755,16 +845,32 @@ function closeDownloadWriter(
   });
 }
 
-function createDownloadProgress(totalSize: number, initialSize: number) {
+function createDownloadProgress(
+  totalSize: number,
+  initialSize: number,
+  report: (downloadedSize: number, percent: number) => void,
+) {
   const enabled = process.stderr.isTTY === true;
   let lastPercent = Math.floor((initialSize / totalSize) * 100);
+  let lastReportedPercent = -1;
+  const reportPercent = (downloadedSize: number): void => {
+    const percent = Math.floor((downloadedSize / totalSize) * 100);
+    if (percent === lastReportedPercent) return;
+    lastReportedPercent = percent;
+    report(downloadedSize, percent);
+  };
+  reportPercent(initialSize);
   return {
     update(downloadedSize: number) {
-      if (!enabled) return;
       const percent = Math.floor((downloadedSize / totalSize) * 100);
-      if (percent === lastPercent && downloadedSize !== totalSize) return;
-      lastPercent = percent;
-      process.stderr.write(`\r   Download progress: ${percent}%`);
+      reportPercent(downloadedSize);
+      if (
+        enabled &&
+        (percent !== lastPercent || downloadedSize === totalSize)
+      ) {
+        lastPercent = percent;
+        process.stderr.write(`\r   Download progress: ${percent}%`);
+      }
     },
     end() {
       if (enabled) process.stderr.write("\n");
@@ -778,11 +884,34 @@ async function installArtifact(
   artifact: ModelArtifact,
   targetDir: string,
   filename: string,
+  artifactIndex: number,
+  reporter?: ModelInstallReporter,
+  setFailurePhase: (phase: ModelInstallFailurePhase) => void = () => {},
 ): Promise<void> {
   safeFilenameSchema.parse(filename);
   const authority = authoritativeArtifact(artifact, spec.modelId);
   const output = join(targetDir, filename);
   const partial = `${output}.partial`;
+  const artifactEvent: ModelInstallArtifact = {
+    modelId: spec.modelId,
+    artifactFilename: filename,
+    artifactIndex,
+    artifactCount: spec.artifacts.length,
+  };
+  const beginVerification = (): void => {
+    setFailurePhase("verifying");
+    reporter?.({ kind: "verification-started", ...artifactEvent });
+  };
+  const reportVerification = (
+    verification: AuthoritativeVerification,
+  ): void => {
+    reporter?.({
+      kind: "verification-completed",
+      ...artifactEvent,
+      verification,
+    });
+  };
+  setFailurePhase("preparing");
 
   if (await Bun.file(output).exists()) {
     const existingSize = (await Bun.file(output).stat()).size;
@@ -802,13 +931,20 @@ async function installArtifact(
         }
       }
     } else {
-      try {
-        await validateArtifact(output, authority, filename, targetDir);
+      beginVerification();
+      const validation = await attemptArtifactValidation(
+        output,
+        authority,
+        filename,
+        targetDir,
+      );
+      if (validation.kind === "valid") {
+        reportVerification(validation.verification);
         return;
-      } catch {
-        await deleteFileIfExists(output);
-        await deleteFileIfExists(partial);
       }
+      setFailurePhase("preparing");
+      await deleteFileIfExists(output);
+      await deleteFileIfExists(partial);
     }
   }
 
@@ -817,17 +953,26 @@ async function installArtifact(
     if (partialSize > authority.expectedSizeBytes) {
       await Bun.file(partial).delete();
     } else if (partialSize === authority.expectedSizeBytes) {
-      try {
-        await validateArtifact(partial, authority, filename, targetDir);
+      beginVerification();
+      const validation = await attemptArtifactValidation(
+        partial,
+        authority,
+        filename,
+        targetDir,
+      );
+      if (validation.kind === "valid") {
+        reportVerification(validation.verification);
+        setFailurePhase("publishing");
         renameSync(partial, output);
         return;
-      } catch {
-        await deleteFileIfExists(partial);
       }
+      setFailurePhase("preparing");
+      await deleteFileIfExists(partial);
     }
   }
 
   const url = artifactDownloadUrl(spec, artifact);
+  setFailurePhase("downloading");
   console.log(`⬇️  Downloading model "${spec.modelId}" from ${url}...`);
   const token = config.hfToken || process.env.HF_TOKEN || "";
   const partialSize = (await Bun.file(partial).exists())
@@ -858,6 +1003,14 @@ async function installArtifact(
   const progress = createDownloadProgress(
     authority.expectedSizeBytes,
     partialSize,
+    (downloadedBytes, percent) =>
+      reporter?.({
+        kind: "download-progress",
+        ...artifactEvent,
+        downloadedBytes,
+        totalBytes: authority.expectedSizeBytes,
+        percent,
+      }),
   );
   let downloadedSize = partialSize;
   try {
@@ -895,12 +1048,19 @@ async function installArtifact(
     throw downloadError(url, token, error);
   }
 
-  try {
-    await validateArtifact(partial, authority, filename, targetDir);
-  } catch (error) {
+  beginVerification();
+  const validation = await attemptArtifactValidation(
+    partial,
+    authority,
+    filename,
+    targetDir,
+  );
+  if (validation.kind === "invalid") {
     await deleteFileIfExists(partial);
-    throw error;
+    throw validation.error;
   }
+  reportVerification(validation.verification);
+  setFailurePhase("publishing");
   renameSync(partial, output);
 }
 
