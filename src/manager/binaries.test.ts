@@ -505,6 +505,31 @@ test("ignores a legacy flat helper when installing its package", async () => {
   expect(await Bun.file(helperPath).text()).toBe("legacy helper");
 });
 
+test("does not receipt a packaged helper absent from the verified archive", async () => {
+  const archive = await tarGz({
+    "release/llama-server": new TextEncoder().encode("llama server"),
+  });
+  const root = createRoot();
+
+  await withArchive(archive, async (url) => {
+    const serverRelease = release("llama-server", "tar.gz", archive, url, 1);
+    const packageDir = packageDirectory(root, serverRelease);
+    const helperPath = join(packageDir, "llama-tts");
+    mkdirSync(packageDir, { recursive: true });
+    await Bun.write(helperPath, "unverified helper");
+
+    await installManagedRuntime({ root }, serverRelease);
+    expect(statSync(helperPath).mode & 0o111).toBe(0);
+    expect(
+      await Bun.file(join(packageDir, ".managed-binaries.json")).text(),
+    ).not.toContain('"llama-tts"');
+    await expect(
+      installManagedRuntime({ root }, { ...serverRelease, name: "llama-tts" }),
+    ).rejects.toThrow("llama-tts was not found after extracting");
+    expect(await Bun.file(helperPath).text()).toBe("unverified helper");
+  });
+});
+
 test("rejects a modified packaged helper through binary continuity", async () => {
   const server = new TextEncoder().encode("llama server executable");
   const helper = new TextEncoder().encode("llama tts executable");

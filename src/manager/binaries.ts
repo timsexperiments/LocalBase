@@ -706,8 +706,8 @@ async function installManagedRuntimeNow(
     for (const name of runtimeFamilyExecutables[
       executableRuntimeFamily[release.name]
     ]) {
+      if (!existingEntry(join(stagingDir, name))?.isFile()) continue;
       const executable = join(packageDir, name);
-      if (!existingEntry(executable)?.isFile()) continue;
       chmodSync(executable, statSync(executable).mode | 0o111);
       receipt.runtimes[name] = {
         tag: release.tag,
