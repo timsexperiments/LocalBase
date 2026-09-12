@@ -9,7 +9,7 @@ import {
   MemorySafetyController,
 } from "./memory-controller";
 import { defaultMemorySafetyConfig, gibibyte } from "./memory-safety";
-import { ManagedService } from "./supervisor";
+import { ManagedService, type ManagedServiceOptions } from "./supervisor";
 
 function testLaunchPlan(runtimeId: string): RuntimeLaunchPlan {
   return {
@@ -77,13 +77,17 @@ function recordingMemorySafety(): {
   };
 }
 
-function recordingLogger(eventNames: string[]): ILogger {
+function recordingLogger(
+  eventNames: string[],
+  onEvent?: (eventName: string) => void,
+): ILogger {
   return {
     info() {},
     warn() {},
     error() {},
     event(input) {
       eventNames.push(input.eventName);
+      onEvent?.(input.eventName);
     },
     request() {},
     pipeStream() {},
@@ -94,6 +98,7 @@ function recordingLogger(eventNames: string[]): ILogger {
 
 type DeferredBackend = {
   process: Bun.Subprocess;
+  ready: Promise<void>;
   exit(): void;
 };
 
@@ -105,34 +110,71 @@ function deferredBackend(): DeferredBackend {
       [
         'process.on("SIGTERM", () => {});',
         'process.stdin.on("data", () => process.exit(0));',
+        'process.stdout.write("ready\\n");',
       ].join(""),
     ],
-    { stdin: "pipe", stdout: "ignore", stderr: "ignore" },
+    { stdin: "pipe", stdout: "pipe", stderr: "ignore" },
   );
   if (!child.stdin || typeof child.stdin === "number") {
     child.kill();
     throw new Error("Deferred backend did not expose stdin.");
   }
+  if (!child.stdout || typeof child.stdout === "number") {
+    child.kill();
+    throw new Error("Deferred backend did not expose stdout.");
+  }
+  const ready = (async () => {
+    const reader = child.stdout.getReader();
+    try {
+      const { done, value } = await reader.read();
+      if (
+        done ||
+        !value ||
+        !new TextDecoder().decode(value).includes("ready")
+      ) {
+        throw new Error("Deferred backend did not acknowledge readiness.");
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  })();
 
   return {
     process: child,
+    ready,
     exit() {
       if (child.exitCode === null) child.stdin.write("exit\n");
     },
   };
 }
 
-function controlledStopService(): {
+function controlledStopService(
+  options: Pick<ManagedServiceOptions, "startGuardian"> = {},
+): {
   service: ManagedService;
   events: string[];
   memory: ReturnType<typeof recordingMemorySafety>;
   backends: DeferredBackend[];
+  firstBackend: Promise<DeferredBackend>;
+  stopStarted: Promise<void>;
   restoreFetch(): void;
   otel: ReturnType<typeof createOtelRuntime>;
 } {
   const events: string[] = [];
   const memory = recordingMemorySafety();
   const backends: DeferredBackend[] = [];
+  let publishFirstBackend: (backend: DeferredBackend) => void = () => {
+    throw new Error("First backend barrier was not initialized.");
+  };
+  const firstBackend = new Promise<DeferredBackend>((resolve) => {
+    publishFirstBackend = resolve;
+  });
+  let notifyStopStarted: () => void = () => {
+    throw new Error("Stop barrier was not initialized.");
+  };
+  const stopStarted = new Promise<void>((resolve) => {
+    notifyStopStarted = resolve;
+  });
   const originalFetch = globalThis.fetch;
   Object.defineProperty(globalThis, "fetch", {
     configurable: true,
@@ -154,19 +196,26 @@ function controlledStopService(): {
       modality: "llm",
       component: "llama-server",
       healthUrl: "http://127.0.0.1:1/health",
-      logger: recordingLogger(events),
+      logger: recordingLogger(events, (eventName) => {
+        if (eventName === "backend.stopping") notifyStopStarted();
+      }),
       launch: async () => testLaunchPlan("llm:stop:1"),
       start: async () => {
         const backend = deferredBackend();
         backends.push(backend);
+        if (backends.length === 1) publishFirstBackend(backend);
+        await backend.ready;
         return backend.process;
       },
       memorySafety: memory.controller,
       otel,
+      ...options,
     }),
     events,
     memory,
     backends,
+    firstBackend,
+    stopStarted,
     restoreFetch() {
       Object.defineProperty(globalThis, "fetch", {
         configurable: true,
@@ -205,6 +254,42 @@ test("kill reports a managed backend stop only after its process exits", async (
     expect(stopEvents(events)).toEqual(["backend.stopping", "backend.stopped"]);
     expect(memory.releases).toEqual(["llm:stop:1"]);
     expect(service.state()).toBe("idle");
+  } finally {
+    await service.shutdown();
+    restoreFetch();
+    await otel.shutdown();
+  }
+});
+
+test("guardian startup failure stops the registered backend before release", async () => {
+  let guardianStarts = 0;
+  const {
+    service,
+    events,
+    memory,
+    firstBackend,
+    stopStarted,
+    restoreFetch,
+    otel,
+  } = controlledStopService({
+    startGuardian() {
+      guardianStarts += 1;
+      throw new Error("guardian spawn failed");
+    },
+  });
+  try {
+    const starting = service.ensureRunning();
+    const backend = await firstBackend;
+    await stopStarted;
+
+    expect(guardianStarts).toBe(1);
+    expect(memory.releases).toEqual([]);
+    backend.exit();
+    await backend.process.exited;
+    await expect(starting).rejects.toThrow("guardian spawn failed");
+
+    expect(memory.releases).toEqual(["llm:stop:1"]);
+    expect(stopEvents(events)).toEqual(["backend.stopping", "backend.stopped"]);
   } finally {
     await service.shutdown();
     restoreFetch();

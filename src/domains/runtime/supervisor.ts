@@ -41,6 +41,7 @@ export type ManagedServiceOptions = {
   logger: ILogger;
   launch: () => Promise<RuntimeLaunchPlan>;
   start: (plan: RuntimeLaunchPlan) => Promise<Bun.Subprocess>;
+  startGuardian?: (backend: Bun.Subprocess) => Bun.Subprocess;
   memorySafety: MemorySafetyController;
   otel: OtelRuntime;
   startupTimeoutMs?: number;
@@ -235,7 +236,6 @@ export class ManagedService {
         );
         const startedProcess = proc;
         this.proc = startedProcess;
-        this.startGuardian(startedProcess);
         const cleanup = startedProcess.exited.then(async () => {
           try {
             await this.stopGuardian(startedProcess);
@@ -252,6 +252,7 @@ export class ManagedService {
             error as Error,
           );
         });
+        this.startGuardian(startedProcess);
         if (!this.startupIsActive(attempt) || this.isShuttingDown) {
           throw new StartupCancelledError(this.name);
         }
@@ -446,12 +447,14 @@ export class ManagedService {
   }
 
   private startGuardian(proc: Bun.Subprocess): void {
-    const guardian = Bun.spawn(guardianProcessCommand(process.pid, proc.pid), {
-      stdin: "ignore",
-      stdout: "ignore",
-      stderr: "ignore",
-      detached: true,
-    });
+    const guardian =
+      this.options.startGuardian?.(proc) ??
+      Bun.spawn(guardianProcessCommand(process.pid, proc.pid), {
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+        detached: true,
+      });
     this.guardians.set(proc.pid, guardian);
     guardian.exited.then(() => {
       if (this.guardians.get(proc.pid) === guardian) {
