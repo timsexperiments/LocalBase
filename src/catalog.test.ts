@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { CATALOG, artifactDownloadUrl, catalogSchema } from "./catalog";
+import { CATALOG, artifactDownloadUrl, byId, catalogSchema } from "./catalog";
 
 const checksum = "a".repeat(64);
+
+const verifiedContextWindows = new Map<string, number>([
+  ["qwen2.5-coder-1.5b-instruct-q4_k_m", 32_768],
+  ["qwen3-coder-next-q4_k_m", 262_144],
+  ["gpt-oss-20b-q4_k_m", 131_072],
+  ["qwen3.5-27b-q4_k_m", 262_144],
+  ["mistral-small-3.2-24b-instruct-q4_k_m", 131_072],
+]);
 
 function model(artifacts: unknown[]) {
   return {
@@ -129,6 +137,28 @@ describe("catalog artifact validation", () => {
     }
   });
 
+  test("rejects empty or unknown modality contracts", () => {
+    const artifacts = [
+      {
+        sourcePath: "model.gguf",
+        filename: "model.gguf",
+        expectedSizeBytes: 10,
+        sha256: checksum,
+        role: "primary",
+      },
+    ];
+
+    expect(
+      catalogSchema.safeParse([{ ...model(artifacts), inputModalities: [] }])
+        .success,
+    ).toBe(false);
+    expect(
+      catalogSchema.safeParse([
+        { ...model(artifacts), outputModalities: ["video"] },
+      ]).success,
+    ).toBe(false);
+  });
+
   test("requires complete immutable sources for artifact overrides", () => {
     const invalidSources = [
       { repositoryUrl: "https://huggingface.co/test/encoder" },
@@ -166,6 +196,27 @@ describe("catalog artifact validation", () => {
         expect(artifact.sha256).toMatch(/^[a-f0-9]{64}$/);
       }
     }
+  });
+
+  test("records verified packaged modalities and context limits", () => {
+    for (const [modelId, contextWindowTokens] of verifiedContextWindows) {
+      expect(byId(modelId)).toMatchObject({
+        inputModalities: ["text"],
+        outputModalities: ["text"],
+        contextWindowTokens,
+      });
+    }
+
+    const gemma = byId("gemma-3-12b-it-q4_k_m");
+    expect(gemma?.contextWindowTokens).toBeNull();
+    expect(gemma).toMatchObject({
+      inputModalities: ["text"],
+      outputModalities: ["text"],
+    });
+    expect(gemma?.features).not.toContain("vision");
+    expect(gemma?.artifacts).toEqual([
+      expect.objectContaining({ role: "primary" }),
+    ]);
   });
 
   test("pins the complete Qwen3 TTS base artifact set", () => {

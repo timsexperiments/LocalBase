@@ -1,18 +1,26 @@
-import { byId, type ModelKind, type ModelSpec } from "../../catalog";
+import {
+  byId,
+  type ModelKind,
+  type ModelModality,
+  type ModelSpec,
+} from "../../catalog";
 import { z } from "zod";
+
+const expectedModalities = {
+  llm: { input: "text", output: "text" },
+  stt: { input: "audio", output: "text" },
+  tts: { input: "text", output: "audio" },
+  image: { input: "text", output: "image" },
+} satisfies Record<
+  ModelKind,
+  Readonly<{ input: ModelModality; output: ModelModality }>
+>;
 
 function modelHasExpectedModalities(
   model: ModelSpec,
   kind: ModelKind,
 ): boolean {
-  const expected =
-    kind === "llm"
-      ? { input: "text", output: "text" }
-      : kind === "stt"
-        ? { input: "audio", output: "text" }
-        : kind === "tts"
-          ? { input: "text", output: "audio" }
-          : { input: "text", output: "image" };
+  const expected = expectedModalities[kind];
   return (
     model.inputModalities.includes(expected.input) &&
     model.outputModalities.includes(expected.output)
