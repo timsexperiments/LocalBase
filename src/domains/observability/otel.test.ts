@@ -474,12 +474,24 @@ test("exports correlated OTLP logs and parented W3C spans to a collector", async
               attributes: {
                 authorization: "Bearer secret-value",
                 prompt: "do not export",
+                prompt_tokens: 11,
+                completion_tokens: 7,
+                total_tokens: 18,
+                prompt_duration_ms: 1.25,
+                predicted_duration_ms: 2.75,
               },
             },
             correlation,
           ),
         );
         expect(event.trace).toEqual(correlation);
+        expect(event.attributes).toMatchObject({
+          prompt_tokens: 11,
+          completion_tokens: 7,
+          total_tokens: 18,
+          prompt_duration_ms: 1.25,
+          predicted_duration_ms: 2.75,
+        });
         runtime.emit(event);
         await runtime.withSpan(
           "localbase.backend.inference",
@@ -540,6 +552,15 @@ test("exports correlated OTLP logs and parented W3C spans to a collector", async
     expect(exportedText).toContain("http.request");
     expect(exportedText).not.toContain("secret-value");
     expect(exportedText).not.toContain("do not export");
+    for (const metric of [
+      "prompt_tokens",
+      "completion_tokens",
+      "total_tokens",
+      "prompt_duration_ms",
+      "predicted_duration_ms",
+    ]) {
+      expect(exportedText).toContain(metric);
+    }
 
     const malformed = runtime.extract(
       new Headers({ traceparent: "not-a-traceparent", tracestate: "bad" }),
