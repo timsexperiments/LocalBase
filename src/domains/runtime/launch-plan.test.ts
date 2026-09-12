@@ -32,7 +32,12 @@ describe("runtime launch plans", () => {
         component: "llama-server",
         modelPath: `${root}/models/llm/model.gguf`,
         healthUrl: "http://127.0.0.1:8080/health",
-        memoryDemand: { unifiedBytes: 7 * 1024 ** 3 },
+        memoryDemand: {
+          unifiedBytes: 7 * 1024 ** 3,
+          hostBytes: 5 * 1024 ** 3,
+          acceleratorBytes: 6.5 * 1024 ** 3,
+          confidence: "estimated",
+        },
       },
     },
     {
@@ -54,7 +59,12 @@ describe("runtime launch plans", () => {
         component: "whisper-server",
         modelPath: `${root}/models/stt/model.bin`,
         healthUrl: "http://127.0.0.1:8081/health",
-        memoryDemand: { unifiedBytes: 1.5 * 1024 ** 3 },
+        memoryDemand: {
+          unifiedBytes: 1.5 * 1024 ** 3,
+          hostBytes: 1.5 * 1024 ** 3,
+          acceleratorBytes: 1024 ** 3,
+          confidence: "estimated",
+        },
       },
     },
     {
@@ -76,7 +86,12 @@ describe("runtime launch plans", () => {
         component: "sd-server",
         modelPath: `${root}/models/image/model.safetensors`,
         healthUrl: "http://127.0.0.1:8082/",
-        memoryDemand: { unifiedBytes: 2.5 * 1024 ** 3 },
+        memoryDemand: {
+          unifiedBytes: 2.5 * 1024 ** 3,
+          hostBytes: 2.5 * 1024 ** 3,
+          acceleratorBytes: 2 * 1024 ** 3,
+          confidence: "estimated",
+        },
       },
     },
   ])("resolves $name launch settings without I/O", ({ resolve, expected }) => {
