@@ -67,7 +67,7 @@ function runtimeMemoryDemand(input: {
     unifiedBytes: requirementBytes + RUNTIME_HOST_OVERHEAD_BYTES,
     hostBytes: input.artifactBytes + RUNTIME_HOST_OVERHEAD_BYTES,
     acceleratorBytes: requirementBytes,
-    confidence: "authoritative",
+    confidence: "estimated",
   });
 }
 
@@ -93,7 +93,7 @@ function llmMemoryDemand(input: {
       requirementBytes + contextBytes + slotBytes + RUNTIME_HOST_OVERHEAD_BYTES,
     hostBytes: input.artifactBytes + RUNTIME_HOST_OVERHEAD_BYTES + contextBytes,
     acceleratorBytes: requirementBytes + contextBytes + slotBytes,
-    confidence: "authoritative",
+    confidence: "estimated",
   });
 }
 
