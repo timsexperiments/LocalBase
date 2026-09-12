@@ -11,6 +11,7 @@ import {
   InferenceQueueAbortedError,
   InferenceQueueUnavailableError,
   type InferenceDispatchLease,
+  type InferencePermitSnapshot,
 } from "./inference-queue";
 import {
   modalityComponents,
@@ -42,17 +43,28 @@ export type RuntimeAdmission = Readonly<{
 
 type RuntimeLease = Omit<RuntimeAdmission, "ready">;
 
-type ModelAdmission = Readonly<{
+type PreparedModelAdmission = Readonly<{
   modelId: string;
-  queueWaitMs?: number;
   admission: RuntimeAdmission;
 }>;
 
-export type ModelAdmissionResult =
-  | Readonly<{ kind: "admitted"; value: ModelAdmission }>
+type ModelAdmission = PreparedModelAdmission &
+  Readonly<{
+    queueWaitMs: number;
+    admissionSnapshot: InferencePermitSnapshot;
+  }>;
+
+type ModelAdmissionFailure =
   | Readonly<{ kind: "not-configured" }>
   | Readonly<{ kind: "model-not-found" }>
   | Readonly<{ kind: "unavailable" }>;
+
+type PreparedModelAdmissionResult =
+  | Readonly<{ kind: "admitted"; value: PreparedModelAdmission }>
+  | ModelAdmissionFailure;
+
+export type ModelAdmissionResult =
+  Readonly<{ kind: "admitted"; value: ModelAdmission }> | ModelAdmissionFailure;
 
 type ConfiguredModalities = Record<RuntimeModality, boolean>;
 type ModalityTransitions = Record<RuntimeModality, Promise<void>>;
@@ -128,7 +140,7 @@ export class RuntimeReconciler {
   private sharedRefresh: Promise<RuntimeConfigSnapshot> | undefined;
   private readonly queues: Record<
     RuntimeModality,
-    InferenceQueue<ModelAdmissionResult>
+    InferenceQueue<PreparedModelAdmissionResult>
   >;
 
   constructor(
@@ -169,7 +181,7 @@ export class RuntimeReconciler {
           },
         }),
       ]),
-    ) as Record<RuntimeModality, InferenceQueue<ModelAdmissionResult>>;
+    ) as Record<RuntimeModality, InferenceQueue<PreparedModelAdmissionResult>>;
     this.supervisors.setAdmissionReader((modality) =>
       this.barriers[modality].snapshot(),
     );
@@ -342,6 +354,7 @@ export class RuntimeReconciler {
         value: {
           ...result.value,
           queueWaitMs: queued.queueWaitMs,
+          admissionSnapshot: queued.permitSnapshot,
           admission: Object.freeze({
             ...admission,
             cancel: () => settle(true),
@@ -374,7 +387,7 @@ export class RuntimeReconciler {
     signal: AbortSignal | undefined,
     coordinated?: CoordinatedSnapshot,
     dispatchLease?: InferenceDispatchLease,
-  ): Promise<ModelAdmissionResult> {
+  ): Promise<PreparedModelAdmissionResult> {
     coordinated ??= await this.coordinate();
     return await this.exclusiveModality(modality, async () => {
       await coordinated.transitions[modality];

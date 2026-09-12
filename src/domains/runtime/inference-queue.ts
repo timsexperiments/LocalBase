@@ -35,9 +35,15 @@ export type InferenceQueueSnapshot = Readonly<{
   maxWaitMs: number;
   accepting: boolean;
 }>;
+export type InferencePermitSnapshot = Readonly<{
+  active: number;
+  slots: number;
+  waiting: number;
+}>;
 export type QueuedLease<Value> = Readonly<{
   value: Value;
   queueWaitMs: number;
+  permitSnapshot: InferencePermitSnapshot;
   release: () => void;
 }>;
 export type InferenceDispatchLease = Readonly<{
@@ -220,6 +226,11 @@ export class InferenceQueue<Value> {
             item.resolve({
               value,
               queueWaitMs,
+              permitSnapshot: Object.freeze({
+                active: this.active,
+                slots: this.slots,
+                waiting: this.pending.length,
+              }),
               release() {},
             });
             continue;
@@ -243,6 +254,11 @@ export class InferenceQueue<Value> {
             Object.freeze({
               value,
               queueWaitMs,
+              permitSnapshot: Object.freeze({
+                active: this.active,
+                slots: this.slots,
+                waiting: this.pending.length,
+              }),
               release: () => {
                 if (released) return;
                 released = true;

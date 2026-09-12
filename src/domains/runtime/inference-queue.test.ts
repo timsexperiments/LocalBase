@@ -69,9 +69,19 @@ test("wakes same-model waiters when a cold LLM resolves more slots", async () =>
   markReady();
   const secondLease = await second;
   expect(secondDispatched).toBe(true);
+  expect(secondLease.permitSnapshot).toEqual({
+    active: 2,
+    slots: 3,
+    waiting: 0,
+  });
   expect(inferenceQueue.snapshot().active).toBe(2);
   first.release();
   secondLease.release();
+  expect(secondLease.permitSnapshot).toEqual({
+    active: 2,
+    slots: 3,
+    waiting: 0,
+  });
 });
 
 test("dispatches FIFO and holds permits until exactly-once release", async () => {

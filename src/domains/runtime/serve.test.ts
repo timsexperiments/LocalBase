@@ -10,6 +10,7 @@ import {
 } from "../../test/gateway-fixture";
 import { decodeOtlpTraceSpans } from "../../test/otlp-fixture";
 import { LocalBaseLogger, readLogSnapshot } from "../observability/logging";
+import type { InferenceTerminal } from "../observability/inference";
 import { gatewayHealthSchema } from "./health";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
@@ -87,6 +88,7 @@ test("formats queue saturation and deadlines as stable retryable errors", async 
 test("formats memory admission rejection as a retryable OpenAI error", async () => {
   let releases = 0;
   let dispatched = false;
+  const terminals: InferenceTerminal[] = [];
   const response = await proxyWithAdmission(
     {
       modality: "llm",
@@ -128,12 +130,20 @@ test("formats memory admission rejection as a retryable OpenAI error", async () 
       dispatched = true;
       return new Response();
     },
+    (terminal) => terminals.push(terminal),
   );
 
   expect(response.status).toBe(503);
   expect(response.headers.get("Retry-After")).toBe("5");
   expect(releases).toBe(1);
   expect(dispatched).toBe(false);
+  expect(terminals).toEqual([
+    {
+      outcome: "error",
+      httpStatus: 503,
+      source: "memory_admission",
+    },
+  ]);
   await expect(response.json()).resolves.toEqual({
     error: {
       message:
@@ -233,7 +243,7 @@ test("cancels response leases on cancellation and releases them on completion", 
   const responseAbort = new AbortController();
   let streamReleases = 0;
   let streamCancels = 0;
-  const streamOutcomes: string[] = [];
+  const streamTerminals: InferenceTerminal[] = [];
   const leasedStream = withResponseLease(
     streamCancellation.response,
     () => {
@@ -244,7 +254,7 @@ test("cancels response leases on cancellation and releases them on completion", 
       responseAbort.abort();
     },
     streamAbort.signal,
-    (outcome) => streamOutcomes.push(outcome),
+    (terminal) => streamTerminals.push(terminal),
   );
   const streamReader = leasedStream.body!.getReader();
   await streamReader.read();
@@ -253,13 +263,19 @@ test("cancels response leases on cancellation and releases them on completion", 
   expect(streamReleases).toBe(0);
   expect(streamCancels).toBe(1);
   expect(responseAbort.signal.aborted).toBe(true);
-  expect(streamOutcomes).toEqual(["cancelled"]);
+  expect(streamTerminals).toEqual([
+    {
+      outcome: "cancelled",
+      httpStatus: 200,
+      source: "response_cancelled",
+    },
+  ]);
 
   const requestCancellation = createLeasedResponse();
   const requestAbort = new AbortController();
   let requestReleases = 0;
   let requestCancels = 0;
-  const requestOutcomes: string[] = [];
+  const requestTerminals: InferenceTerminal[] = [];
   withResponseLease(
     requestCancellation.response,
     () => {
@@ -269,13 +285,19 @@ test("cancels response leases on cancellation and releases them on completion", 
       requestCancels += 1;
     },
     requestAbort.signal,
-    (outcome) => requestOutcomes.push(outcome),
+    (terminal) => requestTerminals.push(terminal),
   );
   requestAbort.abort();
   await requestCancellation.cancelled;
   expect(requestReleases).toBe(0);
   expect(requestCancels).toBe(1);
-  expect(requestOutcomes).toEqual(["cancelled"]);
+  expect(requestTerminals).toEqual([
+    {
+      outcome: "cancelled",
+      httpStatus: 200,
+      source: "request_aborted",
+    },
+  ]);
 
   let completedReleases = 0;
   let completedCancels = 0;
@@ -295,7 +317,7 @@ test("cancels response leases on cancellation and releases them on completion", 
 
   let failedReleases = 0;
   let failedCancels = 0;
-  const failedOutcomes: string[] = [];
+  const failedTerminals: InferenceTerminal[] = [];
   const failed = withResponseLease(
     new Response(
       new ReadableStream<Uint8Array>({
@@ -311,17 +333,23 @@ test("cancels response leases on cancellation and releases them on completion", 
       failedCancels += 1;
     },
     new AbortController().signal,
-    (outcome) => failedOutcomes.push(outcome),
+    (terminal) => failedTerminals.push(terminal),
   );
   await expect(failed.arrayBuffer()).rejects.toThrow("upstream read failed");
-  expect({ failedReleases, failedCancels, failedOutcomes }).toEqual({
+  expect({ failedReleases, failedCancels, failedTerminals }).toEqual({
     failedReleases: 0,
     failedCancels: 1,
-    failedOutcomes: ["error"],
+    failedTerminals: [
+      {
+        outcome: "error",
+        httpStatus: 200,
+        source: "response_stream_error",
+      },
+    ],
   });
 
   let bodylessReleases = 0;
-  const bodylessOutcomes: string[] = [];
+  const bodylessTerminals: InferenceTerminal[] = [];
   withResponseLease(
     new Response(null, { status: 204 }),
     () => {
@@ -329,11 +357,11 @@ test("cancels response leases on cancellation and releases them on completion", 
     },
     () => {},
     new AbortController().signal,
-    (outcome) => bodylessOutcomes.push(outcome),
+    (terminal) => bodylessTerminals.push(terminal),
   );
-  expect({ bodylessReleases, bodylessOutcomes }).toEqual({
+  expect({ bodylessReleases, bodylessTerminals }).toEqual({
     bodylessReleases: 1,
-    bodylessOutcomes: ["completed"],
+    bodylessTerminals: [{ outcome: "completed", httpStatus: 204 }],
   });
 });
 
@@ -518,6 +546,11 @@ test("compiled managed gateway writes redacted root-bound operational logs", asy
 });
 
 test("compiled gateway continues W3C context and exports correlated telemetry", async () => {
+  const telemetryModel = byId("qwen2.5-coder-1.5b-instruct-q4_k_m");
+  if (!telemetryModel) throw new Error("Telemetry fixture model is missing.");
+  const telemetryArtifact = primaryArtifact(telemetryModel);
+  const telemetryRevision =
+    telemetryArtifact.source?.revision ?? telemetryModel.repositoryRevision;
   const received: Array<{ path: string; body: Uint8Array }> = [];
   const collector = Bun.serve({
     hostname: "127.0.0.1",
@@ -538,6 +571,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   const traceId = "0af7651916cd43dd8448eb211c80319c";
   const parentId = "b7ad6b7169203331";
   let requestId: string | null;
+  let partialRequestId: string | null;
   let cancelledRequestId: string | null;
   let backendErrorRequestId: string | null;
   let admissionFailureRequestId: string | null;
@@ -554,6 +588,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
           tracestate: "localbase=test",
           baggage: "private=never-proxy-baggage",
           "x-request-id": "otel-compiled-request",
+          "x-test-upstream": "telemetry-metadata",
         },
         body: JSON.stringify({
           model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
@@ -564,7 +599,31 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
     expect(response.status).toBe(200);
     requestId = response.headers.get("x-localbase-request-id");
     expect(requestId).toMatch(/^lbreq_/);
+    expect(response.headers.get("server-timing")).toInclude("queue;dur=");
+    expect(response.headers.get("server-timing")).toInclude("prompt;dur=3.00");
+    expect(response.headers.get("server-timing")).toInclude(
+      "generation;dur=4.00",
+    );
+    expect(response.headers.get("server-timing")).toInclude("localbase;dur=");
+    expect(response.headers.get("server-timing")).not.toInclude("load");
     await response.json();
+
+    const partial = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-test-upstream": "telemetry-partial-metadata",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [{ role: "user", content: "private partial probe" }],
+      }),
+    });
+    partialRequestId = partial.headers.get("x-localbase-request-id");
+    expect(partialRequestId).toMatch(/^lbreq_/);
+    expect(partial.headers.get("server-timing")).toInclude("prompt;dur=7.00");
+    expect(partial.headers.get("server-timing")).not.toInclude("generation;");
+    await partial.json();
 
     const streamed = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
       method: "POST",
@@ -579,6 +638,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
       }),
     });
     expect(streamed.status).toBe(200);
+    expect(streamed.headers.has("server-timing")).toBe(false);
     await streamed.text();
     const upstream = gateway.upstreamRequests.find(
       (request) => request.path === "/v1/chat/completions",
@@ -661,6 +721,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
       }),
     });
     expect(failed.status).toBeGreaterThanOrEqual(500);
+    expect(failed.headers.get("server-timing")).toInclude("prepare;dur=");
     backendErrorRequestId = failed.headers.get("x-localbase-request-id");
     expect(backendErrorRequestId).toMatch(/^lbreq_/);
     await failed.text();
@@ -729,9 +790,21 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   expect(logPayloads).not.toEqual([]);
   expect(traceBytes.includes(Buffer.from(traceId, "hex"))).toBe(true);
   expect(logBytes.includes(Buffer.from(traceId, "hex"))).toBe(true);
-  expect(new TextDecoder().decode(logBytes)).not.toContain(
-    "never-export-this-prompt",
-  );
+  const exportedLogText = new TextDecoder().decode(logBytes);
+  expect(exportedLogText).not.toContain("never-export-this-prompt");
+  expect(exportedLogText).not.toContain("never-export-unknown-finish-reason");
+  for (const attribute of [
+    "artifact_revision",
+    "quantization",
+    "runtime_name",
+    "admission_active",
+    "admission_slots",
+    "admission_waiting",
+    "http_status",
+    "upstream_status",
+  ]) {
+    expect(exportedLogText).toContain(attribute);
+  }
   const exportedTraceText = new TextDecoder().decode(traceBytes);
   expect(exportedTraceText).toContain("POST /v1/chat/completions");
   expect(exportedTraceText).not.toContain("never-export-query");
@@ -742,6 +815,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   );
   expect(exportedTraceText).not.toContain("never-export-pattern");
   expect(exportedTraceText).not.toContain("never-export-rejected-content");
+  expect(exportedTraceText).not.toContain("never-export-unknown-finish-reason");
   const traceSpans = tracePayloads.flatMap((payload) =>
     decodeOtlpTraceSpans(payload),
   );
@@ -757,6 +831,13 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   const inferenceSpans = traceSpans.filter(
     (span) => span.name === "localbase.inference",
   );
+  expect(
+    traceSpans.find(
+      (span) =>
+        span.name === "POST /v1/chat/completions" &&
+        span.attributes["localbase.request_id"] === requestId,
+    ),
+  ).toBeDefined();
   for (const [requestId, outcome] of [
     [invalidSchemaRequestId, "invalid"],
     [unsupportedSchemaRequestId, "unsupported"],
@@ -788,8 +869,20 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
           "localbase.inference.model_id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
           "localbase.request_id": requestId!,
           "localbase.inference.queue.duration_ms": expect.any(Number),
+          "localbase.inference.runtime.name": "llama-server",
+          "localbase.inference.artifact.revision": telemetryRevision,
+          "localbase.inference.model.quantization": "Q4_K_M",
+          "localbase.inference.admission.active": 1,
+          "localbase.inference.admission.slots": 1,
+          "localbase.inference.admission.waiting": 0,
           "gen_ai.usage.input_tokens": 3,
           "gen_ai.usage.output_tokens": 2,
+          "localbase.inference.usage.total_tokens": 5,
+          "http.response.status_code": 200,
+          "localbase.inference.upstream.status_code": 200,
+          "localbase.inference.backend.prompt.duration_ms": 3,
+          "localbase.inference.backend.predicted.duration_ms": 4,
+          "localbase.inference.finish_reasons": "unknown",
           "localbase.inference.outcome": "completed",
         }),
       }),
@@ -807,13 +900,28 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
       }),
     ]),
   );
+  expect(
+    inferenceSpans.find(
+      (span) => span.attributes["localbase.request_id"] === partialRequestId,
+    )?.attributes,
+  ).toMatchObject({
+    "localbase.inference.backend.prompt.duration_ms": 7,
+    "localbase.inference.finish_reasons": "stop",
+  });
+  expect(
+    inferenceSpans.find(
+      (span) => span.attributes["localbase.request_id"] === partialRequestId,
+    )?.attributes,
+  ).not.toHaveProperty("localbase.inference.backend.predicted.duration_ms");
   expect(JSON.stringify(inferenceSpans)).not.toContain("/private/tmp/");
   expect(JSON.stringify(inferenceSpans)).not.toContain("private stream prompt");
   expect(
     inferenceSpans.filter(
       (span) =>
         span.attributes["localbase.inference.outcome"] === "cancelled" &&
-        span.attributes["localbase.request_id"] === cancelledRequestId,
+        span.attributes["localbase.request_id"] === cancelledRequestId &&
+        span.attributes["localbase.inference.terminal.source"] ===
+          "request_aborted",
     ),
   ).toHaveLength(1);
   expect(
@@ -827,6 +935,8 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
       "localbase.inference.json_schema.native_mode": "requested",
       "localbase.inference.json_schema.validation": "not_performed",
       "localbase.inference.outcome": "error",
+      "http.response.status_code": 502,
+      "localbase.inference.upstream.status_code": 503,
     },
   });
   expect(
@@ -843,6 +953,12 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
         span.attributes["localbase.request_id"] === admissionFailureRequestId,
     ),
   ).toHaveLength(1);
+  expect(
+    inferenceSpans.find(
+      (span) =>
+        span.attributes["localbase.request_id"] === admissionFailureRequestId,
+    )?.attributes,
+  ).not.toHaveProperty("localbase.inference.terminal.source");
 });
 
 describe("API gateway integration", () => {
