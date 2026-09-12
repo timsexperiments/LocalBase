@@ -99,9 +99,13 @@ test("projects real HTTP queue saturation into readiness and authenticated metad
     expect(saturated).toMatchObject({
       configured: true,
       state: "running",
-      effectiveSlots: 2,
-      availableCapacity: 0,
-      queueDepth: 1,
+      executionSlots: 2,
+      activeAdmissions: 2,
+      availableExecutionSlots: 0,
+      immediateDispatchAvailable: false,
+      queuedRequests: 1,
+      waitingCapacity: 1,
+      availableWaitingCapacity: 0,
     });
     expect(
       gateway.upstreamRequests.filter((request) =>
@@ -163,9 +167,13 @@ test("projects real HTTP queue saturation into readiness and authenticated metad
     expect(availableMetadata.status).toBe(200);
     const available = modelRuntime(await availableMetadata.json());
     expect(available).toMatchObject({
-      effectiveSlots: 2,
-      availableCapacity: 1,
-      queueDepth: 0,
+      executionSlots: 2,
+      activeAdmissions: 2,
+      availableExecutionSlots: 0,
+      immediateDispatchAvailable: false,
+      queuedRequests: 0,
+      waitingCapacity: 1,
+      availableWaitingCapacity: 1,
     });
     const ready = await fetch(`${gateway.baseUrl}/health/ready`);
     expect(ready.status).toBe(200);

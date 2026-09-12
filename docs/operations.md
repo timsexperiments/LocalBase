@@ -54,7 +54,7 @@ Inference telemetry does not record prompts, generated content, credentials, bag
 
 Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` report catalog identity, artifact checksums and sizes, catalog memory estimates, selection and installation state, and the observed applied runtime. Metadata reads do not start runtimes or hash model files.
 
-`device.runtime.effectiveSlots` is the backend's resolved launch-plan count. `device.runtime.queueDepth` is the number of waiting requests. `device.runtime.availableCapacity` is the remaining bounded waiting capacity, or `0` when the queue is closed. Queue values are `null` when no authoritative queue snapshot exists. Catalog capabilities, context windows, and output limits remain `null` when LocalBase has no authoritative value.
+`device.runtime.executionSlots` is the supervisor-resolved native slot count. `activeAdmissions` counts queue permits, including backend readiness waits and response ownership. `availableExecutionSlots` is the arithmetic difference and does not guarantee an immediate start or a warm backend. `immediateDispatchAvailable` reports whether a new request for the applied model can dispatch now and is `null` when ownership is unknown. `queuedRequests`, `waitingCapacity`, and `availableWaitingCapacity` describe the separate bounded waiting room. Queue values are `null` when no authoritative queue snapshot exists. Catalog capabilities, context windows, and output limits remain `null` when LocalBase has no authoritative value.
 
 ## Managed startup model installation
 

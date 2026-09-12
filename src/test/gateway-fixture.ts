@@ -244,6 +244,7 @@ export type GatewayFixtureOptions = {
   ttsInstalled?: boolean;
   ttsControl?: SpeechFixtureControl;
   imageEnabled?: boolean;
+  parallel?: LocalBaseConfig["parallel"];
 };
 
 async function readProcessOutput(
@@ -1663,6 +1664,7 @@ export async function startGatewayFixture(
     if (options.imageEnabled === false) config.activeImageModel = "";
     config.otelEndpoint = options.otelEndpoint ?? "";
     config.otelSampleRatio = 100;
+    config.parallel = options.parallel ?? config.parallel;
     const database = new DatabaseSession();
     saveConfig(database, config);
     if (options.auth) {

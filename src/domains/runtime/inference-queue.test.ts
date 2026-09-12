@@ -23,7 +23,7 @@ function queue(
     resolvedSlots: ({ slots }) => slots,
   });
   return {
-    snapshot: () => inferenceQueue.snapshot(),
+    snapshot: (modelId = "a") => inferenceQueue.snapshot(modelId),
     rejectPending: (error?: Error) => inferenceQueue.rejectPending(error),
     close: (error?: Error) => inferenceQueue.close(error),
     acquire: (
@@ -78,9 +78,16 @@ test("wakes same-model waiters when a cold LLM resolves more slots", async () =>
     slots: 3,
     waiting: 0,
   });
-  expect(inferenceQueue.snapshot().active).toBe(2);
+  expect(inferenceQueue.snapshot("a")).toMatchObject({
+    active: 2,
+    immediateDispatchAvailable: true,
+  });
   first.release();
   secondLease.release();
+  expect(inferenceQueue.snapshot("a")).toMatchObject({
+    active: 0,
+    immediateDispatchAvailable: true,
+  });
   expect(secondLease.permitSnapshot).toEqual({
     active: 2,
     slots: 3,
@@ -162,6 +169,7 @@ test("bounds waiting work with captured capacity and deadline", async () => {
   expect(inferenceQueue.snapshot()).toEqual({
     waiting: 1,
     active: 1,
+    immediateDispatchAvailable: false,
     capacity: 1,
     maxWaitMs: 20,
     accepting: true,
@@ -225,6 +233,11 @@ test("keeps a model switch queued and preserves FIFO behind it", async () => {
   await Promise.resolve();
   expect(switchDispatched).toBe(false);
   expect(laterDispatched).toBe(false);
+  expect(inferenceQueue.snapshot()).toMatchObject({
+    active: 1,
+    immediateDispatchAvailable: false,
+    waiting: 2,
+  });
   abort.abort();
   await expect(switching).rejects.toBeInstanceOf(InferenceQueueAbortedError);
   const laterLease = await laterA;
@@ -251,6 +264,7 @@ test("measures queue wait at dispatch rather than after activation", async () =>
     return { admitted: true, slots: 1, id: "activated" };
   });
   await Promise.resolve();
+  expect(inferenceQueue.snapshot("a").immediateDispatchAvailable).toBe(false);
   now = 500;
   finishDispatch();
   const lease = await admission;
@@ -318,8 +332,9 @@ test("close invalidates an in-flight dispatch before backend startup", async () 
   await Promise.resolve();
   await Promise.resolve();
   expect(backendStarted).toBe(false);
-  expect(inferenceQueue.snapshot()).toMatchObject({
+  expect(inferenceQueue.snapshot("a")).toMatchObject({
     active: 0,
+    immediateDispatchAvailable: false,
     waiting: 0,
     accepting: false,
   });

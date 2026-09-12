@@ -31,6 +31,7 @@ export class InferenceQueueAbortedError extends Error {
 export type InferenceQueueSnapshot = Readonly<{
   waiting: number;
   active: number;
+  immediateDispatchAvailable: boolean | null;
   capacity: number;
   maxWaitMs: number;
   accepting: boolean;
@@ -89,10 +90,18 @@ export class InferenceQueue<Value> {
     }>,
   ) {}
 
-  snapshot(): InferenceQueueSnapshot {
+  snapshot(modelId?: string): InferenceQueueSnapshot {
     return Object.freeze({
       waiting: this.pending.length,
       active: this.active,
+      immediateDispatchAvailable:
+        modelId === undefined
+          ? null
+          : this.closedError === undefined &&
+            !this.dispatching &&
+            this.pending.length === 0 &&
+            this.active < this.slots &&
+            (this.activeModel === undefined || this.activeModel === modelId),
       capacity: this.options.maxWaiting ?? DEFAULT_MAX_WAITING_INFERENCES,
       maxWaitMs: this.options.waitMs ?? DEFAULT_INFERENCE_QUEUE_WAIT_MS,
       accepting: this.closedError === undefined,

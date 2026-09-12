@@ -90,10 +90,16 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
         state: "idle",
         modelId: config.activeLlmModel,
         admission: { kind: "known", accepting: true, activeCount: 0 },
-        configuredSlots: null,
+        execution: {
+          slots: null,
+          activeAdmissions: 0,
+          available: null,
+          immediateDispatchAvailable: true,
+        },
         queue: {
           waiting: 0,
           active: 0,
+          immediateDispatchAvailable: true,
           capacity: 16,
           maxWaitMs: 60_000,
           accepting: true,
@@ -622,6 +628,7 @@ test("does not stop a ready runtime while a model switch drains admission", asyn
     expect(reconciler.lifecycleSnapshot().llm.queue).toMatchObject({
       active: 1,
       waiting: 1,
+      immediateDispatchAvailable: false,
     });
 
     active.value.admission.release();
@@ -677,13 +684,53 @@ test("cancels an orphaned running runtime after shared admissions settle", async
     if (cancelled.kind !== "admitted" || completed.kind !== "admitted") {
       throw new Error("Expected admissions.");
     }
-
     cancelled.value.admission.cancel();
     expect(kills).toBe(0);
 
     completed.value.admission.release();
     await killed;
     expect(kills).toBe(1);
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("retains resolved slots after the final admission releases", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-capacity-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  const supervisor: RuntimeSupervisor = {
+    kind: "server",
+    runtimeId: () => "llm:test:capacity",
+    state: () => "running",
+    resolvedSlots: () => 4,
+    async ensureRunning() {},
+    async kill() {},
+    async shutdown() {},
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: supervisor }),
+    { baseUrl: () => "http://127.0.0.1:1", create: () => supervisor },
+    { event() {} } as never,
+  );
+
+  try {
+    const result = await reconciler.admitModel("llm", config.activeLlmModel);
+    if (result.kind !== "admitted") throw new Error("Expected admission.");
+    await result.value.admission.ready;
+    result.value.admission.release();
+
+    expect(reconciler.lifecycleSnapshot().llm.execution).toEqual({
+      slots: 4,
+      activeAdmissions: 0,
+      available: 4,
+      immediateDispatchAvailable: true,
+    });
   } finally {
     database.close();
     rmSync(root, { recursive: true, force: true });

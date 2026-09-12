@@ -199,49 +199,69 @@ describe("bounded speech supervisor", () => {
 
   test("holds the reservation and private files until a cancelled child exits", async () => {
     const releasePath = join(root, `release-${crypto.randomUUID()}`);
-    await writeControl({ mode: "hold", releasePath });
+    const exitReleasePath = join(root, `exit-release-${crypto.randomUUID()}`);
+    await writeControl({ mode: "hold", releasePath, exitReleasePath });
     const { supervisor, memoryEvents } = createSupervisor();
     const cancellation = new AbortController();
     const generation = supervisor.generateSpeech({
       text: "cancel this speech",
       signal: cancellation.signal,
     });
-    const started = await waitForEvent("started");
-    cancellation.abort();
-    await Promise.resolve();
+    const generationFailure = generation.catch((error: unknown) => error);
+    let failure: unknown;
+    try {
+      const started = await waitForEvent("started");
+      expect(memoryEvents).toEqual(["reserved"]);
+      const temporaryDirectories = await readdir(join(root, "tmp"));
+      expect(temporaryDirectories).toHaveLength(1);
+      const temporaryDirectory = join(root, "tmp", temporaryDirectories[0]!);
+      expect((await stat(temporaryDirectory)).mode & 0o777).toBe(0o700);
+      const promptPath = started.args?.[started.args.indexOf("-f") + 1];
+      const outputPath = started.args?.[started.args.indexOf("-o") + 1];
+      if (!promptPath || !outputPath)
+        throw new Error("Missing private file paths.");
+      expect((await stat(promptPath)).mode & 0o777).toBe(0o600);
+      expect((await stat(outputPath)).mode & 0o777).toBe(0o600);
 
-    expect(memoryEvents).toEqual(["reserved"]);
-    const temporaryDirectories = await readdir(join(root, "tmp"));
-    expect(temporaryDirectories).toHaveLength(1);
-    const temporaryDirectory = join(root, "tmp", temporaryDirectories[0]!);
-    expect((await stat(temporaryDirectory)).mode & 0o777).toBe(0o700);
-    const promptPath = started.args?.[started.args.indexOf("-f") + 1];
-    const outputPath = started.args?.[started.args.indexOf("-o") + 1];
-    if (!promptPath || !outputPath)
-      throw new Error("Missing private file paths.");
-    expect((await stat(promptPath)).mode & 0o777).toBe(0o600);
-    expect((await stat(outputPath)).mode & 0o777).toBe(0o600);
-    await expect(generation).rejects.toBeInstanceOf(
-      SpeechGenerationAbortedError,
-    );
+      cancellation.abort();
+      await waitForEvent("stopping");
+      expect(memoryEvents).toEqual(["reserved"]);
+    } finally {
+      cancellation.abort();
+      try {
+        await Bun.write(exitReleasePath, "release");
+      } finally {
+        failure = await generationFailure;
+      }
+    }
+    expect(failure).toBeInstanceOf(SpeechGenerationAbortedError);
     expect(memoryEvents).toEqual(["reserved", "released"]);
     expect(await readdir(join(root, "tmp"))).toEqual([]);
   });
 
   test("shutdown waits for an active child and its cleanup", async () => {
     const releasePath = join(root, `release-${crypto.randomUUID()}`);
-    await writeControl({ mode: "hold", releasePath });
+    const exitReleasePath = join(root, `exit-release-${crypto.randomUUID()}`);
+    await writeControl({ mode: "hold", releasePath, exitReleasePath });
     const { supervisor, memoryEvents } = createSupervisor();
     const generation = supervisor.generateSpeech({ text: "shutdown speech" });
-    await waitForEvent("started");
-    const shutdown = supervisor.shutdown();
-    await Promise.resolve();
-    expect(memoryEvents).toEqual(["reserved"]);
-
-    await shutdown;
-    await expect(generation).rejects.toBeInstanceOf(
-      SpeechGenerationAbortedError,
-    );
+    const generationFailure = generation.catch((error: unknown) => error);
+    let shutdown: Promise<void> | undefined;
+    let failure: unknown;
+    try {
+      await waitForEvent("started");
+      shutdown = supervisor.shutdown();
+      await waitForEvent("stopping");
+      expect(memoryEvents).toEqual(["reserved"]);
+    } finally {
+      shutdown ??= supervisor.shutdown();
+      try {
+        await Bun.write(exitReleasePath, "release");
+      } finally {
+        [failure] = await Promise.all([generationFailure, shutdown]);
+      }
+    }
+    expect(failure).toBeInstanceOf(SpeechGenerationAbortedError);
     expect(memoryEvents).toEqual(["reserved", "released"]);
     expect(await readdir(join(root, "tmp"))).toEqual([]);
   });
