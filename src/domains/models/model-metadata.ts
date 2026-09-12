@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  modelModalitySchema,
   resolveCatalogInstallation,
   type ModelKind,
   type ModelSpec,
@@ -52,7 +53,9 @@ export const modelMetadataSchema = z
           })
           .strict()
           .nullable(),
-        contextWindowTokens: z.null(),
+        inputModalities: z.array(modelModalitySchema).min(1),
+        outputModalities: z.array(modelModalitySchema).min(1),
+        contextWindowTokens: z.number().int().positive().nullable(),
         maxOutputTokens: z.null(),
       })
       .strict(),
@@ -176,7 +179,9 @@ export function projectModelMetadata(
               residency: "cold-per-request",
             }
           : null,
-      contextWindowTokens: null,
+      inputModalities: model.inputModalities,
+      outputModalities: model.outputModalities,
+      contextWindowTokens: model.contextWindowTokens,
       maxOutputTokens: null,
     },
     device: {

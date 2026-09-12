@@ -197,6 +197,7 @@ function installFixtureModel(
     artifacts,
     inputModalities: ["text"],
     outputModalities: ["text"],
+    contextWindowTokens: null,
     features: ["test"],
     commercialStatus: "open",
     catch: "Test only.",

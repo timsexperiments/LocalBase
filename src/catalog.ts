@@ -5,6 +5,9 @@ import { safeFilenameSchema } from "./utils/checksum";
 export const modelKindSchema = z.enum(["llm", "stt", "tts", "image"]);
 export type ModelKind = z.infer<typeof modelKindSchema>;
 
+export const modelModalitySchema = z.enum(["text", "audio", "image"]);
+export type ModelModality = z.infer<typeof modelModalitySchema>;
+
 export const commercialStatusSchema = z.enum([
   "open",
   "conditional",
@@ -49,8 +52,9 @@ export const modelSpecSchema = z
     source: z.string().url(),
     repositoryRevision: z.string().regex(/^[a-fA-F0-9]{40}$/),
     artifacts: z.array(modelArtifactSchema).min(1),
-    inputModalities: z.array(z.string().min(1)),
-    outputModalities: z.array(z.string().min(1)),
+    inputModalities: z.array(modelModalitySchema).min(1),
+    outputModalities: z.array(modelModalitySchema).min(1),
+    contextWindowTokens: z.number().int().positive().nullable().default(null),
     features: z.array(z.string().min(1)),
     commercialStatus: commercialStatusSchema,
     catch: z.string(),
@@ -80,9 +84,10 @@ export const modelSpecSchema = z
       });
     }
   });
-export type ModelSpec = Omit<z.infer<typeof modelSpecSchema>, "artifacts"> & {
+export type ModelSpec = Omit<z.output<typeof modelSpecSchema>, "artifacts"> & {
   artifacts: ModelArtifact[];
 };
+type ModelSpecInput = z.input<typeof modelSpecSchema>;
 
 export type CatalogInstallationState = {
   complete: boolean;
@@ -95,7 +100,7 @@ export function validateCatalog(catalog: unknown): ModelSpec[] {
   return catalogSchema.parse(catalog);
 }
 
-export const CATALOG: readonly ModelSpec[] = validateCatalog([
+const CATALOG_SOURCE = [
   {
     modelId: "qwen2.5-coder-1.5b-instruct-q4_k_m",
     kind: "llm",
@@ -121,6 +126,7 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     ],
     inputModalities: ["text"],
     outputModalities: ["text"],
+    contextWindowTokens: 32768,
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
     catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
@@ -300,6 +306,7 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     ],
     inputModalities: ["text"],
     outputModalities: ["text"],
+    contextWindowTokens: 262144,
     features: [
       "code-generation",
       "code-editing",
@@ -646,13 +653,14 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
         role: "primary",
       },
     ],
-    inputModalities: ["text", "image"],
+    inputModalities: ["text"],
     outputModalities: ["text"],
-    features: ["vision", "tool-calling", "reasoning"],
+    features: ["tool-calling", "reasoning"],
     commercialStatus: "conditional",
     catch:
       "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
-    notes: "Multimodal-capable family with permissive usage terms.",
+    notes:
+      "Text-only LocalBase entry; the vision projector is not included in the managed artifact set.",
   },
   {
     modelId: "gemma-3-27b-it-q4_k_m",
@@ -801,6 +809,7 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     ],
     inputModalities: ["text"],
     outputModalities: ["text"],
+    contextWindowTokens: 131072,
     features: ["reasoning", "tool-calling"],
     commercialStatus: "open",
     catch: "Apache 2.0.",
@@ -1137,6 +1146,7 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     ],
     inputModalities: ["text"],
     outputModalities: ["text"],
+    contextWindowTokens: 262144,
     features: ["reasoning", "tool-calling", "long-context"],
     commercialStatus: "open",
     catch: "Apache 2.0.",
@@ -1168,6 +1178,7 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     ],
     inputModalities: ["text"],
     outputModalities: ["text"],
+    contextWindowTokens: 131072,
     features: ["tool-calling", "long-context"],
     commercialStatus: "open",
     catch: "Apache 2.0.",
@@ -1511,7 +1522,9 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     notes:
       "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures. Requires 12GB+ VRAM.",
   },
-]);
+] satisfies ModelSpecInput[];
+
+export const CATALOG: readonly ModelSpec[] = validateCatalog(CATALOG_SOURCE);
 
 export function byId(modelId: string): ModelSpec | undefined {
   return CATALOG.find((model) => model.modelId === modelId);

@@ -87,7 +87,9 @@ test("projects catalog facts separately from observed device state", () => {
       name: "Qwen2.5-Coder",
       quantization: "Q4_K_M",
       capabilities: null,
-      contextWindowTokens: null,
+      inputModalities: ["text"],
+      outputModalities: ["text"],
+      contextWindowTokens: 32_768,
       maxOutputTokens: null,
     },
     device: {
@@ -147,6 +149,10 @@ test("reports only the supported cold speech contract", () => {
     voice: { selection: "runtime-default", requestValue: "default" },
     residency: "cold-per-request",
   });
+  expect(metadata.catalog.inputModalities).toEqual(["text"]);
+  expect(metadata.catalog.outputModalities).toEqual(["audio"]);
+  expect(metadata.catalog.contextWindowTokens).toBeNull();
+  expect(metadata.catalog.maxOutputTokens).toBeNull();
 });
 
 test("uses the strict response schemas for lists and entries", () => {

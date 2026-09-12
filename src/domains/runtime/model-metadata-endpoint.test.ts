@@ -14,6 +14,7 @@ import {
 
 const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const alternateModelId = "qwen2.5-coder-3b-instruct-q4_k_m";
+const speechModelId = "qwen3-tts-1.7b-base-q4_k_m";
 
 function apiKeyHeaders(apiKey: string): Record<string, string> {
   return { Authorization: `Bearer ${apiKey}` };
@@ -67,13 +68,18 @@ describe("authenticated model metadata endpoints", () => {
     expect(response.status).toBe(200);
     const body = modelMetadataListSchema.parse(await response.json());
     const llm = body.data.find((model) => model.id === modelId);
-    if (!llm) throw new Error(`Expected metadata for ${modelId}.`);
+    const unknownContext = metadataById(body, alternateModelId);
+    const speech = metadataById(body, speechModelId);
+    if (!llm || !unknownContext || !speech)
+      throw new Error("Expected catalog metadata fixtures.");
 
     expect(body.data).toHaveLength(CATALOG.length);
     expect(llm).toMatchObject({
       catalog: {
         capabilities: null,
-        contextWindowTokens: null,
+        inputModalities: ["text"],
+        outputModalities: ["text"],
+        contextWindowTokens: 32_768,
         maxOutputTokens: null,
       },
       device: {
@@ -90,6 +96,23 @@ describe("authenticated model metadata endpoints", () => {
           waitingCapacity: 16,
           availableWaitingCapacity: 16,
         },
+      },
+    });
+    expect(unknownContext.catalog.contextWindowTokens).toBeNull();
+    expect(unknownContext.catalog.maxOutputTokens).toBeNull();
+    expect(speech.catalog).toMatchObject({
+      inputModalities: ["text"],
+      outputModalities: ["audio"],
+      contextWindowTokens: null,
+      maxOutputTokens: null,
+      capabilities: {
+        kind: "speech",
+        outputFormats: ["wav"],
+        voice: {
+          selection: "runtime-default",
+          requestValue: "default",
+        },
+        residency: "cold-per-request",
       },
     });
     expect(JSON.stringify(body)).not.toContain(fixture.root);
