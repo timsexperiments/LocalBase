@@ -29,9 +29,11 @@ const configOverridesSchema = z
     sttPort: portSchema.optional(),
     selectedLlmModels: selectedModelsSchema("llm", true).optional(),
     selectedSttModels: selectedModelsSchema("stt", false).optional(),
+    selectedTtsModels: selectedModelsSchema("tts", false).optional(),
     selectedImageModels: selectedModelsSchema("image", false).optional(),
     activeLlmModel: modelIdSchema("llm").optional(),
     activeSttModel: z.union([z.literal(""), modelIdSchema("stt")]).optional(),
+    activeTtsModel: z.union([z.literal(""), modelIdSchema("tts")]).optional(),
     activeImageModel: z
       .union([z.literal(""), modelIdSchema("image")])
       .optional(),

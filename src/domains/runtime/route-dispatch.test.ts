@@ -10,6 +10,7 @@ test("selects each supported gateway route by its exact path", () => {
   );
   expect(selectGatewayRoute("/v1/audio/transcriptions")).toBe("transcription");
   expect(selectGatewayRoute("/v1/audio/translations")).toBe("transcription");
+  expect(selectGatewayRoute("/v1/audio/speech")).toBe("speechGeneration");
   expect(selectGatewayRoute("/v1/images/generations")).toBe("imageGeneration");
   expect(selectGatewayRoute("/v1/chat/completions")).toBe("chatCompletion");
   expect(selectGatewayRoute("/v1/embeddings")).toBe("embeddings");

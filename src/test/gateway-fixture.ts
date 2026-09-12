@@ -12,11 +12,16 @@ import {
 import { DatabaseSession } from "../db/client";
 import { gatewayHealthSchema } from "../domains/runtime/health";
 import { compileRuntimeFixture } from "./runtime-fixture";
+import {
+  compileSpeechRuntimeFixture,
+  type SpeechFixtureControl,
+} from "./speech-runtime-fixture";
 import { tinyPngBase64 } from "./media-fixtures";
 
 const LLM_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const STT_MODEL = "whisper-large-v3-turbo";
 const IMAGE_MODEL = "stable-diffusion-v1-5";
+export const TTS_MODEL = "qwen3-tts-1.7b-base-q4_k_m";
 const PROJECT_ROOT = join(import.meta.dirname, "../..");
 const MAX_START_ATTEMPTS = 5;
 
@@ -121,6 +126,34 @@ export async function writeCompleteCatalogArtifact(
   return path;
 }
 
+export async function writeCompleteCatalogArtifacts(
+  directory: string,
+  modelId: string,
+): Promise<string[]> {
+  const model = byId(modelId);
+  if (!model) throw new Error(`Unknown catalog model: ${modelId}`);
+  return await Promise.all(
+    model.artifacts.map(async (artifact) => {
+      if (artifact.expectedSizeBytes === undefined) {
+        throw new Error(
+          `Catalog artifact ${artifact.filename} has no expected size.`,
+        );
+      }
+      const path = join(directory, artifact.filename);
+      await Bun.write(path, "");
+      truncateSync(path, artifact.expectedSizeBytes);
+      return path;
+    }),
+  );
+}
+
+export type SpeechRuntimeFixtureEvent = Readonly<{
+  event: "started" | "stopping" | "stopped";
+  pid: number;
+  args?: string[];
+  promptLength?: number;
+}>;
+
 export type GatewayFixture = {
   baseUrl: string;
   cliPath: string;
@@ -147,6 +180,11 @@ export type GatewayFixture = {
   waitForLlmRuntimeStart: () => Promise<string[]>;
   waitForSttRuntimeStart: () => Promise<string[]>;
   waitForImageRuntimeStart: () => Promise<string[]>;
+  readTtsRuntimeEvents: () => Promise<SpeechRuntimeFixtureEvent[]>;
+  waitForTtsRuntimeEvent: (
+    event: SpeechRuntimeFixtureEvent["event"],
+  ) => Promise<SpeechRuntimeFixtureEvent>;
+  setTtsRuntimeControl: (control: SpeechFixtureControl) => Promise<void>;
   setLlmBackendHealthy: (healthy: boolean) => void;
   setLlmRuntimeFailure: (enabled: boolean) => Promise<void>;
   waitForLlmHealthProbe: () => Promise<ControlledHealthProbe>;
@@ -174,6 +212,9 @@ export type GatewayFixtureOptions = {
   llmRuntimeExitOnStart?: boolean;
   llmRuntimeHttpBackend?: boolean;
   sttEnabled?: boolean;
+  ttsEnabled?: boolean;
+  ttsInstalled?: boolean;
+  ttsControl?: SpeechFixtureControl;
   imageEnabled?: boolean;
 };
 
@@ -202,6 +243,41 @@ function reservePort(): number {
     }
   }
   throw new Error("Could not reserve a test port.");
+}
+
+function startSpeechEventReceiver(): {
+  server: Bun.Server<undefined>;
+  wait: (
+    event: SpeechRuntimeFixtureEvent["event"],
+  ) => Promise<SpeechRuntimeFixtureEvent>;
+} {
+  const events: SpeechRuntimeFixtureEvent[] = [];
+  const observers: Array<(event: SpeechRuntimeFixtureEvent) => void> = [];
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: reservePort(),
+    async fetch(request) {
+      const event = (await request.json()) as SpeechRuntimeFixtureEvent;
+      const observer = observers.shift();
+      if (observer) observer(event);
+      else events.push(event);
+      return new Response(null, { status: 204 });
+    },
+  });
+  const wait = async (
+    eventName: SpeechRuntimeFixtureEvent["event"],
+  ): Promise<SpeechRuntimeFixtureEvent> => {
+    while (true) {
+      const index = events.findIndex(({ event }) => event === eventName);
+      if (index >= 0) return events.splice(index, 1)[0]!;
+      const event = await new Promise<SpeechRuntimeFixtureEvent>((resolve) => {
+        observers.push(resolve);
+      });
+      if (event.event === eventName) return event;
+      events.push(event);
+    }
+  };
+  return { server, wait };
 }
 
 async function stopProcess(serverProcess: Bun.Subprocess): Promise<void> {
@@ -1476,6 +1552,8 @@ export async function startGatewayFixture(
   const cliPath = join(root, "local-base");
   const llmLaunchesPath = join(root, "llama-launches.jsonl");
   const sttLaunchesPath = join(root, "whisper-launches.jsonl");
+  const ttsControlPath = join(root, "speech-control.json");
+  const ttsEventsPath = join(root, "speech-events.jsonl");
   const imageLaunchesPath = join(root, "sd-launches.jsonl");
   const llmFailureMarkerPath = join(root, "llama-runtime-failure");
   const llmRuntimePidPath = join(root, "llama-runtime.pid");
@@ -1504,6 +1582,7 @@ export async function startGatewayFixture(
     true,
     options.imageHealthControlled,
   );
+  const speechEvents = startSpeechEventReceiver();
   const llmUpstreamPort = boundPort(llmUpstream.server);
   const llmPort = options.llmRuntimeHttpBackend
     ? reservePort()
@@ -1522,6 +1601,8 @@ export async function startGatewayFixture(
     config.activeSttModel = STT_MODEL;
     config.selectedSttModels = options.sttEnabled === false ? [] : [STT_MODEL];
     if (options.sttEnabled === false) config.activeSttModel = "";
+    config.activeTtsModel = options.ttsEnabled ? TTS_MODEL : "";
+    config.selectedTtsModels = options.ttsEnabled ? [TTS_MODEL] : [];
     config.activeImageModel = IMAGE_MODEL;
     config.selectedImageModels =
       options.imageEnabled === false ? [] : [IMAGE_MODEL];
@@ -1537,11 +1618,27 @@ export async function startGatewayFixture(
 
     mkdirSync(config.llmModelsDir, { recursive: true });
     mkdirSync(config.sttModelsDir, { recursive: true });
+    mkdirSync(config.ttsModelsDir, { recursive: true });
     mkdirSync(config.imageModelsDir, { recursive: true });
     mkdirSync(join(config.root, "bin"), { recursive: true });
     mkdirSync(runtimeDir, { recursive: true });
     await Promise.all([
       writeCompleteCatalogArtifact(config.llmModelsDir, LLM_MODEL),
+      ...(options.ttsEnabled || options.ttsInstalled
+        ? [
+            writeCompleteCatalogArtifacts(config.ttsModelsDir, TTS_MODEL),
+            Bun.write(
+              ttsControlPath,
+              JSON.stringify(options.ttsControl ?? { mode: "success" }),
+            ),
+            compileSpeechRuntimeFixture(
+              join(runtimeDir, "llama-tts"),
+              ttsControlPath,
+              ttsEventsPath,
+              `http://127.0.0.1:${speechEvents.server.port}/event`,
+            ),
+          ]
+        : []),
       Bun.write(
         join(config.sttModelsDir, "ggml-large-v3-turbo.bin"),
         "test model placeholder",
@@ -1590,6 +1687,7 @@ export async function startGatewayFixture(
     llmUpstream.server.stop(true);
     sttUpstream.server.stop(true);
     imageUpstream.server.stop(true);
+    speechEvents.server.stop(true);
     cleanup();
     throw error;
   }
@@ -1689,6 +1787,7 @@ export async function startGatewayFixture(
     llmUpstream.server.stop(true);
     sttUpstream.server.stop(true);
     imageUpstream.server.stop(true);
+    speechEvents.server.stop(true);
     cleanup();
     throw lastError instanceof Error
       ? lastError
@@ -1722,6 +1821,17 @@ export async function startGatewayFixture(
   const llmRuntimeLaunches = runtimeLaunches(llmLaunchesPath, "LLM");
   const sttRuntimeLaunches = runtimeLaunches(sttLaunchesPath, "STT");
   const imageRuntimeLaunches = runtimeLaunches(imageLaunchesPath, "image");
+  const readTtsRuntimeEvents = async (): Promise<
+    SpeechRuntimeFixtureEvent[]
+  > => {
+    const file = Bun.file(ttsEventsPath);
+    if (!(await file.exists())) return [];
+    return (await file.text())
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as SpeechRuntimeFixtureEvent);
+  };
 
   return {
     baseUrl,
@@ -1753,6 +1863,11 @@ export async function startGatewayFixture(
     waitForImageRuntimeLaunches: imageRuntimeLaunches.wait,
     waitForSttRuntimeStart: sttUpstream.waitForRuntimeStart,
     waitForImageRuntimeStart: imageUpstream.waitForRuntimeStart,
+    readTtsRuntimeEvents,
+    waitForTtsRuntimeEvent: speechEvents.wait,
+    async setTtsRuntimeControl(control) {
+      await Bun.write(ttsControlPath, JSON.stringify(control));
+    },
     waitForLlmRuntimeStart: llmUpstream.waitForRuntimeStart,
     setLlmBackendHealthy: llmUpstream.setHealthy,
     async setLlmRuntimeFailure(enabled) {
@@ -1810,6 +1925,7 @@ export async function startGatewayFixture(
       llmUpstream.server.stop(true);
       sttUpstream.server.stop(true);
       imageUpstream.server.stop(true);
+      speechEvents.server.stop(true);
       if (!stopOptions?.preserveRoot) cleanup();
     },
   };

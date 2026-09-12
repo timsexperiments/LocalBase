@@ -12,7 +12,11 @@ import {
   InferenceQueueUnavailableError,
   type InferenceDispatchLease,
 } from "./inference-queue";
-import { runtimeModalities, type RuntimeModality } from "./modality";
+import {
+  modalityComponents,
+  runtimeModalities,
+  type RuntimeModality,
+} from "./modality";
 import {
   configuredRuntimeModality,
   createRuntimeReconciliationPlan,
@@ -79,9 +83,10 @@ function configuredModalities(
 
 function activeModelField(
   modality: RuntimeModality,
-): "activeLlmModel" | "activeSttModel" | "activeImageModel" {
+): "activeLlmModel" | "activeSttModel" | "activeTtsModel" | "activeImageModel" {
   if (modality === "llm") return "activeLlmModel";
   if (modality === "stt") return "activeSttModel";
+  if (modality === "tts") return "activeTtsModel";
   return "activeImageModel";
 }
 
@@ -98,6 +103,7 @@ function selectedModels(
 ): readonly string[] {
   if (modality === "llm") return config.selectedLlmModels;
   if (modality === "stt") return config.selectedSttModels;
+  if (modality === "tts") return config.selectedTtsModels;
   return config.selectedImageModels;
 }
 
@@ -495,7 +501,9 @@ export class RuntimeReconciler {
       }
     };
     admission.onPendingDetach(() => {
-      if (startupPending) stop(false);
+      if (startupPending || admission.supervisor.kind === "speech") {
+        stop(admission.supervisor.kind === "speech");
+      }
     });
     admission.onIdleCancellation(() => {
       if (stopRequested) return;
@@ -513,12 +521,7 @@ export class RuntimeReconciler {
             severity: "error",
             eventName: "runtime.cancellation-failed",
             category: "runtime",
-            component:
-              admission.modality === "llm"
-                ? "llama-server"
-                : admission.modality === "stt"
-                  ? "whisper-server"
-                  : "sd-server",
+            component: modalityComponents[admission.modality],
             runtime: admission.modality,
             message: "Runtime cancellation failed.",
             error: {
@@ -573,12 +576,7 @@ export class RuntimeReconciler {
       severity: "info",
       eventName: "model.switching",
       category: "runtime",
-      component:
-        modality === "llm"
-          ? "llama-server"
-          : modality === "stt"
-            ? "whisper-server"
-            : "sd-server",
+      component: modalityComponents[modality],
       runtime: modality,
       message: "Switching the active model.",
       attributes: { from_model: previousModel, to_model: modelId },
@@ -617,12 +615,7 @@ export class RuntimeReconciler {
       severity: "info",
       eventName: "model.switched",
       category: "runtime",
-      component:
-        modality === "llm"
-          ? "llama-server"
-          : modality === "stt"
-            ? "whisper-server"
-            : "sd-server",
+      component: modalityComponents[modality],
       runtime: modality,
       message: "Active model switched.",
       attributes: { from_model: previousModel, to_model: modelId },
@@ -768,12 +761,7 @@ export class RuntimeReconciler {
       severity: "error",
       eventName: "runtime.reconciliation-failed",
       category: "runtime",
-      component:
-        modality === "llm"
-          ? "llama-server"
-          : modality === "stt"
-            ? "whisper-server"
-            : "sd-server",
+      component: modalityComponents[modality],
       runtime: modality,
       message: "Runtime reconciliation failed.",
       error: {

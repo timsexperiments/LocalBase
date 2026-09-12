@@ -29,6 +29,7 @@ const gatewayHealthBaseSchema = z
       .object({
         llm: gatewayModalityHealthSchema,
         stt: gatewayModalityHealthSchema,
+        tts: gatewayModalityHealthSchema,
         image: gatewayModalityHealthSchema,
       })
       .strict(),

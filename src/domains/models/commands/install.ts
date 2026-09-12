@@ -13,6 +13,7 @@ export async function runInstall(
     const modelsToInstall = [
       ...ctx.config.selectedLlmModels,
       ...ctx.config.selectedSttModels,
+      ...ctx.config.selectedTtsModels,
       ...ctx.config.selectedImageModels,
     ];
 

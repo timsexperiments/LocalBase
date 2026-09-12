@@ -69,6 +69,7 @@ export type LocalBaseConfig = {
   root: string;
   llmModelsDir: string;
   sttModelsDir: string;
+  ttsModelsDir: string;
   imageModelsDir: string;
   host: string;
   port: number;
@@ -77,9 +78,11 @@ export type LocalBaseConfig = {
   sttPort: number;
   selectedLlmModels: string[];
   selectedSttModels: string[];
+  selectedTtsModels: string[];
   selectedImageModels: string[];
   activeLlmModel: string;
   activeSttModel: string;
+  activeTtsModel: string;
   activeImageModel: string;
   hfToken: string;
   parallel: ParallelSlots;
@@ -114,9 +117,11 @@ const configRowSchema = z
     sttPort: portSchema,
     selectedLlmModels: z.string(),
     selectedSttModels: z.string(),
+    selectedTtsModels: z.string(),
     selectedImageModels: z.string(),
     activeLlmModel: z.string().min(1),
     activeSttModel: z.string(),
+    activeTtsModel: z.string(),
     activeImageModel: z.string(),
     hfToken: z.string(),
     parallel: z.enum(["auto", "1", "2", "3", "4"]),
@@ -189,9 +194,11 @@ function toConfigRow(config: LocalBaseConfig) {
     sttPort: config.sttPort,
     selectedLlmModels: JSON.stringify(config.selectedLlmModels),
     selectedSttModels: JSON.stringify(config.selectedSttModels),
+    selectedTtsModels: JSON.stringify(config.selectedTtsModels),
     selectedImageModels: JSON.stringify(config.selectedImageModels),
     activeLlmModel: config.activeLlmModel,
     activeSttModel: config.activeSttModel,
+    activeTtsModel: config.activeTtsModel,
     activeImageModel: config.activeImageModel,
     hfToken: config.hfToken || "",
     parallel: String(parseParallelSlots(config.parallel)),
@@ -222,11 +229,15 @@ function parseSelectedModels(
 
 export function modelDirectories(
   root: string,
-): Pick<LocalBaseConfig, "llmModelsDir" | "sttModelsDir" | "imageModelsDir"> {
+): Pick<
+  LocalBaseConfig,
+  "llmModelsDir" | "sttModelsDir" | "ttsModelsDir" | "imageModelsDir"
+> {
   const canonicalRoot = canonicalLocalBaseRoot(root);
   return {
     llmModelsDir: join(canonicalRoot, "models", "llm"),
     sttModelsDir: join(canonicalRoot, "models", "stt"),
+    ttsModelsDir: join(canonicalRoot, "models", "tts"),
     imageModelsDir: join(canonicalRoot, "models", "image"),
   };
 }
@@ -258,12 +269,19 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     "selectedImageModels",
     openedRoot,
   );
+  const selectedTtsModels = parseSelectedModels(
+    data.selectedTtsModels,
+    "selectedTtsModels",
+    openedRoot,
+  );
   const models = modelConfigurationSchema.safeParse({
     selectedLlmModels,
     selectedSttModels,
+    selectedTtsModels,
     selectedImageModels,
     activeLlmModel: data.activeLlmModel,
     activeSttModel: data.activeSttModel,
+    activeTtsModel: data.activeTtsModel,
     activeImageModel: data.activeImageModel,
   });
   if (!models.success) {
@@ -347,9 +365,11 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     sttPort: 18080,
     selectedLlmModels: [llm],
     selectedSttModels: [stt],
+    selectedTtsModels: [],
     selectedImageModels: ["stable-diffusion-v1-5"],
     activeLlmModel: llm,
     activeSttModel: stt,
+    activeTtsModel: "",
     activeImageModel: "stable-diffusion-v1-5",
     hfToken: "",
     parallel: "auto",
@@ -364,6 +384,7 @@ export function ensureDirs(config: LocalBaseConfig): void {
   mkdirSync(config.root, { recursive: true });
   mkdirSync(config.llmModelsDir, { recursive: true });
   mkdirSync(config.sttModelsDir, { recursive: true });
+  mkdirSync(config.ttsModelsDir, { recursive: true });
   mkdirSync(config.imageModelsDir, { recursive: true });
 }
 
@@ -486,6 +507,7 @@ export function uninstallManaged(
 function kindDir(config: LocalBaseConfig, kind: ModelKind): string {
   if (kind === "llm") return config.llmModelsDir;
   if (kind === "stt") return config.sttModelsDir;
+  if (kind === "tts") return config.ttsModelsDir;
   return config.imageModelsDir;
 }
 
@@ -493,7 +515,7 @@ export async function installedModels(
   config: LocalBaseConfig,
   kind?: ModelKind,
 ): Promise<string[]> {
-  const kinds: ModelKind[] = ["llm", "stt", "image"];
+  const kinds: ModelKind[] = ["llm", "stt", "tts", "image"];
   const selectedKinds = kind ? [kind] : kinds;
   const installed: string[] = [];
   for (const currentKind of selectedKinds) {

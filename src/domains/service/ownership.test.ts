@@ -76,6 +76,7 @@ test("uses one authenticated gateway lease for canonical root aliases", async ()
             modalities: {
               llm: { configured: true, state: "idle" },
               stt: { configured: false, state: "disabled" },
+              tts: { configured: false, state: "disabled" },
               image: { configured: false, state: "disabled" },
             },
           }),

@@ -35,6 +35,7 @@ function copyConfig(
     ...cloned,
     selectedLlmModels: [...cloned.selectedLlmModels],
     selectedSttModels: [...cloned.selectedSttModels],
+    selectedTtsModels: [...cloned.selectedTtsModels],
     selectedImageModels: [...cloned.selectedImageModels],
   };
 }

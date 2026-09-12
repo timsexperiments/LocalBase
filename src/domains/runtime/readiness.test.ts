@@ -32,9 +32,10 @@ function lifecycle(
 function snapshots(
   llm: RuntimeLifecycleSnapshot,
   stt = lifecycle("stt"),
+  tts = lifecycle("tts"),
   image = lifecycle("image"),
 ): Readonly<Record<RuntimeModality, RuntimeLifecycleSnapshot>> {
-  return { llm, stt, image };
+  return { llm, stt, tts, image };
 }
 
 function openQueue(
