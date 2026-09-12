@@ -46,10 +46,17 @@ export function parseOtelHeaders(
   value: string | undefined,
 ): Record<string, string> {
   if (!value?.trim()) return {};
+  const names = new Set<string>();
   const entries = value.split(",").map((entry) => {
     const separator = entry.indexOf("=");
     if (separator < 1) throw new Error("OTLP headers must use key=value.");
-    const name = headerNameSchema.parse(entry.slice(0, separator).trim());
+    const name = headerNameSchema
+      .parse(entry.slice(0, separator).trim())
+      .toLowerCase();
+    if (names.has(name)) {
+      throw new Error(`OTLP header ${name} is duplicated.`);
+    }
+    names.add(name);
     if (isOtlpTransportManagedHeader(name)) {
       throw new Error(`OTLP header ${name} is managed by the transport.`);
     }
