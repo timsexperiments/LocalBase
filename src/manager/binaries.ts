@@ -41,6 +41,27 @@ export {
 
 export type RuntimeConfig = { root: string };
 
+export const managedExecutableNameSchema = z.enum([
+  "llama-server",
+  "llama-tts",
+  "whisper-server",
+  "sd-server",
+  "sd-cli",
+]);
+export type ManagedExecutableName = z.infer<typeof managedExecutableNameSchema>;
+
+const executableRuntimeFamily = {
+  "llama-server": "llama-server",
+  "llama-tts": "llama-server",
+  "whisper-server": "whisper-server",
+  "sd-server": "sd-server",
+  "sd-cli": "sd-server",
+} as const satisfies Record<ManagedExecutableName, RuntimeName>;
+
+type ManagedExecutableRelease = Omit<ManagedRuntimeRelease, "name"> & {
+  name: ManagedExecutableName;
+};
+
 const fileIdentitySchema = z
   .object({
     size: z.number().int().nonnegative(),
@@ -68,10 +89,7 @@ const receiptEntrySchema = z
 const receiptSchema = z
   .object({
     version: z.literal(1),
-    runtimes: z.partialRecord(
-      z.enum(["llama-server", "whisper-server", "sd-server"]),
-      receiptEntrySchema,
-    ),
+    runtimes: z.partialRecord(managedExecutableNameSchema, receiptEntrySchema),
   })
   .strict();
 
@@ -81,7 +99,7 @@ function currentPlatformTarget(): PlatformTarget {
   return { os: process.platform, cpu: process.arch };
 }
 
-function pathBinary(name: RuntimeName): string | undefined {
+function pathBinary(name: ManagedExecutableName): string | undefined {
   for (const directory of (process.env.PATH ?? "").split(delimiter)) {
     const candidate = join(directory || ".", name);
     try {
@@ -102,7 +120,7 @@ function platformLabel(target: PlatformTarget): string {
 }
 
 export function managedRuntimeUnavailableError(
-  name: RuntimeName,
+  name: ManagedExecutableName,
   target: PlatformTarget,
   binDir: string,
 ): Error {
@@ -174,7 +192,7 @@ async function writeReceipt(binDir: string, receipt: Receipt): Promise<void> {
 
 function releaseMatches(
   entry: z.infer<typeof receiptEntrySchema>,
-  release: ManagedRuntimeRelease,
+  release: ManagedExecutableRelease,
 ): boolean {
   return (
     entry.tag === release.tag &&
@@ -190,7 +208,7 @@ function releaseMatches(
 async function verifyManagedBinary(
   binDir: string,
   path: string,
-  release: ManagedRuntimeRelease,
+  release: ManagedExecutableRelease,
 ): Promise<boolean> {
   const receipt = await readReceipt(binDir);
   const entry = receipt?.runtimes[release.name];
@@ -422,7 +440,7 @@ async function extractZip(
 }
 
 async function extractRelease(
-  release: ManagedRuntimeRelease,
+  release: ManagedExecutableRelease,
   archivePath: string,
   stagingDir: string,
 ): Promise<void> {
@@ -442,7 +460,7 @@ async function extractRelease(
 function commitStagedRelease(
   stagingDir: string,
   binDir: string,
-  binaryName: RuntimeName,
+  binaryName: ManagedExecutableName,
 ): void {
   const entries = readdirSync(stagingDir);
   for (const entry of entries) {
@@ -464,7 +482,7 @@ function commitStagedRelease(
 
 export async function installManagedRuntime(
   config: RuntimeConfig,
-  release: ManagedRuntimeRelease,
+  release: ManagedExecutableRelease,
 ): Promise<string> {
   const binDir = join(config.root, "bin");
   mkdirSync(binDir, { recursive: true });
@@ -497,7 +515,17 @@ export async function installManagedRuntime(
           `${release.name} was not found after extracting ${release.assetName}.`,
         );
       }
-      commitStagedRelease(stagingDir, binDir, release.name);
+      if (await Bun.file(destPath).exists()) {
+        const existingSha256 = await computeSha256(destPath);
+        const stagedSha256 = await computeSha256(stagedBinary);
+        if (existingSha256 !== stagedSha256) {
+          throw new Error(
+            `Refusing to replace existing managed executable at ${destPath}.`,
+          );
+        }
+      } else {
+        commitStagedRelease(stagingDir, binDir, release.name);
+      }
     }
     if (!(await Bun.file(destPath).exists())) {
       throw new Error(
@@ -534,14 +562,27 @@ export async function installManagedRuntime(
   }
 }
 
+export function managedExecutableRelease(
+  name: ManagedExecutableName,
+  target: PlatformTarget,
+): ManagedExecutableRelease | undefined {
+  const runtime = executableRuntimeFamily[name];
+  const release = managedRuntimeRelease(runtime, target);
+  return release ? { ...release, name } : undefined;
+}
+
+function isArchiveHelper(name: ManagedExecutableName): boolean {
+  return executableRuntimeFamily[name] !== name;
+}
+
 export async function ensureBinary(
   config: RuntimeConfig,
-  name: RuntimeName,
+  name: ManagedExecutableName,
 ): Promise<string> {
   const binDir = join(config.root, "bin");
   const localBin = join(binDir, name);
   const target = currentPlatformTarget();
-  const release = managedRuntimeRelease(name, target);
+  const release = managedExecutableRelease(name, target);
   const userManagedBinary = pathBinary(name);
 
   if (await Bun.file(localBin).exists()) {
@@ -553,6 +594,9 @@ export async function ensureBinary(
         `ℹ️  Using user-managed ${name} at ${userManagedBinary}; LocalBase does not verify user-managed binaries.`,
       );
       return userManagedBinary;
+    }
+    if (release && isArchiveHelper(name)) {
+      return await installManagedRuntime(config, release);
     }
     throw new Error(
       `Refusing untrusted ${name} in the LocalBase managed directory at ${localBin}. ` +

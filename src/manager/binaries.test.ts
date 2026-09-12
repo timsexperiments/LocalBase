@@ -12,8 +12,10 @@ import { zipSync } from "fflate";
 import { pack } from "tar-stream";
 import {
   installManagedRuntime,
+  managedExecutableRelease,
+  managedRuntimeRelease,
+  type ManagedExecutableName,
   type ManagedRuntimeRelease,
-  type RuntimeName,
 } from "./binaries";
 
 const roots: string[] = [];
@@ -35,16 +37,16 @@ function sha256(bytes: Uint8Array): string {
 }
 
 function release(
-  name: RuntimeName,
+  name: ManagedExecutableName,
   format: ManagedRuntimeRelease["format"],
   asset: Uint8Array,
   url: string,
   stripComponents: number,
-): ManagedRuntimeRelease {
+): Parameters<typeof installManagedRuntime>[1] {
   return {
     name,
     tag: "test-release",
-    assetName: `test-${name}.${format}`,
+    assetName: `test-runtime.${format}`,
     url,
     expectedSizeBytes: asset.byteLength,
     sha256: sha256(asset),
@@ -52,6 +54,20 @@ function release(
     stripComponents,
   };
 }
+
+test("maps helpers to the existing pinned runtime artifact families", () => {
+  const target = { os: "darwin", cpu: "arm64" };
+  const llamaServer = managedRuntimeRelease("llama-server", target);
+  const llamaTts = managedExecutableRelease("llama-tts", target);
+  const sdServer = managedRuntimeRelease("sd-server", target);
+  const sdCli = managedExecutableRelease("sd-cli", target);
+  if (!llamaServer || !llamaTts || !sdServer || !sdCli) {
+    throw new Error("Expected managed macOS arm64 runtime releases.");
+  }
+
+  expect(llamaTts).toEqual({ ...llamaServer, name: "llama-tts" });
+  expect(sdCli).toEqual({ ...sdServer, name: "sd-cli" });
+});
 
 async function tarGz(
   entries: Record<string, Uint8Array | { linkname: string }>,
@@ -134,6 +150,48 @@ test("installs a verified tar.gz runtime with its staged support files", async (
           authoritativeSha256: sha256(archive),
           format: "tar.gz",
           stripComponents: 1,
+        },
+      },
+    });
+  });
+});
+
+test("adopts a verified archive helper and records its actual executable", async () => {
+  const server = new TextEncoder().encode("llama server executable");
+  const helper = new TextEncoder().encode("llama tts executable");
+  const supportFile = new TextEncoder().encode("support library");
+  const archive = await tarGz({
+    "release/llama-server": server,
+    "release/llama-tts": helper,
+    "release/libsupport.dylib": supportFile,
+  });
+  const root = createRoot();
+
+  await withArchive(archive, async (url) => {
+    await installManagedRuntime(
+      { root },
+      release("llama-server", "tar.gz", archive, url, 1),
+    );
+    const helperPath = join(root, "bin", "llama-tts");
+    expect(statSync(helperPath).mode & 0o111).toBe(0);
+
+    const installed = await installManagedRuntime(
+      { root },
+      release("llama-tts", "tar.gz", archive, url, 1),
+    );
+    expect(installed).toBe(helperPath);
+    expect(await Bun.file(installed).bytes()).toEqual(helper);
+    expect(statSync(installed).mode & 0o111).toBe(0o111);
+    expect(statSync(join(root, "bin", "libsupport.dylib")).mode & 0o111).toBe(
+      0,
+    );
+    expect(
+      await Bun.file(join(root, "bin", ".managed-binaries.json")).json(),
+    ).toMatchObject({
+      runtimes: {
+        "llama-tts": {
+          authoritativeSha256: sha256(archive),
+          binarySha256: sha256(helper),
         },
       },
     });
@@ -252,5 +310,22 @@ test("rejects archive files removed by stripComponents", async () => {
     expect(await Bun.file(join(root, "bin", "llama-server")).exists()).toBe(
       false,
     );
+  });
+});
+
+test("fails closed when a requested helper is absent from a verified archive", async () => {
+  const archive = await tarGz({
+    "release/llama-server": new TextEncoder().encode("llama executable"),
+  });
+  const root = createRoot();
+
+  await withArchive(archive, async (url) => {
+    await expect(
+      installManagedRuntime(
+        { root },
+        release("llama-tts", "tar.gz", archive, url, 1),
+      ),
+    ).rejects.toThrow("llama-tts was not found after extracting");
+    expect(await Bun.file(join(root, "bin", "llama-tts")).exists()).toBe(false);
   });
 });
