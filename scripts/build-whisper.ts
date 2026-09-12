@@ -1,5 +1,6 @@
 import { $ } from "bun";
 import { join } from "node:path";
+import { whisperLicense } from "./whisper-release/contracts";
 
 const WHISPER_SOURCE = {
   revision: "23ee03506a91ac3d3f0071b40e66a430eebdfa1d",
@@ -15,6 +16,12 @@ const sourcePath = root
   : "";
 const buildPath = root ? join(root, "build") : "";
 const outputPath = root ? join(root, "whisper-server") : "";
+const licenseSourcePath = join(
+  import.meta.dir,
+  "whisper-release",
+  whisperLicense.filename,
+);
+const licenseOutputPath = root ? join(root, whisperLicense.filename) : "";
 
 function sha256(bytes: Uint8Array): Promise<string> {
   return crypto.subtle
@@ -57,7 +64,9 @@ async function main() {
   await $`tar --extract --gzip --file ${archivePath} --directory ${root}`;
 
   console.log("Configuring whisper-server...");
-  await $`cmake -S ${sourcePath} -B ${buildPath} -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF`;
+  const linuxVulkanFlags =
+    process.platform === "linux" ? ["-DGGML_VULKAN=ON"] : [];
+  await $`cmake -S ${sourcePath} -B ${buildPath} -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF ${linuxVulkanFlags}`;
 
   console.log("Building whisper-server...");
   await $`cmake --build ${buildPath} --config Release --target whisper-server --parallel`;
@@ -70,6 +79,13 @@ async function main() {
   }
 
   await Bun.write(outputPath, Bun.file(binaryPath));
+  const license = new Uint8Array(
+    await Bun.file(licenseSourcePath).arrayBuffer(),
+  );
+  if ((await sha256(license)) !== whisperLicense.sha256) {
+    throw new Error("The packaged whisper.cpp license does not match the pin.");
+  }
+  await Bun.write(licenseOutputPath, license);
   await $`chmod +x ${outputPath}`;
   console.log(`Built verified whisper-server: ${outputPath}`);
 }

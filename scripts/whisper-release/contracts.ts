@@ -14,6 +14,10 @@ export const archiveFilenameSchema = z.enum([
   "whisper-server-linux-x64.tar.gz",
   "whisper-server-macos-arm64.zip",
 ]);
+export const whisperLicense = Object.freeze({
+  filename: "LICENSE.whisper.cpp.txt",
+  sha256: "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d",
+});
 
 export type WhisperTarget = z.infer<typeof whisperTargetSchema>;
 export type Fetcher = typeof fetch;
