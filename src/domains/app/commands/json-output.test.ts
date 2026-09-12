@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const projectRoot = join(import.meta.dirname, "../../../..");
 
@@ -36,15 +37,18 @@ async function compileCli(outputPath: string): Promise<void> {
 }
 
 async function runCli(executable: string, args: string[]): Promise<CliResult> {
-  const process = Bun.spawn([executable, ...args], {
+  const runtimeDirectory = join(dirname(executable), "runtime");
+  await mkdir(runtimeDirectory, { recursive: true, mode: 0o700 });
+  const child = Bun.spawn([executable, ...args], {
     cwd: projectRoot,
     stdout: "pipe",
     stderr: "pipe",
+    env: { ...process.env, XDG_RUNTIME_DIR: runtimeDirectory },
   });
   const [exitCode, stdout, stderr] = await Promise.all([
-    process.exited,
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
   ]);
   return { exitCode, stdout, stderr };
 }
