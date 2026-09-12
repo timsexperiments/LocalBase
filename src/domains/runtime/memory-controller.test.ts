@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { byId, primaryArtifact } from "../../catalog";
+import { resolveLlmLaunchPlan } from "./launch-plan";
 import {
   MemorySafetyController,
   RuntimeMemoryAdmissionError,
 } from "./memory-controller";
 import {
   defaultMemorySafetyConfig,
+  effectiveMemoryReserveBytes,
   gibibyte,
   type HostMemorySnapshot,
   type MemoryTopology,
@@ -57,11 +60,14 @@ function provider(availableBytes = 32 * gibibyte) {
   };
 }
 
-function sequencedProvider(availableBytes: readonly number[]) {
+function sequencedProvider(
+  availableBytes: readonly number[],
+  memoryTopology = topology,
+) {
   let snapshotCount = 0;
   return {
     provider: {
-      topology,
+      topology: memoryTopology,
       async snapshot() {
         const available =
           availableBytes[Math.min(snapshotCount, availableBytes.length - 1)]!;
@@ -132,6 +138,84 @@ describe("memory controller", () => {
       (result): result is PromiseRejectedResult => result.status === "rejected",
     );
     expect(rejected?.reason).toBeInstanceOf(RuntimeMemoryAdmissionError);
+    expect(rejected?.reason.diagnostics).toMatchObject({
+      measured_available_bytes: 32 * gibibyte,
+      reserve_bytes: 8 * gibibyte,
+      pending_bytes: demand.unifiedBytes,
+      requested_bytes: demand.unifiedBytes,
+      effective_available_bytes: 18 * gibibyte,
+    });
+  });
+
+  test("released cancellation demand gives no credit before measured memory recovers", async () => {
+    const model = byId("gpt-oss-20b-q4_k_m");
+    if (!model) throw new Error("Missing GPT-OSS fixture model.");
+    const artifact = primaryArtifact(model);
+    if (artifact.expectedSizeBytes === undefined) {
+      throw new Error("Missing GPT-OSS fixture artifact size.");
+    }
+    const plan = resolveLlmLaunchPlan({
+      runtimeId: "llm:cancellation:1",
+      root: "/unused",
+      modelsDirectory: "/unused/models",
+      modelId: model.modelId,
+      modelFile: artifact.filename,
+      host: "127.0.0.1",
+      port: 1,
+      ctxSize: 8192,
+      parallel: 1,
+      modelRequirementGb: model.minVramGb,
+      artifactBytes: artifact.expectedSizeBytes,
+      hardware: { memoryGb: 64 },
+    });
+    const memoryTopology: MemoryTopology = {
+      kind: "unified",
+      system: { id: "system", capacityBytes: 64 * gibibyte },
+    };
+    const config = defaultMemorySafetyConfig();
+    const reserve = effectiveMemoryReserveBytes(
+      config.systemReserve,
+      memoryTopology.system.capacityBytes,
+    );
+    const required = reserve + plan.memoryDemand.unifiedBytes;
+    // A post-abort host estimate, not a captured admission sample.
+    const postCancellationAvailable = 20_953_399_296;
+    const source = sequencedProvider(
+      [32 * gibibyte, postCancellationAvailable, required - 1, required],
+      memoryTopology,
+    );
+    const controller = new MemorySafetyController(source.provider, config);
+    const request = { runtimeId: plan.runtimeId, demand: plan.memoryDemand };
+    const first = await controller.reserve(request);
+    first.materialize();
+    first.release();
+
+    for (const [index, available] of [
+      postCancellationAvailable,
+      required - 1,
+    ].entries()) {
+      await expect(controller.reserve(request)).rejects.toMatchObject({
+        decision: {
+          kind: "rejected",
+          reason: "system-memory",
+          poolId: "system",
+        },
+        diagnostics: {
+          measured_available_bytes: available,
+          reserve_bytes: reserve,
+          pending_bytes: 0,
+          requested_bytes: plan.memoryDemand.unifiedBytes,
+          effective_available_bytes: available,
+          sample_captured_at_ms: index + 2,
+          measured_pressure: "normal",
+          safety_state: "healthy",
+          recovery_samples: 0,
+        },
+      });
+    }
+    const replacement = await controller.reserve(request);
+    replacement.release();
+    expect(source.snapshotCount()).toBe(4);
   });
 
   test("does not subtract a materialized reservation from a fresh OS sample", async () => {
@@ -232,6 +316,15 @@ describe("memory controller", () => {
           reason: "memory-pressure",
           poolId: "system",
         },
+        diagnostics: {
+          measured_available_bytes: 32 * gibibyte,
+          reserve_bytes: 8 * gibibyte,
+          pending_bytes: 0,
+          requested_bytes: demand.unifiedBytes,
+          measured_pressure: "normal",
+          safety_state: "constrained",
+          recovery_samples: index,
+        },
       });
     }
 
@@ -296,6 +389,13 @@ describe("memory controller", () => {
         kind: "rejected",
         reason: "measurement-unavailable",
         poolId: "accelerator",
+      });
+      expect(result[0].reason.diagnostics).toMatchObject({
+        measured_available_bytes: "unavailable",
+        reserve_bytes: "unavailable",
+        pending_bytes: "unavailable",
+        effective_available_bytes: "unavailable",
+        measured_pressure: "unknown",
       });
     }
   });

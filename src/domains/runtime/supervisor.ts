@@ -278,6 +278,19 @@ export class ManagedService {
         if (err instanceof RuntimeMemoryAdmissionError) {
           this.releaseReservation(reservation);
           this.lifecycleState = "idle";
+          this.options.logger.event({
+            severity: "warn",
+            eventName: "runtime.memory-admission-rejected",
+            category: "runtime",
+            component: this.name,
+            runtime: this.options.modality,
+            message: err.message,
+            attributes: {
+              reason: err.decision.reason,
+              pool: err.decision.poolId,
+              ...err.diagnostics,
+            },
+          });
           throw err;
         }
         this.options.logger.event({
