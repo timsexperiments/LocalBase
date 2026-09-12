@@ -173,7 +173,7 @@ test("fails immediately for a malformed successful response", async () => {
 if (process.env.LOCALBASE_SMOKE_CLI) {
   describe("exact compiled CLI runtime smoke", () => {
     test("completes the configured platform lifecycle", async () => {
-      await expect(runRuntimeSmoke()).resolves.toBeUndefined();
+      await runRuntimeSmoke();
     }, 120_000);
   });
 }

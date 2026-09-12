@@ -6,6 +6,10 @@ import { openAIErrorResponseSchema } from "../src/domains/runtime/openai-error";
 import { diagnosticsManifestSchema } from "../src/domains/diagnostics/commands/diagnostics";
 import { serviceLifecycleResultSchema } from "../src/domains/app/commands/results";
 import { commandSuccessSchema } from "../src/domains/app/commands/output";
+import {
+  managedRuntimeRelease,
+  type PlatformTarget,
+} from "../src/manager/managed-runtime-manifest";
 
 type CommandResult = {
   exitCode: number;
@@ -15,6 +19,13 @@ type CommandResult = {
 
 export type SmokeTarget =
   "macos-arm64" | "linux-x64" | "macos-x64" | "linux-arm64";
+
+const platformTargets = {
+  "macos-arm64": { os: "darwin", cpu: "arm64" },
+  "linux-x64": { os: "linux", cpu: "x64" },
+  "macos-x64": { os: "darwin", cpu: "x64" },
+  "linux-arm64": { os: "linux", cpu: "arm64" },
+} satisfies Record<SmokeTarget, PlatformTarget>;
 
 function hostSmokeTarget(): SmokeTarget {
   if (process.platform === "darwin" && process.arch === "arm64") {
@@ -465,9 +476,20 @@ async function waitForClosedPort(port: number): Promise<void> {
   );
 }
 
-async function verifyInstalledArtifacts(root: string): Promise<void> {
-  const binary = Bun.file(`${root}/bin/whisper-server`);
-  const receipt = Bun.file(`${root}/bin/.managed-binaries.json`);
+async function verifyInstalledArtifacts(
+  root: string,
+  target: SmokeTarget,
+): Promise<void> {
+  const release = managedRuntimeRelease(
+    "whisper-server",
+    platformTargets[target],
+  );
+  if (!release) {
+    throw new Error(`No managed Whisper runtime is pinned for ${target}.`);
+  }
+  const packageDir = `${root}/bin/runtimes/whisper-server/${release.sha256.toLowerCase()}`;
+  const binary = Bun.file(`${packageDir}/whisper-server`);
+  const receipt = Bun.file(`${packageDir}/.managed-binaries.json`);
   const model = Bun.file(`${root}/models/stt/${STT_MODEL_FILE}`);
   if (!(await binary.exists()) || !(await model.exists())) {
     throw new Error(
@@ -486,15 +508,7 @@ async function verifyInstalledArtifacts(root: string): Promise<void> {
 }
 
 async function verifyCliOnlyArtifacts(root: string): Promise<void> {
-  const managedBinaries = await Promise.all(
-    ["llama-server", "whisper-server", "sd-server"].map((name) =>
-      Bun.file(`${root}/bin/${name}`).exists(),
-    ),
-  );
-  if (
-    managedBinaries.some(Boolean) ||
-    (await Bun.file(`${root}/bin/.managed-binaries.json`).exists())
-  ) {
+  if (await Bun.file(`${root}/bin/runtimes`).exists()) {
     throw new Error(
       "A CLI-only target attempted to install a managed runtime.",
     );
@@ -571,7 +585,7 @@ export async function runRuntimeSmoke(): Promise<void> {
       await verifyDiagnosticsArchive(`${root}/diagnostics-running.zip`);
       if (isManagedTarget(target)) {
         await transcribe(running.baseUrl);
-        await verifyInstalledArtifacts(root);
+        await verifyInstalledArtifacts(root, target);
       } else {
         await verifyCliOnlyArtifacts(root);
       }
