@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, stat } from "node:fs/promises";
 import { z } from "zod";
 import { unzipSync } from "fflate";
 import { gatewayHealthSchema } from "../src/domains/runtime/health";
@@ -219,6 +219,20 @@ function describe(result: CommandResult): string {
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch (error) {
+    if (isMissingPathError(error)) return false;
+    throw error;
+  }
 }
 
 async function expectCli(args: string[], root: string): Promise<CommandResult> {
@@ -507,8 +521,8 @@ async function verifyInstalledArtifacts(
   }
 }
 
-async function verifyCliOnlyArtifacts(root: string): Promise<void> {
-  if (await Bun.file(`${root}/bin/runtimes`).exists()) {
+export async function verifyCliOnlyArtifacts(root: string): Promise<void> {
+  if (await pathExists(`${root}/bin/runtimes`)) {
     throw new Error(
       "A CLI-only target attempted to install a managed runtime.",
     );
@@ -601,7 +615,7 @@ export async function runRuntimeSmoke(): Promise<void> {
     );
     await verifyDiagnosticsArchive(`${root}/diagnostics-stopped.zip`);
     await expectCli(buildUninstallArgs(root), root);
-    if (await Bun.file(root).exists()) {
+    if (await pathExists(root)) {
       throw new Error(
         "LocalBase uninstall did not remove the smoke-test root.",
       );
