@@ -50,6 +50,8 @@ export type AuthoritativeChecksum = {
   sha256: string;
 };
 
+export type AuthoritativeVerification = "cached-identity" | "sha256";
+
 function emptyChecksumStore(): ChecksumStore {
   return { version: 1, entries: {} };
 }
@@ -173,7 +175,7 @@ export async function verifyAuthoritativeFile(
   filePath: string,
   authority: AuthoritativeChecksum,
   cacheDir: string,
-): Promise<void> {
+): Promise<AuthoritativeVerification> {
   const parsed = z
     .object({
       filename: safeFilenameSchema,
@@ -199,7 +201,7 @@ export async function verifyAuthoritativeFile(
       ([key, value]) => cached.file[key as keyof typeof identity] === value,
     )
   ) {
-    return;
+    return "cached-identity";
   }
 
   await verifyChecksum(filePath, digest, parsed.filename);
@@ -209,4 +211,5 @@ export async function verifyAuthoritativeFile(
     file: identity,
   };
   await writeChecksumStore(cacheDir, store);
+  return "sha256";
 }

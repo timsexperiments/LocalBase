@@ -12,6 +12,11 @@ import { byId } from "../../../catalog";
 import { defaultConfig, loadConfig, saveConfig } from "../../../manager";
 import { DatabaseSession } from "../../../db/client";
 import { compileRuntimeFixture } from "../../../test/runtime-fixture";
+import {
+  formatHumanLogEvent,
+  readLogSnapshot,
+  type LogEvent,
+} from "../../observability/logging";
 
 const INITIAL_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const SWITCHED_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
@@ -112,6 +117,25 @@ async function waitForLazyLlamaLaunch(
   throw new Error(
     `Timed out after ${LAZY_LLAMA_LAUNCH_TIMEOUT_MS}ms waiting for the lazy Llama fixture to write ${argsPath}; gateway pid ${gateway.pid} is still running`,
   );
+}
+
+async function waitForLogEvents(
+  root: string,
+  eventNames: readonly string[],
+): Promise<LogEvent[]> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const events = await readLogSnapshot(root);
+    if (
+      eventNames.every((name) =>
+        events.some(({ eventName }) => eventName === name),
+      )
+    ) {
+      return events;
+    }
+    await Bun.sleep(POLL_INTERVAL_MS);
+  }
+  throw new Error(`Timed out waiting for log events: ${eventNames.join(", ")}`);
 }
 
 async function waitForProcessExit(pid: number): Promise<void> {
@@ -379,7 +403,7 @@ test(
 );
 
 test(
-  "lazy llama startup repairs a missing shard before launching the primary shard",
+  "eager startup reports installation and lazy startup repairs a missing shard",
   async () => {
     const root = mkdtempSync(join(tmpdir(), "local-base-lazy-shard-"));
     const argsPath = join(root, "bin", "llama-server.args");
@@ -438,10 +462,6 @@ test(
       mkdirSync(runtimeDir, { recursive: true });
       mkdirSync(config.llmModelsDir, { recursive: true });
       await Bun.write(join(config.llmModelsDir, primaryName), primary);
-      await Bun.write(
-        join(config.llmModelsDir, supplementaryName),
-        supplementary,
-      );
       await compileRuntimeFixture(join(runtimeDir, "llama-server"));
 
       const model = {
@@ -519,6 +539,42 @@ test(
 
       const baseUrl = `http://127.0.0.1:${wrapperPort}`;
       await waitForGateway(gateway, baseUrl);
+      const startupEvents = await waitForLogEvents(root, [
+        "model.installing",
+        "model.install-progress",
+        "model.install-verifying",
+        "model.install-verified",
+        "model.installed",
+        "gateway.started",
+      ]);
+      const startupNames = startupEvents.map(({ eventName }) => eventName);
+      expect(startupNames.indexOf("model.installing")).toBeLessThan(
+        startupNames.indexOf("model.installed"),
+      );
+      expect(startupNames.indexOf("model.installed")).toBeLessThan(
+        startupNames.indexOf("gateway.started"),
+      );
+      const completedProgress = startupEvents.find(
+        (event) =>
+          event.eventName === "model.install-progress" &&
+          event.attributes?.percent === 100,
+      );
+      if (!completedProgress) {
+        throw new Error("Expected completed startup installation progress");
+      }
+      expect(formatHumanLogEvent(completedProgress)).toContain(
+        `Downloading ${modelId} artifact 2/2 (${supplementaryName}): 100%.`,
+      );
+      expect(
+        startupEvents.find(
+          (event) => event.eventName === "model.install-verified",
+        )?.attributes,
+      ).toMatchObject({ verification_method: "sha256" });
+      const serializedStartupEvents = JSON.stringify(startupEvents);
+      expect(serializedStartupEvents).not.toContain(artifacts.source);
+      expect(serializedStartupEvents).not.toContain(root);
+      expect(artifacts.requests).toEqual([artifactPath]);
+
       await Bun.file(join(config.llmModelsDir, supplementaryName)).delete();
 
       const response = await fetch(`${baseUrl}/v1/chat/completions`, {
@@ -532,7 +588,7 @@ test(
       expect(response.status).toBe(200);
       await waitForLazyLlamaLaunch(gateway, argsPath);
 
-      expect(artifacts.requests).toEqual([artifactPath]);
+      expect(artifacts.requests).toEqual([artifactPath, artifactPath]);
       expect(
         await Bun.file(join(config.llmModelsDir, supplementaryName)).bytes(),
       ).toEqual(supplementary);
