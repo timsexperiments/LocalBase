@@ -297,6 +297,52 @@ test("guardian startup failure stops the registered backend before release", asy
   }
 });
 
+test("guardian stop failure does not report backend cleanup complete", async () => {
+  let guardian: Bun.Subprocess | undefined;
+  let restoreGuardianKill: (() => void) | undefined;
+  const { service, events, memory, backends, restoreFetch, otel } =
+    controlledStopService({
+      startGuardian() {
+        guardian = Bun.spawn(["/bin/sleep", "60"]);
+        const originalKill = guardian.kill;
+        Object.defineProperty(guardian, "kill", {
+          configurable: true,
+          value() {
+            throw new Error("guardian kill denied");
+          },
+        });
+        restoreGuardianKill = () => {
+          Object.defineProperty(guardian, "kill", {
+            configurable: true,
+            value: originalKill,
+          });
+        };
+        return guardian;
+      },
+    });
+  try {
+    await service.ensureRunning();
+    const backend = backends[0];
+    if (!backend) throw new Error("Expected a running backend.");
+    const stopping = service.kill();
+    backend.exit();
+
+    await expect(stopping).rejects.toThrow(
+      "Failed to stop guardian for managed llama-server process.",
+    );
+    expect(stopEvents(events)).toEqual(["backend.stopping"]);
+    expect(memory.releases).toEqual(["llm:stop:1"]);
+    expect(guardian?.exitCode).toBeNull();
+  } finally {
+    restoreGuardianKill?.();
+    if (guardian?.exitCode === null) guardian.kill(9);
+    await guardian?.exited;
+    await service.shutdown().catch(() => {});
+    restoreFetch();
+    await otel.shutdown();
+  }
+});
+
 test("concurrent kill and shutdown share one managed backend stop", async () => {
   const { service, events, memory, backends, restoreFetch, otel } =
     controlledStopService();

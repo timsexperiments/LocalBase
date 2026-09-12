@@ -466,15 +466,29 @@ export class ManagedService {
   private async stopGuardian(proc: Bun.Subprocess): Promise<void> {
     const guardian = this.guardians.get(proc.pid);
     if (!guardian) return;
-    this.guardians.delete(proc.pid);
-    await this.stopProcess(guardian);
+    if (!(await this.stopProcess(guardian))) {
+      throw new Error(
+        `Failed to stop guardian for managed ${this.name} process.`,
+      );
+    }
+    if (this.guardians.get(proc.pid) === guardian) {
+      this.guardians.delete(proc.pid);
+    }
   }
 
   private async stopAllGuardians(): Promise<void> {
-    const guardians = [...this.guardians.values()];
-    this.guardians.clear();
+    const guardians = [...this.guardians.entries()];
     await Promise.all(
-      guardians.map(async (guardian) => await this.stopProcess(guardian)),
+      guardians.map(async ([pid, guardian]) => {
+        if (!(await this.stopProcess(guardian))) {
+          throw new Error(
+            `Failed to stop guardian for managed ${this.name} process.`,
+          );
+        }
+        if (this.guardians.get(pid) === guardian) {
+          this.guardians.delete(pid);
+        }
+      }),
     );
   }
 
