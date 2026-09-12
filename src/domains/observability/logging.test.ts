@@ -23,6 +23,7 @@ import {
   logEventSchema,
   logDirectory,
   matchesLogFilters,
+  redactLogEventForDiagnostics,
   readLogSnapshot,
   writeBootstrapDiagnostic,
 } from "./logging";
@@ -146,6 +147,64 @@ test("validates one redacted event contract before console or file sinks", () =>
       }).requestId,
     ).toBeUndefined();
   }
+});
+
+test("persists numeric inference metrics while diagnostics retain their values", async () => {
+  const root = createRoot();
+  const logged = createLogEvent({
+    severity: "info",
+    eventName: "inference.completed",
+    category: "runtime",
+    component: "inference",
+    runtime: "llm",
+    message: "Inference response settled.",
+    attributes: {
+      prompt_tokens: 11,
+      completion_tokens: 7,
+      total_tokens: 18,
+      prompt_duration_ms: 1.25,
+      predicted_duration_ms: 2.75,
+    },
+  });
+  const writer = new RotatingLogWriter(root);
+  await writer.open();
+  writer.enqueue(logged);
+  await writer.close();
+
+  const attributes = {
+    prompt_tokens: 11,
+    completion_tokens: 7,
+    total_tokens: 18,
+    prompt_duration_ms: 1.25,
+    predicted_duration_ms: 2.75,
+  };
+  expect((await readLogSnapshot(root))[0].attributes).toEqual(attributes);
+  expect(redactLogEventForDiagnostics(logged).attributes).toEqual(attributes);
+
+  const invalidMetrics = createLogEvent({
+    severity: "info",
+    eventName: "inference.completed",
+    category: "runtime",
+    component: "inference",
+    runtime: "llm",
+    message: "Inference response settled.",
+    attributes: {
+      prompt_tokens: "11",
+      completion_tokens: -1,
+      total_tokens: Number.POSITIVE_INFINITY,
+      prompt_duration_ms: Number.NaN,
+      predicted_duration_ms: false,
+      token_budget: 18,
+    },
+  });
+  expect(invalidMetrics.attributes).toEqual({
+    prompt_tokens: "[REDACTED]",
+    completion_tokens: "[REDACTED]",
+    total_tokens: "[REDACTED]",
+    prompt_duration_ms: "[REDACTED]",
+    predicted_duration_ms: "[REDACTED]",
+    token_budget: "[REDACTED]",
+  });
 });
 
 test("models trace correlation as one opaque local object", () => {
