@@ -136,6 +136,38 @@ describe.serial("native JSON Schema structured output conformance", () => {
       }),
     );
 
+    const tooManyProperties = Object.fromEntries(
+      Array.from({ length: 1_001 }, (_, index) => [
+        `p${index}`,
+        { type: "string" },
+      ]),
+    );
+    const resourceBound = await chatRequest(gateway, "structured-json", {
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "per_object_resource_bound",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: tooManyProperties,
+            required: Object.keys(tooManyProperties),
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+    expect(resourceBound.status).toBe(400);
+    expect(
+      openAIErrorResponseSchema.parse(await resourceBound.json()).error,
+    ).toEqual(
+      expect.objectContaining({
+        param: "response_format.json_schema.schema",
+        code: "unsupported_json_schema",
+        message: expect.stringContaining("1,000-property compilation limit"),
+      }),
+    );
+
     expect(await gateway.readLlmRuntimeLaunches()).toHaveLength(0);
     expect(gateway.upstreamRequests).toHaveLength(upstreamOffset);
   });

@@ -177,21 +177,25 @@ describe("structured output schemas", () => {
     });
   });
 
-  test("compiles repeated local refs without schema inlining", async () => {
+  test("compiles a distributed 5,000-property schema without inlining", async () => {
     const source = `
       import { chatResponseFormatSchema, prepareStructuredOutput } from "./src/domains/runtime/structured-output.ts";
-      const leaf = {
-        type: "object",
-        properties: Object.fromEntries(Array.from({ length: 100 }, (_, index) => ["p" + index, { type: "string" }])),
-        required: Array.from({ length: 100 }, (_, index) => "p" + index),
-        additionalProperties: false,
-      };
+      const definitions = Object.fromEntries(Array.from({ length: 50 }, (_, definitionIndex) => {
+        const properties = Object.fromEntries(Array.from({ length: 99 }, (_, propertyIndex) => ["p" + propertyIndex, { type: "string" }]));
+        return ["definition" + definitionIndex, {
+          type: "object",
+          properties,
+          required: Object.keys(properties),
+          additionalProperties: false,
+        }];
+      }));
+      const properties = Object.fromEntries(Array.from({ length: 50 }, (_, index) => ["p" + index, { $ref: "#/$defs/definition" + index }]));
       const schema = {
         type: "object",
-        properties: Object.fromEntries(Array.from({ length: 500 }, (_, index) => ["p" + index, { $ref: "#/$defs/leaf" }])),
-        required: Array.from({ length: 500 }, (_, index) => "p" + index),
+        properties,
+        required: Object.keys(properties),
         additionalProperties: false,
-        $defs: { leaf },
+        $defs: definitions,
       };
       const prepared = prepareStructuredOutput(chatResponseFormatSchema.parse({
         type: "json_schema",
@@ -207,6 +211,40 @@ describe("structured output schemas", () => {
     });
     const stderr = await new Response(child.stderr).text();
     expect(await child.exited, stderr).toBe(0);
+  });
+
+  test("bounds individual objects before validator compilation", () => {
+    const properties = (count: number) =>
+      Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [
+          `p${index}`,
+          { type: "string" },
+        ]),
+      );
+    const acceptedProperties = properties(1_000);
+    expect(
+      prepare({
+        type: "object",
+        properties: acceptedProperties,
+        required: Object.keys(acceptedProperties),
+        additionalProperties: false,
+      }),
+    ).toMatchObject({ kind: "ready" });
+
+    const rejectedProperties = properties(1_001);
+    expect(
+      prepare({
+        type: "object",
+        properties: rejectedProperties,
+        required: Object.keys(rejectedProperties),
+        additionalProperties: false,
+      }),
+    ).toEqual({
+      kind: "rejected",
+      code: "unsupported_json_schema",
+      message:
+        "Structured output schema object exceeds LocalBase's 1,000-property compilation limit.",
+    });
   });
 
   test("validates only ordinary assistant content completed with stop", () => {
