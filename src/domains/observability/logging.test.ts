@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { getEventListeners } from "node:events";
 import { lstatSync, mkdtempSync, rmSync } from "node:fs";
 import {
   appendFile,
@@ -687,6 +688,42 @@ test("follows appends and rotations occurring during a bounded handle read exact
   await writer.close();
   expect(received).toEqual([1, 2, 3, 4]);
   expect(new Set(received).size).toBe(received.length);
+});
+
+test("custom follow polling removes each abort listener after the poll resolves", async () => {
+  const root = createRoot();
+  const writer = new RotatingLogWriter(root);
+  await writer.open();
+  writer.enqueue(event(1));
+  await writer.flush();
+
+  const controller = new AbortController();
+  const received: number[] = [];
+  const listenerCounts: number[] = [];
+  await followLogEvents(
+    root,
+    {},
+    async (entry) => {
+      const sequence = entry.attributes?.sequence;
+      if (typeof sequence !== "number") {
+        throw new Error("Expected a numeric test sequence");
+      }
+      received.push(sequence);
+      listenerCounts.push(getEventListeners(controller.signal, "abort").length);
+      if (sequence === 5) {
+        controller.abort();
+      } else {
+        writer.enqueue(event(sequence + 1));
+        await writer.flush();
+      }
+    },
+    controller.signal,
+    { pollMs: 0 },
+  );
+  await writer.close();
+
+  expect(received).toEqual([1, 2, 3, 4, 5]);
+  expect(listenerCounts).toEqual([0, 0, 0, 0, 0]);
 });
 
 test("follow detects a same-inode truncate and regrow between polls", async () => {
