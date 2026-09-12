@@ -405,6 +405,12 @@ describe.serial("compiled CLI service lifecycle", () => {
     return ready.service;
   }
 
+  function launchdFixtureTarget(serviceId: string): string {
+    const uid = process.getuid?.();
+    if (uid === undefined) throw new Error("POSIX user ID is unavailable.");
+    return `gui/${uid}/${serviceId}`;
+  }
+
   test("status is database-free and does not initialize an absent root", async () => {
     const root = join(directory, "absent-root");
     const canonical = await canonicalRoot(root);
@@ -1097,9 +1103,7 @@ describe.serial("compiled CLI service lifecycle", () => {
     ).slice(priorCalls.length);
     const bootout = calls.findIndex((args) => args[1] === "bootout");
     const bootstrap = calls.findIndex((args) => args[1] === "bootstrap");
-    const uid = process.getuid?.();
-    if (uid === undefined) throw new Error("POSIX user ID is unavailable.");
-    const target = `gui/${uid}/${service.serviceId}`;
+    const target = launchdFixtureTarget(service.serviceId);
     const removalChecks = calls.filter(
       (args, index) =>
         index > bootout &&
@@ -1114,7 +1118,7 @@ describe.serial("compiled CLI service lifecycle", () => {
 
   test("fails restart when launchd registration removal times out", async () => {
     const root = join(directory, "launchd-removal-timeout-root");
-    await startDarwinFixtureRoot(root);
+    const service = await startDarwinFixtureRoot(root);
     const priorCalls = (await Bun.file(darwinCallsPath).json()) as string[][];
 
     const restarted = await runCli(
@@ -1122,7 +1126,7 @@ describe.serial("compiled CLI service lifecycle", () => {
       ["--root", root, "restart", "--json"],
       environment("darwin", {
         LOCALBASE_TEST_LAUNCHD_REMOVAL_POLLS: "1000",
-        LOCALBASE_TEST_SERVICE_COMMAND_TIMEOUT_MS: "100",
+        LOCALBASE_TEST_SERVICE_STOP_WAIT: "expire-after-observation",
       }),
     );
 
@@ -1133,7 +1137,15 @@ describe.serial("compiled CLI service lifecycle", () => {
     const calls = (
       (await Bun.file(darwinCallsPath).json()) as string[][]
     ).slice(priorCalls.length);
-    expect(calls.some((args) => args[1] === "bootout")).toBe(true);
+    const bootout = calls.findIndex((args) => args[1] === "bootout");
+    const target = launchdFixtureTarget(service.serviceId);
+    expect(bootout).toBeGreaterThanOrEqual(0);
+    expect(
+      calls.filter(
+        (args, index) =>
+          index > bootout && args[1] === "print" && args[2] === target,
+      ),
+    ).toHaveLength(1);
     expect(calls.some((args) => args[1] === "bootstrap")).toBe(false);
   });
 

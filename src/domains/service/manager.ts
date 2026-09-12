@@ -49,6 +49,11 @@ export type ServiceManagerCommandRunner = (
   args: readonly string[],
 ) => Promise<ManagerCommandResult>;
 
+type ServiceManagerStopWait = Readonly<{
+  now: () => number;
+  waitForNextObservation: () => Promise<void>;
+}>;
+
 export const serviceStateSchema = z.enum([
   "foreground",
   "running",
@@ -328,13 +333,24 @@ async function productionCommandRunner(
 
 let commandRunner: ServiceManagerCommandRunner = productionCommandRunner;
 let commandTimeoutMs = MANAGER_TIMEOUT_MS;
+const productionStopWait: ServiceManagerStopWait = {
+  now: Date.now,
+  async waitForNextObservation() {
+    await Bun.sleep(50);
+  },
+};
+let launchdStopWait = productionStopWait;
 
 export function setServiceManagerCommandRunnerForTests(
   runner?: ServiceManagerCommandRunner,
   timeoutMs = MANAGER_TIMEOUT_MS,
+  stopWait?: ServiceManagerStopWait,
 ): void {
   commandRunner = runner ?? productionCommandRunner;
   commandTimeoutMs = runner ? timeoutMs : MANAGER_TIMEOUT_MS;
+  launchdStopWait = runner
+    ? (stopWait ?? productionStopWait)
+    : productionStopWait;
 }
 
 function managerExecutable(metadata: ServiceMetadata): string {
@@ -972,16 +988,16 @@ async function stopManager(
   }
   if (disable) await disableManager(metadata);
 
-  const stopTimeoutMs =
-    metadata.manager === "launchd" ? commandTimeoutMs : MANAGER_TIMEOUT_MS;
-  const deadline = Date.now() + stopTimeoutMs;
-  while (Date.now() < deadline) {
+  const stopWait =
+    metadata.manager === "launchd" ? launchdStopWait : productionStopWait;
+  const deadline = stopWait.now() + MANAGER_TIMEOUT_MS;
+  while (stopWait.now() < deadline) {
     const current = await inspectManager(metadata);
     if (managerHasStopped(current)) return;
-    await Bun.sleep(50);
+    await stopWait.waitForNextObservation();
   }
   throw new ServiceManagerError(
-    `${metadata.manager} did not stop ${metadata.serviceId} within ${stopTimeoutMs}ms.`,
+    `${metadata.manager} did not stop ${metadata.serviceId} within ${MANAGER_TIMEOUT_MS}ms.`,
   );
 }
 
