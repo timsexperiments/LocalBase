@@ -1,11 +1,13 @@
 import {
   accessSync,
   chmodSync,
+  copyFileSync,
   constants,
-  existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readlinkSync,
   renameSync,
   rmSync,
   statSync,
@@ -457,30 +459,128 @@ async function extractRelease(
   }
 }
 
-function commitStagedRelease(
-  stagingDir: string,
-  binDir: string,
-  binaryName: ManagedExecutableName,
-): void {
-  const entries = readdirSync(stagingDir);
-  for (const entry of entries) {
-    const destination = join(binDir, entry);
-    if (existsSync(destination)) {
-      throw new Error(
-        `Refusing to replace existing managed runtime asset at ${destination}.`,
-      );
-    }
-  }
-  for (const entry of [...entries].sort((left, right) => {
-    if (left === binaryName) return 1;
-    if (right === binaryName) return -1;
-    return left.localeCompare(right);
-  })) {
-    renameSync(join(stagingDir, entry), join(binDir, entry));
+type StagedAsset =
+  | { kind: "directory"; relativePath: string }
+  | { kind: "file"; relativePath: string }
+  | { kind: "symlink"; relativePath: string; target: string };
+
+function existingEntry(path: string) {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
   }
 }
 
-export async function installManagedRuntime(
+function stagedAssets(stagingDir: string): StagedAsset[] {
+  const assets: StagedAsset[] = [];
+  const collect = (directory: string, parent: string) => {
+    const entries = readdirSync(directory, { withFileTypes: true }).sort(
+      (left, right) => left.name.localeCompare(right.name),
+    );
+    for (const entry of entries) {
+      const relativePath = parent ? join(parent, entry.name) : entry.name;
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        assets.push({ kind: "directory", relativePath });
+        collect(path, relativePath);
+      } else if (entry.isFile()) {
+        assets.push({ kind: "file", relativePath });
+      } else if (entry.isSymbolicLink()) {
+        assets.push({
+          kind: "symlink",
+          relativePath,
+          target: readlinkSync(path),
+        });
+      } else {
+        throw new Error(`Unsupported staged runtime asset at ${path}.`);
+      }
+    }
+  };
+  collect(stagingDir, "");
+  return assets;
+}
+
+function assetConflict(path: string): Error {
+  return new Error(
+    `Refusing to replace existing managed runtime asset at ${path}.`,
+  );
+}
+
+async function preflightStagedAssets(
+  stagingDir: string,
+  binDir: string,
+): Promise<StagedAsset[]> {
+  const missing: StagedAsset[] = [];
+  for (const asset of stagedAssets(stagingDir)) {
+    const source = join(stagingDir, asset.relativePath);
+    const destination = join(binDir, asset.relativePath);
+    const existing = existingEntry(destination);
+    if (!existing) {
+      missing.push(asset);
+      continue;
+    }
+    if (asset.kind === "directory") {
+      if (!existing.isDirectory()) throw assetConflict(destination);
+      continue;
+    }
+    if (asset.kind === "symlink") {
+      if (
+        !existing.isSymbolicLink() ||
+        readlinkSync(destination) !== asset.target
+      ) {
+        throw assetConflict(destination);
+      }
+      continue;
+    }
+    if (!existing.isFile()) throw assetConflict(destination);
+    if ((await computeSha256(source)) !== (await computeSha256(destination))) {
+      throw assetConflict(destination);
+    }
+  }
+  return missing;
+}
+
+function installMissingStagedAssets(
+  stagingDir: string,
+  binDir: string,
+  missing: StagedAsset[],
+): void {
+  for (const asset of missing) {
+    const source = join(stagingDir, asset.relativePath);
+    const destination = join(binDir, asset.relativePath);
+    if (asset.kind === "directory") {
+      mkdirSync(destination, { recursive: false });
+    } else if (asset.kind === "symlink") {
+      symlinkSync(asset.target, destination);
+    } else {
+      copyFileSync(source, destination, constants.COPYFILE_EXCL);
+    }
+  }
+}
+
+const managedInstallTails = new Map<string, Promise<void>>();
+
+async function serializeManagedInstall<T>(
+  root: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = managedInstallTails.get(root) ?? Promise.resolve();
+  const result = previous.catch(() => {}).then(operation);
+  const tail = result.then(
+    () => {},
+    () => {},
+  );
+  managedInstallTails.set(root, tail);
+  return await result.finally(() => {
+    if (managedInstallTails.get(root) === tail) {
+      managedInstallTails.delete(root);
+    }
+  });
+}
+
+async function installManagedRuntimeNow(
   config: RuntimeConfig,
   release: ManagedExecutableRelease,
 ): Promise<string> {
@@ -506,26 +606,28 @@ export async function installManagedRuntime(
     );
 
     if (release.format === "binary") {
-      renameSync(downloadPath, destPath);
+      const existing = existingEntry(destPath);
+      if (existing) {
+        if (!existing.isFile()) throw assetConflict(destPath);
+        if (
+          (await computeSha256(downloadPath)) !==
+          (await computeSha256(destPath))
+        ) {
+          throw assetConflict(destPath);
+        }
+      } else {
+        renameSync(downloadPath, destPath);
+      }
     } else {
       await extractRelease(release, downloadPath, stagingDir);
       const stagedBinary = join(stagingDir, release.name);
-      if (!(await Bun.file(stagedBinary).exists())) {
+      if (!existingEntry(stagedBinary)?.isFile()) {
         throw new Error(
           `${release.name} was not found after extracting ${release.assetName}.`,
         );
       }
-      if (await Bun.file(destPath).exists()) {
-        const existingSha256 = await computeSha256(destPath);
-        const stagedSha256 = await computeSha256(stagedBinary);
-        if (existingSha256 !== stagedSha256) {
-          throw new Error(
-            `Refusing to replace existing managed executable at ${destPath}.`,
-          );
-        }
-      } else {
-        commitStagedRelease(stagingDir, binDir, release.name);
-      }
+      const missing = await preflightStagedAssets(stagingDir, binDir);
+      installMissingStagedAssets(stagingDir, binDir, missing);
     }
     if (!(await Bun.file(destPath).exists())) {
       throw new Error(
@@ -562,6 +664,17 @@ export async function installManagedRuntime(
   }
 }
 
+export async function installManagedRuntime(
+  config: RuntimeConfig,
+  release: ManagedExecutableRelease,
+): Promise<string> {
+  const root = resolve(config.root);
+  return await serializeManagedInstall(
+    root,
+    async () => await installManagedRuntimeNow({ root }, release),
+  );
+}
+
 export function managedExecutableRelease(
   name: ManagedExecutableName,
   target: PlatformTarget,
@@ -569,10 +682,6 @@ export function managedExecutableRelease(
   const runtime = executableRuntimeFamily[name];
   const release = managedRuntimeRelease(runtime, target);
   return release ? { ...release, name } : undefined;
-}
-
-function isArchiveHelper(name: ManagedExecutableName): boolean {
-  return executableRuntimeFamily[name] !== name;
 }
 
 export async function ensureBinary(
@@ -595,7 +704,7 @@ export async function ensureBinary(
       );
       return userManagedBinary;
     }
-    if (release && isArchiveHelper(name)) {
+    if (release) {
       return await installManagedRuntime(config, release);
     }
     throw new Error(
