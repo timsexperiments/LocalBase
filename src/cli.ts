@@ -12,12 +12,19 @@ async function main(): Promise<number> {
   }
   return await runCli(
     args,
-    async (options, initializeDatabase, initializeUnderOperationLock) => {
+    async (
+      options,
+      initializeDatabase,
+      initializeUnderOperationLock,
+      readOnlyConfiguration,
+    ) => {
       const { createAppContext } = await import("./context");
       return await createAppContext(
         options,
         initializeDatabase,
         initializeUnderOperationLock,
+        process.env,
+        readOnlyConfiguration,
       );
     },
     async (options) => {

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -74,6 +74,14 @@ test(
         "--no-create-key",
         "--hf-token",
         "private-token",
+        "--llm-models",
+        "qwen2.5-coder-7b-instruct-q4_k_m,mistral-nemo-12b-instruct-q4_k_m",
+        "--active-llm",
+        "mistral-nemo-12b-instruct-q4_k_m",
+        "--parallel",
+        "3",
+        "--ctx-size",
+        "8192",
       ]);
       expect(configured.exitCode).toBe(0);
       const configuration = jsonDocument(configured.stdout);
@@ -122,6 +130,7 @@ test(
       expect(listed.stdout).not.toContain(createdData.secret);
       expect(listed.stdout).not.toContain("keyHash");
 
+      const configuredDatabase = readFileSync(join(root, "local-base.db"));
       const doctor = await runCli(executable, [
         "--root",
         root,
@@ -130,6 +139,24 @@ test(
       ]);
       expect(doctor.exitCode).toBe(0);
       expect(doctor.stdout).not.toContain("private-token");
+      expect(jsonDocument(doctor.stdout)).toMatchObject({
+        ok: true,
+        data: {
+          configuration: {
+            selectedLlmModels: [
+              "qwen2.5-coder-7b-instruct-q4_k_m",
+              "mistral-nemo-12b-instruct-q4_k_m",
+            ],
+            activeLlmModel: "mistral-nemo-12b-instruct-q4_k_m",
+            parallel: 3,
+            ctxSize: 8192,
+            hfTokenConfigured: true,
+          },
+        },
+      });
+      expect(readFileSync(join(root, "local-base.db"))).toEqual(
+        configuredDatabase,
+      );
 
       const configureKeyRoot = join(directory, "configure-key-data");
       const configuredWithKey = await runCli(executable, [
@@ -147,6 +174,18 @@ test(
       expect(configuredWithKey.stderr).not.toContain(
         configureKeyData.createdKey.secret,
       );
+
+      const catalogRoot = join(directory, "catalog-only-data");
+      const catalog = await runCli(executable, [
+        "--root",
+        catalogRoot,
+        "--json",
+        "models",
+        "catalog",
+      ]);
+      expect(catalog.exitCode).toBe(0);
+      expect(jsonDocument(catalog.stdout)).toMatchObject({ ok: true });
+      expect(existsSync(catalogRoot)).toBe(false);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
