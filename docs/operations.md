@@ -40,6 +40,10 @@ Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` rep
 
 `device.runtime.effectiveSlots` is the backend's resolved launch-plan count. `device.runtime.queueDepth` is the number of waiting requests. `device.runtime.availableCapacity` is the remaining bounded waiting capacity, or `0` when the queue is closed. Queue values are `null` when no authoritative queue snapshot exists. Catalog capabilities, context windows, and output limits remain `null` when LocalBase has no authoritative value.
 
+## Managed startup model installation
+
+When managed startup must install a selected model, service status remains `starting`. Run `local-base logs --follow` to see download progress, validation, checksum or cached-identity verification, completion, and terminal failure phases. Progress events report observed bytes and integer percentages, not an estimated completion time.
+
 ## Health and readiness
 
 Public `GET` and `HEAD /health/ready` report request admission readiness. HTTP `200` returns `status: "ready"`, `reason: "request_admission_available"`, and the configured inference types that have bounded queue capacity. HTTP `503` returns `status: "unready"`, an empty `modalities` array, and reason `no_request_admission` or `gateway_stopping`.

@@ -1,11 +1,7 @@
 import { z } from "zod";
 import { SpanStatusCode, context, trace } from "@opentelemetry/api";
 import { join, basename } from "node:path";
-import {
-  validateApiKey,
-  installModel,
-  type LocalBaseConfig,
-} from "../../../manager";
+import { validateApiKey, type LocalBaseConfig } from "../../../manager";
 import {
   byId,
   CATALOG,
@@ -38,6 +34,7 @@ import {
 import { type RuntimeOverrideOwnership } from "../reconciliation-plan";
 import {
   createRuntimeSupervisorFactory,
+  installSelectedModel,
   runtimeLaunchOverrides,
 } from "../supervisor-factory";
 import {
@@ -1830,7 +1827,13 @@ export async function runServe(
     console.log(
       `LLM model is incomplete. Automatically installing "${config.activeLlmModel}"...`,
     );
-    const installedPath = await installModel(config, config.activeLlmModel);
+    const installedPath = await installSelectedModel(
+      ctx,
+      config,
+      "llm",
+      config.activeLlmModel,
+      "incomplete",
+    );
     llmModelFile = basename(installedPath);
     llmModelExists = true;
   }
@@ -1839,7 +1842,13 @@ export async function runServe(
     console.log(
       `STT model file is missing. Automatically installing "${config.activeSttModel}"...`,
     );
-    const installedPath = await installModel(config, config.activeSttModel);
+    const installedPath = await installSelectedModel(
+      ctx,
+      config,
+      "stt",
+      config.activeSttModel,
+      "missing",
+    );
     sttModelFile = basename(installedPath);
     sttModelExists = true;
   }
@@ -1848,7 +1857,13 @@ export async function runServe(
     console.log(
       `Image model file is missing. Automatically installing "${config.activeImageModel}"...`,
     );
-    const installedPath = await installModel(config, config.activeImageModel);
+    const installedPath = await installSelectedModel(
+      ctx,
+      config,
+      "image",
+      config.activeImageModel,
+      "missing",
+    );
     imageModelFile = basename(installedPath);
     imageModelExists = true;
   }

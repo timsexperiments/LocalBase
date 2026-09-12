@@ -31,6 +31,7 @@ import {
   uninstallManaged,
   validateApiKey,
   type LocalBaseConfig,
+  type ModelInstallEvent,
 } from "./manager";
 import { ensureLocalBaseRootMarker } from "./utils/root";
 import { migrationsFolder } from "./db/migration-assets";
@@ -41,6 +42,11 @@ import {
   verifyAuthoritativeFile,
   writeChecksumStore,
 } from "./utils/checksum";
+import {
+  LocalBaseLogger,
+  readLogSnapshot,
+} from "./domains/observability/logging";
+import { installSelectedModel } from "./domains/runtime/supervisor-factory";
 
 const testRoots: string[] = [];
 const testModelIds: string[] = [];
@@ -377,7 +383,20 @@ describe.serial("transactional model artifact installation", () => {
     );
     await Bun.write(partial, shorterPartial);
 
-    await installModel(config, modelId);
+    const installEvents: ModelInstallEvent[] = [];
+    let publishedWhenCompleted = false;
+    await installModel(config, modelId, undefined, (event) => {
+      installEvents.push(event);
+      if (event.kind === "completed") {
+        publishedWhenCompleted = [primaryArtifact, supplementaryArtifact].every(
+          ({ filename }) => existsSync(join(config.llmModelsDir, filename)),
+        );
+      }
+    });
+    const repeatedEvents: ModelInstallEvent[] = [];
+    await installModel(config, modelId, undefined, (event) => {
+      repeatedEvents.push(event);
+    });
 
     expect(
       server.requests.map((request) => ({
@@ -398,6 +417,59 @@ describe.serial("transactional model artifact installation", () => {
       ).bytes(),
     ).toEqual(supplementary);
     expect(await Bun.file(partial).exists()).toBe(false);
+    expect(publishedWhenCompleted).toBe(true);
+    expect(installEvents.at(0)).toEqual({
+      kind: "started",
+      modelId,
+      artifactCount: 2,
+    });
+    expect(installEvents.at(-1)).toEqual({ kind: "completed", modelId });
+    const progress = installEvents.filter(
+      (event) => event.kind === "download-progress",
+    );
+    expect(progress.at(0)).toMatchObject({
+      artifactFilename: supplementaryArtifact.filename,
+      downloadedBytes: prefix.byteLength,
+      percent: Math.floor((prefix.byteLength / supplementary.byteLength) * 100),
+    });
+    expect(progress.at(-1)).toMatchObject({
+      artifactFilename: supplementaryArtifact.filename,
+      downloadedBytes: supplementary.byteLength,
+      percent: 100,
+    });
+    expect(progress.length).toBeLessThanOrEqual(101);
+    expect(progress.every(({ percent }) => Number.isInteger(percent))).toBe(
+      true,
+    );
+    expect(new Set(progress.map(({ percent }) => percent)).size).toBe(
+      progress.length,
+    );
+    expect(progress.map(({ percent }) => percent)).toEqual(
+      [...progress.map(({ percent }) => percent)].sort(
+        (left, right) => left - right,
+      ),
+    );
+    expect(
+      installEvents
+        .filter((event) => event.kind === "verification-completed")
+        .map((event) => event.verification),
+    ).toEqual(["sha256", "sha256"]);
+    const repeatedVerifications = repeatedEvents.filter(
+      (event) => event.kind === "verification-completed",
+    );
+    expect(repeatedVerifications).toHaveLength(2);
+    expect(repeatedVerifications.at(0)).toMatchObject({
+      artifactFilename: primaryArtifact.filename,
+      verification: "cached-identity",
+    });
+    expect(
+      repeatedVerifications.every((event) =>
+        ["cached-identity", "sha256"].includes(event.verification),
+      ),
+    ).toBe(true);
+    expect(
+      repeatedEvents.some((event) => event.kind === "download-progress"),
+    ).toBe(false);
   });
 
   test("rejects a mismatched Content-Range without appending to the partial", async () => {
@@ -501,13 +573,78 @@ describe.serial("transactional model artifact installation", () => {
       },
     ]);
     const config = createInstallConfig();
+    ensureLocalBaseRootMarker(config.root);
 
     await expect(installModel(config, sizeModel)).rejects.toThrow(
       "Content-Length",
     );
-    await expect(installModel(config, hashModel)).rejects.toThrow(
-      "Checksum mismatch",
-    );
+    const hashEvents: ModelInstallEvent[] = [];
+    let hashError: unknown;
+    try {
+      await installModel(config, hashModel, undefined, (event) => {
+        hashEvents.push(event);
+        if (event.kind === "failed") {
+          throw new Error("reporter failure");
+        }
+      });
+    } catch (error) {
+      hashError = error;
+    }
+    expect(hashError).toBeInstanceOf(Error);
+    if (!(hashError instanceof Error)) throw new Error("Expected an Error");
+    expect(hashError.message).toContain("Checksum mismatch");
+    expect(hashEvents.at(0)?.kind).toBe("started");
+    expect(
+      hashEvents.filter((event) => event.kind === "verification-started"),
+    ).toHaveLength(1);
+    expect(
+      hashEvents.some((event) => event.kind === "verification-completed"),
+    ).toBe(false);
+    expect(hashEvents.some((event) => event.kind === "completed")).toBe(false);
+    expect(hashEvents.at(-1)).toMatchObject({
+      kind: "failed",
+      modelId: hashModel,
+      phase: "verifying",
+    });
+    const reportedFailure = hashEvents.at(-1);
+    if (reportedFailure?.kind !== "failed") {
+      throw new Error("Expected a failed install event");
+    }
+    expect(reportedFailure.error).toBe(hashError);
+
+    const logger = new LocalBaseLogger("json");
+    await logger.enableFileLogging(config.root);
+    try {
+      await expect(
+        installSelectedModel(
+          { logger },
+          config,
+          "llm",
+          hashModel,
+          "incomplete",
+        ),
+      ).rejects.toThrow("Checksum mismatch");
+    } finally {
+      await logger.close();
+    }
+    const failure = (await readLogSnapshot(config.root)).at(-1);
+    expect(failure).toMatchObject({
+      eventName: "model.install-failed",
+      message: `Selected model ${hashModel} installation failed during verifying.`,
+      error: {
+        type: "ModelInstallError",
+        message: "Selected model installation failed.",
+      },
+      attributes: {
+        model_id: hashModel,
+        reason: "incomplete",
+        phase: "verifying",
+      },
+    });
+    const serializedFailure = JSON.stringify(failure);
+    expect(serializedFailure).not.toContain(server.source);
+    expect(serializedFailure).not.toContain(config.root);
+    expect(serializedFailure).not.toContain("0".repeat(64));
 
     expect(
       await Bun.file(join(config.llmModelsDir, "wrong-size.gguf")).exists(),
