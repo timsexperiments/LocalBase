@@ -33,6 +33,8 @@ import {
 
 const MANAGER_TIMEOUT_MS = 10_000;
 const MAX_MANAGER_OUTPUT_BYTES = 64 * 1024;
+// `launchctl error 113` identifies this exact service-target result.
+const LAUNCHCTL_SERVICE_NOT_FOUND_EXIT_CODE = 113;
 
 export const managerCommandResultSchema = z
   .object({
@@ -46,6 +48,11 @@ export type ManagerCommandResult = z.infer<typeof managerCommandResultSchema>;
 export type ServiceManagerCommandRunner = (
   args: readonly string[],
 ) => Promise<ManagerCommandResult>;
+
+type ServiceManagerStopWait = Readonly<{
+  now: () => number;
+  waitForNextObservation: () => Promise<void>;
+}>;
 
 export const serviceStateSchema = z.enum([
   "foreground",
@@ -326,13 +333,24 @@ async function productionCommandRunner(
 
 let commandRunner: ServiceManagerCommandRunner = productionCommandRunner;
 let commandTimeoutMs = MANAGER_TIMEOUT_MS;
+const productionStopWait: ServiceManagerStopWait = {
+  now: Date.now,
+  async waitForNextObservation() {
+    await Bun.sleep(50);
+  },
+};
+let launchdStopWait = productionStopWait;
 
 export function setServiceManagerCommandRunnerForTests(
   runner?: ServiceManagerCommandRunner,
   timeoutMs = MANAGER_TIMEOUT_MS,
+  stopWait?: ServiceManagerStopWait,
 ): void {
   commandRunner = runner ?? productionCommandRunner;
   commandTimeoutMs = runner ? timeoutMs : MANAGER_TIMEOUT_MS;
+  launchdStopWait = runner
+    ? (stopWait ?? productionStopWait)
+    : productionStopWait;
 }
 
 function managerExecutable(metadata: ServiceMetadata): string {
@@ -452,6 +470,12 @@ async function inspectManager(
         ? parseLaunchdEnabled(disabled.stdout, metadata.serviceId)
         : null;
     if (result.exitCode !== 0) {
+      if (result.exitCode !== LAUNCHCTL_SERVICE_NOT_FOUND_EXIT_CODE) {
+        throw commandFailure(
+          [managerExecutable(metadata), "print", launchdTarget(metadata)],
+          result,
+        );
+      }
       return {
         manager: "launchd",
         available: true,
@@ -519,6 +543,11 @@ function managerIsActive(observation: ManagerObservation): boolean {
 
 function managerIsStopping(observation: ManagerObservation): boolean {
   return observation.manager === "systemd-user" && observation.stopping;
+}
+
+function managerHasStopped(observation: ManagerObservation): boolean {
+  if (observation.manager === "launchd") return !observation.loaded;
+  return !managerIsActive(observation) && !managerIsStopping(observation);
 }
 
 function managerHasFailed(observation: ManagerObservation): boolean {
@@ -959,11 +988,13 @@ async function stopManager(
   }
   if (disable) await disableManager(metadata);
 
-  const deadline = Date.now() + MANAGER_TIMEOUT_MS;
-  while (Date.now() < deadline) {
+  const stopWait =
+    metadata.manager === "launchd" ? launchdStopWait : productionStopWait;
+  const deadline = stopWait.now() + MANAGER_TIMEOUT_MS;
+  while (stopWait.now() < deadline) {
     const current = await inspectManager(metadata);
-    if (!managerIsActive(current) && !managerIsStopping(current)) return;
-    await Bun.sleep(50);
+    if (managerHasStopped(current)) return;
+    await stopWait.waitForNextObservation();
   }
   throw new ServiceManagerError(
     `${metadata.manager} did not stop ${metadata.serviceId} within ${MANAGER_TIMEOUT_MS}ms.`,
