@@ -218,6 +218,9 @@ test("normalizes server span routes through a closed allowlist", () => {
   expect(serverSpanName("post", "/v1/chat/completions")).toBe(
     "POST /v1/chat/completions",
   );
+  expect(serverSpanName("post", "/v1/audio/speech")).toBe(
+    "POST /v1/audio/speech",
+  );
   expect(normalizedOtelRoute("/private/path?token=secret")).toBe(
     "unmatched-route",
   );
