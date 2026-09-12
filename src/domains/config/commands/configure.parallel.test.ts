@@ -234,6 +234,47 @@ test("configure clears the active STT model when selection is intentionally empt
   });
 });
 
+test("configure persists and disables the canonical TTS selection", async () => {
+  await withTempRoot(async (root) => {
+    const context = makeContext(root);
+    const modelId = "qwen3-tts-1.7b-base-q4_k_m";
+    try {
+      await runConfigure(
+        {
+          all: false,
+          defaults: true,
+          ttsModels: [modelId],
+          activeTts: modelId,
+          createKey: false,
+        },
+        context,
+        nonInteractiveExecution,
+      );
+      expect(loadConfig(context.database, root)).toMatchObject({
+        selectedTtsModels: [modelId],
+        activeTtsModel: modelId,
+      });
+
+      await runConfigure(
+        {
+          all: false,
+          defaults: true,
+          ttsModels: [],
+          createKey: false,
+        },
+        context,
+        nonInteractiveExecution,
+      );
+      expect(loadConfig(context.database, root)).toMatchObject({
+        selectedTtsModels: [],
+        activeTtsModel: "",
+      });
+    } finally {
+      context.database.close();
+    }
+  });
+});
+
 test("configure rejects invalid composed model selections before persistence", async () => {
   await withTempRoot(async (root) => {
     const context = makeContext(root);

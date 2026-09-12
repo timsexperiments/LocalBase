@@ -6,6 +6,7 @@ export type ConfigFieldOwnership =
   | "restart-required"
   | "llm-launch"
   | "stt-launch"
+  | "tts-launch"
   | "image-launch"
   | "modality-selection-request-scoped"
   | "observability";
@@ -14,6 +15,7 @@ export const configFieldOwnership = {
   root: "restart-required",
   llmModelsDir: "restart-required",
   sttModelsDir: "restart-required",
+  ttsModelsDir: "restart-required",
   imageModelsDir: "restart-required",
   host: "llm-launch",
   port: "llm-launch",
@@ -22,9 +24,11 @@ export const configFieldOwnership = {
   sttPort: "stt-launch",
   selectedLlmModels: "modality-selection-request-scoped",
   selectedSttModels: "modality-selection-request-scoped",
+  selectedTtsModels: "modality-selection-request-scoped",
   selectedImageModels: "modality-selection-request-scoped",
   activeLlmModel: "llm-launch",
   activeSttModel: "stt-launch",
+  activeTtsModel: "tts-launch",
   activeImageModel: "image-launch",
   hfToken: "modality-selection-request-scoped",
   parallel: "llm-launch",
@@ -38,7 +42,12 @@ export type RuntimeConfigField = keyof LocalBaseConfig;
 
 export type RuntimeOverrideConfigField = Exclude<
   RuntimeConfigField,
-  "root" | "llmModelsDir" | "sttModelsDir" | "imageModelsDir" | "memory"
+  | "root"
+  | "llmModelsDir"
+  | "sttModelsDir"
+  | "ttsModelsDir"
+  | "imageModelsDir"
+  | "memory"
 >;
 
 export type RuntimeOverrideOwnership = Readonly<{
@@ -51,7 +60,12 @@ export type RestartRequiredPlan = Readonly<{
   targetRevision: number;
   action: "unchanged" | "restart-required";
   changedFields: readonly (
-    "root" | "llmModelsDir" | "sttModelsDir" | "imageModelsDir" | "memory"
+    | "root"
+    | "llmModelsDir"
+    | "sttModelsDir"
+    | "ttsModelsDir"
+    | "imageModelsDir"
+    | "memory"
   )[];
 }>;
 
@@ -83,6 +97,7 @@ export type RequestScopeReconciliationPlan = Readonly<{
   changedFields: readonly (
     | "selectedLlmModels"
     | "selectedSttModels"
+    | "selectedTtsModels"
     | "selectedImageModels"
     | "hfToken"
   )[];
@@ -101,6 +116,7 @@ const restartRequiredFields = [
   "root",
   "llmModelsDir",
   "sttModelsDir",
+  "ttsModelsDir",
   "imageModelsDir",
   "memory",
 ] as const;
@@ -108,18 +124,21 @@ const restartRequiredFields = [
 const rootDerivedDirectoryFields = [
   "llmModelsDir",
   "sttModelsDir",
+  "ttsModelsDir",
   "imageModelsDir",
 ] as const;
 
 const modalityLaunchFields = {
   llm: ["host", "port", "ctxSize", "activeLlmModel", "parallel"],
   stt: ["sttHost", "sttPort", "activeSttModel"],
+  tts: ["activeTtsModel"],
   image: ["activeImageModel"],
 } as const satisfies Record<RuntimeModality, readonly RuntimeConfigField[]>;
 
 const requestScopeFields = [
   "selectedLlmModels",
   "selectedSttModels",
+  "selectedTtsModels",
   "selectedImageModels",
   "hfToken",
 ] as const;
@@ -209,6 +228,7 @@ export function configuredRuntimeModality(
   if (overridden !== undefined) return overridden;
   if (modality === "llm") return true;
   if (modality === "stt") return config.selectedSttModels.length > 0;
+  if (modality === "tts") return config.selectedTtsModels.length > 0;
   return config.selectedImageModels.length > 0;
 }
 

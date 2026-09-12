@@ -136,6 +136,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "selected_tts_models": {
+          "name": "selected_tts_models",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "selected_image_models": {
           "name": "selected_image_models",
           "type": "text",
@@ -152,6 +159,13 @@
         },
         "active_stt_model": {
           "name": "active_stt_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "active_tts_model": {
+          "name": "active_tts_model",
           "type": "text",
           "primaryKey": false,
           "notNull": true,

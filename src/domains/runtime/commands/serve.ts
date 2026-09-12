@@ -53,6 +53,12 @@ import {
   InferenceQueueUnavailableError,
 } from "../inference-queue";
 import { SupervisorRegistry } from "../supervisor-registry";
+import {
+  SPEECH_MAX_INPUT_CHARACTERS,
+  SpeechGenerationAbortedError,
+  SpeechGenerationTimeoutError,
+  SpeechOutputError,
+} from "../speech-supervisor";
 import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
 import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
@@ -120,10 +126,18 @@ function printUnifiedNextSteps(
     output.info(
       `OpenAI-compatible STT endpoint: ${baseUrl}/v1/audio/transcriptions`,
     );
+  if (enabled.tts)
+    output.info(`OpenAI-compatible TTS endpoint: ${baseUrl}/v1/audio/speech`);
   if (enabled.image)
     output.info(
       `OpenAI-compatible Image endpoint: ${baseUrl}/v1/images/generations`,
     );
+  if (enabled.tts) {
+    output.info("\nExample TTS request (Bearer):");
+    output.info(
+      `curl ${baseUrl}/v1/audio/speech -H 'Authorization: Bearer <API_KEY>' -H 'Content-Type: application/json' -d '{"model":"qwen3-tts-1.7b-base-q4_k_m","input":"Hello from LocalBase.","voice":"default","response_format":"wav","speed":1}' --output speech.wav`,
+    );
+  }
   if (authRequired) {
     output.info(`Authentication: enabled (mode=${authMode}).`);
     output.info(
@@ -311,6 +325,18 @@ function upstreamFailure(message: string): Response {
       code: "upstream_error",
     },
     502,
+  );
+}
+
+function speechTimeout(): Response {
+  return openAIErrorResponse(
+    {
+      message: "Speech generation exceeded the 120 second limit.",
+      type: "server_error",
+      param: null,
+      code: "speech_timeout",
+    },
+    504,
   );
 }
 
@@ -536,6 +562,32 @@ const imageGenerationRequestSchema = z
     user: z.string().optional(),
   })
   .passthrough();
+
+const speechGenerationRequestSchema = z
+  .object({
+    model: modelIdSchema,
+    input: z
+      .string()
+      .refine(
+        (value) => Array.from(value).length > 0,
+        "input must not be empty",
+      )
+      .refine(
+        (value) => Array.from(value).length <= SPEECH_MAX_INPUT_CHARACTERS,
+        `input must not exceed ${SPEECH_MAX_INPUT_CHARACTERS} characters`,
+      ),
+    voice: z.literal("default", {
+      error: "voice must be 'default'",
+    }),
+    response_format: z.literal("wav", {
+      error: "response_format must be explicitly set to 'wav'",
+    }),
+    speed: z.literal(1, { error: "speed must be 1" }).optional(),
+    instructions: z
+      .never({ error: "instructions are not supported" })
+      .optional(),
+  })
+  .strict();
 
 const transcriptionRequestSchema = z.object({
   file: z.instanceof(Blob, {
@@ -1632,6 +1684,7 @@ export async function runServe(
   const enabled: ModalityState = {
     llm: input.llm ?? true,
     stt: input.stt ?? config.selectedSttModels.length > 0,
+    tts: input.tts ?? config.selectedTtsModels.length > 0,
     image: input.image ?? config.selectedImageModels.length > 0,
   };
 
@@ -1643,6 +1696,11 @@ export async function runServe(
   if (enabled.image && !config.activeImageModel) {
     throw new Error(
       "Image modality is enabled but no active Image model is configured. Run `local-base configure` first.",
+    );
+  }
+  if (enabled.tts && !config.activeTtsModel) {
+    throw new Error(
+      "TTS modality is enabled but no active TTS model is configured. Run `local-base configure` first.",
     );
   }
 
@@ -1795,7 +1853,7 @@ export async function runServe(
     imageModelExists = true;
   }
 
-  if (!enabled.llm && !enabled.stt && !enabled.image) {
+  if (!enabled.llm && !enabled.stt && !enabled.tts && !enabled.image) {
     throw new CliInputError(
       "No modalities enabled. Remove at least one --no-<modality> option.",
     );
@@ -1806,6 +1864,9 @@ export async function runServe(
   }
   if (!enabled.stt && input.stt === undefined) {
     console.log("STT route auto-disabled (no local STT model file found).");
+  }
+  if (!enabled.tts && input.tts === undefined) {
+    console.log("TTS route auto-disabled (no selected TTS model).");
   }
   if (!enabled.image && input.image === undefined) {
     console.log("Image route auto-disabled (no local Image model file found).");
@@ -1826,11 +1887,13 @@ export async function runServe(
         : []),
       ...(input.llmModelFile ? ["activeLlmModel" as const] : []),
       ...(input.sttModelFile ? ["activeSttModel" as const] : []),
+      ...(input.ttsModelFile ? ["activeTtsModel" as const] : []),
       ...(input.imageModelFile ? ["activeImageModel" as const] : []),
     ],
     configuredModalities: {
       ...(input.llm === undefined ? {} : { llm: input.llm }),
       ...(input.stt === undefined ? {} : { stt: input.stt }),
+      ...(input.tts === undefined ? {} : { tts: input.tts }),
       ...(input.image === undefined ? {} : { image: input.image }),
     },
   };
@@ -1865,6 +1928,7 @@ export async function runServe(
   const supervisors = new SupervisorRegistry({
     ...(enabled.llm ? { llm: factory.create("llm", initialSnapshot) } : {}),
     ...(enabled.stt ? { stt: factory.create("stt", initialSnapshot) } : {}),
+    ...(enabled.tts ? { tts: factory.create("tts", initialSnapshot) } : {}),
     ...(enabled.image
       ? { image: factory.create("image", initialSnapshot) }
       : {}),
@@ -2005,6 +2069,72 @@ export async function runServe(
     }
 
     if (requestExceedsSizeLimit(request)) return payloadTooLarge();
+
+    if (route === "speechGeneration") {
+      if (request.method !== "POST") return methodNotAllowed("POST");
+      const parsed = await parseJsonRequest(
+        request,
+        speechGenerationRequestSchema,
+      );
+      if (!parsed.success) return parsed.response;
+
+      let admission: RuntimeAdmission | undefined;
+      try {
+        const selected = await reconciler.admitModel(
+          "tts",
+          parsed.data.model,
+          request.signal,
+        );
+        if (selected.kind === "not-configured") return notConfigured("TTS");
+        if (selected.kind === "model-not-found") {
+          return modelNotFound(parsed.data.model);
+        }
+        if (selected.kind === "unavailable") return serviceUnavailable("TTS");
+        admission = selected.value.admission;
+        if (admission.supervisor.kind !== "speech") {
+          admission.release();
+          return serviceUnavailable("TTS");
+        }
+
+        await waitForRequestAbort(admission.ready, request.signal);
+        const wav = await admission.supervisor.generateSpeech({
+          text: parsed.data.input,
+          signal: request.signal,
+        });
+        admission.markResponseStarted();
+        admission.release();
+        const body = new ArrayBuffer(wav.byteLength);
+        new Uint8Array(body).set(wav);
+        return new Response(body, {
+          headers: {
+            "content-type": "audio/wav",
+            "content-length": String(wav.byteLength),
+          },
+        });
+      } catch (error) {
+        if (
+          request.signal.aborted ||
+          error instanceof RuntimeRequestAbortedError ||
+          error instanceof SpeechGenerationAbortedError
+        ) {
+          admission?.cancel();
+          return requestAborted();
+        }
+        admission?.release();
+        const queueError = inferenceQueueError(error);
+        if (queueError) return queueError;
+        if (error instanceof RuntimeMemoryAdmissionError) {
+          return resourceUnavailable();
+        }
+        if (error instanceof SpeechGenerationTimeoutError) {
+          return speechTimeout();
+        }
+        if (error instanceof SpeechOutputError) {
+          return upstreamFailure(error.message);
+        }
+        return serviceUnavailable("TTS");
+      }
+    }
 
     if (route === "transcription") {
       let admission: RuntimeAdmission | undefined;
@@ -2289,8 +2419,10 @@ export async function runServe(
         ...new Set([
           currentConfig.activeLlmModel,
           ...currentConfig.selectedLlmModels,
+          currentConfig.activeTtsModel,
+          ...currentConfig.selectedTtsModels,
         ]),
-      ];
+      ].filter(Boolean);
       const data = modelsList.map((modelId) => ({
         id: modelId,
         object: "model",
@@ -2426,6 +2558,7 @@ export async function runServe(
       port: server.port ?? wrapperPort,
       llmEnabled: enabled.llm,
       sttEnabled: enabled.stt,
+      ttsEnabled: enabled.tts,
       imageEnabled: enabled.image,
     },
   });

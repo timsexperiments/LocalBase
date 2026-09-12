@@ -24,7 +24,7 @@ test("composes health from configured modalities and supervisor state", () => {
       startedAtMs: 10_000,
       nowMs: 12_900,
       stopping: false,
-      configured: { llm: true, stt: false, image: false },
+      configured: { llm: true, stt: false, tts: false, image: false },
       supervisors,
     }),
   ).toEqual({
@@ -34,6 +34,7 @@ test("composes health from configured modalities and supervisor state", () => {
     modalities: {
       llm: { configured: true, state: "running" },
       stt: { configured: false, state: "disabled" },
+      tts: { configured: false, state: "disabled" },
       image: { configured: false, state: "disabled" },
     },
   });
@@ -45,7 +46,7 @@ test("reports stopping without a negative uptime", () => {
       startedAtMs: 10_000,
       nowMs: 9_000,
       stopping: true,
-      configured: { llm: true, stt: true, image: true },
+      configured: { llm: true, stt: true, tts: true, image: true },
       supervisors,
     }),
   ).toMatchObject({

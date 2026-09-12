@@ -19,7 +19,7 @@ export const modelMetadataSchema = z
       .object({
         name: z.string().min(1),
         revision: z.string().min(1),
-        kind: z.enum(["llm", "stt", "image"]),
+        kind: z.enum(["llm", "stt", "tts", "image"]),
         quantization: z.string().min(1),
         artifacts: z
           .array(
@@ -38,7 +38,20 @@ export const modelMetadataSchema = z
             storageEstimateGb: z.number().positive(),
           })
           .strict(),
-        capabilities: z.null(),
+        capabilities: z
+          .object({
+            kind: z.literal("speech"),
+            outputFormats: z.tuple([z.literal("wav")]),
+            voice: z
+              .object({
+                selection: z.literal("runtime-default"),
+                requestValue: z.literal("default"),
+              })
+              .strict(),
+            residency: z.literal("cold-per-request"),
+          })
+          .strict()
+          .nullable(),
         contextWindowTokens: z.null(),
         maxOutputTokens: z.null(),
       })
@@ -77,7 +90,10 @@ export type ModelMetadataProjectionInput = Readonly<{
   catalog: readonly ModelSpec[];
   config: Pick<
     LocalBaseConfig,
-    "selectedLlmModels" | "selectedSttModels" | "selectedImageModels"
+    | "selectedLlmModels"
+    | "selectedSttModels"
+    | "selectedTtsModels"
+    | "selectedImageModels"
   >;
   installations: ReadonlyMap<string, boolean>;
   runtimes: Readonly<Record<RuntimeModality, RuntimeLifecycleSnapshot>>;
@@ -89,6 +105,7 @@ function selectedModelIds(
   return new Set([
     ...config.selectedLlmModels,
     ...config.selectedSttModels,
+    ...config.selectedTtsModels,
     ...config.selectedImageModels,
   ]);
 }
@@ -139,7 +156,18 @@ export function projectModelMetadata(
         minimumVramEstimateGb: model.minVramGb,
         storageEstimateGb: model.storageGb,
       },
-      capabilities: null,
+      capabilities:
+        model.kind === "tts"
+          ? {
+              kind: "speech",
+              outputFormats: ["wav"],
+              voice: {
+                selection: "runtime-default",
+                requestValue: "default",
+              },
+              residency: "cold-per-request",
+            }
+          : null,
       contextWindowTokens: null,
       maxOutputTokens: null,
     },
@@ -163,6 +191,7 @@ export function projectModelMetadataList(
 function directoryForModel(config: LocalBaseConfig, kind: ModelKind): string {
   if (kind === "llm") return config.llmModelsDir;
   if (kind === "stt") return config.sttModelsDir;
+  if (kind === "tts") return config.ttsModelsDir;
   return config.imageModelsDir;
 }
 

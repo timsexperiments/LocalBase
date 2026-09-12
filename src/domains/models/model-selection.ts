@@ -10,7 +10,9 @@ function modelHasExpectedModalities(
       ? { input: "text", output: "text" }
       : kind === "stt"
         ? { input: "audio", output: "text" }
-        : { input: "text", output: "image" };
+        : kind === "tts"
+          ? { input: "text", output: "audio" }
+          : { input: "text", output: "image" };
   return (
     model.inputModalities.includes(expected.input) &&
     model.outputModalities.includes(expected.output)
@@ -50,9 +52,11 @@ export const modelConfigurationSchema = z
   .object({
     selectedLlmModels: selectedModelsSchema("llm", true),
     selectedSttModels: selectedModelsSchema("stt", false),
+    selectedTtsModels: selectedModelsSchema("tts", false),
     selectedImageModels: selectedModelsSchema("image", false),
     activeLlmModel: modelIdSchema("llm"),
     activeSttModel: z.union([z.literal(""), modelIdSchema("stt")]),
+    activeTtsModel: z.union([z.literal(""), modelIdSchema("tts")]),
     activeImageModel: z.union([z.literal(""), modelIdSchema("image")]),
   })
   .strict()
@@ -60,6 +64,7 @@ export const modelConfigurationSchema = z
     const activeModels = [
       ["activeLlmModel", config.activeLlmModel, config.selectedLlmModels],
       ["activeSttModel", config.activeSttModel, config.selectedSttModels],
+      ["activeTtsModel", config.activeTtsModel, config.selectedTtsModels],
       ["activeImageModel", config.activeImageModel, config.selectedImageModels],
     ] as const;
     for (const [field, id, selected] of activeModels) {

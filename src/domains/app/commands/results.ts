@@ -15,6 +15,7 @@ export const configurationOutputSchema = z
     root: z.string(),
     llmModelsDir: z.string(),
     sttModelsDir: z.string(),
+    ttsModelsDir: z.string(),
     imageModelsDir: z.string(),
     host: z.string(),
     port: z.number().int(),
@@ -23,9 +24,11 @@ export const configurationOutputSchema = z
     sttPort: z.number().int(),
     selectedLlmModels: z.array(z.string()),
     selectedSttModels: z.array(z.string()),
+    selectedTtsModels: z.array(z.string()),
     selectedImageModels: z.array(z.string()),
     activeLlmModel: z.string(),
     activeSttModel: z.string(),
+    activeTtsModel: z.string(),
     activeImageModel: z.string(),
     parallel: z.union([z.literal("auto"), z.number().int().min(1).max(4)]),
     memory: memorySafetyConfigSchema,
@@ -119,7 +122,7 @@ export const catalogResultSchema = z
   .strict();
 export const recommendResultSchema = z
   .object({
-    kind: z.enum(["llm", "stt", "image"]),
+    kind: z.enum(["llm", "stt", "tts", "image"]),
     vramGb: z.number(),
     models: z.array(modelOutputSchema),
   })
@@ -163,6 +166,7 @@ export function publicConfiguration(
     root: config.root,
     llmModelsDir: config.llmModelsDir,
     sttModelsDir: config.sttModelsDir,
+    ttsModelsDir: config.ttsModelsDir,
     imageModelsDir: config.imageModelsDir,
     host: config.host,
     port: config.port,
@@ -171,9 +175,11 @@ export function publicConfiguration(
     sttPort: config.sttPort,
     selectedLlmModels: config.selectedLlmModels,
     selectedSttModels: config.selectedSttModels,
+    selectedTtsModels: config.selectedTtsModels,
     selectedImageModels: config.selectedImageModels,
     activeLlmModel: config.activeLlmModel,
     activeSttModel: config.activeSttModel,
+    activeTtsModel: config.activeTtsModel,
     activeImageModel: config.activeImageModel,
     parallel: config.parallel,
     memory: config.memory,

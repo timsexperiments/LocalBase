@@ -9,6 +9,7 @@ import {
 } from "./memory-controller";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import type { RuntimeLaunchPlan } from "./launch-plan";
+import { stopNativeProcess } from "./native-process";
 
 const CHILD_STOP_GRACE_MS = 500;
 const HEALTH_PROBE_TIMEOUT_MS = 2_000;
@@ -50,6 +51,7 @@ export type ManagedServiceOptions = {
 
 /** Manages one lazily-started backend process and its recovery lifecycle. */
 export class ManagedService {
+  readonly kind = "server" as const;
   private proc: Bun.Subprocess | null = null;
   private crashTimes: number[] = [];
   private isRestarting = false;
@@ -419,8 +421,12 @@ export class ManagedService {
     const stop = (async () => {
       this.resolvedPlan = undefined;
       this.expectedStops.add(process);
-      if (!(await this.stopProcess(process))) {
-        throw new Error(`Failed to stop managed ${this.name} process.`);
+      try {
+        await stopNativeProcess(process, CHILD_STOP_GRACE_MS);
+      } catch (error) {
+        throw new Error(`Failed to stop managed ${this.name} process.`, {
+          cause: error,
+        });
       }
       await this.processCleanups.get(process);
       if (this.proc === process) this.proc = null;
@@ -466,9 +472,12 @@ export class ManagedService {
   private async stopGuardian(proc: Bun.Subprocess): Promise<void> {
     const guardian = this.guardians.get(proc.pid);
     if (!guardian) return;
-    if (!(await this.stopProcess(guardian))) {
+    try {
+      await stopNativeProcess(guardian, CHILD_STOP_GRACE_MS);
+    } catch (error) {
       throw new Error(
         `Failed to stop guardian for managed ${this.name} process.`,
+        { cause: error },
       );
     }
     if (this.guardians.get(proc.pid) === guardian) {
@@ -480,9 +489,12 @@ export class ManagedService {
     const guardians = [...this.guardians.entries()];
     await Promise.all(
       guardians.map(async ([pid, guardian]) => {
-        if (!(await this.stopProcess(guardian))) {
+        try {
+          await stopNativeProcess(guardian, CHILD_STOP_GRACE_MS);
+        } catch (error) {
           throw new Error(
             `Failed to stop guardian for managed ${this.name} process.`,
+            { cause: error },
           );
         }
         if (this.guardians.get(pid) === guardian) {
@@ -490,27 +502,6 @@ export class ManagedService {
         }
       }),
     );
-  }
-
-  private async stopProcess(proc: Bun.Subprocess): Promise<boolean> {
-    if (this.exited(proc)) return true;
-    try {
-      proc.kill(15);
-    } catch {
-      return this.exited(proc);
-    }
-    await Promise.race([
-      proc.exited.catch(() => {}),
-      Bun.sleep(CHILD_STOP_GRACE_MS),
-    ]);
-    if (this.exited(proc)) return true;
-    try {
-      proc.kill(9);
-    } catch {
-      return this.exited(proc);
-    }
-    await proc.exited.catch(() => {});
-    return this.exited(proc);
   }
 
   private handleCrash(proc: Bun.Subprocess): void {

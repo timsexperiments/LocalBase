@@ -71,6 +71,7 @@ const configurationSchema = z
       .object({
         llm: z.array(z.string().min(1)),
         stt: z.array(z.string().min(1)),
+        tts: z.array(z.string().min(1)),
         image: z.array(z.string().min(1)),
       })
       .strict(),
@@ -78,6 +79,7 @@ const configurationSchema = z
       .object({
         llm: z.string().min(1),
         stt: z.string(),
+        tts: z.string(),
         image: z.string(),
       })
       .strict(),
@@ -87,7 +89,7 @@ const configurationSchema = z
 const modelSchema = z
   .object({
     id: z.string().min(1),
-    kind: z.enum(["llm", "stt", "image"]),
+    kind: z.enum(["llm", "stt", "tts", "image"]),
     size: z.string().min(1),
     storageGb: z.number().positive(),
     selected: z.boolean(),
@@ -188,11 +190,13 @@ function configurationData(config: LocalBaseConfig) {
     selectedModels: {
       llm: config.selectedLlmModels,
       stt: config.selectedSttModels,
+      tts: config.selectedTtsModels,
       image: config.selectedImageModels,
     },
     activeModels: {
       llm: config.activeLlmModel,
       stt: config.activeSttModel,
+      tts: config.activeTtsModel,
       image: config.activeImageModel,
     },
   });
@@ -202,16 +206,19 @@ async function modelData(config: LocalBaseConfig) {
   const selected = new Set([
     ...config.selectedLlmModels,
     ...config.selectedSttModels,
+    ...config.selectedTtsModels,
     ...config.selectedImageModels,
   ]);
   const active = new Set([
     config.activeLlmModel,
     config.activeSttModel,
+    config.activeTtsModel,
     config.activeImageModel,
   ]);
   const selectedByKind: Record<ModelKind, string[]> = {
     llm: config.selectedLlmModels,
     stt: config.selectedSttModels,
+    tts: config.selectedTtsModels,
     image: config.selectedImageModels,
   };
   const models = [];
@@ -221,7 +228,9 @@ async function modelData(config: LocalBaseConfig) {
         ? config.llmModelsDir
         : model.kind === "stt"
           ? config.sttModelsDir
-          : config.imageModelsDir;
+          : model.kind === "tts"
+            ? config.ttsModelsDir
+            : config.imageModelsDir;
     const installation = await resolveCatalogInstallation(model, kindDirectory);
     if (!selected.has(model.modelId) && !installation.complete) continue;
     models.push(

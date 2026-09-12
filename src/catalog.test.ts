@@ -165,6 +165,30 @@ describe("catalog artifact validation", () => {
     }
   });
 
+  test("pins the complete Qwen3 TTS base artifact set", () => {
+    const tts = CATALOG.find(
+      ({ modelId }) => modelId === "qwen3-tts-1.7b-base-q4_k_m",
+    );
+    expect(tts).toMatchObject({
+      kind: "tts",
+      repositoryRevision: "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
+      artifacts: [
+        {
+          expectedSizeBytes: 1_035_965_280,
+          sha256:
+            "8d18c94acb2addd042f97da63c98be144eafa76d0d9495177eab65130cf85129",
+          role: "primary",
+        },
+        {
+          expectedSizeBytes: 446_422_912,
+          sha256:
+            "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
+          role: "supplementary",
+        },
+      ],
+    });
+  });
+
   test("resolves primary artifact URLs from immutable release locks", () => {
     for (const catalogModel of CATALOG) {
       const primary = primaryArtifact(catalogModel);

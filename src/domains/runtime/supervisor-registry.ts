@@ -6,8 +6,9 @@ import {
 } from "./lifecycle-snapshot";
 import { runtimeModalities, type RuntimeModality } from "./modality";
 import type { InferenceQueueSnapshot } from "./inference-queue";
+import type { SpeechGenerationInput } from "./speech-supervisor";
 
-export type RuntimeSupervisor = {
+type CommonRuntimeSupervisor = {
   runtimeId(): string;
   state(): ModalityLifecycleState;
   resolvedSlots?(): number | undefined;
@@ -15,6 +16,18 @@ export type RuntimeSupervisor = {
   kill(): Promise<void>;
   shutdown(): Promise<void>;
 };
+
+export type ServerRuntimeSupervisor = CommonRuntimeSupervisor & {
+  readonly kind: "server";
+};
+
+export type SpeechRuntimeSupervisor = CommonRuntimeSupervisor & {
+  readonly kind: "speech";
+  generateSpeech(input: SpeechGenerationInput): Promise<Uint8Array>;
+};
+
+export type RuntimeSupervisor =
+  ServerRuntimeSupervisor | SpeechRuntimeSupervisor;
 
 export type ModalitySupervisorState = {
   configured: boolean;

@@ -6,7 +6,11 @@ import {
   resolveCatalogInstallation,
 } from "../../catalog";
 import type { AppContext } from "../../context";
-import { installModel, type LocalBaseConfig } from "../../manager";
+import {
+  ensureBinary,
+  installModel,
+  type LocalBaseConfig,
+} from "../../manager";
 import type { ServeInput } from "../app/commands/inputs";
 import type { RuntimeConfigSnapshot } from "./config-snapshot";
 import {
@@ -21,8 +25,11 @@ import {
 } from "./launcher";
 import type { RuntimeModality } from "./modality";
 import type { MemorySafetyController } from "./memory-controller";
+import { SpeechSupervisor, type SpeechPreparation } from "./speech-supervisor";
 import { ManagedService } from "./supervisor";
 import type { RuntimeSupervisor } from "./supervisor-registry";
+
+type ServerRuntimeModality = Exclude<RuntimeModality, "tts">;
 
 export type RuntimeLaunchOverrides = Readonly<{
   llmHost?: string;
@@ -35,6 +42,7 @@ export type RuntimeLaunchOverrides = Readonly<{
   llmModelFile?: string;
   sttModelFile?: string;
   imageModelFile?: string;
+  ttsModelFile?: string;
 }>;
 
 export type RuntimeSupervisorFactory = Readonly<{
@@ -43,7 +51,7 @@ export type RuntimeSupervisorFactory = Readonly<{
     snapshot: RuntimeConfigSnapshot,
   ) => RuntimeSupervisor;
   baseUrl: (
-    modality: RuntimeModality,
+    modality: ServerRuntimeModality,
     snapshot: RuntimeConfigSnapshot,
   ) => string;
 }>;
@@ -96,9 +104,10 @@ function imagePort(overrides: RuntimeLaunchOverrides): number {
 
 function component(
   modality: RuntimeModality,
-): "llama-server" | "whisper-server" | "sd-server" {
+): "llama-server" | "whisper-server" | "llama-tts" | "sd-server" {
   if (modality === "llm") return "llama-server";
   if (modality === "stt") return "whisper-server";
+  if (modality === "tts") return "llama-tts";
   return "sd-server";
 }
 
@@ -108,6 +117,7 @@ function activeModel(
 ): string {
   if (modality === "llm") return config.activeLlmModel;
   if (modality === "stt") return config.activeSttModel;
+  if (modality === "tts") return config.activeTtsModel;
   return config.activeImageModel;
 }
 
@@ -117,7 +127,11 @@ function configuredModelFile(
   modality: RuntimeModality,
 ): Promise<string> {
   const directory =
-    modality === "stt" ? config.sttModelsDir : config.imageModelsDir;
+    modality === "stt"
+      ? config.sttModelsDir
+      : modality === "tts"
+        ? config.ttsModelsDir
+        : config.imageModelsDir;
   const spec = byId(modelId);
   const filename = spec ? primaryArtifact(spec).filename : undefined;
   if (filename) {
@@ -126,7 +140,9 @@ function configuredModelFile(
       .then((exists) => (exists ? filename : ""));
   }
   const fallback =
-    modality === "stt" ? `${modelId}.gguf` : `${modelId}.safetensors`;
+    modality === "stt" || modality === "tts"
+      ? `${modelId}.gguf`
+      : `${modelId}.safetensors`;
   return Bun.file(join(directory, fallback))
     .exists()
     .then((exists) => (exists ? fallback : ""));
@@ -216,6 +232,7 @@ export function runtimeLaunchOverrides(
     ...(input.llmModelFile ? { llmModelFile: input.llmModelFile } : {}),
     ...(input.sttModelFile ? { sttModelFile: input.sttModelFile } : {}),
     ...(input.imageModelFile ? { imageModelFile: input.imageModelFile } : {}),
+    ...(input.ttsModelFile ? { ttsModelFile: input.ttsModelFile } : {}),
   });
 }
 
@@ -226,7 +243,7 @@ export function createRuntimeSupervisorFactory(
 ): RuntimeSupervisorFactory {
   let nextRuntimeGeneration = 0;
   const baseUrl = (
-    modality: RuntimeModality,
+    modality: ServerRuntimeModality,
     snapshot: RuntimeConfigSnapshot,
   ): string => {
     if (modality === "llm") {
@@ -250,10 +267,10 @@ export function createRuntimeSupervisorFactory(
   ): RuntimeSupervisor => {
     const config = structuredClone(snapshot.config) as LocalBaseConfig;
     const modelId = activeModel(modality, snapshot.config);
-    const base = baseUrl(modality, snapshot);
     const runtimeId = `${modality}:${modelId}:${++nextRuntimeGeneration}`;
 
     if (modality === "llm") {
+      const base = baseUrl(modality, snapshot);
       return new ManagedService({
         runtimeId,
         modality,
@@ -349,6 +366,7 @@ export function createRuntimeSupervisorFactory(
     }
 
     if (modality === "stt") {
+      const base = baseUrl(modality, snapshot);
       return new ManagedService({
         runtimeId,
         modality,
@@ -404,6 +422,65 @@ export function createRuntimeSupervisorFactory(
       });
     }
 
+    if (modality === "tts") {
+      return new SpeechSupervisor({
+        runtimeId,
+        root: config.root,
+        modelId,
+        logger: ctx.logger,
+        memorySafety: dependencies.memorySafety,
+        prepare: async (): Promise<SpeechPreparation> => {
+          const spec = byId(modelId);
+          if (!spec || spec.kind !== "tts") {
+            throw new Error(`Unknown TTS model "${modelId}".`);
+          }
+
+          let installation = await resolveCatalogInstallation(
+            spec,
+            config.ttsModelsDir,
+          );
+          if (!installation.complete) {
+            await installSelectedModel(
+              ctx,
+              config,
+              modality,
+              modelId,
+              "incomplete",
+            );
+            installation = await resolveCatalogInstallation(
+              spec,
+              config.ttsModelsDir,
+            );
+          }
+          if (!installation.complete) {
+            throw new Error(
+              `TTS model "${modelId}" is incomplete after installation.`,
+            );
+          }
+          const projector = spec.artifacts.find(
+            ({ role }) => role === "supplementary",
+          );
+          if (!projector) {
+            throw new Error(
+              `TTS model "${modelId}" has no projector artifact.`,
+            );
+          }
+          const modelPath = overrides.ttsModelFile
+            ? join(config.ttsModelsDir, overrides.ttsModelFile)
+            : installation.primaryPath;
+          if (!(await Bun.file(modelPath).exists())) {
+            throw new Error(`Configured TTS model file does not exist.`);
+          }
+          return Object.freeze({
+            binaryPath: await ensureBinary(config, "llama-tts"),
+            modelPath,
+            projectorPath: join(config.ttsModelsDir, projector.filename),
+          });
+        },
+      });
+    }
+
+    const base = baseUrl(modality, snapshot);
     return new ManagedService({
       runtimeId,
       modality,

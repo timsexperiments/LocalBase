@@ -10,6 +10,7 @@ import {
 
 const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const multipartModelId = "qwen3-coder-next-q4_k_m";
+const speechModelId = "qwen3-tts-1.7b-base-q4_k_m";
 
 function catalogModel(id = modelId) {
   const model = byId(id);
@@ -37,6 +38,15 @@ function runtimeSnapshots() {
       admission: { kind: "unknown" },
       configuredSlots: null,
     }),
+    tts: createRuntimeLifecycleSnapshot({
+      modality: "tts",
+      configured: false,
+      state: "disabled",
+      modelId: null,
+      runtimeId: null,
+      admission: { kind: "unknown" },
+      configuredSlots: null,
+    }),
     image: createRuntimeLifecycleSnapshot({
       modality: "image",
       configured: false,
@@ -53,6 +63,7 @@ test("projects catalog facts separately from observed device state", () => {
   const config = defaultConfig("/tmp/localbase-model-metadata");
   config.selectedLlmModels = [modelId];
   config.selectedSttModels = [];
+  config.selectedTtsModels = [];
   config.selectedImageModels = [];
   const metadata = projectModelMetadata(catalogModel(), {
     catalog: [catalogModel()],
@@ -98,6 +109,26 @@ test("includes every declared artifact in multi-file model identity", () => {
       expect.objectContaining({ role: "supplementary" }),
     ]),
   );
+});
+
+test("reports only the supported cold speech contract", () => {
+  const model = catalogModel(speechModelId);
+  const config = defaultConfig("/tmp/localbase-model-metadata-speech");
+  config.selectedTtsModels = [speechModelId];
+  config.activeTtsModel = speechModelId;
+  const metadata = projectModelMetadata(model, {
+    catalog: [model],
+    config,
+    installations: new Map([[speechModelId, true]]),
+    runtimes: runtimeSnapshots(),
+  });
+
+  expect(metadata.catalog.capabilities).toEqual({
+    kind: "speech",
+    outputFormats: ["wav"],
+    voice: { selection: "runtime-default", requestValue: "default" },
+    residency: "cold-per-request",
+  });
 });
 
 test("uses the strict response schemas for lists and entries", () => {

@@ -363,7 +363,7 @@ test(
       expect(events).toEqual([
         expect.objectContaining({
           event: "started",
-          enabled: { llm: true, stt: false, image: false },
+          enabled: { llm: true, stt: false, tts: false, image: false },
         }),
         { event: "stopped", exitCode: 0 },
       ]);

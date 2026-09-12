@@ -8,7 +8,7 @@ import {
 } from "../../observability/otel-config";
 import { safeFilenameSchema } from "../../../utils/checksum";
 
-export const modelKindSchema = z.enum(["llm", "stt", "image"]);
+export const modelKindSchema = z.enum(["llm", "stt", "tts", "image"]);
 
 export const dataRootSchema = localBaseRootInputSchema;
 
@@ -75,9 +75,11 @@ export const configureInputSchema = z.object({
   sttPort: portInputSchema.optional(),
   llmModels: nonEmptyModelListSchema.optional(),
   sttModels: modelListSchema.optional(),
+  ttsModels: modelListSchema.optional(),
   imageModels: modelListSchema.optional(),
   activeLlm: z.string().min(1).optional(),
   activeStt: z.string().min(1).optional(),
+  activeTts: z.string().min(1).optional(),
   activeImage: z.string().min(1).optional(),
   hfToken: z.string().optional(),
   otelEndpoint: z.union([z.literal(""), otelEndpointSchema]).optional(),
@@ -137,6 +139,7 @@ export const serveInputSchema = z.object({
   port: portInputSchema.optional(),
   llm: z.boolean().optional(),
   stt: z.boolean().optional(),
+  tts: z.boolean().optional(),
   image: z.boolean().optional(),
   llmHost: hostSchema.optional(),
   llmPort: portInputSchema.optional(),
@@ -150,6 +153,7 @@ export const serveInputSchema = z.object({
   sttPath: z.string().min(1).optional(),
   llmModelFile: safeFilenameSchema.optional(),
   sttModelFile: safeFilenameSchema.optional(),
+  ttsModelFile: safeFilenameSchema.optional(),
   imageModelFile: safeFilenameSchema.optional(),
   auth: z.boolean().optional(),
   authMode: z.enum(["bearer", "x-api-key", "either"]).optional(),
@@ -169,7 +173,7 @@ export const logsInputSchema = z.object({
   since: z.iso.datetime({ offset: true }).optional(),
   level: z.enum(["debug", "info", "warn", "error"]).optional(),
   runtime: z
-    .enum(["gateway", "llm", "stt", "image", "service", "cli"])
+    .enum(["gateway", "llm", "stt", "tts", "image", "service", "cli"])
     .optional(),
   requestId: z
     .string()

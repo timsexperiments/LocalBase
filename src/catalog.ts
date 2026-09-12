@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { z } from "zod";
 
-export const modelKindSchema = z.enum(["llm", "stt", "image"]);
+export const modelKindSchema = z.enum(["llm", "stt", "tts", "image"]);
 export type ModelKind = z.infer<typeof modelKindSchema>;
 
 export const commercialStatusSchema = z.enum([
@@ -1262,6 +1262,45 @@ export const CATALOG: readonly ModelSpec[] = validateCatalog([
     notes: "Good default STT latency/quality tradeoff.",
   },
   {
+    modelId: "qwen3-tts-1.7b-base-q4_k_m",
+    kind: "tts",
+    provider: "Qwen/ggml",
+    family: "Qwen3-TTS",
+    version: "12Hz-1.7B-Base",
+    size: "1.7B",
+    quant: "Q4_K_M",
+    minVramGb: 8,
+    storageGb: 1.49,
+    source: "https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
+    repositoryRevision: "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
+    artifacts: [
+      {
+        sourcePath: "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
+        filename: "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
+        expectedSizeBytes: 1035965280,
+        sha256:
+          "8d18c94acb2addd042f97da63c98be144eafa76d0d9495177eab65130cf85129",
+        role: "primary",
+      },
+      {
+        sourcePath: "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+        filename: "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+        expectedSizeBytes: 446422912,
+        sha256:
+          "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
+        role: "supplementary",
+      },
+    ],
+    inputModalities: ["text"],
+    outputModalities: ["audio"],
+    features: ["text-to-speech", "wav-output", "cold-per-request"],
+    commercialStatus: "open",
+    catch:
+      "The converted repository omits license metadata; the upstream Qwen model is Apache-2.0.",
+    notes:
+      "Qualified on macOS for bounded native WAV generation with the runtime-default voice. Human voice quality has not been assessed.",
+  },
+  {
     modelId: "stable-diffusion-v1-5",
     kind: "image",
     provider: "RunwayML",
@@ -1547,6 +1586,12 @@ export function recommendedForVram(vramGb: number): ModelSpec[] {
 
 export function recommendedSttForVram(vramGb: number): ModelSpec[] {
   return CATALOG.filter((m) => m.kind === "stt" && m.minVramGb <= vramGb).sort(
+    (a, b) => a.storageGb - b.storageGb,
+  );
+}
+
+export function recommendedTtsForVram(vramGb: number): ModelSpec[] {
+  return CATALOG.filter((m) => m.kind === "tts" && m.minVramGb <= vramGb).sort(
     (a, b) => a.storageGb - b.storageGb,
   );
 }

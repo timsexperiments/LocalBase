@@ -72,6 +72,7 @@ export const logRuntimeSchema = z.enum([
   "gateway",
   "llm",
   "stt",
+  "tts",
   "image",
   "service",
   "cli",
@@ -127,6 +128,7 @@ export const logHttpMetadataSchema = z
       "/v1/embeddings",
       "/v1/audio/transcriptions",
       "/v1/audio/translations",
+      "/v1/audio/speech",
       "/v1/images/generations",
       "unmatched-route",
     ]),
@@ -441,6 +443,7 @@ export function createLogEvent(
 
 function runtimeForComponent(component: string): LogRuntime {
   const normalized = normalizedComponent(component);
+  if (normalized.includes("llama-tts") || normalized === "tts") return "tts";
   if (normalized.includes("llama") || normalized === "llm") return "llm";
   if (normalized.includes("whisper") || normalized === "stt") return "stt";
   if (normalized.includes("sd-") || normalized === "image") return "image";
