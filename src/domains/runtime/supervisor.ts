@@ -55,7 +55,9 @@ export class ManagedService {
   private restartPromise: Promise<void> | null = null;
   private isShuttingDown = false;
   private shutdownPromise: Promise<void> | null = null;
+  private stoppingPromise: Promise<boolean> | null = null;
   private guardians = new Map<number, Bun.Subprocess>();
+  private processCleanups = new WeakMap<Bun.Subprocess, Promise<void>>();
   private expectedStops = new WeakSet<Bun.Subprocess>();
   private startupGeneration = 0;
   private startup: StartupAttempt | null = null;
@@ -154,6 +156,8 @@ export class ManagedService {
   }
 
   async ensureRunning(): Promise<void> {
+    const stopping = this.stoppingPromise;
+    if (stopping) await stopping;
     if (this.isShuttingDown) {
       throw new Error(`${this.name} is shutting down`);
     }
@@ -230,26 +234,33 @@ export class ManagedService {
           async () => await this.options.start(plan),
         );
         const startedProcess = proc;
-        if (!this.startupIsActive(attempt) || this.isShuttingDown) {
-          this.expectedStops.add(startedProcess);
-          await this.stopProcess(startedProcess);
-          throw new StartupCancelledError(this.name);
-        }
-
         this.proc = startedProcess;
         this.startGuardian(startedProcess);
+        const cleanup = startedProcess.exited.then(async () => {
+          try {
+            await this.stopGuardian(startedProcess);
+          } finally {
+            this.releaseReservation(reservation);
+            this.handleCrash(startedProcess);
+          }
+        });
+        this.processCleanups.set(startedProcess, cleanup);
+        void cleanup.catch((error) => {
+          this.options.logger.error(
+            this.name,
+            "Failed to clean up backend process",
+            error as Error,
+          );
+        });
+        if (!this.startupIsActive(attempt) || this.isShuttingDown) {
+          throw new StartupCancelledError(this.name);
+        }
         if (this.proc.stdout && typeof this.proc.stdout !== "number") {
           this.options.logger.pipeStream(this.proc.stdout, this.name);
         }
         if (this.proc.stderr && typeof this.proc.stderr !== "number") {
           this.options.logger.pipeStream(this.proc.stderr, this.name);
         }
-
-        startedProcess.exited.then(() => {
-          void this.stopGuardian(startedProcess);
-          this.releaseReservation(reservation);
-          this.handleCrash(startedProcess);
-        });
 
         await this.options.otel.withSpan(
           "localbase.backend.model_load",
@@ -263,13 +274,11 @@ export class ManagedService {
       } catch (err) {
         this.resolvedPlan = undefined;
         if (err instanceof StartupCancelledError || attempt.cancelled) {
-          if (proc && this.proc === proc) {
+          if (proc && this.processCleanups.has(proc)) {
             await this.stopCurrentProcess();
-          } else if (proc) {
-            this.expectedStops.add(proc);
-            await this.stopProcess(proc);
+          } else {
+            this.releaseReservation(reservation);
           }
-          this.releaseReservation(reservation);
           throw err instanceof StartupCancelledError
             ? err
             : new StartupCancelledError(this.name);
@@ -306,8 +315,11 @@ export class ManagedService {
           },
         });
         this.crashTimes.push(Date.now());
-        await this.stopCurrentProcess();
-        this.releaseReservation(reservation);
+        if (proc && this.processCleanups.has(proc)) {
+          await this.stopCurrentProcess();
+        } else {
+          this.releaseReservation(reservation);
+        }
         this.lifecycleState = "failed";
         throw err;
       } finally {
@@ -360,7 +372,6 @@ export class ManagedService {
   }
 
   async kill(): Promise<void> {
-    if (!this.isShuttingDown) this.lifecycleState = "stopping";
     const startup = this.isRestarting ? this.restartPromise : null;
     this.cancelStartup();
     await this.stopCurrentProcess();
@@ -369,6 +380,7 @@ export class ManagedService {
         if (!(error instanceof StartupCancelledError)) throw error;
       });
     }
+    await this.stopCurrentProcess();
     if (!this.isShuttingDown) this.lifecycleState = "idle";
   }
 
@@ -376,7 +388,6 @@ export class ManagedService {
     if (!this.shutdownPromise) {
       this.isShuttingDown = true;
       this.lifecycleState = "stopping";
-      this.lifecycle("backend.stopping", "info");
       const startup = this.restartPromise;
       this.shutdownPromise = (async () => {
         this.cancelStartup();
@@ -384,21 +395,46 @@ export class ManagedService {
         if (startup) await startup.catch(() => {});
         await this.stopCurrentProcess();
         await this.stopAllGuardians();
-        this.lifecycle("backend.stopped", "info");
       })();
     }
     await this.shutdownPromise;
   }
 
-  private async stopCurrentProcess(): Promise<void> {
-    this.resolvedPlan = undefined;
+  private async stopCurrentProcess(): Promise<boolean> {
+    const stopping = this.stoppingPromise;
+    if (stopping) return await stopping;
     const process = this.proc;
-    if (!process) return;
-    this.expectedStops.add(process);
-    this.proc = null;
-    this.releaseReservation();
-    await this.stopProcess(process);
-    await this.stopGuardian(process);
+    if (!process) return false;
+    if (this.exited(process)) {
+      this.expectedStops.add(process);
+      await this.processCleanups.get(process);
+      if (this.proc === process) this.proc = null;
+      this.resolvedPlan = undefined;
+      return false;
+    }
+
+    this.lifecycleState = "stopping";
+    this.lifecycle("backend.stopping", "info");
+    const stop = (async () => {
+      this.resolvedPlan = undefined;
+      this.expectedStops.add(process);
+      if (!(await this.stopProcess(process))) {
+        throw new Error(`Failed to stop managed ${this.name} process.`);
+      }
+      await this.processCleanups.get(process);
+      if (this.proc === process) this.proc = null;
+      this.lifecycle("backend.stopped", "info");
+      return true;
+    })();
+    this.stoppingPromise = stop;
+    try {
+      return await stop;
+    } catch (error) {
+      this.lifecycleState = "failed";
+      throw error;
+    } finally {
+      if (this.stoppingPromise === stop) this.stoppingPromise = null;
+    }
   }
 
   private releaseReservation(
@@ -439,27 +475,25 @@ export class ManagedService {
     );
   }
 
-  private async stopProcess(proc: Bun.Subprocess): Promise<void> {
-    if (this.exited(proc)) return;
+  private async stopProcess(proc: Bun.Subprocess): Promise<boolean> {
+    if (this.exited(proc)) return true;
     try {
       proc.kill(15);
     } catch {
-      return;
+      return this.exited(proc);
     }
-    const exitedDuringGrace = await Promise.race([
-      proc.exited.then(
-        () => true,
-        () => true,
-      ),
-      Bun.sleep(CHILD_STOP_GRACE_MS).then(() => false),
+    await Promise.race([
+      proc.exited.catch(() => {}),
+      Bun.sleep(CHILD_STOP_GRACE_MS),
     ]);
-    if (exitedDuringGrace || this.exited(proc)) return;
+    if (this.exited(proc)) return true;
     try {
       proc.kill(9);
     } catch {
-      return;
+      return this.exited(proc);
     }
     await proc.exited.catch(() => {});
+    return this.exited(proc);
   }
 
   private handleCrash(proc: Bun.Subprocess): void {
