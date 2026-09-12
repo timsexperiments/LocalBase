@@ -60,6 +60,8 @@ export type StructuredOutputPreparation =
 const MAX_SCHEMA_DEPTH = 10;
 // OpenAI strict schemas allow at most 5,000 object properties.
 const MAX_SCHEMA_PROPERTIES = 5_000;
+// LocalBase bounds each object before synchronous validator compilation.
+const MAX_SCHEMA_OBJECT_PROPERTIES = 1_000;
 // LocalBase caps the JSON text to bound synchronous compilation before admission.
 const MAX_SCHEMA_BYTES = 256 * 1024;
 // LocalBase bounds reference resolution and native grammar repetition work.
@@ -170,7 +172,11 @@ function precompileBudgetIssue(root: JsonObject): string | null {
       return "Structured output schema exceeds OpenAI's nesting limit.";
     }
     if (isObject(current.schema.properties)) {
-      propertyCount += Object.keys(current.schema.properties).length;
+      const properties = Object.keys(current.schema.properties);
+      if (properties.length > MAX_SCHEMA_OBJECT_PROPERTIES) {
+        return "Structured output schema object exceeds LocalBase's 1,000-property compilation limit.";
+      }
+      propertyCount += properties.length;
       if (propertyCount > MAX_SCHEMA_PROPERTIES) {
         return "Structured output schema exceeds OpenAI's property limit.";
       }
@@ -416,6 +422,7 @@ function compileSchema(schema: JsonObject): StructuredOutputPreparation {
     const ajv = new Ajv({
       allErrors: false,
       allowUnionTypes: true,
+      code: { optimize: 0 },
       inlineRefs: false,
       logger: false,
       strict: true,
