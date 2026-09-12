@@ -26,9 +26,22 @@ const commandTimeout = z.coerce
   .max(5_000)
   .default(2_000)
   .parse(process.env.LOCALBASE_TEST_SERVICE_COMMAND_TIMEOUT_MS);
+const stopWaitMode = z
+  .literal("expire-after-observation")
+  .optional()
+  .parse(process.env.LOCALBASE_TEST_SERVICE_STOP_WAIT);
+let stopDeadlineReached = false;
 setServiceManagerCommandRunnerForTests(
   createServiceManagerFixtureRunner(),
   commandTimeout,
+  stopWaitMode
+    ? {
+        now: () => (stopDeadlineReached ? Number.MAX_SAFE_INTEGER : 0),
+        async waitForNextObservation() {
+          stopDeadlineReached = true;
+        },
+      }
+    : undefined,
 );
 
 const { BACKEND_GUARDIAN_COMMAND, runBackendGuardian } =

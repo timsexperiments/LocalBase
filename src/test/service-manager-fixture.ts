@@ -43,6 +43,11 @@ const fixtureServiceSchema = z
     ]),
     pid: z.number().int().positive().optional(),
     lastExitCode: z.number().int().optional(),
+    registrationRemovalPollsRemaining: z
+      .number()
+      .int()
+      .nonnegative()
+      .optional(),
   })
   .strict();
 
@@ -88,9 +93,9 @@ function success(stdout = ""): ManagerCommandResult {
   });
 }
 
-function failure(stderr: string): ManagerCommandResult {
+function failure(stderr: string, exitCode = 1): ManagerCommandResult {
   return managerCommandResultSchema.parse({
-    exitCode: 1,
+    exitCode,
     stdout: "",
     stderr,
   });
@@ -335,7 +340,29 @@ export function createServiceManagerFixtureRunner(): ServiceManagerCommandRunner
           const target = actionArgs[1] ?? "";
           if (target.split("/").length === 2) return success();
           const service = state.services[targetServiceId(target)];
-          if (!service?.loaded) return failure("service not loaded");
+          if (!service?.loaded) return failure("service not loaded", 113);
+          if (service.activeState === "stopped") {
+            if (process.env.LOCALBASE_TEST_LAUNCHD_INSPECTION_FAILURE === "1") {
+              return failure("fixture launchd inspection failure");
+            }
+            const remaining = service.registrationRemovalPollsRemaining;
+            if (remaining === 0) {
+              state.services[service.serviceId] = {
+                ...service,
+                loaded: false,
+                registrationRemovalPollsRemaining: undefined,
+              };
+              await writeJson(statePath, state);
+              return failure("service not loaded", 113);
+            }
+            if (remaining !== undefined) {
+              state.services[service.serviceId] = {
+                ...service,
+                registrationRemovalPollsRemaining: remaining - 1,
+              };
+              await writeJson(statePath, state);
+            }
+          }
           const launchState =
             service.activeState === "active"
               ? "running"
@@ -446,11 +473,20 @@ export function createServiceManagerFixtureRunner(): ServiceManagerCommandRunner
           const service = state.services[serviceId];
           if (!service?.loaded) return failure("service not loaded");
           await stopFixtureProcess(service);
+          const removalPolls = z.coerce
+            .number()
+            .int()
+            .nonnegative()
+            .optional()
+            .parse(process.env.LOCALBASE_TEST_LAUNCHD_REMOVAL_POLLS);
           state.services[serviceId] = {
             ...service,
-            loaded: false,
-            activeState: "inactive",
+            loaded: removalPolls !== undefined,
+            activeState: removalPolls === undefined ? "inactive" : "stopped",
             pid: undefined,
+            ...(removalPolls === undefined
+              ? {}
+              : { registrationRemovalPollsRemaining: removalPolls }),
           };
           await writeJson(statePath, state);
           return success();

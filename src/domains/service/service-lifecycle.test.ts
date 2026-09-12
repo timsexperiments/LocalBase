@@ -387,6 +387,30 @@ describe.serial("compiled CLI service lifecycle", () => {
     };
   }
 
+  async function startDarwinFixtureRoot(
+    root: string,
+  ): Promise<{ serviceId: string }> {
+    expectCliSuccess(
+      await runCli(
+        executable,
+        ["--root", root, "start", "--json"],
+        environment("darwin"),
+      ),
+    );
+    const ready = (await waitForGatewayReady(
+      executable,
+      root,
+      environment("darwin"),
+    )) as { service: { serviceId: string } };
+    return ready.service;
+  }
+
+  function launchdFixtureTarget(serviceId: string): string {
+    const uid = process.getuid?.();
+    if (uid === undefined) throw new Error("POSIX user ID is unavailable.");
+    return `gui/${uid}/${serviceId}`;
+  }
+
   test("status is database-free and does not initialize an absent root", async () => {
     const root = join(directory, "absent-root");
     const canonical = await canonicalRoot(root);
@@ -1058,6 +1082,96 @@ describe.serial("compiled CLI service lifecycle", () => {
     );
     expect(timedOut.exitCode).toBe(1);
     expect(`${timedOut.stdout}${timedOut.stderr}`).toContain("timed out");
+  });
+
+  test("waits for launchd registration removal before restart bootstrap", async () => {
+    const root = join(directory, "launchd-delayed-removal-root");
+    const service = await startDarwinFixtureRoot(root);
+    const priorCalls = (await Bun.file(darwinCallsPath).json()) as string[][];
+
+    const restarted = await runCli(
+      executable,
+      ["--root", root, "restart", "--json"],
+      environment("darwin", {
+        LOCALBASE_TEST_LAUNCHD_REMOVAL_POLLS: "2",
+      }),
+    );
+
+    expectCliSuccess(restarted);
+    const calls = (
+      (await Bun.file(darwinCallsPath).json()) as string[][]
+    ).slice(priorCalls.length);
+    const bootout = calls.findIndex((args) => args[1] === "bootout");
+    const bootstrap = calls.findIndex((args) => args[1] === "bootstrap");
+    const target = launchdFixtureTarget(service.serviceId);
+    const removalChecks = calls.filter(
+      (args, index) =>
+        index > bootout &&
+        index < bootstrap &&
+        args[1] === "print" &&
+        args[2] === target,
+    );
+    expect(bootout).toBeGreaterThanOrEqual(0);
+    expect(bootstrap).toBeGreaterThan(bootout);
+    expect(removalChecks).toHaveLength(3);
+  });
+
+  test("fails restart when launchd registration removal times out", async () => {
+    const root = join(directory, "launchd-removal-timeout-root");
+    const service = await startDarwinFixtureRoot(root);
+    const priorCalls = (await Bun.file(darwinCallsPath).json()) as string[][];
+
+    const restarted = await runCli(
+      executable,
+      ["--root", root, "restart", "--json"],
+      environment("darwin", {
+        LOCALBASE_TEST_LAUNCHD_REMOVAL_POLLS: "1000",
+        LOCALBASE_TEST_SERVICE_STOP_WAIT: "expire-after-observation",
+      }),
+    );
+
+    expect(restarted.exitCode).toBe(1);
+    expect(`${restarted.stdout}${restarted.stderr}`).toContain(
+      "launchd did not stop",
+    );
+    const calls = (
+      (await Bun.file(darwinCallsPath).json()) as string[][]
+    ).slice(priorCalls.length);
+    const bootout = calls.findIndex((args) => args[1] === "bootout");
+    const target = launchdFixtureTarget(service.serviceId);
+    expect(bootout).toBeGreaterThanOrEqual(0);
+    expect(
+      calls.filter(
+        (args, index) =>
+          index > bootout && args[1] === "print" && args[2] === target,
+      ),
+    ).toHaveLength(1);
+    expect(calls.some((args) => args[1] === "bootstrap")).toBe(false);
+  });
+
+  test("does not treat launchd inspection failure as registration absence", async () => {
+    const root = join(directory, "launchd-removal-inspection-failure-root");
+    await startDarwinFixtureRoot(root);
+    const priorCalls = (await Bun.file(darwinCallsPath).json()) as string[][];
+
+    const restarted = await runCli(
+      executable,
+      ["--root", root, "restart", "--json"],
+      environment("darwin", {
+        LOCALBASE_TEST_LAUNCHD_REMOVAL_POLLS: "2",
+        LOCALBASE_TEST_LAUNCHD_INSPECTION_FAILURE: "1",
+      }),
+    );
+
+    expect(restarted.exitCode).toBe(1);
+    expect(`${restarted.stdout}${restarted.stderr}`).toContain(
+      "fixture launchd inspection failure",
+    );
+    const calls = (
+      (await Bun.file(darwinCallsPath).json()) as string[][]
+    ).slice(priorCalls.length);
+    expect(calls.some((args) => args[1] === "bootout")).toBe(true);
+    expect(calls.some((args) => args[1] === "bootstrap")).toBe(false);
   });
 
   test("repairs a loaded launchd job that exited with failure", async () => {
