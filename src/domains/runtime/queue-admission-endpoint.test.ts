@@ -6,6 +6,7 @@ import {
 import {
   startGatewayFixture,
   type GatewayFixture,
+  waitForLogEvent,
 } from "../../test/gateway-fixture";
 import { gatewayReadinessSchema } from "./readiness";
 
@@ -77,6 +78,10 @@ test("projects real HTTP queue saturation into readiness and authenticated metad
     const saturatedResponse = await Promise.race(
       extraRequests.map(({ response }) => response),
     );
+    const saturatedRequestId = saturatedResponse.headers.get(
+      "x-localbase-request-id",
+    );
+    expect(saturatedRequestId).toMatch(/^lbreq_/);
     expect(saturatedResponse.status).toBe(429);
     expect(saturatedResponse.headers.get("retry-after")).toBe("1");
     await expect(saturatedResponse.json()).resolves.toMatchObject({
@@ -103,6 +108,22 @@ test("projects real HTTP queue saturation into readiness and authenticated metad
         request.headers.get("x-test-stream-id")?.startsWith("queue-"),
       ),
     ).toHaveLength(2);
+    expect(
+      await waitForLogEvent(
+        gateway,
+        (event) =>
+          event.eventName === "inference.admission-rejected" &&
+          event.requestId === saturatedRequestId,
+      ),
+    ).toMatchObject({
+      runtime: "llm",
+      attributes: {
+        modality: "llm",
+        error_code: "inference_queue_full",
+        source: "capacity",
+        http_status: 429,
+      },
+    });
 
     const unready = await fetch(`${gateway.baseUrl}/health/ready`);
     expect(unready.status).toBe(503);

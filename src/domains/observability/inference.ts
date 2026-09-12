@@ -1,6 +1,7 @@
 import { SpanStatusCode, type Span } from "@opentelemetry/api";
 import { z } from "zod";
 import type { InferencePermitSnapshot } from "../runtime/inference-queue";
+import type { RuntimeModality } from "../runtime/modality";
 import type { ILogger } from "./logging";
 
 type Usage = Readonly<{
@@ -19,6 +20,7 @@ export type InferenceTerminalSource =
   | "response_cancelled"
   | "response_stream_error"
   | "response_validation"
+  | "speech_timeout"
   | "upstream_error_event";
 
 export type InferenceTerminal = Readonly<{
@@ -29,6 +31,7 @@ export type InferenceTerminal = Readonly<{
 
 export type InferenceMetadata = Readonly<{
   modelId: string;
+  modality: RuntimeModality;
   runtimeName: string;
   catalog?: Readonly<{
     artifactRevision: string;
@@ -201,7 +204,7 @@ export class InferenceTelemetry {
     }
   }
 
-  observeValidatedChatEvent(value: unknown): void {
+  observeValidatedBackendMetadata(value: unknown): void {
     const parsed = completionMetadataSchema.safeParse(value);
     if (!parsed.success) return;
     const event = parsed.data;
@@ -386,7 +389,7 @@ export class InferenceTelemetry {
       eventName: "inference.completed",
       category: "runtime",
       component: "inference",
-      runtime: "llm",
+      runtime: this.input.metadata.modality,
       message: "Inference response settled.",
       requestId: this.input.requestId,
       attributes,

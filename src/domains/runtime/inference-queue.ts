@@ -10,7 +10,7 @@ export class InferenceQueueCapacityError extends Error {
   }
 }
 export class InferenceQueueTimeoutError extends Error {
-  constructor() {
+  constructor(readonly queueWaitMs?: number) {
     super("Inference queue wait timed out.");
     this.name = "InferenceQueueTimeoutError";
   }
@@ -123,7 +123,13 @@ export class InferenceQueue<Value> {
         cancellation: new AbortController(),
       };
       item.timer = setTimeout(
-        () => this.remove(item, new InferenceQueueTimeoutError()),
+        () =>
+          this.remove(
+            item,
+            new InferenceQueueTimeoutError(
+              Math.max(0, this.now() - item.enqueuedAt),
+            ),
+          ),
         this.options.waitMs ?? DEFAULT_INFERENCE_QUEUE_WAIT_MS,
       );
       const abort = () => this.remove(item, new InferenceQueueAbortedError());

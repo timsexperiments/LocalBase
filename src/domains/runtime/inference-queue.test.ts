@@ -11,7 +11,11 @@ type Result = Readonly<{ admitted: boolean; slots: number; id: string }>;
 
 function queue(
   modality: "llm" | "stt" | "image" = "llm",
-  options: Readonly<{ maxWaiting?: number; waitMs?: number }> = {},
+  options: Readonly<{
+    maxWaiting?: number;
+    waitMs?: number;
+    now?: () => number;
+  }> = {},
 ) {
   const inferenceQueue = new InferenceQueue<Result>(modality, {
     ...options,
@@ -132,7 +136,12 @@ test("uses one authoritative permit for STT and image", async () => {
 });
 
 test("bounds waiting work with captured capacity and deadline", async () => {
-  const inferenceQueue = queue("llm", { maxWaiting: 1, waitMs: 20 });
+  let now = 0;
+  const inferenceQueue = queue("llm", {
+    maxWaiting: 1,
+    waitMs: 20,
+    now: () => now,
+  });
   const first = await inferenceQueue.acquire("a", async () => ({
     admitted: true,
     slots: 1,
@@ -157,7 +166,13 @@ test("bounds waiting work with captured capacity and deadline", async () => {
     maxWaitMs: 20,
     accepting: true,
   });
-  await expect(timedOut).rejects.toBeInstanceOf(InferenceQueueTimeoutError);
+  now = 23;
+  const timeoutError = await timedOut.catch((error: unknown) => error);
+  expect(timeoutError).toBeInstanceOf(InferenceQueueTimeoutError);
+  if (!(timeoutError instanceof InferenceQueueTimeoutError)) {
+    throw new Error("Expected a queue timeout.");
+  }
+  expect(timeoutError.queueWaitMs).toBe(23);
   first.release();
 });
 
