@@ -48,6 +48,7 @@ const testServerClosers: Array<() => Promise<void>> = [];
 const textEncoder = new TextEncoder();
 const textBytes = (value: string) => textEncoder.encode(value);
 const TEST_REVISION = "a".repeat(40);
+const SUPPLEMENTARY_REVISION = "b".repeat(40);
 let testDatabase = new DatabaseSession();
 
 type ArtifactRequest = {
@@ -205,8 +206,12 @@ function createInstallConfig(): LocalBaseConfig {
   return defaultConfig(root);
 }
 
-function artifactPath(source: string, sourcePath: string): string {
-  return `${new URL(source).pathname}/resolve/${TEST_REVISION}/${sourcePath}`;
+function artifactPath(
+  source: string,
+  sourcePath: string,
+  revision = TEST_REVISION,
+): string {
+  return `${new URL(source).pathname}/resolve/${revision}/${sourcePath}`;
 }
 
 function createUnsupportedConfigRoot(): string {
@@ -295,12 +300,19 @@ describe.serial("transactional model artifact installation", () => {
     const server = await createArtifactServer({
       "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00001.gguf":
         primary,
-      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00002.gguf":
+      [`/repo/supplementary-repo/resolve/${SUPPLEMENTARY_REVISION}/model-00002.gguf`]:
         supplementary,
     });
+    const pinnedSupplementaryArtifact: ModelArtifact = {
+      ...supplementaryArtifact,
+      source: {
+        repositoryUrl: `${server.source}/supplementary-repo`,
+        revision: SUPPLEMENTARY_REVISION,
+      },
+    };
     const modelId = installFixtureModel(server.source, [
       primaryArtifact,
-      supplementaryArtifact,
+      pinnedSupplementaryArtifact,
     ]);
     const config = createInstallConfig();
 
@@ -315,7 +327,11 @@ describe.serial("transactional model artifact installation", () => {
     ).toEqual(supplementary);
     expect(server.requests.map((request) => request.path)).toEqual([
       artifactPath(server.source, primaryArtifact.sourcePath),
-      artifactPath(server.source, supplementaryArtifact.sourcePath),
+      artifactPath(
+        pinnedSupplementaryArtifact.source!.repositoryUrl,
+        pinnedSupplementaryArtifact.sourcePath,
+        SUPPLEMENTARY_REVISION,
+      ),
     ]);
   });
 

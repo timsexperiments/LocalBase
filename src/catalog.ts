@@ -11,22 +11,28 @@ export const commercialStatusSchema = z.enum([
 ]);
 export type CommercialStatus = z.infer<typeof commercialStatusSchema>;
 
+const artifactSourceSchema = z.object({
+  repositoryUrl: z.string().url(),
+  revision: z.string().regex(/^[a-fA-F0-9]{40}$/),
+});
+
 export const modelArtifactSchema = z.object({
   sourcePath: z.string().min(1),
   filename: z.string().min(1),
   expectedSizeBytes: z.number().int().positive(),
   sha256: z.string().regex(/^[a-fA-F0-9]{64}$/),
   role: z.enum(["primary", "supplementary"]),
+  source: artifactSourceSchema.optional(),
 });
 
 /** Local or test artifacts may omit release metadata outside the managed catalog. */
-export type ModelArtifact = {
-  sourcePath: string;
-  filename: string;
-  expectedSizeBytes?: number;
-  sha256?: string;
-  role: "primary" | "supplementary";
-};
+export type ModelArtifact = Omit<
+  z.infer<typeof modelArtifactSchema>,
+  "expectedSizeBytes" | "sha256"
+> &
+  Partial<
+    Pick<z.infer<typeof modelArtifactSchema>, "expectedSizeBytes" | "sha256">
+  >;
 
 export const modelSpecSchema = z
   .object({
@@ -1515,9 +1521,13 @@ export function artifactDownloadUrl(
   model: ModelSpec,
   artifact: ModelArtifact,
 ): string {
-  const base = model.source.replace(/\/$/, "");
+  const { repositoryUrl, revision } = artifact.source ?? {
+    repositoryUrl: model.source,
+    revision: model.repositoryRevision,
+  };
+  const base = repositoryUrl.replace(/\/$/, "");
   const sourcePath = artifact.sourcePath.replace(/^\/+/, "");
-  return `${base}/resolve/${model.repositoryRevision}/${sourcePath}`;
+  return `${base}/resolve/${revision}/${sourcePath}`;
 }
 
 export function modelDownloadUrl(model: ModelSpec): string {
