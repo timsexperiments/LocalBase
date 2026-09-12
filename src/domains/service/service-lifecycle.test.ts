@@ -169,7 +169,8 @@ async function pathExists(path: string): Promise<boolean> {
     await Bun.file(path).stat();
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return false;
     throw error;
   }
 }
