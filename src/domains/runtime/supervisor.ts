@@ -58,7 +58,7 @@ export class ManagedService {
   private restartPromise: Promise<void> | null = null;
   private isShuttingDown = false;
   private shutdownPromise: Promise<void> | null = null;
-  private stoppingPromise: Promise<boolean> | null = null;
+  private stoppingPromise: Promise<void> | null = null;
   private guardians = new Map<number, Bun.Subprocess>();
   private processCleanups = new WeakMap<Bun.Subprocess, Promise<void>>();
   private expectedStops = new WeakSet<Bun.Subprocess>();
@@ -403,17 +403,20 @@ export class ManagedService {
     await this.shutdownPromise;
   }
 
-  private async stopCurrentProcess(): Promise<boolean> {
+  private async stopCurrentProcess(): Promise<void> {
     const stopping = this.stoppingPromise;
-    if (stopping) return await stopping;
+    if (stopping) {
+      await stopping;
+      return;
+    }
     const process = this.proc;
-    if (!process) return false;
+    if (!process) return;
     if (this.exited(process)) {
       this.expectedStops.add(process);
       await this.processCleanups.get(process);
       if (this.proc === process) this.proc = null;
       this.resolvedPlan = undefined;
-      return false;
+      return;
     }
 
     this.lifecycleState = "stopping";
@@ -431,11 +434,10 @@ export class ManagedService {
       await this.processCleanups.get(process);
       if (this.proc === process) this.proc = null;
       this.lifecycle("backend.stopped", "info");
-      return true;
     })();
     this.stoppingPromise = stop;
     try {
-      return await stop;
+      await stop;
     } catch (error) {
       this.lifecycleState = "failed";
       throw error;
@@ -472,6 +474,13 @@ export class ManagedService {
   private async stopGuardian(proc: Bun.Subprocess): Promise<void> {
     const guardian = this.guardians.get(proc.pid);
     if (!guardian) return;
+    await this.stopTrackedGuardian(proc.pid, guardian);
+  }
+
+  private async stopTrackedGuardian(
+    pid: number,
+    guardian: Bun.Subprocess,
+  ): Promise<void> {
     try {
       await stopNativeProcess(guardian, CHILD_STOP_GRACE_MS);
     } catch (error) {
@@ -480,27 +489,17 @@ export class ManagedService {
         { cause: error },
       );
     }
-    if (this.guardians.get(proc.pid) === guardian) {
-      this.guardians.delete(proc.pid);
+    if (this.guardians.get(pid) === guardian) {
+      this.guardians.delete(pid);
     }
   }
 
   private async stopAllGuardians(): Promise<void> {
     const guardians = [...this.guardians.entries()];
     await Promise.all(
-      guardians.map(async ([pid, guardian]) => {
-        try {
-          await stopNativeProcess(guardian, CHILD_STOP_GRACE_MS);
-        } catch (error) {
-          throw new Error(
-            `Failed to stop guardian for managed ${this.name} process.`,
-            { cause: error },
-          );
-        }
-        if (this.guardians.get(pid) === guardian) {
-          this.guardians.delete(pid);
-        }
-      }),
+      guardians.map(([pid, guardian]) =>
+        this.stopTrackedGuardian(pid, guardian),
+      ),
     );
   }
 
