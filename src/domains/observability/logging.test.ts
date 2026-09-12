@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { trace } from "@opentelemetry/api";
 import { getEventListeners } from "node:events";
 import { lstatSync, mkdtempSync, rmSync } from "node:fs";
 import {
@@ -13,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
+import { InferenceTelemetry } from "./inference";
 import {
   ACTIVE_LOG_FILENAME,
   LocalBaseLogger,
@@ -150,36 +152,79 @@ test("validates one redacted event contract before console or file sinks", () =>
   }
 });
 
-test("persists numeric inference metrics while diagnostics retain their values", async () => {
+test("persists a complete inference event without truncating attributes", async () => {
   const root = createRoot();
-  const logged = createLogEvent({
-    severity: "info",
-    eventName: "inference.completed",
-    category: "runtime",
-    component: "inference",
-    runtime: "llm",
-    message: "Inference response settled.",
-    attributes: {
-      prompt_tokens: 11,
-      completion_tokens: 7,
-      total_tokens: 18,
-      prompt_duration_ms: 1.25,
-      predicted_duration_ms: 2.75,
-    },
-  });
   const writer = new RotatingLogWriter(root);
   await writer.open();
-  writer.enqueue(logged);
+  const telemetry = new InferenceTelemetry({
+    metadata: {
+      modelId: "fixture-model",
+      runtimeName: "llama-server",
+      catalog: {
+        artifactRevision: "a".repeat(40),
+        quantization: "Q4_K_M",
+      },
+      admission: { active: 1, slots: 4, waiting: 0 },
+    },
+    requestId: "request-42",
+    startedAt: performance.now() - 8,
+    queueWaitMs: 1,
+    streaming: false,
+    structuredOutput: { preparationDurationMs: 0.25, streaming: false },
+    logger: {
+      event(input) {
+        writer.enqueue(createLogEvent(input));
+      },
+    },
+    span: trace.getTracer("logging-test").startSpan("inference-test"),
+  });
+  telemetry.observeValidatedChatEvent({
+    choices: [{ finish_reason: "stop" }],
+    usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 },
+    timings: { prompt_ms: 1.25, predicted_ms: 2.75 },
+  });
+  telemetry.observeUpstreamStatus(200);
+  telemetry.observeStructuredOutputValidation({
+    outcome: "skipped",
+    skipReasons: ["tool_calls"],
+  });
+  telemetry.finish({
+    outcome: "cancelled",
+    httpStatus: 200,
+    source: "response_cancelled",
+  });
   await writer.close();
 
+  const logged = (await readLogSnapshot(root))[0];
   const attributes = {
+    model_id: "fixture-model",
+    artifact_revision: "a".repeat(40),
+    quantization: "Q4_K_M",
+    runtime_name: "llama-server",
+    admission_active: 1,
+    admission_slots: 4,
+    admission_waiting: 0,
+    outcome: "cancelled",
+    http_status: 200,
+    upstream_status: 200,
+    total_duration_ms: expect.any(Number),
+    queue_wait_ms: 1,
+    terminal_source: "response_cancelled",
+    json_schema_requested: true,
+    json_schema_native_mode: "requested",
+    json_schema_preparation_ms: 0.25,
+    json_schema_validation: "skipped",
+    json_schema_skip_reasons: "tool_calls",
     prompt_tokens: 11,
     completion_tokens: 7,
     total_tokens: 18,
     prompt_duration_ms: 1.25,
     predicted_duration_ms: 2.75,
+    finish_reasons: "stop",
   };
-  expect((await readLogSnapshot(root))[0].attributes).toEqual(attributes);
+  expect(logged.requestId).toBe("request-42");
+  expect(logged.attributes).toEqual(attributes);
+  expect(Object.keys(logged.attributes ?? {})).toHaveLength(24);
   expect(redactLogEventForDiagnostics(logged).attributes).toEqual(attributes);
 
   const invalidMetrics = createLogEvent({
