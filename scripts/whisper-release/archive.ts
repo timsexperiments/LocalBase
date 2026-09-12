@@ -8,12 +8,42 @@ import {
   archiveSpecification,
   filePathSchema,
   teamIdSchema,
+  whisperLicenseFilename,
   whisperTargetSchema,
   type WhisperTarget,
 } from "./contracts";
 
 type CommandOutput = { stdout: string; stderr: string };
 export type CommandRunner = (args: string[]) => Promise<CommandOutput>;
+type RuntimeArchiveEntry = {
+  name: string;
+  type: string | undefined;
+  bytes: Uint8Array;
+};
+
+function runtimeBinary(
+  target: WhisperTarget,
+  entries: RuntimeArchiveEntry[],
+): Uint8Array {
+  const binary = entries.find((entry) => entry.name === "whisper-server");
+  const license = entries.find(
+    (entry) => entry.name === whisperLicenseFilename,
+  );
+  if (
+    entries.length !== 2 ||
+    !binary ||
+    binary.type !== "file" ||
+    binary.bytes.length === 0 ||
+    !license ||
+    license.type !== "file" ||
+    license.bytes.length === 0
+  ) {
+    throw new Error(
+      `${target} archive must contain exactly one non-empty root-level whisper-server file and ${whisperLicenseFilename}.`,
+    );
+  }
+  return binary.bytes;
+}
 
 function readUInt32LE(bytes: Uint8Array, offset: number): number {
   return (
@@ -53,7 +83,7 @@ function validateBinaryArchitecture(
 
 async function readTarGzRuntime(archivePath: string): Promise<Uint8Array> {
   const extractor = createTarExtractor();
-  const entries: Array<{ header: Headers; bytes: Uint8Array }> = [];
+  const entries: RuntimeArchiveEntry[] = [];
   let entryError: unknown;
   const completed = new Promise<void>((resolveExtraction, rejectExtraction) => {
     extractor.once("finish", () => {
@@ -78,7 +108,7 @@ async function readTarGzRuntime(archivePath: string): Promise<Uint8Array> {
               bytes.set(chunk, offset);
               offset += chunk.length;
             }
-            entries.push({ header, bytes });
+            entries.push({ name: header.name, type: header.type, bytes });
           } catch (error) {
             entryError ??= error;
           }
@@ -97,17 +127,7 @@ async function readTarGzRuntime(archivePath: string): Promise<Uint8Array> {
   ).pipe(extractor);
   await completed;
 
-  if (
-    entries.length !== 1 ||
-    entries[0]!.header.name !== "whisper-server" ||
-    (entries[0]!.header.type && entries[0]!.header.type !== "file") ||
-    entries[0]!.bytes.length === 0
-  ) {
-    throw new Error(
-      "Linux archive must contain exactly one non-empty root-level whisper-server file.",
-    );
-  }
-  return entries[0]!.bytes;
+  return runtimeBinary("linux-x64", entries);
 }
 
 async function readZipRuntime(archivePath: string): Promise<Uint8Array> {
@@ -119,17 +139,14 @@ async function readZipRuntime(archivePath: string): Promise<Uint8Array> {
   } catch (error) {
     throw new Error("Invalid macOS ZIP archive.", { cause: error });
   }
-  const entries = Object.entries(files);
-  if (
-    entries.length !== 1 ||
-    entries[0]![0] !== "whisper-server" ||
-    entries[0]![1].length === 0
-  ) {
-    throw new Error(
-      "macOS archive must contain exactly one non-empty root-level whisper-server file.",
-    );
-  }
-  return entries[0]![1];
+  return runtimeBinary(
+    "macos-arm64",
+    Object.entries(files).map(([name, bytes]) => ({
+      name,
+      type: "file",
+      bytes,
+    })),
+  );
 }
 
 async function runProcess(args: string[]): Promise<CommandOutput> {

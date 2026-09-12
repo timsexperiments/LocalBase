@@ -14,6 +14,7 @@ import {
   whisperManifestMatches,
   type Fetcher,
 } from "./whisper-release";
+import { whisperLicenseFilename } from "./whisper-release/contracts";
 
 const directories: string[] = [];
 afterEach(() =>
@@ -41,6 +42,10 @@ function macosBinary(): Uint8Array {
   const bytes = new Uint8Array(32);
   bytes.set([0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0, 0, 1]);
   return bytes;
+}
+
+function license(): Uint8Array {
+  return new TextEncoder().encode("MIT License\n");
 }
 
 async function tarGz(entries: Record<string, Uint8Array>): Promise<Uint8Array> {
@@ -103,9 +108,18 @@ test("qualifies canonical Linux and macOS archives", async () => {
   const macosArchive = join(directory, "whisper-server-macos-arm64.zip");
   await Bun.write(
     linuxArchive,
-    await tarGz({ "whisper-server": linuxBinary() }),
+    await tarGz({
+      "whisper-server": linuxBinary(),
+      [whisperLicenseFilename]: license(),
+    }),
   );
-  await Bun.write(macosArchive, zipSync({ "whisper-server": macosBinary() }));
+  await Bun.write(
+    macosArchive,
+    zipSync({
+      "whisper-server": macosBinary(),
+      [whisperLicenseFilename]: license(),
+    }),
+  );
 
   await qualifyWhisperArchive(
     "linux-x64",
@@ -142,7 +156,10 @@ test("rejects noncanonical archive contents and signatures", async () => {
   const nestedArchive = join(directory, "whisper-server-linux-x64.tar.gz");
   await Bun.write(
     nestedArchive,
-    await tarGz({ "nested/whisper-server": linuxBinary() }),
+    await tarGz({
+      "nested/whisper-server": linuxBinary(),
+      [whisperLicenseFilename]: license(),
+    }),
   );
   await expect(
     qualifyWhisperArchive(
@@ -153,8 +170,34 @@ test("rejects noncanonical archive contents and signatures", async () => {
     ),
   ).rejects.toThrow("root-level whisper-server");
 
+  const emptyLicenseArchive = join(
+    directory,
+    "whisper-server-linux-x64.tar.gz",
+  );
+  await Bun.write(
+    emptyLicenseArchive,
+    await tarGz({
+      "whisper-server": linuxBinary(),
+      [whisperLicenseFilename]: new Uint8Array(),
+    }),
+  );
+  await expect(
+    qualifyWhisperArchive(
+      "linux-x64",
+      emptyLicenseArchive,
+      join(directory, "empty-license"),
+      undefined,
+    ),
+  ).rejects.toThrow(whisperLicenseFilename);
+
   const macosArchive = join(directory, "whisper-server-macos-arm64.zip");
-  await Bun.write(macosArchive, zipSync({ "whisper-server": macosBinary() }));
+  await Bun.write(
+    macosArchive,
+    zipSync({
+      "whisper-server": macosBinary(),
+      [whisperLicenseFilename]: license(),
+    }),
+  );
   await expect(
     qualifyWhisperArchive(
       "macos-arm64",
