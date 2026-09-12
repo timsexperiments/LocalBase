@@ -134,7 +134,7 @@ export const globalArgs = {
 
 const modelKindArg = {
   type: "enum",
-  options: ["llm", "stt", "image"],
+  options: ["llm", "stt", "tts", "image"],
   description: "Filter by model kind",
 } satisfies ArgDef;
 
@@ -238,6 +238,11 @@ export const configureCommand = command<ConfigureInput>({
       valueHint: "id,...",
       description: "Selected STT model IDs; use an empty value to disable",
     },
+    "tts-models": {
+      type: "string",
+      valueHint: "id,...",
+      description: "Selected TTS model IDs; use an empty value to disable",
+    },
     "image-models": {
       type: "string",
       valueHint: "id,...",
@@ -252,6 +257,11 @@ export const configureCommand = command<ConfigureInput>({
       type: "string",
       valueHint: "id",
       description: "Active STT model ID",
+    },
+    "active-tts": {
+      type: "string",
+      valueHint: "id",
+      description: "Active TTS model ID",
     },
     "active-image": {
       type: "string",
@@ -276,6 +286,7 @@ export const configureCommand = command<ConfigureInput>({
     }
     assertCatalogModels(input.llmModels, "llm");
     assertCatalogModels(input.sttModels, "stt");
+    assertCatalogModels(input.ttsModels, "tts");
     assertCatalogModels(input.imageModels, "image");
     return input;
   },
@@ -393,6 +404,10 @@ const serveCommand = command<ServeInput>({
     port: { type: "string", valueHint: "port", description: "Gateway port" },
     llm: noPromptBoolean("Enable the LLM service", "Disable the LLM service"),
     stt: noPromptBoolean("Enable the STT service", "Disable the STT service"),
+    tts: noPromptBoolean(
+      "Enable speech generation",
+      "Disable speech generation",
+    ),
     image: noPromptBoolean(
       "Enable image generation",
       "Disable image generation",
@@ -456,6 +471,11 @@ const serveCommand = command<ServeInput>({
       type: "string",
       valueHint: "file",
       description: "STT model filename override",
+    },
+    "tts-model-file": {
+      type: "string",
+      valueHint: "file",
+      description: "TTS backbone model filename override",
     },
     "image-model-file": {
       type: "string",
@@ -560,7 +580,7 @@ const logsCommand = command<LogsInput>({
     },
     runtime: {
       type: "enum",
-      options: ["gateway", "llm", "stt", "image", "service", "cli"],
+      options: ["gateway", "llm", "stt", "tts", "image", "service", "cli"],
       description: "Filter by runtime",
     },
     "request-id": {

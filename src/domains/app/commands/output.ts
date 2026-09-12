@@ -16,7 +16,12 @@ export const commandErrorSchema = z
   .strict();
 
 const enabledModalitiesSchema = z
-  .object({ llm: z.boolean(), stt: z.boolean(), image: z.boolean() })
+  .object({
+    llm: z.boolean(),
+    stt: z.boolean(),
+    tts: z.boolean(),
+    image: z.boolean(),
+  })
   .strict();
 
 export const serveLifecycleEventSchema = z.discriminatedUnion("event", [

@@ -131,6 +131,7 @@ describe("runtime launch plans", () => {
 test("supervisor registry reports configured state and shuts down each supervisor", async () => {
   let shutdowns = 0;
   const service = {
+    kind: "server" as const,
     runtimeId: () => "test",
     state: () => "running" as const,
     async ensureRunning() {},

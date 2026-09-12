@@ -11,13 +11,14 @@ import {
   RuntimeRequestAbortedError,
 } from "./runtime-reconciler";
 import type { RuntimeSupervisorFactory } from "./supervisor-factory";
+import type { RuntimeModality } from "./modality";
 import {
   SupervisorRegistry,
   type RuntimeSupervisor,
 } from "./supervisor-registry";
 
 type ServiceRecord = {
-  modality: "llm" | "stt" | "image";
+  modality: RuntimeModality;
   modelId: string;
   memorySystemReservePercent: number;
   shutdowns: number;
@@ -30,6 +31,7 @@ function activeModel(
 ): string {
   if (modality === "llm") return config.activeLlmModel;
   if (modality === "stt") return config.activeSttModel;
+  if (modality === "tts") return config.activeTtsModel;
   return config.activeImageModel;
 }
 
@@ -60,6 +62,7 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
           snapshot.config.memory.systemReserve.percent,
         shutdowns: 0,
         service: {
+          kind: "server",
           runtimeId: () => runtimeId,
           state: () => "idle",
           async ensureRunning() {},
@@ -194,6 +197,7 @@ test("does not block STT admission while LLM replacement drains", async () => {
   const controller = new RuntimeConfigController(database, root, config);
   let llmShutdowns = 0;
   const supervisor = (modality: "llm" | "stt"): RuntimeSupervisor => ({
+    kind: "server",
     runtimeId: () => `${modality}:test`,
     state: () => "running",
     async ensureRunning() {},
@@ -271,11 +275,12 @@ test("advances applied generations only inside the modality owner", async () => 
   });
   const createSupervisor = (
     snapshot: ReturnType<RuntimeConfigController["read"]>,
-    modality: "llm" | "stt" | "image" = "llm",
+    modality: RuntimeModality = "llm",
   ): RuntimeSupervisor => {
     const port = snapshot.config.port;
     if (modality === "llm") creations += 1;
     return {
+      kind: "server" as const,
       runtimeId: () => `${modality}:${port}`,
       state: () => "running",
       async ensureRunning() {
@@ -347,6 +352,7 @@ test("keeps queued admissions paired with the applied model generation", async (
     create(modality, snapshot) {
       const modelId = activeModel(modality, snapshot.config);
       return {
+        kind: "server" as const,
         runtimeId: () => `${modality}:${modelId}`,
         state: () => "running",
         async ensureRunning() {},
@@ -415,6 +421,7 @@ test("rebases queued replacement work after a model activation", async () => {
       const modelId = activeModel(modality, snapshot.config);
       if (modality === "llm") created.push(modelId);
       return {
+        kind: "server" as const,
         runtimeId: () => `${modality}:${modelId}`,
         state: () => "running",
         async ensureRunning() {},
@@ -475,6 +482,7 @@ test("releases transition ownership before waiting for backend readiness", async
   });
   let kills = 0;
   const initial: RuntimeSupervisor = {
+    kind: "server",
     runtimeId: () => "llm:model:1",
     state: () => lifecycle.state,
     async ensureRunning() {
@@ -494,6 +502,7 @@ test("releases transition ownership before waiting for backend readiness", async
     create: () => {
       replacements += 1;
       return {
+        kind: "server" as const,
         runtimeId: () => `llm:model:${replacements + 1}`,
         state: () => "idle",
         async ensureRunning() {
@@ -563,6 +572,7 @@ test("does not stop a ready runtime while a model switch drains admission", asyn
   let state: "idle" | "running" = "idle";
   let kills = 0;
   const initial: RuntimeSupervisor = {
+    kind: "server",
     runtimeId: () => "llm:model:1",
     state: () => state,
     async ensureRunning() {
@@ -574,6 +584,7 @@ test("does not stop a ready runtime while a model switch drains admission", asyn
     async shutdown() {},
   };
   const replacement: RuntimeSupervisor = {
+    kind: "server",
     runtimeId: () => "llm:model:2",
     state: () => "idle",
     async ensureRunning() {},
@@ -637,6 +648,7 @@ test("cancels an orphaned running runtime after shared admissions settle", async
     markKilled = resolve;
   });
   const supervisor: RuntimeSupervisor = {
+    kind: "server",
     runtimeId: () => "llm:test:1",
     state: () => "running",
     resolvedSlots: () => 2,
@@ -692,6 +704,7 @@ test("holds replacement admissions until runtime cancellation settles", async ()
   });
   let ensureCalls = 0;
   const supervisor: RuntimeSupervisor = {
+    kind: "server",
     runtimeId: () => "llm:test:1",
     state: () => "running",
     async ensureRunning() {
@@ -749,6 +762,7 @@ test("evicts only running runtimes without admitted requests", async () => {
   const controller = new RuntimeConfigController(database, root, config);
   let kills = 0;
   const service: RuntimeSupervisor = {
+    kind: "server",
     runtimeId: () => "llm:test:1",
     state: () => "running",
     async ensureRunning() {},
@@ -810,6 +824,7 @@ test("kills critical runtimes before awaiting active leases and reattaches", asy
   let sttKills = 0;
   let sttState: "starting" | "idle" = "starting";
   const llm: RuntimeSupervisor = {
+    kind: "server",
     runtimeId: () => "llm:test:1",
     state: () => "running",
     async ensureRunning() {},
@@ -820,6 +835,7 @@ test("kills critical runtimes before awaiting active leases and reattaches", asy
     async shutdown() {},
   };
   const stt: RuntimeSupervisor = {
+    kind: "server",
     runtimeId: () => "stt:test:1",
     state: () => sttState,
     async ensureRunning() {
@@ -899,6 +915,7 @@ test("cancels queued model activation during emergency eviction and recovers", a
   const created: string[] = [];
   const starts: string[] = [];
   const initial: RuntimeSupervisor = {
+    kind: "server",
     runtimeId: () => `llm:${modelA}`,
     state: () => "running",
     async ensureRunning() {
@@ -916,6 +933,7 @@ test("cancels queued model activation during emergency eviction and recovers", a
       const modelId = snapshot.config.activeLlmModel;
       created.push(modelId);
       return {
+        kind: "server" as const,
         runtimeId: () => `llm:${modelId}`,
         state: () => "idle",
         async ensureRunning() {

@@ -7,8 +7,9 @@ LocalBase is a Bun/TypeScript unified, OpenAI-compatible gateway for local AI ru
 - **LLM** OpenAI-compatible chat completions, including configured-model switching.
 - **Embeddings** for local indexing and search.
 - **STT** audio transcriptions and translations.
+- **TTS** through `/v1/audio/speech` with the bounded Qwen3 TTS base model.
 - **Image generation** through the OpenAI-compatible `/v1/images/generations` endpoint.
-- Lazy loading of LLM, STT, and image backends on first use.
+- Lazy preparation of LLM, STT, TTS, and image runtimes on first use.
 - Self-healing process supervision with bounded restart backoff.
 - Zod request and response validation.
 - SQLite-backed configuration and API-key storage.
@@ -18,7 +19,9 @@ The runtime keeps one active model per service. Memory pressure can evict idle r
 
 ### Model metadata
 
-Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` return catalog identity, every declared artifact checksum and size, catalog memory estimates, and local selection, installation, and runtime state. `selected` reports configured selection. `runtime` reports the observed applied supervisor, so a replacement may be selected while the previous model drains. The gateway captures both before file inspection. `runtime.effectiveSlots` is the lifecycle snapshot's resolved launch-plan count, not available request capacity; `availableCapacity` and `queueDepth` come from the queue snapshot and are `null` when unavailable. Reads do not start runtimes or hash model files. Capabilities, context, and output limits are `null` because LocalBase has no authoritative source for them.
+Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` return catalog identity, every declared artifact checksum and size, catalog memory estimates, and local selection, installation, and runtime state. `selected` reports configured selection. `runtime` reports the observed applied supervisor, so a replacement may be selected while the previous model drains. The gateway captures both before file inspection. `runtime.effectiveSlots` is the lifecycle snapshot's resolved launch-plan count, not available request capacity; `availableCapacity` and `queueDepth` come from the queue snapshot and are `null` when unavailable. Reads do not start runtimes or hash model files. Capability fields remain `null` without an authoritative value; the TTS model reports its narrower WAV/default-voice/cold-request contract.
+
+TTS is disabled by default. The first supported model is `qwen3-tts-1.7b-base-q4_k_m`. Requests must explicitly set `voice: "default"` and `response_format: "wav"`; omitted formats do not fall back from OpenAI's MP3 default. Speed is fixed at `1`, instructions are unsupported, and input is limited to 256 characters. Each request runs a cold, bounded native generation and returns PCM16 mono WAV at 24 kHz. macOS qualification confirmed a valid, non-clipped 3.84-second WAV in 9.55 seconds with a 6.53 GiB peak; human voice quality has not been assessed.
 
 Public `GET` and `HEAD /health/ready` report whether at least one configured modality can admit a request, including bounded queue waiting. `/health` remains process liveness.
 
@@ -66,6 +69,7 @@ local-base --non-interactive configure --defaults \
   --llm-models qwen2.5-coder-1.5b-instruct-q4_k_m \
   --active-llm qwen2.5-coder-1.5b-instruct-q4_k_m \
   --stt-models '' \
+  --tts-models '' \
   --image-models '' \
   --parallel auto \
   --create-key

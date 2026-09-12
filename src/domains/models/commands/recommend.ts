@@ -1,6 +1,7 @@
 import {
   recommendedForVram,
   recommendedSttForVram,
+  recommendedTtsForVram,
   recommendedImageForVram,
 } from "../../../catalog";
 import type { ModelSpec } from "../../../catalog";
@@ -13,7 +14,11 @@ export function runRecommend(
   ctx: AppContext,
   execution: CommandExecution,
 ): {
-  data: { kind: "llm" | "stt" | "image"; vramGb: number; models: ModelSpec[] };
+  data: {
+    kind: "llm" | "stt" | "tts" | "image";
+    vramGb: number;
+    models: ModelSpec[];
+  };
 } {
   const kind = input.kind ?? "llm";
   const vram = input.vram ?? ctx.specs.gpuVramGb;
@@ -23,6 +28,8 @@ export function runRecommend(
     picks = recommendedForVram(vram);
   } else if (kind === "stt") {
     picks = recommendedSttForVram(vram);
+  } else if (kind === "tts") {
+    picks = recommendedTtsForVram(vram);
   } else {
     picks = recommendedImageForVram(vram);
   }

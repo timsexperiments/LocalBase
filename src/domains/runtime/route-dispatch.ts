@@ -3,6 +3,7 @@ export type GatewayRoute =
   | "readiness"
   | "instance"
   | "transcription"
+  | "speechGeneration"
   | "imageGeneration"
   | "chatCompletion"
   | "embeddings"
@@ -38,6 +39,8 @@ export function selectGatewayRoute(pathname: string): GatewayRoute {
     case "/v1/audio/transcriptions":
     case "/v1/audio/translations":
       return "transcription";
+    case "/v1/audio/speech":
+      return "speechGeneration";
     case "/v1/images/generations":
       return "imageGeneration";
     case "/v1/chat/completions":

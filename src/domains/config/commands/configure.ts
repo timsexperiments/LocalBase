@@ -42,7 +42,7 @@ export const PARALLEL_SLOTS_PROMPT =
 
 function validateExternalModelList(
   modelIds: string[] | undefined,
-  kind: "llm" | "stt" | "image",
+  kind: "llm" | "stt" | "tts" | "image",
 ): string[] | undefined {
   try {
     return validateModelList(modelIds, kind);
@@ -57,9 +57,11 @@ function validateComposedModelConfiguration(config: LocalBaseConfig): void {
   const result = modelConfigurationSchema.safeParse({
     selectedLlmModels: config.selectedLlmModels,
     selectedSttModels: config.selectedSttModels,
+    selectedTtsModels: config.selectedTtsModels,
     selectedImageModels: config.selectedImageModels,
     activeLlmModel: config.activeLlmModel,
     activeSttModel: config.activeSttModel,
+    activeTtsModel: config.activeTtsModel,
     activeImageModel: config.activeImageModel,
   });
   if (!result.success) throw new CliInputError(formatZodError(result.error));
@@ -172,6 +174,34 @@ function imageChoices(
   });
 }
 
+function ttsChoices(
+  current: string[],
+  vramGb: number,
+): Array<{
+  name: string;
+  value: string;
+  checked?: boolean;
+  disabled?: string | boolean;
+}> {
+  return listModels("tts").map((model) => {
+    const fit = evaluateModelFit(model, vramGb);
+    let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, estimated peak ${model.minVramGb}GB)`;
+    let disabled: string | boolean = false;
+    if (fit.status === "insufficient") {
+      label += ` [Requires ${model.minVramGb}GB, you have ${vramGb}GB]`;
+      disabled = `Requires ${model.minVramGb}GB VRAM`;
+    } else if (fit.status === "tight") {
+      label += ` [Tight: leaves ${fit.headroomGb.toFixed(1)}GB headroom]`;
+    }
+    return {
+      name: label,
+      value: model.modelId,
+      checked: current.includes(model.modelId),
+      disabled,
+    };
+  });
+}
+
 async function interactiveConfigureSelective(
   config: LocalBaseConfig,
   locked: Set<keyof LocalBaseConfig>,
@@ -188,8 +218,10 @@ async function interactiveConfigureSelective(
     !locked.has("sttPort") &&
     !locked.has("selectedLlmModels") &&
     !locked.has("selectedSttModels") &&
+    !locked.has("selectedTtsModels") &&
     !locked.has("activeLlmModel") &&
-    !locked.has("activeSttModel");
+    !locked.has("activeSttModel") &&
+    !locked.has("activeTtsModel");
 
   if (!locked.has("root"))
     config.root = await textPrompt("Root directory", config.root);
@@ -298,6 +330,39 @@ async function interactiveConfigureSelective(
     }
   }
 
+  if (!locked.has("selectedTtsModels")) {
+    config.selectedTtsModels =
+      validateModelList(
+        await multiSelectPrompt(
+          "Select TTS models (select none to disable)",
+          ttsChoices(config.selectedTtsModels, vramGb),
+          false,
+        ),
+        "tts",
+      ) ?? config.selectedTtsModels;
+  }
+
+  if (!locked.has("activeTtsModel")) {
+    if (config.selectedTtsModels.length > 0) {
+      const options = config.selectedTtsModels.map((id) => ({
+        name: id,
+        value: id,
+      }));
+      const fallback = options.some(
+        (option) => option.value === config.activeTtsModel,
+      )
+        ? config.activeTtsModel
+        : options[0].value;
+      config.activeTtsModel = await singleSelectPrompt(
+        "Active TTS model",
+        options,
+        fallback,
+      );
+    } else {
+      config.activeTtsModel = "";
+    }
+  }
+
   if (!locked.has("selectedImageModels")) {
     config.selectedImageModels =
       validateModelList(
@@ -389,9 +454,11 @@ export async function runConfigure(
   let config = loadConfig(ctx.database, root, specs.gpuVramGb);
   const llmFromFlags = validateExternalModelList(flags.llmModels, "llm");
   const sttFromFlags = validateExternalModelList(flags.sttModels, "stt");
+  const ttsFromFlags = validateExternalModelList(flags.ttsModels, "tts");
   const imageFromFlags = validateExternalModelList(flags.imageModels, "image");
   const llmFromToml = rawToml.selectedLlmModels;
   const sttFromToml = rawToml.selectedSttModels;
+  const ttsFromToml = rawToml.selectedTtsModels;
   const imageFromToml = rawToml.selectedImageModels;
   const parallelFromFlag = flags.parallel;
   const parallelInput = parallelFromFlag ?? rawToml.parallel;
@@ -403,6 +470,8 @@ export async function runConfigure(
     llmFromFlags ?? llmFromToml ?? config.selectedLlmModels;
   const selectedSttModels =
     sttFromFlags ?? sttFromToml ?? config.selectedSttModels;
+  const selectedTtsModels =
+    ttsFromFlags ?? ttsFromToml ?? config.selectedTtsModels;
   const selectedImageModels =
     imageFromFlags ?? imageFromToml ?? config.selectedImageModels;
   const activeLlmModel =
@@ -417,6 +486,12 @@ export async function runConfigure(
     (selectedSttModels.includes(config.activeSttModel)
       ? config.activeSttModel
       : (selectedSttModels[0] ?? ""));
+  const activeTtsModel =
+    flags.activeTts ??
+    rawToml.activeTtsModel ??
+    (selectedTtsModels.includes(config.activeTtsModel)
+      ? config.activeTtsModel
+      : (selectedTtsModels[0] ?? ""));
   const activeImageModel =
     flags.activeImage ??
     rawToml.activeImageModel ??
@@ -438,9 +513,11 @@ export async function runConfigure(
   maybeLock("sttPort", flags.sttPort ?? rawToml.sttPort);
   maybeLock("selectedLlmModels", llmFromFlags ?? llmFromToml);
   maybeLock("selectedSttModels", sttFromFlags ?? sttFromToml);
+  maybeLock("selectedTtsModels", ttsFromFlags ?? ttsFromToml);
   maybeLock("selectedImageModels", imageFromFlags ?? imageFromToml);
   maybeLock("activeLlmModel", flags.activeLlm ?? rawToml.activeLlmModel);
   maybeLock("activeSttModel", flags.activeStt ?? rawToml.activeSttModel);
+  maybeLock("activeTtsModel", flags.activeTts ?? rawToml.activeTtsModel);
   maybeLock("activeImageModel", flags.activeImage ?? rawToml.activeImageModel);
   maybeLock("hfToken", flags.hfToken ?? rawToml.hfToken);
   maybeLock("otelEndpoint", flags.otelEndpoint ?? rawToml.otelEndpoint);
@@ -473,9 +550,11 @@ export async function runConfigure(
     sttPort: flags.sttPort ?? rawToml.sttPort ?? config.sttPort,
     selectedLlmModels,
     selectedSttModels,
+    selectedTtsModels,
     selectedImageModels,
     activeLlmModel,
     activeSttModel,
+    activeTtsModel,
     activeImageModel,
     hfToken:
       flags.hfToken ??
@@ -531,6 +610,9 @@ export async function runConfigure(
   );
   execution.output.info(
     `Selected STT models: ${config.selectedSttModels.join(", ")}`,
+  );
+  execution.output.info(
+    `Selected TTS models: ${config.selectedTtsModels.join(", ")}`,
   );
   execution.output.info(
     `Selected Image models: ${config.selectedImageModels.join(", ")}`,

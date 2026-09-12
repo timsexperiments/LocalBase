@@ -20,6 +20,7 @@ function snapshot(
   update(config);
   Object.freeze(config.selectedLlmModels);
   Object.freeze(config.selectedSttModels);
+  Object.freeze(config.selectedTtsModels);
   Object.freeze(config.selectedImageModels);
   return Object.freeze({ revision, config: Object.freeze(config) });
 }
@@ -40,6 +41,7 @@ test("assigns every persisted configuration field to one reconciliation owner", 
     root: "restart-required",
     llmModelsDir: "restart-required",
     sttModelsDir: "restart-required",
+    ttsModelsDir: "restart-required",
     imageModelsDir: "restart-required",
     host: "llm-launch",
     port: "llm-launch",
@@ -48,9 +50,11 @@ test("assigns every persisted configuration field to one reconciliation owner", 
     sttPort: "stt-launch",
     selectedLlmModels: "modality-selection-request-scoped",
     selectedSttModels: "modality-selection-request-scoped",
+    selectedTtsModels: "modality-selection-request-scoped",
     selectedImageModels: "modality-selection-request-scoped",
     activeLlmModel: "llm-launch",
     activeSttModel: "stt-launch",
+    activeTtsModel: "tts-launch",
     activeImageModel: "image-launch",
     hfToken: "modality-selection-request-scoped",
     parallel: "llm-launch",
@@ -75,7 +79,13 @@ test("requires a gateway restart for restart-required configuration", () => {
     sourceRevision: 3,
     targetRevision: 4,
     action: "restart-required",
-    changedFields: ["root", "llmModelsDir", "sttModelsDir", "imageModelsDir"],
+    changedFields: [
+      "root",
+      "llmModelsDir",
+      "sttModelsDir",
+      "ttsModelsDir",
+      "imageModelsDir",
+    ],
   });
   expect(plan.modalities.llm.action).toBe("unchanged");
 });
@@ -212,6 +222,13 @@ test.each([
     },
   },
   {
+    modality: "tts" as const,
+    enable: (config: ReturnType<typeof defaultConfig>) => {
+      config.activeTtsModel = "qwen3-tts-1.7b-base-q4_k_m";
+      config.selectedTtsModels = [config.activeTtsModel];
+    },
+  },
+  {
     modality: "image" as const,
     enable: (config: ReturnType<typeof defaultConfig>) => {
       config.selectedImageModels = [config.activeImageModel];
@@ -224,6 +241,9 @@ test.each([
       if (modality === "stt") {
         config.selectedSttModels = [];
         config.activeSttModel = "";
+      } else if (modality === "tts") {
+        config.selectedTtsModels = [];
+        config.activeTtsModel = "";
       } else {
         config.selectedImageModels = [];
         config.activeImageModel = "";
@@ -239,6 +259,20 @@ test.each([
     });
   },
 );
+
+test("uses selected tts models to remove the optional supervisor", () => {
+  const source = snapshot(3, (config) => {
+    config.activeTtsModel = "qwen3-tts-1.7b-base-q4_k_m";
+    config.selectedTtsModels = [config.activeTtsModel];
+  });
+  const plan = createRuntimeReconciliationPlan(source, snapshot(4));
+
+  expect(plan.modalities.tts).toMatchObject({
+    action: "drain-and-remove",
+    sourceConfigured: true,
+    targetConfigured: false,
+  });
+});
 
 test("keeps LLM configured by default and isolates request-scoped changes", () => {
   const plan = planFor((config) => {
@@ -347,6 +381,7 @@ test("rejects snapshots with model directories that are not derived from root", 
 
 function service(name: string, calls: string[]): RuntimeSupervisor {
   return {
+    kind: "server" as const,
     runtimeId: () => name,
     state: () => "idle",
     async ensureRunning() {},

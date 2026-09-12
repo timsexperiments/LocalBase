@@ -2,7 +2,7 @@
 
 ## Inference queues
 
-LocalBase owns one FIFO queue for each inference type: LLM, speech-to-text, and image generation. Each queue accepts 16 waiting requests by default and gives each request 60 seconds to reach dispatch. Active requests do not count toward the waiting limit.
+LocalBase owns one FIFO queue for each inference type: LLM, speech-to-text, text-to-speech, and image generation. Each queue accepts 16 waiting requests by default and gives each request 60 seconds to reach dispatch. Active requests do not count toward the waiting limit.
 
 Foreground `serve` processes can change these limits:
 
@@ -12,7 +12,7 @@ local-base serve \
   --inference-queue-timeout-ms 90000
 ```
 
-The limits apply independently to each inference type. LLM concurrency comes from the running backend's resolved slot count. Speech-to-text and image generation run one request at a time.
+The limits apply independently to each inference type. LLM concurrency comes from the running backend's resolved slot count. Speech-to-text, text-to-speech, and image generation run one request at a time.
 
 Requests keep FIFO order across model IDs. When the head request needs another model, LocalBase waits for active requests on the current model to finish before switching. Later requests cannot bypass that switch, even if they use the current model. A cold LLM starts with one admission slot. Once the backend is ready and its resolved slot count is available, LocalBase admits queued requests for the same model without waiting for the first response to finish.
 
@@ -21,6 +21,8 @@ If the queue is full, the gateway returns HTTP `429` with OpenAI error code `inf
 The queue deadline covers FIFO, model-transition, and dispatch-owner waiting. It stops when runtime dispatch begins. It does not limit backend startup or response generation. Callers should use their own request deadline for those phases. Aborting the request signal, such as a fetch `AbortController`, removes queued work, prevents cancelled dispatch from starting backend work, or cancels an active response. Cancelling only a local response stream reader is not a substitute for aborting the HTTP request. Before response headers are committed, LocalBase can represent request cancellation as HTTP `499`. After streaming starts, cancellation terminates the stream.
 
 Shutdown, runtime disablement, and memory emergencies reject queued and dispatching work. They do not launch that work later.
+
+TTS runs one cold `llama-tts` child per admitted request. Its estimated 8 GiB job demand is reserved until that child exits. Cancellation, timeout, disablement, shutdown, and emergency eviction terminate the child before releasing the reservation or deleting its private prompt and WAV files. A generation that reaches the 256-frame native cap is rejected as potentially truncated.
 
 ## Streams and telemetry
 
