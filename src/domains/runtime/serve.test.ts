@@ -93,11 +93,26 @@ test("formats memory admission rejection as a retryable OpenAI error", async () 
       snapshot: {} as never,
       supervisor: {} as never,
       ready: Promise.reject(
-        new RuntimeMemoryAdmissionError({
-          kind: "rejected",
-          reason: "system-memory",
-          poolId: "system",
-        }),
+        new RuntimeMemoryAdmissionError(
+          {
+            kind: "rejected",
+            reason: "system-memory",
+            poolId: "system",
+          },
+          {
+            measured_available_bytes: 20 * 1024 ** 3,
+            reserve_bytes: 8 * 1024 ** 3,
+            pending_bytes: 0,
+            requested_bytes: 14 * 1024 ** 3,
+            effective_available_bytes: 20 * 1024 ** 3,
+            sample_captured_at_ms: 1,
+            sample_age_ms: 0,
+            measured_pressure: "normal",
+            safety_state: "healthy",
+            recovery_samples: 0,
+            demand_confidence: "authoritative",
+          },
+        ),
       ),
       onPendingDetach() {},
       onIdleCancellation() {},

@@ -77,13 +77,40 @@ test("represents Intel macOS as host-only discrete memory", () => {
   });
 });
 
-test("returns an unavailable pool when Mach sampling fails", async () => {
+test("reads fresh Mach counters and fails closed instead of reusing a prior sample", async () => {
+  let readCount = 0;
   const provider = createMacOsHostMemoryProvider({
-    memoryReader: { read: () => undefined, close() {} },
+    memoryReader: {
+      read() {
+        readCount += 1;
+        return readCount <= 2
+          ? {
+              buffer: machFixture({
+                free: 3 - readCount,
+                inactive: 0,
+                speculative: 0,
+              }),
+              pageSize: 4096,
+            }
+          : undefined;
+      },
+      close() {},
+    },
     totalMemoryBytes: 16 * 1024 ** 3,
     appleSilicon: true,
   });
+  for (const availableBytes of [8192, 4096]) {
+    expect((await provider.snapshot()).pools).toEqual([
+      {
+        poolId: "system",
+        availability: "available",
+        availableBytes,
+        pressure: "normal",
+      },
+    ]);
+  }
   expect((await provider.snapshot()).pools).toEqual([
     { poolId: "system", availability: "unavailable", pressure: "unknown" },
   ]);
+  expect(readCount).toBe(3);
 });

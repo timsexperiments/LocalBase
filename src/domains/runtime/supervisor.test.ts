@@ -1,13 +1,14 @@
 import { expect, test } from "bun:test";
-import type { ILogger } from "../observability/logging";
-import { LocalBaseLogger } from "../observability/logging";
+import type { ILogger, LogEvent } from "../observability/logging";
+import { createLogEvent, LocalBaseLogger } from "../observability/logging";
 import { createOtelRuntime } from "../observability/otel";
 import { decodeOtlpTraceSpans } from "../../test/otlp-fixture";
 import type { RuntimeLaunchPlan } from "./launch-plan";
 import {
   RuntimeMemoryAdmissionError,
-  type MemorySafetyController,
+  MemorySafetyController,
 } from "./memory-controller";
+import { defaultMemorySafetyConfig, gibibyte } from "./memory-safety";
 import { ManagedService } from "./supervisor";
 
 function testLaunchPlan(runtimeId: string): RuntimeLaunchPlan {
@@ -244,40 +245,100 @@ test("memory admission rejection remains retryable", async () => {
     displayEndpoint: "disabled",
   });
   const events: string[] = [];
-  const rejection = new RuntimeMemoryAdmissionError({
-    kind: "rejected",
-    reason: "system-memory",
-    poolId: "system",
-  });
+  const diagnostics: LogEvent[] = [];
   let reservations = 0;
   let starts = 0;
+  const memorySafety = new MemorySafetyController(
+    {
+      topology: {
+        kind: "unified",
+        system: { id: "system", capacityBytes: 32 * gibibyte },
+      },
+      async snapshot() {
+        reservations += 1;
+        return {
+          capturedAtMs: Date.now() - 25,
+          pools: [
+            {
+              poolId: "system",
+              availability: "available",
+              availableBytes: 20 * gibibyte,
+              pressure: "normal",
+            },
+          ],
+        };
+      },
+      async close() {},
+    },
+    defaultMemorySafetyConfig(),
+  );
   const service = new ManagedService({
     runtimeId: "llm:memory:1",
     modality: "llm",
     component: "llama-server",
     healthUrl: "http://127.0.0.1:1/health",
-    logger: recordingLogger(events),
-    launch: async () => testLaunchPlan("llm:memory:1"),
+    logger: {
+      ...recordingLogger(events),
+      event(input) {
+        events.push(input.eventName);
+        if (input.eventName === "runtime.memory-admission-rejected") {
+          diagnostics.push(createLogEvent(input));
+        }
+      },
+    },
+    launch: async () => ({
+      ...testLaunchPlan("llm:memory:1"),
+      memoryDemand: {
+        unifiedBytes: 14 * gibibyte,
+        hostBytes: 0,
+        acceleratorBytes: 0,
+        confidence: "authoritative",
+      },
+    }),
     start: async () => {
       starts += 1;
       return Bun.spawn(["/bin/sleep", "60"]);
     },
-    memorySafety: {
-      async reserve() {
-        reservations += 1;
-        throw rejection;
-      },
-    } as unknown as MemorySafetyController,
+    memorySafety,
     otel,
   });
 
   try {
-    await expect(service.ensureRunning()).rejects.toBe(rejection);
-    await expect(service.ensureRunning()).rejects.toBe(rejection);
+    await expect(service.ensureRunning()).rejects.toBeInstanceOf(
+      RuntimeMemoryAdmissionError,
+    );
+    await expect(service.ensureRunning()).rejects.toBeInstanceOf(
+      RuntimeMemoryAdmissionError,
+    );
     expect(service.state()).toBe("idle");
     expect(reservations).toBe(2);
     expect(starts).toBe(0);
     expect(events).not.toContain("backend.start-failed");
+    expect(diagnostics).toHaveLength(2);
+    expect(diagnostics[0]?.attributes?.sample_age_ms).toBeGreaterThanOrEqual(
+      25,
+    );
+    expect(diagnostics[0]).toMatchObject({
+      severity: "warn",
+      runtime: "llm",
+      component: "llama-server",
+      attributes: {
+        reason: "system-memory",
+        pool: "system",
+        measured_available_bytes: 20 * gibibyte,
+        reserve_bytes: 8 * gibibyte,
+        pending_bytes: 0,
+        requested_bytes: 14 * gibibyte,
+        effective_available_bytes: 20 * gibibyte,
+        sample_captured_at_ms: expect.any(Number),
+        sample_age_ms: expect.any(Number),
+        measured_pressure: "normal",
+        safety_state: "healthy",
+        recovery_samples: 0,
+        demand_confidence: "authoritative",
+      },
+    });
+    expect(Object.keys(diagnostics[0]?.attributes ?? {})).toHaveLength(13);
   } finally {
     await service.shutdown();
     await otel.shutdown();
