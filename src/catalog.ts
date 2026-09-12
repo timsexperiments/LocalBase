@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { z } from "zod";
+import { safeFilenameSchema } from "./utils/checksum";
 
 export const modelKindSchema = z.enum(["llm", "stt", "tts", "image"]);
 export type ModelKind = z.infer<typeof modelKindSchema>;
@@ -9,7 +10,6 @@ export const commercialStatusSchema = z.enum([
   "conditional",
   "prohibited",
 ]);
-export type CommercialStatus = z.infer<typeof commercialStatusSchema>;
 
 const artifactSourceSchema = z.object({
   repositoryUrl: z.string().url(),
@@ -18,7 +18,7 @@ const artifactSourceSchema = z.object({
 
 export const modelArtifactSchema = z.object({
   sourcePath: z.string().min(1),
-  filename: z.string().min(1),
+  filename: safeFilenameSchema,
   expectedSizeBytes: z.number().int().positive(),
   sha256: z.string().regex(/^[a-fA-F0-9]{64}$/),
   role: z.enum(["primary", "supplementary"]),
@@ -1569,10 +1569,6 @@ export function artifactDownloadUrl(
   return `${base}/resolve/${revision}/${sourcePath}`;
 }
 
-export function modelDownloadUrl(model: ModelSpec): string {
-  return artifactDownloadUrl(model, primaryArtifact(model));
-}
-
 export function listModels(kind?: ModelKind): ModelSpec[] {
   return kind ? CATALOG.filter((m) => m.kind === kind) : [...CATALOG];
 }
@@ -1607,7 +1603,6 @@ export type MemoryFitStatus = "perfect" | "tight" | "insufficient";
 export type MemoryFitEvaluation = {
   status: MemoryFitStatus;
   minVramGb: number;
-  requiredVramGb: number;
   systemVramGb: number;
   headroomGb: number;
   message: string;
@@ -1618,21 +1613,6 @@ export function evaluateModelFit(
   systemVramGb: number,
 ): MemoryFitEvaluation {
   const minVramGb = model.minVramGb;
-  let requiredVramGb = minVramGb;
-
-  const p = parseFloat(model.size);
-  if (!isNaN(p)) {
-    let b = 4;
-    const q = model.quant.toLowerCase();
-    if (q.includes("q4")) b = 4;
-    else if (q.includes("q5")) b = 5;
-    else if (q.includes("q8")) b = 8;
-    else if (q.includes("fp16")) b = 16;
-
-    const computed = ((p * b) / 8) * 1.2;
-    requiredVramGb = Math.max(computed, minVramGb);
-  }
-
   const headroomGb = systemVramGb - minVramGb;
   let status: MemoryFitStatus = "perfect";
   let message = "";
@@ -1654,7 +1634,6 @@ export function evaluateModelFit(
   return {
     status,
     minVramGb,
-    requiredVramGb,
     systemVramGb,
     headroomGb,
     message,

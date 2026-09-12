@@ -78,8 +78,6 @@ export const modelConfigurationSchema = z
     }
   });
 
-export type ModelConfiguration = z.infer<typeof modelConfigurationSchema>;
-
 export function validateModelList(
   ids: string[] | undefined,
   kind: ModelKind,

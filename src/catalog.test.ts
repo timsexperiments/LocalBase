@@ -1,11 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  CATALOG,
-  artifactDownloadUrl,
-  catalogSchema,
-  modelDownloadUrl,
-  primaryArtifact,
-} from "./catalog";
+import { CATALOG, artifactDownloadUrl, catalogSchema } from "./catalog";
 
 const checksum = "a".repeat(64);
 
@@ -91,6 +85,15 @@ describe("catalog artifact validation", () => {
           filename: "model.gguf",
           expectedSizeBytes: 1,
           sha256: "not-a-checksum",
+          role: "primary",
+        },
+      ],
+      [
+        {
+          sourcePath: "model.gguf",
+          filename: "../model.gguf",
+          expectedSizeBytes: 1,
+          sha256: checksum,
           role: "primary",
         },
       ],
@@ -187,16 +190,6 @@ describe("catalog artifact validation", () => {
         },
       ],
     });
-  });
-
-  test("resolves primary artifact URLs from immutable release locks", () => {
-    for (const catalogModel of CATALOG) {
-      const primary = primaryArtifact(catalogModel);
-
-      expect(modelDownloadUrl(catalogModel)).toBe(
-        `${catalogModel.source}/resolve/${catalogModel.repositoryRevision}/${primary.sourcePath}`,
-      );
-    }
   });
 
   test("uses model source by default and a pinned override for supplementary artifacts", () => {

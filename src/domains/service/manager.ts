@@ -880,10 +880,6 @@ export async function getServiceInspectionReadOnly(
   return await inspectServiceAtRoot(await canonicalRoot(root));
 }
 
-export async function getServiceStatus(root: string): Promise<ServiceStatus> {
-  return (await getServiceInspection(root)).service;
-}
-
 function assertControllableOwner(
   owner: GatewayInstanceState,
   metadata: ServiceMetadata,
@@ -1153,10 +1149,6 @@ async function removeServiceAtRoot(root: string): Promise<ServiceInspection> {
     await assertManagerCommand(metadata, ["--user", "daemon-reload"]);
   }
   return await inspectServiceAtRoot(root);
-}
-
-export async function removeService(root: string): Promise<ServiceInspection> {
-  return await withRootOperation(root, "remove", removeServiceAtRoot);
 }
 
 async function hasServiceManagementEvidence(root: string): Promise<boolean> {
