@@ -164,6 +164,16 @@ async function waitForFile(path: string): Promise<void> {
   throw new Error(`Timed out waiting for ${path}`);
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await Bun.file(path).stat();
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 async function waitForGatewayReady(
   executable: string,
   root: string,
@@ -428,7 +438,7 @@ describe.serial("compiled CLI service lifecycle", () => {
       },
       gateway: { state: "not_ready" },
     });
-    expect(await Bun.file(root).exists()).toBe(false);
+    expect(await pathExists(root)).toBe(false);
   });
 
   test("starts one root idempotently and reloads a changed definition", async () => {
@@ -555,7 +565,7 @@ describe.serial("compiled CLI service lifecycle", () => {
       environment("darwin"),
     );
     expect(removed.exitCode).toBe(0);
-    expect(await Bun.file(root).exists()).toBe(false);
+    expect(await pathExists(root)).toBe(false);
   });
 
   test("stop disables persistence and reset stops before database mutation", async () => {
@@ -1412,7 +1422,7 @@ describe.serial("compiled CLI service lifecycle", () => {
       environment("linux"),
     );
     expect(removed.exitCode).toBe(0);
-    expect(await Bun.file(root).exists()).toBe(false);
+    expect(await pathExists(root)).toBe(false);
     const calls = (await Bun.file(linuxCallsPath).json()) as string[][];
     expect(calls.some((args) => args[2] === "enable")).toBe(true);
     expect(calls.some((args) => args[2] === "disable")).toBe(true);
