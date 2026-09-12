@@ -34,7 +34,16 @@ async function stopBackend(pid: number): Promise<void> {
     if (!isRunning(pid)) return;
     await Bun.sleep(POLL_INTERVAL_MS);
   }
-  if (isRunning(pid)) process.kill(pid, "SIGKILL");
+  if (!isRunning(pid)) return;
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+    throw error;
+  }
+  while (isRunning(pid)) {
+    await Bun.sleep(POLL_INTERVAL_MS);
+  }
 }
 
 /** Reaps a backend if its gateway exits without running normal shutdown. */
@@ -44,7 +53,11 @@ export async function runBackendGuardian(args: string[]): Promise<number> {
 
   const [gatewayPid, backendPid] = parsed.data;
   if (gatewayPid === process.pid || backendPid === process.pid) return 2;
-  if (!isRunning(gatewayPid) || !isRunning(backendPid)) return 0;
+  if (!isRunning(backendPid)) return 0;
+  if (!isRunning(gatewayPid)) {
+    await stopBackend(backendPid);
+    return 0;
+  }
 
   while (isRunning(gatewayPid) && isRunning(backendPid)) {
     await Bun.sleep(POLL_INTERVAL_MS);
