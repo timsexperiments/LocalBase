@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   buildConfigureArgs,
   buildServeArgs,
@@ -6,12 +9,17 @@ import {
   resolveSmokeTarget,
   runRuntimeSmoke,
   transcribe,
+  verifyCliOnlyArtifacts,
 } from "./runtime-smoke";
 
 const originalFetch = globalThis.fetch;
+const roots: string[] = [];
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  for (const root of roots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("builds runtime smoke invocations for the current CLI contract", () => {
@@ -95,6 +103,17 @@ test("accepts only release qualification targets", () => {
   );
 });
 
+test("rejects managed package directories for CLI-only targets", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-smoke-"));
+  roots.push(root);
+
+  await verifyCliOnlyArtifacts(root);
+  mkdirSync(join(root, "bin", "runtimes"), { recursive: true });
+  await expect(verifyCliOnlyArtifacts(root)).rejects.toThrow(
+    "attempted to install a managed runtime",
+  );
+});
+
 function mockFetch(handler: (request: Request, attempt: number) => Response) {
   let attempts = 0;
   globalThis.fetch = async (input, _init) => {
@@ -173,7 +192,7 @@ test("fails immediately for a malformed successful response", async () => {
 if (process.env.LOCALBASE_SMOKE_CLI) {
   describe("exact compiled CLI runtime smoke", () => {
     test("completes the configured platform lifecycle", async () => {
-      await expect(runRuntimeSmoke()).resolves.toBeUndefined();
+      await runRuntimeSmoke();
     }, 120_000);
   });
 }
