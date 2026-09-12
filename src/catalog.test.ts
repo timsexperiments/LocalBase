@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   CATALOG,
+  artifactDownloadUrl,
   catalogSchema,
   modelDownloadUrl,
   primaryArtifact,
@@ -125,6 +126,34 @@ describe("catalog artifact validation", () => {
     }
   });
 
+  test("requires complete immutable sources for artifact overrides", () => {
+    const invalidSources = [
+      { repositoryUrl: "https://huggingface.co/test/encoder" },
+      {
+        repositoryUrl: "https://huggingface.co/test/encoder",
+        revision: "main",
+      },
+      { revision: "d".repeat(40) },
+    ];
+
+    for (const source of invalidSources) {
+      expect(
+        catalogSchema.safeParse([
+          model([
+            {
+              sourcePath: "model.gguf",
+              filename: "model.gguf",
+              expectedSizeBytes: 10,
+              sha256: checksum,
+              role: "primary",
+              source,
+            },
+          ]),
+        ]).success,
+      ).toBe(false);
+    }
+  });
+
   test("requires immutable release metadata for every catalog artifact", () => {
     for (const catalogModel of CATALOG) {
       expect(catalogModel.repositoryRevision).toMatch(/^[a-f0-9]{40}$/);
@@ -144,5 +173,38 @@ describe("catalog artifact validation", () => {
         `${catalogModel.source}/resolve/${catalogModel.repositoryRevision}/${primary.sourcePath}`,
       );
     }
+  });
+
+  test("uses model source by default and a pinned override for supplementary artifacts", () => {
+    const parsed = catalogSchema.parse([
+      model([
+        {
+          sourcePath: "model.gguf",
+          filename: "model.gguf",
+          expectedSizeBytes: 10,
+          sha256: checksum,
+          role: "primary",
+        },
+        {
+          sourcePath: "encoder/model.safetensors",
+          filename: "model.safetensors",
+          expectedSizeBytes: 8,
+          sha256: "b".repeat(64),
+          role: "supplementary",
+          source: {
+            repositoryUrl: "https://huggingface.co/test/encoder",
+            revision: "d".repeat(40),
+          },
+        },
+      ]),
+    ])[0]!;
+
+    expect(artifactDownloadUrl(parsed, parsed.artifacts[0]!)).toBe(
+      `${parsed.source}/resolve/${parsed.repositoryRevision}/model.gguf`,
+    );
+    expect(artifactDownloadUrl(parsed, parsed.artifacts[1]!)).toBe(
+      "https://huggingface.co/test/encoder/resolve/" +
+        `${"d".repeat(40)}/encoder/model.safetensors`,
+    );
   });
 });
