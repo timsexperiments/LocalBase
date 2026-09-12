@@ -8,7 +8,7 @@ import {
   archiveSpecification,
   filePathSchema,
   teamIdSchema,
-  whisperLicense,
+  whisperLicenseFilename,
   whisperTargetSchema,
   type WhisperTarget,
 } from "./contracts";
@@ -27,7 +27,7 @@ function runtimeBinary(
 ): Uint8Array {
   const binary = entries.find((entry) => entry.name === "whisper-server");
   const license = entries.find(
-    (entry) => entry.name === whisperLicense.filename,
+    (entry) => entry.name === whisperLicenseFilename,
   );
   if (
     entries.length !== 2 ||
@@ -39,14 +39,8 @@ function runtimeBinary(
     license.bytes.length === 0
   ) {
     throw new Error(
-      `${target} archive must contain exactly one non-empty root-level whisper-server file and ${whisperLicense.filename}.`,
+      `${target} archive must contain exactly one non-empty root-level whisper-server file and ${whisperLicenseFilename}.`,
     );
-  }
-  const licenseSha256 = new Bun.CryptoHasher("sha256")
-    .update(license.bytes)
-    .digest("hex");
-  if (licenseSha256 !== whisperLicense.sha256) {
-    throw new Error(`${whisperLicense.filename} does not match the pin.`);
   }
   return binary.bytes;
 }

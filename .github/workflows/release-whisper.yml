@@ -71,9 +71,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends libvulkan-dev glslc spirv-headers
       - name: Build pinned verified Whisper source
         run: bun run scripts/build-whisper.ts
-      - name: Verify Linux runtime dependencies
+      - name: Verify Linux build configuration and runtime dependencies
         run: |
           set -euo pipefail
+          grep -Fxq 'GGML_NATIVE:BOOL=OFF' build-whisper/build/CMakeCache.txt
+          grep -Fxq 'GGML_VULKAN:BOOL=ON' build-whisper/build/CMakeCache.txt
           ldd_output="$(ldd build-whisper/whisper-server 2>&1 || true)"
           printf '%s\n' "$ldd_output"
           ! grep -q "not found" <<<"$ldd_output"
