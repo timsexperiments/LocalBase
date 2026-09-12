@@ -193,12 +193,24 @@ describe("OpenTelemetry configuration", () => {
     }
 
     const headerOverride = resolveOtelConfiguration(config, {
-      OTEL_EXPORTER_OTLP_HEADERS: "x-tenant=environment",
+      OTEL_EXPORTER_OTLP_HEADERS: "Authorization=common,X-Tenant=environment",
+      OTEL_EXPORTER_OTLP_TRACES_HEADERS: "authorization=trace",
     });
     expect(headerOverride.source).toBe("environment");
     expect(headerOverride.displayEndpoint).toBe(
       "http://persistent.example:4318/",
     );
+    expect(
+      new Headers({
+        ...headerOverride.headers,
+        ...headerOverride.tracesHeaders,
+      }).get("authorization"),
+    ).toBe("trace");
+    expect(() =>
+      resolveOtelConfiguration(config, {
+        OTEL_EXPORTER_OTLP_HEADERS: "X-Tenant=first,x-tenant=second",
+      }),
+    ).toThrow("OTLP header x-tenant is duplicated.");
   });
 });
 
