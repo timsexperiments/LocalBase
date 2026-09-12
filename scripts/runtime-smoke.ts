@@ -1,4 +1,4 @@
-import { mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { z } from "zod";
 import { unzipSync } from "fflate";
 import { gatewayHealthSchema } from "../src/domains/runtime/health";
@@ -227,7 +227,7 @@ function isMissingPathError(error: unknown): boolean {
 
 async function pathExists(path: string): Promise<boolean> {
   try {
-    await stat(path);
+    await Bun.file(path).stat();
     return true;
   } catch (error) {
     if (isMissingPathError(error)) return false;
