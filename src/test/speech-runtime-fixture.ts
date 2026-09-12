@@ -128,8 +128,6 @@ async function runSpeechFixture(): Promise<void> {
     await Bun.file(__LOCALBASE_TEST_SPEECH_CONTROL_PATH__).text(),
   ) as SpeechFixtureControl;
   const promptLength = Array.from(await Bun.file(promptPath).text()).length;
-  await record({ event: "started", pid: process.pid, args, promptLength });
-
   let stopping = false;
   process.on("SIGTERM", () => {
     if (stopping) return;
@@ -141,6 +139,7 @@ async function runSpeechFixture(): Promise<void> {
       process.exit(0);
     })();
   });
+  await record({ event: "started", pid: process.pid, args, promptLength });
 
   if (control.mode === "hold") {
     if (!control.releasePath)

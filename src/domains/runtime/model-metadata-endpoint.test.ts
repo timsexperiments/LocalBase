@@ -82,9 +82,13 @@ describe("authenticated model metadata endpoints", () => {
         runtime: {
           configured: true,
           state: "idle",
-          effectiveSlots: null,
-          availableCapacity: 16,
-          queueDepth: 0,
+          executionSlots: null,
+          activeAdmissions: 0,
+          availableExecutionSlots: null,
+          immediateDispatchAvailable: true,
+          queuedRequests: 0,
+          waitingCapacity: 16,
+          availableWaitingCapacity: 16,
         },
       },
     });
@@ -139,9 +143,13 @@ describe("authenticated model metadata endpoints", () => {
       runtime: {
         configured: true,
         state: "idle",
-        effectiveSlots: null,
-        availableCapacity: 16,
-        queueDepth: 0,
+        executionSlots: null,
+        activeAdmissions: 0,
+        availableExecutionSlots: null,
+        immediateDispatchAvailable: true,
+        queuedRequests: 0,
+        waitingCapacity: 16,
+        availableWaitingCapacity: 16,
       },
     });
     expect(pending.device).toMatchObject({
@@ -186,10 +194,17 @@ test("requires an API key when inference authentication is disabled", async () =
 test(
   "reports configured selection with the draining applied runtime",
   async () => {
-    const gateway = await startGatewayFixture({ auth: { mode: "either" } });
+    const gateway = await startGatewayFixture({
+      auth: { mode: "either" },
+      parallel: 1,
+    });
+    const streamId = "metadata-applied-generation";
+    let streamStarted = false;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    let replacementResult:
+      Promise<Response | { readonly error: unknown }> | undefined;
     try {
       if (!gateway.apiKey) throw new Error("Expected gateway API key.");
-      const streamId = "metadata-applied-generation";
       const headers = apiKeyHeaders(gateway.apiKey);
       const active = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
         method: "POST",
@@ -206,9 +221,10 @@ test(
       });
       expect(active.status).toBe(200);
       if (!active.body) throw new Error("Expected a streaming response.");
-      const reader = active.body.getReader();
+      reader = active.body.getReader();
       expect((await reader.read()).done).toBe(false);
       await gateway.waitForUpstreamRequest(streamId);
+      streamStarted = true;
 
       const pending = gateway.readConfig();
       pending.selectedLlmModels = [alternateModelId];
@@ -219,14 +235,14 @@ test(
       );
       gateway.saveConfig(pending);
 
-      const replacement = fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+      replacementResult = fetch(`${gateway.baseUrl}/v1/chat/completions`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: alternateModelId,
           messages: [{ role: "user", content: "switch models" }],
         }),
-      });
+      }).catch((error: unknown) => ({ error }));
 
       const deadline = Date.now() + 3_000;
       let applied: ReturnType<typeof modelMetadataListSchema.parse> | undefined;
@@ -252,7 +268,14 @@ test(
       }
       expect(original.device).toMatchObject({
         selected: false,
-        runtime: { state: "draining" },
+        runtime: {
+          state: "draining",
+          executionSlots: 1,
+          activeAdmissions: 1,
+          availableExecutionSlots: 0,
+          immediateDispatchAvailable: false,
+          queuedRequests: 1,
+        },
       });
       expect(replacementModel.device).toMatchObject({
         selected: true,
@@ -261,10 +284,25 @@ test(
 
       gateway.closeControlledStream(streamId);
       while (!(await reader.read()).done) {}
-      const replacementResponse = await replacement;
+      const replacementResponse = await replacementResult;
+      if (!(replacementResponse instanceof Response)) {
+        throw replacementResponse.error;
+      }
       expect(replacementResponse.status).toBe(200);
       await replacementResponse.text();
     } finally {
+      if (streamStarted) gateway.closeControlledStream(streamId);
+      await Promise.allSettled([
+        (async () => {
+          if (!reader) return;
+          if (!streamStarted) {
+            await reader.cancel();
+            return;
+          }
+          while (!(await reader.read()).done) {}
+        })(),
+        replacementResult ?? Promise.resolve(),
+      ]);
       await gateway.stop();
     }
   },

@@ -64,9 +64,13 @@ export const modelMetadataSchema = z
           .object({
             configured: z.boolean(),
             state: modalityLifecycleStateSchema,
-            effectiveSlots: z.number().int().positive().nullable(),
-            availableCapacity: z.number().int().nonnegative().nullable(),
-            queueDepth: z.number().int().nonnegative().nullable(),
+            executionSlots: z.number().int().positive().nullable(),
+            activeAdmissions: z.number().int().nonnegative().nullable(),
+            availableExecutionSlots: z.number().int().nonnegative().nullable(),
+            immediateDispatchAvailable: z.boolean().nullable(),
+            queuedRequests: z.number().int().nonnegative().nullable(),
+            waitingCapacity: z.number().int().nonnegative().nullable(),
+            availableWaitingCapacity: z.number().int().nonnegative().nullable(),
           })
           .strict()
           .nullable(),
@@ -110,7 +114,7 @@ function selectedModelIds(
   ]);
 }
 
-function availableQueueCapacity(
+function availableWaitingCapacity(
   queue: RuntimeLifecycleSnapshot["queue"],
 ): number | null {
   if (queue === null) return null;
@@ -128,9 +132,13 @@ function runtimeForModel(
   return {
     configured: runtime.configured,
     state: runtime.state,
-    effectiveSlots: runtime.configuredSlots,
-    availableCapacity: availableQueueCapacity(queue),
-    queueDepth: queue?.waiting ?? null,
+    executionSlots: runtime.execution.slots,
+    activeAdmissions: runtime.execution.activeAdmissions,
+    availableExecutionSlots: runtime.execution.available,
+    immediateDispatchAvailable: runtime.execution.immediateDispatchAvailable,
+    queuedRequests: queue?.waiting ?? null,
+    waitingCapacity: queue?.capacity ?? null,
+    availableWaitingCapacity: availableWaitingCapacity(queue),
   };
 }
 
