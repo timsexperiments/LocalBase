@@ -22,7 +22,7 @@ The queue deadline covers FIFO, model-transition, and dispatch-owner waiting. It
 
 Shutdown, runtime disablement, and memory emergencies reject queued and dispatching work. They do not launch that work later.
 
-TTS runs one cold `llama-tts` child per admitted request. Its estimated 8 GiB job demand is reserved until that child exits. Cancellation, timeout, disablement, shutdown, and emergency eviction terminate the child before releasing the reservation or deleting its private prompt and WAV files. A generation that reaches the 256-frame native cap is rejected as potentially truncated.
+TTS runs one cold `llama-tts` child per admitted request. Its estimated 8 GiB job demand is reserved until that child exits. Cancellation, timeout, disablement, shutdown, and emergency eviction terminate the child before releasing the reservation or deleting its private prompt and WAV files. A generation that reaches the 256-frame native cap is rejected as potentially truncated. TTS releases its inference admission after native generation and WAV validation; response-body telemetry does not hold that permit while the client downloads the WAV.
 
 ## Streams and telemetry
 
@@ -30,7 +30,7 @@ For streaming responses, LocalBase holds the active runtime lease until the resp
 
 Every HTTP span records the `x-localbase-request-id` value as `localbase.request_id`. LocalBase continues valid incoming W3C trace context and forwards it to native HTTP runtimes. The JSONL `http.request` event records the final gateway status and the time until the response body settles.
 
-For admitted chat completions, telemetry uses this content-safe mapping:
+For admitted chat, embedding, transcription, speech, and image requests, telemetry uses this content-safe mapping:
 
 | Measurement                   | JSONL `inference.completed`                                                                                 | OTLP `localbase.inference`                                                                                                                   | Non-streaming `Server-Timing` |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
@@ -42,11 +42,9 @@ For admitted chat completions, telemetry uses this content-safe mapping:
 | Terminal result               | `outcome`, `http_status`, optional `upstream_status`, optional `terminal_source`, optional `finish_reasons` | `localbase.inference.outcome`, optional `.terminal.source`, `http.response.status_code`, optional `.upstream.status_code`, `.finish_reasons` | -                             |
 | Total                         | `total_duration_ms`                                                                                         | `localbase.inference.total.duration_ms`                                                                                                      | `localbase`                   |
 
-Each finite backend token or timing field is independent. LocalBase omits missing or invalid fields instead of deriving them. Unknown backend finish-reason strings become `unknown`. Terminal sources are present only when LocalBase directly observes the source, such as request abortion, response cancellation, response-stream failure, response validation, or memory admission failure.
+Each finite backend token or timing field is independent. LocalBase omits missing or invalid fields instead of deriving them. Embeddings report validated prompt and total token counts; native media backends currently expose no validated token or phase metrics. Unknown backend finish-reason strings become `unknown`. Terminal sources are present only when LocalBase directly observes the source, such as request abortion, response cancellation, response-stream failure, response validation, memory admission failure, or the speech deadline.
 
-`Server-Timing` reports only measurements known before response headers. The `localbase` value ends when LocalBase constructs the headers, not when the client finishes downloading the body. Streaming responses omit `Server-Timing`. Queue failures and schema rejections remain on the HTTP span and do not create inference spans. Shared runtime startup is not reported as per-request model-load time.
-
-These inference completion fields are not yet emitted for speech-to-text, speech generation, image, or embedding requests.
+`Server-Timing` reports only measurements known before response headers. The `localbase` value ends when LocalBase constructs the headers, not when the client finishes downloading the body. Streaming responses omit `Server-Timing`. Queue failures do not create inference spans; they annotate the HTTP span and emit one content-safe `inference.admission-rejected` JSONL event with the known queue error code and source. Only queue-owned timeout errors report queue elapsed time. Schema rejections remain on the HTTP span without an inference event. Shared runtime startup is not reported as per-request model-load time.
 
 For JSON Schema response formats, `inference.completed` adds `json_schema_requested`, `json_schema_native_mode` (`requested` records intent, not proof that generation completed), `json_schema_preparation_ms`, and `json_schema_validation` (`passed`, `failed`, `skipped`, `not_performed`, or `not_performed_streaming`), with bounded `json_schema_skip_reasons` when applicable. Sampled inference spans use the equivalent `localbase.inference.json_schema.*` attributes; invalid or unsupported schemas instead record `localbase.json_schema.preparation.outcome`, `localbase.json_schema.preparation.duration_ms`, and native mode `not_started` on the pre-admission HTTP span without creating an inference span. Telemetry never records the schema, schema name, response content, or validator errors.
 

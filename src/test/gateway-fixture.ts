@@ -10,6 +10,10 @@ import {
   type LocalBaseConfig,
 } from "../manager";
 import { DatabaseSession } from "../db/client";
+import {
+  followLogEvents,
+  type LogEvent,
+} from "../domains/observability/logging";
 import { gatewayHealthSchema } from "../domains/runtime/health";
 import { compileRuntimeFixture } from "./runtime-fixture";
 import {
@@ -198,6 +202,30 @@ export type GatewayFixture = {
   waitForControlledHeaderAbort: (id: string) => Promise<void>;
   stop: (options?: { preserveRoot?: boolean }) => Promise<void>;
 };
+
+export async function waitForLogEvent(
+  gateway: Pick<GatewayFixture, "root">,
+  predicate: (event: LogEvent) => boolean,
+  offset = 0,
+): Promise<LogEvent> {
+  const found = new AbortController();
+  const signal = AbortSignal.any([found.signal, AbortSignal.timeout(3_000)]);
+  let event: LogEvent | undefined;
+  let index = 0;
+  await followLogEvents(
+    gateway.root,
+    {},
+    (candidate) => {
+      if (index++ >= offset && predicate(candidate)) {
+        event = candidate;
+        found.abort();
+      }
+    },
+    signal,
+  );
+  if (!event) throw new Error("Timed out waiting for a gateway log event.");
+  return event;
+}
 
 export type GatewayFixtureOptions = {
   auth?: { mode?: "bearer" | "x-api-key" | "either" };

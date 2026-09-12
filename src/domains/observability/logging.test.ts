@@ -159,6 +159,7 @@ test("persists a complete inference event without truncating attributes", async 
   const telemetry = new InferenceTelemetry({
     metadata: {
       modelId: "fixture-model",
+      modality: "llm",
       runtimeName: "llama-server",
       catalog: {
         artifactRevision: "a".repeat(40),
@@ -178,7 +179,7 @@ test("persists a complete inference event without truncating attributes", async 
     },
     span: trace.getTracer("logging-test").startSpan("inference-test"),
   });
-  telemetry.observeValidatedChatEvent({
+  telemetry.observeValidatedBackendMetadata({
     choices: [{ finish_reason: "stop" }],
     usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 },
     timings: { prompt_ms: 1.25, predicted_ms: 2.75 },

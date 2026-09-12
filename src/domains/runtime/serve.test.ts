@@ -9,7 +9,11 @@ import {
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 import { decodeOtlpTraceSpans } from "../../test/otlp-fixture";
-import { LocalBaseLogger, readLogSnapshot } from "../observability/logging";
+import {
+  LocalBaseLogger,
+  readLogSnapshot,
+  type LogEventInput,
+} from "../observability/logging";
 import type { InferenceTerminal } from "../observability/inference";
 import { gatewayHealthSchema } from "./health";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
@@ -21,6 +25,7 @@ import {
   inferenceQueueError,
   proxyWithAdmission,
   reportMemoryPressureTransition,
+  speechGenerationFailure,
   withResponseLease,
 } from "./commands/serve";
 import {
@@ -29,6 +34,7 @@ import {
 } from "./inference-queue";
 import { RuntimeMemoryAdmissionError } from "./memory-controller";
 import type { MemorySafetyTransition } from "./memory-safety";
+import { SpeechGenerationTimeoutError } from "./speech-supervisor";
 
 type ValidationCase = {
   name: string;
@@ -83,6 +89,40 @@ test("formats queue saturation and deadlines as stable retryable errors", async 
       error: { type: "rate_limit_error", code },
     });
   }
+
+  const spanAttributes: Record<string, string | number | boolean> = {};
+  const events: LogEventInput[] = [];
+  const response = inferenceQueueError(new InferenceQueueTimeoutError(37.5), {
+    modality: "stt",
+    requestId: "lbreq_queue-timeout",
+    logger: { event: (event) => events.push(event) },
+    span: {
+      setAttribute(name, value) {
+        spanAttributes[name] = value;
+      },
+    },
+  });
+  expect(response?.status).toBe(429);
+  expect(spanAttributes).toEqual({
+    "localbase.inference.admission.outcome": "rejected",
+    "localbase.inference.admission.error_code": "inference_queue_timeout",
+    "localbase.inference.admission.source": "timeout",
+    "localbase.inference.queue.duration_ms": 37.5,
+  });
+  expect(events).toEqual([
+    expect.objectContaining({
+      eventName: "inference.admission-rejected",
+      runtime: "stt",
+      requestId: "lbreq_queue-timeout",
+      attributes: {
+        modality: "stt",
+        error_code: "inference_queue_timeout",
+        source: "timeout",
+        http_status: 429,
+        queue_wait_ms: 37.5,
+      },
+    }),
+  ]);
 });
 
 test("formats memory admission rejection as a retryable OpenAI error", async () => {
@@ -153,6 +193,19 @@ test("formats memory admission rejection as a retryable OpenAI error", async () 
       code: "insufficient_memory",
     },
   });
+});
+
+test("classifies the owned speech deadline without inferring other failures", async () => {
+  const timeout = speechGenerationFailure(new SpeechGenerationTimeoutError());
+  expect(timeout.source).toBe("speech_timeout");
+  expect(timeout.response.status).toBe(504);
+  await expect(timeout.response.json()).resolves.toMatchObject({
+    error: { code: "speech_timeout" },
+  });
+
+  const unknown = speechGenerationFailure(new Error("unknown"));
+  expect(unknown.source).toBeUndefined();
+  expect(unknown.response.status).toBe(503);
 });
 
 test("evicts runtimes only for elevated memory-pressure transitions", async () => {

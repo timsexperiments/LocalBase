@@ -3,8 +3,9 @@ import { latestUpstreamRequestBody } from "../../test/ai-sdk-conformance";
 import {
   startGatewayFixture,
   type GatewayFixture,
+  waitForLogEvent,
 } from "../../test/gateway-fixture";
-import { readLogSnapshot, type LogEvent } from "../observability/logging";
+import { readLogSnapshot } from "../observability/logging";
 import { openAIErrorResponseSchema } from "./openai-error";
 
 const MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
@@ -61,23 +62,6 @@ function responseRequestId(response: Response): string {
   if (!requestId) throw new Error("Gateway response omitted its request ID.");
   expect(requestId).toMatch(/^lbreq_/);
   return requestId;
-}
-
-async function waitForInferenceEvent(
-  gateway: GatewayFixture,
-  requestId: string,
-): Promise<LogEvent> {
-  const deadline = Date.now() + 3_000;
-  while (Date.now() < deadline) {
-    const event = (await readLogSnapshot(gateway.root)).find(
-      (candidate) =>
-        candidate.eventName === "inference.completed" &&
-        candidate.requestId === requestId,
-    );
-    if (event) return event;
-    await Bun.sleep(25);
-  }
-  throw new Error(`Timed out waiting for inference event ${requestId}.`);
 }
 
 describe.serial("native JSON Schema structured output conformance", () => {
@@ -174,7 +158,12 @@ describe.serial("native JSON Schema structured output conformance", () => {
     expect(latestUpstreamRequestBody(gateway).response_format).toEqual(
       responseFormat,
     );
-    const event = await waitForInferenceEvent(gateway, requestId);
+    const event = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "inference.completed" &&
+        candidate.requestId === requestId,
+    );
     const preparationMs = event.attributes?.json_schema_preparation_ms;
     if (typeof preparationMs !== "number") {
       throw new Error("Inference event omitted JSON Schema preparation time.");
@@ -213,7 +202,12 @@ describe.serial("native JSON Schema structured output conformance", () => {
         code: "structured_output_validation_failed",
       }),
     );
-    const event = await waitForInferenceEvent(gateway, requestId);
+    const event = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "inference.completed" &&
+        candidate.requestId === requestId,
+    );
     expect(event.attributes).toMatchObject({
       json_schema_native_mode: "requested",
       json_schema_validation: "failed",
@@ -269,7 +263,14 @@ describe.serial("native JSON Schema structured output conformance", () => {
       const requestId = responseRequestId(response);
       expect(await response.json()).toMatchObject({ choices: [expected] });
       expect(
-        (await waitForInferenceEvent(gateway, requestId)).attributes,
+        (
+          await waitForLogEvent(
+            gateway,
+            (candidate) =>
+              candidate.eventName === "inference.completed" &&
+              candidate.requestId === requestId,
+          )
+        ).attributes,
       ).toMatchObject({
         json_schema_validation: "skipped",
         json_schema_skip_reasons: skipReason,
@@ -293,7 +294,14 @@ describe.serial("native JSON Schema structured output conformance", () => {
     controller.abort();
     await gateway.waitForControlledStreamAbort("structured-output-abort");
     expect(
-      (await waitForInferenceEvent(gateway, requestId)).attributes,
+      (
+        await waitForLogEvent(
+          gateway,
+          (candidate) =>
+            candidate.eventName === "inference.completed" &&
+            candidate.requestId === requestId,
+        )
+      ).attributes,
     ).toMatchObject({
       json_schema_native_mode: "requested",
       json_schema_validation: "not_performed_streaming",

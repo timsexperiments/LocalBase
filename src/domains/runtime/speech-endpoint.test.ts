@@ -3,10 +3,12 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { generateSpeech } from "ai";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { readLogSnapshot } from "../observability/logging";
 import {
   startGatewayFixture,
   TTS_MODEL,
   type GatewayFixture,
+  waitForLogEvent,
 } from "../../test/gateway-fixture";
 import { validateSpeechWav } from "./speech-supervisor";
 
@@ -43,6 +45,9 @@ describe("OpenAI speech endpoint", () => {
 
   test("rejects authentication and unsupported settings before starting a child", async () => {
     const before = (await gateway.readTtsRuntimeEvents()).length;
+    const inferenceBefore = (await readLogSnapshot(gateway.root)).filter(
+      ({ eventName }) => eventName === "inference.completed",
+    ).length;
     const unauthorized = await fetch(`${gateway.baseUrl}/v1/audio/speech`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -72,6 +77,11 @@ describe("OpenAI speech endpoint", () => {
       expect(JSON.stringify(await response.json())).toContain(expected);
     }
     expect(await gateway.readTtsRuntimeEvents()).toHaveLength(before);
+    expect(
+      (await readLogSnapshot(gateway.root)).filter(
+        ({ eventName }) => eventName === "inference.completed",
+      ),
+    ).toHaveLength(inferenceBefore);
   });
 
   test("returns actual WAV bytes through AI SDK generateSpeech", async () => {
@@ -101,6 +111,19 @@ describe("OpenAI speech endpoint", () => {
     expect(started?.args).toEqual(
       expect.arrayContaining(["-mm", expect.stringContaining("Q8_0.gguf")]),
     );
+    const event = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "inference.completed" &&
+        candidate.runtime === "tts",
+    );
+    expect(event.attributes).toMatchObject({
+      model_id: TTS_MODEL,
+      runtime_name: "llama-tts",
+      outcome: "completed",
+      http_status: 200,
+    });
+    expect(event.attributes).not.toHaveProperty("total_tokens");
   });
 });
 
@@ -182,7 +205,28 @@ test(
         body: JSON.stringify(speechBody()),
       });
       expect(rejected.status).toBe(501);
-      expect((await speech).status).toBe(499);
+      const speechResponse = await speech;
+      expect(speechResponse.status).toBe(499);
+      const requestId = speechResponse.headers.get("x-localbase-request-id");
+      expect(requestId).toMatch(/^lbreq_/);
+      const event = await waitForLogEvent(
+        gateway,
+        (candidate) =>
+          candidate.eventName === "inference.completed" &&
+          candidate.requestId === requestId,
+      );
+      expect(event.attributes).toMatchObject({
+        outcome: "cancelled",
+        http_status: 499,
+        terminal_source: "request_aborted",
+      });
+      expect(
+        (await readLogSnapshot(gateway.root)).filter(
+          (candidate) =>
+            candidate.eventName === "inference.completed" &&
+            candidate.requestId === requestId,
+        ),
+      ).toHaveLength(1);
 
       gateway.closeControlledStream("speech-peer");
       const llmResponse = await llm;

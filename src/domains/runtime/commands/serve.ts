@@ -25,12 +25,14 @@ import {
   type InferenceMetadata,
   type InferenceOutcome,
   type InferenceTerminal,
+  type InferenceTerminalSource,
   type StructuredOutputValidationTelemetry,
 } from "../../observability/inference";
-import type { RuntimeModality } from "../modality";
+import { modalityComponents, type RuntimeModality } from "../modality";
 import {
   RuntimeReconciler,
   RuntimeRequestAbortedError,
+  type ModelAdmissionResult,
   type RuntimeAdmission,
 } from "../runtime-reconciler";
 import { type RuntimeOverrideOwnership } from "../reconciliation-plan";
@@ -89,6 +91,14 @@ import {
 type AuthMode = "bearer" | "x-api-key" | "either";
 
 type ModalityState = Record<RuntimeModality, boolean>;
+type AdmittedModel = Extract<
+  ModelAdmissionResult,
+  { kind: "admitted" }
+>["value"];
+type InferenceTelemetryOptions = Pick<
+  ConstructorParameters<typeof InferenceTelemetry>[0],
+  "streaming" | "structuredOutput"
+>;
 
 export function httpBaseUrl(host: string, port: number): string {
   const urlHost =
@@ -337,6 +347,22 @@ function speechTimeout(): Response {
     },
     504,
   );
+}
+
+export function speechGenerationFailure(error: unknown): Readonly<{
+  response: Response;
+  source?: InferenceTerminalSource;
+}> {
+  if (error instanceof RuntimeMemoryAdmissionError) {
+    return { response: resourceUnavailable(), source: "memory_admission" };
+  }
+  if (error instanceof SpeechGenerationTimeoutError) {
+    return { response: speechTimeout(), source: "speech_timeout" };
+  }
+  if (error instanceof SpeechOutputError) {
+    return { response: upstreamFailure(error.message) };
+  }
+  return { response: serviceUnavailable("TTS") };
 }
 
 function structuredOutputValidationFailure(): Response {
@@ -783,10 +809,6 @@ const chatCompletionStreamEventSchema = z.union([
   openAIErrorResponseSchema,
 ]);
 
-type ChatTelemetryResponse =
-  | z.output<typeof chatCompletionResponseSchema>
-  | z.output<typeof chatCompletionStreamEventSchema>;
-
 const embeddingsResponseSchema = z
   .object({
     object: z.string(),
@@ -1148,16 +1170,25 @@ function validateEventStream(
   );
 }
 
-function chatInferenceMetadata(
+function inferenceMetadata(
+  modality: RuntimeModality,
   modelId: string,
   admission: InferenceMetadata["admission"],
 ): InferenceMetadata {
   const model = byId(modelId);
-  if (!model) return { modelId, runtimeName: "llama-server", admission };
+  if (!model) {
+    return {
+      modelId,
+      modality,
+      runtimeName: modalityComponents[modality],
+      admission,
+    };
+  }
   const artifact = primaryArtifact(model);
   return {
     modelId,
-    runtimeName: "llama-server",
+    modality,
+    runtimeName: modalityComponents[modality],
     catalog: {
       artifactRevision: artifact.source?.revision ?? model.repositoryRevision,
       quantization: model.quant,
@@ -1186,7 +1217,7 @@ async function proxyRequest(
     z.output<typeof chatCompletionStreamEventSchema>
   >,
   otel?: OtelRuntime,
-  onValidatedEvent?: (value: ChatTelemetryResponse, status: number) => void,
+  onValidatedEvent?: (value: unknown, status: number) => void,
   onInvalidEvent?: (status: number) => void,
   structuredOutput?: Readonly<{
     validator: StructuredOutputValidator;
@@ -1270,6 +1301,7 @@ async function proxyRequest(
     try {
       const parsed = responseSchema.safeParse(await upstream.json());
       if (!parsed.success) {
+        onInvalidEvent?.(502);
         return upstreamFailure(
           "The upstream service returned an invalid response.",
         );
@@ -1290,9 +1322,7 @@ async function proxyRequest(
           return structuredOutputValidationFailure();
         }
       }
-      if (chatResponse.success) {
-        onValidatedEvent?.(chatResponse.data, upstream.status);
-      }
+      onValidatedEvent?.(parsed.data, upstream.status);
 
       const headers = filterProxyHeaders(upstream.headers);
       headers.delete("content-length");
@@ -1307,6 +1337,7 @@ async function proxyRequest(
       );
     } catch {
       if (request.signal.aborted) return requestAborted();
+      onInvalidEvent?.(502);
       return upstreamFailure("The upstream service returned malformed JSON.");
     }
   }
@@ -1425,28 +1456,119 @@ function serviceUnavailable(serviceName: string): Response {
   );
 }
 
-export function inferenceQueueError(error: unknown): Response | undefined {
-  if (
-    error instanceof InferenceQueueCapacityError ||
-    error instanceof InferenceQueueTimeoutError
-  ) {
-    const timedOut = error instanceof InferenceQueueTimeoutError;
+type InferenceQueueRejection =
+  | Readonly<{
+      kind: "capacity";
+      code: "inference_queue_full";
+      status: 429;
+    }>
+  | Readonly<{
+      kind: "timeout";
+      code: "inference_queue_timeout";
+      status: 429;
+      queueWaitMs?: number;
+    }>
+  | Readonly<{
+      kind: "unavailable";
+      code: "service_unavailable";
+      status: 503;
+    }>;
+
+function classifyInferenceQueueError(
+  error: unknown,
+): InferenceQueueRejection | undefined {
+  if (error instanceof InferenceQueueCapacityError) {
+    return { kind: "capacity", code: "inference_queue_full", status: 429 };
+  }
+  if (error instanceof InferenceQueueTimeoutError) {
+    return {
+      kind: "timeout",
+      code: "inference_queue_timeout",
+      status: 429,
+      ...(error.queueWaitMs === undefined
+        ? {}
+        : { queueWaitMs: error.queueWaitMs }),
+    };
+  }
+  if (error instanceof InferenceQueueUnavailableError) {
+    return { kind: "unavailable", code: "service_unavailable", status: 503 };
+  }
+  return undefined;
+}
+
+function inferenceQueueErrorResponse(
+  rejection: InferenceQueueRejection,
+): Response {
+  if (rejection.kind === "capacity" || rejection.kind === "timeout") {
     return openAIErrorResponse(
       {
-        message: timedOut
-          ? "The inference request exceeded its queue wait deadline."
-          : "The inference queue is full. Please try again shortly.",
+        message:
+          rejection.kind === "timeout"
+            ? "The inference request exceeded its queue wait deadline."
+            : "The inference queue is full. Please try again shortly.",
         type: "rate_limit_error",
         param: null,
-        code: timedOut ? "inference_queue_timeout" : "inference_queue_full",
+        code: rejection.code,
       },
       429,
       { "Retry-After": "1" },
     );
   }
-  if (error instanceof InferenceQueueUnavailableError)
-    return serviceUnavailable("Inference");
-  return undefined;
+  return serviceUnavailable("Inference");
+}
+
+export function inferenceQueueError(
+  error: unknown,
+  telemetry?: Readonly<{
+    modality: RuntimeModality;
+    requestId: string;
+    logger: Pick<ILogger, "event">;
+    span?: Readonly<{
+      setAttribute: (name: string, value: string | number | boolean) => unknown;
+    }>;
+  }>,
+): Response | undefined {
+  const rejection = classifyInferenceQueueError(error);
+  if (!rejection) return undefined;
+  if (telemetry) {
+    telemetry.span?.setAttribute(
+      "localbase.inference.admission.outcome",
+      "rejected",
+    );
+    telemetry.span?.setAttribute(
+      "localbase.inference.admission.error_code",
+      rejection.code,
+    );
+    telemetry.span?.setAttribute(
+      "localbase.inference.admission.source",
+      rejection.kind,
+    );
+    if (rejection.kind === "timeout" && rejection.queueWaitMs !== undefined) {
+      telemetry.span?.setAttribute(
+        "localbase.inference.queue.duration_ms",
+        rejection.queueWaitMs,
+      );
+    }
+    telemetry.logger.event({
+      severity: "warn",
+      eventName: "inference.admission-rejected",
+      category: "runtime",
+      component: "inference",
+      runtime: telemetry.modality,
+      message: "Inference admission was rejected.",
+      requestId: telemetry.requestId,
+      attributes: {
+        modality: telemetry.modality,
+        error_code: rejection.code,
+        source: rejection.kind,
+        http_status: rejection.status,
+        ...(rejection.kind === "timeout" && rejection.queueWaitMs !== undefined
+          ? { queue_wait_ms: Number(rejection.queueWaitMs.toFixed(2)) }
+          : {}),
+      },
+    });
+  }
+  return inferenceQueueErrorResponse(rejection);
 }
 
 export function resourceUnavailable(): Response {
@@ -2069,6 +2191,34 @@ export async function runServe(
     startedAt: number,
   ): Promise<Response> => {
     const route = selectGatewayRoute(pathname);
+    const queueFailure = (error: unknown, modality: RuntimeModality) =>
+      inferenceQueueError(error, {
+        modality,
+        requestId,
+        logger: ctx.logger,
+        span: trace.getSpan(context.active()),
+      });
+    const beginInference = (
+      modality: RuntimeModality,
+      admission: AdmittedModel,
+      options: InferenceTelemetryOptions = { streaming: false },
+    ) =>
+      new InferenceTelemetry({
+        metadata: inferenceMetadata(
+          modality,
+          admission.modelId,
+          admission.admissionSnapshot,
+        ),
+        requestId,
+        startedAt,
+        queueWaitMs: admission.queueWaitMs,
+        ...options,
+        logger: ctx.logger,
+        span: ctx.otel.startSpan(
+          "localbase.inference",
+          clientSpanOptions({ "http.request.method": request.method }),
+        ),
+      });
     if (route === "health") {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return methodNotAllowed("GET, HEAD");
@@ -2159,6 +2309,7 @@ export async function runServe(
       if (!parsed.success) return parsed.response;
 
       let admission: RuntimeAdmission | undefined;
+      let inference: InferenceTelemetry | undefined;
       try {
         const selected = await reconciler.admitModel(
           "tts",
@@ -2171,9 +2322,12 @@ export async function runServe(
         }
         if (selected.kind === "unavailable") return serviceUnavailable("TTS");
         admission = selected.value.admission;
+        inference = beginInference("tts", selected.value);
         if (admission.supervisor.kind !== "speech") {
           admission.release();
-          return serviceUnavailable("TTS");
+          const response = serviceUnavailable("TTS");
+          inference.finish({ outcome: "error", httpStatus: response.status });
+          return response;
         }
 
         await waitForRequestAbort(admission.ready, request.signal);
@@ -2183,14 +2337,25 @@ export async function runServe(
         });
         admission.markResponseStarted();
         admission.release();
+        admission = undefined;
         const body = new ArrayBuffer(wav.byteLength);
         new Uint8Array(body).set(wav);
-        return new Response(body, {
-          headers: {
-            "content-type": "audio/wav",
-            "content-length": String(wav.byteLength),
-          },
-        });
+        const response = withServerTiming(
+          new Response(body, {
+            headers: {
+              "content-type": "audio/wav",
+              "content-length": String(wav.byteLength),
+            },
+          }),
+          inference.serverTiming(),
+        );
+        return withResponseLease(
+          response,
+          () => {},
+          () => {},
+          request.signal,
+          (terminal) => inference?.finish(terminal),
+        );
       } catch (error) {
         if (
           request.signal.aborted ||
@@ -2198,26 +2363,30 @@ export async function runServe(
           error instanceof SpeechGenerationAbortedError
         ) {
           admission?.cancel();
-          return requestAborted();
+          const response = requestAborted();
+          inference?.finish({
+            outcome: "cancelled",
+            httpStatus: response.status,
+            source: "request_aborted",
+          });
+          return response;
         }
         admission?.release();
-        const queueError = inferenceQueueError(error);
+        const queueError = queueFailure(error, "tts");
         if (queueError) return queueError;
-        if (error instanceof RuntimeMemoryAdmissionError) {
-          return resourceUnavailable();
-        }
-        if (error instanceof SpeechGenerationTimeoutError) {
-          return speechTimeout();
-        }
-        if (error instanceof SpeechOutputError) {
-          return upstreamFailure(error.message);
-        }
-        return serviceUnavailable("TTS");
+        const failure = speechGenerationFailure(error);
+        inference?.finish({
+          outcome: "error",
+          httpStatus: failure.response.status,
+          ...(failure.source ? { source: failure.source } : {}),
+        });
+        return failure.response;
       }
     }
 
     if (route === "transcription") {
       let admission: RuntimeAdmission | undefined;
+      let admitted: AdmittedModel | undefined;
       try {
         const body = await readBoundedRequestBody(request);
         const multipartBody = new ArrayBuffer(body.byteLength);
@@ -2266,6 +2435,7 @@ export async function runServe(
           return modelNotFound(parsed.data.model ?? "");
         }
         if (selected.kind === "unavailable") return serviceUnavailable("STT");
+        admitted = selected.value;
         admission = selected.value.admission;
         const normalizedForm = new FormData();
         for (const [key, value] of Object.entries(parsed.data)) {
@@ -2293,26 +2463,40 @@ export async function runServe(
           return requestAborted();
         }
         admission?.release();
-        const queueError = inferenceQueueError(e);
+        const queueError = queueFailure(e, "stt");
         if (queueError) return queueError;
         return e instanceof PayloadTooLargeError
           ? payloadTooLarge()
           : badRequest("Invalid form data payload.");
       }
-      return await proxyWithAdmission(
-        admission!,
+      if (!admission || !admitted) return serviceUnavailable("STT");
+      const inference = beginInference("stt", admitted);
+      const response = await proxyWithAdmission(
+        admission,
         "STT",
         request.signal,
         async () =>
           await proxyRequest(
             request,
-            factory.baseUrl("stt", admission!.snapshot),
+            factory.baseUrl("stt", admission.snapshot),
             sttPath,
             transcriptionResponseSchema,
             undefined,
             ctx.otel,
+            undefined,
+            (status) =>
+              inference.finish({
+                outcome: "error",
+                httpStatus: status,
+                source: "response_validation",
+              }),
+            undefined,
+            undefined,
+            (status) => inference.observeUpstreamStatus(status),
           ),
+        (terminal) => inference.finish(terminal),
       );
+      return withServerTiming(response, inference.serverTiming());
     }
 
     if (route === "imageGeneration") {
@@ -2331,7 +2515,7 @@ export async function runServe(
       } catch (error) {
         if (error instanceof RuntimeRequestAbortedError)
           return requestAborted();
-        const queueError = inferenceQueueError(error);
+        const queueError = queueFailure(error, "image");
         if (queueError) return queueError;
         throw error;
       }
@@ -2340,7 +2524,8 @@ export async function runServe(
         return modelNotFound(parsed.data.model ?? "");
       }
       if (selected.kind === "unavailable") return serviceUnavailable("Image");
-      return await proxyWithAdmission(
+      const inference = beginInference("image", selected.value);
+      const response = await proxyWithAdmission(
         selected.value.admission,
         "Image",
         request.signal,
@@ -2352,8 +2537,20 @@ export async function runServe(
             imageGenerationResponseSchema,
             undefined,
             ctx.otel,
+            undefined,
+            (status) =>
+              inference.finish({
+                outcome: "error",
+                httpStatus: status,
+                source: "response_validation",
+              }),
+            undefined,
+            undefined,
+            (status) => inference.observeUpstreamStatus(status),
           ),
+        (terminal) => inference.finish(terminal),
       );
+      return withServerTiming(response, inference.serverTiming());
     }
 
     if (route === "chatCompletion") {
@@ -2398,7 +2595,7 @@ export async function runServe(
       } catch (error) {
         if (error instanceof RuntimeRequestAbortedError)
           return requestAborted();
-        const queueError = inferenceQueueError(error);
+        const queueError = queueFailure(error, "llm");
         if (queueError) return queueError;
         throw error;
       }
@@ -2408,14 +2605,7 @@ export async function runServe(
       }
       if (selected.kind === "unavailable") return serviceUnavailable("LLM");
       const streaming = parsed.data.stream === true;
-      const inference = new InferenceTelemetry({
-        metadata: chatInferenceMetadata(
-          selected.value.modelId,
-          selected.value.admissionSnapshot,
-        ),
-        requestId,
-        startedAt,
-        queueWaitMs: selected.value.queueWaitMs,
+      const inference = beginInference("llm", selected.value, {
         streaming,
         ...(structuredOutput.kind === "ready"
           ? {
@@ -2425,11 +2615,6 @@ export async function runServe(
               },
             }
           : {}),
-        logger: ctx.logger,
-        span: ctx.otel.startSpan?.(
-          "localbase.inference",
-          clientSpanOptions({ "http.request.method": request.method }),
-        ),
       });
       const response = await proxyWithAdmission(
         selected.value.admission,
@@ -2444,13 +2629,17 @@ export async function runServe(
             chatCompletionStreamEventSchema,
             ctx.otel,
             (value, status) => {
-              if ("error" in value) {
+              if (
+                typeof value === "object" &&
+                value !== null &&
+                "error" in value
+              ) {
                 inference.finish({
                   outcome: "error",
                   httpStatus: status,
                   source: "upstream_error_event",
                 });
-              } else inference.observeValidatedChatEvent(value);
+              } else inference.observeValidatedBackendMetadata(value);
             },
             (status) =>
               inference.finish({
@@ -2486,7 +2675,7 @@ export async function runServe(
       } catch (error) {
         if (error instanceof RuntimeRequestAbortedError)
           return requestAborted();
-        const queueError = inferenceQueueError(error);
+        const queueError = queueFailure(error, "llm");
         if (queueError) return queueError;
         throw error;
       }
@@ -2495,7 +2684,8 @@ export async function runServe(
         return modelNotFound(parsed.data.model ?? "");
       }
       if (selected.kind === "unavailable") return serviceUnavailable("LLM");
-      return await proxyWithAdmission(
+      const inference = beginInference("llm", selected.value);
+      const response = await proxyWithAdmission(
         selected.value.admission,
         "LLM",
         request.signal,
@@ -2507,8 +2697,20 @@ export async function runServe(
             embeddingsResponseSchema,
             undefined,
             ctx.otel,
+            (value) => inference.observeValidatedBackendMetadata(value),
+            (status) =>
+              inference.finish({
+                outcome: "error",
+                httpStatus: status,
+                source: "response_validation",
+              }),
+            undefined,
+            undefined,
+            (status) => inference.observeUpstreamStatus(status),
           ),
+        (terminal) => inference.finish(terminal),
       );
+      return withServerTiming(response, inference.serverTiming());
     }
 
     if (route === "models") {
@@ -2603,8 +2805,13 @@ export async function runServe(
 
       const durationMs = performance.now() - start;
       if (!isEventStream(response)) {
+        const selectedRoute = selectGatewayRoute(pathname);
         const inferenceTiming =
-          selectGatewayRoute(pathname) === "chatCompletion"
+          selectedRoute === "chatCompletion" ||
+          selectedRoute === "embeddings" ||
+          selectedRoute === "transcription" ||
+          selectedRoute === "speechGeneration" ||
+          selectedRoute === "imageGeneration"
             ? headers.get("server-timing")
             : undefined;
         headers.set(

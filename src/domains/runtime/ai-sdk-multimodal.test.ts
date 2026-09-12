@@ -9,6 +9,7 @@ import {
 } from "ai";
 import { join } from "node:path";
 import { byId, primaryArtifact } from "../../catalog";
+import { readLogSnapshot } from "../observability/logging";
 import {
   createLocalBaseAiSdkProvider,
   latestUpstreamMultipartFormData,
@@ -18,6 +19,7 @@ import {
   startGatewayFixture,
   type GatewayFixture,
   type GatewayFixtureOptions,
+  waitForLogEvent,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 import { minimalWav, tinyPng, tinyPngBase64 } from "../../test/media-fixtures";
@@ -118,6 +120,7 @@ describe("Vercel AI SDK multimodal conformance", () => {
 
   test("embed forwards float encoding, dimensions, and the selected model", async () => {
     const launchOffset = (await gateway.readLlmRuntimeLaunches()).length;
+    const eventOffset = (await readLogSnapshot(gateway.root)).length;
     const result = await embed({
       model:
         createLocalBaseAiSdkProvider(gateway).embeddingModel(
@@ -141,6 +144,23 @@ describe("Vercel AI SDK multimodal conformance", () => {
     expect(runtimeModelPath(launch, "-m")).toBe(
       artifactPath(gateway.readConfig().llmModelsDir, SWITCHED_LLM_MODEL),
     );
+    const event = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "inference.completed" &&
+        candidate.runtime === "llm" &&
+        candidate.attributes?.model_id === SWITCHED_LLM_MODEL,
+      eventOffset,
+    );
+    expect(event.attributes).toMatchObject({
+      runtime_name: "llama-server",
+      outcome: "completed",
+      http_status: 200,
+      upstream_status: 200,
+      prompt_tokens: 1,
+      total_tokens: 1,
+    });
+    expect(event.attributes).not.toHaveProperty("completion_tokens");
   });
 
   test("embedMany preserves input order in one gateway request", async () => {
@@ -165,6 +185,7 @@ describe("Vercel AI SDK multimodal conformance", () => {
 
   test("generateImage returns base64 PNGs and selects the requested local image model", async () => {
     const launchOffset = (await gateway.readImageRuntimeLaunches()).length;
+    const eventOffset = (await readLogSnapshot(gateway.root)).length;
     const result = await generateImage({
       model:
         createLocalBaseAiSdkProvider(gateway).imageModel(SWITCHED_IMAGE_MODEL),
@@ -190,6 +211,21 @@ describe("Vercel AI SDK multimodal conformance", () => {
     expect(runtimeModelPath(launch, "-m")).toBe(
       artifactPath(gateway.readConfig().imageModelsDir, SWITCHED_IMAGE_MODEL),
     );
+    const event = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "inference.completed" &&
+        candidate.runtime === "image" &&
+        candidate.attributes?.model_id === SWITCHED_IMAGE_MODEL,
+      eventOffset,
+    );
+    expect(event.attributes).toMatchObject({
+      runtime_name: "sd-server",
+      outcome: "completed",
+      http_status: 200,
+      upstream_status: 200,
+    });
+    expect(event.attributes).not.toHaveProperty("total_tokens");
   });
 
   test("generateText transports image bytes as an OpenAI image data URL", async () => {
@@ -225,6 +261,7 @@ describe("Vercel AI SDK multimodal conformance", () => {
 
   test("experimental_transcribe preserves multipart fields and selects the requested STT model", async () => {
     const launchOffset = (await gateway.readSttRuntimeLaunches()).length;
+    const eventOffset = (await readLogSnapshot(gateway.root)).length;
     const localbase = createOpenAI({
       baseURL: `${gateway.baseUrl}/v1`,
       apiKey: "test-key",
@@ -272,6 +309,21 @@ describe("Vercel AI SDK multimodal conformance", () => {
     expect(runtimeModelPath(launch, "--model")).toBe(
       artifactPath(gateway.readConfig().sttModelsDir, SWITCHED_STT_MODEL),
     );
+    const event = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "inference.completed" &&
+        candidate.runtime === "stt" &&
+        candidate.attributes?.model_id === SWITCHED_STT_MODEL,
+      eventOffset,
+    );
+    expect(event.attributes).toMatchObject({
+      runtime_name: "whisper-server",
+      outcome: "completed",
+      http_status: 200,
+      upstream_status: 200,
+    });
+    expect(event.attributes).not.toHaveProperty("total_tokens");
   });
 
   test("switches STT models while the previous startup is waiting for health", async () => {
