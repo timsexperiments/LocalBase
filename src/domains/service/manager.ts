@@ -33,6 +33,8 @@ import {
 
 const MANAGER_TIMEOUT_MS = 10_000;
 const MAX_MANAGER_OUTPUT_BYTES = 64 * 1024;
+// `launchctl error 113` identifies this exact service-target result.
+const LAUNCHCTL_SERVICE_NOT_FOUND_EXIT_CODE = 113;
 
 export const managerCommandResultSchema = z
   .object({
@@ -452,6 +454,12 @@ async function inspectManager(
         ? parseLaunchdEnabled(disabled.stdout, metadata.serviceId)
         : null;
     if (result.exitCode !== 0) {
+      if (result.exitCode !== LAUNCHCTL_SERVICE_NOT_FOUND_EXIT_CODE) {
+        throw commandFailure(
+          [managerExecutable(metadata), "print", launchdTarget(metadata)],
+          result,
+        );
+      }
       return {
         manager: "launchd",
         available: true,
@@ -519,6 +527,11 @@ function managerIsActive(observation: ManagerObservation): boolean {
 
 function managerIsStopping(observation: ManagerObservation): boolean {
   return observation.manager === "systemd-user" && observation.stopping;
+}
+
+function managerHasStopped(observation: ManagerObservation): boolean {
+  if (observation.manager === "launchd") return !observation.loaded;
+  return !managerIsActive(observation) && !managerIsStopping(observation);
 }
 
 function managerHasFailed(observation: ManagerObservation): boolean {
@@ -959,14 +972,16 @@ async function stopManager(
   }
   if (disable) await disableManager(metadata);
 
-  const deadline = Date.now() + MANAGER_TIMEOUT_MS;
+  const stopTimeoutMs =
+    metadata.manager === "launchd" ? commandTimeoutMs : MANAGER_TIMEOUT_MS;
+  const deadline = Date.now() + stopTimeoutMs;
   while (Date.now() < deadline) {
     const current = await inspectManager(metadata);
-    if (!managerIsActive(current) && !managerIsStopping(current)) return;
+    if (managerHasStopped(current)) return;
     await Bun.sleep(50);
   }
   throw new ServiceManagerError(
-    `${metadata.manager} did not stop ${metadata.serviceId} within ${MANAGER_TIMEOUT_MS}ms.`,
+    `${metadata.manager} did not stop ${metadata.serviceId} within ${stopTimeoutMs}ms.`,
   );
 }
 
