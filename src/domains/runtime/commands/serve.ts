@@ -22,7 +22,9 @@ import { type ILogger } from "../../observability/logging";
 import {
   InferenceTelemetry,
   recordStructuredOutputPreparation,
+  type InferenceMetadata,
   type InferenceOutcome,
+  type InferenceTerminal,
   type StructuredOutputValidationTelemetry,
 } from "../../observability/inference";
 import type { RuntimeModality } from "../modality";
@@ -1146,6 +1148,35 @@ function validateEventStream(
   );
 }
 
+function chatInferenceMetadata(
+  modelId: string,
+  admission: InferenceMetadata["admission"],
+): InferenceMetadata {
+  const model = byId(modelId);
+  if (!model) return { modelId, runtimeName: "llama-server", admission };
+  const artifact = primaryArtifact(model);
+  return {
+    modelId,
+    runtimeName: "llama-server",
+    catalog: {
+      artifactRevision: artifact.source?.revision ?? model.repositoryRevision,
+      quantization: model.quant,
+    },
+    admission,
+  };
+}
+
+function withServerTiming(response: Response, timing: string | undefined) {
+  if (!timing) return response;
+  const headers = new Headers(response.headers);
+  headers.set("server-timing", timing);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 async function proxyRequest(
   request: Request,
   targetBase: string,
@@ -1155,13 +1186,14 @@ async function proxyRequest(
     z.output<typeof chatCompletionStreamEventSchema>
   >,
   otel?: OtelRuntime,
-  onValidatedEvent?: (value: ChatTelemetryResponse) => void,
-  onInvalidEvent?: () => void,
+  onValidatedEvent?: (value: ChatTelemetryResponse, status: number) => void,
+  onInvalidEvent?: (status: number) => void,
   structuredOutput?: Readonly<{
     validator: StructuredOutputValidator;
     onValidation: (result: CompletedStructuredOutputValidation) => void;
   }>,
   canonicalChatModelId?: string,
+  onUpstreamStatus?: (status: number) => void,
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
@@ -1204,6 +1236,7 @@ async function proxyRequest(
     if (request.signal.aborted) return requestAborted();
     return upstreamFailure("The upstream service could not be reached.");
   }
+  onUpstreamStatus?.(upstream.status);
   if (
     responseSchema &&
     eventStreamSchema &&
@@ -1221,8 +1254,8 @@ async function proxyRequest(
       validateEventStream(
         upstream.body,
         eventStreamSchema,
-        onValidatedEvent,
-        onInvalidEvent,
+        (value) => onValidatedEvent?.(value, upstream.status),
+        () => onInvalidEvent?.(upstream.status),
         canonicalChatModelId,
       ),
       {
@@ -1253,11 +1286,13 @@ async function proxyRequest(
             : { outcome: "failed", skipReasons: [] };
         structuredOutput.onValidation(validation);
         if (validation.outcome === "failed") {
-          onInvalidEvent?.();
+          onInvalidEvent?.(502);
           return structuredOutputValidationFailure();
         }
       }
-      if (chatResponse.success) onValidatedEvent?.(chatResponse.data);
+      if (chatResponse.success) {
+        onValidatedEvent?.(chatResponse.data, upstream.status);
+      }
 
       const headers = filterProxyHeaders(upstream.headers);
       headers.delete("content-length");
@@ -1296,32 +1331,40 @@ export function withResponseLease(
   release: () => void,
   cancel: () => void,
   requestSignal: AbortSignal,
-  onSettled?: (outcome: InferenceOutcome) => void,
+  onSettled?: (terminal: InferenceTerminal) => void,
 ): Response {
   if (!response.body) {
     if (requestSignal.aborted) {
       cancel();
-      onSettled?.("cancelled");
+      onSettled?.({
+        outcome: "cancelled",
+        httpStatus: response.status,
+        source: "request_aborted",
+      });
     } else {
       release();
-      onSettled?.("completed");
+      onSettled?.({ outcome: "completed", httpStatus: response.status });
     }
     return response;
   }
 
   let completed = false;
   let removeAbortListener = () => {};
-  const settleOnce = (outcome: InferenceOutcome) => {
+  const settleOnce = (terminal: InferenceTerminal) => {
     if (completed) return;
     completed = true;
     removeAbortListener();
-    if (outcome === "completed") release();
+    if (terminal.outcome === "completed") release();
     else cancel();
-    onSettled?.(outcome);
+    onSettled?.(terminal);
   };
   const reader = response.body.getReader();
   const cancelForRequestAbort = () => {
-    settleOnce("cancelled");
+    settleOnce({
+      outcome: "cancelled",
+      httpStatus: response.status,
+      source: "request_aborted",
+    });
     void reader.cancel(requestSignal.reason);
   };
   requestSignal.addEventListener("abort", cancelForRequestAbort, {
@@ -1335,18 +1378,26 @@ export function withResponseLease(
       try {
         const { done, value } = await reader.read();
         if (done) {
-          settleOnce("completed");
+          settleOnce({ outcome: "completed", httpStatus: response.status });
           controller.close();
           return;
         }
         controller.enqueue(value);
       } catch (error) {
-        settleOnce("error");
+        settleOnce({
+          outcome: "error",
+          httpStatus: response.status,
+          source: "response_stream_error",
+        });
         controller.error(error);
       }
     },
     async cancel(reason) {
-      settleOnce("cancelled");
+      settleOnce({
+        outcome: "cancelled",
+        httpStatus: response.status,
+        source: "response_cancelled",
+      });
       await reader.cancel(reason);
     },
   });
@@ -1417,7 +1468,7 @@ export async function proxyWithAdmission(
   serviceName: string,
   requestSignal: AbortSignal,
   dispatch: () => Promise<Response>,
-  onSettled?: (outcome: InferenceOutcome) => void,
+  onSettled?: (terminal: InferenceTerminal) => void,
 ): Promise<Response> {
   try {
     await waitForRequestAbort(admission.ready, requestSignal);
@@ -1430,23 +1481,37 @@ export async function proxyWithAdmission(
       admission.release,
       admission.cancel,
       requestSignal,
-      (outcome) =>
+      (terminal) =>
         onSettled?.(
-          outcome === "completed" && response.status >= 400 ? "error" : outcome,
+          terminal.outcome === "completed" && response.status >= 400
+            ? { outcome: "error", httpStatus: response.status }
+            : terminal,
         ),
     );
   } catch (error) {
     if (error instanceof RequestAbortedError) {
       admission.cancel();
-      onSettled?.("cancelled");
-      return requestAborted();
+      const response = requestAborted();
+      onSettled?.({
+        outcome: "cancelled",
+        httpStatus: response.status,
+        source: "request_aborted",
+      });
+      return response;
     }
     admission.release();
-    onSettled?.("error");
     if (error instanceof RuntimeMemoryAdmissionError) {
-      return resourceUnavailable();
+      const response = resourceUnavailable();
+      onSettled?.({
+        outcome: "error",
+        httpStatus: response.status,
+        source: "memory_admission",
+      });
+      return response;
     }
-    return serviceUnavailable(serviceName);
+    const response = serviceUnavailable(serviceName);
+    onSettled?.({ outcome: "error", httpStatus: response.status });
+    return response;
   }
 }
 
@@ -2342,16 +2407,21 @@ export async function runServe(
         return modelNotFound(parsed.data.model ?? "");
       }
       if (selected.kind === "unavailable") return serviceUnavailable("LLM");
+      const streaming = parsed.data.stream === true;
       const inference = new InferenceTelemetry({
-        modelId: selected.value.modelId,
+        metadata: chatInferenceMetadata(
+          selected.value.modelId,
+          selected.value.admissionSnapshot,
+        ),
         requestId,
         startedAt,
         queueWaitMs: selected.value.queueWaitMs,
+        streaming,
         ...(structuredOutput.kind === "ready"
           ? {
               structuredOutput: {
                 preparationDurationMs,
-                streaming: parsed.data.stream === true,
+                streaming,
               },
             }
           : {}),
@@ -2361,7 +2431,7 @@ export async function runServe(
           clientSpanOptions({ "http.request.method": request.method }),
         ),
       });
-      return await proxyWithAdmission(
+      const response = await proxyWithAdmission(
         selected.value.admission,
         "LLM",
         request.signal,
@@ -2373,12 +2443,22 @@ export async function runServe(
             chatCompletionResponseSchema,
             chatCompletionStreamEventSchema,
             ctx.otel,
-            (value) => {
-              if ("error" in value) inference.finish("error");
-              else inference.observeValidatedChatEvent(value);
+            (value, status) => {
+              if ("error" in value) {
+                inference.finish({
+                  outcome: "error",
+                  httpStatus: status,
+                  source: "upstream_error_event",
+                });
+              } else inference.observeValidatedChatEvent(value);
             },
-            () => inference.finish("error"),
-            parsed.data.stream !== true && structuredOutput.kind === "ready"
+            (status) =>
+              inference.finish({
+                outcome: "error",
+                httpStatus: status,
+                source: "response_validation",
+              }),
+            !streaming && structuredOutput.kind === "ready"
               ? {
                   validator: structuredOutput.validator,
                   onValidation: (result) =>
@@ -2386,9 +2466,11 @@ export async function runServe(
                 }
               : undefined,
             selected.value.modelId,
+            (status) => inference.observeUpstreamStatus(status),
           ),
-        (outcome) => inference.finish(outcome),
+        (terminal) => inference.finish(terminal),
       );
+      return withServerTiming(response, inference.serverTiming());
     }
 
     if (route === "embeddings") {
@@ -2467,6 +2549,7 @@ export async function runServe(
         serverSpanOptions(method, pathname),
         parent,
       );
+      span.setAttribute("localbase.request_id", requestId);
       if (method === "OPTIONS") {
         span.setAttribute("http.response.status_code", 204);
         span.end();
@@ -2520,7 +2603,14 @@ export async function runServe(
 
       const durationMs = performance.now() - start;
       if (!isEventStream(response)) {
-        headers.set("server-timing", `localbase;dur=${durationMs.toFixed(2)}`);
+        const inferenceTiming =
+          selectGatewayRoute(pathname) === "chatCompletion"
+            ? headers.get("server-timing")
+            : undefined;
+        headers.set(
+          "server-timing",
+          `${inferenceTiming ? `${inferenceTiming}, ` : ""}localbase;dur=${durationMs.toFixed(2)}`,
+        );
       }
       const corsResponse = new Response(response.body, {
         status: response.status,
@@ -2556,7 +2646,7 @@ export async function runServe(
           responseAbortController.abort();
         },
         lifecycleSignal,
-        (outcome) => settle(outcome),
+        (terminal) => settle(terminal.outcome),
       );
     },
   });

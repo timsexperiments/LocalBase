@@ -1407,6 +1407,32 @@ function startMockUpstream(
           { headers: { "content-type": "text/event-stream" } },
         );
       }
+      if (
+        mode === "telemetry-metadata" ||
+        mode === "telemetry-partial-metadata"
+      ) {
+        return Response.json({
+          id: "chatcmpl-telemetry",
+          object: "chat.completion",
+          created: 0,
+          model: LLM_MODEL,
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "ok" },
+              finish_reason:
+                mode === "telemetry-metadata"
+                  ? "never-export-unknown-finish-reason"
+                  : "stop",
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+          timings:
+            mode === "telemetry-metadata"
+              ? { prompt_ms: 3, predicted_ms: 4 }
+              : { prompt_ms: 7, predicted_ms: "not-a-number" },
+        });
+      }
       if (path === "/v1/images/generations") {
         const payload = JSON.parse(body) as { n?: number };
         return Response.json({
