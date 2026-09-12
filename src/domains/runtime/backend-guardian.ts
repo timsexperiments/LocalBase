@@ -9,6 +9,7 @@ const guardianArgumentsSchema = z.tuple([
 
 const POLL_INTERVAL_MS = 100;
 const BACKEND_STOP_GRACE_MS = 500;
+const BACKEND_KILL_CONFIRMATION_MS = 500;
 
 function isRunning(pid: number): boolean {
   try {
@@ -41,9 +42,13 @@ async function stopBackend(pid: number): Promise<void> {
     if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
     throw error;
   }
-  while (isRunning(pid)) {
+  const confirmationDeadline = Date.now() + BACKEND_KILL_CONFIRMATION_MS;
+  while (Date.now() < confirmationDeadline) {
     await Bun.sleep(POLL_INTERVAL_MS);
+    if (!isRunning(pid)) return;
   }
+  if (!isRunning(pid)) return;
+  throw new Error(`Backend process ${pid} remained running after SIGKILL.`);
 }
 
 /** Reaps a backend if its gateway exits without running normal shutdown. */

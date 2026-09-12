@@ -66,7 +66,7 @@ test("reaps an owned backend when its gateway exited before guardian startup", a
     await expect(
       runBackendGuardian([String(gateway.pid), String(backend.process.pid)]),
     ).resolves.toBe(0);
-    expect(await backend.process.exited).toBe(0);
+    expect(backend.process.exitCode).toBe(0);
   } finally {
     await backend.cleanup();
   }
@@ -85,7 +85,7 @@ test("continues monitoring a live gateway until it exits", async () => {
     gateway.exit();
 
     await expect(guardian).resolves.toBe(0);
-    expect(await backend.process.exited).toBe(0);
+    expect(backend.process.exitCode).toBe(0);
   } finally {
     await Promise.all([gateway.cleanup(), backend.cleanup()]);
   }
@@ -98,7 +98,7 @@ test("confirms an owned TERM-ignoring backend has exited after SIGKILL", async (
     await expect(
       runBackendGuardian([String(gateway.pid), String(backend.process.pid)]),
     ).resolves.toBe(0);
-    expect(await backend.process.exited).not.toBe(0);
+    expect(backend.process.signalCode).toBe("SIGKILL");
   } finally {
     await backend.cleanup();
   }
