@@ -1416,11 +1416,14 @@ async function refreshFollowPrefix(state: FollowFileState): Promise<void> {
   state.prefixDigest = await digestLogPrefix(prefix);
 }
 
-async function waitForLogPoll(signal: AbortSignal): Promise<void> {
+async function waitForLogPoll(
+  signal: AbortSignal,
+  delayMs = LOG_FOLLOW_POLL_MS,
+): Promise<void> {
   if (signal.aborted) return;
   await new Promise<void>((resolve) => {
     const onAbort = () => complete();
-    const timer = setTimeout(complete, LOG_FOLLOW_POLL_MS);
+    const timer = setTimeout(complete, delayMs);
     function complete(): void {
       clearTimeout(timer);
       signal.removeEventListener("abort", onAbort);
@@ -1529,20 +1532,7 @@ export async function followLogEvents(
         }
       }
       if (signal.aborted) break;
-      if (options.pollMs === undefined) await waitForLogPoll(signal);
-      else {
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, options.pollMs);
-          signal.addEventListener(
-            "abort",
-            () => {
-              clearTimeout(timer);
-              resolve();
-            },
-            { once: true },
-          );
-        });
-      }
+      await waitForLogPoll(signal, options.pollMs);
     }
   } finally {
     await Promise.all(
