@@ -1,18 +1,21 @@
 import { afterEach, expect, test } from "bun:test";
 import {
+  chmodSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readlinkSync,
   rmSync,
   statSync,
   symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { zipSync } from "fflate";
 import { pack } from "tar-stream";
 import {
+  ensureBinary,
   installManagedRuntime,
   managedExecutableRelease,
   managedRuntimeRelease,
@@ -21,8 +24,10 @@ import {
 } from "./binaries";
 
 const roots: string[] = [];
+const originalPath = process.env.PATH;
 
 afterEach(() => {
+  process.env.PATH = originalPath;
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -55,6 +60,26 @@ function release(
     format,
     stripComponents,
   };
+}
+
+type TestRelease = ReturnType<typeof release>;
+
+function familyName(name: ManagedExecutableName): string {
+  if (name === "llama-server" || name === "llama-tts") {
+    return "llama-server";
+  }
+  if (name === "sd-server" || name === "sd-cli") return "sd-server";
+  return "whisper-server";
+}
+
+function packageDirectory(root: string, pinned: TestRelease): string {
+  return join(
+    root,
+    "bin",
+    "runtimes",
+    familyName(pinned.name),
+    pinned.sha256.toLowerCase(),
+  );
 }
 
 test("maps helpers to the existing pinned runtime artifact families", () => {
@@ -179,21 +204,21 @@ test("installs a verified tar.gz runtime with its staged support files", async (
   const root = createRoot();
 
   await withArchive(archive, async (url) => {
-    const installed = await installManagedRuntime(
-      { root },
-      release("llama-server", "tar.gz", archive, url, 1),
-    );
+    const pinned = release("llama-server", "tar.gz", archive, url, 1);
+    const installed = await installManagedRuntime({ root }, pinned);
+    const packageDir = packageDirectory(root, pinned);
 
+    expect(installed).toBe(join(packageDir, "llama-server"));
     expect(await Bun.file(installed).bytes()).toEqual(binary);
     expect(
-      await Bun.file(join(root, "bin", "libsupport.dylib")).bytes(),
+      await Bun.file(join(packageDir, "libsupport.dylib")).bytes(),
     ).toEqual(supportFile);
     expect(statSync(installed).mode & 0o111).toBe(0o111);
-    const installedLink = join(root, "bin", "libsupport.dylib.link");
+    const installedLink = join(packageDir, "libsupport.dylib.link");
     expect(lstatSync(installedLink).isSymbolicLink()).toBe(true);
     expect(readlinkSync(installedLink)).toBe("libsupport.dylib");
     expect(
-      await Bun.file(join(root, "bin", ".managed-binaries.json")).json(),
+      await Bun.file(join(packageDir, ".managed-binaries.json")).json(),
     ).toMatchObject({
       version: 1,
       runtimes: {
@@ -207,7 +232,148 @@ test("installs a verified tar.gz runtime with its staged support files", async (
   });
 });
 
-test("reconciles verified archive executables in either installation order", async () => {
+test("isolates archive versions and resolves helpers from their family package", async () => {
+  const llamaV1 = await tarGz({
+    "release/llama-server": new TextEncoder().encode("llama server v1"),
+    "release/llama-tts": new TextEncoder().encode("llama helper v1"),
+    "release/libggml.dylib": new TextEncoder().encode("llama ABI v1"),
+  });
+  const llamaV2 = await tarGz({
+    "release/llama-server": new TextEncoder().encode("llama server v2"),
+    "release/llama-tts": new TextEncoder().encode("llama helper v2"),
+    "release/libggml.dylib": new TextEncoder().encode("llama ABI v2"),
+  });
+  const sd = zipSync({
+    "sd-server": new TextEncoder().encode("sd server"),
+    "sd-cli": new TextEncoder().encode("sd helper"),
+    "libggml.dylib": new TextEncoder().encode("sd ABI"),
+  });
+  const root = createRoot();
+  let llamaV1Release: TestRelease | undefined;
+  let llamaV2Release: TestRelease | undefined;
+  let sdRelease: TestRelease | undefined;
+
+  await withArchive(llamaV1, async (url) => {
+    llamaV1Release = release("llama-server", "tar.gz", llamaV1, url, 1);
+    await installManagedRuntime({ root }, llamaV1Release);
+  });
+  await withArchive(llamaV2, async (url) => {
+    llamaV2Release = release("llama-server", "tar.gz", llamaV2, url, 1);
+    await installManagedRuntime({ root }, llamaV2Release);
+  });
+  await withArchive(sd, async (url) => {
+    sdRelease = release("sd-server", "zip", sd, url, 0);
+    await installManagedRuntime({ root }, sdRelease);
+  });
+  if (!llamaV1Release || !llamaV2Release || !sdRelease) {
+    throw new Error("Expected fixture releases to be installed.");
+  }
+
+  const llamaV1Dir = packageDirectory(root, llamaV1Release);
+  const llamaV2Dir = packageDirectory(root, llamaV2Release);
+  const sdDir = packageDirectory(root, sdRelease);
+  expect(llamaV1Dir).not.toBe(llamaV2Dir);
+  expect(await Bun.file(join(llamaV1Dir, "libggml.dylib")).text()).toBe(
+    "llama ABI v1",
+  );
+  expect(await Bun.file(join(llamaV2Dir, "libggml.dylib")).text()).toBe(
+    "llama ABI v2",
+  );
+  expect(await Bun.file(join(sdDir, "libggml.dylib")).text()).toBe("sd ABI");
+
+  const originalFetch = globalThis.fetch;
+  let downloads = 0;
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: async () => {
+      downloads += 1;
+      return new Response(null, { status: 503 });
+    },
+  });
+  try {
+    const llamaHelper = await installManagedRuntime(
+      { root },
+      { ...llamaV2Release, name: "llama-tts" },
+    );
+    const sdHelper = await installManagedRuntime(
+      { root },
+      { ...sdRelease, name: "sd-cli" },
+    );
+    expect(llamaHelper).toBe(join(llamaV2Dir, "llama-tts"));
+    expect(await Bun.file(llamaHelper).text()).toBe("llama helper v2");
+    expect(sdHelper).toBe(join(sdDir, "sd-cli"));
+    expect(await Bun.file(sdHelper).text()).toBe("sd helper");
+    expect(downloads).toBe(0);
+  } finally {
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: originalFetch,
+    });
+  }
+
+  expect(await Bun.file(join(llamaV1Dir, "libggml.dylib")).text()).toBe(
+    "llama ABI v1",
+  );
+});
+
+test("never treats paths under the managed bin directory as PATH fallbacks", async () => {
+  const target = { os: process.platform, cpu: process.arch };
+  if (
+    !managedExecutableRelease("llama-server", target) ||
+    !managedExecutableRelease("whisper-server", target) ||
+    !managedExecutableRelease("sd-server", target)
+  ) {
+    return;
+  }
+
+  const root = createRoot();
+  const binDir = join(root, "bin");
+  const nestedDir = join(binDir, "runtimes", "unverified", "archive");
+  const managedTargetDir = join(binDir, "unverified-target");
+  const operatorBinDir = join(root, "operator-bin");
+  mkdirSync(nestedDir, { recursive: true });
+  mkdirSync(managedTargetDir);
+  mkdirSync(operatorBinDir);
+  const legacyBinary = join(binDir, "whisper-server");
+  const nestedBinary = join(nestedDir, "llama-server");
+  const managedSymlinkTarget = join(managedTargetDir, "sd-server");
+  const candidates = [legacyBinary, nestedBinary, managedSymlinkTarget];
+  for (const candidate of candidates) {
+    await Bun.write(candidate, "unverified executable");
+    chmodSync(candidate, 0o755);
+  }
+  symlinkSync(managedSymlinkTarget, join(operatorBinDir, "sd-server"));
+  process.env.PATH = [binDir, nestedDir, operatorBinDir].join(delimiter);
+
+  const originalFetch = globalThis.fetch;
+  let downloads = 0;
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: async () => {
+      downloads += 1;
+      return new Response(null, { status: 503, statusText: "fixture failure" });
+    },
+  });
+  try {
+    for (const name of [
+      "whisper-server",
+      "llama-server",
+      "sd-server",
+    ] as const) {
+      await expect(ensureBinary({ root }, name)).rejects.toThrow(
+        "Failed to download",
+      );
+    }
+  } finally {
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: originalFetch,
+    });
+  }
+  expect(downloads).toBe(3);
+});
+
+test("reuses verified family helpers in either installation order", async () => {
   const server = new TextEncoder().encode("llama server executable");
   const helper = new TextEncoder().encode("llama tts executable");
   const supportFile = new TextEncoder().encode("support library");
@@ -222,22 +388,22 @@ test("reconciles verified archive executables in either installation order", asy
       ["llama-tts", "llama-server"],
     ] as const) {
       const root = createRoot();
-      await installManagedRuntime(
-        { root },
-        release(first, "tar.gz", archive, url, 1),
-      );
-      const firstPath = join(root, "bin", first);
-      const secondPath = join(root, "bin", second);
+      const firstRelease = release(first, "tar.gz", archive, url, 1);
+      const secondRelease = release(second, "tar.gz", archive, url, 1);
+      const firstPath = await installManagedRuntime({ root }, firstRelease);
+      const packageDir = packageDirectory(root, firstRelease);
+      const secondPath = join(packageDir, second);
       expect(statSync(firstPath).mode & 0o111).toBe(0o111);
-      expect(statSync(secondPath).mode & 0o111).toBe(0);
-      expect(statSync(join(root, "bin", "libsupport.dylib")).mode & 0o111).toBe(
+      expect(statSync(secondPath).mode & 0o111).toBe(0o111);
+      expect(statSync(join(packageDir, "libsupport.dylib")).mode & 0o111).toBe(
         0,
       );
 
-      await installManagedRuntime(
+      const installedSecond = await installManagedRuntime(
         { root },
-        release(second, "tar.gz", archive, url, 1),
+        secondRelease,
       );
+      expect(installedSecond).toBe(secondPath);
       expect(await Bun.file(firstPath).bytes()).toEqual(
         first === "llama-server" ? server : helper,
       );
@@ -247,7 +413,7 @@ test("reconciles verified archive executables in either installation order", asy
       expect(statSync(firstPath).mode & 0o111).toBe(0o111);
       expect(statSync(secondPath).mode & 0o111).toBe(0o111);
       expect(
-        await Bun.file(join(root, "bin", ".managed-binaries.json")).json(),
+        await Bun.file(join(packageDir, ".managed-binaries.json")).json(),
       ).toMatchObject({
         runtimes: {
           "llama-server": {
@@ -264,7 +430,7 @@ test("reconciles verified archive executables in either installation order", asy
   });
 });
 
-test("serializes concurrent helper and primary archive reconciliation", async () => {
+test("serializes concurrent helper and primary package installation", async () => {
   const server = new TextEncoder().encode("llama server executable");
   const helper = new TextEncoder().encode("llama tts executable");
   const archive = await tarGz({
@@ -291,16 +457,20 @@ test("serializes concurrent helper and primary archive reconciliation", async ()
       releaseFirstDownload();
       await Promise.all([helperInstall, primaryInstall]);
 
-      expect(fetchCount()).toBe(2);
-      expect(statSync(join(root, "bin", "llama-tts")).mode & 0o111).toBe(0o111);
-      expect(statSync(join(root, "bin", "llama-server")).mode & 0o111).toBe(
+      expect(fetchCount()).toBe(1);
+      const packageDir = packageDirectory(
+        root,
+        release("llama-server", "tar.gz", archive, url, 1),
+      );
+      expect(statSync(join(packageDir, "llama-tts")).mode & 0o111).toBe(0o111);
+      expect(statSync(join(packageDir, "llama-server")).mode & 0o111).toBe(
         0o111,
       );
     },
   );
 });
 
-test("adopts an independently placed helper only through archive reconciliation", async () => {
+test("ignores a legacy flat helper when installing its package", async () => {
   const server = new TextEncoder().encode("llama server executable");
   const helper = new TextEncoder().encode("llama tts executable");
   const supportFile = new TextEncoder().encode("support library");
@@ -312,56 +482,76 @@ test("adopts an independently placed helper only through archive reconciliation"
   const root = createRoot();
   const helperPath = join(root, "bin", "llama-tts");
   mkdirSync(join(root, "bin"), { recursive: true });
-  await Bun.write(helperPath, helper);
+  await Bun.write(helperPath, "legacy helper");
 
   await withArchive(archive, async (url) => {
-    await installManagedRuntime(
-      { root },
-      release("llama-tts", "tar.gz", archive, url, 1),
-    );
+    const pinned = release("llama-tts", "tar.gz", archive, url, 1);
+    const installed = await installManagedRuntime({ root }, pinned);
+
+    expect(installed).toBe(join(packageDirectory(root, pinned), "llama-tts"));
+    expect(await Bun.file(installed).bytes()).toEqual(helper);
+    expect(
+      await Bun.file(
+        join(packageDirectory(root, pinned), "llama-server"),
+      ).bytes(),
+    ).toEqual(server);
+    expect(
+      await Bun.file(
+        join(packageDirectory(root, pinned), "libsupport.dylib"),
+      ).bytes(),
+    ).toEqual(supportFile);
   });
 
-  expect(statSync(helperPath).mode & 0o111).toBe(0o111);
-  expect(await Bun.file(join(root, "bin", "llama-server")).bytes()).toEqual(
-    server,
-  );
-  expect(await Bun.file(join(root, "bin", "libsupport.dylib")).bytes()).toEqual(
-    supportFile,
-  );
+  expect(await Bun.file(helperPath).text()).toBe("legacy helper");
 });
 
-test("repairs missing verified dependencies and rejects modified archive assets", async () => {
+test("does not receipt a packaged helper absent from the verified archive", async () => {
+  const archive = await tarGz({
+    "release/llama-server": new TextEncoder().encode("llama server"),
+  });
+  const root = createRoot();
+
+  await withArchive(archive, async (url) => {
+    const serverRelease = release("llama-server", "tar.gz", archive, url, 1);
+    const packageDir = packageDirectory(root, serverRelease);
+    const helperPath = join(packageDir, "llama-tts");
+    mkdirSync(packageDir, { recursive: true });
+    await Bun.write(helperPath, "unverified helper");
+
+    await installManagedRuntime({ root }, serverRelease);
+    expect(statSync(helperPath).mode & 0o111).toBe(0);
+    expect(
+      await Bun.file(join(packageDir, ".managed-binaries.json")).text(),
+    ).not.toContain('"llama-tts"');
+    await expect(
+      installManagedRuntime({ root }, { ...serverRelease, name: "llama-tts" }),
+    ).rejects.toThrow("llama-tts was not found after extracting");
+    expect(await Bun.file(helperPath).text()).toBe("unverified helper");
+  });
+});
+
+test("rejects a modified packaged helper through binary continuity", async () => {
   const server = new TextEncoder().encode("llama server executable");
   const helper = new TextEncoder().encode("llama tts executable");
-  const supportFile = new TextEncoder().encode("support library");
   const archive = await tarGz({
     "release/llama-server": server,
     "release/llama-tts": helper,
-    "release/libsupport.dylib": supportFile,
+    "release/libsupport.dylib": new TextEncoder().encode("support library"),
   });
   const root = createRoot();
-  const supportPath = join(root, "bin", "libsupport.dylib");
 
   await withArchive(archive, async (url) => {
-    await installManagedRuntime(
-      { root },
-      release("llama-server", "tar.gz", archive, url, 1),
-    );
-    rmSync(supportPath);
-    await installManagedRuntime(
-      { root },
-      release("llama-tts", "tar.gz", archive, url, 1),
-    );
-    expect(await Bun.file(supportPath).bytes()).toEqual(supportFile);
-
-    await Bun.write(supportPath, "modified support library");
+    const serverRelease = release("llama-server", "tar.gz", archive, url, 1);
+    await installManagedRuntime({ root }, serverRelease);
+    const helperPath = join(packageDirectory(root, serverRelease), "llama-tts");
+    await Bun.write(helperPath, "modified helper");
     await expect(
       installManagedRuntime(
         { root },
-        release("llama-server", "tar.gz", archive, url, 1),
+        release("llama-tts", "tar.gz", archive, url, 1),
       ),
-    ).rejects.toThrow("Refusing to replace existing managed runtime asset");
-    expect(await Bun.file(supportPath).text()).toBe("modified support library");
+    ).rejects.toThrow("failed its continuity check");
+    expect(await Bun.file(helperPath).text()).toBe("modified helper");
   });
 });
 
@@ -377,39 +567,34 @@ test("rejects type and symlink target mismatches before copying archive assets",
   });
 
   await withArchive(archive, async (url) => {
+    const pinned = release("llama-tts", "tar.gz", archive, url, 1);
     const typeMismatchRoot = createRoot();
-    const typeMismatchBin = join(typeMismatchRoot, "bin");
-    mkdirSync(typeMismatchBin, { recursive: true });
-    await Bun.write(join(typeMismatchBin, "llama-tts"), helper);
-    mkdirSync(join(typeMismatchBin, "libsupport.dylib"));
+    const typeMismatchPackage = packageDirectory(typeMismatchRoot, pinned);
+    mkdirSync(typeMismatchPackage, { recursive: true });
+    await Bun.write(join(typeMismatchPackage, "llama-tts"), helper);
+    mkdirSync(join(typeMismatchPackage, "libsupport.dylib"));
     await expect(
-      installManagedRuntime(
-        { root: typeMismatchRoot },
-        release("llama-tts", "tar.gz", archive, url, 1),
-      ),
+      installManagedRuntime({ root: typeMismatchRoot }, pinned),
     ).rejects.toThrow("Refusing to replace existing managed runtime asset");
-    expect(await Bun.file(join(typeMismatchBin, "llama-server")).exists()).toBe(
-      false,
-    );
+    expect(
+      await Bun.file(join(typeMismatchPackage, "llama-server")).exists(),
+    ).toBe(false);
 
     const linkMismatchRoot = createRoot();
-    const linkMismatchBin = join(linkMismatchRoot, "bin");
-    mkdirSync(linkMismatchBin, { recursive: true });
-    await Bun.write(join(linkMismatchBin, "llama-tts"), helper);
-    await Bun.write(join(linkMismatchBin, "libsupport.dylib"), support);
+    const linkMismatchPackage = packageDirectory(linkMismatchRoot, pinned);
+    mkdirSync(linkMismatchPackage, { recursive: true });
+    await Bun.write(join(linkMismatchPackage, "llama-tts"), helper);
+    await Bun.write(join(linkMismatchPackage, "libsupport.dylib"), support);
     symlinkSync(
       "unexpected-target",
-      join(linkMismatchBin, "libsupport.dylib.link"),
+      join(linkMismatchPackage, "libsupport.dylib.link"),
     );
     await expect(
-      installManagedRuntime(
-        { root: linkMismatchRoot },
-        release("llama-tts", "tar.gz", archive, url, 1),
-      ),
+      installManagedRuntime({ root: linkMismatchRoot }, pinned),
     ).rejects.toThrow("Refusing to replace existing managed runtime asset");
-    expect(await Bun.file(join(linkMismatchBin, "llama-server")).exists()).toBe(
-      false,
-    );
+    expect(
+      await Bun.file(join(linkMismatchPackage, "llama-server")).exists(),
+    ).toBe(false);
   });
 });
 
@@ -438,14 +623,14 @@ test("installs a verified root-level ZIP runtime without host archive utilities"
   const root = createRoot();
 
   await withArchive(archive, async (url) => {
-    const installed = await installManagedRuntime(
-      { root },
-      release("sd-server", "zip", archive, url, 0),
-    );
+    const pinned = release("sd-server", "zip", archive, url, 0);
+    const installed = await installManagedRuntime({ root }, pinned);
 
     expect(await Bun.file(installed).bytes()).toEqual(binary);
     expect(
-      await Bun.file(join(root, "bin", "models", "support.bin")).bytes(),
+      await Bun.file(
+        join(packageDirectory(root, pinned), "models", "support.bin"),
+      ).bytes(),
     ).toEqual(model);
   });
 });
@@ -461,13 +646,14 @@ test("rejects unverified downloads before they reach the managed bin directory",
     await expect(installManagedRuntime({ root }, pinned)).rejects.toThrow(
       "Checksum mismatch",
     );
-    expect(await Bun.file(join(root, "bin", "whisper-server")).exists()).toBe(
-      false,
-    );
     expect(
       await Bun.file(
-        join(root, "bin", `.${pinned.assetName}.partial`),
+        join(packageDirectory(root, pinned), "whisper-server"),
       ).exists(),
+    ).toBe(false);
+    const familyDir = dirname(packageDirectory(root, pinned));
+    expect(
+      readdirSync(familyDir).some((name) => name.startsWith(".install-")),
     ).toBe(false);
   });
 });
@@ -480,14 +666,16 @@ test("rejects archive paths that would escape the staging directory", async () =
   const root = createRoot();
 
   await withArchive(archive, async (url) => {
-    await expect(
-      installManagedRuntime(
-        { root },
-        release("sd-server", "zip", archive, url, 0),
-      ),
-    ).rejects.toThrow("Failed to extract");
+    const pinned = release("sd-server", "zip", archive, url, 0);
+    await expect(installManagedRuntime({ root }, pinned)).rejects.toThrow(
+      "Failed to extract",
+    );
     expect(await Bun.file(join(root, "outside")).exists()).toBe(false);
-    expect(await Bun.file(join(root, "bin", "sd-server")).exists()).toBe(false);
+    expect(
+      await Bun.file(
+        join(packageDirectory(root, pinned), "sd-server"),
+      ).exists(),
+    ).toBe(false);
   });
 });
 
@@ -516,15 +704,15 @@ test("rejects archive files removed by stripComponents", async () => {
   const root = createRoot();
 
   await withArchive(archive, async (url) => {
-    await expect(
-      installManagedRuntime(
-        { root },
-        release("llama-server", "tar.gz", archive, url, 1),
-      ),
-    ).rejects.toThrow("Failed to extract");
-    expect(await Bun.file(join(root, "bin", "llama-server")).exists()).toBe(
-      false,
+    const pinned = release("llama-server", "tar.gz", archive, url, 1);
+    await expect(installManagedRuntime({ root }, pinned)).rejects.toThrow(
+      "Failed to extract",
     );
+    expect(
+      await Bun.file(
+        join(packageDirectory(root, pinned), "llama-server"),
+      ).exists(),
+    ).toBe(false);
   });
 });
 
@@ -535,12 +723,14 @@ test("fails closed when a requested helper is absent from a verified archive", a
   const root = createRoot();
 
   await withArchive(archive, async (url) => {
-    await expect(
-      installManagedRuntime(
-        { root },
-        release("llama-tts", "tar.gz", archive, url, 1),
-      ),
-    ).rejects.toThrow("llama-tts was not found after extracting");
-    expect(await Bun.file(join(root, "bin", "llama-tts")).exists()).toBe(false);
+    const pinned = release("llama-tts", "tar.gz", archive, url, 1);
+    await expect(installManagedRuntime({ root }, pinned)).rejects.toThrow(
+      "llama-tts was not found after extracting",
+    );
+    expect(
+      await Bun.file(
+        join(packageDirectory(root, pinned), "llama-tts"),
+      ).exists(),
+    ).toBe(false);
   });
 });

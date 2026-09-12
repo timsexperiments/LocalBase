@@ -8,12 +8,21 @@ import {
   mkdtempSync,
   readdirSync,
   readlinkSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
   symlinkSync,
 } from "node:fs";
-import { delimiter, dirname, join, resolve, sep } from "node:path";
+import {
+  delimiter,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { Readable } from "node:stream";
 import { unzipSync } from "fflate";
 import { extract as createTarExtractor, type Headers } from "tar-stream";
@@ -60,6 +69,12 @@ const executableRuntimeFamily = {
   "sd-cli": "sd-server",
 } as const satisfies Record<ManagedExecutableName, RuntimeName>;
 
+const runtimeFamilyExecutables = {
+  "llama-server": ["llama-server", "llama-tts"],
+  "whisper-server": ["whisper-server"],
+  "sd-server": ["sd-server", "sd-cli"],
+} as const satisfies Record<RuntimeName, readonly ManagedExecutableName[]>;
+
 type ManagedExecutableRelease = Omit<ManagedRuntimeRelease, "name"> & {
   name: ManagedExecutableName;
 };
@@ -101,17 +116,48 @@ function currentPlatformTarget(): PlatformTarget {
   return { os: process.platform, cpu: process.arch };
 }
 
-function pathBinary(name: ManagedExecutableName): string | undefined {
+function isWithinDirectory(directory: string, candidate: string): boolean {
+  const pathFromDirectory = relative(resolve(directory), resolve(candidate));
+  return (
+    pathFromDirectory === "" ||
+    (!isAbsolute(pathFromDirectory) &&
+      pathFromDirectory !== ".." &&
+      !pathFromDirectory.startsWith(`..${sep}`))
+  );
+}
+
+function isManagedPath(binDir: string, candidate: string): boolean {
+  if (isWithinDirectory(binDir, candidate)) return true;
+  try {
+    return isWithinDirectory(realpathSync(binDir), realpathSync(candidate));
+  } catch {
+    return false;
+  }
+}
+
+function executablePath(candidate: string, binDir: string): string | undefined {
+  try {
+    accessSync(candidate, constants.X_OK);
+    if (!statSync(candidate).isFile() || isManagedPath(binDir, candidate)) {
+      return undefined;
+    }
+    return candidate;
+  } catch {
+    return undefined;
+  }
+}
+
+function pathBinary(
+  name: ManagedExecutableName,
+  binDir: string,
+): string | undefined {
   for (const directory of (process.env.PATH ?? "").split(delimiter)) {
     const candidate = join(directory || ".", name);
-    try {
-      accessSync(candidate, constants.X_OK);
-      if (statSync(candidate).isFile()) return candidate;
-    } catch {
-      // Keep searching PATH entries that do not contain an executable binary.
-    }
+    const executable = executablePath(candidate, binDir);
+    if (executable) return executable;
   }
-  return Bun.which(name) ?? undefined;
+  const resolved = Bun.which(name);
+  return resolved ? executablePath(resolved, binDir) : undefined;
 }
 
 function platformLabel(target: PlatformTarget): string {
@@ -159,12 +205,24 @@ function sameIdentity(
   );
 }
 
-function receiptPath(binDir: string): string {
-  return join(binDir, ".managed-binaries.json");
+function runtimePackageDir(
+  binDir: string,
+  release: ManagedExecutableRelease,
+): string {
+  return join(
+    binDir,
+    "runtimes",
+    executableRuntimeFamily[release.name],
+    release.sha256.toLowerCase(),
+  );
 }
 
-async function readReceipt(binDir: string): Promise<Receipt | undefined> {
-  const path = receiptPath(binDir);
+function receiptPath(packageDir: string): string {
+  return join(packageDir, ".managed-binaries.json");
+}
+
+async function readReceipt(packageDir: string): Promise<Receipt | undefined> {
+  const path = receiptPath(packageDir);
   const file = Bun.file(path);
   if (!(await file.exists())) return undefined;
   let value: unknown;
@@ -185,9 +243,12 @@ async function readReceipt(binDir: string): Promise<Receipt | undefined> {
   return parsed.data;
 }
 
-async function writeReceipt(binDir: string, receipt: Receipt): Promise<void> {
+async function writeReceipt(
+  packageDir: string,
+  receipt: Receipt,
+): Promise<void> {
   await Bun.write(
-    receiptPath(binDir),
+    receiptPath(packageDir),
     JSON.stringify(receiptSchema.parse(receipt), null, 2),
   );
 }
@@ -208,12 +269,13 @@ function releaseMatches(
 }
 
 async function verifyManagedBinary(
-  binDir: string,
+  packageDir: string,
   path: string,
   release: ManagedExecutableRelease,
 ): Promise<boolean> {
-  const receipt = await readReceipt(binDir);
-  const entry = receipt?.runtimes[release.name];
+  const receipt = await readReceipt(packageDir);
+  if (!receipt) return false;
+  const entry = receipt.runtimes[release.name];
   if (!entry || !releaseMatches(entry, release)) return false;
 
   const currentIdentity = identity(path);
@@ -225,7 +287,7 @@ async function verifyManagedBinary(
       );
     }
     entry.file = currentIdentity;
-    await writeReceipt(binDir, receipt!);
+    await writeReceipt(packageDir, receipt);
   }
   return true;
 }
@@ -585,10 +647,21 @@ async function installManagedRuntimeNow(
   release: ManagedExecutableRelease,
 ): Promise<string> {
   const binDir = join(config.root, "bin");
-  mkdirSync(binDir, { recursive: true });
-  const downloadPath = join(binDir, `.${release.assetName}.partial`);
-  const destPath = join(binDir, release.name);
-  const stagingDir = mkdtempSync(join(binDir, ".extract-"));
+  const packageDir = runtimePackageDir(binDir, release);
+  const destPath = join(packageDir, release.name);
+  if (
+    (await Bun.file(destPath).exists()) &&
+    (await verifyManagedBinary(packageDir, destPath, release))
+  ) {
+    return destPath;
+  }
+
+  const familyDir = dirname(packageDir);
+  mkdirSync(familyDir, { recursive: true });
+  const installDir = mkdtempSync(join(familyDir, ".install-"));
+  const downloadPath = join(installDir, release.assetName);
+  const stagingDir = join(installDir, "package");
+  mkdirSync(stagingDir);
 
   try {
     console.log(
@@ -606,61 +679,55 @@ async function installManagedRuntimeNow(
     );
 
     if (release.format === "binary") {
-      const existing = existingEntry(destPath);
-      if (existing) {
-        if (!existing.isFile()) throw assetConflict(destPath);
-        if (
-          (await computeSha256(downloadPath)) !==
-          (await computeSha256(destPath))
-        ) {
-          throw assetConflict(destPath);
-        }
-      } else {
-        renameSync(downloadPath, destPath);
-      }
+      renameSync(downloadPath, join(stagingDir, release.name));
     } else {
       await extractRelease(release, downloadPath, stagingDir);
-      const stagedBinary = join(stagingDir, release.name);
-      if (!existingEntry(stagedBinary)?.isFile()) {
-        throw new Error(
-          `${release.name} was not found after extracting ${release.assetName}.`,
-        );
-      }
-      const missing = await preflightStagedAssets(stagingDir, binDir);
-      installMissingStagedAssets(stagingDir, binDir, missing);
     }
+    const stagedBinary = join(stagingDir, release.name);
+    if (!existingEntry(stagedBinary)?.isFile()) {
+      throw new Error(
+        `${release.name} was not found after extracting ${release.assetName}.`,
+      );
+    }
+
+    const receipt = (await readReceipt(packageDir)) ?? {
+      version: 1,
+      runtimes: {},
+    };
+    const missing = await preflightStagedAssets(stagingDir, packageDir);
+    mkdirSync(packageDir, { recursive: true });
+    installMissingStagedAssets(stagingDir, packageDir, missing);
     if (!(await Bun.file(destPath).exists())) {
       throw new Error(
         `${release.name} was not found after extracting ${release.assetName}.`,
       );
     }
 
-    chmodSync(destPath, statSync(destPath).mode | 0o111);
-
-    const receipt = (await readReceipt(binDir)) ?? { version: 1, runtimes: {} };
-    receipt.runtimes[release.name] = {
-      tag: release.tag,
-      assetName: release.assetName,
-      url: release.url,
-      expectedSizeBytes: release.expectedSizeBytes,
-      authoritativeSha256: release.sha256,
-      format: release.format,
-      stripComponents: release.stripComponents,
-      binarySha256: await computeSha256(destPath),
-      file: identity(destPath),
-    };
-    await writeReceipt(binDir, receipt);
+    for (const name of runtimeFamilyExecutables[
+      executableRuntimeFamily[release.name]
+    ]) {
+      if (!existingEntry(join(stagingDir, name))?.isFile()) continue;
+      const executable = join(packageDir, name);
+      chmodSync(executable, statSync(executable).mode | 0o111);
+      receipt.runtimes[name] = {
+        tag: release.tag,
+        assetName: release.assetName,
+        url: release.url,
+        expectedSizeBytes: release.expectedSizeBytes,
+        authoritativeSha256: release.sha256,
+        format: release.format,
+        stripComponents: release.stripComponents,
+        binarySha256: await computeSha256(executable),
+        file: identity(executable),
+      };
+    }
+    await writeReceipt(packageDir, receipt);
     console.log(
       `✅ ${release.name} installed from authoritative release ${release.tag}.`,
     );
     return destPath;
   } finally {
-    rmSync(stagingDir, { recursive: true, force: true });
-    try {
-      await Bun.file(downloadPath).delete();
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
+    rmSync(installDir, { recursive: true, force: true });
   }
 }
 
@@ -689,13 +756,19 @@ export async function ensureBinary(
   name: ManagedExecutableName,
 ): Promise<string> {
   const binDir = join(config.root, "bin");
-  const localBin = join(binDir, name);
   const target = currentPlatformTarget();
   const release = managedExecutableRelease(name, target);
-  const userManagedBinary = pathBinary(name);
+  const packageDir = release ? runtimePackageDir(binDir, release) : undefined;
+  const localBin = packageDir ? join(packageDir, name) : undefined;
+  const userManagedBinary = pathBinary(name, binDir);
 
-  if (await Bun.file(localBin).exists()) {
-    if (release && (await verifyManagedBinary(binDir, localBin, release))) {
+  if (
+    localBin &&
+    packageDir &&
+    release &&
+    (await Bun.file(localBin).exists())
+  ) {
+    if (await verifyManagedBinary(packageDir, localBin, release)) {
       return localBin;
     }
     if (userManagedBinary && resolve(userManagedBinary) !== resolve(localBin)) {
@@ -704,13 +777,7 @@ export async function ensureBinary(
       );
       return userManagedBinary;
     }
-    if (release) {
-      return await installManagedRuntime(config, release);
-    }
-    throw new Error(
-      `Refusing untrusted ${name} in the LocalBase managed directory at ${localBin}. ` +
-        `Remove it to install the pinned managed release, or put an explicit user-managed executable on PATH outside ${binDir}.`,
-    );
+    return await installManagedRuntime(config, release);
   }
 
   if (userManagedBinary) {
