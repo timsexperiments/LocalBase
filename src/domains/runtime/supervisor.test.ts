@@ -9,7 +9,7 @@ import {
   MemorySafetyController,
 } from "./memory-controller";
 import { defaultMemorySafetyConfig, gibibyte } from "./memory-safety";
-import { ManagedService } from "./supervisor";
+import { ManagedService, type ManagedServiceOptions } from "./supervisor";
 
 function testLaunchPlan(runtimeId: string): RuntimeLaunchPlan {
   return {
@@ -77,13 +77,17 @@ function recordingMemorySafety(): {
   };
 }
 
-function recordingLogger(eventNames: string[]): ILogger {
+function recordingLogger(
+  eventNames: string[],
+  onEvent?: (eventName: string) => void,
+): ILogger {
   return {
     info() {},
     warn() {},
     error() {},
     event(input) {
       eventNames.push(input.eventName);
+      onEvent?.(input.eventName);
     },
     request() {},
     pipeStream() {},
@@ -91,6 +95,342 @@ function recordingLogger(eventNames: string[]): ILogger {
     async close() {},
   };
 }
+
+type DeferredBackend = {
+  process: Bun.Subprocess;
+  ready: Promise<void>;
+  exit(): void;
+};
+
+function deferredBackend(): DeferredBackend {
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "-e",
+      [
+        'process.on("SIGTERM", () => {});',
+        'process.stdin.on("data", () => process.exit(0));',
+        'process.stdout.write("ready\\n");',
+      ].join(""),
+    ],
+    { stdin: "pipe", stdout: "pipe", stderr: "ignore" },
+  );
+  if (!child.stdin || typeof child.stdin === "number") {
+    child.kill();
+    throw new Error("Deferred backend did not expose stdin.");
+  }
+  if (!child.stdout || typeof child.stdout === "number") {
+    child.kill();
+    throw new Error("Deferred backend did not expose stdout.");
+  }
+  const ready = (async () => {
+    const reader = child.stdout.getReader();
+    try {
+      const { done, value } = await reader.read();
+      if (
+        done ||
+        !value ||
+        !new TextDecoder().decode(value).includes("ready")
+      ) {
+        throw new Error("Deferred backend did not acknowledge readiness.");
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  })();
+
+  return {
+    process: child,
+    ready,
+    exit() {
+      if (child.exitCode === null) child.stdin.write("exit\n");
+    },
+  };
+}
+
+function controlledStopService(
+  options: Pick<ManagedServiceOptions, "startGuardian"> = {},
+): {
+  service: ManagedService;
+  events: string[];
+  memory: ReturnType<typeof recordingMemorySafety>;
+  backends: DeferredBackend[];
+  firstBackend: Promise<DeferredBackend>;
+  stopStarted: Promise<void>;
+  restoreFetch(): void;
+  otel: ReturnType<typeof createOtelRuntime>;
+} {
+  const events: string[] = [];
+  const memory = recordingMemorySafety();
+  const backends: DeferredBackend[] = [];
+  let publishFirstBackend: (backend: DeferredBackend) => void = () => {
+    throw new Error("First backend barrier was not initialized.");
+  };
+  const firstBackend = new Promise<DeferredBackend>((resolve) => {
+    publishFirstBackend = resolve;
+  });
+  let notifyStopStarted: () => void = () => {
+    throw new Error("Stop barrier was not initialized.");
+  };
+  const stopStarted = new Promise<void>((resolve) => {
+    notifyStopStarted = resolve;
+  });
+  const originalFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: async () => new Response(null, { status: 200 }),
+  });
+  const otel = createOtelRuntime({
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: "disabled",
+  });
+  return {
+    service: new ManagedService({
+      runtimeId: "llm:stop:1",
+      modality: "llm",
+      component: "llama-server",
+      healthUrl: "http://127.0.0.1:1/health",
+      logger: recordingLogger(events, (eventName) => {
+        if (eventName === "backend.stopping") notifyStopStarted();
+      }),
+      launch: async () => testLaunchPlan("llm:stop:1"),
+      start: async () => {
+        const backend = deferredBackend();
+        backends.push(backend);
+        if (backends.length === 1) publishFirstBackend(backend);
+        await backend.ready;
+        return backend.process;
+      },
+      memorySafety: memory.controller,
+      otel,
+      ...options,
+    }),
+    events,
+    memory,
+    backends,
+    firstBackend,
+    stopStarted,
+    restoreFetch() {
+      Object.defineProperty(globalThis, "fetch", {
+        configurable: true,
+        value: originalFetch,
+      });
+    },
+    otel,
+  };
+}
+
+function stopEvents(events: string[]): string[] {
+  return events.filter(
+    (event) => event === "backend.stopping" || event === "backend.stopped",
+  );
+}
+
+test("kill reports a managed backend stop only after its process exits", async () => {
+  const { service, events, memory, backends, restoreFetch, otel } =
+    controlledStopService();
+  try {
+    await service.kill();
+    expect(stopEvents(events)).toEqual([]);
+
+    await service.ensureRunning();
+    const backend = backends[0];
+    if (!backend) throw new Error("Expected a running backend.");
+    const stopping = service.kill();
+
+    expect(stopEvents(events)).toEqual(["backend.stopping"]);
+    expect(memory.releases).toEqual([]);
+    expect(service.state()).toBe("stopping");
+
+    backend.exit();
+    await stopping;
+
+    expect(stopEvents(events)).toEqual(["backend.stopping", "backend.stopped"]);
+    expect(memory.releases).toEqual(["llm:stop:1"]);
+    expect(service.state()).toBe("idle");
+  } finally {
+    await service.shutdown();
+    restoreFetch();
+    await otel.shutdown();
+  }
+});
+
+test("guardian startup failure stops the registered backend before release", async () => {
+  let guardianStarts = 0;
+  const {
+    service,
+    events,
+    memory,
+    firstBackend,
+    stopStarted,
+    restoreFetch,
+    otel,
+  } = controlledStopService({
+    startGuardian() {
+      guardianStarts += 1;
+      throw new Error("guardian spawn failed");
+    },
+  });
+  try {
+    const starting = service.ensureRunning();
+    const backend = await firstBackend;
+    await stopStarted;
+
+    expect(guardianStarts).toBe(1);
+    expect(memory.releases).toEqual([]);
+    backend.exit();
+    await backend.process.exited;
+    await expect(starting).rejects.toThrow("guardian spawn failed");
+
+    expect(memory.releases).toEqual(["llm:stop:1"]);
+    expect(stopEvents(events)).toEqual(["backend.stopping", "backend.stopped"]);
+  } finally {
+    await service.shutdown();
+    restoreFetch();
+    await otel.shutdown();
+  }
+});
+
+test("guardian stop failure does not report backend cleanup complete", async () => {
+  let guardian: Bun.Subprocess | undefined;
+  let restoreGuardianKill: (() => void) | undefined;
+  const { service, events, memory, backends, restoreFetch, otel } =
+    controlledStopService({
+      startGuardian() {
+        guardian = Bun.spawn(["/bin/sleep", "60"]);
+        const originalKill = guardian.kill;
+        Object.defineProperty(guardian, "kill", {
+          configurable: true,
+          value() {
+            throw new Error("guardian kill denied");
+          },
+        });
+        restoreGuardianKill = () => {
+          Object.defineProperty(guardian, "kill", {
+            configurable: true,
+            value: originalKill,
+          });
+        };
+        return guardian;
+      },
+    });
+  try {
+    await service.ensureRunning();
+    const backend = backends[0];
+    if (!backend) throw new Error("Expected a running backend.");
+    const stopping = service.kill();
+    backend.exit();
+
+    await expect(stopping).rejects.toThrow(
+      "Failed to stop guardian for managed llama-server process.",
+    );
+    expect(stopEvents(events)).toEqual(["backend.stopping"]);
+    expect(memory.releases).toEqual(["llm:stop:1"]);
+    expect(guardian?.exitCode).toBeNull();
+  } finally {
+    restoreGuardianKill?.();
+    if (guardian?.exitCode === null) guardian.kill(9);
+    await guardian?.exited;
+    await service.shutdown().catch(() => {});
+    restoreFetch();
+    await otel.shutdown();
+  }
+});
+
+test("concurrent kill and shutdown share one managed backend stop", async () => {
+  const { service, events, memory, backends, restoreFetch, otel } =
+    controlledStopService();
+  try {
+    await service.ensureRunning();
+    const backend = backends[0];
+    if (!backend) throw new Error("Expected a running backend.");
+    const killing = service.kill();
+    const shuttingDown = service.shutdown();
+
+    expect(stopEvents(events)).toEqual(["backend.stopping"]);
+    backend.exit();
+    await Promise.all([killing, shuttingDown]);
+
+    expect(stopEvents(events)).toEqual(["backend.stopping", "backend.stopped"]);
+    expect(memory.releases).toEqual(["llm:stop:1"]);
+  } finally {
+    await service.shutdown();
+    restoreFetch();
+    await otel.shutdown();
+  }
+});
+
+test("kill failure retains the managed reservation and does not report stopped", async () => {
+  const { service, events, memory, backends, restoreFetch, otel } =
+    controlledStopService();
+  let restoreKill: (() => void) | undefined;
+  try {
+    await service.ensureRunning();
+    const backend = backends[0];
+    if (!backend) throw new Error("Expected a running backend.");
+    const originalKill = backend.process.kill;
+    Object.defineProperty(backend.process, "kill", {
+      configurable: true,
+      value() {
+        throw new Error("kill denied");
+      },
+    });
+    restoreKill = () => {
+      Object.defineProperty(backend.process, "kill", {
+        configurable: true,
+        value: originalKill,
+      });
+    };
+
+    await expect(service.kill()).rejects.toThrow(
+      "Failed to stop managed llama-server process.",
+    );
+    expect(stopEvents(events)).toEqual(["backend.stopping"]);
+    expect(memory.releases).toEqual([]);
+    expect(service.state()).toBe("failed");
+
+    backend.exit();
+    await backend.process.exited;
+  } finally {
+    restoreKill?.();
+    await service.shutdown();
+    restoreFetch();
+    await otel.shutdown();
+  }
+});
+
+test("ensureRunning waits for a pending managed backend stop", async () => {
+  const { service, backends, restoreFetch, otel } = controlledStopService();
+  try {
+    await service.ensureRunning();
+    const first = backends[0];
+    if (!first) throw new Error("Expected a running backend.");
+    const stopping = service.kill();
+    const ensuring = service.ensureRunning();
+
+    expect(backends).toHaveLength(1);
+    first.exit();
+    await stopping;
+    await ensuring;
+    expect(backends).toHaveLength(2);
+
+    const second = backends[1];
+    if (!second) throw new Error("Expected a replacement backend.");
+    const shuttingDown = service.shutdown();
+    second.exit();
+    await shuttingDown;
+  } finally {
+    await service.shutdown();
+    restoreFetch();
+    await otel.shutdown();
+  }
+});
 
 test("backend health failure exports an error model-load span", async () => {
   const traces: Uint8Array[] = [];
