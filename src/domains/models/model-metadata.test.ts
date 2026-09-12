@@ -28,6 +28,14 @@ function runtimeSnapshots() {
       runtimeId: "llm:test:1",
       admission: { kind: "unknown" },
       configuredSlots: 4,
+      queue: {
+        waiting: 0,
+        active: 0,
+        immediateDispatchAvailable: true,
+        capacity: 6,
+        maxWaitMs: 60_000,
+        accepting: true,
+      },
     }),
     stt: createRuntimeLifecycleSnapshot({
       modality: "stt",
@@ -85,7 +93,17 @@ test("projects catalog facts separately from observed device state", () => {
     device: {
       selected: true,
       installed: true,
-      runtime: { configured: true, state: "running", effectiveSlots: 4 },
+      runtime: {
+        configured: true,
+        state: "running",
+        executionSlots: 4,
+        activeAdmissions: 0,
+        availableExecutionSlots: 4,
+        immediateDispatchAvailable: null,
+        queuedRequests: 0,
+        waitingCapacity: 6,
+        availableWaitingCapacity: 6,
+      },
     },
   });
   expect(metadata.catalog.artifacts[0]?.sha256).toMatch(/^[a-f0-9]{64}$/);

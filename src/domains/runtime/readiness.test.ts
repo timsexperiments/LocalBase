@@ -44,6 +44,7 @@ function openQueue(
   return {
     waiting: input.waiting ?? 0,
     active: input.active ?? 0,
+    immediateDispatchAvailable: input.immediateDispatchAvailable ?? true,
     capacity: input.capacity ?? 2,
     maxWaitMs: input.maxWaitMs ?? 60_000,
     accepting: input.accepting ?? true,

@@ -204,6 +204,9 @@ export class RuntimeReconciler {
           modality,
           (() => {
             const applied = this.appliedSnapshots[modality];
+            const modelId = this.supervisors.get(modality)
+              ? activeModel(modality, applied.config) || null
+              : null;
             return this.supervisors.lifecycleSnapshot({
               modality,
               configured: configuredRuntimeModality(
@@ -211,11 +214,9 @@ export class RuntimeReconciler {
                 applied.config,
                 this.ownership,
               ),
-              modelId: this.supervisors.get(modality)
-                ? activeModel(modality, applied.config) || null
-                : null,
+              modelId,
               admission: this.barriers[modality].snapshot(),
-              queue: this.queues[modality].snapshot(),
+              queue: this.queues[modality].snapshot(modelId ?? undefined),
             });
           })(),
         ]),
