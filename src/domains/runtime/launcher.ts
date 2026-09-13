@@ -1,4 +1,4 @@
-import { dirname, resolve } from "node:path";
+import { delimiter, dirname, resolve } from "node:path";
 import type { ParallelAllocation } from "../config/parallel";
 import { ensureBinary } from "../../manager/binaries";
 import type {
@@ -11,6 +11,19 @@ export type LlamaServerArgs = {
   args: string[];
   parallel: ParallelAllocation;
 };
+
+export function sdServerEnvironment(
+  binaryPath: string,
+  platform = process.platform,
+): NodeJS.ProcessEnv {
+  if (platform !== "linux") return process.env;
+  return {
+    ...process.env,
+    LD_LIBRARY_PATH: [dirname(binaryPath), process.env.LD_LIBRARY_PATH]
+      .filter((path): path is string => Boolean(path))
+      .join(delimiter),
+  };
+}
 
 function logAutoParallel(
   parallel: ParallelAllocation,
@@ -125,6 +138,7 @@ export async function startSdServerProcess(
       stderr: "pipe",
       stdin: "inherit",
       cwd: dirname(binPath),
+      env: sdServerEnvironment(binPath),
     },
   );
 }
