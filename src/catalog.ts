@@ -127,10 +127,11 @@ const CATALOG_SOURCE = [
     inputModalities: ["text"],
     outputModalities: ["text"],
     contextWindowTokens: 32768,
-    features: ["tool-calling", "code-generation", "code-editing"],
+    features: ["code-generation", "code-editing"],
     commercialStatus: "open",
     catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
-    notes: "Ultra-fast autocomplete baseline and tab completion model.",
+    notes:
+      "Ultra-fast autocomplete baseline and tab completion model. This artifact did not emit protocol tool calls during forced qualification.",
   },
   {
     modelId: "qwen2.5-coder-3b-instruct-q4_k_m",
