@@ -1,15 +1,20 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { delimiter, join, relative } from "node:path";
 import { byId } from "../../catalog";
 import { defaultConfig, type LocalBaseConfig } from "../../manager";
 import { compileRuntimeFixture } from "../../test/runtime-fixture";
 import { resolveImageLaunchPlan, resolveLlmLaunchPlan } from "./launch-plan";
-import { startLlamaServerProcess, startSdServerProcess } from "./launcher";
+import {
+  sdServerEnvironment,
+  startLlamaServerProcess,
+  startSdServerProcess,
+} from "./launcher";
 
 const roots: string[] = [];
 const originalPath = process.env.PATH;
+const originalLibraryPath = process.env.LD_LIBRARY_PATH;
 
 async function createLlamaLaunchFixture(
   parallel: LocalBaseConfig["parallel"],
@@ -73,9 +78,22 @@ async function readCapturedArgs(argsPath: string): Promise<string[]> {
 
 afterEach(() => {
   process.env.PATH = originalPath;
+  process.env.LD_LIBRARY_PATH = originalLibraryPath;
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("puts sd-server libraries before inherited Linux runtime libraries", () => {
+  const binaryPath = "/opt/localbase/sd/sd-server";
+  process.env.LD_LIBRARY_PATH = [
+    "/opt/localbase/llama",
+    "/opt/localbase/whisper",
+  ].join(delimiter);
+
+  expect(sdServerEnvironment(binaryPath, "linux").LD_LIBRARY_PATH).toBe(
+    ["/opt/localbase/sd", process.env.LD_LIBRARY_PATH].join(delimiter),
+  );
 });
 
 describe.serial("llama runtime launch", () => {
@@ -131,10 +149,25 @@ describe.serial("image runtime launch", () => {
     const userBinDir = join(root, "user-bin");
     const binPath = join(userBinDir, "sd-server");
     const argsPath = join(userBinDir, "sd-server.args");
+    const environmentPath = join(userBinDir, "sd-server.environment");
     mkdirSync(config.imageModelsDir, { recursive: true });
     mkdirSync(userBinDir, { recursive: true });
     await Bun.write(modelPath, "model placeholder");
-    await compileRuntimeFixture(binPath, argsPath);
+    process.env.LD_LIBRARY_PATH = [
+      join(root, "llama-libraries"),
+      join(root, "whisper-libraries"),
+    ].join(delimiter);
+    await compileRuntimeFixture(
+      binPath,
+      argsPath,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      false,
+      undefined,
+      environmentPath,
+    );
     process.env.PATH = `${relative(process.cwd(), userBinDir)}:${originalPath ?? ""}`;
 
     const nativeProcess = await startSdServerProcess(
@@ -161,6 +194,11 @@ describe.serial("image runtime launch", () => {
         "--listen-port",
         "18002",
       ]);
+      expect(await Bun.file(environmentPath).text()).toBe(
+        process.platform === "linux"
+          ? [userBinDir, process.env.LD_LIBRARY_PATH].join(delimiter)
+          : process.env.LD_LIBRARY_PATH,
+      );
     } finally {
       nativeProcess.kill();
       expect(await nativeProcess.exited).toBe(0);
