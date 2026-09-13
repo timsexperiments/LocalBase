@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { byId } from "../../catalog";
 import { defaultConfig, type LocalBaseConfig } from "../../manager";
 import { compileRuntimeFixture } from "../../test/runtime-fixture";
-import { resolveLlmLaunchPlan } from "./launch-plan";
-import { startLlamaServerProcess } from "./launcher";
+import { resolveImageLaunchPlan, resolveLlmLaunchPlan } from "./launch-plan";
+import { startLlamaServerProcess, startSdServerProcess } from "./launcher";
 
 const roots: string[] = [];
 const originalPath = process.env.PATH;
@@ -118,5 +118,52 @@ describe.serial("llama runtime launch", () => {
     ).toEqual([
       "🤖 Dynamic Concurrency: Calculated 2 parallel slots based on 9.5 GB VRAM and context memory constraints. 4096 tokens per slot.",
     ]);
+  });
+});
+
+describe.serial("image runtime launch", () => {
+  test("starts a user-managed runtime without a managed bin directory", async () => {
+    const root = mkdtempSync(join(tmpdir(), "local-base-image-launch-"));
+    roots.push(root);
+    const config = defaultConfig(root, 12);
+    const modelFile = "model.safetensors";
+    const modelPath = join(config.imageModelsDir, modelFile);
+    const userBinDir = join(root, "user-bin");
+    const binPath = join(userBinDir, "sd-server");
+    const argsPath = join(userBinDir, "sd-server.args");
+    mkdirSync(config.imageModelsDir, { recursive: true });
+    mkdirSync(userBinDir, { recursive: true });
+    await Bun.write(modelPath, "model placeholder");
+    await compileRuntimeFixture(binPath, argsPath);
+    process.env.PATH = `${relative(process.cwd(), userBinDir)}:${originalPath ?? ""}`;
+
+    const nativeProcess = await startSdServerProcess(
+      resolveImageLaunchPlan({
+        runtimeId: "image:test:1",
+        root,
+        modelsDirectory: config.imageModelsDir,
+        modelId: "dreamshaper-v8",
+        modelFile,
+        host: "127.0.0.1",
+        port: 18002,
+        modelRequirementGb: 4,
+        artifactBytes: 2 * 1024 ** 3,
+      }),
+    );
+    try {
+      await readCapturedArgs(argsPath);
+      expect(nativeProcess.exitCode).toBeNull();
+      expect(await readCapturedArgs(argsPath)).toEqual([
+        "-m",
+        modelPath,
+        "--listen-ip",
+        "127.0.0.1",
+        "--listen-port",
+        "18002",
+      ]);
+    } finally {
+      nativeProcess.kill();
+      expect(await nativeProcess.exited).toBe(0);
+    }
   });
 });
