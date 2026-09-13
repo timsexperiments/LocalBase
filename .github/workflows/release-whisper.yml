@@ -200,7 +200,7 @@ jobs:
           gh release create "$RUNTIME_TAG"
           release/whisper-server-macos-arm64.zip
           release/whisper-server-linux-x64.tar.gz release/checksums.txt
-          --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$RUNTIME_TAG"
+          --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$RUNTIME_TAG" --latest=false
 
   sync-manifest:
     name: Synchronize managed runtime manifest
