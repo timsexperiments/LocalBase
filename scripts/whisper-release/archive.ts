@@ -178,7 +178,7 @@ function parseCodeSignDetails(output: string) {
     (match) => match[1]!.trim(),
   );
   const teamIdentifier = /^TeamIdentifier=(.+)$/m.exec(output)?.[1]?.trim();
-  const codeDirectory = /^CodeDirectory=(.+)$/m.exec(output)?.[1]?.trim();
+  const codeDirectory = /^CodeDirectory[\t ]+(.+)$/m.exec(output)?.[1]?.trim();
   return codeSignDetailsSchema.parse({
     authorities,
     teamIdentifier,
