@@ -39,9 +39,7 @@ export type LlmLaunchPlan = LaunchPlanBase<"llm", "llama-server"> & {
 
 export type SttLaunchPlan = LaunchPlanBase<"stt", "whisper-server">;
 
-export type ImageLaunchPlan = LaunchPlanBase<"image", "sd-server"> & {
-  readonly workingDirectory: string;
-};
+export type ImageLaunchPlan = LaunchPlanBase<"image", "sd-server">;
 
 export type RuntimeLaunchPlan = LlmLaunchPlan | SttLaunchPlan | ImageLaunchPlan;
 
@@ -184,7 +182,6 @@ export function resolveImageLaunchPlan(input: {
     host: input.host,
     port: input.port,
     healthUrl: `http://${input.host}:${input.port}/`,
-    workingDirectory: join(input.root, "bin"),
     memoryDemand: runtimeMemoryDemand(input),
   });
 }

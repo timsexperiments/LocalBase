@@ -1,3 +1,4 @@
+import { dirname, resolve } from "node:path";
 import type { ParallelAllocation } from "../config/parallel";
 import { ensureBinary } from "../../manager/binaries";
 import type {
@@ -106,7 +107,9 @@ export async function startSdServerProcess(
     throw new Error(`Model file not found: ${plan.modelPath}`);
   }
 
-  const binPath = await ensureBinary({ root: plan.root }, plan.component);
+  const binPath = resolve(
+    await ensureBinary({ root: plan.root }, plan.component),
+  );
   return Bun.spawn(
     [
       binPath,
@@ -121,7 +124,7 @@ export async function startSdServerProcess(
       stdout: "pipe",
       stderr: "pipe",
       stdin: "inherit",
-      cwd: plan.workingDirectory,
+      cwd: dirname(binPath),
     },
   );
 }
