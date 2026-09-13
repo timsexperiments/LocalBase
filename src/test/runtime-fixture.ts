@@ -21,6 +21,7 @@ export async function compileRuntimeFixture(
   launchReportUrl?: string,
   httpBackend = false,
   firstEventReportUrl?: string,
+  environmentPath?: string,
 ): Promise<void> {
   const define: Record<string, string> = {};
   if (argsPath) {
@@ -42,6 +43,10 @@ export async function compileRuntimeFixture(
   if (firstEventReportUrl) {
     define.__LOCALBASE_TEST_FIRST_EVENT_REPORT_URL__ =
       JSON.stringify(firstEventReportUrl);
+  }
+  if (environmentPath) {
+    define["process.env.LOCALBASE_TEST_ENVIRONMENT_PATH"] =
+      JSON.stringify(environmentPath);
   }
   const result = await Bun.build({
     entrypoints: [runtimeFixtureEntrypoint],
@@ -68,6 +73,7 @@ function runtimePort(args: string[]): number {
 async function runRuntimeFixture(): Promise<void> {
   const args = Bun.argv.slice(2);
   const argsPath = process.env.LOCALBASE_TEST_ARGS_PATH;
+  const environmentPath = process.env.LOCALBASE_TEST_ENVIRONMENT_PATH;
   const launchesPath =
     typeof __LOCALBASE_TEST_LAUNCHES_PATH__ === "string"
       ? __LOCALBASE_TEST_LAUNCHES_PATH__
@@ -82,6 +88,9 @@ async function runRuntimeFixture(): Promise<void> {
   }
 
   if (argsPath) await Bun.write(argsPath, `${args.join("\n")}\n`);
+  if (environmentPath) {
+    await Bun.write(environmentPath, process.env.LD_LIBRARY_PATH ?? "");
+  }
   if (launchesPath) {
     appendFileSync(launchesPath, `${JSON.stringify(args)}\n`);
   }
