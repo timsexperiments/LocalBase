@@ -5,6 +5,8 @@ on:
     paths:
       - .github/workflows/release-whisper.yml
       - scripts/build-whisper.ts
+      - scripts/test-whisper-gpu.ts
+      - scripts/whisper-patches/**
       - scripts/whisper-release.ts
       - scripts/whisper-release/**
   workflow_dispatch:

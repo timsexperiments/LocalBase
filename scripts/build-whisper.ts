@@ -58,6 +58,15 @@ async function main() {
   console.log("Extracting verified whisper.cpp source...");
   await $`tar --extract --gzip --file ${archivePath} --directory ${root}`;
 
+  if (process.platform === "linux") {
+    const patch = join(
+      workspace,
+      "scripts/whisper-patches/require-gpu-pci.patch",
+    );
+    await $`git -C ${sourcePath} apply --check ${patch}`;
+    await $`git -C ${sourcePath} apply ${patch}`;
+  }
+
   console.log("Configuring whisper-server...");
   const linuxVulkanFlags =
     process.platform === "linux"
@@ -78,6 +87,9 @@ async function main() {
   await Bun.write(outputPath, Bun.file(binaryPath));
   await Bun.write(licenseOutputPath, Bun.file(join(sourcePath, "LICENSE")));
   await $`chmod +x ${outputPath}`;
+  if (process.platform === "linux") {
+    await $`bun run ${join(workspace, "scripts/test-whisper-gpu.ts")} ${sourcePath} ${outputPath}`;
+  }
   console.log(`Built verified whisper-server: ${outputPath}`);
 }
 
