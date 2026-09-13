@@ -597,14 +597,14 @@ function prepareChatCompletionRequest(
   const toolChoice = request.tool_choice;
   if (!toolChoice || typeof toolChoice !== "object") return request;
 
-  const selectedTool = request.tools?.find(
-    (tool) => tool.function.name === toolChoice.function.name,
-  );
-  if (!selectedTool) return request;
+  const selectedTools =
+    request.tools?.filter(
+      (tool) => tool.function.name === toolChoice.function.name,
+    ) ?? [];
 
   return {
     ...request,
-    tools: [selectedTool],
+    tools: selectedTools,
     tool_choice: "required",
   };
 }

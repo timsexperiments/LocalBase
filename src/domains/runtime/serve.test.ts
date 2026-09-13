@@ -2346,6 +2346,44 @@ describe("API gateway integration", () => {
       expectedPath: "tool_choice.function.name",
     },
     {
+      name: "chat completions require named tool choices to declare tools",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+          tool_choice: {
+            type: "function",
+            function: { name: "weather" },
+          },
+        }),
+      },
+      expectedPath: "tool_choice.function.name",
+    },
+    {
+      name: "chat completions reject ambiguous named tool choices",
+      path: "/v1/chat/completions",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+          tools: [
+            { type: "function", function: { name: "weather" } },
+            { type: "function", function: { name: "weather" } },
+          ],
+          tool_choice: {
+            type: "function",
+            function: { name: "weather" },
+          },
+        }),
+      },
+      expectedPath: "tool_choice.function.name",
+    },
+    {
       name: "chat completions reject arbitrary tool choices",
       path: "/v1/chat/completions",
       init: {
