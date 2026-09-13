@@ -424,6 +424,13 @@ const functionToolSchema = z
   })
   .strict();
 
+const namedToolChoiceSchema = z
+  .object({
+    type: z.literal("function"),
+    function: z.object({ name: z.string().min(1) }).strict(),
+  })
+  .strict();
+
 const modelIdSchema = z
   .string()
   .refine((value) => value.trim().length > 0, "model must not be empty");
@@ -562,18 +569,45 @@ const chatCompletionRequestSchema = z
     response_format: chatResponseFormatSchema.optional(),
     tools: z.array(functionToolSchema).optional(),
     tool_choice: z
-      .union([
-        z.enum(["none", "auto", "required"]),
-        z
-          .object({
-            type: z.literal("function"),
-            function: z.object({ name: z.string().min(1) }).strict(),
-          })
-          .strict(),
-      ])
+      .union([z.enum(["none", "auto", "required"]), namedToolChoiceSchema])
       .optional(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((request, context) => {
+    const toolChoice = request.tool_choice;
+    if (!toolChoice || typeof toolChoice !== "object") return;
+    const matchingTools =
+      request.tools?.filter(
+        (tool) => tool.function.name === toolChoice.function.name,
+      ) ?? [];
+    if (matchingTools.length === 1) return;
+    context.addIssue({
+      code: "custom",
+      path: ["tool_choice", "function", "name"],
+      message:
+        "tool_choice.function.name must name exactly one declared function tool.",
+    });
+  });
+
+type ChatCompletionRequest = z.output<typeof chatCompletionRequestSchema>;
+
+function prepareChatCompletionRequest(
+  request: ChatCompletionRequest,
+): ChatCompletionRequest {
+  const toolChoice = request.tool_choice;
+  if (!toolChoice || typeof toolChoice !== "object") return request;
+
+  const selectedTool = request.tools?.find(
+    (tool) => tool.function.name === toolChoice.function.name,
+  );
+  if (!selectedTool) return request;
+
+  return {
+    ...request,
+    tools: [selectedTool],
+    tool_choice: "required",
+  };
+}
 
 const imageGenerationRequestSchema = z
   .object({
@@ -2559,6 +2593,7 @@ export async function runServe(
         chatCompletionRequestSchema,
       );
       if (!parsed.success) return parsed.response;
+      const backendRequest = prepareChatCompletionRequest(parsed.data);
       const preparationStartedAt = performance.now();
       const structuredOutput = prepareStructuredOutput(
         parsed.data.response_format,
@@ -2622,7 +2657,7 @@ export async function runServe(
         request.signal,
         async () =>
           await proxyRequest(
-            requestWithJsonBody(request, parsed.data),
+            requestWithJsonBody(request, backendRequest),
             factory.baseUrl("llm", selected.value.admission.snapshot),
             undefined,
             chatCompletionResponseSchema,
