@@ -55,7 +55,7 @@ describe("Vercel AI SDK tools and structured output conformance", () => {
     { timeout: 10_000 },
   );
 
-  test("forwards strict tool schemas and every supported tool choice", async () => {
+  test("normalizes a named tool choice and leaves string choices unchanged", async () => {
     const localbase = createLocalBaseAiSdkProvider(gateway);
     const tools = {
       weather: tool({
@@ -66,6 +66,11 @@ describe("Vercel AI SDK tools and structured output conformance", () => {
         }),
         strict: true,
       }),
+      time: tool({
+        description: "Gets the local time.",
+        inputSchema: z.object({ timezone: z.string() }),
+        strict: true,
+      }),
     };
     const choices = [
       { choice: "auto" as const, expected: "auto" },
@@ -73,7 +78,7 @@ describe("Vercel AI SDK tools and structured output conformance", () => {
       { choice: "required" as const, expected: "required" },
       {
         choice: { type: "tool" as const, toolName: "weather" as const },
-        expected: { type: "function", function: { name: "weather" } },
+        expected: "required",
       },
     ];
     const offset = gateway.upstreamRequests.length;
@@ -112,6 +117,22 @@ describe("Vercel AI SDK tools and structured output conformance", () => {
           }),
         }),
       }),
+      expect.objectContaining({
+        type: "function",
+        function: expect.objectContaining({
+          name: "time",
+          description: "Gets the local time.",
+        }),
+      }),
+    ]);
+    for (const request of requests.slice(0, 3)) {
+      expect(request.tools).toEqual(requests[0]?.tools);
+    }
+    expect(requests[3]?.tools).toEqual([
+      expect.objectContaining({
+        type: "function",
+        function: expect.objectContaining({ name: "weather" }),
+      }),
     ]);
   });
 
@@ -128,6 +149,7 @@ describe("Vercel AI SDK tools and structured output conformance", () => {
           return { city, temperature: 73 };
         }),
       },
+      toolChoice: { type: "tool", toolName: "weather" },
       stopWhen: stepCountIs(2),
     });
 
@@ -135,6 +157,12 @@ describe("Vercel AI SDK tools and structured output conformance", () => {
     expect(calls).toEqual(["Austin"]);
     const requests = upstreamBodies(gateway, offset);
     expect(requests).toHaveLength(2);
+    expect(requests[0]?.tool_choice).toBe("required");
+    expect(requests[0]?.tools).toEqual([
+      expect.objectContaining({
+        function: expect.objectContaining({ name: "weather" }),
+      }),
+    ]);
     expect(requests[1]?.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
