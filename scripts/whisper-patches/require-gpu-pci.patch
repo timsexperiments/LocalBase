@@ -5,21 +5,21 @@
          bool  flash_attn;
          int   gpu_device;  // CUDA device
 +        bool  require_gpu; // fail initialization instead of running CPU-only
- 
+
          // [EXPERIMENTAL] Token-level timestamps with DTW
          bool dtw_token_timestamps;
 --- a/src/whisper.cpp
 +++ b/src/whisper.cpp
 @@ -1330,6 +1330,11 @@
      std::vector<ggml_backend_t> result;
- 
+
      ggml_backend_t backend_gpu = whisper_backend_init_gpu(params);
 +
 +    if (params.require_gpu && !backend_gpu) {
 +        WHISPER_LOG_ERROR("%s: required GPU initialization failed; CPU-only fallback refused\n", __func__);
 +        return {};
 +    }
- 
+
      if (backend_gpu) {
          result.push_back(backend_gpu);
 @@ -3608,6 +3613,7 @@
@@ -27,19 +27,19 @@
          /*.flash_attn           =*/ true,
          /*.gpu_device           =*/ 0,
 +        /*.require_gpu          =*/ false,
- 
+
          /*.dtw_token_timestamps =*/ false,
          /*.dtw_aheads_preset    =*/ WHISPER_AHEADS_NONE,
 --- a/examples/server/server.cpp
 +++ b/examples/server/server.cpp
 @@ -2,6 +2,7 @@
  #include "common-whisper.h"
- 
+
  #include "whisper.h"
 +#include "require-gpu-pci.h"
  #include "httplib.h"
  #include "json.hpp"
- 
+
 @@ -105,6 +106,7 @@
      bool use_gpu                   = true;
      bool flash_attn                = true;
@@ -92,7 +92,7 @@
 +        cparams.require_gpu = true;
 +        fprintf(stderr, "required Vulkan GPU PCI %s, GGML GPU ordinal %d\n", params.require_gpu_pci.c_str(), cparams.gpu_device);
 +    }
- 
+
      if (!params.dtw.empty()) {
          cparams.dtw_token_timestamps = true;
 --- a/examples/server/require-gpu-pci.h
