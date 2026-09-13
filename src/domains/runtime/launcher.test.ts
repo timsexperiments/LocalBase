@@ -53,6 +53,17 @@ describe.serial("Whisper GPU launch contract", () => {
       "Unsupported Linux Whisper runtime",
     );
     expect(await Bun.file(argsPath).exists()).toBeFalse();
+    await build("oversized");
+    await expect(requireWhisperGpuContract(binPath)).rejects.toThrow(
+      "Unsupported Linux Whisper runtime",
+    );
+    await build("hang");
+    await expect(requireWhisperGpuContract(binPath)).rejects.toThrow(
+      "Unsupported Linux Whisper runtime",
+    );
+    const hungPid = Number(await Bun.file(argsPath).text());
+    expect(Number.isSafeInteger(hungPid) && hungPid > 0).toBeTrue();
+    expect(() => process.kill(hungPid, 0)).toThrow();
     await build("localbase-whisper-gpu-pci-v1");
     await requireWhisperGpuContract(binPath);
     process.env.PATH = `${userBin}:${originalPath ?? ""}`;
@@ -92,7 +103,7 @@ describe.serial("Whisper GPU launch contract", () => {
         ? ["--require-gpu-pci", "0000:ab:1f.7"]
         : []),
     ]);
-  });
+  }, 15_000);
 });
 
 async function createLlamaLaunchFixture(

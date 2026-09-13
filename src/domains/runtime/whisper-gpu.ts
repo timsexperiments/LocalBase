@@ -1,5 +1,3 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import type { MemoryTopology } from "./memory-safety";
 
 export function whisperGpuArgs(
@@ -28,16 +26,31 @@ export function whisperGpuArgs(
 
 export async function requireWhisperGpuContract(binary: string): Promise<void> {
   try {
-    const { stdout } = await promisify(execFile)(
-      binary,
-      ["--localbase-capabilities"],
-      {
-        timeout: 5_000,
-        maxBuffer: 64 * 1024,
-        encoding: "utf8",
-      },
-    );
-    if (stdout.trim() === "localbase-whisper-gpu-pci-v1") return;
+    const child = Bun.spawn([binary, "--localbase-capabilities"], {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 5_000,
+      maxBuffer: 64 * 1024,
+      killSignal: "SIGKILL",
+    });
+    try {
+      const [code, stdout] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      if (
+        code === 0 &&
+        child.signalCode === null &&
+        stdout.trim() === "localbase-whisper-gpu-pci-v1"
+      )
+        return;
+    } finally {
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGKILL");
+      await child.exited;
+    }
   } catch {
     // Report one actionable error for old, broken, or unresponsive runtimes.
   }
