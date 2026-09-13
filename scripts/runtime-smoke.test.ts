@@ -9,11 +9,33 @@ import {
   resolveSmokeTarget,
   runRuntimeSmoke,
   transcribe,
+  rejectUnalignedWhisper,
   verifyCliOnlyArtifacts,
 } from "./runtime-smoke";
 
 const originalFetch = globalThis.fetch;
 const roots: string[] = [];
+
+test("GPU-less Linux smoke requires service-unavailable, never successful CPU transcription", async () => {
+  globalThis.fetch = (async () =>
+    Response.json(
+      {
+        error: {
+          message: "STT service is currently restarting or unavailable.",
+          type: "api_error",
+          param: null,
+          code: "service_unavailable",
+        },
+      },
+      { status: 503 },
+    )) as typeof fetch;
+  await rejectUnalignedWhisper("http://localhost");
+  globalThis.fetch = (async () =>
+    Response.json({ text: "CPU fallback" })) as typeof fetch;
+  await expect(rejectUnalignedWhisper("http://localhost")).rejects.toThrow(
+    "Expected fail-closed Linux STT",
+  );
+});
 
 afterEach(() => {
   globalThis.fetch = originalFetch;

@@ -39,7 +39,7 @@ export type MemoryTopology =
   | Readonly<{
       kind: "discrete";
       system: MemoryPool;
-      accelerators: readonly MemoryPool[];
+      accelerators: readonly (MemoryPool & { pciBusId?: string })[];
     }>;
 
 export type MemoryPressure = "normal" | "constrained" | "critical" | "unknown";
