@@ -36,6 +36,8 @@ CLI-only compatibility is available for macOS x64 and Linux ARM64. These release
 
 Linux managed-runtime releases are built and qualified against an Ubuntu 24.04-compatible userspace and require the GNU OpenMP runtime (`libgomp`, packaged as `libgomp1` on Ubuntu).
 
+Linux STT requires one monitored NVIDIA GPU and a PCI-capable LocalBase Whisper runtime. The runtime matches the admitted NVML device's PCI address to a unique discrete Vulkan backend, including on hosts with an Intel integrated GPU. Missing or ambiguous identity and GPU initialization failure stop STT; `--bypass-memory-check` does not enable CPU-only fallback. Older user-managed Whisper binaries are unsupported. This is not multi-discrete-GPU support. macOS keeps its Metal runtime.
+
 Managed runtime versions are pinned independently from LocalBase CLI releases.
 
 ## Getting started

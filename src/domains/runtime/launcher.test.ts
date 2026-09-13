@@ -5,16 +5,95 @@ import { delimiter, join, relative } from "node:path";
 import { byId } from "../../catalog";
 import { defaultConfig, type LocalBaseConfig } from "../../manager";
 import { compileRuntimeFixture } from "../../test/runtime-fixture";
-import { resolveImageLaunchPlan, resolveLlmLaunchPlan } from "./launch-plan";
+import {
+  resolveImageLaunchPlan,
+  resolveLlmLaunchPlan,
+  resolveSttLaunchPlan,
+} from "./launch-plan";
+import { requireWhisperGpuContract } from "./whisper-gpu";
 import {
   sdServerEnvironment,
   startLlamaServerProcess,
   startSdServerProcess,
+  startWhisperServerProcess,
 } from "./launcher";
 
 const roots: string[] = [];
 const originalPath = process.env.PATH;
 const originalLibraryPath = process.env.LD_LIBRARY_PATH;
+
+describe.serial("Whisper GPU launch contract", () => {
+  test("launches with the admitted PCI identity on Linux and unchanged arguments on macOS", async () => {
+    const root = mkdtempSync(join(tmpdir(), "local-base-whisper-launch-"));
+    roots.push(root);
+    const config = defaultConfig(root, 12);
+    const userBin = join(root, "user-bin");
+    const binPath = join(userBin, "whisper-server");
+    const argsPath = join(root, "args.json");
+    mkdirSync(userBin, { recursive: true });
+    mkdirSync(config.sttModelsDir, { recursive: true });
+    const modelPath = join(config.sttModelsDir, "model.bin");
+    await Bun.write(modelPath, "model placeholder");
+    const build = async (capability: string) => {
+      const result = await Bun.build({
+        entrypoints: [
+          join(import.meta.dir, "../../test/whisper-launch-fixture.ts"),
+        ],
+        target: "bun",
+        compile: { outfile: binPath },
+        define: {
+          __WHISPER_CAPABILITY__: JSON.stringify(capability),
+          __WHISPER_ARGS_PATH__: JSON.stringify(argsPath),
+        },
+      });
+      expect(result.success).toBeTrue();
+    };
+    await build("error: unknown argument: --localbase-capabilities");
+    await expect(requireWhisperGpuContract(binPath)).rejects.toThrow(
+      "Unsupported Linux Whisper runtime",
+    );
+    expect(await Bun.file(argsPath).exists()).toBeFalse();
+    await build("localbase-whisper-gpu-pci-v1");
+    await requireWhisperGpuContract(binPath);
+    process.env.PATH = `${userBin}:${originalPath ?? ""}`;
+    const child = await startWhisperServerProcess(
+      resolveSttLaunchPlan({
+        runtimeId: "stt:test:1",
+        root,
+        modelsDirectory: config.sttModelsDir,
+        modelId: "whisper-tiny",
+        modelRequirementGb: undefined,
+        modelFile: "model.bin",
+        host: "127.0.0.1",
+        port: 18001,
+        artifactBytes: 1,
+      }),
+      {
+        kind: "discrete",
+        system: { id: "system", capacityBytes: 1 },
+        accelerators: [
+          {
+            id: "nvidia:GPU-12345678-1234-1234-1234-123456789abc",
+            capacityBytes: 1,
+            pciBusId: "0000:ab:1f.7",
+          },
+        ],
+      },
+    );
+    expect(await child.exited).toBe(0);
+    expect(await Bun.file(argsPath).json()).toEqual([
+      "--model",
+      modelPath,
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "18001",
+      ...(process.platform === "linux"
+        ? ["--require-gpu-pci", "0000:ab:1f.7"]
+        : []),
+    ]);
+  });
+});
 
 async function createLlamaLaunchFixture(
   parallel: LocalBaseConfig["parallel"],

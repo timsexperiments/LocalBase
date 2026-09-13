@@ -1,6 +1,8 @@
 import { delimiter, dirname, resolve } from "node:path";
 import type { ParallelAllocation } from "../config/parallel";
 import { ensureBinary } from "../../manager/binaries";
+import type { MemoryTopology } from "./memory-safety";
+import { requireWhisperGpuContract, whisperGpuArgs } from "./whisper-gpu";
 import type {
   ImageLaunchPlan,
   LlmLaunchPlan,
@@ -89,12 +91,15 @@ export async function startLlamaServerProcess(
 
 export async function startWhisperServerProcess(
   plan: SttLaunchPlan,
+  topology: MemoryTopology,
 ): Promise<Bun.Subprocess> {
   if (!(await Bun.file(plan.modelPath).exists())) {
     throw new Error(`STT model file not found: ${plan.modelPath}`);
   }
 
+  const gpuArgs = whisperGpuArgs(process.platform, topology);
   const binPath = await ensureBinary({ root: plan.root }, plan.component);
+  if (process.platform === "linux") await requireWhisperGpuContract(binPath);
   return Bun.spawn(
     [
       binPath,
@@ -104,6 +109,7 @@ export async function startWhisperServerProcess(
       plan.host,
       "--port",
       String(plan.port),
+      ...gpuArgs,
     ],
     {
       stdout: "pipe",

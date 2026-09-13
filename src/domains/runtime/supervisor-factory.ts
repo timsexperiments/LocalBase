@@ -476,7 +476,10 @@ export function createRuntimeSupervisorFactory(
           if (plan.component !== "whisper-server") {
             throw new Error("Expected whisper-server launch plan.");
           }
-          return await startWhisperServerProcess(plan);
+          return await startWhisperServerProcess(
+            plan,
+            dependencies.memorySafety.topology,
+          );
         },
         memorySafety: dependencies.memorySafety,
         otel: ctx.otel,
