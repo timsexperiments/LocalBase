@@ -72,6 +72,10 @@ function runtimePort(args: string[]): number {
 
 async function runRuntimeFixture(): Promise<void> {
   const args = Bun.argv.slice(2);
+  if (args[0] === "--localbase-capabilities") {
+    console.log("localbase-whisper-gpu-pci-v1");
+    return;
+  }
   const argsPath = process.env.LOCALBASE_TEST_ARGS_PATH;
   const environmentPath = process.env.LOCALBASE_TEST_ENVIRONMENT_PATH;
   const launchesPath =

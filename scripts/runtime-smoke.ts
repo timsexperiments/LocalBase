@@ -451,6 +451,31 @@ export async function transcribe(baseUrl: string): Promise<void> {
   );
 }
 
+/** Linux CI has no monitored GPU; successful CPU transcription is a failure. */
+export async function rejectUnalignedWhisper(baseUrl: string): Promise<void> {
+  const body = new FormData();
+  body.append(
+    "file",
+    new Blob([silentWav()], { type: "audio/wav" }),
+    "silence.wav",
+  );
+  body.append("model", STT_MODEL_ID);
+  const response = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
+    method: "POST",
+    body,
+    signal: AbortSignal.timeout(STARTUP_TIMEOUT_MS),
+  });
+  const payload = await readJsonBody(response);
+  if (
+    response.status !== 503 ||
+    !temporaryStartupErrorSchema.safeParse(payload).success
+  ) {
+    throw new Error(
+      `Expected fail-closed Linux STT without a monitored GPU, received HTTP ${response.status}: ${describeBody(payload)}`,
+    );
+  }
+}
+
 async function stopGateway(gateway: RunningGateway): Promise<void> {
   if (gateway.process.exitCode === null) gateway.process.kill(15);
   try {
@@ -597,7 +622,10 @@ export async function runRuntimeSmoke(): Promise<void> {
         root,
       );
       await verifyDiagnosticsArchive(`${root}/diagnostics-running.zip`);
-      if (isManagedTarget(target)) {
+      if (target === "linux-x64") {
+        await rejectUnalignedWhisper(running.baseUrl);
+        await waitForClosedPort(running.sttPort);
+      } else if (isManagedTarget(target)) {
         await transcribe(running.baseUrl);
         await verifyInstalledArtifacts(root, target);
       } else {

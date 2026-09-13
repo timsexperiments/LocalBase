@@ -322,17 +322,7 @@ async function stopProcess(serverProcess: Bun.Subprocess): Promise<void> {
 
 async function compileGatewayCli(outputPath: string): Promise<void> {
   const build = Bun.spawn(
-    [
-      process.execPath,
-      "build",
-      "src/cli.ts",
-      "--compile",
-      "--no-compile-autoload-dotenv",
-      "--no-compile-autoload-bunfig",
-      "--target=bun",
-      "--asset-naming=[dir]/[name].[ext]",
-      `--outfile=${outputPath}`,
-    ],
+    [process.execPath, "run", "src/test/build-gateway-cli.ts", outputPath],
     { cwd: PROJECT_ROOT, stdout: "pipe", stderr: "pipe" },
   );
   const [exitCode, stdout, stderr] = await Promise.all([

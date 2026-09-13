@@ -12,6 +12,7 @@ export type LinuxMemoryInfo = Readonly<{
 
 export type LinuxAccelerator = Readonly<{
   id: string;
+  pciBusId?: string;
   totalBytes: number;
   readMemory(): Promise<
     Readonly<{ totalBytes: number; availableBytes: number }> | undefined
@@ -138,6 +139,29 @@ function createAmdAccelerators(
   });
 }
 
+/** Converts NVML's padded domain to GGML's PCI format without truncation. */
+export function parseNvmlPciInfo(info: Uint8Array): string | undefined {
+  if (info.byteLength !== 68) return undefined;
+  const busId = info.subarray(36, 68);
+  const end = busId.indexOf(0);
+  if (end < 0) return undefined;
+  const match =
+    /^(?:0000)?([0-9a-f]{4}):([0-9a-f]{2}):([01][0-9a-f])\.([0-7])$/i.exec(
+      new TextDecoder().decode(busId.subarray(0, end)),
+    );
+  if (!match) return undefined;
+  const [, domain, bus, device, fn] = match;
+  const fields = new DataView(info.buffer, info.byteOffset, info.byteLength);
+  if (
+    fields.getUint32(16, true) !== Number.parseInt(domain!, 16) ||
+    fields.getUint32(20, true) !== Number.parseInt(bus!, 16) ||
+    fields.getUint32(24, true) !== Number.parseInt(device!, 16) ||
+    (fields.getUint32(28, true) & 0xffff) !== 0x10de
+  )
+    return undefined;
+  return `${domain}:${bus}:${device}.${fn}`.toLowerCase();
+}
+
 function createNvmlAccelerators(): readonly LinuxAccelerator[] {
   let closeOnFailure: () => void = () => {};
   try {
@@ -159,7 +183,14 @@ function createNvmlAccelerators(): readonly LinuxAccelerator[] {
       nvmlDeviceGetUUID(handle: unknown, uuid: unknown, length: number): number;
     };
     type NvmlLibrary = { symbols: NvmlSymbols; close(): void };
+    type NvmlPciLibrary = {
+      symbols: {
+        nvmlDeviceGetPciInfo_v3(handle: unknown, pci: unknown): number;
+      };
+      close(): void;
+    };
     let library: NvmlLibrary | undefined;
+    let pciLibrary: NvmlPciLibrary | undefined;
     for (const path of paths) {
       try {
         library = dlopen(path, {
@@ -173,6 +204,13 @@ function createNvmlAccelerators(): readonly LinuxAccelerator[] {
           nvmlDeviceGetMemoryInfo: { args: ["ptr", "ptr"], returns: "i32" },
           nvmlDeviceGetUUID: { args: ["ptr", "ptr", "u32"], returns: "i32" },
         }) as unknown as NvmlLibrary;
+        try {
+          pciLibrary = dlopen(path, {
+            nvmlDeviceGetPciInfo_v3: { args: ["ptr", "ptr"], returns: "i32" },
+          }) as unknown as NvmlPciLibrary;
+        } catch {
+          // Keep memory measurement when PCI discovery is unsupported.
+        }
         break;
       } catch {
         // Try the next optional driver location.
@@ -180,6 +218,7 @@ function createNvmlAccelerators(): readonly LinuxAccelerator[] {
     }
     if (!library) return [];
     if (library.symbols.nvmlInit_v2() !== 0) {
+      pciLibrary?.close();
       library.close();
       return [];
     }
@@ -191,6 +230,7 @@ function createNvmlAccelerators(): readonly LinuxAccelerator[] {
       try {
         nvml.symbols.nvmlShutdown();
       } finally {
+        pciLibrary?.close();
         nvml.close();
       }
     };
@@ -230,8 +270,17 @@ function createNvmlAccelerators(): readonly LinuxAccelerator[] {
         return value || fallback;
       };
       const id = `nvidia:${decode(uuidBuffer, uuidResult, `index-${index}`)}`;
+      // nvmlPciInfo_t: 16-byte legacy ID, five uint32 fields, 32-byte bus ID.
+      // The UUID, PCI address, and memory sample all use this same handle.
+      const pciInfo = new Uint8Array(68);
+      const pciBusId =
+        count[0] === 1 &&
+        pciLibrary?.symbols.nvmlDeviceGetPciInfo_v3(handle, ptr(pciInfo)) === 0
+          ? parseNvmlPciInfo(pciInfo)
+          : undefined;
       devices.push({
         id,
+        ...(pciBusId ? { pciBusId } : {}),
         totalBytes: 0,
         async readMemory() {
           const memory = new BigUint64Array(3);
@@ -266,7 +315,11 @@ function createNvmlAccelerators(): readonly LinuxAccelerator[] {
 function acceleratorPools(accelerators: readonly LinuxAccelerator[]) {
   return accelerators
     .filter((accelerator) => accelerator.totalBytes >= 0)
-    .map(({ id, totalBytes }) => ({ id, capacityBytes: totalBytes }));
+    .map(({ id, totalBytes, pciBusId }) => ({
+      id,
+      capacityBytes: totalBytes,
+      ...(pciBusId ? { pciBusId } : {}),
+    }));
 }
 
 export function createLinuxHostMemoryProvider(

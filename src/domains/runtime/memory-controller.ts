@@ -108,6 +108,10 @@ export class MemorySafetyController {
     this.pressurePoolId = provider.topology.system.id;
   }
 
+  get topology() {
+    return this.provider.topology;
+  }
+
   async poll(): Promise<MemorySafetyTransition> {
     if (this.bypassAdmission) return this.currentTransition();
     return await this.exclusive(async () =>
