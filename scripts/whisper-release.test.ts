@@ -16,6 +16,10 @@ import {
 } from "./whisper-release";
 import { whisperLicenseFilename } from "./whisper-release/contracts";
 
+// Captured from /usr/bin/codesign --display --verbose=4 /Applications/ChatGPT.app.
+const codeDirectoryFixture =
+  "CodeDirectory v=20500 size=764 flags=0x10000(runtime) hashes=13+7 location=embedded\n";
+
 const directories: string[] = [];
 afterEach(() =>
   directories
@@ -141,7 +145,7 @@ test("qualifies canonical Linux and macOS archives", async () => {
           "Authority=Developer ID Application: LocalBase (TEAM123456)\n" +
           "Authority=Developer ID Certification Authority\n" +
           "TeamIdentifier=TEAM123456\n" +
-          "CodeDirectory=v=20500 size=1 flags=0x10000(runtime)\n",
+          codeDirectoryFixture,
       };
     },
   );
@@ -209,10 +213,34 @@ test("rejects noncanonical archive contents and signatures", async () => {
         stderr:
           "Authority=Developer ID Application: LocalBase (OTHER12345)\n" +
           "TeamIdentifier=OTHER12345\n" +
-          "CodeDirectory=v=20500 size=1 flags=0x10000(runtime)\n",
+          codeDirectoryFixture,
       }),
     ),
   ).rejects.toThrow("TEAM123456");
+
+  for (const [codeDirectory, message] of [
+    [
+      codeDirectoryFixture.replace("0x10000(runtime)", "0x0(none)"),
+      "hardened runtime",
+    ],
+    ["", "codeDirectory"],
+  ]) {
+    await expect(
+      qualifyWhisperArchive(
+        "macos-arm64",
+        macosArchive,
+        join(directory, "macos"),
+        "TEAM123456",
+        async () => ({
+          stdout: "",
+          stderr:
+            "Authority=Developer ID Application: LocalBase (TEAM123456)\n" +
+            "TeamIdentifier=TEAM123456\n" +
+            codeDirectory,
+        }),
+      ),
+    ).rejects.toThrow(message);
+  }
 });
 
 function releaseFixture(options?: { checksums?: string; assets?: unknown[] }): {
