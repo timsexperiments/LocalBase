@@ -1,6 +1,5 @@
 import { $ } from "bun";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { join, resolve } from "node:path";
 
 if (process.env.GITHUB_ACTIONS !== "true" || !process.env.GITHUB_WORKSPACE) {
@@ -32,22 +31,33 @@ await $`${testBinary}`;
 
 const server = process.argv[3];
 if (!server) throw new Error("Expected the built Whisper server.");
-function runServer(args: string[], extraEnv: NodeJS.ProcessEnv = {}) {
-  return new Promise<{ code: string | number; output: string }>((done) => {
-    execFile(
-      server!,
-      args,
-      {
-        timeout: 5_000,
-        maxBuffer: 1024 * 1024,
-        env: { ...process.env, ...extraEnv },
-      },
-      (error, stdout, stderr) => {
-        assert(!error?.killed, "Whisper CLI contract test timed out");
-        done({ code: error?.code ?? 0, output: stdout + stderr });
-      },
-    );
+async function runServer(args: string[], extraEnv: NodeJS.ProcessEnv = {}) {
+  const child = Bun.spawn([server!, ...args], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: 5_000,
+    maxBuffer: 1024 * 1024,
+    killSignal: "SIGKILL",
+    env: { ...process.env, ...extraEnv },
   });
+  try {
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    assert.equal(
+      child.signalCode,
+      null,
+      `Whisper CLI contract test killed: ${stdout}${stderr}`,
+    );
+    return { code, output: stdout + stderr };
+  } finally {
+    if (child.exitCode === null && child.signalCode === null)
+      child.kill("SIGKILL");
+    await child.exited;
+  }
 }
 const capability = await runServer(["--localbase-capabilities"]);
 assert.equal(capability.code, 0);
