@@ -1,0 +1,125 @@
+diff --git a/examples/common/common.h b/examples/common/common.h
+index 6ac7138..5ae2821 100644
+--- a/examples/common/common.h
++++ b/examples/common/common.h
+@@ -167,2 +167,3 @@ struct SDContextParams {
+     std::string backend;
++    std::string require_gpu_pci;
+     std::string params_backend;
+diff --git a/examples/common/common.cpp b/examples/common/common.cpp
+index 38eaaca..f75dc35 100644
+--- a/examples/common/common.cpp
++++ b/examples/common/common.cpp
+@@ -20,2 +20,4 @@
++#include "ggml-backend.h"
+ #include "media_io.h"
++#include "require_gpu_pci.h"
+ #include "resource_owners.hpp"
+@@ -544,4 +545,9 @@ ArgOptions SDContextParams::get_options() {
+          (int)',',
+          &backend},
++        {"",
++         "--require-gpu-pci",
++         "require exactly one discrete Vulkan GPU at canonical PCI address DDDD:BB:DD.F; conflicts with --backend",
++         0,
++         &require_gpu_pci},
+         {"",
+          "--params-backend",
+@@ -817,1 +823,26 @@ bool SDContextParams::resolve(SDMode mode) {
++    if (!require_gpu_pci.empty()) {
++        if (!backend.empty()) {
++            LOG_ERROR("error: --require-gpu-pci conflicts with --backend");
++            return false;
++        }
++        // Load dynamic backends before matching the monitored hardware identity.
++        sd_list_devices(nullptr, 0);
++        std::vector<LocalBaseGpuDevice> devices;
++        for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
++            ggml_backend_dev_t device = ggml_backend_dev_get(i);
++            ggml_backend_dev_props props = {};
++            ggml_backend_dev_get_props(device, &props);
++            const char* registry = ggml_backend_reg_name(ggml_backend_dev_backend_reg(device));
++            devices.push_back({props.name ? props.name : "",
++                               registry ? registry : "",
++                               props.device_id ? props.device_id : "",
++                               props.type == GGML_BACKEND_DEVICE_TYPE_GPU});
++        }
++        std::string error;
++        if (!localbase_resolve_gpu_pci(require_gpu_pci, devices, backend, error)) {
++            LOG_ERROR("error: %s", error.c_str());
++            return false;
++        }
++    }
++
+     return true;
+diff --git a/examples/common/require_gpu_pci.h b/examples/common/require_gpu_pci.h
+new file mode 100644
+index 0000000..8a14cc2
+--- /dev/null
++++ b/examples/common/require_gpu_pci.h
+@@ -0,0 +1,54 @@
++#pragma once
++
++#include <cstddef>
++#include <string>
++#include <vector>
++
++struct LocalBaseGpuDevice {
++    std::string name;
++    std::string registry;
++    std::string pci;
++    bool discrete;
++};
++
++inline bool localbase_valid_gpu_pci(const std::string& pci) {
++    if (pci.size() != 12 || pci[4] != ':' || pci[7] != ':' || pci[10] != '.') {
++        return false;
++    }
++    for (size_t i = 0; i < pci.size(); ++i) {
++        if (i == 4 || i == 7 || i == 10) continue;
++        if (!((pci[i] >= '0' && pci[i] <= '9') || (pci[i] >= 'a' && pci[i] <= 'f'))) {
++            return false;
++        }
++    }
++    return pci[8] <= '1' && pci[11] <= '7';
++}
++
++inline bool localbase_resolve_gpu_pci(const std::string& pci,
++                                      const std::vector<LocalBaseGpuDevice>& devices,
++                                      std::string& backend,
++                                      std::string& error) {
++    if (!localbase_valid_gpu_pci(pci)) {
++        error = "--require-gpu-pci requires one canonical lowercase PCI address DDDD:BB:DD.F";
++        return false;
++    }
++    if (!backend.empty()) {
++        error = "--require-gpu-pci conflicts with --backend";
++        return false;
++    }
++    std::string selected;
++    for (const auto& device : devices) {
++        if (!device.discrete || device.registry != "Vulkan" || device.pci != pci) continue;
++        if (!selected.empty()) {
++            error = "--require-gpu-pci requires exactly one matching discrete Vulkan GPU";
++            return false;
++        }
++        selected = device.name;
++    }
++    if (selected.empty()) {
++        error = "--require-gpu-pci requires exactly one matching discrete Vulkan GPU";
++        return false;
++    }
++    backend = selected;
++    return true;
++}
+diff --git a/examples/server/main.cpp b/examples/server/main.cpp
+index 083f45f..183caf8 100644
+--- a/examples/server/main.cpp
++++ b/examples/server/main.cpp
+@@ -70,2 +70,6 @@ void sd_log_cb(enum sd_log_level_t level, const char* log, void* data) {
+ int main(int argc, const char** argv) {
++    if (argc == 2 && std::string(argv[1]) == "--localbase-capabilities") {
++        std::cout << "localbase-sd-gpu-pci-v1\n";
++        return EXIT_SUCCESS;
++    }
+     if (argc > 1 && std::string(argv[1]) == "--version") {
