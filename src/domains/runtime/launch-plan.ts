@@ -59,6 +59,7 @@ type VideoLaunchPlanBase = Omit<
     sampler: "euler";
     steps: number;
     cfgScale: number;
+    flowShift: number;
     seed: number;
   }>;
   readonly launchOptions: Readonly<{

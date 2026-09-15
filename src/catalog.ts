@@ -76,6 +76,7 @@ const videoGenerationProfileSchema = z
     sampler: z.literal("euler"),
     steps: z.number().int().positive(),
     cfgScale: z.number().positive(),
+    flowShift: z.number().positive(),
     seed: z.number().int().nonnegative(),
   })
   .strict();
@@ -1828,7 +1829,13 @@ const CATALOG_SOURCE = [
         maxHeight: 320,
         maxFrames: 33,
         fps: 16,
-        generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+        generation: {
+          sampler: "euler",
+          steps: 20,
+          cfgScale: 6,
+          flowShift: 3,
+          seed: 42,
+        },
         launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
       },
       estimatedMemoryDemand: {

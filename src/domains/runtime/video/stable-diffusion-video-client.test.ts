@@ -102,7 +102,12 @@ test("submits, polls, and cancels with fixed localhost routes", async () => {
           fps: 16,
           seed: -1,
           outputFormat: "webm",
-          generation: { sampler: "euler", steps: 20, cfgScale: 6 },
+          generation: {
+            sampler: "euler",
+            steps: 20,
+            cfgScale: 6,
+            flowShift: 3,
+          },
         },
       }),
     ).resolves.toEqual({ id: VIDEO_ID, status: "queued" });
@@ -139,6 +144,7 @@ test("submits, polls, and cancels with fixed localhost routes", async () => {
           sample_params: {
             sample_method: "euler",
             sample_steps: 20,
+            flow_shift: 3,
             guidance: { txt_cfg: 6 },
           },
         },

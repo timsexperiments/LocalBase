@@ -48,7 +48,13 @@ test("uses video profile launch options", () => {
         maxHeight: 320,
         maxFrames: 33,
         fps: 16,
-        generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+        generation: {
+          sampler: "euler",
+          steps: 20,
+          cfgScale: 6,
+          flowShift: 3,
+          seed: 42,
+        },
         launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
       },
       estimatedMemoryDemand: {
