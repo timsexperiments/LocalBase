@@ -612,6 +612,9 @@ export function createRuntimeSupervisorFactory(
             artifacts.diffusionModel,
             artifacts.textEncoder,
             artifacts.vae,
+            ...(spec.videoRuntime.mode === "s2v"
+              ? [spec.videoRuntime.artifacts.audioEncoder]
+              : []),
           ].map((filename) => join(config.videoModelsDir, filename));
           if (
             !(

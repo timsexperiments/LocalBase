@@ -42,7 +42,7 @@ export type SttLaunchPlan = LaunchPlanBase<"stt", "whisper-server">;
 
 export type ImageLaunchPlan = LaunchPlanBase<"image", "sd-server">;
 
-export type VideoLaunchPlan = Omit<
+type VideoLaunchPlanBase = Omit<
   LaunchPlanBase<"video", "sd-server">,
   "modelFile" | "modelPath"
 > & {
@@ -65,6 +65,12 @@ export type VideoLaunchPlan = Omit<
     diffusionFlashAttention: boolean;
   }>;
 };
+
+export type VideoLaunchPlan = VideoLaunchPlanBase &
+  (
+    | Readonly<{ mode: "t2v" }>
+    | Readonly<{ mode: "s2v"; audioEncoderPath: string }>
+  );
 
 export type RuntimeLaunchPlan =
   LlmLaunchPlan | SttLaunchPlan | ImageLaunchPlan | VideoLaunchPlan;
@@ -250,7 +256,7 @@ export function resolveVideoLaunchPlan(input: {
   const memoryDemand = videoMemoryDemand({
     estimatedDemand: input.videoRuntime.estimatedMemoryDemand,
   });
-  return Object.freeze({
+  const common = {
     runtimeId: input.runtimeId,
     modality: "video",
     component: "sd-server",
@@ -270,5 +276,15 @@ export function resolveVideoLaunchPlan(input: {
     port: input.port,
     healthUrl: `http://${input.host}:${input.port}/`,
     memoryDemand,
-  });
+  } satisfies VideoLaunchPlanBase;
+  return input.videoRuntime.mode === "s2v"
+    ? Object.freeze({
+        ...common,
+        mode: "s2v",
+        audioEncoderPath: join(
+          input.modelsDirectory,
+          input.videoRuntime.artifacts.audioEncoder,
+        ),
+      })
+    : Object.freeze({ ...common, mode: "t2v" });
 }
