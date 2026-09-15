@@ -64,6 +64,15 @@ function runtimeSnapshots() {
       admission: { kind: "unknown" },
       configuredSlots: null,
     }),
+    video: createRuntimeLifecycleSnapshot({
+      modality: "video",
+      configured: false,
+      state: "disabled",
+      modelId: null,
+      runtimeId: null,
+      admission: { kind: "unknown" },
+      configuredSlots: null,
+    }),
   };
 }
 
@@ -73,6 +82,7 @@ test("projects catalog facts separately from observed device state", () => {
   config.selectedSttModels = [];
   config.selectedTtsModels = [];
   config.selectedImageModels = [];
+  config.selectedVideoModels = [];
   const metadata = projectModelMetadata(catalogModel(), {
     catalog: [catalogModel()],
     config,

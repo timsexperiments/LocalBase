@@ -1,4 +1,5 @@
 import { basename, join } from "node:path";
+import { verifyAuthoritativeFile } from "../../utils/checksum";
 import {
   byId,
   calculateMaxSafeContextSize,
@@ -19,10 +20,12 @@ import {
   resolveImageLaunchPlan,
   resolveLlmLaunchPlan,
   resolveSttLaunchPlan,
+  resolveVideoLaunchPlan,
 } from "./launch-plan";
 import {
   startLlamaServerProcess,
   startSdServerProcess,
+  startSdVideoServerProcess,
   startWhisperServerProcess,
 } from "./launcher";
 import type { RuntimeModality } from "./modality";
@@ -40,6 +43,8 @@ export type RuntimeLaunchOverrides = Readonly<{
   sttPort?: number;
   imageHost?: string;
   imagePort?: number;
+  videoHost?: string;
+  videoPort?: number;
   ctxSize?: number;
   llmModelFile?: string;
   sttModelFile?: string;
@@ -104,6 +109,14 @@ function imagePort(overrides: RuntimeLaunchOverrides): number {
   return overrides.imagePort ?? 8090;
 }
 
+function videoHost(overrides: RuntimeLaunchOverrides): string {
+  return overrides.videoHost ?? "127.0.0.1";
+}
+
+function videoPort(overrides: RuntimeLaunchOverrides): number {
+  return overrides.videoPort ?? 8091;
+}
+
 function component(
   modality: RuntimeModality,
 ): "llama-server" | "whisper-server" | "llama-tts" | "sd-server" {
@@ -120,7 +133,8 @@ function activeModel(
   if (modality === "llm") return config.activeLlmModel;
   if (modality === "stt") return config.activeSttModel;
   if (modality === "tts") return config.activeTtsModel;
-  return config.activeImageModel;
+  if (modality === "image") return config.activeImageModel;
+  return config.activeVideoModel;
 }
 
 function configuredModelFile(
@@ -290,6 +304,8 @@ export function runtimeLaunchOverrides(
     ...(input.sttPort ? { sttPort: input.sttPort } : {}),
     ...(input.imageHost ? { imageHost: input.imageHost } : {}),
     ...(input.imagePort ? { imagePort: input.imagePort } : {}),
+    ...(input.videoHost ? { videoHost: input.videoHost } : {}),
+    ...(input.videoPort ? { videoPort: input.videoPort } : {}),
     ...(input.ctxSize ? { ctxSize: input.ctxSize } : {}),
     ...(input.llmModelFile ? { llmModelFile: input.llmModelFile } : {}),
     ...(input.sttModelFile ? { sttModelFile: input.sttModelFile } : {}),
@@ -320,7 +336,9 @@ export function createRuntimeSupervisorFactory(
         sttPort(snapshot.config, overrides),
       );
     }
-    return endpoint(imageHost(overrides), imagePort(overrides));
+    return modality === "image"
+      ? endpoint(imageHost(overrides), imagePort(overrides))
+      : endpoint(videoHost(overrides), videoPort(overrides));
   };
 
   const create = (
@@ -546,6 +564,101 @@ export function createRuntimeSupervisorFactory(
     }
 
     const base = baseUrl(modality, snapshot);
+    if (modality === "video") {
+      return new ManagedService({
+        runtimeId,
+        modality,
+        component: "sd-server",
+        healthUrl: `${base}/`,
+        logger: ctx.logger,
+        launch: async () => {
+          const spec = byId(modelId);
+          if (!spec || spec.kind !== "video" || !spec.videoRuntime) {
+            throw new Error(
+              `Video model \"${modelId}\" has no runtime profile.`,
+            );
+          }
+          let installation = await resolveCatalogInstallation(
+            spec,
+            config.videoModelsDir,
+          );
+          if (!installation.complete) {
+            await installSelectedModel(
+              ctx,
+              config,
+              modality,
+              modelId,
+              "incomplete",
+            );
+            installation = await resolveCatalogInstallation(
+              spec,
+              config.videoModelsDir,
+            );
+          }
+          if (!installation.complete) {
+            throw new Error(
+              `Video model \"${modelId}\" is incomplete after installation.`,
+            );
+          }
+          const artifacts = spec.videoRuntime.artifacts;
+          const requiredPaths = [
+            artifacts.diffusionModel,
+            artifacts.textEncoder,
+            artifacts.vae,
+          ].map((filename) => join(config.videoModelsDir, filename));
+          if (
+            !(
+              await Promise.all(
+                requiredPaths.map((path) => Bun.file(path).exists()),
+              )
+            ).every(Boolean)
+          ) {
+            throw new Error("Video model artifacts are missing.");
+          }
+          for (const artifact of spec.artifacts) {
+            if (
+              artifact.expectedSizeBytes === undefined ||
+              artifact.sha256 === undefined
+            ) {
+              throw new Error(
+                `Video model \"${modelId}\" lacks immutable artifact authority.`,
+              );
+            }
+            await verifyAuthoritativeFile(
+              join(config.videoModelsDir, artifact.filename),
+              {
+                filename: artifact.filename,
+                expectedSizeBytes: artifact.expectedSizeBytes,
+                sha256: artifact.sha256,
+              },
+              config.videoModelsDir,
+            );
+          }
+          return resolveVideoLaunchPlan({
+            runtimeId,
+            root: config.root,
+            modelsDirectory: config.videoModelsDir,
+            modelId,
+            diffusionModelFile: artifacts.diffusionModel,
+            textEncoderFile: artifacts.textEncoder,
+            vaeFile: artifacts.vae,
+            host: videoHost(overrides),
+            port: videoPort(overrides),
+            videoRuntime: spec.videoRuntime,
+            platform: process.platform,
+          });
+        },
+        start: async (plan) => {
+          if (plan.component !== "sd-server" || plan.modality !== "video") {
+            throw new Error("Expected video sd-server launch plan.");
+          }
+          return await startSdVideoServerProcess(plan);
+        },
+        memorySafety: dependencies.memorySafety,
+        otel: ctx.otel,
+        startupTimeoutMs: 180000,
+      });
+    }
     return new ManagedService({
       runtimeId,
       modality,
@@ -590,7 +703,7 @@ export function createRuntimeSupervisorFactory(
         });
       },
       start: async (plan) => {
-        if (plan.component !== "sd-server") {
+        if (plan.component !== "sd-server" || plan.modality !== "image") {
           throw new Error("Expected sd-server launch plan.");
         }
         return await startSdServerProcess(plan);

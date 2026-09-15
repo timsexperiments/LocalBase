@@ -75,6 +75,7 @@ export type LocalBaseConfig = {
   sttModelsDir: string;
   ttsModelsDir: string;
   imageModelsDir: string;
+  videoModelsDir: string;
   host: string;
   port: number;
   ctxSize: number;
@@ -84,10 +85,12 @@ export type LocalBaseConfig = {
   selectedSttModels: string[];
   selectedTtsModels: string[];
   selectedImageModels: string[];
+  selectedVideoModels: string[];
   activeLlmModel: string;
   activeSttModel: string;
   activeTtsModel: string;
   activeImageModel: string;
+  activeVideoModel: string;
   hfToken: string;
   parallel: ParallelSlots;
   otelEndpoint: string;
@@ -123,10 +126,12 @@ const configRowSchema = z
     selectedSttModels: z.string(),
     selectedTtsModels: z.string(),
     selectedImageModels: z.string(),
+    selectedVideoModels: z.string(),
     activeLlmModel: z.string().min(1),
     activeSttModel: z.string(),
     activeTtsModel: z.string(),
     activeImageModel: z.string(),
+    activeVideoModel: z.string(),
     hfToken: z.string(),
     parallel: z.enum(["auto", "1", "2", "3", "4"]),
     otelEndpoint: z.union([z.literal(""), otelEndpointSchema]),
@@ -200,10 +205,12 @@ function toConfigRow(config: LocalBaseConfig) {
     selectedSttModels: JSON.stringify(config.selectedSttModels),
     selectedTtsModels: JSON.stringify(config.selectedTtsModels),
     selectedImageModels: JSON.stringify(config.selectedImageModels),
+    selectedVideoModels: JSON.stringify(config.selectedVideoModels),
     activeLlmModel: config.activeLlmModel,
     activeSttModel: config.activeSttModel,
     activeTtsModel: config.activeTtsModel,
     activeImageModel: config.activeImageModel,
+    activeVideoModel: config.activeVideoModel,
     hfToken: config.hfToken || "",
     parallel: String(parseParallelSlots(config.parallel)),
     otelEndpoint: config.otelEndpoint,
@@ -235,7 +242,11 @@ export function modelDirectories(
   root: string,
 ): Pick<
   LocalBaseConfig,
-  "llmModelsDir" | "sttModelsDir" | "ttsModelsDir" | "imageModelsDir"
+  | "llmModelsDir"
+  | "sttModelsDir"
+  | "ttsModelsDir"
+  | "imageModelsDir"
+  | "videoModelsDir"
 > {
   const canonicalRoot = canonicalLocalBaseRoot(root);
   return {
@@ -243,6 +254,7 @@ export function modelDirectories(
     sttModelsDir: join(canonicalRoot, "models", "stt"),
     ttsModelsDir: join(canonicalRoot, "models", "tts"),
     imageModelsDir: join(canonicalRoot, "models", "image"),
+    videoModelsDir: join(canonicalRoot, "models", "video"),
   };
 }
 
@@ -273,6 +285,11 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     "selectedImageModels",
     openedRoot,
   );
+  const selectedVideoModels = parseSelectedModels(
+    data.selectedVideoModels,
+    "selectedVideoModels",
+    openedRoot,
+  );
   const selectedTtsModels = parseSelectedModels(
     data.selectedTtsModels,
     "selectedTtsModels",
@@ -283,10 +300,12 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     selectedSttModels,
     selectedTtsModels,
     selectedImageModels,
+    selectedVideoModels,
     activeLlmModel: data.activeLlmModel,
     activeSttModel: data.activeSttModel,
     activeTtsModel: data.activeTtsModel,
     activeImageModel: data.activeImageModel,
+    activeVideoModel: data.activeVideoModel,
   });
   if (!models.success) {
     throw invalidConfiguration(openedRoot, issueSummary(models.error));
@@ -371,10 +390,12 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     selectedSttModels: [stt],
     selectedTtsModels: [],
     selectedImageModels: ["stable-diffusion-v1-5"],
+    selectedVideoModels: [],
     activeLlmModel: llm,
     activeSttModel: stt,
     activeTtsModel: "",
     activeImageModel: "stable-diffusion-v1-5",
+    activeVideoModel: "",
     hfToken: "",
     parallel: "auto",
     otelEndpoint: "",
@@ -390,6 +411,7 @@ export function ensureDirs(config: LocalBaseConfig): void {
   mkdirSync(config.sttModelsDir, { recursive: true });
   mkdirSync(config.ttsModelsDir, { recursive: true });
   mkdirSync(config.imageModelsDir, { recursive: true });
+  mkdirSync(config.videoModelsDir, { recursive: true });
 }
 
 export function saveConfig(
@@ -512,6 +534,7 @@ function kindDir(config: LocalBaseConfig, kind: ModelKind): string {
   if (kind === "llm") return config.llmModelsDir;
   if (kind === "stt") return config.sttModelsDir;
   if (kind === "tts") return config.ttsModelsDir;
+  if (kind === "video") return config.videoModelsDir;
   return config.imageModelsDir;
 }
 
@@ -519,7 +542,7 @@ export async function installedModels(
   config: LocalBaseConfig,
   kind?: ModelKind,
 ): Promise<string[]> {
-  const kinds: ModelKind[] = ["llm", "stt", "tts", "image"];
+  const kinds: ModelKind[] = ["llm", "stt", "tts", "image", "video"];
   const selectedKinds = kind ? [kind] : kinds;
   const installed: string[] = [];
   for (const currentKind of selectedKinds) {

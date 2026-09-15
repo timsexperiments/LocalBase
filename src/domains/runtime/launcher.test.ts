@@ -9,10 +9,12 @@ import {
   resolveImageLaunchPlan,
   resolveLlmLaunchPlan,
   resolveSttLaunchPlan,
+  resolveVideoLaunchPlan,
 } from "./launch-plan";
 import { requireWhisperGpuContract } from "./whisper-gpu";
 import {
   sdServerEnvironment,
+  buildSdVideoServerArgs,
   startLlamaServerProcess,
   startSdServerProcess,
   startWhisperServerProcess,
@@ -21,6 +23,58 @@ import {
 const roots: string[] = [];
 const originalPath = process.env.PATH;
 const originalLibraryPath = process.env.LD_LIBRARY_PATH;
+
+test("uses video profile launch options", () => {
+  const plan = resolveVideoLaunchPlan({
+    runtimeId: "video:test:1",
+    root: "/tmp/local-base-video-launch",
+    modelsDirectory: "/tmp/local-base-video-launch/models/video",
+    modelId: "video-model",
+    diffusionModelFile: "diffusion.gguf",
+    textEncoderFile: "encoder.gguf",
+    vaeFile: "vae.safetensors",
+    host: "127.0.0.1",
+    port: 8091,
+    videoRuntime: {
+      artifacts: {
+        diffusionModel: "diffusion.gguf",
+        textEncoder: "encoder.gguf",
+        vae: "vae.safetensors",
+      },
+      qualification: {
+        maxWidth: 320,
+        maxHeight: 320,
+        maxFrames: 33,
+        generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+      },
+      estimatedMemoryDemand: {
+        unifiedBytes: 1,
+        hostBytes: 1,
+        acceleratorBytes: 1,
+      },
+      supportedPlatforms: ["linux"],
+    },
+    platform: "linux",
+  });
+
+  expect(buildSdVideoServerArgs(plan)).toEqual([
+    "--diffusion-model",
+    plan.diffusionModelPath,
+    "--t5xxl",
+    plan.textEncoderPath,
+    "--vae",
+    plan.vaePath,
+    "-M",
+    "vid_gen",
+    "--offload-to-cpu",
+    "--diffusion-fa",
+    "--listen-ip",
+    "127.0.0.1",
+    "--listen-port",
+    "8091",
+  ]);
+});
 
 describe.serial("Whisper GPU launch contract", () => {
   test("launches with the admitted PCI identity on Linux and unchanged arguments on macOS", async () => {

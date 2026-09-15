@@ -7,6 +7,7 @@ import type {
   ImageLaunchPlan,
   LlmLaunchPlan,
   SttLaunchPlan,
+  VideoLaunchPlan,
 } from "./launch-plan";
 
 export type LlamaServerArgs = {
@@ -147,4 +148,59 @@ export async function startSdServerProcess(
       env: sdServerEnvironment(binPath),
     },
   );
+}
+
+export async function startSdVideoServerProcess(
+  plan: VideoLaunchPlan,
+): Promise<Bun.Subprocess> {
+  for (const path of [
+    plan.diffusionModelPath,
+    plan.textEncoderPath,
+    plan.vaePath,
+  ]) {
+    if (!(await Bun.file(path).exists())) {
+      throw new Error("Configured video artifact does not exist.");
+    }
+  }
+  const binPath = resolve(
+    await ensureBinary({ root: plan.root }, plan.component),
+  );
+  const args = buildSdVideoServerArgs(plan);
+  return Bun.spawn([binPath, ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "inherit",
+    cwd: dirname(binPath),
+    env: sdServerEnvironment(binPath),
+  });
+}
+
+/** Builds the pinned sd-server `vid_gen` argv without touching the filesystem. */
+export function buildSdVideoServerArgs(
+  plan: Pick<
+    VideoLaunchPlan,
+    | "diffusionModelPath"
+    | "textEncoderPath"
+    | "vaePath"
+    | "host"
+    | "port"
+    | "launchOptions"
+  >,
+): string[] {
+  return [
+    "--diffusion-model",
+    plan.diffusionModelPath,
+    "--t5xxl",
+    plan.textEncoderPath,
+    "--vae",
+    plan.vaePath,
+    "-M",
+    "vid_gen",
+    ...(plan.launchOptions.cpuOffload ? ["--offload-to-cpu"] : []),
+    ...(plan.launchOptions.diffusionFlashAttention ? ["--diffusion-fa"] : []),
+    "--listen-ip",
+    plan.host,
+    "--listen-port",
+    String(plan.port),
+  ];
 }

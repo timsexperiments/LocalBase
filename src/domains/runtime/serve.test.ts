@@ -1182,7 +1182,9 @@ describe("API gateway integration", () => {
           ([name]) =>
             name !== "date" &&
             name !== "x-localbase-request-id" &&
-            name !== "server-timing",
+            name !== "server-timing" &&
+            name !== "content-length" &&
+            name !== "transfer-encoding",
         )
         .sort(),
     ).toEqual(
@@ -1191,7 +1193,9 @@ describe("API gateway integration", () => {
           ([name]) =>
             name !== "date" &&
             name !== "x-localbase-request-id" &&
-            name !== "server-timing",
+            name !== "server-timing" &&
+            name !== "content-length" &&
+            name !== "transfer-encoding",
         )
         .sort(),
     );

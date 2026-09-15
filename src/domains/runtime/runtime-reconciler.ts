@@ -95,11 +95,17 @@ function configuredModalities(
 
 function activeModelField(
   modality: RuntimeModality,
-): "activeLlmModel" | "activeSttModel" | "activeTtsModel" | "activeImageModel" {
+):
+  | "activeLlmModel"
+  | "activeSttModel"
+  | "activeTtsModel"
+  | "activeImageModel"
+  | "activeVideoModel" {
   if (modality === "llm") return "activeLlmModel";
   if (modality === "stt") return "activeSttModel";
   if (modality === "tts") return "activeTtsModel";
-  return "activeImageModel";
+  if (modality === "image") return "activeImageModel";
+  return "activeVideoModel";
 }
 
 function activeModel(
@@ -116,7 +122,8 @@ function selectedModels(
   if (modality === "llm") return config.selectedLlmModels;
   if (modality === "stt") return config.selectedSttModels;
   if (modality === "tts") return config.selectedTtsModels;
-  return config.selectedImageModels;
+  if (modality === "image") return config.selectedImageModels;
+  return config.selectedVideoModels;
 }
 
 /** Applies persisted runtime changes while preserving the gateway listener. */

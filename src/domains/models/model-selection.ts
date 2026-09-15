@@ -11,6 +11,7 @@ const expectedModalities = {
   stt: { input: "audio", output: "text" },
   tts: { input: "text", output: "audio" },
   image: { input: "text", output: "image" },
+  video: { input: "text", output: "video" },
 } satisfies Record<
   ModelKind,
   Readonly<{ input: ModelModality; output: ModelModality }>
@@ -62,10 +63,12 @@ export const modelConfigurationSchema = z
     selectedSttModels: selectedModelsSchema("stt", false),
     selectedTtsModels: selectedModelsSchema("tts", false),
     selectedImageModels: selectedModelsSchema("image", false),
+    selectedVideoModels: selectedModelsSchema("video", false),
     activeLlmModel: modelIdSchema("llm"),
     activeSttModel: z.union([z.literal(""), modelIdSchema("stt")]),
     activeTtsModel: z.union([z.literal(""), modelIdSchema("tts")]),
     activeImageModel: z.union([z.literal(""), modelIdSchema("image")]),
+    activeVideoModel: z.union([z.literal(""), modelIdSchema("video")]),
   })
   .strict()
   .superRefine((config, ctx) => {
@@ -74,6 +77,7 @@ export const modelConfigurationSchema = z
       ["activeSttModel", config.activeSttModel, config.selectedSttModels],
       ["activeTtsModel", config.activeTtsModel, config.selectedTtsModels],
       ["activeImageModel", config.activeImageModel, config.selectedImageModels],
+      ["activeVideoModel", config.activeVideoModel, config.selectedVideoModels],
     ] as const;
     for (const [field, id, selected] of activeModels) {
       if (id && !selected.includes(id)) {

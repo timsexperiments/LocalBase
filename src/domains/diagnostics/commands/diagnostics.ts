@@ -73,6 +73,7 @@ const configurationSchema = z
         stt: z.array(z.string().min(1)),
         tts: z.array(z.string().min(1)),
         image: z.array(z.string().min(1)),
+        video: z.array(z.string().min(1)),
       })
       .strict(),
     activeModels: z
@@ -81,6 +82,7 @@ const configurationSchema = z
         stt: z.string(),
         tts: z.string(),
         image: z.string(),
+        video: z.string(),
       })
       .strict(),
   })
@@ -89,7 +91,7 @@ const configurationSchema = z
 const modelSchema = z
   .object({
     id: z.string().min(1),
-    kind: z.enum(["llm", "stt", "tts", "image"]),
+    kind: z.enum(["llm", "stt", "tts", "image", "video"]),
     size: z.string().min(1),
     storageGb: z.number().positive(),
     selected: z.boolean(),
@@ -192,12 +194,14 @@ function configurationData(config: LocalBaseConfig) {
       stt: config.selectedSttModels,
       tts: config.selectedTtsModels,
       image: config.selectedImageModels,
+      video: config.selectedVideoModels,
     },
     activeModels: {
       llm: config.activeLlmModel,
       stt: config.activeSttModel,
       tts: config.activeTtsModel,
       image: config.activeImageModel,
+      video: config.activeVideoModel,
     },
   });
 }
@@ -208,18 +212,21 @@ async function modelData(config: LocalBaseConfig) {
     ...config.selectedSttModels,
     ...config.selectedTtsModels,
     ...config.selectedImageModels,
+    ...config.selectedVideoModels,
   ]);
   const active = new Set([
     config.activeLlmModel,
     config.activeSttModel,
     config.activeTtsModel,
     config.activeImageModel,
+    config.activeVideoModel,
   ]);
   const selectedByKind: Record<ModelKind, string[]> = {
     llm: config.selectedLlmModels,
     stt: config.selectedSttModels,
     tts: config.selectedTtsModels,
     image: config.selectedImageModels,
+    video: config.selectedVideoModels,
   };
   const models = [];
   for (const model of CATALOG) {
@@ -230,7 +237,9 @@ async function modelData(config: LocalBaseConfig) {
           ? config.sttModelsDir
           : model.kind === "tts"
             ? config.ttsModelsDir
-            : config.imageModelsDir;
+            : model.kind === "video"
+              ? config.videoModelsDir
+              : config.imageModelsDir;
     const installation = await resolveCatalogInstallation(model, kindDirectory);
     if (!selected.has(model.modelId) && !installation.complete) continue;
     models.push(

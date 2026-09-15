@@ -8,7 +8,7 @@ import {
 } from "../../observability/otel-config";
 import { safeFilenameSchema } from "../../../utils/checksum";
 
-export const modelKindSchema = z.enum(["llm", "stt", "tts", "image"]);
+export const modelKindSchema = z.enum(["llm", "stt", "tts", "image", "video"]);
 
 export const dataRootSchema = localBaseRootInputSchema;
 
@@ -77,10 +77,12 @@ export const configureInputSchema = z.object({
   sttModels: modelListSchema.optional(),
   ttsModels: modelListSchema.optional(),
   imageModels: modelListSchema.optional(),
+  videoModels: modelListSchema.optional(),
   activeLlm: z.string().min(1).optional(),
   activeStt: z.string().min(1).optional(),
   activeTts: z.string().min(1).optional(),
   activeImage: z.string().min(1).optional(),
+  activeVideo: z.string().min(1).optional(),
   hfToken: z.string().optional(),
   otelEndpoint: z.union([z.literal(""), otelEndpointSchema]).optional(),
   otelHeaders: otelHeadersTextSchema.optional(),
@@ -141,12 +143,15 @@ export const serveInputSchema = z.object({
   stt: z.boolean().optional(),
   tts: z.boolean().optional(),
   image: z.boolean().optional(),
+  video: z.boolean().optional(),
   llmHost: hostSchema.optional(),
   llmPort: portInputSchema.optional(),
   sttHost: hostSchema.optional(),
   sttPort: portInputSchema.optional(),
   imageHost: hostSchema.optional(),
   imagePort: portInputSchema.optional(),
+  videoHost: hostSchema.optional(),
+  videoPort: portInputSchema.optional(),
   ctxSize: positiveInteger().optional(),
   inferenceQueueCapacity: positiveInteger(10_000).optional(),
   inferenceQueueTimeoutMs: positiveInteger(600_000).optional(),
@@ -173,7 +178,7 @@ export const logsInputSchema = z.object({
   since: z.iso.datetime({ offset: true }).optional(),
   level: z.enum(["debug", "info", "warn", "error"]).optional(),
   runtime: z
-    .enum(["gateway", "llm", "stt", "tts", "image", "service", "cli"])
+    .enum(["gateway", "llm", "stt", "tts", "image", "video", "service", "cli"])
     .optional(),
   requestId: z
     .string()

@@ -15,6 +15,7 @@ export async function runInstall(
       ...ctx.config.selectedSttModels,
       ...ctx.config.selectedTtsModels,
       ...ctx.config.selectedImageModels,
+      ...ctx.config.selectedVideoModels,
     ];
 
     if (modelsToInstall.length === 0) {

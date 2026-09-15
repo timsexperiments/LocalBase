@@ -20,7 +20,7 @@ export const modelMetadataSchema = z
       .object({
         name: z.string().min(1),
         revision: z.string().min(1),
-        kind: z.enum(["llm", "stt", "tts", "image"]),
+        kind: z.enum(["llm", "stt", "tts", "image", "video"]),
         quantization: z.string().min(1),
         artifacts: z
           .array(
@@ -101,6 +101,7 @@ export type ModelMetadataProjectionInput = Readonly<{
     | "selectedSttModels"
     | "selectedTtsModels"
     | "selectedImageModels"
+    | "selectedVideoModels"
   >;
   installations: ReadonlyMap<string, boolean>;
   runtimes: Readonly<Record<RuntimeModality, RuntimeLifecycleSnapshot>>;
@@ -114,6 +115,7 @@ function selectedModelIds(
     ...config.selectedSttModels,
     ...config.selectedTtsModels,
     ...config.selectedImageModels,
+    ...config.selectedVideoModels,
   ]);
 }
 
@@ -205,6 +207,7 @@ function directoryForModel(config: LocalBaseConfig, kind: ModelKind): string {
   if (kind === "llm") return config.llmModelsDir;
   if (kind === "stt") return config.sttModelsDir;
   if (kind === "tts") return config.ttsModelsDir;
+  if (kind === "video") return config.videoModelsDir;
   return config.imageModelsDir;
 }
 

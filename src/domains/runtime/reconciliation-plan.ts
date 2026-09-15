@@ -8,6 +8,7 @@ export type ConfigFieldOwnership =
   | "stt-launch"
   | "tts-launch"
   | "image-launch"
+  | "video-launch"
   | "modality-selection-request-scoped"
   | "observability";
 
@@ -17,6 +18,7 @@ export const configFieldOwnership = {
   sttModelsDir: "restart-required",
   ttsModelsDir: "restart-required",
   imageModelsDir: "restart-required",
+  videoModelsDir: "restart-required",
   host: "llm-launch",
   port: "llm-launch",
   ctxSize: "llm-launch",
@@ -26,10 +28,12 @@ export const configFieldOwnership = {
   selectedSttModels: "modality-selection-request-scoped",
   selectedTtsModels: "modality-selection-request-scoped",
   selectedImageModels: "modality-selection-request-scoped",
+  selectedVideoModels: "modality-selection-request-scoped",
   activeLlmModel: "llm-launch",
   activeSttModel: "stt-launch",
   activeTtsModel: "tts-launch",
   activeImageModel: "image-launch",
+  activeVideoModel: "video-launch",
   hfToken: "modality-selection-request-scoped",
   parallel: "llm-launch",
   otelEndpoint: "observability",
@@ -47,6 +51,7 @@ export type RuntimeOverrideConfigField = Exclude<
   | "sttModelsDir"
   | "ttsModelsDir"
   | "imageModelsDir"
+  | "videoModelsDir"
   | "memory"
 >;
 
@@ -65,6 +70,7 @@ export type RestartRequiredPlan = Readonly<{
     | "sttModelsDir"
     | "ttsModelsDir"
     | "imageModelsDir"
+    | "videoModelsDir"
     | "memory"
   )[];
 }>;
@@ -99,6 +105,7 @@ export type RequestScopeReconciliationPlan = Readonly<{
     | "selectedSttModels"
     | "selectedTtsModels"
     | "selectedImageModels"
+    | "selectedVideoModels"
     | "hfToken"
   )[];
 }>;
@@ -118,6 +125,7 @@ const restartRequiredFields = [
   "sttModelsDir",
   "ttsModelsDir",
   "imageModelsDir",
+  "videoModelsDir",
   "memory",
 ] as const;
 
@@ -126,6 +134,7 @@ const rootDerivedDirectoryFields = [
   "sttModelsDir",
   "ttsModelsDir",
   "imageModelsDir",
+  "videoModelsDir",
 ] as const;
 
 const modalityLaunchFields = {
@@ -133,6 +142,7 @@ const modalityLaunchFields = {
   stt: ["sttHost", "sttPort", "activeSttModel"],
   tts: ["activeTtsModel"],
   image: ["activeImageModel"],
+  video: ["activeVideoModel"],
 } as const satisfies Record<RuntimeModality, readonly RuntimeConfigField[]>;
 
 const requestScopeFields = [
@@ -140,6 +150,7 @@ const requestScopeFields = [
   "selectedSttModels",
   "selectedTtsModels",
   "selectedImageModels",
+  "selectedVideoModels",
   "hfToken",
 ] as const;
 
@@ -229,7 +240,8 @@ export function configuredRuntimeModality(
   if (modality === "llm") return true;
   if (modality === "stt") return config.selectedSttModels.length > 0;
   if (modality === "tts") return config.selectedTtsModels.length > 0;
-  return config.selectedImageModels.length > 0;
+  if (modality === "image") return config.selectedImageModels.length > 0;
+  return config.selectedVideoModels.length > 0;
 }
 
 function modalityPlan(

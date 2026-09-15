@@ -21,6 +21,7 @@ const enabledModalitiesSchema = z
     stt: z.boolean(),
     tts: z.boolean(),
     image: z.boolean(),
+    video: z.boolean(),
   })
   .strict();
 

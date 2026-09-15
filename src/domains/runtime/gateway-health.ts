@@ -47,6 +47,7 @@ export function composeGatewayHealth(input: GatewayHealthInput): GatewayHealth {
       stt: modality("stt"),
       tts: modality("tts"),
       image: modality("image"),
+      video: modality("video"),
     },
     ...(input.stopping ? { error: "gateway_stopping" } : {}),
   });

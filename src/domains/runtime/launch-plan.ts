@@ -6,6 +6,7 @@ import {
   type ParallelAllocation,
   type ParallelSlots,
 } from "../config/parallel";
+import type { VideoRuntimeProfile } from "../../catalog";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
 
@@ -41,7 +42,32 @@ export type SttLaunchPlan = LaunchPlanBase<"stt", "whisper-server">;
 
 export type ImageLaunchPlan = LaunchPlanBase<"image", "sd-server">;
 
-export type RuntimeLaunchPlan = LlmLaunchPlan | SttLaunchPlan | ImageLaunchPlan;
+export type VideoLaunchPlan = Omit<
+  LaunchPlanBase<"video", "sd-server">,
+  "modelFile" | "modelPath"
+> & {
+  readonly diffusionModelPath: string;
+  readonly textEncoderPath: string;
+  readonly vaePath: string;
+  readonly inputBounds: Readonly<{
+    maxWidth: number;
+    maxHeight: number;
+    maxFrames: number;
+  }>;
+  readonly generation: Readonly<{
+    sampler: "euler";
+    steps: number;
+    cfgScale: number;
+    seed: number;
+  }>;
+  readonly launchOptions: Readonly<{
+    cpuOffload: boolean;
+    diffusionFlashAttention: boolean;
+  }>;
+};
+
+export type RuntimeLaunchPlan =
+  LlmLaunchPlan | SttLaunchPlan | ImageLaunchPlan | VideoLaunchPlan;
 
 function modelBytes(
   artifactBytes: number,
@@ -65,6 +91,15 @@ function runtimeMemoryDemand(input: {
     unifiedBytes: requirementBytes + RUNTIME_HOST_OVERHEAD_BYTES,
     hostBytes: input.artifactBytes + RUNTIME_HOST_OVERHEAD_BYTES,
     acceleratorBytes: requirementBytes,
+    confidence: "estimated",
+  });
+}
+
+function videoMemoryDemand(input: {
+  estimatedDemand: VideoRuntimeProfile["estimatedMemoryDemand"];
+}): RuntimeMemoryDemand {
+  return Object.freeze({
+    ...input.estimatedDemand,
     confidence: "estimated",
   });
 }
@@ -183,5 +218,57 @@ export function resolveImageLaunchPlan(input: {
     port: input.port,
     healthUrl: `http://${input.host}:${input.port}/`,
     memoryDemand: runtimeMemoryDemand(input),
+  });
+}
+
+export function resolveVideoLaunchPlan(input: {
+  runtimeId: string;
+  root: string;
+  modelsDirectory: string;
+  modelId: string;
+  diffusionModelFile: string;
+  textEncoderFile: string;
+  vaeFile: string;
+  host: string;
+  port: number;
+  videoRuntime: VideoRuntimeProfile;
+  platform: NodeJS.Platform;
+}): VideoLaunchPlan {
+  const supportedPlatform =
+    input.platform === "darwin" || input.platform === "linux"
+      ? input.platform
+      : undefined;
+  if (
+    !supportedPlatform ||
+    !input.videoRuntime.supportedPlatforms.includes(supportedPlatform)
+  ) {
+    throw new Error(
+      `Video model does not support ${input.platform} runtime admission.`,
+    );
+  }
+  const { qualification } = input.videoRuntime;
+  const memoryDemand = videoMemoryDemand({
+    estimatedDemand: input.videoRuntime.estimatedMemoryDemand,
+  });
+  return Object.freeze({
+    runtimeId: input.runtimeId,
+    modality: "video",
+    component: "sd-server",
+    root: input.root,
+    modelId: input.modelId,
+    diffusionModelPath: join(input.modelsDirectory, input.diffusionModelFile),
+    textEncoderPath: join(input.modelsDirectory, input.textEncoderFile),
+    vaePath: join(input.modelsDirectory, input.vaeFile),
+    inputBounds: Object.freeze({
+      maxWidth: qualification.maxWidth,
+      maxHeight: qualification.maxHeight,
+      maxFrames: qualification.maxFrames,
+    }),
+    generation: Object.freeze({ ...qualification.generation }),
+    launchOptions: Object.freeze({ ...qualification.launchOptions }),
+    host: input.host,
+    port: input.port,
+    healthUrl: `http://${input.host}:${input.port}/`,
+    memoryDemand,
   });
 }
