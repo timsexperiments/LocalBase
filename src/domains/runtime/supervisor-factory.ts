@@ -662,7 +662,10 @@ export function createRuntimeSupervisorFactory(
           if (plan.component !== "sd-server" || plan.modality !== "video") {
             throw new Error("Expected video sd-server launch plan.");
           }
-          return await startSdVideoServerProcess(plan);
+          return await startSdVideoServerProcess(
+            plan,
+            dependencies.memorySafety.topology,
+          );
         },
         memorySafety: dependencies.memorySafety,
         otel: ctx.otel,
@@ -716,7 +719,10 @@ export function createRuntimeSupervisorFactory(
         if (plan.component !== "sd-server" || plan.modality !== "image") {
           throw new Error("Expected sd-server launch plan.");
         }
-        return await startSdServerProcess(plan);
+        return await startSdServerProcess(
+          plan,
+          dependencies.memorySafety.topology,
+        );
       },
       memorySafety: dependencies.memorySafety,
       otel: ctx.otel,
