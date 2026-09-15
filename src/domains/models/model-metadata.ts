@@ -13,10 +13,6 @@ import type { RuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
 import type { RuntimeModality } from "../runtime/modality";
 
 const nullableNumberSchema = z.number().nullable();
-const metadataSpeechVoiceSchema = z.enum(speechVoiceSchema.options);
-const metadataReferenceSpeechVoiceSchema = z.enum(
-  referenceSpeechVoiceSchema.options,
-);
 
 export const modelMetadataSchema = z
   .object({
@@ -52,12 +48,12 @@ export const modelMetadataSchema = z
             voice: z
               .object({
                 selection: z.literal("catalog-reference"),
-                requestValues: z.array(metadataSpeechVoiceSchema).min(1),
+                requestValues: z.array(speechVoiceSchema).min(1),
                 defaultRequestValue: z.literal("default"),
                 references: z.array(
                   z
                     .object({
-                      name: metadataReferenceSpeechVoiceSchema,
+                      name: referenceSpeechVoiceSchema,
                       license: z.literal("CC0-1.0"),
                       provenanceUrl: z.string().url(),
                     })
@@ -168,14 +164,6 @@ export function projectModelMetadata(
   model: ModelSpec,
   input: ModelMetadataProjectionInput,
 ): ModelMetadata {
-  const ttsReferenceMetadata =
-    model.kind === "tts"
-      ? (model.ttsRuntime?.referenceVoices ?? []).map((reference) => ({
-          name: reference.name,
-          license: reference.license,
-          provenanceUrl: reference.provenanceUrl,
-        }))
-      : [];
   return modelMetadataSchema.parse({
     object: "localbase.model",
     id: model.modelId,
@@ -202,10 +190,18 @@ export function projectModelMetadata(
                 selection: "catalog-reference",
                 requestValues: [
                   "default",
-                  ...ttsReferenceMetadata.map(({ name }) => name),
+                  ...(model.ttsRuntime?.referenceVoices ?? []).map(
+                    ({ name }) => name,
+                  ),
                 ],
                 defaultRequestValue: "default",
-                references: ttsReferenceMetadata,
+                references: (model.ttsRuntime?.referenceVoices ?? []).map(
+                  ({ name, license, provenanceUrl }) => ({
+                    name,
+                    license,
+                    provenanceUrl,
+                  }),
+                ),
               },
               residency: "cold-per-request",
             }
