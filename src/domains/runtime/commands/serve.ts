@@ -1753,7 +1753,7 @@ export async function runServe(
   execution: CommandExecution,
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
-  const wrapperHost = input.host ?? "0.0.0.0";
+  const wrapperHost = input.host ?? "127.0.0.1";
   const wrapperPort = input.port ?? 2273;
 
   const llmPort = input.llmPort ?? config.port;

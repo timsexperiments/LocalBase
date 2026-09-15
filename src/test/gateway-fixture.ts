@@ -229,6 +229,7 @@ export async function waitForLogEvent(
 
 export type GatewayFixtureOptions = {
   auth?: { mode?: "bearer" | "x-api-key" | "either" };
+  gatewayHost?: string;
   inferenceQueueCapacity?: number;
   inferenceQueueTimeoutMs?: number;
   managedIdentity?: boolean;
@@ -1751,8 +1752,7 @@ export async function startGatewayFixture(
         "serve",
         "--root",
         root,
-        "--host",
-        "127.0.0.1",
+        ...(options.gatewayHost ? ["--host", options.gatewayHost] : []),
         "--port",
         String(port),
         "--llm-port",
