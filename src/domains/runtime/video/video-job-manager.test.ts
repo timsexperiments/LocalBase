@@ -528,6 +528,93 @@ test("contains an artifact write failure before releasing cancellation admission
   }
 });
 
+test("retains a failed transient cleanup's known bytes until terminal pruning succeeds", async () => {
+  const root = mkdtempSync(
+    join(tmpdir(), "localbase-video-cleanup-accounting-"),
+  );
+  const writeCompleted = deferred<void>();
+  const releaseWrite = deferred<void>();
+  const admission = admissionCounter();
+  let submissions = 0;
+  let now = 0;
+  let failArtifactCleanup = true;
+  let failTerminalPrune = true;
+  const manager = createManager({
+    backend: {
+      async submitVideo() {
+        submissions += 1;
+        return { id: `native-cleanup-${submissions}`, status: "generating" };
+      },
+      async getJob({ id }) {
+        return completed(
+          id,
+          submissions === 1 ? Uint8Array.from([1, 2, 3]) : Uint8Array.of(4),
+        );
+      },
+    },
+    temporaryDirectory: root,
+    acquireAdmission: admission.acquire,
+    supervisedStop: async () => {},
+    writeArtifact: async (options) => {
+      await Bun.write(options.path, options.bytes);
+      if (submissions === 1) {
+        writeCompleted.resolve();
+        await releaseWrite.promise;
+      }
+    },
+    removeArtifact(path) {
+      if (failArtifactCleanup) {
+        throw new Error("artifact cleanup denied");
+      }
+      rmSync(path, { force: true });
+    },
+    removeJobDirectory(path) {
+      if (failTerminalPrune) {
+        throw new Error("terminal prune denied");
+      }
+      rmSync(path, { recursive: true, force: true });
+    },
+    maxArtifactBytesTotal: 3,
+    terminalTtlMs: 1,
+    now: () => now,
+  });
+
+  let firstDirectory = "";
+  try {
+    const first = await manager.start({
+      ownerId: "key-a",
+      input: { prompt: "Keep the partial private file accounted." },
+    });
+    if (first.kind !== "accepted") throw new Error("Expected admission.");
+    firstDirectory = join(root, "video-jobs", first.job.id);
+    await writeCompleted.promise;
+    const cancellation = manager.cancel({ ownerId: "key-a", id: first.job.id });
+    releaseWrite.resolve();
+    await expect(cancellation).resolves.toMatchObject({ state: "failed" });
+    expect(await Bun.file(join(firstDirectory, "artifact")).exists()).toBe(
+      true,
+    );
+
+    const second = await manager.start({
+      ownerId: "key-a",
+      input: { prompt: "Must not bypass the retained artifact budget." },
+    });
+    if (second.kind !== "accepted") throw new Error("Expected admission.");
+    await expect(second.terminal).resolves.toMatchObject({ state: "failed" });
+    expect(manager.get({ ownerId: "key-a", id: first.job.id })).toMatchObject({
+      state: "failed",
+    });
+
+    now = 1;
+    expect(() => manager.get({ ownerId: "key-a", id: first.job.id })).toThrow();
+    failArtifactCleanup = false;
+    failTerminalPrune = false;
+    expect(manager.get({ ownerId: "key-a", id: first.job.id })).toBeUndefined();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("stops a hung submission without waiting for its backend ID", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-submit-deadline-"));
   const submitEntered = deferred<void>();

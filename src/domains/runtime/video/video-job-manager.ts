@@ -167,6 +167,8 @@ export type VideoJobManagerOptions = Readonly<{
     path: string;
     bytes: Uint8Array;
   }) => Promise<void>;
+  removeArtifact?: (path: string) => void;
+  removeJobDirectory?: (path: string) => void;
   deadlineMs?: number;
   maxArtifactBytes?: number;
   maxArtifactBytesTotal?: number;
@@ -197,6 +199,8 @@ export class VideoJobManager {
     path: string;
     bytes: Uint8Array;
   }) => Promise<void>;
+  private readonly removeArtifact: (path: string) => void;
+  private readonly removeJobDirectory: (path: string) => void;
 
   constructor(private readonly options: VideoJobManagerOptions) {
     this.jobsRoot = join(options.temporaryDirectory, "video-jobs");
@@ -207,6 +211,8 @@ export class VideoJobManager {
     this.waitForPoll = options.waitForPoll ?? waitForPoll;
     this.waitForDeadline = options.waitForDeadline ?? waitForDeadline;
     this.writeArtifact = options.writeArtifact ?? writeArtifact;
+    this.removeArtifact = options.removeArtifact ?? removeArtifact;
+    this.removeJobDirectory = options.removeJobDirectory ?? removeJobDirectory;
     this.deadlineMs = positive(
       options.deadlineMs,
       DEFAULT_DEADLINE_MS,
@@ -549,7 +555,7 @@ export class VideoJobManager {
 
   private removeTransientArtifact(job: StoredJob): void {
     const path = join(job.directory, "artifact");
-    rmSync(path, { force: true });
+    this.removeArtifact(path);
   }
 
   private makeRoomForArtifact(byteLength: number): void {
@@ -683,7 +689,7 @@ export class VideoJobManager {
   }
 
   private remove(job: StoredJob): void {
-    rmSync(job.directory, { recursive: true, force: true });
+    this.removeJobDirectory(job.directory);
     this.jobs.delete(job.id);
   }
 }
@@ -705,6 +711,14 @@ async function writeArtifact(options: {
   bytes: Uint8Array;
 }): Promise<void> {
   await Bun.write(options.path, options.bytes);
+}
+
+function removeArtifact(path: string): void {
+  rmSync(path, { force: true });
+}
+
+function removeJobDirectory(path: string): void {
+  rmSync(path, { recursive: true, force: true });
 }
 
 async function waitForPoll(options: { signal: AbortSignal }): Promise<void> {
