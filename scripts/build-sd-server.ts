@@ -83,6 +83,7 @@ async function extract(
   }
   const destination = join(sourcePath, source.destination);
   await $`mkdir -p ${dirname(destination)}`;
+  await $`rmdir ${destination}`;
   await $`mv ${extracted} ${destination}`;
 }
 
@@ -101,6 +102,19 @@ async function main() {
   for (const source of sources) {
     const archive = await download(source);
     await extract(archive, source, root, sourcePath);
+  }
+
+  for (const requiredSource of [
+    "ggml/CMakeLists.txt",
+    "ggml/LICENSE",
+    "thirdparty/libwebp/CMakeLists.txt",
+    "thirdparty/libwebp/COPYING",
+    "thirdparty/libwebm/CMakeLists.txt",
+    "thirdparty/libwebm/LICENSE.TXT",
+  ]) {
+    if (!(await Bun.file(join(sourcePath, requiredSource)).exists())) {
+      throw new Error(`Verified dependency is missing ${requiredSource}.`);
+    }
   }
 
   const patch = join(workspace, "scripts/sd-patches/inline-wav-audio.patch");
