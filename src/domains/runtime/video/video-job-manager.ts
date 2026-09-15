@@ -122,6 +122,7 @@ type StoredJob = {
   terminal: Promise<VideoJob>;
   terminalAtMs: number | undefined;
   artifact: VideoJobArtifact | undefined;
+  pendingArtifactBytes: number | undefined;
   failure: Error | undefined;
   cancellationReason:
     "backend" | "cancelled" | "deadline" | "shutdown" | undefined;
@@ -166,6 +167,8 @@ export type VideoJobManagerOptions = Readonly<{
     path: string;
     bytes: Uint8Array;
   }) => Promise<void>;
+  removeArtifact?: (path: string) => void;
+  removeJobDirectory?: (path: string) => void;
   deadlineMs?: number;
   maxArtifactBytes?: number;
   maxArtifactBytesTotal?: number;
@@ -196,6 +199,8 @@ export class VideoJobManager {
     path: string;
     bytes: Uint8Array;
   }) => Promise<void>;
+  private readonly removeArtifact: (path: string) => void;
+  private readonly removeJobDirectory: (path: string) => void;
 
   constructor(private readonly options: VideoJobManagerOptions) {
     this.jobsRoot = join(options.temporaryDirectory, "video-jobs");
@@ -206,6 +211,8 @@ export class VideoJobManager {
     this.waitForPoll = options.waitForPoll ?? waitForPoll;
     this.waitForDeadline = options.waitForDeadline ?? waitForDeadline;
     this.writeArtifact = options.writeArtifact ?? writeArtifact;
+    this.removeArtifact = options.removeArtifact ?? removeArtifact;
+    this.removeJobDirectory = options.removeJobDirectory ?? removeJobDirectory;
     this.deadlineMs = positive(
       options.deadlineMs,
       DEFAULT_DEADLINE_MS,
@@ -325,6 +332,7 @@ export class VideoJobManager {
       terminal,
       terminalAtMs: undefined,
       artifact: undefined,
+      pendingArtifactBytes: undefined,
       failure: undefined,
       cancellationReason: undefined,
       termination: undefined,
@@ -461,6 +469,12 @@ export class VideoJobManager {
       job.termination = undefined;
       throw toError(error);
     }
+    try {
+      this.removeTransientArtifact(job);
+    } catch (error) {
+      this.finishFailure(job, toError(error));
+      return;
+    }
     if (completionFailure) {
       this.finishFailure(job, completionFailure);
       return;
@@ -526,6 +540,7 @@ export class VideoJobManager {
       );
     }
     this.makeRoomForArtifact(media.bytes.byteLength);
+    job.pendingArtifactBytes = media.bytes.byteLength;
     const path = join(job.directory, "artifact");
     await this.writeArtifact({ path, bytes: media.bytes });
     chmodSync(path, 0o600);
@@ -536,6 +551,12 @@ export class VideoJobManager {
       fps: media.fps,
       frameCount: media.frameCount,
     });
+  }
+
+  private removeTransientArtifact(job: StoredJob): void {
+    const path = join(job.directory, "artifact");
+    this.removeArtifact(path);
+    job.pendingArtifactBytes = undefined;
   }
 
   private makeRoomForArtifact(byteLength: number): void {
@@ -662,14 +683,15 @@ export class VideoJobManager {
 
   private artifactBytes(): number {
     return this.terminalJobs().reduce(
-      (total, job) => total + (job.artifact?.byteLength ?? 0),
+      (total, job) =>
+        total + (job.artifact?.byteLength ?? job.pendingArtifactBytes ?? 0),
       0,
     );
   }
 
   private remove(job: StoredJob): void {
+    this.removeJobDirectory(job.directory);
     this.jobs.delete(job.id);
-    rmSync(job.directory, { recursive: true, force: true });
   }
 }
 
@@ -690,6 +712,14 @@ async function writeArtifact(options: {
   bytes: Uint8Array;
 }): Promise<void> {
   await Bun.write(options.path, options.bytes);
+}
+
+function removeArtifact(path: string): void {
+  rmSync(path, { force: true });
+}
+
+function removeJobDirectory(path: string): void {
+  rmSync(path, { recursive: true, force: true });
 }
 
 async function waitForPoll(options: { signal: AbortSignal }): Promise<void> {
