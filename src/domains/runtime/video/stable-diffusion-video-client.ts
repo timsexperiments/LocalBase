@@ -9,6 +9,13 @@ const DEFAULT_MAX_MEDIA_BYTES = 23 * 1024 * 1024;
 const COMPLETED_JOB_ENVELOPE_BYTES = 1024;
 
 const videoOutputFormatSchema = z.enum(["webm", "webp", "avi"]);
+const videoGenerationProfileSchema = z
+  .object({
+    sampler: z.literal("euler"),
+    steps: z.number().int().positive().max(1_000),
+    cfgScale: z.number().positive().max(100),
+  })
+  .strict();
 const jobStatusSchema = z.enum([
   "queued",
   "generating",
@@ -32,6 +39,7 @@ const videoGenerationInputSchema = z
     fps: z.number().int().positive().max(240).optional(),
     seed: z.number().int().optional(),
     outputFormat: videoOutputFormatSchema.optional(),
+    generation: videoGenerationProfileSchema.optional(),
   })
   .strict();
 
@@ -337,6 +345,15 @@ function toBackendVideoInput(input: VideoGenerationInput) {
     ...(input.outputFormat === undefined
       ? {}
       : { output_format: input.outputFormat }),
+    ...(input.generation === undefined
+      ? {}
+      : {
+          sample_params: {
+            sample_method: input.generation.sampler,
+            sample_steps: input.generation.steps,
+            guidance: { txt_cfg: input.generation.cfgScale },
+          },
+        }),
   };
 }
 

@@ -63,6 +63,7 @@ const videoWorkloadBoundsSchema = z
     maxWidth: z.number().int().positive(),
     maxHeight: z.number().int().positive(),
     maxFrames: z.number().int().positive(),
+    fps: z.number().int().positive(),
   })
   .strict();
 
@@ -97,16 +98,25 @@ const estimatedVideoMemoryDemandSchema = z
   })
   .strict();
 
+const videoRuntimeTargetSchema = z
+  .object({
+    platform: z.enum(["darwin", "linux"]),
+    architecture: z.enum(["arm64", "x64"]),
+    accelerator: z.enum(["apple-unified", "nvidia"]),
+  })
+  .strict();
+
 const videoRuntimeProfileSchema = z
   .object({
     artifacts: videoArtifactMappingSchema,
     qualification: videoQualificationProfileSchema,
     estimatedMemoryDemand: estimatedVideoMemoryDemandSchema,
-    supportedPlatforms: z.array(z.enum(["darwin", "linux"])).min(1),
+    supportedTargets: z.array(videoRuntimeTargetSchema).min(1),
   })
   .strict();
 
 export type VideoRuntimeProfile = z.infer<typeof videoRuntimeProfileSchema>;
+export type VideoRuntimeTarget = z.infer<typeof videoRuntimeTargetSchema>;
 
 /** Local or test artifacts may omit release metadata outside the managed catalog. */
 export type ModelArtifact = Omit<

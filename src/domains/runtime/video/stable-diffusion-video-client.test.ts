@@ -102,6 +102,7 @@ test("submits, polls, and cancels with fixed localhost routes", async () => {
           fps: 16,
           seed: -1,
           outputFormat: "webm",
+          generation: { sampler: "euler", steps: 20, cfgScale: 6 },
         },
       }),
     ).resolves.toEqual({ id: VIDEO_ID, status: "queued" });
@@ -135,6 +136,11 @@ test("submits, polls, and cancels with fixed localhost routes", async () => {
           fps: 16,
           seed: -1,
           output_format: "webm",
+          sample_params: {
+            sample_method: "euler",
+            sample_steps: 20,
+            guidance: { txt_cfg: 6 },
+          },
         },
       },
       { method: "GET", path: `/sdcpp/v1/jobs/${VIDEO_ID}`, body: null },
