@@ -1,9 +1,17 @@
 import { expect, test } from "bun:test";
+import rawManifest from "../src/manager/managed-runtime-manifest.json";
 import {
   validateSdArchiveEntries,
   validateSdBinaryArchitecture,
   type SdTarget,
 } from "./sd-release";
+import {
+  sdReleaseReceiptSchema,
+  validateSdReleaseTag,
+  type Fetcher,
+} from "./sd-release/contracts";
+import { sdManifestMatches, updateSdManifest } from "./sd-release/manifest";
+import { verifyPublishedSdRelease } from "./sd-release/published-release";
 
 const licenses = [
   "LICENSE.darts-clone.txt",
@@ -49,6 +57,19 @@ const provenance = JSON.stringify({
     },
   ],
   patch: { name: "inline-wav-audio.patch", sha256: "a".repeat(64) },
+  runtimeRequirements: {
+    "linux-x64": {
+      buildBaseline: "Ubuntu 24.04 x86_64",
+      gpu: "Vulkan loader and a compatible Vulkan GPU driver",
+      systemLibraries:
+        "glibc and libstdc++ compatible with the Ubuntu 24.04 build baseline",
+    },
+    "macos-arm64": {
+      buildBaseline: "macOS 14 arm64",
+      gpu: "Apple Metal",
+      systemLibraries: "macOS system frameworks",
+    },
+  },
 });
 
 function header(target: SdTarget) {
@@ -94,4 +115,80 @@ test("validates canonical runtime architectures", () => {
   expect(() =>
     validateSdBinaryArchitecture("macos-arm64", header("linux-x64")),
   ).toThrow("architecture");
+});
+
+test("accepts only canonical immutable sd-server tags", () => {
+  expect(validateSdReleaseTag("sd-server-v0.0.1")).toBe("sd-server-v0.0.1");
+  for (const invalid of ["sd-v0.0.1", "sd-server-v00.0.1", "sd-server-v0.1"]) {
+    expect(() => validateSdReleaseTag(invalid)).toThrow();
+  }
+});
+
+function sha256(bytes: Uint8Array): string {
+  return new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+}
+
+test("verifies publication identity and updates only sd-server entries", async () => {
+  const repository = "timsexperiments/LocalBase";
+  const tag = "sd-server-v0.0.1";
+  const linux = new TextEncoder().encode("linux archive");
+  const macos = new TextEncoder().encode("macOS archive");
+  const source = new TextEncoder().encode(provenance);
+  const checksums = new TextEncoder().encode(
+    `${sha256(macos)}  sd-server-macos-arm64.zip\n${sha256(linux)}  sd-server-linux-x64.tar.gz\n`,
+  );
+  const values = {
+    "sd-server-linux-x64.tar.gz": linux,
+    "sd-server-macos-arm64.zip": macos,
+    "SOURCE.sd-server.json": source,
+    "checksums.txt": checksums,
+  };
+  const assets = Object.entries(values).map(([name, bytes]) => ({
+    name,
+    size: bytes.byteLength,
+    digest: `sha256:${sha256(bytes)}`,
+    browser_download_url: `https://github.com/${repository}/releases/download/${tag}/${name}`,
+  }));
+  const fetcher: Fetcher = async (input) => {
+    const url = String(input);
+    if (url.endsWith(`/releases/tags/${tag}`)) {
+      return Response.json({
+        id: 42,
+        tag_name: tag,
+        draft: false,
+        prerelease: false,
+        assets,
+      });
+    }
+    const entry = Object.entries(values).find(([name]) =>
+      url.endsWith(`/${name}`),
+    );
+    return entry ? new Response(entry[1]) : new Response(null, { status: 404 });
+  };
+  const output = "/tmp/localbase-sd-release-receipt-test.json";
+  const receipt = await verifyPublishedSdRelease(
+    repository,
+    tag,
+    output,
+    fetcher,
+  );
+  expect(sdReleaseReceiptSchema.parse(await Bun.file(output).json())).toEqual(
+    receipt,
+  );
+  const before = structuredClone(rawManifest);
+  const updated = updateSdManifest(before, receipt);
+  expect(sdManifestMatches(updated, receipt)).toBeTrue();
+  for (const target of updated.targets) {
+    const original = before.targets.find(
+      (candidate) =>
+        candidate.platform === target.platform &&
+        candidate.architecture === target.architecture,
+    )!;
+    expect(target.runtimes["llama-server"]).toEqual(
+      original.runtimes["llama-server"],
+    );
+    expect(target.runtimes["whisper-server"]).toEqual(
+      original.runtimes["whisper-server"],
+    );
+  }
 });

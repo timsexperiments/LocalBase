@@ -5,6 +5,20 @@ import { Readable } from "node:stream";
 import { unzipSync } from "fflate";
 import { extract as createTarExtractor, type Headers } from "tar-stream";
 import { z } from "zod";
+import {
+  filePathSchema,
+  repositorySchema,
+  sdReleaseTagSchema,
+  validateSdReleaseTag,
+} from "./sd-release/contracts";
+import {
+  updateSdManifestFile,
+  verifySdManifestFile,
+} from "./sd-release/manifest";
+import {
+  assertSdReleaseAvailable,
+  verifyPublishedSdRelease,
+} from "./sd-release/published-release";
 
 export const sdTargetSchema = z.enum(["linux-x64", "macos-arm64"]);
 export type SdTarget = z.infer<typeof sdTargetSchema>;
@@ -63,6 +77,26 @@ const sourceProvenanceSchema = z
       name: z.literal("inline-wav-audio.patch"),
       sha256: z.string().regex(/^[a-f0-9]{64}$/),
     }),
+    runtimeRequirements: z
+      .object({
+        "linux-x64": z
+          .object({
+            buildBaseline: z.literal("Ubuntu 24.04 x86_64"),
+            gpu: z.literal("Vulkan loader and a compatible Vulkan GPU driver"),
+            systemLibraries: z.literal(
+              "glibc and libstdc++ compatible with the Ubuntu 24.04 build baseline",
+            ),
+          })
+          .strict(),
+        "macos-arm64": z
+          .object({
+            buildBaseline: z.literal("macOS 14 arm64"),
+            gpu: z.literal("Apple Metal"),
+            systemLibraries: z.literal("macOS system frameworks"),
+          })
+          .strict(),
+      })
+      .strict(),
   })
   .strict();
 
@@ -253,6 +287,31 @@ const command = defineCommand({
     description: "Qualify native sd-server releases",
   },
   subCommands: {
+    "validate-tag": defineCommand({
+      args: {
+        tag: { type: "string", required: true },
+        "github-output": { type: "string" },
+      },
+      async run({ args }) {
+        const tag = validateSdReleaseTag(args.tag);
+        if (args["github-output"]) {
+          const output = filePathSchema.parse(args["github-output"]);
+          await Bun.write(output, `tag=${tag}\nbranch=tim/${tag}-manifest\n`);
+        }
+      },
+    }),
+    "assert-release-available": defineCommand({
+      args: {
+        repository: { type: "string", required: true },
+        tag: { type: "string", required: true },
+      },
+      async run({ args }) {
+        await assertSdReleaseAvailable(
+          repositorySchema.parse(args.repository),
+          sdReleaseTagSchema.parse(args.tag),
+        );
+      },
+    }),
     "qualify-archive": defineCommand({
       args: {
         target: {
@@ -271,6 +330,34 @@ const command = defineCommand({
           z.string().min(1).parse(args["work-directory"]),
           args["team-id"],
         );
+      },
+    }),
+    "verify-published-release": defineCommand({
+      args: {
+        repository: { type: "string", required: true },
+        tag: { type: "string", required: true },
+        output: { type: "string", required: true },
+      },
+      async run({ args }) {
+        await verifyPublishedSdRelease(args.repository, args.tag, args.output);
+      },
+    }),
+    "update-manifest": defineCommand({
+      args: {
+        manifest: { type: "string", required: true },
+        receipt: { type: "string", required: true },
+      },
+      async run({ args }) {
+        await updateSdManifestFile(args.manifest, args.receipt);
+      },
+    }),
+    "verify-manifest": defineCommand({
+      args: {
+        manifest: { type: "string", required: true },
+        receipt: { type: "string", required: true },
+      },
+      async run({ args }) {
+        await verifySdManifestFile(args.manifest, args.receipt);
       },
     }),
   },
