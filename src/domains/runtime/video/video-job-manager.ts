@@ -556,6 +556,7 @@ export class VideoJobManager {
   private removeTransientArtifact(job: StoredJob): void {
     const path = join(job.directory, "artifact");
     this.removeArtifact(path);
+    job.pendingArtifactBytes = undefined;
   }
 
   private makeRoomForArtifact(byteLength: number): void {

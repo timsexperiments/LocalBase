@@ -461,12 +461,18 @@ test("contains an artifact write failure before releasing cancellation admission
   const releaseStop = deferred<void>();
   const admission = admissionCounter();
   const writeFailure = new Error("artifact write failed");
+  let submissions = 0;
   const backend: VideoJobBackend = {
     async submitVideo() {
-      return { id: "native-write-failure", status: "generating" };
+      submissions += 1;
+      return {
+        id:
+          submissions === 1 ? "native-write-failure" : "native-write-recovered",
+        status: "generating",
+      };
     },
-    async getJob() {
-      return completed("native-write-failure");
+    async getJob({ id }) {
+      return completed(id);
     },
   };
   const manager = createManager({
@@ -478,12 +484,17 @@ test("contains an artifact write failure before releasing cancellation admission
       await releaseStop.promise;
     },
     writeArtifact: async (options) => {
+      if (submissions !== 1) {
+        await Bun.write(options.path, options.bytes);
+        return;
+      }
       writeEntered.resolve();
       await Bun.write(options.path, options.bytes);
       writeCompleted.resolve();
       await rejectWrite.promise;
       throw writeFailure;
     },
+    maxArtifactBytesTotal: 3,
   });
 
   try {
@@ -523,6 +534,16 @@ test("contains an artifact write failure before releasing cancellation admission
       ).exists(),
     ).toBe(false);
     expect(admission.snapshot()).toEqual({ acquired: 1, released: 1 });
+
+    const recovered = await manager.start({
+      ownerId: "key-a",
+      input: { prompt: "Reuse the released artifact capacity." },
+    });
+    if (recovered.kind !== "accepted") throw new Error("Expected admission.");
+    await expect(recovered.terminal).resolves.toMatchObject({
+      state: "completed",
+    });
+    expect(admission.snapshot()).toEqual({ acquired: 2, released: 2 });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
