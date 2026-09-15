@@ -105,6 +105,7 @@ async function main() {
 
   const patch = join(workspace, "scripts/sd-patches/inline-wav-audio.patch");
   const patchBytes = new Uint8Array(await Bun.file(patch).arrayBuffer());
+  await $`git -C ${sourcePath} init --quiet`;
   await $`git -C ${sourcePath} apply --check ${patch}`;
   await $`git -C ${sourcePath} apply ${patch}`;
 
@@ -140,6 +141,10 @@ async function main() {
       "LICENSE.utf8proc.txt",
     ],
     [join(sourcePath, "thirdparty/oniguruma/COPYING"), "LICENSE.oniguruma.txt"],
+    [
+      join(workspace, "scripts/sd-licenses/LICENSE.nlohmann-json.txt"),
+      "LICENSE.nlohmann-json.txt",
+    ],
     [
       join(sourcePath, "thirdparty/LICENSE.darts_clone.txt"),
       "LICENSE.darts-clone.txt",

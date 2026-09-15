@@ -11,6 +11,7 @@ const licenses = [
   "LICENSE.ggml.txt",
   "LICENSE.libwebm.txt",
   "LICENSE.libwebp.txt",
+  "LICENSE.nlohmann-json.txt",
   "LICENSE.oniguruma.txt",
   "LICENSE.stable-diffusion.cpp.txt",
   "LICENSE.utf8proc.txt",
@@ -86,7 +87,7 @@ test("requires the binary and complete license set", () => {
   );
   expect(() =>
     validateSdArchiveEntries("linux-x64", entries.slice(0, -1)),
-  ).toThrow("seven required license files");
+  ).toThrow("eight required license files");
 });
 
 test("validates canonical runtime architectures", () => {

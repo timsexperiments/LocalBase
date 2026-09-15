@@ -17,6 +17,7 @@ const licenseFiles = [
   "LICENSE.ggml.txt",
   "LICENSE.libwebm.txt",
   "LICENSE.libwebp.txt",
+  "LICENSE.nlohmann-json.txt",
   "LICENSE.oniguruma.txt",
   "LICENSE.stable-diffusion.cpp.txt",
   "LICENSE.utf8proc.txt",
@@ -84,7 +85,7 @@ export function validateSdArchiveEntries(
   const names = entries.map((entry) => entry.name).sort();
   if (JSON.stringify(names) !== JSON.stringify(expected)) {
     throw new Error(
-      `${target} archive must contain only sd-server, source provenance, and the seven required license files.`,
+      `${target} archive must contain only sd-server, source provenance, and the eight required license files.`,
     );
   }
   for (const entry of entries) {
@@ -223,11 +224,9 @@ export async function qualifySdArchive(
   const binary = validateSdArchiveEntries(target, entries);
   validateSdBinaryArchitecture(target, binary);
 
-  if (target === "macos-arm64") {
-    if (!teamId || !/^[A-Z0-9]{10}$/.test(teamId)) {
-      throw new Error(
-        "macOS qualification requires a 10-character Apple Team ID.",
-      );
+  if (target === "macos-arm64" && teamId) {
+    if (!/^[A-Z0-9]{10}$/.test(teamId)) {
+      throw new Error("Apple Team ID must contain 10 uppercase characters.");
     }
     await Bun.write(join(extractionDirectory, "sd-server"), binary);
     const path = join(extractionDirectory, "sd-server");

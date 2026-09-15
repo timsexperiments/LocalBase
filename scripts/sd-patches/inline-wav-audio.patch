@@ -100,7 +100,7 @@ index 3ec9a1d..89c9ad7 100644
  ### LoRA Rules
  
  - The server only accepts explicit LoRA entries from the `lora` field.
-diff --git a/private/tmp/localbase-tim9-wans2v-evidence/stable-diffusion.cpp-07a85c74cb08cda3aa176f688c5d8f522615e2b9/examples/server/inline_wav.h b/examples/server/inline_wav.h
+diff --git a/examples/server/inline_wav.h b/examples/server/inline_wav.h
 new file mode 100644
 index 0000000..dd0aea6
 --- /dev/null
@@ -121,7 +121,7 @@ index 0000000..dd0aea6
 +bool parse_inline_wav(const nlohmann::json& value,
 +                      SDAudioOwner& output,
 +                      std::string& error_message);
-diff --git a/private/tmp/localbase-tim9-wans2v-evidence/stable-diffusion.cpp-07a85c74cb08cda3aa176f688c5d8f522615e2b9/examples/server/inline_wav.cpp b/examples/server/inline_wav.cpp
+diff --git a/examples/server/inline_wav.cpp b/examples/server/inline_wav.cpp
 new file mode 100644
 index 0000000..79adcf2
 --- /dev/null
@@ -337,4 +337,3 @@ index 0000000..79adcf2
 +    }
 +    return decode_wav(bytes, output, error_message);
 +}
-
