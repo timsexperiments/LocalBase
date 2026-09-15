@@ -157,6 +157,7 @@ export async function startSdVideoServerProcess(
     plan.diffusionModelPath,
     plan.textEncoderPath,
     plan.vaePath,
+    ...(plan.mode === "s2v" ? [plan.audioEncoderPath] : []),
   ]) {
     if (!(await Bun.file(path).exists())) {
       throw new Error("Configured video artifact does not exist.");
@@ -176,17 +177,7 @@ export async function startSdVideoServerProcess(
 }
 
 /** Builds the pinned sd-server `vid_gen` argv without touching the filesystem. */
-export function buildSdVideoServerArgs(
-  plan: Pick<
-    VideoLaunchPlan,
-    | "diffusionModelPath"
-    | "textEncoderPath"
-    | "vaePath"
-    | "host"
-    | "port"
-    | "launchOptions"
-  >,
-): string[] {
+export function buildSdVideoServerArgs(plan: VideoLaunchPlan): string[] {
   return [
     "--diffusion-model",
     plan.diffusionModelPath,
@@ -194,6 +185,7 @@ export function buildSdVideoServerArgs(
     plan.textEncoderPath,
     "--vae",
     plan.vaePath,
+    ...(plan.mode === "s2v" ? ["--audio-encoder", plan.audioEncoderPath] : []),
     "-M",
     "vid_gen",
     ...(plan.launchOptions.cpuOffload ? ["--offload-to-cpu"] : []),
