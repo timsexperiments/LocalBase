@@ -109,6 +109,7 @@ describe("runtime launch plans", () => {
           host: "127.0.0.1",
           port: 8091,
           videoRuntime: {
+            mode: "t2v",
             artifacts: {
               diffusionModel: "diffusion.gguf",
               textEncoder: "encoder.gguf",
@@ -141,6 +142,7 @@ describe("runtime launch plans", () => {
       expected: {
         modality: "video",
         component: "sd-server",
+        mode: "t2v",
         diffusionModelPath: `${root}/models/video/diffusion.gguf`,
         textEncoderPath: `${root}/models/video/encoder.gguf`,
         vaePath: `${root}/models/video/vae.safetensors`,
@@ -158,6 +160,48 @@ describe("runtime launch plans", () => {
     },
   ])("resolves $name launch settings without I/O", ({ resolve, expected }) => {
     expect(resolve()).toMatchObject(expected);
+  });
+
+  test("resolves the S2V audio encoder path", () => {
+    const plan = resolveVideoLaunchPlan({
+      runtimeId: "video:s2v:1",
+      root,
+      modelsDirectory: `${root}/models/video`,
+      modelId: "s2v",
+      diffusionModelFile: "diffusion.safetensors",
+      textEncoderFile: "encoder.safetensors",
+      vaeFile: "vae.safetensors",
+      host: "127.0.0.1",
+      port: 8091,
+      videoRuntime: {
+        mode: "s2v",
+        artifacts: {
+          diffusionModel: "diffusion.safetensors",
+          textEncoder: "encoder.safetensors",
+          vae: "vae.safetensors",
+          audioEncoder: "wav2vec2.safetensors",
+        },
+        qualification: {
+          maxWidth: 832,
+          maxHeight: 480,
+          maxFrames: 81,
+          generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+          launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        },
+        estimatedMemoryDemand: {
+          unifiedBytes: 30,
+          hostBytes: 20,
+          acceleratorBytes: 10,
+        },
+        supportedPlatforms: ["linux"],
+      },
+      platform: "linux",
+    });
+
+    expect(plan).toMatchObject({
+      mode: "s2v",
+      audioEncoderPath: `${root}/models/video/wav2vec2.safetensors`,
+    });
   });
 
   test("detaches and freezes launch inputs", () => {
@@ -203,6 +247,7 @@ describe("runtime launch plans", () => {
         port: 8091,
         platform: "darwin",
         videoRuntime: {
+          mode: "t2v",
           artifacts: {
             diffusionModel: "diffusion.gguf",
             textEncoder: "encoder.gguf",
