@@ -342,7 +342,7 @@ export function runtimeLaunchOverrides(
 }
 
 export function createRuntimeSupervisorFactory(
-  ctx: AppContext,
+  ctx: Pick<AppContext, "logger" | "otel" | "specs">,
   overrides: RuntimeLaunchOverrides,
   dependencies: RuntimeSupervisorFactoryDependencies,
 ): RuntimeSupervisorFactory {
@@ -611,6 +611,20 @@ export function createRuntimeSupervisorFactory(
               `Video model \"${modelId}\" has no runtime profile.`,
             );
           }
+          const artifacts = spec.videoRuntime.artifacts;
+          const plan = resolveVideoLaunchPlan({
+            runtimeId,
+            root: config.root,
+            modelsDirectory: config.videoModelsDir,
+            modelId,
+            diffusionModelFile: artifacts.diffusionModel,
+            textEncoderFile: artifacts.textEncoder,
+            vaeFile: artifacts.vae,
+            host: videoHost(overrides),
+            port: videoPort(overrides),
+            videoRuntime: spec.videoRuntime,
+            target: videoRuntimeTarget(dependencies.memorySafety.topology),
+          });
           let installation = await resolveCatalogInstallation(
             spec,
             config.videoModelsDir,
@@ -633,7 +647,6 @@ export function createRuntimeSupervisorFactory(
               `Video model \"${modelId}\" is incomplete after installation.`,
             );
           }
-          const artifacts = spec.videoRuntime.artifacts;
           const requiredPaths = [
             artifacts.diffusionModel,
             artifacts.textEncoder,
@@ -670,19 +683,7 @@ export function createRuntimeSupervisorFactory(
               config.videoModelsDir,
             );
           }
-          return resolveVideoLaunchPlan({
-            runtimeId,
-            root: config.root,
-            modelsDirectory: config.videoModelsDir,
-            modelId,
-            diffusionModelFile: artifacts.diffusionModel,
-            textEncoderFile: artifacts.textEncoder,
-            vaeFile: artifacts.vae,
-            host: videoHost(overrides),
-            port: videoPort(overrides),
-            videoRuntime: spec.videoRuntime,
-            target: videoRuntimeTarget(dependencies.memorySafety.topology),
-          });
+          return plan;
         },
         start: async (plan) => {
           if (plan.component !== "sd-server" || plan.modality !== "video") {
