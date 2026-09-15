@@ -64,6 +64,7 @@ describe("catalog artifact validation", () => {
       inputModalities: ["text"],
       outputModalities: ["video"],
       videoRuntime: {
+        mode: "t2v",
         artifacts: {
           diffusionModel: "diffusion.gguf",
           textEncoder: "encoder.gguf",
@@ -101,6 +102,80 @@ describe("catalog artifact validation", () => {
           videoRuntime: {
             ...video.videoRuntime,
             artifacts: { ...video.videoRuntime.artifacts, vae: "missing.vae" },
+          },
+        },
+      ]).success,
+    ).toBe(false);
+  });
+
+  test("requires an S2V profile to map its declared audio encoder", () => {
+    const artifacts = [
+      {
+        sourcePath: "diffusion.safetensors",
+        filename: "diffusion.safetensors",
+        expectedSizeBytes: 10,
+        sha256: checksum,
+        role: "primary",
+      },
+      ...["text.safetensors", "vae.safetensors", "wav2vec2.safetensors"].map(
+        (filename, index) => ({
+          sourcePath: filename,
+          filename,
+          expectedSizeBytes: 9 - index,
+          sha256: String.fromCharCode(98 + index).repeat(64),
+          role: "supplementary",
+        }),
+      ),
+    ];
+    const speechVideo = {
+      ...model(artifacts),
+      kind: "video",
+      inputModalities: ["text", "audio", "image"],
+      outputModalities: ["video"],
+      videoRuntime: {
+        mode: "s2v",
+        artifacts: {
+          diffusionModel: "diffusion.safetensors",
+          textEncoder: "text.safetensors",
+          vae: "vae.safetensors",
+          audioEncoder: "wav2vec2.safetensors",
+        },
+        qualification: {
+          maxWidth: 832,
+          maxHeight: 480,
+          maxFrames: 81,
+          fps: 16,
+          generation: {
+            sampler: "euler",
+            steps: 20,
+            cfgScale: 6,
+            flowShift: 3,
+            seed: 42,
+          },
+          launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        },
+        estimatedMemoryDemand: {
+          unifiedBytes: 30,
+          hostBytes: 20,
+          acceleratorBytes: 10,
+        },
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
+      },
+    };
+
+    expect(catalogSchema.safeParse([speechVideo]).success).toBe(true);
+    expect(
+      catalogSchema.safeParse([
+        {
+          ...speechVideo,
+          videoRuntime: {
+            ...speechVideo.videoRuntime,
+            artifacts: {
+              ...speechVideo.videoRuntime.artifacts,
+              audioEncoder: "missing.safetensors",
+            },
           },
         },
       ]).success,

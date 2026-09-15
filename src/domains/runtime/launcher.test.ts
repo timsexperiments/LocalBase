@@ -17,6 +17,7 @@ import {
   buildSdVideoServerArgs,
   startLlamaServerProcess,
   startSdServerProcess,
+  startSdVideoServerProcess,
   startWhisperServerProcess,
 } from "./launcher";
 
@@ -36,6 +37,7 @@ test("uses video profile launch options", () => {
     host: "127.0.0.1",
     port: 8091,
     videoRuntime: {
+      mode: "t2v",
       artifacts: {
         diffusionModel: "diffusion.gguf",
         textEncoder: "encoder.gguf",
@@ -83,6 +85,118 @@ test("uses video profile launch options", () => {
     "--listen-port",
     "8091",
   ]);
+});
+
+test("adds the wav2vec2 path only to an S2V launch", () => {
+  const plan = resolveVideoLaunchPlan({
+    runtimeId: "video:s2v:1",
+    root: "/tmp/local-base-video-launch",
+    modelsDirectory: "/tmp/local-base-video-launch/models/video",
+    modelId: "s2v-model",
+    diffusionModelFile: "diffusion.safetensors",
+    textEncoderFile: "encoder.safetensors",
+    vaeFile: "vae.safetensors",
+    host: "127.0.0.1",
+    port: 8091,
+    videoRuntime: {
+      mode: "s2v",
+      artifacts: {
+        diffusionModel: "diffusion.safetensors",
+        textEncoder: "encoder.safetensors",
+        vae: "vae.safetensors",
+        audioEncoder: "wav2vec2.safetensors",
+      },
+      qualification: {
+        maxWidth: 832,
+        maxHeight: 480,
+        maxFrames: 81,
+        fps: 16,
+        generation: {
+          sampler: "euler",
+          steps: 20,
+          cfgScale: 6,
+          flowShift: 3,
+          seed: 42,
+        },
+        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+      },
+      estimatedMemoryDemand: {
+        unifiedBytes: 1,
+        hostBytes: 1,
+        acceleratorBytes: 1,
+      },
+      supportedTargets: [
+        { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+      ],
+    },
+    target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+  });
+
+  expect(plan.mode).toBe("s2v");
+  if (plan.mode !== "s2v") throw new Error("Expected an S2V launch plan.");
+  expect(buildSdVideoServerArgs(plan)).toContain("--audio-encoder");
+  expect(buildSdVideoServerArgs(plan)).toContain(plan.audioEncoderPath);
+});
+
+test("rejects an S2V launch with a missing audio encoder before spawning", async () => {
+  const root = mkdtempSync(join(tmpdir(), "local-base-s2v-launch-"));
+  roots.push(root);
+  const modelsDirectory = join(root, "models", "video");
+  mkdirSync(modelsDirectory, { recursive: true });
+  for (const filename of [
+    "diffusion.safetensors",
+    "encoder.safetensors",
+    "vae.safetensors",
+  ]) {
+    await Bun.write(join(modelsDirectory, filename), "fixture");
+  }
+  const plan = resolveVideoLaunchPlan({
+    runtimeId: "video:s2v:1",
+    root,
+    modelsDirectory,
+    modelId: "s2v-model",
+    diffusionModelFile: "diffusion.safetensors",
+    textEncoderFile: "encoder.safetensors",
+    vaeFile: "vae.safetensors",
+    host: "127.0.0.1",
+    port: 8091,
+    videoRuntime: {
+      mode: "s2v",
+      artifacts: {
+        diffusionModel: "diffusion.safetensors",
+        textEncoder: "encoder.safetensors",
+        vae: "vae.safetensors",
+        audioEncoder: "missing-wav2vec2.safetensors",
+      },
+      qualification: {
+        maxWidth: 832,
+        maxHeight: 480,
+        maxFrames: 81,
+        fps: 16,
+        generation: {
+          sampler: "euler",
+          steps: 20,
+          cfgScale: 6,
+          flowShift: 3,
+          seed: 42,
+        },
+        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+      },
+      estimatedMemoryDemand: {
+        unifiedBytes: 1,
+        hostBytes: 1,
+        acceleratorBytes: 1,
+      },
+      supportedTargets: [
+        { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+      ],
+    },
+    target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+  });
+
+  await expect(startSdVideoServerProcess(plan)).rejects.toThrow(
+    "Configured video artifact does not exist.",
+  );
 });
 
 describe.serial("Whisper GPU launch contract", () => {

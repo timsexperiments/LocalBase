@@ -50,12 +50,16 @@ const ttsRuntimeProfileSchema = z
   })
   .strict();
 
-const videoArtifactMappingSchema = z
+const t2vArtifactMappingSchema = z
   .object({
     diffusionModel: safeFilenameSchema,
     textEncoder: safeFilenameSchema,
     vae: safeFilenameSchema,
   })
+  .strict();
+
+const s2vArtifactMappingSchema = t2vArtifactMappingSchema
+  .extend({ audioEncoder: safeFilenameSchema })
   .strict();
 
 const videoWorkloadBoundsSchema = z
@@ -107,14 +111,26 @@ const videoRuntimeTargetSchema = z
   })
   .strict();
 
-const videoRuntimeProfileSchema = z
-  .object({
-    artifacts: videoArtifactMappingSchema,
-    qualification: videoQualificationProfileSchema,
-    estimatedMemoryDemand: estimatedVideoMemoryDemandSchema,
-    supportedTargets: z.array(videoRuntimeTargetSchema).min(1),
-  })
-  .strict();
+const videoRuntimeProfileBaseSchema = z.object({
+  qualification: videoQualificationProfileSchema,
+  estimatedMemoryDemand: estimatedVideoMemoryDemandSchema,
+  supportedTargets: z.array(videoRuntimeTargetSchema).min(1),
+});
+
+const videoRuntimeProfileSchema = z.discriminatedUnion("mode", [
+  videoRuntimeProfileBaseSchema
+    .extend({
+      mode: z.literal("t2v"),
+      artifacts: t2vArtifactMappingSchema,
+    })
+    .strict(),
+  videoRuntimeProfileBaseSchema
+    .extend({
+      mode: z.literal("s2v"),
+      artifacts: s2vArtifactMappingSchema,
+    })
+    .strict(),
+]);
 
 export type VideoRuntimeProfile = z.infer<typeof videoRuntimeProfileSchema>;
 export type VideoRuntimeTarget = z.infer<typeof videoRuntimeTargetSchema>;
@@ -1803,6 +1819,7 @@ const CATALOG_SOURCE = [
       },
     ],
     videoRuntime: {
+      mode: "t2v",
       artifacts: {
         diffusionModel: "Wan2.1-T2V-1.3B-Q8_0.gguf",
         textEncoder: "umt5-xxl-encoder-Q8_0.gguf",
