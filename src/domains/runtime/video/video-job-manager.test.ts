@@ -279,6 +279,11 @@ test("waits for a late successful submission before cancelling and releasing", a
     expect(manager.get({ ownerId: "key-a", id: started.job.id })).toMatchObject(
       { state: "cancelled" },
     );
+    expect(
+      await Bun.file(
+        join(root, "video-jobs", started.job.id, "artifact"),
+      ).exists(),
+    ).toBe(false);
     expect(admission.snapshot()).toEqual({ acquired: 1, released: 1 });
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -450,17 +455,24 @@ test("waits for completed artifact persistence before settling cancellation", as
 test("contains an artifact write failure before releasing cancellation admission", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-write-failure-"));
   const writeEntered = deferred<void>();
+  const writeCompleted = deferred<void>();
   const rejectWrite = deferred<void>();
   const stopEntered = deferred<void>();
   const releaseStop = deferred<void>();
   const admission = admissionCounter();
   const writeFailure = new Error("artifact write failed");
+  let submissions = 0;
   const backend: VideoJobBackend = {
     async submitVideo() {
-      return { id: "native-write-failure", status: "generating" };
+      submissions += 1;
+      return {
+        id:
+          submissions === 1 ? "native-write-failure" : "native-write-recovered",
+        status: "generating",
+      };
     },
-    async getJob() {
-      return completed("native-write-failure");
+    async getJob({ id }) {
+      return completed(id);
     },
   };
   const manager = createManager({
@@ -471,11 +483,18 @@ test("contains an artifact write failure before releasing cancellation admission
       stopEntered.resolve();
       await releaseStop.promise;
     },
-    writeArtifact: async () => {
+    writeArtifact: async (options) => {
+      if (submissions !== 1) {
+        await Bun.write(options.path, options.bytes);
+        return;
+      }
       writeEntered.resolve();
+      await Bun.write(options.path, options.bytes);
+      writeCompleted.resolve();
       await rejectWrite.promise;
       throw writeFailure;
     },
+    maxArtifactBytesTotal: 3,
   });
 
   try {
@@ -485,6 +504,12 @@ test("contains an artifact write failure before releasing cancellation admission
     });
     if (started.kind !== "accepted") throw new Error("Expected admission.");
     await writeEntered.promise;
+    await writeCompleted.promise;
+    expect(
+      await Bun.file(
+        join(root, "video-jobs", started.job.id, "artifact"),
+      ).exists(),
+    ).toBe(true);
 
     const cancellation = manager.cancel({
       ownerId: "key-a",
@@ -503,7 +528,109 @@ test("contains an artifact write failure before releasing cancellation admission
       state: "failed",
       failure: writeFailure,
     });
+    expect(
+      await Bun.file(
+        join(root, "video-jobs", started.job.id, "artifact"),
+      ).exists(),
+    ).toBe(false);
     expect(admission.snapshot()).toEqual({ acquired: 1, released: 1 });
+
+    const recovered = await manager.start({
+      ownerId: "key-a",
+      input: { prompt: "Reuse the released artifact capacity." },
+    });
+    if (recovered.kind !== "accepted") throw new Error("Expected admission.");
+    await expect(recovered.terminal).resolves.toMatchObject({
+      state: "completed",
+    });
+    expect(admission.snapshot()).toEqual({ acquired: 2, released: 2 });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("retains a failed transient cleanup's known bytes until terminal pruning succeeds", async () => {
+  const root = mkdtempSync(
+    join(tmpdir(), "localbase-video-cleanup-accounting-"),
+  );
+  const writeCompleted = deferred<void>();
+  const releaseWrite = deferred<void>();
+  const admission = admissionCounter();
+  let submissions = 0;
+  let now = 0;
+  let failArtifactCleanup = true;
+  let failTerminalPrune = true;
+  const manager = createManager({
+    backend: {
+      async submitVideo() {
+        submissions += 1;
+        return { id: `native-cleanup-${submissions}`, status: "generating" };
+      },
+      async getJob({ id }) {
+        return completed(
+          id,
+          submissions === 1 ? Uint8Array.from([1, 2, 3]) : Uint8Array.of(4),
+        );
+      },
+    },
+    temporaryDirectory: root,
+    acquireAdmission: admission.acquire,
+    supervisedStop: async () => {},
+    writeArtifact: async (options) => {
+      await Bun.write(options.path, options.bytes);
+      if (submissions === 1) {
+        writeCompleted.resolve();
+        await releaseWrite.promise;
+      }
+    },
+    removeArtifact(path) {
+      if (failArtifactCleanup) {
+        throw new Error("artifact cleanup denied");
+      }
+      rmSync(path, { force: true });
+    },
+    removeJobDirectory(path) {
+      if (failTerminalPrune) {
+        throw new Error("terminal prune denied");
+      }
+      rmSync(path, { recursive: true, force: true });
+    },
+    maxArtifactBytesTotal: 3,
+    terminalTtlMs: 1,
+    now: () => now,
+  });
+
+  let firstDirectory = "";
+  try {
+    const first = await manager.start({
+      ownerId: "key-a",
+      input: { prompt: "Keep the partial private file accounted." },
+    });
+    if (first.kind !== "accepted") throw new Error("Expected admission.");
+    firstDirectory = join(root, "video-jobs", first.job.id);
+    await writeCompleted.promise;
+    const cancellation = manager.cancel({ ownerId: "key-a", id: first.job.id });
+    releaseWrite.resolve();
+    await expect(cancellation).resolves.toMatchObject({ state: "failed" });
+    expect(await Bun.file(join(firstDirectory, "artifact")).exists()).toBe(
+      true,
+    );
+
+    const second = await manager.start({
+      ownerId: "key-a",
+      input: { prompt: "Must not bypass the retained artifact budget." },
+    });
+    if (second.kind !== "accepted") throw new Error("Expected admission.");
+    await expect(second.terminal).resolves.toMatchObject({ state: "failed" });
+    expect(manager.get({ ownerId: "key-a", id: first.job.id })).toMatchObject({
+      state: "failed",
+    });
+
+    now = 1;
+    expect(() => manager.get({ ownerId: "key-a", id: first.job.id })).toThrow();
+    failArtifactCleanup = false;
+    failTerminalPrune = false;
+    expect(manager.get({ ownerId: "key-a", id: first.job.id })).toBeUndefined();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
