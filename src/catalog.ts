@@ -2,10 +2,10 @@ import { join } from "node:path";
 import { z } from "zod";
 import { safeFilenameSchema } from "./utils/checksum";
 
-export const modelKindSchema = z.enum(["llm", "stt", "tts", "image"]);
+export const modelKindSchema = z.enum(["llm", "stt", "tts", "image", "video"]);
 export type ModelKind = z.infer<typeof modelKindSchema>;
 
-export const modelModalitySchema = z.enum(["text", "audio", "image"]);
+export const modelModalitySchema = z.enum(["text", "audio", "image", "video"]);
 export type ModelModality = z.infer<typeof modelModalitySchema>;
 
 export const commercialStatusSchema = z.enum([
@@ -27,6 +27,22 @@ export const modelArtifactSchema = z.object({
   role: z.enum(["primary", "supplementary"]),
   source: artifactSourceSchema.optional(),
 });
+
+const videoArtifactMappingSchema = z
+  .object({
+    diffusionModel: safeFilenameSchema,
+    textEncoder: safeFilenameSchema,
+    vae: safeFilenameSchema,
+  })
+  .strict();
+
+const videoRuntimeProfileSchema = z
+  .object({
+    artifacts: videoArtifactMappingSchema,
+    /** Measured peak unified-memory demand from an approved native qualification. */
+    measuredPeakMemoryBytes: z.number().int().positive(),
+  })
+  .strict();
 
 /** Local or test artifacts may omit release metadata outside the managed catalog. */
 export type ModelArtifact = Omit<
@@ -52,6 +68,7 @@ export const modelSpecSchema = z
     source: z.string().url(),
     repositoryRevision: z.string().regex(/^[a-fA-F0-9]{40}$/),
     artifacts: z.array(modelArtifactSchema).min(1),
+    videoRuntime: videoRuntimeProfileSchema.optional(),
     inputModalities: z.array(modelModalitySchema).min(1),
     outputModalities: z.array(modelModalitySchema).min(1),
     contextWindowTokens: z.number().int().positive().nullable().default(null),
@@ -81,6 +98,37 @@ export const modelSpecSchema = z
         code: "custom",
         message: "models must have exactly one primary artifact",
         path: ["artifacts"],
+      });
+    }
+
+    if (model.kind === "video") {
+      if (!model.videoRuntime) {
+        ctx.addIssue({
+          code: "custom",
+          message: "video models must declare a measured runtime profile",
+          path: ["videoRuntime"],
+        });
+      } else {
+        const artifactNames = new Set(
+          model.artifacts.map(({ filename }) => filename),
+        );
+        for (const [name, filename] of Object.entries(
+          model.videoRuntime.artifacts,
+        )) {
+          if (!artifactNames.has(filename)) {
+            ctx.addIssue({
+              code: "custom",
+              message: "video runtime artifact must name a declared artifact",
+              path: ["videoRuntime", "artifacts", name],
+            });
+          }
+        }
+      }
+    } else if (model.videoRuntime) {
+      ctx.addIssue({
+        code: "custom",
+        message: "only video models may declare a video runtime profile",
+        path: ["videoRuntime"],
       });
     }
   });

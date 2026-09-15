@@ -74,6 +74,7 @@ export const logRuntimeSchema = z.enum([
   "stt",
   "tts",
   "image",
+  "video",
   "service",
   "cli",
 ]);

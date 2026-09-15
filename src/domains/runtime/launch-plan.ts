@@ -41,7 +41,17 @@ export type SttLaunchPlan = LaunchPlanBase<"stt", "whisper-server">;
 
 export type ImageLaunchPlan = LaunchPlanBase<"image", "sd-server">;
 
-export type RuntimeLaunchPlan = LlmLaunchPlan | SttLaunchPlan | ImageLaunchPlan;
+export type VideoLaunchPlan = Omit<
+  LaunchPlanBase<"video", "sd-server">,
+  "modelFile" | "modelPath"
+> & {
+  readonly diffusionModelPath: string;
+  readonly textEncoderPath: string;
+  readonly vaePath: string;
+};
+
+export type RuntimeLaunchPlan =
+  LlmLaunchPlan | SttLaunchPlan | ImageLaunchPlan | VideoLaunchPlan;
 
 function modelBytes(
   artifactBytes: number,
@@ -66,6 +76,19 @@ function runtimeMemoryDemand(input: {
     hostBytes: input.artifactBytes + RUNTIME_HOST_OVERHEAD_BYTES,
     acceleratorBytes: requirementBytes,
     confidence: "estimated",
+  });
+}
+
+function videoMemoryDemand(input: {
+  artifactBytes: number;
+  measuredPeakMemoryBytes: number;
+}): RuntimeMemoryDemand {
+  const combinedBytes = input.artifactBytes + input.measuredPeakMemoryBytes;
+  return Object.freeze({
+    unifiedBytes: combinedBytes + RUNTIME_HOST_OVERHEAD_BYTES,
+    hostBytes: input.artifactBytes + RUNTIME_HOST_OVERHEAD_BYTES,
+    acceleratorBytes: combinedBytes,
+    confidence: "authoritative",
   });
 }
 
@@ -183,5 +206,34 @@ export function resolveImageLaunchPlan(input: {
     port: input.port,
     healthUrl: `http://${input.host}:${input.port}/`,
     memoryDemand: runtimeMemoryDemand(input),
+  });
+}
+
+export function resolveVideoLaunchPlan(input: {
+  runtimeId: string;
+  root: string;
+  modelsDirectory: string;
+  modelId: string;
+  diffusionModelFile: string;
+  textEncoderFile: string;
+  vaeFile: string;
+  host: string;
+  port: number;
+  artifactBytes: number;
+  measuredPeakMemoryBytes: number;
+}): VideoLaunchPlan {
+  return Object.freeze({
+    runtimeId: input.runtimeId,
+    modality: "video",
+    component: "sd-server",
+    root: input.root,
+    modelId: input.modelId,
+    diffusionModelPath: join(input.modelsDirectory, input.diffusionModelFile),
+    textEncoderPath: join(input.modelsDirectory, input.textEncoderFile),
+    vaePath: join(input.modelsDirectory, input.vaeFile),
+    host: input.host,
+    port: input.port,
+    healthUrl: `http://${input.host}:${input.port}/`,
+    memoryDemand: videoMemoryDemand(input),
   });
 }

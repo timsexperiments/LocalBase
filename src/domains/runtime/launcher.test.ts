@@ -9,10 +9,12 @@ import {
   resolveImageLaunchPlan,
   resolveLlmLaunchPlan,
   resolveSttLaunchPlan,
+  resolveVideoLaunchPlan,
 } from "./launch-plan";
 import { requireWhisperGpuContract } from "./whisper-gpu";
 import {
   sdServerEnvironment,
+  buildSdVideoServerArgs,
   startLlamaServerProcess,
   startSdServerProcess,
   startWhisperServerProcess,
@@ -21,6 +23,37 @@ import {
 const roots: string[] = [];
 const originalPath = process.env.PATH;
 const originalLibraryPath = process.env.LD_LIBRARY_PATH;
+
+test("uses the explicit qualified-artifact arguments for video", () => {
+  const plan = resolveVideoLaunchPlan({
+    runtimeId: "video:test:1",
+    root: "/tmp/local-base-video-launch",
+    modelsDirectory: "/tmp/local-base-video-launch/models/video",
+    modelId: "qualified-video",
+    diffusionModelFile: "diffusion.gguf",
+    textEncoderFile: "encoder.gguf",
+    vaeFile: "vae.safetensors",
+    host: "127.0.0.1",
+    port: 8091,
+    artifactBytes: 1,
+    measuredPeakMemoryBytes: 1,
+  });
+
+  expect(buildSdVideoServerArgs(plan)).toEqual([
+    "--diffusion-model",
+    plan.diffusionModelPath,
+    "--t5xxl",
+    plan.textEncoderPath,
+    "--vae",
+    plan.vaePath,
+    "-M",
+    "vid_gen",
+    "--listen-ip",
+    "127.0.0.1",
+    "--listen-port",
+    "8091",
+  ]);
+});
 
 describe.serial("Whisper GPU launch contract", () => {
   test("launches with the admitted PCI identity on Linux and unchanged arguments on macOS", async () => {

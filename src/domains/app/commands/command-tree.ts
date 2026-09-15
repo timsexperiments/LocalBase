@@ -134,7 +134,7 @@ export const globalArgs = {
 
 const modelKindArg = {
   type: "enum",
-  options: ["llm", "stt", "tts", "image"],
+  options: ["llm", "stt", "tts", "image", "video"],
   description: "Filter by model kind",
 } satisfies ArgDef;
 
@@ -248,6 +248,11 @@ export const configureCommand = command<ConfigureInput>({
       valueHint: "id,...",
       description: "Selected image model IDs; use an empty value to disable",
     },
+    "video-models": {
+      type: "string",
+      valueHint: "id,...",
+      description: "Selected video model IDs; use an empty value to disable",
+    },
     "active-llm": {
       type: "string",
       valueHint: "id",
@@ -267,6 +272,11 @@ export const configureCommand = command<ConfigureInput>({
       type: "string",
       valueHint: "id",
       description: "Active image model ID",
+    },
+    "active-video": {
+      type: "string",
+      valueHint: "id",
+      description: "Active video model ID",
     },
     "hf-token": {
       type: "string",
@@ -412,6 +422,10 @@ const serveCommand = command<ServeInput>({
       "Enable image generation",
       "Disable image generation",
     ),
+    video: noPromptBoolean(
+      "Enable video generation runtime",
+      "Disable video generation runtime",
+    ),
     "llm-host": {
       type: "string",
       valueHint: "host",
@@ -441,6 +455,16 @@ const serveCommand = command<ServeInput>({
       type: "string",
       valueHint: "port",
       description: "sd-server port",
+    },
+    "video-host": {
+      type: "string",
+      valueHint: "host",
+      description: "video sd-server host",
+    },
+    "video-port": {
+      type: "string",
+      valueHint: "port",
+      description: "video sd-server port",
     },
     "ctx-size": {
       type: "string",

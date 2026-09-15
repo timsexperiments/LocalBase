@@ -35,6 +35,57 @@ function model(artifacts: unknown[]) {
 }
 
 describe("catalog artifact validation", () => {
+  test("requires video profiles to name declared artifacts and a measured peak", () => {
+    const video = {
+      ...model([
+        {
+          sourcePath: "diffusion.gguf",
+          filename: "diffusion.gguf",
+          expectedSizeBytes: 10,
+          sha256: checksum,
+          role: "primary",
+        },
+        {
+          sourcePath: "encoder.gguf",
+          filename: "encoder.gguf",
+          expectedSizeBytes: 8,
+          sha256: "b".repeat(64),
+          role: "supplementary",
+        },
+        {
+          sourcePath: "vae.safetensors",
+          filename: "vae.safetensors",
+          expectedSizeBytes: 6,
+          sha256: "c".repeat(64),
+          role: "supplementary",
+        },
+      ]),
+      kind: "video",
+      inputModalities: ["text"],
+      outputModalities: ["video"],
+      videoRuntime: {
+        artifacts: {
+          diffusionModel: "diffusion.gguf",
+          textEncoder: "encoder.gguf",
+          vae: "vae.safetensors",
+        },
+        measuredPeakMemoryBytes: 20,
+      },
+    };
+    expect(catalogSchema.safeParse([video]).success).toBe(true);
+    expect(
+      catalogSchema.safeParse([
+        {
+          ...video,
+          videoRuntime: {
+            ...video.videoRuntime,
+            artifacts: { ...video.videoRuntime.artifacts, vae: "missing.vae" },
+          },
+        },
+      ]).success,
+    ).toBe(false);
+  });
+
   test("accepts single-file and sharded artifact sets", () => {
     const singleFile = model([
       {
@@ -137,7 +188,7 @@ describe("catalog artifact validation", () => {
     }
   });
 
-  test("rejects empty or unknown modality contracts", () => {
+  test("rejects empty or incompatible modality contracts", () => {
     const artifacts = [
       {
         sourcePath: "model.gguf",
@@ -154,7 +205,7 @@ describe("catalog artifact validation", () => {
     ).toBe(false);
     expect(
       catalogSchema.safeParse([
-        { ...model(artifacts), outputModalities: ["video"] },
+        { ...model(artifacts), outputModalities: ["unknown"] },
       ]).success,
     ).toBe(false);
   });

@@ -3,6 +3,7 @@ import {
   resolveImageLaunchPlan,
   resolveLlmLaunchPlan,
   resolveSttLaunchPlan,
+  resolveVideoLaunchPlan,
 } from "./launch-plan";
 import { SupervisorRegistry } from "./supervisor-registry";
 
@@ -91,6 +92,37 @@ describe("runtime launch plans", () => {
           hostBytes: 2.5 * 1024 ** 3,
           acceleratorBytes: 2 * 1024 ** 3,
           confidence: "estimated",
+        },
+      },
+    },
+    {
+      name: "video",
+      resolve: () =>
+        resolveVideoLaunchPlan({
+          runtimeId: "video:model:1",
+          root,
+          modelsDirectory: `${root}/models/video`,
+          modelId: "model",
+          diffusionModelFile: "diffusion.gguf",
+          textEncoderFile: "encoder.gguf",
+          vaeFile: "vae.safetensors",
+          host: "127.0.0.1",
+          port: 8091,
+          artifactBytes: 5 * 1024 ** 3,
+          measuredPeakMemoryBytes: 8 * 1024 ** 3,
+        }),
+      expected: {
+        modality: "video",
+        component: "sd-server",
+        diffusionModelPath: `${root}/models/video/diffusion.gguf`,
+        textEncoderPath: `${root}/models/video/encoder.gguf`,
+        vaePath: `${root}/models/video/vae.safetensors`,
+        healthUrl: "http://127.0.0.1:8091/",
+        memoryDemand: {
+          unifiedBytes: 13.5 * 1024 ** 3,
+          hostBytes: 5.5 * 1024 ** 3,
+          acceleratorBytes: 13 * 1024 ** 3,
+          confidence: "authoritative",
         },
       },
     },
