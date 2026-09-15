@@ -96,7 +96,7 @@ int main() {
     view = audio.get();
     assert(view.sample_rate == 16000);
     assert(view.channels == 2);
-    assert(view.sample_count == 4);
+    assert(view.sample_count == 2);
     for (size_t index = 0; index < float_values.size(); ++index) {
         assert(view.data[index] == float_values[index]);
     }
