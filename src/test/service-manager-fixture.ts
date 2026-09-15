@@ -643,6 +643,7 @@ export async function runManagedGatewayFixture(
               stt: { configured: false, state: "disabled" },
               tts: { configured: false, state: "disabled" },
               image: { configured: false, state: "disabled" },
+              video: { configured: false, state: "disabled" },
             },
           }),
         );
