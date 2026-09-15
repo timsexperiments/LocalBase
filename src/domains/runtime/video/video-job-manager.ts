@@ -212,8 +212,6 @@ export class VideoJobManager {
   constructor(private readonly options: VideoJobManagerOptions) {
     this.jobsRoot = join(options.temporaryDirectory, "video-jobs");
     rmSync(this.jobsRoot, { recursive: true, force: true });
-    mkdirSync(this.jobsRoot, { recursive: true, mode: 0o700 });
-    chmodSync(this.jobsRoot, 0o700);
     this.now = options.now ?? Date.now;
     this.waitForPoll = options.waitForPoll ?? waitForPoll;
     this.waitForDeadline = options.waitForDeadline ?? waitForDeadline;
@@ -324,7 +322,6 @@ export class VideoJobManager {
     if (
       !job ||
       job.ownerId !== options.ownerId ||
-      job.state !== "completed" ||
       job.terminalAtMs === undefined
     ) {
       return false;
@@ -350,6 +347,8 @@ export class VideoJobManager {
     supervisedStop: () => Promise<void>,
   ): StoredJob {
     const id = crypto.randomUUID();
+    mkdirSync(this.jobsRoot, { recursive: true, mode: 0o700 });
+    chmodSync(this.jobsRoot, 0o700);
     const directory = join(this.jobsRoot, id);
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     chmodSync(directory, 0o700);

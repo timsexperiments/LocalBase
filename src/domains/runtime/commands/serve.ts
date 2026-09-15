@@ -2199,7 +2199,24 @@ export async function runServe(
       ? { video: factory.create("video", initialSnapshot) }
       : {}),
   });
-  let videoJobs: VideoJobManager | undefined;
+  const videoJobs = new VideoJobManager({
+    backend: createStableDiffusionVideoClient({
+      baseUrl: factory.baseUrl("video", initialSnapshot),
+    }),
+    temporaryDirectory: join(config.root, "tmp"),
+    onContainmentFailure: ({ jobId, source, error }) => {
+      ctx.logger.event({
+        severity: "error",
+        eventName: "video.job-containment-failed",
+        category: "runtime",
+        component: "video-job-manager",
+        runtime: "video",
+        message: "A local video job could not be contained.",
+        attributes: { job_id: jobId, source },
+        error: { type: error.name, message: error.message },
+      });
+    },
+  });
   const reconciler = new RuntimeReconciler(
     ctx.runtimeConfig,
     configuredOverrides,
@@ -2212,34 +2229,14 @@ export async function runServe(
     },
     {
       beforeModalityDrain: async (modality) => {
-        if (modality === "video") await videoJobs?.cancelActive();
+        if (modality === "video") await videoJobs.cancelActive();
       },
     },
   );
-  if (enabled.video) {
-    videoJobs = new VideoJobManager({
-      backend: createStableDiffusionVideoClient({
-        baseUrl: factory.baseUrl("video", initialSnapshot),
-      }),
-      temporaryDirectory: join(config.root, "tmp"),
-      onContainmentFailure: ({ jobId, source, error }) => {
-        ctx.logger.event({
-          severity: "error",
-          eventName: "video.job-containment-failed",
-          category: "runtime",
-          component: "video-job-manager",
-          runtime: "video",
-          message: "A local video job could not be contained.",
-          attributes: { job_id: jobId, source },
-          error: { type: error.name, message: error.message },
-        });
-      },
-    });
-  }
   const memoryPressureMonitor = new MemoryPressureMonitor({
     controller: memorySafety,
     onElevatedPressure: async (transition) => {
-      await videoJobs?.cancelActive();
+      await videoJobs.cancelActive();
       await applyElevatedMemoryPressure(reconciler, transition);
     },
     onTransition: (transition) =>
@@ -3068,7 +3065,7 @@ export async function runServe(
         server.stop(true);
         try {
           await memoryPressureMonitor.stop();
-          await videoJobs?.shutdown();
+          await videoJobs.shutdown();
           await supervisors.shutdown();
         } finally {
           await memoryProvider.close();

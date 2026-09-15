@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -88,6 +88,7 @@ test("keeps completed jobs private, clears them on restart, and prunes terminal 
   });
 
   try {
+    expect(await Bun.file(join(root, "video-jobs")).exists()).toBe(false);
     const started = await manager.start({
       ownerId: "key-a",
       input: { prompt: "A paper kite over a field." },
@@ -148,6 +149,7 @@ test("keeps completed jobs private, clears them on restart, and prunes terminal 
       now: () => now,
       terminalTtlMs: 15,
     });
+    expect(await Bun.file(join(root, "video-jobs")).exists()).toBe(false);
     expect(
       restarted.get({ ownerId: "key-a", id: started.job.id }),
     ).toBeUndefined();
@@ -552,6 +554,10 @@ test("contains an artifact write failure before releasing cancellation admission
       state: "completed",
     });
     expect(admission.snapshot()).toEqual({ acquired: 2, released: 2 });
+    expect(manager.delete({ ownerId: "key-a", id: started.job.id })).toBe(true);
+    expect(
+      manager.get({ ownerId: "key-a", id: started.job.id }),
+    ).toBeUndefined();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -963,7 +969,7 @@ test("releases admission when private job directory creation fails", async () =>
   });
 
   try {
-    chmodSync(join(root, "video-jobs"), 0o500);
+    await Bun.write(join(root, "video-jobs"), "not a directory");
     await expect(
       manager.start({
         ownerId: "key-a",
@@ -972,7 +978,6 @@ test("releases admission when private job directory creation fails", async () =>
     ).rejects.toThrow();
     expect(admission.snapshot()).toEqual({ acquired: 1, released: 1 });
   } finally {
-    chmodSync(join(root, "video-jobs"), 0o700);
     rmSync(root, { recursive: true, force: true });
   }
 });
