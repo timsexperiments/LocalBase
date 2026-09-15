@@ -376,64 +376,81 @@ describe("catalog artifact validation", () => {
   });
 
   test("pins the complete Qwen3 TTS base artifact set", () => {
-    const catalogTts = CATALOG.find(
+    const tts = CATALOG.find(
       ({ modelId }) => modelId === "qwen3-tts-1.7b-base-q4_k_m",
     );
-    const tts = catalogTts && structuredClone(catalogTts);
-    expect(tts).toMatchObject({
-      kind: "tts",
-      repositoryRevision: "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
-      artifacts: [
+    expect(tts?.kind).toBe("tts");
+    expect(tts?.repositoryRevision).toBe(
+      "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
+    );
+    expect(
+      tts?.artifacts.map(
+        ({ filename, expectedSizeBytes, sha256, role, source }) => ({
+          filename,
+          expectedSizeBytes,
+          sha256,
+          role,
+          source: source ?? null,
+        }),
+      ),
+    ).toEqual([
+      {
+        filename: "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
+        expectedSizeBytes: 1_035_965_280,
+        sha256:
+          "8d18c94acb2addd042f97da63c98be144eafa76d0d9495177eab65130cf85129",
+        role: "primary",
+        source: null,
+      },
+      {
+        filename: "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+        expectedSizeBytes: 446_422_912,
+        sha256:
+          "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
+        role: "supplementary",
+        source: null,
+      },
+      {
+        filename: "qwen3-tts-harbor.wav",
+        expectedSizeBytes: 480_044,
+        sha256:
+          "4bd75d0ef0ad3f4e82ac075eab2a132651d2463f83bec210edeeccaf69294886",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/kyutai/tts-voices",
+          revision: "323332d33f997de8394f24a193e1a76df720e01a",
+        },
+      },
+      {
+        filename: "qwen3-tts-willow.wav",
+        expectedSizeBytes: 480_044,
+        sha256:
+          "8edd516de8c2171b67757cacb29e1effd3e6a8b78f5d6b035069273fadefac2b",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/kyutai/tts-voices",
+          revision: "323332d33f997de8394f24a193e1a76df720e01a",
+        },
+      },
+    ]);
+    expect(tts?.ttsRuntime).toEqual({
+      projectorArtifactFilename: "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+      referenceVoices: [
         {
-          expectedSizeBytes: 1_035_965_280,
-          sha256:
-            "8d18c94acb2addd042f97da63c98be144eafa76d0d9495177eab65130cf85129",
-          role: "primary",
+          name: "harbor",
+          artifactFilename: "qwen3-tts-harbor.wav",
+          license: "CC0-1.0",
+          provenanceUrl:
+            "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations",
         },
         {
-          expectedSizeBytes: 446_422_912,
-          sha256:
-            "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
-          role: "supplementary",
-        },
-        {
-          filename: "qwen3-tts-harbor.wav",
-          expectedSizeBytes: 480_044,
-          sha256:
-            "4bd75d0ef0ad3f4e82ac075eab2a132651d2463f83bec210edeeccaf69294886",
-          role: "supplementary",
-          source: {
-            repositoryUrl: "https://huggingface.co/kyutai/tts-voices",
-            revision: "323332d33f997de8394f24a193e1a76df720e01a",
-          },
-        },
-        {
-          filename: "qwen3-tts-willow.wav",
-          expectedSizeBytes: 480_044,
-          sha256:
-            "8edd516de8c2171b67757cacb29e1effd3e6a8b78f5d6b035069273fadefac2b",
-          role: "supplementary",
-          source: {
-            repositoryUrl: "https://huggingface.co/kyutai/tts-voices",
-            revision: "323332d33f997de8394f24a193e1a76df720e01a",
-          },
+          name: "willow",
+          artifactFilename: "qwen3-tts-willow.wav",
+          license: "CC0-1.0",
+          provenanceUrl:
+            "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations",
         },
       ],
-      ttsRuntime: {
-        projectorArtifactFilename: "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
-        referenceVoices: [
-          expect.objectContaining({
-            name: "harbor",
-            artifactFilename: "qwen3-tts-harbor.wav",
-            license: "CC0-1.0",
-          }),
-          expect.objectContaining({
-            name: "willow",
-            artifactFilename: "qwen3-tts-willow.wav",
-            license: "CC0-1.0",
-          }),
-        ],
-      },
     });
   });
 
