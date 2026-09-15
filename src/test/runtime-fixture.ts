@@ -12,41 +12,64 @@ declare const __LOCALBASE_TEST_FAILURE_MARKER_PATH__: string | undefined;
 declare const __LOCALBASE_TEST_LAUNCH_REPORT_URL__: string | undefined;
 declare const __LOCALBASE_TEST_HTTP_BACKEND__: boolean | undefined;
 declare const __LOCALBASE_TEST_FIRST_EVENT_REPORT_URL__: string | undefined;
+declare const __LOCALBASE_TEST_CAPABILITY__: string | undefined;
+
+type RuntimeFixtureCapability =
+  "localbase-sd-gpu-pci-v1" | "localbase-whisper-gpu-pci-v1";
+
+export type RuntimeFixtureOptions = {
+  argsPath?: string;
+  capability?: RuntimeFixtureCapability;
+  environmentPath?: string;
+  exitOnStart?: boolean;
+  failureMarkerPath?: string;
+  firstEventReportUrl?: string;
+  httpBackend?: boolean;
+  launchReportUrl?: string;
+  launchesPath?: string;
+};
+
 export async function compileRuntimeFixture(
   outputPath: string,
-  argsPath?: string,
-  launchesPath?: string,
-  exitOnStart = false,
-  failureMarkerPath?: string,
-  launchReportUrl?: string,
-  httpBackend = false,
-  firstEventReportUrl?: string,
-  environmentPath?: string,
+  options: RuntimeFixtureOptions = {},
 ): Promise<void> {
   const define: Record<string, string> = {};
-  if (argsPath) {
-    define["process.env.LOCALBASE_TEST_ARGS_PATH"] = JSON.stringify(argsPath);
+  if (options.argsPath) {
+    define["process.env.LOCALBASE_TEST_ARGS_PATH"] = JSON.stringify(
+      options.argsPath,
+    );
   }
-  if (launchesPath) {
-    define.__LOCALBASE_TEST_LAUNCHES_PATH__ = JSON.stringify(launchesPath);
+  if (options.launchesPath) {
+    define.__LOCALBASE_TEST_LAUNCHES_PATH__ = JSON.stringify(
+      options.launchesPath,
+    );
   }
-  if (exitOnStart) define.__LOCALBASE_TEST_EXIT_ON_START__ = "true";
-  if (failureMarkerPath) {
-    define.__LOCALBASE_TEST_FAILURE_MARKER_PATH__ =
-      JSON.stringify(failureMarkerPath);
+  if (options.exitOnStart) define.__LOCALBASE_TEST_EXIT_ON_START__ = "true";
+  if (options.failureMarkerPath) {
+    define.__LOCALBASE_TEST_FAILURE_MARKER_PATH__ = JSON.stringify(
+      options.failureMarkerPath,
+    );
   }
-  if (launchReportUrl) {
-    define.__LOCALBASE_TEST_LAUNCH_REPORT_URL__ =
-      JSON.stringify(launchReportUrl);
+  if (options.launchReportUrl) {
+    define.__LOCALBASE_TEST_LAUNCH_REPORT_URL__ = JSON.stringify(
+      options.launchReportUrl,
+    );
   }
-  define.__LOCALBASE_TEST_HTTP_BACKEND__ = httpBackend ? "true" : "false";
-  if (firstEventReportUrl) {
-    define.__LOCALBASE_TEST_FIRST_EVENT_REPORT_URL__ =
-      JSON.stringify(firstEventReportUrl);
+  define.__LOCALBASE_TEST_HTTP_BACKEND__ = options.httpBackend
+    ? "true"
+    : "false";
+  if (options.firstEventReportUrl) {
+    define.__LOCALBASE_TEST_FIRST_EVENT_REPORT_URL__ = JSON.stringify(
+      options.firstEventReportUrl,
+    );
   }
-  if (environmentPath) {
-    define["process.env.LOCALBASE_TEST_ENVIRONMENT_PATH"] =
-      JSON.stringify(environmentPath);
+  if (options.environmentPath) {
+    define["process.env.LOCALBASE_TEST_ENVIRONMENT_PATH"] = JSON.stringify(
+      options.environmentPath,
+    );
+  }
+  if (options.capability) {
+    define.__LOCALBASE_TEST_CAPABILITY__ = JSON.stringify(options.capability);
   }
   const result = await Bun.build({
     entrypoints: [runtimeFixtureEntrypoint],
@@ -73,7 +96,10 @@ function runtimePort(args: string[]): number {
 async function runRuntimeFixture(): Promise<void> {
   const args = Bun.argv.slice(2);
   if (args[0] === "--localbase-capabilities") {
-    console.log("localbase-whisper-gpu-pci-v1");
+    if (typeof __LOCALBASE_TEST_CAPABILITY__ !== "string") {
+      process.exit(2);
+    }
+    console.log(__LOCALBASE_TEST_CAPABILITY__);
     return;
   }
   const argsPath = process.env.LOCALBASE_TEST_ARGS_PATH;
