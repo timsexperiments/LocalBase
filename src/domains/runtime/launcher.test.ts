@@ -421,7 +421,7 @@ async function createLlamaLaunchFixture(
   mkdirSync(config.llmModelsDir, { recursive: true });
   mkdirSync(userBinDir, { recursive: true });
   await Bun.write(modelPath, "model placeholder");
-  await compileRuntimeFixture(binPath, argsPath);
+  await compileRuntimeFixture(binPath, { argsPath });
   process.env.PATH = `${userBinDir}:${originalPath ?? ""}`;
 
   return { argsPath, config, modelFile, modelPath };
