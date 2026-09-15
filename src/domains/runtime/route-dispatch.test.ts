@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { selectGatewayRoute } from "./route-dispatch";
+import { selectGatewayRoute, videoJobIdFromPath } from "./route-dispatch";
 
 test("selects each supported gateway route by its exact path", () => {
   expect(selectGatewayRoute("/health")).toBe("health");
@@ -12,6 +12,20 @@ test("selects each supported gateway route by its exact path", () => {
   expect(selectGatewayRoute("/v1/audio/translations")).toBe("transcription");
   expect(selectGatewayRoute("/v1/audio/speech")).toBe("speechGeneration");
   expect(selectGatewayRoute("/v1/images/generations")).toBe("imageGeneration");
+  expect(selectGatewayRoute("/v1/videos")).toBe("videoCreate");
+  expect(
+    selectGatewayRoute("/v1/videos/00000000-0000-4000-8000-000000000000"),
+  ).toBe("videoStatus");
+  expect(
+    selectGatewayRoute(
+      "/v1/videos/00000000-0000-4000-8000-000000000000/content",
+    ),
+  ).toBe("videoContent");
+  expect(
+    selectGatewayRoute(
+      "/v1/videos/00000000-0000-4000-8000-000000000000/cancel",
+    ),
+  ).toBe("videoCancel");
   expect(selectGatewayRoute("/v1/chat/completions")).toBe("chatCompletion");
   expect(selectGatewayRoute("/v1/embeddings")).toBe("embeddings");
   expect(selectGatewayRoute("/v1/models")).toBe("models");
@@ -23,4 +37,8 @@ test("classifies unexposed and near-match paths as not found", () => {
   expect(selectGatewayRoute("/v1/models/")).toBe("notFound");
   expect(selectGatewayRoute("/_localbase/models/")).toBe("notFound");
   expect(selectGatewayRoute("/_localbase/models/not/a-model")).toBe("notFound");
+  expect(selectGatewayRoute("/v1/videos/not-a-job")).toBe("notFound");
+  expect(
+    videoJobIdFromPath("/v1/videos/00000000-0000-4000-8000-000000000000/other"),
+  ).toBeUndefined();
 });
