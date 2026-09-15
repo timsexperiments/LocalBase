@@ -455,6 +455,7 @@ test("waits for completed artifact persistence before settling cancellation", as
 test("contains an artifact write failure before releasing cancellation admission", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-write-failure-"));
   const writeEntered = deferred<void>();
+  const writeCompleted = deferred<void>();
   const rejectWrite = deferred<void>();
   const stopEntered = deferred<void>();
   const releaseStop = deferred<void>();
@@ -478,8 +479,9 @@ test("contains an artifact write failure before releasing cancellation admission
     },
     writeArtifact: async (options) => {
       writeEntered.resolve();
-      await rejectWrite.promise;
       await Bun.write(options.path, options.bytes);
+      writeCompleted.resolve();
+      await rejectWrite.promise;
       throw writeFailure;
     },
   });
@@ -491,6 +493,12 @@ test("contains an artifact write failure before releasing cancellation admission
     });
     if (started.kind !== "accepted") throw new Error("Expected admission.");
     await writeEntered.promise;
+    await writeCompleted.promise;
+    expect(
+      await Bun.file(
+        join(root, "video-jobs", started.job.id, "artifact"),
+      ).exists(),
+    ).toBe(true);
 
     const cancellation = manager.cancel({
       ownerId: "key-a",

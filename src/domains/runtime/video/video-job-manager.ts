@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { RuntimeAdmission } from "../runtime-reconciler";
 
@@ -122,6 +122,7 @@ type StoredJob = {
   terminal: Promise<VideoJob>;
   terminalAtMs: number | undefined;
   artifact: VideoJobArtifact | undefined;
+  transientArtifactBytes: number | undefined;
   failure: Error | undefined;
   cancellationReason:
     "backend" | "cancelled" | "deadline" | "shutdown" | undefined;
@@ -325,6 +326,7 @@ export class VideoJobManager {
       terminal,
       terminalAtMs: undefined,
       artifact: undefined,
+      transientArtifactBytes: undefined,
       failure: undefined,
       cancellationReason: undefined,
       termination: undefined,
@@ -454,13 +456,18 @@ export class VideoJobManager {
         completionFailure = toError(error);
       }
       if (job.terminalAtMs !== undefined) return;
-      await this.removeTransientArtifact(job);
     }
     try {
       await this.options.supervisedStop();
     } catch (error) {
       job.termination = undefined;
       throw toError(error);
+    }
+    try {
+      this.removeTransientArtifact(job);
+    } catch (error) {
+      this.finishFailure(job, toError(error));
+      return;
     }
     if (completionFailure) {
       this.finishFailure(job, completionFailure);
@@ -539,13 +546,17 @@ export class VideoJobManager {
     });
   }
 
-  private async removeTransientArtifact(job: StoredJob): Promise<void> {
+  private removeTransientArtifact(job: StoredJob): void {
     const path = join(job.directory, "artifact");
-    rmSync(path, { force: true });
-    if (await Bun.file(path).exists()) {
-      throw new Error(
-        "Video artifact cleanup did not remove the private file.",
-      );
+    try {
+      rmSync(path, { force: true });
+    } catch (error) {
+      try {
+        job.transientArtifactBytes = statSync(path).size;
+      } catch {
+        job.transientArtifactBytes = 0;
+      }
+      throw toError(error);
     }
   }
 
@@ -673,7 +684,8 @@ export class VideoJobManager {
 
   private artifactBytes(): number {
     return this.terminalJobs().reduce(
-      (total, job) => total + (job.artifact?.byteLength ?? 0),
+      (total, job) =>
+        total + (job.artifact?.byteLength ?? job.transientArtifactBytes ?? 0),
       0,
     );
   }
