@@ -60,26 +60,10 @@ const videoLaunchOptionsSchema = z
   })
   .strict();
 
-const videoMemoryObservationSchema = z.discriminatedUnion("pool", [
-  z
-    .object({
-      pool: z.literal("accelerator-free"),
-      observedFreeBytes: z.number().int().nonnegative(),
-    })
-    .strict(),
-  z
-    .object({
-      pool: z.literal("host-available"),
-      observedAvailableBytes: z.number().int().nonnegative(),
-    })
-    .strict(),
-]);
-
 const videoQualificationProfileSchema = videoWorkloadBoundsSchema
   .extend({
     generation: videoGenerationProfileSchema,
     launchOptions: videoLaunchOptionsSchema,
-    observations: z.array(videoMemoryObservationSchema),
   })
   .strict();
 
@@ -87,7 +71,7 @@ const estimatedVideoMemoryDemandSchema = z
   .object({
     unifiedBytes: z.number().int().positive(),
     hostBytes: z.number().int().positive(),
-    acceleratorBytes: z.number().int().nonnegative(),
+    acceleratorBytes: z.number().int().positive(),
   })
   .strict();
 
@@ -96,6 +80,7 @@ const videoRuntimeProfileSchema = z
     artifacts: videoArtifactMappingSchema,
     qualification: videoQualificationProfileSchema,
     estimatedMemoryDemand: estimatedVideoMemoryDemandSchema,
+    supportedPlatforms: z.array(z.enum(["darwin", "linux"])).min(1),
   })
   .strict();
 

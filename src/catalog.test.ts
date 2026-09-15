@@ -75,15 +75,13 @@ describe("catalog artifact validation", () => {
           maxFrames: 33,
           generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
           launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
-          observations: [
-            { pool: "accelerator-free", observedFreeBytes: 5_783 },
-          ],
         },
         estimatedMemoryDemand: {
           unifiedBytes: 20,
           hostBytes: 20,
           acceleratorBytes: 10,
         },
+        supportedPlatforms: ["linux"],
       },
     };
     expect(catalogSchema.safeParse([video]).success).toBe(true);

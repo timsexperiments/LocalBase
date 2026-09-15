@@ -232,7 +232,20 @@ export function resolveVideoLaunchPlan(input: {
   host: string;
   port: number;
   videoRuntime: VideoRuntimeProfile;
+  platform: NodeJS.Platform;
 }): VideoLaunchPlan {
+  const supportedPlatform =
+    input.platform === "darwin" || input.platform === "linux"
+      ? input.platform
+      : undefined;
+  if (
+    !supportedPlatform ||
+    !input.videoRuntime.supportedPlatforms.includes(supportedPlatform)
+  ) {
+    throw new Error(
+      `Video model does not support ${input.platform} runtime admission.`,
+    );
+  }
   const { qualification } = input.videoRuntime;
   const memoryDemand = videoMemoryDemand({
     estimatedDemand: input.videoRuntime.estimatedMemoryDemand,

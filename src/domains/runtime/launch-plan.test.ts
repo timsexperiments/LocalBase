@@ -128,16 +128,15 @@ describe("runtime launch plans", () => {
                 cpuOffload: true,
                 diffusionFlashAttention: true,
               },
-              observations: [
-                { pool: "accelerator-free", observedFreeBytes: 5_783 },
-              ],
             },
             estimatedMemoryDemand: {
-              unifiedBytes: 0,
+              unifiedBytes: 16 * 1024 ** 3,
               hostBytes: 8 * 1024 ** 3,
               acceleratorBytes: 5 * 1024 ** 3,
             },
+            supportedPlatforms: ["linux"],
           },
+          platform: "linux",
         }),
       expected: {
         modality: "video",
@@ -150,7 +149,7 @@ describe("runtime launch plans", () => {
         launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
         healthUrl: "http://127.0.0.1:8091/",
         memoryDemand: {
-          unifiedBytes: 0,
+          unifiedBytes: 16 * 1024 ** 3,
           hostBytes: 8 * 1024 ** 3,
           acceleratorBytes: 5 * 1024 ** 3,
           confidence: "estimated",
@@ -188,6 +187,51 @@ describe("runtime launch plans", () => {
       isAuto: true,
       contextPerSlot: 2048,
     });
+  });
+
+  test("rejects video admission on an unsupported platform", () => {
+    expect(() =>
+      resolveVideoLaunchPlan({
+        runtimeId: "video:model:1",
+        root,
+        modelsDirectory: `${root}/models/video`,
+        modelId: "model",
+        diffusionModelFile: "diffusion.gguf",
+        textEncoderFile: "encoder.gguf",
+        vaeFile: "vae.safetensors",
+        host: "127.0.0.1",
+        port: 8091,
+        platform: "darwin",
+        videoRuntime: {
+          artifacts: {
+            diffusionModel: "diffusion.gguf",
+            textEncoder: "encoder.gguf",
+            vae: "vae.safetensors",
+          },
+          qualification: {
+            maxWidth: 320,
+            maxHeight: 320,
+            maxFrames: 33,
+            generation: {
+              sampler: "euler",
+              steps: 20,
+              cfgScale: 6,
+              seed: 42,
+            },
+            launchOptions: {
+              cpuOffload: true,
+              diffusionFlashAttention: true,
+            },
+          },
+          estimatedMemoryDemand: {
+            unifiedBytes: 16 * 1024 ** 3,
+            hostBytes: 8 * 1024 ** 3,
+            acceleratorBytes: 5 * 1024 ** 3,
+          },
+          supportedPlatforms: ["linux"],
+        },
+      }),
+    ).toThrow("does not support darwin runtime admission");
   });
 });
 

@@ -645,6 +645,7 @@ export function createRuntimeSupervisorFactory(
             host: videoHost(overrides),
             port: videoPort(overrides),
             videoRuntime: spec.videoRuntime,
+            platform: process.platform,
           });
         },
         start: async (plan) => {

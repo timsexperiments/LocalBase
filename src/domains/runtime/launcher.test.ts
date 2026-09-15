@@ -47,14 +47,15 @@ test("uses video profile launch options", () => {
         maxFrames: 33,
         generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
         launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
-        observations: [],
       },
       estimatedMemoryDemand: {
         unifiedBytes: 1,
         hostBytes: 1,
         acceleratorBytes: 1,
       },
+      supportedPlatforms: ["linux"],
     },
+    platform: "linux",
   });
 
   expect(buildSdVideoServerArgs(plan)).toEqual([
