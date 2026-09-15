@@ -272,7 +272,9 @@ export class VideoJobManager {
     }
     this.active = job;
     this.jobs.set(job.id, job);
-    job.admissionPromise = acquireAdmission({ signal: job.controller.signal });
+    job.admissionPromise = Promise.resolve().then(
+      async () => await acquireAdmission({ signal: job.controller.signal }),
+    );
     void this.watchDeadline(job);
     void this.run(job, options.input);
     return Object.freeze({
