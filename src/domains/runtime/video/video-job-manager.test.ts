@@ -278,6 +278,62 @@ test("cancels an admission warmup before backend submission", async () => {
   }
 });
 
+test("stops a late-acquired admission before releasing it", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-late-admission-"));
+  const admissionEntered = deferred<void>();
+  const lateAdmission = deferred<{
+    ready: Promise<void>;
+    release: () => void;
+  }>();
+  const stopEntered = deferred<void>();
+  const releaseStop = deferred<void>();
+  let releases = 0;
+  const manager = createManager({
+    backend: {
+      async submitVideo() {
+        throw new Error("A cancelled warmup must not submit.");
+      },
+      async getJob() {
+        throw new Error("A cancelled warmup must not poll.");
+      },
+    },
+    temporaryDirectory: root,
+    acquireAdmission: async () => {
+      admissionEntered.resolve();
+      return await lateAdmission.promise;
+    },
+    supervisedStop: async () => {
+      stopEntered.resolve();
+      await releaseStop.promise;
+    },
+  });
+
+  try {
+    const started = await manager.start({
+      ownerId: "key-a",
+      input: { prompt: "Contain a late admission." },
+    });
+    if (started.kind !== "accepted") throw new Error("Expected admission.");
+    await admissionEntered.promise;
+
+    const cancellation = manager.cancel({
+      ownerId: "key-a",
+      id: started.job.id,
+    });
+    lateAdmission.resolve({
+      ready: Promise.resolve(),
+      release: () => (releases += 1),
+    });
+    await stopEntered.promise;
+    expect(releases).toBe(0);
+    releaseStop.resolve();
+    await expect(cancellation).resolves.toMatchObject({ state: "cancelled" });
+    expect(releases).toBe(1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("waits for a late successful submission before cancelling and releasing", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-submit-race-"));
   const submitEntered = deferred<void>();
