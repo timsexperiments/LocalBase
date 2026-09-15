@@ -288,9 +288,12 @@ test("stops a late-acquired admission before releasing it", async () => {
   const stopEntered = deferred<void>();
   const releaseStop = deferred<void>();
   let releases = 0;
+  let stops = 0;
+  let submissions = 0;
   const manager = createManager({
     backend: {
       async submitVideo() {
+        submissions += 1;
         throw new Error("A cancelled warmup must not submit.");
       },
       async getJob() {
@@ -303,6 +306,7 @@ test("stops a late-acquired admission before releasing it", async () => {
       return await lateAdmission.promise;
     },
     supervisedStop: async () => {
+      stops += 1;
       stopEntered.resolve();
       await releaseStop.promise;
     },
@@ -328,6 +332,11 @@ test("stops a late-acquired admission before releasing it", async () => {
     expect(releases).toBe(0);
     releaseStop.resolve();
     await expect(cancellation).resolves.toMatchObject({ state: "cancelled" });
+    await expect(started.terminal).resolves.toMatchObject({
+      state: "cancelled",
+    });
+    expect(stops).toBe(1);
+    expect(submissions).toBe(0);
     expect(releases).toBe(1);
   } finally {
     rmSync(root, { recursive: true, force: true });
