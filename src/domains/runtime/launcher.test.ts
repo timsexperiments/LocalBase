@@ -38,6 +38,25 @@ const nvidiaTopology: MemoryTopology = {
   ],
 };
 
+async function compileSdLaunchFixture(input: {
+  argsPath: string;
+  binPath: string;
+  capability: string;
+  environmentPath?: string;
+}): Promise<void> {
+  const result = await Bun.build({
+    entrypoints: [join(import.meta.dir, "../../test/sd-launch-fixture.ts")],
+    target: "bun",
+    compile: { outfile: input.binPath },
+    define: {
+      __SD_CAPABILITY__: JSON.stringify(input.capability),
+      __SD_ARGS_PATH__: JSON.stringify(input.argsPath),
+      __SD_ENVIRONMENT_PATH__: JSON.stringify(input.environmentPath ?? ""),
+    },
+  });
+  expect(result.success).toBeTrue();
+}
+
 test("uses video profile launch options", () => {
   const plan = resolveVideoLaunchPlan({
     runtimeId: "video:test:1",
@@ -273,18 +292,12 @@ describe.serial("sd-server GPU launch contract", () => {
     roots.push(root);
     const binPath = join(root, "sd-server");
     const argsPath = join(root, "args.json");
-    const build = async (capability: string) => {
-      const result = await Bun.build({
-        entrypoints: [join(import.meta.dir, "../../test/sd-launch-fixture.ts")],
-        target: "bun",
-        compile: { outfile: binPath },
-        define: {
-          __SD_CAPABILITY__: JSON.stringify(capability),
-          __SD_ARGS_PATH__: JSON.stringify(argsPath),
-        },
+    const build = (capability: string) =>
+      compileSdLaunchFixture({
+        binPath,
+        argsPath,
+        capability,
       });
-      expect(result.success).toBeTrue();
-    };
 
     await build("unknown argument");
     await expect(requireSdGpuContract(binPath)).rejects.toThrow(
@@ -318,7 +331,11 @@ describe.serial("sd-server GPU launch contract", () => {
         "model placeholder",
       );
     }
-    await compileRuntimeFixture(binPath, argsPath);
+    await compileSdLaunchFixture({
+      binPath,
+      argsPath,
+      capability: "localbase-sd-gpu-pci-v1",
+    });
     process.env.PATH = `${relative(process.cwd(), userBinDir)}:${originalPath ?? ""}`;
 
     const nativeProcess = await startSdVideoServerProcess(
@@ -523,17 +540,12 @@ describe.serial("image runtime launch", () => {
       join(root, "llama-libraries"),
       join(root, "whisper-libraries"),
     ].join(delimiter);
-    await compileRuntimeFixture(
+    await compileSdLaunchFixture({
       binPath,
       argsPath,
-      undefined,
-      false,
-      undefined,
-      undefined,
-      false,
-      undefined,
+      capability: "localbase-sd-gpu-pci-v1",
       environmentPath,
-    );
+    });
     process.env.PATH = `${relative(process.cwd(), userBinDir)}:${originalPath ?? ""}`;
 
     const nativeProcess = await startSdServerProcess(

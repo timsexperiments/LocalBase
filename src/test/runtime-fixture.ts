@@ -73,7 +73,7 @@ function runtimePort(args: string[]): number {
 async function runRuntimeFixture(): Promise<void> {
   const args = Bun.argv.slice(2);
   if (args[0] === "--localbase-capabilities") {
-    console.log("localbase-sd-gpu-pci-v1");
+    console.log("localbase-whisper-gpu-pci-v1");
     return;
   }
   const argsPath = process.env.LOCALBASE_TEST_ARGS_PATH;
