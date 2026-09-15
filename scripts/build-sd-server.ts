@@ -117,11 +117,14 @@ async function main() {
     }
   }
 
-  const patch = join(workspace, "scripts/sd-patches/inline-wav-audio.patch");
-  const patchBytes = new Uint8Array(await Bun.file(patch).arrayBuffer());
+  const patches = ["inline-wav-audio.patch", "require-gpu-pci.patch"].map(
+    (name) => ({ name, path: join(workspace, "scripts/sd-patches", name) }),
+  );
   await $`git -C ${sourcePath} init --quiet`;
-  await $`git -C ${sourcePath} apply --check ${patch}`;
-  await $`git -C ${sourcePath} apply ${patch}`;
+  for (const patch of patches) {
+    await $`git -C ${sourcePath} apply --check ${patch.path}`;
+    await $`git -C ${sourcePath} apply ${patch.path}`;
+  }
 
   const parserTest = join(
     workspace,
@@ -130,6 +133,14 @@ async function main() {
   const parserTestBinary = join(root, "inline-wav-audio-test");
   await $`c++ -std=c++17 -Wall -Wextra -Werror -I${join(sourcePath, "include")} -I${join(sourcePath, "examples")} -I${join(sourcePath, "examples/server")} -I${join(sourcePath, "thirdparty")} ${join(sourcePath, "examples/server/inline_wav.cpp")} ${parserTest} -o ${parserTestBinary}`;
   await $`${parserTestBinary}`;
+
+  const gpuPciTest = join(
+    workspace,
+    "scripts/sd-patches/require-gpu-pci.test.cpp",
+  );
+  const gpuPciTestBinary = join(root, "require-gpu-pci-test");
+  await $`c++ -std=c++17 -Wall -Wextra -Werror -I${join(sourcePath, "include")} -I${join(sourcePath, "examples/common")} -I${join(sourcePath, "ggml/include")} ${gpuPciTest} -o ${gpuPciTestBinary}`;
+  await $`${gpuPciTestBinary}`;
 
   const platformFlags =
     process.platform === "linux"
@@ -142,6 +153,7 @@ async function main() {
   if (!(await Bun.file(binary).exists())) {
     throw new Error("The native build completed without sd-server.");
   }
+  await $`bun ${join(workspace, "scripts/sd-gpu-pci-contract.ts")} --binary ${binary}`;
   await Bun.write(join(root, "sd-server"), Bun.file(binary));
   await $`chmod +x ${join(root, "sd-server")}`;
 
@@ -178,10 +190,14 @@ async function main() {
           sha256,
           url,
         })),
-        patch: {
-          name: "inline-wav-audio.patch",
-          sha256: await sha256(patchBytes),
-        },
+        patches: await Promise.all(
+          patches.map(async ({ name, path }) => ({
+            name,
+            sha256: await sha256(
+              new Uint8Array(await Bun.file(path).arrayBuffer()),
+            ),
+          })),
+        ),
         runtimeRequirements: {
           "linux-x64": {
             buildBaseline: "Ubuntu 24.04 x86_64",
