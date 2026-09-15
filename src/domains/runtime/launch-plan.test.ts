@@ -123,6 +123,7 @@ describe("runtime launch plans", () => {
                 sampler: "euler",
                 steps: 20,
                 cfgScale: 6,
+                flowShift: 3,
                 seed: 42,
               },
               launchOptions: {
@@ -156,7 +157,13 @@ describe("runtime launch plans", () => {
         textEncoderPath: `${root}/models/video/encoder.gguf`,
         vaePath: `${root}/models/video/vae.safetensors`,
         inputBounds: { maxWidth: 320, maxHeight: 320, maxFrames: 33, fps: 16 },
-        generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+        generation: {
+          sampler: "euler",
+          steps: 20,
+          cfgScale: 6,
+          flowShift: 3,
+          seed: 42,
+        },
         launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
         healthUrl: "http://127.0.0.1:8091/",
         memoryDemand: {
@@ -232,6 +239,7 @@ describe("runtime launch plans", () => {
               sampler: "euler",
               steps: 20,
               cfgScale: 6,
+              flowShift: 3,
               seed: 42,
             },
             launchOptions: {
