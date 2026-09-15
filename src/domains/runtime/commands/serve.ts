@@ -2403,6 +2403,7 @@ export async function runServe(
         route,
         ownerId: credential.ownerId,
         jobs: videoJobs,
+        createEnabled: currentConfig.selectedVideoModels.length > 0,
         admissionProvider: {
           admit: async (modelId, signal) => {
             const selection = await reconciler.admitModel(
@@ -2419,15 +2420,12 @@ export async function runServe(
         },
         parseCreateRequest: async () =>
           await parseJsonRequest(request, videoCreateRequestSchema),
-        queueFailure: (error) => queueFailure(error, "video"),
         notConfigured: () => notConfigured("Video"),
-        serviceUnavailable: () => serviceUnavailable("Video"),
         modelNotFound,
         badRequest,
         methodNotAllowed,
         routeNotFound,
         requestAborted,
-        resourceUnavailable,
         onTerminal: ({ job, modelId }) => {
           ctx.logger.event({
             severity: job.state === "failed" ? "error" : "info",
@@ -2437,6 +2435,14 @@ export async function runServe(
             runtime: "video",
             requestId,
             message: "A local video job reached a terminal state.",
+            ...(job.state === "failed"
+              ? {
+                  error: {
+                    type: job.failure.name,
+                    message: job.failure.message,
+                  },
+                }
+              : {}),
             attributes: {
               job_id: job.id,
               model_id: modelId,

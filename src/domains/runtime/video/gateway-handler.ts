@@ -1,8 +1,4 @@
-import { RuntimeMemoryAdmissionError } from "../memory-controller";
-import {
-  RuntimeRequestAbortedError,
-  type RuntimeAdmission,
-} from "../runtime-reconciler";
+import type { RuntimeAdmission } from "../runtime-reconciler";
 import { byId } from "../../../catalog";
 import { openAIErrorResponseSchema } from "../openai-error";
 import { videoJobIdFromPath } from "../route-dispatch";
@@ -46,18 +42,16 @@ export type VideoGatewayHandlerDependencies = Readonly<{
   pathname: string;
   route: VideoRoute;
   ownerId: string;
-  jobs: VideoJobs | undefined;
+  jobs: VideoJobs;
+  createEnabled: boolean;
   admissionProvider: VideoModelAdmissionProvider;
   parseCreateRequest: () => Promise<ParsedCreateRequest>;
-  queueFailure: (error: unknown) => Response | undefined;
   notConfigured: () => Response;
-  serviceUnavailable: () => Response;
   modelNotFound: (model: string) => Response;
   badRequest: (message: string) => Response;
   methodNotAllowed: (allow: string) => Response;
   routeNotFound: () => Response;
   requestAborted: () => Response;
-  resourceUnavailable: () => Response;
   onTerminal: (options: { job: VideoJob; modelId: string }) => void;
 }>;
 
@@ -65,7 +59,6 @@ export async function handleVideoGatewayRequest(
   dependencies: VideoGatewayHandlerDependencies,
 ): Promise<Response> {
   const { request, route, jobs } = dependencies;
-  if (!jobs) return dependencies.notConfigured();
   const jobId = videoJobIdFromPath(dependencies.pathname);
 
   if (route === "videoStatus") {
@@ -110,6 +103,7 @@ export async function handleVideoGatewayRequest(
 
   if (request.method !== "POST") return dependencies.methodNotAllowed("POST");
   if (request.signal.aborted) return dependencies.requestAborted();
+  if (!dependencies.createEnabled) return dependencies.notConfigured();
   const parsed = await dependencies.parseCreateRequest();
   if (!parsed.success) return parsed.response;
   if (request.signal.aborted) return dependencies.requestAborted();
@@ -124,62 +118,30 @@ export async function handleVideoGatewayRequest(
     );
   }
 
-  let selection:
-    Awaited<ReturnType<VideoModelAdmissionProvider["admit"]>> | undefined;
-  try {
-    const started = await jobs.start({
-      ownerId: dependencies.ownerId,
-      input: videoInput,
-      acquireAdmission: async ({ signal }) => {
-        selection = await dependencies.admissionProvider.admit(
-          parsed.data.model,
-          signal,
-        );
-        if (selection.kind !== "admitted") return undefined;
-        try {
-          await waitForVideoAdmissionReady(
-            selection.admission.ready,
-            signal,
-            selection.admission.cancel,
-          );
-          return selection.admission;
-        } catch (error) {
-          selection.admission.release();
-          throw error;
-        }
-      },
-      supervisedStop: async () => {
-        if (selection?.kind === "admitted") {
-          await selection.admission.supervisor.kill();
-        }
-      },
-    });
-    if (started.kind === "busy") {
-      if (selection?.kind === "not-configured")
-        return dependencies.notConfigured();
-      if (selection?.kind === "model-not-found") {
-        return dependencies.modelNotFound(parsed.data.model);
-      }
-      if (selection?.kind === "unavailable") {
-        return dependencies.serviceUnavailable();
-      }
-      return videoJobBusy();
-    }
-    void started.terminal.then((job) => {
-      dependencies.onTerminal({ job, modelId: parsed.data.model });
-    });
-    return Response.json(projectVideoJob(started.job), { status: 202 });
-  } catch (error) {
-    if (error instanceof RuntimeRequestAbortedError) {
-      return dependencies.requestAborted();
-    }
-    const queueError = dependencies.queueFailure(error);
-    if (queueError) return queueError;
-    if (error instanceof RuntimeMemoryAdmissionError) {
-      return dependencies.resourceUnavailable();
-    }
-    throw error;
+  let admission: VideoAdmission | undefined;
+  const started = await jobs.start({
+    ownerId: dependencies.ownerId,
+    input: videoInput,
+    acquireAdmission: async ({ signal }) => {
+      const selection = await dependencies.admissionProvider.admit(
+        parsed.data.model,
+        signal,
+      );
+      if (selection.kind !== "admitted") return undefined;
+      admission = selection.admission;
+      return admission;
+    },
+    supervisedStop: async () => {
+      await admission?.supervisor.kill();
+    },
+  });
+  if (started.kind === "busy") {
+    return videoJobBusy();
   }
+  void started.terminal.then((job) => {
+    dependencies.onTerminal({ job, modelId: parsed.data.model });
+  });
+  return Response.json(projectVideoJob(started.job), { status: 202 });
 }
 
 function videoJobNotFound(): Response {
@@ -208,32 +170,4 @@ function videoJobBusy(): Response {
     }),
     { status: 429, headers: { "Retry-After": "1" } },
   );
-}
-
-async function waitForVideoAdmissionReady(
-  ready: Promise<void>,
-  signal: AbortSignal,
-  cancel: () => void,
-): Promise<void> {
-  if (signal.aborted) {
-    cancel();
-    throw new RuntimeRequestAbortedError();
-  }
-  await new Promise<void>((resolve, reject) => {
-    const abort = () => {
-      cancel();
-      reject(new RuntimeRequestAbortedError());
-    };
-    signal.addEventListener("abort", abort, { once: true });
-    void ready.then(
-      () => {
-        signal.removeEventListener("abort", abort);
-        resolve();
-      },
-      (error: unknown) => {
-        signal.removeEventListener("abort", abort);
-        reject(error);
-      },
-    );
-  });
 }

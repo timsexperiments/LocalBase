@@ -54,7 +54,10 @@ function admissionCounter() {
   return {
     acquire: async () => {
       acquired += 1;
-      return { release: () => (released += 1) };
+      return {
+        ready: Promise.resolve(),
+        release: () => (released += 1),
+      };
     },
     snapshot: () => ({ acquired, released }),
   };

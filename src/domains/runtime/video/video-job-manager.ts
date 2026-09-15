@@ -104,7 +104,7 @@ export type VideoJobStart =
   | Readonly<{ kind: "accepted"; job: VideoJob; terminal: Promise<VideoJob> }>
   | Readonly<{ kind: "busy" }>;
 
-type VideoJobAdmission = Pick<RuntimeAdmission, "release">;
+type VideoJobAdmission = Pick<RuntimeAdmission, "ready" | "release">;
 type VideoJobAdmissionAcquirer = (options: {
   signal: AbortSignal;
 }) => Promise<VideoJobAdmission | undefined>;
@@ -264,12 +264,7 @@ export class VideoJobManager {
     if (!acquireAdmission || !supervisedStop) {
       throw new Error("Video job admission and supervised stop are required.");
     }
-    let job: StoredJob;
-    try {
-      job = this.createJob(options.ownerId, supervisedStop);
-    } catch (error) {
-      throw error;
-    }
+    const job = this.createJob(options.ownerId, supervisedStop);
     this.active = job;
     this.jobs.set(job.id, job);
     job.admissionPromise = Promise.resolve().then(
@@ -403,6 +398,8 @@ export class VideoJobManager {
         throw new Error("Video runtime admission is unavailable.");
       }
       job.admission = admission;
+      await admission.ready;
+      if (job.terminalAtMs !== undefined || job.termination) return;
       await this.submit(job, input);
       if (job.termination) return;
       await this.poll(job);
@@ -499,6 +496,7 @@ export class VideoJobManager {
     disposition: VideoJobDisposition,
   ): Promise<void> {
     job.controller.abort();
+    await this.settleAdmission(job);
     const completion = job.completion;
     try {
       await job.supervisedStop();
@@ -506,7 +504,6 @@ export class VideoJobManager {
       job.termination = undefined;
       throw toError(error);
     }
-    await this.settleAdmission(job);
     let completionFailure: Error | undefined;
     if (completion) {
       try {

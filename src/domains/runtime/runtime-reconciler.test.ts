@@ -16,6 +16,10 @@ import {
   SupervisorRegistry,
   type RuntimeSupervisor,
 } from "./supervisor-registry";
+import {
+  VideoJobManager,
+  type VideoJobBackend,
+} from "./video/video-job-manager";
 
 type ServiceRecord = {
   modality: RuntimeModality;
@@ -32,6 +36,7 @@ function activeModel(
   if (modality === "llm") return config.activeLlmModel;
   if (modality === "stt") return config.activeSttModel;
   if (modality === "tts") return config.activeTtsModel;
+  if (modality === "video") return config.activeVideoModel;
   return config.activeImageModel;
 }
 
@@ -1032,6 +1037,130 @@ test("cancels queued model activation during emergency eviction and recovers", a
     });
   } finally {
     releaseShutdown();
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("drains a warming video job when the model is disabled", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-disable-warming-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  config.selectedSttModels = [];
+  config.activeSttModel = "";
+  config.selectedTtsModels = [];
+  config.activeTtsModel = "";
+  config.selectedImageModels = [];
+  config.activeImageModel = "";
+  config.selectedVideoModels = ["wan2.1-t2v-1.3b-q8_0"];
+  config.activeVideoModel = "wan2.1-t2v-1.3b-q8_0";
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let markWarming!: () => void;
+  const warming = new Promise<void>((resolve) => {
+    markWarming = resolve;
+  });
+  let markAdmissionAcquired!: () => void;
+  const admissionAcquired = new Promise<void>((resolve) => {
+    markAdmissionAcquired = resolve;
+  });
+  let rejectStartup!: (error: Error) => void;
+  const startup = new Promise<void>((_resolve, reject) => {
+    rejectStartup = reject;
+  });
+  let state: "idle" | "starting" = "idle";
+  let kills = 0;
+  let shutdowns = 0;
+  const videoSupervisor: RuntimeSupervisor = {
+    kind: "server",
+    runtimeId: () => "video:warming",
+    state: () => state,
+    async ensureRunning() {
+      state = "starting";
+      markWarming();
+      await startup;
+    },
+    async kill() {
+      kills += 1;
+      state = "idle";
+      rejectStartup(new Error("Video startup stopped."));
+    },
+    async shutdown() {
+      shutdowns += 1;
+    },
+  };
+  const backend: VideoJobBackend = {
+    async submitVideo() {
+      throw new Error("A warming job must not submit.");
+    },
+    async getJob() {
+      throw new Error("A warming job must not poll.");
+    },
+  };
+  const jobs = new VideoJobManager({
+    backend,
+    temporaryDirectory: root,
+    onContainmentFailure: () => {},
+  });
+  let admittedSupervisor: RuntimeSupervisor | undefined;
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ video: videoSupervisor }),
+    {
+      baseUrl: () => "http://127.0.0.1:1",
+      create: () => videoSupervisor,
+    },
+    { event() {} } as never,
+    {},
+    {
+      beforeModalityDrain: async (modality) => {
+        if (modality === "video") await jobs.cancelActive();
+      },
+    },
+  );
+
+  try {
+    const started = await jobs.start({
+      ownerId: "key-a",
+      input: { prompt: "Cancel while video warms." },
+      acquireAdmission: async ({ signal }) => {
+        const selected = await reconciler.admitModel(
+          "video",
+          config.activeVideoModel,
+          signal,
+        );
+        if (selected.kind !== "admitted") return undefined;
+        admittedSupervisor = selected.value.admission.supervisor;
+        markAdmissionAcquired();
+        return selected.value.admission;
+      },
+      supervisedStop: async () => {
+        await admittedSupervisor?.kill();
+      },
+    });
+    if (started.kind !== "accepted") throw new Error("Expected video job.");
+    await Promise.all([warming, admissionAcquired]);
+
+    const disabled = controller.copy();
+    disabled.selectedVideoModels = [];
+    disabled.activeVideoModel = "";
+    saveConfig(database, disabled);
+    await reconciler.refresh();
+
+    await expect(started.terminal).resolves.toMatchObject({
+      state: "cancelled",
+      reason: "cancelled",
+    });
+    expect(kills).toBe(1);
+    expect(shutdowns).toBe(1);
+    expect(reconciler.lifecycleSnapshot().video).toMatchObject({
+      configured: false,
+      state: "disabled",
+      admission: { kind: "known", activeCount: 0 },
+      queue: { waiting: 0, active: 0 },
+    });
+  } finally {
     database.close();
     rmSync(root, { recursive: true, force: true });
   }
