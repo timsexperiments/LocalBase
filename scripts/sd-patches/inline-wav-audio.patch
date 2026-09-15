@@ -60,7 +60,7 @@ index 7253dbf..503adfb 100644
      int output_compression    = body.value("output_compression", 100);
      if (!assign_output_options(request, output_format, output_compression, error_message)) {
 diff --git a/examples/server/api.md b/examples/server/api.md
-index 3ec9a1d..89c9ad7 100644
+index 3ec9a1d..faab3f8 100644
 --- a/examples/server/api.md
 +++ b/examples/server/api.md
 @@ -967,7 +967,7 @@ Compared with `img_gen`, the `vid_gen` request body:
@@ -89,8 +89,8 @@ index 3ec9a1d..89c9ad7 100644
  
 +`audio` is an inline driving track for models such as Wan2.2 S2V. It must be a
 +strict object with only `format: "wav"` and canonical base64 `data`; file paths,
-+URLs, and data URLs are not accepted. WAV input is limited to PCM16 or IEEE
-+float32, one or two channels, 8–192 kHz, 30 seconds, and 24 MiB of decoded WAV
++URLs, and data URLs are not accepted. WAV input is limited to PCM16 or normalized
++IEEE float32 samples in `[-1, 1]`, one or two channels, 8–192 kHz, 30 seconds, and 24 MiB of decoded WAV
 +bytes. Invalid audio is rejected before a job is enqueued.
 +
 +AVI output uses MJPEG video with PCM audio and is the portable downloadable
@@ -123,10 +123,10 @@ index 0000000..dd0aea6
 +                      std::string& error_message);
 diff --git a/examples/server/inline_wav.cpp b/examples/server/inline_wav.cpp
 new file mode 100644
-index 0000000..79adcf2
+index 0000000..bb29440
 --- /dev/null
 +++ b/examples/server/inline_wav.cpp
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,218 @@
 +#include "inline_wav.h"
 +
 +#include <cmath>
@@ -217,8 +217,9 @@ index 0000000..79adcf2
 +        error_message = "audio.data is not a RIFF/WAVE file";
 +        return false;
 +    }
-+    if (static_cast<uint64_t>(read_u32(bytes.data() + 4)) + 8ULL > bytes.size()) {
-+        error_message = "WAV RIFF size exceeds the decoded payload";
++    const uint64_t riff_end = static_cast<uint64_t>(read_u32(bytes.data() + 4)) + 8ULL;
++    if (riff_end != bytes.size()) {
++        error_message = "WAV RIFF size must match the decoded payload";
 +        return false;
 +    }
 +
@@ -232,11 +233,15 @@ index 0000000..79adcf2
 +    bool found_fmt = false;
 +
 +    size_t offset = 12;
-+    while (offset + 8 <= bytes.size()) {
++    while (offset < riff_end) {
++        if (riff_end - offset < 8) {
++            error_message = "WAV ends with a partial chunk header";
++            return false;
++        }
 +        const uint8_t* header = bytes.data() + offset;
 +        const uint32_t chunk_size = read_u32(header + 4);
 +        offset += 8;
-+        if (chunk_size > bytes.size() - offset) {
++        if (chunk_size > riff_end - offset) {
 +            error_message = "WAV chunk exceeds the decoded payload";
 +            return false;
 +        }
@@ -261,7 +266,10 @@ index 0000000..79adcf2
 +        }
 +        offset += chunk_size;
 +        if ((chunk_size & 1U) != 0) {
-+            if (offset == bytes.size()) break;
++            if (offset == riff_end) {
++                error_message = "WAV odd-sized chunk is missing its padding byte";
++                return false;
++            }
 +            ++offset;
 +        }
 +    }
@@ -308,8 +316,8 @@ index 0000000..79adcf2
 +        } else {
 +            float value;
 +            std::memcpy(&value, sample_data + i * 4, sizeof(value));
-+            if (!std::isfinite(value)) {
-+                error_message = "WAV float32 samples must be finite";
++            if (!std::isfinite(value) || value < -1.0f || value > 1.0f) {
++                error_message = "WAV float32 samples must be finite and normalized to [-1, 1]";
 +                return false;
 +            }
 +            decoded[static_cast<size_t>(i)] = value;
@@ -337,3 +345,4 @@ index 0000000..79adcf2
 +    }
 +    return decode_wav(bytes, output, error_message);
 +}
+

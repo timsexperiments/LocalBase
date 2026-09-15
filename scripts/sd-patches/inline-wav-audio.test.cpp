@@ -121,6 +121,40 @@ int main() {
     assert(!parse_inline_wav(input(wav(3, 1, 16000, 32, float_sample)), audio, error));
     assert(error.find("finite") != std::string::npos);
 
+    for (float amplitude : {1.1f, -1.1f}) {
+        std::memcpy(float_sample.data(), &amplitude, sizeof(float));
+        error.clear();
+        assert(!parse_inline_wav(input(wav(3, 1, 16000, 32, float_sample)), audio, error));
+        assert(error.find("normalized") != std::string::npos);
+    }
+
+    auto trailing = wav(1, 1, 8000, 16, pcm);
+    const uint32_t shorter_riff = static_cast<uint32_t>(trailing.size() - 10);
+    std::memcpy(trailing.data() + 4, &shorter_riff, sizeof(shorter_riff));
+    error.clear();
+    assert(!parse_inline_wav(input(trailing), audio, error));
+    assert(error.find("RIFF size") != std::string::npos);
+
+    auto partial_header = wav(1, 1, 8000, 16, pcm);
+    partial_header.push_back('J');
+    partial_header.push_back('U');
+    partial_header.push_back('N');
+    const uint32_t partial_size = static_cast<uint32_t>(partial_header.size() - 8);
+    std::memcpy(partial_header.data() + 4, &partial_size, sizeof(partial_size));
+    error.clear();
+    assert(!parse_inline_wav(input(partial_header), audio, error));
+    assert(error.find("partial chunk header") != std::string::npos);
+
+    auto missing_pad = wav(1, 1, 8000, 16, pcm);
+    missing_pad.insert(missing_pad.end(), {'J', 'U', 'N', 'K'});
+    append_u32(missing_pad, 1);
+    missing_pad.push_back(0);
+    const uint32_t missing_pad_size = static_cast<uint32_t>(missing_pad.size() - 8);
+    std::memcpy(missing_pad.data() + 4, &missing_pad_size, sizeof(missing_pad_size));
+    error.clear();
+    assert(!parse_inline_wav(input(missing_pad), audio, error));
+    assert(error.find("padding byte") != std::string::npos);
+
     error.clear();
     nlohmann::json malformed = {{"format", "wav"}, {"data", "AAAA=A=="}};
     assert(!parse_inline_wav(malformed, audio, error));
