@@ -106,7 +106,7 @@ int main() {
     assert(error.find("8000 and 192000") != std::string::npos);
 
     error.clear();
-    assert(!parse_inline_wav(input(wav(1, 1, 16000, 24, {0, 0, 0})), audio, error));
+    assert(!parse_inline_wav(input(wav(1, 1, 16000, 24, {0, 0, 0, 0, 0, 0})), audio, error));
     assert(error.find("PCM16 or IEEE float32") != std::string::npos);
 
     error.clear();
