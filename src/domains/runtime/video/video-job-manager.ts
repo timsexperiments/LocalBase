@@ -18,6 +18,11 @@ export type VideoJobInput = Readonly<{
   fps?: number;
   seed?: number;
   outputFormat?: "webm" | "webp" | "avi";
+  generation?: Readonly<{
+    sampler: "euler";
+    steps: number;
+    cfgScale: number;
+  }>;
 }>;
 
 export type VideoBackendJob =
@@ -249,8 +254,10 @@ export class VideoJobManager {
   }): Promise<VideoJobStart> {
     this.prune();
     if (this.stopping || this.active !== undefined) return { kind: "busy" };
-    const acquireAdmission = options.acquireAdmission ?? this.options.acquireAdmission;
-    const supervisedStop = options.supervisedStop ?? this.options.supervisedStop;
+    const acquireAdmission =
+      options.acquireAdmission ?? this.options.acquireAdmission;
+    const supervisedStop =
+      options.supervisedStop ?? this.options.supervisedStop;
     if (!acquireAdmission || !supervisedStop) {
       throw new Error("Video job admission and supervised stop are required.");
     }
@@ -310,10 +317,30 @@ export class VideoJobManager {
     return this.snapshot(job);
   }
 
+  delete(options: { ownerId: string; id: string }): boolean {
+    this.prune();
+    const job = this.jobs.get(options.id);
+    if (
+      !job ||
+      job.ownerId !== options.ownerId ||
+      job.state !== "completed" ||
+      job.terminalAtMs === undefined
+    ) {
+      return false;
+    }
+    this.remove(job);
+    return true;
+  }
+
   async shutdown(): Promise<void> {
     this.prune();
     this.stopping = true;
     if (this.active) await this.terminate(this.active, "shutdown");
+  }
+
+  async cancelActive(): Promise<void> {
+    this.prune();
+    if (this.active) await this.terminate(this.active, "cancelled");
   }
 
   private createJob(

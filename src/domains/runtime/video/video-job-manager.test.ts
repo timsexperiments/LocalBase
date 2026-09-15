@@ -121,6 +121,14 @@ test("keeps completed jobs private, clears them on restart, and prunes terminal 
     expect(
       manager.artifact({ ownerId: "key-b", id: started.job.id }),
     ).toBeUndefined();
+    expect(manager.delete({ ownerId: "key-b", id: started.job.id })).toBe(
+      false,
+    );
+    expect(manager.delete({ ownerId: "key-a", id: started.job.id })).toBe(true);
+    expect(
+      manager.get({ ownerId: "key-a", id: started.job.id }),
+    ).toBeUndefined();
+    expect(await Bun.file(artifact.path).exists()).toBe(false);
 
     const restarted = createManager({
       backend: {
