@@ -6,6 +6,7 @@ import { byId, primaryArtifact } from "../../catalog";
 import {
   startGatewayFixture,
   type GatewayFixture,
+  waitForLogEvent,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 import { decodeOtlpTraceSpans } from "../../test/otlp-fixture";
@@ -35,6 +36,7 @@ import {
 import { RuntimeMemoryAdmissionError } from "./memory-controller";
 import type { MemorySafetyTransition } from "./memory-safety";
 import { SpeechGenerationTimeoutError } from "./speech-supervisor";
+import { getGatewayInstanceState } from "../service/ownership";
 
 type ValidationCase = {
   name: string;
@@ -62,6 +64,47 @@ test("formats IPv4, hostnames, and IPv6 literals as HTTP base URLs", () => {
   expect(httpBaseUrl("127.0.0.1", 2273)).toBe("http://127.0.0.1:2273");
   expect(httpBaseUrl("localhost", 2273)).toBe("http://localhost:2273");
   expect(httpBaseUrl("::1", 2273)).toBe("http://[::1]:2273");
+});
+
+async function expectGatewayListenerHost(
+  gateway: GatewayFixture,
+  expectedHost: string,
+): Promise<void> {
+  expect(gateway.readConfig().host).toBe("0.0.0.0");
+  expect(new URL(gateway.baseUrl).hostname).toBe(expectedHost);
+  expect((await fetch(`${gateway.baseUrl}/health`)).status).toBe(200);
+
+  const owner = await getGatewayInstanceState(gateway.root);
+  if (owner.state !== "active") {
+    throw new Error(
+      `Expected active gateway ownership, received ${owner.state}`,
+    );
+  }
+  expect(owner.instance.host).toBe(expectedHost);
+
+  const started = await waitForLogEvent(
+    gateway,
+    ({ eventName }) => eventName === "gateway.started",
+  );
+  expect(started.attributes?.host).toBe(expectedHost);
+}
+
+test("compiled gateway defaults to loopback independently of the persisted LLM host", async () => {
+  const gateway = await startGatewayFixture();
+  try {
+    await expectGatewayListenerHost(gateway, "127.0.0.1");
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test("compiled gateway preserves an explicit host override", async () => {
+  const gateway = await startGatewayFixture({ gatewayHost: "localhost" });
+  try {
+    await expectGatewayListenerHost(gateway, "localhost");
+  } finally {
+    await gateway.stop();
+  }
 });
 
 test("normalizes unexpected gateway errors into an OpenAI error envelope", async () => {
