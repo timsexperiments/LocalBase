@@ -182,6 +182,19 @@ async function main() {
           name: "inline-wav-audio.patch",
           sha256: await sha256(patchBytes),
         },
+        runtimeRequirements: {
+          "linux-x64": {
+            buildBaseline: "Ubuntu 24.04 x86_64",
+            gpu: "Vulkan loader and a compatible Vulkan GPU driver",
+            systemLibraries:
+              "glibc and libstdc++ compatible with the Ubuntu 24.04 build baseline",
+          },
+          "macos-arm64": {
+            buildBaseline: "macOS 14 arm64",
+            gpu: "Apple Metal",
+            systemLibraries: "macOS system frameworks",
+          },
+        },
       },
       null,
       2,
