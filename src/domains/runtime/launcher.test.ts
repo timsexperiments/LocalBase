@@ -67,8 +67,6 @@ test("uses video profile launch options", () => {
     plan.textEncoderPath,
     "--vae",
     plan.vaePath,
-    "-M",
-    "vid_gen",
     "--offload-to-cpu",
     "--diffusion-fa",
     "--listen-ip",

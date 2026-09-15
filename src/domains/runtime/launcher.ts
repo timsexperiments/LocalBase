@@ -186,8 +186,6 @@ export function buildSdVideoServerArgs(plan: VideoLaunchPlan): string[] {
     "--vae",
     plan.vaePath,
     ...(plan.mode === "s2v" ? ["--audio-encoder", plan.audioEncoderPath] : []),
-    "-M",
-    "vid_gen",
     ...(plan.launchOptions.cpuOffload ? ["--offload-to-cpu"] : []),
     ...(plan.launchOptions.diffusionFlashAttention ? ["--diffusion-fa"] : []),
     "--listen-ip",

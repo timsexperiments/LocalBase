@@ -10,6 +10,8 @@ on:
       - scripts/sd-release/**
       - scripts/sd-patches/**
       - .github/workflows/sync-sd-server-manifest.yml
+      - src/domains/runtime/launcher.ts
+      - scripts/sd-video-launch-contract.ts
   workflow_dispatch:
     inputs:
       runtime_tag:
@@ -67,6 +69,8 @@ jobs:
           grep -q 'libvulkan.so.1' <<<"$ldd_output"
           ! grep -Eq 'libwebp|libwebm|libggml' <<<"$ldd_output"
           build-sd-server/sd-server --help >/dev/null
+          bun scripts/sd-video-launch-contract.ts \
+            --binary build-sd-server/sd-server
           strings build-sd-server/sd-server | grep -Fxq 'inline_wav_audio'
           strings build-sd-server/sd-server | grep -Fxq 'WAV must contain PCM16 or IEEE float32 samples'
       - name: Package and qualify canonical archive
