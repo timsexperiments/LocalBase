@@ -108,8 +108,36 @@ describe("runtime launch plans", () => {
           vaeFile: "vae.safetensors",
           host: "127.0.0.1",
           port: 8091,
-          artifactBytes: 5 * 1024 ** 3,
-          measuredPeakMemoryBytes: 8 * 1024 ** 3,
+          videoRuntime: {
+            artifacts: {
+              diffusionModel: "diffusion.gguf",
+              textEncoder: "encoder.gguf",
+              vae: "vae.safetensors",
+            },
+            qualification: {
+              maxWidth: 320,
+              maxHeight: 320,
+              maxFrames: 33,
+              generation: {
+                sampler: "euler",
+                steps: 20,
+                cfgScale: 6,
+                seed: 42,
+              },
+              launchOptions: {
+                cpuOffload: true,
+                diffusionFlashAttention: true,
+              },
+              observations: [
+                { pool: "accelerator-free", observedFreeBytes: 5_783 },
+              ],
+            },
+            estimatedMemoryDemand: {
+              unifiedBytes: 0,
+              hostBytes: 8 * 1024 ** 3,
+              acceleratorBytes: 5 * 1024 ** 3,
+            },
+          },
         }),
       expected: {
         modality: "video",
@@ -117,12 +145,15 @@ describe("runtime launch plans", () => {
         diffusionModelPath: `${root}/models/video/diffusion.gguf`,
         textEncoderPath: `${root}/models/video/encoder.gguf`,
         vaePath: `${root}/models/video/vae.safetensors`,
+        inputBounds: { maxWidth: 320, maxHeight: 320, maxFrames: 33 },
+        generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
         healthUrl: "http://127.0.0.1:8091/",
         memoryDemand: {
-          unifiedBytes: 13.5 * 1024 ** 3,
-          hostBytes: 5.5 * 1024 ** 3,
-          acceleratorBytes: 13 * 1024 ** 3,
-          confidence: "authoritative",
+          unifiedBytes: 0,
+          hostBytes: 8 * 1024 ** 3,
+          acceleratorBytes: 5 * 1024 ** 3,
+          confidence: "estimated",
         },
       },
     },

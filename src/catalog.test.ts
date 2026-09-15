@@ -35,7 +35,7 @@ function model(artifacts: unknown[]) {
 }
 
 describe("catalog artifact validation", () => {
-  test("requires video profiles to name declared artifacts and a measured peak", () => {
+  test("requires video profiles to name declared artifacts and bounded measurements", () => {
     const video = {
       ...model([
         {
@@ -69,7 +69,21 @@ describe("catalog artifact validation", () => {
           textEncoder: "encoder.gguf",
           vae: "vae.safetensors",
         },
-        measuredPeakMemoryBytes: 20,
+        qualification: {
+          maxWidth: 320,
+          maxHeight: 320,
+          maxFrames: 33,
+          generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+          launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+          observations: [
+            { pool: "accelerator-free", observedFreeBytes: 5_783 },
+          ],
+        },
+        estimatedMemoryDemand: {
+          unifiedBytes: 20,
+          hostBytes: 20,
+          acceleratorBytes: 10,
+        },
       },
     };
     expect(catalogSchema.safeParse([video]).success).toBe(true);

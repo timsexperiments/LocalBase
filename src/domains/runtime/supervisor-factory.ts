@@ -575,7 +575,7 @@ export function createRuntimeSupervisorFactory(
           const spec = byId(modelId);
           if (!spec || spec.kind !== "video" || !spec.videoRuntime) {
             throw new Error(
-              `Video model \"${modelId}\" has no qualified runtime profile.`,
+              `Video model \"${modelId}\" has no runtime profile.`,
             );
           }
           let installation = await resolveCatalogInstallation(
@@ -613,9 +613,8 @@ export function createRuntimeSupervisorFactory(
               )
             ).every(Boolean)
           ) {
-            throw new Error("Qualified video model artifacts are missing.");
+            throw new Error("Video model artifacts are missing.");
           }
-          let artifactBytes = 0;
           for (const artifact of spec.artifacts) {
             if (
               artifact.expectedSizeBytes === undefined ||
@@ -634,7 +633,6 @@ export function createRuntimeSupervisorFactory(
               },
               config.videoModelsDir,
             );
-            artifactBytes += artifact.expectedSizeBytes;
           }
           return resolveVideoLaunchPlan({
             runtimeId,
@@ -646,8 +644,7 @@ export function createRuntimeSupervisorFactory(
             vaeFile: artifacts.vae,
             host: videoHost(overrides),
             port: videoPort(overrides),
-            artifactBytes,
-            measuredPeakMemoryBytes: spec.videoRuntime.measuredPeakMemoryBytes,
+            videoRuntime: spec.videoRuntime,
           });
         },
         start: async (plan) => {

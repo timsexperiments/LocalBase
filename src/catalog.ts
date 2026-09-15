@@ -36,13 +36,70 @@ const videoArtifactMappingSchema = z
   })
   .strict();
 
+const videoWorkloadBoundsSchema = z
+  .object({
+    maxWidth: z.number().int().positive(),
+    maxHeight: z.number().int().positive(),
+    maxFrames: z.number().int().positive(),
+  })
+  .strict();
+
+const videoGenerationProfileSchema = z
+  .object({
+    sampler: z.literal("euler"),
+    steps: z.number().int().positive(),
+    cfgScale: z.number().positive(),
+    seed: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const videoLaunchOptionsSchema = z
+  .object({
+    cpuOffload: z.boolean(),
+    diffusionFlashAttention: z.boolean(),
+  })
+  .strict();
+
+const videoMemoryObservationSchema = z.discriminatedUnion("pool", [
+  z
+    .object({
+      pool: z.literal("accelerator-free"),
+      observedFreeBytes: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      pool: z.literal("host-available"),
+      observedAvailableBytes: z.number().int().nonnegative(),
+    })
+    .strict(),
+]);
+
+const videoQualificationProfileSchema = videoWorkloadBoundsSchema
+  .extend({
+    generation: videoGenerationProfileSchema,
+    launchOptions: videoLaunchOptionsSchema,
+    observations: z.array(videoMemoryObservationSchema),
+  })
+  .strict();
+
+const estimatedVideoMemoryDemandSchema = z
+  .object({
+    unifiedBytes: z.number().int().positive(),
+    hostBytes: z.number().int().positive(),
+    acceleratorBytes: z.number().int().nonnegative(),
+  })
+  .strict();
+
 const videoRuntimeProfileSchema = z
   .object({
     artifacts: videoArtifactMappingSchema,
-    /** Measured peak unified-memory demand from an approved native qualification. */
-    measuredPeakMemoryBytes: z.number().int().positive(),
+    qualification: videoQualificationProfileSchema,
+    estimatedMemoryDemand: estimatedVideoMemoryDemandSchema,
   })
   .strict();
+
+export type VideoRuntimeProfile = z.infer<typeof videoRuntimeProfileSchema>;
 
 /** Local or test artifacts may omit release metadata outside the managed catalog. */
 export type ModelArtifact = Omit<

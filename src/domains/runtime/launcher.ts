@@ -179,7 +179,12 @@ export async function startSdVideoServerProcess(
 export function buildSdVideoServerArgs(
   plan: Pick<
     VideoLaunchPlan,
-    "diffusionModelPath" | "textEncoderPath" | "vaePath" | "host" | "port"
+    | "diffusionModelPath"
+    | "textEncoderPath"
+    | "vaePath"
+    | "host"
+    | "port"
+    | "launchOptions"
   >,
 ): string[] {
   return [
@@ -191,6 +196,8 @@ export function buildSdVideoServerArgs(
     plan.vaePath,
     "-M",
     "vid_gen",
+    ...(plan.launchOptions.cpuOffload ? ["--offload-to-cpu"] : []),
+    ...(plan.launchOptions.diffusionFlashAttention ? ["--diffusion-fa"] : []),
     "--listen-ip",
     plan.host,
     "--listen-port",

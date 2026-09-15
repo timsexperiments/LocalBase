@@ -6,6 +6,7 @@ import {
   type ParallelAllocation,
   type ParallelSlots,
 } from "../config/parallel";
+import type { VideoRuntimeProfile } from "../../catalog";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
 
@@ -48,6 +49,21 @@ export type VideoLaunchPlan = Omit<
   readonly diffusionModelPath: string;
   readonly textEncoderPath: string;
   readonly vaePath: string;
+  readonly inputBounds: Readonly<{
+    maxWidth: number;
+    maxHeight: number;
+    maxFrames: number;
+  }>;
+  readonly generation: Readonly<{
+    sampler: "euler";
+    steps: number;
+    cfgScale: number;
+    seed: number;
+  }>;
+  readonly launchOptions: Readonly<{
+    cpuOffload: boolean;
+    diffusionFlashAttention: boolean;
+  }>;
 };
 
 export type RuntimeLaunchPlan =
@@ -80,15 +96,11 @@ function runtimeMemoryDemand(input: {
 }
 
 function videoMemoryDemand(input: {
-  artifactBytes: number;
-  measuredPeakMemoryBytes: number;
+  estimatedDemand: VideoRuntimeProfile["estimatedMemoryDemand"];
 }): RuntimeMemoryDemand {
-  const combinedBytes = input.artifactBytes + input.measuredPeakMemoryBytes;
   return Object.freeze({
-    unifiedBytes: combinedBytes + RUNTIME_HOST_OVERHEAD_BYTES,
-    hostBytes: input.artifactBytes + RUNTIME_HOST_OVERHEAD_BYTES,
-    acceleratorBytes: combinedBytes,
-    confidence: "authoritative",
+    ...input.estimatedDemand,
+    confidence: "estimated",
   });
 }
 
@@ -219,9 +231,12 @@ export function resolveVideoLaunchPlan(input: {
   vaeFile: string;
   host: string;
   port: number;
-  artifactBytes: number;
-  measuredPeakMemoryBytes: number;
+  videoRuntime: VideoRuntimeProfile;
 }): VideoLaunchPlan {
+  const { qualification } = input.videoRuntime;
+  const memoryDemand = videoMemoryDemand({
+    estimatedDemand: input.videoRuntime.estimatedMemoryDemand,
+  });
   return Object.freeze({
     runtimeId: input.runtimeId,
     modality: "video",
@@ -231,9 +246,16 @@ export function resolveVideoLaunchPlan(input: {
     diffusionModelPath: join(input.modelsDirectory, input.diffusionModelFile),
     textEncoderPath: join(input.modelsDirectory, input.textEncoderFile),
     vaePath: join(input.modelsDirectory, input.vaeFile),
+    inputBounds: Object.freeze({
+      maxWidth: qualification.maxWidth,
+      maxHeight: qualification.maxHeight,
+      maxFrames: qualification.maxFrames,
+    }),
+    generation: Object.freeze({ ...qualification.generation }),
+    launchOptions: Object.freeze({ ...qualification.launchOptions }),
     host: input.host,
     port: input.port,
     healthUrl: `http://${input.host}:${input.port}/`,
-    memoryDemand: videoMemoryDemand(input),
+    memoryDemand,
   });
 }
