@@ -541,6 +541,7 @@ describe("catalog artifact validation", () => {
   test("pins the experimental Wan Q8 video bundle and bounded launch profile", () => {
     expect(byId("wan2.1-t2v-1.3b-q8_0")).toMatchObject({
       kind: "video",
+      minVramGb: 12,
       repositoryRevision: "5a512b15fc35d1b67a074cfe55a591be9e9ef9b5",
       artifacts: [
         {
@@ -581,7 +582,7 @@ describe("catalog artifact validation", () => {
         estimatedMemoryDemand: {
           unifiedBytes: 24 * 1024 ** 3,
           hostBytes: 16 * 1024 ** 3,
-          acceleratorBytes: 8 * 1024 ** 3,
+          acceleratorBytes: 9 * 1024 ** 3,
         },
         supportedTargets: [
           { platform: "linux", architecture: "x64", accelerator: "nvidia" },
