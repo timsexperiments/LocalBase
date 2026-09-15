@@ -279,6 +279,9 @@ test("waits for a late successful submission before cancelling and releasing", a
     expect(manager.get({ ownerId: "key-a", id: started.job.id })).toMatchObject(
       { state: "cancelled" },
     );
+    expect(
+      await Bun.file(join(root, "video-jobs", started.job.id, "artifact")).exists(),
+    ).toBe(false);
     expect(admission.snapshot()).toEqual({ acquired: 1, released: 1 });
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -471,9 +474,10 @@ test("contains an artifact write failure before releasing cancellation admission
       stopEntered.resolve();
       await releaseStop.promise;
     },
-    writeArtifact: async () => {
+    writeArtifact: async (options) => {
       writeEntered.resolve();
       await rejectWrite.promise;
+      await Bun.write(options.path, options.bytes);
       throw writeFailure;
     },
   });
@@ -503,6 +507,9 @@ test("contains an artifact write failure before releasing cancellation admission
       state: "failed",
       failure: writeFailure,
     });
+    expect(
+      await Bun.file(join(root, "video-jobs", started.job.id, "artifact")).exists(),
+    ).toBe(false);
     expect(admission.snapshot()).toEqual({ acquired: 1, released: 1 });
   } finally {
     rmSync(root, { recursive: true, force: true });

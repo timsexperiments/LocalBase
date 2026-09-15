@@ -454,6 +454,7 @@ export class VideoJobManager {
         completionFailure = toError(error);
       }
       if (job.terminalAtMs !== undefined) return;
+      await this.removeTransientArtifact(job);
     }
     try {
       await this.options.supervisedStop();
@@ -536,6 +537,14 @@ export class VideoJobManager {
       fps: media.fps,
       frameCount: media.frameCount,
     });
+  }
+
+  private async removeTransientArtifact(job: StoredJob): Promise<void> {
+    const path = join(job.directory, "artifact");
+    rmSync(path, { force: true });
+    if (await Bun.file(path).exists()) {
+      throw new Error("Video artifact cleanup did not remove the private file.");
+    }
   }
 
   private makeRoomForArtifact(byteLength: number): void {
