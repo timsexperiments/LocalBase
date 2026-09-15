@@ -26,7 +26,7 @@ test("projects the qualified catalog profile into every native generation field"
     fps: 16,
     seed: 42,
     outputFormat: "avi",
-    generation: { sampler: "euler", steps: 20, cfgScale: 6 },
+    generation: { sampler: "euler", steps: 20, cfgScale: 6, flowShift: 3 },
   });
 });
 

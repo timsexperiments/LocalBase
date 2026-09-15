@@ -22,6 +22,7 @@ export type VideoJobInput = Readonly<{
     sampler: "euler";
     steps: number;
     cfgScale: number;
+    flowShift: number;
   }>;
 }>;
 

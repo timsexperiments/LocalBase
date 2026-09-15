@@ -63,18 +63,11 @@ import {
 } from "../speech-supervisor";
 import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
-import {
-  modelMetadataIdFromPath,
-  selectGatewayRoute,
-  videoJobIdFromPath,
-} from "../route-dispatch";
+import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
 import { VideoJobManager } from "../video/video-job-manager";
 import { createStableDiffusionVideoClient } from "../video/stable-diffusion-video-client";
-import {
-  projectVideoJob,
-  qualifiedVideoInput,
-  videoCreateRequestSchema,
-} from "../video/gateway-contract";
+import { handleVideoGatewayRequest } from "../video/gateway-handler";
+import { videoCreateRequestSchema } from "../video/gateway-contract";
 import {
   acquireGatewayLease,
   acquireGatewayLeaseForServe,
@@ -247,31 +240,6 @@ function routeNotFound(): Response {
       code: "route_disabled",
     },
     404,
-  );
-}
-
-function videoJobNotFound(): Response {
-  return openAIErrorResponse(
-    {
-      message: "Video job not found.",
-      type: "invalid_request_error",
-      param: null,
-      code: "video_job_not_found",
-    },
-    404,
-  );
-}
-
-function videoJobBusy(): Response {
-  return openAIErrorResponse(
-    {
-      message: "A local video job is already in progress.",
-      type: "rate_limit_error",
-      param: null,
-      code: "video_job_busy",
-    },
-    429,
-    { "Retry-After": "1" },
   );
 }
 
@@ -2231,7 +2199,7 @@ export async function runServe(
       ? { video: factory.create("video", initialSnapshot) }
       : {}),
   });
-  let videoJobs: VideoJobManager;
+  let videoJobs: VideoJobManager | undefined;
   const reconciler = new RuntimeReconciler(
     ctx.runtimeConfig,
     configuredOverrides,
@@ -2244,32 +2212,34 @@ export async function runServe(
     },
     {
       beforeModalityDrain: async (modality) => {
-        if (modality === "video") await videoJobs.cancelActive();
+        if (modality === "video") await videoJobs?.cancelActive();
       },
     },
   );
-  videoJobs = new VideoJobManager({
-    backend: createStableDiffusionVideoClient({
-      baseUrl: factory.baseUrl("video", initialSnapshot),
-    }),
-    temporaryDirectory: join(config.root, "tmp"),
-    onContainmentFailure: ({ jobId, source, error }) => {
-      ctx.logger.event({
-        severity: "error",
-        eventName: "video.job-containment-failed",
-        category: "runtime",
-        component: "video-job-manager",
-        runtime: "video",
-        message: "A local video job could not be contained.",
-        attributes: { job_id: jobId, source },
-        error: { type: error.name, message: error.message },
-      });
-    },
-  });
+  if (enabled.video) {
+    videoJobs = new VideoJobManager({
+      backend: createStableDiffusionVideoClient({
+        baseUrl: factory.baseUrl("video", initialSnapshot),
+      }),
+      temporaryDirectory: join(config.root, "tmp"),
+      onContainmentFailure: ({ jobId, source, error }) => {
+        ctx.logger.event({
+          severity: "error",
+          eventName: "video.job-containment-failed",
+          category: "runtime",
+          component: "video-job-manager",
+          runtime: "video",
+          message: "A local video job could not be contained.",
+          attributes: { job_id: jobId, source },
+          error: { type: error.name, message: error.message },
+        });
+      },
+    });
+  }
   const memoryPressureMonitor = new MemoryPressureMonitor({
     controller: memorySafety,
     onElevatedPressure: async (transition) => {
-      await videoJobs.cancelActive();
+      await videoJobs?.cancelActive();
       await applyElevatedMemoryPressure(reconciler, transition);
     },
     onTransition: (transition) =>
@@ -2430,97 +2400,34 @@ export async function runServe(
     ) {
       const credential = gatewayCredential(request, currentConfig);
       if (!credential) return unauthorized();
-      const jobId = videoJobIdFromPath(pathname);
-
-      if (route === "videoStatus") {
-        if (!jobId) return routeNotFound();
-        if (request.method === "DELETE") {
-          return videoJobs.delete({ ownerId: credential.ownerId, id: jobId })
-            ? new Response(null, { status: 204 })
-            : videoJobNotFound();
-        }
-        if (request.method !== "GET") return methodNotAllowed("GET, DELETE");
-        const job = videoJobs.get({ ownerId: credential.ownerId, id: jobId });
-        return job ? Response.json(projectVideoJob(job)) : videoJobNotFound();
-      }
-
-      if (route === "videoContent") {
-        if (request.method !== "GET") return methodNotAllowed("GET");
-        if (!jobId) return routeNotFound();
-        const artifact = videoJobs.artifact({
-          ownerId: credential.ownerId,
-          id: jobId,
-        });
-        if (!artifact || !(await Bun.file(artifact.path).exists())) {
-          return videoJobNotFound();
-        }
-        return new Response(Bun.file(artifact.path), {
-          headers: {
-            "content-type": artifact.metadata.mimeType,
-            "content-length": String(artifact.metadata.byteLength),
-            "x-content-type-options": "nosniff",
-            "cache-control": "private, no-store",
+      return await handleVideoGatewayRequest({
+        request,
+        pathname,
+        route,
+        ownerId: credential.ownerId,
+        jobs: videoJobs,
+        admissionProvider: {
+          admit: async (modelId) => {
+            const selection = await reconciler.admitModel("video", modelId);
+            if (selection.kind !== "admitted") return selection;
+            return {
+              kind: "admitted",
+              admission: selection.value.admission,
+            };
           },
-        });
-      }
-
-      if (route === "videoCancel") {
-        if (request.method !== "POST") return methodNotAllowed("POST");
-        if (!jobId) return routeNotFound();
-        const job = await videoJobs.cancel({
-          ownerId: credential.ownerId,
-          id: jobId,
-        });
-        return job ? Response.json(projectVideoJob(job)) : videoJobNotFound();
-      }
-
-      if (request.method !== "POST") return methodNotAllowed("POST");
-      const parsed = await parseJsonRequest(request, videoCreateRequestSchema);
-      if (!parsed.success) return parsed.response;
-      const spec = byId(parsed.data.model);
-      if (!spec || spec.kind !== "video" || !spec.videoRuntime) {
-        return modelNotFound(parsed.data.model);
-      }
-      const videoInput = qualifiedVideoInput(parsed.data, spec);
-      if (!videoInput) {
-        return badRequest(
-          "This local video model only accepts its qualified width, height, frames, and fps profile.",
-        );
-      }
-
-      let selection: ModelAdmissionResult | undefined;
-      try {
-        const started = await videoJobs.start({
-          ownerId: credential.ownerId,
-          input: videoInput,
-          acquireAdmission: async () => {
-            selection = await reconciler.admitModel("video", parsed.data.model);
-            if (selection.kind !== "admitted") return undefined;
-            try {
-              await selection.value.admission.ready;
-              return selection.value.admission;
-            } catch (error) {
-              selection.value.admission.release();
-              throw error;
-            }
-          },
-          supervisedStop: async () => {
-            if (selection?.kind === "admitted") {
-              await selection.value.admission.supervisor.shutdown();
-            }
-          },
-        });
-        if (started.kind === "busy") {
-          if (selection?.kind === "not-configured")
-            return notConfigured("Video");
-          if (selection?.kind === "model-not-found") {
-            return modelNotFound(parsed.data.model);
-          }
-          if (selection?.kind === "unavailable")
-            return serviceUnavailable("Video");
-          return videoJobBusy();
-        }
-        void started.terminal.then((job) => {
+        },
+        parseCreateRequest: async () =>
+          await parseJsonRequest(request, videoCreateRequestSchema),
+        queueFailure: (error) => queueFailure(error, "video"),
+        notConfigured: () => notConfigured("Video"),
+        serviceUnavailable: () => serviceUnavailable("Video"),
+        modelNotFound,
+        badRequest,
+        methodNotAllowed,
+        routeNotFound,
+        requestAborted,
+        resourceUnavailable,
+        onTerminal: ({ job, modelId }) => {
           ctx.logger.event({
             severity: job.state === "failed" ? "error" : "info",
             eventName: "video.job-terminal",
@@ -2531,23 +2438,14 @@ export async function runServe(
             message: "A local video job reached a terminal state.",
             attributes: {
               job_id: job.id,
-              model_id: parsed.data.model,
+              model_id: modelId,
               state: job.state,
               duration_ms:
                 "terminalAtMs" in job ? job.terminalAtMs - job.createdAtMs : 0,
             },
           });
-        });
-        return Response.json(projectVideoJob(started.job), { status: 202 });
-      } catch (error) {
-        if (error instanceof RuntimeRequestAbortedError)
-          return requestAborted();
-        const queueError = queueFailure(error, "video");
-        if (queueError) return queueError;
-        if (error instanceof RuntimeMemoryAdmissionError)
-          return resourceUnavailable();
-        throw error;
-      }
+        },
+      });
     }
 
     if (route === "speechGeneration") {
@@ -3170,7 +3068,7 @@ export async function runServe(
         server.stop(true);
         try {
           await memoryPressureMonitor.stop();
-          await videoJobs.shutdown();
+          await videoJobs?.shutdown();
           await supervisors.shutdown();
         } finally {
           await memoryProvider.close();

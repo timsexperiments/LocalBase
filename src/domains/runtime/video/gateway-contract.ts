@@ -16,6 +16,45 @@ export const videoCreateRequestSchema = z
 
 export type VideoCreateRequest = z.infer<typeof videoCreateRequestSchema>;
 
+const videoJobResponseBaseSchema = z
+  .object({
+    object: z.literal("localbase.video.job"),
+    id: z.string().uuid(),
+    created_at: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const videoJobResponseSchema = z.discriminatedUnion("status", [
+  videoJobResponseBaseSchema.extend({
+    status: z.enum(["queued", "in_progress"]),
+  }),
+  videoJobResponseBaseSchema.extend({
+    status: z.literal("completed"),
+    completed_at: z.number().int().nonnegative(),
+    content_type: z.string().min(1),
+    bytes: z.number().int().nonnegative(),
+    fps: z.number().int().positive(),
+    frames: z.number().int().positive(),
+  }),
+  videoJobResponseBaseSchema.extend({
+    status: z.literal("failed"),
+    completed_at: z.number().int().nonnegative(),
+    error: z.object({ code: z.literal("video_generation_failed") }).strict(),
+  }),
+  videoJobResponseBaseSchema.extend({
+    status: z.literal("cancelled"),
+    completed_at: z.number().int().nonnegative(),
+    cancellation_reason: z.enum([
+      "backend",
+      "cancelled",
+      "deadline",
+      "shutdown",
+    ]),
+  }),
+]);
+
+export type VideoJobResponse = z.infer<typeof videoJobResponseSchema>;
+
 export function qualifiedVideoInput(
   request: VideoCreateRequest,
   model: ModelSpec,
@@ -45,49 +84,54 @@ export function qualifiedVideoInput(
       sampler: qualification.generation.sampler,
       steps: qualification.generation.steps,
       cfgScale: qualification.generation.cfgScale,
+      flowShift: qualification.generation.flowShift,
     },
   };
 }
 
-export function projectVideoJob(job: VideoJob): Record<string, unknown> {
+function unixSeconds(milliseconds: number): number {
+  return Math.floor(milliseconds / 1_000);
+}
+
+export function projectVideoJob(job: VideoJob): VideoJobResponse {
   switch (job.state) {
     case "queued":
     case "in_progress":
-      return {
+      return videoJobResponseSchema.parse({
         object: "localbase.video.job",
         id: job.id,
         status: job.state,
-        created_at: job.createdAtMs,
-      };
+        created_at: unixSeconds(job.createdAtMs),
+      });
     case "completed":
-      return {
+      return videoJobResponseSchema.parse({
         object: "localbase.video.job",
         id: job.id,
         status: job.state,
-        created_at: job.createdAtMs,
-        completed_at: job.terminalAtMs,
+        created_at: unixSeconds(job.createdAtMs),
+        completed_at: unixSeconds(job.terminalAtMs),
         content_type: job.artifact.mimeType,
         bytes: job.artifact.byteLength,
         fps: job.artifact.fps,
         frames: job.artifact.frameCount,
-      };
+      });
     case "failed":
-      return {
+      return videoJobResponseSchema.parse({
         object: "localbase.video.job",
         id: job.id,
         status: job.state,
-        created_at: job.createdAtMs,
-        completed_at: job.terminalAtMs,
+        created_at: unixSeconds(job.createdAtMs),
+        completed_at: unixSeconds(job.terminalAtMs),
         error: { code: "video_generation_failed" },
-      };
+      });
     case "cancelled":
-      return {
+      return videoJobResponseSchema.parse({
         object: "localbase.video.job",
         id: job.id,
         status: job.state,
-        created_at: job.createdAtMs,
-        completed_at: job.terminalAtMs,
+        created_at: unixSeconds(job.createdAtMs),
+        completed_at: unixSeconds(job.terminalAtMs),
         cancellation_reason: job.reason,
-      };
+      });
   }
 }

@@ -1,0 +1,376 @@
+import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  createApiKey,
+  defaultConfig,
+  resolveApiKey,
+  saveConfig,
+} from "../../../manager";
+import { DatabaseSession } from "../../../db/client";
+import {
+  handleVideoGatewayRequest,
+  type VideoGatewayHandlerDependencies,
+  type VideoModelAdmissionProvider,
+} from "./gateway-handler";
+import {
+  videoCreateRequestSchema,
+  videoJobResponseSchema,
+} from "./gateway-contract";
+import {
+  VideoJobManager,
+  type VideoBackendJob,
+  type VideoJobBackend,
+  type VideoJobInput,
+} from "./video-job-manager";
+
+const VIDEO_MODEL = "wan2.1-t2v-1.3b-q8_0";
+
+function deferred<Value>() {
+  let resolve: (value: Value) => void = () => {};
+  let reject: (error: unknown) => void = () => {};
+  const promise = new Promise<Value>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function createCredentials(root: string) {
+  const database = new DatabaseSession();
+  const config = defaultConfig(root);
+  saveConfig(database, config);
+  const first = createApiKey(database, config, "first");
+  const second = createApiKey(database, config, "second");
+  const ownerId = (rawKey: string) => {
+    const record = resolveApiKey(database, config, rawKey);
+    if (!record) throw new Error("Expected active key.");
+    return `api-key:${record.id}`;
+  };
+  return {
+    database,
+    config,
+    firstOwnerId: ownerId(first.rawKey),
+    secondOwnerId: ownerId(second.rawKey),
+  };
+}
+
+function completed(id: string): VideoBackendJob {
+  return {
+    id,
+    status: "completed",
+    media: {
+      bytes: Uint8Array.from([7, 8, 9]),
+      mimeType: "video/x-msvideo",
+      outputFormat: "avi",
+      fps: 16,
+      frameCount: 33,
+    },
+  };
+}
+
+function createAdmissionProvider(options: {
+  released: () => void;
+  stopped: () => Promise<void> | void;
+}): VideoModelAdmissionProvider {
+  return {
+    admit: async () => ({
+      kind: "admitted",
+      admission: {
+        ready: Promise.resolve(),
+        release: options.released,
+        supervisor: {
+          kill: async () => await options.stopped(),
+        },
+      },
+    }),
+  };
+}
+
+function endpointDependencies(options: {
+  request: Request;
+  pathname: string;
+  route: VideoGatewayHandlerDependencies["route"];
+  ownerId: string;
+  jobs: VideoJobManager;
+  admissionProvider: VideoModelAdmissionProvider;
+  onTerminal?: VideoGatewayHandlerDependencies["onTerminal"];
+}): VideoGatewayHandlerDependencies {
+  return {
+    ...options,
+    parseCreateRequest: async () => {
+      const parsed = videoCreateRequestSchema.safeParse(
+        await options.request.json(),
+      );
+      return parsed.success
+        ? { success: true, data: parsed.data }
+        : {
+            success: false,
+            response: Response.json(parsed.error, { status: 400 }),
+          };
+    },
+    queueFailure: () => undefined,
+    notConfigured: () => new Response(null, { status: 501 }),
+    serviceUnavailable: () => new Response(null, { status: 503 }),
+    modelNotFound: () => new Response(null, { status: 404 }),
+    badRequest: () => new Response(null, { status: 400 }),
+    methodNotAllowed: (allow) =>
+      new Response(null, { status: 405, headers: { allow } }),
+    routeNotFound: () => new Response(null, { status: 404 }),
+    requestAborted: () => new Response(null, { status: 499 }),
+    resourceUnavailable: () => new Response(null, { status: 503 }),
+    onTerminal: options.onTerminal ?? (() => {}),
+  };
+}
+
+function createRequest(ownerPrompt: string): Request {
+  return new Request("http://local.test/v1/videos", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: VIDEO_MODEL,
+      prompt: ownerPrompt,
+      width: 320,
+      height: 320,
+      frames: 33,
+      fps: 16,
+    }),
+  });
+}
+
+test("serves one owner’s completed local video through the typed route and deletes it", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-gateway-"));
+  const credentials = createCredentials(root);
+  const pollEntered = deferred<void>();
+  const completion = deferred<VideoBackendJob>();
+  const terminal = deferred<void>();
+  let released = 0;
+  let stopped = 0;
+  let submitted: VideoJobInput | undefined;
+  const backend: VideoJobBackend = {
+    async submitVideo({ input }) {
+      submitted = input;
+      return { id: "native-completed", status: "queued" };
+    },
+    async getJob() {
+      pollEntered.resolve();
+      return await completion.promise;
+    },
+  };
+  const jobs = new VideoJobManager({
+    backend,
+    temporaryDirectory: root,
+    onContainmentFailure: () => {},
+    waitForDeadline: async ({ signal }) =>
+      await new Promise<void>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      }),
+  });
+
+  try {
+    const admissionProvider = createAdmissionProvider({
+      released: () => (released += 1),
+      stopped: () => {
+        stopped += 1;
+      },
+    });
+    const created = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: createRequest("A paper kite over a field."),
+        pathname: "/v1/videos",
+        route: "videoCreate",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+        onTerminal: () => terminal.resolve(),
+      }),
+    );
+    expect(created.status).toBe(202);
+    const body = videoJobResponseSchema.parse(await created.json());
+    const jobId = body.id;
+    expect(body).toMatchObject({
+      object: "localbase.video.job",
+      status: "queued",
+      created_at: expect.any(Number),
+    });
+    expect(submitted).toMatchObject({
+      outputFormat: "avi",
+      seed: 42,
+      generation: { sampler: "euler", steps: 20, cfgScale: 6, flowShift: 3 },
+    });
+
+    await pollEntered.promise;
+    completion.resolve(completed("native-completed"));
+    await terminal.promise;
+
+    const status = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: new Request(`http://local.test/v1/videos/${jobId}`),
+        pathname: `/v1/videos/${jobId}`,
+        route: "videoStatus",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+      }),
+    );
+    expect(await status.json()).toMatchObject({
+      id: jobId,
+      status: "completed",
+      content_type: "video/x-msvideo",
+      bytes: 3,
+      completed_at: expect.any(Number),
+    });
+
+    const crossOwner = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: new Request(`http://local.test/v1/videos/${jobId}`),
+        pathname: `/v1/videos/${jobId}`,
+        route: "videoStatus",
+        ownerId: credentials.secondOwnerId,
+        jobs,
+        admissionProvider,
+      }),
+    );
+    expect(crossOwner.status).toBe(404);
+
+    const content = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: new Request(`http://local.test/v1/videos/${jobId}/content`),
+        pathname: `/v1/videos/${jobId}/content`,
+        route: "videoContent",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+      }),
+    );
+    expect(content.headers.get("content-type")).toBe("video/x-msvideo");
+    expect(content.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await content.bytes()).toEqual(Uint8Array.from([7, 8, 9]));
+
+    const deleted = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: new Request(`http://local.test/v1/videos/${jobId}`, {
+          method: "DELETE",
+        }),
+        pathname: `/v1/videos/${jobId}`,
+        route: "videoStatus",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+      }),
+    );
+    expect(deleted.status).toBe(204);
+    expect(released).toBe(1);
+    expect(stopped).toBe(0);
+  } finally {
+    credentials.database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("cancels a generating video through the route only after supervised stop", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-cancel-route-"));
+  const credentials = createCredentials(root);
+  const pollEntered = deferred<void>();
+  const stopEntered = deferred<void>();
+  const allowStop = deferred<void>();
+  const recoveredTerminal = deferred<void>();
+  let released = 0;
+  let submissions = 0;
+  const backend: VideoJobBackend = {
+    async submitVideo() {
+      submissions += 1;
+      if (submissions === 2) {
+        return { id: "native-recovered", status: "queued" };
+      }
+      return { id: "native-cancelled", status: "generating" };
+    },
+    async getJob({ id, signal }) {
+      if (id === "native-recovered") return completed(id);
+      pollEntered.resolve();
+      return await new Promise<VideoBackendJob>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    },
+  };
+  const jobs = new VideoJobManager({
+    backend,
+    temporaryDirectory: root,
+    onContainmentFailure: () => {},
+    waitForDeadline: async ({ signal }) =>
+      await new Promise<void>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      }),
+  });
+
+  try {
+    const admissionProvider = createAdmissionProvider({
+      released: () => (released += 1),
+      stopped: async () => {
+        stopEntered.resolve();
+        await allowStop.promise;
+      },
+    });
+    const created = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: createRequest("Cancel a local render."),
+        pathname: "/v1/videos",
+        route: "videoCreate",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+      }),
+    );
+    const jobId = videoJobResponseSchema.parse(await created.json()).id;
+    await pollEntered.promise;
+
+    const cancellation = handleVideoGatewayRequest(
+      endpointDependencies({
+        request: new Request(`http://local.test/v1/videos/${jobId}/cancel`, {
+          method: "POST",
+        }),
+        pathname: `/v1/videos/${jobId}/cancel`,
+        route: "videoCancel",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+      }),
+    );
+    await stopEntered.promise;
+    expect(released).toBe(0);
+    allowStop.resolve();
+    const cancelled = await cancellation;
+    expect(await cancelled.json()).toMatchObject({
+      id: jobId,
+      status: "cancelled",
+      cancellation_reason: "cancelled",
+    });
+    expect(released).toBe(1);
+
+    const recovered = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: createRequest("Render after the supervised stop."),
+        pathname: "/v1/videos",
+        route: "videoCreate",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+        onTerminal: () => recoveredTerminal.resolve(),
+      }),
+    );
+    expect(recovered.status).toBe(202);
+    await recoveredTerminal.promise;
+    expect(submissions).toBe(2);
+    expect(released).toBe(2);
+  } finally {
+    credentials.database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
