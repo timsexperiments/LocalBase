@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -54,7 +54,10 @@ function admissionCounter() {
   return {
     acquire: async () => {
       acquired += 1;
-      return { release: () => (released += 1) };
+      return {
+        ready: Promise.resolve(),
+        release: () => (released += 1),
+      };
     },
     snapshot: () => ({ acquired, released }),
   };
@@ -88,6 +91,7 @@ test("keeps completed jobs private, clears them on restart, and prunes terminal 
   });
 
   try {
+    expect(await Bun.file(join(root, "video-jobs")).exists()).toBe(false);
     const started = await manager.start({
       ownerId: "key-a",
       input: { prompt: "A paper kite over a field." },
@@ -121,6 +125,14 @@ test("keeps completed jobs private, clears them on restart, and prunes terminal 
     expect(
       manager.artifact({ ownerId: "key-b", id: started.job.id }),
     ).toBeUndefined();
+    expect(manager.delete({ ownerId: "key-b", id: started.job.id })).toBe(
+      false,
+    );
+    expect(manager.delete({ ownerId: "key-a", id: started.job.id })).toBe(true);
+    expect(
+      manager.get({ ownerId: "key-a", id: started.job.id }),
+    ).toBeUndefined();
+    expect(await Bun.file(artifact.path).exists()).toBe(false);
 
     const restarted = createManager({
       backend: {
@@ -140,6 +152,7 @@ test("keeps completed jobs private, clears them on restart, and prunes terminal 
       now: () => now,
       terminalTtlMs: 15,
     });
+    expect(await Bun.file(join(root, "video-jobs")).exists()).toBe(false);
     expect(
       restarted.get({ ownerId: "key-a", id: started.job.id }),
     ).toBeUndefined();
@@ -218,6 +231,113 @@ test("holds admission through cancellation until the backend is supervised stopp
       state: "cancelled",
     });
     expect(admission.snapshot()).toEqual({ acquired: 1, released: 1 });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("cancels an admission warmup before backend submission", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-warmup-cancel-"));
+  const admissionStarted = deferred<void>();
+  let submissions = 0;
+  const manager = createManager({
+    backend: {
+      async submitVideo() {
+        submissions += 1;
+        return { id: "must-not-submit", status: "queued" };
+      },
+      async getJob() {
+        return { id: "must-not-submit", status: "cancelled" };
+      },
+    },
+    temporaryDirectory: root,
+    acquireAdmission: async ({ signal }) => {
+      admissionStarted.resolve();
+      return await new Promise<undefined>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    },
+    supervisedStop: async () => {},
+  });
+
+  try {
+    const started = await manager.start({
+      ownerId: "key-a",
+      input: { prompt: "Cancel during warmup." },
+    });
+    if (started.kind !== "accepted") throw new Error("Expected admission.");
+    await admissionStarted.promise;
+    await expect(
+      manager.cancel({ ownerId: "key-a", id: started.job.id }),
+    ).resolves.toMatchObject({ state: "cancelled" });
+    expect(submissions).toBe(0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("stops a late-acquired admission before releasing it", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-late-admission-"));
+  const admissionEntered = deferred<void>();
+  const lateAdmission = deferred<{
+    ready: Promise<void>;
+    release: () => void;
+  }>();
+  const stopEntered = deferred<void>();
+  const releaseStop = deferred<void>();
+  let releases = 0;
+  let stops = 0;
+  let submissions = 0;
+  const manager = createManager({
+    backend: {
+      async submitVideo() {
+        submissions += 1;
+        throw new Error("A cancelled warmup must not submit.");
+      },
+      async getJob() {
+        throw new Error("A cancelled warmup must not poll.");
+      },
+    },
+    temporaryDirectory: root,
+    acquireAdmission: async () => {
+      admissionEntered.resolve();
+      return await lateAdmission.promise;
+    },
+    supervisedStop: async () => {
+      stops += 1;
+      stopEntered.resolve();
+      await releaseStop.promise;
+    },
+  });
+
+  try {
+    const started = await manager.start({
+      ownerId: "key-a",
+      input: { prompt: "Contain a late admission." },
+    });
+    if (started.kind !== "accepted") throw new Error("Expected admission.");
+    await admissionEntered.promise;
+
+    const cancellation = manager.cancel({
+      ownerId: "key-a",
+      id: started.job.id,
+    });
+    lateAdmission.resolve({
+      ready: Promise.resolve(),
+      release: () => (releases += 1),
+    });
+    await stopEntered.promise;
+    expect(releases).toBe(0);
+    releaseStop.resolve();
+    await expect(cancellation).resolves.toMatchObject({ state: "cancelled" });
+    await expect(started.terminal).resolves.toMatchObject({
+      state: "cancelled",
+    });
+    expect(stops).toBe(1);
+    expect(submissions).toBe(0);
+    expect(releases).toBe(1);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -544,6 +664,10 @@ test("contains an artifact write failure before releasing cancellation admission
       state: "completed",
     });
     expect(admission.snapshot()).toEqual({ acquired: 2, released: 2 });
+    expect(manager.delete({ ownerId: "key-a", id: started.job.id })).toBe(true);
+    expect(
+      manager.get({ ownerId: "key-a", id: started.job.id }),
+    ).toBeUndefined();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -932,7 +1056,7 @@ test("cancels at its injected deadline and preserves artifact limits", async () 
   }
 });
 
-test("releases admission when private job directory creation fails", async () => {
+test("rejects before admission when private job directory creation fails", async () => {
   const root = mkdtempSync(
     join(tmpdir(), "localbase-video-directory-failure-"),
   );
@@ -955,16 +1079,15 @@ test("releases admission when private job directory creation fails", async () =>
   });
 
   try {
-    chmodSync(join(root, "video-jobs"), 0o500);
+    await Bun.write(join(root, "video-jobs"), "not a directory");
     await expect(
       manager.start({
         ownerId: "key-a",
         input: { prompt: "Fail before submitting." },
       }),
     ).rejects.toThrow();
-    expect(admission.snapshot()).toEqual({ acquired: 1, released: 1 });
+    expect(admission.snapshot()).toEqual({ acquired: 0, released: 0 });
   } finally {
-    chmodSync(join(root, "video-jobs"), 0o700);
     rmSync(root, { recursive: true, force: true });
   }
 });

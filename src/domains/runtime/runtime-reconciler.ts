@@ -69,6 +69,10 @@ export type ModelAdmissionResult =
 type ConfiguredModalities = Record<RuntimeModality, boolean>;
 type ModalityTransitions = Record<RuntimeModality, Promise<void>>;
 
+export type RuntimeReconciliationHooks = Readonly<{
+  beforeModalityDrain?: (modality: RuntimeModality) => Promise<void>;
+}>;
+
 type CoordinatedSnapshot = Readonly<{
   snapshot: RuntimeConfigSnapshot;
   transitions: Readonly<ModalityTransitions>;
@@ -155,8 +159,9 @@ export class RuntimeReconciler {
     private readonly ownership: RuntimeOverrideOwnership,
     private readonly supervisors: SupervisorRegistry,
     private readonly factory: RuntimeSupervisorFactory,
-    private readonly logger: ILogger,
+    private readonly logger: Pick<ILogger, "event">,
     queueOptions: Readonly<{ maxWaiting?: number; waitMs?: number }> = {},
+    private readonly hooks: RuntimeReconciliationHooks = {},
   ) {
     this.snapshot = controller.read();
     this.appliedSnapshots = Object.fromEntries(
@@ -748,6 +753,8 @@ export class RuntimeReconciler {
         this.appliedSnapshots[modality] = target;
         return;
       }
+
+      await this.hooks.beforeModalityDrain?.(modality);
 
       if (action.action === "drain-and-remove")
         this.queues[modality].rejectPending(

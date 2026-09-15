@@ -67,6 +67,7 @@ const videoWorkloadBoundsSchema = z
     maxWidth: z.number().int().positive(),
     maxHeight: z.number().int().positive(),
     maxFrames: z.number().int().positive(),
+    fps: z.number().int().positive(),
   })
   .strict();
 
@@ -75,6 +76,7 @@ const videoGenerationProfileSchema = z
     sampler: z.literal("euler"),
     steps: z.number().int().positive(),
     cfgScale: z.number().positive(),
+    flowShift: z.number().positive(),
     seed: z.number().int().nonnegative(),
   })
   .strict();
@@ -101,10 +103,18 @@ const estimatedVideoMemoryDemandSchema = z
   })
   .strict();
 
+const videoRuntimeTargetSchema = z
+  .object({
+    platform: z.enum(["darwin", "linux"]),
+    architecture: z.enum(["arm64", "x64"]),
+    accelerator: z.enum(["apple-unified", "nvidia"]),
+  })
+  .strict();
+
 const videoRuntimeProfileBaseSchema = z.object({
   qualification: videoQualificationProfileSchema,
   estimatedMemoryDemand: estimatedVideoMemoryDemandSchema,
-  supportedPlatforms: z.array(z.enum(["darwin", "linux"])).min(1),
+  supportedTargets: z.array(videoRuntimeTargetSchema).min(1),
 });
 
 const videoRuntimeProfileSchema = z.discriminatedUnion("mode", [
@@ -123,6 +133,7 @@ const videoRuntimeProfileSchema = z.discriminatedUnion("mode", [
 ]);
 
 export type VideoRuntimeProfile = z.infer<typeof videoRuntimeProfileSchema>;
+export type VideoRuntimeTarget = z.infer<typeof videoRuntimeTargetSchema>;
 
 /** Local or test artifacts may omit release metadata outside the managed catalog. */
 export type ModelArtifact = Omit<
@@ -1759,6 +1770,91 @@ const CATALOG_SOURCE = [
     catch: "CreativeML Open RAIL-M license.",
     notes:
       "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures. Requires 12GB+ VRAM.",
+  },
+  {
+    modelId: "wan2.1-t2v-1.3b-q8_0",
+    kind: "video",
+    provider: "Wan/ggml",
+    family: "Wan2.1-T2V",
+    version: "2.1",
+    size: "1.3B",
+    quant: "Q8_0",
+    minVramGb: 8,
+    storageGb: 7.83,
+    source: "https://huggingface.co/samuelchristlie/Wan2.1-T2V-1.3B-GGUF",
+    repositoryRevision: "5a512b15fc35d1b67a074cfe55a591be9e9ef9b5",
+    artifacts: [
+      {
+        sourcePath: "Wan2.1-T2V-1.3B-Q8_0.gguf",
+        filename: "Wan2.1-T2V-1.3B-Q8_0.gguf",
+        expectedSizeBytes: 1_535_768_800,
+        sha256:
+          "30a44f695b4275a915810120360d6fd26152ec303c2226b5152ec33a93c380e4",
+        role: "primary",
+      },
+      {
+        sourcePath: "umt5-xxl-encoder-Q8_0.gguf",
+        filename: "umt5-xxl-encoder-Q8_0.gguf",
+        expectedSizeBytes: 6_043_068_256,
+        sha256:
+          "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+          revision: "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7",
+        },
+      },
+      {
+        sourcePath: "split_files/vae/wan_2.1_vae.safetensors",
+        filename: "wan_2.1_vae.safetensors",
+        expectedSizeBytes: 253_815_318,
+        sha256:
+          "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+        role: "supplementary",
+        source: {
+          repositoryUrl:
+            "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          revision: "617a7633e636506f850e043bc4605f290a466a8e",
+        },
+      },
+    ],
+    videoRuntime: {
+      mode: "t2v",
+      artifacts: {
+        diffusionModel: "Wan2.1-T2V-1.3B-Q8_0.gguf",
+        textEncoder: "umt5-xxl-encoder-Q8_0.gguf",
+        vae: "wan_2.1_vae.safetensors",
+      },
+      qualification: {
+        maxWidth: 320,
+        maxHeight: 320,
+        maxFrames: 33,
+        fps: 16,
+        generation: {
+          sampler: "euler",
+          steps: 20,
+          cfgScale: 6,
+          flowShift: 3,
+          seed: 42,
+        },
+        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+      },
+      estimatedMemoryDemand: {
+        unifiedBytes: 24 * 1024 ** 3,
+        hostBytes: 16 * 1024 ** 3,
+        acceleratorBytes: 8 * 1024 ** 3,
+      },
+      supportedTargets: [
+        { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+      ],
+    },
+    inputModalities: ["text"],
+    outputModalities: ["video"],
+    features: ["text-to-video", "avi-output", "experimental"],
+    commercialStatus: "open",
+    catch: "Apache-2.0 licenses for the pinned artifacts.",
+    notes:
+      "Experimental Linux x64 single-NVIDIA entry. Functionally qualified only at exactly 320x320, 33 frames, and 16 fps; it is not recommended as a quality claim.",
   },
 ] satisfies ModelSpecInput[];
 

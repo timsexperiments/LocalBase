@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { SpanStatusCode, context, trace } from "@opentelemetry/api";
 import { join, basename } from "node:path";
-import { validateApiKey, type LocalBaseConfig } from "../../../manager";
+import { resolveApiKey, type LocalBaseConfig } from "../../../manager";
 import {
   byId,
   CATALOG,
@@ -64,6 +64,10 @@ import {
 import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
 import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
+import { VideoJobManager } from "../video/video-job-manager";
+import { createStableDiffusionVideoClient } from "../video/stable-diffusion-video-client";
+import { handleVideoGatewayRequest } from "../video/gateway-handler";
+import { videoCreateRequestSchema } from "../video/gateway-contract";
 import {
   acquireGatewayLease,
   acquireGatewayLeaseForServe,
@@ -108,6 +112,8 @@ export function httpBaseUrl(host: string, port: number): string {
 }
 
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
+
+type GatewayCredential = Readonly<{ ownerId: string }>;
 
 function parseAuthMode(raw: AuthMode | undefined): AuthMode {
   if (!raw) return "either";
@@ -1808,16 +1814,25 @@ export async function runServe(
   const sttPath = input.sttPath ?? "/inference";
   const authRequired = input.auth ?? true;
   const authMode = parseAuthMode(input.authMode);
+  const gatewayCredential = (
+    request: Request,
+    config: LocalBaseConfig,
+  ): GatewayCredential | undefined => {
+    const token = extractAuthToken(request, authMode);
+    if (!token) return undefined;
+    if (token === process.env.LOCALBASE_API_KEY) {
+      return Object.freeze({ ownerId: "environment" });
+    }
+    const apiKey = resolveApiKey(ctx.database, config, token);
+    return apiKey
+      ? Object.freeze({ ownerId: `api-key:${apiKey.id}` })
+      : undefined;
+  };
   const hasValidGatewayCredentials = (
     request: Request,
     config: LocalBaseConfig,
   ): boolean => {
-    const token = extractAuthToken(request, authMode);
-    return Boolean(
-      token &&
-      (token === process.env.LOCALBASE_API_KEY ||
-        validateApiKey(ctx.database, config, token)),
-    );
+    return gatewayCredential(request, config) !== undefined;
   };
 
   const llmModelFileOverride = input.llmModelFile;
@@ -2184,6 +2199,24 @@ export async function runServe(
       ? { video: factory.create("video", initialSnapshot) }
       : {}),
   });
+  const videoJobs = new VideoJobManager({
+    backend: createStableDiffusionVideoClient({
+      baseUrl: factory.baseUrl("video", initialSnapshot),
+    }),
+    temporaryDirectory: join(config.root, "tmp"),
+    onContainmentFailure: ({ jobId, source, error }) => {
+      ctx.logger.event({
+        severity: "error",
+        eventName: "video.job-containment-failed",
+        category: "runtime",
+        component: "video-job-manager",
+        runtime: "video",
+        message: "A local video job could not be contained.",
+        attributes: { job_id: jobId, source },
+        error: { type: error.name, message: error.message },
+      });
+    },
+  });
   const reconciler = new RuntimeReconciler(
     ctx.runtimeConfig,
     configuredOverrides,
@@ -2194,11 +2227,18 @@ export async function runServe(
       maxWaiting: input.inferenceQueueCapacity,
       waitMs: input.inferenceQueueTimeoutMs,
     },
+    {
+      beforeModalityDrain: async (modality) => {
+        if (modality === "video") await videoJobs.cancelActive();
+      },
+    },
   );
   const memoryPressureMonitor = new MemoryPressureMonitor({
     controller: memorySafety,
-    onElevatedPressure: async (transition) =>
-      await applyElevatedMemoryPressure(reconciler, transition),
+    onElevatedPressure: async (transition) => {
+      await videoJobs.cancelActive();
+      await applyElevatedMemoryPressure(reconciler, transition);
+    },
     onTransition: (transition) =>
       reportMemoryPressureTransition(ctx.logger, transition),
     onError: (error) => {
@@ -2348,6 +2388,72 @@ export async function runServe(
     }
 
     if (requestExceedsSizeLimit(request)) return payloadTooLarge();
+
+    if (
+      route === "videoCreate" ||
+      route === "videoStatus" ||
+      route === "videoContent" ||
+      route === "videoCancel"
+    ) {
+      const credential = gatewayCredential(request, currentConfig);
+      if (!credential) return unauthorized();
+      return await handleVideoGatewayRequest({
+        request,
+        pathname,
+        route,
+        ownerId: credential.ownerId,
+        jobs: videoJobs,
+        createEnabled: currentConfig.selectedVideoModels.length > 0,
+        admissionProvider: {
+          admit: async (modelId, signal) => {
+            const selection = await reconciler.admitModel(
+              "video",
+              modelId,
+              signal,
+            );
+            if (selection.kind !== "admitted") return selection;
+            return {
+              kind: "admitted",
+              admission: selection.value.admission,
+            };
+          },
+        },
+        parseCreateRequest: async () =>
+          await parseJsonRequest(request, videoCreateRequestSchema),
+        notConfigured: () => notConfigured("Video"),
+        modelNotFound,
+        badRequest,
+        methodNotAllowed,
+        routeNotFound,
+        requestAborted,
+        onTerminal: ({ job, modelId }) => {
+          ctx.logger.event({
+            severity: job.state === "failed" ? "error" : "info",
+            eventName: "video.job-terminal",
+            category: "runtime",
+            component: "video-job-manager",
+            runtime: "video",
+            requestId,
+            message: "A local video job reached a terminal state.",
+            ...(job.state === "failed"
+              ? {
+                  error: {
+                    type: job.failure.name,
+                    message: job.failure.message,
+                  },
+                }
+              : {}),
+            attributes: {
+              job_id: job.id,
+              model_id: modelId,
+              state: job.state,
+              duration_ms:
+                "terminalAtMs" in job ? job.terminalAtMs - job.createdAtMs : 0,
+            },
+          });
+        },
+      });
+    }
 
     if (route === "speechGeneration") {
       if (request.method !== "POST") return methodNotAllowed("POST");
@@ -2969,6 +3075,7 @@ export async function runServe(
         server.stop(true);
         try {
           await memoryPressureMonitor.stop();
+          await videoJobs.shutdown();
           await supervisors.shutdown();
         } finally {
           await memoryProvider.close();

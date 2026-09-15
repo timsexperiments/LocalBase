@@ -5,6 +5,10 @@ export type GatewayRoute =
   | "transcription"
   | "speechGeneration"
   | "imageGeneration"
+  | "videoCreate"
+  | "videoStatus"
+  | "videoContent"
+  | "videoCancel"
   | "chatCompletion"
   | "embeddings"
   | "models"
@@ -13,6 +17,19 @@ export type GatewayRoute =
   | "notFound";
 
 const modelMetadataPrefix = "/_localbase/models/";
+const videoPrefix = "/v1/videos/";
+
+export function videoJobIdFromPath(pathname: string): string | undefined {
+  if (!pathname.startsWith(videoPrefix)) return undefined;
+  const suffix = pathname.slice(videoPrefix.length);
+  const id = suffix.split("/")[0];
+  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return undefined;
+  return suffix === id ||
+    suffix === `${id}/content` ||
+    suffix === `${id}/cancel`
+    ? id
+    : undefined;
+}
 
 export function modelMetadataIdFromPath(pathname: string): string | undefined {
   if (!pathname.startsWith(modelMetadataPrefix)) return undefined;
@@ -43,6 +60,8 @@ export function selectGatewayRoute(pathname: string): GatewayRoute {
       return "speechGeneration";
     case "/v1/images/generations":
       return "imageGeneration";
+    case "/v1/videos":
+      return "videoCreate";
     case "/v1/chat/completions":
       return "chatCompletion";
     case "/v1/embeddings":
@@ -50,6 +69,11 @@ export function selectGatewayRoute(pathname: string): GatewayRoute {
     case "/v1/models":
       return "models";
     default:
+      if (videoJobIdFromPath(pathname)) {
+        if (pathname.endsWith("/content")) return "videoContent";
+        if (pathname.endsWith("/cancel")) return "videoCancel";
+        return pathname.startsWith(videoPrefix) ? "videoStatus" : "notFound";
+      }
       return modelMetadataIdFromPath(pathname)
         ? "modelMetadataDetail"
         : "notFound";
