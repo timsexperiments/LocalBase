@@ -1,0 +1,348 @@
+diff --git a/examples/server/CMakeLists.txt b/examples/server/CMakeLists.txt
+index 5c46225..575bf90 100644
+--- a/examples/server/CMakeLists.txt
++++ b/examples/server/CMakeLists.txt
+@@ -69,6 +69,7 @@ add_executable(${TARGET}
+     main.cpp
+     runtime.cpp
+     async_jobs.cpp
++    inline_wav.cpp
+     routes_index.cpp
+     routes_openai.cpp
+     routes_sdapi.cpp
+diff --git a/examples/server/routes_sdcpp.cpp b/examples/server/routes_sdcpp.cpp
+index 7253dbf..503adfb 100644
+--- a/examples/server/routes_sdcpp.cpp
++++ b/examples/server/routes_sdcpp.cpp
+@@ -5,6 +5,7 @@
+ #include <filesystem>
+ 
+ #include "async_jobs.h"
++#include "inline_wav.h"
+ #include "common/common.h"
+ 
+ namespace fs = std::filesystem;
+@@ -191,6 +192,7 @@ static json make_vid_gen_features_json() {
+         {"end_image", true},
+         {"control_frames", true},
+         {"high_noise_sample_params", true},
++        {"inline_wav_audio", true},
+         {"lora", true},
+         {"vae_tiling", true},
+         {"cache", true},
+@@ -383,15 +385,27 @@ static bool parse_vid_gen_request(const json& body,
+                                   VidGenJobRequest& request,
+                                   std::string& error_message) {
+     request.gen_params = *runtime.default_gen_params;
++    request.gen_params.ref_audios.clear();
++
++    json generation_body = body;
++    generation_body.erase("audio");
+ 
+     refresh_lora_cache(runtime);
+-    if (!request.gen_params.from_json_str(body.dump(), [&](const std::string& path) {
++    if (!request.gen_params.from_json_str(generation_body.dump(), [&](const std::string& path) {
+             return get_lora_full_path(runtime, path);
+         })) {
+         error_message = "invalid generation parameters";
+         return false;
+     }
+ 
++    if (body.contains("audio")) {
++        SDAudioOwner audio;
++        if (!parse_inline_wav(body.at("audio"), audio, error_message)) {
++            return false;
++        }
++        request.gen_params.ref_audios.push_back(std::move(audio));
++    }
++
+     std::string output_format = body.value("output_format", "webm");
+     int output_compression    = body.value("output_compression", 100);
+     if (!assign_output_options(request, output_format, output_compression, error_message)) {
+diff --git a/examples/server/api.md b/examples/server/api.md
+index 3ec9a1d..faab3f8 100644
+--- a/examples/server/api.md
++++ b/examples/server/api.md
+@@ -967,7 +967,7 @@ Compared with `img_gen`, the `vid_gen` request body:
+ 
+ - `vid_gen` is a single video sequence job, so `batch_count` is not part of the request schema
+ - `ref_images`, `mask_image`, `control_image`, `control_strength`, `ip_adapter_image`, `ip_adapter_strength`, and `embed_image_metadata` are not part of the request schema
+-- `vid_gen` adds `end_image`, `control_frames`, `high_noise_sample_params`, `video_frames`, `fps`, `moe_boundary`, and `vace_strength`
++- `vid_gen` adds `end_image`, `control_frames`, `high_noise_sample_params`, `video_frames`, `fps`, `moe_boundary`, `vace_strength`, and optional inline `audio`
+ 
+ Example:
+ 
+@@ -982,6 +982,10 @@ Example:
+   "seed": -1,
+   "video_frames": 33,
+   "fps": 16,
++  "audio": {
++    "format": "wav",
++    "data": "<base64-encoded WAV bytes>"
++  },
+   "moe_boundary": 0.875,
+   "vace_strength": 1.0,
+ 
+@@ -1053,6 +1057,16 @@ Example:
+ }
+ ```
+ 
++`audio` is an inline driving track for models such as Wan2.2 S2V. It must be a
++strict object with only `format: "wav"` and canonical base64 `data`; file paths,
++URLs, and data URLs are not accepted. WAV input is limited to PCM16 or normalized
++IEEE float32 samples in `[-1, 1]`, one or two channels, 8–192 kHz, 30 seconds, and 24 MiB of decoded WAV
++bytes. Invalid audio is rejected before a job is enqueued.
++
++AVI output uses MJPEG video with PCM audio and is the portable downloadable
++audio/video option. WebM output currently uses VP8 with a PCM Matroska audio
++track; browser audio compatibility is not guaranteed.
++
+ ### LoRA Rules
+ 
+ - The server only accepts explicit LoRA entries from the `lora` field.
+diff --git a/examples/server/inline_wav.h b/examples/server/inline_wav.h
+new file mode 100644
+index 0000000..dd0aea6
+--- /dev/null
++++ b/examples/server/inline_wav.h
+@@ -0,0 +1,15 @@
++#pragma once
++
++#include <cstddef>
++#include <string>
++
++#include "common/resource_owners.hpp"
++#include "json.hpp"
++
++constexpr size_t INLINE_WAV_MAX_BYTES = 24U * 1024U * 1024U;
++constexpr uint64_t INLINE_WAV_MAX_FRAMES = 192000ULL * 30ULL;
++constexpr uint64_t INLINE_WAV_MAX_SAMPLES = INLINE_WAV_MAX_FRAMES * 2ULL;
++
++bool parse_inline_wav(const nlohmann::json& value,
++                      SDAudioOwner& output,
++                      std::string& error_message);
+diff --git a/examples/server/inline_wav.cpp b/examples/server/inline_wav.cpp
+new file mode 100644
+index 0000000..bb29440
+--- /dev/null
++++ b/examples/server/inline_wav.cpp
+@@ -0,0 +1,218 @@
++#include "inline_wav.h"
++
++#include <cmath>
++#include <cstdint>
++#include <cstring>
++#include <limits>
++#include <vector>
++
++namespace {
++
++uint16_t read_u16(const uint8_t* data) {
++    return static_cast<uint16_t>(data[0]) |
++           (static_cast<uint16_t>(data[1]) << 8);
++}
++
++uint32_t read_u32(const uint8_t* data) {
++    return static_cast<uint32_t>(data[0]) |
++           (static_cast<uint32_t>(data[1]) << 8) |
++           (static_cast<uint32_t>(data[2]) << 16) |
++           (static_cast<uint32_t>(data[3]) << 24);
++}
++
++int base64_value(char c) {
++    if (c >= 'A' && c <= 'Z') return c - 'A';
++    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
++    if (c >= '0' && c <= '9') return c - '0' + 52;
++    if (c == '+') return 62;
++    if (c == '/') return 63;
++    return -1;
++}
++
++bool decode_base64(const std::string& encoded,
++                   std::vector<uint8_t>& decoded,
++                   std::string& error_message) {
++    if (encoded.empty() || encoded.size() % 4 != 0) {
++        error_message = "audio.data must be non-empty canonical base64";
++        return false;
++    }
++    size_t padding = 0;
++    if (encoded.back() == '=') ++padding;
++    if (encoded.size() > 1 && encoded[encoded.size() - 2] == '=') ++padding;
++    const size_t decoded_size = encoded.size() / 4 * 3 - padding;
++    if (decoded_size > INLINE_WAV_MAX_BYTES) {
++        error_message = "decoded WAV exceeds 24 MiB";
++        return false;
++    }
++    if (encoded.size() > ((INLINE_WAV_MAX_BYTES + 2) / 3) * 4) {
++        error_message = "audio.data exceeds the encoded size limit";
++        return false;
++    }
++
++    decoded.resize(decoded_size);
++    size_t out = 0;
++    for (size_t i = 0; i < encoded.size(); i += 4) {
++        const bool last = i + 4 == encoded.size();
++        const int a = base64_value(encoded[i]);
++        const int b = base64_value(encoded[i + 1]);
++        const int c = encoded[i + 2] == '=' ? -2 : base64_value(encoded[i + 2]);
++        const int d = encoded[i + 3] == '=' ? -2 : base64_value(encoded[i + 3]);
++        if (a < 0 || b < 0 || c == -1 || d == -1 ||
++            (c == -2 && d != -2) || ((!last) && (c == -2 || d == -2))) {
++            error_message = "audio.data must be canonical base64";
++            decoded.clear();
++            return false;
++        }
++        const uint32_t word = (static_cast<uint32_t>(a) << 18) |
++                              (static_cast<uint32_t>(b) << 12) |
++                              (static_cast<uint32_t>(c < 0 ? 0 : c) << 6) |
++                              static_cast<uint32_t>(d < 0 ? 0 : d);
++        if (out < decoded_size) decoded[out++] = static_cast<uint8_t>(word >> 16);
++        if (out < decoded_size) decoded[out++] = static_cast<uint8_t>(word >> 8);
++        if (out < decoded_size) decoded[out++] = static_cast<uint8_t>(word);
++    }
++    if ((padding == 1 && (base64_value(encoded[encoded.size() - 2]) & 0x03) != 0) ||
++        (padding == 2 && (base64_value(encoded[encoded.size() - 3]) & 0x0f) != 0)) {
++        error_message = "audio.data must use canonical base64 padding";
++        decoded.clear();
++        return false;
++    }
++    return true;
++}
++
++bool decode_wav(const std::vector<uint8_t>& bytes,
++                SDAudioOwner& output,
++                std::string& error_message) {
++    if (bytes.size() < 12 || std::memcmp(bytes.data(), "RIFF", 4) != 0 ||
++        std::memcmp(bytes.data() + 8, "WAVE", 4) != 0) {
++        error_message = "audio.data is not a RIFF/WAVE file";
++        return false;
++    }
++    const uint64_t riff_end = static_cast<uint64_t>(read_u32(bytes.data() + 4)) + 8ULL;
++    if (riff_end != bytes.size()) {
++        error_message = "WAV RIFF size must match the decoded payload";
++        return false;
++    }
++
++    uint16_t format = 0;
++    uint16_t channels = 0;
++    uint16_t block_align = 0;
++    uint16_t bits_per_sample = 0;
++    uint32_t sample_rate = 0;
++    const uint8_t* sample_data = nullptr;
++    uint32_t sample_bytes = 0;
++    bool found_fmt = false;
++
++    size_t offset = 12;
++    while (offset < riff_end) {
++        if (riff_end - offset < 8) {
++            error_message = "WAV ends with a partial chunk header";
++            return false;
++        }
++        const uint8_t* header = bytes.data() + offset;
++        const uint32_t chunk_size = read_u32(header + 4);
++        offset += 8;
++        if (chunk_size > riff_end - offset) {
++            error_message = "WAV chunk exceeds the decoded payload";
++            return false;
++        }
++        if (std::memcmp(header, "fmt ", 4) == 0) {
++            if (found_fmt || chunk_size < 16) {
++                error_message = "WAV must contain one valid fmt chunk";
++                return false;
++            }
++            format = read_u16(bytes.data() + offset);
++            channels = read_u16(bytes.data() + offset + 2);
++            sample_rate = read_u32(bytes.data() + offset + 4);
++            block_align = read_u16(bytes.data() + offset + 12);
++            bits_per_sample = read_u16(bytes.data() + offset + 14);
++            found_fmt = true;
++        } else if (std::memcmp(header, "data", 4) == 0) {
++            if (sample_data != nullptr) {
++                error_message = "WAV must contain one data chunk";
++                return false;
++            }
++            sample_data = bytes.data() + offset;
++            sample_bytes = chunk_size;
++        }
++        offset += chunk_size;
++        if ((chunk_size & 1U) != 0) {
++            if (offset == riff_end) {
++                error_message = "WAV odd-sized chunk is missing its padding byte";
++                return false;
++            }
++            ++offset;
++        }
++    }
++
++    const bool pcm16 = format == 1 && bits_per_sample == 16;
++    const bool float32 = format == 3 && bits_per_sample == 32;
++    const uint16_t bytes_per_sample = static_cast<uint16_t>(bits_per_sample / 8);
++    if (!found_fmt || sample_data == nullptr || sample_bytes == 0 ||
++        (!pcm16 && !float32)) {
++        error_message = "WAV must contain PCM16 or IEEE float32 samples";
++        return false;
++    }
++    if (channels < 1 || channels > 2) {
++        error_message = "WAV must have one or two channels";
++        return false;
++    }
++    if (sample_rate < 8000 || sample_rate > 192000) {
++        error_message = "WAV sample rate must be between 8000 and 192000 Hz";
++        return false;
++    }
++    const uint32_t expected_align = static_cast<uint32_t>(channels) * bytes_per_sample;
++    if (block_align != expected_align || sample_bytes % block_align != 0) {
++        error_message = "WAV data is not aligned to complete sample frames";
++        return false;
++    }
++    const uint64_t frames = sample_bytes / block_align;
++    const uint64_t samples = frames * channels;
++    if (frames == 0 || frames > INLINE_WAV_MAX_FRAMES ||
++        frames > static_cast<uint64_t>(sample_rate) * 30ULL) {
++        error_message = "WAV duration must not exceed 30 seconds";
++        return false;
++    }
++    if (samples > INLINE_WAV_MAX_SAMPLES ||
++        samples > std::numeric_limits<size_t>::max() / sizeof(float)) {
++        error_message = "decoded WAV sample allocation exceeds the limit";
++        return false;
++    }
++
++    std::vector<float> decoded(static_cast<size_t>(samples));
++    for (uint64_t i = 0; i < samples; ++i) {
++        if (pcm16) {
++            decoded[static_cast<size_t>(i)] =
++                static_cast<int16_t>(read_u16(sample_data + i * 2)) / 32768.0f;
++        } else {
++            float value;
++            std::memcpy(&value, sample_data + i * 4, sizeof(value));
++            if (!std::isfinite(value) || value < -1.0f || value > 1.0f) {
++                error_message = "WAV float32 samples must be finite and normalized to [-1, 1]";
++                return false;
++            }
++            decoded[static_cast<size_t>(i)] = value;
++        }
++    }
++    output.reset(std::move(decoded), sample_rate, channels);
++    return true;
++}
++
++}  // namespace
++
++bool parse_inline_wav(const nlohmann::json& value,
++                      SDAudioOwner& output,
++                      std::string& error_message) {
++    if (!value.is_object() || value.size() != 2 || !value.contains("format") ||
++        !value.contains("data") || !value.at("format").is_string() ||
++        value.at("format").get<std::string>() != "wav" ||
++        !value.at("data").is_string()) {
++        error_message = "audio must be {\"format\":\"wav\",\"data\":\"<base64>\"}";
++        return false;
++    }
++    std::vector<uint8_t> bytes;
++    if (!decode_base64(value.at("data").get_ref<const std::string&>(), bytes, error_message)) {
++        return false;
++    }
++    return decode_wav(bytes, output, error_message);
++}
+
