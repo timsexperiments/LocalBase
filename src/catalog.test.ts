@@ -144,7 +144,14 @@ describe("catalog artifact validation", () => {
           maxWidth: 832,
           maxHeight: 480,
           maxFrames: 81,
-          generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+          fps: 16,
+          generation: {
+            sampler: "euler",
+            steps: 20,
+            cfgScale: 6,
+            flowShift: 3,
+            seed: 42,
+          },
           launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
         },
         estimatedMemoryDemand: {
@@ -152,7 +159,9 @@ describe("catalog artifact validation", () => {
           hostBytes: 20,
           acceleratorBytes: 10,
         },
-        supportedPlatforms: ["linux"],
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
       },
     };
 
@@ -554,6 +563,7 @@ describe("catalog artifact validation", () => {
         },
       ],
       videoRuntime: {
+        mode: "t2v",
         qualification: {
           maxWidth: 320,
           maxHeight: 320,

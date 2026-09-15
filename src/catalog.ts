@@ -1819,6 +1819,7 @@ const CATALOG_SOURCE = [
       },
     ],
     videoRuntime: {
+      mode: "t2v",
       artifacts: {
         diffusionModel: "Wan2.1-T2V-1.3B-Q8_0.gguf",
         textEncoder: "umt5-xxl-encoder-Q8_0.gguf",
