@@ -12,7 +12,7 @@ int main() {
     assert(localbase_resolve_gpu_pci("0000:01:00.0", {nvidia}, backend, error));
     assert(backend == "Vulkan1");
 
-    for (const std::string& invalid : {
+    for (const std::string invalid : {
              "00000000:01:00.0", "0000:AB:00.0", "0000:01:20.0", "0000:01:00.8"}) {
         backend.clear();
         error.clear();
