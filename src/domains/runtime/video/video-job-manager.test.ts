@@ -233,6 +233,48 @@ test("holds admission through cancellation until the backend is supervised stopp
   }
 });
 
+test("cancels an admission warmup before backend submission", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-warmup-cancel-"));
+  const admissionStarted = deferred<void>();
+  let submissions = 0;
+  const manager = createManager({
+    backend: {
+      async submitVideo() {
+        submissions += 1;
+        return { id: "must-not-submit", status: "queued" };
+      },
+      async getJob() {
+        return { id: "must-not-submit", status: "cancelled" };
+      },
+    },
+    temporaryDirectory: root,
+    acquireAdmission: async ({ signal }) => {
+      admissionStarted.resolve();
+      return await new Promise<undefined>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    },
+    supervisedStop: async () => {},
+  });
+
+  try {
+    const started = await manager.start({
+      ownerId: "key-a",
+      input: { prompt: "Cancel during warmup." },
+    });
+    if (started.kind !== "accepted") throw new Error("Expected admission.");
+    await admissionStarted.promise;
+    await expect(
+      manager.cancel({ ownerId: "key-a", id: started.job.id }),
+    ).resolves.toMatchObject({ state: "cancelled" });
+    expect(submissions).toBe(0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("waits for a late successful submission before cancelling and releasing", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-submit-race-"));
   const submitEntered = deferred<void>();
@@ -946,7 +988,7 @@ test("cancels at its injected deadline and preserves artifact limits", async () 
   }
 });
 
-test("releases admission when private job directory creation fails", async () => {
+test("rejects before admission when private job directory creation fails", async () => {
   const root = mkdtempSync(
     join(tmpdir(), "localbase-video-directory-failure-"),
   );
@@ -976,7 +1018,7 @@ test("releases admission when private job directory creation fails", async () =>
         input: { prompt: "Fail before submitting." },
       }),
     ).rejects.toThrow();
-    expect(admission.snapshot()).toEqual({ acquired: 1, released: 1 });
+    expect(admission.snapshot()).toEqual({ acquired: 0, released: 0 });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

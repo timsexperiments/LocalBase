@@ -74,6 +74,7 @@ function createAdmissionProvider(options: {
   released: () => void;
   stopped: () => Promise<void> | void;
   available?: () => boolean;
+  ready?: Promise<void>;
 }): VideoModelAdmissionProvider {
   return {
     admit: async () => {
@@ -83,8 +84,9 @@ function createAdmissionProvider(options: {
       return {
         kind: "admitted",
         admission: {
-          ready: Promise.resolve(),
+          ready: options.ready ?? Promise.resolve(),
           release: options.released,
+          cancel: () => {},
           supervisor: {
             kill: async () => await options.stopped(),
           },
@@ -130,10 +132,11 @@ function endpointDependencies(options: {
   };
 }
 
-function createRequest(ownerPrompt: string): Request {
+function createRequest(ownerPrompt: string, signal?: AbortSignal): Request {
   return new Request("http://local.test/v1/videos", {
     method: "POST",
     headers: { "content-type": "application/json" },
+    signal,
     body: JSON.stringify({
       model: VIDEO_MODEL,
       prompt: ownerPrompt,
@@ -154,6 +157,8 @@ test("serves one owner’s completed local video through the typed route and del
   let released = 0;
   let stopped = 0;
   let videoEnabled = false;
+  const readiness = deferred<void>();
+  const clientAbort = new AbortController();
   let submitted: VideoJobInput | undefined;
   const backend: VideoJobBackend = {
     async submitVideo({ input }) {
@@ -184,22 +189,16 @@ test("serves one owner’s completed local video through the typed route and del
         stopped += 1;
       },
       available: () => videoEnabled,
+      ready: readiness.promise,
     });
-    const disabled = await handleVideoGatewayRequest(
-      endpointDependencies({
-        request: createRequest("Video starts disabled."),
-        pathname: "/v1/videos",
-        route: "videoCreate",
-        ownerId: credentials.firstOwnerId,
-        jobs,
-        admissionProvider,
-      }),
-    );
-    expect(disabled.status).toBe(501);
+    expect(await Bun.file(join(root, "video-jobs")).exists()).toBe(false);
     videoEnabled = true;
     const created = await handleVideoGatewayRequest(
       endpointDependencies({
-        request: createRequest("A paper kite over a field."),
+        request: createRequest(
+          "A paper kite over a field.",
+          clientAbort.signal,
+        ),
         pathname: "/v1/videos",
         route: "videoCreate",
         ownerId: credentials.firstOwnerId,
@@ -216,13 +215,16 @@ test("serves one owner’s completed local video through the typed route and del
       status: "queued",
       created_at: expect.any(Number),
     });
+    expect(submitted).toBeUndefined();
+    clientAbort.abort();
+    readiness.resolve();
+    await pollEntered.promise;
     expect(submitted).toMatchObject({
       outputFormat: "avi",
       seed: 42,
       generation: { sampler: "euler", steps: 20, cfgScale: 6, flowShift: 3 },
     });
 
-    await pollEntered.promise;
     completion.resolve(completed("native-completed"));
     await terminal.promise;
 
@@ -285,6 +287,50 @@ test("serves one owner’s completed local video through the typed route and del
     expect(deleted.status).toBe(204);
     expect(released).toBe(1);
     expect(stopped).toBe(0);
+  } finally {
+    credentials.database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("does not create a video job for a request aborted before acceptance", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-preaccept-"));
+  const credentials = createCredentials(root);
+  const requestAbort = new AbortController();
+  let submissions = 0;
+  const jobs = new VideoJobManager({
+    backend: {
+      async submitVideo() {
+        submissions += 1;
+        return { id: "must-not-submit", status: "queued" };
+      },
+      async getJob() {
+        return { id: "must-not-submit", status: "cancelled" };
+      },
+    },
+    temporaryDirectory: root,
+    onContainmentFailure: () => {},
+  });
+  const admissionProvider = createAdmissionProvider({
+    released: () => {},
+    stopped: () => {},
+  });
+
+  try {
+    requestAbort.abort();
+    const response = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: createRequest("Do not accept this job.", requestAbort.signal),
+        pathname: "/v1/videos",
+        route: "videoCreate",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+      }),
+    );
+    expect(response.status).toBe(499);
+    expect(submissions).toBe(0);
+    expect(await Bun.file(join(root, "video-jobs")).exists()).toBe(false);
   } finally {
     credentials.database.close();
     rmSync(root, { recursive: true, force: true });
