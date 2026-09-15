@@ -1,0 +1,107 @@
+name: Build sd-server Runtime
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/release-sd-server.yml
+      - scripts/build-sd-server.ts
+      - scripts/sd-release.ts
+      - scripts/sd-release.test.ts
+      - scripts/sd-patches/**
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun test scripts/sd-release.test.ts
+
+  linux-x64:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Install pinned build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake libvulkan-dev glslc spirv-headers
+      - name: Build verified patched source
+        run: bun run scripts/build-sd-server.ts
+      - name: Verify Vulkan configuration and runtime linkage
+        run: |
+          grep -Fxq 'GGML_NATIVE:BOOL=OFF' build-sd-server/build/CMakeCache.txt
+          grep -Fxq 'SD_VULKAN:BOOL=ON' build-sd-server/build/CMakeCache.txt
+          ldd_output="$(ldd build-sd-server/sd-server 2>&1 || true)"
+          printf '%s\n' "$ldd_output"
+          ! grep -q 'not found' <<<"$ldd_output"
+          grep -q 'libvulkan.so.1' <<<"$ldd_output"
+          ! grep -Eq 'libwebp|libwebm|libggml' <<<"$ldd_output"
+          build-sd-server/sd-server --help >/dev/null
+          strings build-sd-server/sd-server | grep -Fxq 'inline_wav_audio'
+          strings build-sd-server/sd-server | grep -Fxq 'WAV must contain PCM16 or IEEE float32 samples'
+      - name: Package and qualify canonical archive
+        run: |
+          tar -czf sd-server-linux-x64.tar.gz -C build-sd-server \
+            sd-server SOURCE.sd-server.json \
+            LICENSE.darts-clone.txt LICENSE.ggml.txt LICENSE.libwebm.txt \
+            LICENSE.libwebp.txt LICENSE.nlohmann-json.txt LICENSE.oniguruma.txt \
+            LICENSE.stable-diffusion.cpp.txt LICENSE.utf8proc.txt
+          mkdir -p "$RUNNER_TEMP/sd-linux-x64"
+          bun run scripts/sd-release.ts qualify-archive \
+            --target linux-x64 --archive sd-server-linux-x64.tar.gz \
+            --work-directory "$RUNNER_TEMP/sd-linux-x64"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sd-server-runtime-linux-x64
+          path: sd-server-linux-x64.tar.gz
+
+  macos-arm64:
+    needs: preflight
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Build verified patched source
+        run: bun run scripts/build-sd-server.ts
+      - name: Verify Metal configuration and standalone runtime
+        run: |
+          test "$(uname -m)" = arm64
+          grep -Fxq 'GGML_NATIVE:BOOL=OFF' build-sd-server/build/CMakeCache.txt
+          grep -Fxq 'SD_METAL:BOOL=ON' build-sd-server/build/CMakeCache.txt
+          ! otool -L build-sd-server/sd-server | grep -Eq 'libwebp|libwebm|libggml'
+          build-sd-server/sd-server --help >/dev/null
+          strings build-sd-server/sd-server | grep -Fxq 'inline_wav_audio'
+          strings build-sd-server/sd-server | grep -Fxq 'WAV must contain PCM16 or IEEE float32 samples'
+      - name: Package canonical archive
+        run: |
+          cd build-sd-server
+          zip -j ../sd-server-macos-arm64.zip \
+            sd-server SOURCE.sd-server.json \
+            LICENSE.darts-clone.txt LICENSE.ggml.txt LICENSE.libwebm.txt \
+            LICENSE.libwebp.txt LICENSE.nlohmann-json.txt LICENSE.oniguruma.txt \
+            LICENSE.stable-diffusion.cpp.txt LICENSE.utf8proc.txt
+      - name: Qualify canonical archive
+        run: |
+          mkdir -p "$RUNNER_TEMP/sd-macos-arm64"
+          bun run scripts/sd-release.ts qualify-archive \
+            --target macos-arm64 --archive sd-server-macos-arm64.zip \
+            --work-directory "$RUNNER_TEMP/sd-macos-arm64"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sd-server-runtime-macos-arm64
+          path: sd-server-macos-arm64.zip
