@@ -86,7 +86,7 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
   const events: LogEventInput[] = [];
   const reconciler = new RuntimeReconciler(controller, {}, registry, factory, {
     event: (event: LogEventInput) => events.push(event),
-  } as never);
+  });
 
   try {
     expect(reconciler.lifecycleSnapshot()).toMatchObject({
@@ -227,7 +227,7 @@ test("does not block STT admission while LLM replacement drains", async () => {
       baseUrl: () => "http://127.0.0.1:1",
       create: (modality) => supervisor(modality === "llm" ? "llm" : "stt"),
     },
-    { event() {} } as never,
+    { event() {} },
   );
 
   try {
@@ -315,7 +315,7 @@ test("advances applied generations only inside the modality owner", async () => 
       baseUrl: () => "http://127.0.0.1:1",
       create: (modality, snapshot) => createSupervisor(snapshot, modality),
     },
-    { event() {} } as never,
+    { event() {} },
   );
 
   try {
@@ -380,7 +380,7 @@ test("keeps queued admissions paired with the applied model generation", async (
       stt: factory.create("stt", controller.read()),
     }),
     factory,
-    { event() {} } as never,
+    { event() {} },
   );
 
   try {
@@ -449,7 +449,7 @@ test("rebases queued replacement work after a model activation", async () => {
       stt: factory.create("stt", controller.read()),
     }),
     factory,
-    { event() {} } as never,
+    { event() {} },
   );
   try {
     const active = await reconciler.admitModel("llm", modelA);
@@ -530,7 +530,7 @@ test("releases transition ownership before waiting for backend readiness", async
     {},
     new SupervisorRegistry({ llm: initial }),
     factory,
-    { event() {} } as never,
+    { event() {} },
   );
 
   try {
@@ -611,7 +611,7 @@ test("does not stop a ready runtime while a model switch drains admission", asyn
     {},
     new SupervisorRegistry({ llm: initial }),
     factory,
-    { event() {} } as never,
+    { event() {} },
   );
 
   try {
@@ -680,7 +680,7 @@ test("cancels an orphaned running runtime after shared admissions settle", async
     {},
     new SupervisorRegistry({ llm: supervisor }),
     factory,
-    { event() {} } as never,
+    { event() {} },
   );
 
   try {
@@ -721,7 +721,7 @@ test("retains resolved slots after the final admission releases", async () => {
     {},
     new SupervisorRegistry({ llm: supervisor }),
     { baseUrl: () => "http://127.0.0.1:1", create: () => supervisor },
-    { event() {} } as never,
+    { event() {} },
   );
 
   try {
@@ -772,7 +772,7 @@ test("holds replacement admissions until runtime cancellation settles", async ()
     {},
     new SupervisorRegistry({ llm: supervisor }),
     { baseUrl: () => "http://127.0.0.1:1", create: () => supervisor },
-    { event() {} } as never,
+    { event() {} },
   );
 
   try {
@@ -832,7 +832,7 @@ test("evicts only running runtimes without admitted requests", async () => {
     {},
     new SupervisorRegistry({ llm: service }),
     factory,
-    { event() {} } as never,
+    { event() {} },
   );
 
   try {
@@ -910,7 +910,7 @@ test("kills critical runtimes before awaiting active leases and reattaches", asy
     {},
     new SupervisorRegistry({ llm, stt }),
     factory,
-    { event() {} } as never,
+    { event() {} },
   );
 
   try {
@@ -1001,7 +1001,7 @@ test("cancels queued model activation during emergency eviction and recovers", a
     {},
     new SupervisorRegistry({ llm: initial }),
     factory,
-    { event() {} } as never,
+    { event() {} },
   );
 
   try {
@@ -1111,7 +1111,7 @@ test("drains a warming video job when the model is disabled", async () => {
       baseUrl: () => "http://127.0.0.1:1",
       create: () => videoSupervisor,
     },
-    { event() {} } as never,
+    { event() {} },
     {},
     {
       beforeModalityDrain: async (modality) => {
