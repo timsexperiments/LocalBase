@@ -5,6 +5,7 @@ import {
   calculateMaxSafeContextSize,
   primaryArtifact,
   resolveCatalogInstallation,
+  ttsReferenceArtifacts,
 } from "../../catalog";
 import type { AppContext } from "../../context";
 import {
@@ -541,7 +542,8 @@ export function createRuntimeSupervisorFactory(
             );
           }
           const projector = spec.artifacts.find(
-            ({ role }) => role === "supplementary",
+            ({ filename }) =>
+              filename === spec.ttsRuntime?.projectorArtifactFilename,
           );
           if (!projector) {
             throw new Error(
@@ -554,10 +556,15 @@ export function createRuntimeSupervisorFactory(
           if (!(await Bun.file(modelPath).exists())) {
             throw new Error(`Configured TTS model file does not exist.`);
           }
+          const references = ttsReferenceArtifacts(spec);
           return Object.freeze({
             binaryPath: await ensureBinary(config, "llama-tts"),
             modelPath,
             projectorPath: join(config.ttsModelsDir, projector.filename),
+            speakerFiles: Object.freeze({
+              harbor: join(config.ttsModelsDir, references.harbor.filename),
+              willow: join(config.ttsModelsDir, references.willow.filename),
+            }),
           });
         },
       });

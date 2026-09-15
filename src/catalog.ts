@@ -8,6 +8,12 @@ export type ModelKind = z.infer<typeof modelKindSchema>;
 export const modelModalitySchema = z.enum(["text", "audio", "image", "video"]);
 export type ModelModality = z.infer<typeof modelModalitySchema>;
 
+export const speechVoiceSchema = z.enum(["default", "harbor", "willow"]);
+export type SpeechVoice = z.infer<typeof speechVoiceSchema>;
+
+export const referenceSpeechVoiceSchema = z.enum(["harbor", "willow"]);
+export type ReferenceSpeechVoice = z.infer<typeof referenceSpeechVoiceSchema>;
+
 export const commercialStatusSchema = z.enum([
   "open",
   "conditional",
@@ -27,6 +33,22 @@ export const modelArtifactSchema = z.object({
   role: z.enum(["primary", "supplementary"]),
   source: artifactSourceSchema.optional(),
 });
+
+const ttsReferenceVoiceSchema = z
+  .object({
+    name: referenceSpeechVoiceSchema,
+    artifactFilename: safeFilenameSchema,
+    license: z.literal("CC0-1.0"),
+    provenanceUrl: z.string().url(),
+  })
+  .strict();
+
+const ttsRuntimeProfileSchema = z
+  .object({
+    projectorArtifactFilename: safeFilenameSchema,
+    referenceVoices: z.array(ttsReferenceVoiceSchema),
+  })
+  .strict();
 
 const videoArtifactMappingSchema = z
   .object({
@@ -110,6 +132,7 @@ export const modelSpecSchema = z
     source: z.string().url(),
     repositoryRevision: z.string().regex(/^[a-fA-F0-9]{40}$/),
     artifacts: z.array(modelArtifactSchema).min(1),
+    ttsRuntime: ttsRuntimeProfileSchema.optional(),
     videoRuntime: videoRuntimeProfileSchema.optional(),
     inputModalities: z.array(modelModalitySchema).min(1),
     outputModalities: z.array(modelModalitySchema).min(1),
@@ -133,6 +156,66 @@ export const modelSpecSchema = z
       }
       filenames.add(artifact.filename);
       if (artifact.role === "primary") primaryCount += 1;
+    }
+
+    if (model.kind === "tts" && !model.ttsRuntime) {
+      ctx.addIssue({
+        code: "custom",
+        message: "TTS models must declare a runtime profile",
+        path: ["ttsRuntime"],
+      });
+    } else if (model.kind !== "tts" && model.ttsRuntime) {
+      ctx.addIssue({
+        code: "custom",
+        message: "only TTS models may declare a runtime profile",
+        path: ["ttsRuntime"],
+      });
+    }
+    const ttsRuntime = model.ttsRuntime;
+    if (ttsRuntime) {
+      const projector = model.artifacts.find(
+        ({ filename }) => filename === ttsRuntime.projectorArtifactFilename,
+      );
+      if (!projector || projector.role !== "supplementary") {
+        ctx.addIssue({
+          code: "custom",
+          message: "TTS projector must name a supplementary artifact",
+          path: ["ttsRuntime", "projectorArtifactFilename"],
+        });
+      }
+    }
+    const referenceNames = new Set<string>();
+    for (const [index, voice] of (
+      ttsRuntime?.referenceVoices ?? []
+    ).entries()) {
+      if (referenceNames.has(voice.name)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "reference voice names must be unique",
+          path: ["ttsRuntime", "referenceVoices", index, "name"],
+        });
+      }
+      referenceNames.add(voice.name);
+      const artifact = model.artifacts.find(
+        ({ filename }) => filename === voice.artifactFilename,
+      );
+      if (!artifact || artifact.role !== "supplementary") {
+        ctx.addIssue({
+          code: "custom",
+          message: "reference voices must name a supplementary artifact",
+          path: ["ttsRuntime", "referenceVoices", index, "artifactFilename"],
+        });
+      }
+    }
+    if (
+      ttsRuntime &&
+      (!referenceNames.has("harbor") || !referenceNames.has("willow"))
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "TTS runtime must declare Harbor and Willow reference voices",
+        path: ["ttsRuntime", "referenceVoices"],
+      });
     }
 
     if (primaryCount !== 1) {
@@ -1392,15 +1475,63 @@ const CATALOG_SOURCE = [
           "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
         role: "supplementary",
       },
+      {
+        sourcePath: "voice-donations/0a67.wav",
+        filename: "qwen3-tts-harbor.wav",
+        expectedSizeBytes: 480044,
+        sha256:
+          "4bd75d0ef0ad3f4e82ac075eab2a132651d2463f83bec210edeeccaf69294886",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/kyutai/tts-voices",
+          revision: "323332d33f997de8394f24a193e1a76df720e01a",
+        },
+      },
+      {
+        sourcePath: "voice-donations/1410.wav",
+        filename: "qwen3-tts-willow.wav",
+        expectedSizeBytes: 480044,
+        sha256:
+          "8edd516de8c2171b67757cacb29e1effd3e6a8b78f5d6b035069273fadefac2b",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/kyutai/tts-voices",
+          revision: "323332d33f997de8394f24a193e1a76df720e01a",
+        },
+      },
     ],
+    ttsRuntime: {
+      projectorArtifactFilename: "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+      referenceVoices: [
+        {
+          name: "harbor",
+          artifactFilename: "qwen3-tts-harbor.wav",
+          license: "CC0-1.0",
+          provenanceUrl:
+            "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations",
+        },
+        {
+          name: "willow",
+          artifactFilename: "qwen3-tts-willow.wav",
+          license: "CC0-1.0",
+          provenanceUrl:
+            "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations",
+        },
+      ],
+    },
     inputModalities: ["text"],
     outputModalities: ["audio"],
-    features: ["text-to-speech", "wav-output", "cold-per-request"],
+    features: [
+      "text-to-speech",
+      "wav-output",
+      "cold-per-request",
+      "catalog-reference-voices",
+    ],
     commercialStatus: "open",
     catch:
       "The converted repository omits license metadata; the upstream Qwen model is Apache-2.0.",
     notes:
-      "Qualified on macOS for bounded native WAV generation with the runtime-default voice. Human voice quality has not been assessed.",
+      "Default remains native runtime voice. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed.",
   },
   {
     modelId: "stable-diffusion-v1-5",
@@ -1627,6 +1758,34 @@ export function primaryArtifact(model: ModelSpec): ModelArtifact {
     throw new Error(`Model "${model.modelId}" has no primary artifact`);
   }
   return artifact;
+}
+
+/** Resolves the closed, catalog-owned reference files for a TTS model. */
+export function ttsReferenceArtifacts(
+  model: ModelSpec,
+): Readonly<Record<ReferenceSpeechVoice, ModelArtifact>> {
+  if (model.kind !== "tts") {
+    throw new Error(`Model "${model.modelId}" is not a TTS model.`);
+  }
+  const references = model.ttsRuntime?.referenceVoices;
+  const harbor = references?.find(({ name }) => name === "harbor");
+  const willow = references?.find(({ name }) => name === "willow");
+  if (!harbor || !willow) {
+    throw new Error(
+      `TTS model "${model.modelId}" is missing its catalog reference voices.`,
+    );
+  }
+  const artifactByFilename = new Map(
+    model.artifacts.map((artifact) => [artifact.filename, artifact]),
+  );
+  const harborArtifact = artifactByFilename.get(harbor.artifactFilename);
+  const willowArtifact = artifactByFilename.get(willow.artifactFilename);
+  if (!harborArtifact || !willowArtifact) {
+    throw new Error(
+      `TTS model "${model.modelId}" has an invalid reference voice artifact.`,
+    );
+  }
+  return Object.freeze({ harbor: harborArtifact, willow: willowArtifact });
 }
 
 /**

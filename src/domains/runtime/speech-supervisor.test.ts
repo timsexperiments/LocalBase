@@ -136,6 +136,10 @@ describe("bounded speech supervisor", () => {
         binaryPath,
         modelPath: join(root, "model.gguf"),
         projectorPath: join(root, "mmproj.gguf"),
+        speakerFiles: {
+          harbor: join(root, "harbor.wav"),
+          willow: join(root, "willow.wav"),
+        },
       }),
     });
     return { supervisor, memoryEvents, memoryRequests };
@@ -470,6 +474,10 @@ test("rejects malformed WAV boundaries", () => {
     binaryPath: "/runtime/llama-tts",
     modelPath: "/models/model.gguf",
     projectorPath: "/models/mmproj.gguf",
+    speakerFiles: {
+      harbor: "/models/harbor.wav",
+      willow: "/models/willow.wav",
+    },
   };
   const args = speechNativeArguments(
     preparation,
@@ -477,6 +485,20 @@ test("rejects malformed WAV boundaries", () => {
     "/private/output.wav",
   );
   expect(args.join(" ")).not.toContain("secret prompt");
+  expect(args).not.toContain("--tts-speaker-file");
+  for (const [voice, path] of [
+    ["harbor", "/models/harbor.wav"],
+    ["willow", "/models/willow.wav"],
+  ] as const) {
+    expect(
+      speechNativeArguments(
+        preparation,
+        "/private/prompt.txt",
+        "/private/output.wav",
+        voice,
+      ),
+    ).toEqual(expect.arrayContaining(["--tts-speaker-file", path]));
+  }
   expect(() => validateSpeechWav(new TextEncoder().encode("not wav"))).toThrow(
     SpeechOutputError,
   );

@@ -156,7 +156,25 @@ test("reports only the supported cold speech contract", () => {
   expect(metadata.catalog.capabilities).toEqual({
     kind: "speech",
     outputFormats: ["wav"],
-    voice: { selection: "runtime-default", requestValue: "default" },
+    voice: {
+      selection: "catalog-reference",
+      requestValues: ["default", "harbor", "willow"],
+      defaultRequestValue: "default",
+      references: [
+        {
+          name: "harbor",
+          license: "CC0-1.0",
+          provenanceUrl:
+            "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations",
+        },
+        {
+          name: "willow",
+          license: "CC0-1.0",
+          provenanceUrl:
+            "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations",
+        },
+      ],
+    },
     residency: "cold-per-request",
   });
   expect(metadata.catalog.inputModalities).toEqual(["text"]);

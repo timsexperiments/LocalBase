@@ -1,5 +1,6 @@
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { ReferenceSpeechVoice, SpeechVoice } from "../../catalog";
 import type { ILogger } from "../observability/logging";
 import { guardianProcessCommand } from "./backend-guardian";
 import type { ModalityLifecycleState } from "./health";
@@ -30,6 +31,7 @@ const SPEECH_MEMORY_DEMAND: RuntimeMemoryDemand = Object.freeze({
 
 export type SpeechGenerationInput = Readonly<{
   text: string;
+  voice?: SpeechVoice;
   signal?: AbortSignal;
 }>;
 
@@ -37,6 +39,7 @@ export type SpeechPreparation = Readonly<{
   binaryPath: string;
   modelPath: string;
   projectorPath: string;
+  speakerFiles: Readonly<Record<ReferenceSpeechVoice, string>>;
 }>;
 
 export class SpeechGenerationAbortedError extends Error {
@@ -175,7 +178,10 @@ export function speechNativeArguments(
   preparation: SpeechPreparation,
   promptPath: string,
   outputPath: string,
+  voice: SpeechVoice = "default",
 ): string[] {
+  const speakerFile =
+    voice === "default" ? undefined : preparation.speakerFiles[voice];
   return [
     preparation.binaryPath,
     "--offline",
@@ -193,6 +199,7 @@ export function speechNativeArguments(
     "4",
     "--tts-lang",
     "en",
+    ...(speakerFile ? ["--tts-speaker-file", speakerFile] : []),
     "-o",
     outputPath,
   ];
@@ -473,6 +480,7 @@ export class SpeechSupervisor {
         preparation,
         promptPath,
         outputPath,
+        input.voice ?? "default",
       );
       if (aborted()) throw new SpeechGenerationAbortedError();
       const process = (this.options.spawn ?? defaultSpawn)(

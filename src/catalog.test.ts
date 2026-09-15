@@ -98,6 +98,92 @@ describe("catalog artifact validation", () => {
     ).toBe(false);
   });
 
+  test("requires TTS runtime files to name declared supplementary artifacts", () => {
+    const tts = {
+      ...model([
+        {
+          sourcePath: "model.gguf",
+          filename: "model.gguf",
+          expectedSizeBytes: 10,
+          sha256: checksum,
+          role: "primary",
+        },
+        {
+          sourcePath: "projector.gguf",
+          filename: "projector.gguf",
+          expectedSizeBytes: 8,
+          sha256: "b".repeat(64),
+          role: "supplementary",
+        },
+        {
+          sourcePath: "harbor.wav",
+          filename: "harbor.wav",
+          expectedSizeBytes: 6,
+          sha256: "c".repeat(64),
+          role: "supplementary",
+        },
+        {
+          sourcePath: "willow.wav",
+          filename: "willow.wav",
+          expectedSizeBytes: 4,
+          sha256: "d".repeat(64),
+          role: "supplementary",
+        },
+      ]),
+      kind: "tts",
+      inputModalities: ["text"],
+      outputModalities: ["audio"],
+      ttsRuntime: {
+        projectorArtifactFilename: "projector.gguf",
+        referenceVoices: [
+          {
+            name: "harbor",
+            artifactFilename: "harbor.wav",
+            license: "CC0-1.0",
+            provenanceUrl: "https://example.test/voices",
+          },
+          {
+            name: "willow",
+            artifactFilename: "willow.wav",
+            license: "CC0-1.0",
+            provenanceUrl: "https://example.test/voices",
+          },
+        ],
+      },
+    };
+    expect(catalogSchema.safeParse([tts]).success).toBe(true);
+    expect(
+      catalogSchema.safeParse([
+        {
+          ...tts,
+          ttsRuntime: {
+            ...tts.ttsRuntime,
+            projectorArtifactFilename: "model.gguf",
+          },
+        },
+      ]).success,
+    ).toBe(false);
+    expect(
+      catalogSchema.safeParse([
+        {
+          ...tts,
+          ttsRuntime: {
+            ...tts.ttsRuntime,
+            referenceVoices: [
+              ...tts.ttsRuntime.referenceVoices,
+              {
+                name: "harbor",
+                artifactFilename: "missing.wav",
+                license: "CC0-1.0",
+                provenanceUrl: "https://example.test/voices",
+              },
+            ],
+          },
+        },
+      ]).success,
+    ).toBe(false);
+  });
+
   test("accepts single-file and sharded artifact sets", () => {
     const singleFile = model([
       {
@@ -309,7 +395,44 @@ describe("catalog artifact validation", () => {
             "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
           role: "supplementary",
         },
+        {
+          filename: "qwen3-tts-harbor.wav",
+          expectedSizeBytes: 480_044,
+          sha256:
+            "4bd75d0ef0ad3f4e82ac075eab2a132651d2463f83bec210edeeccaf69294886",
+          role: "supplementary",
+          source: {
+            repositoryUrl: "https://huggingface.co/kyutai/tts-voices",
+            revision: "323332d33f997de8394f24a193e1a76df720e01a",
+          },
+        },
+        {
+          filename: "qwen3-tts-willow.wav",
+          expectedSizeBytes: 480_044,
+          sha256:
+            "8edd516de8c2171b67757cacb29e1effd3e6a8b78f5d6b035069273fadefac2b",
+          role: "supplementary",
+          source: {
+            repositoryUrl: "https://huggingface.co/kyutai/tts-voices",
+            revision: "323332d33f997de8394f24a193e1a76df720e01a",
+          },
+        },
       ],
+      ttsRuntime: {
+        projectorArtifactFilename: "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+        referenceVoices: [
+          expect.objectContaining({
+            name: "harbor",
+            artifactFilename: "qwen3-tts-harbor.wav",
+            license: "CC0-1.0",
+          }),
+          expect.objectContaining({
+            name: "willow",
+            artifactFilename: "qwen3-tts-willow.wav",
+            license: "CC0-1.0",
+          }),
+        ],
+      },
     });
   });
 

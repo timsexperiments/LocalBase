@@ -9,6 +9,7 @@ import {
   calculateMaxSafeContextSize,
   primaryArtifact,
   resolveCatalogInstallation,
+  speechVoiceSchema,
 } from "../../../catalog";
 import {
   inspectCatalogInstallations,
@@ -635,9 +636,7 @@ const speechGenerationRequestSchema = z
         (value) => Array.from(value).length <= SPEECH_MAX_INPUT_CHARACTERS,
         `input must not exceed ${SPEECH_MAX_INPUT_CHARACTERS} characters`,
       ),
-    voice: z.literal("default", {
-      error: "voice must be 'default'",
-    }),
+    voice: speechVoiceSchema,
     response_format: z.literal("wav", {
       error: "response_format must be explicitly set to 'wav'",
     }),
@@ -2383,6 +2382,7 @@ export async function runServe(
         await waitForRequestAbort(admission.ready, request.signal);
         const wav = await admission.supervisor.generateSpeech({
           text: parsed.data.input,
+          voice: parsed.data.voice,
           signal: request.signal,
         });
         admission.markResponseStarted();
