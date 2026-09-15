@@ -1,10 +1,25 @@
 import { runMain } from "citty";
 import { defineCommand } from "citty";
 import { basename, join } from "node:path";
-import { Readable } from "node:stream";
-import { unzipSync } from "fflate";
-import { extract as createTarExtractor, type Headers } from "tar-stream";
 import { z } from "zod";
+import {
+  readSdArchiveEntries,
+  type ArchiveEntry,
+} from "./sd-release/archive-reader";
+import {
+  filePathSchema,
+  repositorySchema,
+  sdReleaseTagSchema,
+  validateSdReleaseTag,
+} from "./sd-release/contracts";
+import {
+  updateSdManifestFile,
+  verifySdManifestFile,
+} from "./sd-release/manifest";
+import {
+  assertSdReleaseAvailable,
+  verifyPublishedSdRelease,
+} from "./sd-release/published-release";
 
 export const sdTargetSchema = z.enum(["linux-x64", "macos-arm64"]);
 export type SdTarget = z.infer<typeof sdTargetSchema>;
@@ -19,8 +34,6 @@ const licenseFiles = [
   "LICENSE.stable-diffusion.cpp.txt",
   "LICENSE.utf8proc.txt",
 ] as const;
-
-type ArchiveEntry = { name: string; type?: string; bytes: Uint8Array };
 
 const sourceProvenanceSchema = z
   .object({
@@ -63,6 +76,26 @@ const sourceProvenanceSchema = z
       name: z.literal("inline-wav-audio.patch"),
       sha256: z.string().regex(/^[a-f0-9]{64}$/),
     }),
+    runtimeRequirements: z
+      .object({
+        "linux-x64": z
+          .object({
+            buildBaseline: z.literal("Ubuntu 24.04 x86_64"),
+            gpu: z.literal("Vulkan loader and a compatible Vulkan GPU driver"),
+            systemLibraries: z.literal(
+              "glibc and libstdc++ compatible with the Ubuntu 24.04 build baseline",
+            ),
+          })
+          .strict(),
+        "macos-arm64": z
+          .object({
+            buildBaseline: z.literal("macOS 14 arm64"),
+            gpu: z.literal("Apple Metal"),
+            systemLibraries: z.literal("macOS system frameworks"),
+          })
+          .strict(),
+      })
+      .strict(),
   })
   .strict();
 
@@ -135,62 +168,6 @@ export function validateSdBinaryArchitecture(
     throw new Error(`sd-server does not match ${target} architecture.`);
 }
 
-async function readTarGz(path: string): Promise<ArchiveEntry[]> {
-  const extractor = createTarExtractor();
-  const entries: ArchiveEntry[] = [];
-  let entryError: unknown;
-  const completed = new Promise<void>((resolve, reject) => {
-    extractor.once("finish", () =>
-      entryError ? reject(entryError) : resolve(),
-    );
-    extractor.once("error", reject);
-    extractor.on(
-      "entry",
-      (header: Headers, stream: Readable, next: (error?: unknown) => void) => {
-        void (async () => {
-          try {
-            const chunks: Uint8Array[] = [];
-            for await (const chunk of stream) chunks.push(chunk);
-            const length = chunks.reduce(
-              (total, chunk) => total + chunk.length,
-              0,
-            );
-            const bytes = new Uint8Array(length);
-            let offset = 0;
-            for (const chunk of chunks) {
-              bytes.set(chunk, offset);
-              offset += chunk.length;
-            }
-            entries.push({ name: header.name, type: header.type, bytes });
-          } catch (error) {
-            entryError ??= error;
-          }
-          next();
-        })();
-      },
-    );
-  });
-  Readable.fromWeb(
-    Bun.file(path)
-      .stream()
-      .pipeThrough(
-        new DecompressionStream("gzip"),
-      ) as unknown as import("node:stream/web").ReadableStream,
-  ).pipe(extractor);
-  await completed;
-  return entries;
-}
-
-async function readZip(path: string): Promise<ArchiveEntry[]> {
-  let files: Record<string, Uint8Array>;
-  try {
-    files = unzipSync(new Uint8Array(await Bun.file(path).arrayBuffer()));
-  } catch (error) {
-    throw new Error("Invalid macOS sd-server ZIP archive.", { cause: error });
-  }
-  return Object.entries(files).map(([name, bytes]) => ({ name, bytes }));
-}
-
 async function run(args: string[]) {
   const child = Bun.spawn(args, { stdout: "pipe", stderr: "pipe" });
   const [stdout, stderr, code] = await Promise.all([
@@ -212,8 +189,10 @@ export async function qualifySdArchive(
   extractionDirectory: string,
   teamId?: string,
 ) {
-  const entries =
-    target === "linux-x64" ? await readTarGz(archive) : await readZip(archive);
+  const entries = await readSdArchiveEntries(
+    target,
+    new Uint8Array(await Bun.file(archive).arrayBuffer()),
+  );
   const binary = validateSdArchiveEntries(target, entries);
   validateSdBinaryArchitecture(target, binary);
 
@@ -253,6 +232,31 @@ const command = defineCommand({
     description: "Qualify native sd-server releases",
   },
   subCommands: {
+    "validate-tag": defineCommand({
+      args: {
+        tag: { type: "string", required: true },
+        "github-output": { type: "string" },
+      },
+      async run({ args }) {
+        const tag = validateSdReleaseTag(args.tag);
+        if (args["github-output"]) {
+          const output = filePathSchema.parse(args["github-output"]);
+          await Bun.write(output, `tag=${tag}\nbranch=tim/${tag}-manifest\n`);
+        }
+      },
+    }),
+    "assert-release-available": defineCommand({
+      args: {
+        repository: { type: "string", required: true },
+        tag: { type: "string", required: true },
+      },
+      async run({ args }) {
+        await assertSdReleaseAvailable(
+          repositorySchema.parse(args.repository),
+          sdReleaseTagSchema.parse(args.tag),
+        );
+      },
+    }),
     "qualify-archive": defineCommand({
       args: {
         target: {
@@ -271,6 +275,34 @@ const command = defineCommand({
           z.string().min(1).parse(args["work-directory"]),
           args["team-id"],
         );
+      },
+    }),
+    "verify-published-release": defineCommand({
+      args: {
+        repository: { type: "string", required: true },
+        tag: { type: "string", required: true },
+        output: { type: "string", required: true },
+      },
+      async run({ args }) {
+        await verifyPublishedSdRelease(args.repository, args.tag, args.output);
+      },
+    }),
+    "update-manifest": defineCommand({
+      args: {
+        manifest: { type: "string", required: true },
+        receipt: { type: "string", required: true },
+      },
+      async run({ args }) {
+        await updateSdManifestFile(args.manifest, args.receipt);
+      },
+    }),
+    "verify-manifest": defineCommand({
+      args: {
+        manifest: { type: "string", required: true },
+        receipt: { type: "string", required: true },
+      },
+      async run({ args }) {
+        await verifySdManifestFile(args.manifest, args.receipt);
       },
     }),
   },
