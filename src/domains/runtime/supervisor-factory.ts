@@ -30,7 +30,9 @@ import {
   startWhisperServerProcess,
 } from "./launcher";
 import type { RuntimeModality } from "./modality";
+import type { VideoRuntimeTarget } from "../../catalog";
 import type { MemorySafetyController } from "./memory-controller";
+import type { MemoryTopology } from "./memory-safety";
 import { SpeechSupervisor, type SpeechPreparation } from "./speech-supervisor";
 import { ManagedService } from "./supervisor";
 import type { RuntimeSupervisor } from "./supervisor-registry";
@@ -116,6 +118,30 @@ function videoHost(overrides: RuntimeLaunchOverrides): string {
 
 function videoPort(overrides: RuntimeLaunchOverrides): number {
   return overrides.videoPort ?? 8091;
+}
+
+function videoRuntimeTarget(topology: MemoryTopology): VideoRuntimeTarget {
+  if (
+    process.platform === "linux" &&
+    process.arch === "x64" &&
+    topology.kind === "discrete" &&
+    topology.accelerators.length === 1 &&
+    topology.accelerators[0]?.id.startsWith("nvidia:")
+  ) {
+    return { platform: "linux", architecture: "x64", accelerator: "nvidia" };
+  }
+  if (
+    process.platform === "darwin" &&
+    process.arch === "arm64" &&
+    topology.kind === "unified"
+  ) {
+    return {
+      platform: "darwin",
+      architecture: "arm64",
+      accelerator: "apple-unified",
+    };
+  }
+  throw new Error("Video runtime target is not supported.");
 }
 
 function component(
@@ -655,7 +681,7 @@ export function createRuntimeSupervisorFactory(
             host: videoHost(overrides),
             port: videoPort(overrides),
             videoRuntime: spec.videoRuntime,
-            platform: process.platform,
+            target: videoRuntimeTarget(dependencies.memorySafety.topology),
           });
         },
         start: async (plan) => {

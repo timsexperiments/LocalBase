@@ -74,6 +74,7 @@ describe("catalog artifact validation", () => {
           maxWidth: 320,
           maxHeight: 320,
           maxFrames: 33,
+          fps: 16,
           generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
           launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
         },
@@ -82,7 +83,9 @@ describe("catalog artifact validation", () => {
           hostBytes: 20,
           acceleratorBytes: 10,
         },
-        supportedPlatforms: ["linux"],
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
       },
     };
     expect(catalogSchema.safeParse([video]).success).toBe(true);

@@ -47,6 +47,7 @@ test("uses video profile launch options", () => {
         maxWidth: 320,
         maxHeight: 320,
         maxFrames: 33,
+        fps: 16,
         generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
         launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
       },
@@ -55,9 +56,11 @@ test("uses video profile launch options", () => {
         hostBytes: 1,
         acceleratorBytes: 1,
       },
-      supportedPlatforms: ["linux"],
+      supportedTargets: [
+        { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+      ],
     },
-    platform: "linux",
+    target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
   });
 
   expect(buildSdVideoServerArgs(plan)).toEqual([

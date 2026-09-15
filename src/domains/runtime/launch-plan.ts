@@ -6,7 +6,7 @@ import {
   type ParallelAllocation,
   type ParallelSlots,
 } from "../config/parallel";
-import type { VideoRuntimeProfile } from "../../catalog";
+import type { VideoRuntimeProfile, VideoRuntimeTarget } from "../../catalog";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
 
@@ -53,6 +53,7 @@ type VideoLaunchPlanBase = Omit<
     maxWidth: number;
     maxHeight: number;
     maxFrames: number;
+    fps: number;
   }>;
   readonly generation: Readonly<{
     sampler: "euler";
@@ -238,19 +239,17 @@ export function resolveVideoLaunchPlan(input: {
   host: string;
   port: number;
   videoRuntime: VideoRuntimeProfile;
-  platform: NodeJS.Platform;
+  target: VideoRuntimeTarget;
 }): VideoLaunchPlan {
-  const supportedPlatform =
-    input.platform === "darwin" || input.platform === "linux"
-      ? input.platform
-      : undefined;
   if (
-    !supportedPlatform ||
-    !input.videoRuntime.supportedPlatforms.includes(supportedPlatform)
+    !input.videoRuntime.supportedTargets.some(
+      (candidate) =>
+        candidate.platform === input.target.platform &&
+        candidate.architecture === input.target.architecture &&
+        candidate.accelerator === input.target.accelerator,
+    )
   ) {
-    throw new Error(
-      `Video model does not support ${input.platform} runtime admission.`,
-    );
+    throw new Error("Video model does not support this runtime target.");
   }
   const { qualification } = input.videoRuntime;
   const memoryDemand = videoMemoryDemand({
@@ -269,6 +268,7 @@ export function resolveVideoLaunchPlan(input: {
       maxWidth: qualification.maxWidth,
       maxHeight: qualification.maxHeight,
       maxFrames: qualification.maxFrames,
+      fps: qualification.fps,
     }),
     generation: Object.freeze({ ...qualification.generation }),
     launchOptions: Object.freeze({ ...qualification.launchOptions }),
