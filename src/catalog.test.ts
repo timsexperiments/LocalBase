@@ -74,7 +74,14 @@ describe("catalog artifact validation", () => {
           maxWidth: 320,
           maxHeight: 320,
           maxFrames: 33,
-          generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+          fps: 16,
+          generation: {
+            sampler: "euler",
+            steps: 20,
+            cfgScale: 6,
+            flowShift: 3,
+            seed: 42,
+          },
           launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
         },
         estimatedMemoryDemand: {
@@ -82,7 +89,9 @@ describe("catalog artifact validation", () => {
           hostBytes: 20,
           acceleratorBytes: 10,
         },
-        supportedPlatforms: ["linux"],
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
       },
     };
     expect(catalogSchema.safeParse([video]).success).toBe(true);
@@ -135,7 +144,14 @@ describe("catalog artifact validation", () => {
           maxWidth: 832,
           maxHeight: 480,
           maxFrames: 81,
-          generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+          fps: 16,
+          generation: {
+            sampler: "euler",
+            steps: 20,
+            cfgScale: 6,
+            flowShift: 3,
+            seed: 42,
+          },
           launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
         },
         estimatedMemoryDemand: {
@@ -143,7 +159,9 @@ describe("catalog artifact validation", () => {
           hostBytes: 20,
           acceleratorBytes: 10,
         },
-        supportedPlatforms: ["linux"],
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
       },
     };
 
@@ -517,6 +535,59 @@ describe("catalog artifact validation", () => {
             "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations",
         },
       ],
+    });
+  });
+
+  test("pins the experimental Wan Q8 video bundle and bounded launch profile", () => {
+    expect(byId("wan2.1-t2v-1.3b-q8_0")).toMatchObject({
+      kind: "video",
+      minVramGb: 12,
+      repositoryRevision: "5a512b15fc35d1b67a074cfe55a591be9e9ef9b5",
+      artifacts: [
+        {
+          expectedSizeBytes: 1_535_768_800,
+          sha256:
+            "30a44f695b4275a915810120360d6fd26152ec303c2226b5152ec33a93c380e4",
+          role: "primary",
+        },
+        {
+          expectedSizeBytes: 6_043_068_256,
+          sha256:
+            "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+          role: "supplementary",
+        },
+        {
+          expectedSizeBytes: 253_815_318,
+          sha256:
+            "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+          role: "supplementary",
+        },
+      ],
+      videoRuntime: {
+        mode: "t2v",
+        qualification: {
+          maxWidth: 320,
+          maxHeight: 320,
+          maxFrames: 33,
+          fps: 16,
+          generation: {
+            sampler: "euler",
+            steps: 20,
+            cfgScale: 6,
+            flowShift: 3,
+            seed: 42,
+          },
+          launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        },
+        estimatedMemoryDemand: {
+          unifiedBytes: 24 * 1024 ** 3,
+          hostBytes: 16 * 1024 ** 3,
+          acceleratorBytes: 9 * 1024 ** 3,
+        },
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
+      },
     });
   });
 

@@ -47,7 +47,14 @@ test("uses video profile launch options", () => {
         maxWidth: 320,
         maxHeight: 320,
         maxFrames: 33,
-        generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+        fps: 16,
+        generation: {
+          sampler: "euler",
+          steps: 20,
+          cfgScale: 6,
+          flowShift: 3,
+          seed: 42,
+        },
         launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
       },
       estimatedMemoryDemand: {
@@ -55,9 +62,11 @@ test("uses video profile launch options", () => {
         hostBytes: 1,
         acceleratorBytes: 1,
       },
-      supportedPlatforms: ["linux"],
+      supportedTargets: [
+        { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+      ],
     },
-    platform: "linux",
+    target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
   });
 
   expect(buildSdVideoServerArgs(plan)).toEqual([
@@ -99,7 +108,14 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
         maxWidth: 832,
         maxHeight: 480,
         maxFrames: 81,
-        generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+        fps: 16,
+        generation: {
+          sampler: "euler",
+          steps: 20,
+          cfgScale: 6,
+          flowShift: 3,
+          seed: 42,
+        },
         launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
       },
       estimatedMemoryDemand: {
@@ -107,9 +123,11 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
         hostBytes: 1,
         acceleratorBytes: 1,
       },
-      supportedPlatforms: ["linux"],
+      supportedTargets: [
+        { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+      ],
     },
-    platform: "linux",
+    target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
   });
 
   expect(plan.mode).toBe("s2v");
@@ -152,7 +170,14 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
         maxWidth: 832,
         maxHeight: 480,
         maxFrames: 81,
-        generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+        fps: 16,
+        generation: {
+          sampler: "euler",
+          steps: 20,
+          cfgScale: 6,
+          flowShift: 3,
+          seed: 42,
+        },
         launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
       },
       estimatedMemoryDemand: {
@@ -160,9 +185,11 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
         hostBytes: 1,
         acceleratorBytes: 1,
       },
-      supportedPlatforms: ["linux"],
+      supportedTargets: [
+        { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+      ],
     },
-    platform: "linux",
+    target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
   });
 
   await expect(startSdVideoServerProcess(plan)).rejects.toThrow(
