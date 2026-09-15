@@ -49,7 +49,7 @@ function completedJob(id = VIDEO_ID) {
       mime_type: "video/webm",
       fps: 16,
       frame_count: 33,
-      b64_json: Uint8Array.from([1, 2, 3]).toBase64(),
+      b64_json: Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3]).toBase64(),
     },
     error: null,
   };
@@ -109,7 +109,7 @@ test("submits, polls, and cancels with fixed localhost routes", async () => {
       id: VIDEO_ID,
       status: "completed",
       media: {
-        bytes: Uint8Array.from([1, 2, 3]),
+        bytes: Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3]),
         mimeType: "video/webm",
         outputFormat: "webm",
         fps: 16,
@@ -158,10 +158,13 @@ test("rejects malformed backend responses and responses over the configured limi
         { status: 202 },
       );
     }
-    return new Response("x".repeat(2_048));
+    return new Response("x".repeat(4_096));
   });
   try {
-    const client = backend.client({ maxResponseBytes: 1_024 });
+    const client = backend.client({
+      maxResponseBytes: 2_048,
+      maxMediaBytes: 1,
+    });
     await expect(
       client.submitVideo({ input: { prompt: "A test." } }),
     ).rejects.toMatchObject({ code: "backend_response_invalid" });
@@ -190,6 +193,56 @@ test("rejects oversized completed media and invalid job IDs before a request", a
       code: "invalid_job_id",
     });
     expect(requests).toBe(1);
+  } finally {
+    backend.stop();
+  }
+});
+
+test("rejects malformed base64, mismatched MIME types, and invalid containers", async () => {
+  const malformedBase64 = completedJob();
+  malformedBase64.result.b64_json = "%%%";
+  const mismatchedMimeType = completedJob();
+  mismatchedMimeType.result.mime_type = "text/html";
+  const invalidContainer = completedJob();
+  invalidContainer.result.b64_json = Uint8Array.from([1, 2, 3, 4]).toBase64();
+  const jobs = [malformedBase64, mismatchedMimeType, invalidContainer];
+  const backend = startBackend(() => {
+    const job = jobs.shift();
+    if (job === undefined) throw new Error("Expected a fixture job.");
+    return Response.json(job);
+  });
+  try {
+    const client = backend.client();
+    for (let index = 0; index < 3; index += 1) {
+      await expect(client.getJob({ id: VIDEO_ID })).rejects.toMatchObject({
+        code: "backend_response_invalid",
+      });
+    }
+  } finally {
+    backend.stop();
+  }
+});
+
+test("requires a response budget that can hold padded media and its envelope", () => {
+  const backend = startBackend(() => Response.json({}));
+  try {
+    expect(() =>
+      backend.client({ maxResponseBytes: 1_024, maxMediaBytes: 1_024 }),
+    ).toThrow(RangeError);
+  } finally {
+    backend.stop();
+  }
+});
+
+test("retains backend HTTP status without reading backend error details", async () => {
+  const backend = startBackend(() => new Response(null, { status: 410 }));
+  try {
+    await expect(
+      backend.client().getJob({ id: VIDEO_ID }),
+    ).rejects.toMatchObject({
+      code: "backend_request_failed",
+      status: 410,
+    });
   } finally {
     backend.stop();
   }

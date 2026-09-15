@@ -1,9 +1,12 @@
 import { z } from "zod";
 
-const LOCALHOST_NAMES = new Set(["127.0.0.1", "[::1]", "localhost"]);
+// DNS names are not accepted here. The configured backend must be pinned to a
+// numeric loopback address so a later DNS change cannot redirect video traffic.
+const LOOPBACK_LITERALS = new Set(["127.0.0.1", "[::1]"]);
 const MAX_JOB_ID_LENGTH = 128;
 const DEFAULT_MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
-const DEFAULT_MAX_MEDIA_BYTES = 24 * 1024 * 1024;
+const DEFAULT_MAX_MEDIA_BYTES = 23 * 1024 * 1024;
+const COMPLETED_JOB_ENVELOPE_BYTES = 1024;
 
 const videoOutputFormatSchema = z.enum(["webm", "webp", "avi"]);
 const jobStatusSchema = z.enum([
@@ -55,15 +58,32 @@ const jobEnvelopeSchema = z
   })
   .passthrough();
 
-const completedResultSchema = z
-  .object({
-    output_format: videoOutputFormatSchema,
-    mime_type: z.string().min(1).max(128),
-    fps: z.number().int().positive(),
-    frame_count: z.number().int().positive(),
-    b64_json: z.string().min(1),
-  })
-  .strict();
+const completedResultBaseSchema = z.object({
+  fps: z.number().int().positive(),
+  frame_count: z.number().int().positive(),
+  b64_json: z.string().min(1),
+});
+
+const completedResultSchema = z.discriminatedUnion("output_format", [
+  completedResultBaseSchema
+    .extend({
+      output_format: z.literal("webm"),
+      mime_type: z.literal("video/webm"),
+    })
+    .strict(),
+  completedResultBaseSchema
+    .extend({
+      output_format: z.literal("webp"),
+      mime_type: z.literal("image/webp"),
+    })
+    .strict(),
+  completedResultBaseSchema
+    .extend({
+      output_format: z.literal("avi"),
+      mime_type: z.literal("video/x-msvideo"),
+    })
+    .strict(),
+]);
 
 const failureSchema = z
   .object({ code: z.string().min(1).max(128) })
@@ -128,6 +148,7 @@ export class StableDiffusionVideoClientError extends Error {
       | "backend_response_invalid"
       | "backend_request_failed",
     message: string,
+    readonly status: number | undefined = undefined,
   ) {
     super(message);
     this.name = "StableDiffusionVideoClientError";
@@ -155,6 +176,7 @@ export function createStableDiffusionVideoClient(
     DEFAULT_MAX_MEDIA_BYTES,
     "maxMediaBytes",
   );
+  ensureResponseBudget({ maxResponseBytes, maxMediaBytes });
   const request = options.fetch ?? fetch;
 
   async function getCapabilities(options: { signal?: AbortSignal } = {}) {
@@ -251,7 +273,7 @@ function parseLocalBaseUrl(value: string): URL {
   }
   if (
     parsed.protocol !== "http:" ||
-    !LOCALHOST_NAMES.has(parsed.hostname) ||
+    !LOOPBACK_LITERALS.has(parsed.hostname) ||
     parsed.username !== "" ||
     parsed.password !== "" ||
     parsed.search !== "" ||
@@ -260,7 +282,7 @@ function parseLocalBaseUrl(value: string): URL {
   ) {
     throw new StableDiffusionVideoClientError(
       "invalid_base_url",
-      "Video backend URL must be a localhost HTTP URL without a path.",
+      "Video backend URL must use a numeric loopback HTTP URL without a path.",
     );
   }
   return parsed;
@@ -371,19 +393,27 @@ async function parseVideoJob({
 function parseCompletedMedia(payload: unknown, maxMediaBytes: number) {
   const parsed = completedResultSchema.safeParse(payload);
   if (!parsed.success) throw invalidBackendResponse();
-  const maxEncodedBytes = Math.ceil((maxMediaBytes / 3) * 4);
+  const maxEncodedBytes = encodedMediaByteLimit(maxMediaBytes);
   if (parsed.data.b64_json.length > maxEncodedBytes) {
     throw new StableDiffusionVideoClientError(
       "backend_media_too_large",
       "Video backend media exceeds the configured limit.",
     );
   }
-  const bytes = Uint8Array.fromBase64(parsed.data.b64_json);
+  let bytes: Uint8Array;
+  try {
+    bytes = Uint8Array.fromBase64(parsed.data.b64_json);
+  } catch {
+    throw invalidBackendResponse();
+  }
   if (bytes.byteLength > maxMediaBytes) {
     throw new StableDiffusionVideoClientError(
       "backend_media_too_large",
       "Video backend media exceeds the configured limit.",
     );
+  }
+  if (!hasContainerSignature(parsed.data.output_format, bytes)) {
+    throw invalidBackendResponse();
   }
   return {
     bytes,
@@ -406,6 +436,7 @@ async function parseJsonResponse(response: Response, maxBytes: number) {
     throw new StableDiffusionVideoClientError(
       "backend_request_failed",
       `Video backend request failed with HTTP ${response.status}.`,
+      response.status,
     );
   }
   const bytes = await readBoundedBytes(response, maxBytes);
@@ -415,6 +446,55 @@ async function parseJsonResponse(response: Response, maxBytes: number) {
   } catch {
     throw invalidBackendResponse();
   }
+}
+
+function encodedMediaByteLimit(mediaBytes: number) {
+  return Math.ceil(mediaBytes / 3) * 4;
+}
+
+function ensureResponseBudget({
+  maxResponseBytes,
+  maxMediaBytes,
+}: {
+  maxResponseBytes: number;
+  maxMediaBytes: number;
+}) {
+  const required =
+    encodedMediaByteLimit(maxMediaBytes) + COMPLETED_JOB_ENVELOPE_BYTES;
+  if (maxResponseBytes < required) {
+    throw new RangeError(
+      "maxResponseBytes must leave room for a padded video payload and its job envelope.",
+    );
+  }
+}
+
+function hasContainerSignature(format: VideoOutputFormat, bytes: Uint8Array) {
+  switch (format) {
+    case "webm":
+      return startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3]);
+    case "webp":
+      return (
+        startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) &&
+        matchesAt(bytes, 8, [0x57, 0x45, 0x42, 0x50])
+      );
+    case "avi":
+      return (
+        startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) &&
+        matchesAt(bytes, 8, [0x41, 0x56, 0x49, 0x20])
+      );
+    default: {
+      const exhaustive: never = format;
+      return exhaustive;
+    }
+  }
+}
+
+function startsWith(bytes: Uint8Array, prefix: number[]) {
+  return matchesAt(bytes, 0, prefix);
+}
+
+function matchesAt(bytes: Uint8Array, offset: number, expected: number[]) {
+  return expected.every((value, index) => bytes[offset + index] === value);
 }
 
 async function readBoundedBytes(response: Response, maxBytes: number) {
