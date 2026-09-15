@@ -118,6 +118,7 @@ type StoredJob = {
   directory: string;
   backendId: string | undefined;
   completion: Promise<VideoJobArtifact> | undefined;
+  supervisedStop: () => Promise<void>;
   resolveTerminal: (job: VideoJob) => void;
   terminal: Promise<VideoJob>;
   terminalAtMs: number | undefined;
@@ -150,8 +151,8 @@ export class VideoBackendJobFailureError extends Error {
 export type VideoJobManagerOptions = Readonly<{
   backend: VideoJobBackend;
   temporaryDirectory: string;
-  acquireAdmission: () => Promise<VideoJobAdmission | undefined>;
-  supervisedStop: () => Promise<void>;
+  acquireAdmission?: () => Promise<VideoJobAdmission | undefined>;
+  supervisedStop?: () => Promise<void>;
   now?: () => number;
   waitForPoll?: (options: { signal: AbortSignal }) => Promise<void>;
   waitForDeadline?: (options: {
@@ -243,10 +244,17 @@ export class VideoJobManager {
   async start(options: {
     ownerId: string;
     input: VideoJobInput;
+    acquireAdmission?: () => Promise<VideoJobAdmission | undefined>;
+    supervisedStop?: () => Promise<void>;
   }): Promise<VideoJobStart> {
     this.prune();
     if (this.stopping || this.active !== undefined) return { kind: "busy" };
-    const admission = await this.options.acquireAdmission();
+    const acquireAdmission = options.acquireAdmission ?? this.options.acquireAdmission;
+    const supervisedStop = options.supervisedStop ?? this.options.supervisedStop;
+    if (!acquireAdmission || !supervisedStop) {
+      throw new Error("Video job admission and supervised stop are required.");
+    }
+    const admission = await acquireAdmission();
     if (admission === undefined || this.stopping || this.active !== undefined) {
       admission?.release();
       return { kind: "busy" };
@@ -254,7 +262,7 @@ export class VideoJobManager {
 
     let job: StoredJob;
     try {
-      job = this.createJob(options.ownerId, admission);
+      job = this.createJob(options.ownerId, admission, supervisedStop);
     } catch (error) {
       admission.release();
       throw error;
@@ -308,7 +316,11 @@ export class VideoJobManager {
     if (this.active) await this.terminate(this.active, "shutdown");
   }
 
-  private createJob(ownerId: string, admission: VideoJobAdmission): StoredJob {
+  private createJob(
+    ownerId: string,
+    admission: VideoJobAdmission,
+    supervisedStop: () => Promise<void>,
+  ): StoredJob {
     const id = crypto.randomUUID();
     const directory = join(this.jobsRoot, id);
     mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -328,6 +340,7 @@ export class VideoJobManager {
       directory,
       backendId: undefined,
       completion: undefined,
+      supervisedStop,
       resolveTerminal,
       terminal,
       terminalAtMs: undefined,
@@ -464,7 +477,7 @@ export class VideoJobManager {
       if (job.terminalAtMs !== undefined) return;
     }
     try {
-      await this.options.supervisedStop();
+      await job.supervisedStop();
     } catch (error) {
       job.termination = undefined;
       throw toError(error);
