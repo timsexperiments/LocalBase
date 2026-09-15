@@ -543,7 +543,9 @@ export class VideoJobManager {
     const path = join(job.directory, "artifact");
     rmSync(path, { force: true });
     if (await Bun.file(path).exists()) {
-      throw new Error("Video artifact cleanup did not remove the private file.");
+      throw new Error(
+        "Video artifact cleanup did not remove the private file.",
+      );
     }
   }
 

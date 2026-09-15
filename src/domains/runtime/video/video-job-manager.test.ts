@@ -280,7 +280,9 @@ test("waits for a late successful submission before cancelling and releasing", a
       { state: "cancelled" },
     );
     expect(
-      await Bun.file(join(root, "video-jobs", started.job.id, "artifact")).exists(),
+      await Bun.file(
+        join(root, "video-jobs", started.job.id, "artifact"),
+      ).exists(),
     ).toBe(false);
     expect(admission.snapshot()).toEqual({ acquired: 1, released: 1 });
   } finally {
@@ -508,7 +510,9 @@ test("contains an artifact write failure before releasing cancellation admission
       failure: writeFailure,
     });
     expect(
-      await Bun.file(join(root, "video-jobs", started.job.id, "artifact")).exists(),
+      await Bun.file(
+        join(root, "video-jobs", started.job.id, "artifact"),
+      ).exists(),
     ).toBe(false);
     expect(admission.snapshot()).toEqual({ acquired: 1, released: 1 });
   } finally {
