@@ -73,18 +73,24 @@ function completed(id: string): VideoBackendJob {
 function createAdmissionProvider(options: {
   released: () => void;
   stopped: () => Promise<void> | void;
+  available?: () => boolean;
 }): VideoModelAdmissionProvider {
   return {
-    admit: async () => ({
-      kind: "admitted",
-      admission: {
-        ready: Promise.resolve(),
-        release: options.released,
-        supervisor: {
-          kill: async () => await options.stopped(),
+    admit: async () => {
+      if (options.available && !options.available()) {
+        return { kind: "not-configured" };
+      }
+      return {
+        kind: "admitted",
+        admission: {
+          ready: Promise.resolve(),
+          release: options.released,
+          supervisor: {
+            kill: async () => await options.stopped(),
+          },
         },
-      },
-    }),
+      };
+    },
   };
 }
 
@@ -147,6 +153,7 @@ test("serves one owner’s completed local video through the typed route and del
   const terminal = deferred<void>();
   let released = 0;
   let stopped = 0;
+  let videoEnabled = false;
   let submitted: VideoJobInput | undefined;
   const backend: VideoJobBackend = {
     async submitVideo({ input }) {
@@ -176,7 +183,20 @@ test("serves one owner’s completed local video through the typed route and del
       stopped: () => {
         stopped += 1;
       },
+      available: () => videoEnabled,
     });
+    const disabled = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: createRequest("Video starts disabled."),
+        pathname: "/v1/videos",
+        route: "videoCreate",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+      }),
+    );
+    expect(disabled.status).toBe(501);
+    videoEnabled = true;
     const created = await handleVideoGatewayRequest(
       endpointDependencies({
         request: createRequest("A paper kite over a field."),
@@ -353,6 +373,20 @@ test("cancels a generating video through the route only after supervised stop", 
       cancellation_reason: "cancelled",
     });
     expect(released).toBe(1);
+
+    const deleted = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: new Request(`http://local.test/v1/videos/${jobId}`, {
+          method: "DELETE",
+        }),
+        pathname: `/v1/videos/${jobId}`,
+        route: "videoStatus",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+      }),
+    );
+    expect(deleted.status).toBe(204);
 
     const recovered = await handleVideoGatewayRequest(
       endpointDependencies({
