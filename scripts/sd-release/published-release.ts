@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parseChecksumFile } from "../../src/utils/checksum";
+import { readSdArchiveEntries } from "./archive-reader";
 import {
   archiveSpecification,
   expectedDownloadUrl,
@@ -157,22 +158,6 @@ export async function verifyPublishedSdRelease(
     assets.get("SOURCE.sd-server.json")!,
     fetcher,
   );
-  const sourceDocument = z
-    .object({
-      sources: z.array(z.object({ name: z.string(), revision: z.string() })),
-      patch: z.object({ sha256: z.string() }),
-    })
-    .passthrough()
-    .parse(JSON.parse(new TextDecoder().decode(sourceBytes)));
-  const source = sourceIdentitySchema.parse({
-    manifestSha256: new Bun.CryptoHasher("sha256")
-      .update(sourceBytes)
-      .digest("hex"),
-    stableDiffusionRevision: sourceDocument.sources.find(
-      ({ name }) => name === "stable-diffusion.cpp",
-    )?.revision,
-    patchSha256: sourceDocument.patch.sha256,
-  });
 
   const runtimeEntries = await Promise.all(
     sdPublicationTargetSchema.options.map(async (target) => {
@@ -182,6 +167,17 @@ export async function verifyPublishedSdRelease(
       const digest = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
       if (digest !== checksums.get(specification.assetName)) {
         throw new Error(`Checksum mismatch for ${specification.assetName}.`);
+      }
+      const embeddedSource = (await readSdArchiveEntries(target, bytes)).find(
+        ({ name }) => name === "SOURCE.sd-server.json",
+      )?.bytes;
+      if (
+        !embeddedSource ||
+        !Buffer.from(embeddedSource).equals(Buffer.from(sourceBytes))
+      ) {
+        throw new Error(
+          `${specification.assetName} source identity does not match the published SOURCE.sd-server.json.`,
+        );
       }
       return [
         target,
@@ -199,6 +195,22 @@ export async function verifyPublishedSdRelease(
       ] as const;
     }),
   );
+  const sourceDocument = z
+    .object({
+      sources: z.array(z.object({ name: z.string(), revision: z.string() })),
+      patch: z.object({ sha256: z.string() }),
+    })
+    .passthrough()
+    .parse(JSON.parse(new TextDecoder().decode(sourceBytes)));
+  const source = sourceIdentitySchema.parse({
+    manifestSha256: new Bun.CryptoHasher("sha256")
+      .update(sourceBytes)
+      .digest("hex"),
+    stableDiffusionRevision: sourceDocument.sources.find(
+      ({ name }) => name === "stable-diffusion.cpp",
+    )?.revision,
+    patchSha256: sourceDocument.patch.sha256,
+  });
   const receipt = sdReleaseReceiptSchema.parse({
     version: 1,
     repository,

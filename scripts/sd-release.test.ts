@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { gzipSync, zipSync } from "fflate";
+import { pack as createTarPack } from "tar-stream";
 import rawManifest from "../src/manager/managed-runtime-manifest.json";
 import {
   validateSdArchiveEntries,
@@ -128,12 +130,39 @@ function sha256(bytes: Uint8Array): string {
   return new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
 }
 
+async function tarGz(entries: Record<string, Uint8Array>): Promise<Uint8Array> {
+  const archive = createTarPack();
+  const chunks: Uint8Array[] = [];
+  const complete = new Promise<void>((resolve, reject) => {
+    archive.on("data", (chunk: Uint8Array) => chunks.push(chunk));
+    archive.once("end", resolve);
+    archive.once("error", reject);
+  });
+  for (const [name, bytes] of Object.entries(entries)) {
+    await new Promise<void>((resolve, reject) =>
+      archive.entry({ name }, bytes, (error) =>
+        error ? reject(error) : resolve(),
+      ),
+    );
+  }
+  archive.finalize();
+  await complete;
+  const size = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const tar = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    tar.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return gzipSync(tar);
+}
+
 test("verifies publication identity and updates only sd-server entries", async () => {
   const repository = "timsexperiments/LocalBase";
   const tag = "sd-server-v0.0.1";
-  const linux = new TextEncoder().encode("linux archive");
-  const macos = new TextEncoder().encode("macOS archive");
   const source = new TextEncoder().encode(provenance);
+  const linux = await tarGz({ "SOURCE.sd-server.json": source });
+  const macos = zipSync({ "SOURCE.sd-server.json": source });
   const checksums = new TextEncoder().encode(
     `${sha256(macos)}  sd-server-macos-arm64.zip\n${sha256(linux)}  sd-server-linux-x64.tar.gz\n`,
   );
@@ -191,4 +220,45 @@ test("verifies publication identity and updates only sd-server entries", async (
       original.runtimes["whisper-server"],
     );
   }
+
+  const mismatchedSource = new TextEncoder().encode(
+    provenance.replace('"sha256":"aaaaaaaa', '"sha256":"bbbbbbbb'),
+  );
+  const mismatchedMacos = zipSync({
+    "SOURCE.sd-server.json": mismatchedSource,
+  });
+  const mismatchedValues = {
+    ...values,
+    "sd-server-macos-arm64.zip": mismatchedMacos,
+    "checksums.txt": new TextEncoder().encode(
+      `${sha256(mismatchedMacos)}  sd-server-macos-arm64.zip\n${sha256(linux)}  sd-server-linux-x64.tar.gz\n`,
+    ),
+  };
+  const mismatchedAssets = Object.entries(mismatchedValues).map(
+    ([name, bytes]) => ({
+      name,
+      size: bytes.byteLength,
+      digest: `sha256:${sha256(bytes)}`,
+      browser_download_url: `https://github.com/${repository}/releases/download/${tag}/${name}`,
+    }),
+  );
+  const mismatchedFetcher: Fetcher = async (input) => {
+    const url = String(input);
+    if (url.endsWith(`/releases/tags/${tag}`)) {
+      return Response.json({
+        id: 43,
+        tag_name: tag,
+        draft: false,
+        prerelease: false,
+        assets: mismatchedAssets,
+      });
+    }
+    const entry = Object.entries(mismatchedValues).find(([name]) =>
+      url.endsWith(`/${name}`),
+    );
+    return entry ? new Response(entry[1]) : new Response(null, { status: 404 });
+  };
+  await expect(
+    verifyPublishedSdRelease(repository, tag, output, mismatchedFetcher),
+  ).rejects.toThrow("source identity does not match");
 });
