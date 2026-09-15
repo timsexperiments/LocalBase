@@ -6,9 +6,6 @@ import { unzipSync } from "fflate";
 import { extract as createTarExtractor, type Headers } from "tar-stream";
 import { z } from "zod";
 
-export const sdReleaseTagSchema = z
-  .string()
-  .regex(/^sd-server-v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/);
 export const sdTargetSchema = z.enum(["linux-x64", "macos-arm64"]);
 export type SdTarget = z.infer<typeof sdTargetSchema>;
 
@@ -68,10 +65,6 @@ const sourceProvenanceSchema = z
     }),
   })
   .strict();
-
-export function validateSdReleaseTag(tag: unknown): string {
-  return sdReleaseTagSchema.parse(tag);
-}
 
 export function validateSdArchiveEntries(
   target: SdTarget,
@@ -260,12 +253,6 @@ const command = defineCommand({
     description: "Qualify native sd-server releases",
   },
   subCommands: {
-    "validate-tag": defineCommand({
-      args: { tag: { type: "string", required: true } },
-      run({ args }) {
-        validateSdReleaseTag(args.tag);
-      },
-    }),
     "qualify-archive": defineCommand({
       args: {
         target: {

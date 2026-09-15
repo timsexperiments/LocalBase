@@ -114,7 +114,7 @@ async function main() {
     "scripts/sd-patches/inline-wav-audio.test.cpp",
   );
   const parserTestBinary = join(root, "inline-wav-audio-test");
-  await $`c++ -std=c++17 -Wall -Wextra -Werror -I${join(sourcePath, "include")} -I${join(sourcePath, "examples/server")} -I${join(sourcePath, "examples/common")} -I${join(sourcePath, "thirdparty")} ${join(sourcePath, "examples/server/inline_wav.cpp")} ${parserTest} -o ${parserTestBinary}`;
+  await $`c++ -std=c++17 -Wall -Wextra -Werror -I${join(sourcePath, "include")} -I${join(sourcePath, "examples")} -I${join(sourcePath, "examples/server")} -I${join(sourcePath, "thirdparty")} ${join(sourcePath, "examples/server/inline_wav.cpp")} ${parserTest} -o ${parserTestBinary}`;
   await $`${parserTestBinary}`;
 
   const platformFlags =

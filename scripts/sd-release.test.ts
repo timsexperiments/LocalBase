@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import {
   validateSdArchiveEntries,
   validateSdBinaryArchitecture,
-  validateSdReleaseTag,
   type SdTarget,
 } from "./sd-release";
 
@@ -62,11 +61,6 @@ function header(target: SdTarget) {
   }
   return bytes;
 }
-
-test("accepts only immutable sd-server release tags", () => {
-  expect(validateSdReleaseTag("sd-server-v0.1.0")).toBe("sd-server-v0.1.0");
-  expect(() => validateSdReleaseTag("latest")).toThrow();
-});
 
 test("requires the binary and complete license set", () => {
   const entries = [
