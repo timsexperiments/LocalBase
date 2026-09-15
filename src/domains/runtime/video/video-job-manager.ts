@@ -105,6 +105,9 @@ export type VideoJobStart =
   | Readonly<{ kind: "busy" }>;
 
 type VideoJobAdmission = Pick<RuntimeAdmission, "release">;
+type VideoJobAdmissionAcquirer = (options: {
+  signal: AbortSignal;
+}) => Promise<VideoJobAdmission | undefined>;
 
 type VideoJobDisposition =
   | Readonly<{
@@ -120,7 +123,8 @@ type StoredJob = {
   state: VideoJobState;
   controller: AbortController;
   deadlineController: AbortController;
-  admission: VideoJobAdmission;
+  admission: VideoJobAdmission | undefined;
+  admissionPromise: Promise<VideoJobAdmission | undefined>;
   directory: string;
   backendId: string | undefined;
   completion: Promise<VideoJobArtifact> | undefined;
@@ -157,7 +161,7 @@ export class VideoBackendJobFailureError extends Error {
 export type VideoJobManagerOptions = Readonly<{
   backend: VideoJobBackend;
   temporaryDirectory: string;
-  acquireAdmission?: () => Promise<VideoJobAdmission | undefined>;
+  acquireAdmission?: VideoJobAdmissionAcquirer;
   supervisedStop?: () => Promise<void>;
   now?: () => number;
   waitForPoll?: (options: { signal: AbortSignal }) => Promise<void>;
@@ -248,7 +252,7 @@ export class VideoJobManager {
   async start(options: {
     ownerId: string;
     input: VideoJobInput;
-    acquireAdmission?: () => Promise<VideoJobAdmission | undefined>;
+    acquireAdmission?: VideoJobAdmissionAcquirer;
     supervisedStop?: () => Promise<void>;
   }): Promise<VideoJobStart> {
     this.prune();
@@ -260,21 +264,15 @@ export class VideoJobManager {
     if (!acquireAdmission || !supervisedStop) {
       throw new Error("Video job admission and supervised stop are required.");
     }
-    const admission = await acquireAdmission();
-    if (admission === undefined || this.stopping || this.active !== undefined) {
-      admission?.release();
-      return { kind: "busy" };
-    }
-
     let job: StoredJob;
     try {
-      job = this.createJob(options.ownerId, admission, supervisedStop);
+      job = this.createJob(options.ownerId, supervisedStop);
     } catch (error) {
-      admission.release();
       throw error;
     }
     this.active = job;
     this.jobs.set(job.id, job);
+    job.admissionPromise = acquireAdmission({ signal: job.controller.signal });
     void this.watchDeadline(job);
     void this.run(job, options.input);
     return Object.freeze({
@@ -343,7 +341,6 @@ export class VideoJobManager {
 
   private createJob(
     ownerId: string,
-    admission: VideoJobAdmission,
     supervisedStop: () => Promise<void>,
   ): StoredJob {
     const id = crypto.randomUUID();
@@ -363,7 +360,8 @@ export class VideoJobManager {
       state: "queued",
       controller: new AbortController(),
       deadlineController: new AbortController(),
-      admission,
+      admission: undefined,
+      admissionPromise: Promise.resolve(undefined),
       directory,
       backendId: undefined,
       completion: undefined,
@@ -397,6 +395,12 @@ export class VideoJobManager {
 
   private async run(job: StoredJob, input: VideoJobInput): Promise<void> {
     try {
+      const admission = await job.admissionPromise;
+      if (job.terminalAtMs !== undefined || job.termination) return;
+      if (admission === undefined) {
+        throw new Error("Video runtime admission is unavailable.");
+      }
+      job.admission = admission;
       await this.submit(job, input);
       if (job.termination) return;
       await this.poll(job);
@@ -494,6 +498,13 @@ export class VideoJobManager {
   ): Promise<void> {
     job.controller.abort();
     const completion = job.completion;
+    try {
+      await job.supervisedStop();
+    } catch (error) {
+      job.termination = undefined;
+      throw toError(error);
+    }
+    await this.settleAdmission(job);
     let completionFailure: Error | undefined;
     if (completion) {
       try {
@@ -502,12 +513,6 @@ export class VideoJobManager {
         completionFailure = toError(error);
       }
       if (job.terminalAtMs !== undefined) return;
-    }
-    try {
-      await job.supervisedStop();
-    } catch (error) {
-      job.termination = undefined;
-      throw toError(error);
     }
     try {
       this.removeTransientArtifact(job);
@@ -520,6 +525,15 @@ export class VideoJobManager {
       return;
     }
     this.finishDisposition(job, disposition);
+  }
+
+  private async settleAdmission(job: StoredJob): Promise<void> {
+    try {
+      const admission = await job.admissionPromise;
+      if (admission) job.admission = admission;
+    } catch (error) {
+      if (!job.controller.signal.aborted) throw toError(error);
+    }
   }
 
   private finishDisposition(
@@ -645,7 +659,7 @@ export class VideoJobManager {
     if (job.terminalAtMs !== undefined) return;
     job.terminalAtMs = this.now();
     job.deadlineController.abort();
-    job.admission.release();
+    job.admission?.release();
     if (this.active === job) this.active = undefined;
     const snapshot = this.snapshot(job);
     job.resolveTerminal(snapshot);

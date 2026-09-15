@@ -2404,8 +2404,12 @@ export async function runServe(
         ownerId: credential.ownerId,
         jobs: videoJobs,
         admissionProvider: {
-          admit: async (modelId) => {
-            const selection = await reconciler.admitModel("video", modelId);
+          admit: async (modelId, signal) => {
+            const selection = await reconciler.admitModel(
+              "video",
+              modelId,
+              signal,
+            );
             if (selection.kind !== "admitted") return selection;
             return {
               kind: "admitted",

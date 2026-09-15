@@ -23,12 +23,14 @@ type VideoJobs = Pick<
 type VideoAdmission = Readonly<{
   ready: RuntimeAdmission["ready"];
   release: RuntimeAdmission["release"];
+  cancel: RuntimeAdmission["cancel"];
   supervisor: Pick<RuntimeAdmission["supervisor"], "kill">;
 }>;
 
 export type VideoModelAdmissionProvider = Readonly<{
   admit: (
     modelId: string,
+    signal: AbortSignal,
   ) => Promise<
     | Readonly<{ kind: "admitted"; admission: VideoAdmission }>
     | Readonly<{ kind: "not-configured" | "model-not-found" | "unavailable" }>
@@ -107,8 +109,10 @@ export async function handleVideoGatewayRequest(
   }
 
   if (request.method !== "POST") return dependencies.methodNotAllowed("POST");
+  if (request.signal.aborted) return dependencies.requestAborted();
   const parsed = await dependencies.parseCreateRequest();
   if (!parsed.success) return parsed.response;
+  if (request.signal.aborted) return dependencies.requestAborted();
   const spec = byId(parsed.data.model);
   if (!spec || spec.kind !== "video" || !spec.videoRuntime) {
     return dependencies.modelNotFound(parsed.data.model);
@@ -126,13 +130,18 @@ export async function handleVideoGatewayRequest(
     const started = await jobs.start({
       ownerId: dependencies.ownerId,
       input: videoInput,
-      acquireAdmission: async () => {
+      acquireAdmission: async ({ signal }) => {
         selection = await dependencies.admissionProvider.admit(
           parsed.data.model,
+          signal,
         );
         if (selection.kind !== "admitted") return undefined;
         try {
-          await selection.admission.ready;
+          await waitForVideoAdmissionReady(
+            selection.admission.ready,
+            signal,
+            selection.admission.cancel,
+          );
           return selection.admission;
         } catch (error) {
           selection.admission.release();
@@ -199,4 +208,32 @@ function videoJobBusy(): Response {
     }),
     { status: 429, headers: { "Retry-After": "1" } },
   );
+}
+
+async function waitForVideoAdmissionReady(
+  ready: Promise<void>,
+  signal: AbortSignal,
+  cancel: () => void,
+): Promise<void> {
+  if (signal.aborted) {
+    cancel();
+    throw new RuntimeRequestAbortedError();
+  }
+  await new Promise<void>((resolve, reject) => {
+    const abort = () => {
+      cancel();
+      reject(new RuntimeRequestAbortedError());
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    void ready.then(
+      () => {
+        signal.removeEventListener("abort", abort);
+        resolve();
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      },
+    );
+  });
 }
