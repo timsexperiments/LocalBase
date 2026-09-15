@@ -376,9 +376,10 @@ describe("catalog artifact validation", () => {
   });
 
   test("pins the complete Qwen3 TTS base artifact set", () => {
-    const tts = CATALOG.find(
+    const catalogTts = CATALOG.find(
       ({ modelId }) => modelId === "qwen3-tts-1.7b-base-q4_k_m",
     );
+    const tts = catalogTts && structuredClone(catalogTts);
     expect(tts).toMatchObject({
       kind: "tts",
       repositoryRevision: "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
