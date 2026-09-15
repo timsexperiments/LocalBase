@@ -1904,6 +1904,7 @@ export async function runServe(
     stt: input.stt ?? config.selectedSttModels.length > 0,
     tts: input.tts ?? config.selectedTtsModels.length > 0,
     image: input.image ?? config.selectedImageModels.length > 0,
+    video: input.video ?? config.selectedVideoModels.length > 0,
   };
 
   if (enabled.stt && !config.activeSttModel) {
@@ -1914,6 +1915,11 @@ export async function runServe(
   if (enabled.image && !config.activeImageModel) {
     throw new Error(
       "Image modality is enabled but no active Image model is configured. Run `local-base configure` first.",
+    );
+  }
+  if (enabled.video && !config.activeVideoModel) {
+    throw new Error(
+      "Video modality is enabled but no active Video model is configured. Run `local-base configure` first.",
     );
   }
   if (enabled.tts && !config.activeTtsModel) {
@@ -2089,7 +2095,13 @@ export async function runServe(
     imageModelExists = true;
   }
 
-  if (!enabled.llm && !enabled.stt && !enabled.tts && !enabled.image) {
+  if (
+    !enabled.llm &&
+    !enabled.stt &&
+    !enabled.tts &&
+    !enabled.image &&
+    !enabled.video
+  ) {
     throw new CliInputError(
       "No modalities enabled. Remove at least one --no-<modality> option.",
     );
@@ -2131,6 +2143,7 @@ export async function runServe(
       ...(input.stt === undefined ? {} : { stt: input.stt }),
       ...(input.tts === undefined ? {} : { tts: input.tts }),
       ...(input.image === undefined ? {} : { image: input.image }),
+      ...(input.video === undefined ? {} : { video: input.video }),
     },
   };
   const launchOverrides = Object.freeze({
@@ -2167,6 +2180,9 @@ export async function runServe(
     ...(enabled.tts ? { tts: factory.create("tts", initialSnapshot) } : {}),
     ...(enabled.image
       ? { image: factory.create("image", initialSnapshot) }
+      : {}),
+    ...(enabled.video
+      ? { video: factory.create("video", initialSnapshot) }
       : {}),
   });
   const reconciler = new RuntimeReconciler(

@@ -3,6 +3,7 @@ import {
   resolveImageLaunchPlan,
   resolveLlmLaunchPlan,
   resolveSttLaunchPlan,
+  resolveVideoLaunchPlan,
 } from "./launch-plan";
 import { SupervisorRegistry } from "./supervisor-registry";
 
@@ -94,6 +95,67 @@ describe("runtime launch plans", () => {
         },
       },
     },
+    {
+      name: "video",
+      resolve: () =>
+        resolveVideoLaunchPlan({
+          runtimeId: "video:model:1",
+          root,
+          modelsDirectory: `${root}/models/video`,
+          modelId: "model",
+          diffusionModelFile: "diffusion.gguf",
+          textEncoderFile: "encoder.gguf",
+          vaeFile: "vae.safetensors",
+          host: "127.0.0.1",
+          port: 8091,
+          videoRuntime: {
+            artifacts: {
+              diffusionModel: "diffusion.gguf",
+              textEncoder: "encoder.gguf",
+              vae: "vae.safetensors",
+            },
+            qualification: {
+              maxWidth: 320,
+              maxHeight: 320,
+              maxFrames: 33,
+              generation: {
+                sampler: "euler",
+                steps: 20,
+                cfgScale: 6,
+                seed: 42,
+              },
+              launchOptions: {
+                cpuOffload: true,
+                diffusionFlashAttention: true,
+              },
+            },
+            estimatedMemoryDemand: {
+              unifiedBytes: 16 * 1024 ** 3,
+              hostBytes: 8 * 1024 ** 3,
+              acceleratorBytes: 5 * 1024 ** 3,
+            },
+            supportedPlatforms: ["linux"],
+          },
+          platform: "linux",
+        }),
+      expected: {
+        modality: "video",
+        component: "sd-server",
+        diffusionModelPath: `${root}/models/video/diffusion.gguf`,
+        textEncoderPath: `${root}/models/video/encoder.gguf`,
+        vaePath: `${root}/models/video/vae.safetensors`,
+        inputBounds: { maxWidth: 320, maxHeight: 320, maxFrames: 33 },
+        generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        healthUrl: "http://127.0.0.1:8091/",
+        memoryDemand: {
+          unifiedBytes: 16 * 1024 ** 3,
+          hostBytes: 8 * 1024 ** 3,
+          acceleratorBytes: 5 * 1024 ** 3,
+          confidence: "estimated",
+        },
+      },
+    },
   ])("resolves $name launch settings without I/O", ({ resolve, expected }) => {
     expect(resolve()).toMatchObject(expected);
   });
@@ -125,6 +187,51 @@ describe("runtime launch plans", () => {
       isAuto: true,
       contextPerSlot: 2048,
     });
+  });
+
+  test("rejects video admission on an unsupported platform", () => {
+    expect(() =>
+      resolveVideoLaunchPlan({
+        runtimeId: "video:model:1",
+        root,
+        modelsDirectory: `${root}/models/video`,
+        modelId: "model",
+        diffusionModelFile: "diffusion.gguf",
+        textEncoderFile: "encoder.gguf",
+        vaeFile: "vae.safetensors",
+        host: "127.0.0.1",
+        port: 8091,
+        platform: "darwin",
+        videoRuntime: {
+          artifacts: {
+            diffusionModel: "diffusion.gguf",
+            textEncoder: "encoder.gguf",
+            vae: "vae.safetensors",
+          },
+          qualification: {
+            maxWidth: 320,
+            maxHeight: 320,
+            maxFrames: 33,
+            generation: {
+              sampler: "euler",
+              steps: 20,
+              cfgScale: 6,
+              seed: 42,
+            },
+            launchOptions: {
+              cpuOffload: true,
+              diffusionFlashAttention: true,
+            },
+          },
+          estimatedMemoryDemand: {
+            unifiedBytes: 16 * 1024 ** 3,
+            hostBytes: 8 * 1024 ** 3,
+            acceleratorBytes: 5 * 1024 ** 3,
+          },
+          supportedPlatforms: ["linux"],
+        },
+      }),
+    ).toThrow("does not support darwin runtime admission");
   });
 });
 

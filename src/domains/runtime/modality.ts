@@ -1,4 +1,10 @@
-export const runtimeModalities = ["llm", "stt", "tts", "image"] as const;
+export const runtimeModalities = [
+  "llm",
+  "stt",
+  "tts",
+  "image",
+  "video",
+] as const;
 
 export type RuntimeModality = (typeof runtimeModalities)[number];
 
@@ -10,4 +16,5 @@ export const modalityComponents: Record<RuntimeModality, RuntimeComponent> = {
   stt: "whisper-server",
   tts: "llama-tts",
   image: "sd-server",
+  video: "sd-server",
 };

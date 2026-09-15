@@ -31,6 +31,7 @@ const gatewayHealthBaseSchema = z
         stt: gatewayModalityHealthSchema,
         tts: gatewayModalityHealthSchema,
         image: gatewayModalityHealthSchema,
+        video: gatewayModalityHealthSchema,
       })
       .strict(),
   })

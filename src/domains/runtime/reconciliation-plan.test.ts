@@ -22,6 +22,7 @@ function snapshot(
   Object.freeze(config.selectedSttModels);
   Object.freeze(config.selectedTtsModels);
   Object.freeze(config.selectedImageModels);
+  Object.freeze(config.selectedVideoModels);
   return Object.freeze({ revision, config: Object.freeze(config) });
 }
 
@@ -43,6 +44,7 @@ test("assigns every persisted configuration field to one reconciliation owner", 
     sttModelsDir: "restart-required",
     ttsModelsDir: "restart-required",
     imageModelsDir: "restart-required",
+    videoModelsDir: "restart-required",
     host: "llm-launch",
     port: "llm-launch",
     ctxSize: "llm-launch",
@@ -52,10 +54,12 @@ test("assigns every persisted configuration field to one reconciliation owner", 
     selectedSttModels: "modality-selection-request-scoped",
     selectedTtsModels: "modality-selection-request-scoped",
     selectedImageModels: "modality-selection-request-scoped",
+    selectedVideoModels: "modality-selection-request-scoped",
     activeLlmModel: "llm-launch",
     activeSttModel: "stt-launch",
     activeTtsModel: "tts-launch",
     activeImageModel: "image-launch",
+    activeVideoModel: "video-launch",
     hfToken: "modality-selection-request-scoped",
     parallel: "llm-launch",
     otelEndpoint: "observability",
@@ -85,6 +89,7 @@ test("requires a gateway restart for restart-required configuration", () => {
       "sttModelsDir",
       "ttsModelsDir",
       "imageModelsDir",
+      "videoModelsDir",
     ],
   });
   expect(plan.modalities.llm.action).toBe("unchanged");

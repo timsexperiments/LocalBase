@@ -15,7 +15,7 @@ export function runRecommend(
   execution: CommandExecution,
 ): {
   data: {
-    kind: "llm" | "stt" | "tts" | "image";
+    kind: "llm" | "stt" | "tts" | "image" | "video";
     vramGb: number;
     models: ModelSpec[];
   };
@@ -23,14 +23,14 @@ export function runRecommend(
   const kind = input.kind ?? "llm";
   const vram = input.vram ?? ctx.specs.gpuVramGb;
 
-  let picks = [];
+  let picks: ModelSpec[] = [];
   if (kind === "llm") {
     picks = recommendedForVram(vram);
   } else if (kind === "stt") {
     picks = recommendedSttForVram(vram);
   } else if (kind === "tts") {
     picks = recommendedTtsForVram(vram);
-  } else {
+  } else if (kind === "image") {
     picks = recommendedImageForVram(vram);
   }
 

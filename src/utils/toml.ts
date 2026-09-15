@@ -31,11 +31,15 @@ const configOverridesSchema = z
     selectedSttModels: selectedModelsSchema("stt", false).optional(),
     selectedTtsModels: selectedModelsSchema("tts", false).optional(),
     selectedImageModels: selectedModelsSchema("image", false).optional(),
+    selectedVideoModels: selectedModelsSchema("video", false).optional(),
     activeLlmModel: modelIdSchema("llm").optional(),
     activeSttModel: z.union([z.literal(""), modelIdSchema("stt")]).optional(),
     activeTtsModel: z.union([z.literal(""), modelIdSchema("tts")]).optional(),
     activeImageModel: z
       .union([z.literal(""), modelIdSchema("image")])
+      .optional(),
+    activeVideoModel: z
+      .union([z.literal(""), modelIdSchema("video")])
       .optional(),
     hfToken: z.string().optional(),
     otelEndpoint: z.union([z.literal(""), otelEndpointSchema]).optional(),

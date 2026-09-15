@@ -42,7 +42,7 @@ export const PARALLEL_SLOTS_PROMPT =
 
 function validateExternalModelList(
   modelIds: string[] | undefined,
-  kind: "llm" | "stt" | "tts" | "image",
+  kind: "llm" | "stt" | "tts" | "image" | "video",
 ): string[] | undefined {
   try {
     return validateModelList(modelIds, kind);
@@ -59,10 +59,12 @@ function validateComposedModelConfiguration(config: LocalBaseConfig): void {
     selectedSttModels: config.selectedSttModels,
     selectedTtsModels: config.selectedTtsModels,
     selectedImageModels: config.selectedImageModels,
+    selectedVideoModels: config.selectedVideoModels,
     activeLlmModel: config.activeLlmModel,
     activeSttModel: config.activeSttModel,
     activeTtsModel: config.activeTtsModel,
     activeImageModel: config.activeImageModel,
+    activeVideoModel: config.activeVideoModel,
   });
   if (!result.success) throw new CliInputError(formatZodError(result.error));
 }
@@ -456,10 +458,12 @@ export async function runConfigure(
   const sttFromFlags = validateExternalModelList(flags.sttModels, "stt");
   const ttsFromFlags = validateExternalModelList(flags.ttsModels, "tts");
   const imageFromFlags = validateExternalModelList(flags.imageModels, "image");
+  const videoFromFlags = validateExternalModelList(flags.videoModels, "video");
   const llmFromToml = rawToml.selectedLlmModels;
   const sttFromToml = rawToml.selectedSttModels;
   const ttsFromToml = rawToml.selectedTtsModels;
   const imageFromToml = rawToml.selectedImageModels;
+  const videoFromToml = rawToml.selectedVideoModels;
   const parallelFromFlag = flags.parallel;
   const parallelInput = parallelFromFlag ?? rawToml.parallel;
   const parallel =
@@ -474,6 +478,8 @@ export async function runConfigure(
     ttsFromFlags ?? ttsFromToml ?? config.selectedTtsModels;
   const selectedImageModels =
     imageFromFlags ?? imageFromToml ?? config.selectedImageModels;
+  const selectedVideoModels =
+    videoFromFlags ?? videoFromToml ?? config.selectedVideoModels;
   const activeLlmModel =
     flags.activeLlm ??
     rawToml.activeLlmModel ??
@@ -498,6 +504,12 @@ export async function runConfigure(
     (selectedImageModels.includes(config.activeImageModel)
       ? config.activeImageModel
       : (selectedImageModels[0] ?? ""));
+  const activeVideoModel =
+    flags.activeVideo ??
+    rawToml.activeVideoModel ??
+    (selectedVideoModels.includes(config.activeVideoModel)
+      ? config.activeVideoModel
+      : (selectedVideoModels[0] ?? ""));
 
   const locked = new Set<keyof LocalBaseConfig>();
   const maybeLock = (key: keyof LocalBaseConfig, value: unknown): void => {
@@ -515,10 +527,12 @@ export async function runConfigure(
   maybeLock("selectedSttModels", sttFromFlags ?? sttFromToml);
   maybeLock("selectedTtsModels", ttsFromFlags ?? ttsFromToml);
   maybeLock("selectedImageModels", imageFromFlags ?? imageFromToml);
+  maybeLock("selectedVideoModels", videoFromFlags ?? videoFromToml);
   maybeLock("activeLlmModel", flags.activeLlm ?? rawToml.activeLlmModel);
   maybeLock("activeSttModel", flags.activeStt ?? rawToml.activeSttModel);
   maybeLock("activeTtsModel", flags.activeTts ?? rawToml.activeTtsModel);
   maybeLock("activeImageModel", flags.activeImage ?? rawToml.activeImageModel);
+  maybeLock("activeVideoModel", flags.activeVideo ?? rawToml.activeVideoModel);
   maybeLock("hfToken", flags.hfToken ?? rawToml.hfToken);
   maybeLock("otelEndpoint", flags.otelEndpoint ?? rawToml.otelEndpoint);
   maybeLock("otelHeaders", flags.otelHeaders ?? rawToml.otelHeaders);
@@ -552,10 +566,12 @@ export async function runConfigure(
     selectedSttModels,
     selectedTtsModels,
     selectedImageModels,
+    selectedVideoModels,
     activeLlmModel,
     activeSttModel,
     activeTtsModel,
     activeImageModel,
+    activeVideoModel,
     hfToken:
       flags.hfToken ??
       rawToml.hfToken ??
@@ -616,6 +632,9 @@ export async function runConfigure(
   );
   execution.output.info(
     `Selected Image models: ${config.selectedImageModels.join(", ")}`,
+  );
+  execution.output.info(
+    `Selected Video models: ${config.selectedVideoModels.join(", ")}`,
   );
 
   const hasAnyKeys = loadApiKeys(ctx.database, config).some(
