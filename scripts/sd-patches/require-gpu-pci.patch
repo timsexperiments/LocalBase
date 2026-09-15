@@ -1,3 +1,12 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5dd3154..ca78e61 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -116,3 +116,4 @@ if (SD_VULKAN)
+     message("-- Use Vulkan as backend stable-diffusion")
+     set(GGML_VULKAN ON)
++    add_compile_definitions(LOCALBASE_SD_VULKAN)
+ endif ()
 diff --git a/examples/common/common.h b/examples/common/common.h
 index 6ac7138..5ae2821 100644
 --- a/examples/common/common.h
@@ -25,12 +34,20 @@ index 38eaaca..f75dc35 100644
 +         &require_gpu_pci},
          {"",
           "--params-backend",
-@@ -817,1 +823,26 @@ bool SDContextParams::resolve(SDMode mode) {
+@@ -817,1 +823,35 @@ bool SDContextParams::resolve(SDMode mode) {
 +    if (!require_gpu_pci.empty()) {
 +        if (!backend.empty()) {
 +            LOG_ERROR("error: --require-gpu-pci conflicts with --backend");
 +            return false;
 +        }
++        if (!localbase_valid_gpu_pci(require_gpu_pci)) {
++            LOG_ERROR("error: --require-gpu-pci requires one canonical lowercase PCI address DDDD:BB:DD.F");
++            return false;
++        }
++#ifndef LOCALBASE_SD_VULKAN
++        LOG_ERROR("error: --require-gpu-pci requires exactly one matching discrete Vulkan GPU");
++        return false;
++#else
 +        // Load dynamic backends before matching the monitored hardware identity.
 +        sd_list_devices(nullptr, 0);
 +        std::vector<LocalBaseGpuDevice> devices;
@@ -49,6 +66,7 @@ index 38eaaca..f75dc35 100644
 +            LOG_ERROR("error: %s", error.c_str());
 +            return false;
 +        }
++#endif
 +    }
 +
      return true;
