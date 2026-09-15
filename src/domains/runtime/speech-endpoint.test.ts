@@ -63,7 +63,8 @@ describe("OpenAI speech endpoint", () => {
     for (const [overrides, expected] of [
       [{ response_format: undefined }, "response_format"],
       [{ response_format: "mp3" }, "explicitly set to 'wav'"],
-      [{ voice: "alloy" }, "voice must be 'default'"],
+      [{ voice: "alloy" }, "Invalid option"],
+      [{ voice: "../../private/reference.wav" }, "Invalid option"],
       [{ speed: 1.25 }, "speed must be 1"],
       [{ instructions: "Whisper" }, "instructions are not supported"],
       [{ input: "x".repeat(257) }, "256 characters"],
@@ -101,8 +102,7 @@ describe("OpenAI speech endpoint", () => {
 
     expect(result.audio.mediaType).toBe("audio/wav");
     expect(validateSpeechWav(result.audio.uint8Array).sampleCount).toBe(3_840);
-    const events = await gateway.readTtsRuntimeEvents();
-    const started = events.find(({ event }) => event === "started");
+    const started = await gateway.waitForTtsRuntimeEvent("started");
     expect(started?.promptLength).toBe(22);
     expect(started?.args).not.toContain("Hello from the AI SDK.");
     expect(started?.args).toEqual(
@@ -111,6 +111,7 @@ describe("OpenAI speech endpoint", () => {
     expect(started?.args).toEqual(
       expect.arrayContaining(["-mm", expect.stringContaining("Q8_0.gguf")]),
     );
+    expect(started?.args).not.toContain("--tts-speaker-file");
     const event = await waitForLogEvent(
       gateway,
       (candidate) =>
@@ -124,6 +125,28 @@ describe("OpenAI speech endpoint", () => {
       http_status: 200,
     });
     expect(event.attributes).not.toHaveProperty("total_tokens");
+  });
+
+  test("resolves named catalog voices without accepting paths", async () => {
+    if (!gateway.apiKey) throw new Error("Expected fixture API key.");
+    const response = await fetch(`${gateway.baseUrl}/v1/audio/speech`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${gateway.apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(speechBody({ voice: "harbor" })),
+    });
+    expect(response.status).toBe(200);
+    await response.arrayBuffer();
+    const started = await gateway.waitForTtsRuntimeEvent("started");
+    expect(started.args).toEqual(
+      expect.arrayContaining([
+        "--tts-speaker-file",
+        expect.stringMatching(/qwen3-tts-harbor\.wav$/),
+      ]),
+    );
+    expect(started.args?.join(" ")).not.toContain("../../");
   });
 });
 
