@@ -49,6 +49,8 @@ jobs:
           grep -q 'libvulkan.so.1' <<<"$ldd_output"
           ! grep -Eq 'libwebp|libwebm|libggml' <<<"$ldd_output"
           build-sd-server/sd-server --help >/dev/null
+          strings build-sd-server/sd-server | grep -Fxq 'inline_wav_audio'
+          strings build-sd-server/sd-server | grep -Fxq 'WAV must contain PCM16 or IEEE float32 samples'
       - name: Package and qualify canonical archive
         run: |
           tar -czf sd-server-linux-x64.tar.gz -C build-sd-server \
@@ -83,6 +85,8 @@ jobs:
           grep -Fxq 'SD_METAL:BOOL=ON' build-sd-server/build/CMakeCache.txt
           ! otool -L build-sd-server/sd-server | grep -Eq 'libwebp|libwebm|libggml'
           build-sd-server/sd-server --help >/dev/null
+          strings build-sd-server/sd-server | grep -Fxq 'inline_wav_audio'
+          strings build-sd-server/sd-server | grep -Fxq 'WAV must contain PCM16 or IEEE float32 samples'
       - name: Package canonical archive
         run: |
           cd build-sd-server

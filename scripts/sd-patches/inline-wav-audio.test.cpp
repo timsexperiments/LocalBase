@@ -88,6 +88,19 @@ int main() {
     assert(job_owned.front().get().sample_count == 3);
     assert(job_owned.front().get().data[0] == -1.0f);
 
+    const std::vector<float> float_values = {-1.0f, -0.25f, 0.5f, 1.0f};
+    std::vector<uint8_t> float_samples(float_values.size() * sizeof(float));
+    std::memcpy(float_samples.data(), float_values.data(), float_samples.size());
+    error.clear();
+    assert(parse_inline_wav(input(wav(3, 2, 16000, 32, float_samples)), audio, error));
+    view = audio.get();
+    assert(view.sample_rate == 16000);
+    assert(view.channels == 2);
+    assert(view.sample_count == 4);
+    for (size_t index = 0; index < float_values.size(); ++index) {
+        assert(view.data[index] == float_values[index]);
+    }
+
     error.clear();
     assert(!parse_inline_wav("/tmp/client.wav", audio, error));
     assert(error.find("audio must be") != std::string::npos);
