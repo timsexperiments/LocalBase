@@ -523,6 +523,51 @@ describe("catalog artifact validation", () => {
     });
   });
 
+  test("pins the experimental Wan Q8 video bundle and bounded launch profile", () => {
+    expect(byId("wan2.1-t2v-1.3b-q8_0")).toMatchObject({
+      kind: "video",
+      repositoryRevision: "5a512b15fc35d1b67a074cfe55a591be9e9ef9b5",
+      artifacts: [
+        {
+          expectedSizeBytes: 1_535_768_800,
+          sha256:
+            "30a44f695b4275a915810120360d6fd26152ec303c2226b5152ec33a93c380e4",
+          role: "primary",
+        },
+        {
+          expectedSizeBytes: 6_043_068_256,
+          sha256:
+            "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+          role: "supplementary",
+        },
+        {
+          expectedSizeBytes: 253_815_318,
+          sha256:
+            "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+          role: "supplementary",
+        },
+      ],
+      videoRuntime: {
+        qualification: {
+          maxWidth: 320,
+          maxHeight: 320,
+          maxFrames: 33,
+          fps: 16,
+          generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+          launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        },
+        estimatedMemoryDemand: {
+          unifiedBytes: 24 * 1024 ** 3,
+          hostBytes: 16 * 1024 ** 3,
+          acceleratorBytes: 8 * 1024 ** 3,
+        },
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
+      },
+    });
+  });
+
   test("uses model source by default and a pinned override for supplementary artifacts", () => {
     const parsed = catalogSchema.parse([
       model([
