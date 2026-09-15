@@ -109,8 +109,23 @@ describe("authenticated model metadata endpoints", () => {
         kind: "speech",
         outputFormats: ["wav"],
         voice: {
-          selection: "runtime-default",
-          requestValue: "default",
+          selection: "catalog-reference",
+          requestValues: ["default", "harbor", "willow"],
+          defaultRequestValue: "default",
+          references: [
+            {
+              name: "harbor",
+              license: "CC0-1.0",
+              provenanceUrl:
+                "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations",
+            },
+            {
+              name: "willow",
+              license: "CC0-1.0",
+              provenanceUrl:
+                "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations",
+            },
+          ],
         },
         residency: "cold-per-request",
       },

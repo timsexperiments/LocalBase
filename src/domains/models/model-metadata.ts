@@ -1,7 +1,9 @@
 import { z } from "zod";
 import {
   modelModalitySchema,
+  referenceSpeechVoiceSchema,
   resolveCatalogInstallation,
+  speechVoiceSchema,
   type ModelKind,
   type ModelSpec,
 } from "../../catalog";
@@ -45,8 +47,18 @@ export const modelMetadataSchema = z
             outputFormats: z.tuple([z.literal("wav")]),
             voice: z
               .object({
-                selection: z.literal("runtime-default"),
-                requestValue: z.literal("default"),
+                selection: z.literal("catalog-reference"),
+                requestValues: z.array(speechVoiceSchema).min(1),
+                defaultRequestValue: z.literal("default"),
+                references: z.array(
+                  z
+                    .object({
+                      name: referenceSpeechVoiceSchema,
+                      license: z.literal("CC0-1.0"),
+                      provenanceUrl: z.string().url(),
+                    })
+                    .strict(),
+                ),
               })
               .strict(),
             residency: z.literal("cold-per-request"),
@@ -175,8 +187,21 @@ export function projectModelMetadata(
               kind: "speech",
               outputFormats: ["wav"],
               voice: {
-                selection: "runtime-default",
-                requestValue: "default",
+                selection: "catalog-reference",
+                requestValues: [
+                  "default",
+                  ...(model.ttsRuntime?.referenceVoices ?? []).map(
+                    ({ name }) => name,
+                  ),
+                ],
+                defaultRequestValue: "default",
+                references: (model.ttsRuntime?.referenceVoices ?? []).map(
+                  ({ name, license, provenanceUrl }) => ({
+                    name,
+                    license,
+                    provenanceUrl,
+                  }),
+                ),
               },
               residency: "cold-per-request",
             }
