@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { RuntimeAdmission } from "../runtime-reconciler";
 
@@ -122,7 +122,7 @@ type StoredJob = {
   terminal: Promise<VideoJob>;
   terminalAtMs: number | undefined;
   artifact: VideoJobArtifact | undefined;
-  transientArtifactBytes: number | undefined;
+  pendingArtifactBytes: number | undefined;
   failure: Error | undefined;
   cancellationReason:
     "backend" | "cancelled" | "deadline" | "shutdown" | undefined;
@@ -326,7 +326,7 @@ export class VideoJobManager {
       terminal,
       terminalAtMs: undefined,
       artifact: undefined,
-      transientArtifactBytes: undefined,
+      pendingArtifactBytes: undefined,
       failure: undefined,
       cancellationReason: undefined,
       termination: undefined,
@@ -534,6 +534,7 @@ export class VideoJobManager {
       );
     }
     this.makeRoomForArtifact(media.bytes.byteLength);
+    job.pendingArtifactBytes = media.bytes.byteLength;
     const path = join(job.directory, "artifact");
     await this.writeArtifact({ path, bytes: media.bytes });
     chmodSync(path, 0o600);
@@ -548,16 +549,7 @@ export class VideoJobManager {
 
   private removeTransientArtifact(job: StoredJob): void {
     const path = join(job.directory, "artifact");
-    try {
-      rmSync(path, { force: true });
-    } catch (error) {
-      try {
-        job.transientArtifactBytes = statSync(path).size;
-      } catch {
-        job.transientArtifactBytes = 0;
-      }
-      throw toError(error);
-    }
+    rmSync(path, { force: true });
   }
 
   private makeRoomForArtifact(byteLength: number): void {
@@ -685,14 +677,14 @@ export class VideoJobManager {
   private artifactBytes(): number {
     return this.terminalJobs().reduce(
       (total, job) =>
-        total + (job.artifact?.byteLength ?? job.transientArtifactBytes ?? 0),
+        total + (job.artifact?.byteLength ?? job.pendingArtifactBytes ?? 0),
       0,
     );
   }
 
   private remove(job: StoredJob): void {
-    this.jobs.delete(job.id);
     rmSync(job.directory, { recursive: true, force: true });
+    this.jobs.delete(job.id);
   }
 }
 
