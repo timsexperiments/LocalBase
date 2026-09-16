@@ -229,6 +229,7 @@ export async function waitForLogEvent(
 }
 
 export type GatewayFixtureOptions = {
+  workingDirectory?: string;
   auth?: { mode?: "bearer" | "x-api-key" | "either" };
   gatewayHost?: string;
   inferenceQueueCapacity?: number;
@@ -1786,7 +1787,7 @@ export async function startGatewayFixture(
         "--bypass-memory-check",
       ],
       {
-        cwd: PROJECT_ROOT,
+        cwd: options.workingDirectory ?? PROJECT_ROOT,
         env: {
           ...process.env,
           PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,

@@ -1,7 +1,9 @@
 import { join } from "node:path";
+import { buildUi } from "../../scripts/build-ui";
 
 const outfile = process.argv[2];
 if (!outfile) throw new Error("Expected a gateway fixture output path.");
+await buildUi();
 const result = await Bun.build({
   entrypoints: [join(import.meta.dir, "../cli.ts")],
   target: "bun",
