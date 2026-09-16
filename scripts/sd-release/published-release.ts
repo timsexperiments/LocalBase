@@ -198,7 +198,7 @@ export async function verifyPublishedSdRelease(
   const sourceDocument = z
     .object({
       sources: z.array(z.object({ name: z.string(), revision: z.string() })),
-      patch: z.object({ sha256: z.string() }),
+      patches: z.array(z.object({ name: z.string(), sha256: z.string() })),
     })
     .passthrough()
     .parse(JSON.parse(new TextDecoder().decode(sourceBytes)));
@@ -209,7 +209,7 @@ export async function verifyPublishedSdRelease(
     stableDiffusionRevision: sourceDocument.sources.find(
       ({ name }) => name === "stable-diffusion.cpp",
     )?.revision,
-    patchSha256: sourceDocument.patch.sha256,
+    patches: sourceDocument.patches,
   });
   const receipt = sdReleaseReceiptSchema.parse({
     version: 1,

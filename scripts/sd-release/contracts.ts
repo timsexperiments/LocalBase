@@ -18,7 +18,16 @@ export const sourceIdentitySchema = z
     stableDiffusionRevision: z.literal(
       "07a85c74cb08cda3aa176f688c5d8f522615e2b9",
     ),
-    patchSha256: sha256Schema,
+    patches: z.tuple([
+      z.object({
+        name: z.literal("inline-wav-audio.patch"),
+        sha256: sha256Schema,
+      }),
+      z.object({
+        name: z.literal("require-gpu-pci.patch"),
+        sha256: sha256Schema,
+      }),
+    ]),
   })
   .strict();
 
