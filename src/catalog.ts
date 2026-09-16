@@ -383,7 +383,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
     notes:
-      "Ultra-fast autocomplete baseline and tab completion model. This artifact did not emit protocol tool calls during forced qualification.",
+      "Autocomplete and tab completion model. Protocol tool calling is unsupported for this artifact.",
   },
   {
     modelId: "qwen2.5-coder-3b-instruct-q4_k_m",
@@ -1912,7 +1912,110 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0 licenses for the pinned artifacts.",
     notes:
-      "Experimental Linux x64 single-NVIDIA entry. Functionally qualified only at exactly 320x320, 33 frames, and 16 fps; it is not recommended as a quality claim.",
+      "Experimental Linux x64 single-NVIDIA text-to-video profile: exactly 320x320, 33 frames, and 16 fps. Output quality and motion vary.",
+  },
+  {
+    modelId: "wan2.2-s2v-14b-fp8",
+    kind: "video",
+    provider: "Wan/Comfy-Org",
+    family: "Wan2.2-S2V",
+    version: "2.2",
+    size: "14B",
+    quant: "FP8",
+    minVramGb: 12,
+    storageGb: 23.33,
+    source: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+    repositoryRevision: "c4f60d30c55a624e35427060fdd217579a6c1d77",
+    artifacts: [
+      {
+        sourcePath:
+          "split_files/diffusion_models/wan2.2_s2v_14B_fp8_scaled.safetensors",
+        filename: "wan2.2_s2v_14B_fp8_scaled.safetensors",
+        expectedSizeBytes: 16_394_832_474,
+        sha256:
+          "140e75af5534ac3d91e710d9df756f7032addd64b341ba2c1c70e3e6da9aa216",
+        role: "primary",
+      },
+      {
+        sourcePath: "umt5-xxl-encoder-Q8_0.gguf",
+        filename: "umt5-xxl-encoder-Q8_0.gguf",
+        expectedSizeBytes: 6_043_068_256,
+        sha256:
+          "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+          revision: "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7",
+        },
+      },
+      {
+        sourcePath: "split_files/vae/wan_2.1_vae.safetensors",
+        filename: "wan_2.1_vae.safetensors",
+        expectedSizeBytes: 253_815_318,
+        sha256:
+          "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+        role: "supplementary",
+        source: {
+          repositoryUrl:
+            "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          revision: "617a7633e636506f850e043bc4605f290a466a8e",
+        },
+      },
+      {
+        sourcePath:
+          "split_files/audio_encoders/wav2vec2_large_english_fp16.safetensors",
+        filename: "wav2vec2_large_english_fp16.safetensors",
+        expectedSizeBytes: 630_997_322,
+        sha256:
+          "f0017a43ea57ef6b3d4866be607844bbd8cada6d30966f7d70044ed0d63d3f9e",
+        role: "supplementary",
+      },
+    ],
+    videoRuntime: {
+      mode: "s2v",
+      artifacts: {
+        diffusionModel: "wan2.2_s2v_14B_fp8_scaled.safetensors",
+        textEncoder: "umt5-xxl-encoder-Q8_0.gguf",
+        decoder: { kind: "vae", artifactFilename: "wan_2.1_vae.safetensors" },
+        audioEncoder: "wav2vec2_large_english_fp16.safetensors",
+      },
+      qualification: {
+        maxWidth: 480,
+        maxHeight: 640,
+        maxFrames: 33,
+        fps: 16,
+        jobDeadlineMs: 30 * 60 * 1_000,
+        generation: {
+          sampler: "euler",
+          scheduler: "discrete",
+          steps: 20,
+          cfgScale: 6,
+          flowShift: 3,
+          seed: 42,
+        },
+        launchOptions: {
+          cpuOffload: true,
+          diffusionFlashAttention: true,
+          vaeConvDirect: false,
+        },
+      },
+      estimatedMemoryDemand: {
+        unifiedBytes: 41 * 1024 ** 3,
+        hostBytes: 32 * 1024 ** 3,
+        acceleratorBytes: 9 * 1024 ** 3,
+      },
+      supportedTargets: [
+        { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+      ],
+    },
+    inputModalities: ["text", "image", "audio"],
+    outputModalities: ["video"],
+    features: ["speech-to-video", "avi-output", "experimental"],
+    commercialStatus: "open",
+    catch:
+      "Apache-2.0 licenses for the pinned artifacts. Output audio is the supplied driving track, not generated speech.",
+    notes:
+      "Experimental Linux x64 single-NVIDIA portrait animation at exactly 480x640, 33 frames, and 16 fps. Requires a portrait and speech no longer than 2.0625 seconds. Lip-sync quality and longer clips are not qualified.",
   },
   {
     modelId: "fastwan2.2-ti2v-5b-q6_k",
@@ -2002,7 +2105,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
     notes:
-      "Linux x64 single-NVIDIA text-to-video profile: 480x832, 81 frames, 16 fps. Qualified on an RTX 4070 SUPER; no image-to-video, audio, or macOS qualification.",
+      "Experimental Linux x64 single-NVIDIA text-to-video profile: exactly 480x832, 81 frames, and 16 fps. Image-to-video, audio generation, and macOS are unsupported.",
   },
 ] satisfies ModelSpecInput[];
 

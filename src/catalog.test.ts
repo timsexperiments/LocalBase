@@ -547,7 +547,6 @@ describe("catalog artifact validation", () => {
     const qwen = byId("qwen2.5-coder-1.5b-instruct-q4_k_m");
 
     expect(qwen?.features).not.toContain("tool-calling");
-    expect(qwen?.notes).toContain("did not emit protocol tool calls");
   });
 
   test("pins the complete Qwen3 TTS base artifact set", () => {
@@ -719,6 +718,85 @@ describe("catalog artifact validation", () => {
       "https://huggingface.co/test/encoder/resolve/" +
         `${"d".repeat(40)}/encoder/model.safetensors`,
     );
+  });
+
+  test("pins the S2V speech encoder and bounds its full-VAE Linux profile", () => {
+    const speechVideo = byId("wan2.2-s2v-14b-fp8");
+    expect(speechVideo).toMatchObject({
+      repositoryRevision: "c4f60d30c55a624e35427060fdd217579a6c1d77",
+      inputModalities: ["text", "image", "audio"],
+      outputModalities: ["video"],
+      videoRuntime: {
+        mode: "s2v",
+        artifacts: {
+          decoder: { kind: "vae", artifactFilename: "wan_2.1_vae.safetensors" },
+          audioEncoder: "wav2vec2_large_english_fp16.safetensors",
+        },
+        qualification: {
+          maxWidth: 480,
+          maxHeight: 640,
+          maxFrames: 33,
+          fps: 16,
+          jobDeadlineMs: 1_800_000,
+          generation: {
+            sampler: "euler",
+            scheduler: "discrete",
+            steps: 20,
+            cfgScale: 6,
+            flowShift: 3,
+            seed: 42,
+          },
+          launchOptions: {
+            cpuOffload: true,
+            diffusionFlashAttention: true,
+            vaeConvDirect: false,
+          },
+        },
+        estimatedMemoryDemand: {
+          unifiedBytes: 41 * 1024 ** 3,
+          hostBytes: 32 * 1024 ** 3,
+          acceleratorBytes: 9 * 1024 ** 3,
+        },
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
+      },
+    });
+    expect(
+      speechVideo?.artifacts.find(({ role }) => role === "primary"),
+    ).toMatchObject({
+      sourcePath:
+        "split_files/diffusion_models/wan2.2_s2v_14B_fp8_scaled.safetensors",
+      expectedSizeBytes: 16_394_832_474,
+      sha256:
+        "140e75af5534ac3d91e710d9df756f7032addd64b341ba2c1c70e3e6da9aa216",
+    });
+    expect(
+      speechVideo?.artifacts.find(
+        ({ filename }) =>
+          filename === "wav2vec2_large_english_fp16.safetensors",
+      ),
+    ).toMatchObject({
+      sourcePath:
+        "split_files/audio_encoders/wav2vec2_large_english_fp16.safetensors",
+      expectedSizeBytes: 630_997_322,
+      sha256:
+        "f0017a43ea57ef6b3d4866be607844bbd8cada6d30966f7d70044ed0d63d3f9e",
+    });
+    for (const filename of [
+      "umt5-xxl-encoder-Q8_0.gguf",
+      "wan_2.1_vae.safetensors",
+    ]) {
+      expect(
+        speechVideo?.artifacts.find(
+          (artifact) => artifact.filename === filename,
+        ),
+      ).toEqual(
+        byId("wan2.1-t2v-1.3b-q8_0")?.artifacts.find(
+          (artifact) => artifact.filename === filename,
+        ),
+      );
+    }
   });
 
   test("pins the FastWan decoder, shared encoder, and measured Linux profile", () => {
