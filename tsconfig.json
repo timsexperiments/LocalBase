@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,
@@ -11,5 +12,5 @@
     "types": ["bun"],
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "scripts/*-contract.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/*-contract.ts"]
 }

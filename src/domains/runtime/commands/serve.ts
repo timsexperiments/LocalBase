@@ -68,6 +68,7 @@ import {
 } from "../speech-supervisor";
 import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
+import { playgroundResponse } from "../../../ui/static";
 import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
 import { VideoJobManager } from "../video/video-job-manager";
 import { logVideoJobTerminal } from "../video/video-job-logging";
@@ -2330,6 +2331,8 @@ export async function runServe(
     startedAt: number,
     requestAuth: GatewayRequestAuth,
   ): Promise<Response> => {
+    const playground = playgroundResponse(request, pathname);
+    if (playground) return playground;
     const route = selectGatewayRoute(pathname);
     const queueFailure = (error: unknown, modality: RuntimeModality) =>
       inferenceQueueError(error, {
