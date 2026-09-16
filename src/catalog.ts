@@ -1779,7 +1779,7 @@ const CATALOG_SOURCE = [
     version: "2.1",
     size: "1.3B",
     quant: "Q8_0",
-    minVramGb: 8,
+    minVramGb: 12,
     storageGb: 7.83,
     source: "https://huggingface.co/samuelchristlie/Wan2.1-T2V-1.3B-GGUF",
     repositoryRevision: "5a512b15fc35d1b67a074cfe55a591be9e9ef9b5",
@@ -1842,7 +1842,7 @@ const CATALOG_SOURCE = [
       estimatedMemoryDemand: {
         unifiedBytes: 24 * 1024 ** 3,
         hostBytes: 16 * 1024 ** 3,
-        acceleratorBytes: 8 * 1024 ** 3,
+        acceleratorBytes: 9 * 1024 ** 3,
       },
       supportedTargets: [
         { platform: "linux", architecture: "x64", accelerator: "nvidia" },
