@@ -14,6 +14,14 @@ Admission reserves estimated demands of 8 GiB accelerator and 16 GiB host memory
 
 The diffusion model and UMT5 encoder declare Apache-2.0; TAew2.2 uses MIT. All sources are pinned to commits. The tiny VAE's 22,848,048 bytes were verified against Git blob `9d0ef19504c0b918eb6a8efea1ed8596cf666400` at `madebyollin/taehv` commit `fa579a9a726b0a55951998d73e309bfdf0abd342`. Its catalog SHA-256, `b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325`, was measured from those verified bytes, not published by the model author.
 
+## Wan2.2 S2V 14B FP8
+
+`wan2.2-s2v-14b-fp8` is an experimental Linux x64 single-NVIDIA speech-to-video profile. It requires a 480x640 PNG portrait and a supported WAV no longer than 2.0625 seconds, producing exactly 33 frames at 16 fps. The profile uses Euler/discrete, 20 steps, CFG 6, flow shift 3, seed 42, UMT5 Q8, wav2vec2 FP16, and the full 16-channel Wan2.1 VAE. CPU offload and diffusion flash attention are enabled. All four artifacts are pinned and declare Apache-2.0.
+
+Admission reserves estimated demands of 9 GiB accelerator and 32 GiB host memory. The positive native GPU budget derives from the same 9 GiB demand. The 41 GiB unified estimate does not enable macOS or other unsupported targets. The gateway job deadline is 30 minutes, including admission, loading, generation, and artifact handling. Gateway qualification at this budget is pending.
+
+The AVI includes the supplied driving audio, not a generated voice. Lip-sync quality, longer clips, concurrent inference, and broader hardware support are not qualified.
+
 ## Wan2.1 T2V 1.3B Q8_0
 
 `wan2.1-t2v-1.3b-q8_0` is an experimental Linux x64 single-NVIDIA catalog profile, not a quality-qualified model. Functional qualification with all used artifacts verified is not established. Its configured text-to-video bounds are exactly 320x320, 33 frames, and 16 fps. Its generation profile is Euler/discrete, 20 steps, CFG 6, flow shift 3, and seed 42, with CPU offload and diffusion flash attention enabled.
