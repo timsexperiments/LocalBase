@@ -11,7 +11,7 @@ test.each([
     width: 320,
     height: 320,
     frames: 33,
-    scheduler: "default",
+    scheduler: "discrete",
     steps: 20,
     cfgScale: 6,
   },

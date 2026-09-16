@@ -121,7 +121,7 @@ describe("runtime launch plans", () => {
               fps: 16,
               generation: {
                 sampler: "euler",
-                scheduler: "default",
+                scheduler: "discrete",
                 steps: 20,
                 cfgScale: 6,
                 flowShift: 3,
@@ -162,7 +162,7 @@ describe("runtime launch plans", () => {
         inputBounds: { maxWidth: 320, maxHeight: 320, maxFrames: 33, fps: 16 },
         generation: {
           sampler: "euler",
-          scheduler: "default",
+          scheduler: "discrete",
           steps: 20,
           cfgScale: 6,
           flowShift: 3,
@@ -211,7 +211,7 @@ describe("runtime launch plans", () => {
           fps: 16,
           generation: {
             sampler: "euler",
-            scheduler: "default",
+            scheduler: "discrete",
             steps: 20,
             cfgScale: 6,
             flowShift: 3,
@@ -304,7 +304,7 @@ describe("runtime launch plans", () => {
             fps: 16,
             generation: {
               sampler: "euler",
-              scheduler: "default",
+              scheduler: "discrete",
               steps: 20,
               cfgScale: 6,
               flowShift: 3,

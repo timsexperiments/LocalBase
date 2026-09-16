@@ -77,7 +77,7 @@ describe("catalog artifact validation", () => {
           fps: 16,
           generation: {
             sampler: "euler",
-            scheduler: "default",
+            scheduler: "discrete",
             steps: 20,
             cfgScale: 6,
             flowShift: 3,
@@ -176,7 +176,7 @@ describe("catalog artifact validation", () => {
           fps: 16,
           generation: {
             sampler: "euler",
-            scheduler: "default",
+            scheduler: "discrete",
             steps: 20,
             cfgScale: 6,
             flowShift: 3,
@@ -631,7 +631,7 @@ describe("catalog artifact validation", () => {
           fps: 16,
           generation: {
             sampler: "euler",
-            scheduler: "default",
+            scheduler: "discrete",
             steps: 20,
             cfgScale: 6,
             flowShift: 3,

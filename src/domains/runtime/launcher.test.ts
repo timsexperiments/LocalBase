@@ -94,7 +94,7 @@ test.each(["vae", "tae"] as const)(
           fps: 16,
           generation: {
             sampler: "euler",
-            scheduler: "default",
+            scheduler: "discrete",
             steps: 20,
             cfgScale: 6,
             flowShift: 3,
@@ -167,7 +167,7 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
         fps: 16,
         generation: {
           sampler: "euler",
-          scheduler: "default",
+          scheduler: "discrete",
           steps: 20,
           cfgScale: 6,
           flowShift: 3,
@@ -237,7 +237,7 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
         fps: 16,
         generation: {
           sampler: "euler",
-          scheduler: "default",
+          scheduler: "discrete",
           steps: 20,
           cfgScale: 6,
           flowShift: 3,
@@ -426,7 +426,7 @@ describe.serial("sd-server GPU launch contract", () => {
             fps: 16,
             generation: {
               sampler: "euler",
-              scheduler: "default",
+              scheduler: "discrete",
               steps: 20,
               cfgScale: 6,
               flowShift: 3,

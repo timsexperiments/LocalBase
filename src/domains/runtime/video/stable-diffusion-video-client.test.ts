@@ -135,7 +135,7 @@ test("keeps native failure details out of job errors and emitted logs", async ()
   }
 });
 
-test.each(["default", "lcm"] as const)(
+test.each(["discrete", "lcm"] as const)(
   "submits, polls, and cancels with %s scheduler",
   async (scheduler) => {
     const requests: { method: string; path: string; body: unknown }[] = [];

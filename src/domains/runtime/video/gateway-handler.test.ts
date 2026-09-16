@@ -223,7 +223,7 @@ test("serves one owner’s completed local video through the typed route and del
       seed: 42,
       generation: {
         sampler: "euler",
-        scheduler: "default",
+        scheduler: "discrete",
         steps: 20,
         cfgScale: 6,
         flowShift: 3,

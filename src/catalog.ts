@@ -103,7 +103,7 @@ const videoWorkloadBoundsSchema = z
 const videoGenerationProfileSchema = z
   .object({
     sampler: z.literal("euler"),
-    scheduler: z.enum(["default", "lcm"]),
+    scheduler: z.enum(["discrete", "lcm"]),
     steps: z.number().int().positive(),
     cfgScale: z.number().positive(),
     flowShift: z.number().positive(),
@@ -1879,7 +1879,7 @@ const CATALOG_SOURCE = [
         fps: 16,
         generation: {
           sampler: "euler",
-          scheduler: "default",
+          scheduler: "discrete",
           steps: 20,
           cfgScale: 6,
           flowShift: 3,

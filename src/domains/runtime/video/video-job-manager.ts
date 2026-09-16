@@ -20,7 +20,7 @@ export type VideoJobInput = Readonly<{
   outputFormat?: "webm" | "webp" | "avi";
   generation?: Readonly<{
     sampler: "euler";
-    scheduler: "default" | "lcm";
+    scheduler: "discrete" | "lcm";
     steps: number;
     cfgScale: number;
     flowShift: number;
