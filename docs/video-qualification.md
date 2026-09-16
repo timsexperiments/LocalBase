@@ -1,6 +1,8 @@
 # Video support and limits
 
 Video generation is experimental. Wan 2.1 T2V 1.3B Q8_0 and FastWan 2.2 TI2V 5B Q6_K support macOS ARM64 unified memory and Linux x64 with one NVIDIA GPU. The [catalog](../src/catalog.ts) defines each model's input requirements, fixed output dimensions, frame count, frame rate, generation settings, memory estimates, and job deadline. macOS x64, multi-GPU video execution, and models without a matching target remain unsupported.
+Qualification evidence describes specific captured runs. Saved pre/post checksum receipts establish what those checks reported, not ongoing host or storage integrity. Hardware eligibility and memory estimates are not integrity guarantees.
+
 
 Text-to-video models produce silent video. Combining video with separately generated speech is client-side voiceover composition, not lip synchronization or native audio generation. Output quality and motion vary; concurrent inference and broader hardware support are not qualified.
 
@@ -25,7 +27,11 @@ Qualification is pending. Linux x64 with one NVIDIA GPU is required to validate 
 
 ## Wan2.1 T2V 1.3B Q8_0
 
-`wan2.1-t2v-1.3b-q8_0` is an experimental Linux x64 single-NVIDIA catalog profile, not a quality-qualified model. Functional qualification with all used artifacts verified is not established. Its configured text-to-video bounds are exactly 320x320, 33 frames, and 16 fps. Its generation profile is Euler/discrete, 20 steps, CFG 6, flow shift 3, and seed 42, with CPU offload and diffusion flash attention enabled.
+`wan2.1-t2v-1.3b-q8_0` is an experimental Linux x64 single-NVIDIA catalog profile, not a quality-qualified model. Its configured text-to-video bounds are exactly 320x320, 33 frames, and 16 fps. Its generation profile is Euler/discrete, 20 steps, CFG 6, flow shift 3, and seed 42, with CPU offload and diffusion flash attention enabled.
+
+A captured LocalBase `0658c7d` gateway run on an RTX 4070 SUPER completed this profile with a positive 9 GiB native budget. Saved pre/post checks matched all three model pins, and runtime hash assertions passed against the published `sd-server-v0.0.1` executable. The 33-frame, 2.0625-second AVI decoded fully and matched the native control's SHA-256: `d17405028ce16949d9b349f7b1150f6b3bf69128b91048c4b0f4bb9808470c14`. This establishes bounded functionality for that run, not repeatability on a host with unresolved integrity checks.
+
+Across 260 samples, whole-GPU use peaked at 6,119 MiB, free GPU memory stayed at or above 5,758 MiB, and host available memory stayed at or above 82,867,868 KiB. Job deletion and process cleanup succeeded. Reviewed frames showed a coherent, largely static mug with limited motion. Broader prompt, motion-quality, hardware, and concurrent-inference claims are not qualified.
 
 Catalog admission uses estimated demands of 9 GiB accelerator and 16 GiB host memory, not verified per-process limits. Live pool availability, accelerator reserves, pressure monitoring, and emergency eviction remain active. The 24 GiB unified estimate does not enable macOS or other unsupported targets.
 
