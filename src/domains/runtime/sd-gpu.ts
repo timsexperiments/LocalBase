@@ -1,19 +1,19 @@
 import { linuxNvidiaPci } from "./gpu-pci";
 import type { MemoryTopology } from "./memory-safety";
 
-export function whisperGpuArgs(
+export function sdGpuArgs(
   platform: NodeJS.Platform,
   topology: MemoryTopology,
 ): string[] {
   const pciBusId = linuxNvidiaPci({
     platform,
     topology,
-    runtimeName: "Whisper",
+    runtimeName: "sd-server",
   });
   return pciBusId ? ["--require-gpu-pci", pciBusId] : [];
 }
 
-export async function requireWhisperGpuContract(binary: string): Promise<void> {
+export async function requireSdGpuContract(binary: string): Promise<void> {
   try {
     const child = Bun.spawn([binary, "--localbase-capabilities"], {
       stdin: "ignore",
@@ -32,7 +32,7 @@ export async function requireWhisperGpuContract(binary: string): Promise<void> {
       if (
         code === 0 &&
         child.signalCode === null &&
-        stdout.trim() === "localbase-whisper-gpu-pci-v1"
+        stdout.trim() === "localbase-sd-gpu-pci-v1"
       )
         return;
     } finally {
@@ -44,6 +44,6 @@ export async function requireWhisperGpuContract(binary: string): Promise<void> {
     // Report one actionable error for old, broken, or unresponsive runtimes.
   }
   throw new Error(
-    "Unsupported Linux Whisper runtime: --require-gpu-pci is required. Install the LocalBase PCI-capable Whisper release or replace the user-managed whisper-server. CPU-only fallback is disabled.",
+    "Unsupported Linux sd-server runtime: --require-gpu-pci is required. Install the LocalBase PCI-capable sd-server release or replace the user-managed sd-server. CPU-only fallback is disabled.",
   );
 }

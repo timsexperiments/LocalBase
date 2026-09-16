@@ -745,7 +745,10 @@ export function createRuntimeSupervisorFactory(
         if (plan.component !== "sd-server" || plan.modality !== "image") {
           throw new Error("Expected sd-server launch plan.");
         }
-        return await startSdServerProcess(plan);
+        return await startSdServerProcess(
+          plan,
+          dependencies.memorySafety.topology,
+        );
       },
       memorySafety: dependencies.memorySafety,
       otel: ctx.otel,

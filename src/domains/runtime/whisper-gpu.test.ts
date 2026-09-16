@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { MemorySafetyController } from "./memory-controller";
 import { createLinuxHostMemoryProvider } from "./memory/linux-memory-provider";
 import type { MemoryTopology } from "./memory-safety";
+import { sdGpuArgs } from "./sd-gpu";
 import { whisperGpuArgs } from "./whisper-gpu";
 
 const id = "nvidia:GPU-12345678-1234-1234-1234-123456789abc";
@@ -46,6 +47,10 @@ test("Whisper PCI identity belongs to the exact memory pool admitted by the cont
     "--require-gpu-pci",
     accelerator.pciBusId,
   ]);
+  expect(sdGpuArgs("linux", controller.topology)).toEqual([
+    "--require-gpu-pci",
+    accelerator.pciBusId,
+  ]);
   expect((await provider.snapshot()).pools[1]?.poolId).toBe(id);
   reservation.release();
   await provider.close();
@@ -79,6 +84,10 @@ test("refuses missing, non-NVIDIA, noncanonical, and ambiguous identities", () =
     expect(() => whisperGpuArgs("linux", topology)).toThrow(
       "one monitored NVIDIA GPU",
     );
+    expect(() => sdGpuArgs("linux", topology)).toThrow(
+      "one monitored NVIDIA GPU",
+    );
     expect(whisperGpuArgs("darwin", topology)).toEqual([]);
+    expect(sdGpuArgs("darwin", topology)).toEqual([]);
   }
 });

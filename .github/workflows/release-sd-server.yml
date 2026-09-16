@@ -12,6 +12,7 @@ on:
       - .github/workflows/sync-sd-server-manifest.yml
       - src/domains/runtime/launcher.ts
       - scripts/sd-video-launch-contract.ts
+      - scripts/sd-gpu-pci-contract.ts
   workflow_dispatch:
     inputs:
       runtime_tag:

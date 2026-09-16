@@ -72,10 +72,16 @@ const sourceProvenanceSchema = z
         url: z.string().url(),
       }),
     ]),
-    patch: z.object({
-      name: z.literal("inline-wav-audio.patch"),
-      sha256: z.string().regex(/^[a-f0-9]{64}$/),
-    }),
+    patches: z.tuple([
+      z.object({
+        name: z.literal("inline-wav-audio.patch"),
+        sha256: z.string().regex(/^[a-f0-9]{64}$/),
+      }),
+      z.object({
+        name: z.literal("require-gpu-pci.patch"),
+        sha256: z.string().regex(/^[a-f0-9]{64}$/),
+      }),
+    ]),
     runtimeRequirements: z
       .object({
         "linux-x64": z
