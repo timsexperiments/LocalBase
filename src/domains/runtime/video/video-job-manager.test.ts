@@ -413,7 +413,7 @@ test("waits for a late successful submission before cancelling and releasing", a
 test("ignores late poll updates after cancellation terminalizes the job", async () => {
   const updates: readonly VideoBackendJob[] = [
     { id: "native-late-poll", status: "generating" },
-    { id: "native-late-poll", status: "failed", errorCode: "late" },
+    { id: "native-late-poll", status: "failed" },
     completed("native-late-poll"),
   ];
 

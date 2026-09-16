@@ -43,7 +43,6 @@ export type VideoBackendJob =
   | Readonly<{
       id: string;
       status: "failed" | "cancelled";
-      errorCode?: string;
     }>;
 
 /** Matches the local stable-diffusion.cpp video adapter without exposing it here. */
@@ -149,12 +148,8 @@ export class VideoJobArtifactLimitError extends Error {
 }
 
 export class VideoBackendJobFailureError extends Error {
-  constructor(code: string | undefined) {
-    super(
-      code === undefined
-        ? "Video backend job failed."
-        : `Video backend job failed: ${code}`,
-    );
+  constructor() {
+    super("Video backend job failed.");
     this.name = "VideoBackendJobFailureError";
   }
 }
@@ -460,10 +455,7 @@ export class VideoJobManager {
       return;
     }
     if (update.status === "failed") {
-      this.finishFailure(
-        job,
-        new VideoBackendJobFailureError(update.errorCode),
-      );
+      this.finishFailure(job, new VideoBackendJobFailureError());
       return;
     }
     this.finishCancelled(job, "backend");

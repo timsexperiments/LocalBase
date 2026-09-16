@@ -1906,7 +1906,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0 licenses for the pinned artifacts.",
     notes:
-      "Experimental Linux x64 single-NVIDIA entry. Functionally qualified only at up to 320x320, 33 frames, and 16 fps; it is not recommended as a quality claim.",
+      "Experimental Linux x64 single-NVIDIA entry. Functionally qualified only at exactly 320x320, 33 frames, and 16 fps; it is not recommended as a quality claim.",
   },
   {
     modelId: "fastwan2.2-ti2v-5b-q6_k",
