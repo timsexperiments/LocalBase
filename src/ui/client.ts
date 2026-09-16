@@ -1,0 +1,194 @@
+import { z } from "zod";
+import type { ModelMetadata } from "../domains/models/model-metadata";
+
+const modelSchema = z.object({
+  id: z.string(),
+  catalog: z.object({
+    name: z.string(),
+    kind: z.enum(["llm", "image", "tts", "stt", "video"]),
+    quantization: z.string(),
+    inputModalities: z.array(z.string()),
+    outputModalities: z.array(z.string()),
+    contextWindowTokens: z.number().nullable(),
+    capabilities: z
+      .object({
+        voice: z.object({
+          requestValues: z.array(z.string()),
+          defaultRequestValue: z.string(),
+        }),
+      })
+      .nullable(),
+  }),
+  device: z.object({
+    selected: z.boolean(),
+    installed: z.boolean(),
+    runtime: z
+      .object({ configured: z.boolean(), state: z.string() })
+      .nullable(),
+  }),
+});
+export type Model = z.infer<typeof modelSchema>;
+type MetadataIdentity = Pick<ModelMetadata, "id">;
+export const modelsSchema = z.object({ data: z.array(modelSchema) });
+export const readinessSchema = z.object({
+  status: z.enum(["ready", "unready"]),
+  modalities: z.array(z.string()),
+});
+export type Mode = "llm" | "image" | "tts" | "stt";
+export type Message = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  media?: { kind: "image" | "audio"; url: string };
+};
+export type Conversation = {
+  id: string;
+  title: string;
+  mode: Mode;
+  model: MetadataIdentity["id"];
+  messages: Message[];
+};
+const historySchema = z
+  .array(
+    z.object({
+      id: z.string(),
+      title: z.string().max(120),
+      mode: z.enum(["llm", "image", "tts", "stt"]),
+      model: z.string(),
+      messages: z.array(
+        z.object({
+          id: z.string(),
+          role: z.enum(["user", "assistant"]),
+          text: z.string(),
+        }),
+      ),
+    }),
+  )
+  .max(30);
+export const historyKey = "localbase.playground.history.v1";
+export function readHistory(): Conversation[] | null {
+  const raw = localStorage.getItem(historyKey);
+  return raw === null ? null : historySchema.parse(JSON.parse(raw));
+}
+export function writeHistory(conversations: Conversation[]) {
+  // Media and credentials are deliberately excluded from device-local history.
+  localStorage.setItem(
+    historyKey,
+    JSON.stringify(
+      conversations.slice(0, 30).map((c) => ({
+        id: c.id,
+        title: c.title,
+        mode: c.mode,
+        model: c.model,
+        messages: c.messages.map(({ id, role, text }) => ({
+          id,
+          role,
+          text,
+        })),
+      })),
+    ),
+  );
+}
+export function availableModels(models: Model[], mode: Mode) {
+  return models
+    .filter(
+      (m) => m.catalog.kind === mode && m.device.selected && m.device.installed,
+    )
+    .sort(
+      (a, b) =>
+        Number(Boolean(b.device.runtime?.configured)) -
+        Number(Boolean(a.device.runtime?.configured)),
+    );
+}
+export async function api(path: string, key: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  if (key) {
+    headers.set("authorization", `Bearer ${key}`);
+    headers.set("x-api-key", key);
+  }
+  const response = await fetch(path, {
+    ...init,
+    headers,
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    const value: unknown = await response.json().catch(() => null);
+    const parsed = z
+      .object({ error: z.object({ message: z.string() }) })
+      .safeParse(value);
+    throw new Error(
+      response.status === 401
+        ? "Enter a valid gateway API key in Settings."
+        : parsed.success
+          ? parsed.data.error.message
+          : `Request failed (${response.status}). Try again.`,
+    );
+  }
+  return response;
+}
+const chunkSchema = z.object({
+  choices: z.array(
+    z.object({
+      delta: z.object({ content: z.string().nullable().optional() }),
+    }),
+  ),
+});
+export async function streamText(
+  response: Response,
+  append: (text: string) => void,
+) {
+  if (!response.body)
+    throw new Error("The gateway returned an empty response.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let done = false;
+  function event(raw: string) {
+    const data = raw
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n");
+    if (!data) return;
+    if (data === "[DONE]") {
+      done = true;
+      return;
+    }
+    const value: unknown = JSON.parse(data);
+    const error = z
+      .object({ error: z.object({ message: z.string() }) })
+      .safeParse(value);
+    if (error.success) throw new Error(error.data.error.message);
+    const chunk = chunkSchema.parse(value);
+    for (const choice of chunk.choices)
+      if (choice.delta.content) append(choice.delta.content);
+  }
+  try {
+    while (!done) {
+      const part = await reader.read();
+      buffer += decoder.decode(part.value, { stream: !part.done });
+      buffer = buffer.replace(/\r\n/g, "\n");
+      let boundary: number;
+      while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+        event(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+      }
+      if (part.done) {
+        if (buffer.trim()) event(buffer);
+        break;
+      }
+    }
+    if (!done)
+      throw new Error(
+        "Connection ended before the response finished. You can retry.",
+      );
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+export const imageResponseSchema = z.object({
+  data: z.array(z.object({ b64_json: z.string().min(1) })).min(1),
+});
+export const transcriptionSchema = z.object({ text: z.string() });
