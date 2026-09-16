@@ -58,7 +58,10 @@ const provenance = JSON.stringify({
       url: "https://example.test/libwebm",
     },
   ],
-  patch: { name: "inline-wav-audio.patch", sha256: "a".repeat(64) },
+  patches: [
+    { name: "inline-wav-audio.patch", sha256: "a".repeat(64) },
+    { name: "require-gpu-pci.patch", sha256: "b".repeat(64) },
+  ],
   runtimeRequirements: {
     "linux-x64": {
       buildBaseline: "Ubuntu 24.04 x86_64",
