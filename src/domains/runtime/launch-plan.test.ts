@@ -105,7 +105,6 @@ describe("runtime launch plans", () => {
           modelId: "model",
           diffusionModelFile: "diffusion.gguf",
           textEncoderFile: "encoder.gguf",
-          vaeFile: "vae.safetensors",
           host: "127.0.0.1",
           port: 8091,
           videoRuntime: {
@@ -113,7 +112,7 @@ describe("runtime launch plans", () => {
             artifacts: {
               diffusionModel: "diffusion.gguf",
               textEncoder: "encoder.gguf",
-              vae: "vae.safetensors",
+              decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
             },
             qualification: {
               maxWidth: 320,
@@ -122,6 +121,7 @@ describe("runtime launch plans", () => {
               fps: 16,
               generation: {
                 sampler: "euler",
+                scheduler: "default",
                 steps: 20,
                 cfgScale: 6,
                 flowShift: 3,
@@ -130,6 +130,7 @@ describe("runtime launch plans", () => {
               launchOptions: {
                 cpuOffload: true,
                 diffusionFlashAttention: true,
+                vaeConvDirect: false,
               },
             },
             estimatedMemoryDemand: {
@@ -157,16 +158,21 @@ describe("runtime launch plans", () => {
         mode: "t2v",
         diffusionModelPath: `${root}/models/video/diffusion.gguf`,
         textEncoderPath: `${root}/models/video/encoder.gguf`,
-        vaePath: `${root}/models/video/vae.safetensors`,
+        decoder: { kind: "vae", path: `${root}/models/video/vae.safetensors` },
         inputBounds: { maxWidth: 320, maxHeight: 320, maxFrames: 33, fps: 16 },
         generation: {
           sampler: "euler",
+          scheduler: "default",
           steps: 20,
           cfgScale: 6,
           flowShift: 3,
           seed: 42,
         },
-        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        launchOptions: {
+          cpuOffload: true,
+          diffusionFlashAttention: true,
+          vaeConvDirect: false,
+        },
         healthUrl: "http://127.0.0.1:8091/",
         memoryDemand: {
           unifiedBytes: 16 * 1024 ** 3,
@@ -188,7 +194,6 @@ describe("runtime launch plans", () => {
       modelId: "s2v",
       diffusionModelFile: "diffusion.safetensors",
       textEncoderFile: "encoder.safetensors",
-      vaeFile: "vae.safetensors",
       host: "127.0.0.1",
       port: 8091,
       videoRuntime: {
@@ -196,7 +201,7 @@ describe("runtime launch plans", () => {
         artifacts: {
           diffusionModel: "diffusion.safetensors",
           textEncoder: "encoder.safetensors",
-          vae: "vae.safetensors",
+          decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
           audioEncoder: "wav2vec2.safetensors",
         },
         qualification: {
@@ -206,12 +211,17 @@ describe("runtime launch plans", () => {
           fps: 16,
           generation: {
             sampler: "euler",
+            scheduler: "default",
             steps: 20,
             cfgScale: 6,
             flowShift: 3,
             seed: 42,
           },
-          launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+          launchOptions: {
+            cpuOffload: true,
+            diffusionFlashAttention: true,
+            vaeConvDirect: false,
+          },
         },
         estimatedMemoryDemand: {
           unifiedBytes: 30,
@@ -273,7 +283,6 @@ describe("runtime launch plans", () => {
         modelId: "model",
         diffusionModelFile: "diffusion.gguf",
         textEncoderFile: "encoder.gguf",
-        vaeFile: "vae.safetensors",
         host: "127.0.0.1",
         port: 8091,
         target: {
@@ -286,7 +295,7 @@ describe("runtime launch plans", () => {
           artifacts: {
             diffusionModel: "diffusion.gguf",
             textEncoder: "encoder.gguf",
-            vae: "vae.safetensors",
+            decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
           },
           qualification: {
             maxWidth: 320,
@@ -295,6 +304,7 @@ describe("runtime launch plans", () => {
             fps: 16,
             generation: {
               sampler: "euler",
+              scheduler: "default",
               steps: 20,
               cfgScale: 6,
               flowShift: 3,
@@ -303,6 +313,7 @@ describe("runtime launch plans", () => {
             launchOptions: {
               cpuOffload: true,
               diffusionFlashAttention: true,
+              vaeConvDirect: false,
             },
           },
           estimatedMemoryDemand: {

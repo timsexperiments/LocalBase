@@ -619,7 +619,6 @@ export function createRuntimeSupervisorFactory(
             modelId,
             diffusionModelFile: artifacts.diffusionModel,
             textEncoderFile: artifacts.textEncoder,
-            vaeFile: artifacts.vae,
             host: videoHost(overrides),
             port: videoPort(overrides),
             videoRuntime: spec.videoRuntime,
@@ -650,7 +649,7 @@ export function createRuntimeSupervisorFactory(
           const requiredPaths = [
             artifacts.diffusionModel,
             artifacts.textEncoder,
-            artifacts.vae,
+            artifacts.decoder.artifactFilename,
             ...(spec.videoRuntime.mode === "s2v"
               ? [spec.videoRuntime.artifacts.audioEncoder]
               : []),

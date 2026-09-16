@@ -156,7 +156,7 @@ export async function startSdVideoServerProcess(
   for (const path of [
     plan.diffusionModelPath,
     plan.textEncoderPath,
-    plan.vaePath,
+    plan.decoder.path,
     ...(plan.mode === "s2v" ? [plan.audioEncoderPath] : []),
   ]) {
     if (!(await Bun.file(path).exists())) {
@@ -183,11 +183,12 @@ export function buildSdVideoServerArgs(plan: VideoLaunchPlan): string[] {
     plan.diffusionModelPath,
     "--t5xxl",
     plan.textEncoderPath,
-    "--vae",
-    plan.vaePath,
+    plan.decoder.kind === "vae" ? "--vae" : "--tae",
+    plan.decoder.path,
     ...(plan.mode === "s2v" ? ["--audio-encoder", plan.audioEncoderPath] : []),
     ...(plan.launchOptions.cpuOffload ? ["--offload-to-cpu"] : []),
     ...(plan.launchOptions.diffusionFlashAttention ? ["--diffusion-fa"] : []),
+    ...(plan.launchOptions.vaeConvDirect ? ["--vae-conv-direct"] : []),
     "--listen-ip",
     plan.host,
     "--listen-port",

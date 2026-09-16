@@ -25,65 +25,73 @@ const roots: string[] = [];
 const originalPath = process.env.PATH;
 const originalLibraryPath = process.env.LD_LIBRARY_PATH;
 
-test("uses video profile launch options", () => {
-  const plan = resolveVideoLaunchPlan({
-    runtimeId: "video:test:1",
-    root: "/tmp/local-base-video-launch",
-    modelsDirectory: "/tmp/local-base-video-launch/models/video",
-    modelId: "video-model",
-    diffusionModelFile: "diffusion.gguf",
-    textEncoderFile: "encoder.gguf",
-    vaeFile: "vae.safetensors",
-    host: "127.0.0.1",
-    port: 8091,
-    videoRuntime: {
-      mode: "t2v",
-      artifacts: {
-        diffusionModel: "diffusion.gguf",
-        textEncoder: "encoder.gguf",
-        vae: "vae.safetensors",
-      },
-      qualification: {
-        maxWidth: 320,
-        maxHeight: 320,
-        maxFrames: 33,
-        fps: 16,
-        generation: {
-          sampler: "euler",
-          steps: 20,
-          cfgScale: 6,
-          flowShift: 3,
-          seed: 42,
+test.each(["vae", "tae"] as const)(
+  "uses %s video profile launch options",
+  (kind) => {
+    const plan = resolveVideoLaunchPlan({
+      runtimeId: "video:test:1",
+      root: "/tmp/local-base-video-launch",
+      modelsDirectory: "/tmp/local-base-video-launch/models/video",
+      modelId: "video-model",
+      diffusionModelFile: "diffusion.gguf",
+      textEncoderFile: "encoder.gguf",
+      host: "127.0.0.1",
+      port: 8091,
+      videoRuntime: {
+        mode: "t2v",
+        artifacts: {
+          diffusionModel: "diffusion.gguf",
+          textEncoder: "encoder.gguf",
+          decoder: { kind, artifactFilename: "decoder.safetensors" },
         },
-        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        qualification: {
+          maxWidth: 320,
+          maxHeight: 320,
+          maxFrames: 33,
+          fps: 16,
+          generation: {
+            sampler: "euler",
+            scheduler: "default",
+            steps: 20,
+            cfgScale: 6,
+            flowShift: 3,
+            seed: 42,
+          },
+          launchOptions: {
+            cpuOffload: true,
+            diffusionFlashAttention: true,
+            vaeConvDirect: kind === "tae",
+          },
+        },
+        estimatedMemoryDemand: {
+          unifiedBytes: 1,
+          hostBytes: 1,
+          acceleratorBytes: 1,
+        },
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
       },
-      estimatedMemoryDemand: {
-        unifiedBytes: 1,
-        hostBytes: 1,
-        acceleratorBytes: 1,
-      },
-      supportedTargets: [
-        { platform: "linux", architecture: "x64", accelerator: "nvidia" },
-      ],
-    },
-    target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
-  });
+      target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+    });
 
-  expect(buildSdVideoServerArgs(plan)).toEqual([
-    "--diffusion-model",
-    plan.diffusionModelPath,
-    "--t5xxl",
-    plan.textEncoderPath,
-    "--vae",
-    plan.vaePath,
-    "--offload-to-cpu",
-    "--diffusion-fa",
-    "--listen-ip",
-    "127.0.0.1",
-    "--listen-port",
-    "8091",
-  ]);
-});
+    expect(buildSdVideoServerArgs(plan)).toEqual([
+      "--diffusion-model",
+      plan.diffusionModelPath,
+      "--t5xxl",
+      plan.textEncoderPath,
+      kind === "vae" ? "--vae" : "--tae",
+      plan.decoder.path,
+      "--offload-to-cpu",
+      "--diffusion-fa",
+      ...(kind === "tae" ? ["--vae-conv-direct"] : []),
+      "--listen-ip",
+      "127.0.0.1",
+      "--listen-port",
+      "8091",
+    ]);
+  },
+);
 
 test("adds the wav2vec2 path only to an S2V launch", () => {
   const plan = resolveVideoLaunchPlan({
@@ -93,7 +101,6 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
     modelId: "s2v-model",
     diffusionModelFile: "diffusion.safetensors",
     textEncoderFile: "encoder.safetensors",
-    vaeFile: "vae.safetensors",
     host: "127.0.0.1",
     port: 8091,
     videoRuntime: {
@@ -101,7 +108,7 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
       artifacts: {
         diffusionModel: "diffusion.safetensors",
         textEncoder: "encoder.safetensors",
-        vae: "vae.safetensors",
+        decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
         audioEncoder: "wav2vec2.safetensors",
       },
       qualification: {
@@ -111,12 +118,17 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
         fps: 16,
         generation: {
           sampler: "euler",
+          scheduler: "default",
           steps: 20,
           cfgScale: 6,
           flowShift: 3,
           seed: 42,
         },
-        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        launchOptions: {
+          cpuOffload: true,
+          diffusionFlashAttention: true,
+          vaeConvDirect: false,
+        },
       },
       estimatedMemoryDemand: {
         unifiedBytes: 1,
@@ -155,7 +167,6 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
     modelId: "s2v-model",
     diffusionModelFile: "diffusion.safetensors",
     textEncoderFile: "encoder.safetensors",
-    vaeFile: "vae.safetensors",
     host: "127.0.0.1",
     port: 8091,
     videoRuntime: {
@@ -163,7 +174,7 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
       artifacts: {
         diffusionModel: "diffusion.safetensors",
         textEncoder: "encoder.safetensors",
-        vae: "vae.safetensors",
+        decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
         audioEncoder: "missing-wav2vec2.safetensors",
       },
       qualification: {
@@ -173,12 +184,17 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
         fps: 16,
         generation: {
           sampler: "euler",
+          scheduler: "default",
           steps: 20,
           cfgScale: 6,
           flowShift: 3,
           seed: 42,
         },
-        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        launchOptions: {
+          cpuOffload: true,
+          diffusionFlashAttention: true,
+          vaeConvDirect: false,
+        },
       },
       estimatedMemoryDemand: {
         unifiedBytes: 1,

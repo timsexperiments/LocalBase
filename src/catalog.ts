@@ -50,16 +50,30 @@ const ttsRuntimeProfileSchema = z
   })
   .strict();
 
+const vaeDecoderSchema = z
+  .object({
+    kind: z.literal("vae"),
+    artifactFilename: safeFilenameSchema,
+  })
+  .strict();
+
+const videoDecoderSchema = z.discriminatedUnion("kind", [
+  vaeDecoderSchema,
+  z
+    .object({ kind: z.literal("tae"), artifactFilename: safeFilenameSchema })
+    .strict(),
+]);
+
 const t2vArtifactMappingSchema = z
   .object({
     diffusionModel: safeFilenameSchema,
     textEncoder: safeFilenameSchema,
-    vae: safeFilenameSchema,
+    decoder: videoDecoderSchema,
   })
   .strict();
 
 const s2vArtifactMappingSchema = t2vArtifactMappingSchema
-  .extend({ audioEncoder: safeFilenameSchema })
+  .extend({ decoder: vaeDecoderSchema, audioEncoder: safeFilenameSchema })
   .strict();
 
 const videoWorkloadBoundsSchema = z
@@ -74,6 +88,7 @@ const videoWorkloadBoundsSchema = z
 const videoGenerationProfileSchema = z
   .object({
     sampler: z.literal("euler"),
+    scheduler: z.enum(["default", "lcm"]),
     steps: z.number().int().positive(),
     cfgScale: z.number().positive(),
     flowShift: z.number().positive(),
@@ -85,6 +100,7 @@ const videoLaunchOptionsSchema = z
   .object({
     cpuOffload: z.boolean(),
     diffusionFlashAttention: z.boolean(),
+    vaeConvDirect: z.boolean(),
   })
   .strict();
 
@@ -264,9 +280,11 @@ export const modelSpecSchema = z
         const artifactNames = new Set(
           model.artifacts.map(({ filename }) => filename),
         );
-        for (const [name, filename] of Object.entries(
-          model.videoRuntime.artifacts,
-        )) {
+        const { decoder, ...artifacts } = model.videoRuntime.artifacts;
+        for (const [name, filename] of Object.entries({
+          ...artifacts,
+          decoder: decoder.artifactFilename,
+        })) {
           if (!artifactNames.has(filename)) {
             ctx.addIssue({
               code: "custom",
@@ -1823,7 +1841,7 @@ const CATALOG_SOURCE = [
       artifacts: {
         diffusionModel: "Wan2.1-T2V-1.3B-Q8_0.gguf",
         textEncoder: "umt5-xxl-encoder-Q8_0.gguf",
-        vae: "wan_2.1_vae.safetensors",
+        decoder: { kind: "vae", artifactFilename: "wan_2.1_vae.safetensors" },
       },
       qualification: {
         maxWidth: 320,
@@ -1832,12 +1850,17 @@ const CATALOG_SOURCE = [
         fps: 16,
         generation: {
           sampler: "euler",
+          scheduler: "default",
           steps: 20,
           cfgScale: 6,
           flowShift: 3,
           seed: 42,
         },
-        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        launchOptions: {
+          cpuOffload: true,
+          diffusionFlashAttention: true,
+          vaeConvDirect: false,
+        },
       },
       estimatedMemoryDemand: {
         unifiedBytes: 24 * 1024 ** 3,

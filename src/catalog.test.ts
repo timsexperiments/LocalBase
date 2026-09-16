@@ -68,7 +68,7 @@ describe("catalog artifact validation", () => {
         artifacts: {
           diffusionModel: "diffusion.gguf",
           textEncoder: "encoder.gguf",
-          vae: "vae.safetensors",
+          decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
         },
         qualification: {
           maxWidth: 320,
@@ -77,12 +77,17 @@ describe("catalog artifact validation", () => {
           fps: 16,
           generation: {
             sampler: "euler",
+            scheduler: "default",
             steps: 20,
             cfgScale: 6,
             flowShift: 3,
             seed: 42,
           },
-          launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+          launchOptions: {
+            cpuOffload: true,
+            diffusionFlashAttention: true,
+            vaeConvDirect: false,
+          },
         },
         estimatedMemoryDemand: {
           unifiedBytes: 20,
@@ -101,7 +106,31 @@ describe("catalog artifact validation", () => {
           ...video,
           videoRuntime: {
             ...video.videoRuntime,
-            artifacts: { ...video.videoRuntime.artifacts, vae: "missing.vae" },
+            artifacts: {
+              ...video.videoRuntime.artifacts,
+              decoder: { kind: "tae", artifactFilename: "vae.safetensors" },
+            },
+            qualification: {
+              ...video.videoRuntime.qualification,
+              generation: {
+                ...video.videoRuntime.qualification.generation,
+                scheduler: "lcm",
+              },
+            },
+          },
+        },
+      ]).success,
+    ).toBe(true);
+    expect(
+      catalogSchema.safeParse([
+        {
+          ...video,
+          videoRuntime: {
+            ...video.videoRuntime,
+            artifacts: {
+              ...video.videoRuntime.artifacts,
+              decoder: { kind: "vae", artifactFilename: "missing.vae" },
+            },
           },
         },
       ]).success,
@@ -137,7 +166,7 @@ describe("catalog artifact validation", () => {
         artifacts: {
           diffusionModel: "diffusion.safetensors",
           textEncoder: "text.safetensors",
-          vae: "vae.safetensors",
+          decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
           audioEncoder: "wav2vec2.safetensors",
         },
         qualification: {
@@ -147,12 +176,17 @@ describe("catalog artifact validation", () => {
           fps: 16,
           generation: {
             sampler: "euler",
+            scheduler: "default",
             steps: 20,
             cfgScale: 6,
             flowShift: 3,
             seed: 42,
           },
-          launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+          launchOptions: {
+            cpuOffload: true,
+            diffusionFlashAttention: true,
+            vaeConvDirect: false,
+          },
         },
         estimatedMemoryDemand: {
           unifiedBytes: 30,
@@ -166,6 +200,20 @@ describe("catalog artifact validation", () => {
     };
 
     expect(catalogSchema.safeParse([speechVideo]).success).toBe(true);
+    expect(
+      catalogSchema.safeParse([
+        {
+          ...speechVideo,
+          videoRuntime: {
+            ...speechVideo.videoRuntime,
+            artifacts: {
+              ...speechVideo.videoRuntime.artifacts,
+              decoder: { kind: "tae", artifactFilename: "vae.safetensors" },
+            },
+          },
+        },
+      ]).success,
+    ).toBe(false);
     expect(
       catalogSchema.safeParse([
         {
@@ -571,12 +619,17 @@ describe("catalog artifact validation", () => {
           fps: 16,
           generation: {
             sampler: "euler",
+            scheduler: "default",
             steps: 20,
             cfgScale: 6,
             flowShift: 3,
             seed: 42,
           },
-          launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+          launchOptions: {
+            cpuOffload: true,
+            diffusionFlashAttention: true,
+            vaeConvDirect: false,
+          },
         },
         estimatedMemoryDemand: {
           unifiedBytes: 24 * 1024 ** 3,

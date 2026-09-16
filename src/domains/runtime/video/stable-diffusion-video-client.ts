@@ -12,6 +12,7 @@ const videoOutputFormatSchema = z.enum(["webm", "webp", "avi"]);
 const videoGenerationProfileSchema = z
   .object({
     sampler: z.literal("euler"),
+    scheduler: z.enum(["default", "lcm"]),
     steps: z.number().int().positive().max(1_000),
     cfgScale: z.number().positive().max(100),
     flowShift: z.number().positive().max(100),
@@ -351,6 +352,7 @@ function toBackendVideoInput(input: VideoGenerationInput) {
       : {
           sample_params: {
             sample_method: input.generation.sampler,
+            scheduler: input.generation.scheduler,
             sample_steps: input.generation.steps,
             flow_shift: input.generation.flowShift,
             guidance: { txt_cfg: input.generation.cfgScale },
