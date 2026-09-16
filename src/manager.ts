@@ -1124,14 +1124,23 @@ export function validateApiKey(
   config: LocalBaseConfig,
   presentedKey: string,
 ): boolean {
-  if (!presentedKey) return false;
+  return resolveApiKey(database, config, presentedKey) !== undefined;
+}
+
+/** Resolves an active credential to its opaque database identity. */
+export function resolveApiKey(
+  database: DatabaseSession,
+  config: LocalBaseConfig,
+  presentedKey: string,
+): ApiKeyRecord | undefined {
+  if (!presentedKey) return undefined;
   const presentedHash = hashApiKey(presentedKey);
   const keys = loadApiKeys(database, config);
   for (const key of keys) {
     if (!isKeyActive(key.expiresAt, key.revokedAt)) continue;
-    if (safeEqual(key.keyHash, presentedHash)) return true;
+    if (safeEqual(key.keyHash, presentedHash)) return key;
   }
-  return false;
+  return undefined;
 }
 export function createApiKey(
   database: DatabaseSession,

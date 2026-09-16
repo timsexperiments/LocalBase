@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { byId, primaryArtifact } from "../catalog";
 import {
   createApiKey,
@@ -25,6 +25,7 @@ import { tinyPngBase64 } from "./media-fixtures";
 const LLM_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const STT_MODEL = "whisper-large-v3-turbo";
 const IMAGE_MODEL = "stable-diffusion-v1-5";
+export const VIDEO_MODEL = "wan2.1-t2v-1.3b-q8_0";
 export const TTS_MODEL = "qwen3-tts-1.7b-base-q4_k_m";
 const PROJECT_ROOT = join(import.meta.dirname, "../..");
 const MAX_START_ATTEMPTS = 5;
@@ -245,6 +246,7 @@ export type GatewayFixtureOptions = {
   ttsInstalled?: boolean;
   ttsControl?: SpeechFixtureControl;
   imageEnabled?: boolean;
+  videoEnabled?: boolean;
   parallel?: LocalBaseConfig["parallel"];
 };
 
@@ -1653,6 +1655,8 @@ export async function startGatewayFixture(
     config.selectedImageModels =
       options.imageEnabled === false ? [] : [IMAGE_MODEL];
     if (options.imageEnabled === false) config.activeImageModel = "";
+    config.activeVideoModel = options.videoEnabled ? VIDEO_MODEL : "";
+    config.selectedVideoModels = options.videoEnabled ? [VIDEO_MODEL] : [];
     config.otelEndpoint = options.otelEndpoint ?? "";
     config.otelSampleRatio = 100;
     config.parallel = options.parallel ?? config.parallel;
@@ -1667,6 +1671,7 @@ export async function startGatewayFixture(
     mkdirSync(config.sttModelsDir, { recursive: true });
     mkdirSync(config.ttsModelsDir, { recursive: true });
     mkdirSync(config.imageModelsDir, { recursive: true });
+    mkdirSync(config.videoModelsDir, { recursive: true });
     mkdirSync(join(config.root, "bin"), { recursive: true });
     mkdirSync(runtimeDir, { recursive: true });
     await Promise.all([
@@ -1694,6 +1699,15 @@ export async function startGatewayFixture(
         join(config.imageModelsDir, "v1-5-pruned-emaonly.safetensors"),
         "test model placeholder",
       ),
+      ...(options.videoEnabled
+        ? [
+            ...(byId(VIDEO_MODEL)?.artifacts ?? []).map(async (artifact) => {
+              const path = join(config.videoModelsDir, artifact.filename);
+              mkdirSync(dirname(path), { recursive: true });
+              await Bun.write(path, "");
+            }),
+          ]
+        : []),
       compileRuntimeFixture(join(runtimeDir, "llama-server"), {
         launchesPath: llmLaunchesPath,
         exitOnStart: options.llmRuntimeExitOnStart,
