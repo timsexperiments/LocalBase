@@ -1908,6 +1908,95 @@ const CATALOG_SOURCE = [
     notes:
       "Experimental Linux x64 single-NVIDIA entry. Functionally qualified only at up to 320x320, 33 frames, and 16 fps; it is not recommended as a quality claim.",
   },
+  {
+    modelId: "fastwan2.2-ti2v-5b-q6_k",
+    kind: "video",
+    provider: "FastVideo/ggml",
+    family: "FastWan2.2-TI2V",
+    version: "2.2",
+    size: "5B",
+    quant: "Q6_K",
+    minVramGb: 12,
+    storageGb: 10.28,
+    source: "https://huggingface.co/Green-Sky/FastWan2.2-TI2V-5B-FullAttn-GGUF",
+    repositoryRevision: "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
+    artifacts: [
+      {
+        sourcePath: "FastWan2.2-TI2V-5B-q6_k.gguf",
+        filename: "FastWan2.2-TI2V-5B-q6_k.gguf",
+        expectedSizeBytes: 4_210_247_200,
+        sha256:
+          "416a87e30f2328dbefd7666ac90b395ead74f443748ff31c83483ac4ac6121cc",
+        role: "primary",
+      },
+      {
+        sourcePath: "umt5-xxl-encoder-Q8_0.gguf",
+        filename: "umt5-xxl-encoder-Q8_0.gguf",
+        expectedSizeBytes: 6_043_068_256,
+        sha256:
+          "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+          revision: "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7",
+        },
+      },
+      {
+        sourcePath: "safetensors/taew2_2.safetensors",
+        filename: "taew2_2.safetensors",
+        expectedSizeBytes: 22_848_048,
+        sha256:
+          "b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://github.com/madebyollin/taehv",
+          revision: "fa579a9a726b0a55951998d73e309bfdf0abd342",
+        },
+      },
+    ],
+    videoRuntime: {
+      mode: "t2v",
+      artifacts: {
+        diffusionModel: "FastWan2.2-TI2V-5B-q6_k.gguf",
+        textEncoder: "umt5-xxl-encoder-Q8_0.gguf",
+        decoder: { kind: "tae", artifactFilename: "taew2_2.safetensors" },
+      },
+      qualification: {
+        maxWidth: 480,
+        maxHeight: 832,
+        maxFrames: 81,
+        fps: 16,
+        generation: {
+          sampler: "euler",
+          scheduler: "lcm",
+          steps: 3,
+          cfgScale: 1,
+          flowShift: 3,
+          seed: 42,
+        },
+        launchOptions: {
+          cpuOffload: true,
+          diffusionFlashAttention: true,
+          vaeConvDirect: true,
+        },
+      },
+      estimatedMemoryDemand: {
+        unifiedBytes: 24 * 1024 ** 3,
+        hostBytes: 16 * 1024 ** 3,
+        acceleratorBytes: 8 * 1024 ** 3,
+      },
+      supportedTargets: [
+        { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+      ],
+    },
+    inputModalities: ["text"],
+    outputModalities: ["video"],
+    features: ["text-to-video", "avi-output", "experimental"],
+    commercialStatus: "open",
+    catch: "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
+    notes:
+      "Linux x64 single-NVIDIA text-to-video profile: 480x832, 81 frames, 16 fps. Qualified on an RTX 4070 SUPER; no image-to-video, audio, or macOS qualification.",
+  },
 ] satisfies ModelSpecInput[];
 
 export const CATALOG: readonly ModelSpec[] = validateCatalog(CATALOG_SOURCE);

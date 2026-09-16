@@ -688,6 +688,75 @@ describe("catalog artifact validation", () => {
     );
   });
 
+  test("pins the FastWan decoder, shared encoder, and measured Linux profile", () => {
+    const fastWan = byId("fastwan2.2-ti2v-5b-q6_k");
+    expect(fastWan).toMatchObject({
+      repositoryRevision: "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
+      videoRuntime: {
+        mode: "t2v",
+        artifacts: {
+          decoder: { kind: "tae", artifactFilename: "taew2_2.safetensors" },
+        },
+        qualification: {
+          maxWidth: 480,
+          maxHeight: 832,
+          maxFrames: 81,
+          fps: 16,
+          generation: {
+            sampler: "euler",
+            scheduler: "lcm",
+            steps: 3,
+            cfgScale: 1,
+            flowShift: 3,
+            seed: 42,
+          },
+          launchOptions: {
+            cpuOffload: true,
+            diffusionFlashAttention: true,
+            vaeConvDirect: true,
+          },
+        },
+        estimatedMemoryDemand: {
+          unifiedBytes: 24 * 1024 ** 3,
+          hostBytes: 16 * 1024 ** 3,
+          acceleratorBytes: 8 * 1024 ** 3,
+        },
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
+      },
+    });
+    expect(
+      fastWan?.artifacts.find(({ role }) => role === "primary"),
+    ).toMatchObject({
+      expectedSizeBytes: 4_210_247_200,
+      sha256:
+        "416a87e30f2328dbefd7666ac90b395ead74f443748ff31c83483ac4ac6121cc",
+    });
+    expect(
+      fastWan?.artifacts.find(
+        ({ filename }) => filename === "umt5-xxl-encoder-Q8_0.gguf",
+      ),
+    ).toEqual(
+      byId("wan2.1-t2v-1.3b-q8_0")?.artifacts.find(
+        ({ filename }) => filename === "umt5-xxl-encoder-Q8_0.gguf",
+      ),
+    );
+    expect(
+      fastWan?.artifacts.find(
+        ({ filename }) => filename === "taew2_2.safetensors",
+      ),
+    ).toMatchObject({
+      expectedSizeBytes: 22_848_048,
+      sha256:
+        "b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325",
+      source: {
+        repositoryUrl: "https://github.com/madebyollin/taehv",
+        revision: "fa579a9a726b0a55951998d73e309bfdf0abd342",
+      },
+    });
+  });
+
   test("resolves pinned Hugging Face and GitHub artifacts", () => {
     const artifact = {
       sourcePath: "safetensors/taew2_2.safetensors",
