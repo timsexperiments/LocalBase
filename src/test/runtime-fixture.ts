@@ -117,7 +117,6 @@ async function runRuntimeFixture(): Promise<void> {
     process.exit(41);
   }
 
-  if (argsPath) await Bun.write(argsPath, `${args.join("\n")}\n`);
   if (environmentPath) {
     await Bun.write(environmentPath, process.env.LD_LIBRARY_PATH ?? "");
   }
@@ -172,7 +171,11 @@ async function runRuntimeFixture(): Promise<void> {
         });
       },
     });
-    await new Promise<void>((resolve) => process.once("SIGTERM", resolve));
+    const stopped = new Promise<void>((resolve) =>
+      process.once("SIGTERM", resolve),
+    );
+    if (argsPath) await Bun.write(argsPath, `${args.join("\n")}\n`);
+    await stopped;
     server.stop(true);
     return;
   }
@@ -188,6 +191,7 @@ async function runRuntimeFixture(): Promise<void> {
     clearInterval(keepAlive);
     process.exit(0);
   });
+  if (argsPath) await Bun.write(argsPath, `${args.join("\n")}\n`);
 }
 
 if (import.meta.main) await runRuntimeFixture();
