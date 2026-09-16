@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  videoGenerationInputSchema,
+  type VideoGenerationInput,
+} from "./video-input";
+
+export type { VideoGenerationInput } from "./video-input";
 
 // DNS names are not accepted here. The configured backend must be pinned to a
 // numeric loopback address so a later DNS change cannot redirect video traffic.
@@ -9,14 +15,6 @@ const DEFAULT_MAX_MEDIA_BYTES = 23 * 1024 * 1024;
 const COMPLETED_JOB_ENVELOPE_BYTES = 1024;
 
 const videoOutputFormatSchema = z.enum(["webm", "webp", "avi"]);
-const videoGenerationProfileSchema = z
-  .object({
-    sampler: z.literal("euler"),
-    steps: z.number().int().positive().max(1_000),
-    cfgScale: z.number().positive().max(100),
-    flowShift: z.number().positive().max(100),
-  })
-  .strict();
 const jobStatusSchema = z.enum([
   "queued",
   "generating",
@@ -29,20 +27,6 @@ const jobIdSchema = z
   .min(1)
   .max(MAX_JOB_ID_LENGTH)
   .regex(/^[A-Za-z0-9_-]+$/);
-
-const videoGenerationInputSchema = z
-  .object({
-    prompt: z.string().min(1).max(16_384),
-    negativePrompt: z.string().max(16_384).optional(),
-    width: z.number().int().positive().max(16_384).optional(),
-    height: z.number().int().positive().max(16_384).optional(),
-    videoFrames: z.number().int().positive().max(4_097).optional(),
-    fps: z.number().int().positive().max(240).optional(),
-    seed: z.number().int().optional(),
-    outputFormat: videoOutputFormatSchema.optional(),
-    generation: videoGenerationProfileSchema.optional(),
-  })
-  .strict();
 
 const capabilitiesSchema = z
   .object({
@@ -94,7 +78,6 @@ const completedResultSchema = z.discriminatedUnion("output_format", [
     .strict(),
 ]);
 
-export type VideoGenerationInput = z.infer<typeof videoGenerationInputSchema>;
 export type VideoOutputFormat = z.infer<typeof videoOutputFormatSchema>;
 
 export type VideoCapabilities = {
@@ -351,6 +334,12 @@ function toBackendVideoInput(input: VideoGenerationInput) {
             guidance: { txt_cfg: input.generation.cfgScale },
           },
         }),
+    ...(input.kind === "speech"
+      ? {
+          init_image: input.portrait.data,
+          audio: { format: "wav", data: input.audio.data },
+        }
+      : {}),
   };
 }
 

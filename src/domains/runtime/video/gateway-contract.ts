@@ -1,6 +1,11 @@
 import { z } from "zod";
 import type { ModelSpec } from "../../../catalog";
-import type { VideoJob, VideoJobInput } from "./video-job-manager";
+import {
+  videoConditioningInputSchema,
+  videoGenerationInputSchema,
+  type VideoGenerationInput,
+} from "./video-input";
+import type { VideoJob } from "./video-job-manager";
 
 export const videoCreateRequestSchema = z
   .object({
@@ -11,6 +16,7 @@ export const videoCreateRequestSchema = z
     height: z.number().int().positive(),
     frames: z.number().int().positive(),
     fps: z.number().int().positive(),
+    input: videoConditioningInputSchema,
   })
   .strict();
 
@@ -58,7 +64,7 @@ export type VideoJobResponse = z.infer<typeof videoJobResponseSchema>;
 export function qualifiedVideoInput(
   request: VideoCreateRequest,
   model: ModelSpec,
-): VideoJobInput | undefined {
+): VideoGenerationInput | undefined {
   if (model.kind !== "video" || !model.videoRuntime) return undefined;
   const qualification = model.videoRuntime.qualification;
   if (
@@ -69,7 +75,14 @@ export function qualifiedVideoInput(
   ) {
     return undefined;
   }
-  return {
+  if (
+    (model.videoRuntime.mode === "t2v" && request.input.kind !== "text") ||
+    (model.videoRuntime.mode === "s2v" && request.input.kind !== "speech")
+  ) {
+    return undefined;
+  }
+  const candidate = {
+    kind: request.input.kind,
     prompt: request.prompt,
     ...(request.negative_prompt === undefined
       ? {}
@@ -86,7 +99,12 @@ export function qualifiedVideoInput(
       cfgScale: qualification.generation.cfgScale,
       flowShift: qualification.generation.flowShift,
     },
+    ...(request.input.kind === "speech"
+      ? { portrait: request.input.portrait, audio: request.input.audio }
+      : {}),
   };
+  const parsed = videoGenerationInputSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function unixSeconds(milliseconds: number): number {

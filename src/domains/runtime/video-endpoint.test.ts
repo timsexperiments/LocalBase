@@ -23,6 +23,7 @@ test("rejects an unqualified video request before zero-byte fixture artifacts ca
         height: 320,
         frames: 33,
         fps: 16,
+        input: { kind: "text" },
       }),
     });
 
