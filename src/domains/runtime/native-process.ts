@@ -10,14 +10,20 @@ export class NativeProcessStopError extends Error {
   }
 }
 
-function hasExited(child: Bun.Subprocess): boolean {
+type NativeChild = Pick<
+  Bun.Subprocess,
+  "pid" | "kill" | "exited" | "exitCode" | "signalCode"
+>;
+
+function hasExited(child: NativeChild): boolean {
   return typeof child.exitCode === "number" || child.signalCode != null;
 }
 
 /** Resolves only after a native child exit is confirmed. */
 export async function stopNativeProcess(
-  child: Bun.Subprocess,
+  child: NativeChild,
   graceMs: number,
+  waitForGrace: (durationMs: number) => Promise<void> = Bun.sleep,
 ): Promise<void> {
   const errors: unknown[] = [];
   const exitedWithin = async (durationMs: number): Promise<boolean> => {
@@ -30,7 +36,7 @@ export async function stopNativeProcess(
           return false;
         },
       ),
-      Bun.sleep(durationMs).then(() => false),
+      waitForGrace(durationMs).then(() => false),
     ]);
   };
 
@@ -45,7 +51,14 @@ export async function stopNativeProcess(
     child.kill("SIGKILL");
   } catch (error) {
     errors.push(error);
+    if (hasExited(child)) return;
+    throw new NativeProcessStopError(child.pid, errors);
   }
-  if (await exitedWithin(graceMs)) return;
-  throw new NativeProcessStopError(child.pid, errors);
+  // Signal delivery does not confirm exit; retain ownership through native cleanup.
+  try {
+    await child.exited;
+  } catch (error) {
+    errors.push(error);
+    throw new NativeProcessStopError(child.pid, errors);
+  }
 }

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { runBackendGuardian } from "./backend-guardian";
+import { stopNativeProcess } from "./native-process";
 
 type OwnedProcess = {
   process: Bun.Subprocess;
@@ -91,15 +92,25 @@ test("continues monitoring a live gateway until it exits", async () => {
   }
 });
 
-test("confirms an owned TERM-ignoring backend has exited after SIGKILL", async () => {
-  const gateway = await exitedGateway();
-  const backend = await ownedProcess({ ignoresTerm: true });
-  try {
-    await expect(
-      runBackendGuardian([String(gateway.pid), String(backend.process.pid)]),
-    ).resolves.toBe(0);
-    expect(backend.process.signalCode).toBe("SIGKILL");
-  } finally {
-    await backend.cleanup();
-  }
-});
+test.each(["guardian", "native child"])(
+  "%s confirms an owned TERM-ignoring backend has exited after SIGKILL",
+  async (owner) => {
+    const gateway = await exitedGateway();
+    const backend = await ownedProcess({ ignoresTerm: true });
+    try {
+      if (owner === "guardian") {
+        await expect(
+          runBackendGuardian([
+            String(gateway.pid),
+            String(backend.process.pid),
+          ]),
+        ).resolves.toBe(0);
+      } else {
+        await stopNativeProcess(backend.process, 500);
+      }
+      expect(backend.process.signalCode).toBe("SIGKILL");
+    } finally {
+      await backend.cleanup();
+    }
+  },
+);
