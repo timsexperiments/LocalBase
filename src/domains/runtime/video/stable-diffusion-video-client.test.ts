@@ -136,111 +136,116 @@ test("keeps native failure details out of job errors and emitted logs", async ()
   }
 });
 
-test("submits, polls, and cancels with fixed localhost routes", async () => {
-  const requests: { method: string; path: string; body: unknown }[] = [];
-  const backend = startBackend(async (request) => {
-    const url = new URL(request.url);
-    const body: unknown =
-      request.headers.get("content-type") === "application/json"
-        ? await request.json()
-        : null;
-    requests.push({ method: request.method, path: url.pathname, body });
-    if (url.pathname === "/sdcpp/v1/capabilities") {
-      return Response.json({
-        supported_modes: ["img_gen", "vid_gen"],
-        output_formats_by_mode: { vid_gen: ["webm", "webp", "avi"] },
-      });
-    }
-    if (url.pathname === "/sdcpp/v1/vid_gen") {
-      return Response.json(acceptedJob(), { status: 202 });
-    }
-    if (url.pathname === `/sdcpp/v1/jobs/${VIDEO_ID}`) {
-      return Response.json(completedJob());
-    }
-    if (url.pathname === `/sdcpp/v1/jobs/${VIDEO_ID}/cancel`) {
-      return Response.json({
-        ...acceptedJob(),
-        status: "cancelled",
-        error: { code: "cancelled", message: "private backend detail" },
-      });
-    }
-    return new Response(null, { status: 404 });
-  });
-  try {
-    const client = backend.client();
-    await expect(client.getCapabilities()).resolves.toEqual({
-      available: true,
-      outputFormats: ["webm", "webp", "avi"],
+test.each(["discrete", "lcm"] as const)(
+  "submits, polls, and cancels with %s scheduler",
+  async (scheduler) => {
+    const requests: { method: string; path: string; body: unknown }[] = [];
+    const backend = startBackend(async (request) => {
+      const url = new URL(request.url);
+      const body: unknown =
+        request.headers.get("content-type") === "application/json"
+          ? await request.json()
+          : null;
+      requests.push({ method: request.method, path: url.pathname, body });
+      if (url.pathname === "/sdcpp/v1/capabilities") {
+        return Response.json({
+          supported_modes: ["img_gen", "vid_gen"],
+          output_formats_by_mode: { vid_gen: ["webm", "webp", "avi"] },
+        });
+      }
+      if (url.pathname === "/sdcpp/v1/vid_gen") {
+        return Response.json(acceptedJob(), { status: 202 });
+      }
+      if (url.pathname === `/sdcpp/v1/jobs/${VIDEO_ID}`) {
+        return Response.json(completedJob());
+      }
+      if (url.pathname === `/sdcpp/v1/jobs/${VIDEO_ID}/cancel`) {
+        return Response.json({
+          ...acceptedJob(),
+          status: "cancelled",
+          error: { code: "cancelled", message: "private backend detail" },
+        });
+      }
+      return new Response(null, { status: 404 });
     });
-    await expect(
-      client.submitVideo({
-        input: {
-          kind: "text",
-          prompt: "A small sailboat on a lake.",
-          negativePrompt: "text overlay",
-          width: 832,
-          height: 480,
-          videoFrames: 33,
-          fps: 16,
-          seed: -1,
+    try {
+      const client = backend.client();
+      await expect(client.getCapabilities()).resolves.toEqual({
+        available: true,
+        outputFormats: ["webm", "webp", "avi"],
+      });
+      await expect(
+        client.submitVideo({
+          input: {
+            kind: "text",
+            prompt: "A small sailboat on a lake.",
+            negativePrompt: "text overlay",
+            width: 832,
+            height: 480,
+            videoFrames: 33,
+            fps: 16,
+            seed: -1,
+            outputFormat: "webm",
+            generation: {
+              sampler: "euler",
+              scheduler,
+              steps: 20,
+              cfgScale: 6,
+              flowShift: 3,
+            },
+          },
+        }),
+      ).resolves.toEqual({ id: VIDEO_ID, status: "queued" });
+      await expect(client.getJob({ id: VIDEO_ID })).resolves.toEqual({
+        id: VIDEO_ID,
+        status: "completed",
+        media: {
+          bytes: Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3]),
+          mimeType: "video/webm",
           outputFormat: "webm",
-          generation: {
-            sampler: "euler",
-            steps: 20,
-            cfgScale: 6,
-            flowShift: 3,
-          },
-        },
-      }),
-    ).resolves.toEqual({ id: VIDEO_ID, status: "queued" });
-    await expect(client.getJob({ id: VIDEO_ID })).resolves.toEqual({
-      id: VIDEO_ID,
-      status: "completed",
-      media: {
-        bytes: Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3]),
-        mimeType: "video/webm",
-        outputFormat: "webm",
-        fps: 16,
-        frameCount: 33,
-      },
-    });
-    await expect(client.cancelJob({ id: VIDEO_ID })).resolves.toEqual({
-      id: VIDEO_ID,
-      status: "cancelled",
-    });
-    expect(requests).toEqual([
-      { method: "GET", path: "/sdcpp/v1/capabilities", body: null },
-      {
-        method: "POST",
-        path: "/sdcpp/v1/vid_gen",
-        body: {
-          prompt: "A small sailboat on a lake.",
-          negative_prompt: "text overlay",
-          width: 832,
-          height: 480,
-          video_frames: 33,
           fps: 16,
-          seed: -1,
-          output_format: "webm",
-          sample_params: {
-            sample_method: "euler",
-            sample_steps: 20,
-            flow_shift: 3,
-            guidance: { txt_cfg: 6 },
+          frameCount: 33,
+        },
+      });
+      await expect(client.cancelJob({ id: VIDEO_ID })).resolves.toEqual({
+        id: VIDEO_ID,
+        status: "cancelled",
+      });
+      expect(requests).toEqual([
+        { method: "GET", path: "/sdcpp/v1/capabilities", body: null },
+        {
+          method: "POST",
+          path: "/sdcpp/v1/vid_gen",
+          body: {
+            prompt: "A small sailboat on a lake.",
+            negative_prompt: "text overlay",
+            width: 832,
+            height: 480,
+            video_frames: 33,
+            fps: 16,
+            seed: -1,
+            output_format: "webm",
+            sample_params: {
+              sample_method: "euler",
+              scheduler,
+              sample_steps: 20,
+              flow_shift: 3,
+              guidance: { txt_cfg: 6 },
+            },
           },
         },
-      },
-      { method: "GET", path: `/sdcpp/v1/jobs/${VIDEO_ID}`, body: null },
-      {
-        method: "POST",
-        path: `/sdcpp/v1/jobs/${VIDEO_ID}/cancel`,
-        body: null,
-      },
-    ]);
-  } finally {
-    backend.stop();
-  }
-});
+        { method: "GET", path: `/sdcpp/v1/jobs/${VIDEO_ID}`, body: null },
+        {
+          method: "POST",
+          path: `/sdcpp/v1/jobs/${VIDEO_ID}/cancel`,
+          body: null,
+        },
+      ]);
+    } finally {
+      backend.stop();
+    }
+  },
+);
 
 test("sends the exact bounded speech-to-video inline payload", async () => {
   const portrait = testPng({ width: 2, height: 1 });

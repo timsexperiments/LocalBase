@@ -6,32 +6,62 @@ import { testPcm16Wav, testPng } from "./video-input.fixtures";
 const model = byId("wan2.1-t2v-1.3b-q8_0");
 if (!model) throw new Error("Expected qualified Wan video model.");
 
-test("projects the qualified catalog profile into every native generation field", () => {
-  expect(
-    qualifiedVideoInput(
-      {
-        model: model.modelId,
-        prompt: "A paper kite over a field.",
-        width: 320,
-        height: 320,
-        frames: 33,
-        fps: 16,
-        input: { kind: "text" },
-      },
-      model,
-    ),
-  ).toEqual({
-    kind: "text",
-    prompt: "A paper kite over a field.",
+test.each([
+  {
+    id: "wan2.1-t2v-1.3b-q8_0",
     width: 320,
     height: 320,
-    videoFrames: 33,
-    fps: 16,
-    seed: 42,
-    outputFormat: "avi",
-    generation: { sampler: "euler", steps: 20, cfgScale: 6, flowShift: 3 },
-  });
-});
+    frames: 33,
+    scheduler: "discrete",
+    steps: 20,
+    cfgScale: 6,
+  },
+  {
+    id: "fastwan2.2-ti2v-5b-q6_k",
+    width: 480,
+    height: 832,
+    frames: 81,
+    scheduler: "lcm",
+    steps: 3,
+    cfgScale: 1,
+  },
+])(
+  "projects $id into native generation fields",
+  ({ id, width, height, frames, scheduler, steps, cfgScale }) => {
+    const model = byId(id);
+    if (!model) throw new Error("Expected qualified video model.");
+    expect(
+      qualifiedVideoInput(
+        {
+          model: model.modelId,
+          prompt: "A paper kite over a field.",
+          width,
+          height,
+          frames,
+          fps: 16,
+          input: { kind: "text" },
+        },
+        model,
+      ),
+    ).toEqual({
+      kind: "text",
+      prompt: "A paper kite over a field.",
+      width,
+      height,
+      videoFrames: frames,
+      fps: 16,
+      seed: 42,
+      outputFormat: "avi",
+      generation: {
+        sampler: "euler",
+        scheduler,
+        steps,
+        cfgScale,
+        flowShift: 3,
+      },
+    });
+  },
+);
 
 test("does not construct an unqualified native video request", () => {
   expect(
@@ -60,6 +90,10 @@ test("projects speech media only for a qualified S2V profile", () => {
       mode: "s2v" as const,
       artifacts: {
         ...model.videoRuntime!.artifacts,
+        decoder: {
+          kind: "vae" as const,
+          artifactFilename: "wan_2.1_vae.safetensors",
+        },
         audioEncoder: "audio-encoder.gguf",
       },
     },

@@ -95,6 +95,7 @@ export function qualifiedVideoInput(
     outputFormat: "avi",
     generation: {
       sampler: qualification.generation.sampler,
+      scheduler: qualification.generation.scheduler,
       steps: qualification.generation.steps,
       cfgScale: qualification.generation.cfgScale,
       flowShift: qualification.generation.flowShift,

@@ -222,7 +222,13 @@ test("serves one owner’s completed local video through the typed route and del
     expect(submitted).toMatchObject({
       outputFormat: "avi",
       seed: 42,
-      generation: { sampler: "euler", steps: 20, cfgScale: 6, flowShift: 3 },
+      generation: {
+        sampler: "euler",
+        scheduler: "discrete",
+        steps: 20,
+        cfgScale: 6,
+        flowShift: 3,
+      },
     });
 
     completion.resolve(completed("native-completed"));

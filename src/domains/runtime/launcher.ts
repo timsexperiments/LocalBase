@@ -1,7 +1,7 @@
 import { delimiter, dirname, resolve } from "node:path";
 import type { ParallelAllocation } from "../config/parallel";
 import { ensureBinary } from "../../manager/binaries";
-import type { MemoryTopology } from "./memory-safety";
+import { gibibyte, type MemoryTopology } from "./memory-safety";
 import { requireSdGpuContract, sdGpuArgs } from "./sd-gpu";
 import { requireWhisperGpuContract, whisperGpuArgs } from "./whisper-gpu";
 import type {
@@ -162,7 +162,7 @@ export async function startSdVideoServerProcess(
   for (const path of [
     plan.diffusionModelPath,
     plan.textEncoderPath,
-    plan.vaePath,
+    plan.decoder.path,
     ...(plan.mode === "s2v" ? [plan.audioEncoderPath] : []),
   ]) {
     if (!(await Bun.file(path).exists())) {
@@ -174,7 +174,7 @@ export async function startSdVideoServerProcess(
   );
   const gpuArgs = sdGpuArgs(process.platform, topology);
   if (process.platform === "linux") await requireSdGpuContract(binPath);
-  const args = buildSdVideoServerArgs(plan);
+  const args = buildSdVideoServerArgs(plan, topology);
   return Bun.spawn([binPath, ...args, ...gpuArgs], {
     stdout: "pipe",
     stderr: "pipe",
@@ -185,20 +185,27 @@ export async function startSdVideoServerProcess(
 }
 
 /** Builds the pinned sd-server `vid_gen` argv without touching the filesystem. */
-export function buildSdVideoServerArgs(plan: VideoLaunchPlan): string[] {
+export function buildSdVideoServerArgs(
+  plan: VideoLaunchPlan,
+  topology: MemoryTopology,
+): string[] {
   return [
     "--diffusion-model",
     plan.diffusionModelPath,
     "--t5xxl",
     plan.textEncoderPath,
-    "--vae",
-    plan.vaePath,
+    plan.decoder.kind === "vae" ? "--vae" : "--tae",
+    plan.decoder.path,
     ...(plan.mode === "s2v" ? ["--audio-encoder", plan.audioEncoderPath] : []),
     ...(plan.launchOptions.cpuOffload ? ["--offload-to-cpu"] : []),
     ...(plan.launchOptions.diffusionFlashAttention ? ["--diffusion-fa"] : []),
+    ...(plan.launchOptions.vaeConvDirect ? ["--vae-conv-direct"] : []),
     "--listen-ip",
     plan.host,
     "--listen-port",
     String(plan.port),
+    ...(topology.kind === "discrete"
+      ? ["--max-vram", String(plan.memoryDemand.acceleratorBytes / gibibyte)]
+      : []),
   ];
 }

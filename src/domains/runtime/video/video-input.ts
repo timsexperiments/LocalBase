@@ -11,6 +11,7 @@ const PNG_SIGNATURE = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const generationSchema = z
   .object({
     sampler: z.literal("euler"),
+    scheduler: z.enum(["discrete", "lcm"]),
     steps: z.number().int().positive().max(1_000),
     cfgScale: z.number().positive().max(100),
     flowShift: z.number().positive().max(100),
