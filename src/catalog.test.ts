@@ -448,6 +448,17 @@ describe("catalog artifact validation", () => {
         revision: "main",
       },
       { revision: "d".repeat(40) },
+      ...[
+        "https://github.com/madebyollin/taehv/blob/main/safetensors/taew2_2.safetensors",
+        "https://github.com/madebyollin/taehv/tree/main",
+        "https://github.com/madebyollin",
+        "https://github.com/madebyollin/taehv?ref=main",
+        "https://github.com/madebyollin/taehv#main",
+        "https://github.com/madebyollin/taehv.git",
+        "http://github.com/madebyollin/taehv",
+        "https://user:secret@github.com/madebyollin/taehv",
+        "https://github.com/madebyollin/../taehv",
+      ].map((repositoryUrl) => ({ repositoryUrl, revision: "d".repeat(40) })),
     ];
 
     for (const source of invalidSources) {
@@ -674,5 +685,59 @@ describe("catalog artifact validation", () => {
       "https://huggingface.co/test/encoder/resolve/" +
         `${"d".repeat(40)}/encoder/model.safetensors`,
     );
+  });
+
+  test("resolves pinned Hugging Face and GitHub artifacts", () => {
+    const artifact = {
+      sourcePath: "safetensors/taew2_2.safetensors",
+      filename: "taew2_2.safetensors",
+      expectedSizeBytes: 22_848_048,
+      sha256:
+        "b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325",
+      role: "primary",
+    };
+    const source = {
+      repositoryUrl: "https://github.com/madebyollin/taehv/",
+      revision: "fa579a9a726b0a55951998d73e309bfdf0abd342",
+    };
+    for (const candidate of [
+      model([{ ...artifact, source }]),
+      {
+        ...model([artifact]),
+        source: source.repositoryUrl,
+        repositoryRevision: source.revision,
+      },
+    ]) {
+      const parsed = catalogSchema.parse([candidate])[0]!;
+      expect(artifactDownloadUrl(parsed, parsed.artifacts[0]!)).toBe(
+        "https://raw.githubusercontent.com/madebyollin/taehv/fa579a9a726b0a55951998d73e309bfdf0abd342/safetensors/taew2_2.safetensors",
+      );
+    }
+    const encoder = catalogSchema.parse([
+      model([
+        {
+          ...artifact,
+          sourcePath: "umt5-xxl-encoder-Q8_0.gguf",
+          source: {
+            repositoryUrl:
+              "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+            revision: "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7",
+          },
+        },
+      ]),
+    ])[0]!;
+    expect(artifactDownloadUrl(encoder, encoder.artifacts[0]!)).toBe(
+      "https://huggingface.co/city96/umt5-xxl-encoder-gguf/resolve/b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7/umt5-xxl-encoder-Q8_0.gguf",
+    );
+    for (const sourcePath of [
+      "../main/file",
+      "safetensors/../../main/file",
+      "./file",
+    ]) {
+      expect(
+        catalogSchema.safeParse([model([{ ...artifact, source, sourcePath }])])
+          .success,
+      ).toBe(false);
+    }
   });
 });

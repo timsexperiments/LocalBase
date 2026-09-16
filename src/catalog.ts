@@ -20,8 +20,23 @@ export const commercialStatusSchema = z.enum([
   "prohibited",
 ]);
 
+const repositoryUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => {
+    const url = URL.parse(value);
+    if (url?.hostname !== "github.com") return true;
+    return (
+      /^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+\/?$/.test(
+        value,
+      ) &&
+      ![".", ".."].includes(value.split("/")[4] ?? "") &&
+      !url.pathname.replace(/\/$/, "").endsWith(".git")
+    );
+  }, "GitHub sources must be HTTPS owner/repository URLs");
+
 const artifactSourceSchema = z.object({
-  repositoryUrl: z.string().url(),
+  repositoryUrl: repositoryUrlSchema,
   revision: z.string().regex(/^[a-fA-F0-9]{40}$/),
 });
 
@@ -172,7 +187,7 @@ export const modelSpecSchema = z
     codingScore: z.number().optional(),
     minVramGb: z.number().nonnegative(),
     storageGb: z.number().positive(),
-    source: z.string().url(),
+    source: repositoryUrlSchema,
     repositoryRevision: z.string().regex(/^[a-fA-F0-9]{40}$/),
     artifacts: z.array(modelArtifactSchema).min(1),
     ttsRuntime: ttsRuntimeProfileSchema.optional(),
@@ -190,6 +205,20 @@ export const modelSpecSchema = z
     let primaryCount = 0;
 
     for (const [index, artifact] of model.artifacts.entries()) {
+      const repositoryUrl = artifact.source?.repositoryUrl ?? model.source;
+      if (
+        URL.parse(repositoryUrl)?.hostname === "github.com" &&
+        artifact.sourcePath
+          .split("/")
+          .some((segment) => segment === "." || segment === "..")
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "GitHub artifact paths must remain within the pinned revision",
+          path: ["artifacts", index, "sourcePath"],
+        });
+      }
       if (filenames.has(artifact.filename)) {
         ctx.addIssue({
           code: "custom",
@@ -1964,6 +1993,11 @@ export function artifactDownloadUrl(
   };
   const base = repositoryUrl.replace(/\/$/, "");
   const sourcePath = artifact.sourcePath.replace(/^\/+/, "");
+  const repository = new URL(base);
+  if (repository.hostname === "github.com") {
+    const encodedPath = sourcePath.split("/").map(encodeURIComponent).join("/");
+    return `https://raw.githubusercontent.com${repository.pathname}/${revision}/${encodedPath}`;
+  }
   return `${base}/resolve/${revision}/${sourcePath}`;
 }
 
