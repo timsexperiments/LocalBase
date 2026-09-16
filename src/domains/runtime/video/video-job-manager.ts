@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { RuntimeAdmission } from "../runtime-reconciler";
+import type { VideoGenerationInput } from "./video-input";
 
 const DEFAULT_DEADLINE_MS = 10 * 60 * 1_000;
 const DEFAULT_MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
@@ -9,22 +10,7 @@ const DEFAULT_MAX_TERMINAL_JOBS = 20;
 const DEFAULT_TERMINAL_TTL_MS = 15 * 60 * 1_000;
 const DEFAULT_POLL_MS = 1_000;
 
-export type VideoJobInput = Readonly<{
-  prompt: string;
-  negativePrompt?: string;
-  width?: number;
-  height?: number;
-  videoFrames?: number;
-  fps?: number;
-  seed?: number;
-  outputFormat?: "webm" | "webp" | "avi";
-  generation?: Readonly<{
-    sampler: "euler";
-    steps: number;
-    cfgScale: number;
-    flowShift: number;
-  }>;
-}>;
+export type VideoJobInput = Readonly<VideoGenerationInput>;
 
 export type VideoBackendJob =
   | Readonly<{ id: string; status: "queued" | "generating" }>

@@ -1123,7 +1123,7 @@ test("drains a warming video job when the model is disabled", async () => {
   try {
     const started = await jobs.start({
       ownerId: "key-a",
-      input: { prompt: "Cancel while video warms." },
+      input: { kind: "text", prompt: "Cancel while video warms." },
       acquireAdmission: async ({ signal }) => {
         const selected = await reconciler.admitModel(
           "video",
