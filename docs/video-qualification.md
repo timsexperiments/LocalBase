@@ -4,7 +4,11 @@
 
 `fastwan2.2-ti2v-5b-q6_k` supports text-to-video on Linux x64 with one NVIDIA GPU. The gateway requires exactly 480x832, 81 frames, and 16 fps. Its generation profile is Euler/LCM, three steps, CFG 1, flow shift 3, and seed 42. It uses UMT5 Q8_0, the TAew2.2 decoder, CPU offload, diffusion flash attention, and direct VAE convolution. Image-to-video, generated audio, and macOS are not qualified.
 
-With published `sd-server-v0.0.1` and a positive 8 GiB native budget, an RTX 4070 SUPER completed the 81-frame profile in 48.65 seconds. The resulting 5.0625-second AVI decoded fully. Memory sampling observed a 6,624 MiB whole-GPU peak and about 10.3 GiB reduction in host available memory. Contact sheets showed coherent cup geometry and natural colors, with exaggerated steam. Prompt and seed coverage is limited; concurrent inference is not qualified by this test.
+With LocalBase `0658c7d`, published `sd-server-v0.0.1`, and a positive 8 GiB native budget, an RTX 4070 SUPER completed a sequential chat-planning, two-voice TTS, and two-clip video pipeline. All eight used model and voice-reference artifacts matched their pinned sizes and SHA-256 hashes before and after execution. Runtime payloads and library links matched the published archives; embedded tokenizers were included in those checks.
+
+Each native AVI decoded fully at 480x832, 81 frames, 16 fps, and 5.0625 seconds. Client-side assembly produced a fully decoded 162-frame, 10.125-second H.264/AAC MP4. Harbor and Willow narration lasted 1.84 and 2.24 seconds, with no video frame holds. Machine transcripts matched the planned lines. Contact sheets showed coherent mug and fern scenes with exaggerated steam. This is voiceover composition, not lip-synchronized video or native audio generation. Direct listening, naturalness, and subjective voice distinction are not qualified.
+
+Across 757 active-run samples, the whole pipeline peaked at 8,156 MiB GPU use, with at least 3,721 MiB GPU memory free and 79,924,868 KiB host memory available. The maximum sampling gap was 250 ms. These are whole-pipeline observations, not isolated video demand or hard allocation bounds. Both jobs were deleted successfully, temporary speech files were cleared, and all owned processes stopped. Prompt and seed coverage is limited; concurrent inference and broader hardware support are not qualified.
 
 Admission reserves estimated demands of 8 GiB accelerator and 16 GiB host memory. The discrete native budget uses the admitted accelerator demand. These estimates and the native budget are not hard limits on driver allocations; pool reserves and memory monitoring remain active. The 24 GiB unified estimate does not enable unsupported targets.
 
@@ -12,8 +16,8 @@ The diffusion model and UMT5 encoder declare Apache-2.0; TAew2.2 uses MIT. All s
 
 ## Wan2.1 T2V 1.3B Q8_0
 
-`wan2.1-t2v-1.3b-q8_0` is an experimental, Linux x64 single-NVIDIA profile. It is functionally qualified only for text-to-video requests at exactly 320x320, 33 frames, and 16 fps. Its fixed generation profile is Euler, 20 steps, CFG 6, FlowShift 3, and seed 42, with CPU offload and diffusion flash attention enabled. Current PCI-bound qualification used stable-diffusion.cpp `07a85c74cb08cda3aa176f688c5d8f522615e2b9` on an RTX 4070 SUPER and exercised AVI and WebM output.
+`wan2.1-t2v-1.3b-q8_0` is an experimental Linux x64 single-NVIDIA catalog profile, not a quality-qualified model. Functional qualification with all used artifacts verified is not established. Its configured text-to-video bounds are exactly 320x320, 33 frames, and 16 fps. Its generation profile is Euler/discrete, 20 steps, CFG 6, flow shift 3, and seed 42, with CPU offload and diffusion flash attention enabled.
 
-The current PCI-bound run observed a 9,181 MiB whole-GPU peak for the bounded profile. Catalog admission therefore uses an estimated 9 GiB accelerator demand and retains the 16 GiB host demand; neither is an authoritative per-process limit. Live pool availability, the existing accelerator reserve, pressure monitoring, and emergency eviction apply in addition to this demand. The 24 GiB unified-memory value does not enable macOS or other unsupported unified-memory targets.
+Catalog admission uses estimated demands of 9 GiB accelerator and 16 GiB host memory, not verified per-process limits. Live pool availability, accelerator reserves, pressure monitoring, and emergency eviction remain active. The 24 GiB unified estimate does not enable macOS or other unsupported targets.
 
 This estimate is a test starting point, not a performance, capacity, or output-quality guarantee.
