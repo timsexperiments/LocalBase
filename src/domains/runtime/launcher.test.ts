@@ -11,6 +11,8 @@ import {
   resolveSttLaunchPlan,
   resolveVideoLaunchPlan,
 } from "./launch-plan";
+import type { MemoryTopology } from "./memory-safety";
+import { requireSdGpuContract } from "./sd-gpu";
 import { requireWhisperGpuContract } from "./whisper-gpu";
 import {
   sdServerEnvironment,
@@ -24,6 +26,36 @@ import {
 const roots: string[] = [];
 const originalPath = process.env.PATH;
 const originalLibraryPath = process.env.LD_LIBRARY_PATH;
+const nvidiaTopology: MemoryTopology = {
+  kind: "discrete",
+  system: { id: "system", capacityBytes: 1 },
+  accelerators: [
+    {
+      id: "nvidia:GPU-12345678-1234-1234-1234-123456789abc",
+      capacityBytes: 1,
+      pciBusId: "0000:ab:1f.7",
+    },
+  ],
+};
+
+async function compileSdLaunchFixture(input: {
+  argsPath: string;
+  binPath: string;
+  capability: string;
+  environmentPath?: string;
+}): Promise<void> {
+  const result = await Bun.build({
+    entrypoints: [join(import.meta.dir, "../../test/sd-launch-fixture.ts")],
+    target: "bun",
+    compile: { outfile: input.binPath },
+    define: {
+      __SD_CAPABILITY__: JSON.stringify(input.capability),
+      __SD_ARGS_PATH__: JSON.stringify(input.argsPath),
+      __SD_ENVIRONMENT_PATH__: JSON.stringify(input.environmentPath ?? ""),
+    },
+  });
+  expect(result.success).toBeTrue();
+}
 
 test("uses video profile launch options", () => {
   const plan = resolveVideoLaunchPlan({
@@ -192,7 +224,7 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
     target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
   });
 
-  await expect(startSdVideoServerProcess(plan)).rejects.toThrow(
+  await expect(startSdVideoServerProcess(plan, nvidiaTopology)).rejects.toThrow(
     "Configured video artifact does not exist.",
   );
 });
@@ -281,6 +313,132 @@ describe.serial("Whisper GPU launch contract", () => {
   }, 15_000);
 });
 
+describe.serial("sd-server GPU launch contract", () => {
+  test("rejects an sd-server without the PCI capability before spawn", async () => {
+    const root = mkdtempSync(join(tmpdir(), "local-base-sd-contract-"));
+    roots.push(root);
+    const binPath = join(root, "sd-server");
+    const argsPath = join(root, "args.json");
+    const build = (capability: string) =>
+      compileSdLaunchFixture({
+        binPath,
+        argsPath,
+        capability,
+      });
+
+    await build("unknown argument");
+    await expect(requireSdGpuContract(binPath)).rejects.toThrow(
+      "Unsupported Linux sd-server runtime",
+    );
+    expect(await Bun.file(argsPath).exists()).toBeFalse();
+    await build("oversized");
+    await expect(requireSdGpuContract(binPath)).rejects.toThrow(
+      "Unsupported Linux sd-server runtime",
+    );
+    await build("localbase-sd-gpu-pci-v1");
+    await expect(requireSdGpuContract(binPath)).resolves.toBeUndefined();
+  }, 15_000);
+
+  test("passes the admitted PCI identity to a video sd-server on Linux", async () => {
+    const root = mkdtempSync(join(tmpdir(), "local-base-video-gpu-launch-"));
+    roots.push(root);
+    const config = defaultConfig(root, 12);
+    const userBinDir = join(root, "user-bin");
+    const binPath = join(userBinDir, "sd-server");
+    const argsPath = join(userBinDir, "sd-server.args");
+    mkdirSync(config.videoModelsDir, { recursive: true });
+    mkdirSync(userBinDir, { recursive: true });
+    for (const filename of [
+      "diffusion.gguf",
+      "encoder.gguf",
+      "vae.safetensors",
+    ]) {
+      await Bun.write(
+        join(config.videoModelsDir, filename),
+        "model placeholder",
+      );
+    }
+    await compileSdLaunchFixture({
+      binPath,
+      argsPath,
+      capability: "localbase-sd-gpu-pci-v1",
+    });
+    process.env.PATH = `${relative(process.cwd(), userBinDir)}:${originalPath ?? ""}`;
+
+    const nativeProcess = await startSdVideoServerProcess(
+      resolveVideoLaunchPlan({
+        runtimeId: "video:test:1",
+        root,
+        modelsDirectory: config.videoModelsDir,
+        modelId: "video-model",
+        diffusionModelFile: "diffusion.gguf",
+        textEncoderFile: "encoder.gguf",
+        vaeFile: "vae.safetensors",
+        host: "127.0.0.1",
+        port: 18003,
+        videoRuntime: {
+          mode: "t2v",
+          artifacts: {
+            diffusionModel: "diffusion.gguf",
+            textEncoder: "encoder.gguf",
+            vae: "vae.safetensors",
+          },
+          qualification: {
+            maxWidth: 320,
+            maxHeight: 320,
+            maxFrames: 33,
+            fps: 16,
+            generation: {
+              sampler: "euler",
+              steps: 20,
+              cfgScale: 6,
+              flowShift: 3,
+              seed: 42,
+            },
+            launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+          },
+          estimatedMemoryDemand: {
+            unifiedBytes: 1,
+            hostBytes: 1,
+            acceleratorBytes: 1,
+          },
+          supportedTargets: [
+            { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+          ],
+        },
+        target: {
+          platform: "linux",
+          architecture: "x64",
+          accelerator: "nvidia",
+        },
+      }),
+      nvidiaTopology,
+    );
+    try {
+      expect(await readCapturedArgs(argsPath)).toEqual([
+        "--diffusion-model",
+        join(config.videoModelsDir, "diffusion.gguf"),
+        "--t5xxl",
+        join(config.videoModelsDir, "encoder.gguf"),
+        "--vae",
+        join(config.videoModelsDir, "vae.safetensors"),
+        "--offload-to-cpu",
+        "--diffusion-fa",
+        "--listen-ip",
+        "127.0.0.1",
+        "--listen-port",
+        "18003",
+        ...(process.platform === "linux"
+          ? ["--require-gpu-pci", "0000:ab:1f.7"]
+          : []),
+      ]);
+    } finally {
+      nativeProcess.kill();
+      await nativeProcess.exited;
+    }
+  });
+});
+
 async function createLlamaLaunchFixture(
   parallel: LocalBaseConfig["parallel"],
 ): Promise<{
@@ -303,7 +461,7 @@ async function createLlamaLaunchFixture(
   mkdirSync(config.llmModelsDir, { recursive: true });
   mkdirSync(userBinDir, { recursive: true });
   await Bun.write(modelPath, "model placeholder");
-  await compileRuntimeFixture(binPath, argsPath);
+  await compileRuntimeFixture(binPath, { argsPath });
   process.env.PATH = `${userBinDir}:${originalPath ?? ""}`;
 
   return { argsPath, config, modelFile, modelPath };
@@ -422,17 +580,12 @@ describe.serial("image runtime launch", () => {
       join(root, "llama-libraries"),
       join(root, "whisper-libraries"),
     ].join(delimiter);
-    await compileRuntimeFixture(
+    await compileSdLaunchFixture({
       binPath,
       argsPath,
-      undefined,
-      false,
-      undefined,
-      undefined,
-      false,
-      undefined,
+      capability: "localbase-sd-gpu-pci-v1",
       environmentPath,
-    );
+    });
     process.env.PATH = `${relative(process.cwd(), userBinDir)}:${originalPath ?? ""}`;
 
     const nativeProcess = await startSdServerProcess(
@@ -447,6 +600,7 @@ describe.serial("image runtime launch", () => {
         modelRequirementGb: 4,
         artifactBytes: 2 * 1024 ** 3,
       }),
+      nvidiaTopology,
     );
     try {
       await readCapturedArgs(argsPath);
@@ -458,6 +612,9 @@ describe.serial("image runtime launch", () => {
         "127.0.0.1",
         "--listen-port",
         "18002",
+        ...(process.platform === "linux"
+          ? ["--require-gpu-pci", "0000:ab:1f.7"]
+          : []),
       ]);
       expect(await Bun.file(environmentPath).text()).toBe(
         process.platform === "linux"
