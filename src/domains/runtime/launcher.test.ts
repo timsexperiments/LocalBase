@@ -387,7 +387,14 @@ describe.serial("sd-server GPU launch contract", () => {
             maxWidth: 320,
             maxHeight: 320,
             maxFrames: 33,
-            generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+            fps: 16,
+            generation: {
+              sampler: "euler",
+              steps: 20,
+              cfgScale: 6,
+              flowShift: 3,
+              seed: 42,
+            },
             launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
           },
           estimatedMemoryDemand: {
@@ -395,9 +402,15 @@ describe.serial("sd-server GPU launch contract", () => {
             hostBytes: 1,
             acceleratorBytes: 1,
           },
-          supportedPlatforms: ["linux"],
+          supportedTargets: [
+            { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+          ],
         },
-        platform: "linux",
+        target: {
+          platform: "linux",
+          architecture: "x64",
+          accelerator: "nvidia",
+        },
       }),
       nvidiaTopology,
     );
