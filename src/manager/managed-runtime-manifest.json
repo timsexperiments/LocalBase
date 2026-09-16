@@ -25,11 +25,11 @@
           "stripComponents": 0
         },
         "sd-server": {
-          "tag": "master-778-c00a9e9",
-          "assetName": "sd-master-c00a9e9-bin-Darwin-macOS-26.4-arm64.zip",
-          "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-778-c00a9e9/sd-master-c00a9e9-bin-Darwin-macOS-26.4-arm64.zip",
-          "expectedSizeBytes": 49263580,
-          "sha256": "aeb478142401abba31a356550ba1cb5ff1dbd59ed694860c88a1c79910a1e516",
+          "tag": "sd-server-v0.0.1",
+          "assetName": "sd-server-macos-arm64.zip",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/sd-server-v0.0.1/sd-server-macos-arm64.zip",
+          "expectedSizeBytes": 16126705,
+          "sha256": "c9f49097af48c7ab4c82da7b560f56c786c460448135d30ad481eb7d28b415f3",
           "format": "zip",
           "stripComponents": 0
         }
@@ -65,12 +65,12 @@
           "stripComponents": 0
         },
         "sd-server": {
-          "tag": "master-778-c00a9e9",
-          "assetName": "sd-master-c00a9e9-bin-Linux-Ubuntu-24.04-x86_64.zip",
-          "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-778-c00a9e9/sd-master-c00a9e9-bin-Linux-Ubuntu-24.04-x86_64.zip",
-          "expectedSizeBytes": 32263875,
-          "sha256": "da223f809e56d7d24bebfe0ebcfa279394f3549eb557385e3ba8c443a8f8ac5e",
-          "format": "zip",
+          "tag": "sd-server-v0.0.1",
+          "assetName": "sd-server-linux-x64.tar.gz",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/sd-server-v0.0.1/sd-server-linux-x64.tar.gz",
+          "expectedSizeBytes": 29819184,
+          "sha256": "f631b4787d35f533f7d7f80ef464f0115e1ca6f12dd53e1ef6dfba600589b127",
+          "format": "tar.gz",
           "stripComponents": 0
         }
       }
