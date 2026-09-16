@@ -1002,7 +1002,9 @@ async function installArtifact(
     ? (await Bun.file(partial).stat()).size
     : 0;
   const headers = new Headers();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (token && new URL(url).origin === "https://huggingface.co") {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
   if (partialSize > 0) headers.set("Range", `bytes=${partialSize}-`);
 
   let response: Response;

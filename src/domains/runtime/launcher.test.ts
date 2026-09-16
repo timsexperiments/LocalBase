@@ -11,9 +11,9 @@ import {
   resolveSttLaunchPlan,
   resolveVideoLaunchPlan,
 } from "./launch-plan";
-import type { MemoryTopology } from "./memory-safety";
 import { requireSdGpuContract } from "./sd-gpu";
 import { requireWhisperGpuContract } from "./whisper-gpu";
+import { gibibyte, type MemoryTopology } from "./memory-safety";
 import {
   sdServerEnvironment,
   buildSdVideoServerArgs,
@@ -26,6 +26,17 @@ import {
 const roots: string[] = [];
 const originalPath = process.env.PATH;
 const originalLibraryPath = process.env.LD_LIBRARY_PATH;
+const unifiedTopology = {
+  kind: "unified",
+  system: { id: "system", capacityBytes: 64 * gibibyte },
+} satisfies MemoryTopology;
+const discreteTopology = {
+  kind: "discrete",
+  system: { id: "system", capacityBytes: 96 * gibibyte },
+  accelerators: [
+    { id: "gpu", capacityBytes: 12 * gibibyte, pciBusId: "0000:01:00.0" },
+  ],
+} satisfies MemoryTopology;
 const nvidiaTopology: MemoryTopology = {
   kind: "discrete",
   system: { id: "system", capacityBytes: 1 },
@@ -57,65 +68,79 @@ async function compileSdLaunchFixture(input: {
   expect(result.success).toBeTrue();
 }
 
-test("uses video profile launch options", () => {
-  const plan = resolveVideoLaunchPlan({
-    runtimeId: "video:test:1",
-    root: "/tmp/local-base-video-launch",
-    modelsDirectory: "/tmp/local-base-video-launch/models/video",
-    modelId: "video-model",
-    diffusionModelFile: "diffusion.gguf",
-    textEncoderFile: "encoder.gguf",
-    vaeFile: "vae.safetensors",
-    host: "127.0.0.1",
-    port: 8091,
-    videoRuntime: {
-      mode: "t2v",
-      artifacts: {
-        diffusionModel: "diffusion.gguf",
-        textEncoder: "encoder.gguf",
-        vae: "vae.safetensors",
-      },
-      qualification: {
-        maxWidth: 320,
-        maxHeight: 320,
-        maxFrames: 33,
-        fps: 16,
-        generation: {
-          sampler: "euler",
-          steps: 20,
-          cfgScale: 6,
-          flowShift: 3,
-          seed: 42,
+test.each(["vae", "tae"] as const)(
+  "uses %s video profile launch options",
+  (kind) => {
+    const plan = resolveVideoLaunchPlan({
+      runtimeId: "video:test:1",
+      root: "/tmp/local-base-video-launch",
+      modelsDirectory: "/tmp/local-base-video-launch/models/video",
+      modelId: "video-model",
+      diffusionModelFile: "diffusion.gguf",
+      textEncoderFile: "encoder.gguf",
+      host: "127.0.0.1",
+      port: 8091,
+      videoRuntime: {
+        mode: "t2v",
+        artifacts: {
+          diffusionModel: "diffusion.gguf",
+          textEncoder: "encoder.gguf",
+          decoder: { kind, artifactFilename: "decoder.safetensors" },
         },
-        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        qualification: {
+          maxWidth: 320,
+          maxHeight: 320,
+          maxFrames: 33,
+          fps: 16,
+          generation: {
+            sampler: "euler",
+            scheduler: "discrete",
+            steps: 20,
+            cfgScale: 6,
+            flowShift: 3,
+            seed: 42,
+          },
+          launchOptions: {
+            cpuOffload: true,
+            diffusionFlashAttention: true,
+            vaeConvDirect: kind === "tae",
+          },
+        },
+        estimatedMemoryDemand: {
+          unifiedBytes: 1,
+          hostBytes: 1,
+          acceleratorBytes: (kind === "vae" ? 6 : 6.5) * gibibyte,
+        },
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
       },
-      estimatedMemoryDemand: {
-        unifiedBytes: 1,
-        hostBytes: 1,
-        acceleratorBytes: 1,
-      },
-      supportedTargets: [
-        { platform: "linux", architecture: "x64", accelerator: "nvidia" },
-      ],
-    },
-    target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
-  });
+      target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+    });
 
-  expect(buildSdVideoServerArgs(plan)).toEqual([
-    "--diffusion-model",
-    plan.diffusionModelPath,
-    "--t5xxl",
-    plan.textEncoderPath,
-    "--vae",
-    plan.vaePath,
-    "--offload-to-cpu",
-    "--diffusion-fa",
-    "--listen-ip",
-    "127.0.0.1",
-    "--listen-port",
-    "8091",
-  ]);
-});
+    const unifiedArgs = buildSdVideoServerArgs(plan, unifiedTopology);
+    expect(unifiedArgs).toEqual([
+      "--diffusion-model",
+      plan.diffusionModelPath,
+      "--t5xxl",
+      plan.textEncoderPath,
+      kind === "vae" ? "--vae" : "--tae",
+      plan.decoder.path,
+      "--offload-to-cpu",
+      "--diffusion-fa",
+      ...(kind === "tae" ? ["--vae-conv-direct"] : []),
+      "--listen-ip",
+      "127.0.0.1",
+      "--listen-port",
+      "8091",
+    ]);
+    expect(buildSdVideoServerArgs(plan, discreteTopology)).toEqual([
+      ...unifiedArgs,
+      "--max-vram",
+      kind === "vae" ? "6" : "6.5",
+    ]);
+  },
+);
 
 test("adds the wav2vec2 path only to an S2V launch", () => {
   const plan = resolveVideoLaunchPlan({
@@ -125,7 +150,6 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
     modelId: "s2v-model",
     diffusionModelFile: "diffusion.safetensors",
     textEncoderFile: "encoder.safetensors",
-    vaeFile: "vae.safetensors",
     host: "127.0.0.1",
     port: 8091,
     videoRuntime: {
@@ -133,7 +157,7 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
       artifacts: {
         diffusionModel: "diffusion.safetensors",
         textEncoder: "encoder.safetensors",
-        vae: "vae.safetensors",
+        decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
         audioEncoder: "wav2vec2.safetensors",
       },
       qualification: {
@@ -143,12 +167,17 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
         fps: 16,
         generation: {
           sampler: "euler",
+          scheduler: "discrete",
           steps: 20,
           cfgScale: 6,
           flowShift: 3,
           seed: 42,
         },
-        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        launchOptions: {
+          cpuOffload: true,
+          diffusionFlashAttention: true,
+          vaeConvDirect: false,
+        },
       },
       estimatedMemoryDemand: {
         unifiedBytes: 1,
@@ -164,8 +193,12 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
 
   expect(plan.mode).toBe("s2v");
   if (plan.mode !== "s2v") throw new Error("Expected an S2V launch plan.");
-  expect(buildSdVideoServerArgs(plan)).toContain("--audio-encoder");
-  expect(buildSdVideoServerArgs(plan)).toContain(plan.audioEncoderPath);
+  expect(buildSdVideoServerArgs(plan, discreteTopology)).toContain(
+    "--audio-encoder",
+  );
+  expect(buildSdVideoServerArgs(plan, discreteTopology)).toContain(
+    plan.audioEncoderPath,
+  );
 });
 
 test("rejects an S2V launch with a missing audio encoder before spawning", async () => {
@@ -187,7 +220,6 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
     modelId: "s2v-model",
     diffusionModelFile: "diffusion.safetensors",
     textEncoderFile: "encoder.safetensors",
-    vaeFile: "vae.safetensors",
     host: "127.0.0.1",
     port: 8091,
     videoRuntime: {
@@ -195,7 +227,7 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
       artifacts: {
         diffusionModel: "diffusion.safetensors",
         textEncoder: "encoder.safetensors",
-        vae: "vae.safetensors",
+        decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
         audioEncoder: "missing-wav2vec2.safetensors",
       },
       qualification: {
@@ -205,12 +237,17 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
         fps: 16,
         generation: {
           sampler: "euler",
+          scheduler: "discrete",
           steps: 20,
           cfgScale: 6,
           flowShift: 3,
           seed: 42,
         },
-        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        launchOptions: {
+          cpuOffload: true,
+          diffusionFlashAttention: true,
+          vaeConvDirect: false,
+        },
       },
       estimatedMemoryDemand: {
         unifiedBytes: 1,
@@ -224,9 +261,9 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
     target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
   });
 
-  await expect(startSdVideoServerProcess(plan, nvidiaTopology)).rejects.toThrow(
-    "Configured video artifact does not exist.",
-  );
+  await expect(
+    startSdVideoServerProcess(plan, discreteTopology),
+  ).rejects.toThrow("Configured video artifact does not exist.");
 });
 
 describe.serial("Whisper GPU launch contract", () => {
@@ -373,7 +410,6 @@ describe.serial("sd-server GPU launch contract", () => {
         modelId: "video-model",
         diffusionModelFile: "diffusion.gguf",
         textEncoderFile: "encoder.gguf",
-        vaeFile: "vae.safetensors",
         host: "127.0.0.1",
         port: 18003,
         videoRuntime: {
@@ -381,7 +417,7 @@ describe.serial("sd-server GPU launch contract", () => {
           artifacts: {
             diffusionModel: "diffusion.gguf",
             textEncoder: "encoder.gguf",
-            vae: "vae.safetensors",
+            decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
           },
           qualification: {
             maxWidth: 320,
@@ -390,17 +426,22 @@ describe.serial("sd-server GPU launch contract", () => {
             fps: 16,
             generation: {
               sampler: "euler",
+              scheduler: "discrete",
               steps: 20,
               cfgScale: 6,
               flowShift: 3,
               seed: 42,
             },
-            launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+            launchOptions: {
+              cpuOffload: true,
+              diffusionFlashAttention: true,
+              vaeConvDirect: false,
+            },
           },
           estimatedMemoryDemand: {
             unifiedBytes: 1,
             hostBytes: 1,
-            acceleratorBytes: 1,
+            acceleratorBytes: 6 * gibibyte,
           },
           supportedTargets: [
             { platform: "linux", architecture: "x64", accelerator: "nvidia" },
@@ -428,6 +469,8 @@ describe.serial("sd-server GPU launch contract", () => {
         "127.0.0.1",
         "--listen-port",
         "18003",
+        "--max-vram",
+        "6",
         ...(process.platform === "linux"
           ? ["--require-gpu-pci", "0000:ab:1f.7"]
           : []),

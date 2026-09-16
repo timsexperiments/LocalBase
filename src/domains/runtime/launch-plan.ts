@@ -48,30 +48,33 @@ type VideoLaunchPlanBase = Omit<
 > & {
   readonly diffusionModelPath: string;
   readonly textEncoderPath: string;
-  readonly vaePath: string;
   readonly inputBounds: Readonly<{
     maxWidth: number;
     maxHeight: number;
     maxFrames: number;
     fps: number;
   }>;
-  readonly generation: Readonly<{
-    sampler: "euler";
-    steps: number;
-    cfgScale: number;
-    flowShift: number;
-    seed: number;
-  }>;
-  readonly launchOptions: Readonly<{
-    cpuOffload: boolean;
-    diffusionFlashAttention: boolean;
-  }>;
+  readonly generation: Readonly<
+    VideoRuntimeProfile["qualification"]["generation"]
+  >;
+  readonly launchOptions: Readonly<
+    VideoRuntimeProfile["qualification"]["launchOptions"]
+  >;
 };
 
 export type VideoLaunchPlan = VideoLaunchPlanBase &
   (
-    | Readonly<{ mode: "t2v" }>
-    | Readonly<{ mode: "s2v"; audioEncoderPath: string }>
+    | Readonly<{
+        mode: "t2v";
+        decoder:
+          | Readonly<{ kind: "vae"; path: string }>
+          | Readonly<{ kind: "tae"; path: string }>;
+      }>
+    | Readonly<{
+        mode: "s2v";
+        decoder: Readonly<{ kind: "vae"; path: string }>;
+        audioEncoderPath: string;
+      }>
   );
 
 export type RuntimeLaunchPlan =
@@ -236,7 +239,6 @@ export function resolveVideoLaunchPlan(input: {
   modelId: string;
   diffusionModelFile: string;
   textEncoderFile: string;
-  vaeFile: string;
   host: string;
   port: number;
   videoRuntime: VideoRuntimeProfile;
@@ -264,7 +266,6 @@ export function resolveVideoLaunchPlan(input: {
     modelId: input.modelId,
     diffusionModelPath: join(input.modelsDirectory, input.diffusionModelFile),
     textEncoderPath: join(input.modelsDirectory, input.textEncoderFile),
-    vaePath: join(input.modelsDirectory, input.vaeFile),
     inputBounds: Object.freeze({
       maxWidth: qualification.maxWidth,
       maxHeight: qualification.maxHeight,
@@ -282,10 +283,27 @@ export function resolveVideoLaunchPlan(input: {
     ? Object.freeze({
         ...common,
         mode: "s2v",
+        decoder: Object.freeze({
+          kind: "vae",
+          path: join(
+            input.modelsDirectory,
+            input.videoRuntime.artifacts.decoder.artifactFilename,
+          ),
+        }),
         audioEncoderPath: join(
           input.modelsDirectory,
           input.videoRuntime.artifacts.audioEncoder,
         ),
       })
-    : Object.freeze({ ...common, mode: "t2v" });
+    : Object.freeze({
+        ...common,
+        mode: "t2v",
+        decoder: Object.freeze({
+          kind: input.videoRuntime.artifacts.decoder.kind,
+          path: join(
+            input.modelsDirectory,
+            input.videoRuntime.artifacts.decoder.artifactFilename,
+          ),
+        }),
+      });
 }

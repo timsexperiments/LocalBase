@@ -20,8 +20,23 @@ export const commercialStatusSchema = z.enum([
   "prohibited",
 ]);
 
+const repositoryUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => {
+    const url = URL.parse(value);
+    if (url?.hostname !== "github.com") return true;
+    return (
+      /^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+\/?$/.test(
+        value,
+      ) &&
+      ![".", ".."].includes(value.split("/")[4] ?? "") &&
+      !url.pathname.replace(/\/$/, "").endsWith(".git")
+    );
+  }, "GitHub sources must be HTTPS owner/repository URLs");
+
 const artifactSourceSchema = z.object({
-  repositoryUrl: z.string().url(),
+  repositoryUrl: repositoryUrlSchema,
   revision: z.string().regex(/^[a-fA-F0-9]{40}$/),
 });
 
@@ -50,16 +65,30 @@ const ttsRuntimeProfileSchema = z
   })
   .strict();
 
+const vaeDecoderSchema = z
+  .object({
+    kind: z.literal("vae"),
+    artifactFilename: safeFilenameSchema,
+  })
+  .strict();
+
+const videoDecoderSchema = z.discriminatedUnion("kind", [
+  vaeDecoderSchema,
+  z
+    .object({ kind: z.literal("tae"), artifactFilename: safeFilenameSchema })
+    .strict(),
+]);
+
 const t2vArtifactMappingSchema = z
   .object({
     diffusionModel: safeFilenameSchema,
     textEncoder: safeFilenameSchema,
-    vae: safeFilenameSchema,
+    decoder: videoDecoderSchema,
   })
   .strict();
 
 const s2vArtifactMappingSchema = t2vArtifactMappingSchema
-  .extend({ audioEncoder: safeFilenameSchema })
+  .extend({ decoder: vaeDecoderSchema, audioEncoder: safeFilenameSchema })
   .strict();
 
 const videoWorkloadBoundsSchema = z
@@ -74,6 +103,7 @@ const videoWorkloadBoundsSchema = z
 const videoGenerationProfileSchema = z
   .object({
     sampler: z.literal("euler"),
+    scheduler: z.enum(["discrete", "lcm"]),
     steps: z.number().int().positive(),
     cfgScale: z.number().positive(),
     flowShift: z.number().positive(),
@@ -85,6 +115,7 @@ const videoLaunchOptionsSchema = z
   .object({
     cpuOffload: z.boolean(),
     diffusionFlashAttention: z.boolean(),
+    vaeConvDirect: z.boolean(),
   })
   .strict();
 
@@ -156,7 +187,7 @@ export const modelSpecSchema = z
     codingScore: z.number().optional(),
     minVramGb: z.number().nonnegative(),
     storageGb: z.number().positive(),
-    source: z.string().url(),
+    source: repositoryUrlSchema,
     repositoryRevision: z.string().regex(/^[a-fA-F0-9]{40}$/),
     artifacts: z.array(modelArtifactSchema).min(1),
     ttsRuntime: ttsRuntimeProfileSchema.optional(),
@@ -174,6 +205,20 @@ export const modelSpecSchema = z
     let primaryCount = 0;
 
     for (const [index, artifact] of model.artifacts.entries()) {
+      const repositoryUrl = artifact.source?.repositoryUrl ?? model.source;
+      if (
+        URL.parse(repositoryUrl)?.hostname === "github.com" &&
+        artifact.sourcePath
+          .split("/")
+          .some((segment) => segment === "." || segment === "..")
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "GitHub artifact paths must remain within the pinned revision",
+          path: ["artifacts", index, "sourcePath"],
+        });
+      }
       if (filenames.has(artifact.filename)) {
         ctx.addIssue({
           code: "custom",
@@ -264,9 +309,11 @@ export const modelSpecSchema = z
         const artifactNames = new Set(
           model.artifacts.map(({ filename }) => filename),
         );
-        for (const [name, filename] of Object.entries(
-          model.videoRuntime.artifacts,
-        )) {
+        const { decoder, ...artifacts } = model.videoRuntime.artifacts;
+        for (const [name, filename] of Object.entries({
+          ...artifacts,
+          decoder: decoder.artifactFilename,
+        })) {
           if (!artifactNames.has(filename)) {
             ctx.addIssue({
               code: "custom",
@@ -1823,7 +1870,7 @@ const CATALOG_SOURCE = [
       artifacts: {
         diffusionModel: "Wan2.1-T2V-1.3B-Q8_0.gguf",
         textEncoder: "umt5-xxl-encoder-Q8_0.gguf",
-        vae: "wan_2.1_vae.safetensors",
+        decoder: { kind: "vae", artifactFilename: "wan_2.1_vae.safetensors" },
       },
       qualification: {
         maxWidth: 320,
@@ -1832,12 +1879,17 @@ const CATALOG_SOURCE = [
         fps: 16,
         generation: {
           sampler: "euler",
+          scheduler: "discrete",
           steps: 20,
           cfgScale: 6,
           flowShift: 3,
           seed: 42,
         },
-        launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+        launchOptions: {
+          cpuOffload: true,
+          diffusionFlashAttention: true,
+          vaeConvDirect: false,
+        },
       },
       estimatedMemoryDemand: {
         unifiedBytes: 24 * 1024 ** 3,
@@ -1855,6 +1907,95 @@ const CATALOG_SOURCE = [
     catch: "Apache-2.0 licenses for the pinned artifacts.",
     notes:
       "Experimental Linux x64 single-NVIDIA entry. Functionally qualified only at exactly 320x320, 33 frames, and 16 fps; it is not recommended as a quality claim.",
+  },
+  {
+    modelId: "fastwan2.2-ti2v-5b-q6_k",
+    kind: "video",
+    provider: "FastVideo/ggml",
+    family: "FastWan2.2-TI2V",
+    version: "2.2",
+    size: "5B",
+    quant: "Q6_K",
+    minVramGb: 12,
+    storageGb: 10.28,
+    source: "https://huggingface.co/Green-Sky/FastWan2.2-TI2V-5B-FullAttn-GGUF",
+    repositoryRevision: "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
+    artifacts: [
+      {
+        sourcePath: "FastWan2.2-TI2V-5B-q6_k.gguf",
+        filename: "FastWan2.2-TI2V-5B-q6_k.gguf",
+        expectedSizeBytes: 4_210_247_200,
+        sha256:
+          "416a87e30f2328dbefd7666ac90b395ead74f443748ff31c83483ac4ac6121cc",
+        role: "primary",
+      },
+      {
+        sourcePath: "umt5-xxl-encoder-Q8_0.gguf",
+        filename: "umt5-xxl-encoder-Q8_0.gguf",
+        expectedSizeBytes: 6_043_068_256,
+        sha256:
+          "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+          revision: "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7",
+        },
+      },
+      {
+        sourcePath: "safetensors/taew2_2.safetensors",
+        filename: "taew2_2.safetensors",
+        expectedSizeBytes: 22_848_048,
+        sha256:
+          "b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://github.com/madebyollin/taehv",
+          revision: "fa579a9a726b0a55951998d73e309bfdf0abd342",
+        },
+      },
+    ],
+    videoRuntime: {
+      mode: "t2v",
+      artifacts: {
+        diffusionModel: "FastWan2.2-TI2V-5B-q6_k.gguf",
+        textEncoder: "umt5-xxl-encoder-Q8_0.gguf",
+        decoder: { kind: "tae", artifactFilename: "taew2_2.safetensors" },
+      },
+      qualification: {
+        maxWidth: 480,
+        maxHeight: 832,
+        maxFrames: 81,
+        fps: 16,
+        generation: {
+          sampler: "euler",
+          scheduler: "lcm",
+          steps: 3,
+          cfgScale: 1,
+          flowShift: 3,
+          seed: 42,
+        },
+        launchOptions: {
+          cpuOffload: true,
+          diffusionFlashAttention: true,
+          vaeConvDirect: true,
+        },
+      },
+      estimatedMemoryDemand: {
+        unifiedBytes: 24 * 1024 ** 3,
+        hostBytes: 16 * 1024 ** 3,
+        acceleratorBytes: 8 * 1024 ** 3,
+      },
+      supportedTargets: [
+        { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+      ],
+    },
+    inputModalities: ["text"],
+    outputModalities: ["video"],
+    features: ["text-to-video", "avi-output", "experimental"],
+    commercialStatus: "open",
+    catch: "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
+    notes:
+      "Linux x64 single-NVIDIA text-to-video profile: 480x832, 81 frames, 16 fps. Qualified on an RTX 4070 SUPER; no image-to-video, audio, or macOS qualification.",
   },
 ] satisfies ModelSpecInput[];
 
@@ -1941,6 +2082,11 @@ export function artifactDownloadUrl(
   };
   const base = repositoryUrl.replace(/\/$/, "");
   const sourcePath = artifact.sourcePath.replace(/^\/+/, "");
+  const repository = new URL(base);
+  if (repository.hostname === "github.com") {
+    const encodedPath = sourcePath.split("/").map(encodeURIComponent).join("/");
+    return `https://raw.githubusercontent.com${repository.pathname}/${revision}/${encodedPath}`;
+  }
   return `${base}/resolve/${revision}/${sourcePath}`;
 }
 

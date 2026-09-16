@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import {
@@ -67,7 +67,6 @@ async function createArtifactServer(
   files: Record<string, Uint8Array>,
   interruptedRequests = new Map<string, number>(),
   options: {
-    requiredToken?: string;
     invalidRangePaths?: Set<string>;
   } = {},
 ): Promise<{
@@ -92,14 +91,6 @@ async function createArtifactServer(
       response.writeHead(404).end();
       return;
     }
-    if (
-      options.requiredToken &&
-      authorization !== `Bearer ${options.requiredToken}`
-    ) {
-      response.writeHead(401).end();
-      return;
-    }
-
     const interruptionsLeft = interruptedRequests.get(path) ?? 0;
     if (interruptionsLeft > 0) {
       interruptedRequests.set(path, interruptionsLeft - 1);
@@ -273,6 +264,69 @@ afterEach(async () => {
 });
 
 describe.serial("transactional model artifact installation", () => {
+  test.each([
+    { source: "https://huggingface.co/test/model", authenticated: true },
+    { source: "http://huggingface.co/test/model", authenticated: false },
+    { source: "https://huggingface.co:8443/test/model", authenticated: false },
+    {
+      source: "https://huggingface.co.example.test/test/model",
+      authenticated: false,
+    },
+    { source: "https://github.com/madebyollin/taehv", authenticated: false },
+    {
+      source: "https://raw.githubusercontent.com/madebyollin/taehv",
+      authenticated: false,
+    },
+  ])(
+    "scopes Hugging Face authorization for $source",
+    async ({ source, authenticated }) => {
+      const bytes = textBytes("verified download fixture");
+      const file = artifact("fixture.gguf", bytes, "primary");
+      const modelId = installFixtureModel("https://huggingface.co/test/base", [
+        {
+          ...file,
+          source: { repositoryUrl: source, revision: TEST_REVISION },
+        },
+      ]);
+      const config = createInstallConfig();
+      config.hfToken = "test-hf-secret";
+      const requests: { url: string; authorization: string | null }[] = [];
+      const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+        Object.assign(
+          async (
+            input: Parameters<typeof fetch>[0],
+            init?: Parameters<typeof fetch>[1],
+          ) => {
+            requests.push({
+              url: input instanceof Request ? input.url : String(input),
+              authorization: new Headers(init?.headers).get("Authorization"),
+            });
+            return new Response(bytes, {
+              headers: { "Content-Length": String(bytes.byteLength) },
+            });
+          },
+          { preconnect: fetch.preconnect },
+        ),
+      );
+      try {
+        await installModel(config, modelId);
+        expect(requests).toEqual([
+          {
+            url: source.startsWith("https://github.com/")
+              ? `https://raw.githubusercontent.com/madebyollin/taehv/${TEST_REVISION}/fixture.gguf`
+              : `${source}/resolve/${TEST_REVISION}/fixture.gguf`,
+            authorization: authenticated ? "Bearer test-hf-secret" : null,
+          },
+        ]);
+        expect(
+          await Bun.file(join(config.llmModelsDir, file.filename)).bytes(),
+        ).toEqual(bytes);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    },
+  );
+
   test("keeps single-file installs compatible and supports a filename override", async () => {
     const content = textBytes("single model");
     const server = await createArtifactServer({
@@ -359,7 +413,6 @@ describe.serial("transactional model artifact installation", () => {
           supplementary,
       },
       new Map(),
-      { requiredToken: "test-token" },
     );
     const modelId = installFixtureModel(server.source, [
       primaryArtifact,
@@ -409,7 +462,7 @@ describe.serial("transactional model artifact installation", () => {
       {
         path: artifactPath(server.source, supplementaryArtifact.sourcePath),
         range: `bytes=${prefix.byteLength}-`,
-        authorization: "Bearer test-token",
+        authorization: undefined,
       },
     ]);
     expect(

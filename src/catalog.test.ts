@@ -68,7 +68,7 @@ describe("catalog artifact validation", () => {
         artifacts: {
           diffusionModel: "diffusion.gguf",
           textEncoder: "encoder.gguf",
-          vae: "vae.safetensors",
+          decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
         },
         qualification: {
           maxWidth: 320,
@@ -77,12 +77,17 @@ describe("catalog artifact validation", () => {
           fps: 16,
           generation: {
             sampler: "euler",
+            scheduler: "discrete",
             steps: 20,
             cfgScale: 6,
             flowShift: 3,
             seed: 42,
           },
-          launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+          launchOptions: {
+            cpuOffload: true,
+            diffusionFlashAttention: true,
+            vaeConvDirect: false,
+          },
         },
         estimatedMemoryDemand: {
           unifiedBytes: 20,
@@ -101,7 +106,31 @@ describe("catalog artifact validation", () => {
           ...video,
           videoRuntime: {
             ...video.videoRuntime,
-            artifacts: { ...video.videoRuntime.artifacts, vae: "missing.vae" },
+            artifacts: {
+              ...video.videoRuntime.artifacts,
+              decoder: { kind: "tae", artifactFilename: "vae.safetensors" },
+            },
+            qualification: {
+              ...video.videoRuntime.qualification,
+              generation: {
+                ...video.videoRuntime.qualification.generation,
+                scheduler: "lcm",
+              },
+            },
+          },
+        },
+      ]).success,
+    ).toBe(true);
+    expect(
+      catalogSchema.safeParse([
+        {
+          ...video,
+          videoRuntime: {
+            ...video.videoRuntime,
+            artifacts: {
+              ...video.videoRuntime.artifacts,
+              decoder: { kind: "vae", artifactFilename: "missing.vae" },
+            },
           },
         },
       ]).success,
@@ -137,7 +166,7 @@ describe("catalog artifact validation", () => {
         artifacts: {
           diffusionModel: "diffusion.safetensors",
           textEncoder: "text.safetensors",
-          vae: "vae.safetensors",
+          decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
           audioEncoder: "wav2vec2.safetensors",
         },
         qualification: {
@@ -147,12 +176,17 @@ describe("catalog artifact validation", () => {
           fps: 16,
           generation: {
             sampler: "euler",
+            scheduler: "discrete",
             steps: 20,
             cfgScale: 6,
             flowShift: 3,
             seed: 42,
           },
-          launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+          launchOptions: {
+            cpuOffload: true,
+            diffusionFlashAttention: true,
+            vaeConvDirect: false,
+          },
         },
         estimatedMemoryDemand: {
           unifiedBytes: 30,
@@ -166,6 +200,20 @@ describe("catalog artifact validation", () => {
     };
 
     expect(catalogSchema.safeParse([speechVideo]).success).toBe(true);
+    expect(
+      catalogSchema.safeParse([
+        {
+          ...speechVideo,
+          videoRuntime: {
+            ...speechVideo.videoRuntime,
+            artifacts: {
+              ...speechVideo.videoRuntime.artifacts,
+              decoder: { kind: "tae", artifactFilename: "vae.safetensors" },
+            },
+          },
+        },
+      ]).success,
+    ).toBe(false);
     expect(
       catalogSchema.safeParse([
         {
@@ -400,6 +448,17 @@ describe("catalog artifact validation", () => {
         revision: "main",
       },
       { revision: "d".repeat(40) },
+      ...[
+        "https://github.com/madebyollin/taehv/blob/main/safetensors/taew2_2.safetensors",
+        "https://github.com/madebyollin/taehv/tree/main",
+        "https://github.com/madebyollin",
+        "https://github.com/madebyollin/taehv?ref=main",
+        "https://github.com/madebyollin/taehv#main",
+        "https://github.com/madebyollin/taehv.git",
+        "http://github.com/madebyollin/taehv",
+        "https://user:secret@github.com/madebyollin/taehv",
+        "https://github.com/madebyollin/../taehv",
+      ].map((repositoryUrl) => ({ repositoryUrl, revision: "d".repeat(40) })),
     ];
 
     for (const source of invalidSources) {
@@ -572,12 +631,17 @@ describe("catalog artifact validation", () => {
           fps: 16,
           generation: {
             sampler: "euler",
+            scheduler: "discrete",
             steps: 20,
             cfgScale: 6,
             flowShift: 3,
             seed: 42,
           },
-          launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
+          launchOptions: {
+            cpuOffload: true,
+            diffusionFlashAttention: true,
+            vaeConvDirect: false,
+          },
         },
         estimatedMemoryDemand: {
           unifiedBytes: 24 * 1024 ** 3,
@@ -622,5 +686,128 @@ describe("catalog artifact validation", () => {
       "https://huggingface.co/test/encoder/resolve/" +
         `${"d".repeat(40)}/encoder/model.safetensors`,
     );
+  });
+
+  test("pins the FastWan decoder, shared encoder, and measured Linux profile", () => {
+    const fastWan = byId("fastwan2.2-ti2v-5b-q6_k");
+    expect(fastWan).toMatchObject({
+      repositoryRevision: "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
+      videoRuntime: {
+        mode: "t2v",
+        artifacts: {
+          decoder: { kind: "tae", artifactFilename: "taew2_2.safetensors" },
+        },
+        qualification: {
+          maxWidth: 480,
+          maxHeight: 832,
+          maxFrames: 81,
+          fps: 16,
+          generation: {
+            sampler: "euler",
+            scheduler: "lcm",
+            steps: 3,
+            cfgScale: 1,
+            flowShift: 3,
+            seed: 42,
+          },
+          launchOptions: {
+            cpuOffload: true,
+            diffusionFlashAttention: true,
+            vaeConvDirect: true,
+          },
+        },
+        estimatedMemoryDemand: {
+          unifiedBytes: 24 * 1024 ** 3,
+          hostBytes: 16 * 1024 ** 3,
+          acceleratorBytes: 8 * 1024 ** 3,
+        },
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
+      },
+    });
+    expect(
+      fastWan?.artifacts.find(({ role }) => role === "primary"),
+    ).toMatchObject({
+      expectedSizeBytes: 4_210_247_200,
+      sha256:
+        "416a87e30f2328dbefd7666ac90b395ead74f443748ff31c83483ac4ac6121cc",
+    });
+    expect(
+      fastWan?.artifacts.find(
+        ({ filename }) => filename === "umt5-xxl-encoder-Q8_0.gguf",
+      ),
+    ).toEqual(
+      byId("wan2.1-t2v-1.3b-q8_0")?.artifacts.find(
+        ({ filename }) => filename === "umt5-xxl-encoder-Q8_0.gguf",
+      ),
+    );
+    expect(
+      fastWan?.artifacts.find(
+        ({ filename }) => filename === "taew2_2.safetensors",
+      ),
+    ).toMatchObject({
+      expectedSizeBytes: 22_848_048,
+      sha256:
+        "b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325",
+      source: {
+        repositoryUrl: "https://github.com/madebyollin/taehv",
+        revision: "fa579a9a726b0a55951998d73e309bfdf0abd342",
+      },
+    });
+  });
+
+  test("resolves pinned Hugging Face and GitHub artifacts", () => {
+    const artifact = {
+      sourcePath: "safetensors/taew2_2.safetensors",
+      filename: "taew2_2.safetensors",
+      expectedSizeBytes: 22_848_048,
+      sha256:
+        "b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325",
+      role: "primary",
+    };
+    const source = {
+      repositoryUrl: "https://github.com/madebyollin/taehv/",
+      revision: "fa579a9a726b0a55951998d73e309bfdf0abd342",
+    };
+    for (const candidate of [
+      model([{ ...artifact, source }]),
+      {
+        ...model([artifact]),
+        source: source.repositoryUrl,
+        repositoryRevision: source.revision,
+      },
+    ]) {
+      const parsed = catalogSchema.parse([candidate])[0]!;
+      expect(artifactDownloadUrl(parsed, parsed.artifacts[0]!)).toBe(
+        "https://raw.githubusercontent.com/madebyollin/taehv/fa579a9a726b0a55951998d73e309bfdf0abd342/safetensors/taew2_2.safetensors",
+      );
+    }
+    const encoder = catalogSchema.parse([
+      model([
+        {
+          ...artifact,
+          sourcePath: "umt5-xxl-encoder-Q8_0.gguf",
+          source: {
+            repositoryUrl:
+              "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+            revision: "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7",
+          },
+        },
+      ]),
+    ])[0]!;
+    expect(artifactDownloadUrl(encoder, encoder.artifacts[0]!)).toBe(
+      "https://huggingface.co/city96/umt5-xxl-encoder-gguf/resolve/b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7/umt5-xxl-encoder-Q8_0.gguf",
+    );
+    for (const sourcePath of [
+      "../main/file",
+      "safetensors/../../main/file",
+      "./file",
+    ]) {
+      expect(
+        catalogSchema.safeParse([model([{ ...artifact, source, sourcePath }])])
+          .success,
+      ).toBe(false);
+    }
   });
 });
