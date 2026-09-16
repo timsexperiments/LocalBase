@@ -65,6 +65,7 @@ import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
 import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
 import { VideoJobManager } from "../video/video-job-manager";
+import { logVideoJobTerminal } from "../video/video-job-logging";
 import { createStableDiffusionVideoClient } from "../video/stable-diffusion-video-client";
 import { handleVideoGatewayRequest } from "../video/gateway-handler";
 import { videoCreateRequestSchema } from "../video/gateway-contract";
@@ -2204,7 +2205,7 @@ export async function runServe(
       baseUrl: factory.baseUrl("video", initialSnapshot),
     }),
     temporaryDirectory: join(config.root, "tmp"),
-    onContainmentFailure: ({ jobId, source, error }) => {
+    onContainmentFailure: ({ jobId, source }) => {
       ctx.logger.event({
         severity: "error",
         eventName: "video.job-containment-failed",
@@ -2213,7 +2214,10 @@ export async function runServe(
         runtime: "video",
         message: "A local video job could not be contained.",
         attributes: { job_id: jobId, source },
-        error: { type: error.name, message: error.message },
+        error: {
+          type: "VideoContainmentFailure",
+          message: "A local video job could not be contained.",
+        },
       });
     },
   });
@@ -2427,29 +2431,11 @@ export async function runServe(
         routeNotFound,
         requestAborted,
         onTerminal: ({ job, modelId }) => {
-          ctx.logger.event({
-            severity: job.state === "failed" ? "error" : "info",
-            eventName: "video.job-terminal",
-            category: "runtime",
-            component: "video-job-manager",
-            runtime: "video",
+          logVideoJobTerminal({
+            logger: ctx.logger,
+            job,
+            modelId,
             requestId,
-            message: "A local video job reached a terminal state.",
-            ...(job.state === "failed"
-              ? {
-                  error: {
-                    type: job.failure.name,
-                    message: job.failure.message,
-                  },
-                }
-              : {}),
-            attributes: {
-              job_id: job.id,
-              model_id: modelId,
-              state: job.state,
-              duration_ms:
-                "terminalAtMs" in job ? job.terminalAtMs - job.createdAtMs : 0,
-            },
           });
         },
       });
