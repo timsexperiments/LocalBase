@@ -1,7 +1,7 @@
 import { delimiter, dirname, resolve } from "node:path";
 import type { ParallelAllocation } from "../config/parallel";
 import { ensureBinary } from "../../manager/binaries";
-import type { MemoryTopology } from "./memory-safety";
+import { gibibyte, type MemoryTopology } from "./memory-safety";
 import { requireWhisperGpuContract, whisperGpuArgs } from "./whisper-gpu";
 import type {
   ImageLaunchPlan,
@@ -152,6 +152,7 @@ export async function startSdServerProcess(
 
 export async function startSdVideoServerProcess(
   plan: VideoLaunchPlan,
+  topology: MemoryTopology,
 ): Promise<Bun.Subprocess> {
   for (const path of [
     plan.diffusionModelPath,
@@ -166,7 +167,7 @@ export async function startSdVideoServerProcess(
   const binPath = resolve(
     await ensureBinary({ root: plan.root }, plan.component),
   );
-  const args = buildSdVideoServerArgs(plan);
+  const args = buildSdVideoServerArgs(plan, topology);
   return Bun.spawn([binPath, ...args], {
     stdout: "pipe",
     stderr: "pipe",
@@ -177,7 +178,10 @@ export async function startSdVideoServerProcess(
 }
 
 /** Builds the pinned sd-server `vid_gen` argv without touching the filesystem. */
-export function buildSdVideoServerArgs(plan: VideoLaunchPlan): string[] {
+export function buildSdVideoServerArgs(
+  plan: VideoLaunchPlan,
+  topology: MemoryTopology,
+): string[] {
   return [
     "--diffusion-model",
     plan.diffusionModelPath,
@@ -193,5 +197,8 @@ export function buildSdVideoServerArgs(plan: VideoLaunchPlan): string[] {
     plan.host,
     "--listen-port",
     String(plan.port),
+    ...(topology.kind === "discrete"
+      ? ["--max-vram", String(plan.memoryDemand.acceleratorBytes / gibibyte)]
+      : []),
   ];
 }

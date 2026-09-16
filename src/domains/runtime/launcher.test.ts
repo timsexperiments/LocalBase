@@ -12,6 +12,7 @@ import {
   resolveVideoLaunchPlan,
 } from "./launch-plan";
 import { requireWhisperGpuContract } from "./whisper-gpu";
+import { gibibyte, type MemoryTopology } from "./memory-safety";
 import {
   sdServerEnvironment,
   buildSdVideoServerArgs,
@@ -24,6 +25,17 @@ import {
 const roots: string[] = [];
 const originalPath = process.env.PATH;
 const originalLibraryPath = process.env.LD_LIBRARY_PATH;
+const unifiedTopology = {
+  kind: "unified",
+  system: { id: "system", capacityBytes: 64 * gibibyte },
+} satisfies MemoryTopology;
+const discreteTopology = {
+  kind: "discrete",
+  system: { id: "system", capacityBytes: 96 * gibibyte },
+  accelerators: [
+    { id: "gpu", capacityBytes: 12 * gibibyte, pciBusId: "0000:01:00.0" },
+  ],
+} satisfies MemoryTopology;
 
 test.each(["vae", "tae"] as const)(
   "uses %s video profile launch options",
@@ -66,7 +78,7 @@ test.each(["vae", "tae"] as const)(
         estimatedMemoryDemand: {
           unifiedBytes: 1,
           hostBytes: 1,
-          acceleratorBytes: 1,
+          acceleratorBytes: (kind === "vae" ? 6 : 6.5) * gibibyte,
         },
         supportedTargets: [
           { platform: "linux", architecture: "x64", accelerator: "nvidia" },
@@ -75,7 +87,8 @@ test.each(["vae", "tae"] as const)(
       target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
     });
 
-    expect(buildSdVideoServerArgs(plan)).toEqual([
+    const unifiedArgs = buildSdVideoServerArgs(plan, unifiedTopology);
+    expect(unifiedArgs).toEqual([
       "--diffusion-model",
       plan.diffusionModelPath,
       "--t5xxl",
@@ -89,6 +102,11 @@ test.each(["vae", "tae"] as const)(
       "127.0.0.1",
       "--listen-port",
       "8091",
+    ]);
+    expect(buildSdVideoServerArgs(plan, discreteTopology)).toEqual([
+      ...unifiedArgs,
+      "--max-vram",
+      kind === "vae" ? "6" : "6.5",
     ]);
   },
 );
@@ -144,8 +162,12 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
 
   expect(plan.mode).toBe("s2v");
   if (plan.mode !== "s2v") throw new Error("Expected an S2V launch plan.");
-  expect(buildSdVideoServerArgs(plan)).toContain("--audio-encoder");
-  expect(buildSdVideoServerArgs(plan)).toContain(plan.audioEncoderPath);
+  expect(buildSdVideoServerArgs(plan, discreteTopology)).toContain(
+    "--audio-encoder",
+  );
+  expect(buildSdVideoServerArgs(plan, discreteTopology)).toContain(
+    plan.audioEncoderPath,
+  );
 });
 
 test("rejects an S2V launch with a missing audio encoder before spawning", async () => {
@@ -208,9 +230,9 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
     target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
   });
 
-  await expect(startSdVideoServerProcess(plan)).rejects.toThrow(
-    "Configured video artifact does not exist.",
-  );
+  await expect(
+    startSdVideoServerProcess(plan, discreteTopology),
+  ).rejects.toThrow("Configured video artifact does not exist.");
 });
 
 describe.serial("Whisper GPU launch contract", () => {
