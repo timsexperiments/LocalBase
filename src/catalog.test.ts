@@ -71,6 +71,7 @@ describe("catalog artifact validation", () => {
           decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
         },
         qualification: {
+          jobDeadlineMs: 10 * 60 * 1_000,
           maxWidth: 320,
           maxHeight: 320,
           maxFrames: 33,
@@ -100,6 +101,36 @@ describe("catalog artifact validation", () => {
       },
     };
     expect(catalogSchema.safeParse([video]).success).toBe(true);
+    for (const jobDeadlineMs of [undefined, 0, -1, 1.5, Infinity, 1_800_001]) {
+      expect(
+        catalogSchema.safeParse([
+          {
+            ...video,
+            videoRuntime: {
+              ...video.videoRuntime,
+              qualification: {
+                ...video.videoRuntime.qualification,
+                jobDeadlineMs,
+              },
+            },
+          },
+        ]).success,
+      ).toBe(false);
+    }
+    expect(
+      catalogSchema.safeParse([
+        {
+          ...video,
+          videoRuntime: {
+            ...video.videoRuntime,
+            qualification: {
+              ...video.videoRuntime.qualification,
+              jobDeadlineMs: 1_800_000,
+            },
+          },
+        },
+      ]).success,
+    ).toBe(true);
     expect(
       catalogSchema.safeParse([
         {
@@ -170,6 +201,7 @@ describe("catalog artifact validation", () => {
           audioEncoder: "wav2vec2.safetensors",
         },
         qualification: {
+          jobDeadlineMs: 10 * 60 * 1_000,
           maxWidth: 832,
           maxHeight: 480,
           maxFrames: 81,
@@ -625,6 +657,7 @@ describe("catalog artifact validation", () => {
       videoRuntime: {
         mode: "t2v",
         qualification: {
+          jobDeadlineMs: 10 * 60 * 1_000,
           maxWidth: 320,
           maxHeight: 320,
           maxFrames: 33,
@@ -698,6 +731,7 @@ describe("catalog artifact validation", () => {
           decoder: { kind: "tae", artifactFilename: "taew2_2.safetensors" },
         },
         qualification: {
+          jobDeadlineMs: 10 * 60 * 1_000,
           maxWidth: 480,
           maxHeight: 832,
           maxFrames: 81,

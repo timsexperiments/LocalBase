@@ -121,6 +121,11 @@ const videoLaunchOptionsSchema = z
 
 const videoQualificationProfileSchema = videoWorkloadBoundsSchema
   .extend({
+    jobDeadlineMs: z
+      .number()
+      .int()
+      .positive()
+      .max(30 * 60 * 1_000),
     generation: videoGenerationProfileSchema,
     launchOptions: videoLaunchOptionsSchema,
   })
@@ -1873,6 +1878,7 @@ const CATALOG_SOURCE = [
         decoder: { kind: "vae", artifactFilename: "wan_2.1_vae.safetensors" },
       },
       qualification: {
+        jobDeadlineMs: 10 * 60 * 1_000,
         maxWidth: 320,
         maxHeight: 320,
         maxFrames: 33,
@@ -1962,6 +1968,7 @@ const CATALOG_SOURCE = [
         decoder: { kind: "tae", artifactFilename: "taew2_2.safetensors" },
       },
       qualification: {
+        jobDeadlineMs: 10 * 60 * 1_000,
         maxWidth: 480,
         maxHeight: 832,
         maxFrames: 81,

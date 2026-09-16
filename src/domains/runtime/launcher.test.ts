@@ -88,6 +88,7 @@ test.each(["vae", "tae"] as const)(
           decoder: { kind, artifactFilename: "decoder.safetensors" },
         },
         qualification: {
+          jobDeadlineMs: 10 * 60 * 1_000,
           maxWidth: 320,
           maxHeight: 320,
           maxFrames: 33,
@@ -161,6 +162,7 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
         audioEncoder: "wav2vec2.safetensors",
       },
       qualification: {
+        jobDeadlineMs: 10 * 60 * 1_000,
         maxWidth: 832,
         maxHeight: 480,
         maxFrames: 81,
@@ -231,6 +233,7 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
         audioEncoder: "missing-wav2vec2.safetensors",
       },
       qualification: {
+        jobDeadlineMs: 10 * 60 * 1_000,
         maxWidth: 832,
         maxHeight: 480,
         maxFrames: 81,
@@ -420,6 +423,7 @@ describe.serial("sd-server GPU launch contract", () => {
             decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
           },
           qualification: {
+            jobDeadlineMs: 10 * 60 * 1_000,
             maxWidth: 320,
             maxHeight: 320,
             maxFrames: 33,

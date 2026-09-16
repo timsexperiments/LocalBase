@@ -115,6 +115,7 @@ describe("runtime launch plans", () => {
               decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
             },
             qualification: {
+              jobDeadlineMs: 10 * 60 * 1_000,
               maxWidth: 320,
               maxHeight: 320,
               maxFrames: 33,
@@ -205,6 +206,7 @@ describe("runtime launch plans", () => {
           audioEncoder: "wav2vec2.safetensors",
         },
         qualification: {
+          jobDeadlineMs: 10 * 60 * 1_000,
           maxWidth: 832,
           maxHeight: 480,
           maxFrames: 81,
@@ -298,6 +300,7 @@ describe("runtime launch plans", () => {
             decoder: { kind: "vae", artifactFilename: "vae.safetensors" },
           },
           qualification: {
+            jobDeadlineMs: 10 * 60 * 1_000,
             maxWidth: 320,
             maxHeight: 320,
             maxFrames: 33,

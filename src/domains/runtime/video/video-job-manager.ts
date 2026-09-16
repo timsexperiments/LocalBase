@@ -3,7 +3,6 @@ import { join } from "node:path";
 import type { RuntimeAdmission } from "../runtime-reconciler";
 import type { VideoGenerationInput } from "./video-input";
 
-const DEFAULT_DEADLINE_MS = 10 * 60 * 1_000;
 const DEFAULT_MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
 const DEFAULT_MAX_ARTIFACT_BYTES_TOTAL = 256 * 1024 * 1024;
 const DEFAULT_MAX_TERMINAL_JOBS = 20;
@@ -161,7 +160,6 @@ export type VideoJobManagerOptions = Readonly<{
   }) => Promise<void>;
   removeArtifact?: (path: string) => void;
   removeJobDirectory?: (path: string) => void;
-  deadlineMs?: number;
   maxArtifactBytes?: number;
   maxArtifactBytesTotal?: number;
   maxTerminalJobs?: number;
@@ -182,7 +180,6 @@ export class VideoJobManager {
     signal: AbortSignal;
     deadlineMs: number;
   }) => Promise<void>;
-  private readonly deadlineMs: number;
   private readonly maxArtifactBytes: number;
   private readonly maxArtifactBytesTotal: number;
   private readonly maxTerminalJobs: number;
@@ -203,11 +200,6 @@ export class VideoJobManager {
     this.writeArtifact = options.writeArtifact ?? writeArtifact;
     this.removeArtifact = options.removeArtifact ?? removeArtifact;
     this.removeJobDirectory = options.removeJobDirectory ?? removeJobDirectory;
-    this.deadlineMs = positive(
-      options.deadlineMs,
-      DEFAULT_DEADLINE_MS,
-      "deadlineMs",
-    );
     this.maxArtifactBytes = positive(
       options.maxArtifactBytes,
       DEFAULT_MAX_ARTIFACT_BYTES,
@@ -233,6 +225,7 @@ export class VideoJobManager {
   async start(options: {
     ownerId: string;
     input: VideoJobInput;
+    jobDeadlineMs: number;
     acquireAdmission?: VideoJobAdmissionAcquirer;
     supervisedStop?: () => Promise<void>;
   }): Promise<VideoJobStart> {
@@ -251,7 +244,7 @@ export class VideoJobManager {
     job.admissionPromise = Promise.resolve().then(
       async () => await acquireAdmission({ signal: job.controller.signal }),
     );
-    void this.watchDeadline(job);
+    void this.watchDeadline(job, options.jobDeadlineMs);
     void this.run(job, options.input);
     return Object.freeze({
       kind: "accepted",
@@ -524,11 +517,14 @@ export class VideoJobManager {
     this.finishCancelled(job, disposition.reason);
   }
 
-  private async watchDeadline(job: StoredJob): Promise<void> {
+  private async watchDeadline(
+    job: StoredJob,
+    jobDeadlineMs: number,
+  ): Promise<void> {
     try {
       await this.waitForDeadline({
         signal: job.deadlineController.signal,
-        deadlineMs: this.deadlineMs,
+        deadlineMs: jobDeadlineMs,
       });
     } catch (error) {
       if (isAbortError(error, job.deadlineController.signal)) return;

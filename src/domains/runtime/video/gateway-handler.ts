@@ -122,6 +122,7 @@ export async function handleVideoGatewayRequest(
   const started = await jobs.start({
     ownerId: dependencies.ownerId,
     input: videoInput,
+    jobDeadlineMs: spec.videoRuntime.qualification.jobDeadlineMs,
     acquireAdmission: async ({ signal }) => {
       const selection = await dependencies.admissionProvider.admit(
         parsed.data.model,

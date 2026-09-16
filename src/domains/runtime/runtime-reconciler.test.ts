@@ -1122,6 +1122,7 @@ test("drains a warming video job when the model is disabled", async () => {
 
   try {
     const started = await jobs.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Cancel while video warms." },
       acquireAdmission: async ({ signal }) => {
