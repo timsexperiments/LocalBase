@@ -547,7 +547,6 @@ describe("catalog artifact validation", () => {
     const qwen = byId("qwen2.5-coder-1.5b-instruct-q4_k_m");
 
     expect(qwen?.features).not.toContain("tool-calling");
-    expect(qwen?.notes).toContain("did not emit protocol tool calls");
   });
 
   test("pins the complete Qwen3 TTS base artifact set", () => {

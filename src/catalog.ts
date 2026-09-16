@@ -383,7 +383,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
     notes:
-      "Ultra-fast autocomplete baseline and tab completion model. This artifact did not emit protocol tool calls during forced qualification.",
+      "Autocomplete and tab completion model. Protocol tool calling is unsupported for this artifact.",
   },
   {
     modelId: "qwen2.5-coder-3b-instruct-q4_k_m",
@@ -1912,7 +1912,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0 licenses for the pinned artifacts.",
     notes:
-      "Experimental Linux x64 single-NVIDIA entry. Functionally qualified only at exactly 320x320, 33 frames, and 16 fps; it is not recommended as a quality claim.",
+      "Experimental Linux x64 single-NVIDIA text-to-video profile: exactly 320x320, 33 frames, and 16 fps. Output quality and motion vary.",
   },
   {
     modelId: "fastwan2.2-ti2v-5b-q6_k",
@@ -2002,7 +2002,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
     notes:
-      "Linux x64 single-NVIDIA text-to-video profile: 480x832, 81 frames, 16 fps. Qualified on an RTX 4070 SUPER; no image-to-video, audio, or macOS qualification.",
+      "Experimental Linux x64 single-NVIDIA text-to-video profile: exactly 480x832, 81 frames, and 16 fps. Image-to-video, audio generation, and macOS are unsupported.",
   },
 ] satisfies ModelSpecInput[];
 
