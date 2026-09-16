@@ -10,6 +10,7 @@ import {
   createStableDiffusionVideoClient,
   StableDiffusionVideoClientError,
 } from "./stable-diffusion-video-client";
+import { testPcm16Wav, testPng } from "./video-input.fixtures";
 
 const VIDEO_ID = "job_01HTXYZVID";
 
@@ -95,7 +96,7 @@ test("keeps native failure details out of job errors and emitted logs", async ()
     await logger.enableFileLogging(root);
     const started = await jobs.start({
       ownerId: "test-owner",
-      input: { prompt: sentinel },
+      input: { kind: "text", prompt: sentinel },
     });
     if (started.kind !== "accepted") throw new Error("Expected admission.");
     const job = await started.terminal;
@@ -176,6 +177,7 @@ test.each(["discrete", "lcm"] as const)(
       await expect(
         client.submitVideo({
           input: {
+            kind: "text",
             prompt: "A small sailboat on a lake.",
             negativePrompt: "text overlay",
             width: 832,
@@ -245,6 +247,52 @@ test.each(["discrete", "lcm"] as const)(
   },
 );
 
+test("sends the exact bounded speech-to-video inline payload", async () => {
+  const portrait = testPng({ width: 2, height: 1 });
+  const audio = testPcm16Wav({ sampleRate: 8_000, frames: 8_000 });
+  let body: unknown;
+  const request = Object.assign(
+    async (
+      _input: URL | RequestInfo,
+      init?: BunFetchRequestInit | RequestInit,
+    ) => {
+      body = JSON.parse(String(init?.body));
+      return Response.json(acceptedJob(), { status: 202 });
+    },
+    { preconnect() {} },
+  );
+  const client = createStableDiffusionVideoClient({
+    baseUrl: "http://127.0.0.1:2273",
+    fetch: request,
+  });
+
+  await expect(
+    client.submitVideo({
+      input: {
+        kind: "speech",
+        prompt: "A speaker reads one sentence.",
+        width: 2,
+        height: 1,
+        videoFrames: 16,
+        fps: 16,
+        outputFormat: "avi",
+        portrait: { format: "png", data: portrait },
+        audio: { format: "wav", data: audio },
+      },
+    }),
+  ).resolves.toEqual({ id: VIDEO_ID, status: "queued" });
+  expect(body).toEqual({
+    prompt: "A speaker reads one sentence.",
+    width: 2,
+    height: 1,
+    video_frames: 16,
+    fps: 16,
+    output_format: "avi",
+    init_image: portrait,
+    audio: { format: "wav", data: audio },
+  });
+});
+
 test("rejects malformed backend responses and responses over the configured limit", async () => {
   const backend = startBackend((request) => {
     const path = new URL(request.url).pathname;
@@ -262,7 +310,7 @@ test("rejects malformed backend responses and responses over the configured limi
       maxMediaBytes: 1,
     });
     await expect(
-      client.submitVideo({ input: { prompt: "A test." } }),
+      client.submitVideo({ input: { kind: "text", prompt: "A test." } }),
     ).rejects.toMatchObject({ code: "backend_response_invalid" });
     await expect(client.getCapabilities()).rejects.toMatchObject({
       code: "backend_response_too_large",

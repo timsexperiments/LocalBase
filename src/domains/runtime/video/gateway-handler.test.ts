@@ -143,6 +143,7 @@ function createRequest(ownerPrompt: string, signal?: AbortSignal): Request {
       height: 320,
       frames: 33,
       fps: 16,
+      input: { kind: "text" },
     }),
   });
 }
