@@ -2,6 +2,7 @@ import { delimiter, dirname, resolve } from "node:path";
 import type { ParallelAllocation } from "../config/parallel";
 import { ensureBinary } from "../../manager/binaries";
 import type { MemoryTopology } from "./memory-safety";
+import { requireSdGpuContract, sdGpuArgs } from "./sd-gpu";
 import { requireWhisperGpuContract, whisperGpuArgs } from "./whisper-gpu";
 import type {
   ImageLaunchPlan,
@@ -122,6 +123,7 @@ export async function startWhisperServerProcess(
 
 export async function startSdServerProcess(
   plan: ImageLaunchPlan,
+  topology: MemoryTopology,
 ): Promise<Bun.Subprocess> {
   if (!(await Bun.file(plan.modelPath).exists())) {
     throw new Error(`Model file not found: ${plan.modelPath}`);
@@ -130,6 +132,8 @@ export async function startSdServerProcess(
   const binPath = resolve(
     await ensureBinary({ root: plan.root }, plan.component),
   );
+  const gpuArgs = sdGpuArgs(process.platform, topology);
+  if (process.platform === "linux") await requireSdGpuContract(binPath);
   return Bun.spawn(
     [
       binPath,
@@ -139,6 +143,7 @@ export async function startSdServerProcess(
       plan.host,
       "--listen-port",
       String(plan.port),
+      ...gpuArgs,
     ],
     {
       stdout: "pipe",
@@ -152,6 +157,7 @@ export async function startSdServerProcess(
 
 export async function startSdVideoServerProcess(
   plan: VideoLaunchPlan,
+  topology: MemoryTopology,
 ): Promise<Bun.Subprocess> {
   for (const path of [
     plan.diffusionModelPath,
@@ -166,8 +172,10 @@ export async function startSdVideoServerProcess(
   const binPath = resolve(
     await ensureBinary({ root: plan.root }, plan.component),
   );
+  const gpuArgs = sdGpuArgs(process.platform, topology);
+  if (process.platform === "linux") await requireSdGpuContract(binPath);
   const args = buildSdVideoServerArgs(plan);
-  return Bun.spawn([binPath, ...args], {
+  return Bun.spawn([binPath, ...args, ...gpuArgs], {
     stdout: "pipe",
     stderr: "pipe",
     stdin: "inherit",
