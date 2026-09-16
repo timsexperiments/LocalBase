@@ -119,10 +119,12 @@ describe("runtime launch plans", () => {
               maxWidth: 320,
               maxHeight: 320,
               maxFrames: 33,
+              fps: 16,
               generation: {
                 sampler: "euler",
                 steps: 20,
                 cfgScale: 6,
+                flowShift: 3,
                 seed: 42,
               },
               launchOptions: {
@@ -135,9 +137,19 @@ describe("runtime launch plans", () => {
               hostBytes: 8 * 1024 ** 3,
               acceleratorBytes: 5 * 1024 ** 3,
             },
-            supportedPlatforms: ["linux"],
+            supportedTargets: [
+              {
+                platform: "linux",
+                architecture: "x64",
+                accelerator: "nvidia",
+              },
+            ],
           },
-          platform: "linux",
+          target: {
+            platform: "linux",
+            architecture: "x64",
+            accelerator: "nvidia",
+          },
         }),
       expected: {
         modality: "video",
@@ -146,8 +158,14 @@ describe("runtime launch plans", () => {
         diffusionModelPath: `${root}/models/video/diffusion.gguf`,
         textEncoderPath: `${root}/models/video/encoder.gguf`,
         vaePath: `${root}/models/video/vae.safetensors`,
-        inputBounds: { maxWidth: 320, maxHeight: 320, maxFrames: 33 },
-        generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+        inputBounds: { maxWidth: 320, maxHeight: 320, maxFrames: 33, fps: 16 },
+        generation: {
+          sampler: "euler",
+          steps: 20,
+          cfgScale: 6,
+          flowShift: 3,
+          seed: 42,
+        },
         launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
         healthUrl: "http://127.0.0.1:8091/",
         memoryDemand: {
@@ -185,7 +203,14 @@ describe("runtime launch plans", () => {
           maxWidth: 832,
           maxHeight: 480,
           maxFrames: 81,
-          generation: { sampler: "euler", steps: 20, cfgScale: 6, seed: 42 },
+          fps: 16,
+          generation: {
+            sampler: "euler",
+            steps: 20,
+            cfgScale: 6,
+            flowShift: 3,
+            seed: 42,
+          },
           launchOptions: { cpuOffload: true, diffusionFlashAttention: true },
         },
         estimatedMemoryDemand: {
@@ -193,9 +218,15 @@ describe("runtime launch plans", () => {
           hostBytes: 20,
           acceleratorBytes: 10,
         },
-        supportedPlatforms: ["linux"],
+        supportedTargets: [
+          { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+        ],
       },
-      platform: "linux",
+      target: {
+        platform: "linux",
+        architecture: "x64",
+        accelerator: "nvidia",
+      },
     });
 
     expect(plan).toMatchObject({
@@ -245,7 +276,11 @@ describe("runtime launch plans", () => {
         vaeFile: "vae.safetensors",
         host: "127.0.0.1",
         port: 8091,
-        platform: "darwin",
+        target: {
+          platform: "darwin",
+          architecture: "arm64",
+          accelerator: "apple-unified",
+        },
         videoRuntime: {
           mode: "t2v",
           artifacts: {
@@ -257,10 +292,12 @@ describe("runtime launch plans", () => {
             maxWidth: 320,
             maxHeight: 320,
             maxFrames: 33,
+            fps: 16,
             generation: {
               sampler: "euler",
               steps: 20,
               cfgScale: 6,
+              flowShift: 3,
               seed: 42,
             },
             launchOptions: {
@@ -273,10 +310,16 @@ describe("runtime launch plans", () => {
             hostBytes: 8 * 1024 ** 3,
             acceleratorBytes: 5 * 1024 ** 3,
           },
-          supportedPlatforms: ["linux"],
+          supportedTargets: [
+            {
+              platform: "linux",
+              architecture: "x64",
+              accelerator: "nvidia",
+            },
+          ],
         },
       }),
-    ).toThrow("does not support darwin runtime admission");
+    ).toThrow("does not support this runtime target");
   });
 });
 
