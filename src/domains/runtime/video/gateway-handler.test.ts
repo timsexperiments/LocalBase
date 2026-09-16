@@ -102,11 +102,13 @@ function endpointDependencies(options: {
   route: VideoGatewayHandlerDependencies["route"];
   ownerId: string;
   jobs: VideoJobManager;
+  createEnabled?: boolean;
   admissionProvider: VideoModelAdmissionProvider;
   onTerminal?: VideoGatewayHandlerDependencies["onTerminal"];
 }): VideoGatewayHandlerDependencies {
   return {
     ...options,
+    createEnabled: options.createEnabled ?? true,
     parseCreateRequest: async () => {
       const parsed = videoCreateRequestSchema.safeParse(
         await options.request.json(),
@@ -118,16 +120,13 @@ function endpointDependencies(options: {
             response: Response.json(parsed.error, { status: 400 }),
           };
     },
-    queueFailure: () => undefined,
     notConfigured: () => new Response(null, { status: 501 }),
-    serviceUnavailable: () => new Response(null, { status: 503 }),
     modelNotFound: () => new Response(null, { status: 404 }),
     badRequest: () => new Response(null, { status: 400 }),
     methodNotAllowed: (allow) =>
       new Response(null, { status: 405, headers: { allow } }),
     routeNotFound: () => new Response(null, { status: 404 }),
     requestAborted: () => new Response(null, { status: 499 }),
-    resourceUnavailable: () => new Response(null, { status: 503 }),
     onTerminal: options.onTerminal ?? (() => {}),
   };
 }
@@ -144,6 +143,7 @@ function createRequest(ownerPrompt: string, signal?: AbortSignal): Request {
       height: 320,
       frames: 33,
       fps: 16,
+      input: { kind: "text" },
     }),
   });
 }
@@ -245,6 +245,32 @@ test("serves one owner’s completed local video through the typed route and del
       bytes: 3,
       completed_at: expect.any(Number),
     });
+
+    const disabledCreate = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: createRequest("Do not create while video is disabled."),
+        pathname: "/v1/videos",
+        route: "videoCreate",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        createEnabled: false,
+        admissionProvider,
+      }),
+    );
+    expect(disabledCreate.status).toBe(501);
+
+    const retainedStatus = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: new Request(`http://local.test/v1/videos/${jobId}`),
+        pathname: `/v1/videos/${jobId}`,
+        route: "videoStatus",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        createEnabled: false,
+        admissionProvider,
+      }),
+    );
+    expect(retainedStatus.status).toBe(200);
 
     const crossOwner = await handleVideoGatewayRequest(
       endpointDependencies({

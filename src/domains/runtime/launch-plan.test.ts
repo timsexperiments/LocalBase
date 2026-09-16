@@ -222,7 +222,11 @@ describe("runtime launch plans", () => {
           { platform: "linux", architecture: "x64", accelerator: "nvidia" },
         ],
       },
-      target: { platform: "linux", architecture: "x64", accelerator: "nvidia" },
+      target: {
+        platform: "linux",
+        architecture: "x64",
+        accelerator: "nvidia",
+      },
     });
 
     expect(plan).toMatchObject({

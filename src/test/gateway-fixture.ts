@@ -1708,40 +1708,33 @@ export async function startGatewayFixture(
             }),
           ]
         : []),
-      compileRuntimeFixture(
-        join(runtimeDir, "llama-server"),
-        undefined,
-        llmLaunchesPath,
-        options.llmRuntimeExitOnStart,
-        llmFailureMarkerPath,
-        options.llmHealthControlled || options.llmRuntimeHttpBackend
-          ? `http://127.0.0.1:${llmUpstreamPort}/__runtime-started`
-          : undefined,
-        options.llmRuntimeHttpBackend,
-        options.llmRuntimeHttpBackend
+      compileRuntimeFixture(join(runtimeDir, "llama-server"), {
+        launchesPath: llmLaunchesPath,
+        exitOnStart: options.llmRuntimeExitOnStart,
+        failureMarkerPath: llmFailureMarkerPath,
+        launchReportUrl:
+          options.llmHealthControlled || options.llmRuntimeHttpBackend
+            ? `http://127.0.0.1:${llmUpstreamPort}/__runtime-started`
+            : undefined,
+        httpBackend: options.llmRuntimeHttpBackend,
+        firstEventReportUrl: options.llmRuntimeHttpBackend
           ? `http://127.0.0.1:${llmUpstreamPort}/__runtime-stream-started`
           : undefined,
-      ),
-      compileRuntimeFixture(
-        join(runtimeDir, "whisper-server"),
-        undefined,
-        sttLaunchesPath,
-        false,
-        undefined,
-        options.sttHealthControlled
+      }),
+      compileRuntimeFixture(join(runtimeDir, "whisper-server"), {
+        capability: "localbase-whisper-gpu-pci-v1",
+        launchesPath: sttLaunchesPath,
+        launchReportUrl: options.sttHealthControlled
           ? `http://127.0.0.1:${sttPort}/__runtime-started`
           : undefined,
-      ),
-      compileRuntimeFixture(
-        join(runtimeDir, "sd-server"),
-        undefined,
-        imageLaunchesPath,
-        false,
-        undefined,
-        options.imageHealthControlled
+      }),
+      compileRuntimeFixture(join(runtimeDir, "sd-server"), {
+        capability: "localbase-sd-gpu-pci-v1",
+        launchesPath: imageLaunchesPath,
+        launchReportUrl: options.imageHealthControlled
           ? `http://127.0.0.1:${imagePort}/__runtime-started`
           : undefined,
-      ),
+      }),
       compileGatewayCli(cliPath),
     ]);
   } catch (error) {

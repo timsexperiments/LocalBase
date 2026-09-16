@@ -159,7 +159,7 @@ export class RuntimeReconciler {
     private readonly ownership: RuntimeOverrideOwnership,
     private readonly supervisors: SupervisorRegistry,
     private readonly factory: RuntimeSupervisorFactory,
-    private readonly logger: ILogger,
+    private readonly logger: Pick<ILogger, "event">,
     queueOptions: Readonly<{ maxWaiting?: number; waitMs?: number }> = {},
     private readonly hooks: RuntimeReconciliationHooks = {},
   ) {

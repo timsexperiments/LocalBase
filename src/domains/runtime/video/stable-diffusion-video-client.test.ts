@@ -1,4 +1,11 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ensureLocalBaseRootMarker } from "../../../utils/root";
+import { LocalBaseLogger, readLogSnapshot } from "../../observability/logging";
+import { VideoJobManager } from "./video-job-manager";
+import { logVideoJobTerminal } from "./video-job-logging";
 import {
   createStableDiffusionVideoClient,
   StableDiffusionVideoClientError,
@@ -55,6 +62,79 @@ function completedJob(id = VIDEO_ID) {
     error: null,
   };
 }
+
+test("keeps native failure details out of job errors and emitted logs", async () => {
+  const sentinel =
+    "A confidential acquisition discussion between Alice and Bob";
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-log-"));
+  ensureLocalBaseRootMarker(root);
+  const backend = startBackend((request) =>
+    Response.json(
+      request.method === "POST"
+        ? acceptedJob()
+        : {
+            ...acceptedJob(),
+            status: "failed",
+            error: { code: sentinel, message: sentinel },
+          },
+      { status: request.method === "POST" ? 202 : 200 },
+    ),
+  );
+  const logger = new LocalBaseLogger("json");
+  const output = spyOn(console, "log").mockImplementation(() => {});
+  const jobs = new VideoJobManager({
+    backend: backend.client(),
+    temporaryDirectory: root,
+    acquireAdmission: async () => ({
+      ready: Promise.resolve(),
+      release: () => {},
+    }),
+    supervisedStop: async () => {},
+    onContainmentFailure: () => {},
+  });
+  try {
+    await logger.enableFileLogging(root);
+    const started = await jobs.start({
+      ownerId: "test-owner",
+      input: { kind: "text", prompt: sentinel },
+    });
+    if (started.kind !== "accepted") throw new Error("Expected admission.");
+    const job = await started.terminal;
+    if (job.state !== "failed") throw new Error("Expected failed job.");
+    expect(job.failure).toMatchObject({
+      name: "VideoBackendJobFailureError",
+      message: "Video backend job failed.",
+    });
+    for (const failure of [job.failure, new Error(sentinel)]) {
+      logVideoJobTerminal({
+        logger,
+        job: { ...job, failure },
+        modelId: "wan2.1-t2v-1.3b-q8_0",
+        requestId: "video-log-test",
+      });
+    }
+    await logger.close();
+    const events = await readLogSnapshot(root);
+    expect(events).toHaveLength(2);
+    for (const event of events) {
+      expect(event).toMatchObject({
+        eventName: "video.job-terminal",
+        error: {
+          type: "VideoJobFailure",
+          message: "A local video job failed.",
+        },
+      });
+    }
+    expect(JSON.stringify(events)).not.toContain(sentinel);
+    expect(JSON.stringify(output.mock.calls)).not.toContain(sentinel);
+  } finally {
+    await jobs.shutdown();
+    await logger.close();
+    output.mockRestore();
+    backend.stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("submits, polls, and cancels with fixed localhost routes", async () => {
   const requests: { method: string; path: string; body: unknown }[] = [];
@@ -127,7 +207,6 @@ test("submits, polls, and cancels with fixed localhost routes", async () => {
     await expect(client.cancelJob({ id: VIDEO_ID })).resolves.toEqual({
       id: VIDEO_ID,
       status: "cancelled",
-      errorCode: "cancelled",
     });
     expect(requests).toEqual([
       { method: "GET", path: "/sdcpp/v1/capabilities", body: null },

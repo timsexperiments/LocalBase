@@ -78,10 +78,6 @@ const completedResultSchema = z.discriminatedUnion("output_format", [
     .strict(),
 ]);
 
-const failureSchema = z
-  .object({ code: z.string().min(1).max(128) })
-  .passthrough();
-
 export type VideoOutputFormat = z.infer<typeof videoOutputFormatSchema>;
 
 export type VideoCapabilities = {
@@ -114,7 +110,6 @@ export type VideoJob =
   | {
       id: string;
       status: "failed" | "cancelled";
-      errorCode: string | undefined;
     };
 
 export type StableDiffusionVideoClient = {
@@ -389,7 +384,6 @@ async function parseVideoJob({
       return {
         id: job.id,
         status: job.status,
-        errorCode: parseErrorCode(job.error),
       };
     default: {
       const exhaustive: never = job.status;
@@ -430,12 +424,6 @@ function parseCompletedMedia(payload: unknown, maxMediaBytes: number) {
     fps: parsed.data.fps,
     frameCount: parsed.data.frame_count,
   };
-}
-
-function parseErrorCode(payload: unknown) {
-  if (payload === null || payload === undefined) return undefined;
-  const parsed = failureSchema.safeParse(payload);
-  return parsed.success ? parsed.data.code : undefined;
 }
 
 async function parseJsonResponse(response: Response, maxBytes: number) {

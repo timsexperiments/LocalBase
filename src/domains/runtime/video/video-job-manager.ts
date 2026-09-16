@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { RuntimeAdmission } from "../runtime-reconciler";
+import type { VideoGenerationInput } from "./video-input";
 
 const DEFAULT_DEADLINE_MS = 10 * 60 * 1_000;
 const DEFAULT_MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
@@ -9,22 +10,7 @@ const DEFAULT_MAX_TERMINAL_JOBS = 20;
 const DEFAULT_TERMINAL_TTL_MS = 15 * 60 * 1_000;
 const DEFAULT_POLL_MS = 1_000;
 
-export type VideoJobInput = Readonly<{
-  prompt: string;
-  negativePrompt?: string;
-  width?: number;
-  height?: number;
-  videoFrames?: number;
-  fps?: number;
-  seed?: number;
-  outputFormat?: "webm" | "webp" | "avi";
-  generation?: Readonly<{
-    sampler: "euler";
-    steps: number;
-    cfgScale: number;
-    flowShift: number;
-  }>;
-}>;
+export type VideoJobInput = Readonly<VideoGenerationInput>;
 
 export type VideoBackendJob =
   | Readonly<{ id: string; status: "queued" | "generating" }>
@@ -42,7 +28,6 @@ export type VideoBackendJob =
   | Readonly<{
       id: string;
       status: "failed" | "cancelled";
-      errorCode?: string;
     }>;
 
 /** Matches the local stable-diffusion.cpp video adapter without exposing it here. */
@@ -104,7 +89,7 @@ export type VideoJobStart =
   | Readonly<{ kind: "accepted"; job: VideoJob; terminal: Promise<VideoJob> }>
   | Readonly<{ kind: "busy" }>;
 
-type VideoJobAdmission = Pick<RuntimeAdmission, "release">;
+type VideoJobAdmission = Pick<RuntimeAdmission, "ready" | "release">;
 type VideoJobAdmissionAcquirer = (options: {
   signal: AbortSignal;
 }) => Promise<VideoJobAdmission | undefined>;
@@ -148,12 +133,8 @@ export class VideoJobArtifactLimitError extends Error {
 }
 
 export class VideoBackendJobFailureError extends Error {
-  constructor(code: string | undefined) {
-    super(
-      code === undefined
-        ? "Video backend job failed."
-        : `Video backend job failed: ${code}`,
-    );
+  constructor() {
+    super("Video backend job failed.");
     this.name = "VideoBackendJobFailureError";
   }
 }
@@ -264,12 +245,7 @@ export class VideoJobManager {
     if (!acquireAdmission || !supervisedStop) {
       throw new Error("Video job admission and supervised stop are required.");
     }
-    let job: StoredJob;
-    try {
-      job = this.createJob(options.ownerId, supervisedStop);
-    } catch (error) {
-      throw error;
-    }
+    const job = this.createJob(options.ownerId, supervisedStop);
     this.active = job;
     this.jobs.set(job.id, job);
     job.admissionPromise = Promise.resolve().then(
@@ -403,6 +379,8 @@ export class VideoJobManager {
         throw new Error("Video runtime admission is unavailable.");
       }
       job.admission = admission;
+      await admission.ready;
+      if (job.terminalAtMs !== undefined || job.termination) return;
       await this.submit(job, input);
       if (job.termination) return;
       await this.poll(job);
@@ -462,10 +440,7 @@ export class VideoJobManager {
       return;
     }
     if (update.status === "failed") {
-      this.finishFailure(
-        job,
-        new VideoBackendJobFailureError(update.errorCode),
-      );
+      this.finishFailure(job, new VideoBackendJobFailureError());
       return;
     }
     this.finishCancelled(job, "backend");
@@ -499,6 +474,7 @@ export class VideoJobManager {
     disposition: VideoJobDisposition,
   ): Promise<void> {
     job.controller.abort();
+    await this.settleAdmission(job);
     const completion = job.completion;
     try {
       await job.supervisedStop();
@@ -506,7 +482,6 @@ export class VideoJobManager {
       job.termination = undefined;
       throw toError(error);
     }
-    await this.settleAdmission(job);
     let completionFailure: Error | undefined;
     if (completion) {
       try {
