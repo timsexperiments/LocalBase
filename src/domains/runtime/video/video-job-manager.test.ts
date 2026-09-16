@@ -93,12 +93,14 @@ test("keeps completed jobs private, clears them on restart, and prunes terminal 
   try {
     expect(await Bun.file(join(root, "video-jobs")).exists()).toBe(false);
     const started = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "A paper kite over a field." },
     });
     if (started.kind !== "accepted") throw new Error("Expected admission.");
     expect(
       await manager.start({
+        jobDeadlineMs: 10 * 60 * 1_000,
         ownerId: "key-b",
         input: { kind: "text", prompt: "busy" },
       }),
@@ -162,6 +164,7 @@ test("keeps completed jobs private, clears them on restart, and prunes terminal 
     expect(await Bun.file(artifact.path).exists()).toBe(false);
 
     const fresh = await restarted.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "A fresh job after restart." },
     });
@@ -212,6 +215,7 @@ test("holds admission through cancellation until the backend is supervised stopp
 
   try {
     const started = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Cancel this render." },
     });
@@ -239,47 +243,62 @@ test("holds admission through cancellation until the backend is supervised stopp
   }
 });
 
-test("cancels an admission warmup before backend submission", async () => {
-  const root = mkdtempSync(join(tmpdir(), "localbase-video-warmup-cancel-"));
-  const admissionStarted = deferred<void>();
-  let submissions = 0;
-  const manager = createManager({
-    backend: {
-      async submitVideo() {
-        submissions += 1;
-        return { id: "must-not-submit", status: "queued" };
+test.each(["client", "deadline"])(
+  "%s cancels an admission warmup before backend submission",
+  async (source) => {
+    const root = mkdtempSync(join(tmpdir(), "localbase-video-warmup-cancel-"));
+    const admissionStarted = deferred<void>();
+    const deadline = deferred<void>();
+    const deadlines: number[] = [];
+    let submissions = 0;
+    const manager = createManager({
+      backend: {
+        async submitVideo() {
+          submissions += 1;
+          return { id: "must-not-submit", status: "queued" };
+        },
+        async getJob() {
+          return { id: "must-not-submit", status: "cancelled" };
+        },
       },
-      async getJob() {
-        return { id: "must-not-submit", status: "cancelled" };
+      temporaryDirectory: root,
+      waitForDeadline: async ({ deadlineMs }) => {
+        deadlines.push(deadlineMs);
+        await deadline.promise;
       },
-    },
-    temporaryDirectory: root,
-    acquireAdmission: async ({ signal }) => {
-      admissionStarted.resolve();
-      return await new Promise<undefined>((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), {
-          once: true,
+      acquireAdmission: async ({ signal }) => {
+        expect(deadlines).toEqual([30 * 60 * 1_000]);
+        admissionStarted.resolve();
+        return await new Promise<undefined>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
         });
-      });
-    },
-    supervisedStop: async () => {},
-  });
-
-  try {
-    const started = await manager.start({
-      ownerId: "key-a",
-      input: { kind: "text", prompt: "Cancel during warmup." },
+      },
+      supervisedStop: async () => {},
     });
-    if (started.kind !== "accepted") throw new Error("Expected admission.");
-    await admissionStarted.promise;
-    await expect(
-      manager.cancel({ ownerId: "key-a", id: started.job.id }),
-    ).resolves.toMatchObject({ state: "cancelled" });
-    expect(submissions).toBe(0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+
+    try {
+      const started = await manager.start({
+        jobDeadlineMs: 30 * 60 * 1_000,
+        ownerId: "key-a",
+        input: { kind: "text", prompt: "Cancel during warmup." },
+      });
+      if (started.kind !== "accepted") throw new Error("Expected admission.");
+      await admissionStarted.promise;
+      if (source === "client")
+        await manager.cancel({ ownerId: "key-a", id: started.job.id });
+      else deadline.resolve();
+      await expect(started.terminal).resolves.toMatchObject({
+        state: "cancelled",
+        reason: source === "client" ? "cancelled" : "deadline",
+      });
+      expect(submissions).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("stops a late-acquired admission before releasing it", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-late-admission-"));
@@ -317,6 +336,7 @@ test("stops a late-acquired admission before releasing it", async () => {
 
   try {
     const started = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Contain a late admission." },
     });
@@ -374,6 +394,7 @@ test("waits for a late successful submission before cancelling and releasing", a
 
   try {
     const started = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Cancel before submission settles." },
     });
@@ -386,6 +407,7 @@ test("waits for a late successful submission before cancelling and releasing", a
     });
     expect(
       await manager.start({
+        jobDeadlineMs: 10 * 60 * 1_000,
         ownerId: "key-b",
         input: { kind: "text", prompt: "busy" },
       }),
@@ -446,6 +468,7 @@ test("ignores late poll updates after cancellation terminalizes the job", async 
 
     try {
       const started = await manager.start({
+        jobDeadlineMs: 10 * 60 * 1_000,
         ownerId: "key-a",
         input: { kind: "text", prompt: "Ignore late backend state." },
       });
@@ -504,6 +527,7 @@ test("contains a poll failure before releasing admission", async () => {
 
   try {
     const started = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Contain the unknown backend state." },
     });
@@ -554,6 +578,7 @@ test("waits for completed artifact persistence before settling cancellation", as
 
   try {
     const started = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Finish before cancellation." },
     });
@@ -625,6 +650,7 @@ test("contains an artifact write failure before releasing cancellation admission
 
   try {
     const started = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Contain artifact persistence failure." },
     });
@@ -662,6 +688,7 @@ test("contains an artifact write failure before releasing cancellation admission
     expect(admission.snapshot()).toEqual({ acquired: 1, released: 1 });
 
     const recovered = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Reuse the released artifact capacity." },
     });
@@ -733,6 +760,7 @@ test("retains a failed transient cleanup's known bytes until terminal pruning su
   let firstDirectory = "";
   try {
     const first = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: {
         kind: "text",
@@ -750,6 +778,7 @@ test("retains a failed transient cleanup's known bytes until terminal pruning su
     );
 
     const second = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: {
         kind: "text",
@@ -805,6 +834,7 @@ test("stops a hung submission without waiting for its backend ID", async () => {
 
   try {
     const started = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Bound this submission." },
     });
@@ -859,6 +889,7 @@ test("preserves the admission when supervised stop fails", async () => {
 
   try {
     const started = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Keep the lease on failure." },
     });
@@ -916,6 +947,7 @@ test("retains ownership when background poll containment cannot stop", async () 
 
   try {
     const started = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Do not release after a failed stop." },
     });
@@ -974,6 +1006,7 @@ test("retains ownership when deadline containment cannot stop", async () => {
 
   try {
     const started = await manager.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: {
         kind: "text",
@@ -998,7 +1031,7 @@ test("retains ownership when deadline containment cannot stop", async () => {
   }
 });
 
-test("cancels at its injected deadline and preserves artifact limits", async () => {
+test("cancels at its per-job deadline and preserves artifact limits", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-deadline-"));
   const pollWaitEntered = deferred<void>();
   const deadline = deferred<void>();
@@ -1018,8 +1051,10 @@ test("cancels at its injected deadline and preserves artifact limits", async () 
     acquireAdmission: admission.acquire,
     supervisedStop: async () => {},
     now: () => now,
-    deadlineMs: 10,
-    waitForDeadline: async () => await deadline.promise,
+    waitForDeadline: async ({ deadlineMs }) => {
+      expect(deadlineMs).toBe(10);
+      await deadline.promise;
+    },
     waitForPoll: async (options) => {
       pollWaitEntered.resolve();
       await new Promise<void>((_resolve, reject) => {
@@ -1032,6 +1067,7 @@ test("cancels at its injected deadline and preserves artifact limits", async () 
 
   try {
     const started = await manager.start({
+      jobDeadlineMs: 10,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Time out this render." },
     });
@@ -1058,6 +1094,7 @@ test("cancels at its injected deadline and preserves artifact limits", async () 
       maxArtifactBytes: 2,
     });
     const tooLarge = await oversized.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "key-a",
       input: { kind: "text", prompt: "Too large." },
     });
@@ -1097,6 +1134,7 @@ test("rejects before admission when private job directory creation fails", async
     await Bun.write(join(root, "video-jobs"), "not a directory");
     await expect(
       manager.start({
+        jobDeadlineMs: 10 * 60 * 1_000,
         ownerId: "key-a",
         input: { kind: "text", prompt: "Fail before submitting." },
       }),

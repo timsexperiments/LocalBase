@@ -160,6 +160,7 @@ test("serves one owner’s completed local video through the typed route and del
   const readiness = deferred<void>();
   const clientAbort = new AbortController();
   let submitted: VideoJobInput | undefined;
+  const deadlines: number[] = [];
   const backend: VideoJobBackend = {
     async submitVideo({ input }) {
       submitted = input;
@@ -174,12 +175,14 @@ test("serves one owner’s completed local video through the typed route and del
     backend,
     temporaryDirectory: root,
     onContainmentFailure: () => {},
-    waitForDeadline: async ({ signal }) =>
+    waitForDeadline: async ({ signal, deadlineMs }) => {
+      deadlines.push(deadlineMs);
       await new Promise<void>((_resolve, reject) => {
         signal.addEventListener("abort", () => reject(signal.reason), {
           once: true,
         });
-      }),
+      });
+    },
   });
 
   try {
@@ -208,6 +211,7 @@ test("serves one owner’s completed local video through the typed route and del
       }),
     );
     expect(created.status).toBe(202);
+    expect(deadlines).toEqual([10 * 60 * 1_000]);
     const body = videoJobResponseSchema.parse(await created.json());
     const jobId = body.id;
     expect(body).toMatchObject({
