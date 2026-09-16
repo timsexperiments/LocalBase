@@ -95,6 +95,7 @@ test("keeps native failure details out of job errors and emitted logs", async ()
   try {
     await logger.enableFileLogging(root);
     const started = await jobs.start({
+      jobDeadlineMs: 10 * 60 * 1_000,
       ownerId: "test-owner",
       input: { kind: "text", prompt: sentinel },
     });
