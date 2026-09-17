@@ -5,6 +5,7 @@ import { z } from "zod";
 import { generationTools, generateVideo, runChat } from "./tools";
 import {
   api,
+  createUiId,
   availableModels,
   historyKey,
   imageResponseSchema,
@@ -45,7 +46,7 @@ function fresh(
   workspace: Conversation["workspace"] = "chat",
 ): Conversation {
   return {
-    id: crypto.randomUUID(),
+    id: createUiId(),
     title: "New conversation",
     mode,
     workspace,
@@ -354,12 +355,12 @@ function App() {
         ? (active.messages[previousUser]?.text ?? "")
         : draft.trim();
     const user: Message = {
-      id: crypto.randomUUID(),
+      id: createUiId(),
       role: "user",
       text: active.mode === "stt" ? (file?.name ?? "Audio file") : text,
     };
     const reply: Message = {
-      id: crypto.randomUUID(),
+      id: createUiId(),
       role: "assistant",
       text: "",
     };
@@ -420,7 +421,7 @@ function App() {
           break;
         }
         case "video": {
-          const id = crypto.randomUUID();
+          const id = createUiId();
           const video = await generateVideo({
             model,
             connection: credential,

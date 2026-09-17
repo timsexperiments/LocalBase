@@ -155,17 +155,28 @@ export function createUiAccess({
       const origin = request.headers.get("origin");
       const fetchSite = request.headers.get("sec-fetch-site");
       const expectedHost = new URL(config.origin).host;
+      const manualSession = session && url.host !== expectedHost;
+      const allowedHost = manualSession ? url.host : expectedHost;
+      const allowedOrigin = manualSession ? url.origin : config.origin;
       if (
         request.headers.get("x-localbase-ui") !== "1" ||
-        url.host !== expectedHost ||
+        url.host !== allowedHost ||
         (request.headers.has("host") &&
-          request.headers.get("host") !== expectedHost) ||
+          request.headers.get("host") !== allowedHost) ||
         (fetchSite !== null && fetchSite !== "same-origin") ||
-        (origin !== null && origin !== config.origin) ||
-        (request.method !== "GET" && origin !== config.origin)
+        (origin !== null && origin !== allowedOrigin) ||
+        (request.method !== "GET" && origin !== allowedOrigin)
       ) {
         return respond(failure(403));
       }
+      // Other origins can use API keys, never a request-scoped Access identity.
+      if (manualSession)
+        return respond(
+          Response.json(
+            { authenticated: false, mode: "api-key" },
+            { headers: { "cache-control": "no-store" } },
+          ),
+        );
       const pathname = url.pathname.slice("/app/api".length);
       if (!session && !allowedUiRoute(request.method, pathname))
         return respond(failure(404));
