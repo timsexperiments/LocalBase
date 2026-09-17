@@ -22,13 +22,13 @@ function machFixture({
   return buffer;
 }
 
-test("parses the required Mach VM counters and page size", () => {
+test("does not double-count speculative pages already included in free count", () => {
   expect(
     parseMachAvailableBytes(
-      machFixture({ free: 2, inactive: 3, speculative: 1 }),
+      machFixture({ free: 3, inactive: 2, speculative: 1 }),
       4096,
     ),
-  ).toBe(6 * 4096);
+  ).toBe(5 * 4096);
 });
 
 test("rejects short or invalid Mach samples", () => {
