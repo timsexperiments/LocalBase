@@ -16,7 +16,6 @@ import { createGunzip } from "node:zlib";
 import { unzipSync } from "fflate";
 import { extract as tarExtractor } from "tar-stream";
 import { z } from "zod";
-import { parseChecksumFile } from "../src/utils/checksum";
 import {
   digestFile,
   packageFiles,
@@ -25,10 +24,7 @@ import {
 } from "../runtimes/kokoro/inventory";
 import sources from "../runtimes/kokoro/sources.json";
 import { readSdArchiveEntries } from "./sd-release/archive-reader";
-import {
-  expectedDownloadUrl,
-  repositorySchema,
-} from "./whisper-release/contracts";
+import { repositorySchema } from "./whisper-release/contracts";
 import {
   archiveName,
   kokoroArtifactSchema,
@@ -624,91 +620,6 @@ export async function assertUnpublished(
   }
 }
 
-export async function verifyPublished(
-  repositoryInput: unknown,
-  tagInput: unknown,
-): Promise<void> {
-  const repository = repositorySchema.parse(repositoryInput);
-  const tag = kokoroTagSchema.parse(tagInput);
-  const response = await fetch(
-    `https://api.github.com/repos/${repository}/releases/tags/${tag}`,
-    { headers: githubHeaders() },
-  );
-  if (!response.ok)
-    throw new Error(`Published release lookup failed: ${response.status}`);
-  const release = z
-    .object({
-      tag_name: kokoroTagSchema,
-      draft: z.literal(false),
-      prerelease: z.literal(false),
-      assets: z.array(
-        z
-          .object({
-            name: z.string(),
-            size: z.number().int().positive(),
-            digest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-            browser_download_url: z.string().url(),
-          })
-          .passthrough(),
-      ),
-    })
-    .passthrough()
-    .parse(await response.json());
-  const expected = [
-    "kokoro-runtime-manifest.json",
-    "checksums.txt",
-    ...kokoroTargetSchema.options.map(archiveName),
-  ];
-  if (
-    release.assets.length !== expected.length ||
-    new Set(release.assets.map((asset) => asset.name)).size !==
-      expected.length ||
-    expected.some(
-      (name) => !release.assets.some((asset) => asset.name === name),
-    )
-  )
-    throw new Error("Unexpected published Kokoro asset set.");
-  const assets = new Map<string, Uint8Array>();
-  for (const asset of release.assets) {
-    if (
-      asset.browser_download_url !==
-      expectedDownloadUrl(repository, tag, asset.name)
-    )
-      throw new Error("Noncanonical published asset URL.");
-    const content = await bytes(asset.browser_download_url);
-    if (
-      content.length !== asset.size ||
-      `sha256:${createHash("sha256").update(content).digest("hex")}` !==
-        asset.digest
-    ) {
-      throw new Error(`Published asset integrity failed: ${asset.name}`);
-    }
-    assets.set(asset.name, content);
-  }
-  const manifestBytes = assets.get("kokoro-runtime-manifest.json");
-  if (!manifestBytes) throw new Error("Published manifest missing.");
-  const manifest = kokoroReleaseManifestSchema.parse(
-    JSON.parse(new TextDecoder().decode(manifestBytes)),
-  );
-  const checksumBytes = assets.get("checksums.txt");
-  if (!checksumBytes) throw new Error("Published checksums missing.");
-  const checksums = parseChecksumFile(new TextDecoder().decode(checksumBytes));
-  if (checksums.size !== kokoroTargetSchema.options.length)
-    throw new Error("Noncanonical published checksums.");
-  for (const target of kokoroTargetSchema.options) {
-    const pin = manifest.runtimes[target];
-    const content = assets.get(pin.assetName);
-    if (
-      !content ||
-      content.length !== pin.expectedSizeBytes ||
-      createHash("sha256").update(content).digest("hex") !== pin.sha256 ||
-      checksums.get(pin.assetName) !== pin.sha256
-    ) {
-      throw new Error("Published archive does not match immutable manifest.");
-    }
-  }
-}
-
 async function main(): Promise<void> {
   const [operation, ...args] = Bun.argv.slice(2);
   const options = new Map<string, string>();
@@ -725,10 +636,6 @@ async function main(): Promise<void> {
   }
   if (operation === "assert-unpublished") {
     await assertUnpublished(options.get("--repository"), options.get("--tag"));
-    return;
-  }
-  if (operation === "verify-published") {
-    await verifyPublished(options.get("--repository"), options.get("--tag"));
     return;
   }
   const directory = z.string().min(1).parse(options.get("--directory"));
