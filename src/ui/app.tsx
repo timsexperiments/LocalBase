@@ -36,12 +36,16 @@ const starters = [
   "Help me write a first draft",
   "Think through an idea",
 ];
-function fresh(mode: Mode = "llm", model = ""): Conversation {
+function fresh(
+  mode: Mode = "llm",
+  workspace: Conversation["workspace"] = "chat",
+): Conversation {
   return {
     id: crypto.randomUUID(),
     title: "New conversation",
     mode,
-    model,
+    workspace,
+    model: "",
     messages: [],
   };
 }
@@ -144,7 +148,6 @@ function Drawer({
   );
 }
 function App() {
-  const [page, setPage] = useState<"chat" | "lab">("chat");
   const [key, setKey] = useState("");
   const [models, setModels] = useState<Model[]>([]);
   const [connection, setConnection] = useState("Connecting");
@@ -167,6 +170,7 @@ function App() {
   const nearBottom = useRef(true);
   const active =
     conversations.find((c) => c.id === activeId) ?? conversations[0];
+  const page = active?.workspace ?? "chat";
   const candidates = availableModels(models, active?.mode ?? "llm");
   const model = candidates.find((m) => m.id === active?.model) ?? candidates[0];
   const capabilities = model?.catalog.capabilities;
@@ -253,9 +257,9 @@ function App() {
     if (nearBottom.current)
       bottom.current?.scrollIntoView({ behavior: "instant" });
   }, [active?.messages]);
-  function newChat(mode: Mode = active?.mode ?? "llm") {
+  function newChat(mode: Mode = active?.mode ?? "llm", workspace = page) {
     if (busy) return;
-    const c = fresh(mode);
+    const c = fresh(mode, workspace);
     setConversations((items) => [c, ...items].slice(0, 30));
     setActiveId(c.id);
     setDraft("");
@@ -533,8 +537,7 @@ function App() {
             disabled={busy}
             aria-current={page === "chat" ? "page" : undefined}
             onClick={() => {
-              setPage("chat");
-              newChat("llm");
+              newChat("llm", "chat");
             }}
           >
             Chat
@@ -543,8 +546,7 @@ function App() {
             disabled={busy}
             aria-current={page === "lab" ? "page" : undefined}
             onClick={() => {
-              setPage("lab");
-              newChat("llm");
+              newChat("llm", "lab");
             }}
           >
             Model Lab
@@ -1031,7 +1033,6 @@ function App() {
                   key={c.id}
                   onClick={() => {
                     setActiveId(c.id);
-                    setPage(c.mode === "llm" ? "chat" : "lab");
                     setDraft("");
                     setFile(null);
                     setError("");
@@ -1041,6 +1042,7 @@ function App() {
                 >
                   <strong>{c.title}</strong>
                   <small>
+                    {c.workspace === "lab" ? "Model Lab" : "Chat"} ·{" "}
                     {labels[c.mode]} · {c.messages.length} messages
                   </small>
                 </button>
