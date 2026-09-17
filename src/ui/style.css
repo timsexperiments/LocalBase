@@ -406,6 +406,14 @@ audio {
   width: 100%;
   margin-top: 12px;
 }
+video {
+  display: block;
+  width: 100%;
+  max-height: 60dvh;
+  border-radius: 12px;
+  margin-top: 12px;
+  background: #111;
+}
 .muted,
 .hint {
   color: #778276;
