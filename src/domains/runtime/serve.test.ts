@@ -1392,51 +1392,41 @@ describe("API gateway integration", () => {
     ).toEqual([{ role: "user", content: "hello" }]);
   });
 
-  test("rejects embedding-only models before runtime admission", async () => {
-    const upstreamRequests = gateway.upstreamRequests.length;
-    const runtimeLaunches = await gateway.readLlmRuntimeLaunches();
-    const response = await request("/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "qwen3-embedding-0.6b-q8_0",
-        messages: [{ role: "user", content: "hello" }],
-      }),
-    });
+  test.each([
+    {
+      name: "rejects embedding-only models before runtime admission",
+      path: "/v1/chat/completions",
+      input: { messages: [{ role: "user", content: "hello" }] },
+      message: "Model 'qwen3-embedding-0.6b-q8_0' supports embeddings only.",
+    },
+    {
+      name: "bounds embedding dimensions before runtime admission",
+      path: "/v1/embeddings",
+      input: { input: "query: ferns", dimensions: 1023 },
+      message: "Model 'qwen3-embedding-0.6b-q8_0' supports 1024 dimensions.",
+    },
+  ])("$name", async ({ path, input, message }) => {
+    const idleGateway = await startGatewayFixture();
+    try {
+      const response = await fetch(`${idleGateway.baseUrl}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "qwen3-embedding-0.6b-q8_0", ...input }),
+      });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: {
-        code: "validation_failed",
-        message: "Model 'qwen3-embedding-0.6b-q8_0' supports embeddings only.",
-      },
-    });
-    expect(gateway.upstreamRequests).toHaveLength(upstreamRequests);
-    expect(await gateway.readLlmRuntimeLaunches()).toEqual(runtimeLaunches);
-  });
-
-  test("bounds embedding dimensions before runtime admission", async () => {
-    const upstreamRequests = gateway.upstreamRequests.length;
-    const runtimeLaunches = await gateway.readLlmRuntimeLaunches();
-    const response = await request("/v1/embeddings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "qwen3-embedding-0.6b-q8_0",
-        input: "query: ferns",
-        dimensions: 1023,
-      }),
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: {
-        code: "validation_failed",
-        message: "Model 'qwen3-embedding-0.6b-q8_0' supports 1024 dimensions.",
-      },
-    });
-    expect(gateway.upstreamRequests).toHaveLength(upstreamRequests);
-    expect(await gateway.readLlmRuntimeLaunches()).toEqual(runtimeLaunches);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: "validation_failed", message },
+      });
+      expect(idleGateway.upstreamRequests).toEqual([]);
+      expect(await idleGateway.readLlmRuntimeLaunches()).toEqual([]);
+      const health = gatewayHealthSchema.parse(
+        await (await fetch(`${idleGateway.baseUrl}/health`)).json(),
+      );
+      expect(health.modalities.llm.state).toBe("idle");
+    } finally {
+      await idleGateway.stop();
+    }
   });
 
   test("forwards embedding inputs unchanged and returns the admitted model", async () => {

@@ -93,6 +93,28 @@ const vaeDecoderSchema = z
   })
   .strict();
 
+const imageRuntimeProfileSchema = z
+  .object({
+    kind: z.literal("diffusion-qwen3"),
+    artifacts: z
+      .object({
+        diffusionModel: safeFilenameSchema,
+        vae: safeFilenameSchema,
+        textEncoder: safeFilenameSchema,
+      })
+      .strict(),
+    generation: z
+      .object({
+        sampler: z.literal("euler"),
+        steps: z.number().int().positive(),
+        cfgScale: z.number().positive(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type ImageRuntimeProfile = z.infer<typeof imageRuntimeProfileSchema>;
+
 const videoDecoderSchema = z.discriminatedUnion("kind", [
   vaeDecoderSchema,
   z
@@ -218,6 +240,7 @@ export const modelSpecSchema = z
     artifacts: z.array(modelArtifactSchema).min(1),
     llmRuntime: embeddingLlmRuntimeProfileSchema.optional(),
     ttsRuntime: ttsRuntimeProfileSchema.optional(),
+    imageRuntime: imageRuntimeProfileSchema.optional(),
     videoRuntime: videoRuntimeProfileSchema.optional(),
     inputModalities: z.array(modelModalitySchema).min(1),
     outputModalities: z.array(modelModalitySchema).min(1),
@@ -331,6 +354,43 @@ export const modelSpecSchema = z
         message: "models must have exactly one primary artifact",
         path: ["artifacts"],
       });
+    }
+
+    if (model.imageRuntime) {
+      if (model.kind !== "image") {
+        ctx.addIssue({
+          code: "custom",
+          message: "only image models may declare an image runtime profile",
+          path: ["imageRuntime"],
+        });
+      }
+      const mapped = Object.entries(model.imageRuntime.artifacts);
+      if (
+        new Set(mapped.map(([, filename]) => filename)).size !== mapped.length
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "image runtime artifacts must be distinct",
+          path: ["imageRuntime", "artifacts"],
+        });
+      }
+      for (const [name, filename] of mapped) {
+        const artifact = model.artifacts.find(
+          (artifact) => artifact.filename === filename,
+        );
+        if (
+          !artifact ||
+          artifact.role !==
+            (name === "diffusionModel" ? "primary" : "supplementary")
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message:
+              "image runtime must map diffusion to the primary artifact and encoders to supplementary artifacts",
+            path: ["imageRuntime", "artifacts", name],
+          });
+        }
+      }
     }
 
     if (model.kind === "video") {
@@ -1678,6 +1738,135 @@ const CATALOG_SOURCE = [
       "The converted repository omits license metadata; the upstream Qwen model is Apache-2.0.",
     notes:
       "Default remains native runtime voice. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed.",
+  },
+  {
+    modelId: "flux2-klein-4b-q4_0",
+    kind: "image",
+    provider: "Black Forest Labs",
+    family: "FLUX.2-klein",
+    version: "2",
+    size: "4B",
+    quant: "Q4_0",
+    minVramGb: 12,
+    storageGb: 5.3,
+    source: "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
+    repositoryRevision: "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
+    artifacts: [
+      {
+        sourcePath: "flux-2-klein-4b-Q4_0.gguf",
+        filename: "flux-2-klein-4b-Q4_0.gguf",
+        expectedSizeBytes: 2460378560,
+        sha256:
+          "d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4",
+        role: "primary",
+      },
+      {
+        sourcePath: "split_files/vae/flux2-vae.safetensors",
+        filename: "flux2-vae.safetensors",
+        expectedSizeBytes: 336211292,
+        sha256:
+          "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/Comfy-Org/flux2-klein-4B",
+          revision: "5f526678002e43af5551dadb73ce2e8c91b43afe",
+        },
+      },
+      {
+        sourcePath: "Qwen3-4B-Q4_K_M.gguf",
+        filename: "Qwen3-4B-Q4_K_M.gguf",
+        expectedSizeBytes: 2497281312,
+        sha256:
+          "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/unsloth/Qwen3-4B-GGUF",
+          revision: "22c9fc8a8c7700b76a1789366280a6a5a1ad1120",
+        },
+      },
+    ],
+    imageRuntime: {
+      kind: "diffusion-qwen3",
+      artifacts: {
+        diffusionModel: "flux-2-klein-4b-Q4_0.gguf",
+        vae: "flux2-vae.safetensors",
+        textEncoder: "Qwen3-4B-Q4_K_M.gguf",
+      },
+      generation: { sampler: "euler", steps: 4, cfgScale: 1 },
+    },
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image"],
+    commercialStatus: "open",
+    catch:
+      "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
+    notes:
+      "Distilled four-step profile with separate FLUX2 VAE and Qwen3 encoder. Memory requirement is estimated; native inference qualification is pending.",
+  },
+  {
+    modelId: "z-image-turbo-q4_0",
+    kind: "image",
+    provider: "Tongyi",
+    family: "Z-Image",
+    version: "Turbo",
+    size: "6B",
+    quant: "Q4_0",
+    minVramGb: 12,
+    storageGb: 6.6,
+    source: "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
+    repositoryRevision: "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
+    artifacts: [
+      {
+        sourcePath: "z_image_turbo-Q4_0.gguf",
+        filename: "z_image_turbo-Q4_0.gguf",
+        expectedSizeBytes: 3683370944,
+        sha256:
+          "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5",
+        role: "primary",
+      },
+      {
+        sourcePath: "split_files/vae/ae.safetensors",
+        filename: "z-image-ae.safetensors",
+        expectedSizeBytes: 335304388,
+        sha256:
+          "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/Comfy-Org/z_image_turbo",
+          revision: "08d04455279082882deaabc8d0d09fc914c071e1",
+        },
+      },
+      {
+        sourcePath: "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+        filename: "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+        expectedSizeBytes: 2497281120,
+        sha256:
+          "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+        role: "supplementary",
+        source: {
+          repositoryUrl:
+            "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF",
+          revision: "a06e946bb6b655725eafa393f4a9745d460374c9",
+        },
+      },
+    ],
+    imageRuntime: {
+      kind: "diffusion-qwen3",
+      artifacts: {
+        diffusionModel: "z_image_turbo-Q4_0.gguf",
+        vae: "z-image-ae.safetensors",
+        textEncoder: "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+      },
+      generation: { sampler: "euler", steps: 8, cfgScale: 1 },
+    },
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image"],
+    commercialStatus: "open",
+    catch:
+      "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
+    notes:
+      "Distilled eight-step profile with separate VAE and Qwen3 Instruct encoder. Memory requirement is estimated; native inference qualification is pending.",
   },
   {
     modelId: "stable-diffusion-v1-5",
