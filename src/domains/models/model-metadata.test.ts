@@ -265,7 +265,7 @@ test("projects qualified video limits and mode without exposing runtime internal
       frames: qualification.maxFrames,
       fps: qualification.fps,
       jobDeadlineMs: qualification.jobDeadlineMs,
-      outputFormats: ["avi"],
+      outputFormats: ["mp4"],
     });
     expect(list.data[index]?.catalog.features).toEqual(model.features);
   }
@@ -306,8 +306,8 @@ test("uses the strict response schemas for lists and entries", () => {
   const invalidCapabilities = [
     { ...capabilities, extra: true },
     { ...capabilities, mode: "i2v" },
-    { ...capabilities, outputFormats: ["mp4"] },
-    { ...capabilities, outputFormats: ["avi", "avi"] },
+    { ...capabilities, outputFormats: ["avi"] },
+    { ...capabilities, outputFormats: ["mp4", "mp4"] },
     { ...capabilities, dimensions: { minimum: 1, maximum: 2 } },
     { ...capabilities, kind: "speech" },
   ];

@@ -85,6 +85,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   );
 }
 function MediaCard({ media }: { media: Media }) {
+  const [playbackFailed, setPlaybackFailed] = useState(false);
   return (
     <div className="artifact">
       {media.kind === "image" && (
@@ -96,15 +97,28 @@ function MediaCard({ media }: { media: Media }) {
       )}
       {media.kind === "audio" && <audio controls src={media.url} />}
       {media.kind === "video" && (
-        <p>
-          AVI video is ready. Browser playback is not supported here. Download
-          it to play in an AVI-compatible player.
-        </p>
+        <>
+          <video
+            controls
+            playsInline
+            preload="metadata"
+            src={media.url}
+            aria-label="Generated video"
+            onError={() => setPlaybackFailed(true)}
+            onLoadedMetadata={() => setPlaybackFailed(false)}
+          />
+          {playbackFailed && (
+            <p role="status">
+              This browser could not play the video. Download the MP4 to play it
+              in another player.
+            </p>
+          )}
+        </>
       )}
       <a
         className="download"
         href={media.url}
-        download={`localbase.${media.kind === "image" ? "png" : media.kind === "audio" ? "wav" : "avi"}`}
+        download={`localbase.${media.kind === "image" ? "png" : media.kind === "audio" ? "wav" : media.format}`}
       >
         Download {media.kind}
       </a>
@@ -407,7 +421,7 @@ function App() {
         }
         case "video": {
           const id = crypto.randomUUID();
-          const blob = await generateVideo({
+          const video = await generateVideo({
             model,
             connection: credential,
             signal: abort.signal,
@@ -420,7 +434,7 @@ function App() {
               })),
           });
           abort.signal.throwIfAborted();
-          const url = URL.createObjectURL(blob);
+          const url = URL.createObjectURL(video.blob);
           mediaUrls.current.push(url);
           patch((m) => ({
             ...m,
@@ -430,7 +444,7 @@ function App() {
                 id,
                 label: "Video",
                 state: "complete",
-                media: { kind: "video", url },
+                media: { kind: "video", url, format: video.format },
               },
             ],
           }));
@@ -798,7 +812,7 @@ function App() {
           {active.mode === "video" && (
             <p className="notice">
               {capabilities?.kind === "video"
-                ? `${capabilities.mode.toUpperCase()} · ${capabilities.width} × ${capabilities.height} · ${capabilities.frames} frames · ${capabilities.fps} fps · AVI. Profile fixed by model qualification.`
+                ? `${capabilities.mode.toUpperCase()} · ${capabilities.width} × ${capabilities.height} · ${capabilities.frames} frames · ${capabilities.fps} fps · MP4 delivery. Profile fixed by model qualification.`
                 : "No qualified video profile available."}{" "}
               {unsupportedVideo &&
                 "Speech-to-video portrait and audio inputs are not supported in Model Lab yet. Select a text-to-video model."}

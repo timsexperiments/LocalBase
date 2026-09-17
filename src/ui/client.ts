@@ -24,7 +24,7 @@ const capabilitiesSchema = z.discriminatedUnion("kind", [
     frames: z.number().int().positive(),
     fps: z.number().int().positive(),
     jobDeadlineMs: z.number().int().positive(),
-    outputFormats: z.tuple([z.literal("avi")]),
+    outputFormats: z.tuple([z.literal("mp4")]),
   }),
   z.object({
     kind: z.literal("embedding"),
@@ -87,7 +87,10 @@ export type ChatMessage =
   | { role: "user" | "system"; content: string }
   | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
-export type Media = { kind: "image" | "audio" | "video"; url: string };
+export type Media =
+  | { kind: "image"; url: string }
+  | { kind: "audio"; url: string }
+  | { kind: "video"; url: string; format: "mp4" };
 export type Artifact = { id: string; label: string } & (
   | { state: "working"; detail: string }
   | { state: "error"; detail: string }

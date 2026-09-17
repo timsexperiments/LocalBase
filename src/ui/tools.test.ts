@@ -41,7 +41,7 @@ const video = fixture("video", "video", {
   frames: 9,
   fps: 16,
   jobDeadlineMs: 5000,
-  outputFormats: ["avi"],
+  outputFormats: ["mp4"],
 });
 function stream(delta: unknown, onCancel = () => {}) {
   return new Response(
@@ -121,7 +121,7 @@ test("advertises only installed selected tools with t2v and tool-calling support
     frames: 9,
     fps: 16,
     jobDeadlineMs: 5000,
-    outputFormats: ["avi"],
+    outputFormats: ["mp4"],
   });
   expect(
     generationTools([image, video, s2v, absent], chat).map(
@@ -472,31 +472,45 @@ test("expired session during a tool stops before another model round", async () 
     mock.mockRestore();
   }
 });
-test("successful AVI remains usable when cleanup fails", async () => {
-  const id = "00000000-0000-4000-8000-000000000000";
-  const warnings: string[] = [];
-  const mock = mockFetch(async (input, init) => {
-    if (String(input) === "/v1/videos")
-      return Response.json({ id, status: "completed" });
-    if (String(input).endsWith("/content"))
-      return new Response("avi", {
-        headers: { "content-type": "video/x-msvideo" },
-      });
-    expect(init?.method).toBe("DELETE");
-    return new Response(null, { status: 503 });
-  });
-  try {
-    const blob = await generateVideo({
-      model: video,
-      connection: { kind: "api-key", key: "" },
-      signal: new AbortController().signal,
-      prompt: "sun",
-      progress: () => {},
-      warning: (message) => warnings.push(message),
+test.each(["video/mp4", "video/x-msvideo", ""])(
+  "validates delivered video type %s and retains MP4 when cleanup fails",
+  async (mimeType) => {
+    const id = "00000000-0000-4000-8000-000000000000";
+    const warnings: string[] = [];
+    const mock = mockFetch(async (input, init) => {
+      if (String(input) === "/v1/videos")
+        return Response.json({
+          id,
+          status: "completed",
+          content_type: mimeType,
+        });
+      if (String(input).endsWith("/content"))
+        return new Response("mp4", {
+          headers: { "content-type": mimeType },
+        });
+      expect(init?.method).toBe("DELETE");
+      return new Response(null, { status: 503 });
     });
-    expect(await blob.text()).toBe("avi");
-    expect(warnings.join()).toContain("cleanup");
-  } finally {
-    mock.mockRestore();
-  }
-});
+    try {
+      const result = generateVideo({
+        model: video,
+        connection: { kind: "api-key", key: "" },
+        signal: new AbortController().signal,
+        prompt: "sun",
+        progress: () => {},
+        warning: (message) => warnings.push(message),
+      });
+      if (mimeType === "video/mp4") {
+        const video = await result;
+        expect(video.format).toBe("mp4");
+        expect(video.blob.type).toBe("video/mp4");
+        expect(await video.blob.text()).toBe("mp4");
+      } else {
+        await expect(result).rejects.toThrow("Unsupported video response type");
+      }
+      expect(warnings.join()).toContain("cleanup");
+    } finally {
+      mock.mockRestore();
+    }
+  },
+);
