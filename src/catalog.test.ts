@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   CATALOG,
   artifactDownloadUrl,
@@ -6,6 +9,7 @@ import {
   calculateMaxSafeContextSize,
   catalogSchema,
   recommendedForVram,
+  resolveCatalogInstallation,
 } from "./catalog";
 
 const checksum = "a".repeat(64);
@@ -43,6 +47,99 @@ function model(artifacts: unknown[]) {
 }
 
 describe("catalog artifact validation", () => {
+  test("image installation requires complete supplementary artifacts, not only diffusion", async () => {
+    const image = byId("flux2-klein-4b-q4_0");
+    if (!image?.imageRuntime) throw new Error("Missing image fixture");
+    const fixture = {
+      ...image,
+      imageRuntime: image.imageRuntime,
+      artifacts: image.artifacts.map((artifact) => ({
+        ...artifact,
+        expectedSizeBytes: 4,
+      })),
+    };
+    const directory = mkdtempSync(
+      join(tmpdir(), "localbase-image-installation-"),
+    );
+    try {
+      await Bun.write(
+        join(directory, fixture.imageRuntime.artifacts.diffusionModel),
+        "test",
+      );
+      expect(
+        (await resolveCatalogInstallation(fixture, directory)).complete,
+      ).toBe(false);
+      await Bun.write(
+        join(directory, fixture.imageRuntime.artifacts.vae),
+        "test",
+      );
+      await Bun.write(
+        join(directory, fixture.imageRuntime.artifacts.textEncoder),
+        "bad",
+      );
+      expect(
+        (await resolveCatalogInstallation(fixture, directory)).complete,
+      ).toBe(false);
+      await Bun.write(
+        join(directory, fixture.imageRuntime.artifacts.textEncoder),
+        "test",
+      );
+      expect(
+        (await resolveCatalogInstallation(fixture, directory)).complete,
+      ).toBe(true);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("image profiles require distinct declared artifacts with matching roles", () => {
+    const image = byId("flux2-klein-4b-q4_0");
+    if (!image?.imageRuntime) throw new Error("Missing image fixture");
+    expect(catalogSchema.safeParse([image]).success).toBe(true);
+    for (const invalid of [
+      { ...image, kind: "llm" },
+      {
+        ...image,
+        imageRuntime: {
+          ...image.imageRuntime,
+          artifacts: {
+            ...image.imageRuntime.artifacts,
+            vae: "missing.safetensors",
+          },
+        },
+      },
+      {
+        ...image,
+        imageRuntime: {
+          ...image.imageRuntime,
+          artifacts: {
+            ...image.imageRuntime.artifacts,
+            vae: image.imageRuntime.artifacts.textEncoder,
+          },
+        },
+      },
+      {
+        ...image,
+        imageRuntime: {
+          ...image.imageRuntime,
+          artifacts: {
+            ...image.imageRuntime.artifacts,
+            diffusionModel: image.imageRuntime.artifacts.textEncoder,
+          },
+        },
+      },
+      {
+        ...image,
+        imageRuntime: {
+          ...image.imageRuntime,
+          generation: { ...image.imageRuntime.generation, steps: 0 },
+        },
+      },
+    ]) {
+      expect(catalogSchema.safeParse([invalid]).success).toBe(false);
+    }
+  });
+
   test("pins the embedding-only Qwen runtime contract", () => {
     expect(byId("qwen3-embedding-0.6b-q8_0")).toMatchObject({
       kind: "llm",
