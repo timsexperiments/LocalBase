@@ -14,6 +14,19 @@ import type { RuntimeModality } from "../runtime/modality";
 
 const nullableNumberSchema = z.number().nullable();
 
+const videoCapabilitiesSchema = z
+  .object({
+    kind: z.literal("video"),
+    mode: z.enum(["t2v", "s2v"]),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    frames: z.number().int().positive(),
+    fps: z.number().int().positive(),
+    jobDeadlineMs: z.number().int().positive(),
+    outputFormats: z.tuple([z.literal("avi")]),
+  })
+  .strict();
+
 const embeddingCapabilitiesSchema = z
   .object({
     kind: z.literal("embedding"),
@@ -60,6 +73,7 @@ export const modelMetadataSchema = z
         revision: z.string().min(1),
         kind: z.enum(["llm", "stt", "tts", "image", "video"]),
         quantization: z.string().min(1),
+        features: z.array(z.string()),
         artifacts: z
           .array(
             z
@@ -81,6 +95,7 @@ export const modelMetadataSchema = z
           .discriminatedUnion("kind", [
             embeddingCapabilitiesSchema,
             speechCapabilitiesSchema,
+            videoCapabilitiesSchema,
           ])
           .nullable(),
         inputModalities: z.array(modelModalitySchema).min(1),
@@ -190,6 +205,7 @@ export function projectModelMetadata(
       revision: model.repositoryRevision,
       kind: model.kind,
       quantization: model.quant,
+      features: model.features,
       artifacts: model.artifacts.map((artifact) => ({
         role: artifact.role,
         sha256: artifact.sha256 ?? null,
@@ -227,7 +243,18 @@ export function projectModelMetadata(
               },
               residency: "cold-per-request",
             }
-          : null,
+          : model.videoRuntime
+            ? {
+                kind: "video",
+                mode: model.videoRuntime.mode,
+                width: model.videoRuntime.qualification.maxWidth,
+                height: model.videoRuntime.qualification.maxHeight,
+                frames: model.videoRuntime.qualification.maxFrames,
+                fps: model.videoRuntime.qualification.fps,
+                jobDeadlineMs: model.videoRuntime.qualification.jobDeadlineMs,
+                outputFormats: ["avi"],
+              }
+            : null,
       inputModalities: model.inputModalities,
       outputModalities: model.outputModalities,
       contextWindowTokens: model.contextWindowTokens,
@@ -238,7 +265,7 @@ export function projectModelMetadata(
       installed: input.installations.get(model.modelId) ?? false,
       runtime: runtimeForModel(model, input.runtimes),
     },
-  });
+  } satisfies ModelMetadata);
 }
 
 export function projectModelMetadataList(
