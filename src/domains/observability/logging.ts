@@ -956,7 +956,7 @@ type HttpRequestAuth =
       outcome: "authenticated";
       principalId: string;
       principalName?: string;
-      source: "stored_key" | "environment";
+      source: "stored_key" | "environment" | "browser_session";
     }>
   | Readonly<{ outcome: "missing" | "invalid" | "disabled" }>;
 
