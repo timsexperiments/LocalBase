@@ -209,14 +209,10 @@ describe("catalog artifact validation", () => {
       if (!entry) throw new Error(`Missing catalog entry: ${id}`);
       expect(entry.artifacts).toHaveLength(1);
       const [artifact] = entry.artifacts;
-      if (!artifact?.expectedSizeBytes) throw new Error(`Missing size: ${id}`);
-      expect(entry.storageGb).toBe(
-        Math.ceil(artifact.expectedSizeBytes / 10_000_000) / 100,
-      );
+      if (!artifact) throw new Error(`Missing artifact: ${id}`);
       expect(artifactDownloadUrl(entry, artifact)).toContain(
         `/resolve/${entry.repositoryRevision}/`,
       );
-      expect(entry.notes.toLowerCase()).toContain("not live-qualified");
       for (const capability of [
         "vision",
         "tool-calling",

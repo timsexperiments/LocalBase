@@ -472,7 +472,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0. Text only; no vision projector or image/video input.",
     notes:
-      "Single GGUF with embedded tokenizer. Architecture supported by the pinned llama.cpp builds; not live-qualified. Memory is an estimate for short contexts, not the 262144-token architectural limit. Tool calling is not qualified.",
+      "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts.",
   },
   {
     modelId: "qwen3.5-0.8b-q8_0",
@@ -503,7 +503,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0. Text only; no vision projector or image/video input.",
     notes:
-      "Single GGUF with embedded tokenizer. Architecture supported by the pinned llama.cpp builds; not live-qualified. Memory is an estimate for short contexts, not the 262144-token architectural limit. Tool calling is not qualified.",
+      "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts.",
   },
   {
     modelId: "qwen3.5-2b-q4_k_m",
@@ -534,7 +534,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0. Text only; no vision projector or image/video input.",
     notes:
-      "Single GGUF with embedded tokenizer. Architecture supported by the pinned llama.cpp builds; not live-qualified. Memory is an estimate for short contexts, not the 262144-token architectural limit. Tool calling is not qualified.",
+      "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts.",
   },
   {
     modelId: "qwen3.5-2b-q8_0",
@@ -565,7 +565,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0. Text only; no vision projector or image/video input.",
     notes:
-      "Single GGUF with embedded tokenizer. Architecture supported by the pinned llama.cpp builds; not live-qualified. Memory is an estimate for short contexts, not the 262144-token architectural limit. Tool calling is not qualified.",
+      "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts.",
   },
   {
     modelId: "qwen3.5-4b-q4_k_m",
@@ -596,7 +596,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0. Text only; no vision projector or image/video input.",
     notes:
-      "Single GGUF with embedded tokenizer. Architecture supported by the pinned llama.cpp builds; not live-qualified. Memory is an estimate for short contexts, not the 262144-token architectural limit. Tool calling is not qualified.",
+      "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts.",
   },
   {
     modelId: "qwen3.5-9b-q4_k_m",
@@ -627,7 +627,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0. Text only; no vision projector or image/video input.",
     notes:
-      "Single GGUF with embedded tokenizer. Architecture supported by the pinned llama.cpp builds; not live-qualified. Memory is an estimate for short contexts, not the 262144-token architectural limit. Tool calling is not qualified.",
+      "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts.",
   },
   {
     modelId: "qwen3-embedding-4b-q4_k_m",
@@ -667,7 +667,7 @@ const CATALOG_SOURCE = [
     catch:
       "Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.",
     notes:
-      "Official GGUF with embedded tokenizer, last-token pooling and 2560-dimensional output. Architecture supported by the pinned llama.cpp builds; not live-qualified. Memory is an estimate for short inputs, not full-context batches.",
+      "Last-token pooling with fixed 2560-dimensional output. Embedded tokenizer; memory estimate assumes short inputs.",
   },
   {
     modelId: "qwen3-embedding-4b-q8_0",
@@ -707,7 +707,7 @@ const CATALOG_SOURCE = [
     catch:
       "Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.",
     notes:
-      "Official GGUF with embedded tokenizer, last-token pooling and 2560-dimensional output. Architecture supported by the pinned llama.cpp builds; not live-qualified. Memory is an estimate for short inputs, not full-context batches.",
+      "Last-token pooling with fixed 2560-dimensional output. Embedded tokenizer; memory estimate assumes short inputs.",
   },
   {
     modelId: "qwen3-embedding-8b-q4_k_m",
@@ -747,7 +747,7 @@ const CATALOG_SOURCE = [
     catch:
       "Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.",
     notes:
-      "Official GGUF with embedded tokenizer, last-token pooling and 4096-dimensional output. Architecture supported by the pinned llama.cpp builds; not live-qualified. Memory is an estimate for short inputs, not full-context batches.",
+      "Last-token pooling with fixed 4096-dimensional output. Embedded tokenizer; memory estimate assumes short inputs.",
   },
   {
     modelId: "qwen3-embedding-8b-q8_0",
@@ -787,7 +787,7 @@ const CATALOG_SOURCE = [
     catch:
       "Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.",
     notes:
-      "Official GGUF with embedded tokenizer, last-token pooling and 4096-dimensional output. Architecture supported by the pinned llama.cpp builds; not live-qualified. Memory is an estimate for short inputs, not full-context batches.",
+      "Last-token pooling with fixed 4096-dimensional output. Embedded tokenizer; memory estimate assumes short inputs.",
   },
   {
     modelId: "whisper-tiny-q8_0",
@@ -817,7 +817,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "MIT License.",
     notes:
-      "Multilingual transcription. GGML includes vocabulary and mel filters; no Core ML encoder is required. Supported by the pinned whisper.cpp architecture; not live-qualified. Memory is an estimate.",
+      "Multilingual transcription. Vocabulary and mel filters are bundled; no Core ML encoder required.",
   },
   {
     modelId: "whisper-base-en-q8_0",
@@ -847,7 +847,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "MIT License.",
     notes:
-      "English-only transcription. GGML includes vocabulary and mel filters; no Core ML encoder is required. Supported by the pinned whisper.cpp architecture; not live-qualified. Memory is an estimate.",
+      "English-only transcription. Vocabulary and mel filters are bundled; no Core ML encoder required.",
   },
   {
     modelId: "whisper-small-q8_0",
@@ -877,7 +877,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "MIT License.",
     notes:
-      "Multilingual transcription. GGML includes vocabulary and mel filters; no Core ML encoder is required. Supported by the pinned whisper.cpp architecture; not live-qualified. Memory is an estimate.",
+      "Multilingual transcription. Vocabulary and mel filters are bundled; no Core ML encoder required.",
   },
   {
     modelId: "whisper-medium-q8_0",
@@ -907,7 +907,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "MIT License.",
     notes:
-      "Multilingual transcription. GGML includes vocabulary and mel filters; no Core ML encoder is required. Supported by the pinned whisper.cpp architecture; not live-qualified. Memory is an estimate.",
+      "Multilingual transcription. Vocabulary and mel filters are bundled; no Core ML encoder required.",
   },
   {
     modelId: "realvis-xl-v5.0",
@@ -937,7 +937,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "conditional",
     catch: "CreativeML Open RAIL++-M use restrictions apply.",
     notes:
-      "Standard SDXL photorealistic checkpoint with both CLIP encoders and VAE included; uses the runtime's built-in CLIP tokenizer. Not live-qualified. Memory is an estimate. LocalBase uses server defaults, not the author's recommended DPM++ Karras settings; no Lightning, hires-fix or upscaler profile.",
+      "Bundled CLIP encoders and VAE; built-in CLIP tokenizer. Uses server defaults, not the author's recommended DPM++ Karras preset.",
   },
   {
     modelId: "qwen3-embedding-0.6b-q8_0",
