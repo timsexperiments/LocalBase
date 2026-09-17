@@ -226,7 +226,7 @@ describe("playground client boundaries", () => {
             id: "message",
             role: "assistant",
             text: "hello",
-            media: { kind: "audio", url: "blob:private-audio" },
+            media: { kind: "video", url: "blob:private-video", format: "mp4" },
             protocol: [
               {
                 role: "assistant",
