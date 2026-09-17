@@ -14,6 +14,42 @@ import type { RuntimeModality } from "../runtime/modality";
 
 const nullableNumberSchema = z.number().nullable();
 
+const embeddingCapabilitiesSchema = z
+  .object({
+    kind: z.literal("embedding"),
+    dimensions: z
+      .object({
+        minimum: z.number().int().positive(),
+        maximum: z.number().int().positive(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const speechCapabilitiesSchema = z
+  .object({
+    kind: z.literal("speech"),
+    outputFormats: z.tuple([z.literal("wav")]),
+    voice: z
+      .object({
+        selection: z.literal("catalog-reference"),
+        requestValues: z.array(speechVoiceSchema).min(1),
+        defaultRequestValue: z.literal("default"),
+        references: z.array(
+          z
+            .object({
+              name: referenceSpeechVoiceSchema,
+              license: z.literal("CC0-1.0"),
+              provenanceUrl: z.string().url(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+    residency: z.literal("cold-per-request"),
+  })
+  .strict();
+
 export const modelMetadataSchema = z
   .object({
     object: z.literal("localbase.model"),
@@ -42,28 +78,10 @@ export const modelMetadataSchema = z
           })
           .strict(),
         capabilities: z
-          .object({
-            kind: z.literal("speech"),
-            outputFormats: z.tuple([z.literal("wav")]),
-            voice: z
-              .object({
-                selection: z.literal("catalog-reference"),
-                requestValues: z.array(speechVoiceSchema).min(1),
-                defaultRequestValue: z.literal("default"),
-                references: z.array(
-                  z
-                    .object({
-                      name: referenceSpeechVoiceSchema,
-                      license: z.literal("CC0-1.0"),
-                      provenanceUrl: z.string().url(),
-                    })
-                    .strict(),
-                ),
-              })
-              .strict(),
-            residency: z.literal("cold-per-request"),
-          })
-          .strict()
+          .discriminatedUnion("kind", [
+            embeddingCapabilitiesSchema,
+            speechCapabilitiesSchema,
+          ])
           .nullable(),
         inputModalities: z.array(modelModalitySchema).min(1),
         outputModalities: z.array(modelModalitySchema).min(1),
@@ -181,8 +199,12 @@ export function projectModelMetadata(
         minimumVramEstimateGb: model.minVramGb,
         storageEstimateGb: model.storageGb,
       },
-      capabilities:
-        model.kind === "tts"
+      capabilities: model.llmRuntime
+        ? {
+            kind: "embedding",
+            dimensions: model.llmRuntime.dimensions,
+          }
+        : model.kind === "tts"
           ? {
               kind: "speech",
               outputFormats: ["wav"],

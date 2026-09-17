@@ -276,6 +276,27 @@ describe("runtime launch plans", () => {
     });
   });
 
+  test("caps LLM context before parallel allocation and memory estimation", () => {
+    const plan = resolveLlmLaunchPlan({
+      runtimeId: "llm:embedding:1",
+      root,
+      modelsDirectory: `${root}/models/llm`,
+      modelId: "qwen3-embedding-0.6b-q8_0",
+      modelFile: "Qwen3-Embedding-0.6B-Q8_0.gguf",
+      host: "127.0.0.1",
+      port: 8080,
+      ctxSize: 131_072,
+      contextWindowTokens: 32_768,
+      parallel: 1,
+      modelRequirementGb: 1.5,
+      artifactBytes: 639150592,
+      hardware: { memoryGb: 64 },
+    });
+
+    expect(plan.ctxSize).toBe(32_768);
+    expect(plan.parallel.contextPerSlot).toBe(32_768);
+  });
+
   test("rejects video admission on an unsupported platform", () => {
     expect(() =>
       resolveVideoLaunchPlan({

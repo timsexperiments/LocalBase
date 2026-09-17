@@ -27,6 +27,7 @@ function testLaunchPlan(runtimeId: string): RuntimeLaunchPlan {
     parallel: { slots: 1, isAuto: false, contextPerSlot: 8192 },
     modelRequirementGb: 1,
     hardware: { memoryGb: 1 },
+    embedding: null,
     memoryDemand: {
       unifiedBytes: 1,
       hostBytes: 1,
