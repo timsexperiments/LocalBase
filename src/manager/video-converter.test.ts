@@ -2,6 +2,7 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { zipSync } from "fflate";
 import { installManagedRuntime } from "./binaries";
 import { ensureVideoConverter } from "./video-converter";
 import { videoConverterRelease } from "./video-converter-release";
@@ -50,10 +51,26 @@ test("pins converter binaries and notices for all four targets without inference
     for (const cpu of ["arm64", "x64"]) {
       const { release, supportFiles } = videoConverterRelease({ os, cpu });
       expect(release.name).toBe("ffmpeg");
-      expect(release.format).toBe("binary");
-      expect(release.url).toBe(
-        `https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-${os}-${cpu}`,
-      );
+      const macArm64 = os === "darwin" && cpu === "arm64";
+      if (macArm64) {
+        expect(release).toMatchObject({
+          format: "zip",
+          stripComponents: 0,
+          url: "https://ffmpeg.martin-riedl.de/download/macos/arm64/1787073674_9.0.1/ffmpeg.zip",
+          expectedSizeBytes: 28447413,
+          sha256:
+            "8287a1b2229e05eb41859f073e18e6c52c60a778f2f5e6881070fe51b79407fe",
+        });
+        expect(supportFiles.map((file) => file.url)).toEqual([
+          "https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0.1/COPYING.GPLv3",
+          "https://ffmpeg.martin-riedl.de/download/macos/arm64/1787073674_9.0.1/versions.txt",
+        ]);
+      } else {
+        expect(release.format).toBe("binary");
+        expect(release.url).toBe(
+          `https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-${os}-${cpu}`,
+        );
+      }
       expect(release.sha256).toMatch(/^[a-f0-9]{64}$/);
       expect(release.expectedSizeBytes).toBeGreaterThan(0);
       expect(supportFiles.map((file) => file.filename)).toEqual([
@@ -63,13 +80,51 @@ test("pins converter binaries and notices for all four targets without inference
       for (const file of supportFiles) {
         expect(file.sha256).toMatch(/^[a-f0-9]{64}$/);
         expect(file.expectedSizeBytes).toBeGreaterThan(0);
-        expect(file.url).toEndWith(`/${os}-${cpu}.${file.filename}`);
+        if (!macArm64)
+          expect(file.url).toEndWith(`/${os}-${cpu}.${file.filename}`);
       }
     }
   }
   expect(() => videoConverterRelease({ os: "win32", cpu: "x64" })).toThrow(
     "No packaged video converter",
   );
+});
+
+test("installs the root-level converter ZIP with independently verified notices", async () => {
+  const f = fixture();
+  const archive = zipSync({ ffmpeg: new TextEncoder().encode(f.binary) });
+  const release = {
+    ...f.release,
+    format: "zip",
+    assetName: "ffmpeg.zip",
+    expectedSizeBytes: archive.byteLength,
+    sha256: new Bun.CryptoHasher("sha256").update(archive).digest("hex"),
+  } satisfies Parameters<typeof installManagedRuntime>[1];
+  const fetchMock = spyOn(globalThis, "fetch").mockImplementation(
+    fetchImplementation(
+      async (input) =>
+        new Response(
+          String(input) === release.url
+            ? archive
+            : new URL(String(input)).pathname.slice(1),
+        ),
+    ),
+  );
+  try {
+    const path = await installManagedRuntime({ root: f.root }, release, {
+      supportFiles: f.supportFiles,
+    });
+    expect(path).toBe(
+      join(f.root, "bin", "runtimes", "ffmpeg", release.sha256, "ffmpeg"),
+    );
+    expect(await Bun.file(path).text()).toBe(f.binary);
+    expect(await Bun.file(join(dirname(path), "LICENSE")).text()).toBe(
+      "LICENSE",
+    );
+    expect(await Bun.file(join(dirname(path), "README")).text()).toBe("README");
+  } finally {
+    fetchMock.mockRestore();
+  }
 });
 
 test("coalesces installs, publishes verified notices together, and reuses offline", async () => {
