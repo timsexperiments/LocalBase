@@ -61,6 +61,7 @@ describe("playground client boundaries", () => {
       const conversation: Conversation = {
         id: "one",
         title: "A chat",
+        workspace: "lab",
         mode: "llm",
         model: "test",
         messages: [
@@ -98,6 +99,7 @@ describe("playground client boundaries", () => {
         {
           id: "one",
           title: "A chat",
+          workspace: "lab",
           mode: "llm",
           model: "test",
           messages: [{ id: "message", role: "assistant", text: "hello" }],
