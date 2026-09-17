@@ -104,6 +104,7 @@ export type Message = {
 export type Conversation = {
   id: string;
   title: string;
+  workspace: "chat" | "lab";
   mode: Mode;
   model: MetadataIdentity["id"];
   messages: Message[];
@@ -113,6 +114,7 @@ const historySchema = z
     z.object({
       id: z.string(),
       title: z.string().max(120),
+      workspace: z.enum(["chat", "lab"]),
       mode: z.enum(modes),
       model: z.string(),
       messages: z.array(
@@ -138,6 +140,7 @@ export function writeHistory(conversations: Conversation[]) {
       conversations.slice(0, 30).map((c) => ({
         id: c.id,
         title: c.title,
+        workspace: c.workspace,
         mode: c.mode,
         model: c.model,
         messages: c.messages.map(({ id, role, text }) => ({
