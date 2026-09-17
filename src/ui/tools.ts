@@ -58,7 +58,7 @@ export function generationTools(models: Model[], chatModel: Model) {
         type: "function" as const,
         function: {
           name,
-          description: `Create ${name === "generate_image" ? "an image" : name === "generate_video" ? "a text-to-video AVI clip" : "speech audio"}. Use only these model IDs: ${candidates.map((m) => m.id).join(", ")}. Media is displayed to the user, not returned as bytes.`,
+          description: `Create ${name === "generate_image" ? "an image" : name === "generate_video" ? "a text-to-video MP4 clip" : "speech audio"}. Use only these model IDs: ${candidates.map((m) => m.id).join(", ")}. Media is displayed to the user, not returned as bytes.`,
           parameters: {
             ...parameters,
             properties: {
@@ -112,7 +112,10 @@ export async function generateVideo({
   progress,
   warning,
   prompt,
-}: MediaOptions & { prompt: string }): Promise<Blob> {
+}: MediaOptions & { prompt: string }): Promise<{
+  blob: Blob;
+  format: Extract<Media, { kind: "video" }>["format"];
+}> {
   const cap = model.catalog.capabilities;
   if (cap?.kind !== "video" || cap.mode !== "t2v")
     throw new Error(
@@ -155,7 +158,14 @@ export async function generateVideo({
           await api(`${path}/content`, connection, { signal: workSignal })
         ).blob();
         completed = true;
-        return blob;
+        if (
+          !z.literal("video/mp4").safeParse(blob.type.split(";")[0]?.trim())
+            .success
+        )
+          throw new Error(
+            `Unsupported video response type: ${blob.type || "missing content type"}. Expected video/mp4.`,
+          );
+        return { blob, format: "mp4" };
       }
       if (job.status === "failed" || job.status === "cancelled")
         throw new Error(
@@ -242,12 +252,16 @@ export async function generateMedia(
     ).blob();
   } else {
     const args = promptSchema.parse(value);
-    blob = await generateVideo({ ...options, prompt: args.prompt });
+    const video = await generateVideo({ ...options, prompt: args.prompt });
+    signal.throwIfAborted();
+    const url = URL.createObjectURL(video.blob);
+    register(url);
+    return { kind: "video", url, format: video.format };
   }
   signal.throwIfAborted();
   const url = URL.createObjectURL(blob);
   register(url);
-  return { kind: name === "generate_video" ? "video" : "audio", url };
+  return { kind: "audio", url };
 }
 export async function runChat(options: {
   model: Model;
