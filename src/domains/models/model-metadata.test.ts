@@ -11,6 +11,7 @@ import {
 const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const multipartModelId = "qwen3-coder-next-q4_k_m";
 const speechModelId = "qwen3-tts-1.7b-base-q4_k_m";
+const embeddingModelId = "qwen3-embedding-0.6b-q8_0";
 
 function catalogModel(id = modelId) {
   const model = byId(id);
@@ -139,6 +140,25 @@ test("includes every declared artifact in multi-file model identity", () => {
       expect.objectContaining({ role: "supplementary" }),
     ]),
   );
+});
+
+test("reports the embedding-only capability and its bounded dimensions", () => {
+  const model = catalogModel(embeddingModelId);
+  const metadata = projectModelMetadata(model, {
+    catalog: [model],
+    config: defaultConfig("/tmp/localbase-model-metadata-embedding"),
+    installations: new Map([[embeddingModelId, false]]),
+    runtimes: runtimeSnapshots(),
+  });
+
+  expect(metadata.catalog).toMatchObject({
+    capabilities: {
+      kind: "embedding",
+      dimensions: { minimum: 1024, maximum: 1024 },
+    },
+    contextWindowTokens: 32_768,
+    maxOutputTokens: null,
+  });
 });
 
 test("reports only the supported cold speech contract", () => {

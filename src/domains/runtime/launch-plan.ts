@@ -6,7 +6,11 @@ import {
   type ParallelAllocation,
   type ParallelSlots,
 } from "../config/parallel";
-import type { VideoRuntimeProfile, VideoRuntimeTarget } from "../../catalog";
+import type {
+  EmbeddingLlmRuntimeProfile,
+  VideoRuntimeProfile,
+  VideoRuntimeTarget,
+} from "../../catalog";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
 
@@ -36,6 +40,7 @@ export type LlmLaunchPlan = LaunchPlanBase<"llm", "llama-server"> & {
   readonly parallel: ParallelAllocation;
   readonly modelRequirementGb: number | undefined;
   readonly hardware: Readonly<RuntimeHardware>;
+  readonly embedding: EmbeddingLlmRuntimeProfile | null;
 };
 
 export type SttLaunchPlan = LaunchPlanBase<"stt", "whisper-server">;
@@ -150,16 +155,22 @@ export function resolveLlmLaunchPlan(input: {
   host: string;
   port: number;
   ctxSize: number;
+  contextWindowTokens?: number | null;
   parallel: ParallelSlots;
   modelRequirementGb: number | undefined;
   artifactBytes: number;
   hardware: RuntimeHardware;
+  embedding?: EmbeddingLlmRuntimeProfile | null;
 }): LlmLaunchPlan {
+  const ctxSize = Math.min(
+    input.ctxSize,
+    input.contextWindowTokens ?? input.ctxSize,
+  );
   const parallel = allocateParallelSlots({
     parallel: input.parallel,
     memoryGb: input.hardware.memoryGb,
     modelRequirementGb: input.modelRequirementGb,
-    ctxSize: input.ctxSize,
+    ctxSize,
   });
   return Object.freeze({
     runtimeId: input.runtimeId,
@@ -172,11 +183,12 @@ export function resolveLlmLaunchPlan(input: {
     host: input.host,
     port: input.port,
     healthUrl: `http://${input.host}:${input.port}/health`,
-    ctxSize: input.ctxSize,
+    ctxSize,
     parallel: Object.freeze({ ...parallel }),
     modelRequirementGb: input.modelRequirementGb,
     hardware: Object.freeze({ ...input.hardware }),
-    memoryDemand: llmMemoryDemand({ ...input, parallel }),
+    embedding: input.embedding ? Object.freeze({ ...input.embedding }) : null,
+    memoryDemand: llmMemoryDemand({ ...input, ctxSize, parallel }),
   });
 }
 
