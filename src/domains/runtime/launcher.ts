@@ -49,6 +49,7 @@ export function buildLlamaServerArgs(
     | "parallel"
     | "modelRequirementGb"
     | "hardware"
+    | "embedding"
   >,
 ): LlamaServerArgs {
   const args = [
@@ -62,9 +63,13 @@ export function buildLlamaServerArgs(
     String(plan.ctxSize),
     "--parallel",
     String(plan.parallel.slots),
-    "--jinja",
-    "--embeddings",
   ];
+
+  if (plan.embedding) {
+    args.push("--embedding", "--pooling", plan.embedding.pooling);
+  } else {
+    args.push("--jinja", "--embeddings");
+  }
 
   if (process.platform === "darwin" && process.arch === "arm64") {
     args.push("--flash-attn", "auto");
