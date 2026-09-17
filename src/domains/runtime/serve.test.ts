@@ -102,7 +102,10 @@ test("compiled gateway defaults to loopback independently of the persisted LLM h
 });
 
 test("compiled gateway preserves an explicit host override", async () => {
-  const gateway = await startGatewayFixture({ gatewayHost: "localhost" });
+  const gateway = await startGatewayFixture({
+    gatewayHost: "localhost",
+    gatewayListenerHost: "127.0.0.1",
+  });
   try {
     await expectGatewayListenerHost(gateway, "localhost");
   } finally {
@@ -176,6 +179,30 @@ test("managed gateways acknowledge settings reverted to their startup values", a
     expect(await restartPending(gateway.root)).toBe(false);
   } finally {
     database.close();
+    await gateway.stop();
+  }
+});
+
+test("compiled gateway loads its persistent listener without weakening API authentication", async () => {
+  const gateway = await startGatewayFixture({
+    gatewayListenerHost: "localhost",
+    auth: {},
+  });
+  try {
+    await expectGatewayListenerHost(gateway, "localhost");
+    const listener = await Bun.file(
+      join(gateway.root, "gateway-listener.json"),
+    ).json();
+    expect(new URL(gateway.baseUrl).port).toBe(String(listener.port));
+    expect((await fetch(`${gateway.baseUrl}/v1/models`)).status).toBe(401);
+    expect(
+      (
+        await fetch(`${gateway.baseUrl}/v1/models`, {
+          headers: { Authorization: `Bearer ${gateway.apiKey}` },
+        })
+      ).status,
+    ).toBe(200);
+  } finally {
     await gateway.stop();
   }
 });

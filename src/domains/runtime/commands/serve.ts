@@ -29,6 +29,7 @@ import {
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
+import { loadGatewayListener } from "../gateway-listener";
 import {
   logHttpMetadataSchema,
   redactLogAttributes,
@@ -1814,8 +1815,11 @@ export async function runServe(
   const uiAccess = createUiAccess({
     config: await loadUiAccessConfig(config.root),
   });
-  const wrapperHost = input.host ?? config.gatewayHost;
-  const wrapperPort = input.port ?? config.gatewayPort;
+  const { host: wrapperHost, port: wrapperPort } = await loadGatewayListener(
+    config.root,
+    input,
+    { host: config.gatewayHost, port: config.gatewayPort },
+  );
   const startupStaticConfig = {
     gatewayHost: wrapperHost,
     gatewayPort: wrapperPort,
