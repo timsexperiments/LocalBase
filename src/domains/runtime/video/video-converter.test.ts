@@ -158,6 +158,8 @@ test.each(["success", "stderr-flood"])(
         ["-c:v", "libx264"],
         ["-c:a", "aac"],
         ["-pix_fmt", "yuv420p"],
+        ["-vf", "scale=out_range=tv"],
+        ["-color_range", "tv"],
         ["-movflags", "+faststart"],
         ["-fs", "65536"],
       ]) {
