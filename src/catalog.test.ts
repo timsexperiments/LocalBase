@@ -20,6 +20,16 @@ const verifiedContextWindows = new Map<string, number>([
   ["qwen3-coder-next-q4_k_m", 262_144],
   ["gpt-oss-20b-q4_k_m", 131_072],
   ["qwen3.5-27b-q4_k_m", 262_144],
+  ["qwen3.5-0.8b-q4_k_m", 262_144],
+  ["qwen3.5-0.8b-q8_0", 262_144],
+  ["qwen3.5-2b-q4_k_m", 262_144],
+  ["qwen3.5-2b-q8_0", 262_144],
+  ["qwen3.5-4b-q4_k_m", 262_144],
+  ["qwen3.5-9b-q4_k_m", 262_144],
+  ["qwen3-embedding-4b-q4_k_m", 32_768],
+  ["qwen3-embedding-4b-q8_0", 32_768],
+  ["qwen3-embedding-8b-q4_k_m", 32_768],
+  ["qwen3-embedding-8b-q8_0", 32_768],
   ["mistral-small-3.2-24b-instruct-q4_k_m", 131_072],
 ]);
 
@@ -157,10 +167,79 @@ describe("catalog artifact validation", () => {
         },
       ],
     });
-    const model = byId("qwen3-embedding-0.6b-q8_0");
-    if (!model) throw new Error("Expected Qwen embedding catalog entry.");
-    expect(calculateMaxSafeContextSize(model, 64)).toBe(32_768);
-    expect(recommendedForVram(1.5)).not.toContainEqual(model);
+    for (const [modelId, dimensions] of [
+      ["qwen3-embedding-0.6b-q8_0", 1024],
+      ["qwen3-embedding-4b-q4_k_m", 2560],
+      ["qwen3-embedding-4b-q8_0", 2560],
+      ["qwen3-embedding-8b-q4_k_m", 4096],
+      ["qwen3-embedding-8b-q8_0", 4096],
+    ] satisfies [string, number][]) {
+      const embedding = byId(modelId);
+      if (!embedding) throw new Error(`Missing embedding entry: ${modelId}`);
+      expect(embedding.llmRuntime).toEqual({
+        capability: "embedding-only",
+        pooling: "last",
+        dimensions: { minimum: dimensions, maximum: dimensions },
+      });
+      expect(calculateMaxSafeContextSize(embedding, 64)).toBe(32_768);
+      expect(recommendedForVram(128)).not.toContainEqual(embedding);
+    }
+  });
+
+  test("keeps supported-architecture additions within the packaged capabilities", () => {
+    const ids = [
+      "qwen3.5-0.8b-q4_k_m",
+      "qwen3.5-0.8b-q8_0",
+      "qwen3.5-2b-q4_k_m",
+      "qwen3.5-2b-q8_0",
+      "qwen3.5-4b-q4_k_m",
+      "qwen3.5-9b-q4_k_m",
+      "qwen3-embedding-4b-q4_k_m",
+      "qwen3-embedding-4b-q8_0",
+      "qwen3-embedding-8b-q4_k_m",
+      "qwen3-embedding-8b-q8_0",
+      "whisper-tiny-q8_0",
+      "whisper-base-en-q8_0",
+      "whisper-small-q8_0",
+      "whisper-medium-q8_0",
+      "realvis-xl-v5.0",
+    ];
+    for (const id of ids) {
+      const entry = byId(id);
+      if (!entry) throw new Error(`Missing catalog entry: ${id}`);
+      expect(entry.artifacts).toHaveLength(1);
+      const [artifact] = entry.artifacts;
+      if (!artifact?.expectedSizeBytes) throw new Error(`Missing size: ${id}`);
+      expect(entry.storageGb).toBe(
+        Math.ceil(artifact.expectedSizeBytes / 10_000_000) / 100,
+      );
+      expect(artifactDownloadUrl(entry, artifact)).toContain(
+        `/resolve/${entry.repositoryRevision}/`,
+      );
+      expect(entry.notes.toLowerCase()).toContain("not live-qualified");
+      for (const capability of [
+        "vision",
+        "tool-calling",
+        "image-to-image",
+        "translation",
+      ]) {
+        expect(entry.features).not.toContain(capability);
+      }
+      expect(entry.inputModalities).toEqual(
+        entry.kind === "stt" ? ["audio"] : ["text"],
+      );
+    }
+    expect(byId("whisper-base-en-q8_0")?.features).not.toContain(
+      "multilingual",
+    );
+    for (const size of ["tiny", "small", "medium"]) {
+      expect(byId(`whisper-${size}-q8_0`)?.features).toContain("multilingual");
+    }
+    expect(byId("realvis-xl-v5.0")).toMatchObject({
+      commercialStatus: "conditional",
+      features: ["text-to-image"],
+      outputModalities: ["image"],
+    });
   });
 
   test("requires video profiles to name declared artifacts and bounded measurements", () => {
