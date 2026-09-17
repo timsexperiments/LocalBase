@@ -19,6 +19,7 @@ import {
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
+import { loadGatewayListener } from "../gateway-listener";
 import { type ILogger } from "../../observability/logging";
 import {
   InferenceTelemetry,
@@ -1778,8 +1779,10 @@ export async function runServe(
   const uiAccess = createUiAccess({
     config: await loadUiAccessConfig(config.root),
   });
-  const wrapperHost = input.host ?? "127.0.0.1";
-  const wrapperPort = input.port ?? 2273;
+  const { host: wrapperHost, port: wrapperPort } = await loadGatewayListener(
+    config.root,
+    input,
+  );
 
   const llmPort = input.llmPort ?? config.port;
   const sttPort = input.sttPort ?? config.sttPort;
