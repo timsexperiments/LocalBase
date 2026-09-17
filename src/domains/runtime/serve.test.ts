@@ -1392,6 +1392,89 @@ describe("API gateway integration", () => {
     ).toEqual([{ role: "user", content: "hello" }]);
   });
 
+  test("rejects embedding-only models before runtime admission", async () => {
+    const upstreamRequests = gateway.upstreamRequests.length;
+    const runtimeLaunches = await gateway.readLlmRuntimeLaunches();
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "qwen3-embedding-0.6b-q8_0",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "validation_failed",
+        message: "Model 'qwen3-embedding-0.6b-q8_0' supports embeddings only.",
+      },
+    });
+    expect(gateway.upstreamRequests).toHaveLength(upstreamRequests);
+    expect(await gateway.readLlmRuntimeLaunches()).toEqual(runtimeLaunches);
+  });
+
+  test("bounds embedding dimensions before runtime admission", async () => {
+    const upstreamRequests = gateway.upstreamRequests.length;
+    const runtimeLaunches = await gateway.readLlmRuntimeLaunches();
+    const response = await request("/v1/embeddings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "qwen3-embedding-0.6b-q8_0",
+        input: "query: ferns",
+        dimensions: 1023,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "validation_failed",
+        message: "Model 'qwen3-embedding-0.6b-q8_0' supports 1024 dimensions.",
+      },
+    });
+    expect(gateway.upstreamRequests).toHaveLength(upstreamRequests);
+    expect(await gateway.readLlmRuntimeLaunches()).toEqual(runtimeLaunches);
+  });
+
+  test("forwards embedding inputs unchanged and returns the admitted model", async () => {
+    const embeddingModelId = "qwen3-embedding-0.6b-q8_0";
+    const originalConfig = gateway.readConfig();
+    const config = gateway.readConfig();
+    config.selectedLlmModels = [config.activeLlmModel, embeddingModelId];
+    gateway.saveConfig(config);
+    await writeCompleteCatalogArtifact(config.llmModelsDir, embeddingModelId);
+
+    try {
+      const input = "query: fern hard negative plastic";
+      const response = await request("/v1/embeddings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: embeddingModelId,
+          input,
+          dimensions: 1024,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        model: embeddingModelId,
+      });
+      expect(JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}")).toEqual(
+        {
+          model: embeddingModelId,
+          input,
+          dimensions: 1024,
+        },
+      );
+    } finally {
+      gateway.saveConfig(originalConfig);
+    }
+  });
+
   test("returns the admitted model instead of a backend model path", async () => {
     const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
     const response = await request("/v1/chat/completions", {

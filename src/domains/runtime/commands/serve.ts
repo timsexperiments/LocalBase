@@ -1263,7 +1263,7 @@ async function proxyRequest(
     validator: StructuredOutputValidator;
     onValidation: (result: CompletedStructuredOutputValidation) => void;
   }>,
-  canonicalChatModelId?: string,
+  canonicalModelId?: string,
   onUpstreamStatus?: (status: number) => void,
 ): Promise<Response> {
   const incoming = new URL(request.url);
@@ -1327,7 +1327,7 @@ async function proxyRequest(
         eventStreamSchema,
         (value) => onValidatedEvent?.(value, upstream.status),
         () => onInvalidEvent?.(upstream.status),
-        canonicalChatModelId,
+        canonicalModelId,
       ),
       {
         status: upstream.status,
@@ -1367,8 +1367,11 @@ async function proxyRequest(
       const headers = filterProxyHeaders(upstream.headers);
       headers.delete("content-length");
       return Response.json(
-        chatResponse.success && canonicalChatModelId
-          ? { ...chatResponse.data, model: canonicalChatModelId }
+        canonicalModelId &&
+          typeof parsed.data === "object" &&
+          parsed.data !== null &&
+          "model" in parsed.data
+          ? { ...parsed.data, model: canonicalModelId }
           : parsed.data,
         {
           status: upstream.status,
@@ -2687,7 +2690,7 @@ export async function runServe(
                 source: "response_validation",
               }),
             undefined,
-            undefined,
+            selected.value.modelId,
             (status) => inference.observeUpstreamStatus(status),
           ),
         (terminal) => inference.finish(terminal),
@@ -2701,6 +2704,12 @@ export async function runServe(
         chatCompletionRequestSchema,
       );
       if (!parsed.success) return parsed.response;
+      const requestedModel = byId(parsed.data.model);
+      if (requestedModel?.llmRuntime) {
+        return badRequest(
+          `Model '${requestedModel.modelId}' supports embeddings only.`,
+        );
+      }
       const backendRequest = prepareChatCompletionRequest(parsed.data);
       const preparationStartedAt = performance.now();
       const structuredOutput = prepareStructuredOutput(
@@ -2808,6 +2817,20 @@ export async function runServe(
     if (route === "embeddings") {
       const parsed = await parseJsonRequest(request, embeddingsRequestSchema);
       if (!parsed.success) return parsed.response;
+      const requestedModel = byId(parsed.data.model);
+      const dimensions = requestedModel?.llmRuntime?.dimensions;
+      if (
+        dimensions &&
+        parsed.data.dimensions !== undefined &&
+        (parsed.data.dimensions < dimensions.minimum ||
+          parsed.data.dimensions > dimensions.maximum)
+      ) {
+        return badRequest(
+          dimensions.minimum === dimensions.maximum
+            ? `Model '${requestedModel.modelId}' supports ${dimensions.minimum} dimensions.`
+            : `Model '${requestedModel.modelId}' supports dimensions from ${dimensions.minimum} through ${dimensions.maximum}.`,
+        );
+      }
       let selected;
       try {
         selected = await reconciler.admitModel(
@@ -2848,7 +2871,7 @@ export async function runServe(
                 source: "response_validation",
               }),
             undefined,
-            undefined,
+            selected.value.modelId,
             (status) => inference.observeUpstreamStatus(status),
           ),
         (terminal) => inference.finish(terminal),

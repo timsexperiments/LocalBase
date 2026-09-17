@@ -65,6 +65,27 @@ const ttsRuntimeProfileSchema = z
   })
   .strict();
 
+const embeddingLlmRuntimeProfileSchema = z
+  .object({
+    capability: z.literal("embedding-only"),
+    pooling: z.literal("last"),
+    dimensions: z
+      .object({
+        minimum: z.number().int().positive(),
+        maximum: z.number().int().positive(),
+      })
+      .strict()
+      .refine(
+        ({ minimum, maximum }) => minimum <= maximum,
+        "embedding dimensions must have an ordered range",
+      ),
+  })
+  .strict();
+
+export type EmbeddingLlmRuntimeProfile = z.infer<
+  typeof embeddingLlmRuntimeProfileSchema
+>;
+
 const vaeDecoderSchema = z
   .object({
     kind: z.literal("vae"),
@@ -217,6 +238,7 @@ export const modelSpecSchema = z
     source: repositoryUrlSchema,
     repositoryRevision: z.string().regex(/^[a-fA-F0-9]{40}$/),
     artifacts: z.array(modelArtifactSchema).min(1),
+    llmRuntime: embeddingLlmRuntimeProfileSchema.optional(),
     ttsRuntime: ttsRuntimeProfileSchema.optional(),
     imageRuntime: imageRuntimeProfileSchema.optional(),
     videoRuntime: videoRuntimeProfileSchema.optional(),
@@ -318,6 +340,14 @@ export const modelSpecSchema = z
       });
     }
 
+    if (model.kind !== "llm" && model.llmRuntime) {
+      ctx.addIssue({
+        code: "custom",
+        message: "only LLM models may declare an LLM runtime profile",
+        path: ["llmRuntime"],
+      });
+    }
+
     if (primaryCount !== 1) {
       ctx.addIssue({
         code: "custom",
@@ -413,6 +443,43 @@ export function validateCatalog(catalog: unknown): ModelSpec[] {
 }
 
 const CATALOG_SOURCE = [
+  {
+    modelId: "qwen3-embedding-0.6b-q8_0",
+    kind: "llm",
+    provider: "Qwen",
+    family: "Qwen3-Embedding",
+    version: "0.6B",
+    size: "0.6B",
+    quant: "Q8_0",
+    minVramGb: 1.5,
+    storageGb: 0.64,
+    source: "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
+    repositoryRevision: "370f27d7550e0def9b39c1f16d3fbaa13aa67728",
+    artifacts: [
+      {
+        sourcePath: "Qwen3-Embedding-0.6B-Q8_0.gguf",
+        filename: "Qwen3-Embedding-0.6B-Q8_0.gguf",
+        expectedSizeBytes: 639150592,
+        sha256:
+          "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
+        role: "primary",
+      },
+    ],
+    llmRuntime: {
+      capability: "embedding-only",
+      pooling: "last",
+      dimensions: { minimum: 1024, maximum: 1024 },
+    },
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    contextWindowTokens: 32768,
+    features: ["embeddings", "multilingual", "code-retrieval"],
+    commercialStatus: "open",
+    catch:
+      "Embedding endpoint only. Chat completions are rejected before runtime admission.",
+    notes:
+      "Official Apache-2.0 Q8_0 GGUF. The runtime uses last-token pooling and emits 1024-dimensional vectors.",
+  },
   {
     modelId: "qwen2.5-coder-1.5b-instruct-q4_k_m",
     kind: "llm",
@@ -2291,7 +2358,10 @@ export function listModels(kind?: ModelKind): ModelSpec[] {
 }
 
 export function recommendedForVram(vramGb: number): ModelSpec[] {
-  return CATALOG.filter((m) => m.kind === "llm" && m.minVramGb <= vramGb).sort(
+  return CATALOG.filter(
+    (model) =>
+      model.kind === "llm" && !model.llmRuntime && model.minVramGb <= vramGb,
+  ).sort(
     (a, b) =>
       (b.codingScore ?? 0) - (a.codingScore ?? 0) || b.minVramGb - a.minVramGb,
   );
@@ -2392,5 +2462,9 @@ export function calculateMaxSafeContextSize(
     model.modelId.includes("llama-3-8b");
   const maxModelCtx = isOlderModel ? 8192 : 131072;
 
-  return Math.min(recommended, maxModelCtx);
+  return Math.min(
+    recommended,
+    maxModelCtx,
+    model.contextWindowTokens ?? maxModelCtx,
+  );
 }

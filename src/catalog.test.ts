@@ -6,7 +6,9 @@ import {
   CATALOG,
   artifactDownloadUrl,
   byId,
+  calculateMaxSafeContextSize,
   catalogSchema,
+  recommendedForVram,
   resolveCatalogInstallation,
 } from "./catalog";
 
@@ -14,6 +16,7 @@ const checksum = "a".repeat(64);
 
 const verifiedContextWindows = new Map<string, number>([
   ["qwen2.5-coder-1.5b-instruct-q4_k_m", 32_768],
+  ["qwen3-embedding-0.6b-q8_0", 32_768],
   ["qwen3-coder-next-q4_k_m", 262_144],
   ["gpt-oss-20b-q4_k_m", 131_072],
   ["qwen3.5-27b-q4_k_m", 262_144],
@@ -135,6 +138,29 @@ describe("catalog artifact validation", () => {
     ]) {
       expect(catalogSchema.safeParse([invalid]).success).toBe(false);
     }
+  });
+
+  test("pins the embedding-only Qwen runtime contract", () => {
+    expect(byId("qwen3-embedding-0.6b-q8_0")).toMatchObject({
+      kind: "llm",
+      contextWindowTokens: 32_768,
+      llmRuntime: {
+        capability: "embedding-only",
+        pooling: "last",
+        dimensions: { minimum: 1024, maximum: 1024 },
+      },
+      artifacts: [
+        {
+          expectedSizeBytes: 639150592,
+          sha256:
+            "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
+        },
+      ],
+    });
+    const model = byId("qwen3-embedding-0.6b-q8_0");
+    if (!model) throw new Error("Expected Qwen embedding catalog entry.");
+    expect(calculateMaxSafeContextSize(model, 64)).toBe(32_768);
+    expect(recommendedForVram(1.5)).not.toContainEqual(model);
   });
 
   test("requires video profiles to name declared artifacts and bounded measurements", () => {

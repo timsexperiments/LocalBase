@@ -447,6 +447,7 @@ export function createRuntimeSupervisorFactory(
             host: llmHost(snapshot.config, overrides),
             port: llmPort(snapshot.config, overrides),
             ctxSize,
+            contextWindowTokens: spec?.contextWindowTokens,
             parallel: config.parallel,
             modelRequirementGb: spec?.minVramGb,
             artifactBytes: await artifactBytes(
@@ -455,6 +456,7 @@ export function createRuntimeSupervisorFactory(
               modelFile,
             ),
             hardware: { memoryGb: ctx.specs.gpuVramGb },
+            embedding: spec?.llmRuntime ?? null,
           });
         },
         start: async (plan) => {

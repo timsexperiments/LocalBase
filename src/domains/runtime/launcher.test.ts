@@ -617,6 +617,28 @@ function expectedLlamaArgs(modelPath: string, parallel: string): string[] {
   return args;
 }
 
+function expectedEmbeddingArgs(modelPath: string, parallel: string): string[] {
+  const args = [
+    "-m",
+    modelPath,
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "18000",
+    "-c",
+    "8192",
+    "--parallel",
+    parallel,
+    "--embedding",
+    "--pooling",
+    "last",
+  ];
+  if (process.platform === "darwin" && process.arch === "arm64") {
+    args.push("--flash-attn", "auto");
+  }
+  return args;
+}
+
 async function readCapturedArgs(argsPath: string): Promise<string[]> {
   const deadline = Date.now() + 2_000;
   while (!(await Bun.file(argsPath).exists())) {
@@ -688,6 +710,38 @@ describe.serial("llama runtime launch", () => {
     ).toEqual([
       "🤖 Dynamic Concurrency: Calculated 2 parallel slots based on 9.5 GB VRAM and context memory constraints. 4096 tokens per slot.",
     ]);
+  });
+
+  test("uses the embedding-only pooling profile", async () => {
+    const fixture = await createLlamaLaunchFixture(1);
+    const process = await startLlamaServerProcess(
+      resolveLlmLaunchPlan({
+        runtimeId: "llm:embedding:1",
+        root: fixture.config.root,
+        modelsDirectory: fixture.config.llmModelsDir,
+        modelId: "qwen3-embedding-0.6b-q8_0",
+        modelFile: fixture.modelFile,
+        host: "127.0.0.1",
+        port: 18000,
+        ctxSize: 8192,
+        parallel: 1,
+        modelRequirementGb: 1.5,
+        artifactBytes: 639150592,
+        hardware: { memoryGb: 9.5 },
+        embedding: {
+          capability: "embedding-only",
+          pooling: "last",
+          dimensions: { minimum: 1024, maximum: 1024 },
+        },
+      }),
+    );
+    await readCapturedArgs(fixture.argsPath);
+    process.kill();
+    expect(await process.exited).toBe(0);
+
+    expect(await readCapturedArgs(fixture.argsPath)).toEqual(
+      expectedEmbeddingArgs(fixture.modelPath, "1"),
+    );
   });
 });
 
