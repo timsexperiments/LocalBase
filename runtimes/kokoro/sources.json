@@ -1,0 +1,27 @@
+{
+  "bunVersion": "1.3.14",
+  "bunCommit": "0d9b296af33f2b851fcbf4df3e9ec89751734ba4",
+  "targets": {
+    "macos-arm64": {
+      "url": "https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-darwin-aarch64.zip",
+      "size": 23586433,
+      "sha256": "d8b96221828ad6f97ac7ac0ab7e95872341af763001e8803e8267652c2652620",
+      "member": "bun-darwin-aarch64/bun",
+      "executableSize": 63096576,
+      "executableSha256": "e0c90ec15d33363e6b70713d56bc3b2c7585c17f40a0fe0f8fd9305901d4e233"
+    },
+    "linux-x64": {
+      "url": "https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-linux-x64-baseline.zip",
+      "size": 35595658,
+      "sha256": "a063908ae08b7852ca10939bbdc6ceed3ddabce8fb9402dce83d65d73b36e6c7",
+      "member": "bun-linux-x64-baseline/bun",
+      "executableSize": 91802480,
+      "executableSha256": "a8f9ebd1770ddc8e55dab7a68d4ec1ec1eebf374bb97cc65cf2c3cb373fc6791"
+    }
+  },
+  "licenseSources": {
+    "LICENSE.bun.md": "https://raw.githubusercontent.com/oven-sh/bun/0d9b296af33f2b851fcbf4df3e9ec89751734ba4/LICENSE.md",
+    "LICENSE.onnxruntime.txt": "https://raw.githubusercontent.com/microsoft/onnxruntime/e0b66cad282043d4377cea5269083f17771b6dfc/LICENSE",
+    "ThirdPartyNotices.onnxruntime.txt": "https://raw.githubusercontent.com/microsoft/onnxruntime/e0b66cad282043d4377cea5269083f17771b6dfc/ThirdPartyNotices.txt"
+  }
+}
