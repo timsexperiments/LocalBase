@@ -192,6 +192,60 @@ test.each([false, true])(
     }
   },
 );
+test.each([502, 401, 403])(
+  "post-image HTTP %s retains the artifact and classifies auth separately",
+  async (status) => {
+    let requests = 0;
+    const artifacts: Artifact[] = [];
+    const urls: string[] = [];
+    const mock = mockFetch(async (input, init) => {
+      expect(String(input).startsWith("/app/api/v1/")).toBe(true);
+      expect(new Headers(init?.headers).get("x-localbase-ui")).toBe("1");
+      expect(init?.credentials).toBe("same-origin");
+      if (++requests === 1)
+        return stream(
+          tool("generate_image", '{"model":"image","prompt":"sun"}'),
+        );
+      if (requests === 2)
+        return Response.json({ data: [{ b64_json: "aGVsbG8=" }] });
+      return status === 502
+        ? new Response("<html>Bad gateway</html>", {
+            status,
+            headers: { "content-type": "text/html" },
+          })
+        : Response.json(
+            {
+              error: { code: "ui_access_denied", message: "UI access denied." },
+            },
+            { status },
+          );
+    });
+    try {
+      const error = await runChat({
+        model: chat,
+        models: [image],
+        connection: { kind: "session" },
+        signal: new AbortController().signal,
+        messages: [],
+        toolsEnabled: true,
+        append: () => {},
+        artifact: (a) => artifacts.push(a),
+        register: (url) => urls.push(url),
+        warning: () => {},
+      }).catch((error: unknown) => error);
+      expect(requests).toBe(3);
+      expect(error).toBeInstanceOf(Error);
+      expect(error instanceof SessionRequiredError).toBe(status !== 502);
+      if (status === 502)
+        expect(error instanceof Error && error.message).toContain("502");
+      expect(artifacts.at(-1)?.state).toBe("complete");
+      expect(urls).toHaveLength(1);
+    } finally {
+      mock.mockRestore();
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    }
+  },
+);
 test.each([
   ["unknown_tool", "{}", "Unknown generation tool"],
   ["generate_video", '{"model":"video","prompt":"sun"}', "Unavailable tool"],

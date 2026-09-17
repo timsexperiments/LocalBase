@@ -156,19 +156,24 @@ describe("playground client boundaries", () => {
       }
     },
   );
-  test("session login HTML and blocked redirects request session refresh", async () => {
+  test("unexpected HTML and network failures do not assert session expiry", async () => {
     const fetchMock = spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
         new Response("login", { headers: { "content-type": "text/html" } }),
       )
       .mockRejectedValueOnce(new TypeError("Failed to fetch"));
     try {
-      await expect(
-        api("/_localbase/models", { kind: "session" }),
-      ).rejects.toBeInstanceOf(SessionRequiredError);
-      await expect(
-        api("/_localbase/models", { kind: "session" }),
-      ).rejects.toBeInstanceOf(SessionRequiredError);
+      for (const message of [
+        "unexpected HTML",
+        "Could not reach the gateway",
+      ]) {
+        const error = await api("/_localbase/models", {
+          kind: "session",
+        }).catch((error: unknown) => error);
+        expect(error).toBeInstanceOf(Error);
+        expect(error).not.toBeInstanceOf(SessionRequiredError);
+        expect(error instanceof Error && error.message).toContain(message);
+      }
     } finally {
       fetchMock.mockRestore();
     }

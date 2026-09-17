@@ -253,17 +253,10 @@ export async function api(
     );
   } catch (error) {
     if (connection.kind === "session" && !init.signal?.aborted)
-      throw new SessionRequiredError(
-        "The browser session could not be verified. Refresh sign-in or reload this page.",
+      throw new Error(
+        "Could not reach the gateway. Check the connection and try again.",
       );
     throw error;
-  }
-  if (
-    connection.kind === "session" &&
-    response.headers.get("content-type")?.includes("text/html")
-  ) {
-    await response.body?.cancel();
-    throw new SessionRequiredError();
   }
   if (!response.ok) {
     if (
@@ -283,6 +276,12 @@ export async function api(
         : parsed.success
           ? parsed.data.error.message
           : `Request failed (${response.status}). Try again.`,
+    );
+  }
+  if (response.headers.get("content-type")?.includes("text/html")) {
+    await response.body?.cancel();
+    throw new Error(
+      "The gateway returned an unexpected HTML response. Reload this page or try again.",
     );
   }
   return response;
