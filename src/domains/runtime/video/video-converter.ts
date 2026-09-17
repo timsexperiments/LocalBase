@@ -153,6 +153,11 @@ export function createVideoArtifactPreparer(options: {
           "libx264",
           "-threads:v",
           "2",
+          // Convert samples as well as marking the range; MJPEG may be full-range.
+          "-vf",
+          "scale=out_range=tv",
+          "-color_range",
+          "tv",
           "-pix_fmt",
           "yuv420p",
           "-preset",
