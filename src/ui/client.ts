@@ -1,6 +1,36 @@
 import { z } from "zod";
 import type { ModelMetadata } from "../domains/models/model-metadata";
 
+type MetadataCapabilities = NonNullable<
+  ModelMetadata["catalog"]["capabilities"]
+>;
+type SpeechCapabilities = Extract<MetadataCapabilities, { kind: "speech" }>;
+type ClientCapabilities =
+  | Extract<MetadataCapabilities, { kind: "embedding" }>
+  | (Pick<SpeechCapabilities, "kind"> & {
+      voice: Pick<
+        SpeechCapabilities["voice"],
+        "requestValues" | "defaultRequestValue"
+      >;
+    });
+
+const capabilitiesSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("embedding"),
+    dimensions: z.object({
+      minimum: z.number().int().positive(),
+      maximum: z.number().int().positive(),
+    }),
+  }),
+  z.object({
+    kind: z.literal("speech"),
+    voice: z.object({
+      requestValues: z.array(z.enum(["default", "harbor", "willow"])).min(1),
+      defaultRequestValue: z.literal("default"),
+    }),
+  }),
+]) satisfies z.ZodType<ClientCapabilities>;
+
 const modelSchema = z.object({
   id: z.string(),
   catalog: z.object({
@@ -10,14 +40,7 @@ const modelSchema = z.object({
     inputModalities: z.array(z.string()),
     outputModalities: z.array(z.string()),
     contextWindowTokens: z.number().nullable(),
-    capabilities: z
-      .object({
-        voice: z.object({
-          requestValues: z.array(z.string()),
-          defaultRequestValue: z.string(),
-        }),
-      })
-      .nullable(),
+    capabilities: capabilitiesSchema.nullable(),
   }),
   device: z.object({
     selected: z.boolean(),
@@ -92,7 +115,11 @@ export function writeHistory(conversations: Conversation[]) {
 export function availableModels(models: Model[], mode: Mode) {
   return models
     .filter(
-      (m) => m.catalog.kind === mode && m.device.selected && m.device.installed,
+      (m) =>
+        m.catalog.kind === mode &&
+        m.catalog.capabilities?.kind !== "embedding" &&
+        m.device.selected &&
+        m.device.installed,
     )
     .sort(
       (a, b) =>
