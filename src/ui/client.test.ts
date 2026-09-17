@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import type { ModelMetadata } from "../domains/models/model-metadata";
 import {
   api,
   availableModels,
@@ -118,7 +119,28 @@ describe("playground client boundaries", () => {
       ),
     ).rejects.toThrow("before the response finished");
   });
-  test("keeps lazy models and prefers the assigned runtime without claiming readiness", () => {
+  test("parses mixed capabilities, excludes embeddings, and prefers assigned chat runtimes", () => {
+    const embedding = {
+      kind: "embedding",
+      dimensions: { minimum: 32, maximum: 1024 },
+    } satisfies ModelMetadata["catalog"]["capabilities"];
+    const speech = {
+      kind: "speech",
+      outputFormats: ["wav"],
+      voice: {
+        selection: "catalog-reference",
+        requestValues: ["default", "harbor"],
+        defaultRequestValue: "default",
+        references: [
+          {
+            name: "harbor",
+            license: "CC0-1.0",
+            provenanceUrl: "https://example.com/harbor",
+          },
+        ],
+      },
+      residency: "cold-per-request",
+    } satisfies ModelMetadata["catalog"]["capabilities"];
     const common = {
       catalog: {
         name: "Test",
@@ -132,6 +154,20 @@ describe("playground client boundaries", () => {
     };
     const models = modelsSchema.parse({
       data: [
+        {
+          id: "embedding",
+          catalog: { ...common.catalog, capabilities: embedding },
+          device: {
+            selected: true,
+            installed: true,
+            runtime: { configured: true, state: "idle" },
+          },
+        },
+        {
+          id: "speech",
+          catalog: { ...common.catalog, kind: "tts", capabilities: speech },
+          device: { selected: true, installed: true, runtime: null },
+        },
         {
           ...common,
           id: "lazy",
@@ -163,5 +199,34 @@ describe("playground client boundaries", () => {
       "lazy",
     ]);
     expect(availableModels(models, "image")).toEqual([]);
+    const speechModels = availableModels(models, "tts");
+    expect(speechModels.map((m) => m.id)).toEqual(["speech"]);
+    expect(speechModels[0]?.catalog.capabilities).toEqual({
+      kind: "speech",
+      voice: {
+        requestValues: ["default", "harbor"],
+        defaultRequestValue: "default",
+      },
+    });
+    for (const capabilities of [
+      { kind: "unsupported" },
+      { kind: "embedding", dimensions: { minimum: 0, maximum: 1024 } },
+      { kind: "embedding" },
+      { kind: "speech" },
+      { ...speech, voice: { ...speech.voice, requestValues: ["unknown"] } },
+    ]) {
+      expect(
+        modelsSchema.safeParse({
+          data: [
+            {
+              ...common,
+              id: "invalid",
+              catalog: { ...common.catalog, capabilities },
+              device: { selected: true, installed: true, runtime: null },
+            },
+          ],
+        }).success,
+      ).toBe(false);
+    }
   });
 });
