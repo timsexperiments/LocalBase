@@ -424,6 +424,15 @@ audio {
 .error span {
   flex: 1;
 }
+.session-notice {
+  flex-wrap: wrap;
+}
+.session-notice > span {
+  flex-basis: 100%;
+}
+.session-notice .download {
+  padding: 8px 12px;
+}
 .notice {
   font-size: 12px;
   color: #778276;

@@ -2,6 +2,9 @@ import { describe, expect, spyOn, test } from "bun:test";
 import type { ModelMetadata } from "../domains/models/model-metadata";
 import {
   api,
+  readSession,
+  sessionConnection,
+  SessionRequiredError,
   availableModels,
   modelsSchema,
   streamText,
@@ -21,12 +24,161 @@ function streaming(parts: Uint8Array[]) {
   );
 }
 describe("playground client boundaries", () => {
+  test("rejects external or noncanonical paths before sending credentials", async () => {
+    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({}),
+    );
+    try {
+      for (const path of [
+        "https://example.com",
+        "//example.com",
+        "/\n/example.com",
+        "/../v1/chat/completions",
+        "/%2e%2e/v1/videos",
+      ]) {
+        await expect(api(path, { kind: "session" })).rejects.toThrow(
+          "same-origin",
+        );
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  test("bootstraps verified sessions or explicit manual mode without retaining credentials", async () => {
+    const fetchMock = spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ authenticated: true }))
+      .mockResolvedValueOnce(
+        Response.json({ authenticated: false, mode: "api-key" }),
+      );
+    try {
+      const session = await readSession();
+      expect(sessionConnection(session, "stale-key")).toEqual({
+        kind: "session",
+      });
+      const [path, options] = fetchMock.mock.calls[0] ?? [];
+      expect(path).toBe("/app/session");
+      expect(options).toMatchObject({
+        credentials: "same-origin",
+        cache: "no-store",
+        redirect: "error",
+      });
+      expect(new Headers(options?.headers).get("x-localbase-ui")).toBe("1");
+      const manual = await readSession();
+      expect(sessionConnection(manual, "")).toBeNull();
+      expect(sessionConnection(manual, "   ")).toBeNull();
+      expect(sessionConnection(manual, "fixture-key")).toEqual({
+        kind: "api-key",
+        key: "fixture-key",
+      });
+      expect(sessionConnection({ kind: "checking" }, "stale-key")).toBeNull();
+      expect(
+        sessionConnection({ kind: "error", message: "Expired" }, "stale-key"),
+      ).toBeNull();
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  test.each([401, 403, 500, 404])(
+    "session bootstrap %s never falls back to API keys",
+    async (status) => {
+      const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(null, { status }),
+      );
+      try {
+        await expect(readSession()).rejects.toThrow(/sign-in/i);
+      } finally {
+        fetchMock.mockRestore();
+      }
+    },
+  );
+  test("rejects incomplete bootstrap responses instead of selecting manual mode", async () => {
+    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ authenticated: false }),
+    );
+    try {
+      await expect(readSession()).rejects.toThrow(/sign-in/i);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  test("session requests prefix every API path and send only session headers", async () => {
+    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({}),
+    );
+    const id = "00000000-0000-4000-8000-000000000000";
+    try {
+      for (const path of [
+        "/_localbase/models",
+        "/v1/chat/completions",
+        "/v1/images/generations",
+        "/v1/audio/speech",
+        "/v1/audio/transcriptions",
+        "/v1/embeddings",
+        "/v1/videos",
+        `/v1/videos/${id}`,
+        `/v1/videos/${id}/content`,
+        `/v1/videos/${id}/cancel`,
+      ]) {
+        await api(
+          path,
+          { kind: "session" },
+          { headers: { authorization: "Bearer stale", "x-api-key": "stale" } },
+        );
+        const [actual, options] = fetchMock.mock.calls.at(-1) ?? [];
+        expect(actual).toBe(`/app/api${path}`);
+        const headers = new Headers(options?.headers);
+        expect(headers.get("x-localbase-ui")).toBe("1");
+        expect(headers.has("authorization")).toBe(false);
+        expect(headers.has("x-api-key")).toBe(false);
+        expect(options).toMatchObject({
+          credentials: "same-origin",
+          redirect: "error",
+          cache: "no-store",
+        });
+      }
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  test.each([401, 403])(
+    "session API %s requests sign-in, not an API key",
+    async (status) => {
+      const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(null, { status }),
+      );
+      try {
+        await expect(
+          api("/_localbase/models", { kind: "session" }),
+        ).rejects.toBeInstanceOf(SessionRequiredError);
+      } finally {
+        fetchMock.mockRestore();
+      }
+    },
+  );
+  test("session login HTML and blocked redirects request session refresh", async () => {
+    const fetchMock = spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response("login", { headers: { "content-type": "text/html" } }),
+      )
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    try {
+      await expect(
+        api("/_localbase/models", { kind: "session" }),
+      ).rejects.toBeInstanceOf(SessionRequiredError);
+      await expect(
+        api("/_localbase/models", { kind: "session" }),
+      ).rejects.toBeInstanceOf(SessionRequiredError);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
   test("sends credentials only in headers and preserves same-origin sessions without caching", async () => {
     const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
       Response.json({}),
     );
     try {
-      await api("/_localbase/models", "fixture-key");
+      await api("/_localbase/models", { kind: "api-key", key: "fixture-key" });
       const [path, options] = fetchMock.mock.calls[0] ?? [];
       expect(path).toBe("/_localbase/models");
       expect(options?.credentials).toBe("same-origin");

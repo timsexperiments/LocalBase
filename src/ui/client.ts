@@ -169,22 +169,110 @@ export function availableModels(models: Model[], mode: Mode) {
         Number(Boolean(a.device.runtime?.configured)),
     );
 }
-export async function api(path: string, key: string, init: RequestInit = {}) {
-  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\"))
+export type Session = { kind: "session" } | { kind: "api-key" };
+export type SessionState =
+  Session | { kind: "checking" } | { kind: "error"; message: string };
+export type Connection = { kind: "session" } | { kind: "api-key"; key: string };
+export class SessionRequiredError extends Error {
+  constructor(
+    message = "Your sign-in is missing or expired. Sign in again, then refresh.",
+  ) {
+    super(message);
+  }
+}
+const sessionSchema = z.discriminatedUnion("authenticated", [
+  z.object({ authenticated: z.literal(true) }),
+  z.object({ authenticated: z.literal(false), mode: z.literal("api-key") }),
+]);
+export async function readSession(signal?: AbortSignal): Promise<Session> {
+  const response = await fetch("/app/session", {
+    signal,
+    credentials: "same-origin",
+    cache: "no-store",
+    redirect: "error",
+    headers: { "x-localbase-ui": "1" },
+  });
+  if (response.status === 401 || response.status === 403) {
+    await response.body?.cancel();
+    throw new SessionRequiredError();
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error("Sign-in could not be verified. Refresh to try again.");
+  }
+  const parsed = sessionSchema.safeParse(
+    await response.json().catch(() => null),
+  );
+  if (!parsed.success)
+    throw new Error(
+      "Sign-in could not be verified. Reload this page to sign in.",
+    );
+  return { kind: parsed.data.authenticated ? "session" : "api-key" };
+}
+export function sessionConnection(
+  session: SessionState,
+  key: string,
+): Connection | null {
+  if (session.kind === "checking" || session.kind === "error") return null;
+  if (session.kind === "session") return session;
+  return key.trim() ? { kind: "api-key", key: key.trim() } : null;
+}
+export async function api(
+  path: string,
+  connection: Connection,
+  init: RequestInit = {},
+) {
+  if (
+    !path.startsWith("/") ||
+    path.startsWith("//") ||
+    path.includes("\\") ||
+    /[\s?#%]/.test(path) ||
+    path.split("/").some((part) => part === "." || part === "..")
+  )
     throw new Error("Only same-origin gateway requests are allowed.");
   const headers = new Headers(init.headers);
-  if (key) {
-    headers.set("authorization", `Bearer ${key}`);
-    headers.set("x-api-key", key);
+  if (connection.kind === "session") {
+    headers.delete("authorization");
+    headers.delete("x-api-key");
+    headers.set("x-localbase-ui", "1");
+  } else if (connection.key) {
+    headers.set("authorization", `Bearer ${connection.key}`);
+    headers.set("x-api-key", connection.key);
   }
-  const response = await fetch(path, {
-    ...init,
-    headers,
-    cache: "no-store",
-    credentials: "same-origin",
-    redirect: "error",
-  });
+  let response: Response;
+  try {
+    response = await fetch(
+      connection.kind === "session" ? `/app/api${path}` : path,
+      {
+        ...init,
+        headers,
+        cache: "no-store",
+        credentials: "same-origin",
+        redirect: "error",
+      },
+    );
+  } catch (error) {
+    if (connection.kind === "session" && !init.signal?.aborted)
+      throw new SessionRequiredError(
+        "The browser session could not be verified. Refresh sign-in or reload this page.",
+      );
+    throw error;
+  }
+  if (
+    connection.kind === "session" &&
+    response.headers.get("content-type")?.includes("text/html")
+  ) {
+    await response.body?.cancel();
+    throw new SessionRequiredError();
+  }
   if (!response.ok) {
+    if (
+      connection.kind === "session" &&
+      (response.status === 401 || response.status === 403)
+    ) {
+      await response.body?.cancel();
+      throw new SessionRequiredError();
+    }
     const value: unknown = await response.json().catch(() => null);
     const parsed = z
       .object({ error: z.object({ message: z.string() }) })

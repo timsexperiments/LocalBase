@@ -12,6 +12,10 @@ import {
   modes,
   readHistory,
   readinessSchema,
+  readSession,
+  sessionConnection,
+  SessionRequiredError,
+  type SessionState,
   transcriptionSchema,
   writeHistory,
   type Conversation,
@@ -149,8 +153,18 @@ function Drawer({
 }
 function App() {
   const [key, setKey] = useState("");
+  const [session, setSession] = useState<SessionState>({ kind: "checking" });
+  const credential = sessionConnection(session, key);
   const [models, setModels] = useState<Model[]>([]);
   const [connection, setConnection] = useState("Connecting");
+  const connectionLabel =
+    session.kind === "error"
+      ? session.message
+      : session.kind === "checking"
+        ? "Checking sign-in"
+        : !credential
+          ? "Enter a gateway API key in Settings."
+          : connection;
   const [drawer, setDrawer] = useState<
     "settings" | "models" | "history" | null
   >(null);
@@ -197,16 +211,37 @@ function App() {
     setConversations((items) =>
       items.map((c) => (c.id === id ? change(c) : c)),
     );
+  async function checkSession(signal?: AbortSignal) {
+    try {
+      const verified = await readSession(signal);
+      signal?.throwIfAborted();
+      setSession(verified);
+      if (verified.kind === "session") setKey("");
+    } catch (e) {
+      if (!signal?.aborted) {
+        setModels([]);
+        setSession({
+          kind: "error",
+          message:
+            e instanceof SessionRequiredError
+              ? e.message
+              : "Sign-in could not be verified. Reload this page to sign in, or refresh to try again.",
+        });
+      }
+    }
+  }
   async function refresh(signal?: AbortSignal) {
+    if (!credential) return;
     try {
       const [metadata, readiness] = await Promise.all([
-        api("/_localbase/models", key, { signal })
+        api("/_localbase/models", credential, { signal })
           .then((r) => r.json())
           .then((v) => modelsSchema.parse(v)),
         fetch("/health/ready", { signal, cache: "no-store" })
           .then((r) => r.json())
           .then((v) => readinessSchema.parse(v)),
       ]);
+      signal?.throwIfAborted();
       setModels(metadata.data);
       setConnection(
         readiness.status === "ready" ? "Gateway ready" : "Gateway not ready",
@@ -214,11 +249,23 @@ function App() {
     } catch (e) {
       if (!signal?.aborted) {
         setModels([]);
-        setConnection(e instanceof Error ? e.message : "Unable to connect");
+        if (e instanceof SessionRequiredError)
+          setSession({ kind: "error", message: e.message });
+        else
+          setConnection(e instanceof Error ? e.message : "Unable to connect");
       }
     }
   }
   useEffect(() => {
+    const abort = new AbortController();
+    void checkSession(abort.signal);
+    return () => abort.abort();
+  }, []);
+  useEffect(() => {
+    if (!credential) {
+      setModels([]);
+      return;
+    }
     const abort = new AbortController();
     void refresh(abort.signal);
     const timer = setInterval(() => void refresh(abort.signal), 15000);
@@ -226,7 +273,7 @@ function App() {
       abort.abort();
       clearInterval(timer);
     };
-  }, [key]);
+  }, [session, key]);
   useEffect(() => {
     try {
       const saved = readHistory();
@@ -272,6 +319,7 @@ function App() {
   async function send(retry = false) {
     if (
       !active ||
+      !credential ||
       !model ||
       busy ||
       unsupportedVideo ||
@@ -325,6 +373,7 @@ function App() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
+    let authenticationFailed = false;
     try {
       switch (active.mode) {
         case "llm": {
@@ -335,7 +384,7 @@ function App() {
           const protocol = await runChat({
             model,
             models,
-            key,
+            connection: credential,
             signal: abort.signal,
             messages,
             toolsEnabled: page === "chat",
@@ -360,7 +409,7 @@ function App() {
           const id = crypto.randomUUID();
           const blob = await generateVideo({
             model,
-            key,
+            connection: credential,
             signal: abort.signal,
             prompt: text,
             warning: (detail) => setWarnings((items) => [...items, detail]),
@@ -398,7 +447,7 @@ function App() {
               await (
                 await api(
                   "/v1/embeddings",
-                  key,
+                  credential,
                   json({
                     model: model.id,
                     input: text,
@@ -419,7 +468,7 @@ function App() {
             await (
               await api(
                 "/v1/images/generations",
-                key,
+                credential,
                 json({
                   model: model.id,
                   prompt: text,
@@ -445,7 +494,7 @@ function App() {
         case "tts": {
           const response = await api(
             "/v1/audio/speech",
-            key,
+            credential,
             json({
               model: model.id,
               input: text,
@@ -470,7 +519,7 @@ function App() {
           body.set("response_format", "json");
           const result = transcriptionSchema.parse(
             await (
-              await api("/v1/audio/transcriptions", key, {
+              await api("/v1/audio/transcriptions", credential, {
                 method: "POST",
                 body,
                 signal: abort.signal,
@@ -482,6 +531,11 @@ function App() {
         }
       }
     } catch (e) {
+      if (e instanceof SessionRequiredError) {
+        authenticationFailed = true;
+        setModels([]);
+        setSession({ kind: "error", message: e.message });
+      }
       patch((m) => ({
         ...m,
         protocol: [],
@@ -501,16 +555,18 @@ function App() {
         ),
       }));
       setError(
-        abort.signal.aborted
-          ? "Stopped. You can retry this request."
-          : e instanceof Error
-            ? e.message
-            : "Request failed. Try again.",
+        e instanceof SessionRequiredError
+          ? ""
+          : abort.signal.aborted
+            ? "Stopped. You can retry this request."
+            : e instanceof Error
+              ? e.message
+              : "Request failed. Try again.",
       );
     } finally {
       setBusy(false);
       controller.current = null;
-      void refresh();
+      if (!authenticationFailed) void refresh();
     }
   }
   if (!active) return null;
@@ -570,19 +626,15 @@ function App() {
         <div className="toolbar">
           <button className="model-picker" onClick={() => setDrawer("models")}>
             <span
-              className={`status-dot ${connection === "Gateway ready" ? "ready" : ""}`}
-              aria-label={
-                connection === "Gateway ready"
-                  ? "Gateway ready"
-                  : "Gateway not ready"
-              }
+              className={`status-dot ${connectionLabel === "Gateway ready" ? "ready" : ""}`}
+              aria-label={connectionLabel}
             />
             <span>
               {model?.catalog.name ?? "Choose a model"}
               <small>
                 {model
                   ? `${labels[active.mode]} · ${model.catalog.quantization}`
-                  : "Connect your gateway"}
+                  : connectionLabel}
               </small>
             </span>
             <span>⌄</span>
@@ -712,6 +764,17 @@ function App() {
           </div>
         </main>
         <footer className="composer-area">
+          {session.kind === "error" && (
+            <div className="error session-notice" role="alert">
+              <span>{session.message}</span>
+              <a className="download" href="/app">
+                Sign in again
+              </a>
+              <button disabled={busy} onClick={() => void checkSession()}>
+                Refresh sign-in
+              </button>
+            </div>
+          )}
           {warnings.length > 0 && (
             <div className="error" role="alert">
               <span>{warnings.join(" ")}</span>
@@ -751,6 +814,7 @@ function App() {
                 <button
                   disabled={
                     busy ||
+                    !credential ||
                     !model ||
                     unsupportedVideo ||
                     (active.mode === "stt" && !file)
@@ -769,7 +833,7 @@ function App() {
             <p className="notice">
               {models.length
                 ? `No selected, installed ${labels[active.mode].toLowerCase()} model. Configure one with the LocalBase CLI.`
-                : connection}{" "}
+                : connectionLabel}{" "}
               <button onClick={() => setDrawer("settings")}>Settings</button>
             </p>
           )}
@@ -866,6 +930,7 @@ function App() {
                   type="submit"
                   disabled={
                     !model ||
+                    !credential ||
                     unsupportedVideo ||
                     (active.mode === "stt" ? !file : !draft.trim())
                   }
@@ -897,23 +962,35 @@ function App() {
         >
           {drawer === "settings" ? (
             <>
-              <p className="muted">{connection}</p>
-              <label>
-                Gateway API key
-                <input
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={key}
-                  placeholder="Paste your API key"
-                  disabled={busy}
-                  onChange={(e) => setKey(e.target.value)}
-                />
-              </label>
-              <p className="hint">
-                Kept in memory for this page only. Sent only to this gateway.
-              </p>
-              <button onClick={() => void refresh()}>Refresh connection</button>
+              <p className="muted">{connectionLabel}</p>
+              {session.kind === "api-key" && (
+                <>
+                  <label>
+                    Gateway API key
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={key}
+                      placeholder="Paste your API key"
+                      disabled={busy}
+                      onChange={(e) => setKey(e.target.value)}
+                    />
+                  </label>
+                  <p className="hint">
+                    Kept in memory for this page only. Sent only to this
+                    gateway.
+                  </p>
+                </>
+              )}
+              <button disabled={busy} onClick={() => void checkSession()}>
+                Refresh connection
+              </button>
+              {session.kind === "error" && (
+                <a className="download" href="/app">
+                  Sign in again
+                </a>
+              )}
               <hr />
               <label className="toggle">
                 <input
@@ -934,8 +1011,8 @@ function App() {
               </label>
               <p className="hint">
                 Optional browser storage, visible to others using this browser.
-                API keys and generated media are never saved. Turning this off
-                removes saved history.
+                Credentials and generated media are never saved. Turning this
+                off removes saved history.
               </p>
               <button
                 className="danger"

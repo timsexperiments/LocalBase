@@ -1,6 +1,11 @@
 import { expect, spyOn, test } from "bun:test";
 import { generationTools, generateVideo, runChat } from "./tools";
-import { modelsSchema, type Artifact, type Model } from "./client";
+import {
+  modelsSchema,
+  SessionRequiredError,
+  type Artifact,
+  type Model,
+} from "./client";
 
 function fixture(
   id: string,
@@ -85,7 +90,7 @@ test("aborted media stops the loop without returning pending tool protocol", asy
       runChat({
         model: chat,
         models: [image],
-        key: "",
+        connection: { kind: "api-key", key: "" },
         signal: abort.signal,
         messages: [],
         toolsEnabled: true,
@@ -130,53 +135,63 @@ test("advertises only installed selected tools with t2v and tool-calling support
     }),
   ).toEqual([]);
 });
-test("releases chat body before media and retains tool protocol without media bytes", async () => {
-  const requests: { path: string; body: unknown }[] = [];
-  let released = false;
-  const artifacts: Artifact[] = [];
-  const urls: string[] = [];
-  const mock = mockFetch(async (input, init) => {
-    const path = String(input);
-    requests.push({ path, body: JSON.parse(String(init?.body)) });
-    if (requests.length === 1)
-      return stream(
-        tool("generate_image", '{"model":"image","prompt":"sun"}'),
-        () => {
-          released = true;
-        },
+test.each([false, true])(
+  "releases chat body before media and retains tool protocol without media bytes (session=%s)",
+  async (session) => {
+    const prefix = session ? "/app/api" : "";
+    const requests: { path: string; body: unknown }[] = [];
+    let released = false;
+    const artifacts: Artifact[] = [];
+    const urls: string[] = [];
+    const mock = mockFetch(async (input, init) => {
+      const path = String(input);
+      expect(path.startsWith(`${prefix}/v1/`)).toBe(true);
+      expect(new Headers(init?.headers).get("x-localbase-ui")).toBe(
+        session ? "1" : null,
       );
-    expect(released).toBe(true);
-    if (path === "/v1/images/generations")
-      return Response.json({ data: [{ b64_json: "aGVsbG8=" }] });
-    return stream({ content: "Done" });
-  });
-  try {
-    const protocol = await runChat({
-      model: chat,
-      models: [image],
-      key: "key",
-      signal: new AbortController().signal,
-      messages: [{ role: "user", content: "Draw the sun" }],
-      toolsEnabled: true,
-      append: () => {},
-      artifact: (a) => artifacts.push(a),
-      register: (url) => urls.push(url),
-      warning: () => {},
+      requests.push({ path, body: JSON.parse(String(init?.body)) });
+      if (requests.length === 1)
+        return stream(
+          tool("generate_image", '{"model":"image","prompt":"sun"}'),
+          () => {
+            released = true;
+          },
+        );
+      expect(released).toBe(true);
+      if (path === `${prefix}/v1/images/generations`)
+        return Response.json({ data: [{ b64_json: "aGVsbG8=" }] });
+      return stream({ content: "Done" });
     });
-    expect(protocol.map((m) => m.role)).toEqual([
-      "assistant",
-      "tool",
-      "assistant",
-    ]);
-    expect(JSON.stringify(requests[2]?.body)).toContain("tool_call_id");
-    expect(JSON.stringify(requests[2]?.body)).not.toContain("blob:");
-    expect(JSON.stringify(requests[2]?.body)).not.toContain("aGVsbG8=");
-    expect(artifacts.at(-1)?.state).toBe("complete");
-  } finally {
-    mock.mockRestore();
-    urls.forEach((url) => URL.revokeObjectURL(url));
-  }
-});
+    try {
+      const protocol = await runChat({
+        model: chat,
+        models: [image],
+        connection: session
+          ? { kind: "session" }
+          : { kind: "api-key", key: "key" },
+        signal: new AbortController().signal,
+        messages: [{ role: "user", content: "Draw the sun" }],
+        toolsEnabled: true,
+        append: () => {},
+        artifact: (a) => artifacts.push(a),
+        register: (url) => urls.push(url),
+        warning: () => {},
+      });
+      expect(protocol.map((m) => m.role)).toEqual([
+        "assistant",
+        "tool",
+        "assistant",
+      ]);
+      expect(JSON.stringify(requests[2]?.body)).toContain("tool_call_id");
+      expect(JSON.stringify(requests[2]?.body)).not.toContain("blob:");
+      expect(JSON.stringify(requests[2]?.body)).not.toContain("aGVsbG8=");
+      expect(artifacts.at(-1)?.state).toBe("complete");
+    } finally {
+      mock.mockRestore();
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    }
+  },
+);
 test.each([
   ["unknown_tool", "{}", "Unknown generation tool"],
   ["generate_video", '{"model":"video","prompt":"sun"}', "Unavailable tool"],
@@ -203,7 +218,7 @@ test.each([
     const protocol = await runChat({
       model: chat,
       models: [image],
-      key: "",
+      connection: { kind: "api-key", key: "" },
       signal: new AbortController().signal,
       messages: [],
       toolsEnabled: true,
@@ -229,7 +244,7 @@ test("stops at four model rounds without executing a last-round tool", async () 
       runChat({
         model: chat,
         models: [image],
-        key: "",
+        connection: { kind: "api-key", key: "" },
         signal: new AbortController().signal,
         messages: [],
         toolsEnabled: true,
@@ -244,44 +259,81 @@ test("stops at four model rounds without executing a last-round tool", async () 
     mock.mockRestore();
   }
 });
-test("cancellation after submission uses original owner, tries DELETE after failed cancel", async () => {
-  const abort = new AbortController();
-  const paths: string[] = [];
-  const warnings: string[] = [];
-  const id = "00000000-0000-4000-8000-000000000000";
-  const mock = mockFetch(async (input, init) => {
-    paths.push(`${init?.method ?? "GET"} ${String(input)}`);
-    expect(new Headers(init?.headers).get("authorization")).toBe(
-      "Bearer owner",
-    );
-    if (paths.length === 1) {
-      abort.abort();
-      return Response.json({ id, status: "queued" });
-    }
-    if (String(input).endsWith("/cancel"))
-      return Response.json(
-        { error: { message: "cancel unavailable" } },
-        { status: 503 },
+test.each([false, true])(
+  "cancellation after submission uses original owner, tries DELETE after failed cancel (session=%s)",
+  async (session) => {
+    const prefix = session ? "/app/api" : "";
+    const abort = new AbortController();
+    const paths: string[] = [];
+    const warnings: string[] = [];
+    const id = "00000000-0000-4000-8000-000000000000";
+    const mock = mockFetch(async (input, init) => {
+      paths.push(`${init?.method ?? "GET"} ${String(input)}`);
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        session ? null : "Bearer owner",
       );
-    return new Response(null, { status: 204 });
-  });
+      expect(init?.credentials).toBe("same-origin");
+      expect(new Headers(init?.headers).get("x-localbase-ui")).toBe(
+        session ? "1" : null,
+      );
+      if (paths.length === 1) {
+        abort.abort();
+        return Response.json({ id, status: "queued" });
+      }
+      if (String(input).endsWith("/cancel"))
+        return Response.json(
+          { error: { message: "cancel unavailable" } },
+          { status: 503 },
+        );
+      return new Response(null, { status: 204 });
+    });
+    try {
+      await expect(
+        generateVideo({
+          model: video,
+          connection: session
+            ? { kind: "session" }
+            : { kind: "api-key", key: "owner" },
+          signal: abort.signal,
+          prompt: "sun",
+          progress: () => {},
+          warning: (message) => warnings.push(message),
+        }),
+      ).rejects.toThrow();
+      expect(paths).toEqual([
+        `POST ${prefix}/v1/videos`,
+        `POST ${prefix}/v1/videos/${id}/cancel`,
+        `DELETE ${prefix}/v1/videos/${id}`,
+      ]);
+      expect(warnings.join()).toContain("cancellation");
+    } finally {
+      mock.mockRestore();
+    }
+  },
+);
+test("expired session during a tool stops before another model round", async () => {
+  let requests = 0;
+  const mock = mockFetch(async () =>
+    ++requests === 1
+      ? stream(tool("generate_image", '{"model":"image","prompt":"sun"}'))
+      : new Response(null, { status: 401 }),
+  );
   try {
     await expect(
-      generateVideo({
-        model: video,
-        key: "owner",
-        signal: abort.signal,
-        prompt: "sun",
-        progress: () => {},
-        warning: (message) => warnings.push(message),
+      runChat({
+        model: chat,
+        models: [image],
+        connection: { kind: "session" },
+        signal: new AbortController().signal,
+        messages: [],
+        toolsEnabled: true,
+        append: () => {},
+        artifact: () => {},
+        register: () => {},
+        warning: () => {},
       }),
-    ).rejects.toThrow();
-    expect(paths).toEqual([
-      "POST /v1/videos",
-      `POST /v1/videos/${id}/cancel`,
-      `DELETE /v1/videos/${id}`,
-    ]);
-    expect(warnings.join()).toContain("cancellation");
+    ).rejects.toBeInstanceOf(SessionRequiredError);
+    expect(requests).toBe(2);
   } finally {
     mock.mockRestore();
   }
@@ -302,7 +354,7 @@ test("successful AVI remains usable when cleanup fails", async () => {
   try {
     const blob = await generateVideo({
       model: video,
-      key: "",
+      connection: { kind: "api-key", key: "" },
       signal: new AbortController().signal,
       prompt: "sun",
       progress: () => {},

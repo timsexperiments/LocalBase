@@ -8,6 +8,8 @@ import {
   type ChatMessage,
   type Media,
   type Model,
+  type Connection,
+  SessionRequiredError,
 } from "./client";
 
 const promptSchema = z
@@ -98,14 +100,14 @@ function pause(signal: AbortSignal) {
 }
 type MediaOptions = {
   model: Model;
-  key: string;
+  connection: Connection;
   signal: AbortSignal;
   progress: (detail: string) => void;
   warning: (detail: string) => void;
 };
 export async function generateVideo({
   model,
-  key,
+  connection,
   signal,
   progress,
   warning,
@@ -122,7 +124,7 @@ export async function generateVideo({
     await (
       await api(
         "/v1/videos",
-        key,
+        connection,
         jsonRequest(
           {
             model: model.id,
@@ -150,7 +152,7 @@ export async function generateVideo({
       progress(`Video ${job.status.replaceAll("_", " ")}`);
       if (job.status === "completed") {
         const blob = await (
-          await api(`${path}/content`, key, { signal: workSignal })
+          await api(`${path}/content`, connection, { signal: workSignal })
         ).blob();
         completed = true;
         return blob;
@@ -161,7 +163,7 @@ export async function generateVideo({
         );
       await pause(workSignal);
       job = jobSchema.parse(
-        await (await api(path, key, { signal: workSignal })).json(),
+        await (await api(path, connection, { signal: workSignal })).json(),
       );
     }
   } finally {
@@ -169,7 +171,10 @@ export async function generateVideo({
     const cleanup = async (url: string, method: string) => {
       try {
         await (
-          await api(url, key, { method, signal: AbortSignal.timeout(15000) })
+          await api(url, connection, {
+            method,
+            signal: AbortSignal.timeout(15000),
+          })
         ).arrayBuffer();
       } catch (error) {
         warning(
@@ -188,7 +193,7 @@ export async function generateMedia(
     register: (url: string) => void;
   },
 ): Promise<Media> {
-  const { model, key, signal, name, register } = options;
+  const { model, connection, signal, name, register } = options;
   const value: unknown = JSON.parse(options.arguments);
   signal.throwIfAborted();
   if (name === "generate_image") {
@@ -197,7 +202,7 @@ export async function generateMedia(
       await (
         await api(
           "/v1/images/generations",
-          key,
+          connection,
           jsonRequest(
             {
               model: model.id,
@@ -228,7 +233,7 @@ export async function generateMedia(
     blob = await (
       await api(
         "/v1/audio/speech",
-        key,
+        connection,
         jsonRequest(
           { ...args, model: model.id, response_format: "wav" },
           signal,
@@ -247,7 +252,7 @@ export async function generateMedia(
 export async function runChat(options: {
   model: Model;
   models: Model[];
-  key: string;
+  connection: Connection;
   signal: AbortSignal;
   messages: ChatMessage[];
   toolsEnabled: boolean;
@@ -256,7 +261,7 @@ export async function runChat(options: {
   register: (url: string) => void;
   warning: (detail: string) => void;
 }): Promise<ChatMessage[]> {
-  const { model, models, key, signal, append, artifact } = options;
+  const { model, models, connection, signal, append, artifact } = options;
   const tools = options.toolsEnabled ? generationTools(models, model) : [];
   const history = [...options.messages];
   const result: ChatMessage[] = [];
@@ -268,7 +273,7 @@ export async function runChat(options: {
     const calls = await streamText(
       await api(
         "/v1/chat/completions",
-        key,
+        connection,
         jsonRequest(
           {
             model: model.id,
@@ -371,6 +376,7 @@ export async function runChat(options: {
           detail,
         });
         signal.throwIfAborted();
+        if (error instanceof SessionRequiredError) throw error;
         summary = JSON.stringify({
           status: "error",
           message: detail.slice(0, 1000),
