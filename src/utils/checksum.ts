@@ -1,5 +1,6 @@
-import { statSync } from "node:fs";
+import { createReadStream, statSync } from "node:fs";
 import { join } from "node:path";
+import { setImmediate } from "node:timers/promises";
 import { z } from "zod";
 
 export const sha256Schema = z.string().regex(/^[a-fA-F0-9]{64}$/);
@@ -76,8 +77,19 @@ function fileIdentity(filePath: string): z.infer<typeof fileIdentitySchema> {
 /** Streams files so model-sized artifacts do not need to fit in memory. */
 export async function computeSha256(filePath: string): Promise<string> {
   const hash = new Bun.CryptoHasher("sha256");
-  for await (const chunk of Bun.file(filePath).stream()) {
+  const chunkSize = 1024 * 1024;
+  const yieldEveryBytes = 8 * 1024 * 1024;
+  let bytesSinceYield = 0;
+  for await (const chunk of createReadStream(filePath, {
+    highWaterMark: chunkSize,
+  })) {
     hash.update(chunk);
+    bytesSinceYield += chunk.byteLength;
+    if (bytesSinceYield >= yieldEveryBytes) {
+      // Buffered reads can otherwise keep hashing in the microtask queue.
+      await setImmediate();
+      bytesSinceYield = 0;
+    }
   }
   return hash.digest("hex");
 }
