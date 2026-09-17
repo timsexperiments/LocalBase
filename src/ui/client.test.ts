@@ -69,6 +69,27 @@ describe("playground client boundaries", () => {
             role: "assistant",
             text: "hello",
             media: { kind: "audio", url: "blob:private-audio" },
+            protocol: [
+              {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "pending-tool",
+                    type: "function",
+                    function: { name: "generate_image", arguments: "{}" },
+                  },
+                ],
+              },
+            ],
+            artifacts: [
+              {
+                id: "pending-tool",
+                label: "Image",
+                state: "working",
+                detail: "Starting",
+              },
+            ],
           },
         ],
       };
@@ -84,6 +105,7 @@ describe("playground client boundaries", () => {
       ]);
       expect(saved).not.toContain("fixture-secret");
       expect(saved).not.toContain("blob:");
+      expect(saved).not.toContain("pending-tool");
     } finally {
       if (descriptor)
         Object.defineProperty(globalThis, "localStorage", descriptor);
@@ -118,6 +140,83 @@ describe("playground client boundaries", () => {
         () => {},
       ),
     ).rejects.toThrow("before the response finished");
+  });
+  test("assembles fragmented tool calls by index and bounds the number of calls", async () => {
+    const encode = (deltas: unknown[]) =>
+      streaming([
+        new TextEncoder().encode(
+          deltas
+            .map(
+              (delta) =>
+                `data: ${JSON.stringify({ choices: [{ index: 0, delta }] })}\n\n`,
+            )
+            .join("") + "data: [DONE]\n\n",
+        ),
+      ]);
+    const calls = await streamText(
+      encode([
+        {
+          tool_calls: [
+            {
+              index: 1,
+              id: "second",
+              function: { name: "generate_image", arguments: '{"model":' },
+            },
+          ],
+        },
+        {
+          content: "Creating",
+          tool_calls: [
+            {
+              index: 0,
+              id: "fir",
+              function: { name: "generate_", arguments: '{"prompt":' },
+            },
+          ],
+        },
+        {
+          tool_calls: [
+            { index: 1, function: { arguments: '"image","prompt":"sun"}' } },
+            {
+              index: 0,
+              id: "st",
+              function: { name: "image", arguments: '"rain","model":"image"}' },
+            },
+          ],
+        },
+      ]),
+      () => {},
+    );
+    expect(calls).toEqual([
+      {
+        id: "first",
+        type: "function",
+        function: {
+          name: "generate_image",
+          arguments: '{"prompt":"rain","model":"image"}',
+        },
+      },
+      {
+        id: "second",
+        type: "function",
+        function: {
+          name: "generate_image",
+          arguments: '{"model":"image","prompt":"sun"}',
+        },
+      },
+    ]);
+    await expect(
+      streamText(
+        encode([{ tool_calls: [{ index: 4, id: "fifth" }] }]),
+        () => {},
+      ),
+    ).rejects.toThrow();
+    await expect(
+      streamText(
+        encode([{ tool_calls: [{ index: 0, function: { name: "unknown" } }] }]),
+        () => {},
+      ),
+    ).rejects.toThrow("Malformed tool call");
   });
   test("parses mixed capabilities, excludes embeddings, and prefers assigned chat runtimes", () => {
     const embedding = {

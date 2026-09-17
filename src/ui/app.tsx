@@ -1,21 +1,25 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
+import { z } from "zod";
+import { generationTools, generateVideo, runChat } from "./tools";
 import {
   api,
   availableModels,
   historyKey,
   imageResponseSchema,
   modelsSchema,
+  modes,
   readHistory,
   readinessSchema,
-  streamText,
   transcriptionSchema,
   writeHistory,
   type Conversation,
   type Message,
   type Mode,
   type Model,
+  type Media,
+  type ChatMessage,
 } from "./client";
 import "./style.css";
 
@@ -24,6 +28,8 @@ const labels: Record<Mode, string> = {
   image: "Image",
   tts: "Speech",
   stt: "Transcribe",
+  video: "Video",
+  embedding: "Embeddings",
 };
 const starters = [
   "Explain something simply",
@@ -70,6 +76,33 @@ function CodeBlock({ children }: { children?: ReactNode }) {
     </div>
   );
 }
+function MediaCard({ media }: { media: Media }) {
+  return (
+    <div className="artifact">
+      {media.kind === "image" && (
+        <img
+          className="generated-image"
+          src={media.url}
+          alt="Generated from your prompt"
+        />
+      )}
+      {media.kind === "audio" && <audio controls src={media.url} />}
+      {media.kind === "video" && (
+        <p>
+          AVI video is ready. Browser playback is not supported here. Download
+          it to play in an AVI-compatible player.
+        </p>
+      )}
+      <a
+        className="download"
+        href={media.url}
+        download={`localbase.${media.kind === "image" ? "png" : media.kind === "audio" ? "wav" : "avi"}`}
+      >
+        Download {media.kind}
+      </a>
+    </div>
+  );
+}
 function Drawer({
   title,
   close,
@@ -111,6 +144,7 @@ function Drawer({
   );
 }
 function App() {
+  const [page, setPage] = useState<"chat" | "lab">("chat");
   const [key, setKey] = useState("");
   const [models, setModels] = useState<Model[]>([]);
   const [connection, setConnection] = useState("Connecting");
@@ -123,7 +157,9 @@ function App() {
   const [draft, setDraft] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [voice, setVoice] = useState("default");
+  const [dimensions, setDimensions] = useState(0);
   const [error, setError] = useState("");
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | null>(null);
   const mediaUrls = useRef<string[]>([]);
@@ -139,6 +175,19 @@ function App() {
       ? capabilities.voice.requestValues
       : ["default"];
   const selectedVoice = voices.includes(voice) ? voice : "default";
+  const selectedDimensions =
+    capabilities?.kind === "embedding"
+      ? Math.max(
+          capabilities.dimensions.minimum,
+          Math.min(
+            dimensions || capabilities.dimensions.maximum,
+            capabilities.dimensions.maximum,
+          ),
+        )
+      : 0;
+  const unsupportedVideo =
+    active?.mode === "video" &&
+    (capabilities?.kind !== "video" || capabilities.mode !== "t2v");
   const update = (id: string, change: (c: Conversation) => Conversation) =>
     setConversations((items) =>
       items.map((c) => (c.id === id ? change(c) : c)),
@@ -220,6 +269,7 @@ function App() {
       !active ||
       !model ||
       busy ||
+      unsupportedVideo ||
       (!retry && active.mode !== "stt" && !draft.trim()) ||
       (active.mode === "stt" && !file)
     )
@@ -249,6 +299,7 @@ function App() {
     const abort = new AbortController();
     controller.current = abort;
     setBusy(true);
+    setWarnings([]);
     setError("");
     setDraft("");
     nearBottom.current = true;
@@ -271,22 +322,93 @@ function App() {
     });
     try {
       switch (active.mode) {
-        case "llm":
-          await streamText(
-            await api(
-              "/v1/chat/completions",
-              key,
-              json({
-                model: model.id,
-                stream: true,
-                messages: [...base, user]
-                  .filter((m) => m.text)
-                  .map((m) => ({ role: m.role, content: m.text })),
-              }),
-            ),
-            (text) => patch((m) => ({ ...m, text: m.text + text })),
+        case "llm": {
+          const messages = [...base, user].flatMap(
+            (m): ChatMessage[] =>
+              m.protocol ?? (m.text ? [{ role: m.role, content: m.text }] : []),
           );
+          const protocol = await runChat({
+            model,
+            models,
+            key,
+            signal: abort.signal,
+            messages,
+            toolsEnabled: page === "chat",
+            append: (text) => patch((m) => ({ ...m, text: m.text + text })),
+            artifact: (artifact) =>
+              patch((m) => ({
+                ...m,
+                artifacts: [
+                  ...(m.artifacts ?? []).filter(
+                    (item) => item.id !== artifact.id,
+                  ),
+                  artifact,
+                ],
+              })),
+            register: (url) => mediaUrls.current.push(url),
+            warning: (detail) => setWarnings((items) => [...items, detail]),
+          });
+          patch((m) => ({ ...m, protocol }));
           break;
+        }
+        case "video": {
+          const id = crypto.randomUUID();
+          const blob = await generateVideo({
+            model,
+            key,
+            signal: abort.signal,
+            prompt: text,
+            warning: (detail) => setWarnings((items) => [...items, detail]),
+            progress: (detail) =>
+              patch((m) => ({
+                ...m,
+                artifacts: [{ id, label: "Video", state: "working", detail }],
+              })),
+          });
+          abort.signal.throwIfAborted();
+          const url = URL.createObjectURL(blob);
+          mediaUrls.current.push(url);
+          patch((m) => ({
+            ...m,
+            text: "Generated video",
+            artifacts: [
+              {
+                id,
+                label: "Video",
+                state: "complete",
+                media: { kind: "video", url },
+              },
+            ],
+          }));
+          break;
+        }
+        case "embedding": {
+          const result = z
+            .object({
+              data: z.array(
+                z.object({ embedding: z.array(z.number()), index: z.number() }),
+              ),
+            })
+            .parse(
+              await (
+                await api(
+                  "/v1/embeddings",
+                  key,
+                  json({
+                    model: model.id,
+                    input: text,
+                    dimensions: selectedDimensions,
+                    encoding_format: "float",
+                  }),
+                )
+              ).json(),
+            );
+          patch((m) => ({
+            ...m,
+            text: `\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``,
+          }));
+          break;
+        }
         case "image": {
           const result = imageResponseSchema.parse(
             await (
@@ -355,6 +477,24 @@ function App() {
         }
       }
     } catch (e) {
+      patch((m) => ({
+        ...m,
+        protocol: [],
+        artifacts: m.artifacts?.map((artifact) =>
+          artifact.state === "working"
+            ? {
+                id: artifact.id,
+                label: artifact.label,
+                state: "error",
+                detail: abort.signal.aborted
+                  ? "Stopped"
+                  : e instanceof Error
+                    ? e.message
+                    : "Request failed",
+              }
+            : artifact,
+        ),
+      }));
       setError(
         abort.signal.aborted
           ? "Stopped. You can retry this request."
@@ -388,6 +528,42 @@ function App() {
         </button>
       </header>
       <div className="workspace">
+        <nav className="primary-nav" aria-label="Workspace">
+          <button
+            disabled={busy}
+            aria-current={page === "chat" ? "page" : undefined}
+            onClick={() => {
+              setPage("chat");
+              newChat("llm");
+            }}
+          >
+            Chat
+          </button>
+          <button
+            disabled={busy}
+            aria-current={page === "lab" ? "page" : undefined}
+            onClick={() => {
+              setPage("lab");
+              newChat("llm");
+            }}
+          >
+            Model Lab
+          </button>
+        </nav>
+        {page === "lab" && (
+          <div className="modes lab-modes" aria-label="Direct API mode">
+            {modes.map((mode) => (
+              <button
+                key={mode}
+                disabled={busy}
+                className={active.mode === mode ? "selected" : ""}
+                onClick={() => newChat(mode)}
+              >
+                {labels[mode]}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="toolbar">
           <button className="model-picker" onClick={() => setDrawer("models")}>
             <span
@@ -432,34 +608,34 @@ function App() {
                 <p className="eyebrow">{labels[active.mode]}</p>
                 <h1>
                   {active.mode === "llm"
-                    ? "What’s on your mind?"
-                    : active.mode === "image"
-                      ? "Describe your image"
-                      : active.mode === "tts"
-                        ? "Turn text into speech"
-                        : "Turn audio into text"}
+                    ? page === "chat"
+                      ? "What’s on your mind?"
+                      : "Try a model directly"
+                    : active.mode === "video"
+                      ? "Describe your video"
+                      : active.mode === "embedding"
+                        ? "Inspect text embeddings"
+                        : active.mode === "image"
+                          ? "Describe your image"
+                          : active.mode === "tts"
+                            ? "Turn text into speech"
+                            : "Turn audio into text"}
                 </h1>
                 <p>
                   {active.mode === "llm"
-                    ? "Ask a question or start with an idea below."
-                    : active.mode === "image"
-                      ? "Write a prompt to generate an image."
-                      : active.mode === "tts"
-                        ? "Choose a voice and enter the words to read aloud."
-                        : "Choose an audio file to transcribe."}
+                    ? page === "chat"
+                      ? "Ask a question, or ask for an image, video, or speech using available tools."
+                      : "Direct chat completion. Generation tools are disabled in Model Lab."
+                    : active.mode === "video"
+                      ? "Generate a clip using the model’s qualified video profile."
+                      : active.mode === "embedding"
+                        ? "Enter text to view its embedding vector."
+                        : active.mode === "image"
+                          ? "Write a prompt to generate an image."
+                          : active.mode === "tts"
+                            ? "Choose a voice and enter the words to read aloud."
+                            : "Choose an audio file to transcribe."}
                 </p>
-                <div className="modes">
-                  {(Object.keys(labels) as Mode[]).map((mode) => (
-                    <button
-                      key={mode}
-                      className={active.mode === mode ? "selected" : ""}
-                      disabled={busy}
-                      onClick={() => newChat(mode)}
-                    >
-                      {labels[mode]}
-                    </button>
-                  ))}
-                </div>
                 {active.mode === "llm" && (
                   <div className="starters">
                     {starters.map((s) => (
@@ -497,23 +673,32 @@ function App() {
                     >
                       {message.text}
                     </Markdown>
-                  ) : busy ? (
+                  ) : message.artifacts?.length ? null : busy ? (
                     <p className="thinking">
                       Working<span>…</span>
                     </p>
                   ) : (
                     <p className="muted">No response</p>
                   )}
-                  {message.media?.kind === "image" && (
-                    <img
-                      className="generated-image"
-                      src={message.media.url}
-                      alt="Generated from your prompt"
-                    />
-                  )}
-                  {message.media?.kind === "audio" && (
-                    <audio controls src={message.media.url} />
-                  )}
+                  {message.media && <MediaCard media={message.media} />}
+                  {message.artifacts?.map((artifact) => (
+                    <section
+                      className="artifact"
+                      key={artifact.id}
+                      aria-live="polite"
+                    >
+                      <strong>{artifact.label.replaceAll("_", " ")}</strong>
+                      {artifact.state === "complete" ? (
+                        <MediaCard media={artifact.media} />
+                      ) : (
+                        <p
+                          role={artifact.state === "error" ? "alert" : "status"}
+                        >
+                          {artifact.detail}
+                        </p>
+                      )}
+                    </section>
+                  ))}
                 </div>
                 {message.role === "assistant" && message.text && (
                   <Copy text={message.text} />
@@ -524,12 +709,49 @@ function App() {
           </div>
         </main>
         <footer className="composer-area">
+          {warnings.length > 0 && (
+            <div className="error" role="alert">
+              <span>{warnings.join(" ")}</span>
+              <button
+                aria-label="Dismiss cleanup warnings"
+                onClick={() => setWarnings([])}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {page === "chat" && model && (
+            <p className="notice">
+              {generationTools(models, model).length
+                ? `Available tools: ${generationTools(models, model)
+                    .map((tool) => tool.function.name.replaceAll("_", " "))
+                    .join(", ")}`
+                : "Text chat only. Generation tools require a tool-calling chat model and selected, installed media models."}
+            </p>
+          )}
+          {active.mode === "video" && (
+            <p className="notice">
+              {capabilities?.kind === "video"
+                ? `${capabilities.mode.toUpperCase()} · ${capabilities.width} × ${capabilities.height} · ${capabilities.frames} frames · ${capabilities.fps} fps · AVI. Profile fixed by model qualification.`
+                : "No qualified video profile available."}{" "}
+              {unsupportedVideo &&
+                "Speech-to-video portrait and audio inputs are not supported in Model Lab yet. Select a text-to-video model."}
+            </p>
+          )}
+          {active.mode === "image" && (
+            <p className="notice">PNG · 512 × 512 · one image per request</p>
+          )}
           {error && (
             <div className="error" role="alert">
               <span>{error}</span>
               {active.messages.length > 0 && (
                 <button
-                  disabled={busy || !model || (active.mode === "stt" && !file)}
+                  disabled={
+                    busy ||
+                    !model ||
+                    unsupportedVideo ||
+                    (active.mode === "stt" && !file)
+                  }
                   onClick={() => void send(true)}
                 >
                   Retry
@@ -610,6 +832,22 @@ function App() {
                     ))}
                   </select>
                 )}
+                {capabilities?.kind === "embedding" && (
+                  <label>
+                    {" "}
+                    Dimensions{" "}
+                    <input
+                      type="number"
+                      min={capabilities.dimensions.minimum}
+                      max={capabilities.dimensions.maximum}
+                      value={selectedDimensions}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setDimensions(e.currentTarget.valueAsNumber || 0)
+                      }
+                    />
+                  </label>
+                )}
               </span>
               {busy ? (
                 <button
@@ -624,7 +862,9 @@ function App() {
                   className="send"
                   type="submit"
                   disabled={
-                    !model || (active.mode === "stt" ? !file : !draft.trim())
+                    !model ||
+                    unsupportedVideo ||
+                    (active.mode === "stt" ? !file : !draft.trim())
                   }
                   aria-label="Send request"
                 >
@@ -663,6 +903,7 @@ function App() {
                   spellCheck={false}
                   value={key}
                   placeholder="Paste your API key"
+                  disabled={busy}
                   onChange={(e) => setKey(e.target.value)}
                 />
               </label>
@@ -724,21 +965,23 @@ function App() {
                 Selected, installed models on this gateway. Choosing a model may
                 load it on your next request.
               </p>
-              <div className="modes">
-                {(Object.keys(labels) as Mode[]).map((mode) => (
-                  <button
-                    disabled={busy}
-                    className={active.mode === mode ? "selected" : ""}
-                    key={mode}
-                    onClick={() => {
-                      newChat(mode);
-                      setDrawer("models");
-                    }}
-                  >
-                    {labels[mode]}
-                  </button>
-                ))}
-              </div>
+              {page === "lab" && (
+                <div className="modes">
+                  {modes.map((mode) => (
+                    <button
+                      disabled={busy}
+                      className={active.mode === mode ? "selected" : ""}
+                      key={mode}
+                      onClick={() => {
+                        newChat(mode);
+                        setDrawer("models");
+                      }}
+                    >
+                      {labels[mode]}
+                    </button>
+                  ))}
+                </div>
+              )}
               {candidates.length ? (
                 candidates.map((m) => (
                   <button
@@ -788,6 +1031,7 @@ function App() {
                   key={c.id}
                   onClick={() => {
                     setActiveId(c.id);
+                    setPage(c.mode === "llm" ? "chat" : "lab");
                     setDraft("");
                     setFile(null);
                     setError("");
