@@ -8,6 +8,11 @@ type PrepareArtifact = NonNullable<VideoJobManagerOptions["prepareArtifact"]>;
 const CONVERSION_TIMEOUT_MS = 120_000;
 const DIAGNOSTIC_BYTES = 4_096;
 
+function scheduleDeadline(expire: () => void): () => void {
+  const timer = setTimeout(expire, CONVERSION_TIMEOUT_MS);
+  return () => clearTimeout(timer);
+}
+
 function spawnConverter(command: string[], directory: string) {
   return Bun.spawn(command, {
     cwd: directory,
@@ -60,7 +65,7 @@ async function readProgress(
 /** Converts only private AVI artifacts; no client-controlled command or path is accepted. */
 export function createVideoArtifactPreparer(options: {
   ensureConverter: (signal: AbortSignal) => Promise<string>;
-  timeoutMs?: number;
+  scheduleDeadline?: typeof scheduleDeadline;
   spawn?: typeof spawnConverter;
   spawnGuardian?: (command: string[]) => Bun.Subprocess | undefined;
 }): PrepareArtifact {
@@ -82,9 +87,8 @@ export function createVideoArtifactPreparer(options: {
       throw new Error("Video conversion requires a bounded AVI artifact.");
     }
     const deadline = new AbortController();
-    const timer = setTimeout(
-      () => deadline.abort(new Error("Video conversion timed out.")),
-      options.timeoutMs ?? CONVERSION_TIMEOUT_MS,
+    const cancelDeadline = (options.scheduleDeadline ?? scheduleDeadline)(() =>
+      deadline.abort(new Error("Video conversion timed out.")),
     );
     const conversionSignal = AbortSignal.any([signal, deadline.signal]);
     let temporary: string | undefined;
@@ -217,7 +221,7 @@ export function createVideoArtifactPreparer(options: {
         frameCount: media.frameCount,
       };
     } finally {
-      clearTimeout(timer);
+      cancelDeadline();
       conversionSignal.removeEventListener("abort", abortListener);
       if (child) await stopped(child);
       if (guardian) await stopped(guardian);

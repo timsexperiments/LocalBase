@@ -23,7 +23,7 @@ const videoCapabilitiesSchema = z
     frames: z.number().int().positive(),
     fps: z.number().int().positive(),
     jobDeadlineMs: z.number().int().positive(),
-    outputFormats: z.tuple([z.literal("avi")]),
+    outputFormats: z.tuple([z.literal("mp4")]),
   })
   .strict();
 
@@ -252,7 +252,7 @@ export function projectModelMetadata(
                 frames: model.videoRuntime.qualification.maxFrames,
                 fps: model.videoRuntime.qualification.fps,
                 jobDeadlineMs: model.videoRuntime.qualification.jobDeadlineMs,
-                outputFormats: ["avi"],
+                outputFormats: ["mp4"],
               }
             : null,
       inputModalities: model.inputModalities,

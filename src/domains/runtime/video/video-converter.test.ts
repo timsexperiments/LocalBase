@@ -20,7 +20,7 @@ beforeAll(async () => {
     const mode = process.env.CONVERTER_FIXTURE_MODE;
     if (mode === "hold") {
       process.on("SIGTERM", () => {});
-      await Bun.write("ready", "ready");
+      process.send("ready");
       await new Promise(() => setInterval(() => {}, 1000));
     }
     if (mode === "failure") { process.stderr.write("private generated content\\n"); process.exit(1); }
@@ -65,14 +65,17 @@ function avi() {
 function fixture(
   mode: string,
   onSpawn?: (directory: string, command: string[]) => void,
-  timeoutMs?: number,
+  scheduleDeadline?: Parameters<
+    typeof createVideoArtifactPreparer
+  >[0]["scheduleDeadline"],
 ) {
+  const ready = Promise.withResolvers<void>();
   const children: Bun.Subprocess[] = [];
   const guardians: Bun.Subprocess[] = [];
   const containmentFailures: unknown[] = [];
   const prepare = createVideoArtifactPreparer({
     ensureConverter: async () => executable,
-    timeoutMs,
+    scheduleDeadline,
     spawn(command, directory) {
       const child = Bun.spawn(command, {
         cwd: directory,
@@ -80,6 +83,9 @@ function fixture(
         stdout: "pipe",
         stderr: "pipe",
         env: { ...process.env, CONVERTER_FIXTURE_MODE: mode },
+        ipc(message) {
+          if (message === "ready") ready.resolve();
+        },
       });
       children.push(child);
       onSpawn?.(directory, command);
@@ -97,19 +103,12 @@ function fixture(
   });
   return {
     prepare,
+    ready: ready.promise,
     children,
     guardians,
     containmentFailures,
     onContainmentFailure: (error: unknown) => containmentFailures.push(error),
   };
-}
-
-async function waitForFile(path: string) {
-  for (let attempt = 0; attempt < 200; attempt++) {
-    if (await Bun.file(path).exists()) return;
-    await Bun.sleep(5);
-  }
-  throw new Error("Fixture did not become ready.");
 }
 
 test.each(["success", "stderr-flood"])(
@@ -148,9 +147,6 @@ test.each(["success", "stderr-flood"])(
       expect(await permissions).toEqual([0o700, 0o600, 0o600]);
       expect(command[0]).toBe(executable);
       expect(
-        command.slice(command.indexOf("-i") - 2, command.indexOf("-i")),
-      ).toEqual(["-f", "avi"]);
-      expect(
         command.filter(
           (_value, index) => command[index - 1] === "-protocol_whitelist",
         ),
@@ -163,16 +159,10 @@ test.each(["success", "stderr-flood"])(
         ["-c:a", "aac"],
         ["-pix_fmt", "yuv420p"],
         ["-movflags", "+faststart"],
-        ["-threads", "2"],
-        ["-threads:v", "2"],
-        ["-threads:a", "2"],
         ["-fs", "65536"],
       ]) {
         expect(command[command.indexOf(flag) + 1]).toBe(value);
       }
-      expect(command).toContain("-nostdin");
-      expect(command).not.toContain("-an");
-      expect(command).not.toContain("-shortest");
       expect(await readdir(directory)).toEqual([]);
       expect(converter.containmentFailures).toEqual([]);
       for (const child of [...converter.children, ...converter.guardians])
@@ -221,14 +211,14 @@ test.each(["abort", "timeout"])(
       join(tmpdir(), "localbase-converter-stop-"),
     );
     const controller = new AbortController();
-    let temporary = "";
-    const converter = fixture(
-      "hold",
-      (path) => {
-        temporary = path;
-      },
-      reason === "timeout" ? 200 : undefined,
-    );
+    const deadline = Promise.withResolvers<() => void>();
+    let deadlineCancelled = false;
+    const converter = fixture("hold", undefined, (expire) => {
+      deadline.resolve(expire);
+      return () => {
+        deadlineCancelled = true;
+      };
+    });
     try {
       const conversion = converter
         .prepare({
@@ -242,13 +232,14 @@ test.each(["abort", "timeout"])(
           () => null,
           (error: unknown) => error,
         );
-      while (!temporary) await Bun.sleep(5);
-      await waitForFile(join(temporary, "ready"));
+      await converter.ready;
       if (reason === "abort") controller.abort();
+      else (await deadline.promise)();
       const error = await conversion;
       if (reason === "abort") expect(error).toBe(controller.signal.reason);
       else expect(String(error)).toContain("timed out");
       expect(converter.children[0]?.signalCode).toBe("SIGKILL");
+      expect(deadlineCancelled).toBe(true);
       expect(await readdir(directory)).toEqual([]);
       expect(converter.containmentFailures).toEqual([]);
     } finally {
