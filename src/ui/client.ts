@@ -1,6 +1,29 @@
 import { z } from "zod";
 import type { ModelMetadata } from "../domains/models/model-metadata";
 
+const fragmentKeySchema = z.string().regex(/^[\x21-\x7e]+$/);
+
+export function consumeFragmentKey({
+  location,
+  history,
+}: {
+  location: Pick<Location, "hash" | "pathname" | "search">;
+  history: Pick<History, "state" | "replaceState">;
+} = window): string {
+  const fragment = location.hash;
+  if (!fragment) return "";
+  // Clear even invalid credentials before session or API requests can start.
+  history.replaceState(history.state, "", location.pathname + location.search);
+  const match = /^#key=([^&]*)$/.exec(fragment);
+  if (!match) return "";
+  try {
+    const key = fragmentKeySchema.safeParse(decodeURIComponent(match[1]));
+    return key.success ? key.data : "";
+  } catch {
+    return "";
+  }
+}
+
 export function createUiId(): string {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   // HTTP LAN pages expose getRandomValues but may not expose randomUUID.
