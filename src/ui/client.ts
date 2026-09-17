@@ -24,7 +24,7 @@ const capabilitiesSchema = z.discriminatedUnion("kind", [
     frames: z.number().int().positive(),
     fps: z.number().int().positive(),
     jobDeadlineMs: z.number().int().positive(),
-    outputFormats: z.tuple([z.literal("avi")]),
+    outputFormats: z.tuple([z.literal("mp4")]),
   }),
   z.object({
     kind: z.literal("embedding"),

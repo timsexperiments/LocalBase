@@ -41,7 +41,7 @@ const video = fixture("video", "video", {
   frames: 9,
   fps: 16,
   jobDeadlineMs: 5000,
-  outputFormats: ["avi"],
+  outputFormats: ["mp4"],
 });
 function stream(delta: unknown, onCancel = () => {}) {
   return new Response(
@@ -121,7 +121,7 @@ test("advertises only installed selected tools with t2v and tool-calling support
     frames: 9,
     fps: 16,
     jobDeadlineMs: 5000,
-    outputFormats: ["avi"],
+    outputFormats: ["mp4"],
   });
   expect(
     generationTools([image, video, s2v, absent], chat).map(
