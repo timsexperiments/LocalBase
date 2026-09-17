@@ -133,9 +133,11 @@ function App() {
     conversations.find((c) => c.id === activeId) ?? conversations[0];
   const candidates = availableModels(models, active?.mode ?? "llm");
   const model = candidates.find((m) => m.id === active?.model) ?? candidates[0];
-  const voices = model?.catalog.capabilities?.voice.requestValues ?? [
-    "default",
-  ];
+  const capabilities = model?.catalog.capabilities;
+  const voices: string[] =
+    capabilities?.kind === "speech"
+      ? capabilities.voice.requestValues
+      : ["default"];
   const selectedVoice = voices.includes(voice) ? voice : "default";
   const update = (id: string, change: (c: Conversation) => Conversation) =>
     setConversations((items) =>
