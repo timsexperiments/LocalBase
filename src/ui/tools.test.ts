@@ -183,6 +183,18 @@ test.each([false, true])(
         "assistant",
       ]);
       expect(JSON.stringify(requests[2]?.body)).toContain("tool_call_id");
+      const assistant = protocol[0];
+      const result = protocol[1];
+      const id =
+        assistant?.role === "assistant"
+          ? assistant.tool_calls?.[0]?.id
+          : undefined;
+      expect(id).toMatch(/^[a-zA-Z0-9]{9}$/);
+      expect(id).not.toBe("call");
+      expect(result?.role === "tool" ? result.tool_call_id : undefined).toBe(
+        id,
+      );
+      expect(artifacts.every((artifact) => artifact.id === id)).toBe(true);
       expect(JSON.stringify(requests[2]?.body)).not.toContain("blob:");
       expect(JSON.stringify(requests[2]?.body)).not.toContain("aGVsbG8=");
       expect(artifacts.at(-1)?.state).toBe("complete");
@@ -192,6 +204,74 @@ test.each([false, true])(
     }
   },
 );
+test("browser IDs reserve history and allow raw IDs to repeat across rounds", async () => {
+  const existingId = "123456789";
+  const random = spyOn(crypto, "randomUUID")
+    .mockReturnValueOnce("12345678-9000-4000-8000-000000000000")
+    .mockReturnValueOnce("abcdefab-c000-4000-8000-000000000000")
+    .mockReturnValueOnce("fedcbafe-d000-4000-8000-000000000000");
+  let requests = 0;
+  const artifacts: Artifact[] = [];
+  const mock = mockFetch(async (_input, init) => {
+    requests++;
+    if (requests === 2) {
+      const body = String(init?.body);
+      expect(body).toContain('"id":"123456789"');
+      expect(body).toContain('"id":"abcdefabc"');
+      expect(body).toContain('"tool_call_id":"abcdefabc"');
+      expect(body).not.toContain('"id":"1234567890"');
+    }
+    return requests === 3
+      ? stream({ content: "Done" })
+      : stream(tool("unknown", "{}", "1234567890"));
+  });
+  try {
+    const protocol = await runChat({
+      model: chat,
+      models: [image],
+      connection: { kind: "session" },
+      signal: new AbortController().signal,
+      messages: [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: existingId,
+              type: "function",
+              function: { name: "unknown", arguments: "{}" },
+            },
+          ],
+        },
+        { role: "tool", tool_call_id: existingId, content: "Error" },
+      ],
+      toolsEnabled: true,
+      append: () => {},
+      artifact: (a) => artifacts.push(a),
+      register: () => {},
+      warning: () => {},
+    });
+    expect(requests).toBe(3);
+    expect(random).toHaveBeenCalledTimes(3);
+    expect(
+      protocol.flatMap((m) =>
+        m.role === "assistant"
+          ? (m.tool_calls ?? []).map((call) => call.id)
+          : [],
+      ),
+    ).toEqual(["abcdefabc", "fedcbafed"]);
+    expect(
+      protocol.flatMap((m) => (m.role === "tool" ? [m.tool_call_id] : [])),
+    ).toEqual(["abcdefabc", "fedcbafed"]);
+    expect([...new Set(artifacts.map((a) => a.id))]).toEqual([
+      "abcdefabc",
+      "fedcbafed",
+    ]);
+  } finally {
+    mock.mockRestore();
+    random.mockRestore();
+  }
+});
 test.each([502, 401, 403])(
   "post-image HTTP %s retains the artifact and classifies auth separately",
   async (status) => {
