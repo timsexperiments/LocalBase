@@ -7,6 +7,7 @@ type MetadataCapabilities = NonNullable<
 type SpeechCapabilities = Extract<MetadataCapabilities, { kind: "speech" }>;
 type ClientCapabilities =
   | Extract<MetadataCapabilities, { kind: "embedding" }>
+  | Extract<MetadataCapabilities, { kind: "video" }>
   | (Pick<SpeechCapabilities, "kind"> & {
       voice: Pick<
         SpeechCapabilities["voice"],
@@ -15,6 +16,16 @@ type ClientCapabilities =
     });
 
 const capabilitiesSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("video"),
+    mode: z.enum(["t2v", "s2v"]),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    frames: z.number().int().positive(),
+    fps: z.number().int().positive(),
+    jobDeadlineMs: z.number().int().positive(),
+    outputFormats: z.tuple([z.literal("avi")]),
+  }),
   z.object({
     kind: z.literal("embedding"),
     dimensions: z.object({
@@ -37,6 +48,7 @@ const modelSchema = z.object({
     name: z.string(),
     kind: z.enum(["llm", "image", "tts", "stt", "video"]),
     quantization: z.string(),
+    features: z.array(z.string()).default([]),
     inputModalities: z.array(z.string()),
     outputModalities: z.array(z.string()),
     contextWindowTokens: z.number().nullable(),
@@ -57,12 +69,37 @@ export const readinessSchema = z.object({
   status: z.enum(["ready", "unready"]),
   modalities: z.array(z.string()),
 });
-export type Mode = "llm" | "image" | "tts" | "stt";
+export const modes = [
+  "llm",
+  "image",
+  "tts",
+  "stt",
+  "video",
+  "embedding",
+] as const;
+export type Mode = (typeof modes)[number];
+export type ToolCall = {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+};
+export type ChatMessage =
+  | { role: "user" | "system"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
+  | { role: "tool"; tool_call_id: string; content: string };
+export type Media = { kind: "image" | "audio" | "video"; url: string };
+export type Artifact = { id: string; label: string } & (
+  | { state: "working"; detail: string }
+  | { state: "error"; detail: string }
+  | { state: "complete"; media: Media }
+);
 export type Message = {
   id: string;
   role: "user" | "assistant";
   text: string;
-  media?: { kind: "image" | "audio"; url: string };
+  media?: Media;
+  artifacts?: Artifact[];
+  protocol?: ChatMessage[];
 };
 export type Conversation = {
   id: string;
@@ -76,7 +113,7 @@ const historySchema = z
     z.object({
       id: z.string(),
       title: z.string().max(120),
-      mode: z.enum(["llm", "image", "tts", "stt"]),
+      mode: z.enum(modes),
       model: z.string(),
       messages: z.array(
         z.object({
@@ -116,8 +153,10 @@ export function availableModels(models: Model[], mode: Mode) {
   return models
     .filter(
       (m) =>
-        m.catalog.kind === mode &&
-        m.catalog.capabilities?.kind !== "embedding" &&
+        (mode === "embedding"
+          ? m.catalog.capabilities?.kind === "embedding"
+          : m.catalog.kind === mode &&
+            m.catalog.capabilities?.kind !== "embedding") &&
         m.device.selected &&
         m.device.installed,
     )
@@ -128,6 +167,8 @@ export function availableModels(models: Model[], mode: Mode) {
     );
 }
 export async function api(path: string, key: string, init: RequestInit = {}) {
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\"))
+    throw new Error("Only same-origin gateway requests are allowed.");
   const headers = new Headers(init.headers);
   if (key) {
     headers.set("authorization", `Bearer ${key}`);
@@ -138,6 +179,7 @@ export async function api(path: string, key: string, init: RequestInit = {}) {
     headers,
     cache: "no-store",
     credentials: "same-origin",
+    redirect: "error",
   });
   if (!response.ok) {
     const value: unknown = await response.json().catch(() => null);
@@ -157,7 +199,25 @@ export async function api(path: string, key: string, init: RequestInit = {}) {
 const chunkSchema = z.object({
   choices: z.array(
     z.object({
-      delta: z.object({ content: z.string().nullable().optional() }),
+      index: z.number().int().optional(),
+      delta: z.object({
+        content: z.string().nullable().optional(),
+        tool_calls: z
+          .array(
+            z.object({
+              index: z.number().int().min(0).max(3),
+              id: z.string().optional(),
+              type: z.literal("function").optional(),
+              function: z
+                .object({
+                  name: z.string().optional(),
+                  arguments: z.string().optional(),
+                })
+                .optional(),
+            }),
+          )
+          .optional(),
+      }),
     }),
   ),
 });
@@ -171,6 +231,7 @@ export async function streamText(
   const decoder = new TextDecoder();
   let buffer = "";
   let done = false;
+  const calls = new Map<number, ToolCall>();
   function event(raw: string) {
     const data = raw
       .split("\n")
@@ -188,8 +249,27 @@ export async function streamText(
       .safeParse(value);
     if (error.success) throw new Error(error.data.error.message);
     const chunk = chunkSchema.parse(value);
-    for (const choice of chunk.choices)
+    for (const choice of chunk.choices) {
+      if (choice.index !== undefined && choice.index !== 0) continue;
       if (choice.delta.content) append(choice.delta.content);
+      for (const delta of choice.delta.tool_calls ?? []) {
+        const call = calls.get(delta.index) ?? {
+          id: "",
+          type: "function",
+          function: { name: "", arguments: "" },
+        };
+        call.id += delta.id ?? "";
+        call.function.name += delta.function?.name ?? "";
+        call.function.arguments += delta.function?.arguments ?? "";
+        if (
+          call.id.length > 256 ||
+          call.function.name.length > 128 ||
+          call.function.arguments.length > 20000
+        )
+          throw new Error("Tool call exceeds browser limits.");
+        calls.set(delta.index, call);
+      }
+    }
   }
   try {
     while (!done) {
@@ -210,6 +290,17 @@ export async function streamText(
       throw new Error(
         "Connection ended before the response finished. You can retry.",
       );
+    const result = [...calls.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, call]) => call);
+    if (
+      result.some((call) => !call.id || !call.function.name) ||
+      new Set(result.map((call) => call.id)).size !== result.length
+    )
+      throw new Error(
+        "Malformed tool call: missing or duplicate ID or missing function name.",
+      );
+    return result;
   } finally {
     await reader.cancel().catch(() => {});
     reader.releaseLock();
