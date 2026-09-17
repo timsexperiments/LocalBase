@@ -5,19 +5,43 @@ import type { PlatformTarget } from "./managed-runtime-manifest";
 // This packaging tag includes different FFmpeg versions; retain upstream notices.
 const baseUrl =
   "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1";
+const macArm64BaseUrl =
+  "https://ffmpeg.martin-riedl.de/download/macos/arm64/1787073674_9.0.1";
+
+// GPLv3-or-later, verified by the signed binary's -L and -version output.
+// The ZIP contains only a root-level ffmpeg; notices are verified separately.
+// FFmpeg source: https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz
+// Publisher build/dependency sources:
+// https://git.martin-riedl.de/ffmpeg/build-script/src/commit/f63b8aab8f5ce1a067da86ba69e34a36a7e217e5
+const macArm64 = {
+  release: {
+    name: "ffmpeg",
+    tag: "martin-riedl-1787073674-9.0.1",
+    assetName: "ffmpeg.zip",
+    url: `${macArm64BaseUrl}/ffmpeg.zip`,
+    expectedSizeBytes: 28447413,
+    sha256: "8287a1b2229e05eb41859f073e18e6c52c60a778f2f5e6881070fe51b79407fe",
+    format: "zip",
+    stripComponents: 0,
+  } satisfies Parameters<typeof installManagedRuntime>[1],
+  supportFiles: [
+    {
+      filename: "LICENSE",
+      url: "https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0.1/COPYING.GPLv3",
+      expectedSizeBytes: 35147,
+      sha256:
+        "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+    },
+    {
+      filename: "README",
+      url: `${macArm64BaseUrl}/versions.txt`,
+      expectedSizeBytes: 1950,
+      sha256:
+        "9508bf4dad7245f28ca364934c3d90bdbb7d7cad35f5211aaf56120a7333d62c",
+    },
+  ] satisfies ManagedInstallOptions["supportFiles"],
+};
 const targets = [
-  {
-    os: "darwin",
-    cpu: "arm64",
-    size: 45568216,
-    sha256: "a90e3db6a3fd35f6074b013f948b1aa45b31c6375489d39e572bea3f18336584",
-    licenseSize: 4376,
-    licenseSha256:
-      "cb48bf09a11f5fb576cddb0431c8f5ed0a60157a9ec942adffc13907cbe083f2",
-    readmeSize: 1810,
-    readmeSha256:
-      "05ba4b92c96605434b1aaae3eedf5a2c280c9607bf78ffca9a5b536d9af2dc6a",
-  },
   {
     os: "darwin",
     cpu: "x64",
@@ -57,6 +81,7 @@ const targets = [
 ];
 
 export function videoConverterRelease(target: PlatformTarget) {
+  if (target.os === "darwin" && target.cpu === "arm64") return macArm64;
   const pin = targets.find(
     ({ os, cpu }) => os === target.os && cpu === target.cpu,
   );
