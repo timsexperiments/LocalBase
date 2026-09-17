@@ -191,7 +191,8 @@ function App() {
       : 0;
   const unsupportedVideo =
     active?.mode === "video" &&
-    (capabilities?.kind !== "video" || capabilities.mode !== "t2v");
+    capabilities?.kind === "video" &&
+    capabilities.mode === "s2v";
   const update = (id: string, change: (c: Conversation) => Conversation) =>
     setConversations((items) =>
       items.map((c) => (c.id === id ? change(c) : c)),
