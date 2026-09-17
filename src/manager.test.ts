@@ -14,6 +14,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as timers from "node:timers/promises";
 import { CATALOG, type ModelArtifact, type ModelSpec } from "./catalog";
 import {
   createApiKey,
@@ -37,6 +38,7 @@ import { ensureLocalBaseRootMarker } from "./utils/root";
 import { migrationsFolder } from "./db/migration-assets";
 import { DatabaseSession } from "./db/client";
 import {
+  computeSha256,
   parseChecksumFile,
   readChecksumStore,
   verifyAuthoritativeFile,
@@ -988,6 +990,55 @@ describe.serial("LocalBase database validation", () => {
 });
 
 describe.serial("checksum inputs and continuity cache", () => {
+  test("hashes a real file while yielding after bounded work", async () => {
+    const file = join(createInstallConfig().root, "model.bin");
+    const fileSize = 24 * 1024 * 1024 + 17;
+    await Bun.write(file, Buffer.alloc(fileSize, 0x61));
+
+    let totalBytes = 0;
+    let bytesSinceYield = 0;
+    let maxBytesBeforeYield = 0;
+    let awaitedYields = 0;
+    const originalImmediate = timers.setImmediate;
+    const yieldSpy = spyOn(timers, "setImmediate").mockImplementation(() => {
+      bytesSinceYield = 0;
+      // Observe promise consumption while retaining the real event-loop yield.
+      return new Proxy(originalImmediate(), {
+        get(target, property, receiver) {
+          if (property === "then") {
+            awaitedYields++;
+            return target.then.bind(target);
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      });
+    });
+    const originalUpdate = Bun.CryptoHasher.prototype.update;
+    const updateSpy = spyOn(
+      Bun.CryptoHasher.prototype,
+      "update",
+    ).mockImplementation(function (this: Bun.CryptoHasher, input, encoding) {
+      if (input instanceof Uint8Array) {
+        totalBytes += input.byteLength;
+        bytesSinceYield += input.byteLength;
+        maxBytesBeforeYield = Math.max(maxBytesBeforeYield, bytesSinceYield);
+      }
+      return originalUpdate.call(this, input, encoding);
+    });
+    try {
+      expect(await computeSha256(file)).toBe(
+        "25e2f74c16b28d561eeea19ecc8f9dddcd215848c807ff01d054e3f7efe6a977",
+      );
+      expect(totalBytes).toBe(fileSize);
+      expect(awaitedYields).toBeGreaterThanOrEqual(3);
+      expect(awaitedYields).toBe(yieldSpy.mock.calls.length);
+      expect(maxBytesBeforeYield).toBeLessThanOrEqual(8 * 1024 * 1024);
+    } finally {
+      updateSpy.mockRestore();
+      yieldSpy.mockRestore();
+    }
+  });
+
   test("rejects malformed, unsafe, and duplicate external checksum rows", () => {
     expect(parseChecksumFile(`${"a".repeat(64)}  model.bin\n`)).toEqual(
       new Map([["model.bin", "a".repeat(64)]]),
@@ -1009,9 +1060,8 @@ describe.serial("checksum inputs and continuity cache", () => {
     const root = createInstallConfig().root;
     const file = join(root, "model.bin");
     await Bun.write(file, "verified model");
-    const digest = await new Bun.CryptoHasher("sha256")
-      .update("verified model")
-      .digest("hex");
+    const digest =
+      "6c736b3dfa943bf4e7c61df78d1dfcad9a3d8b56369f0559670497b19127e74d";
     const authority = {
       filename: "model.bin",
       expectedSizeBytes: (await Bun.file(file).stat()).size,
