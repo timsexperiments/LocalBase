@@ -313,7 +313,7 @@ export async function runChat(options: {
       },
     );
     signal.throwIfAborted();
-    // Browser-owned IDs keep assistant calls, tool results, and artifacts paired across rounds.
+    // Nine alphanumeric characters work with strict chat templates; the UI owns both sides of each tool call.
     const calls = rawCalls.map((call) => {
       let id: string;
       do {
