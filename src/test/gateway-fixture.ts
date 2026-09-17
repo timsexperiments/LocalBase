@@ -232,6 +232,7 @@ export type GatewayFixtureOptions = {
   workingDirectory?: string;
   auth?: { mode?: "bearer" | "x-api-key" | "either" };
   gatewayHost?: string;
+  gatewayListenerHost?: string;
   inferenceQueueCapacity?: number;
   inferenceQueueTimeoutMs?: number;
   managedIdentity?: boolean;
@@ -1754,6 +1755,12 @@ export async function startGatewayFixture(
   let lastError: unknown;
   for (let attempt = 0; attempt < MAX_START_ATTEMPTS; attempt++) {
     const port = reservePort();
+    if (options.gatewayListenerHost) {
+      await Bun.write(
+        join(root, "gateway-listener.json"),
+        JSON.stringify({ host: options.gatewayListenerHost, port }),
+      );
+    }
     const gatewayProcess = Bun.spawn(
       [
         cliPath,
@@ -1761,8 +1768,7 @@ export async function startGatewayFixture(
         "--root",
         root,
         ...(options.gatewayHost ? ["--host", options.gatewayHost] : []),
-        "--port",
-        String(port),
+        ...(options.gatewayListenerHost ? [] : ["--port", String(port)]),
         "--llm-port",
         String(llmPort),
         "--stt-port",

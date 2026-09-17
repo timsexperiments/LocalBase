@@ -91,6 +91,8 @@ curl http://127.0.0.1:2273/v1/chat/completions \
 
 Use `local-base status` to inspect the service and `local-base logs --follow` to stream logs.
 
+To persist a LAN listener across managed restarts, create `<root>/gateway-listener.json` with `{"host":"0.0.0.0","port":2273}`, then restart the gateway. Without this file, the listener defaults to `127.0.0.1:2273`; omitted fields keep their defaults. `serve --host` and `--port` override the file. Malformed configuration fails startup. Binding to all interfaces does not change API authentication; use trusted networks and HTTPS when sending credentials.
+
 ### Browser playground
 
 Open `http://127.0.0.1:2273/app`, or `/app` on your gateway's existing HTTPS origin. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
