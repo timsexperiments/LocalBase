@@ -10,7 +10,6 @@ const HOST_VM_INFO64 = 4;
 const MINIMUM_VM_STATISTICS_BYTES = 96;
 const FREE_COUNT_OFFSET = 0;
 const INACTIVE_COUNT_OFFSET = 8;
-const SPECULATIVE_COUNT_OFFSET = 92;
 
 export type MachMemorySample = Readonly<{
   buffer: Uint8Array;
@@ -40,10 +39,10 @@ export function parseMachAvailableBytes(
     buffer.byteOffset,
     buffer.byteLength,
   );
+  // XNU already includes speculative pages in free_count.
   const freePages = view.getUint32(FREE_COUNT_OFFSET, true);
   const inactivePages = view.getUint32(INACTIVE_COUNT_OFFSET, true);
-  const speculativePages = view.getUint32(SPECULATIVE_COUNT_OFFSET, true);
-  const pages = freePages + inactivePages + speculativePages;
+  const pages = freePages + inactivePages;
   const bytes = pages * pageSize;
   return Number.isSafeInteger(bytes) ? bytes : undefined;
 }
