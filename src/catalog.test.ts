@@ -809,6 +809,11 @@ describe("catalog artifact validation", () => {
           acceleratorBytes: 9 * 1024 ** 3,
         },
         supportedTargets: [
+          {
+            platform: "darwin",
+            architecture: "arm64",
+            accelerator: "apple-unified",
+          },
           { platform: "linux", architecture: "x64", accelerator: "nvidia" },
         ],
       },
@@ -848,7 +853,7 @@ describe("catalog artifact validation", () => {
     );
   });
 
-  test("pins the FastWan decoder, shared encoder, and measured Linux profile", () => {
+  test("pins the FastWan decoder, shared encoder, and bounded profile", () => {
     const fastWan = byId("fastwan2.2-ti2v-5b-q6_k");
     expect(fastWan).toMatchObject({
       repositoryRevision: "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
@@ -883,6 +888,11 @@ describe("catalog artifact validation", () => {
           acceleratorBytes: 8 * 1024 ** 3,
         },
         supportedTargets: [
+          {
+            platform: "darwin",
+            architecture: "arm64",
+            accelerator: "apple-unified",
+          },
           { platform: "linux", architecture: "x64", accelerator: "nvidia" },
         ],
       },

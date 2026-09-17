@@ -2159,6 +2159,11 @@ const CATALOG_SOURCE = [
         acceleratorBytes: 9 * 1024 ** 3,
       },
       supportedTargets: [
+        {
+          platform: "darwin",
+          architecture: "arm64",
+          accelerator: "apple-unified",
+        },
         { platform: "linux", architecture: "x64", accelerator: "nvidia" },
       ],
     },
@@ -2168,7 +2173,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0 licenses for the pinned artifacts.",
     notes:
-      "Experimental Linux x64 single-NVIDIA text-to-video profile: exactly 320x320, 33 frames, and 16 fps. Output quality and motion vary.",
+      "Experimental text-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 320x320, 33 frames, and 16 fps.",
   },
   {
     modelId: "fastwan2.2-ti2v-5b-q6_k",
@@ -2249,6 +2254,11 @@ const CATALOG_SOURCE = [
         acceleratorBytes: 8 * 1024 ** 3,
       },
       supportedTargets: [
+        {
+          platform: "darwin",
+          architecture: "arm64",
+          accelerator: "apple-unified",
+        },
         { platform: "linux", architecture: "x64", accelerator: "nvidia" },
       ],
     },
@@ -2258,7 +2268,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
     notes:
-      "Experimental Linux x64 single-NVIDIA text-to-video profile: exactly 480x832, 81 frames, and 16 fps. Image-to-video, audio generation, and macOS are unsupported.",
+      "Experimental text-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 480x832, 81 frames, and 16 fps. Image-to-video and audio generation are unsupported.",
   },
 ] satisfies ModelSpecInput[];
 
