@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   api,
+  createUiId,
   availableModels,
   imageResponseSchema,
   streamText,
@@ -331,7 +332,7 @@ export async function runChat(options: {
     const calls = rawCalls.map((call) => {
       let id: string;
       do {
-        id = crypto.randomUUID().replaceAll("-", "").slice(0, 9);
+        id = createUiId().replaceAll("-", "").slice(0, 9);
       } while (browserIds.has(id));
       browserIds.add(id);
       return { ...call, id };
