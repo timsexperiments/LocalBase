@@ -9,14 +9,15 @@ import { MemorySafetyController } from "./memory-controller";
 import { defaultMemorySafetyConfig, gibibyte } from "./memory-safety";
 import { createRuntimeSupervisorFactory } from "./supervisor-factory";
 
-test("rejects an unsupported video target before installation or launch", async () => {
+test("rejects an unsupported video topology before installation or launch", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-target-"));
   let snapshots = 0;
   const memorySafety = new MemorySafetyController(
     {
       topology: {
-        kind: "unified",
+        kind: "discrete",
         system: { id: "system", capacityBytes: 32 * gibibyte },
+        accelerators: [],
       },
       async snapshot() {
         snapshots += 1;
