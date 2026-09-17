@@ -376,6 +376,27 @@ describe("playground client boundaries", () => {
         () => {},
       ),
     ).rejects.toThrow("Malformed tool call");
+    await expect(
+      streamText(
+        encode([
+          {
+            tool_calls: [
+              {
+                index: 0,
+                id: "duplicate",
+                function: { name: "generate_image", arguments: "{}" },
+              },
+              {
+                index: 1,
+                id: "duplicate",
+                function: { name: "generate_image", arguments: "{}" },
+              },
+            ],
+          },
+        ]),
+        () => {},
+      ),
+    ).rejects.toThrow("Malformed tool call");
   });
   test("parses mixed capabilities, excludes embeddings, and prefers assigned chat runtimes", () => {
     const embedding = {
