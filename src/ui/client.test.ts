@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import type { ModelMetadata } from "../domains/models/model-metadata";
 import {
   api,
+  createUiId,
   readSession,
   sessionConnection,
   SessionRequiredError,
@@ -24,6 +25,31 @@ function streaming(parts: Uint8Array[]) {
   );
 }
 describe("playground client boundaries", () => {
+  test("creates secure UUIDs when HTTP browsers omit randomUUID", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+    const source = crypto;
+    let calls = 0;
+    Object.defineProperty(globalThis, "crypto", {
+      configurable: true,
+      value: {
+        getRandomValues(bytes: Uint8Array) {
+          calls++;
+          return source.getRandomValues(bytes);
+        },
+      },
+    });
+    try {
+      const ids = Array.from({ length: 3 }, () => createUiId());
+      for (const id of ids)
+        expect(id).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        );
+      expect(new Set(ids).size).toBe(3);
+      expect(calls).toBe(3);
+    } finally {
+      if (descriptor) Object.defineProperty(globalThis, "crypto", descriptor);
+    }
+  });
   test("rejects external or noncanonical paths before sending credentials", async () => {
     const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
       Response.json({}),
