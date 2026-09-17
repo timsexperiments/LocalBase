@@ -6,7 +6,11 @@ import {
   type ParallelAllocation,
   type ParallelSlots,
 } from "../config/parallel";
-import type { VideoRuntimeProfile, VideoRuntimeTarget } from "../../catalog";
+import type {
+  ImageRuntimeProfile,
+  VideoRuntimeProfile,
+  VideoRuntimeTarget,
+} from "../../catalog";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
 
@@ -40,7 +44,15 @@ export type LlmLaunchPlan = LaunchPlanBase<"llm", "llama-server"> & {
 
 export type SttLaunchPlan = LaunchPlanBase<"stt", "whisper-server">;
 
-export type ImageLaunchPlan = LaunchPlanBase<"image", "sd-server">;
+export type ImageLaunchPlan = LaunchPlanBase<"image", "sd-server"> & {
+  readonly imageRuntime?: Readonly<{
+    kind: "diffusion-qwen3";
+    diffusionModelPath: string;
+    vaePath: string;
+    textEncoderPath: string;
+    generation: Readonly<ImageRuntimeProfile["generation"]>;
+  }>;
+};
 
 type VideoLaunchPlanBase = Omit<
   LaunchPlanBase<"video", "sd-server">,
@@ -216,6 +228,7 @@ export function resolveImageLaunchPlan(input: {
   port: number;
   modelRequirementGb: number | undefined;
   artifactBytes: number;
+  imageRuntime?: ImageRuntimeProfile;
 }): ImageLaunchPlan {
   return Object.freeze({
     runtimeId: input.runtimeId,
@@ -229,6 +242,26 @@ export function resolveImageLaunchPlan(input: {
     port: input.port,
     healthUrl: `http://${input.host}:${input.port}/`,
     memoryDemand: runtimeMemoryDemand(input),
+    ...(input.imageRuntime
+      ? {
+          imageRuntime: Object.freeze({
+            kind: input.imageRuntime.kind,
+            diffusionModelPath: join(
+              input.modelsDirectory,
+              input.imageRuntime.artifacts.diffusionModel,
+            ),
+            vaePath: join(
+              input.modelsDirectory,
+              input.imageRuntime.artifacts.vae,
+            ),
+            textEncoderPath: join(
+              input.modelsDirectory,
+              input.imageRuntime.artifacts.textEncoder,
+            ),
+            generation: Object.freeze({ ...input.imageRuntime.generation }),
+          }),
+        }
+      : {}),
   });
 }
 

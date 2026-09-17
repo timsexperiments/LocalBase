@@ -706,6 +706,34 @@ export function createRuntimeSupervisorFactory(
       logger: ctx.logger,
       launch: async () => {
         let modelFile = overrides.imageModelFile;
+        const imageSpec = byId(modelId);
+        if (imageSpec?.imageRuntime) {
+          if (modelFile && modelFile !== primaryArtifact(imageSpec).filename) {
+            throw new Error(
+              "Image artifact overrides cannot replace a catalog runtime profile.",
+            );
+          }
+          let installation = await resolveCatalogInstallation(
+            imageSpec,
+            config.imageModelsDir,
+          );
+          if (!installation.complete) {
+            await installSelectedModel(
+              ctx,
+              config,
+              modality,
+              modelId,
+              "incomplete",
+            );
+            installation = await resolveCatalogInstallation(
+              imageSpec,
+              config.imageModelsDir,
+            );
+          }
+          if (!installation.complete)
+            throw new Error("Image model installation is incomplete.");
+          modelFile = basename(installation.primaryPath);
+        }
         if (!modelFile) {
           modelFile = await configuredModelFile(config, modelId, modality);
           if (!modelFile) {
@@ -734,11 +762,13 @@ export function createRuntimeSupervisorFactory(
           host: imageHost(overrides),
           port: imagePort(overrides),
           modelRequirementGb: spec?.minVramGb,
-          artifactBytes: await artifactBytes(
-            modelId,
-            config.imageModelsDir,
-            modelFile,
-          ),
+          imageRuntime: spec?.imageRuntime,
+          artifactBytes: spec?.imageRuntime
+            ? spec.artifacts.reduce(
+                (total, artifact) => total + (artifact.expectedSizeBytes ?? 0),
+                0,
+              )
+            : await artifactBytes(modelId, config.imageModelsDir, modelFile),
         });
       },
       start: async (plan) => {

@@ -16,12 +16,94 @@ import { requireWhisperGpuContract } from "./whisper-gpu";
 import { gibibyte, type MemoryTopology } from "./memory-safety";
 import {
   sdServerEnvironment,
+  buildSdImageServerArgs,
   buildSdVideoServerArgs,
   startLlamaServerProcess,
   startSdServerProcess,
   startSdVideoServerProcess,
   startWhisperServerProcess,
 } from "./launcher";
+
+test.each([
+  { modelId: "flux2-klein-4b-q4_0", steps: 4, bytes: 5293871164 },
+  { modelId: "z-image-turbo-q4_0", steps: 8, bytes: 6515956452 },
+])(
+  "resolves $modelId artifacts, sampling, and aggregate memory",
+  ({ modelId, steps, bytes }) => {
+    const spec = byId(modelId);
+    if (!spec?.imageRuntime) throw new Error("Missing image fixture");
+    const directory = "/models/image";
+    const plan = resolveImageLaunchPlan({
+      runtimeId: `image:${modelId}`,
+      root: "/localbase",
+      modelsDirectory: directory,
+      modelId,
+      modelFile: spec.imageRuntime.artifacts.diffusionModel,
+      host: "127.0.0.1",
+      port: 8083,
+      modelRequirementGb: spec.minVramGb,
+      artifactBytes: spec.artifacts.reduce(
+        (sum, artifact) => sum + (artifact.expectedSizeBytes ?? 0),
+        0,
+      ),
+      imageRuntime: spec.imageRuntime,
+    });
+    expect(buildSdImageServerArgs(plan)).toEqual([
+      "--diffusion-model",
+      join(directory, spec.imageRuntime.artifacts.diffusionModel),
+      "--vae",
+      join(directory, spec.imageRuntime.artifacts.vae),
+      "--llm",
+      join(directory, spec.imageRuntime.artifacts.textEncoder),
+      "--sampling-method",
+      "euler",
+      "--steps",
+      String(steps),
+      "--cfg-scale",
+      "1",
+      "--listen-ip",
+      "127.0.0.1",
+      "--listen-port",
+      "8083",
+    ]);
+    expect(plan.memoryDemand).toEqual({
+      unifiedBytes: 12.5 * gibibyte,
+      hostBytes: bytes + 0.5 * gibibyte,
+      acceleratorBytes: 12 * gibibyte,
+      confidence: "estimated",
+    });
+  },
+);
+
+test("rejects a missing image encoder before resolving or spawning a runtime", async () => {
+  const spec = byId("z-image-turbo-q4_0");
+  if (!spec?.imageRuntime) throw new Error("Missing image fixture");
+  const root = mkdtempSync(join(tmpdir(), "localbase-image-artifacts-"));
+  try {
+    const plan = resolveImageLaunchPlan({
+      runtimeId: "image:test",
+      root,
+      modelsDirectory: root,
+      modelId: spec.modelId,
+      modelFile: spec.imageRuntime.artifacts.diffusionModel,
+      host: "127.0.0.1",
+      port: 8083,
+      modelRequirementGb: 12,
+      artifactBytes: 1,
+      imageRuntime: spec.imageRuntime,
+    });
+    await Bun.write(plan.modelPath, "fixture");
+    await Bun.write(join(root, spec.imageRuntime.artifacts.vae), "fixture");
+    await expect(
+      startSdServerProcess(plan, {
+        kind: "unified",
+        system: { id: "system", capacityBytes: 64 * gibibyte },
+      }),
+    ).rejects.toThrow("Image artifact not found:");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 const roots: string[] = [];
 const originalPath = process.env.PATH;

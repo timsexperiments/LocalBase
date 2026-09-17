@@ -125,8 +125,13 @@ export async function startSdServerProcess(
   plan: ImageLaunchPlan,
   topology: MemoryTopology,
 ): Promise<Bun.Subprocess> {
-  if (!(await Bun.file(plan.modelPath).exists())) {
-    throw new Error(`Model file not found: ${plan.modelPath}`);
+  const profile = plan.imageRuntime;
+  for (const path of profile
+    ? [profile.diffusionModelPath, profile.vaePath, profile.textEncoderPath]
+    : [plan.modelPath]) {
+    if (!(await Bun.file(path).exists())) {
+      throw new Error(`Image artifact not found: ${path}`);
+    }
   }
 
   const binPath = resolve(
@@ -134,25 +139,40 @@ export async function startSdServerProcess(
   );
   const gpuArgs = sdGpuArgs(process.platform, topology);
   if (process.platform === "linux") await requireSdGpuContract(binPath);
-  return Bun.spawn(
-    [
-      binPath,
-      "-m",
-      plan.modelPath,
-      "--listen-ip",
-      plan.host,
-      "--listen-port",
-      String(plan.port),
-      ...gpuArgs,
-    ],
-    {
-      stdout: "pipe",
-      stderr: "pipe",
-      stdin: "inherit",
-      cwd: dirname(binPath),
-      env: sdServerEnvironment(binPath),
-    },
-  );
+  return Bun.spawn([binPath, ...buildSdImageServerArgs(plan), ...gpuArgs], {
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "inherit",
+    cwd: dirname(binPath),
+    env: sdServerEnvironment(binPath),
+  });
+}
+
+/** The pinned runtime retains its model-specific scheduler defaults. */
+export function buildSdImageServerArgs(plan: ImageLaunchPlan): string[] {
+  const profile = plan.imageRuntime;
+  return [
+    ...(profile
+      ? [
+          "--diffusion-model",
+          profile.diffusionModelPath,
+          "--vae",
+          profile.vaePath,
+          "--llm",
+          profile.textEncoderPath,
+          "--sampling-method",
+          profile.generation.sampler,
+          "--steps",
+          String(profile.generation.steps),
+          "--cfg-scale",
+          String(profile.generation.cfgScale),
+        ]
+      : ["-m", plan.modelPath]),
+    "--listen-ip",
+    plan.host,
+    "--listen-port",
+    String(plan.port),
+  ];
 }
 
 export async function startSdVideoServerProcess(
