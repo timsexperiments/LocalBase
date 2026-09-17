@@ -76,6 +76,8 @@ import {
 } from "../../../ui/access";
 import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
 import { VideoJobManager } from "../video/video-job-manager";
+import { createVideoArtifactPreparer } from "../video/video-converter";
+import { ensureVideoConverter } from "../../../manager/video-converter";
 import { logVideoJobTerminal } from "../video/video-job-logging";
 import { createStableDiffusionVideoClient } from "../video/stable-diffusion-video-client";
 import { handleVideoGatewayRequest } from "../video/gateway-handler";
@@ -2277,6 +2279,9 @@ export async function runServe(
       baseUrl: factory.baseUrl("video", initialSnapshot),
     }),
     temporaryDirectory: join(config.root, "tmp"),
+    prepareArtifact: createVideoArtifactPreparer({
+      ensureConverter: (signal) => ensureVideoConverter(config.root, signal),
+    }),
     onContainmentFailure: ({ jobId, source }) => {
       ctx.logger.event({
         severity: "error",

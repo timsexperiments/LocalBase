@@ -48,13 +48,18 @@ export type VideoJobBackend = Readonly<{
 export type VideoJobState =
   "queued" | "in_progress" | "completed" | "failed" | "cancelled";
 
-export type VideoJobArtifact = Readonly<{
-  byteLength: number;
-  mimeType: string;
-  outputFormat: "webm" | "webp" | "avi";
-  fps: number;
-  frameCount: number;
-}>;
+type BackendMedia = Extract<VideoBackendJob, { status: "completed" }>["media"];
+export type PreparedVideoArtifact = Readonly<
+  Omit<BackendMedia, "outputFormat"> & {
+    outputFormat: BackendMedia["outputFormat"] | "mp4";
+  }
+>;
+
+export type VideoJobArtifact = Readonly<
+  Omit<PreparedVideoArtifact, "bytes"> & {
+    byteLength: number;
+  }
+>;
 
 export type VideoJob =
   | Readonly<{
@@ -158,9 +163,17 @@ export type VideoJobManagerOptions = Readonly<{
     path: string;
     bytes: Uint8Array;
   }) => Promise<void>;
+  prepareArtifact?: (options: {
+    media: BackendMedia;
+    directory: string;
+    signal: AbortSignal;
+    maxArtifactBytes: number;
+    onContainmentFailure: (error: unknown) => void;
+  }) => Promise<PreparedVideoArtifact>;
   removeArtifact?: (path: string) => void;
   removeJobDirectory?: (path: string) => void;
   maxArtifactBytes?: number;
+  // Retained artifacts only; the one active conversion has separately bounded scratch files.
   maxArtifactBytesTotal?: number;
   maxTerminalJobs?: number;
   terminalTtlMs?: number;
@@ -421,6 +434,7 @@ export class VideoJobManager {
       return;
     }
     if (update.status === "completed") {
+      job.state = "in_progress";
       const completion = this.persistArtifact(job, update.media);
       job.completion = completion;
       try {
@@ -480,7 +494,8 @@ export class VideoJobManager {
       try {
         await completion;
       } catch (error) {
-        completionFailure = toError(error);
+        if (!isAbortError(error, job.controller.signal))
+          completionFailure = toError(error);
       }
       if (job.terminalAtMs !== undefined) return;
     }
@@ -559,24 +574,40 @@ export class VideoJobManager {
 
   private async persistArtifact(
     job: StoredJob,
-    media: Extract<VideoBackendJob, { status: "completed" }>["media"],
+    media: BackendMedia,
   ): Promise<VideoJobArtifact> {
     if (media.bytes.byteLength > this.maxArtifactBytes) {
       throw new VideoJobArtifactLimitError(
         "Video artifact exceeds the per-job limit.",
       );
     }
-    this.makeRoomForArtifact(media.bytes.byteLength);
-    job.pendingArtifactBytes = media.bytes.byteLength;
+    const prepared = this.options.prepareArtifact
+      ? await this.options.prepareArtifact({
+          media,
+          directory: job.directory,
+          signal: job.controller.signal,
+          maxArtifactBytes: this.maxArtifactBytes,
+          onContainmentFailure: (error) =>
+            this.reportContainmentFailure(job, "runner", error),
+        })
+      : media;
+    job.controller.signal.throwIfAborted();
+    if (prepared.bytes.byteLength > this.maxArtifactBytes) {
+      throw new VideoJobArtifactLimitError(
+        "Prepared video artifact exceeds the per-job limit.",
+      );
+    }
+    this.makeRoomForArtifact(prepared.bytes.byteLength);
+    job.pendingArtifactBytes = prepared.bytes.byteLength;
     const path = join(job.directory, "artifact");
-    await this.writeArtifact({ path, bytes: media.bytes });
+    await this.writeArtifact({ path, bytes: prepared.bytes });
     chmodSync(path, 0o600);
     return Object.freeze({
-      byteLength: media.bytes.byteLength,
-      mimeType: media.mimeType,
-      outputFormat: media.outputFormat,
-      fps: media.fps,
-      frameCount: media.frameCount,
+      byteLength: prepared.bytes.byteLength,
+      mimeType: prepared.mimeType,
+      outputFormat: prepared.outputFormat,
+      fps: prepared.fps,
+      frameCount: prepared.frameCount,
     });
   }
 
