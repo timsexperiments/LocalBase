@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import type { ModelMetadata } from "../domains/models/model-metadata";
 import {
   api,
+  consumeFragmentKey,
   createUiId,
   readSession,
   sessionConnection,
@@ -25,6 +26,82 @@ function streaming(parts: Uint8Array[]) {
   );
 }
 describe("playground client boundaries", () => {
+  test("consumes a fragment key once, clearing it before authenticated requests", async () => {
+    const location = new URL(
+      "http://192.168.1.2:8080/app?view=chat#key=lb_fixture%2Dkey",
+    );
+    const state = { view: "chat" };
+    const history = {
+      state,
+      replaceState(data: unknown, _unused: string, url?: string | URL | null) {
+        expect(data).toBe(state);
+        expect(url).toBe("/app?view=chat");
+        location.href = new URL(String(url), location).href;
+      },
+    };
+    const replace = spyOn(history, "replaceState");
+    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ authenticated: false, mode: "api-key" }),
+    );
+    try {
+      const key = consumeFragmentKey({ location, history });
+      expect(key).toBe("lb_fixture-key");
+      expect(location.hash).toBe("");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(consumeFragmentKey({ location, history })).toBe("");
+      expect(replace).toHaveBeenCalledTimes(1);
+      const connection = sessionConnection(await readSession(), key);
+      expect(connection).toEqual({ kind: "api-key", key: "lb_fixture-key" });
+      if (!connection) throw new Error("Missing fixture connection");
+      await api("/_localbase/models", connection);
+      const [path, options] = fetchMock.mock.calls.at(-1) ?? [];
+      expect(path).toBe("/_localbase/models");
+      expect(new Headers(options?.headers).get("authorization")).toBe(
+        "Bearer lb_fixture-key",
+      );
+    } finally {
+      replace.mockRestore();
+      fetchMock.mockRestore();
+    }
+  });
+  test("clears malformed and duplicate fragments without logging credentials", () => {
+    const logs = [
+      spyOn(console, "log"),
+      spyOn(console, "warn"),
+      spyOn(console, "error"),
+    ];
+    try {
+      for (const fragment of [
+        "#key=",
+        "#key",
+        "#other=fixture-key",
+        "#key=%",
+        "#key=%FF",
+        "#key=%20",
+        "#key=fixture%0Akey",
+        "#key=fixture-key&key=other",
+        "#key=fixture-key&key=fixture-key",
+        "#key=fixture-key&other=value",
+      ]) {
+        const location = new URL(`http://192.168.1.2:8080/app${fragment}`);
+        const history = {
+          state: null,
+          replaceState(
+            _data: unknown,
+            _unused: string,
+            url?: string | URL | null,
+          ) {
+            location.href = new URL(String(url), location).href;
+          },
+        };
+        expect(consumeFragmentKey({ location, history })).toBe("");
+        expect(location.hash).toBe("");
+      }
+      for (const log of logs) expect(log).not.toHaveBeenCalled();
+    } finally {
+      for (const log of logs) log.mockRestore();
+    }
+  });
   test("creates secure UUIDs when HTTP browsers omit randomUUID", () => {
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
     const source = crypto;
