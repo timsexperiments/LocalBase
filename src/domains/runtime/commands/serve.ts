@@ -64,6 +64,11 @@ import {
 import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
 import { playgroundResponse } from "../../../ui/static";
+import {
+  createUiAccess,
+  isUiAccessPath,
+  loadUiAccessConfig,
+} from "../../../ui/access";
 import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
 import { VideoJobManager } from "../video/video-job-manager";
 import { logVideoJobTerminal } from "../video/video-job-logging";
@@ -1030,6 +1035,11 @@ function filterProxyHeaders(headers: Headers): Headers {
   for (const header of [
     "authorization",
     "x-api-key",
+    "cookie",
+    "cf-access-jwt-assertion",
+    "cf-access-authenticated-user-email",
+    "cf-access-client-id",
+    "cf-access-client-secret",
     "proxy-authorization",
     "baggage",
     "connection",
@@ -1763,6 +1773,9 @@ export async function runServe(
   execution: CommandExecution,
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
+  const uiAccess = createUiAccess({
+    config: await loadUiAccessConfig(config.root),
+  });
   const wrapperHost = input.host ?? "127.0.0.1";
   const wrapperPort = input.port ?? 2273;
 
@@ -1823,6 +1836,8 @@ export async function runServe(
     request: Request,
     config: LocalBaseConfig,
   ): GatewayCredential | undefined => {
+    const uiCredential = uiAccess.credential(request);
+    if (uiCredential) return uiCredential;
     const token = extractAuthToken(request, authMode);
     if (!token) return undefined;
     if (token === process.env.LOCALBASE_API_KEY) {
@@ -2287,6 +2302,12 @@ export async function runServe(
     requestId: string,
     startedAt: number,
   ): Promise<Response> => {
+    const uiResult = await uiAccess.handle(request);
+    if (uiResult.kind === "response") return uiResult.response;
+    if (uiResult.kind === "forward") {
+      request = uiResult.request;
+      pathname = uiResult.pathname;
+    }
     const playground = playgroundResponse(request, pathname);
     if (playground) return playground;
     const route = selectGatewayRoute(pathname);
@@ -2921,7 +2942,8 @@ export async function runServe(
         parent,
       );
       span.setAttribute("localbase.request_id", requestId);
-      if (method === "OPTIONS") {
+      const uiRequest = isUiAccessPath(pathname);
+      if (method === "OPTIONS" && !uiRequest) {
         span.setAttribute("http.response.status_code", 204);
         span.end();
         return new Response(null, {
@@ -2961,16 +2983,23 @@ export async function runServe(
       }
 
       const headers = new Headers(response.headers);
-      headers.set("Access-Control-Allow-Origin", "*");
-      headers.set(
-        "Access-Control-Allow-Methods",
-        "GET, POST, PUT, DELETE, OPTIONS",
-      );
+      if (!uiRequest) {
+        headers.set("Access-Control-Allow-Origin", "*");
+        headers.set(
+          "Access-Control-Allow-Methods",
+          "GET, POST, PUT, DELETE, OPTIONS",
+        );
+        headers.set(
+          "Access-Control-Allow-Headers",
+          "Content-Type, Authorization, x-api-key",
+        );
+      } else {
+        for (const name of [...headers.keys()]) {
+          if (name.startsWith("access-control-")) headers.delete(name);
+        }
+        headers.set("cache-control", "no-store");
+      }
       headers.set("x-localbase-request-id", requestId);
-      headers.set(
-        "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, x-api-key",
-      );
 
       const durationMs = performance.now() - start;
       if (!isEventStream(response)) {
