@@ -266,11 +266,19 @@ export async function runChat(options: {
   const history = [...options.messages];
   const result: ChatMessage[] = [];
   let count = 0;
-  const ids = new Set<string>();
+  const browserIds = new Set(
+    history.flatMap((message) =>
+      message.role === "assistant"
+        ? (message.tool_calls ?? []).map((call) => call.id)
+        : message.role === "tool"
+          ? [message.tool_call_id]
+          : [],
+    ),
+  );
   for (let round = 0; round < 4; round++) {
     signal.throwIfAborted();
     let content = "";
-    const calls = await streamText(
+    const rawCalls = await streamText(
       await api(
         "/v1/chat/completions",
         connection,
@@ -305,6 +313,15 @@ export async function runChat(options: {
       },
     );
     signal.throwIfAborted();
+    // Browser-owned IDs keep assistant calls, tool results, and artifacts paired across rounds.
+    const calls = rawCalls.map((call) => {
+      let id: string;
+      do {
+        id = crypto.randomUUID().replaceAll("-", "").slice(0, 9);
+      } while (browserIds.has(id));
+      browserIds.add(id);
+      return { ...call, id };
+    });
     const message: ChatMessage = {
       role: "assistant",
       content: content || null,
@@ -320,9 +337,6 @@ export async function runChat(options: {
         "Generation tool limit reached. Ask to continue in a new turn.",
       );
     for (const call of calls) {
-      if (ids.has(call.id))
-        throw new Error("Malformed tool call: duplicate ID.");
-      ids.add(call.id);
       count++;
       artifact({
         id: call.id,
