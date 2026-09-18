@@ -1,5 +1,19 @@
 import { expect, spyOn, test } from "bun:test";
-import { generationTools, generateVideo, runChat } from "./tools";
+import {
+  generationTools,
+  generateMedia,
+  generateVideo,
+  runChat,
+} from "./tools";
+import {
+  chatParameters,
+  defaultGenerationSettings,
+  embeddingParameters,
+  imageParameters,
+  speechParameters,
+  transcriptionParameters,
+  videoParameters,
+} from "./generation-settings";
 import {
   modelsSchema,
   SessionRequiredError,
@@ -160,6 +174,11 @@ test("releases chat body before media and retains tool protocol without media by
   });
   try {
     const protocol = await runChat({
+      settings: {
+        ...defaultGenerationSettings(),
+        llm: { temperature: 0, max_tokens: 100 },
+        image: { size: "1024x1024" },
+      },
       model: chat,
       models: [image],
       connection: { kind: "session" },
@@ -176,6 +195,15 @@ test("releases chat body before media and retains tool protocol without media by
       "tool",
       "assistant",
     ]);
+    expect(requests[0]?.body).toMatchObject({
+      temperature: 0,
+      max_tokens: 100,
+    });
+    expect(requests[2]?.body).toMatchObject({
+      temperature: 0,
+      max_tokens: 100,
+    });
+    expect(requests[1]?.body).toMatchObject({ size: "1024x1024" });
     expect(JSON.stringify(requests[2]?.body)).toContain("tool_call_id");
     const assistant = protocol[0];
     const result = protocol[1];
@@ -460,12 +488,23 @@ test.each(["video/mp4", "video/x-msvideo", ""])(
     const id = "00000000-0000-4000-8000-000000000000";
     const warnings: string[] = [];
     const mock = mockFetch(async (input, init) => {
-      if (String(input) === "/app/api/v1/videos")
+      if (String(input) === "/app/api/v1/videos") {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          model: "video",
+          prompt: "sun",
+          negative_prompt: "flicker",
+          width: 256,
+          height: 256,
+          frames: 9,
+          fps: 16,
+          input: { kind: "text" },
+        });
         return Response.json({
           id,
           status: "completed",
           content_type: mimeType,
         });
+      }
       if (String(input).endsWith("/content"))
         return new Response("mp4", {
           headers: { "content-type": mimeType },
@@ -475,6 +514,10 @@ test.each(["video/mp4", "video/x-msvideo", ""])(
     });
     try {
       const result = generateVideo({
+        settings: {
+          ...defaultGenerationSettings(),
+          video: { negative_prompt: "flicker" },
+        },
         model: video,
         connection: { kind: "session" },
         signal: new AbortController().signal,
@@ -496,3 +539,91 @@ test.each(["video/mp4", "video/x-msvideo", ""])(
     }
   },
 );
+
+test("generation defaults omit optional overrides and validate effective boundaries", () => {
+  const defaults = defaultGenerationSettings();
+  expect(chatParameters(defaults.llm)).toEqual({});
+  expect(imageParameters(defaults.image)).toEqual({});
+  expect(videoParameters(defaults.video)).toEqual({});
+  expect(
+    transcriptionParameters(fixture("whisper-small", "stt"), defaults.stt),
+  ).toEqual({});
+  expect(() => chatParameters({ temperature: 2.1 })).toThrow();
+  expect(() => chatParameters({ max_tokens: 1.5 })).toThrow();
+  const embedding = fixture("embed", "llm", {
+    kind: "embedding",
+    dimensions: { minimum: 32, maximum: 1024 },
+  });
+  expect(embeddingParameters(embedding, defaults.embedding)).toEqual({});
+  expect(embeddingParameters(embedding, { dimensions: 32 })).toEqual({
+    dimensions: 32,
+  });
+  expect(() => embeddingParameters(embedding, { dimensions: 1025 })).toThrow();
+  expect(
+    embeddingParameters(
+      fixture("fixed", "llm", {
+        kind: "embedding",
+        dimensions: { minimum: 4096, maximum: 4096 },
+      }),
+      { dimensions: 32 },
+    ),
+  ).toEqual({});
+  expect(
+    transcriptionParameters(fixture("whisper-small", "stt"), {
+      language: " es ",
+      prompt: "LocalBase",
+    }),
+  ).toEqual({ language: "es", prompt: "LocalBase" });
+  expect(
+    transcriptionParameters(fixture("whisper-base-en-q8_0", "stt"), {
+      language: "es",
+      prompt: "LocalBase",
+    }),
+  ).toEqual({ prompt: "LocalBase" });
+});
+
+test("speech tool uses the user's advertised voice and defaults require no model override", async () => {
+  const speech = fixture("speech", "tts", {
+    kind: "speech",
+    voice: {
+      requestValues: ["default", "harbor", "willow"],
+      defaultRequestValue: "default",
+    },
+  });
+  expect(speechParameters(speech, {})).toEqual({ voice: "default" });
+  expect(() => speechParameters(speech, { voice: "unknown" })).toThrow(
+    "not available",
+  );
+  const requests: unknown[] = [];
+  const urls: string[] = [];
+  const mock = mockFetch(async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)));
+    return new Response("wav", { headers: { "content-type": "audio/wav" } });
+  });
+  try {
+    await generateMedia({
+      model: speech,
+      name: "synthesize_speech",
+      arguments: JSON.stringify({ model: speech.id, input: "Hello" }),
+      settings: { ...defaultGenerationSettings(), tts: { voice: "willow" } },
+      connection: { kind: "session" },
+      signal: new AbortController().signal,
+      progress: () => {},
+      warning: () => {},
+      register: (url) => urls.push(url),
+    });
+    expect(requests).toEqual([
+      {
+        model: "speech",
+        input: "Hello",
+        voice: "willow",
+        response_format: "wav",
+      },
+    ]);
+    const schema = generationTools([speech], chat)[0]?.function.parameters;
+    expect(JSON.stringify(schema)).not.toContain('"voice"');
+  } finally {
+    mock.mockRestore();
+    urls.forEach((url) => URL.revokeObjectURL(url));
+  }
+});
