@@ -10,9 +10,11 @@ import {
   defaultGenerationSettings,
   embeddingParameters,
   imageParameters,
+  modelGenerationSettings,
   speechParameters,
   transcriptionParameters,
   videoParameters,
+  type GenerationPreferences,
 } from "./generation-settings";
 import {
   modelsSchema,
@@ -178,13 +180,23 @@ test.each([false, true])(
     });
     try {
       const protocol = await runChat({
-        settings: {
-          ...defaultGenerationSettings(),
-          llm: { temperature: 0, max_tokens: 100 },
-          image: { size: "1024x1024" },
+        preferences: {
+          [chat.id]: {
+            ...defaultGenerationSettings(),
+            llm: { temperature: 0, max_tokens: 100 },
+            image: { size: "256x256" },
+          },
+          "other-image": {
+            ...defaultGenerationSettings(),
+            image: { size: "512x512" },
+          },
+          [image.id]: {
+            ...defaultGenerationSettings(),
+            image: { size: "1024x1024" },
+          },
         },
         model: chat,
-        models: [image],
+        models: [fixture("other-image", "image"), image],
         connection: session
           ? { kind: "session" }
           : { kind: "api-key", key: "key" },
@@ -598,6 +610,150 @@ test("generation defaults omit optional overrides and validate effective boundar
       prompt: "LocalBase",
     }),
   ).toEqual({ prompt: "LocalBase" });
+});
+
+test("switching models isolates voice, dimensions and token overrides; resetting one preserves the others", () => {
+  const preferences: GenerationPreferences = {
+    "speech-one": { ...defaultGenerationSettings(), tts: { voice: "willow" } },
+    "embed-one": {
+      ...defaultGenerationSettings(),
+      embedding: { dimensions: 512 },
+    },
+    "chat-one": { ...defaultGenerationSettings(), llm: { max_tokens: 8192 } },
+  };
+  const speechTwo = fixture("speech-two", "tts", {
+    kind: "speech",
+    voice: { requestValues: ["default"], defaultRequestValue: "default" },
+  });
+  const embedTwo = fixture("embed-two", "llm", {
+    kind: "embedding",
+    dimensions: { minimum: 32, maximum: 64 },
+  });
+  expect(
+    speechParameters(
+      speechTwo,
+      modelGenerationSettings(preferences, speechTwo.id).tts,
+    ),
+  ).toEqual({ voice: "default" });
+  expect(
+    embeddingParameters(
+      embedTwo,
+      modelGenerationSettings(preferences, embedTwo.id).embedding,
+    ),
+  ).toEqual({});
+  expect(
+    chatParameters(modelGenerationSettings(preferences, "chat-two").llm),
+  ).toEqual({});
+  expect(modelGenerationSettings(preferences, "speech-one").tts).toEqual({
+    voice: "willow",
+  });
+  expect(modelGenerationSettings(preferences, "embed-one").embedding).toEqual({
+    dimensions: 512,
+  });
+  expect(modelGenerationSettings(preferences, "chat-one").llm).toEqual({
+    max_tokens: 8192,
+  });
+
+  const reset = { ...preferences, "speech-one": defaultGenerationSettings() };
+  expect(modelGenerationSettings(reset, "speech-one")).toEqual(
+    defaultGenerationSettings(),
+  );
+  expect(modelGenerationSettings(reset, "embed-one")).toBe(
+    preferences["embed-one"],
+  );
+  expect(modelGenerationSettings(reset, "chat-one")).toBe(
+    preferences["chat-one"],
+  );
+  const defaults = modelGenerationSettings({}, undefined);
+  defaults.llm.max_tokens = 10;
+  expect(modelGenerationSettings({}, "unconfigured").llm).toEqual({});
+  expect(modelGenerationSettings({}, "constructor")).toEqual(
+    defaultGenerationSettings(),
+  );
+});
+
+test("chat switches use only their own token limits and the chosen speech target's voice", async () => {
+  const first = fixture("speech-first", "tts", {
+    kind: "speech",
+    voice: {
+      requestValues: ["default", "willow"],
+      defaultRequestValue: "default",
+    },
+  });
+  const second = fixture("speech-second", "tts", {
+    kind: "speech",
+    voice: {
+      requestValues: ["default", "harbor"],
+      defaultRequestValue: "default",
+    },
+  });
+  const otherChat = fixture("other-chat", "llm");
+  const preferences: GenerationPreferences = {
+    [chat.id]: {
+      ...defaultGenerationSettings(),
+      llm: { max_tokens: 2048 },
+      tts: { voice: "wrong-model" },
+    },
+    [first.id]: { ...defaultGenerationSettings(), tts: { voice: "willow" } },
+    [second.id]: { ...defaultGenerationSettings(), tts: { voice: "harbor" } },
+  };
+  for (const [chatModel, target, voice] of [
+    [chat, first, "willow"],
+    [otherChat, second, "harbor"],
+    [chat, second, "harbor"],
+  ] as const) {
+    const requests: { path: string; body: Record<string, unknown> }[] = [];
+    const urls: string[] = [];
+    const mock = mockFetch(async (input, init) => {
+      requests.push({
+        path: String(input),
+        body: JSON.parse(String(init?.body)),
+      });
+      if (requests.length === 1)
+        return stream(
+          tool(
+            "synthesize_speech",
+            JSON.stringify({ model: target.id, input: "Hello" }),
+          ),
+        );
+      if (String(input).endsWith("/audio/speech"))
+        return new Response("wav", {
+          headers: { "content-type": "audio/wav" },
+        });
+      return stream({ content: "Done" });
+    });
+    try {
+      await runChat({
+        preferences,
+        model: chatModel,
+        models: [first, second],
+        connection: { kind: "session" },
+        signal: new AbortController().signal,
+        messages: [{ role: "user", content: "Say hello" }],
+        toolsEnabled: true,
+        append: () => {},
+        artifact: () => {},
+        warning: () => {},
+        register: (url) => urls.push(url),
+      });
+      expect(requests).toHaveLength(3);
+      for (const request of [requests[0], requests[2]]) {
+        expect(request?.body.model).toBe(chatModel.id);
+        if (chatModel.id === chat.id)
+          expect(request?.body.max_tokens).toBe(2048);
+        else expect(request?.body).not.toHaveProperty("max_tokens");
+      }
+      expect(requests[1]?.body).toEqual({
+        model: target.id,
+        input: "Hello",
+        voice,
+        response_format: "wav",
+      });
+    } finally {
+      mock.mockRestore();
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    }
+  }
 });
 
 test("speech tool uses the user's advertised voice and defaults require no model override", async () => {

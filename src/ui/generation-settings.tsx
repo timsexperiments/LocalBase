@@ -14,6 +14,15 @@ export type GenerationSettings = {
 export function defaultGenerationSettings(): GenerationSettings {
   return { llm: {}, image: {}, video: {}, tts: {}, stt: {}, embedding: {} };
 }
+export type GenerationPreferences = Record<string, GenerationSettings>;
+export function modelGenerationSettings(
+  preferences: GenerationPreferences,
+  modelId: string | undefined,
+): GenerationSettings {
+  return modelId !== undefined && Object.hasOwn(preferences, modelId)
+    ? preferences[modelId]
+    : defaultGenerationSettings();
+}
 
 export function chatParameters(settings: GenerationSettings["llm"]) {
   return z
@@ -136,29 +145,17 @@ function NumberField({
 
 export function GenerationSettingsFields({
   mode,
-  models,
+  model,
   settings,
   onChange,
 }: {
   mode: Mode;
-  models: Model[];
+  model: Model;
   settings: GenerationSettings;
   onChange: (settings: GenerationSettings) => void;
 }) {
-  const model = models[0];
-  const cap = model?.catalog.capabilities;
-  const voices =
-    cap?.kind === "speech"
-      ? cap.voice.requestValues.filter((voice) =>
-          models.every(
-            (candidate) =>
-              candidate.catalog.capabilities?.kind === "speech" &&
-              candidate.catalog.capabilities.voice.requestValues.includes(
-                voice,
-              ),
-          ),
-        )
-      : [];
+  const cap = model.catalog.capabilities;
+  const voices = cap?.kind === "speech" ? cap.voice.requestValues : [];
   return (
     <section className="generation-settings-section">
       {mode === "llm" && (
@@ -215,22 +212,14 @@ export function GenerationSettingsFields({
       )}
       {mode === "video" && (
         <>
-          {models.map((candidate) => {
-            const video = candidate.catalog.capabilities;
-            return video?.kind === "video" ? (
-              <p className="generation-settings-hint" key={candidate.id}>
-                {candidate.id}: {video.width} × {video.height}, {video.frames}{" "}
-                frames at {video.fps} fps,{" "}
-                {(video.frames / video.fps).toFixed(2)} seconds. Size, duration
-                and seed are fixed by the qualified profile.
-              </p>
-            ) : null;
-          })}
-          {models.some(
-            (candidate) =>
-              candidate.catalog.capabilities?.kind === "video" &&
-              candidate.catalog.capabilities.mode === "t2v",
-          ) && (
+          {cap?.kind === "video" && (
+            <p className="generation-settings-hint">
+              {cap.width} × {cap.height}, {cap.frames} frames at {cap.fps} fps,{" "}
+              {(cap.frames / cap.fps).toFixed(2)} seconds. Size, duration and
+              seed are fixed by the qualified profile.
+            </p>
+          )}
+          {cap?.kind === "video" && cap.mode === "t2v" && (
             <Field label="Negative prompt">
               <textarea
                 className="generation-settings-control"
@@ -253,8 +242,8 @@ export function GenerationSettingsFields({
           {settings.tts.voice &&
             !voices.some((voice) => voice === settings.tts.voice) && (
               <p className="generation-settings-hint" role="alert">
-                Selected voice {settings.tts.voice} is not shared by these
-                models. Reset to model defaults before generating.
+                Selected voice {settings.tts.voice} is not available for this
+                model. Reset to model defaults before generating.
               </p>
             )}
           {voices.length > 1 ? (
@@ -347,7 +336,7 @@ export function GenerationSettingsFields({
       <button
         type="button"
         className="generation-settings-reset"
-        onClick={() => onChange({ ...settings, [mode]: {} })}
+        onClick={() => onChange(defaultGenerationSettings())}
       >
         Reset to model defaults
       </button>
