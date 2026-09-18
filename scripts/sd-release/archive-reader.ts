@@ -31,7 +31,7 @@ async function readTar(bytes: Uint8Array): Promise<ArchiveEntry[]> {
             }
             entries.push({
               name: header.name,
-              type: header.type,
+              type: header.type ?? undefined,
               bytes: entry,
             });
             next();
