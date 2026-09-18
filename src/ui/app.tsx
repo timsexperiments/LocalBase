@@ -728,7 +728,7 @@ function App() {
             className="generation-settings-button"
             disabled={busy || !model}
             onClick={() => setDrawer("generation")}
-            aria-label="Generation settings"
+            aria-label="Controls: generation settings"
           >
             Controls
           </button>
@@ -894,7 +894,12 @@ function App() {
             </p>
           )}
           {active.mode === "image" && (
-            <p className="notice">PNG · 512 × 512 · one image per request</p>
+            <p className="notice">
+              PNG ·{" "}
+              {generationSettings.image.size?.replace("x", " × ") ??
+                "Model default size"}{" "}
+              · one image per request
+            </p>
           )}
           {error && (
             <div className="error" role="alert">
