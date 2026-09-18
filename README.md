@@ -91,6 +91,18 @@ curl http://127.0.0.1:2273/v1/chat/completions \
 
 Use `local-base status` to inspect the service and `local-base logs --follow` to stream logs.
 
+### Browser playground
+
+Open `http://127.0.0.1:2273/app`, or `/app` on your gateway's existing HTTPS origin. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
+
+Model Lab calls models directly without generation tools. It supports chat, images, speech, audio-file transcription, text-to-video, and embeddings. Voice choices, embedding dimension bounds, and the fixed video profile come from model metadata. Video produces an AVI download; browser playback is not supported in the playground. Speech-to-video portrait and audio inputs are not supported in Model Lab yet.
+
+Enter your gateway API key in Settings; it stays in page memory and requests stay on the gateway origin. Stop aborts inference and media requests. Video submission is allowed to return its job ID before cancellation so the browser can cancel and delete the job with the same owner credential. Cleanup failures appear as warnings without discarding completed downloads. The shell is public, while model metadata and inference keep their existing authentication requirements. Runtime admission and resource limits remain enforced by the gateway.
+
+History lasts for the open page by default. Settings can opt into device-local text history; keys, generated media, and tool protocol messages are never stored. The UI uses no service worker.
+
+`bun install`, `bun run db:prepare`, and release builds prepare the browser assets. After UI edits, run `bun run db:prepare` for source execution or `bun run build` for a standalone CLI. Compiled binaries embed the assets and need no checkout or runtime build.
+
 ## Structured outputs
 
 Chat completions accept OpenAI-compatible `response_format.type: "json_schema"` requests. LocalBase compiles the schema before starting a model and forwards the response format unchanged to the managed llama runtime. Schemas must use a root object, require every declared property, set `additionalProperties: false`, and fit within 10 nesting levels, 5,000 total properties, 1,000 local references, and 256 KiB. LocalBase also limits each object to 1,000 properties as a synchronous compilation resource bound; this is distinct from OpenAI's overall property limit.
