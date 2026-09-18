@@ -14,6 +14,9 @@ import {
 
 import { qualifiedVideoInput } from "./domains/runtime/video/gateway-contract";
 
+import { resolveImageLaunchPlan } from "./domains/runtime/launch-plan";
+import { buildSdImageServerArgs } from "./domains/runtime/launcher";
+
 const checksum = "a".repeat(64);
 
 const verifiedContextWindows = new Map<string, number>([
@@ -1131,4 +1134,72 @@ describe("catalog-only video candidates", () => {
       expect(byId(id)?.commercialStatus).toBe("conditional");
     }
   });
+});
+
+describe("FLUX Klein image additions", () => {
+  test.each([
+    {
+      id: "flux2-klein-4b-q8_0",
+      bytes: 7134122044,
+      memoryGb: 14,
+      encoder: "Qwen3-4B-Q4_K_M.gguf",
+      commercialStatus: "open",
+    },
+    {
+      id: "flux2-klein-9b-q4_0",
+      bytes: 10980203836,
+      memoryGb: 20,
+      encoder: "Qwen3-8B-Q4_K_M.gguf",
+      commercialStatus: "conditional",
+    },
+  ])(
+    "resolves $id into a complete image launch plan",
+    ({ id, bytes, memoryGb, encoder, commercialStatus }) => {
+      const entry = byId(id);
+      if (!entry?.imageRuntime) throw new Error(`Missing image profile: ${id}`);
+      const artifactBytes = entry.artifacts.reduce(
+        (total, artifact) => total + (artifact.expectedSizeBytes ?? 0),
+        0,
+      );
+      expect(artifactBytes).toBe(bytes);
+      expect(entry.commercialStatus).toBe(commercialStatus);
+      expect(entry.features).toEqual(["text-to-image"]);
+      const plan = resolveImageLaunchPlan({
+        runtimeId: `image:${id}`,
+        root: "/localbase",
+        modelsDirectory: "/models/image",
+        modelId: id,
+        modelFile: entry.imageRuntime.artifacts.diffusionModel,
+        host: "127.0.0.1",
+        port: 8083,
+        modelRequirementGb: entry.minVramGb,
+        artifactBytes,
+        imageRuntime: entry.imageRuntime,
+      });
+      expect(buildSdImageServerArgs(plan)).toEqual([
+        "--diffusion-model",
+        join("/models/image", entry.imageRuntime.artifacts.diffusionModel),
+        "--vae",
+        "/models/image/flux2-vae.safetensors",
+        "--llm",
+        join("/models/image", encoder),
+        "--sampling-method",
+        "euler",
+        "--steps",
+        "4",
+        "--cfg-scale",
+        "1",
+        "--listen-ip",
+        "127.0.0.1",
+        "--listen-port",
+        "8083",
+      ]);
+      expect(plan.memoryDemand).toEqual({
+        unifiedBytes: (memoryGb + 0.5) * 1024 ** 3,
+        hostBytes: bytes + 0.5 * 1024 ** 3,
+        acceleratorBytes: memoryGb * 1024 ** 3,
+        confidence: "estimated",
+      });
+    },
+  );
 });
