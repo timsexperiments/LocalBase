@@ -44,7 +44,11 @@ export function modelIdSchema(kind: ModelKind) {
       {
         message: `must name a catalog ${kind} model with compatible modalities`,
       },
-    );
+    )
+    .refine((id) => !byId(id)?.videoCatalogOnly, {
+      message:
+        "catalog-only models cannot be selected or active because LocalBase inference is unavailable",
+    });
 }
 
 export function selectedModelsSchema(kind: ModelKind, requireOne: boolean) {

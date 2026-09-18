@@ -12,6 +12,8 @@ import {
   resolveCatalogInstallation,
 } from "./catalog";
 
+import { qualifiedVideoInput } from "./domains/runtime/video/gateway-contract";
+
 const checksum = "a".repeat(64);
 
 const verifiedContextWindows = new Map<string, number>([
@@ -1054,6 +1056,79 @@ describe("catalog artifact validation", () => {
         catalogSchema.safeParse([model([{ ...artifact, source, sourcePath }])])
           .success,
       ).toBe(false);
+    }
+  });
+});
+
+describe("catalog-only video candidates", () => {
+  test.each([
+    "wan2.2-ti2v-5b-q6_k",
+    "wan2.2-t2v-a14b-q4_k_m",
+    "ltx-2.3-22b-distilled-1.1-q4_k_m",
+    "hunyuanvideo-1.5-t2v-480p-q4_k_m",
+  ])("lists %s without admitting native generation", (id) => {
+    const entry = byId(id);
+    if (!entry) throw new Error(`Missing catalog candidate: ${id}`);
+    expect(entry.videoCatalogOnly).toBe(true);
+    expect(entry.videoRuntime).toBeUndefined();
+    expect(entry.features).toEqual(["catalog-only", "diffusion-weights-only"]);
+    expect(entry.storageGb).toBeCloseTo(
+      entry.artifacts.reduce(
+        (bytes, artifact) => bytes + (artifact.expectedSizeBytes ?? 0),
+        0,
+      ) / 1e9,
+      2,
+    );
+    expect(
+      qualifiedVideoInput(
+        {
+          model: id,
+          prompt: "A bird in flight",
+          width: 480,
+          height: 832,
+          frames: 81,
+          fps: 16,
+          input: { kind: "text" },
+        },
+        entry,
+      ),
+    ).toBeUndefined();
+    expect(
+      catalogSchema.safeParse([{ ...entry, videoCatalogOnly: undefined }])
+        .success,
+    ).toBe(false);
+    expect(catalogSchema.safeParse([{ ...entry, kind: "image" }]).success).toBe(
+      false,
+    );
+    const runnable = byId("wan2.1-t2v-1.3b-q8_0");
+    if (!runnable?.videoRuntime)
+      throw new Error("Missing runnable video fixture");
+    expect(
+      catalogSchema.safeParse([{ ...runnable, videoCatalogOnly: true }])
+        .success,
+    ).toBe(false);
+    for (const artifact of entry.artifacts) {
+      expect(artifactDownloadUrl(entry, artifact)).toContain(
+        `/resolve/${entry.repositoryRevision}/`,
+      );
+    }
+  });
+
+  test("includes both Wan experts and distinguishes conditional licenses", () => {
+    expect(
+      byId("wan2.2-t2v-a14b-q4_k_m")?.artifacts.map(({ filename }) => filename),
+    ).toEqual([
+      "wan2.2_t2v_high_noise_14B_Q4_K_M.gguf",
+      "wan2.2_t2v_low_noise_14B_Q4_K_M.gguf",
+    ]);
+    for (const id of ["wan2.2-ti2v-5b-q6_k", "wan2.2-t2v-a14b-q4_k_m"]) {
+      expect(byId(id)?.commercialStatus).toBe("open");
+    }
+    for (const id of [
+      "ltx-2.3-22b-distilled-1.1-q4_k_m",
+      "hunyuanvideo-1.5-t2v-480p-q4_k_m",
+    ]) {
+      expect(byId(id)?.commercialStatus).toBe("conditional");
     }
   });
 });
