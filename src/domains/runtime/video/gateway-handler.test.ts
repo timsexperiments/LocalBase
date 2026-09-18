@@ -9,6 +9,7 @@ import {
   saveConfig,
 } from "../../../manager";
 import { DatabaseSession } from "../../../db/client";
+import { RuntimeMemoryAdmissionError } from "../memory-controller";
 import {
   handleVideoGatewayRequest,
   type VideoGatewayHandlerDependencies,
@@ -373,91 +374,126 @@ test("does not create a video job for a request aborted before acceptance", asyn
   }
 });
 
-test("reserves one accepted video job while admission warms and clears it after rejection", async () => {
-  const root = mkdtempSync(join(tmpdir(), "localbase-video-admission-"));
-  const credentials = createCredentials(root);
-  const admissionEntered = deferred<void>();
-  const rejectAdmission = deferred<never>();
-  const firstTerminal = deferred<void>();
-  let admissions = 0;
-  const jobs = new VideoJobManager({
-    backend: {
-      async submitVideo() {
-        return { id: "native-after-admission", status: "queued" };
-      },
-      async getJob() {
-        return { id: "native-after-admission", status: "cancelled" };
-      },
-    },
-    temporaryDirectory: root,
-    onContainmentFailure: () => {},
-  });
-  const admissionProvider: VideoModelAdmissionProvider = {
-    admit: async () => {
-      admissions += 1;
-      if (admissions === 1) {
-        admissionEntered.resolve();
-        return await rejectAdmission.promise;
-      }
-      return {
-        kind: "admitted",
-        admission: {
-          ready: Promise.resolve(),
-          release: () => {},
-          cancel: () => {},
-          supervisor: { kill: async () => {} },
+test.each(["acquire", "ready"])(
+  "preserves memory failure during %s and clears the accepted job slot",
+  async (phase) => {
+    const root = mkdtempSync(join(tmpdir(), "localbase-video-admission-"));
+    const credentials = createCredentials(root);
+    const admissionEntered = deferred<void>();
+    const rejectAdmission = deferred<never>();
+    const firstTerminal = deferred<void>();
+    let admissions = 0;
+    let submissions = 0;
+    let released = 0;
+    const jobs = new VideoJobManager({
+      backend: {
+        async submitVideo() {
+          submissions++;
+          return { id: "native-after-admission", status: "queued" };
         },
-      };
-    },
-  };
+        async getJob() {
+          return { id: "native-after-admission", status: "cancelled" };
+        },
+      },
+      temporaryDirectory: root,
+      onContainmentFailure: () => {},
+    });
+    const admissionProvider: VideoModelAdmissionProvider = {
+      admit: async () => {
+        admissions += 1;
+        if (admissions === 1) {
+          admissionEntered.resolve();
+          if (phase === "acquire") return await rejectAdmission.promise;
+        }
+        return {
+          kind: "admitted",
+          admission: {
+            ready:
+              admissions === 1 ? rejectAdmission.promise : Promise.resolve(),
+            release: () => {
+              released++;
+            },
+            cancel: () => {},
+            supervisor: { kill: async () => {} },
+          },
+        };
+      },
+    };
 
-  try {
-    const first = await handleVideoGatewayRequest(
-      endpointDependencies({
-        request: createRequest("Wait for admission."),
-        pathname: "/v1/videos",
-        route: "videoCreate",
-        ownerId: credentials.firstOwnerId,
-        jobs,
-        admissionProvider,
-        onTerminal: () => firstTerminal.resolve(),
-      }),
-    );
-    expect(first.status).toBe(202);
-    await admissionEntered.promise;
+    try {
+      const first = await handleVideoGatewayRequest(
+        endpointDependencies({
+          request: createRequest("Wait for admission."),
+          pathname: "/v1/videos",
+          route: "videoCreate",
+          ownerId: credentials.firstOwnerId,
+          jobs,
+          admissionProvider,
+          onTerminal: () => firstTerminal.resolve(),
+        }),
+      );
+      expect(first.status).toBe(202);
+      const created = videoJobResponseSchema.parse(await first.json());
+      await admissionEntered.promise;
 
-    const busy = await handleVideoGatewayRequest(
-      endpointDependencies({
-        request: createRequest("Do not queue behind admission."),
-        pathname: "/v1/videos",
-        route: "videoCreate",
-        ownerId: credentials.firstOwnerId,
-        jobs,
-        admissionProvider,
-      }),
-    );
-    expect(busy.status).toBe(429);
-    expect(admissions).toBe(1);
+      const busy = await handleVideoGatewayRequest(
+        endpointDependencies({
+          request: createRequest("Do not queue behind admission."),
+          pathname: "/v1/videos",
+          route: "videoCreate",
+          ownerId: credentials.firstOwnerId,
+          jobs,
+          admissionProvider,
+        }),
+      );
+      expect(busy.status).toBe(429);
+      expect(admissions).toBe(1);
 
-    rejectAdmission.reject(new Error("admission rejected"));
-    await firstTerminal.promise;
+      rejectAdmission.reject(
+        new RuntimeMemoryAdmissionError({
+          kind: "rejected",
+          reason: "system-memory",
+          poolId: "system",
+        }),
+      );
+      await firstTerminal.promise;
+      expect(submissions).toBe(0);
+      expect(released).toBe(phase === "ready" ? 1 : 0);
+      const pathname = `/v1/videos/${created.id}`;
+      const polled = await handleVideoGatewayRequest(
+        endpointDependencies({
+          request: new Request(`http://localhost${pathname}`),
+          pathname,
+          route: "videoStatus",
+          ownerId: credentials.firstOwnerId,
+          jobs,
+          admissionProvider,
+        }),
+      );
+      expect(polled.status).toBe(200);
+      expect(videoJobResponseSchema.parse(await polled.json())).toMatchObject({
+        status: "failed",
+        error: { code: "insufficient_memory" },
+      });
 
-    const recovered = await handleVideoGatewayRequest(
-      endpointDependencies({
-        request: createRequest("Accept after admission rejection."),
-        pathname: "/v1/videos",
-        route: "videoCreate",
-        ownerId: credentials.firstOwnerId,
-        jobs,
-        admissionProvider,
-      }),
-    );
-    expect(recovered.status).toBe(202);
-  } finally {
-    credentials.database.close();
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+      const recovered = await handleVideoGatewayRequest(
+        endpointDependencies({
+          request: createRequest("Accept after admission rejection."),
+          pathname: "/v1/videos",
+          route: "videoCreate",
+          ownerId: credentials.firstOwnerId,
+          jobs,
+          admissionProvider,
+        }),
+      );
+      expect(recovered.status).toBe(202);
+    } finally {
+      await jobs.shutdown();
+      credentials.database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("cancels a generating video through the route only after supervised stop", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-cancel-route-"));
