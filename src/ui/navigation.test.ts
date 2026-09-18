@@ -112,9 +112,9 @@ describe("playground navigation boundary", () => {
     }
   });
 
-  test("navigation contains no title, prompt, message content or credential fragment", () => {
+  test("canonical navigation drops unknown query fields, credentials and content", () => {
     const url = navigationUrl(
-      "https://local.test/app?keep=a&keep=b#key=secret",
+      "https://local.test/app?keep=a&keep=b&key=secret&token=secret&authorization=secret&prompt=Private&history=Private#key=secret",
       conversationNavigation(saved, "generation"),
     );
     expect(url).not.toContain("secret");
@@ -122,7 +122,10 @@ describe("playground navigation boundary", () => {
     expect(url).not.toContain("message");
     expect(
       new URL(url, "https://local.test").searchParams.getAll("keep"),
-    ).toEqual(["a", "b"]);
+    ).toEqual([]);
+    expect([...new URL(url, "https://local.test").searchParams.keys()]).toEqual(
+      ["view", "mode", "model", "panel", "conversation"],
+    );
   });
 
   test("restores requested model on Back even after the local conversation changed models", () => {
@@ -162,7 +165,7 @@ describe("History API navigation", () => {
       location,
       history,
     });
-    expect(location.searchParams.get("keep")).toBe("yes");
+    expect(location.searchParams.has("keep")).toBe(false);
     expect(writes.every((url) => !url.includes("secret"))).toBe(true);
   });
 
