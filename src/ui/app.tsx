@@ -5,7 +5,9 @@ import { z } from "zod";
 import { generationTools, generateVideo, runChat, toolModels } from "./tools";
 import {
   GenerationSettingsFields,
-  defaultGenerationSettings,
+  modelGenerationSettings,
+  type GenerationPreferences,
+  type GenerationSettings,
   embeddingParameters,
   imageParameters,
   speechParameters,
@@ -224,9 +226,8 @@ function App() {
   const [persistent, setPersistent] = useState(initial.persistent);
   const [draft, setDraft] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [generationSettings, setGenerationSettings] = useState(
-    defaultGenerationSettings,
-  );
+  const [generationPreferences, setGenerationPreferences] =
+    useState<GenerationPreferences>({});
   const [error, setError] = useState(initial.error);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -239,6 +240,16 @@ function App() {
   const page = active?.workspace ?? "chat";
   const candidates = availableModels(models, active?.mode ?? "llm");
   const model = candidates.find((m) => m.id === active?.model) ?? candidates[0];
+  const generationSettings = modelGenerationSettings(
+    generationPreferences,
+    model?.id,
+  );
+  function setModelSettings(modelId: string, settings: GenerationSettings) {
+    setGenerationPreferences((preferences) => ({
+      ...preferences,
+      [modelId]: settings,
+    }));
+  }
   const capabilities = model?.catalog.capabilities;
   const unsupportedVideo =
     active?.mode === "video" &&
@@ -455,7 +466,7 @@ function App() {
               m.protocol ?? (m.text ? [{ role: m.role, content: m.text }] : []),
           );
           const protocol = await runChat({
-            settings: generationSettings,
+            preferences: generationPreferences,
             model,
             models,
             connection: credential,
@@ -1031,18 +1042,29 @@ function App() {
           {drawer === "generation" ? (
             <div className="generation-settings">
               <p className="generation-settings-hint">
-                Shared by chat and Model Lab for this session. Blank values use
-                model defaults.
+                Saved per model for this session, shared by chat and Model Lab.
+                Blank values use model defaults.
               </p>
-              <GenerationSettingsFields
-                mode={active.mode}
-                models={model ? [model] : []}
-                settings={generationSettings}
-                onChange={setGenerationSettings}
-              />
+              {model ? (
+                <div>
+                  <h3>{model.catalog.name}</h3>
+                  <GenerationSettingsFields
+                    mode={active.mode}
+                    model={model}
+                    settings={generationSettings}
+                    onChange={(settings) =>
+                      setModelSettings(model.id, settings)
+                    }
+                  />
+                </div>
+              ) : (
+                <p className="generation-settings-hint">
+                  Choose an installed model to adjust its controls.
+                </p>
+              )}
               {page === "chat" &&
                 model &&
-                generationTools(models, model).map((tool) => {
+                generationTools(models, model).flatMap((tool) => {
                   const name = tool.function.name;
                   const mode =
                     name === "generate_image"
@@ -1050,17 +1072,24 @@ function App() {
                       : name === "generate_video"
                         ? "video"
                         : "tts";
-                  return (
-                    <div key={name}>
-                      <h3>{labels[mode]} tools</h3>
+                  return toolModels(models, name).map((target) => (
+                    <div key={target.id}>
+                      <h3>
+                        {target.catalog.name} · {labels[mode]}
+                      </h3>
                       <GenerationSettingsFields
                         mode={mode}
-                        models={toolModels(models, name)}
-                        settings={generationSettings}
-                        onChange={setGenerationSettings}
+                        model={target}
+                        settings={modelGenerationSettings(
+                          generationPreferences,
+                          target.id,
+                        )}
+                        onChange={(settings) =>
+                          setModelSettings(target.id, settings)
+                        }
                       />
                     </div>
-                  );
+                  ));
                 })}
             </div>
           ) : drawer === "settings" ? (

@@ -174,13 +174,23 @@ test("releases chat body before media and retains tool protocol without media by
   });
   try {
     const protocol = await runChat({
-      settings: {
-        ...defaultGenerationSettings(),
-        llm: { temperature: 0, max_tokens: 100 },
-        image: { size: "1024x1024" },
+      preferences: {
+        [chat.id]: {
+          ...defaultGenerationSettings(),
+          llm: { temperature: 0, max_tokens: 100 },
+          image: { size: "256x256" },
+        },
+        "other-image": {
+          ...defaultGenerationSettings(),
+          image: { size: "512x512" },
+        },
+        [image.id]: {
+          ...defaultGenerationSettings(),
+          image: { size: "1024x1024" },
+        },
       },
       model: chat,
-      models: [image],
+      models: [fixture("other-image", "image"), image],
       connection: { kind: "session" },
       signal: new AbortController().signal,
       messages: [{ role: "user", content: "Draw the sun" }],
