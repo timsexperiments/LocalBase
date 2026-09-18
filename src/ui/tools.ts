@@ -4,9 +4,11 @@ import {
   chatParameters,
   defaultGenerationSettings,
   imageParameters,
+  modelGenerationSettings,
   speechParameters,
   videoParameters,
   type GenerationSettings,
+  type GenerationPreferences,
 } from "./generation-settings";
 import {
   api,
@@ -302,7 +304,7 @@ export async function generateMedia(
   return { kind: "audio", url };
 }
 export async function runChat(options: {
-  settings?: GenerationSettings;
+  preferences?: GenerationPreferences;
   model: Model;
   models: Model[];
   connection: Connection;
@@ -340,7 +342,7 @@ export async function runChat(options: {
             model: model.id,
             stream: true,
             ...chatParameters(
-              (options.settings ?? defaultGenerationSettings()).llm,
+              modelGenerationSettings(options.preferences ?? {}, model.id).llm,
             ),
             messages: tools.length
               ? [
@@ -418,6 +420,10 @@ export async function runChat(options: {
           throw new Error("Tool model is not selected and installed.");
         const media = await generateMedia({
           ...options,
+          settings: modelGenerationSettings(
+            options.preferences ?? {},
+            target.id,
+          ),
           name,
           arguments: call.function.arguments,
           model: target,
