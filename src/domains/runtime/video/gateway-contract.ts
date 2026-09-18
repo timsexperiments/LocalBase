@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ModelSpec } from "../../../catalog";
+import { RuntimeMemoryAdmissionError } from "../memory-controller";
 import {
   videoConditioningInputSchema,
   videoGenerationInputSchema,
@@ -45,7 +46,11 @@ export const videoJobResponseSchema = z.discriminatedUnion("status", [
   videoJobResponseBaseSchema.extend({
     status: z.literal("failed"),
     completed_at: z.number().int().nonnegative(),
-    error: z.object({ code: z.literal("video_generation_failed") }).strict(),
+    error: z
+      .object({
+        code: z.enum(["insufficient_memory", "video_generation_failed"]),
+      })
+      .strict(),
   }),
   videoJobResponseBaseSchema.extend({
     status: z.literal("cancelled"),
@@ -141,7 +146,12 @@ export function projectVideoJob(job: VideoJob): VideoJobResponse {
         status: job.state,
         created_at: unixSeconds(job.createdAtMs),
         completed_at: unixSeconds(job.terminalAtMs),
-        error: { code: "video_generation_failed" },
+        error: {
+          code:
+            job.failure instanceof RuntimeMemoryAdmissionError
+              ? "insufficient_memory"
+              : "video_generation_failed",
+        },
       });
     case "cancelled":
       return videoJobResponseSchema.parse({

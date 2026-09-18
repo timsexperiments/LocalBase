@@ -59,6 +59,66 @@ const video = fixture("video", "video", {
   jobDeadlineMs: 5000,
   outputFormats: ["mp4"],
 });
+
+test.each([
+  { polled: false, code: "insufficient_memory" },
+  { polled: true, code: "insufficient_memory" },
+  { polled: false, code: "video_generation_failed" },
+  { polled: true, code: "video_generation_failed" },
+])(
+  "video $code on polled=$polled is safe, actionable, and cleaned up",
+  async ({ polled, code }) => {
+    const id = "00000000-0000-4000-8000-000000000000";
+    const path = `/app/api/v1/videos/${id}`;
+    const requests: string[] = [];
+    const warnings: string[] = [];
+    const sentinel = "private backend details";
+    const failure = {
+      id,
+      status: "failed",
+      error: { code, message: sentinel, diagnostics: sentinel },
+    };
+    const mock = mockFetch(async (input, init) => {
+      requests.push(`${init?.method ?? "GET"} ${String(input)}`);
+      expect(new Headers(init?.headers).get("x-localbase-ui")).toBe("1");
+      if (String(input) === "/app/api/v1/videos")
+        return Response.json(polled ? { id, status: "queued" } : failure);
+      if (String(input) === path && init?.method !== "DELETE")
+        return Response.json(failure);
+      if (String(input).endsWith("/cancel"))
+        return new Response(null, { status: 503 });
+      return new Response(null, { status: 204 });
+    });
+    try {
+      const error = await generateVideo({
+        model: video,
+        connection: { kind: "session" },
+        signal: new AbortController().signal,
+        prompt: "sun",
+        progress: () => {},
+        warning: (message) => warnings.push(message),
+      }).catch((error: unknown) => error);
+      expect(error).toBeInstanceOf(Error);
+      if (!(error instanceof Error)) throw new Error("Expected video failure");
+      expect(error.message).toBe(
+        code === "insufficient_memory"
+          ? "Video could not start because there isn't enough available memory within the safety limits. Free memory in other applications or choose a smaller video model, then retry."
+          : "Video failed. Check gateway diagnostics.",
+      );
+      expect(error.message).not.toContain(sentinel);
+      expect(requests).toEqual([
+        "POST /app/api/v1/videos",
+        ...(polled ? [`GET ${path}`] : []),
+        `POST ${path}/cancel`,
+        `DELETE ${path}`,
+      ]);
+      expect(warnings.join()).toContain("cancellation");
+      expect(warnings.join()).not.toContain(sentinel);
+    } finally {
+      mock.mockRestore();
+    }
+  },
+);
 function stream(delta: unknown, onCancel = () => {}) {
   return new Response(
     new ReadableStream({
