@@ -36,6 +36,14 @@ import {
   type ChatMessage,
 } from "./client";
 import "./style.css";
+import {
+  conversationNavigation,
+  navigationUrl,
+  readNavigation,
+  resolveNavigation,
+  writeNavigation,
+  type Navigation,
+} from "./navigation";
 
 const labels: Record<Mode, string> = {
   llm: "Chat",
@@ -50,6 +58,7 @@ const starters = [
   "Help me write a first draft",
   "Think through an idea",
 ];
+const navigationAbortReason = Symbol("navigation");
 function fresh(
   mode: Mode = "llm",
   workspace: Conversation["workspace"] = "chat",
@@ -158,7 +167,10 @@ function Drawer({
     <dialog
       ref={ref}
       aria-labelledby="drawer-title"
-      onCancel={close}
+      onCancel={(event) => {
+        event.preventDefault();
+        close();
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
@@ -189,18 +201,34 @@ function App() {
         : !credential
           ? "Enter a gateway API key in Settings."
           : connection;
-  const [drawer, setDrawer] = useState<
-    "settings" | "models" | "history" | "generation" | null
-  >(null);
-  const [conversations, setConversations] = useState<Conversation[]>([fresh()]);
-  const [activeId, setActiveId] = useState("");
-  const [persistent, setPersistent] = useState(false);
+  const [initial] = useState(() => {
+    let saved: Conversation[] | null = null;
+    let error = "";
+    try {
+      saved = readHistory();
+    } catch {
+      error = "Saved history could not be read. You can clear it in Settings.";
+    }
+    return {
+      ...resolveNavigation({
+        navigation: readNavigation(location.search),
+        conversations: saved ?? [],
+        fresh,
+      }),
+      persistent: saved !== null,
+      error,
+    };
+  });
+  const [drawer, setPanel] = useState(initial.navigation.panel);
+  const [conversations, setConversations] = useState(initial.conversations);
+  const [activeId, setActiveId] = useState(initial.conversation.id);
+  const [persistent, setPersistent] = useState(initial.persistent);
   const [draft, setDraft] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [generationSettings, setGenerationSettings] = useState(
     defaultGenerationSettings,
   );
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initial.error);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | null>(null);
@@ -221,6 +249,14 @@ function App() {
     setConversations((items) =>
       items.map((c) => (c.id === id ? change(c) : c)),
     );
+  function setDrawer(panel: Navigation["panel"]) {
+    if (!active) return;
+    setPanel(panel);
+    writeNavigation(
+      conversationNavigation(active, panel, model?.id ?? active.model),
+      "push",
+    );
+  }
   async function checkSession(signal?: AbortSignal) {
     try {
       const verified = await readSession(signal);
@@ -285,22 +321,46 @@ function App() {
     };
   }, [session, key]);
   useEffect(() => {
-    try {
-      const saved = readHistory();
-      if (saved !== null) {
-        setPersistent(true);
-        if (saved.length) setConversations(saved);
-      }
-    } catch {
-      setError(
-        "Saved history could not be read. You can clear it in Settings.",
-      );
-    }
+    writeNavigation(initial.navigation, "replace");
     return () => {
       controller.current?.abort();
       mediaUrls.current.forEach((url) => URL.revokeObjectURL(url));
     };
   }, []);
+  useEffect(() => {
+    const restore = () => {
+      const restored = resolveNavigation({
+        navigation: readNavigation(location.search),
+        conversations,
+        fresh,
+      });
+      if (
+        restored.conversation.id !== activeId ||
+        restored.conversation.model !== active?.model
+      ) {
+        controller.current?.abort(navigationAbortReason);
+        setDraft("");
+        setFile(null);
+        setError("");
+        setWarnings([]);
+        nearBottom.current = true;
+      }
+      setConversations(restored.conversations);
+      setActiveId(restored.conversation.id);
+      setPanel(restored.navigation.panel);
+      writeNavigation(restored.navigation, "replace");
+    };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, [conversations, activeId]);
+  useEffect(() => {
+    if (!active || !model || active.model === model.id) return;
+    update(active.id, (conversation) => ({ ...conversation, model: model.id }));
+    writeNavigation(
+      conversationNavigation(active, drawer, model.id),
+      "replace",
+    );
+  }, [active?.id, active?.model, model?.id, drawer]);
   useEffect(() => {
     if (persistent)
       try {
@@ -315,7 +375,11 @@ function App() {
     if (nearBottom.current)
       bottom.current?.scrollIntoView({ behavior: "instant" });
   }, [active?.messages]);
-  function newChat(mode: Mode = active?.mode ?? "llm", workspace = page) {
+  function newChat(
+    mode: Mode = active?.mode ?? "llm",
+    workspace = page,
+    panel: Navigation["panel"] = null,
+  ) {
     if (busy) return;
     const c = fresh(mode, workspace);
     setConversations((items) => [c, ...items].slice(0, 30));
@@ -323,7 +387,8 @@ function App() {
     setDraft("");
     setFile(null);
     setError("");
-    setDrawer(null);
+    setPanel(panel);
+    writeNavigation(conversationNavigation(c, panel), "push");
     nearBottom.current = true;
   }
   async function send(retry = false) {
@@ -570,15 +635,16 @@ function App() {
             : artifact,
         ),
       }));
-      setError(
-        e instanceof SessionRequiredError
-          ? ""
-          : abort.signal.aborted
-            ? "Stopped. You can retry this request."
-            : e instanceof Error
-              ? e.message
-              : "Request failed. Try again.",
-      );
+      if (abort.signal.reason !== navigationAbortReason)
+        setError(
+          e instanceof SessionRequiredError
+            ? ""
+            : abort.signal.aborted
+              ? "Stopped. You can retry this request."
+              : e instanceof Error
+                ? e.message
+                : "Request failed. Try again.",
+        );
     } finally {
       setBusy(false);
       controller.current = null;
@@ -596,7 +662,27 @@ function App() {
         >
           ☰
         </button>
-        <a className="brand" href="/app">
+        <a
+          className="brand"
+          href={navigationUrl(location.href, {
+            view: "chat",
+            mode: "llm",
+            model: "",
+            panel: null,
+            conversation: "",
+          })}
+          onClick={(event) => {
+            if (
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return;
+            event.preventDefault();
+            newChat("llm", "chat");
+          }}
+        >
           <span className="brand-mark">L</span>LocalBase
         </a>
         <span className="local-label">PLAYGROUND</span>
@@ -1053,6 +1139,10 @@ function App() {
                   const c = fresh();
                   setConversations([c]);
                   setActiveId(c.id);
+                  writeNavigation(
+                    conversationNavigation(c, "settings"),
+                    "push",
+                  );
                   setDraft("");
                   setFile(null);
                   setError("");
@@ -1082,8 +1172,7 @@ function App() {
                       className={active.mode === mode ? "selected" : ""}
                       key={mode}
                       onClick={() => {
-                        newChat(mode);
-                        setDrawer("models");
+                        newChat(mode, page, "models");
                       }}
                     >
                       {labels[mode]}
@@ -1099,7 +1188,11 @@ function App() {
                     key={m.id}
                     onClick={() => {
                       update(active.id, (c) => ({ ...c, model: m.id }));
-                      setDrawer(null);
+                      setPanel(null);
+                      writeNavigation(
+                        conversationNavigation(active, null, m.id),
+                        "push",
+                      );
                     }}
                   >
                     <strong>{m.catalog.name}</strong>
@@ -1143,7 +1236,8 @@ function App() {
                     setDraft("");
                     setFile(null);
                     setError("");
-                    setDrawer(null);
+                    setPanel(null);
+                    writeNavigation(conversationNavigation(c, null), "push");
                     nearBottom.current = true;
                   }}
                 >
