@@ -1,4 +1,7 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +9,8 @@ import type { AppContext } from "../../../context";
 import { defaultConfig, loadConfig } from "../../../manager";
 import { runConfigure } from "./configure";
 import { DatabaseSession } from "../../../db/client";
+import { migrationsFolder } from "../../../db/migration-assets";
+import * as schema from "../../../db/schema";
 import type { CommandExecution } from "../../app/commands/framework";
 import { configureInputSchema } from "../../app/commands/inputs";
 import { ensureLocalBaseRootMarker } from "../../../utils/root";
@@ -278,8 +283,27 @@ test("configure persists and disables the canonical TTS selection", async () => 
 test("configure rejects invalid composed model selections before persistence", async () => {
   await withTempRoot(async (root) => {
     const context = makeContext(root);
+    const sqlite = new Database(":memory:");
+    const db = drizzle({ client: sqlite, schema });
+    migrate(db, { migrationsFolder: migrationsFolder() });
+    const getDatabase = spyOn(context.database, "get").mockReturnValue(db);
     try {
+      const video = "wan2.1-t2v-1.3b-q8_0";
+      const catalogOnlyVideo = "wan2.2-ti2v-5b-q6_k";
+      await runConfigure(
+        {
+          all: false,
+          defaults: true,
+          createKey: false,
+          videoModels: [video],
+          activeVideo: video,
+        },
+        context,
+        nonInteractiveExecution,
+      );
       const before = loadConfig(context.database, root);
+      expect(before.selectedVideoModels).toEqual([video]);
+      expect(before.activeVideoModel).toBe(video);
       const llm = "qwen2.5-coder-7b-instruct-q4_k_m";
       const cases = [
         { llmModels: [llm, llm] },
@@ -288,19 +312,25 @@ test("configure rejects invalid composed model selections before persistence", a
           activeLlm: "mistral-nemo-12b-instruct-q4_k_m",
         },
         { llmModels: [llm], activeLlm: "whisper-base-q8_0" },
+        { videoModels: [catalogOnlyVideo] },
+        { activeVideo: catalogOnlyVideo },
       ];
 
       for (const values of cases) {
-        await expect(
-          runConfigure(
-            { all: false, defaults: true, createKey: false, ...values },
-            context,
-            nonInteractiveExecution,
-          ),
-        ).rejects.toBeInstanceOf(CliInputError);
+        const result = runConfigure(
+          { all: false, defaults: true, createKey: false, ...values },
+          context,
+          nonInteractiveExecution,
+        );
+        await expect(result).rejects.toBeInstanceOf(CliInputError);
+        if ("videoModels" in values || "activeVideo" in values) {
+          await expect(result).rejects.toThrow("catalog-only models");
+        }
         expect(loadConfig(context.database, root)).toEqual(before);
       }
     } finally {
+      getDatabase.mockRestore();
+      sqlite.close();
       context.database.close();
     }
   });

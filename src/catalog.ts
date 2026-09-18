@@ -242,6 +242,7 @@ export const modelSpecSchema = z
     ttsRuntime: ttsRuntimeProfileSchema.optional(),
     imageRuntime: imageRuntimeProfileSchema.optional(),
     videoRuntime: videoRuntimeProfileSchema.optional(),
+    videoCatalogOnly: z.literal(true).optional(),
     inputModalities: z.array(modelModalitySchema).min(1),
     outputModalities: z.array(modelModalitySchema).min(1),
     contextWindowTokens: z.number().int().positive().nullable().default(null),
@@ -393,14 +394,25 @@ export const modelSpecSchema = z
       }
     }
 
+    if (
+      model.videoCatalogOnly &&
+      (model.kind !== "video" || model.videoRuntime)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "catalog-only video entries cannot declare a runtime profile or another model kind",
+        path: ["videoCatalogOnly"],
+      });
+    }
     if (model.kind === "video") {
-      if (!model.videoRuntime) {
+      if (!model.videoRuntime && !model.videoCatalogOnly) {
         ctx.addIssue({
           code: "custom",
           message: "video models must declare a measured runtime profile",
           path: ["videoRuntime"],
         });
-      } else {
+      } else if (model.videoRuntime) {
         const artifactNames = new Set(
           model.artifacts.map(({ filename }) => filename),
         );
@@ -2765,6 +2777,140 @@ const CATALOG_SOURCE = [
     catch: "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
     notes:
       "Experimental text-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 480x832, 81 frames, and 16 fps. Image-to-video and audio generation are unsupported.",
+  },
+  {
+    modelId: "wan2.2-ti2v-5b-q6_k",
+    kind: "video",
+    provider: "Wan/QuantStack",
+    family: "Wan2.2-TI2V",
+    version: "2.2",
+    size: "5B",
+    quant: "Q6_K",
+    minVramGb: 24,
+    storageGb: 4.21,
+    source: "https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF",
+    repositoryRevision: "57437632ddd08bdcbd1508c866aa22e126ed51d2",
+    artifacts: [
+      {
+        sourcePath: "Wan2.2-TI2V-5B-Q6_K.gguf",
+        filename: "Wan2.2-TI2V-5B-Q6_K.gguf",
+        expectedSizeBytes: 4211683680,
+        sha256:
+          "355f6bee35c4c6cbd0f275112619fe8ac6f7b9b067b885723667b3bde29497c3",
+        role: "primary",
+      },
+    ],
+    videoCatalogOnly: true,
+    inputModalities: ["text"],
+    outputModalities: ["video"],
+    features: ["catalog-only", "diffusion-weights-only"],
+    commercialStatus: "open",
+    catch: "Catalog only; LocalBase inference is unavailable. Apache-2.0.",
+    notes:
+      "Original non-distilled TI2V diffusion weights. Upstream supports text-to-video and image-to-video. Requires a Wan2.2 VAE, UMT5 encoder, generation profile, and native qualification before LocalBase inference. Downloads contain diffusion weights only, not a complete inference bundle. Memory is an unmeasured planning estimate; storage covers only the listed artifacts.",
+  },
+  {
+    modelId: "wan2.2-t2v-a14b-q4_k_m",
+    kind: "video",
+    provider: "Wan/bullerwins",
+    family: "Wan2.2-T2V",
+    version: "2.2",
+    size: "A14B",
+    quant: "Q4_K_M",
+    minVramGb: 32,
+    storageGb: 19.3,
+    source: "https://huggingface.co/bullerwins/Wan2.2-T2V-A14B-GGUF",
+    repositoryRevision: "f021e94acfde37bc70bf7b27295b0fa5c1f8e270",
+    artifacts: [
+      {
+        sourcePath: "wan2.2_t2v_high_noise_14B_Q4_K_M.gguf",
+        filename: "wan2.2_t2v_high_noise_14B_Q4_K_M.gguf",
+        expectedSizeBytes: 9650090496,
+        sha256:
+          "a10801b563e89eb46241521c5ce5f4ca58ab70ac640d64b7b4aa782bf595d732",
+        role: "primary",
+      },
+      {
+        sourcePath: "wan2.2_t2v_low_noise_14B_Q4_K_M.gguf",
+        filename: "wan2.2_t2v_low_noise_14B_Q4_K_M.gguf",
+        expectedSizeBytes: 9650090496,
+        sha256:
+          "d7d6944e14fbd235c45fa88d9cb7b8aa8974a63d79f862e80d1126930f89e8ac",
+        role: "supplementary",
+      },
+    ],
+    videoCatalogOnly: true,
+    inputModalities: ["text"],
+    outputModalities: ["video"],
+    features: ["catalog-only", "diffusion-weights-only"],
+    commercialStatus: "open",
+    catch: "Catalog only; LocalBase inference is unavailable. Apache-2.0.",
+    notes:
+      "Both high-noise and low-noise diffusion experts are included. Requires dual-expert launch support, Wan2.1 VAE, UMT5 encoder, and native qualification before LocalBase inference. Downloads contain diffusion weights only, not a complete inference bundle. Memory is an unmeasured planning estimate; storage covers only the listed artifacts.",
+  },
+  {
+    modelId: "ltx-2.3-22b-distilled-1.1-q4_k_m",
+    kind: "video",
+    provider: "Lightricks/Unsloth",
+    family: "LTX",
+    version: "2.3-distilled-1.1",
+    size: "22B",
+    quant: "Q4_K_M",
+    minVramGb: 32,
+    storageGb: 14.19,
+    source: "https://huggingface.co/unsloth/LTX-2.3-GGUF",
+    repositoryRevision: "96e8ed4925ead3db9ff4d0084f165ef6a74f28d0",
+    artifacts: [
+      {
+        sourcePath: "distilled-1.1/ltx-2.3-22b-distilled-1.1-Q4_K_M.gguf",
+        filename: "ltx-2.3-22b-distilled-1.1-Q4_K_M.gguf",
+        expectedSizeBytes: 14194441248,
+        sha256:
+          "5d09efdc0b8ec2054c44a05366cd7c6634ffa333b379b1f8baf018a78974b73d",
+        role: "primary",
+      },
+    ],
+    videoCatalogOnly: true,
+    inputModalities: ["text"],
+    outputModalities: ["video"],
+    features: ["catalog-only", "diffusion-weights-only"],
+    commercialStatus: "conditional",
+    catch:
+      "Catalog only; LocalBase inference is unavailable. LTX-2 Community License; entities with annual revenue of at least USD 10 million require a paid commercial license.",
+    notes:
+      "Distilled diffusion weights for upstream synchronized audio/video generation. Requires Gemma text conditioning, the LTX decoder/audio components, runtime integration, and native qualification; these companion assets are not included. Downloads contain diffusion weights only, not a complete inference bundle. Memory is an unmeasured planning estimate; storage covers only the listed artifacts.",
+  },
+  {
+    modelId: "hunyuanvideo-1.5-t2v-480p-q4_k_m",
+    kind: "video",
+    provider: "Tencent/jayn7",
+    family: "HunyuanVideo",
+    version: "1.5",
+    size: "8.3B",
+    quant: "Q4_K_M",
+    minVramGb: 24,
+    storageGb: 5.09,
+    source: "https://huggingface.co/jayn7/HunyuanVideo-1.5_T2V_480p-GGUF",
+    repositoryRevision: "6aac325460d2f2cfe49ad8fb71f5ed2e4f1c5e24",
+    artifacts: [
+      {
+        sourcePath: "480p/hunyuanvideo1.5_480p_t2v-Q4_K_M.gguf",
+        filename: "hunyuanvideo1.5_480p_t2v-Q4_K_M.gguf",
+        expectedSizeBytes: 5090407648,
+        sha256:
+          "3b6c3a2703b07e14538993cadca08a5364822f93a303665204c055ffe254aea8",
+        role: "primary",
+      },
+    ],
+    videoCatalogOnly: true,
+    inputModalities: ["text"],
+    outputModalities: ["video"],
+    features: ["catalog-only", "diffusion-weights-only"],
+    commercialStatus: "conditional",
+    catch:
+      "Catalog only; LocalBase inference is unavailable. Tencent Hunyuan Community License; territory, scale, and acceptable-use restrictions apply.",
+    notes:
+      "480p text-to-video diffusion weights. Requires the HunyuanVideo 1.5 VAE and text/vision conditioning components, runtime integration, and native qualification; these companion assets are not included. Downloads contain diffusion weights only, not a complete inference bundle. Memory is an unmeasured planning estimate; storage covers only the listed artifacts.",
   },
 ] satisfies ModelSpecInput[];
 
