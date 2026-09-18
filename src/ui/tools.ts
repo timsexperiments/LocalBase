@@ -1,5 +1,13 @@
 import { z } from "zod";
 import {
+  chatParameters,
+  defaultGenerationSettings,
+  imageParameters,
+  speechParameters,
+  videoParameters,
+  type GenerationSettings,
+} from "./generation-settings";
+import {
   api,
   createUiId,
   availableModels,
@@ -23,7 +31,6 @@ const speechSchema = z
   .object({
     model: z.string().min(1),
     input: z.string().trim().min(1).max(256),
-    voice: z.enum(["default", "harbor", "willow"]).default("default"),
   })
   .strict();
 const toolNames = [
@@ -100,6 +107,7 @@ function pause(signal: AbortSignal) {
   });
 }
 type MediaOptions = {
+  settings?: GenerationSettings;
   model: Model;
   connection: Connection;
   signal: AbortSignal;
@@ -113,6 +121,7 @@ export async function generateVideo({
   progress,
   warning,
   prompt,
+  settings = defaultGenerationSettings(),
 }: MediaOptions & { prompt: string }): Promise<{
   blob: Blob;
   format: Extract<Media, { kind: "video" }>["format"];
@@ -133,6 +142,7 @@ export async function generateVideo({
           {
             model: model.id,
             prompt,
+            ...videoParameters(settings.video),
             width: cap.width,
             height: cap.height,
             frames: cap.frames,
@@ -204,7 +214,14 @@ export async function generateMedia(
     register: (url: string) => void;
   },
 ): Promise<Media> {
-  const { model, connection, signal, name, register } = options;
+  const {
+    model,
+    connection,
+    signal,
+    name,
+    register,
+    settings = defaultGenerationSettings(),
+  } = options;
   const value: unknown = JSON.parse(options.arguments);
   signal.throwIfAborted();
   if (name === "generate_image") {
@@ -219,7 +236,7 @@ export async function generateMedia(
               model: model.id,
               prompt: args.prompt,
               n: 1,
-              size: "512x512",
+              ...imageParameters(settings.image),
               response_format: "b64_json",
             },
             signal,
@@ -238,15 +255,17 @@ export async function generateMedia(
   let blob: Blob;
   if (name === "synthesize_speech") {
     const args = speechSchema.parse(value);
-    const cap = model.catalog.capabilities;
-    if (cap?.kind !== "speech" || !cap.voice.requestValues.includes(args.voice))
-      throw new Error("Voice is not available for this model.");
     blob = await (
       await api(
         "/v1/audio/speech",
         connection,
         jsonRequest(
-          { ...args, model: model.id, response_format: "wav" },
+          {
+            ...args,
+            ...speechParameters(model, settings.tts),
+            model: model.id,
+            response_format: "wav",
+          },
           signal,
         ),
       )
@@ -265,6 +284,7 @@ export async function generateMedia(
   return { kind: "audio", url };
 }
 export async function runChat(options: {
+  settings?: GenerationSettings;
   model: Model;
   models: Model[];
   connection: Connection;
@@ -301,6 +321,9 @@ export async function runChat(options: {
           {
             model: model.id,
             stream: true,
+            ...chatParameters(
+              (options.settings ?? defaultGenerationSettings()).llm,
+            ),
             messages: tools.length
               ? [
                   {
