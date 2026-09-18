@@ -2312,6 +2312,134 @@ const CATALOG_SOURCE = [
       "Distilled four-step profile with separate FLUX2 VAE and Qwen3 encoder. Memory requirement is estimated; native inference qualification is pending.",
   },
   {
+    modelId: "flux2-klein-4b-q8_0",
+    kind: "image",
+    provider: "Black Forest Labs",
+    family: "FLUX.2-klein",
+    version: "2",
+    size: "4B",
+    quant: "Q8_0",
+    minVramGb: 14,
+    storageGb: 7.13,
+    source: "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
+    repositoryRevision: "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
+    artifacts: [
+      {
+        sourcePath: "flux-2-klein-4b-Q8_0.gguf",
+        filename: "flux-2-klein-4b-Q8_0.gguf",
+        expectedSizeBytes: 4300629440,
+        sha256:
+          "0bba6951258ec8f92d51114a8fa13e66828297bfff58a738f52729b3ef66fa28",
+        role: "primary",
+      },
+      {
+        sourcePath: "split_files/vae/flux2-vae.safetensors",
+        filename: "flux2-vae.safetensors",
+        expectedSizeBytes: 336211292,
+        sha256:
+          "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/Comfy-Org/flux2-klein-4B",
+          revision: "5f526678002e43af5551dadb73ce2e8c91b43afe",
+        },
+      },
+      {
+        sourcePath: "Qwen3-4B-Q4_K_M.gguf",
+        filename: "Qwen3-4B-Q4_K_M.gguf",
+        expectedSizeBytes: 2497281312,
+        sha256:
+          "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/unsloth/Qwen3-4B-GGUF",
+          revision: "22c9fc8a8c7700b76a1789366280a6a5a1ad1120",
+        },
+      },
+    ],
+    imageRuntime: {
+      kind: "diffusion-qwen3",
+      artifacts: {
+        diffusionModel: "flux-2-klein-4b-Q8_0.gguf",
+        vae: "flux2-vae.safetensors",
+        textEncoder: "Qwen3-4B-Q4_K_M.gguf",
+      },
+      generation: { sampler: "euler", steps: 4, cfgScale: 1 },
+    },
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image"],
+    commercialStatus: "open",
+    catch:
+      "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
+    notes:
+      "Less-compressed Q8 diffusion weights with the same Q4 Qwen3 encoder as the compact 4B profile. Image quality relative to Q4 has not been assessed locally. Memory requirement is estimated; native inference qualification is pending.",
+  },
+  {
+    modelId: "flux2-klein-9b-q4_0",
+    kind: "image",
+    provider: "Black Forest Labs",
+    family: "FLUX.2-klein",
+    version: "2",
+    size: "9B",
+    quant: "Q4_0",
+    minVramGb: 20,
+    storageGb: 10.98,
+    source: "https://huggingface.co/leejet/FLUX.2-klein-9B-GGUF",
+    repositoryRevision: "cc588497a95ffc2937ebbd6b9b3916a11ada6e5b",
+    artifacts: [
+      {
+        sourcePath: "flux-2-klein-9b-Q4_0.gguf",
+        filename: "flux-2-klein-9b-Q4_0.gguf",
+        expectedSizeBytes: 5616208032,
+        sha256:
+          "a7e77afa96871d16679ff7b949bd25f20c8179f219c4b662cac91e81ed99b944",
+        role: "primary",
+      },
+      {
+        sourcePath: "split_files/vae/flux2-vae.safetensors",
+        filename: "flux2-vae.safetensors",
+        expectedSizeBytes: 336211292,
+        sha256:
+          "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/Comfy-Org/flux2-klein-4B",
+          revision: "5f526678002e43af5551dadb73ce2e8c91b43afe",
+        },
+      },
+      {
+        sourcePath: "Qwen3-8B-Q4_K_M.gguf",
+        filename: "Qwen3-8B-Q4_K_M.gguf",
+        expectedSizeBytes: 5027784512,
+        sha256:
+          "120307ba529eb2439d6c430d94104dabd578497bc7bfe7e322b5d9933b449bd4",
+        role: "supplementary",
+        source: {
+          repositoryUrl: "https://huggingface.co/unsloth/Qwen3-8B-GGUF",
+          revision: "a6adef130ffb23ddaf1a62fec9dced968c9bc482",
+        },
+      },
+    ],
+    imageRuntime: {
+      kind: "diffusion-qwen3",
+      artifacts: {
+        diffusionModel: "flux-2-klein-9b-Q4_0.gguf",
+        vae: "flux2-vae.safetensors",
+        textEncoder: "Qwen3-8B-Q4_K_M.gguf",
+      },
+      generation: { sampler: "euler", steps: 4, cfgScale: 1 },
+    },
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image"],
+    commercialStatus: "conditional",
+    catch:
+      "FLUX Non-Commercial License; commercial deployment requires a separate Black Forest Labs license. Qwen3 encoder is Apache-2.0.",
+    notes:
+      "Larger distilled four-step model with a Qwen3 8B encoder. Photorealism relative to the 4B model has not been assessed locally. Memory requirement is estimated; native inference qualification is pending.",
+  },
+  {
     modelId: "z-image-turbo-q4_0",
     kind: "image",
     provider: "Tongyi",
