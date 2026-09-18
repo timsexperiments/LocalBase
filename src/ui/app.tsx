@@ -2,7 +2,15 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import { z } from "zod";
-import { generationTools, generateVideo, runChat } from "./tools";
+import { generationTools, generateVideo, runChat, toolModels } from "./tools";
+import {
+  GenerationSettingsFields,
+  defaultGenerationSettings,
+  embeddingParameters,
+  imageParameters,
+  speechParameters,
+  transcriptionParameters,
+} from "./generation-settings";
 import {
   api,
   consumeFragmentKey,
@@ -182,15 +190,16 @@ function App() {
           ? "Enter a gateway API key in Settings."
           : connection;
   const [drawer, setDrawer] = useState<
-    "settings" | "models" | "history" | null
+    "settings" | "models" | "history" | "generation" | null
   >(null);
   const [conversations, setConversations] = useState<Conversation[]>([fresh()]);
   const [activeId, setActiveId] = useState("");
   const [persistent, setPersistent] = useState(false);
   const [draft, setDraft] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [voice, setVoice] = useState("default");
-  const [dimensions, setDimensions] = useState(0);
+  const [generationSettings, setGenerationSettings] = useState(
+    defaultGenerationSettings,
+  );
   const [error, setError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -204,21 +213,6 @@ function App() {
   const candidates = availableModels(models, active?.mode ?? "llm");
   const model = candidates.find((m) => m.id === active?.model) ?? candidates[0];
   const capabilities = model?.catalog.capabilities;
-  const voices: string[] =
-    capabilities?.kind === "speech"
-      ? capabilities.voice.requestValues
-      : ["default"];
-  const selectedVoice = voices.includes(voice) ? voice : "default";
-  const selectedDimensions =
-    capabilities?.kind === "embedding"
-      ? Math.max(
-          capabilities.dimensions.minimum,
-          Math.min(
-            dimensions || capabilities.dimensions.maximum,
-            capabilities.dimensions.maximum,
-          ),
-        )
-      : 0;
   const unsupportedVideo =
     active?.mode === "video" &&
     capabilities?.kind === "video" &&
@@ -398,6 +392,7 @@ function App() {
               m.protocol ?? (m.text ? [{ role: m.role, content: m.text }] : []),
           );
           const protocol = await runChat({
+            settings: generationSettings,
             model,
             models,
             connection: credential,
@@ -424,6 +419,7 @@ function App() {
         case "video": {
           const id = createUiId();
           const video = await generateVideo({
+            settings: generationSettings,
             model,
             connection: credential,
             signal: abort.signal,
@@ -467,7 +463,7 @@ function App() {
                   json({
                     model: model.id,
                     input: text,
-                    dimensions: selectedDimensions,
+                    ...embeddingParameters(model, generationSettings.embedding),
                     encoding_format: "float",
                   }),
                 )
@@ -489,7 +485,7 @@ function App() {
                   model: model.id,
                   prompt: text,
                   n: 1,
-                  size: "512x512",
+                  ...imageParameters(generationSettings.image),
                   response_format: "b64_json",
                 }),
               )
@@ -514,7 +510,7 @@ function App() {
             json({
               model: model.id,
               input: text,
-              voice: selectedVoice,
+              ...speechParameters(model, generationSettings.tts),
               response_format: "wav",
             }),
           );
@@ -533,6 +529,10 @@ function App() {
           body.set("file", file);
           body.set("model", model.id);
           body.set("response_format", "json");
+          for (const [name, value] of Object.entries(
+            transcriptionParameters(model, generationSettings.stt),
+          ))
+            body.set(name, value);
           const result = transcriptionSchema.parse(
             await (
               await api("/v1/audio/transcriptions", credential, {
@@ -656,6 +656,14 @@ function App() {
             <span>⌄</span>
           </button>
           <button
+            className="generation-settings-button"
+            disabled={busy || !model}
+            onClick={() => setDrawer("generation")}
+            aria-label="Generation settings"
+          >
+            Controls
+          </button>
+          <button
             disabled={busy}
             onClick={() => newChat()}
             aria-label="New conversation"
@@ -673,10 +681,6 @@ function App() {
           <div className="conversation">
             {!active.messages.length && (
               <section className="empty">
-                <div className="empty-mark">
-                  L<span>●</span>
-                </div>
-                <p className="eyebrow">{labels[active.mode]}</p>
                 <h1>
                   {active.mode === "llm"
                     ? page === "chat"
@@ -903,34 +907,6 @@ function App() {
               <span>
                 {labels[active.mode]}
                 {active.mode === "tts" && ` · ${draft.length}/256`}
-                {active.mode === "tts" && (
-                  <select
-                    aria-label="Voice"
-                    value={selectedVoice}
-                    disabled={busy}
-                    onChange={(e) => setVoice(e.target.value)}
-                  >
-                    {voices.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                )}
-                {capabilities?.kind === "embedding" && (
-                  <label>
-                    {" "}
-                    Dimensions{" "}
-                    <input
-                      type="number"
-                      min={capabilities.dimensions.minimum}
-                      max={capabilities.dimensions.maximum}
-                      value={selectedDimensions}
-                      disabled={busy}
-                      onChange={(e) =>
-                        setDimensions(e.currentTarget.valueAsNumber || 0)
-                      }
-                    />
-                  </label>
-                )}
               </span>
               {busy ? (
                 <button
@@ -968,15 +944,52 @@ function App() {
       {drawer && (
         <Drawer
           title={
-            drawer === "settings"
-              ? "Settings"
-              : drawer === "models"
-                ? "Models"
-                : "History"
+            drawer === "generation"
+              ? "Generation settings"
+              : drawer === "settings"
+                ? "Settings"
+                : drawer === "models"
+                  ? "Models"
+                  : "History"
           }
           close={() => setDrawer(null)}
         >
-          {drawer === "settings" ? (
+          {drawer === "generation" ? (
+            <div className="generation-settings">
+              <p className="generation-settings-hint">
+                Shared by chat and Model Lab for this session. Blank values use
+                model defaults.
+              </p>
+              <GenerationSettingsFields
+                mode={active.mode}
+                models={model ? [model] : []}
+                settings={generationSettings}
+                onChange={setGenerationSettings}
+              />
+              {page === "chat" &&
+                model &&
+                generationTools(models, model).map((tool) => {
+                  const name = tool.function.name;
+                  const mode =
+                    name === "generate_image"
+                      ? "image"
+                      : name === "generate_video"
+                        ? "video"
+                        : "tts";
+                  return (
+                    <div key={name}>
+                      <h3>{labels[mode]} tools</h3>
+                      <GenerationSettingsFields
+                        mode={mode}
+                        models={toolModels(models, name)}
+                        settings={generationSettings}
+                        onChange={setGenerationSettings}
+                      />
+                    </div>
+                  );
+                })}
+            </div>
+          ) : drawer === "settings" ? (
             <>
               <p className="muted">{connectionLabel}</p>
               {session.kind === "api-key" && (
