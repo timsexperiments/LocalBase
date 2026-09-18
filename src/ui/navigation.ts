@@ -75,6 +75,7 @@ export function resolveNavigation({
 
 export function navigationUrl(href: string, navigation: Navigation): string {
   const url = new URL(href);
+  const search = new URLSearchParams();
   for (const key of [
     "view",
     "mode",
@@ -83,11 +84,11 @@ export function navigationUrl(href: string, navigation: Navigation): string {
     "conversation",
   ] as const) {
     const value = navigation[key];
-    if (value) url.searchParams.set(key, value);
-    else url.searchParams.delete(key);
+    if (value) search.set(key, value);
   }
   // Fragment credentials are consumed before navigation is initialized.
-  return url.pathname + url.search;
+  const query = search.toString();
+  return url.pathname + (query ? `?${query}` : "");
 }
 
 export function writeNavigation(
