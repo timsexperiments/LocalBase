@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { VideoJobResponse } from "../domains/runtime/video/gateway-contract";
 import {
   chatParameters,
   defaultGenerationSettings,
@@ -87,11 +88,22 @@ export function jsonRequest(body: unknown, signal?: AbortSignal): RequestInit {
     body: JSON.stringify(body),
   };
 }
-const jobSchema = z.object({
-  id: z.string().uuid(),
-  status: z.enum(["queued", "in_progress", "completed", "failed", "cancelled"]),
-  cancellation_reason: z.string().optional(),
-});
+const jobErrorSchema = z.object({
+  code: z.enum(["insufficient_memory", "video_generation_failed"]),
+}) satisfies z.ZodType<
+  Extract<VideoJobResponse, { status: "failed" }>["error"]
+>;
+const jobBaseSchema = z.object({ id: z.string().uuid() });
+const jobSchema = z.discriminatedUnion("status", [
+  jobBaseSchema.extend({
+    status: z.enum(["queued", "in_progress", "completed"]),
+  }),
+  jobBaseSchema.extend({ status: z.literal("failed"), error: jobErrorSchema }),
+  jobBaseSchema.extend({
+    status: z.literal("cancelled"),
+    cancellation_reason: z.string().optional(),
+  }),
+]);
 function pause(signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     signal.throwIfAborted();
@@ -178,7 +190,13 @@ export async function generateVideo({
           );
         return { blob, format: "mp4" };
       }
-      if (job.status === "failed" || job.status === "cancelled")
+      if (job.status === "failed")
+        throw new Error(
+          job.error.code === "insufficient_memory"
+            ? "Video could not start because there isn't enough available memory within the safety limits. Free memory in other applications or choose a smaller video model, then retry."
+            : "Video failed. Check gateway diagnostics.",
+        );
+      if (job.status === "cancelled")
         throw new Error(
           `Video ${job.status}${job.cancellation_reason ? `: ${job.cancellation_reason}` : ". Check gateway diagnostics."}`,
         );
