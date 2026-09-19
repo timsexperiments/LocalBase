@@ -8,6 +8,7 @@ import {
   SessionRequiredError,
   availableModels,
   catalogModels,
+  modelMemorySummary,
   modelsSchema,
   streamText,
   readHistory,
@@ -462,7 +463,18 @@ describe("playground client boundaries", () => {
         capabilities: null,
       },
     };
-    const models = modelsSchema.parse({
+    const host = {
+      memory: {
+        kind: "unified",
+        system: {
+          capacityBytes: 64 * 1024 ** 3,
+          availableBytes: 37.5 * 1024 ** 3,
+        },
+        accelerators: [],
+      },
+    };
+    const parsed = modelsSchema.parse({
+      host,
       data: [
         {
           id: "embedding",
@@ -503,7 +515,8 @@ describe("playground client boundaries", () => {
           device: { selected: false, installed: true, runtime: null },
         },
       ],
-    }).data;
+    });
+    const models = parsed.data;
     expect(availableModels(models, "llm").map((m) => m.id)).toEqual([
       "assigned",
       "lazy",
@@ -518,6 +531,47 @@ describe("playground client boundaries", () => {
     expect(catalogModels(models, "embedding").map((model) => model.id)).toEqual(
       ["embedding"],
     );
+    const first = models[0];
+    if (!first) throw new Error("Expected model fixture.");
+    expect(modelMemorySummary(first, parsed.host.memory)).toBe(
+      "Needs ~1 GB · 37.5 GB available",
+    );
+    expect(modelMemorySummary(first, null)).toBe(
+      "Needs ~1 GB · memory availability unknown",
+    );
+    expect(
+      modelMemorySummary(first, {
+        kind: "discrete",
+        system: {
+          capacityBytes: 64 * 1024 ** 3,
+          availableBytes: 40 * 1024 ** 3,
+        },
+        accelerators: [
+          {
+            capacityBytes: 32 * 1024 ** 3,
+            availableBytes: 23.25 * 1024 ** 3,
+          },
+        ],
+      }),
+    ).toBe("Needs ~1 GB · 23.3 GB available");
+    for (const accelerators of [
+      [],
+      [
+        { capacityBytes: 16 * 1024 ** 3, availableBytes: 8 * 1024 ** 3 },
+        { capacityBytes: 16 * 1024 ** 3, availableBytes: 8 * 1024 ** 3 },
+      ],
+    ]) {
+      expect(
+        modelMemorySummary(first, {
+          kind: "discrete",
+          system: {
+            capacityBytes: 64 * 1024 ** 3,
+            availableBytes: 40 * 1024 ** 3,
+          },
+          accelerators,
+        }),
+      ).toBe("Needs ~1 GB · memory availability unknown");
+    }
     const speechModels = availableModels(models, "tts");
     expect(speechModels.map((m) => m.id)).toEqual(["speech"]);
     expect(speechModels[0]?.catalog.capabilities).toEqual({
@@ -536,6 +590,7 @@ describe("playground client boundaries", () => {
     ]) {
       expect(
         modelsSchema.safeParse({
+          host,
           data: [
             {
               ...common,
