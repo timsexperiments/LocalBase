@@ -56,6 +56,7 @@
 }
 body {
   margin: 0;
+  overflow: hidden;
 }
 button,
 input,
@@ -99,6 +100,18 @@ select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
+.composer:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.composer textarea:focus-visible {
+  outline: none;
+}
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 a {
   color: var(--accent);
   overflow-wrap: anywhere;
@@ -121,6 +134,8 @@ select {
   accent-color: var(--accent);
 }
 .app {
+  position: fixed;
+  inset: 0;
   height: 100vh;
   height: 100dvh;
   min-width: 0;
@@ -134,11 +149,11 @@ select {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: 4px 12px;
   gap: 6px;
 }
 .brand {
-  min-width: 0;
+  flex-shrink: 0;
   min-height: 44px;
   display: flex;
   align-items: center;
@@ -149,6 +164,7 @@ select {
   font-weight: 650;
   letter-spacing: -0.6px;
   padding: 0;
+  white-space: nowrap;
 }
 .brand-mark {
   flex: 0 0 26px;
@@ -160,17 +176,14 @@ select {
   color: var(--accent);
   font-size: 17px;
 }
-.local-label {
-  display: none;
-  font-size: 10px;
-  letter-spacing: 1.5px;
-  color: var(--muted);
-}
-.settings {
+.workspace-picker {
   margin-left: auto;
+  width: auto;
+  max-width: 150px;
+  border-color: transparent;
+  background: transparent;
   font-size: 13px;
-  color: var(--muted);
-  padding-inline: 10px;
+  font-weight: 600;
 }
 .workspace {
   width: 100%;
@@ -179,39 +192,6 @@ select {
   flex: 1;
   display: flex;
   flex-direction: column;
-}
-.primary-nav {
-  display: flex;
-  justify-content: flex-start;
-  gap: 4px;
-  flex-shrink: 0;
-  width: 100%;
-  max-width: 776px;
-  margin-inline: auto;
-  padding: 0 12px;
-}
-.primary-nav button {
-  font-size: 13px;
-  color: var(--muted);
-  padding-inline: 14px;
-}
-.primary-nav [aria-current="page"] {
-  background: var(--surface-muted);
-  color: var(--text);
-  font-weight: 600;
-}
-.toolbar {
-  width: 100%;
-  max-width: 776px;
-  margin-inline: auto;
-  padding: 2px 12px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-.toolbar > button:not(.model-picker) {
-  flex-shrink: 0;
 }
 .model-picker {
   min-width: 0;
@@ -223,20 +203,13 @@ select {
   padding: 4px 8px;
   font-size: 13px;
   font-weight: 600;
+  flex: 0 1 auto;
 }
 .model-picker > span:nth-child(2) {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.model-picker small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--muted);
 }
 .status-dot {
   width: 6px;
@@ -248,13 +221,13 @@ select {
 .status-dot.ready {
   background: var(--accent);
 }
-.new-label {
-  display: none;
-}
 .generation-settings-button {
   color: var(--muted);
   font-size: 12px;
   padding-inline: 8px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
 }
 main {
   overflow: auto;
@@ -270,13 +243,18 @@ main {
   max-width: 752px;
   margin: auto;
   padding: 8px 20px 24px;
+  min-height: 100%;
+}
+.conversation:has(.empty) {
+  display: grid;
+  place-items: center;
 }
 .empty {
-  padding-top: clamp(24px, 7dvh, 72px);
-  text-align: left;
+  text-align: center;
+  padding: 24px 0;
 }
 h1 {
-  font-size: clamp(27px, 5vw, 36px);
+  font-size: clamp(24px, 5vw, 32px);
   font-weight: 550;
   line-height: 1.2;
   letter-spacing: -1px;
@@ -284,7 +262,8 @@ h1 {
   overflow-wrap: anywhere;
 }
 .empty > p {
-  max-width: 440px;
+  max-width: 340px;
+  margin: 0 auto;
   font-size: 14px;
   color: var(--muted);
 }
@@ -306,69 +285,44 @@ h1 {
   background: var(--accent-soft);
   color: var(--accent);
 }
-.lab-modes {
-  flex-wrap: nowrap;
-  justify-content: flex-start;
-  overflow-x: auto;
-  flex-shrink: 0;
-  width: fit-content;
-  max-width: 100%;
-  margin: 4px auto 0;
-  padding: 4px 12px;
-  scrollbar-width: thin;
-}
-.lab-modes button {
-  flex-shrink: 0;
-}
-.starters {
+.composer-area {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0;
-  max-width: 400px;
-  margin: 20px 0 0;
-}
-.starters button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  text-align: left;
-  font-size: 13px;
-  color: var(--muted);
-  padding: 8px 10px;
-}
-.starters span {
-  flex-shrink: 0;
-}
-.composer-area {
   flex-shrink: 0;
   min-width: 0;
-  max-height: 50dvh;
-  overflow-y: auto;
+  max-height: 60%;
+  overflow: visible;
   overscroll-behavior: contain;
-  padding: 8px 12px max(10px, env(safe-area-inset-bottom));
+  padding: 8px 12px max(12px, env(safe-area-inset-bottom));
   width: 100%;
   max-width: 776px;
   margin-inline: auto;
   background: var(--canvas);
 }
+.composer-content {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .composer {
   border: 1px solid var(--border);
   border-radius: 20px;
   background: var(--surface);
-  padding: 14px 12px 10px;
+  padding: 12px 8px 6px;
   box-shadow: var(--shadow);
 }
 textarea {
   display: block;
   width: 100%;
   min-width: 0;
-  resize: vertical;
-  min-height: 60px;
-  max-height: min(180px, 25dvh);
+  resize: none;
+  min-height: 28px;
+  max-height: min(160px, 22dvh);
+  overflow-y: auto;
   border: 0;
   background: transparent;
-  padding: 0 4px;
+  padding: 0 8px;
   font-size: 16px;
 }
 textarea::placeholder,
@@ -378,41 +332,48 @@ input::placeholder {
 }
 .composer-bottom {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   font-size: 12px;
   color: var(--muted);
-  gap: 8px;
-  margin-top: 8px;
-}
-.composer-bottom > span {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-height: 44px;
+  gap: 2px;
+  margin-top: 6px;
 }
 .send {
   flex-shrink: 0;
   background: var(--accent);
   color: var(--accent-text);
-  min-width: 76px;
-  font-size: 13px;
+  width: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  font-size: 20px;
   font-weight: 600;
 }
 .send:hover:not(:disabled) {
   background: var(--accent-hover);
 }
-.privacy {
+.input-count {
   font-size: 11px;
-  text-align: center;
+  text-align: right;
   color: var(--muted);
   margin: 8px 0 0;
   overflow-wrap: anywhere;
 }
-.privacy span {
-  padding-inline: 5px;
+.jump-latest {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border-color: var(--border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  font-size: 12px;
+}
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .message {
   min-width: 0;
@@ -551,6 +512,8 @@ video {
   padding: 8px 12px;
   font-size: 12px;
   overflow-wrap: anywhere;
+  max-height: 22dvh;
+  overflow-y: auto;
 }
 .error span {
   min-width: 0;
@@ -640,6 +603,19 @@ dialog::backdrop {
   display: block;
   margin-top: 8px;
 }
+.drawer > input[type="search"] {
+  width: 100%;
+  margin: 0 0 16px;
+}
+.menu-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.history-item[aria-current="page"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
 .drawer textarea {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -667,6 +643,13 @@ dialog::backdrop {
 }
 .generation-settings h3 {
   margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.tool-settings summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
   font-size: 14px;
   font-weight: 600;
 }
@@ -765,16 +748,6 @@ dialog::backdrop {
   .brand {
     font-size: 18px;
   }
-  .local-label,
-  .new-label {
-    display: inline;
-  }
-  .primary-nav {
-    padding-inline: 24px;
-  }
-  .toolbar {
-    padding: 6px 24px;
-  }
   .model-picker {
     font-size: 14px;
   }
@@ -787,9 +760,6 @@ dialog::backdrop {
   .composer {
     padding: 16px 16px 12px;
   }
-  .privacy span {
-    padding-inline: 10px;
-  }
   dialog {
     width: min(480px, calc(100% - 48px));
     max-height: calc(100dvh - 64px);
@@ -799,6 +769,30 @@ dialog::backdrop {
   }
   .drawer {
     padding-inline: 24px;
+  }
+}
+@media (max-width: 380px) {
+  .brand-mark {
+    display: none;
+  }
+  .topbar {
+    padding-inline: 4px;
+    gap: 0;
+  }
+  .brand {
+    font-size: 15px;
+  }
+}
+@media (max-height: 500px) {
+  .empty > p {
+    display: none;
+  }
+  .empty {
+    padding: 12px 0;
+  }
+  .topbar {
+    min-height: 44px;
+    padding-block: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
