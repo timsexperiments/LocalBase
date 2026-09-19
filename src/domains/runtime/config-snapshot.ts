@@ -1,4 +1,8 @@
-import { readConfig, saveConfig, type LocalBaseConfig } from "../../manager";
+import {
+  readConfigSync,
+  saveConfig,
+  type LocalBaseConfig,
+} from "../../manager";
 import type { DatabaseSession } from "../../db/client";
 import { canonicalLocalBaseRoot } from "../../utils/root";
 
@@ -110,7 +114,11 @@ export class RuntimeConfigController {
   }
 
   async refresh(): Promise<RuntimeConfigSnapshot> {
-    return this.replace(await readConfig(this.root));
+    return this.refreshSync();
+  }
+
+  refreshSync(): RuntimeConfigSnapshot {
+    return this.replace(readConfigSync(this.root));
   }
 
   persist(config: LocalBaseConfig): RuntimeConfigSnapshot {
@@ -125,9 +133,21 @@ export class RuntimeConfigController {
   update(
     updateConfig: (config: LocalBaseConfig) => LocalBaseConfig | void,
   ): RuntimeConfigSnapshot {
-    const next = copyConfig(this.snapshot.config);
-    const updated = updateConfig(next) ?? next;
-    return this.persist(updated);
+    const committed = this.database.get(this.root).transaction(
+      () => {
+        const next = readConfigSync(this.root);
+        const updated = updateConfig(next) ?? next;
+        if (canonicalLocalBaseRoot(updated.root) !== this.root) {
+          throw new Error(
+            "Runtime configuration cannot change the process root.",
+          );
+        }
+        saveConfig(this.database, updated);
+        return updated;
+      },
+      { behavior: "immediate" },
+    );
+    return this.replace(committed);
   }
 
   private replace(config: LocalBaseConfig): RuntimeConfigSnapshot {
