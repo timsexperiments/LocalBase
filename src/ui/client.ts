@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ModelMetadata } from "../domains/models/model-metadata";
+import type { Attachment } from "./attachments";
 
 const fragmentKeySchema = z.string().regex(/^[\x21-\x7e]+$/);
 
@@ -123,9 +124,13 @@ export type ToolCall = {
   function: { name: string; arguments: string };
 };
 export type ChatMessage =
-  | { role: "user" | "system"; content: string }
+  | { role: "system"; content: string }
+  | { role: "user"; content: string | UserContentPart[] }
   | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
+export type UserContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
 export type Media =
   | { kind: "image"; url: string }
   | { kind: "audio"; url: string }
@@ -139,6 +144,8 @@ export type Message = {
   id: string;
   role: "user" | "assistant";
   text: string;
+  attachments?: Attachment[];
+  attachmentsMissing?: boolean;
   media?: Media;
   artifacts?: Artifact[];
   protocol?: ChatMessage[];
@@ -164,6 +171,7 @@ const historySchema = z
           id: z.string(),
           role: z.enum(["user", "assistant"]),
           text: z.string(),
+          attachmentsMissing: z.boolean().optional(),
         }),
       ),
     }),
@@ -185,11 +193,16 @@ export function writeHistory(conversations: Conversation[]) {
         workspace: c.workspace,
         mode: c.mode,
         model: c.model,
-        messages: c.messages.map(({ id, role, text }) => ({
-          id,
-          role,
-          text,
-        })),
+        messages: c.messages.map(
+          ({ id, role, text, attachments, attachmentsMissing }) => ({
+            id,
+            role,
+            text,
+            ...(attachments?.length || attachmentsMissing
+              ? { attachmentsMissing: true }
+              : {}),
+          }),
+        ),
       })),
     ),
   );
