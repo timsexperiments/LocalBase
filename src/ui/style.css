@@ -714,6 +714,161 @@ dialog::backdrop {
   color: var(--muted);
   margin-top: 4px;
 }
+.model-card:disabled {
+  opacity: 0.65;
+}
+.manage-models-link {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+dialog.management-page {
+  width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  max-width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.management-page > .drawer {
+  max-width: 1120px;
+  margin: auto;
+}
+.storage-summary {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.catalog-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.catalog-filters input {
+  grid-column: 1 / -1;
+}
+.catalog-count {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 12px 0;
+}
+.catalog-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.catalog-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.drawer .catalog-card header {
+  position: static;
+  padding: 0;
+  margin: 0 0 6px;
+  border: 0;
+  background: none;
+}
+.catalog-card h3 {
+  font-size: 16px;
+  margin: 0;
+}
+.model-id {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.model-facts {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+.model-badge {
+  font-size: 11px;
+  white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+.model-badge.installed {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.model-storage {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+.model-storage dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+.model-storage dd {
+  font-size: 13px;
+  margin: 0;
+}
+.catalog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.catalog-actions button {
+  font-size: 12px;
+  border-color: var(--border);
+}
+.catalog-actions .install-model {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.catalog-card .hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+.model-operation {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.model-operation.failed {
+  color: var(--error);
+}
+.model-operation progress {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.uninstall-confirmation {
+  background: var(--error-surface);
+  border: 1px solid var(--error-border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+.uninstall-confirmation p {
+  margin-bottom: 8px;
+}
+@media (min-width: 760px) {
+  .catalog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .catalog-filters {
+    grid-template-columns: minmax(0, 1fr) 170px 170px;
+  }
+  .catalog-filters input {
+    grid-column: auto;
+  }
+}
 .upload {
   display: block;
   font-size: 12px;

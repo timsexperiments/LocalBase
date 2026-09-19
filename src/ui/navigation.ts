@@ -12,7 +12,7 @@ const navigationSchema = z.object({
   mode: z.enum(modes).catch("llm"),
   model: identifier,
   panel: z
-    .enum(["models", "settings", "history", "generation"])
+    .enum(["models", "settings", "history", "generation", "catalog"])
     .nullable()
     .catch(null),
   conversation: identifier,
