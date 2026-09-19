@@ -83,6 +83,10 @@ const modelSchema = z.object({
     name: z.string(),
     kind: z.enum(["llm", "image", "tts", "stt", "video"]),
     quantization: z.string(),
+    memory: z.object({
+      minimumVramEstimateGb: z.number().nonnegative(),
+      storageEstimateGb: z.number().positive(),
+    }),
     features: z.array(z.string()).default([]),
     inputModalities: z.array(z.string()),
     outputModalities: z.array(z.string()),
@@ -190,22 +194,27 @@ export function writeHistory(conversations: Conversation[]) {
     ),
   );
 }
-export function availableModels(models: Model[], mode: Mode) {
+export function catalogModels(models: Model[], mode: Mode) {
   return models
-    .filter(
-      (m) =>
-        (mode === "embedding"
-          ? m.catalog.capabilities?.kind === "embedding"
-          : m.catalog.kind === mode &&
-            m.catalog.capabilities?.kind !== "embedding") &&
-        m.device.selected &&
-        m.device.installed,
+    .filter((m) =>
+      mode === "embedding"
+        ? m.catalog.capabilities?.kind === "embedding"
+        : m.catalog.kind === mode &&
+          m.catalog.capabilities?.kind !== "embedding",
     )
     .sort(
       (a, b) =>
+        Number(b.device.installed && b.device.selected) -
+          Number(a.device.installed && a.device.selected) ||
+        Number(b.device.installed) - Number(a.device.installed) ||
         Number(Boolean(b.device.runtime?.configured)) -
-        Number(Boolean(a.device.runtime?.configured)),
+          Number(Boolean(a.device.runtime?.configured)),
     );
+}
+export function availableModels(models: Model[], mode: Mode) {
+  return catalogModels(models, mode).filter(
+    (model) => model.device.installed && model.device.selected,
+  );
 }
 export type Session = { kind: "session" } | { kind: "api-key" };
 export type SessionState =
@@ -297,17 +306,23 @@ export async function api(
     throw error;
   }
   if (!response.ok) {
-    if (
-      connection.kind === "session" &&
-      (response.status === 401 || response.status === 403)
-    ) {
-      await response.body?.cancel();
-      throw new SessionRequiredError();
-    }
     const value: unknown = await response.json().catch(() => null);
     const parsed = z
-      .object({ error: z.object({ message: z.string() }) })
+      .object({
+        error: z.object({ message: z.string(), code: z.string().optional() }),
+      })
       .safeParse(value);
+    if (
+      connection.kind === "session" &&
+      (response.status === 401 || response.status === 403) &&
+      !(
+        response.status === 403 &&
+        parsed.success &&
+        parsed.data.error.code === "model_management_denied"
+      )
+    ) {
+      throw new SessionRequiredError();
+    }
     throw new Error(
       response.status === 401
         ? "Enter a valid gateway API key in Settings."
