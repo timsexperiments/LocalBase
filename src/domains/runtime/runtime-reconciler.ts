@@ -143,6 +143,7 @@ export class RuntimeReconciler {
     RuntimeConfigSnapshot
   >;
   private readonly reconciliationScheduled = new Set<RuntimeModality>();
+  private readonly pendingModelReferences = new Set<ReadonlySet<string>>();
   private transitions = Promise.resolve();
   private readonly modalityTransitions: ModalityTransitions =
     Object.fromEntries(
@@ -205,6 +206,23 @@ export class RuntimeReconciler {
 
   configuredModalities(): Readonly<ConfiguredModalities> {
     return Object.freeze({ ...this.configured });
+  }
+
+  /** Artifact owners include shutdown work and targets not yet in the registry. */
+  protectedModelIds(): ReadonlySet<string> {
+    const ids = new Set<string>();
+    for (const modality of runtimeModalities) {
+      if (this.supervisors.get(modality)) {
+        const modelId = activeModel(
+          modality,
+          this.appliedSnapshots[modality].config,
+        );
+        if (modelId) ids.add(modelId);
+      }
+    }
+    for (const pending of this.pendingModelReferences)
+      for (const modelId of pending) if (modelId) ids.add(modelId);
+    return ids;
   }
 
   lifecycleSnapshot(): Readonly<
@@ -598,55 +616,65 @@ export class RuntimeReconciler {
   ): Promise<RuntimeConfigSnapshot> {
     const field = activeModelField(modality);
     const previousModel = activeModel(modality, source.config);
-    this.logger.event({
-      severity: "info",
-      eventName: "model.switching",
-      category: "runtime",
-      component: modalityComponents[modality],
-      runtime: modality,
-      message: "Switching the active model.",
-      attributes: { from_model: previousModel, to_model: modelId },
-    });
-    this.supervisors.markDraining(modality);
-    const drain = this.barriers[modality].drain();
+    const pending = new Set([
+      previousModel,
+      modelId,
+      activeModel(modality, this.appliedSnapshots[modality].config),
+    ]);
+    this.pendingModelReferences.add(pending);
     try {
-      await this.waitForAbort(drain, signal);
-      this.throwIfAborted(signal);
-      dispatchLease?.throwIfCancelled();
-    } catch (error) {
-      if (error instanceof RuntimeRequestAbortedError) {
-        await drain;
-        this.supervisors.clearDraining(modality);
-        this.barriers[modality].attach();
-      }
-      throw error;
-    }
-    const target = await this.exclusive(async () => {
-      dispatchLease?.throwIfCancelled();
-      const target = this.controller.update((config) => {
-        config[field] = modelId;
+      this.logger.event({
+        severity: "info",
+        eventName: "model.switching",
+        category: "runtime",
+        component: modalityComponents[modality],
+        runtime: modality,
+        message: "Switching the active model.",
+        attributes: { from_model: previousModel, to_model: modelId },
       });
-      this.snapshot = target;
-      this.configured = configuredModalities(target, this.ownership);
+      this.supervisors.markDraining(modality);
+      const drain = this.barriers[modality].drain();
+      try {
+        await this.waitForAbort(drain, signal);
+        this.throwIfAborted(signal);
+        dispatchLease?.throwIfCancelled();
+      } catch (error) {
+        if (error instanceof RuntimeRequestAbortedError) {
+          await drain;
+          this.supervisors.clearDraining(modality);
+          this.barriers[modality].attach();
+        }
+        throw error;
+      }
+      const target = await this.exclusive(async () => {
+        dispatchLease?.throwIfCancelled();
+        const target = this.controller.update((config) => {
+          config[field] = modelId;
+        });
+        this.snapshot = target;
+        this.configured = configuredModalities(target, this.ownership);
+        return target;
+      });
+      dispatchLease?.throwIfCancelled();
+      const previous = this.supervisors.take(modality);
+      await previous?.shutdown();
+      dispatchLease?.throwIfCancelled();
+      this.supervisors.add(modality, this.factory.create(modality, target));
+      this.appliedSnapshots[modality] = target;
+      this.barriers[modality].attach();
+      this.logger.event({
+        severity: "info",
+        eventName: "model.switched",
+        category: "runtime",
+        component: modalityComponents[modality],
+        runtime: modality,
+        message: "Active model switched.",
+        attributes: { from_model: previousModel, to_model: modelId },
+      });
       return target;
-    });
-    dispatchLease?.throwIfCancelled();
-    const previous = this.supervisors.take(modality);
-    await previous?.shutdown();
-    dispatchLease?.throwIfCancelled();
-    this.supervisors.add(modality, this.factory.create(modality, target));
-    this.appliedSnapshots[modality] = target;
-    this.barriers[modality].attach();
-    this.logger.event({
-      severity: "info",
-      eventName: "model.switched",
-      category: "runtime",
-      component: modalityComponents[modality],
-      runtime: modality,
-      message: "Active model switched.",
-      attributes: { from_model: previousModel, to_model: modelId },
-    });
-    return target;
+    } finally {
+      this.pendingModelReferences.delete(pending);
+    }
   }
 
   private scheduleReconciliation(
@@ -745,7 +773,11 @@ export class RuntimeReconciler {
   ): Promise<void> {
     const action = plan.modalities[modality];
     if (action.action === "unchanged") return;
-
+    const pending = new Set([
+      activeModel(modality, this.appliedSnapshots[modality].config),
+      activeModel(modality, target.config),
+    ]);
+    this.pendingModelReferences.add(pending);
     try {
       if (action.action === "add") {
         this.supervisors.add(modality, this.factory.create(modality, target));
@@ -775,6 +807,8 @@ export class RuntimeReconciler {
       this.appliedSnapshots[modality] = target;
     } catch (error) {
       this.recordReconciliationFailure(modality, target, action.action, error);
+    } finally {
+      this.pendingModelReferences.delete(pending);
     }
   }
 

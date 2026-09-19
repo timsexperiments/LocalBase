@@ -16,6 +16,7 @@ import {
 } from "./access";
 import { startGatewayFixture } from "../test/gateway-fixture";
 import { VideoJobManager } from "../domains/runtime/video/video-job-manager";
+import { canManageModels } from "./management-access";
 
 const config = uiAccessConfigSchema.parse({
   teamDomain: "test-team.cloudflareaccess.com",
@@ -275,6 +276,11 @@ test("enforces exact host, origin, fetch-site, marker, method, and path boundari
     ["GET", "/app/api/v1/models"],
     ["POST", "/app/api/v1/audio/translations"],
     ["GET", "/app/api/_localbase/models/model"],
+    ["GET", "/app/api/_localbase/model-management/model"],
+    ["POST", "/app/api/_localbase/model-management/model"],
+    ["POST", "/app/api/_localbase/model-management/"],
+    ["DELETE", "/app/api/_localbase/model-management"],
+    ["PUT", "/app/api/_localbase/model-management"],
     ["POST", "/app/api/_localbase/models"],
     ["GET", "/app/api/health"],
     ["OPTIONS", "/app/api/v1/videos"],
@@ -295,6 +301,8 @@ test("maps only allowlisted UI calls and keeps credentials off headers and reque
   const jwt = await token();
   const id = crypto.randomUUID();
   const routes = [
+    ["GET", "/_localbase/model-management"],
+    ["POST", "/_localbase/model-management"],
     ["GET", "/_localbase/models"],
     ["POST", "/v1/chat/completions"],
     ["POST", "/v1/embeddings"],
@@ -335,6 +343,18 @@ test("maps only allowlisted UI calls and keeps credentials off headers and reque
       /^ui-access:[0-9a-f]{64}$/,
     );
     expect(access.credential(mapped.request.clone())).toBeUndefined();
+    if (path === "/_localbase/model-management") {
+      const permissions = { allowUiSessions: true, apiKeyIds: [] };
+      expect(
+        canManageModels(access.credential(mapped.request), permissions),
+      ).toBe(true);
+      expect(canManageModels(access.credential(incoming), permissions)).toBe(
+        false,
+      );
+      expect(
+        canManageModels(access.credential(mapped.request.clone()), permissions),
+      ).toBe(false);
+    }
     expect(access.credential(incoming)).toBeUndefined();
   }
   for (const path of [
@@ -491,6 +511,8 @@ test("disabled gateway has manual fallback only; Access JWT never authenticates 
     expect(session.headers.has("access-control-allow-origin")).toBe(false);
     for (const [method, path] of [
       ["GET", "/_localbase/models"],
+      ["GET", "/_localbase/model-management"],
+      ["POST", "/_localbase/model-management"],
       ["POST", "/v1/chat/completions"],
       ["GET", "/app/api/_localbase/models"],
     ]) {
@@ -511,6 +533,34 @@ test("disabled gateway has manual fallback only; Access JWT never authenticates 
         })
       ).status,
     ).toBe(200);
+    const managementHeaders = { authorization: `Bearer ${gateway.apiKey}` };
+    const management = await fetch(
+      `${gateway.baseUrl}/_localbase/model-management`,
+      {
+        headers: managementHeaders,
+      },
+    );
+    expect(management.status).toBe(200);
+    expect(management.headers.get("cache-control")).toBe("no-store");
+    expect(await management.json()).toMatchObject({
+      canManage: false,
+      models: expect.any(Array),
+    });
+    const denied = await fetch(
+      `${gateway.baseUrl}/_localbase/model-management`,
+      {
+        method: "POST",
+        headers: {
+          ...managementHeaders,
+          "x-localbase-owner-id": `ui-access:${"a".repeat(64)}`,
+        },
+        body: "not JSON",
+      },
+    );
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({
+      error: { code: "model_management_denied" },
+    });
     const chat = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
       method: "POST",
       headers: {
