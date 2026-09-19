@@ -354,6 +354,15 @@ describe("playground client boundaries", () => {
             id: "message",
             role: "assistant",
             text: "hello",
+            attachments: [
+              {
+                id: "file",
+                kind: "text",
+                name: "private.txt",
+                size: 7,
+                text: "private attachment contents",
+              },
+            ],
             media: { kind: "video", url: "blob:private-video", format: "mp4" },
             protocol: [
               {
@@ -387,12 +396,21 @@ describe("playground client boundaries", () => {
           workspace: "lab",
           mode: "llm",
           model: "test",
-          messages: [{ id: "message", role: "assistant", text: "hello" }],
+          messages: [
+            {
+              id: "message",
+              role: "assistant",
+              text: "hello",
+              attachmentsMissing: true,
+            },
+          ],
         },
       ]);
       expect(saved).not.toContain("fixture-secret");
       expect(saved).not.toContain("blob:");
       expect(saved).not.toContain("pending-tool");
+      expect(saved).not.toContain("private attachment");
+      expect(saved).not.toContain("private.txt");
     } finally {
       if (descriptor)
         Object.defineProperty(globalThis, "localStorage", descriptor);

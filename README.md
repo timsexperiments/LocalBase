@@ -103,7 +103,9 @@ The gateway converts the runtime's AVI output to MP4 using a pinned, checksum-ve
 
 Enter your gateway API key in Settings; it stays in page memory and requests stay on the gateway origin. Stop aborts inference and media requests. Video submission is allowed to return its job ID before cancellation so the browser can cancel and delete the job with the same owner credential. Cleanup failures appear as warnings without discarding completed downloads. The shell is public, while model metadata and inference keep their existing authentication requirements. Runtime admission and resource limits remain enforced by the gateway.
 
-History lasts for the open page by default. Settings can opt into device-local text history; keys, generated media, and tool protocol messages are never stored. The UI uses no service worker.
+History lasts for the open page by default. Settings can opt into device-local text history; keys, attachment payloads, generated media, and tool protocol messages are never stored. Saved conversations with missing attachments require a new conversation before sending. The UI uses no service worker.
+
+Chat accepts up to four UTF-8 text or code attachments, limited to 128 KiB each and 256 KiB combined. Models declaring image input also accept PNG, JPEG, and WebP images up to 5 MiB each. Attachments accompany follow-ups and retries for the open page. PDF, Office documents, and archives are not supported. Managed chat models currently declare text input only.
 
 Microphone buttons dictate into text fields using the installed, enabled STT model selected in Settings. Tap once to record and again to transcribe; text is added without submitting. Recordings are limited to one minute, converted to mono 16 kHz WAV in the browser, and sent to the gateway's transcription endpoint. Navigating away or cancelling discards the recording. Microphone access requires browser permission and HTTPS or localhost; plain-HTTP LAN addresses cannot record. Password, numeric, and file inputs do not offer dictation.
 

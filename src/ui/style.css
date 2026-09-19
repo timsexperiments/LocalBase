@@ -342,6 +342,74 @@ input::placeholder {
   gap: 6px;
   min-width: 0;
 }
+.attachment-button {
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+}
+.attachment-hint {
+  margin: 6px 8px 0;
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.attachment-hint summary {
+  cursor: pointer;
+}
+.attachment-hint p {
+  margin: 4px 0 0;
+}
+.attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  margin: 0 0 8px;
+  list-style: none;
+  min-width: 0;
+}
+.attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.attachment-info {
+  display: grid;
+  min-width: 0;
+}
+.attachment-info > span {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-info small {
+  color: var(--muted);
+}
+.attachment-chip > img {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.attachment-chip button {
+  flex-shrink: 0;
+  padding: 4px;
+}
+.message-body .attachment-list {
+  margin-top: 8px;
+}
 .dictation-field > input {
   flex: 1;
   min-width: 0;
