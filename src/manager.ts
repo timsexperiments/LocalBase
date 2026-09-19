@@ -1,5 +1,6 @@
 import {
   createWriteStream,
+  existsSync,
   mkdirSync,
   readdirSync,
   renameSync,
@@ -497,10 +498,10 @@ export function loadConfig(
   return config;
 }
 
-export async function readConfig(root?: string): Promise<LocalBaseConfig> {
+export function readConfigSync(root?: string): LocalBaseConfig {
   const selectedRoot = canonicalLocalBaseRoot(root ?? defaultRoot());
   const path = dbPath(selectedRoot);
-  if (!(await Bun.file(path).exists())) {
+  if (!existsSync(path)) {
     throw invalidConfiguration(
       selectedRoot,
       "configuration database is missing",
@@ -519,6 +520,10 @@ export async function readConfig(root?: string): Promise<LocalBaseConfig> {
   } finally {
     readonly.close();
   }
+}
+
+export async function readConfig(root?: string): Promise<LocalBaseConfig> {
+  return readConfigSync(root);
 }
 
 export async function readConfigIfPresent(

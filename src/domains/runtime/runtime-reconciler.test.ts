@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSession } from "../../db/client";
+import { CATALOG } from "../../catalog";
+import { createModelManagement } from "../models/model-management";
 import type { LogEventInput } from "../observability/logging";
 import { defaultConfig, readConfig, saveConfig } from "../../manager";
 import { RuntimeConfigController } from "./config-snapshot";
@@ -39,6 +41,91 @@ function activeModel(
   if (modality === "video") return config.activeVideoModel;
   return config.activeImageModel;
 }
+
+test.each(["activation", "reconciliation"])(
+  "protects old and pending models across %s shutdown",
+  async (mode) => {
+    const root = mkdtempSync(join(tmpdir(), "localbase-protected-transition-"));
+    const database = new DatabaseSession();
+    const config = defaultConfig(root, 16);
+    const modelA = config.activeSttModel;
+    const modelB = CATALOG.find(
+      (model) => model.kind === "stt" && model.modelId !== modelA,
+    )?.modelId;
+    if (!modelA || !modelB) throw new Error("Expected two catalog STT models");
+    config.selectedSttModels = [modelA, modelB];
+    saveConfig(database, config);
+    const controller = new RuntimeConfigController(database, root, config);
+    const shutdownStarted = Promise.withResolvers<void>();
+    const releaseShutdown = Promise.withResolvers<void>();
+    const factory: RuntimeSupervisorFactory = {
+      baseUrl: () => "http://127.0.0.1:1",
+      create(modality, snapshot) {
+        const modelId = activeModel(modality, snapshot.config);
+        return {
+          kind: "server",
+          runtimeId: () => `${modality}:${modelId}`,
+          state: () => "running",
+          async ensureRunning() {},
+          async kill() {},
+          async shutdown() {
+            if (modelId === modelA) {
+              shutdownStarted.resolve();
+              await releaseShutdown.promise;
+            }
+          },
+        };
+      },
+    };
+    const reconciler = new RuntimeReconciler(
+      controller,
+      {},
+      new SupervisorRegistry({ stt: factory.create("stt", controller.read()) }),
+      factory,
+      { event() {} },
+    );
+    const management = createModelManagement({
+      runtimeConfig: controller,
+      lifecycle: () => reconciler.lifecycleSnapshot(),
+      protectedModelIds: () => reconciler.protectedModelIds(),
+    });
+    try {
+      if (mode === "reconciliation")
+        await controller.update((next) => {
+          next.activeSttModel = modelB;
+        });
+      const transition =
+        mode === "activation"
+          ? reconciler.admitModel("stt", modelB)
+          : reconciler.refresh();
+      await shutdownStarted.promise;
+      expect(reconciler.lifecycleSnapshot().stt.modelId).toBeNull();
+      expect(reconciler.protectedModelIds().has(modelA)).toBe(true);
+      expect(reconciler.protectedModelIds().has(modelB)).toBe(true);
+      await management.run(modelB, "disable");
+      await management.run(modelA, "disable");
+      for (const id of [modelA, modelB]) {
+        await expect(management.run(id, "install")).rejects.toMatchObject({
+          code: "conflict",
+        });
+        await expect(management.run(id, "uninstall")).rejects.toMatchObject({
+          code: "conflict",
+        });
+      }
+      releaseShutdown.resolve();
+      const completed = await transition;
+      if ("kind" in completed && completed.kind === "admitted")
+        completed.value.admission.release();
+      await reconciler.refresh();
+      expect(reconciler.protectedModelIds().has(modelA)).toBe(false);
+      expect(reconciler.protectedModelIds().has(modelB)).toBe(false);
+    } finally {
+      releaseShutdown.resolve();
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("coalesces revisions, isolates replacement, and recovers failed additions", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-runtime-reconciler-"));
