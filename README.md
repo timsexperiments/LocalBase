@@ -105,6 +105,8 @@ Enter your gateway API key in Settings; it stays in page memory and requests sta
 
 History lasts for the open page by default. Settings can opt into device-local text history; keys, generated media, and tool protocol messages are never stored. The UI uses no service worker.
 
+Microphone buttons dictate into text fields using the installed, enabled STT model selected in Settings. Tap once to record and again to transcribe; text is added without submitting. Recordings are limited to one minute, converted to mono 16 kHz WAV in the browser, and sent to the gateway's transcription endpoint. Navigating away or cancelling discards the recording. Microphone access requires browser permission and HTTPS or localhost; plain-HTTP LAN addresses cannot record. Password, numeric, and file inputs do not offer dictation.
+
 Open **Manage models** from the model picker or `/app?panel=catalog` to browse the catalog, disk usage, and download sizes. Only installed, enabled models can be selected for inference. Installation downloads files; enabling makes them available for requests; setting a default chooses the model used when a request omits one. Disable a model and wait for its runtime to release it before uninstalling. Shared model files are retained.
 
 Management is read-only unless startup configuration `<root>/model-management.json` grants access. Set `{"allowUiSessions":true,"apiKeyIds":[]}` to allow verified browser sign-ins, or add specific stored key IDs to `apiKeyIds` for trusted API clients. Do not put raw keys in this file. Restart after changing these permissions. Ordinary client keys retain inference-only access.

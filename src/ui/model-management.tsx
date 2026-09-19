@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { z } from "zod";
+import { DictationButton, appendDictation } from "./dictation";
 import {
   modelManagementSchema,
   type ModelManagementAction,
@@ -168,13 +169,21 @@ export function ModelManagement({
             </p>
           )}
           <div className="catalog-filters">
-            <input
-              type="search"
-              aria-label="Search catalog"
-              placeholder="Search the full catalog…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
+            <div className="dictation-field catalog-search">
+              <input
+                type="search"
+                aria-label="Search catalog"
+                placeholder="Search the full catalog…"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              <DictationButton
+                label="catalog search"
+                onText={(text) =>
+                  setSearch((value) => appendDictation(value, text))
+                }
+              />
+            </div>
             <select
               aria-label="Filter model mode"
               value={mode}
