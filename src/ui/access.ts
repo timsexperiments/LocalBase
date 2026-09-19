@@ -68,6 +68,8 @@ export function isUiAccessPath(pathname: string): boolean {
 }
 
 function allowedUiRoute(method: string, pathname: string): boolean {
+  if (pathname === "/_localbase/model-management")
+    return method === "GET" || method === "POST";
   if (method === "GET" && pathname === "/_localbase/models") return true;
   if (
     method === "POST" &&
