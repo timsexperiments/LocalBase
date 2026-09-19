@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { z } from "zod";
 import type { Model, Mode } from "./client";
+import { DictationButton, appendDictation } from "./dictation";
 
 const imageSizeSchema = z.enum(["256x256", "512x512", "1024x1024"]);
 export type GenerationSettings = {
@@ -220,20 +221,44 @@ export function GenerationSettingsFields({
             </p>
           )}
           {cap?.kind === "video" && cap.mode === "t2v" && (
-            <Field label="Negative prompt">
-              <textarea
-                className="generation-settings-control"
-                maxLength={16384}
-                value={settings.video.negative_prompt ?? ""}
-                placeholder="Model default"
-                onChange={(event) =>
+            <div>
+              <Field label="Negative prompt">
+                <textarea
+                  className="generation-settings-control"
+                  maxLength={16384}
+                  value={settings.video.negative_prompt ?? ""}
+                  placeholder="Model default"
+                  onChange={(event) =>
+                    onChange({
+                      ...settings,
+                      video: {
+                        negative_prompt: event.target.value || undefined,
+                      },
+                    })
+                  }
+                />
+              </Field>
+              {(settings.video.negative_prompt?.length ?? 0) > 16384 && (
+                <p className="generation-settings-hint" role="alert">
+                  Negative prompt exceeds 16,384 characters. Shorten it before
+                  generating video.
+                </p>
+              )}
+              <DictationButton
+                label="negative prompt"
+                onText={(text) =>
                   onChange({
                     ...settings,
-                    video: { negative_prompt: event.target.value || undefined },
+                    video: {
+                      negative_prompt: appendDictation(
+                        settings.video.negative_prompt ?? "",
+                        text,
+                      ),
+                    },
                   })
                 }
               />
-            </Field>
+            </div>
           )}
         </>
       )}
@@ -281,22 +306,39 @@ export function GenerationSettingsFields({
               This model transcribes English only.
             </p>
           ) : (
-            <Field label="Language">
-              <input
-                className="generation-settings-control"
-                value={settings.stt.language ?? ""}
-                placeholder="Model default; e.g. en, es, auto"
-                onChange={(event) =>
+            <div>
+              <Field label="Language">
+                <input
+                  className="generation-settings-control"
+                  value={settings.stt.language ?? ""}
+                  placeholder="Model default; e.g. en, es, auto"
+                  onChange={(event) =>
+                    onChange({
+                      ...settings,
+                      stt: {
+                        ...settings.stt,
+                        language: event.target.value || undefined,
+                      },
+                    })
+                  }
+                />
+              </Field>
+              <DictationButton
+                label="language"
+                onText={(text) =>
                   onChange({
                     ...settings,
                     stt: {
                       ...settings.stt,
-                      language: event.target.value || undefined,
+                      language: appendDictation(
+                        settings.stt.language ?? "",
+                        text,
+                      ),
                     },
                   })
                 }
               />
-            </Field>
+            </div>
           )}
           <Field label="Transcription prompt">
             <textarea
@@ -314,6 +356,18 @@ export function GenerationSettingsFields({
               }
             />
           </Field>
+          <DictationButton
+            label="transcription prompt"
+            onText={(text) =>
+              onChange({
+                ...settings,
+                stt: {
+                  ...settings.stt,
+                  prompt: appendDictation(settings.stt.prompt ?? "", text),
+                },
+              })
+            }
+          />
         </>
       )}
       {mode === "embedding" &&

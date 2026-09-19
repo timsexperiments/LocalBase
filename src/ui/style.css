@@ -336,6 +336,53 @@ input::placeholder {
   gap: 2px;
   margin-top: 6px;
 }
+.dictation-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.dictation-field > input {
+  flex: 1;
+  min-width: 0;
+}
+.dictation-control {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.dictation-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 8px;
+}
+.dictation-button.recording {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.dictation-help,
+.dictation-status {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 5;
+  width: 240px;
+  max-width: calc(100vw - 40px);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  box-shadow: 0 4px 18px #0002;
+}
+.generation-settings-section > .dictation-control,
+.generation-settings-section > div > .dictation-control {
+  display: flex;
+  justify-content: flex-end;
+}
 .send {
   flex-shrink: 0;
   background: var(--accent);
@@ -750,7 +797,7 @@ dialog.management-page {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-.catalog-filters input {
+.catalog-filters .catalog-search {
   grid-column: 1 / -1;
 }
 .catalog-count {
@@ -865,7 +912,7 @@ dialog.management-page {
   .catalog-filters {
     grid-template-columns: minmax(0, 1fr) 170px 170px;
   }
-  .catalog-filters input {
+  .catalog-filters .catalog-search {
     grid-column: auto;
   }
 }
