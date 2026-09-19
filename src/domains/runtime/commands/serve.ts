@@ -2529,18 +2529,33 @@ export async function runServe(
       if (!requestAuth.resolve(currentConfig, request)) return unauthorized();
       if (request.method !== "GET") return methodNotAllowed("GET");
 
+      const installations = inspectCatalogInstallations(currentConfig, CATALOG);
+      if (route === "modelMetadataList") {
+        const [resolvedInstallations, hostMemorySnapshot] = await Promise.all([
+          installations,
+          memoryProvider.snapshot(),
+        ]);
+        return Response.json(
+          projectModelMetadataList(
+            {
+              catalog: CATALOG,
+              config: currentConfig,
+              installations: resolvedInstallations,
+              runtimes,
+            },
+            {
+              topology: memoryProvider.topology,
+              snapshot: hostMemorySnapshot,
+            },
+          ),
+        );
+      }
       const metadataInput = {
         catalog: CATALOG,
         config: currentConfig,
-        installations: await inspectCatalogInstallations(
-          currentConfig,
-          CATALOG,
-        ),
+        installations: await installations,
         runtimes,
       };
-      if (route === "modelMetadataList") {
-        return Response.json(projectModelMetadataList(metadataInput));
-      }
 
       const modelId = modelMetadataIdFromPath(pathname);
       if (!modelId) return routeNotFound();
