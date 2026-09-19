@@ -68,6 +68,9 @@ describe("authenticated model metadata endpoints", () => {
       "frame-ancestors 'none'",
     );
     expect(shell.headers.get("cache-control")).toBe("no-store");
+    expect(shell.headers.get("permissions-policy")).toBe(
+      "camera=(), microphone=(self), geolocation=()",
+    );
     const html = await shell.text();
     const paths = [
       ...html.matchAll(/(?:src|href)="(\/app\/assets\/[^\"]+)"/g),
