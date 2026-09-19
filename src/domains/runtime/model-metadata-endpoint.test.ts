@@ -70,6 +70,9 @@ describe("authenticated model metadata endpoints", () => {
     );
     expect(shell.headers.get("cache-control")).toBe("no-store");
     const requestId = shell.headers.get("x-localbase-request-id");
+    expect(shell.headers.get("permissions-policy")).toBe(
+      "camera=(), microphone=(self), geolocation=()",
+    );
     const html = await shell.text();
     const requestEvent = await waitForLogEvent(
       activeGateway(),

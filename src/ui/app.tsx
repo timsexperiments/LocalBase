@@ -8,6 +8,11 @@ import {
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import { ModelManagement } from "./model-management";
+import {
+  DictationButton,
+  DictationProvider,
+  appendDictation,
+} from "./dictation";
 import { z } from "zod";
 import { generationTools, generateVideo, runChat, toolModels } from "./tools";
 import {
@@ -201,6 +206,10 @@ function App() {
   });
   const credential = sessionConnection(session);
   const [models, setModels] = useState<Model[]>([]);
+  const [dictationModelId, setDictationModelId] = useState("");
+  const sttModels = availableModels(models, "stt");
+  const dictationModel =
+    sttModels.find((model) => model.id === dictationModelId) ?? sttModels[0];
   const [connection, setConnection] = useState("Connecting");
   const connectionLabel =
     session.kind === "error"
@@ -452,6 +461,9 @@ function App() {
       busy ||
       unsupportedVideo ||
       (!retry && active.mode !== "stt" && !draft.trim()) ||
+      (!retry && active.mode === "tts" && draft.length > 256) ||
+      (active.mode === "video" &&
+        (generationSettings.video.negative_prompt?.length ?? 0) > 16384) ||
       (active.mode === "stt" && !file)
     )
       return;
@@ -705,7 +717,7 @@ function App() {
     }
   }
   if (!active) return null;
-  return (
+  const view = (
     <div className="app" ref={app}>
       <header className="topbar">
         <button
@@ -1020,6 +1032,15 @@ function App() {
                     <circle cx="9" cy="17" r="2" />
                   </svg>
                 </button>
+                {active.mode !== "stt" && (
+                  <DictationButton
+                    label="message"
+                    disabled={busy}
+                    onText={(text) =>
+                      setDraft((value) => appendDictation(value, text))
+                    }
+                  />
+                )}
                 {busy ? (
                   <button
                     type="button"
@@ -1037,6 +1058,10 @@ function App() {
                       !model ||
                       !credential ||
                       unsupportedVideo ||
+                      (active.mode === "tts" && draft.length > 256) ||
+                      (active.mode === "video" &&
+                        (generationSettings.video.negative_prompt?.length ??
+                          0) > 16384) ||
                       (active.mode === "stt" ? !file : !draft.trim())
                     }
                     aria-label="Send request"
@@ -1047,7 +1072,12 @@ function App() {
               </div>
             </form>
             {active.mode === "tts" && (
-              <p className="input-count">{draft.length}/256 characters</p>
+              <p className="input-count">
+                {draft.length}/256 characters
+                {draft.length > 256
+                  ? " · Shorten the text before sending."
+                  : ""}
+              </p>
             )}
           </div>
         </footer>
@@ -1149,6 +1179,30 @@ function App() {
                 </a>
               )}
               <hr />
+              <label>
+                Dictation model
+                <select
+                  value={dictationModel?.id ?? ""}
+                  disabled={!sttModels.length}
+                  onChange={(event) => setDictationModelId(event.target.value)}
+                >
+                  {!sttModels.length && (
+                    <option value="">
+                      No installed, enabled transcription model
+                    </option>
+                  )}
+                  {sttModels.map((model) => (
+                    <option value={model.id} key={model.id}>
+                      {model.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="hint">
+                Microphone buttons add text without sending. Recordings last up
+                to one minute and are sent only to this LocalBase gateway. Use
+                HTTPS or localhost for microphone access.
+              </p>
               <label className="toggle">
                 <input
                   type="checkbox"
@@ -1202,13 +1256,21 @@ function App() {
             </>
           ) : drawer === "models" ? (
             <>
-              <input
-                type="search"
-                aria-label="Search models"
-                placeholder="Search models…"
-                value={modelSearch}
-                onChange={(event) => setModelSearch(event.target.value)}
-              />
+              <div className="dictation-field">
+                <input
+                  type="search"
+                  aria-label="Search models"
+                  placeholder="Search models…"
+                  value={modelSearch}
+                  onChange={(event) => setModelSearch(event.target.value)}
+                />
+                <DictationButton
+                  label="model search"
+                  onText={(text) =>
+                    setModelSearch((value) => appendDictation(value, text))
+                  }
+                />
+              </div>
               <p className="hint">Install or enable a model to use it here.</p>
               <a
                 className="manage-models-link"
@@ -1312,13 +1374,21 @@ function App() {
                   Manage models
                 </button>
               </div>
-              <input
-                type="search"
-                aria-label="Search conversations"
-                placeholder="Search conversations…"
-                value={historySearch}
-                onChange={(event) => setHistorySearch(event.target.value)}
-              />
+              <div className="dictation-field">
+                <input
+                  type="search"
+                  aria-label="Search conversations"
+                  placeholder="Search conversations…"
+                  value={historySearch}
+                  onChange={(event) => setHistorySearch(event.target.value)}
+                />
+                <DictationButton
+                  label="conversation search"
+                  onText={(text) =>
+                    setHistorySearch((value) => appendDictation(value, text))
+                  }
+                />
+              </div>
               <p className="hint">
                 {persistent
                   ? "Text is saved on this device. Media lasts for this session."
@@ -1357,6 +1427,15 @@ function App() {
         </Drawer>
       )}
     </div>
+  );
+  return (
+    <DictationProvider
+      connection={credential}
+      modelId={dictationModel?.id}
+      scope={`${active.id}:${active.mode}:${active.model}:${drawer ?? ""}`}
+    >
+      {view}
+    </DictationProvider>
   );
 }
 const root = document.getElementById("root");
