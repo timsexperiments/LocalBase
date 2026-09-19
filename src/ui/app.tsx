@@ -7,6 +7,7 @@ import {
 } from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
+import { ModelManagement } from "./model-management";
 import { z } from "zod";
 import { generationTools, generateVideo, runChat, toolModels } from "./tools";
 import {
@@ -24,6 +25,7 @@ import {
   consumeFragmentKey,
   createUiId,
   availableModels,
+  catalogModels,
   historyKey,
   imageResponseSchema,
   modelsSchema,
@@ -151,10 +153,12 @@ function Drawer({
   title,
   close,
   children,
+  fullPage = false,
 }: {
   title: string;
   close: () => void;
   children: ReactNode;
+  fullPage?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -169,6 +173,7 @@ function Drawer({
   return (
     <dialog
       ref={ref}
+      className={fullPage ? "management-page" : undefined}
       aria-labelledby="drawer-title"
       onCancel={(event) => {
         event.preventDefault();
@@ -246,6 +251,7 @@ function App() {
     conversations.find((c) => c.id === activeId) ?? conversations[0];
   const page = active?.workspace ?? "chat";
   const candidates = availableModels(models, active?.mode ?? "llm");
+  const pickerModels = catalogModels(models, active?.mode ?? "llm");
   const model = candidates.find((m) => m.id === active?.model) ?? candidates[0];
   const generationSettings = modelGenerationSettings(
     generationPreferences,
@@ -1065,18 +1071,28 @@ function App() {
       </div>
       {drawer && (
         <Drawer
+          fullPage={drawer === "catalog"}
           title={
-            drawer === "generation"
-              ? "Generation settings"
-              : drawer === "settings"
-                ? "Settings"
-                : drawer === "models"
-                  ? "Models"
-                  : "History"
+            drawer === "catalog"
+              ? "Manage models"
+              : drawer === "generation"
+                ? "Generation settings"
+                : drawer === "settings"
+                  ? "Settings"
+                  : drawer === "models"
+                    ? "Models"
+                    : "History"
           }
           close={() => setDrawer(null)}
         >
-          {drawer === "generation" ? (
+          {drawer === "catalog" ? (
+            <ModelManagement
+              connection={credential}
+              models={models}
+              refreshModels={refresh}
+              openSettings={() => setDrawer("settings")}
+            />
+          ) : drawer === "generation" ? (
             <div className="generation-settings">
               {page === "chat" && model && (
                 <p className="generation-settings-hint">
@@ -1230,10 +1246,27 @@ function App() {
                 value={modelSearch}
                 onChange={(event) => setModelSearch(event.target.value)}
               />
-              <p className="hint">
-                Selected, installed models on this gateway. Choosing a model may
-                load it on your next request.
-              </p>
+              <p className="hint">Install or enable a model to use it here.</p>
+              <a
+                className="manage-models-link"
+                href={navigationUrl(
+                  location.href,
+                  conversationNavigation(active, "catalog"),
+                )}
+                onClick={(event) => {
+                  if (
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return;
+                  event.preventDefault();
+                  setDrawer("catalog");
+                }}
+              >
+                Manage models →
+              </a>
               {page === "lab" && (
                 <div className="modes">
                   {modes.map((mode) => (
@@ -1250,16 +1283,18 @@ function App() {
                   ))}
                 </div>
               )}
-              {candidates.length ? (
-                candidates
+              {pickerModels.length ? (
+                pickerModels
                   .filter((candidate) =>
-                    `${candidate.catalog.name} ${candidate.catalog.quantization}`
+                    `${candidate.catalog.name} ${candidate.id} ${candidate.catalog.quantization}`
                       .toLowerCase()
                       .includes(modelSearch.toLowerCase()),
                   )
                   .map((m) => (
                     <button
-                      disabled={busy}
+                      disabled={
+                        busy || !m.device.installed || !m.device.selected
+                      }
                       className={`model-card ${m.id === model?.id ? "selected" : ""}`}
                       key={m.id}
                       aria-pressed={m.id === model?.id}
@@ -1275,8 +1310,13 @@ function App() {
                       <strong>{m.catalog.name}</strong>
                       <span>
                         {m.catalog.quantization} ·{" "}
-                        {m.device.runtime?.state ?? "Loads on request"}
+                        {m.device.installed
+                          ? m.device.selected
+                            ? "Installed · Enabled"
+                            : "Installed · Disabled"
+                          : "Not installed"}
                       </span>
+                      <small className="model-id">{m.id}</small>
                       <small>
                         {m.catalog.inputModalities.join(", ")} →{" "}
                         {m.catalog.outputModalities.join(", ")}
@@ -1288,13 +1328,12 @@ function App() {
                   ))
               ) : (
                 <p>
-                  No selected, installed models for{" "}
-                  {labels[active.mode].toLowerCase()}.
+                  No catalog models for {labels[active.mode].toLowerCase()}.
                 </p>
               )}
-              {candidates.length > 0 &&
-                !candidates.some((candidate) =>
-                  `${candidate.catalog.name} ${candidate.catalog.quantization}`
+              {pickerModels.length > 0 &&
+                !pickerModels.some((candidate) =>
+                  `${candidate.catalog.name} ${candidate.id} ${candidate.catalog.quantization}`
                     .toLowerCase()
                     .includes(modelSearch.toLowerCase()),
                 ) && <p className="hint">No models match your search.</p>}
@@ -1306,6 +1345,9 @@ function App() {
                   ＋ New conversation
                 </button>
                 <button onClick={() => setDrawer("settings")}>Settings</button>
+                <button onClick={() => setDrawer("catalog")}>
+                  Manage models
+                </button>
               </div>
               <input
                 type="search"
