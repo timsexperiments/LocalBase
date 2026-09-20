@@ -130,10 +130,7 @@ export async function startSdServerProcess(
   plan: ImageLaunchPlan,
   topology: MemoryTopology,
 ): Promise<Bun.Subprocess> {
-  const profile = plan.imageRuntime;
-  for (const path of profile
-    ? [profile.diffusionModelPath, profile.vaePath, profile.textEncoderPath]
-    : [plan.modelPath]) {
+  for (const path of imageArtifactPaths(plan)) {
     if (!(await Bun.file(path).exists())) {
       throw new Error(`Image artifact not found: ${path}`);
     }
@@ -153,31 +150,89 @@ export async function startSdServerProcess(
   });
 }
 
-/** The pinned runtime retains its model-specific scheduler defaults. */
+/** Builds the pinned model-specific image runtime arguments. */
 export function buildSdImageServerArgs(plan: ImageLaunchPlan): string[] {
-  const profile = plan.imageRuntime;
   return [
-    ...(profile
-      ? [
-          "--diffusion-model",
-          profile.diffusionModelPath,
-          "--vae",
-          profile.vaePath,
-          "--llm",
-          profile.textEncoderPath,
-          "--sampling-method",
-          profile.generation.sampler,
-          "--steps",
-          String(profile.generation.steps),
-          "--cfg-scale",
-          String(profile.generation.cfgScale),
-        ]
-      : ["-m", plan.modelPath]),
+    ...imageModelArgs(plan),
     "--listen-ip",
     plan.host,
     "--listen-port",
     String(plan.port),
   ];
+}
+
+function imageArtifactPaths(plan: ImageLaunchPlan): string[] {
+  const profile = plan.imageRuntime;
+  if (!profile) return [plan.modelPath];
+  switch (profile.kind) {
+    case "diffusion-qwen3":
+      return [
+        profile.diffusionModelPath,
+        profile.vaePath,
+        profile.textEncoderPath,
+      ];
+    case "diffusion-flux1":
+      return [
+        profile.diffusionModelPath,
+        profile.vaePath,
+        profile.clipLPath,
+        profile.t5xxlPath,
+      ];
+    case "checkpoint":
+      return [profile.diffusionModelPath];
+  }
+}
+
+function generationArgs(
+  generation: NonNullable<ImageLaunchPlan["imageRuntime"]>["generation"],
+): string[] {
+  return [
+    "--sampling-method",
+    generation.sampler,
+    ...(generation.sampler === "lcm"
+      ? ["--scheduler", generation.scheduler]
+      : []),
+    "--steps",
+    String(generation.steps),
+    "--cfg-scale",
+    String(generation.cfgScale),
+  ];
+}
+
+function imageModelArgs(plan: ImageLaunchPlan): string[] {
+  const profile = plan.imageRuntime;
+  if (!profile) return ["-m", plan.modelPath];
+  switch (profile.kind) {
+    case "diffusion-qwen3":
+      return [
+        "--diffusion-model",
+        profile.diffusionModelPath,
+        "--vae",
+        profile.vaePath,
+        "--llm",
+        profile.textEncoderPath,
+        ...generationArgs(profile.generation),
+      ];
+    case "diffusion-flux1":
+      return [
+        "--diffusion-model",
+        profile.diffusionModelPath,
+        "--vae",
+        profile.vaePath,
+        "--clip_l",
+        profile.clipLPath,
+        "--t5xxl",
+        profile.t5xxlPath,
+        "--clip-on-cpu",
+        ...generationArgs(profile.generation),
+      ];
+    case "checkpoint":
+      return [
+        "-m",
+        profile.diffusionModelPath,
+        ...generationArgs(profile.generation),
+      ];
+  }
 }
 
 export async function startSdVideoServerProcess(
