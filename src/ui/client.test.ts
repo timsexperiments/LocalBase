@@ -9,6 +9,7 @@ import {
   SessionRequiredError,
   availableModels,
   catalogModels,
+  modelMemoryRequirement,
   modelMemorySummary,
   modelsSchema,
   streamText,
@@ -576,7 +577,11 @@ describe("playground client boundaries", () => {
         name: "Test",
         kind: "llm",
         quantization: "Q4",
-        memory: { minimumVramEstimateGb: 1, storageEstimateGb: 1 },
+        memory: {
+          minimumVramEstimateGb: 1,
+          unifiedMemoryEstimateGb: 4,
+          storageEstimateGb: 1,
+        },
         inputModalities: ["text"],
         outputModalities: ["text"],
         contextWindowTokens: null,
@@ -653,11 +658,35 @@ describe("playground client boundaries", () => {
     );
     const first = models[0];
     if (!first) throw new Error("Expected model fixture.");
+    expect(modelMemoryRequirement(first, parsed.host.memory)).toEqual({
+      label: "Est. unified memory",
+      gigabytes: 4,
+    });
     expect(modelMemorySummary(first, parsed.host.memory)).toBe(
-      "Needs ~1 GB · 37.5 GB available",
+      "Needs ~4 GiB · 37.5 GiB available",
     );
+    expect(modelMemoryRequirement(first, null)).toEqual({
+      label: "Est. memory",
+      gigabytes: 1,
+    });
     expect(modelMemorySummary(first, null)).toBe(
-      "Needs ~1 GB · memory availability unknown",
+      "Needs ~1 GiB · memory availability unknown",
+    );
+    const withoutUnifiedEstimate = {
+      ...first,
+      catalog: {
+        ...first.catalog,
+        memory: {
+          ...first.catalog.memory,
+          unifiedMemoryEstimateGb: null,
+        },
+      },
+    };
+    expect(
+      modelMemoryRequirement(withoutUnifiedEstimate, parsed.host.memory),
+    ).toEqual({ label: "Est. unified memory", gigabytes: null });
+    expect(modelMemorySummary(withoutUnifiedEstimate, parsed.host.memory)).toBe(
+      "Memory requirement unknown · 37.5 GiB available",
     );
     expect(
       modelMemorySummary(first, {
@@ -673,7 +702,22 @@ describe("playground client boundaries", () => {
           },
         ],
       }),
-    ).toBe("Needs ~1 GB · 23.3 GB available");
+    ).toBe("Needs ~1 GiB · 23.3 GiB available");
+    expect(
+      modelMemoryRequirement(first, {
+        kind: "discrete",
+        system: {
+          capacityBytes: 64 * 1024 ** 3,
+          availableBytes: 40 * 1024 ** 3,
+        },
+        accelerators: [
+          {
+            capacityBytes: 32 * 1024 ** 3,
+            availableBytes: 23.25 * 1024 ** 3,
+          },
+        ],
+      }),
+    ).toEqual({ label: "Min. VRAM", gigabytes: 1 });
     for (const accelerators of [
       [],
       [
@@ -690,7 +734,7 @@ describe("playground client boundaries", () => {
           },
           accelerators,
         }),
-      ).toBe("Needs ~1 GB · memory availability unknown");
+      ).toBe("Needs ~1 GiB · memory availability unknown");
     }
     const speechModels = availableModels(models, "tts");
     expect(speechModels.map((m) => m.id)).toEqual(["speech"]);

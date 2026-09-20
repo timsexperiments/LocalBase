@@ -89,6 +89,7 @@ const modelSchema = z.object({
     quantization: z.string(),
     memory: z.object({
       minimumVramEstimateGb: z.number().nonnegative(),
+      unifiedMemoryEstimateGb: z.number().positive().nullable().default(null),
       storageEstimateGb: z.number().positive(),
     }),
     features: z.array(z.string()).default([]),
@@ -107,7 +108,7 @@ const modelSchema = z.object({
 });
 export type Model = z.infer<typeof modelSchema>;
 type MetadataIdentity = Pick<ModelMetadata, "id">;
-type HostMemory = ModelMetadataList["host"]["memory"];
+export type HostMemory = ModelMetadataList["host"]["memory"];
 const memoryPoolSchema = z.object({
   capacityBytes: z.number().int().nonnegative(),
   availableBytes: z.number().int().nonnegative().nullable(),
@@ -123,6 +124,24 @@ export const modelsSchema = z.object({
 });
 export type ModelsResponse = z.infer<typeof modelsSchema>;
 
+export function modelMemoryRequirement(
+  model: Model,
+  memory: HostMemory | null,
+): Readonly<{ label: string; gigabytes: number | null }> {
+  if (memory?.kind === "unified") {
+    if (model.catalog.memory.unifiedMemoryEstimateGb === null)
+      return { label: "Est. unified memory", gigabytes: null };
+    return {
+      label: "Est. unified memory",
+      gigabytes: model.catalog.memory.unifiedMemoryEstimateGb,
+    };
+  }
+  return {
+    label: memory ? "Min. VRAM" : "Est. memory",
+    gigabytes: model.catalog.memory.minimumVramEstimateGb,
+  };
+}
+
 export function modelMemorySummary(
   model: Model,
   memory: HostMemory | null,
@@ -137,8 +156,11 @@ export function modelMemorySummary(
   const available =
     availableBytes == null
       ? "memory availability unknown"
-      : `${Math.round((availableBytes / 1024 ** 3) * 10) / 10} GB available`;
-  return `Needs ~${model.catalog.memory.minimumVramEstimateGb} GB · ${available}`;
+      : `${Math.round((availableBytes / 1024 ** 3) * 10) / 10} GiB available`;
+  const requirement = modelMemoryRequirement(model, memory);
+  return requirement.gigabytes === null
+    ? `Memory requirement unknown · ${available}`
+    : `Needs ~${requirement.gigabytes} GiB · ${available}`;
 }
 export const readinessSchema = z.object({
   status: z.enum(["ready", "unready"]),

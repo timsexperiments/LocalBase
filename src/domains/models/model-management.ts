@@ -114,32 +114,60 @@ function paths(config: LocalBaseConfig, model: ModelSpec): string[] {
   );
 }
 
-function installConflict(
+function installProtection(
   config: LocalBaseConfig,
   model: ModelSpec,
   referenced: ReadonlySet<string | null>,
-): string | null {
-  const targetPaths = new Set(paths(config, model));
+): Readonly<{
+  conflict: string | null;
+  protectedArtifactPaths: ReadonlySet<string>;
+}> {
+  const targetArtifacts = new Map(
+    model.artifacts.map((artifact) => [
+      join(config[fields[model.kind].directory], artifact.filename),
+      artifact,
+    ]),
+  );
+  const protectedArtifactPaths = new Set<string>();
   const protectedModel = CATALOG.find((other) => {
     const field = fields[other.kind];
-    return (
-      (other.modelId === model.modelId ||
-        paths(config, other).some((path) => targetPaths.has(path))) &&
-      (config[field.selected].includes(other.modelId) ||
-        config[field.active] === other.modelId ||
-        referenced.has(other.modelId))
-    );
+    const protectedByRuntime =
+      config[field.selected].includes(other.modelId) ||
+      config[field.active] === other.modelId ||
+      referenced.has(other.modelId);
+    if (!protectedByRuntime) return false;
+    if (other.modelId === model.modelId) return true;
+    for (const artifact of other.artifacts) {
+      const path = join(
+        config[fields[other.kind].directory],
+        artifact.filename,
+      );
+      const target = targetArtifacts.get(path);
+      if (!target) continue;
+      if (
+        target.expectedSizeBytes !== artifact.expectedSizeBytes ||
+        target.sha256 !== artifact.sha256
+      )
+        return true;
+      protectedArtifactPaths.add(path);
+    }
+    return false;
   });
-  if (!protectedModel) return null;
-  return protectedModel.modelId === model.modelId
-    ? "Disable this model and wait for the runtime to release it before installing."
-    : `Disable ${protectedModel.modelId} and wait for its runtime to release shared artifacts before installing.`;
+  if (!protectedModel) return { conflict: null, protectedArtifactPaths };
+  return {
+    conflict:
+      protectedModel.modelId === model.modelId
+        ? "Disable this model and wait for the runtime to release it before installing."
+        : `Disable ${protectedModel.modelId} and wait for its runtime to release shared artifacts before installing.`,
+    protectedArtifactPaths,
+  };
 }
 
 function inspect(config: LocalBaseConfig, model: ModelSpec) {
   let installedBytes = 0;
   let installed = true;
   let downloadBytes = 0;
+  let remainingDownloadBytes = 0;
   let authoritative = model.artifacts.length > 0;
   for (const artifact of model.artifacts) {
     const path = join(config[fields[model.kind].directory], artifact.filename);
@@ -155,12 +183,26 @@ function inspect(config: LocalBaseConfig, model: ModelSpec) {
       !/^[a-fA-F0-9]{64}$/.test(artifact.sha256 ?? "")
     )
       authoritative = false;
-    else downloadBytes += size;
+    else {
+      downloadBytes += size;
+      let reusableBytes = 0;
+      if (stat?.size === size) reusableBytes = size;
+      else if (stat && stat.size < size) {
+        reusableBytes =
+          partial && partial.size <= size && partial.size >= stat.size
+            ? partial.size
+            : stat.size;
+      } else if (!stat && partial && partial.size <= size) {
+        reusableBytes = partial.size;
+      }
+      remainingDownloadBytes += size - reusableBytes;
+    }
   }
   return {
     installed,
     installedBytes,
     downloadBytes: authoritative ? downloadBytes : null,
+    remainingDownloadBytes: authoritative ? remainingDownloadBytes : null,
   };
 }
 
@@ -207,6 +249,7 @@ export function createModelManagement({
             installed: false,
             installedBytes: 0,
             downloadBytes: null,
+            remainingDownloadBytes: null,
           };
           installUnavailableReason =
             error instanceof ModelManagementError
@@ -216,7 +259,7 @@ export function createModelManagement({
         const available = storageAt(
           config[fields[model.kind].directory],
         ).availableBytes;
-        const conflict = installConflict(config, model, referenced);
+        const { conflict } = installProtection(config, model, referenced);
         if (installing !== null)
           installUnavailableReason =
             "Wait for the current installation to finish.";
@@ -272,7 +315,7 @@ export function createModelManagement({
     };
     if (action === "install") {
       safeFile(config.root, join(config[field.directory], ".checksums.json"));
-      const conflict = installConflict(
+      const protection = installProtection(
         config,
         model,
         new Set([
@@ -280,8 +323,8 @@ export function createModelManagement({
           ...Object.values(lifecycle()).map((runtime) => runtime.modelId),
         ]),
       );
-      if (conflict !== null)
-        throw new ModelManagementError("conflict", conflict);
+      if (protection.conflict !== null)
+        throw new ModelManagementError("conflict", protection.conflict);
       if (facts.downloadBytes === null)
         throw new ModelManagementError(
           "invalid_request",
@@ -312,28 +355,34 @@ export function createModelManagement({
       // Attach the rejection handler before the installer can run or throw.
       inFlight = Promise.resolve()
         .then(() =>
-          installModel(config, modelId, undefined, (event) => {
-            if (event.kind === "download-progress")
-              progress.set(event.artifactFilename, event.downloadedBytes);
-            if (event.kind === "verification-completed") {
-              const artifact = model.artifacts.find(
-                (item) => item.filename === event.artifactFilename,
-              );
-              if (artifact?.expectedSizeBytes !== undefined)
-                progress.set(
-                  event.artifactFilename,
-                  artifact.expectedSizeBytes,
+          installModel(
+            config,
+            modelId,
+            undefined,
+            (event) => {
+              if (event.kind === "download-progress")
+                progress.set(event.artifactFilename, event.downloadedBytes);
+              if (event.kind === "verification-completed") {
+                const artifact = model.artifacts.find(
+                  (item) => item.filename === event.artifactFilename,
                 );
-            }
-            operations.set(modelId, {
-              ...running,
-              detail: event.kind,
-              downloadedBytes: [...progress.values()].reduce(
-                (sum, value) => sum + value,
-                0,
-              ),
-            });
-          }),
+                if (artifact?.expectedSizeBytes !== undefined)
+                  progress.set(
+                    event.artifactFilename,
+                    artifact.expectedSizeBytes,
+                  );
+              }
+              operations.set(modelId, {
+                ...running,
+                detail: event.kind,
+                downloadedBytes: [...progress.values()].reduce(
+                  (sum, value) => sum + value,
+                  0,
+                ),
+              });
+            },
+            protection.protectedArtifactPaths,
+          ),
         )
         .then(
           () => {
