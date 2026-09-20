@@ -1,5 +1,4 @@
 import {
-  createUiId,
   type ChatMessage,
   type Message,
   type Model,
@@ -129,7 +128,11 @@ export async function readAttachments(
         `${file.name}: choose a nonempty file under ${image ? "5 MiB" : "128 KiB"}.`,
       );
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const identity = { id: createUiId(), name: file.name, size: file.size };
+    const identity = {
+      id: crypto.randomUUID(),
+      name: file.name,
+      size: file.size,
+    };
     if (image) {
       const mime = imageMime(bytes);
       if (!mime)
