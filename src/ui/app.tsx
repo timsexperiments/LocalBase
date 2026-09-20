@@ -39,7 +39,6 @@ import {
 import "./style.css";
 import {
   conversationNavigation,
-  navigationUrl,
   readNavigation,
   resolveNavigation,
   writeNavigation,

@@ -148,6 +148,7 @@ select {
   font-size: 17px;
   font-weight: 650;
   letter-spacing: -0.6px;
+  padding: 0;
 }
 .brand-mark {
   flex: 0 0 26px;
