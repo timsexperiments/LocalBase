@@ -49,7 +49,6 @@ export function ModelManagement({
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const connectionKind = connection?.kind;
-  const key = connection?.kind === "api-key" ? connection.key : "";
 
   useEffect(() => {
     setState(null);
@@ -92,7 +91,7 @@ export function ModelManagement({
       abort.abort();
       clearTimeout(timer);
     };
-  }, [connectionKind, key, revision]);
+  }, [connectionKind, revision]);
 
   async function run(modelId: string, action: ModelManagementAction) {
     if (!connection || !state?.canManage || pending) return;
@@ -163,8 +162,8 @@ export function ModelManagement({
           </p>
           {state && !state.canManage && (
             <p className="notice" role="status">
-              Read-only access. Use your personal sign-in or an authorized
-              management key to change models.
+              Read-only access. Sign in with an account authorized to manage
+              models.
             </p>
           )}
           <div className="catalog-filters">
