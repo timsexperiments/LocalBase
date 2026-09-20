@@ -10,7 +10,9 @@ import Markdown from "react-markdown";
 import { ModelManagement } from "./model-management";
 import {
   attachmentAccept,
-  attachmentError,
+  attachmentStorageError,
+  chatRequestError,
+  conversationAttachmentError,
   readAttachments,
   messageToChat,
   type Attachment,
@@ -308,19 +310,29 @@ function App() {
   const pickerModels = catalogModels(models, active?.mode ?? "llm");
   const model = candidates.find((m) => m.id === active?.model) ?? candidates[0];
   const accept = active?.mode === "llm" ? attachmentAccept(model) : "";
-  const draftAttachmentError = attachmentError(attachments, model);
-  const historyAttachmentError = active?.messages
-    .map((message) => attachmentError(message.attachments ?? [], model))
-    .find((detail) => detail);
-  const attachmentProblem = active?.messages.some(
-    (message) => message.attachmentsMissing,
-  )
-    ? "This saved conversation is missing attachments from an earlier session. Start a new conversation to send messages or retry."
-    : draftAttachmentError
-      ? `${draftAttachmentError} Remove the affected draft files or choose a compatible model.`
-      : historyAttachmentError
-        ? `${historyAttachmentError} Choose a compatible model or start a new conversation. Sent attachments will not be dropped.`
-        : null;
+  const storedAttachments = conversations.flatMap((conversation) =>
+    conversation.messages.flatMap((message) => message.attachments ?? []),
+  );
+  const attachmentProblem =
+    attachmentStorageError([...storedAttachments, ...attachments]) ??
+    (active
+      ? conversationAttachmentError(
+          [
+            ...active.messages,
+            ...(draft.trim() || attachments.length
+              ? [
+                  {
+                    id: "draft",
+                    role: "user" as const,
+                    text: draft.trim(),
+                    attachments,
+                  },
+                ]
+              : []),
+          ],
+          model,
+        )
+      : null);
   function invalidateAttachmentRead() {
     attachmentEpoch.current += 1;
     attachmentPickerEpoch.current = null;
@@ -366,7 +378,12 @@ function App() {
     attachmentRead.current = epoch;
     setReadingAttachments(true);
     try {
-      const added = await readAttachments(files, model, attachments);
+      const added = await readAttachments(
+        files,
+        model,
+        attachments,
+        storedAttachments,
+      );
       if (epoch !== attachmentEpoch.current) return;
       setAttachments((current) => [...current, ...added]);
       setAttachmentReadError("");
@@ -621,6 +638,11 @@ function App() {
           ? active.messages[previousUser]?.attachments
           : attachments,
     };
+    const requestProblem = chatRequestError([...base, user], model);
+    if (requestProblem) {
+      setAttachmentReadError(requestProblem);
+      return;
+    }
     const reply: Message = {
       id: crypto.randomUUID(),
       role: "assistant",

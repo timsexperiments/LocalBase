@@ -43,7 +43,35 @@ export const attachmentLimits = {
   imageBytes: 5 * 1024 * 1024,
   textBytes: 128 * 1024,
   totalTextBytes: 256 * 1024,
+  conversationBytes: 16 * 1024 * 1024,
+  requestBytes: 20 * 1024 * 1024,
 };
+
+const encoder = new TextEncoder();
+
+function encodedBytes(value: string): number {
+  return encoder.encode(value).byteLength;
+}
+
+function attachmentBytes(attachment: Attachment): number {
+  return (
+    encodedBytes(attachment.name) +
+    (attachment.kind === "image" ? attachment.url.length : attachment.size)
+  );
+}
+
+export function attachmentStorageError(
+  attachments: Attachment[],
+): string | null {
+  if (
+    attachments.reduce(
+      (bytes, attachment) => bytes + attachmentBytes(attachment),
+      0,
+    ) > attachmentLimits.conversationBytes
+  )
+    return "Attachments open in this browser must total 16 MiB or less. Delete an attachment conversation, reload the page, or remove draft files.";
+  return null;
+}
 
 function supports(model: Model | undefined, kind: "text" | "image") {
   return (
@@ -83,6 +111,36 @@ export function attachmentError(
   return null;
 }
 
+export function conversationAttachmentError(
+  messages: Message[],
+  model: Model | undefined,
+): string | null {
+  const attachments = messages.flatMap((message) => message.attachments ?? []);
+  const retainedError = attachmentStorageError(attachments);
+  if (retainedError) return retainedError;
+  for (const message of messages) {
+    const error = attachmentError(message.attachments ?? [], model);
+    if (error) return error;
+  }
+  if (messages.some((message) => message.attachmentsMissing))
+    return "This saved conversation is missing attachments from an earlier session. Start a new conversation to send messages or retry.";
+  return null;
+}
+
+export function chatRequestError(
+  messages: Message[],
+  model: Model | undefined,
+): string | null {
+  const problem = conversationAttachmentError(messages, model);
+  if (problem) return problem;
+  if (
+    encodedBytes(JSON.stringify(messages.flatMap(messageToChat))) >
+    attachmentLimits.requestBytes
+  )
+    return "This conversation is too large to send. Start a new conversation with a shorter prompt or fewer attachments.";
+  return null;
+}
+
 function imageMime(bytes: Uint8Array): string | null {
   if (
     [137, 80, 78, 71, 13, 10, 26, 10].every(
@@ -104,6 +162,7 @@ export async function readAttachments(
   files: File[],
   model: Model,
   existing: Attachment[],
+  retained: Attachment[] = [],
 ): Promise<Attachment[]> {
   if (files.length + existing.length > attachmentLimits.count)
     throw new Error("Attach up to 4 files per message.");
@@ -158,6 +217,12 @@ export async function readAttachments(
     }
     const error = attachmentError([...existing, ...added], model);
     if (error) throw new Error(error);
+    const retainedError = attachmentStorageError([
+      ...retained,
+      ...existing,
+      ...added,
+    ]);
+    if (retainedError) throw new Error(retainedError);
   }
   return added;
 }

@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import {
   attachmentAccept,
   attachmentError,
+  attachmentLimits,
+  attachmentStorageError,
+  chatRequestError,
   messageToChat,
   readAttachments,
   userMessageContent,
@@ -137,6 +140,43 @@ test("enforces count and aggregate limits when appending to an existing draft", 
     ]),
   ).rejects.toThrow("256 KiB");
   expect(attachmentError([attachment], undefined)).toContain("Choose a model");
+});
+
+test("bounds retained attachment data and the serialized chat request", async () => {
+  const retained: Attachment = {
+    id: "retained",
+    kind: "image",
+    name: "retained.png",
+    size: 1,
+    url: `data:image/png;base64,${"a".repeat(attachmentLimits.conversationBytes)}`,
+  };
+  expect(attachmentStorageError([retained])).toContain("browser");
+  await expect(
+    readAttachments(
+      [
+        new File(
+          [Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10])],
+          "next.png",
+          { type: "image/png" },
+        ),
+      ],
+      model(["text", "image"]),
+      [],
+      [retained],
+    ),
+  ).rejects.toThrow("16 MiB");
+  expect(
+    chatRequestError(
+      [
+        {
+          id: "large",
+          role: "user",
+          text: "a".repeat(attachmentLimits.requestBytes + 1),
+        },
+      ],
+      model(),
+    ),
+  ).toContain("too large to send");
 });
 
 test("follow-ups and retries retain attachments and assistant tool protocol", () => {
