@@ -5,6 +5,7 @@ import { join, basename } from "node:path";
 import { resolveApiKey, type LocalBaseConfig } from "../../../manager";
 import {
   authorize,
+  defaultApiKeyScopes,
   permissionSchema,
   principalOwnerId,
   principalSchema,
@@ -1887,7 +1888,7 @@ export async function runServe(
       return principalSchema.parse({
         kind: "browser-session",
         ownerId: uiCredential.ownerId,
-        permissions: permissionSchema.options,
+        permissions: defaultApiKeyScopes,
       });
     };
     return Object.freeze({

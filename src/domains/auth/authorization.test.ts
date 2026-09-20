@@ -19,9 +19,14 @@ const environment = principalSchema.parse({
   kind: "environment",
   permissions: [],
 });
+const browser = principalSchema.parse({
+  kind: "browser-session",
+  ownerId: "ui-access:owner",
+  permissions: ["inference:chat", "models:read"],
+});
 
 test("public routes allow every principal without granting protected access", () => {
-  for (const principal of [anonymous, reader, environment]) {
+  for (const principal of [anonymous, reader, environment, browser]) {
     expect(authorize({ principal, requirement: { kind: "public" } })).toEqual({
       kind: "public",
     });
@@ -68,6 +73,14 @@ test("authentication alone does not grant permissions", () => {
       ],
     },
     { principal: environment, granted: [], denied: permissionSchema.options },
+    {
+      principal: browser,
+      granted: ["inference:chat", "models:read"],
+      denied: permissionSchema.options.filter(
+        (permission) =>
+          permission !== "inference:chat" && permission !== "models:read",
+      ),
+    },
   ];
   for (const { principal, granted, denied } of cases) {
     if (principal.kind === "anonymous")
@@ -123,6 +136,8 @@ test.each([
   { kind: "environment", permissions: ["models:write"] },
   { kind: "api-key", id: "", name: "Reader", permissions: [] },
   { kind: "api-key", id: "key_reader", permissions: [] },
+  { kind: "browser-session", ownerId: "", permissions: [] },
+  { kind: "browser-session", ownerId: "owner", permissions: ["*"] },
   {
     kind: "api-key",
     id: "key_reader",
@@ -140,18 +155,23 @@ test("parsed principals and grants are immutable", () => {
   expect(Object.isFrozen(reader.permissions)).toBe(true);
 });
 
-test("video ownership stays stable and separates key and environment identities", () => {
+test("video ownership stays stable and separates credential identities", () => {
   const key = principalSchema.parse({
     kind: "api-key",
     id: "environment",
     name: "Renamable display name",
     permissions: [],
   });
-  if (key.kind !== "api-key" || environment.kind !== "environment") {
+  if (
+    key.kind !== "api-key" ||
+    environment.kind !== "environment" ||
+    browser.kind !== "browser-session"
+  ) {
     throw new Error("Expected authenticated principals.");
   }
   expect(principalOwnerId(key)).toBe("api-key:environment");
   expect(principalOwnerId(environment)).toBe("environment");
+  expect(principalOwnerId(browser)).toBe("ui-access:owner");
   expect(
     principalOwnerId({
       ...key,
