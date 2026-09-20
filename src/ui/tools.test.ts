@@ -355,9 +355,13 @@ test.each([502, 401, 403])(
       }).catch((error: unknown) => error);
       expect(requests).toBe(3);
       expect(error).toBeInstanceOf(Error);
-      expect(error instanceof SessionRequiredError).toBe(status !== 502);
+      expect(error instanceof SessionRequiredError).toBe(status === 401);
       if (status === 502)
         expect(error instanceof Error && error.message).toContain("502");
+      if (status === 403)
+        expect(error instanceof Error && error.message).toBe(
+          "UI access denied.",
+        );
       expect(artifacts.at(-1)?.state).toBe("complete");
       expect(urls).toHaveLength(1);
     } finally {
