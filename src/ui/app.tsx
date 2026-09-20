@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import { z } from "zod";
@@ -53,11 +59,6 @@ const labels: Record<Mode, string> = {
   video: "Video",
   embedding: "Embeddings",
 };
-const starters = [
-  "Explain something simply",
-  "Help me write a first draft",
-  "Think through an idea",
-];
 const navigationAbortReason = Symbol("navigation");
 function fresh(
   mode: Mode = "llm",
@@ -230,9 +231,14 @@ function App() {
   const [error, setError] = useState(initial.error);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [modelSearch, setModelSearch] = useState("");
+  const [historySearch, setHistorySearch] = useState("");
+  const [showLatest, setShowLatest] = useState(false);
   const controller = useRef<AbortController | null>(null);
   const mediaUrls = useRef<string[]>([]);
-  const bottom = useRef<HTMLDivElement>(null);
+  const app = useRef<HTMLDivElement>(null);
+  const transcript = useRef<HTMLElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
   const nearBottom = useRef(true);
   const active =
     conversations.find((c) => c.id === activeId) ?? conversations[0];
@@ -260,6 +266,8 @@ function App() {
     );
   function setDrawer(panel: Navigation["panel"]) {
     if (!active) return;
+    setModelSearch("");
+    setHistorySearch("");
     setPanel(panel);
     writeNavigation(
       conversationNavigation(active, panel, model?.id ?? active.model),
@@ -379,10 +387,39 @@ function App() {
         );
       }
   }, [conversations, persistent]);
+  function scrollToLatest() {
+    const element = transcript.current;
+    if (element) element.scrollTop = element.scrollHeight;
+    nearBottom.current = true;
+    setShowLatest(false);
+  }
+  useLayoutEffect(() => {
+    if (nearBottom.current) scrollToLatest();
+  }, [active?.id, active?.messages]);
+  useLayoutEffect(() => {
+    const element = input.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight}px`;
+    if (nearBottom.current) scrollToLatest();
+  }, [draft, active?.mode]);
   useEffect(() => {
-    if (nearBottom.current)
-      bottom.current?.scrollIntoView({ behavior: "instant" });
-  }, [active?.messages]);
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const resize = () => {
+      if (!app.current || viewport.scale !== 1) return;
+      app.current.style.height = `${viewport.height}px`;
+      app.current.style.top = `${viewport.offsetTop}px`;
+      if (nearBottom.current) scrollToLatest();
+    };
+    resize();
+    viewport.addEventListener("resize", resize);
+    viewport.addEventListener("scroll", resize);
+    return () => {
+      viewport.removeEventListener("resize", resize);
+      viewport.removeEventListener("scroll", resize);
+    };
+  }, []);
   function newChat(
     mode: Mode = active?.mode ?? "llm",
     workspace = page,
@@ -395,6 +432,7 @@ function App() {
     setDraft("");
     setFile(null);
     setError("");
+    setWarnings([]);
     setPanel(panel);
     writeNavigation(conversationNavigation(c, panel), "push");
     nearBottom.current = true;
@@ -437,12 +475,12 @@ function App() {
     setBusy(true);
     setWarnings([]);
     setError("");
-    setDraft("");
+    if (!retry) setDraft("");
     nearBottom.current = true;
     update(active.id, (c) => ({
       ...c,
       model: model.id,
-      title: user.text.slice(0, 60),
+      title: base.length ? c.title : user.text.slice(0, 60),
       messages: [...base, user, reply],
     }));
     const patch = (change: (m: Message) => Message) =>
@@ -661,11 +699,11 @@ function App() {
   }
   if (!active) return null;
   return (
-    <div className="app">
+    <div className="app" ref={app}>
       <header className="topbar">
         <button
           className="icon"
-          aria-label="Open history"
+          aria-label="Open menu and history"
           onClick={() => setDrawer("history")}
         >
           ☰
@@ -678,83 +716,43 @@ function App() {
         >
           <span className="brand-mark">L</span>LocalBase
         </button>
-        <span className="local-label">PLAYGROUND</span>
-        <button className="settings" onClick={() => setDrawer("settings")}>
-          Settings
+        <select
+          className="workspace-picker"
+          aria-label="Workspace"
+          value={page === "chat" ? "chat" : active.mode}
+          disabled={busy}
+          onChange={(event) => {
+            const mode = modes.find((mode) => mode === event.target.value);
+            newChat(mode ?? "llm", mode ? "lab" : "chat");
+          }}
+        >
+          <option value="chat">Chat</option>
+          <optgroup label="Model Lab">
+            {modes.map((mode) => (
+              <option value={mode} key={mode}>
+                {labels[mode]} lab
+              </option>
+            ))}
+          </optgroup>
+        </select>
+        <button
+          disabled={busy}
+          onClick={() => newChat()}
+          aria-label="New conversation"
+          title="New conversation"
+        >
+          ＋
         </button>
       </header>
       <div className="workspace">
-        <nav className="primary-nav" aria-label="Workspace">
-          <button
-            disabled={busy}
-            aria-current={page === "chat" ? "page" : undefined}
-            onClick={() => {
-              newChat("llm", "chat");
-            }}
-          >
-            Chat
-          </button>
-          <button
-            disabled={busy}
-            aria-current={page === "lab" ? "page" : undefined}
-            onClick={() => {
-              newChat("llm", "lab");
-            }}
-          >
-            Model Lab
-          </button>
-        </nav>
-        {page === "lab" && (
-          <div className="modes lab-modes" aria-label="Direct API mode">
-            {modes.map((mode) => (
-              <button
-                key={mode}
-                disabled={busy}
-                className={active.mode === mode ? "selected" : ""}
-                onClick={() => newChat(mode)}
-              >
-                {labels[mode]}
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="toolbar">
-          <button className="model-picker" onClick={() => setDrawer("models")}>
-            <span
-              className={`status-dot ${connectionLabel === "Gateway ready" ? "ready" : ""}`}
-              aria-label={connectionLabel}
-            />
-            <span>
-              {model?.catalog.name ?? "Choose a model"}
-              <small>
-                {model
-                  ? `${labels[active.mode]} · ${model.catalog.quantization}`
-                  : connectionLabel}
-              </small>
-            </span>
-            <span>⌄</span>
-          </button>
-          <button
-            className="generation-settings-button"
-            disabled={busy || !model}
-            onClick={() => setDrawer("generation")}
-            aria-label="Controls: generation settings"
-          >
-            Controls
-          </button>
-          <button
-            disabled={busy}
-            onClick={() => newChat()}
-            aria-label="New conversation"
-          >
-            ＋ <span className="new-label">New</span>
-          </button>
-        </div>
         <main
+          ref={transcript}
+          aria-label="Conversation"
           onScroll={(e) => {
             const el = e.currentTarget;
             nearBottom.current =
               el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+            setShowLatest(!nearBottom.current);
           }}
         >
           <div className="conversation">
@@ -790,16 +788,6 @@ function App() {
                             ? "Choose a voice and enter the words to read aloud."
                             : "Choose an audio file to transcribe."}
                 </p>
-                {active.mode === "llm" && (
-                  <div className="starters">
-                    {starters.map((s) => (
-                      <button key={s} onClick={() => setDraft(s)}>
-                        {s}
-                        <span>↗</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
               </section>
             )}
             {active.messages.map((message) => (
@@ -827,12 +815,13 @@ function App() {
                     >
                       {message.text}
                     </Markdown>
-                  ) : message.artifacts?.length ? null : busy ? (
-                    <p className="thinking">
+                  ) : message.artifacts?.length ? null : busy &&
+                    message.id === active.messages.at(-1)?.id ? (
+                    <p className="thinking" role="status">
                       Working<span>…</span>
                     </p>
                   ) : (
-                    <p className="muted">No response</p>
+                    <p className="muted">No response received.</p>
                   )}
                   {message.media && <MediaCard media={message.media} />}
                   {message.artifacts?.map((artifact) => (
@@ -854,175 +843,206 @@ function App() {
                     </section>
                   ))}
                 </div>
-                {message.role === "assistant" && message.text && (
-                  <Copy text={message.text} />
+                {message.role === "assistant" && (
+                  <div className="message-actions">
+                    {message.text && <Copy text={message.text} />}
+                    {!busy &&
+                      active.mode !== "stt" &&
+                      message.id === active.messages.at(-1)?.id && (
+                        <button
+                          className="copy"
+                          disabled={!credential || !model || unsupportedVideo}
+                          onClick={() => void send(true)}
+                        >
+                          Try again
+                        </button>
+                      )}
+                  </div>
                 )}
               </article>
             ))}
-            <div ref={bottom} />
           </div>
         </main>
         <footer className="composer-area">
-          {session.kind === "error" && (
-            <div className="error session-notice" role="alert">
-              <span>{session.message}</span>
-              <a className="download" href="/app">
-                Sign in again
-              </a>
-              <button disabled={busy} onClick={() => void checkSession()}>
-                Refresh sign-in
-              </button>
-            </div>
+          {showLatest && (
+            <button
+              className="jump-latest"
+              onClick={scrollToLatest}
+              aria-label="Jump to latest message"
+            >
+              ↓ Latest
+            </button>
           )}
-          {warnings.length > 0 && (
-            <div className="error" role="alert">
-              <span>{warnings.join(" ")}</span>
-              <button
-                aria-label="Dismiss cleanup warnings"
-                onClick={() => setWarnings([])}
-              >
-                ✕
-              </button>
-            </div>
-          )}
-          {page === "chat" && model && (
-            <p className="notice">
-              {generationTools(models, model).length
-                ? `Available tools: ${generationTools(models, model)
-                    .map((tool) => tool.function.name.replaceAll("_", " "))
-                    .join(", ")}`
-                : "Text chat only. Generation tools require a tool-calling chat model and selected, installed media models."}
-            </p>
-          )}
-          {active.mode === "video" && (
-            <p className="notice">
-              {capabilities?.kind === "video"
-                ? `${capabilities.mode.toUpperCase()} · ${capabilities.width} × ${capabilities.height} · ${capabilities.frames} frames · ${capabilities.fps} fps · MP4 delivery. Profile fixed by model qualification.`
-                : "No qualified video profile available."}{" "}
-              {unsupportedVideo &&
-                "Speech-to-video portrait and audio inputs are not supported in Model Lab yet. Select a text-to-video model."}
-            </p>
-          )}
-          {active.mode === "image" && (
-            <p className="notice">
-              PNG ·{" "}
-              {generationSettings.image.size?.replace("x", " × ") ??
-                "Model default size"}{" "}
-              · one image per request
-            </p>
-          )}
-          {error && (
-            <div className="error" role="alert">
-              <span>{error}</span>
-              {active.messages.length > 0 && (
-                <button
-                  disabled={
-                    busy ||
-                    !credential ||
-                    !model ||
-                    unsupportedVideo ||
-                    (active.mode === "stt" && !file)
-                  }
-                  onClick={() => void send(true)}
-                >
-                  Retry
+          <div className="composer-content">
+            {session.kind === "error" && (
+              <div className="error session-notice" role="alert">
+                <span>{session.message}</span>
+                <a className="download" href="/app">
+                  Sign in again
+                </a>
+                <button disabled={busy} onClick={() => void checkSession()}>
+                  Refresh sign-in
                 </button>
-              )}
-              <button aria-label="Dismiss error" onClick={() => setError("")}>
-                ✕
-              </button>
-            </div>
-          )}
-          {!model && (
-            <p className="notice">
-              {models.length
-                ? `No selected, installed ${labels[active.mode].toLowerCase()} model. Configure one with the LocalBase CLI.`
-                : connectionLabel}{" "}
-              <button onClick={() => setDrawer("settings")}>Settings</button>
-            </p>
-          )}
-          <form
-            className="composer"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void send();
-            }}
-          >
-            {active.mode === "stt" ? (
-              <label className="upload">
-                Audio file
-                <input
-                  type="file"
-                  accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac"
-                  disabled={busy}
-                  onChange={(e) => setFile(e.currentTarget.files?.[0] ?? null)}
-                />
-              </label>
-            ) : (
-              <textarea
-                aria-label={
-                  active.mode === "image" ? "Describe an image" : "Message"
-                }
-                placeholder={
-                  active.mode === "image"
-                    ? "Describe an image…"
-                    : active.mode === "tts"
-                      ? "Write something to read aloud…"
-                      : "Message LocalBase…"
-                }
-                value={draft}
-                maxLength={active.mode === "tts" ? 256 : undefined}
-                disabled={busy}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !e.shiftKey &&
-                    !e.nativeEvent.isComposing &&
-                    matchMedia("(pointer: fine)").matches
-                  ) {
-                    e.preventDefault();
-                    void send();
-                  }
-                }}
-              />
+              </div>
             )}
-            <div className="composer-bottom">
-              <span>
-                {labels[active.mode]}
-                {active.mode === "tts" && ` · ${draft.length}/256`}
-              </span>
-              {busy ? (
+            {warnings.length > 0 && (
+              <div className="error" role="alert">
+                <span>{warnings.join(" ")}</span>
+                <button
+                  aria-label="Dismiss cleanup warnings"
+                  onClick={() => setWarnings([])}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            {unsupportedVideo && (
+              <p className="notice" role="status">
+                Choose a text-to-video model. Portrait and audio inputs are not
+                supported here yet.
+              </p>
+            )}
+            {error && (
+              <div className="error" role="alert">
+                <span>{error}</span>
+                {active.messages.length > 0 && active.mode !== "stt" && (
+                  <button
+                    disabled={busy || !credential || !model || unsupportedVideo}
+                    onClick={() => void send(true)}
+                  >
+                    Retry
+                  </button>
+                )}
+                <button aria-label="Dismiss error" onClick={() => setError("")}>
+                  ✕
+                </button>
+              </div>
+            )}
+            {!model && session.kind !== "error" && (
+              <p className="notice" role="status">
+                {models.length
+                  ? `No selected, installed ${labels[active.mode].toLowerCase()} model. Configure one with the LocalBase CLI.`
+                  : connectionLabel}{" "}
+                <button onClick={() => setDrawer("settings")}>Connect</button>
+              </p>
+            )}
+            <form
+              className="composer"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void send();
+              }}
+            >
+              {active.mode === "stt" ? (
+                <label className="upload">
+                  Audio file
+                  <input
+                    type="file"
+                    accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac"
+                    disabled={busy}
+                    onChange={(e) =>
+                      setFile(e.currentTarget.files?.[0] ?? null)
+                    }
+                  />
+                </label>
+              ) : (
+                <textarea
+                  ref={input}
+                  rows={1}
+                  aria-label={
+                    active.mode === "image" ? "Describe an image" : "Message"
+                  }
+                  placeholder={
+                    active.mode === "image"
+                      ? "Describe an image…"
+                      : active.mode === "tts"
+                        ? "Write something to read aloud…"
+                        : "Message LocalBase…"
+                  }
+                  value={draft}
+                  maxLength={active.mode === "tts" ? 256 : undefined}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      !e.shiftKey &&
+                      !e.nativeEvent.isComposing &&
+                      matchMedia("(pointer: fine)").matches
+                    ) {
+                      e.preventDefault();
+                      void send();
+                    }
+                  }}
+                />
+              )}
+              <div className="composer-bottom">
                 <button
                   type="button"
-                  className="send"
-                  onClick={() => controller.current?.abort()}
+                  className="model-picker"
+                  disabled={busy}
+                  aria-label={`Choose model: ${model?.catalog.name ?? "none selected"}`}
+                  onClick={() => setDrawer("models")}
+                  title={model?.catalog.name ?? "Choose a model"}
                 >
-                  Stop ■
+                  <span
+                    className={`status-dot ${connectionLabel === "Gateway ready" ? "ready" : ""}`}
+                    aria-hidden="true"
+                  />
+                  <span>{model?.catalog.name ?? "Choose model"}</span>
+                  <span aria-hidden="true">⌄</span>
                 </button>
-              ) : (
                 <button
-                  className="send"
-                  type="submit"
-                  disabled={
-                    !model ||
-                    !credential ||
-                    unsupportedVideo ||
-                    (active.mode === "stt" ? !file : !draft.trim())
-                  }
-                  aria-label="Send request"
+                  type="button"
+                  className="generation-settings-button"
+                  disabled={busy || !model}
+                  onClick={() => setDrawer("generation")}
+                  aria-label="Generation controls"
+                  title="Generation controls"
                 >
-                  Send ↑
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    aria-hidden="true"
+                  >
+                    <path d="M4 7h7m4 0h5M4 17h3m4 0h9" />
+                    <circle cx="13" cy="7" r="2" />
+                    <circle cx="9" cy="17" r="2" />
+                  </svg>
                 </button>
-              )}
-            </div>
-          </form>
-          <p className="privacy">
-            {persistent
-              ? "Device-local text history is on"
-              : "History stays in this session"}
-            <span>•</span>Check important answers
-          </p>
+                {busy ? (
+                  <button
+                    type="button"
+                    className="send"
+                    aria-label="Stop generation"
+                    onClick={() => controller.current?.abort()}
+                  >
+                    ■
+                  </button>
+                ) : (
+                  <button
+                    className="send"
+                    type="submit"
+                    disabled={
+                      !model ||
+                      !credential ||
+                      unsupportedVideo ||
+                      (active.mode === "stt" ? !file : !draft.trim())
+                    }
+                    aria-label="Send request"
+                  >
+                    ↑
+                  </button>
+                )}
+              </div>
+            </form>
+            {active.mode === "tts" && (
+              <p className="input-count">{draft.length}/256 characters</p>
+            )}
+          </div>
         </footer>
       </div>
       {drawer && (
@@ -1040,6 +1060,15 @@ function App() {
         >
           {drawer === "generation" ? (
             <div className="generation-settings">
+              {page === "chat" && model && (
+                <p className="generation-settings-hint">
+                  {generationTools(models, model).length
+                    ? `Chat tools: ${generationTools(models, model)
+                        .map((tool) => tool.function.name.replaceAll("_", " "))
+                        .join(", ")}.`
+                    : "Text chat only. Tools need a tool-calling chat model and installed media models."}
+                </p>
+              )}
               <p className="generation-settings-hint">
                 Saved per model for this session, shared by chat and Model Lab.
                 Blank values use model defaults.
@@ -1072,10 +1101,10 @@ function App() {
                         ? "video"
                         : "tts";
                   return toolModels(models, name).map((target) => (
-                    <div key={target.id}>
-                      <h3>
+                    <details className="tool-settings" key={target.id}>
+                      <summary>
                         {target.catalog.name} · {labels[mode]}
-                      </h3>
+                      </summary>
                       <GenerationSettingsFields
                         mode={mode}
                         model={target}
@@ -1087,7 +1116,7 @@ function App() {
                           setModelSettings(target.id, settings)
                         }
                       />
-                    </div>
+                    </details>
                   ));
                 })}
             </div>
@@ -1156,6 +1185,13 @@ function App() {
             </>
           ) : drawer === "models" ? (
             <>
+              <input
+                type="search"
+                aria-label="Search models"
+                placeholder="Search models…"
+                value={modelSearch}
+                onChange={(event) => setModelSearch(event.target.value)}
+              />
               <p className="hint">
                 Selected, installed models on this gateway. Choosing a model may
                 load it on your next request.
@@ -1177,73 +1213,102 @@ function App() {
                 </div>
               )}
               {candidates.length ? (
-                candidates.map((m) => (
-                  <button
-                    disabled={busy}
-                    className={`model-card ${m.id === model?.id ? "selected" : ""}`}
-                    key={m.id}
-                    onClick={() => {
-                      update(active.id, (c) => ({ ...c, model: m.id }));
-                      setPanel(null);
-                      writeNavigation(
-                        conversationNavigation(active, null, m.id),
-                        "push",
-                      );
-                    }}
-                  >
-                    <strong>{m.catalog.name}</strong>
-                    <span>
-                      {m.catalog.quantization} ·{" "}
-                      {m.device.runtime?.state ?? "Loads on request"}
-                    </span>
-                    <small>
-                      {m.catalog.inputModalities.join(", ")} →{" "}
-                      {m.catalog.outputModalities.join(", ")}
-                      {m.catalog.contextWindowTokens
-                        ? ` · ${m.catalog.contextWindowTokens.toLocaleString()} context`
-                        : ""}
-                    </small>
-                  </button>
-                ))
+                candidates
+                  .filter((candidate) =>
+                    `${candidate.catalog.name} ${candidate.catalog.quantization}`
+                      .toLowerCase()
+                      .includes(modelSearch.toLowerCase()),
+                  )
+                  .map((m) => (
+                    <button
+                      disabled={busy}
+                      className={`model-card ${m.id === model?.id ? "selected" : ""}`}
+                      key={m.id}
+                      aria-pressed={m.id === model?.id}
+                      onClick={() => {
+                        update(active.id, (c) => ({ ...c, model: m.id }));
+                        setPanel(null);
+                        writeNavigation(
+                          conversationNavigation(active, null, m.id),
+                          "push",
+                        );
+                      }}
+                    >
+                      <strong>{m.catalog.name}</strong>
+                      <span>
+                        {m.catalog.quantization} ·{" "}
+                        {m.device.runtime?.state ?? "Loads on request"}
+                      </span>
+                      <small>
+                        {m.catalog.inputModalities.join(", ")} →{" "}
+                        {m.catalog.outputModalities.join(", ")}
+                        {m.catalog.contextWindowTokens
+                          ? ` · ${m.catalog.contextWindowTokens.toLocaleString()} context`
+                          : ""}
+                      </small>
+                    </button>
+                  ))
               ) : (
                 <p>
                   No selected, installed models for{" "}
                   {labels[active.mode].toLowerCase()}.
                 </p>
               )}
+              {candidates.length > 0 &&
+                !candidates.some((candidate) =>
+                  `${candidate.catalog.name} ${candidate.catalog.quantization}`
+                    .toLowerCase()
+                    .includes(modelSearch.toLowerCase()),
+                ) && <p className="hint">No models match your search.</p>}
             </>
           ) : (
             <>
-              <button disabled={busy} onClick={() => newChat()}>
-                ＋ New conversation
-              </button>
+              <div className="menu-actions">
+                <button disabled={busy} onClick={() => newChat()}>
+                  ＋ New conversation
+                </button>
+                <button onClick={() => setDrawer("settings")}>Settings</button>
+              </div>
+              <input
+                type="search"
+                aria-label="Search conversations"
+                placeholder="Search conversations…"
+                value={historySearch}
+                onChange={(event) => setHistorySearch(event.target.value)}
+              />
               <p className="hint">
                 {persistent
                   ? "Text is saved on this device. Media lasts for this session."
                   : "Conversations disappear when this page closes or reloads."}
               </p>
-              {conversations.map((c) => (
-                <button
-                  disabled={busy}
-                  className="history-item"
-                  key={c.id}
-                  onClick={() => {
-                    setActiveId(c.id);
-                    setDraft("");
-                    setFile(null);
-                    setError("");
-                    setPanel(null);
-                    writeNavigation(conversationNavigation(c, null), "push");
-                    nearBottom.current = true;
-                  }}
-                >
-                  <strong>{c.title}</strong>
-                  <small>
-                    {c.workspace === "lab" ? "Model Lab" : "Chat"} ·{" "}
-                    {labels[c.mode]} · {c.messages.length} messages
-                  </small>
-                </button>
-              ))}
+              {conversations
+                .filter((c) =>
+                  c.title.toLowerCase().includes(historySearch.toLowerCase()),
+                )
+                .map((c) => (
+                  <button
+                    disabled={busy}
+                    className="history-item"
+                    key={c.id}
+                    aria-current={c.id === activeId ? "page" : undefined}
+                    onClick={() => {
+                      setActiveId(c.id);
+                      setDraft("");
+                      setFile(null);
+                      setError("");
+                      setWarnings([]);
+                      setPanel(null);
+                      writeNavigation(conversationNavigation(c, null), "push");
+                      nearBottom.current = true;
+                    }}
+                  >
+                    <strong>{c.title}</strong>
+                    <small>
+                      {c.workspace === "lab" ? "Model Lab" : "Chat"} ·{" "}
+                      {labels[c.mode]} · {c.messages.length} messages
+                    </small>
+                  </button>
+                ))}
             </>
           )}
         </Drawer>
