@@ -422,7 +422,7 @@ function App() {
   }
   async function checkSession(signal?: AbortSignal) {
     try {
-      const verified = await readSession(signal);
+      const verified = await readSession({ signal, key });
       signal?.throwIfAborted();
       setSession(verified);
       if (verified.kind === "session") setKey("");

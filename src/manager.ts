@@ -1149,6 +1149,17 @@ export function resolveApiKey(
   }
   return undefined;
 }
+
+export function resolveActiveApiKeyById(
+  database: DatabaseSession,
+  config: LocalBaseConfig,
+  id: string,
+): ApiKeyRecord | undefined {
+  const key = loadApiKeys(database, config).find(
+    (candidate) => candidate.id === id,
+  );
+  return key && isKeyActive(key.expiresAt, key.revokedAt) ? key : undefined;
+}
 export function createApiKey(
   database: DatabaseSession,
   config: LocalBaseConfig,
