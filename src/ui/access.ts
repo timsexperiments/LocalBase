@@ -7,6 +7,7 @@ import {
 } from "../domains/auth/browser-access";
 import type { Permission } from "../domains/auth/authorization";
 import { videoJobIdFromPath } from "../domains/runtime/route-dispatch";
+import { createOidcSessionManager } from "./oidc-session";
 
 export {
   browserAccessConfigSchema as uiAccessConfigSchema,
@@ -14,10 +15,7 @@ export {
 };
 
 const humanClaimsSchema = z.object({
-  sub: z
-    .string()
-    .min(1)
-    .refine((value) => value.trim().length > 0),
+  sub: z.string().trim().min(1),
   email: z
     .string()
     .email()
@@ -28,8 +26,16 @@ const humanClaimsSchema = z.object({
   service_token_status: z.literal(false).optional(),
 });
 
+type Fetcher = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
 export function isUiAccessPath(pathname: string): boolean {
   return (
+    pathname === "/app/login" ||
+    pathname === "/app/callback" ||
+    pathname === "/app/logout" ||
     pathname === "/app/session" ||
     pathname === "/app/api" ||
     pathname.startsWith("/app/api/")
@@ -74,6 +80,17 @@ function failure(status: number): Response {
   );
 }
 
+function redirect(location: string): Response {
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location,
+      "cache-control": "no-store",
+      "referrer-policy": "no-referrer",
+    },
+  });
+}
+
 type UiAccessResult =
   | { kind: "pass" }
   | { kind: "response"; response: Response }
@@ -83,23 +100,56 @@ type UiAccessResult =
 export function createUiAccess({
   config,
   keyResolver,
+  fetcher,
+  now,
 }: {
   config: BrowserAccessConfig | null;
   keyResolver?: JWTVerifyGetKey;
+  fetcher?: Fetcher;
+  now?: () => number;
 }) {
   const credentials = new WeakMap<
     Request,
     Readonly<{ ownerId: string; permissions: readonly Permission[] }>
   >();
-  const issuer = config ? `https://${config.provider.teamDomain}` : null;
-  const keys = issuer
+  const cloudflareIssuer =
+    config?.provider.kind === "cloudflare-access"
+      ? `https://${config.provider.teamDomain}`
+      : null;
+  const cloudflareKeys = cloudflareIssuer
     ? (keyResolver ??
-      createRemoteJWKSet(new URL(`${issuer}/cdn-cgi/access/certs`), {
+      createRemoteJWKSet(new URL(`${cloudflareIssuer}/cdn-cgi/access/certs`), {
         timeoutDuration: 5_000,
         cooldownDuration: 30_000,
         cacheMaxAge: 600_000,
       }))
     : null;
+  const oidc =
+    config?.provider.kind === "oidc"
+      ? createOidcSessionManager({
+          provider: config.provider,
+          origin: config.origin,
+          ...(keyResolver ? { keyResolver } : {}),
+          ...(fetcher ? { fetcher } : {}),
+          ...(now ? { now } : {}),
+        })
+      : null;
+
+  const validateCommonRequest = (request: Request, url: URL): boolean => {
+    if (!config) return false;
+    const origin = request.headers.get("origin");
+    const fetchSite = request.headers.get("sec-fetch-site");
+    const expectedHost = new URL(config.origin).host;
+    return !(
+      request.headers.get("x-localbase-ui") !== "1" ||
+      url.host !== expectedHost ||
+      (request.headers.has("host") &&
+        request.headers.get("host") !== expectedHost) ||
+      (fetchSite !== null && fetchSite !== "same-origin") ||
+      (origin !== null && origin !== config.origin) ||
+      (request.method !== "GET" && origin !== config.origin)
+    );
+  };
 
   return {
     credential(request: Request) {
@@ -108,50 +158,82 @@ export function createUiAccess({
     async handle(request: Request): Promise<UiAccessResult> {
       const url = new URL(request.url);
       if (!isUiAccessPath(url.pathname)) return { kind: "pass" };
-      const session = url.pathname === "/app/session";
       const respond = (response: Response): UiAccessResult => ({
         kind: "response",
         response,
       });
-      if (session && request.method !== "GET") return respond(failure(405));
-      if (!config || !issuer || !keys) {
-        return respond(failure(401));
-      }
-      const origin = request.headers.get("origin");
-      const fetchSite = request.headers.get("sec-fetch-site");
+      if (!config) return respond(failure(401));
       const expectedHost = new URL(config.origin).host;
-      if (
-        request.headers.get("x-localbase-ui") !== "1" ||
-        url.host !== expectedHost ||
-        (request.headers.has("host") &&
-          request.headers.get("host") !== expectedHost) ||
-        (fetchSite !== null && fetchSite !== "same-origin") ||
-        (origin !== null && origin !== config.origin) ||
-        (request.method !== "GET" && origin !== config.origin)
-      ) {
-        return respond(failure(403));
+      const exactHost =
+        url.host === expectedHost &&
+        (!request.headers.has("host") ||
+          request.headers.get("host") === expectedHost);
+
+      if (url.pathname === "/app/login") {
+        if (request.method !== "GET") return respond(failure(405));
+        if (!exactHost) return respond(failure(403));
+        if (!oidc) return respond(redirect(`${config.origin}/app`));
+        try {
+          return respond(await oidc.startLogin());
+        } catch {
+          return respond(failure(503));
+        }
       }
+
+      if (url.pathname === "/app/callback") {
+        if (request.method !== "GET" || !exactHost || !oidc)
+          return respond(failure(403));
+        return respond(await oidc.completeLogin(request, url));
+      }
+
+      if (url.pathname === "/app/logout") {
+        if (request.method !== "POST" || !validateCommonRequest(request, url))
+          return respond(failure(403));
+        return respond(
+          oidc ? oidc.logout(request) : new Response(null, { status: 204 }),
+        );
+      }
+
+      const sessionRequest = url.pathname === "/app/session";
+      if (sessionRequest && request.method !== "GET")
+        return respond(failure(405));
+      if (!validateCommonRequest(request, url)) return respond(failure(403));
       const pathname = url.pathname.slice("/app/api".length);
-      if (!session && !allowedUiRoute(request.method, pathname))
+      if (!sessionRequest && !allowedUiRoute(request.method, pathname))
         return respond(failure(404));
-      const token = request.headers.get("cf-access-jwt-assertion");
-      if (!token) return respond(failure(401));
+
       let ownerId: string;
-      try {
-        const { payload } = await jwtVerify(token, keys, {
-          algorithms: ["RS256"],
-          issuer,
-          audience: config.provider.audience,
-          requiredClaims: ["exp", "sub", "email"],
-        });
-        const human = humanClaimsSchema.parse(payload);
-        ownerId = `browser:${new Bun.CryptoHasher("sha256")
-          .update(JSON.stringify([config.provider.kind, issuer, human.sub]))
-          .digest("hex")}`;
-      } catch {
-        return respond(failure(401));
+      if (config.provider.kind === "cloudflare-access") {
+        const token = request.headers.get("cf-access-jwt-assertion");
+        if (!token || !cloudflareIssuer || !cloudflareKeys)
+          return respond(failure(401));
+        try {
+          const { payload } = await jwtVerify(token, cloudflareKeys, {
+            algorithms: ["RS256"],
+            issuer: cloudflareIssuer,
+            audience: config.provider.audience,
+            requiredClaims: ["exp", "sub", "email"],
+          });
+          const human = humanClaimsSchema.parse(payload);
+          ownerId = `browser:${new Bun.CryptoHasher("sha256")
+            .update(
+              JSON.stringify([
+                config.provider.kind,
+                cloudflareIssuer,
+                human.sub,
+              ]),
+            )
+            .digest("hex")}`;
+        } catch {
+          return respond(failure(401));
+        }
+      } else {
+        const authenticated = oidc?.authenticate(request);
+        if (!authenticated) return respond(failure(401));
+        ownerId = authenticated;
       }
-      if (session) {
+
+      if (sessionRequest) {
         credentials.set(
           request,
           Object.freeze({ ownerId, permissions: config.permissions }),
@@ -159,9 +241,7 @@ export function createUiAccess({
         return respond(
           Response.json(
             { authenticated: true },
-            {
-              headers: { "cache-control": "no-store" },
-            },
+            { headers: { "cache-control": "no-store" } },
           ),
         );
       }
@@ -176,6 +256,7 @@ export function createUiAccess({
           headers.delete(name);
       }
       url.pathname = pathname;
+      url.search = "";
       const forwarded = new Request(url, {
         method: request.method,
         headers,
