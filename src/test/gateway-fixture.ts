@@ -230,6 +230,7 @@ export async function waitForLogEvent(
 
 export type GatewayFixtureOptions = {
   auth?: { mode?: "bearer" | "x-api-key" | "either" };
+  environmentApiKey?: string;
   gatewayHost?: string;
   inferenceQueueCapacity?: number;
   inferenceQueueTimeoutMs?: number;
@@ -1789,6 +1790,7 @@ export async function startGatewayFixture(
         cwd: PROJECT_ROOT,
         env: {
           ...process.env,
+          LOCALBASE_API_KEY: options.environmentApiKey,
           PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
           ...(options.llmRuntimeHttpBackend
             ? { LOCALBASE_TEST_PID_PATH: llmRuntimePidPath }
