@@ -5,8 +5,7 @@ import { z } from "zod";
 import { generationTools, generateVideo, runChat } from "./tools";
 import {
   api,
-  consumeFragmentKey,
-  createUiId,
+  discardLegacyFragmentCredential,
   availableModels,
   historyKey,
   imageResponseSchema,
@@ -47,7 +46,7 @@ function fresh(
   workspace: Conversation["workspace"] = "chat",
 ): Conversation {
   return {
-    id: createUiId(),
+    id: crypto.randomUUID(),
     title: "New conversation",
     mode,
     workspace,
@@ -168,9 +167,11 @@ function Drawer({
   );
 }
 function App() {
-  const [key, setKey] = useState(() => consumeFragmentKey());
-  const [session, setSession] = useState<SessionState>({ kind: "checking" });
-  const credential = sessionConnection(session, key);
+  const [session, setSession] = useState<SessionState>(() => {
+    discardLegacyFragmentCredential();
+    return { kind: "checking" };
+  });
+  const credential = sessionConnection(session);
   const [models, setModels] = useState<Model[]>([]);
   const [connection, setConnection] = useState("Connecting");
   const connectionLabel =
@@ -178,9 +179,7 @@ function App() {
       ? session.message
       : session.kind === "checking"
         ? "Checking sign-in"
-        : !credential
-          ? "Enter a gateway API key in Settings."
-          : connection;
+        : connection;
   const [drawer, setDrawer] = useState<
     "settings" | "models" | "history" | null
   >(null);
@@ -232,7 +231,6 @@ function App() {
       const verified = await readSession(signal);
       signal?.throwIfAborted();
       setSession(verified);
-      if (verified.kind === "session") setKey("");
     } catch (e) {
       if (!signal?.aborted) {
         setModels([]);
@@ -289,7 +287,7 @@ function App() {
       abort.abort();
       clearInterval(timer);
     };
-  }, [session, key]);
+  }, [session]);
   useEffect(() => {
     try {
       const saved = readHistory();
@@ -356,12 +354,12 @@ function App() {
         ? (active.messages[previousUser]?.text ?? "")
         : draft.trim();
     const user: Message = {
-      id: createUiId(),
+      id: crypto.randomUUID(),
       role: "user",
       text: active.mode === "stt" ? (file?.name ?? "Audio file") : text,
     };
     const reply: Message = {
-      id: createUiId(),
+      id: crypto.randomUUID(),
       role: "assistant",
       text: "",
     };
@@ -422,7 +420,7 @@ function App() {
           break;
         }
         case "video": {
-          const id = createUiId();
+          const id = crypto.randomUUID();
           const video = await generateVideo({
             model,
             connection: credential,
@@ -979,26 +977,6 @@ function App() {
           {drawer === "settings" ? (
             <>
               <p className="muted">{connectionLabel}</p>
-              {session.kind === "api-key" && (
-                <>
-                  <label>
-                    Gateway API key
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      spellCheck={false}
-                      value={key}
-                      placeholder="Paste your API key"
-                      disabled={busy}
-                      onChange={(e) => setKey(e.target.value)}
-                    />
-                  </label>
-                  <p className="hint">
-                    Kept in memory for this page only. Sent only to this
-                    gateway.
-                  </p>
-                </>
-              )}
               <button disabled={busy} onClick={() => void checkSession()}>
                 Refresh connection
               </button>

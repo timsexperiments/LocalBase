@@ -2,8 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import type { ModelMetadata } from "../domains/models/model-metadata";
 import {
   api,
-  consumeFragmentKey,
-  createUiId,
+  discardLegacyFragmentCredential,
   readSession,
   sessionConnection,
   SessionRequiredError,
@@ -26,106 +25,19 @@ function streaming(parts: Uint8Array[]) {
   );
 }
 describe("playground client boundaries", () => {
-  test("consumes a fragment key once, clearing it before authenticated requests", async () => {
+  test("discards obsolete key fragments without accepting their value", () => {
     const location = new URL(
-      "http://192.168.1.2:8080/app?view=chat#key=lb_fixture%2Dkey",
+      "https://localbase.example/app?view=chat#key=obsolete-secret",
     );
-    const state = { view: "chat" };
     const history = {
-      state,
+      state: { view: "chat" },
       replaceState(data: unknown, _unused: string, url?: string | URL | null) {
-        expect(data).toBe(state);
-        expect(url).toBe("/app?view=chat");
+        expect(data).toBe(this.state);
         location.href = new URL(String(url), location).href;
       },
     };
-    const replace = spyOn(history, "replaceState");
-    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
-      Response.json({ authenticated: false, mode: "api-key" }),
-    );
-    try {
-      const key = consumeFragmentKey({ location, history });
-      expect(key).toBe("lb_fixture-key");
-      expect(location.hash).toBe("");
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(consumeFragmentKey({ location, history })).toBe("");
-      expect(replace).toHaveBeenCalledTimes(1);
-      const connection = sessionConnection(await readSession(), key);
-      expect(connection).toEqual({ kind: "api-key", key: "lb_fixture-key" });
-      if (!connection) throw new Error("Missing fixture connection");
-      await api("/_localbase/models", connection);
-      const [path, options] = fetchMock.mock.calls.at(-1) ?? [];
-      expect(path).toBe("/_localbase/models");
-      expect(new Headers(options?.headers).get("authorization")).toBe(
-        "Bearer lb_fixture-key",
-      );
-    } finally {
-      replace.mockRestore();
-      fetchMock.mockRestore();
-    }
-  });
-  test("clears malformed and duplicate fragments without logging credentials", () => {
-    const logs = [
-      spyOn(console, "log"),
-      spyOn(console, "warn"),
-      spyOn(console, "error"),
-    ];
-    try {
-      for (const fragment of [
-        "#key=",
-        "#key",
-        "#other=fixture-key",
-        "#key=%",
-        "#key=%FF",
-        "#key=%20",
-        "#key=fixture%0Akey",
-        "#key=fixture-key&key=other",
-        "#key=fixture-key&key=fixture-key",
-        "#key=fixture-key&other=value",
-      ]) {
-        const location = new URL(`http://192.168.1.2:8080/app${fragment}`);
-        const history = {
-          state: null,
-          replaceState(
-            _data: unknown,
-            _unused: string,
-            url?: string | URL | null,
-          ) {
-            location.href = new URL(String(url), location).href;
-          },
-        };
-        expect(consumeFragmentKey({ location, history })).toBe("");
-        expect(location.hash).toBe("");
-      }
-      for (const log of logs) expect(log).not.toHaveBeenCalled();
-    } finally {
-      for (const log of logs) log.mockRestore();
-    }
-  });
-  test("creates secure UUIDs when HTTP browsers omit randomUUID", () => {
-    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
-    const source = crypto;
-    let calls = 0;
-    Object.defineProperty(globalThis, "crypto", {
-      configurable: true,
-      value: {
-        getRandomValues(bytes: Uint8Array) {
-          calls++;
-          return source.getRandomValues(bytes);
-        },
-      },
-    });
-    try {
-      const ids = Array.from({ length: 3 }, () => createUiId());
-      for (const id of ids)
-        expect(id).toMatch(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-        );
-      expect(new Set(ids).size).toBe(3);
-      expect(calls).toBe(3);
-    } finally {
-      if (descriptor) Object.defineProperty(globalThis, "crypto", descriptor);
-    }
+    discardLegacyFragmentCredential({ location, history });
+    expect(location.href).toBe("https://localbase.example/app?view=chat");
   });
   test("rejects external or noncanonical paths before sending credentials", async () => {
     const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
@@ -148,7 +60,7 @@ describe("playground client boundaries", () => {
       fetchMock.mockRestore();
     }
   });
-  test("bootstraps verified sessions or explicit manual mode without retaining credentials", async () => {
+  test("requires a verified browser session", async () => {
     const fetchMock = spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(Response.json({ authenticated: true }))
       .mockResolvedValueOnce(
@@ -156,9 +68,7 @@ describe("playground client boundaries", () => {
       );
     try {
       const session = await readSession();
-      expect(sessionConnection(session, "stale-key")).toEqual({
-        kind: "session",
-      });
+      expect(sessionConnection(session)).toEqual({ kind: "session" });
       const [path, options] = fetchMock.mock.calls[0] ?? [];
       expect(path).toBe("/app/session");
       expect(options).toMatchObject({
@@ -167,16 +77,10 @@ describe("playground client boundaries", () => {
         redirect: "error",
       });
       expect(new Headers(options?.headers).get("x-localbase-ui")).toBe("1");
-      const manual = await readSession();
-      expect(sessionConnection(manual, "")).toBeNull();
-      expect(sessionConnection(manual, "   ")).toBeNull();
-      expect(sessionConnection(manual, "fixture-key")).toEqual({
-        kind: "api-key",
-        key: "fixture-key",
-      });
-      expect(sessionConnection({ kind: "checking" }, "stale-key")).toBeNull();
+      await expect(readSession()).rejects.toThrow(/sign-in/i);
+      expect(sessionConnection({ kind: "checking" })).toBeNull();
       expect(
-        sessionConnection({ kind: "error", message: "Expired" }, "stale-key"),
+        sessionConnection({ kind: "error", message: "Expired" }),
       ).toBeNull();
     } finally {
       fetchMock.mockRestore();
@@ -195,7 +99,7 @@ describe("playground client boundaries", () => {
       }
     },
   );
-  test("rejects incomplete bootstrap responses instead of selecting manual mode", async () => {
+  test("rejects incomplete bootstrap responses", async () => {
     const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
       Response.json({ authenticated: false }),
     );
@@ -277,26 +181,6 @@ describe("playground client boundaries", () => {
         expect(error).not.toBeInstanceOf(SessionRequiredError);
         expect(error instanceof Error && error.message).toContain(message);
       }
-    } finally {
-      fetchMock.mockRestore();
-    }
-  });
-  test("sends credentials only in headers and preserves same-origin sessions without caching", async () => {
-    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
-      Response.json({}),
-    );
-    try {
-      await api("/_localbase/models", { kind: "api-key", key: "fixture-key" });
-      const [path, options] = fetchMock.mock.calls[0] ?? [];
-      expect(path).toBe("/_localbase/models");
-      expect(options?.credentials).toBe("same-origin");
-      expect(options?.cache).toBe("no-store");
-      expect(new Headers(options?.headers).get("authorization")).toBe(
-        "Bearer fixture-key",
-      );
-      expect(new Headers(options?.headers).get("x-api-key")).toBe(
-        "fixture-key",
-      );
     } finally {
       fetchMock.mockRestore();
     }

@@ -90,7 +90,7 @@ test("aborted media stops the loop without returning pending tool protocol", asy
       runChat({
         model: chat,
         models: [image],
-        connection: { kind: "api-key", key: "" },
+        connection: { kind: "session" },
         signal: abort.signal,
         messages: [],
         toolsEnabled: true,
@@ -135,75 +135,66 @@ test("advertises only installed selected tools with t2v and tool-calling support
     }),
   ).toEqual([]);
 });
-test.each([false, true])(
-  "releases chat body before media and retains tool protocol without media bytes (session=%s)",
-  async (session) => {
-    const prefix = session ? "/app/api" : "";
-    const requests: { path: string; body: unknown }[] = [];
-    let released = false;
-    const artifacts: Artifact[] = [];
-    const urls: string[] = [];
-    const mock = mockFetch(async (input, init) => {
-      const path = String(input);
-      expect(path.startsWith(`${prefix}/v1/`)).toBe(true);
-      expect(new Headers(init?.headers).get("x-localbase-ui")).toBe(
-        session ? "1" : null,
+test("releases chat body before media and retains tool protocol without media bytes", async () => {
+  const prefix = "/app/api";
+  const requests: { path: string; body: unknown }[] = [];
+  let released = false;
+  const artifacts: Artifact[] = [];
+  const urls: string[] = [];
+  const mock = mockFetch(async (input, init) => {
+    const path = String(input);
+    expect(path.startsWith(`${prefix}/v1/`)).toBe(true);
+    expect(new Headers(init?.headers).get("x-localbase-ui")).toBe("1");
+    requests.push({ path, body: JSON.parse(String(init?.body)) });
+    if (requests.length === 1)
+      return stream(
+        tool("generate_image", '{"model":"image","prompt":"sun"}'),
+        () => {
+          released = true;
+        },
       );
-      requests.push({ path, body: JSON.parse(String(init?.body)) });
-      if (requests.length === 1)
-        return stream(
-          tool("generate_image", '{"model":"image","prompt":"sun"}'),
-          () => {
-            released = true;
-          },
-        );
-      expect(released).toBe(true);
-      if (path === `${prefix}/v1/images/generations`)
-        return Response.json({ data: [{ b64_json: "aGVsbG8=" }] });
-      return stream({ content: "Done" });
+    expect(released).toBe(true);
+    if (path === `${prefix}/v1/images/generations`)
+      return Response.json({ data: [{ b64_json: "aGVsbG8=" }] });
+    return stream({ content: "Done" });
+  });
+  try {
+    const protocol = await runChat({
+      model: chat,
+      models: [image],
+      connection: { kind: "session" },
+      signal: new AbortController().signal,
+      messages: [{ role: "user", content: "Draw the sun" }],
+      toolsEnabled: true,
+      append: () => {},
+      artifact: (a) => artifacts.push(a),
+      register: (url) => urls.push(url),
+      warning: () => {},
     });
-    try {
-      const protocol = await runChat({
-        model: chat,
-        models: [image],
-        connection: session
-          ? { kind: "session" }
-          : { kind: "api-key", key: "key" },
-        signal: new AbortController().signal,
-        messages: [{ role: "user", content: "Draw the sun" }],
-        toolsEnabled: true,
-        append: () => {},
-        artifact: (a) => artifacts.push(a),
-        register: (url) => urls.push(url),
-        warning: () => {},
-      });
-      expect(protocol.map((m) => m.role)).toEqual([
-        "assistant",
-        "tool",
-        "assistant",
-      ]);
-      expect(JSON.stringify(requests[2]?.body)).toContain("tool_call_id");
-      const assistant = protocol[0];
-      const result = protocol[1];
-      const id =
-        assistant?.role === "assistant"
-          ? assistant.tool_calls?.[0]?.id
-          : undefined;
-      expect(id).toMatch(/^[a-zA-Z0-9]{9}$/);
-      expect(id).not.toBe("call");
-      expect(result?.role === "tool" ? result.tool_call_id : undefined).toBe(
-        id,
-      );
-      expect(artifacts.every((artifact) => artifact.id === id)).toBe(true);
-      expect(JSON.stringify(requests[2]?.body)).not.toContain("blob:");
-      expect(JSON.stringify(requests[2]?.body)).not.toContain("aGVsbG8=");
-      expect(artifacts.at(-1)?.state).toBe("complete");
-    } finally {
-      mock.mockRestore();
-      urls.forEach((url) => URL.revokeObjectURL(url));
-    }
-  },
-);
+    expect(protocol.map((m) => m.role)).toEqual([
+      "assistant",
+      "tool",
+      "assistant",
+    ]);
+    expect(JSON.stringify(requests[2]?.body)).toContain("tool_call_id");
+    const assistant = protocol[0];
+    const result = protocol[1];
+    const id =
+      assistant?.role === "assistant"
+        ? assistant.tool_calls?.[0]?.id
+        : undefined;
+    expect(id).toMatch(/^[a-zA-Z0-9]{9}$/);
+    expect(id).not.toBe("call");
+    expect(result?.role === "tool" ? result.tool_call_id : undefined).toBe(id);
+    expect(artifacts.every((artifact) => artifact.id === id)).toBe(true);
+    expect(JSON.stringify(requests[2]?.body)).not.toContain("blob:");
+    expect(JSON.stringify(requests[2]?.body)).not.toContain("aGVsbG8=");
+    expect(artifacts.at(-1)?.state).toBe("complete");
+  } finally {
+    mock.mockRestore();
+    urls.forEach((url) => URL.revokeObjectURL(url));
+  }
+});
 test("browser IDs reserve history and allow raw IDs to repeat across rounds", async () => {
   const existingId = "123456789";
   const random = spyOn(crypto, "randomUUID")
@@ -352,7 +343,7 @@ test.each([
     const protocol = await runChat({
       model: chat,
       models: [image],
-      connection: { kind: "api-key", key: "" },
+      connection: { kind: "session" },
       signal: new AbortController().signal,
       messages: [],
       toolsEnabled: true,
@@ -378,7 +369,7 @@ test("stops at four model rounds without executing a last-round tool", async () 
       runChat({
         model: chat,
         models: [image],
-        connection: { kind: "api-key", key: "" },
+        connection: { kind: "session" },
         signal: new AbortController().signal,
         messages: [],
         toolsEnabled: true,
@@ -393,58 +384,49 @@ test("stops at four model rounds without executing a last-round tool", async () 
     mock.mockRestore();
   }
 });
-test.each([false, true])(
-  "cancellation after submission uses original owner, tries DELETE after failed cancel (session=%s)",
-  async (session) => {
-    const prefix = session ? "/app/api" : "";
-    const abort = new AbortController();
-    const paths: string[] = [];
-    const warnings: string[] = [];
-    const id = "00000000-0000-4000-8000-000000000000";
-    const mock = mockFetch(async (input, init) => {
-      paths.push(`${init?.method ?? "GET"} ${String(input)}`);
-      expect(new Headers(init?.headers).get("authorization")).toBe(
-        session ? null : "Bearer owner",
-      );
-      expect(init?.credentials).toBe("same-origin");
-      expect(new Headers(init?.headers).get("x-localbase-ui")).toBe(
-        session ? "1" : null,
-      );
-      if (paths.length === 1) {
-        abort.abort();
-        return Response.json({ id, status: "queued" });
-      }
-      if (String(input).endsWith("/cancel"))
-        return Response.json(
-          { error: { message: "cancel unavailable" } },
-          { status: 503 },
-        );
-      return new Response(null, { status: 204 });
-    });
-    try {
-      await expect(
-        generateVideo({
-          model: video,
-          connection: session
-            ? { kind: "session" }
-            : { kind: "api-key", key: "owner" },
-          signal: abort.signal,
-          prompt: "sun",
-          progress: () => {},
-          warning: (message) => warnings.push(message),
-        }),
-      ).rejects.toThrow();
-      expect(paths).toEqual([
-        `POST ${prefix}/v1/videos`,
-        `POST ${prefix}/v1/videos/${id}/cancel`,
-        `DELETE ${prefix}/v1/videos/${id}`,
-      ]);
-      expect(warnings.join()).toContain("cancellation");
-    } finally {
-      mock.mockRestore();
+test("cancellation after submission uses the browser owner and tries DELETE after failed cancel", async () => {
+  const prefix = "/app/api";
+  const abort = new AbortController();
+  const paths: string[] = [];
+  const warnings: string[] = [];
+  const id = "00000000-0000-4000-8000-000000000000";
+  const mock = mockFetch(async (input, init) => {
+    paths.push(`${init?.method ?? "GET"} ${String(input)}`);
+    expect(new Headers(init?.headers).get("authorization")).toBeNull();
+    expect(init?.credentials).toBe("same-origin");
+    expect(new Headers(init?.headers).get("x-localbase-ui")).toBe("1");
+    if (paths.length === 1) {
+      abort.abort();
+      return Response.json({ id, status: "queued" });
     }
-  },
-);
+    if (String(input).endsWith("/cancel"))
+      return Response.json(
+        { error: { message: "cancel unavailable" } },
+        { status: 503 },
+      );
+    return new Response(null, { status: 204 });
+  });
+  try {
+    await expect(
+      generateVideo({
+        model: video,
+        connection: { kind: "session" },
+        signal: abort.signal,
+        prompt: "sun",
+        progress: () => {},
+        warning: (message) => warnings.push(message),
+      }),
+    ).rejects.toThrow();
+    expect(paths).toEqual([
+      `POST ${prefix}/v1/videos`,
+      `POST ${prefix}/v1/videos/${id}/cancel`,
+      `DELETE ${prefix}/v1/videos/${id}`,
+    ]);
+    expect(warnings.join()).toContain("cancellation");
+  } finally {
+    mock.mockRestore();
+  }
+});
 test("expired session during a tool stops before another model round", async () => {
   let requests = 0;
   const mock = mockFetch(async () =>
@@ -478,7 +460,7 @@ test.each(["video/mp4", "video/x-msvideo", ""])(
     const id = "00000000-0000-4000-8000-000000000000";
     const warnings: string[] = [];
     const mock = mockFetch(async (input, init) => {
-      if (String(input) === "/v1/videos")
+      if (String(input) === "/app/api/v1/videos")
         return Response.json({
           id,
           status: "completed",
@@ -494,7 +476,7 @@ test.each(["video/mp4", "video/x-msvideo", ""])(
     try {
       const result = generateVideo({
         model: video,
-        connection: { kind: "api-key", key: "" },
+        connection: { kind: "session" },
         signal: new AbortController().signal,
         prompt: "sun",
         progress: () => {},
