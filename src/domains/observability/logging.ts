@@ -1505,10 +1505,12 @@ export async function followLogEvents(
   try {
     while (!signal.aborted) {
       for (const state of states.values()) state.pathVisible = false;
+      const visibleIdentities: string[] = [];
       for (const path of await orderedLogPaths(canonical)) {
         try {
           const opened = await openOwnedRegularFile(path, constants.O_RDONLY);
           const identity = fileIdentity(opened.stat);
+          visibleIdentities.push(identity);
           const existing = states.get(identity);
           if (existing) {
             existing.pathVisible = true;
@@ -1527,7 +1529,15 @@ export async function followLogEvents(
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
         }
       }
-      for (const [identity, state] of states) {
+      const drainOrder = [
+        ...[...states.values()]
+          .filter((state) => !state.pathVisible)
+          .map((state) => state.identity),
+        ...visibleIdentities,
+      ];
+      for (const identity of new Set(drainOrder)) {
+        const state = states.get(identity);
+        if (!state) continue;
         await drainFollowState(state, filters, emit, options.onRead);
         const size = (await state.handle.stat()).size;
         if (!state.pathVisible && state.offset >= size) {
