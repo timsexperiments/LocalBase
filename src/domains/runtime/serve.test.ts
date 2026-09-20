@@ -744,6 +744,42 @@ test("compiled gateway records safe authenticated principal metadata", async () 
   }
 });
 
+test("compiled gateway rejects direct browser API-key requests", async () => {
+  const gateway = await startGatewayFixture({ auth: {} });
+  try {
+    const browserHeaders = {
+      authorization: `Bearer ${gateway.apiKey}`,
+      origin: "https://client.example",
+      "sec-fetch-site": "cross-site",
+    };
+    const direct = await fetch(`${gateway.baseUrl}/v1/models`, {
+      headers: browserHeaders,
+    });
+    expect(direct.status).toBe(401);
+    expect(await direct.json()).toMatchObject({
+      error: { code: "invalid_api_key" },
+    });
+
+    const preflight = await fetch(`${gateway.baseUrl}/v1/models`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://client.example",
+        "access-control-request-method": "GET",
+        "access-control-request-headers": "authorization",
+      },
+    });
+    expect(preflight.status).toBe(403);
+    expect(preflight.headers.has("access-control-allow-origin")).toBe(false);
+
+    const apiClient = await fetch(`${gateway.baseUrl}/v1/models`, {
+      headers: { authorization: `Bearer ${gateway.apiKey}` },
+    });
+    expect(apiClient.status).toBe(200);
+  } finally {
+    await gateway.stop();
+  }
+});
+
 test("compiled gateway continues W3C context and exports correlated telemetry", async () => {
   const telemetryModel = byId("qwen2.5-coder-1.5b-instruct-q4_k_m");
   if (!telemetryModel) throw new Error("Telemetry fixture model is missing.");

@@ -288,7 +288,7 @@ test.each(["bearer", "x-api-key", "either"] as const)(
   },
 );
 
-test("video routes require a principal under --no-auth and keep preflight public", async () => {
+test("video routes require a principal under --no-auth and deny browser preflight", async () => {
   const gateway = await startGatewayFixture();
   const database = new DatabaseSession();
   try {
@@ -318,7 +318,8 @@ test("video routes require a principal under --no-auth and keep preflight public
       const preflight = await fetch(`${gateway.baseUrl}${path}`, {
         method: "OPTIONS",
       });
-      expect(preflight.status).toBe(204);
+      expect(preflight.status).toBe(403);
+      expect(preflight.headers.has("access-control-allow-origin")).toBe(false);
       const authenticated = await fetch(`${gateway.baseUrl}${path}`, {
         method,
         headers: { authorization: `Bearer ${token}` },

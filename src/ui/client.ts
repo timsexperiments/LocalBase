@@ -1,39 +1,15 @@
 import { z } from "zod";
 import type { ModelMetadata } from "../domains/models/model-metadata";
 
-const fragmentKeySchema = z.string().regex(/^[\x21-\x7e]+$/);
-
-export function consumeFragmentKey({
+export function discardLegacyFragmentCredential({
   location,
   history,
 }: {
   location: Pick<Location, "hash" | "pathname" | "search">;
   history: Pick<History, "state" | "replaceState">;
-} = window): string {
-  const fragment = location.hash;
-  if (!fragment) return "";
-  // Clear even invalid credentials before session or API requests can start.
+} = window): void {
+  if (!/^#key(?:=|$)/.test(location.hash)) return;
   history.replaceState(history.state, "", location.pathname + location.search);
-  const match = /^#key=([^&]*)$/.exec(fragment);
-  if (!match) return "";
-  try {
-    const key = fragmentKeySchema.safeParse(decodeURIComponent(match[1]));
-    return key.success ? key.data : "";
-  } catch {
-    return "";
-  }
-}
-
-export function createUiId(): string {
-  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
-  // HTTP LAN pages expose getRandomValues but may not expose randomUUID.
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 type MetadataCapabilities = NonNullable<
@@ -207,10 +183,10 @@ export function availableModels(models: Model[], mode: Mode) {
         Number(Boolean(a.device.runtime?.configured)),
     );
 }
-export type Session = { kind: "session" } | { kind: "api-key" };
+export type Session = { kind: "session" };
 export type SessionState =
   Session | { kind: "checking" } | { kind: "error"; message: string };
-export type Connection = { kind: "session" } | { kind: "api-key"; key: string };
+export type Connection = Session;
 export class SessionRequiredError extends Error {
   constructor(
     message = "Your sign-in is missing or expired. Sign in again, then refresh.",
@@ -218,10 +194,7 @@ export class SessionRequiredError extends Error {
     super(message);
   }
 }
-const sessionSchema = z.discriminatedUnion("authenticated", [
-  z.object({ authenticated: z.literal(true) }),
-  z.object({ authenticated: z.literal(false), mode: z.literal("api-key") }),
-]);
+const sessionSchema = z.object({ authenticated: z.literal(true) });
 export async function readSession(signal?: AbortSignal): Promise<Session> {
   const response = await fetch("/app/session", {
     signal,
@@ -245,19 +218,14 @@ export async function readSession(signal?: AbortSignal): Promise<Session> {
     throw new Error(
       "Sign-in could not be verified. Reload this page to sign in.",
     );
-  return { kind: parsed.data.authenticated ? "session" : "api-key" };
+  return { kind: "session" };
 }
-export function sessionConnection(
-  session: SessionState,
-  key: string,
-): Connection | null {
-  if (session.kind === "checking" || session.kind === "error") return null;
-  if (session.kind === "session") return session;
-  return key.trim() ? { kind: "api-key", key: key.trim() } : null;
+export function sessionConnection(session: SessionState): Connection | null {
+  return session.kind === "session" ? session : null;
 }
 export async function api(
   path: string,
-  connection: Connection,
+  _connection: Connection,
   init: RequestInit = {},
 ) {
   if (
@@ -269,38 +237,27 @@ export async function api(
   )
     throw new Error("Only same-origin gateway requests are allowed.");
   const headers = new Headers(init.headers);
-  if (connection.kind === "session") {
-    headers.delete("authorization");
-    headers.delete("x-api-key");
-    headers.set("x-localbase-ui", "1");
-  } else if (connection.key) {
-    headers.set("authorization", `Bearer ${connection.key}`);
-    headers.set("x-api-key", connection.key);
-  }
+  headers.delete("authorization");
+  headers.delete("x-api-key");
+  headers.set("x-localbase-ui", "1");
   let response: Response;
   try {
-    response = await fetch(
-      connection.kind === "session" ? `/app/api${path}` : path,
-      {
-        ...init,
-        headers,
-        cache: "no-store",
-        credentials: "same-origin",
-        redirect: "error",
-      },
-    );
+    response = await fetch(`/app/api${path}`, {
+      ...init,
+      headers,
+      cache: "no-store",
+      credentials: "same-origin",
+      redirect: "error",
+    });
   } catch (error) {
-    if (connection.kind === "session" && !init.signal?.aborted)
+    if (!init.signal?.aborted)
       throw new Error(
         "Could not reach the gateway. Check the connection and try again.",
       );
     throw error;
   }
   if (!response.ok) {
-    if (
-      connection.kind === "session" &&
-      (response.status === 401 || response.status === 403)
-    ) {
+    if (response.status === 401 || response.status === 403) {
       await response.body?.cancel();
       throw new SessionRequiredError();
     }
@@ -309,11 +266,9 @@ export async function api(
       .object({ error: z.object({ message: z.string() }) })
       .safeParse(value);
     throw new Error(
-      response.status === 401
-        ? "Enter a valid gateway API key in Settings."
-        : parsed.success
-          ? parsed.data.error.message
-          : `Request failed (${response.status}). Try again.`,
+      parsed.success
+        ? parsed.data.error.message
+        : `Request failed (${response.status}). Try again.`,
     );
   }
   if (response.headers.get("content-type")?.includes("text/html")) {
