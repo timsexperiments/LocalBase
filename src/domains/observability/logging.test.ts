@@ -678,8 +678,16 @@ test("atomically replaces bootstrap diagnostics without missing or invalid reads
     samples: [] as string[],
   };
   let replacing = true;
+  let replacementsInFlight = 0;
+  let replacementReads = 0;
+  let firstReadValid: boolean | undefined;
+  let markFirstReadComplete!: () => void;
+  const firstReadComplete = new Promise<void>((resolve) => {
+    markFirstReadComplete = resolve;
+  });
   const reader = (async () => {
     while (replacing) {
+      let valid = false;
       try {
         const contents = await Bun.file(path).text();
         const lines = contents.trimEnd().split("\n");
@@ -688,6 +696,8 @@ test("atomically replaces bootstrap diagnostics without missing or invalid reads
         }
         logEventSchema.parse(JSON.parse(lines[0]!));
         observations.validReads += 1;
+        valid = true;
+        if (replacementsInFlight > 0) replacementReads += 1;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           observations.missingReads += 1;
@@ -699,17 +709,30 @@ test("atomically replaces bootstrap diagnostics without missing or invalid reads
             error instanceof Error ? error.message : String(error),
           );
         }
+      } finally {
+        if (firstReadValid === undefined) {
+          firstReadValid = valid;
+          markFirstReadComplete();
+        }
       }
       await Bun.sleep(0);
     }
   })();
+  await firstReadComplete;
+  replacementsInFlight = 24;
   await Promise.all(
-    Array.from({ length: 300 }, (_, index) =>
-      writeBootstrapDiagnostic(root, new Error(`failure ${index}`)),
-    ),
+    Array.from({ length: replacementsInFlight }, async (_, index) => {
+      try {
+        await writeBootstrapDiagnostic(root, new Error(`failure ${index}`));
+      } finally {
+        replacementsInFlight -= 1;
+      }
+    }),
   );
   replacing = false;
   await reader;
+  expect(firstReadValid).toBe(true);
+  expect(replacementReads).toBeGreaterThan(0);
   expect(observations.validReads).toBeGreaterThan(0);
   expect({
     missingReads: observations.missingReads,
