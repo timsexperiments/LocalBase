@@ -423,8 +423,10 @@ dialog::backdrop {
   backdrop-filter: blur(3px);
 }
 .drawer {
-  padding: max(20px, env(safe-area-inset-top)) 24px
-    max(24px, env(safe-area-inset-bottom));
+  padding: max(20px, env(safe-area-inset-top))
+    calc(24px + env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom))
+    calc(24px + env(safe-area-inset-left));
 }
 .drawer header {
   display: flex;
