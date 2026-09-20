@@ -2885,7 +2885,7 @@ const CATALOG_SOURCE = [
         },
       },
       estimatedMemoryDemand: {
-        unifiedBytes: 24 * 1024 ** 3,
+        unifiedBytes: 16 * 1024 ** 3,
         hostBytes: 16 * 1024 ** 3,
         acceleratorBytes: 8 * 1024 ** 3,
       },

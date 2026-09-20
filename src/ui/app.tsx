@@ -1387,6 +1387,7 @@ function App() {
             <ModelManagement
               connection={credential}
               models={models}
+              hostMemory={hostMemory}
               refreshModels={refresh}
               openSettings={() => setDrawer("settings")}
             />

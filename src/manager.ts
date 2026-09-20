@@ -632,6 +632,7 @@ export async function installModel(
   modelId: string,
   filename?: string,
   reporter?: ModelInstallReporter,
+  protectedArtifactPaths: ReadonlySet<string> = new Set(),
 ): Promise<string> {
   let failurePhase: ModelInstallFailurePhase = "preparing";
   try {
@@ -670,6 +671,7 @@ export async function installModel(
         (phase) => {
           failurePhase = phase;
         },
+        protectedArtifactPaths.has(join(targetDir, artifactFilename)),
       );
     }
 
@@ -915,6 +917,7 @@ async function installArtifact(
   artifactIndex: number,
   reporter?: ModelInstallReporter,
   setFailurePhase: (phase: ModelInstallFailurePhase) => void = () => {},
+  protectExisting = false,
 ): Promise<void> {
   safeFilenameSchema.parse(filename);
   const authority = authoritativeArtifact(artifact, spec.modelId);
@@ -944,6 +947,11 @@ async function installArtifact(
   if (await Bun.file(output).exists()) {
     const existingSize = (await Bun.file(output).stat()).size;
     if (existingSize < authority.expectedSizeBytes) {
+      if (protectExisting) {
+        throw new Error(
+          `Cannot replace ${filename} while an active runtime may be using it.`,
+        );
+      }
       if (!(await Bun.file(partial).exists())) {
         renameSync(output, partial);
       } else {
@@ -970,6 +978,7 @@ async function installArtifact(
         reportVerification(validation.verification);
         return;
       }
+      if (protectExisting) throw validation.error;
       setFailurePhase("preparing");
       await deleteFileIfExists(output);
       await deleteFileIfExists(partial);

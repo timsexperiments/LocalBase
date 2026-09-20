@@ -127,6 +127,7 @@ test("full catalog contract includes installed, enabled, active and exact footpr
     active: false,
     installedBytes: 3,
     downloadBytes: 3,
+    remainingDownloadBytes: 0,
     operation: null,
   });
   expect(response.storage.availableBytes).toBeGreaterThan(0);
@@ -216,13 +217,31 @@ test("partial downloads count toward disk footprint and can be uninstalled", asy
     (await f.management.read()).models.find(
       (item) => item.id === f.model.modelId,
     );
-  expect(await entry()).toMatchObject({ installed: false, installedBytes: 2 });
+  expect(await entry()).toMatchObject({
+    installed: false,
+    installedBytes: 2,
+    remainingDownloadBytes: 1,
+  });
   writeFileSync(f.path, "abc");
-  expect(await entry()).toMatchObject({ installed: true, installedBytes: 5 });
+  expect(await entry()).toMatchObject({
+    installed: true,
+    installedBytes: 5,
+    remainingDownloadBytes: 0,
+  });
+  writeFileSync(f.path, "oversized");
+  expect(await entry()).toMatchObject({
+    installed: false,
+    installedBytes: 11,
+    remainingDownloadBytes: 3,
+  });
   rmSync(f.path);
   await f.management.run(f.model.modelId, "uninstall");
   expect(existsSync(`${f.path}.partial`)).toBe(false);
-  expect(await entry()).toMatchObject({ installed: false, installedBytes: 0 });
+  expect(await entry()).toMatchObject({
+    installed: false,
+    installedBytes: 0,
+    remainingDownloadBytes: 3,
+  });
 });
 
 test("unsafe partial target prevents deletion of a valid final artifact", async () => {
@@ -355,10 +374,17 @@ test("install rejects enabled nonresident targets before the installer runs", as
 });
 
 test.each(["enabled", "referenced"])(
-  "install rejects artifacts shared with an %s catalog model",
+  "install rejects destructive artifact collisions with an %s catalog model",
   async (state) => {
     const f = fixture();
-    const other = { ...f.model, modelId: `${f.model.modelId}-shared` };
+    const other = {
+      ...f.model,
+      modelId: `${f.model.modelId}-collision`,
+      artifacts: f.model.artifacts.map((artifact) => ({
+        ...artifact,
+        sha256: "b".repeat(64),
+      })),
+    } satisfies ModelSpec;
     mutableCatalog.push(other);
     cleanup.push(() => {
       mutableCatalog.splice(mutableCatalog.indexOf(other), 1);
@@ -479,6 +505,52 @@ test("availability reasons distinguish runtime references and unsafe storage", a
   expect(unavailable?.canInstall).toBe(false);
   expect(unavailable?.installUnavailableReason).toContain("symlink");
   expect(unavailable?.installUnavailableReason).not.toContain(f.root);
+});
+
+test("allows installation while another enabled model uses an identical shared artifact", async () => {
+  const f = fixture();
+  const shared = {
+    ...f.model,
+    modelId: `${f.model.modelId}-shared`,
+    artifacts: f.model.artifacts.map((artifact) => ({ ...artifact })),
+  } satisfies ModelSpec;
+  mutableCatalog.push(shared);
+  cleanup.push(() => {
+    mutableCatalog.splice(mutableCatalog.indexOf(shared), 1);
+  });
+  f.runtimeConfig.update((config) => {
+    config.selectedSttModels.push(shared.modelId);
+    config.activeSttModel = shared.modelId;
+  });
+
+  const entry = async () =>
+    (await f.management.read()).models.find(
+      (item) => item.id === f.model.modelId,
+    );
+  expect(await entry()).toMatchObject({
+    canInstall: true,
+    installUnavailableReason: null,
+    remainingDownloadBytes: 3,
+  });
+
+  writeFileSync(f.path, "bad");
+  await expect(
+    f.management.run(f.model.modelId, "install"),
+  ).resolves.toMatchObject({ state: "running" });
+  await f.management.whenIdle();
+  expect(await Bun.file(f.path).text()).toBe("bad");
+  expect(await entry()).toMatchObject({
+    operation: { state: "failed" },
+    remainingDownloadBytes: 0,
+  });
+
+  const artifact = shared.artifacts[0];
+  if (!artifact) throw new Error("Expected shared artifact fixture");
+  artifact.sha256 = "b".repeat(64);
+  expect(await entry()).toMatchObject({
+    canInstall: false,
+    installUnavailableReason: `Disable ${shared.modelId} and wait for its runtime to release shared artifacts before installing.`,
+  });
 });
 
 test("background installation verifies fixture bytes and publishes completion", async () => {

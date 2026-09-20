@@ -299,6 +299,9 @@ test("projects qualified video limits and mode without exposing runtime internal
       outputFormats: ["mp4"],
     });
     expect(list.data[index]?.catalog.features).toEqual(model.features);
+    expect(list.data[index]?.catalog.memory.unifiedMemoryEstimateGb).toBe(
+      model.videoRuntime.estimatedMemoryDemand.unifiedBytes / 1024 ** 3,
+    );
   }
 });
 
