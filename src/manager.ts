@@ -12,7 +12,7 @@ import {
   verifyAuthoritativeFile,
   type AuthoritativeVerification,
 } from "./utils/checksum";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   databasePath as dbPath,
@@ -21,6 +21,11 @@ import {
   withDatabase,
 } from "./db/client";
 import { apiKeysTable, configTable } from "./db/schema";
+import {
+  defaultApiKeyScopes,
+  permissionsSchema,
+  type Permission,
+} from "./domains/auth/authorization";
 import {
   artifactDownloadUrl,
   byId,
@@ -104,6 +109,7 @@ export type ApiKeyRecord = {
   name: string;
   prefix: string;
   keyHash: string;
+  scopes: readonly Permission[];
   createdAt: string;
   lastRotatedAt: string;
   expiresAt?: string;
@@ -150,6 +156,17 @@ const apiKeyRowSchema = z
     name: z.string().min(1),
     prefix: z.string().min(1),
     keyHash: z.string().regex(/^[a-fA-F0-9]{64}$/),
+    scopes: z
+      .string()
+      .transform((value, ctx): unknown => {
+        try {
+          return JSON.parse(value);
+        } catch {
+          ctx.addIssue({ code: "custom", message: "must be valid JSON" });
+          return z.NEVER;
+        }
+      })
+      .pipe(permissionsSchema),
     createdAt: timestampSchema,
     lastRotatedAt: timestampSchema,
     expiresAt: timestampSchema.nullable(),
@@ -1097,6 +1114,7 @@ export function loadApiKeys(
     db
       .select()
       .from(apiKeysTable)
+      .orderBy(asc(apiKeysTable.createdAt), asc(apiKeysTable.id))
       .all()
       .map((row) => fromApiKeyRow(row, config.root)),
   );
@@ -1149,7 +1167,9 @@ export function createApiKey(
   config: LocalBaseConfig,
   name: string,
   expiresDays?: number,
+  scopes: readonly Permission[] = defaultApiKeyScopes,
 ): { record: ApiKeyRecord; rawKey: string } {
+  const validatedScopes = permissionsSchema.parse(scopes);
   if (!name.trim()) throw new Error("API key name must not be empty.");
   if (
     expiresDays !== undefined &&
@@ -1164,6 +1184,7 @@ export function createApiKey(
     name,
     prefix,
     keyHash: hashApiKey(key),
+    scopes: validatedScopes,
     createdAt: now,
     lastRotatedAt: now,
     expiresAt:
@@ -1178,6 +1199,7 @@ export function createApiKey(
         name: record.name,
         prefix: record.prefix,
         keyHash: record.keyHash,
+        scopes: JSON.stringify(record.scopes),
         createdAt: record.createdAt,
         lastRotatedAt: record.lastRotatedAt,
         expiresAt: record.expiresAt,
@@ -1215,6 +1237,29 @@ export function revokeApiKey(
   });
 }
 
+export function setApiKeyScopes(
+  database: DatabaseSession,
+  config: LocalBaseConfig,
+  id: string,
+  scopes: readonly Permission[],
+): ApiKeyRecord {
+  const validatedScopes = permissionsSchema.parse(scopes);
+  return withDatabase(database, config.root, (db) => {
+    const record = db
+      .select()
+      .from(apiKeysTable)
+      .where(eq(apiKeysTable.id, id))
+      .get();
+    if (!record) throw new Error(`API key not found: ${id}`);
+    const validated = fromApiKeyRow(record, config.root);
+    db.update(apiKeysTable)
+      .set({ scopes: JSON.stringify(validatedScopes) })
+      .where(eq(apiKeysTable.id, id))
+      .run();
+    return { ...validated, scopes: validatedScopes };
+  });
+}
+
 export function rotateApiKey(
   database: DatabaseSession,
   config: LocalBaseConfig,
@@ -1234,20 +1279,16 @@ export function rotateApiKey(
     const lastRotatedAt = new Date().toISOString();
     const keyHash = hashApiKey(key);
     db.update(apiKeysTable)
-      .set({ prefix, keyHash, lastRotatedAt, revokedAt: null })
+      .set({ prefix, keyHash, lastRotatedAt })
       .where(eq(apiKeysTable.id, id))
       .run();
 
     return {
       record: {
-        id: validated.id,
-        name: validated.name,
+        ...validated,
         prefix,
         keyHash,
-        createdAt: validated.createdAt,
         lastRotatedAt,
-        expiresAt: validated.expiresAt,
-        revokedAt: undefined,
       },
       rawKey: key,
     };

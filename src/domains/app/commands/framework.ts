@@ -74,7 +74,7 @@ function validateOptionSyntax(rawArgs: string[], argsDef: ArgsDef): void {
   }
 
   let literal = false;
-  for (const token of rawArgs) {
+  for (const [index, token] of rawArgs.entries()) {
     if (token === "--") {
       literal = true;
       continue;
@@ -97,6 +97,14 @@ function validateOptionSyntax(rawArgs: string[], argsDef: ArgsDef): void {
     if (!definition) throw new CliInputError(`Unknown option: ${name}`);
     if (definition.type === "boolean" && valueProvided) {
       throw new CliInputError(`${name} does not accept a value`);
+    }
+    const next = rawArgs[index + 1];
+    if (
+      definition.type === "string" &&
+      !valueProvided &&
+      (next === undefined || next.startsWith("-"))
+    ) {
+      throw new CliInputError(`${name} requires a value`);
     }
   }
 }

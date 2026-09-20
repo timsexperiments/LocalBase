@@ -126,6 +126,28 @@ Standard `OTEL_EXPORTER_OTLP_ENDPOINT`, signal-specific endpoint/header variable
 
 ## Automation and JSON output
 
+Stored API keys default to `inference:chat`, `inference:embeddings`, `inference:image`, `inference:video`, `inference:speech`, `inference:transcription`, and `models:read`. Existing keys migrate to this same set without administrative permissions. The `LOCALBASE_API_KEY` environment credential retains full access.
+
+```bash
+local-base keys create --name chat-client --scopes inference:chat,models:read --json
+local-base keys list --json
+local-base keys scopes key_ID --scopes inference:video,models:read --json
+local-base keys rotate key_ID --json
+local-base keys revoke key_ID --json
+```
+
+`keys scopes` replaces the complete scope set and takes effect on the next request without a restart. Use `--scopes ""` to grant no permissions. Scope lists accept only these permissions:
+
+```text
+inference:chat, inference:embeddings, inference:image, inference:video,
+inference:speech, inference:transcription, models:read, models:manage,
+configuration:read, configuration:manage, keys:read, keys:manage,
+access:read, access:manage, sessions:read, sessions:revoke,
+system:read, system:manage
+```
+
+Duplicates are removed and scopes are returned in the order above. Invalid scopes fail before any database changes. Creation and rotation show the secret once; list and scope output contain only key metadata. Rotation preserves scopes, expiry, revocation state, and the key ID used for video ownership. Scope changes also preserve revoked status. A missing, expired, revoked, or invalid credential returns HTTP 401; an active key without the required permission returns HTTP 403. Local CLI key management uses access to the data directory and does not require an API key.
+
 Use the global `--json` option for automation. It may appear before or after a command, but not after `--`.
 
 ```bash

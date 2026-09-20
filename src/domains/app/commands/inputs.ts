@@ -7,6 +7,10 @@ import {
   otelHeadersTextSchema,
 } from "../../observability/otel-config";
 import { safeFilenameSchema } from "../../../utils/checksum";
+import {
+  defaultApiKeyScopes,
+  permissionsSchema,
+} from "../../auth/authorization";
 
 export const modelKindSchema = z.enum(["llm", "stt", "tts", "image", "video"]);
 
@@ -197,9 +201,17 @@ export type DiagnosticsInput = z.infer<typeof diagnosticsInputSchema>;
 export const keysListInputSchema = z.object({});
 export type KeysListInput = z.infer<typeof keysListInputSchema>;
 
+const keyScopesInputSchema = z
+  .string()
+  .transform((value): unknown =>
+    value.trim() === "" ? [] : value.split(",").map((scope) => scope.trim()),
+  )
+  .pipe(permissionsSchema);
+
 export const keysCreateInputSchema = z.object({
   name: z.string().min(1).default("manual"),
   expiresDays: positiveInteger().optional(),
+  scopes: keyScopesInputSchema.default(defaultApiKeyScopes),
 });
 export type KeysCreateInput = z.infer<typeof keysCreateInputSchema>;
 
@@ -207,6 +219,11 @@ export const keyIdInputSchema = z.object({
   keyId: z.string().min(1),
 });
 export type KeyIdInput = z.infer<typeof keyIdInputSchema>;
+
+export const keysScopesInputSchema = keyIdInputSchema.extend({
+  scopes: keyScopesInputSchema,
+});
+export type KeysScopesInput = z.infer<typeof keysScopesInputSchema>;
 
 export const resetInputSchema = z.object({
   yes: z.boolean().default(false),
