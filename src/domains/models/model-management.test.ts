@@ -228,6 +228,12 @@ test("partial downloads count toward disk footprint and can be uninstalled", asy
     installedBytes: 5,
     remainingDownloadBytes: 0,
   });
+  writeFileSync(f.path, "oversized");
+  expect(await entry()).toMatchObject({
+    installed: false,
+    installedBytes: 11,
+    remainingDownloadBytes: 3,
+  });
   rmSync(f.path);
   await f.management.run(f.model.modelId, "uninstall");
   expect(existsSync(`${f.path}.partial`)).toBe(false);

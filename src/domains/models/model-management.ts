@@ -192,7 +192,7 @@ function inspect(config: LocalBaseConfig, model: ModelSpec) {
           partial && partial.size <= size && partial.size >= stat.size
             ? partial.size
             : stat.size;
-      } else if (partial && partial.size <= size) {
+      } else if (!stat && partial && partial.size <= size) {
         reusableBytes = partial.size;
       }
       remainingDownloadBytes += size - reusableBytes;

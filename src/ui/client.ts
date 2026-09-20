@@ -156,7 +156,7 @@ export function modelMemorySummary(
   const available =
     availableBytes == null
       ? "memory availability unknown"
-      : `${Math.round((availableBytes / 1024 ** 3) * 10) / 10} GB available`;
+      : `${Math.round((availableBytes / 1024 ** 3) * 10) / 10} GiB available`;
   const requirement = modelMemoryRequirement(model, memory);
   return requirement.gigabytes === null
     ? `Memory requirement unknown · ${available}`
