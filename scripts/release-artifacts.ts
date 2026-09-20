@@ -257,6 +257,8 @@ export async function buildReleaseArtifacts(
   target: ReleaseTarget,
   directory: string,
 ): Promise<void> {
+  const { buildUi } = await import("./build-ui");
+  await buildUi();
   await mkdir(directory, { recursive: true });
   const targetFlag = `--target=${releaseTargets[target].bunTarget}`;
   const common = [

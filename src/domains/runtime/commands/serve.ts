@@ -77,6 +77,7 @@ import {
 } from "../speech-supervisor";
 import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
+import { playgroundResponse } from "../../../ui/static";
 import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
 import { gatewayAuthorizationRequirement } from "../route-authorization";
 import { VideoJobManager } from "../video/video-job-manager";
@@ -2358,7 +2359,9 @@ export async function runServe(
     startedAt: number,
     requestAuth: GatewayRequestAuth,
     requirement: AuthorizationRequirement,
+    playground?: Response,
   ): Promise<Response> => {
+    if (playground) return playground;
     const route = selectGatewayRoute(pathname);
     const queueFailure = (error: unknown, modality: RuntimeModality) =>
       inferenceQueueError(error, {
@@ -2999,11 +3002,10 @@ export async function runServe(
       const requestId = `lbreq_${crypto.randomUUID()}`;
       const requestAuth = gatewayRequestAuth(request);
       const route = selectGatewayRoute(pathname);
-      const requirement = gatewayAuthorizationRequirement({
-        route,
-        method,
-        authRequired,
-      });
+      const playground = playgroundResponse(request, pathname);
+      const requirement: AuthorizationRequirement = playground
+        ? { kind: "public" }
+        : gatewayAuthorizationRequirement({ route, method, authRequired });
       const parent = ctx.otel.extract(request.headers);
       const span = ctx.otel.startSpan(
         serverSpanName(method, pathname),
@@ -3046,6 +3048,7 @@ export async function runServe(
               start,
               requestAuth,
               requirement,
+              playground,
             ),
         );
       } catch (err) {

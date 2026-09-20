@@ -93,6 +93,14 @@ curl http://127.0.0.1:2273/v1/chat/completions \
 
 Use `local-base status` to inspect the service and `local-base logs --follow` to stream logs.
 
+### Browser playground
+
+Open `http://127.0.0.1:2273/app`, or `/app` on your gateway's existing HTTPS origin. The bundled mobile UI supports streaming chat, image generation, speech, and audio-file transcription using selected, installed models. Enter your gateway API key in Settings; it stays in page memory. The shell is public, while model metadata and inference keep their existing authentication requirements.
+
+History lasts for the open page by default. Settings can opt into device-local text history; keys and generated media are never stored. Video controls are omitted because model metadata does not advertise the required generation parameters. The UI uses no service worker.
+
+`bun install`, `bun run db:prepare`, and release builds prepare the browser assets. After UI edits, run `bun run db:prepare` for source execution or `bun run build` for a standalone CLI. Compiled binaries embed the assets and need no checkout or runtime build.
+
 ## Structured outputs
 
 Chat completions accept OpenAI-compatible `response_format.type: "json_schema"` requests. LocalBase compiles the schema before starting a model and forwards the response format unchanged to the managed llama runtime. Schemas must use a root object, require every declared property, set `additionalProperties: false`, and fit within 10 nesting levels, 5,000 total properties, 1,000 local references, and 256 KiB. LocalBase also limits each object to 1,000 properties as a synchronous compilation resource bound; this is distinct from OpenAI's overall property limit.
