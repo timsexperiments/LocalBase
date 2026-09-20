@@ -89,6 +89,7 @@ const modelSchema = z.object({
     quantization: z.string(),
     memory: z.object({
       minimumVramEstimateGb: z.number().nonnegative(),
+      unifiedMemoryEstimateGb: z.number().positive().nullable().default(null),
       storageEstimateGb: z.number().positive(),
     }),
     features: z.array(z.string()).default([]),
@@ -107,7 +108,7 @@ const modelSchema = z.object({
 });
 export type Model = z.infer<typeof modelSchema>;
 type MetadataIdentity = Pick<ModelMetadata, "id">;
-type HostMemory = ModelMetadataList["host"]["memory"];
+export type HostMemory = ModelMetadataList["host"]["memory"];
 const memoryPoolSchema = z.object({
   capacityBytes: z.number().int().nonnegative(),
   availableBytes: z.number().int().nonnegative().nullable(),
@@ -122,6 +123,24 @@ export const modelsSchema = z.object({
   data: z.array(modelSchema),
 });
 export type ModelsResponse = z.infer<typeof modelsSchema>;
+
+export function modelMemoryRequirement(
+  model: Model,
+  memory: HostMemory | null,
+): Readonly<{ label: string; gigabytes: number }> {
+  if (memory?.kind === "unified") {
+    return {
+      label: "Est. unified memory",
+      gigabytes:
+        model.catalog.memory.unifiedMemoryEstimateGb ??
+        model.catalog.memory.minimumVramEstimateGb,
+    };
+  }
+  return {
+    label: memory ? "Min. VRAM" : "Est. memory",
+    gigabytes: model.catalog.memory.minimumVramEstimateGb,
+  };
+}
 
 export function modelMemorySummary(
   model: Model,
@@ -138,7 +157,8 @@ export function modelMemorySummary(
     availableBytes == null
       ? "memory availability unknown"
       : `${Math.round((availableBytes / 1024 ** 3) * 10) / 10} GB available`;
-  return `Needs ~${model.catalog.memory.minimumVramEstimateGb} GB · ${available}`;
+  const requirement = modelMemoryRequirement(model, memory);
+  return `Needs ~${requirement.gigabytes} GB · ${available}`;
 }
 export const readinessSchema = z.object({
   status: z.enum(["ready", "unready"]),

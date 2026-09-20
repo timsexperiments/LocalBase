@@ -94,6 +94,7 @@ export const modelMetadataSchema = z
         memory: z
           .object({
             minimumVramEstimateGb: z.number().nonnegative(),
+            unifiedMemoryEstimateGb: z.number().positive().nullable(),
             storageEstimateGb: z.number().positive(),
           })
           .strict(),
@@ -242,6 +243,9 @@ export function projectModelMetadata(
       })),
       memory: {
         minimumVramEstimateGb: model.minVramGb,
+        unifiedMemoryEstimateGb: model.videoRuntime
+          ? model.videoRuntime.estimatedMemoryDemand.unifiedBytes / 1024 ** 3
+          : null,
         storageEstimateGb: model.storageGb,
       },
       capabilities: model.llmRuntime

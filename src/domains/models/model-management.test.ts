@@ -355,10 +355,17 @@ test("install rejects enabled nonresident targets before the installer runs", as
 });
 
 test.each(["enabled", "referenced"])(
-  "install rejects artifacts shared with an %s catalog model",
+  "install rejects destructive artifact collisions with an %s catalog model",
   async (state) => {
     const f = fixture();
-    const other = { ...f.model, modelId: `${f.model.modelId}-shared` };
+    const other = {
+      ...f.model,
+      modelId: `${f.model.modelId}-collision`,
+      artifacts: f.model.artifacts.map((artifact) => ({
+        ...artifact,
+        sha256: "b".repeat(64),
+      })),
+    } satisfies ModelSpec;
     mutableCatalog.push(other);
     cleanup.push(() => {
       mutableCatalog.splice(mutableCatalog.indexOf(other), 1);
@@ -479,6 +486,40 @@ test("availability reasons distinguish runtime references and unsafe storage", a
   expect(unavailable?.canInstall).toBe(false);
   expect(unavailable?.installUnavailableReason).toContain("symlink");
   expect(unavailable?.installUnavailableReason).not.toContain(f.root);
+});
+
+test("allows installation while another enabled model uses an identical shared artifact", async () => {
+  const f = fixture();
+  const shared = {
+    ...f.model,
+    modelId: `${f.model.modelId}-shared`,
+    artifacts: f.model.artifacts.map((artifact) => ({ ...artifact })),
+  } satisfies ModelSpec;
+  mutableCatalog.push(shared);
+  cleanup.push(() => {
+    mutableCatalog.splice(mutableCatalog.indexOf(shared), 1);
+  });
+  f.runtimeConfig.update((config) => {
+    config.selectedSttModels.push(shared.modelId);
+    config.activeSttModel = shared.modelId;
+  });
+
+  const entry = async () =>
+    (await f.management.read()).models.find(
+      (item) => item.id === f.model.modelId,
+    );
+  expect(await entry()).toMatchObject({
+    canInstall: true,
+    installUnavailableReason: null,
+  });
+
+  const artifact = shared.artifacts[0];
+  if (!artifact) throw new Error("Expected shared artifact fixture");
+  artifact.sha256 = "b".repeat(64);
+  expect(await entry()).toMatchObject({
+    canInstall: false,
+    installUnavailableReason: `Disable ${shared.modelId} and wait for its runtime to release shared artifacts before installing.`,
+  });
 });
 
 test("background installation verifies fixture bytes and publishes completion", async () => {

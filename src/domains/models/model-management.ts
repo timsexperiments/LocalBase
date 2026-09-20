@@ -119,12 +119,30 @@ function installConflict(
   model: ModelSpec,
   referenced: ReadonlySet<string | null>,
 ): string | null {
-  const targetPaths = new Set(paths(config, model));
+  const targetArtifacts = new Map(
+    model.artifacts.map((artifact) => [
+      join(config[fields[model.kind].directory], artifact.filename),
+      artifact,
+    ]),
+  );
   const protectedModel = CATALOG.find((other) => {
     const field = fields[other.kind];
+    const conflictsWithTarget =
+      other.modelId === model.modelId ||
+      other.artifacts.some((artifact) => {
+        const path = join(
+          config[fields[other.kind].directory],
+          artifact.filename,
+        );
+        const target = targetArtifacts.get(path);
+        if (!target) return false;
+        return (
+          target.expectedSizeBytes !== artifact.expectedSizeBytes ||
+          target.sha256 !== artifact.sha256
+        );
+      });
     return (
-      (other.modelId === model.modelId ||
-        paths(config, other).some((path) => targetPaths.has(path))) &&
+      conflictsWithTarget &&
       (config[field.selected].includes(other.modelId) ||
         config[field.active] === other.modelId ||
         referenced.has(other.modelId))

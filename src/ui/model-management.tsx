@@ -8,8 +8,10 @@ import {
 import {
   api,
   catalogModels,
+  modelMemoryRequirement,
   modes,
   type Connection,
+  type HostMemory,
   type Model,
 } from "./client";
 
@@ -33,11 +35,13 @@ function bytes(value: number | null) {
 export function ModelManagement({
   connection,
   models,
+  hostMemory,
   refreshModels,
   openSettings,
 }: {
   connection: Connection | null;
   models: Model[];
+  hostMemory: HostMemory | null;
   refreshModels: (signal?: AbortSignal) => Promise<void>;
   openSettings: () => void;
 }) {
@@ -154,8 +158,8 @@ export function ModelManagement({
             </span>
             <span>
               {state
-                ? `${bytes(state.storage.availableBytes)} free of ${bytes(state.storage.totalBytes)}`
-                : "Checking storage…"}
+                ? `Disk storage: ${bytes(state.storage.availableBytes)} available of ${bytes(state.storage.totalBytes)}`
+                : "Checking disk storage…"}
             </span>
           </div>
           <p className="hint">
@@ -227,6 +231,7 @@ export function ModelManagement({
             {filtered.map((model) => {
               const local = state?.models.find((item) => item.id === model.id);
               const operation = local?.operation;
+              const memory = modelMemoryRequirement(model, hostMemory);
               return (
                 <article className="catalog-card" key={model.id}>
                   <header>
@@ -259,8 +264,8 @@ export function ModelManagement({
                       </dd>
                     </div>
                     <div>
-                      <dt>Est. VRAM</dt>
-                      <dd>{model.catalog.memory.minimumVramEstimateGb} GB</dd>
+                      <dt>{memory.label}</dt>
+                      <dd>{memory.gigabytes} GB</dd>
                     </div>
                   </dl>
                   {operation && (
