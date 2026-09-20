@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { consumeFragmentKey, type Conversation, type Mode } from "./client";
+import {
+  discardLegacyFragmentCredential,
+  type Conversation,
+  type Mode,
+} from "./client";
 import {
   conversationNavigation,
   navigationUrl,
@@ -142,7 +146,7 @@ describe("playground navigation boundary", () => {
 });
 
 describe("History API navigation", () => {
-  test("magic key bootstrap preserves query navigation and subsequent writes never restore the key", () => {
+  test("obsolete key fragments are discarded without disturbing navigation", () => {
     const location = new URL(
       "https://local.test/app?view=lab&mode=image&keep=yes#key=lb_secret",
     );
@@ -159,7 +163,7 @@ describe("History API navigation", () => {
         this.replaceState(data, unused, url);
       },
     };
-    expect(consumeFragmentKey({ location, history })).toBe("lb_secret");
+    discardLegacyFragmentCredential({ location, history });
     expect(readNavigation(location.search).mode).toBe("image");
     writeNavigation(conversationNavigation(saved, "settings"), "push", {
       location,
