@@ -48,7 +48,7 @@ function makeContext(): AppContext {
       error() {},
       event() {},
       request() {},
-      pipeStream() {},
+      async drainStream() {},
       async enableFileLogging() {},
       async close() {},
     },

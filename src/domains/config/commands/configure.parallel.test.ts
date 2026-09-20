@@ -52,7 +52,7 @@ function makeContext(root: string, gpuVramGb = 16): AppContext {
       error() {},
       event() {},
       request() {},
-      pipeStream() {},
+      async drainStream() {},
       async enableFileLogging() {},
       async close() {},
     },

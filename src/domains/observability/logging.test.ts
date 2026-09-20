@@ -29,6 +29,7 @@ import {
   redactLogEventForDiagnostics,
   readLogSnapshot,
   writeBootstrapDiagnostic,
+  type LogEventInput,
 } from "./logging";
 
 const directories: string[] = [];
@@ -254,34 +255,55 @@ test("persists a complete inference event without truncating attributes", async 
   });
 });
 
+test("records inference failures at error severity", () => {
+  let logged: LogEventInput | undefined;
+  const telemetry = new InferenceTelemetry({
+    metadata: {
+      modelId: "fixture-model",
+      modality: "llm",
+      runtimeName: "llama-server",
+      admission: { active: 1, slots: 1, waiting: 0 },
+    },
+    requestId: "request-error",
+    startedAt: performance.now(),
+    streaming: false,
+    logger: { event: (input) => (logged = input) },
+    span: trace.getTracer("logging-test").startSpan("inference-error"),
+  });
+  telemetry.finish({ outcome: "error", httpStatus: 502 });
+  expect(logged?.severity).toBe("error");
+});
+
 test("models trace correlation as one opaque local object", () => {
+  const traceId = "a".repeat(32);
+  const spanId = "b".repeat(16);
   const traced = {
     ...event(1),
-    trace: { traceId: "sdk-trace", spanId: "sdk-span" },
+    trace: { traceId, spanId },
   };
 
   expect(logEventSchema.parse(traced).trace).toEqual(traced.trace);
   expect(formatHumanLogEvent(logEventSchema.parse(traced))).toContain(
-    "trace=sdk-trace/sdk-span",
+    `trace=${traceId}/${spanId}`,
   );
   expect(
     logEventSchema.safeParse({
       ...traced,
-      trace: { traceId: "sdk-trace" },
+      trace: { traceId },
     }).success,
   ).toBe(false);
   expect(
     logEventSchema.safeParse({
       ...traced,
-      trace: { spanId: "sdk-span" },
+      trace: { spanId },
     }).success,
   ).toBe(false);
   expect(
     logEventSchema.safeParse({
       ...traced,
       trace: {
-        traceId: "sdk-trace",
-        spanId: "sdk-span",
+        traceId,
+        spanId,
         traceFlags: 1,
       },
     }).success,
@@ -289,7 +311,7 @@ test("models trace correlation as one opaque local object", () => {
   expect(
     logEventSchema.safeParse({
       ...traced,
-      traceId: "sdk-trace",
+      traceId,
     }).success,
   ).toBe(false);
 });
@@ -297,37 +319,42 @@ test("models trace correlation as one opaque local object", () => {
 test("never persists raw backend output", async () => {
   const root = createRoot();
   const logger = new LocalBaseLogger("json");
+  let reads = 0;
+  let released = false;
+  const stream = {
+    getReader() {
+      return {
+        async read() {
+          reads += 1;
+          return reads === 1
+            ? {
+                done: false as const,
+                value: new TextEncoder().encode(
+                  '{"messages":["private prompt"]}\n',
+                ),
+              }
+            : { done: true as const, value: undefined };
+        },
+        releaseLock() {
+          released = true;
+        },
+      };
+    },
+  } as unknown as ReadableStream<Uint8Array>;
   const originalLog = console.log;
   console.log = () => {};
   try {
     await logger.enableFileLogging(root);
-    logger.pipeStream(
-      new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(
-            new TextEncoder().encode('{"messages":["private prompt"]}\n'),
-          );
-          controller.close();
-        },
-      }),
-      "llama-server",
-    );
-    const deadline = Date.now() + 1_000;
-    while (
-      Date.now() < deadline &&
-      (await readLogSnapshot(root)).length === 0
-    ) {
-      await Bun.sleep(10);
-    }
+    await logger.drainStream(stream);
     await logger.close();
   } finally {
     console.log = originalLog;
   }
 
   const events = await readLogSnapshot(root);
-  expect(events).toHaveLength(1);
-  expect(events[0].message).toBe("Backend emitted a log line.");
-  expect(JSON.stringify(events)).not.toContain("private prompt");
+  expect(reads).toBe(2);
+  expect(released).toBe(true);
+  expect(events).toHaveLength(0);
 });
 
 test("writes private JSONL files, rotates them, and preserves chronological snapshots", async () => {

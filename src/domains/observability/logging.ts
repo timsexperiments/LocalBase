@@ -9,6 +9,11 @@ import {
 import { join } from "node:path";
 import { z } from "zod";
 import {
+  canonicalGatewayHttpRoute,
+  gatewayHttpRoutes,
+  type GatewayHttpRoute,
+} from "../runtime/route-dispatch";
+import {
   assertInitializedLocalBaseRoot,
   canonicalLocalBaseRoot,
 } from "../../utils/root";
@@ -122,17 +127,7 @@ export const logHttpMetadataSchema = z
       "OPTIONS",
       "HEAD",
     ]),
-    path: z.enum([
-      "/health",
-      "/v1/models",
-      "/v1/chat/completions",
-      "/v1/embeddings",
-      "/v1/audio/transcriptions",
-      "/v1/audio/translations",
-      "/v1/audio/speech",
-      "/v1/images/generations",
-      "unmatched-route",
-    ]),
+    path: z.enum(gatewayHttpRoutes),
     status: z.number().int().min(100).max(599),
     durationMs: z.number().finite().min(0).max(3_600_000),
   })
@@ -148,8 +143,14 @@ export const logErrorMetadataSchema = z
 
 export const logTraceCorrelationSchema = z
   .object({
-    traceId: z.string(),
-    spanId: z.string(),
+    traceId: z
+      .string()
+      .regex(/^[0-9a-f]{32}$/)
+      .refine((value) => value !== "0".repeat(32)),
+    spanId: z
+      .string()
+      .regex(/^[0-9a-f]{16}$/)
+      .refine((value) => value !== "0".repeat(16)),
   })
   .strict();
 export type LogTraceCorrelation = z.infer<typeof logTraceCorrelationSchema>;
@@ -209,6 +210,7 @@ export type LogEventInput = {
   runtime: LogRuntime;
   message: string;
   requestId?: string;
+  trace?: LogTraceCorrelation;
   http?: Omit<z.input<typeof logHttpMetadataSchema>, "path"> & {
     path: string;
   };
@@ -353,13 +355,7 @@ function safeRequestId(value: string | undefined): string | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-function recognizedHttpRoute(
-  value: string,
-): z.infer<typeof logHttpMetadataSchema>["path"] {
-  const pathname = value.split("?", 1)[0];
-  const parsed = logHttpMetadataSchema.shape.path.safeParse(pathname);
-  return parsed.success ? parsed.data : "unmatched-route";
-}
+const recognizedHttpRoute = canonicalGatewayHttpRoute;
 
 function isOperationalMetricAttributeKey(
   value: string,
@@ -405,7 +401,7 @@ export function redactLogAttributes(
 /** Creates one validated, redacted event; sinks never receive unvalidated data. */
 export function createLogEvent(
   input: LogEventInput,
-  trace?: LogTraceCorrelation,
+  ambientTrace?: LogTraceCorrelation,
 ): LogEvent {
   const error = input.error
     ? {
@@ -423,6 +419,9 @@ export function createLogEvent(
       })
     : undefined;
   const requestId = safeRequestId(input.requestId);
+  const parsedTrace = logTraceCorrelationSchema.safeParse(
+    input.trace ?? ambientTrace,
+  );
   const attributes = redactLogAttributes(input.attributes);
   return logEventSchema.parse({
     schemaVersion: LOG_SCHEMA_VERSION,
@@ -435,7 +434,7 @@ export function createLogEvent(
     runtime: input.runtime,
     message: boundedText(input.message),
     ...(requestId ? { requestId } : {}),
-    ...(trace ? { trace } : {}),
+    ...(parsedTrace.success ? { trace: parsedTrace.data } : {}),
     ...(parsedHttp?.success ? { http: parsedHttp.data } : {}),
     ...(error ? { error } : {}),
     ...(attributes ? { attributes } : {}),
@@ -945,18 +944,31 @@ export interface ILogger {
   ): void;
   event(input: LogEventInput): void;
   localDiagnostic?(input: LogEventInput): void;
-  request(
-    method: string,
-    path: string,
-    status: number,
-    durationMs: number,
-    requestId?: string,
-  ): void;
-  pipeStream(stream: ReadableStream<Uint8Array>, component: string): void;
+  request(input: HttpRequestLogInput): void;
+  drainStream(stream: ReadableStream<Uint8Array>): Promise<void>;
   enableFileLogging(root: string): Promise<void>;
   setOtelRuntime?(runtime: OtelRuntime): void;
   close(): Promise<void>;
 }
+
+type HttpRequestAuth =
+  | Readonly<{
+      outcome: "authenticated";
+      principalId: string;
+      principalName?: string;
+      source: "stored_key" | "environment";
+    }>
+  | Readonly<{ outcome: "missing" | "invalid" | "disabled" }>;
+
+export type HttpRequestLogInput = Readonly<{
+  method: string;
+  path: string;
+  status: number;
+  durationMs: number;
+  requestId?: string;
+  trace?: LogTraceCorrelation;
+  auth?: HttpRequestAuth;
+}>;
 
 /** Composite console and file logger for gateway operational events. */
 export class LocalBaseLogger implements ILogger {
@@ -1044,64 +1056,55 @@ export class LocalBaseLogger implements ILogger {
     });
   }
 
-  request(
-    method: string,
-    path: string,
-    status: number,
-    durationMs: number,
-    requestId?: string,
-  ): void {
+  request(input: HttpRequestLogInput): void {
+    const { method, path, status, durationMs, requestId, trace, auth } = input;
     const parsedMethod = logHttpMetadataSchema.shape.method.safeParse(method);
     const parsedStatus = z.number().int().min(100).max(599).safeParse(status);
     if (!parsedMethod.success || !parsedStatus.success) return;
+    const route: GatewayHttpRoute = recognizedHttpRoute(path);
+    if (status < 400 && (route === "/health" || route === "/health/ready"))
+      return;
     this.event({
       severity: status >= 500 ? "error" : status >= 400 ? "warn" : "info",
       eventName: "http.request",
       category: "http",
       component: "gateway",
       runtime: "gateway",
-      message: `${method} ${recognizedHttpRoute(path)} -> ${status}`,
+      message: `${method} ${route} -> ${status}`,
       requestId,
+      trace,
       http: {
         method: parsedMethod.data,
-        path: recognizedHttpRoute(path),
+        path: route,
         status: parsedStatus.data,
         durationMs: Number(durationMs.toFixed(2)),
       },
+      attributes: auth
+        ? {
+            auth_outcome: auth.outcome,
+            ...(auth.outcome === "authenticated"
+              ? { auth_principal_id: auth.principalId }
+              : {}),
+            ...(auth.outcome === "authenticated" && auth.principalName
+              ? { auth_principal_name: auth.principalName }
+              : {}),
+            ...(auth.outcome === "authenticated"
+              ? { auth_source: auth.source }
+              : {}),
+          }
+        : undefined,
     });
   }
 
-  pipeStream(stream: ReadableStream<Uint8Array>, component: string): void {
+  async drainStream(stream: ReadableStream<Uint8Array>): Promise<void> {
     const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    let buffered = "";
-    void (async () => {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffered += decoder.decode(value, { stream: true });
-          const lines = buffered.split("\n");
-          buffered = lines.pop() ?? "";
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            this.event({
-              severity: "info",
-              eventName: "runtime.output",
-              category: "runtime",
-              component,
-              runtime: runtimeForComponent(component),
-              message: "Backend emitted a log line.",
-              attributes: { lineLength: line.length },
-            });
-          }
-        }
-      } catch {
-        // Child output is best-effort operational context.
-      } finally {
-        reader.releaseLock();
-      }
-    })();
+    try {
+      while (!(await reader.read()).done) {}
+    } catch {
+      // Draining child output is best effort.
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   async enableFileLogging(root: string): Promise<void> {

@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { selectGatewayRoute, videoJobIdFromPath } from "./route-dispatch";
+import {
+  canonicalGatewayHttpRoute,
+  selectGatewayRoute,
+  videoJobIdFromPath,
+} from "./route-dispatch";
 
 test("selects each supported gateway route by its exact path", () => {
   expect(selectGatewayRoute("/health")).toBe("health");
@@ -29,6 +33,20 @@ test("selects each supported gateway route by its exact path", () => {
   expect(selectGatewayRoute("/v1/chat/completions")).toBe("chatCompletion");
   expect(selectGatewayRoute("/v1/embeddings")).toBe("embeddings");
   expect(selectGatewayRoute("/v1/models")).toBe("models");
+});
+
+test("normalizes dynamic gateway paths without recording identifiers", () => {
+  expect(canonicalGatewayHttpRoute("/_localbase/models/qwen%2Ftest")).toBe(
+    "/_localbase/models/{model_id}",
+  );
+  expect(
+    canonicalGatewayHttpRoute(
+      "/v1/videos/00000000-0000-4000-8000-000000000000/cancel",
+    ),
+  ).toBe("/v1/videos/{job_id}/cancel");
+  expect(canonicalGatewayHttpRoute("/private/model-name")).toBe(
+    "unmatched-route",
+  );
 });
 
 test("classifies unexposed and near-match paths as not found", () => {

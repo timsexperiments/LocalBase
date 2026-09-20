@@ -19,7 +19,12 @@ import {
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
-import { type ILogger } from "../../observability/logging";
+import {
+  logHttpMetadataSchema,
+  redactLogAttributes,
+  type HttpRequestLogInput,
+  type ILogger,
+} from "../../observability/logging";
 import {
   InferenceTelemetry,
   recordStructuredOutputPreparation,
@@ -78,8 +83,10 @@ import type { ServeInput } from "../../app/commands/inputs";
 import { CliInputError } from "../../app/commands/errors";
 import {
   clientSpanOptions,
+  internalSpanOptions,
   serverSpanName,
   serverSpanOptions,
+  spanCorrelation,
   type OtelRuntime,
 } from "../../observability/otel";
 import { gatewayIdentitySchema } from "../health";
@@ -114,7 +121,17 @@ export function httpBaseUrl(host: string, port: number): string {
 
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
 
-type GatewayCredential = Readonly<{ ownerId: string }>;
+type GatewayCredential = Readonly<{
+  ownerId: string;
+  principalId: string;
+  principalName?: string;
+  source: "stored_key" | "environment";
+}>;
+
+type GatewayRequestAuth = Readonly<{
+  resolve(config: LocalBaseConfig): GatewayCredential | undefined;
+  telemetry(required: boolean): NonNullable<HttpRequestLogInput["auth"]>;
+}>;
 
 function parseAuthMode(raw: AuthMode | undefined): AuthMode {
   if (!raw) return "either";
@@ -1265,6 +1282,7 @@ async function proxyRequest(
   }>,
   canonicalModelId?: string,
   onUpstreamStatus?: (status: number) => void,
+  parentContext?: Parameters<OtelRuntime["startSpan"]>[2],
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
@@ -1301,6 +1319,7 @@ async function proxyRequest(
             }
             return response;
           },
+          parentContext,
         )
       : await fetchUpstream();
   } catch {
@@ -1818,25 +1837,49 @@ export async function runServe(
   const sttPath = input.sttPath ?? "/inference";
   const authRequired = input.auth ?? true;
   const authMode = parseAuthMode(input.authMode);
-  const gatewayCredential = (
-    request: Request,
-    config: LocalBaseConfig,
-  ): GatewayCredential | undefined => {
+  const gatewayRequestAuth = (request: Request): GatewayRequestAuth => {
     const token = extractAuthToken(request, authMode);
-    if (!token) return undefined;
-    if (token === process.env.LOCALBASE_API_KEY) {
-      return Object.freeze({ ownerId: "environment" });
-    }
-    const apiKey = resolveApiKey(ctx.database, config, token);
-    return apiKey
-      ? Object.freeze({ ownerId: `api-key:${apiKey.id}` })
-      : undefined;
-  };
-  const hasValidGatewayCredentials = (
-    request: Request,
-    config: LocalBaseConfig,
-  ): boolean => {
-    return gatewayCredential(request, config) !== undefined;
+    let resolved = false;
+    let credential: GatewayCredential | undefined;
+    return Object.freeze({
+      resolve(config: LocalBaseConfig) {
+        if (resolved) return credential;
+        resolved = true;
+        if (!token) return undefined;
+        if (token === process.env.LOCALBASE_API_KEY) {
+          credential = Object.freeze({
+            ownerId: "environment",
+            principalId: "environment",
+            source: "environment",
+          });
+          return credential;
+        }
+        const apiKey = resolveApiKey(ctx.database, config, token);
+        if (apiKey) {
+          credential = Object.freeze({
+            ownerId: `api-key:${apiKey.id}`,
+            principalId: apiKey.id,
+            principalName: apiKey.name,
+            source: "stored_key",
+          });
+        }
+        return credential;
+      },
+      telemetry(required: boolean): NonNullable<HttpRequestLogInput["auth"]> {
+        if (!required) return { outcome: "disabled" };
+        if (credential) {
+          return {
+            outcome: "authenticated",
+            principalId: credential.principalId,
+            ...(credential.principalName
+              ? { principalName: credential.principalName }
+              : {}),
+            source: credential.source,
+          };
+        }
+        return { outcome: token ? "invalid" : "missing" };
+      },
+    });
   };
 
   const llmModelFileOverride = input.llmModelFile;
@@ -2285,6 +2328,7 @@ export async function runServe(
     pathname: string,
     requestId: string,
     startedAt: number,
+    requestAuth: GatewayRequestAuth,
   ): Promise<Response> => {
     const route = selectGatewayRoute(pathname);
     const queueFailure = (error: unknown, modality: RuntimeModality) =>
@@ -2312,7 +2356,7 @@ export async function runServe(
         logger: ctx.logger,
         span: ctx.otel.startSpan(
           "localbase.inference",
-          clientSpanOptions({ "http.request.method": request.method }),
+          internalSpanOptions({ "http.request.method": request.method }),
         ),
       });
     if (route === "health") {
@@ -2348,8 +2392,7 @@ export async function runServe(
     if (route === "modelMetadataList" || route === "modelMetadataDetail") {
       const currentConfig = ctx.runtimeConfig.copy();
       const runtimes = reconciler.lifecycleSnapshot();
-      if (!hasValidGatewayCredentials(request, currentConfig))
-        return unauthorized();
+      if (!requestAuth.resolve(currentConfig)) return unauthorized();
       if (request.method !== "GET") return methodNotAllowed("GET");
 
       const metadataInput = {
@@ -2371,6 +2414,15 @@ export async function runServe(
       return metadata ? Response.json(metadata) : modelNotFound(modelId);
     }
 
+    const routeAlwaysRequiresAuth =
+      route === "videoCreate" ||
+      route === "videoStatus" ||
+      route === "videoContent" ||
+      route === "videoCancel";
+    if ((authRequired && route !== "instance") || routeAlwaysRequiresAuth) {
+      if (!requestAuth.resolve(ctx.runtimeConfig.copy())) return unauthorized();
+    }
+
     await reconciler.refreshConfiguration();
     const currentConfig = ctx.runtimeConfig.copy();
 
@@ -2389,11 +2441,6 @@ export async function runServe(
       );
     }
 
-    if (authRequired) {
-      if (!hasValidGatewayCredentials(request, currentConfig))
-        return unauthorized();
-    }
-
     if (requestExceedsSizeLimit(request)) return payloadTooLarge();
 
     if (
@@ -2402,7 +2449,7 @@ export async function runServe(
       route === "videoContent" ||
       route === "videoCancel"
     ) {
-      const credential = gatewayCredential(request, currentConfig);
+      const credential = requestAuth.resolve(currentConfig);
       if (!credential) return unauthorized();
       return await handleVideoGatewayRequest({
         request,
@@ -2638,6 +2685,7 @@ export async function runServe(
             undefined,
             undefined,
             (status) => inference.observeUpstreamStatus(status),
+            inference.context(),
           ),
         (terminal) => inference.finish(terminal),
       );
@@ -2692,6 +2740,7 @@ export async function runServe(
             undefined,
             selected.value.modelId,
             (status) => inference.observeUpstreamStatus(status),
+            inference.context(),
           ),
         (terminal) => inference.finish(terminal),
       );
@@ -2808,6 +2857,7 @@ export async function runServe(
               : undefined,
             selected.value.modelId,
             (status) => inference.observeUpstreamStatus(status),
+            inference.context(),
           ),
         (terminal) => inference.finish(terminal),
       );
@@ -2873,6 +2923,7 @@ export async function runServe(
             undefined,
             selected.value.modelId,
             (status) => inference.observeUpstreamStatus(status),
+            inference.context(),
           ),
         (terminal) => inference.finish(terminal),
       );
@@ -2911,6 +2962,19 @@ export async function runServe(
       const { pathname } = new URL(request.url);
       const method = request.method;
       const requestId = `lbreq_${crypto.randomUUID()}`;
+      const requestAuth = gatewayRequestAuth(request);
+      const route = selectGatewayRoute(pathname);
+      const requiresGatewayAuth =
+        route === "modelMetadataList" ||
+        route === "modelMetadataDetail" ||
+        route === "videoCreate" ||
+        route === "videoStatus" ||
+        route === "videoContent" ||
+        route === "videoCancel" ||
+        (authRequired &&
+          route !== "health" &&
+          route !== "readiness" &&
+          route !== "instance");
       const parent = ctx.otel.extract(request.headers);
       const span = ctx.otel.startSpan(
         serverSpanName(method, pathname),
@@ -2946,14 +3010,40 @@ export async function runServe(
         response = await context.with(
           trace.setSpan(parent, span),
           async () =>
-            await handleRequest(lifecycleRequest, pathname, requestId, start),
+            await handleRequest(
+              lifecycleRequest,
+              pathname,
+              requestId,
+              start,
+              requestAuth,
+            ),
         );
       } catch (err) {
-        ctx.logger.error(
-          "HTTP",
-          `Error handling request ${method} ${pathname}`,
-          err as Error,
-        );
+        const error =
+          err instanceof Error ? err : new Error("Unknown request failure");
+        const parsedMethod =
+          logHttpMetadataSchema.shape.method.safeParse(method);
+        ctx.logger.event({
+          severity: "error",
+          eventName: "http.handler-failed",
+          category: "http",
+          component: "gateway",
+          runtime: "gateway",
+          message: "Gateway request handler failed.",
+          requestId,
+          trace: spanCorrelation(span),
+          ...(parsedMethod.success
+            ? {
+                http: {
+                  method: parsedMethod.data,
+                  path: pathname,
+                  status: 500,
+                  durationMs: performance.now() - start,
+                },
+              }
+            : {}),
+          error: { type: error.name, message: error.message },
+        });
         response = internalGatewayFailure();
       }
 
@@ -3003,13 +3093,37 @@ export async function runServe(
         if (outcome !== "completed" || corsResponse.status >= 500) {
           span.setStatus({ code: SpanStatusCode.ERROR });
         }
-        ctx.logger.request(
+        const auth = requestAuth.telemetry(requiresGatewayAuth);
+        const safeAuth = redactLogAttributes({
+          auth_outcome: auth.outcome,
+          ...(auth.outcome === "authenticated"
+            ? { auth_principal_id: auth.principalId }
+            : {}),
+          ...(auth.outcome === "authenticated" && auth.principalName
+            ? { auth_principal_name: auth.principalName }
+            : {}),
+          ...(auth.outcome === "authenticated"
+            ? { auth_source: auth.source }
+            : {}),
+        });
+        const spanAuthNames: Record<string, string> = {
+          auth_outcome: "localbase.auth.outcome",
+          auth_principal_id: "localbase.auth.principal_id",
+          auth_principal_name: "localbase.auth.principal_name",
+          auth_source: "localbase.auth.source",
+        };
+        for (const [name, value] of Object.entries(safeAuth ?? {})) {
+          span.setAttribute(spanAuthNames[name], value);
+        }
+        ctx.logger.request({
           method,
-          pathname,
-          corsResponse.status,
-          settledDurationMs,
+          path: pathname,
+          status: corsResponse.status,
+          durationMs: settledDurationMs,
           requestId,
-        );
+          trace: spanCorrelation(span),
+          auth,
+        });
         span.end();
       };
       return withResponseLease(
