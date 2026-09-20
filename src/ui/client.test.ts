@@ -150,28 +150,25 @@ describe("playground client boundaries", () => {
       fetchMock.mockRestore();
     }
   });
-  test.each([401, 403])(
-    "session API %s requests sign-in, not an API key",
-    async (status) => {
-      const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
-        new Response(null, { status }),
-      );
-      try {
-        await expect(
-          api("/_localbase/models", { kind: "session" }),
-        ).rejects.toBeInstanceOf(SessionRequiredError);
-      } finally {
-        fetchMock.mockRestore();
-      }
-    },
-  );
-  test("management permission denial does not expire a valid browser session", async () => {
+  test("unauthenticated API requests require sign-in, not an API key", async () => {
+    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 401 }),
+    );
+    try {
+      await expect(
+        api("/_localbase/models", { kind: "session" }),
+      ).rejects.toBeInstanceOf(SessionRequiredError);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  test("permission denial does not expire a valid browser session", async () => {
     const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
       Response.json(
         {
           error: {
-            code: "model_management_denied",
-            message: "Model management access denied.",
+            code: "insufficient_permissions",
+            message: "Permission required: models:manage.",
           },
         },
         { status: 403 },
@@ -184,7 +181,7 @@ describe("playground client boundaries", () => {
           { kind: "session" },
           { method: "POST" },
         ),
-      ).rejects.toThrow("Model management access denied.");
+      ).rejects.toThrow("Permission required: models:manage.");
     } finally {
       fetchMock.mockRestore();
     }
