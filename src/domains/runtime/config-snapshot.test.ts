@@ -3,7 +3,12 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSession } from "../../db/client";
-import { defaultConfig, readConfig, saveConfig } from "../../manager";
+import {
+  defaultConfig,
+  readConfig,
+  readConfigSync,
+  saveConfig,
+} from "../../manager";
 import { withRootOperation } from "../service/ownership";
 import { RuntimeConfigController } from "./config-snapshot";
 
@@ -107,5 +112,35 @@ test("runtime updates preserve configuration saved by a concurrent root operatio
       activeLlmModel: runtimeSelectedModel,
       ctxSize: 8192,
     });
+  });
+});
+
+test("updates preserve externally persisted settings without an explicit refresh", async () => {
+  await withController(async (controller, database, root) => {
+    const external = readConfigSync(root);
+    external.parallel = 3;
+    saveConfig(database, external);
+    expect(controller.copy().parallel).not.toBe(3);
+    await controller.update((config) => {
+      config.otelSampleRatio = 50;
+    });
+    expect(readConfigSync(root)).toMatchObject({
+      parallel: 3,
+      otelSampleRatio: 50,
+    });
+  });
+});
+
+test("failed transactional updates leave persisted config and snapshot unchanged", async () => {
+  await withController(async (controller, _database, root) => {
+    const snapshot = controller.read();
+    await expect(
+      controller.update((config) => {
+        config.parallel = 3;
+        throw new Error("abort update");
+      }),
+    ).rejects.toThrow("abort update");
+    expect(readConfigSync(root).parallel).toBe(snapshot.config.parallel);
+    expect(controller.read()).toBe(snapshot);
   });
 });

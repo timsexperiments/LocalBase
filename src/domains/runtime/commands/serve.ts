@@ -80,6 +80,15 @@ import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
 import { playgroundResponse } from "../../../ui/static";
 import {
+  canManageModels,
+  loadManagementAccess,
+} from "../../../ui/management-access";
+import { createModelManagement } from "../../models/model-management";
+import {
+  ModelManagementError,
+  modelManagementRequestSchema,
+} from "../../models/model-management-contract";
+import {
   createUiAccess,
   isUiAccessPath,
   loadUiAccessConfig,
@@ -989,15 +998,21 @@ function requestAborted(): Response {
   return new Response(null, { status: 499 });
 }
 
-function requestExceedsSizeLimit(request: Request): boolean {
+function requestExceedsSizeLimit(
+  request: Request,
+  limit = MAX_REQUEST_BYTES,
+): boolean {
   const contentLength = request.headers.get("content-length");
   if (!contentLength) return false;
   const size = Number(contentLength);
-  return !Number.isSafeInteger(size) || size < 0 || size > MAX_REQUEST_BYTES;
+  return !Number.isSafeInteger(size) || size < 0 || size > limit;
 }
 
-async function readBoundedRequestBody(request: Request): Promise<Uint8Array> {
-  if (requestExceedsSizeLimit(request)) throw new PayloadTooLargeError();
+async function readBoundedRequestBody(
+  request: Request,
+  limit = MAX_REQUEST_BYTES,
+): Promise<Uint8Array> {
+  if (requestExceedsSizeLimit(request, limit)) throw new PayloadTooLargeError();
   const body = request.clone().body;
   if (!body) return new Uint8Array();
 
@@ -1009,7 +1024,7 @@ async function readBoundedRequestBody(request: Request): Promise<Uint8Array> {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > MAX_REQUEST_BYTES) throw new PayloadTooLargeError();
+      if (size > limit) throw new PayloadTooLargeError();
       chunks.push(value);
     }
   } finally {
@@ -1815,6 +1830,7 @@ export async function runServe(
   execution: CommandExecution,
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
+  const managementAccess = await loadManagementAccess(config.root);
   const uiAccess = createUiAccess({
     config: await loadUiAccessConfig(config.root),
   });
@@ -2362,6 +2378,11 @@ export async function runServe(
       },
     },
   );
+  const management = createModelManagement({
+    runtimeConfig: ctx.runtimeConfig,
+    lifecycle: () => reconciler.lifecycleSnapshot(),
+    protectedModelIds: () => reconciler.protectedModelIds(),
+  });
   const memoryPressureMonitor = new MemoryPressureMonitor({
     controller: memorySafety,
     onElevatedPressure: async (transition) => {
@@ -2423,6 +2444,78 @@ export async function runServe(
     }
     const publicAsset = playground ?? playgroundResponse(request, pathname);
     if (publicAsset) return publicAsset;
+    if (pathname === "/_localbase/model-management") {
+      const principal = requestAuth.resolve(ctx.runtimeConfig.copy());
+      if (principal.kind === "anonymous") return unauthorized();
+      const credential = { ownerId: principalOwnerId(principal) };
+      const canManage = canManageModels(credential, managementAccess);
+      const headers = { "cache-control": "no-store" };
+      if (request.method === "GET")
+        return Response.json(
+          { ...(await management.read()), canManage },
+          { headers },
+        );
+      if (request.method !== "POST") return methodNotAllowed("GET, POST");
+      if (!canManage)
+        return openAIErrorResponse(
+          {
+            message: "Model management access denied.",
+            type: "permission_error",
+            param: null,
+            code: "model_management_denied",
+          },
+          403,
+          headers,
+        );
+      let input;
+      try {
+        const body = await readBoundedRequestBody(request, 1024);
+        input = modelManagementRequestSchema.safeParse(
+          JSON.parse(new TextDecoder().decode(body)),
+        );
+      } catch (error) {
+        if (request.signal.aborted) return requestAborted();
+        return openAIErrorResponse(
+          {
+            message:
+              error instanceof PayloadTooLargeError
+                ? "Model management body exceeds the 1024 byte limit."
+                : "Invalid model management payload.",
+            type: "invalid_request_error",
+            param: null,
+            code: "validation_failed",
+          },
+          error instanceof PayloadTooLargeError ? 413 : 400,
+          headers,
+        );
+      }
+      if (!input.success)
+        return badRequest("Invalid model management payload.");
+      try {
+        const operation = await management.run(
+          input.data.modelId,
+          input.data.action,
+        );
+        if (input.data.action !== "install")
+          await reconciler.refreshConfiguration();
+        return Response.json(operation, {
+          status: operation.state === "running" ? 202 : 200,
+          headers,
+        });
+      } catch (error) {
+        if (!(error instanceof ModelManagementError)) throw error;
+        return openAIErrorResponse(
+          {
+            message: error.message,
+            type: "invalid_request_error",
+            param: null,
+            code: error.code,
+          },
+          error.code === "invalid_request" ? 400 : 409,
+          headers,
+        );
+      }
+    }
     const route = selectGatewayRoute(pathname);
     const queueFailure = (error: unknown, modality: RuntimeModality) =>
       inferenceQueueError(error, {
