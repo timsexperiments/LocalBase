@@ -127,6 +127,19 @@ describe("authenticated model metadata endpoints", () => {
     });
     expect(response.status).toBe(200);
     const body = modelMetadataListSchema.parse(await response.json());
+    expect(body.host.memory).toEqual({
+      kind: "discrete",
+      system: {
+        capacityBytes: 64 * 1024 ** 3,
+        availableBytes: 32 * 1024 ** 3,
+      },
+      accelerators: [
+        {
+          capacityBytes: 32 * 1024 ** 3,
+          availableBytes: 24 * 1024 ** 3,
+        },
+      ],
+    });
     const llm = body.data.find((model) => model.id === modelId);
     const unknownContext = metadataById(body, alternateModelId);
     const speech = metadataById(body, speechModelId);

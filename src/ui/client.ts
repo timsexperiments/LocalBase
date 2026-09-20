@@ -1,5 +1,8 @@
 import { z } from "zod";
-import type { ModelMetadata } from "../domains/models/model-metadata";
+import type {
+  ModelMetadata,
+  ModelMetadataList,
+} from "../domains/models/model-metadata";
 import type { Attachment } from "./attachments";
 
 export function discardLegacyFragmentCredential({
@@ -80,7 +83,39 @@ const modelSchema = z.object({
 });
 export type Model = z.infer<typeof modelSchema>;
 type MetadataIdentity = Pick<ModelMetadata, "id">;
-export const modelsSchema = z.object({ data: z.array(modelSchema) });
+type HostMemory = ModelMetadataList["host"]["memory"];
+const memoryPoolSchema = z.object({
+  capacityBytes: z.number().int().nonnegative(),
+  availableBytes: z.number().int().nonnegative().nullable(),
+});
+const hostMemorySchema = z.object({
+  kind: z.enum(["unified", "discrete"]),
+  system: memoryPoolSchema,
+  accelerators: z.array(memoryPoolSchema),
+}) satisfies z.ZodType<HostMemory>;
+export const modelsSchema = z.object({
+  host: z.object({ memory: hostMemorySchema }),
+  data: z.array(modelSchema),
+});
+export type ModelsResponse = z.infer<typeof modelsSchema>;
+
+export function modelMemorySummary(
+  model: Model,
+  memory: HostMemory | null,
+): string {
+  const availablePool =
+    memory?.kind === "unified"
+      ? memory.system
+      : memory?.accelerators.length === 1
+        ? memory.accelerators[0]
+        : undefined;
+  const availableBytes = availablePool?.availableBytes;
+  const available =
+    availableBytes == null
+      ? "memory availability unknown"
+      : `${Math.round((availableBytes / 1024 ** 3) * 10) / 10} GB available`;
+  return `Needs ~${model.catalog.memory.minimumVramEstimateGb} GB · ${available}`;
+}
 export const readinessSchema = z.object({
   status: z.enum(["ready", "unready"]),
   modalities: z.array(z.string()),
