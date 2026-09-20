@@ -23,7 +23,24 @@ export const permissionSchema = z.enum([
 
 export type Permission = z.infer<typeof permissionSchema>;
 
-const permissionsSchema = z.array(permissionSchema).readonly();
+export const permissionsSchema = z
+  .array(permissionSchema)
+  .transform((permissions) =>
+    permissionSchema.options.filter((permission) =>
+      permissions.includes(permission),
+    ),
+  )
+  .readonly();
+
+export const defaultApiKeyScopes = permissionsSchema.parse([
+  "inference:chat",
+  "inference:embeddings",
+  "inference:image",
+  "inference:video",
+  "inference:speech",
+  "inference:transcription",
+  "models:read",
+]);
 
 export const principalSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("anonymous") }).readonly(),

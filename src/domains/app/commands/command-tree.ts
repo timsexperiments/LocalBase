@@ -18,6 +18,7 @@ import {
   keyIdInputSchema,
   keysCreateInputSchema,
   keysListInputSchema,
+  keysScopesInputSchema,
   logsInputSchema,
   recommendInputSchema,
   resetInputSchema,
@@ -35,6 +36,7 @@ import {
   type KeyIdInput,
   type KeysCreateInput,
   type KeysListInput,
+  type KeysScopesInput,
   type LogsInput,
   type RecommendInput,
   type ResetInput,
@@ -52,7 +54,7 @@ import {
   initResultSchema,
   installedResultSchema,
   installResultSchema,
-  keyRevocationResultSchema,
+  keyMetadataResultSchema,
   keySecretResultSchema,
   keysListResultSchema,
   logsResultSchema,
@@ -665,6 +667,12 @@ const keysCreateCommand = command<KeysCreateInput>({
   description: "Create an API key",
   args: {
     name: { type: "string", valueHint: "label", description: "Key label" },
+    scopes: {
+      type: "string",
+      valueHint: "permission,...",
+      description:
+        "Comma-separated permissions; defaults to inference and models:read. Empty grants none",
+    },
     "expires-days": {
       type: "string",
       valueHint: "days",
@@ -687,7 +695,7 @@ const keysRevokeCommand = command<KeyIdInput>({
   },
   positionals: { minimum: 1, maximum: 1 },
   parse: (input) => keyIdInputSchema.parse(input),
-  resultSchema: keyRevocationResultSchema,
+  resultSchema: keyMetadataResultSchema,
   run: async (input, context, execution) => {
     const { runKeysRevoke } = await import("../../auth/commands/keys");
     return runKeysRevoke(input, context, execution);
@@ -706,6 +714,27 @@ const keysRotateCommand = command<KeyIdInput>({
   run: async (input, context, execution) => {
     const { runKeysRotate } = await import("../../auth/commands/keys");
     return runKeysRotate(input, context, execution);
+  },
+});
+
+const keysScopesCommand = command<KeysScopesInput>({
+  path: ["keys", "scopes"],
+  description: "Replace an API key's scopes",
+  args: {
+    keyId: { type: "positional", description: "API key ID", required: true },
+    scopes: {
+      type: "string",
+      valueHint: "permission,...",
+      description: "Complete comma-separated permission set; empty grants none",
+      required: true,
+    },
+  },
+  positionals: { minimum: 1, maximum: 1 },
+  parse: (input) => keysScopesInputSchema.parse(input),
+  resultSchema: keyMetadataResultSchema,
+  run: async (input, context, execution) => {
+    const { runKeysScopes } = await import("../../auth/commands/keys");
+    return runKeysScopes(input, context, execution);
   },
 });
 
@@ -759,6 +788,7 @@ export const commands = [
   keysCreateCommand,
   keysRevokeCommand,
   keysRotateCommand,
+  keysScopesCommand,
   resetCommand,
   uninstallCommand,
 ] as const satisfies readonly Command[];
@@ -782,6 +812,7 @@ export const keysCommand = defineCommand({
     create: keysCreateCommand.citty,
     revoke: keysRevokeCommand.citty,
     rotate: keysRotateCommand.citty,
+    scopes: keysScopesCommand.citty,
   },
 });
 
