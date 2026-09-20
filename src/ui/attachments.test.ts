@@ -14,6 +14,16 @@ import { modelsSchema } from "./client";
 
 function model(inputModalities = ["text"]) {
   return modelsSchema.parse({
+    host: {
+      memory: {
+        kind: "unified",
+        system: {
+          capacityBytes: 16 * 1024 ** 3,
+          availableBytes: 8 * 1024 ** 3,
+        },
+        accelerators: [],
+      },
+    },
     data: [
       {
         id: "chat",

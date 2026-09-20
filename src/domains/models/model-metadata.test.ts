@@ -3,6 +3,11 @@ import { byId, CATALOG, type ModelSpec } from "../../catalog";
 import { defaultConfig } from "../../manager";
 import { createRuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
 import {
+  gibibyte,
+  type HostMemorySnapshot,
+  type MemoryTopology,
+} from "../runtime/memory-safety";
+import {
   modelMetadataSchema,
   projectModelMetadata,
   projectModelMetadataList,
@@ -75,6 +80,29 @@ function runtimeSnapshots() {
       admission: { kind: "unknown" },
       configuredSlots: null,
     }),
+  };
+}
+
+function hostMemory(): {
+  topology: MemoryTopology;
+  snapshot: HostMemorySnapshot;
+} {
+  return {
+    topology: {
+      kind: "unified",
+      system: { id: "system", capacityBytes: 64 * gibibyte },
+    },
+    snapshot: {
+      capturedAtMs: 1,
+      pools: [
+        {
+          poolId: "system",
+          availability: "available",
+          availableBytes: 40 * gibibyte,
+          pressure: "normal",
+        },
+      ],
+    },
   };
 }
 
@@ -247,12 +275,15 @@ test("projects qualified video limits and mode without exposing runtime internal
     },
   } satisfies ModelSpec;
   const catalog = [video, catalogModel("fastwan2.2-ti2v-5b-q6_k"), speechVideo];
-  const list = projectModelMetadataList({
-    catalog,
-    config: defaultConfig("/tmp/localbase-model-metadata-video"),
-    installations: new Map(),
-    runtimes: runtimeSnapshots(),
-  });
+  const list = projectModelMetadataList(
+    {
+      catalog,
+      config: defaultConfig("/tmp/localbase-model-metadata-video"),
+      installations: new Map(),
+      runtimes: runtimeSnapshots(),
+    },
+    hostMemory(),
+  );
 
   for (const [index, model] of catalog.entries()) {
     if (!model.videoRuntime) throw new Error("Expected video runtime profile.");
@@ -279,9 +310,17 @@ test("uses the strict response schemas for lists and entries", () => {
     installations: new Map([[modelId, false]]),
     runtimes: runtimeSnapshots(),
   };
-  const list = projectModelMetadataList(input);
+  const list = projectModelMetadataList(input, hostMemory());
 
   expect(list.data).toHaveLength(CATALOG.length);
+  expect(list.host.memory).toEqual({
+    kind: "unified",
+    system: {
+      capacityBytes: 64 * gibibyte,
+      availableBytes: 40 * gibibyte,
+    },
+    accelerators: [],
+  });
   for (const [index, model] of CATALOG.entries()) {
     expect(list.data[index]?.catalog.features).toEqual(model.features);
   }

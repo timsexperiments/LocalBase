@@ -41,6 +41,7 @@ import {
   catalogModels,
   historyKey,
   imageResponseSchema,
+  modelMemorySummary,
   modelsSchema,
   modes,
   readHistory,
@@ -55,6 +56,7 @@ import {
   type Message,
   type Mode,
   type Model,
+  type ModelsResponse,
   type Media,
 } from "./client";
 import "./style.css";
@@ -247,6 +249,9 @@ function App() {
   });
   const credential = sessionConnection(session);
   const [models, setModels] = useState<Model[]>([]);
+  const [hostMemory, setHostMemory] = useState<
+    ModelsResponse["host"]["memory"] | null
+  >(null);
   const [dictationModelId, setDictationModelId] = useState("");
   const sttModels = availableModels(models, "stt");
   const dictationModel =
@@ -438,6 +443,7 @@ function App() {
     } catch (e) {
       if (!signal?.aborted) {
         setModels([]);
+        setHostMemory(null);
         setSession({
           kind: "error",
           message:
@@ -461,12 +467,14 @@ function App() {
       ]);
       signal?.throwIfAborted();
       setModels(metadata.data);
+      setHostMemory(metadata.host.memory);
       setConnection(
         readiness.status === "ready" ? "Gateway ready" : "Gateway not ready",
       );
     } catch (e) {
       if (!signal?.aborted) {
         setModels([]);
+        setHostMemory(null);
         if (e instanceof SessionRequiredError)
           setSession({ kind: "error", message: e.message });
         else
@@ -482,6 +490,7 @@ function App() {
   useEffect(() => {
     if (!credential) {
       setModels([]);
+      setHostMemory(null);
       return;
     }
     const abort = new AbortController();
@@ -840,6 +849,7 @@ function App() {
       if (e instanceof SessionRequiredError) {
         authenticationFailed = true;
         setModels([]);
+        setHostMemory(null);
         setSession({ kind: "error", message: e.message });
       }
       patch((m) => ({
@@ -1472,7 +1482,7 @@ function App() {
                   )}
                   {sttModels.map((model) => (
                     <option value={model.id} key={model.id}>
-                      {model.id}
+                      {model.id} · {modelMemorySummary(model, hostMemory)}
                     </option>
                   ))}
                 </select>
@@ -1629,6 +1639,7 @@ function App() {
                           ? ` · ${m.catalog.contextWindowTokens.toLocaleString()} context`
                           : ""}
                       </small>
+                      <small>{modelMemorySummary(m, hostMemory)}</small>
                     </button>
                   ))
               ) : (

@@ -10,9 +10,15 @@ import {
 import type { LocalBaseConfig } from "../../manager";
 import { modalityLifecycleStateSchema } from "../runtime/health";
 import type { RuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
+import type {
+  HostMemorySnapshot,
+  MemoryPool,
+  MemoryTopology,
+} from "../runtime/memory-safety";
 import type { RuntimeModality } from "../runtime/modality";
 
 const nullableNumberSchema = z.number().nullable();
+const nullableByteCountSchema = z.number().int().nonnegative().nullable();
 
 const videoCapabilitiesSchema = z
   .object({
@@ -131,6 +137,29 @@ export type ModelMetadata = z.infer<typeof modelMetadataSchema>;
 export const modelMetadataListSchema = z
   .object({
     object: z.literal("list"),
+    host: z
+      .object({
+        memory: z
+          .object({
+            kind: z.enum(["unified", "discrete"]),
+            system: z
+              .object({
+                capacityBytes: z.number().int().nonnegative(),
+                availableBytes: nullableByteCountSchema,
+              })
+              .strict(),
+            accelerators: z.array(
+              z
+                .object({
+                  capacityBytes: z.number().int().nonnegative(),
+                  availableBytes: nullableByteCountSchema,
+                })
+                .strict(),
+            ),
+          })
+          .strict(),
+      })
+      .strict(),
     data: z.array(modelMetadataSchema),
   })
   .strict();
@@ -270,9 +299,33 @@ export function projectModelMetadata(
 
 export function projectModelMetadataList(
   input: ModelMetadataProjectionInput,
+  hostMemory: Readonly<{
+    topology: MemoryTopology;
+    snapshot: HostMemorySnapshot;
+  }>,
 ): ModelMetadataList {
+  const pool = (memoryPool: MemoryPool) => {
+    const snapshot = hostMemory.snapshot.pools.find(
+      ({ poolId }) => poolId === memoryPool.id,
+    );
+    return {
+      capacityBytes: memoryPool.capacityBytes,
+      availableBytes:
+        snapshot?.availability === "available" ? snapshot.availableBytes : null,
+    };
+  };
   return modelMetadataListSchema.parse({
     object: "list",
+    host: {
+      memory: {
+        kind: hostMemory.topology.kind,
+        system: pool(hostMemory.topology.system),
+        accelerators:
+          hostMemory.topology.kind === "discrete"
+            ? hostMemory.topology.accelerators.map(pool)
+            : [],
+      },
+    },
     data: input.catalog.map((model) => projectModelMetadata(model, input)),
   });
 }
