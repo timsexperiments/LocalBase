@@ -198,52 +198,6 @@ test("verifies every human session and never falls back after a JWT failure", as
   expect((await responseFor(access, cookieOnly)).status).toBe(401);
 });
 
-test("LAN session offers API-key mode without granting Access identity or proxy access", async () => {
-  const access = createUiAccess({ config, keyResolver: resolver });
-  const origin = "http://192.168.1.20:2273";
-  const headers = {
-    "x-localbase-ui": "1",
-    "sec-fetch-site": "same-origin",
-    host: "192.168.1.20:2273",
-  };
-  const probe = new Request(`${origin}/app/session`, { headers });
-  const response = await responseFor(access, probe);
-  expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({
-    authenticated: false,
-    mode: "api-key",
-  });
-  expect(response.headers.get("cache-control")).toBe("no-store");
-  expect(response.headers.has("access-control-allow-origin")).toBe(false);
-  expect(access.credential(probe)).toBeUndefined();
-  const invalidHeaders: Record<string, string>[] = [
-    { host: "ui.example.com" },
-    { origin: config.origin },
-    { "sec-fetch-site": "cross-site" },
-    { "x-localbase-ui": "0" },
-  ];
-  for (const extra of invalidHeaders) {
-    expect(
-      (
-        await responseFor(
-          access,
-          new Request(`${origin}/app/session`, {
-            headers: { ...headers, ...extra },
-          }),
-        )
-      ).status,
-    ).toBe(403);
-  }
-  const proxy = new Request(`${origin}/app/api/_localbase/models`, {
-    headers: { ...headers, "cf-access-jwt-assertion": await token() },
-  });
-  expect((await responseFor(access, proxy)).status).toBe(403);
-  expect(access.credential(proxy)).toBeUndefined();
-  const direct = new Request(`${origin}/_localbase/models`, { headers });
-  expect(await access.handle(direct)).toEqual({ kind: "pass" });
-  expect(access.credential(direct)).toBeUndefined();
-});
-
 test("enforces exact host, origin, fetch-site, marker, method, and path boundaries", async () => {
   const access = createUiAccess({ config, keyResolver: resolver });
   const jwt = await token();
@@ -481,16 +435,15 @@ test("isolates video ownership by issuer and subject, independent of email and J
   }
 });
 
-test("disabled gateway has manual fallback only; Access JWT never authenticates standard APIs", async () => {
+test("disabled browser authentication denies UI sessions and Access JWTs never authenticate standard APIs", async () => {
   const gateway = await startGatewayFixture({ auth: { mode: "either" } });
   try {
     const jwt = await token();
     const headers = request(jwt).headers;
     const session = await fetch(`${gateway.baseUrl}/app/session`, { headers });
-    expect(session.status).toBe(200);
-    expect(await session.json()).toEqual({
-      authenticated: false,
-      mode: "api-key",
+    expect(session.status).toBe(401);
+    expect(await session.json()).toMatchObject({
+      error: { code: "ui_access_denied" },
     });
     expect(session.headers.has("access-control-allow-origin")).toBe(false);
     for (const [method, path] of [

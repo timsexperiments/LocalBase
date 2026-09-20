@@ -251,6 +251,10 @@ function extractAuthToken(request: Request, mode: AuthMode): string | null {
   );
 }
 
+function isBrowserRequest(request: Request): boolean {
+  return request.headers.has("origin") || request.headers.has("sec-fetch-site");
+}
+
 function openAIErrorResponse(
   error: OpenAIError,
   status: number,
@@ -1876,6 +1880,7 @@ export async function runServe(
   const authMode = parseAuthMode(input.authMode);
   const gatewayRequestAuth = (request: Request): GatewayRequestAuth => {
     const token = extractAuthToken(request, authMode);
+    const browserRequest = isBrowserRequest(request);
     const credentialPresented =
       token !== null ||
       request.headers.has("cookie") ||
@@ -1895,7 +1900,7 @@ export async function runServe(
       resolve(config: LocalBaseConfig) {
         if (resolved) return principal;
         resolved = true;
-        if (!token) return principal;
+        if (!token || browserRequest) return principal;
         if (token === process.env.LOCALBASE_API_KEY) {
           principal = principalSchema.parse({
             kind: "environment",
@@ -3071,18 +3076,9 @@ export async function runServe(
       span.setAttribute("localbase.request_id", requestId);
       const uiRequest = isUiAccessPath(pathname);
       if (method === "OPTIONS" && !uiRequest) {
-        span.setAttribute("http.response.status_code", 204);
+        span.setAttribute("http.response.status_code", 403);
         span.end();
-        return new Response(null, {
-          status: 204,
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers":
-              "Content-Type, Authorization, x-api-key",
-            "Access-Control-Max-Age": "86400",
-          },
-        });
+        return forbidden();
       }
 
       const responseAbortController = new AbortController();
