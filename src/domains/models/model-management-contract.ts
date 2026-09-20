@@ -38,6 +38,7 @@ export const modelManagementEntrySchema = z
     active: z.boolean(),
     installedBytes: bytes,
     downloadBytes: bytes.nullable(),
+    remainingDownloadBytes: bytes.nullable(),
     canInstall: z.boolean(),
     installUnavailableReason: z.string().nullable(),
     operation: modelManagementOperationSchema.nullable(),

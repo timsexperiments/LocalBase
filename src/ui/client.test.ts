@@ -663,14 +663,30 @@ describe("playground client boundaries", () => {
       gigabytes: 4,
     });
     expect(modelMemorySummary(first, parsed.host.memory)).toBe(
-      "Needs ~4 GB · 37.5 GB available",
+      "Needs ~4 GiB · 37.5 GB available",
     );
     expect(modelMemoryRequirement(first, null)).toEqual({
       label: "Est. memory",
       gigabytes: 1,
     });
     expect(modelMemorySummary(first, null)).toBe(
-      "Needs ~1 GB · memory availability unknown",
+      "Needs ~1 GiB · memory availability unknown",
+    );
+    const withoutUnifiedEstimate = {
+      ...first,
+      catalog: {
+        ...first.catalog,
+        memory: {
+          ...first.catalog.memory,
+          unifiedMemoryEstimateGb: null,
+        },
+      },
+    };
+    expect(
+      modelMemoryRequirement(withoutUnifiedEstimate, parsed.host.memory),
+    ).toEqual({ label: "Est. unified memory", gigabytes: null });
+    expect(modelMemorySummary(withoutUnifiedEstimate, parsed.host.memory)).toBe(
+      "Memory requirement unknown · 37.5 GB available",
     );
     expect(
       modelMemorySummary(first, {
@@ -686,7 +702,7 @@ describe("playground client boundaries", () => {
           },
         ],
       }),
-    ).toBe("Needs ~1 GB · 23.3 GB available");
+    ).toBe("Needs ~1 GiB · 23.3 GB available");
     expect(
       modelMemoryRequirement(first, {
         kind: "discrete",
@@ -718,7 +734,7 @@ describe("playground client boundaries", () => {
           },
           accelerators,
         }),
-      ).toBe("Needs ~1 GB · memory availability unknown");
+      ).toBe("Needs ~1 GiB · memory availability unknown");
     }
     const speechModels = availableModels(models, "tts");
     expect(speechModels.map((m) => m.id)).toEqual(["speech"]);

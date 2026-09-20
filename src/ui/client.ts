@@ -127,13 +127,13 @@ export type ModelsResponse = z.infer<typeof modelsSchema>;
 export function modelMemoryRequirement(
   model: Model,
   memory: HostMemory | null,
-): Readonly<{ label: string; gigabytes: number }> {
+): Readonly<{ label: string; gigabytes: number | null }> {
   if (memory?.kind === "unified") {
+    if (model.catalog.memory.unifiedMemoryEstimateGb === null)
+      return { label: "Est. unified memory", gigabytes: null };
     return {
       label: "Est. unified memory",
-      gigabytes:
-        model.catalog.memory.unifiedMemoryEstimateGb ??
-        model.catalog.memory.minimumVramEstimateGb,
+      gigabytes: model.catalog.memory.unifiedMemoryEstimateGb,
     };
   }
   return {
@@ -158,7 +158,9 @@ export function modelMemorySummary(
       ? "memory availability unknown"
       : `${Math.round((availableBytes / 1024 ** 3) * 10) / 10} GB available`;
   const requirement = modelMemoryRequirement(model, memory);
-  return `Needs ~${requirement.gigabytes} GB · ${available}`;
+  return requirement.gigabytes === null
+    ? `Memory requirement unknown · ${available}`
+    : `Needs ~${requirement.gigabytes} GiB · ${available}`;
 }
 export const readinessSchema = z.object({
   status: z.enum(["ready", "unready"]),

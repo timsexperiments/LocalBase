@@ -256,16 +256,20 @@ export function ModelManagement({
                       </dd>
                     </div>
                     <div>
-                      <dt>Download size</dt>
+                      <dt>Expected download</dt>
                       <dd>
-                        {local?.downloadBytes != null
-                          ? bytes(local.downloadBytes)
+                        {local?.remainingDownloadBytes != null
+                          ? bytes(local.remainingDownloadBytes)
                           : `~${model.catalog.memory.storageEstimateGb} GB`}
                       </dd>
                     </div>
                     <div>
                       <dt>{memory.label}</dt>
-                      <dd>{memory.gigabytes} GB</dd>
+                      <dd>
+                        {memory.gigabytes === null
+                          ? "Not measured"
+                          : `${memory.gigabytes} GiB`}
+                      </dd>
                     </div>
                   </dl>
                   {operation && (
@@ -399,7 +403,9 @@ export function ModelManagement({
           )}
           <p className="hint">
             File sizes can include artifacts shared by multiple models. Memory
-            requirements are estimates, not reserved memory.
+            requirements are estimates, not reserved memory. Expected downloads
+            reuse matching local files but verification may require a fresh
+            download.
           </p>
         </>
       )}

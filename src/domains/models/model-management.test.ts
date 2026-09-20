@@ -127,6 +127,7 @@ test("full catalog contract includes installed, enabled, active and exact footpr
     active: false,
     installedBytes: 3,
     downloadBytes: 3,
+    remainingDownloadBytes: 0,
     operation: null,
   });
   expect(response.storage.availableBytes).toBeGreaterThan(0);
@@ -216,13 +217,25 @@ test("partial downloads count toward disk footprint and can be uninstalled", asy
     (await f.management.read()).models.find(
       (item) => item.id === f.model.modelId,
     );
-  expect(await entry()).toMatchObject({ installed: false, installedBytes: 2 });
+  expect(await entry()).toMatchObject({
+    installed: false,
+    installedBytes: 2,
+    remainingDownloadBytes: 1,
+  });
   writeFileSync(f.path, "abc");
-  expect(await entry()).toMatchObject({ installed: true, installedBytes: 5 });
+  expect(await entry()).toMatchObject({
+    installed: true,
+    installedBytes: 5,
+    remainingDownloadBytes: 0,
+  });
   rmSync(f.path);
   await f.management.run(f.model.modelId, "uninstall");
   expect(existsSync(`${f.path}.partial`)).toBe(false);
-  expect(await entry()).toMatchObject({ installed: false, installedBytes: 0 });
+  expect(await entry()).toMatchObject({
+    installed: false,
+    installedBytes: 0,
+    remainingDownloadBytes: 3,
+  });
 });
 
 test("unsafe partial target prevents deletion of a valid final artifact", async () => {
@@ -511,6 +524,18 @@ test("allows installation while another enabled model uses an identical shared a
   expect(await entry()).toMatchObject({
     canInstall: true,
     installUnavailableReason: null,
+    remainingDownloadBytes: 3,
+  });
+
+  writeFileSync(f.path, "bad");
+  await expect(
+    f.management.run(f.model.modelId, "install"),
+  ).resolves.toMatchObject({ state: "running" });
+  await f.management.whenIdle();
+  expect(await Bun.file(f.path).text()).toBe("bad");
+  expect(await entry()).toMatchObject({
+    operation: { state: "failed" },
+    remainingDownloadBytes: 0,
   });
 
   const artifact = shared.artifacts[0];
