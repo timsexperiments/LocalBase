@@ -93,25 +93,59 @@ const vaeDecoderSchema = z
   })
   .strict();
 
-const imageRuntimeProfileSchema = z
+const eulerImageGenerationProfileSchema = z
   .object({
-    kind: z.literal("diffusion-qwen3"),
-    artifacts: z
-      .object({
-        diffusionModel: safeFilenameSchema,
-        vae: safeFilenameSchema,
-        textEncoder: safeFilenameSchema,
-      })
-      .strict(),
-    generation: z
-      .object({
-        sampler: z.literal("euler"),
-        steps: z.number().int().positive(),
-        cfgScale: z.number().positive(),
-      })
-      .strict(),
+    sampler: z.literal("euler"),
+    steps: z.number().int().positive(),
+    cfgScale: z.number().positive(),
   })
   .strict();
+
+const lcmImageGenerationProfileSchema = z
+  .object({
+    sampler: z.literal("lcm"),
+    scheduler: z.literal("lcm"),
+    steps: z.number().int().positive(),
+    cfgScale: z.number().positive(),
+  })
+  .strict();
+
+const imageRuntimeProfileSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("diffusion-qwen3"),
+      artifacts: z
+        .object({
+          diffusionModel: safeFilenameSchema,
+          vae: safeFilenameSchema,
+          textEncoder: safeFilenameSchema,
+        })
+        .strict(),
+      generation: eulerImageGenerationProfileSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("diffusion-flux1"),
+      artifacts: z
+        .object({
+          diffusionModel: safeFilenameSchema,
+          vae: safeFilenameSchema,
+          clipL: safeFilenameSchema,
+          t5xxl: safeFilenameSchema,
+        })
+        .strict(),
+      generation: eulerImageGenerationProfileSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("checkpoint"),
+      artifacts: z.object({ diffusionModel: safeFilenameSchema }).strict(),
+      generation: lcmImageGenerationProfileSchema,
+    })
+    .strict(),
+]);
 
 export type ImageRuntimeProfile = z.infer<typeof imageRuntimeProfileSchema>;
 
@@ -2248,6 +2282,86 @@ const CATALOG_SOURCE = [
       "Default remains native runtime voice. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed.",
   },
   {
+    modelId: "flux1-schnell-q4_0",
+    kind: "image",
+    provider: "Black Forest Labs",
+    family: "FLUX.1",
+    version: "Schnell",
+    size: "12B",
+    quant: "Q4_0",
+    minVramGb: 8,
+    storageGb: 17.25,
+    source: "https://huggingface.co/leejet/FLUX.1-schnell-gguf",
+    repositoryRevision: "c7f665ddaf9f197ff493f41fc211f5480f5f19ac",
+    artifacts: [
+      {
+        sourcePath: "flux1-schnell-q4_0.gguf",
+        filename: "flux1-schnell-q4_0.gguf",
+        expectedSizeBytes: 6884606880,
+        sha256:
+          "4f30741d2bfc786c92934ce925fcb0a43df3441e76504b797c3d5d5f0878fa6f",
+        role: "primary",
+      },
+      {
+        sourcePath: "ae.safetensors",
+        filename: "flux1-ae.safetensors",
+        expectedSizeBytes: 335304388,
+        sha256:
+          "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+        role: "supplementary",
+        source: {
+          repositoryUrl:
+            "https://huggingface.co/black-forest-labs/FLUX.1-schnell",
+          revision: "741f7c3ce8b383c54771c7003378a50191e9efe9",
+        },
+      },
+      {
+        sourcePath: "clip_l.safetensors",
+        filename: "flux1-clip_l.safetensors",
+        expectedSizeBytes: 246144152,
+        sha256:
+          "660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd",
+        role: "supplementary",
+        source: {
+          repositoryUrl:
+            "https://huggingface.co/comfyanonymous/flux_text_encoders",
+          revision: "6af2a98e3f615bdfa612fbd85da93d1ed5f69ef5",
+        },
+      },
+      {
+        sourcePath: "t5xxl_fp16.safetensors",
+        filename: "flux1-t5xxl_fp16.safetensors",
+        expectedSizeBytes: 9787841024,
+        sha256:
+          "6e480b09fae049a72d2a8c5fbccb8d3e92febeb233bbe9dfe7256958a9167635",
+        role: "supplementary",
+        source: {
+          repositoryUrl:
+            "https://huggingface.co/comfyanonymous/flux_text_encoders",
+          revision: "6af2a98e3f615bdfa612fbd85da93d1ed5f69ef5",
+        },
+      },
+    ],
+    imageRuntime: {
+      kind: "diffusion-flux1",
+      artifacts: {
+        diffusionModel: "flux1-schnell-q4_0.gguf",
+        vae: "flux1-ae.safetensors",
+        clipL: "flux1-clip_l.safetensors",
+        t5xxl: "flux1-t5xxl_fp16.safetensors",
+      },
+      generation: { sampler: "euler", steps: 4, cfgScale: 1 },
+    },
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image"],
+    commercialStatus: "open",
+    catch:
+      "Apache-2.0 model weights. The converted encoder repository omits license metadata; upstream CLIP and T5 license terms also apply.",
+    notes:
+      "Cloudflare Workers AI model with a four-step native profile. The large T5 encoder runs on CPU; memory and performance qualification is pending.",
+  },
+  {
     modelId: "flux2-klein-4b-q4_0",
     kind: "image",
     provider: "Black Forest Labs",
@@ -2534,6 +2648,46 @@ const CATALOG_SOURCE = [
     catch: "CreativeML Open RAIL-M license.",
     notes:
       "Extremely lightweight baseline model. Perfect for low VRAM systems (under 8GB) and fast prototyping. Generates 512x512 images.",
+  },
+  {
+    modelId: "dreamshaper-8-lcm",
+    kind: "image",
+    provider: "Lykon",
+    family: "Stable-Diffusion",
+    version: "DreamShaper 8 LCM",
+    size: "2.0GB",
+    quant: "F16",
+    minVramGb: 4,
+    storageGb: 2.13,
+    source: "https://huggingface.co/Lykon/dreamshaper-8-lcm",
+    repositoryRevision: "4645d8bc6a8e6b106d21606d63e8460cdad4f1a6",
+    artifacts: [
+      {
+        sourcePath: "DreamShaper8_LCM.safetensors",
+        filename: "DreamShaper8_LCM.safetensors",
+        expectedSizeBytes: 2133804992,
+        sha256:
+          "a4f3e1526c5dc4fcbe342f5c410d83ae202c7a415fcefcbb92e0f93fcd0a87c3",
+        role: "primary",
+      },
+    ],
+    imageRuntime: {
+      kind: "checkpoint",
+      artifacts: { diffusionModel: "DreamShaper8_LCM.safetensors" },
+      generation: {
+        sampler: "lcm",
+        scheduler: "lcm",
+        steps: 4,
+        cfgScale: 1,
+      },
+    },
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    features: ["text-to-image"],
+    commercialStatus: "open",
+    catch: "CreativeML Open RAIL-M license.",
+    notes:
+      "Cloudflare Workers AI photorealism model distilled for fast four-step generation. Native inference qualification is pending.",
   },
   {
     modelId: "dreamshaper-v8",

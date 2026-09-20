@@ -31,7 +31,9 @@ test.each([
   "resolves $modelId artifacts, sampling, and aggregate memory",
   ({ modelId, steps, bytes }) => {
     const spec = byId(modelId);
-    if (!spec?.imageRuntime) throw new Error("Missing image fixture");
+    if (spec?.imageRuntime?.kind !== "diffusion-qwen3") {
+      throw new Error("Missing Qwen image fixture");
+    }
     const directory = "/models/image";
     const plan = resolveImageLaunchPlan({
       runtimeId: `image:${modelId}`,
@@ -77,7 +79,9 @@ test.each([
 
 test("rejects a missing image encoder before resolving or spawning a runtime", async () => {
   const spec = byId("z-image-turbo-q4_0");
-  if (!spec?.imageRuntime) throw new Error("Missing image fixture");
+  if (spec?.imageRuntime?.kind !== "diffusion-qwen3") {
+    throw new Error("Missing Qwen image fixture");
+  }
   const root = mkdtempSync(join(tmpdir(), "localbase-image-artifacts-"));
   try {
     const plan = resolveImageLaunchPlan({
@@ -104,6 +108,74 @@ test("rejects a missing image encoder before resolving or spawning a runtime", a
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test.each([
+  {
+    modelId: "flux1-schnell-q4_0",
+    expectedModelArgs: [
+      "--diffusion-model",
+      "/models/image/flux1-schnell-q4_0.gguf",
+      "--vae",
+      "/models/image/flux1-ae.safetensors",
+      "--clip_l",
+      "/models/image/flux1-clip_l.safetensors",
+      "--t5xxl",
+      "/models/image/flux1-t5xxl_fp16.safetensors",
+      "--clip-on-cpu",
+      "--sampling-method",
+      "euler",
+      "--steps",
+      "4",
+      "--cfg-scale",
+      "1",
+    ],
+  },
+  {
+    modelId: "dreamshaper-8-lcm",
+    expectedModelArgs: [
+      "-m",
+      "/models/image/DreamShaper8_LCM.safetensors",
+      "--sampling-method",
+      "lcm",
+      "--scheduler",
+      "lcm",
+      "--steps",
+      "4",
+      "--cfg-scale",
+      "1",
+    ],
+  },
+])(
+  "builds the pinned $modelId launch profile",
+  ({ modelId, expectedModelArgs }) => {
+    const spec = byId(modelId);
+    if (!spec?.imageRuntime)
+      throw new Error(`Missing image profile: ${modelId}`);
+    const plan = resolveImageLaunchPlan({
+      runtimeId: `image:${modelId}`,
+      root: "/localbase",
+      modelsDirectory: "/models/image",
+      modelId,
+      modelFile: spec.imageRuntime.artifacts.diffusionModel,
+      host: "127.0.0.1",
+      port: 8083,
+      modelRequirementGb: spec.minVramGb,
+      artifactBytes: spec.artifacts.reduce(
+        (sum, artifact) => sum + (artifact.expectedSizeBytes ?? 0),
+        0,
+      ),
+      imageRuntime: spec.imageRuntime,
+    });
+
+    expect(buildSdImageServerArgs(plan)).toEqual([
+      ...expectedModelArgs,
+      "--listen-ip",
+      "127.0.0.1",
+      "--listen-port",
+      "8083",
+    ]);
+  },
+);
 
 const roots: string[] = [];
 const originalPath = process.env.PATH;

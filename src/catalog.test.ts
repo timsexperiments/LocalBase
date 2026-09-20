@@ -64,7 +64,9 @@ function model(artifacts: unknown[]) {
 describe("catalog artifact validation", () => {
   test("image installation requires complete supplementary artifacts, not only diffusion", async () => {
     const image = byId("flux2-klein-4b-q4_0");
-    if (!image?.imageRuntime) throw new Error("Missing image fixture");
+    if (image?.imageRuntime?.kind !== "diffusion-qwen3") {
+      throw new Error("Missing Qwen image fixture");
+    }
     const fixture = {
       ...image,
       imageRuntime: image.imageRuntime,
@@ -109,7 +111,9 @@ describe("catalog artifact validation", () => {
 
   test("image profiles require distinct declared artifacts with matching roles", () => {
     const image = byId("flux2-klein-4b-q4_0");
-    if (!image?.imageRuntime) throw new Error("Missing image fixture");
+    if (image?.imageRuntime?.kind !== "diffusion-qwen3") {
+      throw new Error("Missing Qwen image fixture");
+    }
     expect(catalogSchema.safeParse([image]).success).toBe(true);
     for (const invalid of [
       { ...image, kind: "llm" },
@@ -1200,6 +1204,38 @@ describe("FLUX Klein image additions", () => {
         acceleratorBytes: memoryGb * 1024 ** 3,
         confidence: "estimated",
       });
+    },
+  );
+});
+
+describe("Cloudflare open-weight image additions", () => {
+  test.each([
+    {
+      id: "flux1-schnell-q4_0",
+      bytes: 17253896444,
+      runtimeKind: "diffusion-flux1",
+      commercialStatus: "open",
+    },
+    {
+      id: "dreamshaper-8-lcm",
+      bytes: 2133804992,
+      runtimeKind: "checkpoint",
+      commercialStatus: "open",
+    },
+  ])(
+    "pins a complete and runnable $id manifest",
+    ({ id, bytes, runtimeKind, commercialStatus }) => {
+      const entry = byId(id);
+      expect(entry).toBeDefined();
+      expect(
+        entry?.artifacts.reduce(
+          (total, artifact) => total + (artifact.expectedSizeBytes ?? 0),
+          0,
+        ),
+      ).toBe(bytes);
+      expect(entry?.imageRuntime?.kind).toBe(runtimeKind);
+      expect(entry?.commercialStatus).toBe(commercialStatus);
+      expect(entry?.features).toEqual(["text-to-image"]);
     },
   );
 });

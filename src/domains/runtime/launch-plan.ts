@@ -46,14 +46,36 @@ export type LlmLaunchPlan = LaunchPlanBase<"llm", "llama-server"> & {
 
 export type SttLaunchPlan = LaunchPlanBase<"stt", "whisper-server">;
 
+type ImageRuntimeLaunchProfile =
+  | Readonly<{
+      kind: "diffusion-qwen3";
+      diffusionModelPath: string;
+      vaePath: string;
+      textEncoderPath: string;
+      generation: Readonly<
+        Extract<ImageRuntimeProfile, { kind: "diffusion-qwen3" }>["generation"]
+      >;
+    }>
+  | Readonly<{
+      kind: "diffusion-flux1";
+      diffusionModelPath: string;
+      vaePath: string;
+      clipLPath: string;
+      t5xxlPath: string;
+      generation: Readonly<
+        Extract<ImageRuntimeProfile, { kind: "diffusion-flux1" }>["generation"]
+      >;
+    }>
+  | Readonly<{
+      kind: "checkpoint";
+      diffusionModelPath: string;
+      generation: Readonly<
+        Extract<ImageRuntimeProfile, { kind: "checkpoint" }>["generation"]
+      >;
+    }>;
+
 export type ImageLaunchPlan = LaunchPlanBase<"image", "sd-server"> & {
-  readonly imageRuntime?: Readonly<{
-    kind: "diffusion-qwen3";
-    diffusionModelPath: string;
-    vaePath: string;
-    textEncoderPath: string;
-    generation: Readonly<ImageRuntimeProfile["generation"]>;
-  }>;
+  readonly imageRuntime?: ImageRuntimeLaunchProfile;
 };
 
 type VideoLaunchPlanBase = Omit<
@@ -239,6 +261,10 @@ export function resolveImageLaunchPlan(input: {
   artifactBytes: number;
   imageRuntime?: ImageRuntimeProfile;
 }): ImageLaunchPlan {
+  const imageRuntime = resolveImageRuntimeProfile(
+    input.modelsDirectory,
+    input.imageRuntime,
+  );
   return Object.freeze({
     runtimeId: input.runtimeId,
     modality: "image",
@@ -251,27 +277,49 @@ export function resolveImageLaunchPlan(input: {
     port: input.port,
     healthUrl: `http://${input.host}:${input.port}/`,
     memoryDemand: runtimeMemoryDemand(input),
-    ...(input.imageRuntime
-      ? {
-          imageRuntime: Object.freeze({
-            kind: input.imageRuntime.kind,
-            diffusionModelPath: join(
-              input.modelsDirectory,
-              input.imageRuntime.artifacts.diffusionModel,
-            ),
-            vaePath: join(
-              input.modelsDirectory,
-              input.imageRuntime.artifacts.vae,
-            ),
-            textEncoderPath: join(
-              input.modelsDirectory,
-              input.imageRuntime.artifacts.textEncoder,
-            ),
-            generation: Object.freeze({ ...input.imageRuntime.generation }),
-          }),
-        }
-      : {}),
+    ...(imageRuntime ? { imageRuntime } : {}),
   });
+}
+
+function resolveImageRuntimeProfile(
+  modelsDirectory: string,
+  profile: ImageRuntimeProfile | undefined,
+): ImageRuntimeLaunchProfile | undefined {
+  if (!profile) return undefined;
+  switch (profile.kind) {
+    case "diffusion-qwen3":
+      return Object.freeze({
+        kind: profile.kind,
+        diffusionModelPath: join(
+          modelsDirectory,
+          profile.artifacts.diffusionModel,
+        ),
+        vaePath: join(modelsDirectory, profile.artifacts.vae),
+        textEncoderPath: join(modelsDirectory, profile.artifacts.textEncoder),
+        generation: Object.freeze({ ...profile.generation }),
+      });
+    case "diffusion-flux1":
+      return Object.freeze({
+        kind: profile.kind,
+        diffusionModelPath: join(
+          modelsDirectory,
+          profile.artifacts.diffusionModel,
+        ),
+        vaePath: join(modelsDirectory, profile.artifacts.vae),
+        clipLPath: join(modelsDirectory, profile.artifacts.clipL),
+        t5xxlPath: join(modelsDirectory, profile.artifacts.t5xxl),
+        generation: Object.freeze({ ...profile.generation }),
+      });
+    case "checkpoint":
+      return Object.freeze({
+        kind: profile.kind,
+        diffusionModelPath: join(
+          modelsDirectory,
+          profile.artifacts.diffusionModel,
+        ),
+        generation: Object.freeze({ ...profile.generation }),
+      });
+  }
 }
 
 export function resolveVideoLaunchPlan(input: {
