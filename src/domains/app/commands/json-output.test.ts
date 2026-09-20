@@ -248,10 +248,15 @@ test(
       const stored = readFileSync(join(root, "local-base.db"));
       for (const args of [
         ["scopes", initial.key.id],
+        ["scopes", initial.key.id, "--scopes"],
+        ["scopes", initial.key.id, "--scopes", "--non-interactive"],
+        ["scopes", initial.key.id, "--scopes", "--"],
         ["scopes", initial.key.id, "--scopes", "models:read,"],
         ["scopes", initial.key.id, "--scopes", "models:write"],
         ["scopes", initial.key.id, "--scopes", "inference:*"],
         ["create", "--scopes", "models:read,typo"],
+        ["create", "--scopes"],
+        ["create", "--scopes", "--name", "missing-scope-value"],
       ]) {
         const invalid = await invoke(...args);
         expect(invalid.exitCode).toBe(2);
