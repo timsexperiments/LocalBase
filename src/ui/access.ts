@@ -186,7 +186,8 @@ export function createUiAccess({
       } catch {
         return respond(failure(401));
       }
-      if (session)
+      if (session) {
+        credentials.set(request, Object.freeze({ ownerId }));
         return respond(
           Response.json(
             { authenticated: true },
@@ -195,6 +196,7 @@ export function createUiAccess({
             },
           ),
         );
+      }
       const headers = new Headers(request.headers);
       for (const name of [...headers.keys()]) {
         if (

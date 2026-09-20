@@ -120,10 +120,14 @@ test("loads only strict startup configuration; missing disables and malformed fa
 
 test("verifies every human session and never falls back after a JWT failure", async () => {
   const access = createUiAccess({ config, keyResolver: resolver });
-  const valid = await responseFor(access, request(await token()));
+  const validRequest = request(await token());
+  const valid = await responseFor(access, validRequest);
   expect(valid.status).toBe(200);
   expect(await valid.json()).toEqual({ authenticated: true });
   expect(valid.headers.get("cache-control")).toBe("no-store");
+  expect(access.credential(validRequest)?.ownerId).toMatch(
+    /^ui-access:[0-9a-f]{64}$/,
+  );
   const forgedKeys = await generateKeyPair("RS256");
   const forged = await new SignJWT({
     iss: issuer,
