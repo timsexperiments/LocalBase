@@ -1,8 +1,10 @@
 import {
   DiagLogLevel,
   INVALID_SPAN_CONTEXT,
+  ROOT_CONTEXT,
   SpanKind,
   SpanStatusCode,
+  TraceFlags,
   context,
   diag,
   propagation,
@@ -49,6 +51,7 @@ import {
   ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
 import type { LocalBaseConfig } from "../../manager";
+import { canonicalGatewayHttpRoute } from "../runtime/route-dispatch";
 import { LOCALBASE_VERSION } from "../../version";
 import {
   redactExternalLogText,
@@ -536,6 +539,16 @@ function eventAttributes(event: LogEvent): Attributes {
   };
 }
 
+export function spanCorrelation(
+  span: Span | undefined,
+): LogTraceCorrelation | undefined {
+  if (!span?.isRecording()) return undefined;
+  const spanContext = span.spanContext();
+  return trace.isSpanContextValid(spanContext)
+    ? { traceId: spanContext.traceId, spanId: spanContext.spanId }
+    : undefined;
+}
+
 function samplerFor(configuration: OtelConfiguration) {
   switch (configuration.sampler) {
     case "always_on":
@@ -724,7 +737,13 @@ class ActiveOtelRuntime implements OtelRuntime {
         severityText: event.severity.toUpperCase(),
         body: event.message,
         attributes: eventAttributes(event),
-        context: context.active(),
+        context: event.trace
+          ? trace.setSpanContext(ROOT_CONTEXT, {
+              ...event.trace,
+              traceFlags: TraceFlags.SAMPLED,
+              isRemote: false,
+            })
+          : context.active(),
       });
     } catch {
       // Local JSONL is authoritative when the secondary sink fails.
@@ -782,12 +801,7 @@ class ActiveOtelRuntime implements OtelRuntime {
   }
 
   activeCorrelation(): LogTraceCorrelation | undefined {
-    const activeSpan = trace.getActiveSpan();
-    if (!activeSpan?.isRecording()) return undefined;
-    const spanContext = activeSpan.spanContext();
-    if (!spanContext || !trace.isSpanContextValid(spanContext))
-      return undefined;
-    return { traceId: spanContext.traceId, spanId: spanContext.spanId };
+    return spanCorrelation(trace.getActiveSpan());
   }
 
   async forceFlush(): Promise<void> {
@@ -838,20 +852,8 @@ export function createOtelRuntime(
     : new NoopOtelRuntime();
 }
 
-const knownHttpRoutes = new Set([
-  "/health",
-  "/v1/models",
-  "/v1/chat/completions",
-  "/v1/embeddings",
-  "/v1/audio/transcriptions",
-  "/v1/audio/translations",
-  "/v1/audio/speech",
-  "/v1/images/generations",
-]);
-
 export function normalizedOtelRoute(route: string): string {
-  const pathname = route.split("?", 1)[0];
-  return knownHttpRoutes.has(pathname) ? pathname : "unmatched-route";
+  return canonicalGatewayHttpRoute(route);
 }
 
 export function serverSpanName(method: string, route: string): string {

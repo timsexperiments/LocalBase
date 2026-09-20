@@ -28,7 +28,9 @@ TTS runs one cold `llama-tts` child per admitted request. Its estimated 8 GiB jo
 
 For streaming responses, LocalBase holds the active runtime lease until the response body completes, fails, or the request signal is aborted. Model changes therefore wait for open streams to settle.
 
-Every HTTP span records the `x-localbase-request-id` value as `localbase.request_id`. LocalBase continues valid incoming W3C trace context and forwards it to native HTTP runtimes. The JSONL `http.request` event records the final gateway status and the time until the response body settles.
+Every HTTP span records the `x-localbase-request-id` value as `localbase.request_id`. LocalBase continues valid incoming W3C trace context and forwards it to native HTTP runtimes. The JSONL `http.request` event records the final gateway status and the time until the response body settles. Sampled request and inference completion events carry the owning span's trace and span IDs even when a streaming response settles later. Successful health and readiness probes are omitted; probe failures remain visible.
+
+Authenticated request events and spans record the outcome plus the stored key's opaque ID, operator-assigned name, and source. Raw keys, hashes, and prefixes are never logged. When gateway authentication is disabled for a route, the outcome is `disabled` and no principal is attached.
 
 For admitted chat, embedding, transcription, speech, and image requests, telemetry uses this content-safe mapping:
 

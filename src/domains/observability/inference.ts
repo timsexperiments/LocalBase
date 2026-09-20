@@ -1,8 +1,15 @@
-import { SpanStatusCode, type Span } from "@opentelemetry/api";
+import {
+  SpanStatusCode,
+  context,
+  trace,
+  type Context,
+  type Span,
+} from "@opentelemetry/api";
 import { z } from "zod";
 import type { InferencePermitSnapshot } from "../runtime/inference-queue";
 import type { RuntimeModality } from "../runtime/modality";
 import type { ILogger } from "./logging";
+import { spanCorrelation } from "./otel";
 
 type Usage = Readonly<{
   promptTokens?: number;
@@ -234,6 +241,10 @@ export class InferenceTelemetry {
     if (!this.finished) this.upstreamStatus = status;
   }
 
+  context(parent: Context = context.active()): Context {
+    return trace.setSpan(parent, this.input.span);
+  }
+
   serverTiming(): string | undefined {
     if (this.input.streaming) return undefined;
     const metrics = [
@@ -385,13 +396,19 @@ export class InferenceTelemetry {
     if (terminal.outcome !== "completed")
       this.input.span.setStatus({ code: SpanStatusCode.ERROR });
     this.input.logger.event({
-      severity: terminal.outcome === "completed" ? "info" : "warn",
+      severity:
+        terminal.outcome === "completed"
+          ? "info"
+          : terminal.outcome === "error"
+            ? "error"
+            : "warn",
       eventName: "inference.completed",
       category: "runtime",
       component: "inference",
       runtime: this.input.metadata.modality,
       message: "Inference response settled.",
       requestId: this.input.requestId,
+      trace: spanCorrelation(this.input.span),
       attributes,
     });
     this.input.span.end();

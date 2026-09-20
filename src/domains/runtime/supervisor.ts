@@ -259,10 +259,10 @@ export class ManagedService {
           throw new StartupCancelledError(this.name);
         }
         if (this.proc.stdout && typeof this.proc.stdout !== "number") {
-          this.options.logger.pipeStream(this.proc.stdout, this.name);
+          void this.options.logger.drainStream(this.proc.stdout);
         }
         if (this.proc.stderr && typeof this.proc.stderr !== "number") {
-          this.options.logger.pipeStream(this.proc.stderr, this.name);
+          void this.options.logger.drainStream(this.proc.stderr);
         }
 
         await this.options.otel.withSpan(
