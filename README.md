@@ -95,7 +95,19 @@ Use `local-base status` to inspect the service and `local-base logs --follow` to
 
 ### Browser playground
 
-Open `/app` on the HTTPS origin configured in `ui-access.json`. The playground requires a verified human Cloudflare Access session; gateway API keys cannot authenticate the browser UI. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
+Configure the human identity provider, then restart LocalBase:
+
+```bash
+local-base access cloudflare \
+  --team-domain your-team.cloudflareaccess.com \
+  --audience YOUR_ACCESS_AUD_TAG \
+  --origin https://localbase.example.com
+local-base restart
+```
+
+Use `local-base access show --json` to inspect the active non-secret configuration and `local-base access disable` to disable browser sign-in. The default browser permissions cover inference, model discovery, and model management; pass `--permissions` to replace them. Access configuration is restart-scoped and every command supports `--non-interactive` and `--json`.
+
+Open `/app` on the configured HTTPS origin. The playground requires a verified human Cloudflare Access session; gateway API keys cannot authenticate the browser UI. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
 
 Model Lab calls models directly without generation tools. It supports chat, images, speech, audio-file transcription, text-to-video, and embeddings. Voice choices, embedding dimension bounds, and the fixed video profile come from model metadata. Completed videos play inline and download as MP4 in Chat and Model Lab. Speech-to-video portrait and audio inputs are not supported in Model Lab yet.
 
@@ -111,7 +123,7 @@ Microphone buttons dictate into text fields using the installed, enabled STT mod
 
 Open **Manage models** from the model picker or `/app?panel=catalog` to browse the catalog, disk usage, and download sizes. Only installed, enabled models can be selected for inference. Installation downloads files; enabling makes them available for requests; setting a default chooses the model used when a request omits one. Disable a model and wait for its runtime to release it before uninstalling. Shared model files are retained.
 
-Management is read-only unless startup configuration `<root>/model-management.json` grants access. Set `{"allowUiSessions":true,"apiKeyIds":[]}` to allow verified browser sign-ins, or add specific stored key IDs to `apiKeyIds` for trusted API clients. Do not put raw keys in this file. Restart after changing these permissions. Ordinary client keys retain inference-only access.
+Model administration requires `models:manage`; catalog reads require `models:read`. Browser sessions receive the permissions configured by `local-base access cloudflare`. Machine clients can receive the same capability with `local-base keys create --scopes models:read,models:manage`. Ordinary client keys retain inference and model-read access by default.
 
 `GET /_localbase/model-management` returns catalog installation state, storage, operation progress, and `canManage`. Authorized clients use `POST` on the same endpoint with `{"modelId":"<catalog-id>","action":"install"}`. Actions are `install`, `uninstall`, `enable`, `disable`, and `activate`. Install returns HTTP 202; poll GET for completion or failure. One installation runs at a time, and progress is retained only for the running gateway process. Other actions return HTTP 200 when complete.
 
