@@ -104,6 +104,7 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
         nonce,
       })
         .setProtectedHeader({ alg: "RS256", kid: "oidc" })
+        .setIssuedAt()
         .sign(keys.privateKey),
     });
   };
@@ -203,6 +204,7 @@ test("rejects unbound callbacks and incompatible discovery", async () => {
           nonce,
         })
           .setProtectedHeader({ alg: "RS256", kid: "oidc" })
+          .setIssuedAt()
           .sign(keys.privateKey),
       });
     },
@@ -246,6 +248,7 @@ test("rejects ID tokens outside the exact OIDC transaction", async () => {
             ...claims,
           })
             .setProtectedHeader({ alg: "RS256", kid: "oidc" })
+            .setIssuedAt()
             .sign(keys.privateKey),
         });
       },

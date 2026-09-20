@@ -48,6 +48,7 @@ const identitySchema = z.object({
   aud: z.union([z.string(), z.array(z.string()).nonempty()]),
   azp: z.string().optional(),
   exp: z.number().int().positive(),
+  iat: z.number().int().nonnegative(),
 });
 
 type Metadata = z.infer<typeof metadataSchema>;
@@ -293,15 +294,15 @@ export function createOidcSessionManager({
       algorithms,
       issuer: provider.issuer,
       audience: provider.clientId,
-      requiredClaims: ["exp", "sub", "nonce"],
+      requiredClaims: ["exp", "iat", "sub", "nonce"],
     });
     const identity = identitySchema.parse(payload);
     if (!equalTokens(identity.nonce, state.nonce))
       throw new Error("OpenID Connect nonce did not match.");
     if (
-      Array.isArray(identity.aud) &&
-      identity.aud.length > 1 &&
-      identity.azp !== provider.clientId
+      Array.isArray(identity.aud) && identity.aud.length > 1
+        ? identity.azp !== provider.clientId
+        : identity.azp !== undefined && identity.azp !== provider.clientId
     )
       throw new Error("OpenID Connect authorized party did not match.");
     return {
