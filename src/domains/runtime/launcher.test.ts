@@ -112,6 +112,12 @@ test("rejects a missing image encoder before resolving or spawning a runtime", a
 test.each([
   {
     modelId: "flux1-schnell-q4_0",
+    expectedMemoryDemand: {
+      unifiedBytes: 17790767356,
+      hostBytes: 17790767356,
+      acceleratorBytes: 8 * gibibyte,
+      confidence: "estimated",
+    },
     expectedModelArgs: [
       "--diffusion-model",
       "/models/image/flux1-schnell-q4_0.gguf",
@@ -132,6 +138,12 @@ test.each([
   },
   {
     modelId: "dreamshaper-8-lcm",
+    expectedMemoryDemand: {
+      unifiedBytes: 4.5 * gibibyte,
+      hostBytes: 2133804992 + 0.5 * gibibyte,
+      acceleratorBytes: 4 * gibibyte,
+      confidence: "estimated",
+    },
     expectedModelArgs: [
       "-m",
       "/models/image/DreamShaper8_LCM.safetensors",
@@ -147,7 +159,7 @@ test.each([
   },
 ])(
   "builds the pinned $modelId launch profile",
-  ({ modelId, expectedModelArgs }) => {
+  ({ modelId, expectedModelArgs, expectedMemoryDemand }) => {
     const spec = byId(modelId);
     if (!spec?.imageRuntime)
       throw new Error(`Missing image profile: ${modelId}`);
@@ -174,6 +186,7 @@ test.each([
       "--listen-port",
       "8083",
     ]);
+    expect(plan.memoryDemand).toEqual(expectedMemoryDemand);
   },
 );
 

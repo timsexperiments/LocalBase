@@ -151,6 +151,20 @@ function videoMemoryDemand(input: {
   });
 }
 
+function imageMemoryDemand(input: {
+  imageRuntime?: ImageRuntimeProfile;
+  artifactBytes: number;
+  modelRequirementGb: number | undefined;
+}): RuntimeMemoryDemand {
+  if (input.imageRuntime?.kind !== "diffusion-flux1") {
+    return runtimeMemoryDemand(input);
+  }
+  return Object.freeze({
+    ...input.imageRuntime.estimatedMemoryDemand,
+    confidence: "estimated",
+  });
+}
+
 function llmMemoryDemand(input: {
   artifactBytes: number;
   modelRequirementGb: number | undefined;
@@ -276,7 +290,7 @@ export function resolveImageLaunchPlan(input: {
     host: input.host,
     port: input.port,
     healthUrl: `http://${input.host}:${input.port}/`,
-    memoryDemand: runtimeMemoryDemand(input),
+    memoryDemand: imageMemoryDemand(input),
     ...(imageRuntime ? { imageRuntime } : {}),
   });
 }

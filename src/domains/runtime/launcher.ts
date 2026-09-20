@@ -150,7 +150,7 @@ export async function startSdServerProcess(
   });
 }
 
-/** The pinned runtime retains its model-specific scheduler defaults. */
+/** Builds the pinned model-specific image runtime arguments. */
 export function buildSdImageServerArgs(plan: ImageLaunchPlan): string[] {
   return [
     ...imageModelArgs(plan),

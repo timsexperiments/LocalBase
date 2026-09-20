@@ -110,6 +110,14 @@ const lcmImageGenerationProfileSchema = z
   })
   .strict();
 
+const estimatedImageMemoryDemandSchema = z
+  .object({
+    unifiedBytes: z.number().int().positive(),
+    hostBytes: z.number().int().positive(),
+    acceleratorBytes: z.number().int().positive(),
+  })
+  .strict();
+
 const imageRuntimeProfileSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -136,6 +144,7 @@ const imageRuntimeProfileSchema = z.discriminatedUnion("kind", [
         })
         .strict(),
       generation: eulerImageGenerationProfileSchema,
+      estimatedMemoryDemand: estimatedImageMemoryDemandSchema,
     })
     .strict(),
   z
@@ -2351,6 +2360,11 @@ const CATALOG_SOURCE = [
         t5xxl: "flux1-t5xxl_fp16.safetensors",
       },
       generation: { sampler: "euler", steps: 4, cfgScale: 1 },
+      estimatedMemoryDemand: {
+        unifiedBytes: 17790767356,
+        hostBytes: 17790767356,
+        acceleratorBytes: 8589934592,
+      },
     },
     inputModalities: ["text"],
     outputModalities: ["image"],
