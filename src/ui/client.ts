@@ -320,14 +320,7 @@ export async function api(
         error: z.object({ message: z.string(), code: z.string().optional() }),
       })
       .safeParse(value);
-    if (
-      (response.status === 401 || response.status === 403) &&
-      !(
-        response.status === 403 &&
-        parsed.success &&
-        parsed.data.error.code === "model_management_denied"
-      )
-    ) {
+    if (response.status === 401) {
       throw new SessionRequiredError();
     }
     throw new Error(

@@ -11,6 +11,11 @@ import {
   defaultApiKeyScopes,
   permissionsSchema,
 } from "../../auth/authorization";
+import {
+  browserAccessConfigSchema,
+  cloudflareAccessProviderSchema,
+  defaultBrowserPermissions,
+} from "../../auth/browser-access";
 
 export const modelKindSchema = z.enum(["llm", "stt", "tts", "image", "video"]);
 
@@ -224,6 +229,20 @@ export const keysScopesInputSchema = keyIdInputSchema.extend({
   scopes: keyScopesInputSchema,
 });
 export type KeysScopesInput = z.infer<typeof keysScopesInputSchema>;
+
+export const accessShowInputSchema = z.object({});
+export type AccessShowInput = z.infer<typeof accessShowInputSchema>;
+
+export const accessCloudflareInputSchema = z.object({
+  teamDomain: cloudflareAccessProviderSchema.shape.teamDomain,
+  audience: cloudflareAccessProviderSchema.shape.audience,
+  origin: browserAccessConfigSchema.shape.origin,
+  permissions: keyScopesInputSchema.default(defaultBrowserPermissions),
+});
+export type AccessCloudflareInput = z.infer<typeof accessCloudflareInputSchema>;
+
+export const accessDisableInputSchema = z.object({});
+export type AccessDisableInput = z.infer<typeof accessDisableInputSchema>;
 
 export const resetInputSchema = z.object({
   yes: z.boolean().default(false),

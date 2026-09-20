@@ -20,6 +20,7 @@ test("resolves nested commands and global options before context creation", asyn
     global: { root: "/tmp/local-base-cli-test", nonInteractive: false },
   });
   expect((await resolveCli(["keys"])).kind).toBe("help");
+  expect((await resolveCli(["access"])).kind).toBe("help");
   expect((await resolveCli(["--help"])).kind).toBe("help");
 
   await expect(resolveCli(["models", "catalog"])).resolves.toMatchObject({
