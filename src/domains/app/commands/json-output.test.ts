@@ -16,10 +16,14 @@ import {
   permissionSchema,
 } from "../../auth/authorization";
 import {
+  accessConfigureResultSchema,
+  accessDisableResultSchema,
+  accessShowResultSchema,
   keyMetadataResultSchema,
   keySecretResultSchema,
   keysListResultSchema,
 } from "./results";
+import { defaultBrowserPermissions } from "../../auth/browser-access";
 
 const projectRoot = join(import.meta.dirname, "../../../..");
 
@@ -159,6 +163,49 @@ test(
       expect(listed.exitCode).toBe(0);
       expect(listed.stdout).not.toContain(createdData.secret);
       expect(listed.stdout).not.toContain("keyHash");
+
+      const browserAccess = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "cloudflare",
+        "--team-domain",
+        "team.cloudflareaccess.com",
+        "--audience",
+        "audience",
+        "--origin",
+        "https://localbase.example.com",
+      ]);
+      expect(browserAccess.exitCode).toBe(0);
+      expect(
+        accessConfigureResultSchema.parse(
+          jsonDocument(browserAccess.stdout).data,
+        ).config.permissions,
+      ).toEqual(defaultBrowserPermissions);
+      const shownAccess = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "show",
+      ]);
+      expect(
+        accessShowResultSchema.parse(jsonDocument(shownAccess.stdout).data)
+          .config,
+      ).toMatchObject({ origin: "https://localbase.example.com" });
+      const disabledAccess = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "disable",
+      ]);
+      expect(
+        accessDisableResultSchema.parse(
+          jsonDocument(disabledAccess.stdout).data,
+        ),
+      ).toEqual({ disabled: true, restartRequired: true });
 
       const configuredDatabase = readFileSync(join(root, "local-base.db"));
       const doctor = await runCli(executable, [

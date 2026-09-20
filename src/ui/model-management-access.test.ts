@@ -1,14 +1,9 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { canManageModels, loadManagementAccess } from "./management-access";
 import { startGatewayFixture } from "../test/gateway-fixture";
 import { DatabaseSession } from "../db/client";
-import { resolveApiKey } from "../manager";
-
-const keyId = `key_${crypto.randomUUID()}`;
-const enabled = { allowUiSessions: true, apiKeyIds: [keyId] };
+import { resolveApiKey, setApiKeyScopes } from "../manager";
+import { defaultApiKeyScopes } from "../domains/auth/authorization";
 
 test("authorized management HTTP validates bounded JSON and persists config mutations", async () => {
   const gateway = await startGatewayFixture({ auth: { mode: "bearer" } });
@@ -21,17 +16,15 @@ test("authorized management HTTP validates bounded JSON and persists config muta
     let storedKey;
     try {
       storedKey = resolveApiKey(database, gateway.readConfig(), key);
+      if (storedKey)
+        setApiKeyScopes(database, gateway.readConfig(), storedKey.id, [
+          ...defaultApiKeyScopes,
+          "models:manage",
+        ]);
     } finally {
       database.close();
     }
     if (!storedKey) throw new Error("Expected stored fixture key.");
-    await Bun.write(
-      join(gateway.root, "model-management.json"),
-      JSON.stringify({
-        allowUiSessions: false,
-        apiKeyIds: [storedKey.id],
-      }),
-    );
     // Reuse the fixture's compiled fake runtimes and isolated config after startup authorization changes.
     restarted = Bun.spawn(
       [
@@ -165,7 +158,7 @@ test("management remains authenticated when inference auth is disabled", async (
           method,
           headers: {
             authorization: "Bearer arbitrary",
-            "x-localbase-owner-id": `api-key:${keyId}`,
+            "x-localbase-owner-id": `api-key:key_${crypto.randomUUID()}`,
             "cf-access-authenticated-user-email": "person@example.com",
           },
         },
@@ -179,62 +172,3 @@ test("management remains authenticated when inference auth is disabled", async (
     await gateway.stop();
   }
 }, 30_000);
-
-test("management config defaults to deny and accepts only stored key IDs", async () => {
-  const root = await mkdtemp(join(tmpdir(), "localbase-management-access-"));
-  try {
-    expect(await loadManagementAccess(root)).toEqual({
-      allowUiSessions: false,
-      apiKeyIds: [],
-    });
-    await Bun.write(
-      join(root, "model-management.json"),
-      JSON.stringify(enabled),
-    );
-    expect(await loadManagementAccess(root)).toEqual(enabled);
-    for (const contents of [
-      "{",
-      "null",
-      "{}",
-      JSON.stringify({ ...enabled, extra: "secret" }),
-      JSON.stringify({ ...enabled, allowUiSessions: "true" }),
-      ...[
-        "",
-        " ",
-        ` ${keyId}`,
-        `api-key:${keyId}`,
-        "lb_secret",
-        "Bearer secret",
-        "environment",
-      ].map((id) => JSON.stringify({ ...enabled, apiKeyIds: [id] })),
-    ]) {
-      await Bun.write(join(root, "model-management.json"), contents);
-      await expect(loadManagementAccess(root)).rejects.toThrow(
-        "Invalid model-management.json.",
-      );
-    }
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("only verified UI owners and explicitly allowlisted stored keys can manage", () => {
-  const ui = { ownerId: `ui-access:${"a".repeat(64)}` };
-  const key = { ownerId: `api-key:${keyId}` };
-  expect(canManageModels(ui, enabled)).toBe(true);
-  expect(canManageModels(key, enabled)).toBe(true);
-  expect(canManageModels(ui, { ...enabled, allowUiSessions: false })).toBe(
-    false,
-  );
-  expect(canManageModels(key, { ...enabled, apiKeyIds: [] })).toBe(false);
-  for (const ownerId of [
-    "environment",
-    "ui-access:",
-    "ui-access:person",
-    keyId,
-    "arbitrary",
-    `api-key:key_${crypto.randomUUID()}`,
-  ])
-    expect(canManageModels({ ownerId }, enabled)).toBe(false);
-  expect(canManageModels(undefined, enabled)).toBe(false);
-});

@@ -8,6 +8,9 @@ import { z } from "zod";
 import type { AppContext, MinimalAppContext } from "../../../context";
 import { byId, type ModelKind } from "../../../catalog";
 import {
+  accessCloudflareInputSchema,
+  accessDisableInputSchema,
+  accessShowInputSchema,
   catalogInputSchema,
   configureInputSchema,
   diagnosticsInputSchema,
@@ -25,6 +28,9 @@ import {
   serviceInputSchema,
   serveInputSchema,
   uninstallInputSchema,
+  type AccessCloudflareInput,
+  type AccessDisableInput,
+  type AccessShowInput,
   type CatalogInput,
   type ConfigureInput,
   type DiagnosticsInput,
@@ -47,6 +53,9 @@ import {
 import type { CommandOutput, CommandResult } from "./output";
 import { CliInputError } from "./errors";
 import {
+  accessConfigureResultSchema,
+  accessDisableResultSchema,
+  accessShowResultSchema,
   catalogResultSchema,
   configureResultSchema,
   diagnosticsResultSchema,
@@ -754,6 +763,65 @@ const keysScopesCommand = command<KeysScopesInput>({
   },
 });
 
+const accessShowCommand = command<AccessShowInput>({
+  path: ["access", "show"],
+  description: "Show browser identity provider configuration",
+  parse: (input) => accessShowInputSchema.parse(input),
+  resultSchema: accessShowResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessShow } = await import("../../auth/commands/access");
+    return await runAccessShow(input, context, execution);
+  },
+});
+
+const accessCloudflareCommand = command<AccessCloudflareInput>({
+  path: ["access", "cloudflare"],
+  description: "Configure Cloudflare Access browser authentication",
+  args: {
+    "team-domain": {
+      type: "string",
+      valueHint: "team.cloudflareaccess.com",
+      description: "Cloudflare Access team domain",
+      required: true,
+    },
+    audience: {
+      type: "string",
+      valueHint: "AUD tag",
+      description: "Cloudflare Access application audience",
+      required: true,
+    },
+    origin: {
+      type: "string",
+      valueHint: "https://localbase.example.com",
+      description: "Exact public UI origin",
+      required: true,
+    },
+    permissions: {
+      type: "string",
+      valueHint: "permission,...",
+      description:
+        "Browser permissions; defaults to inference and model management",
+    },
+  },
+  parse: (input) => accessCloudflareInputSchema.parse(input),
+  resultSchema: accessConfigureResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessCloudflare } = await import("../../auth/commands/access");
+    return await runAccessCloudflare(input, context, execution);
+  },
+});
+
+const accessDisableCommand = command<AccessDisableInput>({
+  path: ["access", "disable"],
+  description: "Disable browser authentication",
+  parse: (input) => accessDisableInputSchema.parse(input),
+  resultSchema: accessDisableResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessDisable } = await import("../../auth/commands/access");
+    return await runAccessDisable(input, context, execution);
+  },
+});
+
 const resetCommand = command<ResetInput>({
   path: ["reset"],
   description: "Reset the LocalBase configuration database",
@@ -878,6 +946,9 @@ export const commands = [
   keysRevokeCommand,
   keysRotateCommand,
   keysScopesCommand,
+  accessShowCommand,
+  accessCloudflareCommand,
+  accessDisableCommand,
   resetCommand,
   uninstallCommand,
 ] as const satisfies readonly Command[];
@@ -902,6 +973,16 @@ export const keysCommand = defineCommand({
     revoke: keysRevokeCommand.citty,
     rotate: keysRotateCommand.citty,
     scopes: keysScopesCommand.citty,
+  },
+});
+
+export const accessCommand = defineCommand({
+  meta: { name: "local-base access", description: "Manage browser access" },
+  args: globalArgs,
+  subCommands: {
+    show: accessShowCommand.citty,
+    cloudflare: accessCloudflareCommand.citty,
+    disable: accessDisableCommand.citty,
   },
 });
 
@@ -940,6 +1021,7 @@ export const rootCommand = defineCommand({
     logs: logsCommand.citty,
     diagnostics: diagnosticsCommand.citty,
     keys: keysCommand,
+    access: accessCommand,
     reset: resetCommand.citty,
     uninstall: uninstallCommand.citty,
   },
@@ -949,6 +1031,7 @@ export function groupForPath(path: string[]): CittyCommand | undefined {
   if (path.length !== 1) return undefined;
   if (path[0] === "models") return modelsCommand;
   if (path[0] === "keys") return keysCommand;
+  if (path[0] === "access") return accessCommand;
   if (path[0] === "config") return configCommand;
   return undefined;
 }

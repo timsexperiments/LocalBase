@@ -5,7 +5,6 @@ import { join, basename } from "node:path";
 import { resolveApiKey, type LocalBaseConfig } from "../../../manager";
 import {
   authorize,
-  defaultApiKeyScopes,
   permissionSchema,
   principalOwnerId,
   principalSchema,
@@ -79,10 +78,6 @@ import {
 import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
 import { playgroundResponse } from "../../../ui/static";
-import {
-  canManageModels,
-  loadManagementAccess,
-} from "../../../ui/management-access";
 import { createModelManagement } from "../../models/model-management";
 import {
   ModelManagementError,
@@ -1830,7 +1825,6 @@ export async function runServe(
   execution: CommandExecution,
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
-  const managementAccess = await loadManagementAccess(config.root);
   const uiAccess = createUiAccess({
     config: await loadUiAccessConfig(config.root),
   });
@@ -1909,7 +1903,7 @@ export async function runServe(
       return principalSchema.parse({
         kind: "browser-session",
         ownerId: uiCredential.ownerId,
-        permissions: defaultApiKeyScopes,
+        permissions: uiCredential.permissions,
       });
     };
     return Object.freeze({
@@ -2447,26 +2441,26 @@ export async function runServe(
     if (pathname === "/_localbase/model-management") {
       const principal = requestAuth.resolve(ctx.runtimeConfig.copy());
       if (principal.kind === "anonymous") return unauthorized();
-      const credential = { ownerId: principalOwnerId(principal) };
-      const canManage = canManageModels(credential, managementAccess);
+      const canRead =
+        authorize({
+          principal,
+          requirement: { kind: "permission", permission: "models:read" },
+        }).kind === "authorized";
+      const canManage =
+        authorize({
+          principal,
+          requirement: { kind: "permission", permission: "models:manage" },
+        }).kind === "authorized";
       const headers = { "cache-control": "no-store" };
-      if (request.method === "GET")
+      if (request.method === "GET") {
+        if (!canRead) return forbidden();
         return Response.json(
           { ...(await management.read()), canManage },
           { headers },
         );
+      }
       if (request.method !== "POST") return methodNotAllowed("GET, POST");
-      if (!canManage)
-        return openAIErrorResponse(
-          {
-            message: "Model management access denied.",
-            type: "permission_error",
-            param: null,
-            code: "model_management_denied",
-          },
-          403,
-          headers,
-        );
+      if (!canManage) return forbidden();
       let input;
       try {
         const body = await readBoundedRequestBody(request, 1024);

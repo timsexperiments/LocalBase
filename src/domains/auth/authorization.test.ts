@@ -21,7 +21,7 @@ const environment = principalSchema.parse({
 });
 const browser = principalSchema.parse({
   kind: "browser-session",
-  ownerId: "ui-access:owner",
+  ownerId: "browser:owner",
   permissions: ["inference:chat", "models:read"],
 });
 
@@ -171,7 +171,7 @@ test("video ownership stays stable and separates credential identities", () => {
   }
   expect(principalOwnerId(key)).toBe("api-key:environment");
   expect(principalOwnerId(environment)).toBe("environment");
-  expect(principalOwnerId(browser)).toBe("ui-access:owner");
+  expect(principalOwnerId(browser)).toBe("browser:owner");
   expect(
     principalOwnerId({
       ...key,

@@ -1,48 +1,17 @@
-import { join } from "node:path";
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { z } from "zod";
+import {
+  browserAccessConfigSchema,
+  loadBrowserAccessConfig,
+  type BrowserAccessConfig,
+} from "../domains/auth/browser-access";
+import type { Permission } from "../domains/auth/authorization";
 import { videoJobIdFromPath } from "../domains/runtime/route-dispatch";
 
-export const uiAccessConfigSchema = z
-  .object({
-    teamDomain: z
-      .string()
-      .regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.cloudflareaccess\.com$/),
-    audience: z
-      .string()
-      .min(1)
-      .refine((value) => value.trim() === value),
-    origin: z
-      .string()
-      .url()
-      .refine((value) => {
-        try {
-          const url = new URL(value);
-          return url.protocol === "https:" && url.origin === value;
-        } catch {
-          return false;
-        }
-      }, "Expected an exact HTTPS origin without path, credentials, or trailing slash."),
-  })
-  .strict();
-
-export async function loadUiAccessConfig(root: string) {
-  let contents: string;
-  try {
-    contents = await Bun.file(join(root, "ui-access.json")).text();
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT")
-      return null;
-    throw error;
-  }
-  try {
-    return uiAccessConfigSchema.parse(JSON.parse(contents));
-  } catch {
-    throw new Error(
-      "Invalid ui-access.json. Expected strict teamDomain, audience, and HTTPS origin configuration.",
-    );
-  }
-}
+export {
+  browserAccessConfigSchema as uiAccessConfigSchema,
+  loadBrowserAccessConfig as loadUiAccessConfig,
+};
 
 const humanClaimsSchema = z.object({
   sub: z
@@ -115,11 +84,14 @@ export function createUiAccess({
   config,
   keyResolver,
 }: {
-  config: Awaited<ReturnType<typeof loadUiAccessConfig>>;
+  config: BrowserAccessConfig | null;
   keyResolver?: JWTVerifyGetKey;
 }) {
-  const credentials = new WeakMap<Request, Readonly<{ ownerId: string }>>();
-  const issuer = config ? `https://${config.teamDomain}` : null;
+  const credentials = new WeakMap<
+    Request,
+    Readonly<{ ownerId: string; permissions: readonly Permission[] }>
+  >();
+  const issuer = config ? `https://${config.provider.teamDomain}` : null;
   const keys = issuer
     ? (keyResolver ??
       createRemoteJWKSet(new URL(`${issuer}/cdn-cgi/access/certs`), {
@@ -169,18 +141,21 @@ export function createUiAccess({
         const { payload } = await jwtVerify(token, keys, {
           algorithms: ["RS256"],
           issuer,
-          audience: config.audience,
+          audience: config.provider.audience,
           requiredClaims: ["exp", "sub", "email"],
         });
         const human = humanClaimsSchema.parse(payload);
-        ownerId = `ui-access:${new Bun.CryptoHasher("sha256")
-          .update(JSON.stringify([issuer, human.sub]))
+        ownerId = `browser:${new Bun.CryptoHasher("sha256")
+          .update(JSON.stringify([config.provider.kind, issuer, human.sub]))
           .digest("hex")}`;
       } catch {
         return respond(failure(401));
       }
       if (session) {
-        credentials.set(request, Object.freeze({ ownerId }));
+        credentials.set(
+          request,
+          Object.freeze({ ownerId, permissions: config.permissions }),
+        );
         return respond(
           Response.json(
             { authenticated: true },
@@ -207,7 +182,10 @@ export function createUiAccess({
         body: request.body,
         signal: request.signal,
       });
-      credentials.set(forwarded, Object.freeze({ ownerId }));
+      credentials.set(
+        forwarded,
+        Object.freeze({ ownerId, permissions: config.permissions }),
+      );
       return { kind: "forward", request: forwarded, pathname };
     },
   };

@@ -14,16 +14,20 @@ import {
   loadUiAccessConfig,
   uiAccessConfigSchema,
 } from "./access";
+import { defaultBrowserPermissions } from "../domains/auth/browser-access";
 import { startGatewayFixture } from "../test/gateway-fixture";
 import { VideoJobManager } from "../domains/runtime/video/video-job-manager";
-import { canManageModels } from "./management-access";
 
 const config = uiAccessConfigSchema.parse({
-  teamDomain: "test-team.cloudflareaccess.com",
-  audience: "test-audience",
+  provider: {
+    kind: "cloudflare-access",
+    teamDomain: "test-team.cloudflareaccess.com",
+    audience: "test-audience",
+  },
   origin: "https://ui.example.com",
+  permissions: defaultBrowserPermissions,
 });
-const issuer = `https://${config.teamDomain}`;
+const issuer = `https://${config.provider.teamDomain}`;
 let keys: Awaited<ReturnType<typeof generateKeyPair>>;
 let resolver: ReturnType<typeof createLocalJWKSet>;
 
@@ -37,7 +41,7 @@ beforeAll(async () => {
 async function token(overrides: JWTPayload = {}) {
   return new SignJWT({
     iss: issuer,
-    aud: config.audience,
+    aud: config.provider.audience,
     exp: Math.floor(Date.now() / 1000) + 300,
     sub: "person-one",
     email: "person@example.com",
@@ -100,7 +104,10 @@ test("loads only strict startup configuration; missing disables and malformed fa
       "test@team.cloudflareaccess.com",
     ]) {
       expect(
-        uiAccessConfigSchema.safeParse({ ...config, teamDomain }).success,
+        uiAccessConfigSchema.safeParse({
+          ...config,
+          provider: { ...config.provider, teamDomain },
+        }).success,
       ).toBe(false);
     }
     for (const origin of [
@@ -126,13 +133,14 @@ test("verifies every human session and never falls back after a JWT failure", as
   expect(valid.status).toBe(200);
   expect(await valid.json()).toEqual({ authenticated: true });
   expect(valid.headers.get("cache-control")).toBe("no-store");
-  expect(access.credential(validRequest)?.ownerId).toMatch(
-    /^ui-access:[0-9a-f]{64}$/,
-  );
+  expect(access.credential(validRequest)).toMatchObject({
+    ownerId: expect.stringMatching(/^browser:[0-9a-f]{64}$/),
+    permissions: defaultBrowserPermissions,
+  });
   const forgedKeys = await generateKeyPair("RS256");
   const forged = await new SignJWT({
     iss: issuer,
-    aud: config.audience,
+    aud: config.provider.audience,
     exp: 9999999999,
     sub: "person",
     email: "person@example.com",
@@ -142,7 +150,7 @@ test("verifies every human session and never falls back after a JWT failure", as
     .sign(forgedKeys.privateKey);
   const hmac = await new SignJWT({
     iss: issuer,
-    aud: config.audience,
+    aud: config.provider.audience,
     exp: 9999999999,
     sub: "person",
     email: "person@example.com",
@@ -297,22 +305,11 @@ test("maps only allowlisted UI calls and keeps credentials off headers and reque
       "cf-access-authenticated-user-email",
     ])
       expect(mapped.request.headers.has(name)).toBe(false);
-    expect(access.credential(mapped.request)?.ownerId).toMatch(
-      /^ui-access:[0-9a-f]{64}$/,
-    );
+    expect(access.credential(mapped.request)).toMatchObject({
+      ownerId: expect.stringMatching(/^browser:[0-9a-f]{64}$/),
+      permissions: defaultBrowserPermissions,
+    });
     expect(access.credential(mapped.request.clone())).toBeUndefined();
-    if (path === "/_localbase/model-management") {
-      const permissions = { allowUiSessions: true, apiKeyIds: [] };
-      expect(
-        canManageModels(access.credential(mapped.request), permissions),
-      ).toBe(true);
-      expect(canManageModels(access.credential(incoming), permissions)).toBe(
-        false,
-      );
-      expect(
-        canManageModels(access.credential(mapped.request.clone()), permissions),
-      ).toBe(false);
-    }
     expect(access.credential(incoming)).toBeUndefined();
   }
   for (const path of [
@@ -395,10 +392,16 @@ test("isolates video ownership by issuer and subject, independent of email and J
   ).toBe(first);
   const second = await owner({ sub: "person-two" });
   expect(second).not.toBe(first);
-  const otherConfig = { ...config, teamDomain: "other.cloudflareaccess.com" };
+  const otherConfig = {
+    ...config,
+    provider: {
+      ...config.provider,
+      teamDomain: "other.cloudflareaccess.com",
+    },
+  };
   expect(
     await owner(
-      { iss: `https://${otherConfig.teamDomain}` },
+      { iss: `https://${otherConfig.provider.teamDomain}` },
       createUiAccess({ config: otherConfig, keyResolver: resolver }),
     ),
   ).not.toBe(first);
@@ -509,14 +512,14 @@ test("disabled browser authentication denies UI sessions and Access JWTs never a
         method: "POST",
         headers: {
           ...managementHeaders,
-          "x-localbase-owner-id": `ui-access:${"a".repeat(64)}`,
+          "x-localbase-owner-id": `browser:${"a".repeat(64)}`,
         },
         body: "not JSON",
       },
     );
     expect(denied.status).toBe(403);
     expect(await denied.json()).toMatchObject({
-      error: { code: "model_management_denied" },
+      error: { code: "insufficient_permissions" },
     });
     const chat = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
       method: "POST",
