@@ -5,6 +5,7 @@ import { z } from "zod";
 import { generationTools, generateVideo, runChat } from "./tools";
 import {
   api,
+  consumeFragmentKey,
   createUiId,
   availableModels,
   historyKey,
@@ -167,7 +168,7 @@ function Drawer({
   );
 }
 function App() {
-  const [key, setKey] = useState("");
+  const [key, setKey] = useState(() => consumeFragmentKey());
   const [session, setSession] = useState<SessionState>({ kind: "checking" });
   const credential = sessionConnection(session, key);
   const [models, setModels] = useState<Model[]>([]);
