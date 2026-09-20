@@ -2,7 +2,17 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import { z } from "zod";
-import { generationTools, generateVideo, runChat } from "./tools";
+import { generationTools, generateVideo, runChat, toolModels } from "./tools";
+import {
+  GenerationSettingsFields,
+  modelGenerationSettings,
+  type GenerationPreferences,
+  type GenerationSettings,
+  embeddingParameters,
+  imageParameters,
+  speechParameters,
+  transcriptionParameters,
+} from "./generation-settings";
 import {
   api,
   discardLegacyFragmentCredential,
@@ -27,6 +37,13 @@ import {
   type ChatMessage,
 } from "./client";
 import "./style.css";
+import {
+  conversationNavigation,
+  readNavigation,
+  resolveNavigation,
+  writeNavigation,
+  type Navigation,
+} from "./navigation";
 
 const labels: Record<Mode, string> = {
   llm: "Chat",
@@ -41,6 +58,7 @@ const starters = [
   "Help me write a first draft",
   "Think through an idea",
 ];
+const navigationAbortReason = Symbol("navigation");
 function fresh(
   mode: Mode = "llm",
   workspace: Conversation["workspace"] = "chat",
@@ -149,7 +167,10 @@ function Drawer({
     <dialog
       ref={ref}
       aria-labelledby="drawer-title"
-      onCancel={close}
+      onCancel={(event) => {
+        event.preventDefault();
+        close();
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
@@ -180,17 +201,33 @@ function App() {
       : session.kind === "checking"
         ? "Checking sign-in"
         : connection;
-  const [drawer, setDrawer] = useState<
-    "settings" | "models" | "history" | null
-  >(null);
-  const [conversations, setConversations] = useState<Conversation[]>([fresh()]);
-  const [activeId, setActiveId] = useState("");
-  const [persistent, setPersistent] = useState(false);
+  const [initial] = useState(() => {
+    let saved: Conversation[] | null = null;
+    let error = "";
+    try {
+      saved = readHistory();
+    } catch {
+      error = "Saved history could not be read. You can clear it in Settings.";
+    }
+    return {
+      ...resolveNavigation({
+        navigation: readNavigation(location.search),
+        conversations: saved ?? [],
+        fresh,
+      }),
+      persistent: saved !== null,
+      error,
+    };
+  });
+  const [drawer, setPanel] = useState(initial.navigation.panel);
+  const [conversations, setConversations] = useState(initial.conversations);
+  const [activeId, setActiveId] = useState(initial.conversation.id);
+  const [persistent, setPersistent] = useState(initial.persistent);
   const [draft, setDraft] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [voice, setVoice] = useState("default");
-  const [dimensions, setDimensions] = useState(0);
-  const [error, setError] = useState("");
+  const [generationPreferences, setGenerationPreferences] =
+    useState<GenerationPreferences>({});
+  const [error, setError] = useState(initial.error);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | null>(null);
@@ -202,22 +239,17 @@ function App() {
   const page = active?.workspace ?? "chat";
   const candidates = availableModels(models, active?.mode ?? "llm");
   const model = candidates.find((m) => m.id === active?.model) ?? candidates[0];
+  const generationSettings = modelGenerationSettings(
+    generationPreferences,
+    model?.id,
+  );
+  function setModelSettings(modelId: string, settings: GenerationSettings) {
+    setGenerationPreferences((preferences) => ({
+      ...preferences,
+      [modelId]: settings,
+    }));
+  }
   const capabilities = model?.catalog.capabilities;
-  const voices: string[] =
-    capabilities?.kind === "speech"
-      ? capabilities.voice.requestValues
-      : ["default"];
-  const selectedVoice = voices.includes(voice) ? voice : "default";
-  const selectedDimensions =
-    capabilities?.kind === "embedding"
-      ? Math.max(
-          capabilities.dimensions.minimum,
-          Math.min(
-            dimensions || capabilities.dimensions.maximum,
-            capabilities.dimensions.maximum,
-          ),
-        )
-      : 0;
   const unsupportedVideo =
     active?.mode === "video" &&
     capabilities?.kind === "video" &&
@@ -226,6 +258,14 @@ function App() {
     setConversations((items) =>
       items.map((c) => (c.id === id ? change(c) : c)),
     );
+  function setDrawer(panel: Navigation["panel"]) {
+    if (!active) return;
+    setPanel(panel);
+    writeNavigation(
+      conversationNavigation(active, panel, model?.id ?? active.model),
+      "push",
+    );
+  }
   async function checkSession(signal?: AbortSignal) {
     try {
       const verified = await readSession(signal);
@@ -289,22 +329,46 @@ function App() {
     };
   }, [session]);
   useEffect(() => {
-    try {
-      const saved = readHistory();
-      if (saved !== null) {
-        setPersistent(true);
-        if (saved.length) setConversations(saved);
-      }
-    } catch {
-      setError(
-        "Saved history could not be read. You can clear it in Settings.",
-      );
-    }
+    writeNavigation(initial.navigation, "replace");
     return () => {
       controller.current?.abort();
       mediaUrls.current.forEach((url) => URL.revokeObjectURL(url));
     };
   }, []);
+  useEffect(() => {
+    const restore = () => {
+      const restored = resolveNavigation({
+        navigation: readNavigation(location.search),
+        conversations,
+        fresh,
+      });
+      if (
+        restored.conversation.id !== activeId ||
+        restored.conversation.model !== active?.model
+      ) {
+        controller.current?.abort(navigationAbortReason);
+        setDraft("");
+        setFile(null);
+        setError("");
+        setWarnings([]);
+        nearBottom.current = true;
+      }
+      setConversations(restored.conversations);
+      setActiveId(restored.conversation.id);
+      setPanel(restored.navigation.panel);
+      writeNavigation(restored.navigation, "replace");
+    };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, [conversations, activeId]);
+  useEffect(() => {
+    if (!active || !model || active.model === model.id) return;
+    update(active.id, (conversation) => ({ ...conversation, model: model.id }));
+    writeNavigation(
+      conversationNavigation(active, drawer, model.id),
+      "replace",
+    );
+  }, [active?.id, active?.model, model?.id, drawer]);
   useEffect(() => {
     if (persistent)
       try {
@@ -319,7 +383,11 @@ function App() {
     if (nearBottom.current)
       bottom.current?.scrollIntoView({ behavior: "instant" });
   }, [active?.messages]);
-  function newChat(mode: Mode = active?.mode ?? "llm", workspace = page) {
+  function newChat(
+    mode: Mode = active?.mode ?? "llm",
+    workspace = page,
+    panel: Navigation["panel"] = null,
+  ) {
     if (busy) return;
     const c = fresh(mode, workspace);
     setConversations((items) => [c, ...items].slice(0, 30));
@@ -327,7 +395,8 @@ function App() {
     setDraft("");
     setFile(null);
     setError("");
-    setDrawer(null);
+    setPanel(panel);
+    writeNavigation(conversationNavigation(c, panel), "push");
     nearBottom.current = true;
   }
   async function send(retry = false) {
@@ -396,6 +465,7 @@ function App() {
               m.protocol ?? (m.text ? [{ role: m.role, content: m.text }] : []),
           );
           const protocol = await runChat({
+            preferences: generationPreferences,
             model,
             models,
             connection: credential,
@@ -422,6 +492,7 @@ function App() {
         case "video": {
           const id = crypto.randomUUID();
           const video = await generateVideo({
+            settings: generationSettings,
             model,
             connection: credential,
             signal: abort.signal,
@@ -465,7 +536,7 @@ function App() {
                   json({
                     model: model.id,
                     input: text,
-                    dimensions: selectedDimensions,
+                    ...embeddingParameters(model, generationSettings.embedding),
                     encoding_format: "float",
                   }),
                 )
@@ -487,7 +558,7 @@ function App() {
                   model: model.id,
                   prompt: text,
                   n: 1,
-                  size: "512x512",
+                  ...imageParameters(generationSettings.image),
                   response_format: "b64_json",
                 }),
               )
@@ -512,7 +583,7 @@ function App() {
             json({
               model: model.id,
               input: text,
-              voice: selectedVoice,
+              ...speechParameters(model, generationSettings.tts),
               response_format: "wav",
             }),
           );
@@ -531,6 +602,10 @@ function App() {
           body.set("file", file);
           body.set("model", model.id);
           body.set("response_format", "json");
+          for (const [name, value] of Object.entries(
+            transcriptionParameters(model, generationSettings.stt),
+          ))
+            body.set(name, value);
           const result = transcriptionSchema.parse(
             await (
               await api("/v1/audio/transcriptions", credential, {
@@ -568,15 +643,16 @@ function App() {
             : artifact,
         ),
       }));
-      setError(
-        e instanceof SessionRequiredError
-          ? ""
-          : abort.signal.aborted
-            ? "Stopped. You can retry this request."
-            : e instanceof Error
-              ? e.message
-              : "Request failed. Try again.",
-      );
+      if (abort.signal.reason !== navigationAbortReason)
+        setError(
+          e instanceof SessionRequiredError
+            ? ""
+            : abort.signal.aborted
+              ? "Stopped. You can retry this request."
+              : e instanceof Error
+                ? e.message
+                : "Request failed. Try again.",
+        );
     } finally {
       setBusy(false);
       controller.current = null;
@@ -594,9 +670,14 @@ function App() {
         >
           ☰
         </button>
-        <div className="brand">
+        <button
+          type="button"
+          className="brand"
+          disabled={busy}
+          onClick={() => newChat("llm", "chat")}
+        >
           <span className="brand-mark">L</span>LocalBase
-        </div>
+        </button>
         <span className="local-label">PLAYGROUND</span>
         <button className="settings" onClick={() => setDrawer("settings")}>
           Settings
@@ -654,6 +735,14 @@ function App() {
             <span>⌄</span>
           </button>
           <button
+            className="generation-settings-button"
+            disabled={busy || !model}
+            onClick={() => setDrawer("generation")}
+            aria-label="Controls: generation settings"
+          >
+            Controls
+          </button>
+          <button
             disabled={busy}
             onClick={() => newChat()}
             aria-label="New conversation"
@@ -671,10 +760,6 @@ function App() {
           <div className="conversation">
             {!active.messages.length && (
               <section className="empty">
-                <div className="empty-mark">
-                  L<span>●</span>
-                </div>
-                <p className="eyebrow">{labels[active.mode]}</p>
                 <h1>
                   {active.mode === "llm"
                     ? page === "chat"
@@ -819,7 +904,12 @@ function App() {
             </p>
           )}
           {active.mode === "image" && (
-            <p className="notice">PNG · 512 × 512 · one image per request</p>
+            <p className="notice">
+              PNG ·{" "}
+              {generationSettings.image.size?.replace("x", " × ") ??
+                "Model default size"}{" "}
+              · one image per request
+            </p>
           )}
           {error && (
             <div className="error" role="alert">
@@ -901,34 +991,6 @@ function App() {
               <span>
                 {labels[active.mode]}
                 {active.mode === "tts" && ` · ${draft.length}/256`}
-                {active.mode === "tts" && (
-                  <select
-                    aria-label="Voice"
-                    value={selectedVoice}
-                    disabled={busy}
-                    onChange={(e) => setVoice(e.target.value)}
-                  >
-                    {voices.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                )}
-                {capabilities?.kind === "embedding" && (
-                  <label>
-                    {" "}
-                    Dimensions{" "}
-                    <input
-                      type="number"
-                      min={capabilities.dimensions.minimum}
-                      max={capabilities.dimensions.maximum}
-                      value={selectedDimensions}
-                      disabled={busy}
-                      onChange={(e) =>
-                        setDimensions(e.currentTarget.valueAsNumber || 0)
-                      }
-                    />
-                  </label>
-                )}
               </span>
               {busy ? (
                 <button
@@ -966,15 +1028,70 @@ function App() {
       {drawer && (
         <Drawer
           title={
-            drawer === "settings"
-              ? "Settings"
-              : drawer === "models"
-                ? "Models"
-                : "History"
+            drawer === "generation"
+              ? "Generation settings"
+              : drawer === "settings"
+                ? "Settings"
+                : drawer === "models"
+                  ? "Models"
+                  : "History"
           }
           close={() => setDrawer(null)}
         >
-          {drawer === "settings" ? (
+          {drawer === "generation" ? (
+            <div className="generation-settings">
+              <p className="generation-settings-hint">
+                Saved per model for this session, shared by chat and Model Lab.
+                Blank values use model defaults.
+              </p>
+              {model ? (
+                <div>
+                  <h3>{model.catalog.name}</h3>
+                  <GenerationSettingsFields
+                    mode={active.mode}
+                    model={model}
+                    settings={generationSettings}
+                    onChange={(settings) =>
+                      setModelSettings(model.id, settings)
+                    }
+                  />
+                </div>
+              ) : (
+                <p className="generation-settings-hint">
+                  Choose an installed model to adjust its controls.
+                </p>
+              )}
+              {page === "chat" &&
+                model &&
+                generationTools(models, model).flatMap((tool) => {
+                  const name = tool.function.name;
+                  const mode =
+                    name === "generate_image"
+                      ? "image"
+                      : name === "generate_video"
+                        ? "video"
+                        : "tts";
+                  return toolModels(models, name).map((target) => (
+                    <div key={target.id}>
+                      <h3>
+                        {target.catalog.name} · {labels[mode]}
+                      </h3>
+                      <GenerationSettingsFields
+                        mode={mode}
+                        model={target}
+                        settings={modelGenerationSettings(
+                          generationPreferences,
+                          target.id,
+                        )}
+                        onChange={(settings) =>
+                          setModelSettings(target.id, settings)
+                        }
+                      />
+                    </div>
+                  ));
+                })}
+            </div>
+          ) : drawer === "settings" ? (
             <>
               <p className="muted">{connectionLabel}</p>
               <button disabled={busy} onClick={() => void checkSession()}>
@@ -1018,6 +1135,10 @@ function App() {
                   const c = fresh();
                   setConversations([c]);
                   setActiveId(c.id);
+                  writeNavigation(
+                    conversationNavigation(c, "settings"),
+                    "push",
+                  );
                   setDraft("");
                   setFile(null);
                   setError("");
@@ -1047,8 +1168,7 @@ function App() {
                       className={active.mode === mode ? "selected" : ""}
                       key={mode}
                       onClick={() => {
-                        newChat(mode);
-                        setDrawer("models");
+                        newChat(mode, page, "models");
                       }}
                     >
                       {labels[mode]}
@@ -1064,7 +1184,11 @@ function App() {
                     key={m.id}
                     onClick={() => {
                       update(active.id, (c) => ({ ...c, model: m.id }));
-                      setDrawer(null);
+                      setPanel(null);
+                      writeNavigation(
+                        conversationNavigation(active, null, m.id),
+                        "push",
+                      );
                     }}
                   >
                     <strong>{m.catalog.name}</strong>
@@ -1108,7 +1232,8 @@ function App() {
                     setDraft("");
                     setFile(null);
                     setError("");
-                    setDrawer(null);
+                    setPanel(null);
+                    writeNavigation(conversationNavigation(c, null), "push");
                     nearBottom.current = true;
                   }}
                 >
