@@ -5,6 +5,7 @@ import { join, basename } from "node:path";
 import { resolveApiKey, type LocalBaseConfig } from "../../../manager";
 import {
   authorize,
+  defaultApiKeyScopes,
   permissionSchema,
   principalOwnerId,
   principalSchema,
@@ -78,9 +79,16 @@ import {
 import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
 import { playgroundResponse } from "../../../ui/static";
+import {
+  createUiAccess,
+  isUiAccessPath,
+  loadUiAccessConfig,
+} from "../../../ui/access";
 import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
 import { gatewayAuthorizationRequirement } from "../route-authorization";
 import { VideoJobManager } from "../video/video-job-manager";
+import { createVideoArtifactPreparer } from "../video/video-converter";
+import { ensureVideoConverter } from "../../../manager/video-converter";
 import { logVideoJobTerminal } from "../video/video-job-logging";
 import { createStableDiffusionVideoClient } from "../video/stable-diffusion-video-client";
 import { handleVideoGatewayRequest } from "../video/gateway-handler";
@@ -134,6 +142,7 @@ const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
 
 type GatewayRequestAuth = Readonly<{
   resolve(config: LocalBaseConfig): Principal;
+  resolveUi(request: Request): Principal;
   telemetry(required: boolean): NonNullable<HttpRequestLogInput["auth"]>;
 }>;
 
@@ -1062,6 +1071,11 @@ function filterProxyHeaders(headers: Headers): Headers {
   for (const header of [
     "authorization",
     "x-api-key",
+    "cookie",
+    "cf-access-jwt-assertion",
+    "cf-access-authenticated-user-email",
+    "cf-access-client-id",
+    "cf-access-client-secret",
     "proxy-authorization",
     "baggage",
     "connection",
@@ -1797,6 +1811,9 @@ export async function runServe(
   execution: CommandExecution,
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
+  const uiAccess = createUiAccess({
+    config: await loadUiAccessConfig(config.root),
+  });
   const wrapperHost = input.host ?? config.gatewayHost;
   const wrapperPort = input.port ?? config.gatewayPort;
   const startupStaticConfig = {
@@ -1859,8 +1876,21 @@ export async function runServe(
   const authMode = parseAuthMode(input.authMode);
   const gatewayRequestAuth = (request: Request): GatewayRequestAuth => {
     const token = extractAuthToken(request, authMode);
+    const credentialPresented =
+      token !== null ||
+      request.headers.has("cookie") ||
+      request.headers.has("cf-access-jwt-assertion");
     let resolved = false;
     let principal: Principal = { kind: "anonymous" };
+    const resolveUiPrincipal = (currentRequest: Request): Principal => {
+      const uiCredential = uiAccess.credential(currentRequest);
+      if (!uiCredential) return { kind: "anonymous" };
+      return principalSchema.parse({
+        kind: "browser-session",
+        ownerId: uiCredential.ownerId,
+        permissions: defaultApiKeyScopes,
+      });
+    };
     return Object.freeze({
       resolve(config: LocalBaseConfig) {
         if (resolved) return principal;
@@ -1884,6 +1914,12 @@ export async function runServe(
         }
         return principal;
       },
+      resolveUi(currentRequest: Request) {
+        if (resolved) return principal;
+        resolved = true;
+        principal = resolveUiPrincipal(currentRequest);
+        return principal;
+      },
       telemetry(required: boolean): NonNullable<HttpRequestLogInput["auth"]> {
         if (!required) return { outcome: "disabled" };
         switch (principal.kind) {
@@ -1900,8 +1936,14 @@ export async function runServe(
               principalId: "environment",
               source: "environment",
             };
+          case "browser-session":
+            return {
+              outcome: "authenticated",
+              principalId: principal.ownerId,
+              source: "browser_session",
+            };
           case "anonymous":
-            return { outcome: token ? "invalid" : "missing" };
+            return { outcome: credentialPresented ? "invalid" : "missing" };
           default: {
             const exhaustive: never = principal;
             return exhaustive;
@@ -2280,6 +2322,9 @@ export async function runServe(
       baseUrl: factory.baseUrl("video", initialSnapshot),
     }),
     temporaryDirectory: join(config.root, "tmp"),
+    prepareArtifact: createVideoArtifactPreparer({
+      ensureConverter: (signal) => ensureVideoConverter(config.root, signal),
+    }),
     onContainmentFailure: ({ jobId, source }) => {
       ctx.logger.event({
         severity: "error",
@@ -2361,7 +2406,18 @@ export async function runServe(
     requirement: AuthorizationRequirement,
     playground?: Response,
   ): Promise<Response> => {
-    if (playground) return playground;
+    const uiResult = await uiAccess.handle(request);
+    if (uiResult.kind === "response") {
+      requestAuth.resolveUi(request);
+      return uiResult.response;
+    }
+    if (uiResult.kind === "forward") {
+      request = uiResult.request;
+      pathname = uiResult.pathname;
+      requestAuth.resolveUi(request);
+    }
+    const publicAsset = playground ?? playgroundResponse(request, pathname);
+    if (publicAsset) return publicAsset;
     const route = selectGatewayRoute(pathname);
     const queueFailure = (error: unknown, modality: RuntimeModality) =>
       inferenceQueueError(error, {
@@ -3013,7 +3069,8 @@ export async function runServe(
         parent,
       );
       span.setAttribute("localbase.request_id", requestId);
-      if (method === "OPTIONS") {
+      const uiRequest = isUiAccessPath(pathname);
+      if (method === "OPTIONS" && !uiRequest) {
         span.setAttribute("http.response.status_code", 204);
         span.end();
         return new Response(null, {
@@ -3081,16 +3138,23 @@ export async function runServe(
       }
 
       const headers = new Headers(response.headers);
-      headers.set("Access-Control-Allow-Origin", "*");
-      headers.set(
-        "Access-Control-Allow-Methods",
-        "GET, POST, PUT, DELETE, OPTIONS",
-      );
+      if (!uiRequest) {
+        headers.set("Access-Control-Allow-Origin", "*");
+        headers.set(
+          "Access-Control-Allow-Methods",
+          "GET, POST, PUT, DELETE, OPTIONS",
+        );
+        headers.set(
+          "Access-Control-Allow-Headers",
+          "Content-Type, Authorization, x-api-key",
+        );
+      } else {
+        for (const name of [...headers.keys()]) {
+          if (name.startsWith("access-control-")) headers.delete(name);
+        }
+        headers.set("cache-control", "no-store");
+      }
       headers.set("x-localbase-request-id", requestId);
-      headers.set(
-        "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, x-api-key",
-      );
 
       const durationMs = performance.now() - start;
       if (!isEventStream(response)) {

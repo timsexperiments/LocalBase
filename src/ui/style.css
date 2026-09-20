@@ -117,6 +117,42 @@ p {
   display: flex;
   flex-direction: column;
 }
+.primary-nav {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px 0;
+}
+.primary-nav [aria-current="page"] {
+  background: #244d42;
+  color: white;
+}
+.lab-modes {
+  margin: 8px 12px 0;
+}
+.artifact {
+  border: 1px solid #dce3d7;
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 12px;
+  font-size: 14px;
+}
+.artifact .artifact {
+  border: 0;
+  padding: 0;
+}
+.download {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.composer input[type="number"] {
+  width: 100px;
+  min-height: 44px;
+  border: 1px solid #dce3d7;
+  border-radius: 8px;
+  font-size: 16px;
+}
 .toolbar {
   padding: 16px calc(32px + env(safe-area-inset-right)) 16px
     calc(32px + env(safe-area-inset-left));
@@ -370,6 +406,14 @@ audio {
   width: 100%;
   margin-top: 12px;
 }
+video {
+  display: block;
+  width: 100%;
+  max-height: 60dvh;
+  border-radius: 12px;
+  margin-top: 12px;
+  background: #111;
+}
 .muted,
 .hint {
   color: #778276;
@@ -392,6 +436,15 @@ audio {
 }
 .error span {
   flex: 1;
+}
+.session-notice {
+  flex-wrap: wrap;
+}
+.session-notice > span {
+  flex-basis: 100%;
+}
+.session-notice .download {
+  padding: 8px 12px;
 }
 .notice {
   font-size: 12px;
