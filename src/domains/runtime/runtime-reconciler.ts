@@ -85,6 +85,8 @@ export class RuntimeRequestAbortedError extends Error {
   }
 }
 
+class ModelNoLongerSelectedError extends Error {}
+
 function configuredModalities(
   snapshot: RuntimeConfigSnapshot,
   ownership: RuntimeOverrideOwnership,
@@ -428,13 +430,19 @@ export class RuntimeReconciler {
         modelId !== activeModel(modality, admissionSnapshot.config) &&
         !this.ownedFields.has(activeModelField(modality))
       ) {
-        admissionSnapshot = await this.activateModel(
-          modality,
-          modelId,
-          desiredSnapshot,
-          signal,
-          dispatchLease,
-        );
+        try {
+          admissionSnapshot = await this.activateModel(
+            modality,
+            modelId,
+            desiredSnapshot,
+            signal,
+            dispatchLease,
+          );
+        } catch (error) {
+          if (error instanceof ModelNoLongerSelectedError)
+            return { kind: "model-not-found" };
+          throw error;
+        }
       }
       this.throwIfAborted(signal);
       dispatchLease?.throwIfCancelled();
@@ -621,16 +629,25 @@ export class RuntimeReconciler {
       }
       throw error;
     }
-    const target = await this.exclusive(async () => {
-      dispatchLease?.throwIfCancelled();
-      const target = await this.controller.update((config) => {
-        config[field] = modelId;
+    let target: RuntimeConfigSnapshot;
+    try {
+      target = await this.exclusive(async () => {
+        dispatchLease?.throwIfCancelled();
+        const target = await this.controller.update((config) => {
+          if (!selectedModels(modality, config).includes(modelId))
+            throw new ModelNoLongerSelectedError();
+          config[field] = modelId;
+        });
+        this.snapshot = target;
+        this.configured = configuredModalities(target, this.ownership);
+        return target;
       });
-      this.snapshot = target;
-      this.configured = configuredModalities(target, this.ownership);
-      return target;
-    });
-    dispatchLease?.throwIfCancelled();
+      dispatchLease?.throwIfCancelled();
+    } catch (error) {
+      this.supervisors.clearDraining(modality);
+      this.barriers[modality].attach();
+      throw error;
+    }
     const previous = this.supervisors.take(modality);
     await previous?.shutdown();
     dispatchLease?.throwIfCancelled();
