@@ -221,6 +221,14 @@ test("normalizes server span routes through a closed allowlist", () => {
   expect(serverSpanName("post", "/v1/audio/speech")).toBe(
     "POST /v1/audio/speech",
   );
+  expect(
+    normalizedOtelRoute(
+      "/v1/videos/00000000-0000-4000-8000-000000000000/content",
+    ),
+  ).toBe("/v1/videos/{job_id}/content");
+  expect(normalizedOtelRoute("/_localbase/models/qwen%2Ftest")).toBe(
+    "/_localbase/models/{model_id}",
+  );
   expect(normalizedOtelRoute("/private/path?token=secret")).toBe(
     "unmatched-route",
   );
@@ -470,6 +478,7 @@ test("exports correlated OTLP logs and parented W3C spans to a collector", async
     );
     let serverSpanId = "";
     let childSpanId = "";
+    let emittedEvent: ReturnType<typeof createLogEvent> | undefined;
     await runtime.withSpan(
       "HTTP POST",
       serverSpanOptions("POST", "/v1/chat/completions"),
@@ -507,7 +516,7 @@ test("exports correlated OTLP logs and parented W3C spans to a collector", async
           prompt_duration_ms: 1.25,
           predicted_duration_ms: 2.75,
         });
-        runtime.emit(event);
+        emittedEvent = event;
         await runtime.withSpan(
           "localbase.backend.inference",
           { kind: SpanKind.CLIENT },
@@ -518,6 +527,7 @@ test("exports correlated OTLP logs and parented W3C spans to a collector", async
       },
       parent,
     );
+    runtime.emit(emittedEvent!);
     await runtime.forceFlush();
 
     expect(requests.map((request) => request.path).sort()).toEqual([

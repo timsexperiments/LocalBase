@@ -91,7 +91,7 @@ function recordingLogger(
       onEvent?.(input.eventName);
     },
     request() {},
-    pipeStream() {},
+    async drainStream() {},
     async enableFileLogging() {},
     async close() {},
   };

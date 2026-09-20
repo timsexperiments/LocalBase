@@ -9,7 +9,7 @@ import {
   waitForLogEvent,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
-import { decodeOtlpTraceSpans } from "../../test/otlp-fixture";
+import { decodeOtlpLogs, decodeOtlpTraceSpans } from "../../test/otlp-fixture";
 import {
   LocalBaseLogger,
   readLogSnapshot,
@@ -554,7 +554,10 @@ test("gateway returns service unavailable without proxying a failed backend", as
 });
 
 test("health is public while instance identity requires its private token", async () => {
-  const gateway = await startGatewayFixture({ managedIdentity: true });
+  const gateway = await startGatewayFixture({
+    managedIdentity: true,
+    auth: {},
+  });
   try {
     const publicResponse = await fetch(`${gateway.baseUrl}/health`);
     expect(publicResponse.status).toBe(200);
@@ -599,8 +602,9 @@ test("health is public while instance identity requires its private token", asyn
   }
 });
 
-test("compiled managed gateway writes redacted root-bound operational logs", async () => {
+test("compiled managed gateway suppresses successful health access logs", async () => {
   const gateway = await startGatewayFixture({ managedIdentity: true });
+  let localRequestId: string | null = null;
   try {
     const response = await fetch(`${gateway.baseUrl}/health`, {
       headers: {
@@ -609,33 +613,59 @@ test("compiled managed gateway writes redacted root-bound operational logs", asy
       },
     });
     expect(response.status).toBe(200);
-    const localRequestId = response.headers.get("x-localbase-request-id");
+    localRequestId = response.headers.get("x-localbase-request-id");
     expect(localRequestId).toMatch(/^lbreq_/);
+  } finally {
+    await gateway.stop({ preserveRoot: true });
+  }
+  const events = await readLogSnapshot(gateway.root);
+  expect(events.some((event) => event.eventName === "gateway.started")).toBe(
+    true,
+  );
+  expect(events.some((event) => event.requestId === localRequestId)).toBe(
+    false,
+  );
+  expect(JSON.stringify(events)).not.toContain("private-token");
+  rmSync(gateway.root, { recursive: true, force: true });
+});
 
-    const deadline = Date.now() + 3_000;
-    let events = await readLogSnapshot(gateway.root);
-    while (
-      Date.now() < deadline &&
-      !events.some(
-        (event) =>
-          event.eventName === "http.request" &&
-          event.requestId === localRequestId,
-      )
-    ) {
-      await Bun.sleep(25);
-      events = await readLogSnapshot(gateway.root);
-    }
-    expect(events.some((event) => event.eventName === "gateway.started")).toBe(
-      true,
+test("compiled gateway records safe authenticated principal metadata", async () => {
+  const gateway = await startGatewayFixture({ auth: {} });
+  try {
+    const response = await fetch(`${gateway.baseUrl}/v1/models`, {
+      headers: { authorization: `Bearer ${gateway.apiKey}` },
+    });
+    expect(response.status).toBe(200);
+    await response.text();
+    const requestId = response.headers.get("x-localbase-request-id");
+    const event = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "http.request" &&
+        candidate.requestId === requestId,
     );
-    expect(
-      events.some(
-        (event) =>
-          event.eventName === "http.request" &&
-          event.requestId === localRequestId,
-      ),
-    ).toBe(true);
-    expect(JSON.stringify(events)).not.toContain("private-token");
+    expect(event.attributes).toMatchObject({
+      auth_outcome: "authenticated",
+      auth_principal_name: "conformance",
+      auth_source: "stored_key",
+    });
+    expect(event.attributes?.auth_principal_id).toMatch(/^key_/);
+    expect(JSON.stringify(event)).not.toContain(gateway.apiKey!);
+
+    const rejected = await fetch(`${gateway.baseUrl}/v1/models`, {
+      headers: { authorization: "Bearer invalid-private-key" },
+    });
+    expect(rejected.status).toBe(401);
+    await rejected.text();
+    const rejectedId = rejected.headers.get("x-localbase-request-id");
+    const rejectedEvent = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "http.request" &&
+        candidate.requestId === rejectedId,
+    );
+    expect(rejectedEvent.attributes).toMatchObject({ auth_outcome: "invalid" });
+    expect(rejectedEvent.attributes?.auth_principal_id).toBeUndefined();
   } finally {
     await gateway.stop();
   }
@@ -886,6 +916,78 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
   expect(logPayloads).not.toEqual([]);
   expect(traceBytes.includes(Buffer.from(traceId, "hex"))).toBe(true);
   expect(logBytes.includes(Buffer.from(traceId, "hex"))).toBe(true);
+  const decodedSpans = tracePayloads.flatMap(decodeOtlpTraceSpans);
+  const decodedLogs = logPayloads.flatMap(decodeOtlpLogs);
+  const serverSpan = decodedSpans.find(
+    (span) =>
+      span.name === "POST /v1/chat/completions" && span.traceId === traceId,
+  );
+  expect(serverSpan).toBeDefined();
+  expect(serverSpan!.attributes["localbase.auth.outcome"]).toBe("disabled");
+  const requestLog = decodedLogs.find(
+    (record) =>
+      record.attributes["event.name"] === "http.request" &&
+      record.attributes["localbase.request_id"] === requestId,
+  );
+  expect(requestLog).toMatchObject({
+    traceId,
+    spanId: serverSpan!.spanId,
+  });
+  expect(requestLog!.attributes.auth_outcome).toBe("disabled");
+  const inferenceSpan = decodedSpans.find(
+    (span) =>
+      span.name === "localbase.inference" &&
+      span.attributes["localbase.request_id"] === requestId,
+  );
+  const inferenceLog = decodedLogs.find(
+    (record) =>
+      record.attributes["event.name"] === "inference.completed" &&
+      record.attributes["localbase.request_id"] === requestId,
+  );
+  expect(inferenceSpan).toBeDefined();
+  expect(inferenceSpan!.parentSpanId).toBe(serverSpan!.spanId);
+  const backendSpan = decodedSpans.find(
+    (span) =>
+      span.name === "localbase.backend.inference" && span.traceId === traceId,
+  );
+  expect(backendSpan).toBeDefined();
+  expect(backendSpan!.parentSpanId).toBe(inferenceSpan!.spanId);
+  expect(inferenceLog).toMatchObject({
+    traceId,
+    spanId: inferenceSpan!.spanId,
+  });
+  for (const terminalRequestId of [cancelledRequestId, backendErrorRequestId]) {
+    const terminalServerSpan = decodedSpans.find(
+      (span) =>
+        span.name === "POST /v1/chat/completions" &&
+        span.attributes["localbase.request_id"] === terminalRequestId,
+    );
+    const terminalInferenceSpan = decodedSpans.find(
+      (span) =>
+        span.name === "localbase.inference" &&
+        span.attributes["localbase.request_id"] === terminalRequestId,
+    );
+    const terminalRequestLog = decodedLogs.find(
+      (record) =>
+        record.attributes["event.name"] === "http.request" &&
+        record.attributes["localbase.request_id"] === terminalRequestId,
+    );
+    const terminalInferenceLog = decodedLogs.find(
+      (record) =>
+        record.attributes["event.name"] === "inference.completed" &&
+        record.attributes["localbase.request_id"] === terminalRequestId,
+    );
+    expect(terminalServerSpan).toBeDefined();
+    expect(terminalInferenceSpan).toBeDefined();
+    expect(terminalRequestLog).toMatchObject({
+      traceId: terminalServerSpan!.traceId,
+      spanId: terminalServerSpan!.spanId,
+    });
+    expect(terminalInferenceLog).toMatchObject({
+      traceId: terminalInferenceSpan!.traceId,
+      spanId: terminalInferenceSpan!.spanId,
+    });
+  }
   const exportedLogText = new TextDecoder().decode(logBytes);
   expect(exportedLogText).not.toContain("never-export-this-prompt");
   expect(exportedLogText).not.toContain("never-export-unknown-finish-reason");
@@ -1055,7 +1157,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
         span.attributes["localbase.request_id"] === admissionFailureRequestId,
     )?.attributes,
   ).not.toHaveProperty("localbase.inference.terminal.source");
-});
+}, 120_000);
 
 describe("API gateway integration", () => {
   let gateway: GatewayFixture;
