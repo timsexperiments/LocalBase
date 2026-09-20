@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { tmpdir } from "node:os";
 import { CATALOG } from "../../catalog";
 import { DatabaseSession } from "../../db/client";
 import { createApiKey } from "../../manager";
@@ -9,6 +10,7 @@ import {
 import {
   startGatewayFixture,
   type GatewayFixture,
+  waitForLogEvent,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 
@@ -31,7 +33,10 @@ describe("authenticated model metadata endpoints", () => {
   let gateway: GatewayFixture | undefined;
 
   beforeAll(async () => {
-    gateway = await startGatewayFixture({ auth: { mode: "either" } });
+    gateway = await startGatewayFixture({
+      auth: { mode: "either" },
+      workingDirectory: tmpdir(),
+    });
   });
 
   afterAll(async () => {
@@ -54,6 +59,58 @@ describe("authenticated model metadata endpoints", () => {
       `${activeGateway().baseUrl}/_localbase/models`,
     );
     expect(response.status).toBe(401);
+  });
+
+  test("compiled playground is public outside the checkout without bypassing API auth", async () => {
+    const base = activeGateway().baseUrl;
+    const shell = await fetch(`${base}/app`);
+    expect(shell.status).toBe(200);
+    expect(shell.headers.get("content-security-policy")).toContain(
+      "frame-ancestors 'none'",
+    );
+    expect(shell.headers.get("cache-control")).toBe("no-store");
+    const requestId = shell.headers.get("x-localbase-request-id");
+    const html = await shell.text();
+    const requestEvent = await waitForLogEvent(
+      activeGateway(),
+      (event) =>
+        event.eventName === "http.request" && event.requestId === requestId,
+    );
+    expect(requestEvent.attributes?.auth_outcome).toBe("disabled");
+    const paths = [
+      ...html.matchAll(/(?:src|href)="(\/app\/assets\/[^\"]+)"/g),
+    ].map((match) => match[1]);
+    expect(paths.length).toBe(2);
+    for (const path of ["/", "/app", "/app/", ...paths]) {
+      const get = await fetch(`${base}${path}`);
+      const head = await fetch(`${base}${path}`, { method: "HEAD" });
+      expect(get.status).toBe(200);
+      expect(head.status).toBe(200);
+      expect(Number(head.headers.get("content-length"))).toBe(
+        (await get.arrayBuffer()).byteLength,
+      );
+      expect(await head.text()).toBe("");
+    }
+    for (const path of [
+      "/app/assets/missing.js",
+      "/app/v1/models",
+      "/app/assets/constructor",
+      "/v1/models",
+      "/v1/chat/completions",
+      "/_localbase/models",
+    ]) {
+      const response = await fetch(`${base}${path}`);
+      expect(response.status).toBe(401);
+      expect(response.headers.get("content-type")).not.toContain("text/html");
+    }
+    expect((await fetch(`${base}/app`, { method: "POST" })).status).toBe(401);
+    expect(
+      (await fetch(`${base}/v1/models`, { headers: authHeaders() })).status,
+    ).toBe(200);
+    expect(
+      (await fetch(`${base}/app/assets/missing.js`, { headers: authHeaders() }))
+        .status,
+    ).toBe(404);
   });
 
   test("returns strict catalog and device metadata without starting runtimes", async () => {
