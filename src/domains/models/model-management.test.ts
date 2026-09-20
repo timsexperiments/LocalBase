@@ -15,6 +15,7 @@ import { defaultConfig, saveConfig } from "../../manager";
 import { RuntimeConfigController } from "../runtime/config-snapshot";
 import { createRuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
 import type { RuntimeModality } from "../runtime/modality";
+import { withRootOperation } from "../service/ownership";
 import { createModelManagement } from "./model-management";
 import {
   modelManagementSchema,
@@ -509,4 +510,18 @@ test("background installation verifies fixture bytes and publishes completion", 
   await expect(
     f.management.run(f.model.modelId, "enable"),
   ).resolves.toMatchObject({ state: "complete" });
+});
+
+test("uninstall rechecks configuration after waiting for another root operation", async () => {
+  const f = fixture();
+  writeFileSync(f.path, "abc");
+  let uninstall!: Promise<unknown>;
+  await withRootOperation(f.root, "test configuration update", async () => {
+    uninstall = f.management.run(f.model.modelId, "uninstall");
+    const config = f.runtimeConfig.copy();
+    config.selectedSttModels.push(f.model.modelId);
+    saveConfig(f.database, config);
+  });
+  await expect(uninstall).rejects.toMatchObject({ code: "conflict" });
+  expect(existsSync(f.path)).toBe(true);
 });

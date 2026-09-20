@@ -5,6 +5,7 @@ import { installModel, type LocalBaseConfig } from "../../manager";
 import type { RuntimeConfigController } from "../runtime/config-snapshot";
 import type { RuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
 import type { RuntimeModality } from "../runtime/modality";
+import { withRootOperation } from "../service/ownership";
 import {
   ModelManagementError,
   type ModelManagement,
@@ -358,35 +359,38 @@ export function createModelManagement({
       return running;
     }
     if (action === "uninstall") {
-      // No await between the fresh config/lifecycle checks and exact-file deletion.
-      if (
-        config[field.selected].includes(modelId) ||
-        config[field.active] === modelId ||
-        protectedModelIds().has(modelId) ||
-        Object.values(lifecycle()).some(
-          (runtime) => runtime.modelId === modelId,
-        )
-      ) {
-        throw new ModelManagementError(
-          "conflict",
-          "Disable the model and wait for runtime reconciliation before uninstalling.",
+      await withRootOperation(config.root, "uninstall model", async () => {
+        runtimeConfig.refreshSync();
+        const fresh = runtimeConfig.copy();
+        if (
+          fresh[field.selected].includes(modelId) ||
+          fresh[field.active] === modelId ||
+          protectedModelIds().has(modelId) ||
+          Object.values(lifecycle()).some(
+            (runtime) => runtime.modelId === modelId,
+          )
+        ) {
+          throw new ModelManagementError(
+            "conflict",
+            "Disable the model and wait for runtime reconciliation before uninstalling.",
+          );
+        }
+        const shared = new Set(
+          CATALOG.filter((other) => other.modelId !== modelId).flatMap(
+            (other) =>
+              paths(fresh, other).flatMap((path) => [path, `${path}.partial`]),
+          ),
         );
-      }
-      const shared = new Set(
-        CATALOG.filter((other) => other.modelId !== modelId).flatMap((other) =>
-          paths(config, other).flatMap((path) => [path, `${path}.partial`]),
-        ),
-      );
-      const targets = [
-        ...new Set(
-          paths(config, model).flatMap((path) => [path, `${path}.partial`]),
-        ),
-      ].filter((path) => !shared.has(path));
-      // Validate the whole set before removing anything.
-      const present = targets.filter(
-        (path) => safeFile(config.root, path) !== null,
-      );
-      for (const path of present) unlinkSync(path);
+        const targets = [
+          ...new Set(
+            paths(fresh, model).flatMap((path) => [path, `${path}.partial`]),
+          ),
+        ].filter((path) => !shared.has(path));
+        const present = targets.filter(
+          (path) => safeFile(fresh.root, path) !== null,
+        );
+        for (const path of present) unlinkSync(path);
+      });
     } else {
       if ((action === "enable" || action === "activate") && !facts.installed)
         throw new ModelManagementError("conflict", "Install the model first.");
