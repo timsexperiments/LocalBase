@@ -10,6 +10,7 @@ import {
 import {
   startGatewayFixture,
   type GatewayFixture,
+  waitForLogEvent,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 
@@ -68,7 +69,14 @@ describe("authenticated model metadata endpoints", () => {
       "frame-ancestors 'none'",
     );
     expect(shell.headers.get("cache-control")).toBe("no-store");
+    const requestId = shell.headers.get("x-localbase-request-id");
     const html = await shell.text();
+    const requestEvent = await waitForLogEvent(
+      activeGateway(),
+      (event) =>
+        event.eventName === "http.request" && event.requestId === requestId,
+    );
+    expect(requestEvent.attributes?.auth_outcome).toBe("disabled");
     const paths = [
       ...html.matchAll(/(?:src|href)="(\/app\/assets\/[^\"]+)"/g),
     ].map((match) => match[1]);

@@ -74,7 +74,8 @@ p {
   border-bottom: 1px solid #e5e8e2;
   display: flex;
   align-items: center;
-  padding: 0 28px;
+  padding: 0 calc(28px + env(safe-area-inset-right)) 0
+    calc(28px + env(safe-area-inset-left));
   gap: 16px;
 }
 .brand {
@@ -117,7 +118,8 @@ p {
   flex-direction: column;
 }
 .toolbar {
-  padding: 16px 32px;
+  padding: 16px calc(32px + env(safe-area-inset-right)) 16px
+    calc(32px + env(safe-area-inset-left));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -156,7 +158,8 @@ main {
 .conversation {
   max-width: 768px;
   margin: auto;
-  padding: 12px 32px 24px;
+  padding: 12px calc(32px + env(safe-area-inset-right)) 24px
+    calc(32px + env(safe-area-inset-left));
 }
 .empty {
   padding-top: clamp(12px, 7vh, 80px);
@@ -243,7 +246,9 @@ h1 {
 }
 .composer-area {
   flex-shrink: 0;
-  padding: 12px 32px max(12px, env(safe-area-inset-bottom));
+  padding: 12px calc(32px + env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom))
+    calc(32px + env(safe-area-inset-left));
   width: 100%;
   max-width: 832px;
   margin: auto;
@@ -503,7 +508,8 @@ dialog::backdrop {
 @media (max-width: 600px) {
   .topbar {
     height: 64px;
-    padding: 0 12px;
+    padding: 0 calc(12px + env(safe-area-inset-right)) 0
+      calc(12px + env(safe-area-inset-left));
     gap: 7px;
   }
   .local-label {
@@ -517,16 +523,20 @@ dialog::backdrop {
     padding: 8px 10px;
   }
   .toolbar {
-    padding: 10px 12px;
+    padding: 10px calc(12px + env(safe-area-inset-right)) 10px
+      calc(12px + env(safe-area-inset-left));
   }
   .new-label {
     display: none;
   }
   .conversation {
-    padding: 4px 20px 18px;
+    padding: 4px calc(20px + env(safe-area-inset-right)) 18px
+      calc(20px + env(safe-area-inset-left));
   }
   .composer-area {
-    padding: 8px 12px max(10px, env(safe-area-inset-bottom));
+    padding: 8px calc(12px + env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom))
+      calc(12px + env(safe-area-inset-left));
   }
   .empty {
     padding-top: 20px;

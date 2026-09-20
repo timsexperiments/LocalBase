@@ -377,9 +377,9 @@ function App() {
         >
           ☰
         </button>
-        <a className="brand" href="/app">
+        <div className="brand">
           <span className="brand-mark">L</span>LocalBase
-        </a>
+        </div>
         <span className="local-label">PLAYGROUND</span>
         <button className="settings" onClick={() => setDrawer("settings")}>
           Settings
