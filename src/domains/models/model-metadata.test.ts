@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { byId } from "../../catalog";
+import { byId, CATALOG, type ModelSpec } from "../../catalog";
 import { defaultConfig } from "../../manager";
 import { createRuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
 import {
@@ -12,6 +12,7 @@ const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const multipartModelId = "qwen3-coder-next-q4_k_m";
 const speechModelId = "qwen3-tts-1.7b-base-q4_k_m";
 const embeddingModelId = "qwen3-embedding-0.6b-q8_0";
+const videoModelId = "wan2.1-t2v-1.3b-q8_0";
 
 function catalogModel(id = modelId) {
   const model = byId(id);
@@ -219,18 +220,108 @@ test("reports only the supported cold speech contract", () => {
   expect(metadata.catalog.maxOutputTokens).toBeNull();
 });
 
+test("projects qualified video limits and mode without exposing runtime internals", () => {
+  const video = catalogModel(videoModelId);
+  if (!video.videoRuntime) throw new Error("Expected video runtime profile.");
+  const speechVideo = {
+    ...video,
+    modelId: "test-s2v",
+    features: ["speech-to-video", "avi-output"],
+    inputModalities: ["text", "audio", "image"],
+    videoRuntime: {
+      ...video.videoRuntime,
+      mode: "s2v",
+      artifacts: {
+        ...video.videoRuntime.artifacts,
+        decoder: { kind: "vae", artifactFilename: "test-vae.safetensors" },
+        audioEncoder: "test-audio.safetensors",
+      },
+      qualification: {
+        ...video.videoRuntime.qualification,
+        maxWidth: 832,
+        maxHeight: 480,
+        maxFrames: 81,
+        fps: 24,
+        jobDeadlineMs: 900_000,
+      },
+    },
+  } satisfies ModelSpec;
+  const catalog = [video, catalogModel("fastwan2.2-ti2v-5b-q6_k"), speechVideo];
+  const list = projectModelMetadataList({
+    catalog,
+    config: defaultConfig("/tmp/localbase-model-metadata-video"),
+    installations: new Map(),
+    runtimes: runtimeSnapshots(),
+  });
+
+  for (const [index, model] of catalog.entries()) {
+    if (!model.videoRuntime) throw new Error("Expected video runtime profile.");
+    const { qualification, mode } = model.videoRuntime;
+    expect(list.data[index]?.catalog.capabilities).toEqual({
+      kind: "video",
+      mode,
+      width: qualification.maxWidth,
+      height: qualification.maxHeight,
+      frames: qualification.maxFrames,
+      fps: qualification.fps,
+      jobDeadlineMs: qualification.jobDeadlineMs,
+      outputFormats: ["mp4"],
+    });
+    expect(list.data[index]?.catalog.features).toEqual(model.features);
+  }
+});
+
 test("uses the strict response schemas for lists and entries", () => {
   const model = catalogModel();
   const input = {
-    catalog: [model],
+    catalog: CATALOG,
     config: defaultConfig("/tmp/localbase-model-metadata-strict"),
     installations: new Map([[modelId, false]]),
     runtimes: runtimeSnapshots(),
   };
   const list = projectModelMetadataList(input);
 
-  expect(list.data).toHaveLength(1);
+  expect(list.data).toHaveLength(CATALOG.length);
+  for (const [index, model] of CATALOG.entries()) {
+    expect(list.data[index]?.catalog.features).toEqual(model.features);
+  }
   expect(
     modelMetadataSchema.safeParse({ ...list.data[0], extra: true }).success,
   ).toBe(false);
+
+  const metadata = projectModelMetadata(model, input);
+  for (const features of [undefined, "tool-calling", [1]]) {
+    expect(
+      modelMetadataSchema.safeParse({
+        ...metadata,
+        catalog: { ...metadata.catalog, features },
+      }).success,
+    ).toBe(false);
+  }
+
+  const video = projectModelMetadata(catalogModel(videoModelId), input);
+  const capabilities = video.catalog.capabilities;
+  if (capabilities?.kind !== "video")
+    throw new Error("Expected video capability.");
+  const invalidCapabilities = [
+    { ...capabilities, extra: true },
+    { ...capabilities, mode: "i2v" },
+    { ...capabilities, outputFormats: ["avi"] },
+    { ...capabilities, outputFormats: ["mp4", "mp4"] },
+    { ...capabilities, dimensions: { minimum: 1, maximum: 2 } },
+    { ...capabilities, kind: "speech" },
+  ];
+  for (const field of ["width", "height", "frames", "fps", "jobDeadlineMs"]) {
+    for (const value of [undefined, 0, -1, 1.5, "16"]) {
+      invalidCapabilities.push({ ...capabilities, [field]: value });
+    }
+  }
+  for (const invalid of invalidCapabilities) {
+    expect(
+      modelMetadataSchema.safeParse({
+        ...video,
+        catalog: { ...video.catalog, capabilities: invalid },
+      }).success,
+    ).toBe(false);
+  }
 });

@@ -58,6 +58,7 @@ export const managedExecutableNameSchema = z.enum([
   "whisper-server",
   "sd-server",
   "sd-cli",
+  "ffmpeg",
 ]);
 export type ManagedExecutableName = z.infer<typeof managedExecutableNameSchema>;
 
@@ -67,13 +68,28 @@ const executableRuntimeFamily = {
   "whisper-server": "whisper-server",
   "sd-server": "sd-server",
   "sd-cli": "sd-server",
-} as const satisfies Record<ManagedExecutableName, RuntimeName>;
+  ffmpeg: "ffmpeg",
+} as const satisfies Record<ManagedExecutableName, RuntimeName | "ffmpeg">;
 
 const runtimeFamilyExecutables = {
   "llama-server": ["llama-server", "llama-tts"],
   "whisper-server": ["whisper-server"],
   "sd-server": ["sd-server", "sd-cli"],
-} as const satisfies Record<RuntimeName, readonly ManagedExecutableName[]>;
+  ffmpeg: ["ffmpeg"],
+} as const satisfies Record<
+  RuntimeName | "ffmpeg",
+  readonly ManagedExecutableName[]
+>;
+
+export type ManagedInstallOptions = {
+  signal?: AbortSignal;
+  supportFiles?: readonly {
+    filename: string;
+    url: string;
+    expectedSizeBytes: number;
+    sha256: string;
+  }[];
+};
 
 type ManagedExecutableRelease = Omit<ManagedRuntimeRelease, "name"> & {
   name: ManagedExecutableName;
@@ -292,14 +308,44 @@ async function verifyManagedBinary(
   return true;
 }
 
-async function downloadRelease(url: string, dest: string): Promise<void> {
-  const response = await fetch(url);
+async function downloadRelease(
+  url: string,
+  dest: string,
+  expectedSizeBytes: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(url, { signal });
   if (!response.ok) {
     throw new Error(
       `Failed to download ${url}: ${response.status} ${response.statusText}.`,
     );
   }
-  await Bun.write(dest, await response.bytes());
+  if (!response.body) throw new Error(`Empty download response for ${url}.`);
+  const reader = response.body.getReader();
+  const writer = Bun.file(dest).writer();
+  let received = 0;
+  try {
+    while (true) {
+      signal?.throwIfAborted();
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > expectedSizeBytes) {
+        throw new Error(`Download exceeds expected size for ${url}.`);
+      }
+      writer.write(value);
+      await writer.flush();
+    }
+    if (received !== expectedSizeBytes) {
+      throw new Error(
+        `Size mismatch for ${url}: expected ${expectedSizeBytes} bytes, got ${received}.`,
+      );
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+    await writer.end();
+  }
 }
 
 function archiveDestination(
@@ -645,7 +691,16 @@ async function serializeManagedInstall<T>(
 async function installManagedRuntimeNow(
   config: RuntimeConfig,
   release: ManagedExecutableRelease,
+  options: ManagedInstallOptions,
 ): Promise<string> {
+  options.signal?.throwIfAborted();
+  const supportFiles = options.supportFiles ?? [];
+  for (const file of supportFiles) {
+    safeFilenameSchema.parse(file.filename);
+    if (file.filename === release.name || file.filename.startsWith(".")) {
+      throw new Error(`Reserved runtime support filename: ${file.filename}.`);
+    }
+  }
   const binDir = join(config.root, "bin");
   const packageDir = runtimePackageDir(binDir, release);
   const destPath = join(packageDir, release.name);
@@ -653,7 +708,19 @@ async function installManagedRuntimeNow(
     (await Bun.file(destPath).exists()) &&
     (await verifyManagedBinary(packageDir, destPath, release))
   ) {
-    return destPath;
+    let complete = true;
+    for (const file of supportFiles) {
+      options.signal?.throwIfAborted();
+      const path = join(packageDir, file.filename);
+      if (!(await Bun.file(path).exists())) {
+        complete = false;
+        continue;
+      }
+      const { url: _url, ...authority } = file;
+      await verifyAuthoritativeFile(path, authority, packageDir);
+    }
+    options.signal?.throwIfAborted();
+    if (complete) return destPath;
   }
 
   const familyDir = dirname(packageDir);
@@ -667,7 +734,12 @@ async function installManagedRuntimeNow(
     console.log(
       `⬇️  Downloading pinned ${release.name} release ${release.tag}...`,
     );
-    await downloadRelease(release.url, downloadPath);
+    await downloadRelease(
+      release.url,
+      downloadPath,
+      release.expectedSizeBytes,
+      options.signal,
+    );
     await verifyAuthoritativeFile(
       downloadPath,
       {
@@ -690,14 +762,32 @@ async function installManagedRuntimeNow(
       );
     }
 
+    for (const file of supportFiles) {
+      options.signal?.throwIfAborted();
+      const path = join(stagingDir, file.filename);
+      await downloadRelease(
+        file.url,
+        path,
+        file.expectedSizeBytes,
+        options.signal,
+      );
+      const { url: _url, ...authority } = file;
+      await verifyAuthoritativeFile(path, authority, installDir);
+    }
+    options.signal?.throwIfAborted();
+
     const receipt = (await readReceipt(packageDir)) ?? {
       version: 1,
       runtimes: {},
     };
     const missing = await preflightStagedAssets(stagingDir, packageDir);
-    mkdirSync(packageDir, { recursive: true });
-    installMissingStagedAssets(stagingDir, packageDir, missing);
-    if (!(await Bun.file(destPath).exists())) {
+    options.signal?.throwIfAborted();
+    const freshPackage = !existingEntry(packageDir);
+    const publicationDir = freshPackage ? stagingDir : packageDir;
+    if (!freshPackage) {
+      installMissingStagedAssets(stagingDir, packageDir, missing);
+    }
+    if (!(await Bun.file(join(publicationDir, release.name)).exists())) {
       throw new Error(
         `${release.name} was not found after extracting ${release.assetName}.`,
       );
@@ -707,7 +797,7 @@ async function installManagedRuntimeNow(
       executableRuntimeFamily[release.name]
     ]) {
       if (!existingEntry(join(stagingDir, name))?.isFile()) continue;
-      const executable = join(packageDir, name);
+      const executable = join(publicationDir, name);
       chmodSync(executable, statSync(executable).mode | 0o111);
       receipt.runtimes[name] = {
         tag: release.tag,
@@ -721,7 +811,9 @@ async function installManagedRuntimeNow(
         file: identity(executable),
       };
     }
-    await writeReceipt(packageDir, receipt);
+    await writeReceipt(publicationDir, receipt);
+    options.signal?.throwIfAborted();
+    if (freshPackage) renameSync(stagingDir, packageDir);
     console.log(
       `✅ ${release.name} installed from authoritative release ${release.tag}.`,
     );
@@ -734,16 +826,28 @@ async function installManagedRuntimeNow(
 export async function installManagedRuntime(
   config: RuntimeConfig,
   release: ManagedExecutableRelease,
+  options: ManagedInstallOptions = {},
 ): Promise<string> {
+  options.signal?.throwIfAborted();
   const root = resolve(config.root);
-  return await serializeManagedInstall(
+  const installation = serializeManagedInstall(
     root,
-    async () => await installManagedRuntimeNow({ root }, release),
+    async () => await installManagedRuntimeNow({ root }, release, options),
   );
+  const { signal } = options;
+  if (!signal) return installation;
+  return new Promise<string>((resolveInstall, rejectInstall) => {
+    const abort = () => rejectInstall(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    installation.then(resolveInstall, rejectInstall).finally(() => {
+      signal.removeEventListener("abort", abort);
+    });
+    if (signal.aborted) abort();
+  });
 }
 
 export function managedExecutableRelease(
-  name: ManagedExecutableName,
+  name: Exclude<ManagedExecutableName, "ffmpeg">,
   target: PlatformTarget,
 ): ManagedExecutableRelease | undefined {
   const runtime = executableRuntimeFamily[name];
@@ -753,7 +857,7 @@ export function managedExecutableRelease(
 
 export async function ensureBinary(
   config: RuntimeConfig,
-  name: ManagedExecutableName,
+  name: Exclude<ManagedExecutableName, "ffmpeg">,
 ): Promise<string> {
   const binDir = join(config.root, "bin");
   const target = currentPlatformTarget();

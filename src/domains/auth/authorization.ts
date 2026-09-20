@@ -58,6 +58,13 @@ export const principalSchema = z.discriminatedUnion("kind", [
       permissions: permissionsSchema,
     })
     .readonly(),
+  z
+    .strictObject({
+      kind: z.literal("browser-session"),
+      ownerId: z.string().min(1),
+      permissions: permissionsSchema,
+    })
+    .readonly(),
 ]);
 
 export type Principal = z.infer<typeof principalSchema>;
@@ -107,6 +114,8 @@ export function principalOwnerId(
       return `api-key:${principal.id}`;
     case "environment":
       return "environment";
+    case "browser-session":
+      return principal.ownerId;
     default: {
       const exhaustive: never = principal;
       return exhaustive;

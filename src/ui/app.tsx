@@ -1,21 +1,29 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
+import { z } from "zod";
+import { generationTools, generateVideo, runChat } from "./tools";
 import {
   api,
   availableModels,
   historyKey,
   imageResponseSchema,
   modelsSchema,
+  modes,
   readHistory,
   readinessSchema,
-  streamText,
+  readSession,
+  sessionConnection,
+  SessionRequiredError,
+  type SessionState,
   transcriptionSchema,
   writeHistory,
   type Conversation,
   type Message,
   type Mode,
   type Model,
+  type Media,
+  type ChatMessage,
 } from "./client";
 import "./style.css";
 
@@ -24,18 +32,24 @@ const labels: Record<Mode, string> = {
   image: "Image",
   tts: "Speech",
   stt: "Transcribe",
+  video: "Video",
+  embedding: "Embeddings",
 };
 const starters = [
   "Explain something simply",
   "Help me write a first draft",
   "Think through an idea",
 ];
-function fresh(mode: Mode = "llm", model = ""): Conversation {
+function fresh(
+  mode: Mode = "llm",
+  workspace: Conversation["workspace"] = "chat",
+): Conversation {
   return {
     id: crypto.randomUUID(),
     title: "New conversation",
     mode,
-    model,
+    workspace,
+    model: "",
     messages: [],
   };
 }
@@ -67,6 +81,47 @@ function CodeBlock({ children }: { children?: ReactNode }) {
     <div className="code-block">
       <Copy text={() => ref.current?.textContent ?? ""} />
       <pre ref={ref}>{children}</pre>
+    </div>
+  );
+}
+function MediaCard({ media }: { media: Media }) {
+  const [playbackFailed, setPlaybackFailed] = useState(false);
+  return (
+    <div className="artifact">
+      {media.kind === "image" && (
+        <img
+          className="generated-image"
+          src={media.url}
+          alt="Generated from your prompt"
+        />
+      )}
+      {media.kind === "audio" && <audio controls src={media.url} />}
+      {media.kind === "video" && (
+        <>
+          <video
+            controls
+            playsInline
+            preload="metadata"
+            src={media.url}
+            aria-label="Generated video"
+            onError={() => setPlaybackFailed(true)}
+            onLoadedMetadata={() => setPlaybackFailed(false)}
+          />
+          {playbackFailed && (
+            <p role="status">
+              This browser could not play the video. Download the MP4 to play it
+              in another player.
+            </p>
+          )}
+        </>
+      )}
+      <a
+        className="download"
+        href={media.url}
+        download={`localbase.${media.kind === "image" ? "png" : media.kind === "audio" ? "wav" : media.format}`}
+      >
+        Download {media.kind}
+      </a>
     </div>
   );
 }
@@ -112,8 +167,18 @@ function Drawer({
 }
 function App() {
   const [key, setKey] = useState("");
+  const [session, setSession] = useState<SessionState>({ kind: "checking" });
+  const credential = sessionConnection(session, key);
   const [models, setModels] = useState<Model[]>([]);
   const [connection, setConnection] = useState("Connecting");
+  const connectionLabel =
+    session.kind === "error"
+      ? session.message
+      : session.kind === "checking"
+        ? "Checking sign-in"
+        : !credential
+          ? "Enter a gateway API key in Settings."
+          : connection;
   const [drawer, setDrawer] = useState<
     "settings" | "models" | "history" | null
   >(null);
@@ -123,7 +188,9 @@ function App() {
   const [draft, setDraft] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [voice, setVoice] = useState("default");
+  const [dimensions, setDimensions] = useState(0);
   const [error, setError] = useState("");
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | null>(null);
   const mediaUrls = useRef<string[]>([]);
@@ -131,26 +198,64 @@ function App() {
   const nearBottom = useRef(true);
   const active =
     conversations.find((c) => c.id === activeId) ?? conversations[0];
+  const page = active?.workspace ?? "chat";
   const candidates = availableModels(models, active?.mode ?? "llm");
   const model = candidates.find((m) => m.id === active?.model) ?? candidates[0];
-  const voices = model?.catalog.capabilities?.voice.requestValues ?? [
-    "default",
-  ];
+  const capabilities = model?.catalog.capabilities;
+  const voices: string[] =
+    capabilities?.kind === "speech"
+      ? capabilities.voice.requestValues
+      : ["default"];
   const selectedVoice = voices.includes(voice) ? voice : "default";
+  const selectedDimensions =
+    capabilities?.kind === "embedding"
+      ? Math.max(
+          capabilities.dimensions.minimum,
+          Math.min(
+            dimensions || capabilities.dimensions.maximum,
+            capabilities.dimensions.maximum,
+          ),
+        )
+      : 0;
+  const unsupportedVideo =
+    active?.mode === "video" &&
+    capabilities?.kind === "video" &&
+    capabilities.mode === "s2v";
   const update = (id: string, change: (c: Conversation) => Conversation) =>
     setConversations((items) =>
       items.map((c) => (c.id === id ? change(c) : c)),
     );
+  async function checkSession(signal?: AbortSignal) {
+    try {
+      const verified = await readSession(signal);
+      signal?.throwIfAborted();
+      setSession(verified);
+      if (verified.kind === "session") setKey("");
+    } catch (e) {
+      if (!signal?.aborted) {
+        setModels([]);
+        setSession({
+          kind: "error",
+          message:
+            e instanceof SessionRequiredError
+              ? e.message
+              : "Sign-in could not be verified. Reload this page to sign in, or refresh to try again.",
+        });
+      }
+    }
+  }
   async function refresh(signal?: AbortSignal) {
+    if (!credential) return;
     try {
       const [metadata, readiness] = await Promise.all([
-        api("/_localbase/models", key, { signal })
+        api("/_localbase/models", credential, { signal })
           .then((r) => r.json())
           .then((v) => modelsSchema.parse(v)),
         fetch("/health/ready", { signal, cache: "no-store" })
           .then((r) => r.json())
           .then((v) => readinessSchema.parse(v)),
       ]);
+      signal?.throwIfAborted();
       setModels(metadata.data);
       setConnection(
         readiness.status === "ready" ? "Gateway ready" : "Gateway not ready",
@@ -158,11 +263,23 @@ function App() {
     } catch (e) {
       if (!signal?.aborted) {
         setModels([]);
-        setConnection(e instanceof Error ? e.message : "Unable to connect");
+        if (e instanceof SessionRequiredError)
+          setSession({ kind: "error", message: e.message });
+        else
+          setConnection(e instanceof Error ? e.message : "Unable to connect");
       }
     }
   }
   useEffect(() => {
+    const abort = new AbortController();
+    void checkSession(abort.signal);
+    return () => abort.abort();
+  }, []);
+  useEffect(() => {
+    if (!credential) {
+      setModels([]);
+      return;
+    }
     const abort = new AbortController();
     void refresh(abort.signal);
     const timer = setInterval(() => void refresh(abort.signal), 15000);
@@ -170,7 +287,7 @@ function App() {
       abort.abort();
       clearInterval(timer);
     };
-  }, [key]);
+  }, [session, key]);
   useEffect(() => {
     try {
       const saved = readHistory();
@@ -202,9 +319,9 @@ function App() {
     if (nearBottom.current)
       bottom.current?.scrollIntoView({ behavior: "instant" });
   }, [active?.messages]);
-  function newChat(mode: Mode = active?.mode ?? "llm") {
+  function newChat(mode: Mode = active?.mode ?? "llm", workspace = page) {
     if (busy) return;
-    const c = fresh(mode);
+    const c = fresh(mode, workspace);
     setConversations((items) => [c, ...items].slice(0, 30));
     setActiveId(c.id);
     setDraft("");
@@ -216,8 +333,10 @@ function App() {
   async function send(retry = false) {
     if (
       !active ||
+      !credential ||
       !model ||
       busy ||
+      unsupportedVideo ||
       (!retry && active.mode !== "stt" && !draft.trim()) ||
       (active.mode === "stt" && !file)
     )
@@ -247,6 +366,7 @@ function App() {
     const abort = new AbortController();
     controller.current = abort;
     setBusy(true);
+    setWarnings([]);
     setError("");
     setDraft("");
     nearBottom.current = true;
@@ -267,30 +387,102 @@ function App() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
+    let authenticationFailed = false;
     try {
       switch (active.mode) {
-        case "llm":
-          await streamText(
-            await api(
-              "/v1/chat/completions",
-              key,
-              json({
-                model: model.id,
-                stream: true,
-                messages: [...base, user]
-                  .filter((m) => m.text)
-                  .map((m) => ({ role: m.role, content: m.text })),
-              }),
-            ),
-            (text) => patch((m) => ({ ...m, text: m.text + text })),
+        case "llm": {
+          const messages = [...base, user].flatMap(
+            (m): ChatMessage[] =>
+              m.protocol ?? (m.text ? [{ role: m.role, content: m.text }] : []),
           );
+          const protocol = await runChat({
+            model,
+            models,
+            connection: credential,
+            signal: abort.signal,
+            messages,
+            toolsEnabled: page === "chat",
+            append: (text) => patch((m) => ({ ...m, text: m.text + text })),
+            artifact: (artifact) =>
+              patch((m) => ({
+                ...m,
+                artifacts: [
+                  ...(m.artifacts ?? []).filter(
+                    (item) => item.id !== artifact.id,
+                  ),
+                  artifact,
+                ],
+              })),
+            register: (url) => mediaUrls.current.push(url),
+            warning: (detail) => setWarnings((items) => [...items, detail]),
+          });
+          patch((m) => ({ ...m, protocol }));
           break;
+        }
+        case "video": {
+          const id = crypto.randomUUID();
+          const video = await generateVideo({
+            model,
+            connection: credential,
+            signal: abort.signal,
+            prompt: text,
+            warning: (detail) => setWarnings((items) => [...items, detail]),
+            progress: (detail) =>
+              patch((m) => ({
+                ...m,
+                artifacts: [{ id, label: "Video", state: "working", detail }],
+              })),
+          });
+          abort.signal.throwIfAborted();
+          const url = URL.createObjectURL(video.blob);
+          mediaUrls.current.push(url);
+          patch((m) => ({
+            ...m,
+            text: "Generated video",
+            artifacts: [
+              {
+                id,
+                label: "Video",
+                state: "complete",
+                media: { kind: "video", url, format: video.format },
+              },
+            ],
+          }));
+          break;
+        }
+        case "embedding": {
+          const result = z
+            .object({
+              data: z.array(
+                z.object({ embedding: z.array(z.number()), index: z.number() }),
+              ),
+            })
+            .parse(
+              await (
+                await api(
+                  "/v1/embeddings",
+                  credential,
+                  json({
+                    model: model.id,
+                    input: text,
+                    dimensions: selectedDimensions,
+                    encoding_format: "float",
+                  }),
+                )
+              ).json(),
+            );
+          patch((m) => ({
+            ...m,
+            text: `\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``,
+          }));
+          break;
+        }
         case "image": {
           const result = imageResponseSchema.parse(
             await (
               await api(
                 "/v1/images/generations",
-                key,
+                credential,
                 json({
                   model: model.id,
                   prompt: text,
@@ -316,7 +508,7 @@ function App() {
         case "tts": {
           const response = await api(
             "/v1/audio/speech",
-            key,
+            credential,
             json({
               model: model.id,
               input: text,
@@ -341,7 +533,7 @@ function App() {
           body.set("response_format", "json");
           const result = transcriptionSchema.parse(
             await (
-              await api("/v1/audio/transcriptions", key, {
+              await api("/v1/audio/transcriptions", credential, {
                 method: "POST",
                 body,
                 signal: abort.signal,
@@ -353,17 +545,42 @@ function App() {
         }
       }
     } catch (e) {
+      if (e instanceof SessionRequiredError) {
+        authenticationFailed = true;
+        setModels([]);
+        setSession({ kind: "error", message: e.message });
+      }
+      patch((m) => ({
+        ...m,
+        protocol: [],
+        artifacts: m.artifacts?.map((artifact) =>
+          artifact.state === "working"
+            ? {
+                id: artifact.id,
+                label: artifact.label,
+                state: "error",
+                detail: abort.signal.aborted
+                  ? "Stopped"
+                  : e instanceof Error
+                    ? e.message
+                    : "Request failed",
+              }
+            : artifact,
+        ),
+      }));
       setError(
-        abort.signal.aborted
-          ? "Stopped. You can retry this request."
-          : e instanceof Error
-            ? e.message
-            : "Request failed. Try again.",
+        e instanceof SessionRequiredError
+          ? ""
+          : abort.signal.aborted
+            ? "Stopped. You can retry this request."
+            : e instanceof Error
+              ? e.message
+              : "Request failed. Try again.",
       );
     } finally {
       setBusy(false);
       controller.current = null;
-      void refresh();
+      if (!authenticationFailed) void refresh();
     }
   }
   if (!active) return null;
@@ -386,22 +603,52 @@ function App() {
         </button>
       </header>
       <div className="workspace">
+        <nav className="primary-nav" aria-label="Workspace">
+          <button
+            disabled={busy}
+            aria-current={page === "chat" ? "page" : undefined}
+            onClick={() => {
+              newChat("llm", "chat");
+            }}
+          >
+            Chat
+          </button>
+          <button
+            disabled={busy}
+            aria-current={page === "lab" ? "page" : undefined}
+            onClick={() => {
+              newChat("llm", "lab");
+            }}
+          >
+            Model Lab
+          </button>
+        </nav>
+        {page === "lab" && (
+          <div className="modes lab-modes" aria-label="Direct API mode">
+            {modes.map((mode) => (
+              <button
+                key={mode}
+                disabled={busy}
+                className={active.mode === mode ? "selected" : ""}
+                onClick={() => newChat(mode)}
+              >
+                {labels[mode]}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="toolbar">
           <button className="model-picker" onClick={() => setDrawer("models")}>
             <span
-              className={`status-dot ${connection === "Gateway ready" ? "ready" : ""}`}
-              aria-label={
-                connection === "Gateway ready"
-                  ? "Gateway ready"
-                  : "Gateway not ready"
-              }
+              className={`status-dot ${connectionLabel === "Gateway ready" ? "ready" : ""}`}
+              aria-label={connectionLabel}
             />
             <span>
               {model?.catalog.name ?? "Choose a model"}
               <small>
                 {model
                   ? `${labels[active.mode]} · ${model.catalog.quantization}`
-                  : "Connect your gateway"}
+                  : connectionLabel}
               </small>
             </span>
             <span>⌄</span>
@@ -430,34 +677,34 @@ function App() {
                 <p className="eyebrow">{labels[active.mode]}</p>
                 <h1>
                   {active.mode === "llm"
-                    ? "What’s on your mind?"
-                    : active.mode === "image"
-                      ? "Describe your image"
-                      : active.mode === "tts"
-                        ? "Turn text into speech"
-                        : "Turn audio into text"}
+                    ? page === "chat"
+                      ? "What’s on your mind?"
+                      : "Try a model directly"
+                    : active.mode === "video"
+                      ? "Describe your video"
+                      : active.mode === "embedding"
+                        ? "Inspect text embeddings"
+                        : active.mode === "image"
+                          ? "Describe your image"
+                          : active.mode === "tts"
+                            ? "Turn text into speech"
+                            : "Turn audio into text"}
                 </h1>
                 <p>
                   {active.mode === "llm"
-                    ? "Ask a question or start with an idea below."
-                    : active.mode === "image"
-                      ? "Write a prompt to generate an image."
-                      : active.mode === "tts"
-                        ? "Choose a voice and enter the words to read aloud."
-                        : "Choose an audio file to transcribe."}
+                    ? page === "chat"
+                      ? "Ask a question, or ask for an image, video, or speech using available tools."
+                      : "Direct chat completion. Generation tools are disabled in Model Lab."
+                    : active.mode === "video"
+                      ? "Generate a clip using the model’s qualified video profile."
+                      : active.mode === "embedding"
+                        ? "Enter text to view its embedding vector."
+                        : active.mode === "image"
+                          ? "Write a prompt to generate an image."
+                          : active.mode === "tts"
+                            ? "Choose a voice and enter the words to read aloud."
+                            : "Choose an audio file to transcribe."}
                 </p>
-                <div className="modes">
-                  {(Object.keys(labels) as Mode[]).map((mode) => (
-                    <button
-                      key={mode}
-                      className={active.mode === mode ? "selected" : ""}
-                      disabled={busy}
-                      onClick={() => newChat(mode)}
-                    >
-                      {labels[mode]}
-                    </button>
-                  ))}
-                </div>
                 {active.mode === "llm" && (
                   <div className="starters">
                     {starters.map((s) => (
@@ -495,23 +742,32 @@ function App() {
                     >
                       {message.text}
                     </Markdown>
-                  ) : busy ? (
+                  ) : message.artifacts?.length ? null : busy ? (
                     <p className="thinking">
                       Working<span>…</span>
                     </p>
                   ) : (
                     <p className="muted">No response</p>
                   )}
-                  {message.media?.kind === "image" && (
-                    <img
-                      className="generated-image"
-                      src={message.media.url}
-                      alt="Generated from your prompt"
-                    />
-                  )}
-                  {message.media?.kind === "audio" && (
-                    <audio controls src={message.media.url} />
-                  )}
+                  {message.media && <MediaCard media={message.media} />}
+                  {message.artifacts?.map((artifact) => (
+                    <section
+                      className="artifact"
+                      key={artifact.id}
+                      aria-live="polite"
+                    >
+                      <strong>{artifact.label.replaceAll("_", " ")}</strong>
+                      {artifact.state === "complete" ? (
+                        <MediaCard media={artifact.media} />
+                      ) : (
+                        <p
+                          role={artifact.state === "error" ? "alert" : "status"}
+                        >
+                          {artifact.detail}
+                        </p>
+                      )}
+                    </section>
+                  ))}
                 </div>
                 {message.role === "assistant" && message.text && (
                   <Copy text={message.text} />
@@ -522,12 +778,61 @@ function App() {
           </div>
         </main>
         <footer className="composer-area">
+          {session.kind === "error" && (
+            <div className="error session-notice" role="alert">
+              <span>{session.message}</span>
+              <a className="download" href="/app">
+                Sign in again
+              </a>
+              <button disabled={busy} onClick={() => void checkSession()}>
+                Refresh sign-in
+              </button>
+            </div>
+          )}
+          {warnings.length > 0 && (
+            <div className="error" role="alert">
+              <span>{warnings.join(" ")}</span>
+              <button
+                aria-label="Dismiss cleanup warnings"
+                onClick={() => setWarnings([])}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {page === "chat" && model && (
+            <p className="notice">
+              {generationTools(models, model).length
+                ? `Available tools: ${generationTools(models, model)
+                    .map((tool) => tool.function.name.replaceAll("_", " "))
+                    .join(", ")}`
+                : "Text chat only. Generation tools require a tool-calling chat model and selected, installed media models."}
+            </p>
+          )}
+          {active.mode === "video" && (
+            <p className="notice">
+              {capabilities?.kind === "video"
+                ? `${capabilities.mode.toUpperCase()} · ${capabilities.width} × ${capabilities.height} · ${capabilities.frames} frames · ${capabilities.fps} fps · MP4 delivery. Profile fixed by model qualification.`
+                : "No qualified video profile available."}{" "}
+              {unsupportedVideo &&
+                "Speech-to-video portrait and audio inputs are not supported in Model Lab yet. Select a text-to-video model."}
+            </p>
+          )}
+          {active.mode === "image" && (
+            <p className="notice">PNG · 512 × 512 · one image per request</p>
+          )}
           {error && (
             <div className="error" role="alert">
               <span>{error}</span>
               {active.messages.length > 0 && (
                 <button
-                  disabled={busy || !model || (active.mode === "stt" && !file)}
+                  disabled={
+                    busy ||
+                    !credential ||
+                    !model ||
+                    unsupportedVideo ||
+                    (active.mode === "stt" && !file)
+                  }
                   onClick={() => void send(true)}
                 >
                   Retry
@@ -542,7 +847,7 @@ function App() {
             <p className="notice">
               {models.length
                 ? `No selected, installed ${labels[active.mode].toLowerCase()} model. Configure one with the LocalBase CLI.`
-                : connection}{" "}
+                : connectionLabel}{" "}
               <button onClick={() => setDrawer("settings")}>Settings</button>
             </p>
           )}
@@ -608,6 +913,22 @@ function App() {
                     ))}
                   </select>
                 )}
+                {capabilities?.kind === "embedding" && (
+                  <label>
+                    {" "}
+                    Dimensions{" "}
+                    <input
+                      type="number"
+                      min={capabilities.dimensions.minimum}
+                      max={capabilities.dimensions.maximum}
+                      value={selectedDimensions}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setDimensions(e.currentTarget.valueAsNumber || 0)
+                      }
+                    />
+                  </label>
+                )}
               </span>
               {busy ? (
                 <button
@@ -622,7 +943,10 @@ function App() {
                   className="send"
                   type="submit"
                   disabled={
-                    !model || (active.mode === "stt" ? !file : !draft.trim())
+                    !model ||
+                    !credential ||
+                    unsupportedVideo ||
+                    (active.mode === "stt" ? !file : !draft.trim())
                   }
                   aria-label="Send request"
                 >
@@ -652,22 +976,35 @@ function App() {
         >
           {drawer === "settings" ? (
             <>
-              <p className="muted">{connection}</p>
-              <label>
-                Gateway API key
-                <input
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={key}
-                  placeholder="Paste your API key"
-                  onChange={(e) => setKey(e.target.value)}
-                />
-              </label>
-              <p className="hint">
-                Kept in memory for this page only. Sent only to this gateway.
-              </p>
-              <button onClick={() => void refresh()}>Refresh connection</button>
+              <p className="muted">{connectionLabel}</p>
+              {session.kind === "api-key" && (
+                <>
+                  <label>
+                    Gateway API key
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={key}
+                      placeholder="Paste your API key"
+                      disabled={busy}
+                      onChange={(e) => setKey(e.target.value)}
+                    />
+                  </label>
+                  <p className="hint">
+                    Kept in memory for this page only. Sent only to this
+                    gateway.
+                  </p>
+                </>
+              )}
+              <button disabled={busy} onClick={() => void checkSession()}>
+                Refresh connection
+              </button>
+              {session.kind === "error" && (
+                <a className="download" href="/app">
+                  Sign in again
+                </a>
+              )}
               <hr />
               <label className="toggle">
                 <input
@@ -688,8 +1025,8 @@ function App() {
               </label>
               <p className="hint">
                 Optional browser storage, visible to others using this browser.
-                API keys and generated media are never saved. Turning this off
-                removes saved history.
+                Credentials and generated media are never saved. Turning this
+                off removes saved history.
               </p>
               <button
                 className="danger"
@@ -722,21 +1059,23 @@ function App() {
                 Selected, installed models on this gateway. Choosing a model may
                 load it on your next request.
               </p>
-              <div className="modes">
-                {(Object.keys(labels) as Mode[]).map((mode) => (
-                  <button
-                    disabled={busy}
-                    className={active.mode === mode ? "selected" : ""}
-                    key={mode}
-                    onClick={() => {
-                      newChat(mode);
-                      setDrawer("models");
-                    }}
-                  >
-                    {labels[mode]}
-                  </button>
-                ))}
-              </div>
+              {page === "lab" && (
+                <div className="modes">
+                  {modes.map((mode) => (
+                    <button
+                      disabled={busy}
+                      className={active.mode === mode ? "selected" : ""}
+                      key={mode}
+                      onClick={() => {
+                        newChat(mode);
+                        setDrawer("models");
+                      }}
+                    >
+                      {labels[mode]}
+                    </button>
+                  ))}
+                </div>
+              )}
               {candidates.length ? (
                 candidates.map((m) => (
                   <button
@@ -795,6 +1134,7 @@ function App() {
                 >
                   <strong>{c.title}</strong>
                   <small>
+                    {c.workspace === "lab" ? "Model Lab" : "Chat"} ·{" "}
                     {labels[c.mode]} · {c.messages.length} messages
                   </small>
                 </button>

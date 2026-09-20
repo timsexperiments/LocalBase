@@ -63,6 +63,211 @@ function admissionCounter() {
   };
 }
 
+test("keeps conversion pending and persists only prepared MP4 metadata and bytes", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-prepare-"));
+  const entered = deferred<void>();
+  const release = deferred<void>();
+  const admission = admissionCounter();
+  const converted = Uint8Array.from([4, 5, 6, 7]);
+  const manager = createManager({
+    temporaryDirectory: root,
+    backend: {
+      async submitVideo() {
+        return { id: "native", status: "queued" };
+      },
+      async getJob() {
+        return completed("native");
+      },
+    },
+    acquireAdmission: admission.acquire,
+    supervisedStop: async () => {},
+    prepareArtifact: async ({ media, signal, directory, maxArtifactBytes }) => {
+      expect(media.bytes).toEqual(Uint8Array.from([1, 2, 3]));
+      expect(directory.startsWith(join(root, "video-jobs"))).toBe(true);
+      expect(signal.aborted).toBe(false);
+      expect(maxArtifactBytes).toBe(64 * 1024 * 1024);
+      entered.resolve();
+      await release.promise;
+      return {
+        ...media,
+        bytes: converted,
+        outputFormat: "mp4",
+        mimeType: "video/mp4",
+      };
+    },
+  });
+  try {
+    const started = await manager.start({
+      ownerId: "owner",
+      input: { kind: "text", prompt: "test" },
+      jobDeadlineMs: 60_000,
+    });
+    if (started.kind !== "accepted") throw new Error("Expected admission.");
+    await entered.promise;
+    expect(manager.get({ ownerId: "owner", id: started.job.id })?.state).toBe(
+      "in_progress",
+    );
+    expect(
+      manager.artifact({ ownerId: "owner", id: started.job.id }),
+    ).toBeUndefined();
+    expect(admission.snapshot().released).toBe(0);
+    release.resolve();
+    await expect(started.terminal).resolves.toMatchObject({
+      state: "completed",
+      artifact: {
+        mimeType: "video/mp4",
+        outputFormat: "mp4",
+        byteLength: 4,
+        fps: 16,
+        frameCount: 33,
+      },
+    });
+    const artifact = manager.artifact({ ownerId: "owner", id: started.job.id });
+    if (!artifact) throw new Error("Expected prepared artifact.");
+    expect(await Bun.file(artifact.path).bytes()).toEqual(converted);
+    expect(statSync(artifact.path).mode & 0o777).toBe(0o600);
+    expect(admission.snapshot().released).toBe(1);
+  } finally {
+    release.resolve();
+    await manager.shutdown();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test.each(["cancelled", "deadline", "shutdown"] as const)(
+  "%s waits for converter abort cleanup without publishing an artifact",
+  async (reason) => {
+    const root = mkdtempSync(join(tmpdir(), "localbase-video-prepare-abort-"));
+    const entered = deferred<void>();
+    const aborted = deferred<void>();
+    const releaseCleanup = deferred<void>();
+    const deadline = deferred<void>();
+    const admission = admissionCounter();
+    const manager = createManager({
+      temporaryDirectory: root,
+      backend: {
+        async submitVideo() {
+          return { id: "native", status: "queued" };
+        },
+        async getJob() {
+          return completed("native");
+        },
+      },
+      acquireAdmission: admission.acquire,
+      supervisedStop: async () => {},
+      waitForDeadline: async () => await deadline.promise,
+      prepareArtifact: async ({ signal }) => {
+        entered.resolve();
+        await new Promise<void>((resolve) =>
+          signal.addEventListener(
+            "abort",
+            () => {
+              aborted.resolve();
+              resolve();
+            },
+            { once: true },
+          ),
+        );
+        await releaseCleanup.promise;
+        signal.throwIfAborted();
+        throw new Error("Expected abort.");
+      },
+    });
+    try {
+      const started = await manager.start({
+        ownerId: "owner",
+        input: { kind: "text", prompt: "test" },
+        jobDeadlineMs: 60_000,
+      });
+      if (started.kind !== "accepted") throw new Error("Expected admission.");
+      await entered.promise;
+      const stop =
+        reason === "shutdown"
+          ? manager.shutdown()
+          : reason === "cancelled"
+            ? manager.cancel({ ownerId: "owner", id: started.job.id })
+            : Promise.resolve(deadline.resolve());
+      await aborted.promise;
+      expect(admission.snapshot().released).toBe(0);
+      expect(
+        manager.artifact({ ownerId: "owner", id: started.job.id }),
+      ).toBeUndefined();
+      releaseCleanup.resolve();
+      await stop;
+      await expect(started.terminal).resolves.toMatchObject({
+        state: "cancelled",
+        reason,
+      });
+      expect(admission.snapshot().released).toBe(1);
+      expect(
+        await Bun.file(
+          join(root, "video-jobs", started.job.id, "artifact"),
+        ).exists(),
+      ).toBe(false);
+    } finally {
+      releaseCleanup.resolve();
+      await manager.shutdown();
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.each(["conversion-failure", "prepared-size-limit"])(
+  "%s cannot complete or publish native bytes",
+  async (failure) => {
+    const root = mkdtempSync(
+      join(tmpdir(), "localbase-video-prepare-failure-"),
+    );
+    const admission = admissionCounter();
+    let stopped = 0;
+    const manager = createManager({
+      temporaryDirectory: root,
+      backend: {
+        async submitVideo() {
+          return { id: "native", status: "queued" };
+        },
+        async getJob() {
+          return completed("native");
+        },
+      },
+      acquireAdmission: admission.acquire,
+      supervisedStop: async () => {
+        stopped++;
+      },
+      maxArtifactBytes: 3,
+      prepareArtifact: async ({ media }) => {
+        if (failure === "conversion-failure")
+          throw new Error("Conversion failed.");
+        return {
+          ...media,
+          bytes: new Uint8Array(4),
+          mimeType: "video/mp4",
+          outputFormat: "mp4",
+        };
+      },
+    });
+    try {
+      const started = await manager.start({
+        ownerId: "owner",
+        input: { kind: "text", prompt: "test" },
+        jobDeadlineMs: 60_000,
+      });
+      if (started.kind !== "accepted") throw new Error("Expected admission.");
+      await expect(started.terminal).resolves.toMatchObject({
+        state: "failed",
+      });
+      expect(
+        manager.artifact({ ownerId: "owner", id: started.job.id }),
+      ).toBeUndefined();
+      expect(stopped).toBe(1);
+      expect(admission.snapshot().released).toBe(1);
+    } finally {
+      await manager.shutdown();
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
 test("keeps completed jobs private, clears them on restart, and prunes terminal artifacts", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-job-"));
   const pollEntered = deferred<void>();
