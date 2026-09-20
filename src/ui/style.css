@@ -742,6 +742,9 @@ dialog.management-page {
   max-width: 1120px;
   margin: auto;
 }
+.management-page > .drawer > header {
+  top: env(safe-area-inset-top);
+}
 .storage-summary {
   display: flex;
   justify-content: space-between;
