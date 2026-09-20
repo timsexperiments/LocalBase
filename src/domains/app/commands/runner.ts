@@ -35,12 +35,13 @@ async function reportError(
   command?: Parameters<typeof commandHelpText>[0],
   parent?: Parameters<typeof commandHelpText>[1],
   json = false,
+  exitCode = 2,
 ): Promise<number> {
   message = redactExternalLogText(message, 2_048);
   if (json) writeJsonError("invalid_input", message);
   console.error(`Error: ${message}`);
   if (command) console.error(await commandHelpText(command, parent));
-  return 2;
+  return exitCode;
 }
 
 /** Routes legacy diagnostics to stderr while a JSON command owns stdout. */
@@ -71,6 +72,7 @@ export async function runCli(
       resolution.command,
       resolution.parent,
       resolution.global?.json,
+      resolution.exitCode,
     );
   }
   if (resolution.kind === "version") {
@@ -151,6 +153,7 @@ export async function runCli(
         command.citty,
         resolution.parent,
         global.json,
+        command.inputErrorExitCode,
       );
     }
     if (global.json) writeJsonError("operational_error", message);

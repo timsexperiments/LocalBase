@@ -1,3 +1,4 @@
+import { restartPending } from "../config/activation";
 import { chmod, mkdir, rename, rm } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import { z } from "zod";
@@ -745,14 +746,14 @@ function statusFromObservations(
       (definitionInstalled || manager.loaded || ownedByService));
 
   let state: z.infer<typeof serviceStateSchema>;
-  if (!manager.available) {
-    state = "unknown";
-  } else if (owner.state === "invalid") {
+  if (owner.state === "invalid") {
     state = "unknown";
   } else if (managedIdentityMismatch) {
     state = "unknown";
   } else if (foregroundOwner) {
     state = owner.state === "active" ? "foreground" : "unknown";
+  } else if (!manager.available) {
+    state = "unknown";
   } else if (recordedInstance && !ownedByService) {
     state = "unknown";
   } else if (manifestIssue) {
@@ -1128,6 +1129,48 @@ export async function restartService(root: string): Promise<ServiceInspection> {
     async (canonical, handoff) =>
       await startServiceAtRoot(canonical, true, handoff),
   );
+}
+
+/** The caller owns the root operation lease and supplies its startup handoff. */
+export async function restartServiceWithinOperation(
+  root: string,
+  handoff: (serviceToken: string) => Promise<void>,
+): Promise<ServiceInspection> {
+  return await startServiceAtRoot(root, true, handoff);
+}
+
+export async function waitForServiceReady(
+  root: string,
+  timeoutMs = 30_000,
+): Promise<void> {
+  const { gatewayReadinessSchema } = await import("../runtime/readiness");
+  const deadline = Date.now() + timeoutMs;
+  do {
+    const inspection = await getServiceInspectionReadOnly(root);
+    if (inspection.gateway.state === "ready") {
+      try {
+        const response = await fetch(
+          inspection.gateway.url.replace(/\/health$/, "/health/ready"),
+          { signal: AbortSignal.timeout(750) },
+        );
+        const readiness = gatewayReadinessSchema.safeParse(
+          await response.json(),
+        );
+        if (
+          response.ok &&
+          readiness.success &&
+          readiness.data.status === "ready" &&
+          !(await restartPending(root))
+        )
+          return;
+      } catch {
+        // A restarting listener may disappear between identity and readiness checks.
+      }
+    }
+    if (Date.now() >= deadline) break;
+    await Bun.sleep(100);
+  } while (true);
+  throw new Error("Timed out waiting for LocalBase gateway readiness.");
 }
 
 async function stopServiceAtRoot(root: string): Promise<ServiceInspection> {

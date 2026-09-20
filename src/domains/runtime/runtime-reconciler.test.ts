@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSession } from "../../db/client";
 import type { LogEventInput } from "../observability/logging";
-import { defaultConfig, saveConfig } from "../../manager";
+import { defaultConfig, readConfig, saveConfig } from "../../manager";
 import { RuntimeConfigController } from "./config-snapshot";
 import {
   RuntimeReconciler,
@@ -410,6 +410,72 @@ test("keeps queued admissions paired with the applied model generation", async (
     );
     admittedA.value.admission.release();
   } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("restores admission when a requested model is removed during activation", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-removal-race-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelA = config.activeLlmModel;
+  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [modelA, modelB];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let continueUpdate!: () => void;
+  const updateContinues = new Promise<void>((resolve) => {
+    continueUpdate = resolve;
+  });
+  let updateStarted!: () => void;
+  const updateStart = new Promise<void>((resolve) => {
+    updateStarted = resolve;
+  });
+  const update = controller.update.bind(controller);
+  controller.update = async (mutate) => {
+    updateStarted();
+    await updateContinues;
+    return await update(mutate);
+  };
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(modality, snapshot) {
+      const modelId = activeModel(modality, snapshot.config);
+      return {
+        kind: "server" as const,
+        runtimeId: () => `${modality}:${modelId}`,
+        state: () => "running",
+        async ensureRunning() {},
+        async kill() {},
+        async shutdown() {},
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: factory.create("llm", controller.read()) }),
+    factory,
+    { event() {} },
+  );
+
+  try {
+    const switching = reconciler.admitModel("llm", modelB);
+    await updateStart;
+    const latest = await readConfig(root);
+    latest.selectedLlmModels = [modelA];
+    saveConfig(database, latest);
+    continueUpdate();
+
+    expect(await switching).toEqual({ kind: "model-not-found" });
+    expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+      state: "running",
+      modelId: modelA,
+      admission: { kind: "known", accepting: true, activeCount: 0 },
+    });
+  } finally {
+    continueUpdate();
     database.close();
     rmSync(root, { recursive: true, force: true });
   }

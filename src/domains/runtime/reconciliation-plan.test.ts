@@ -40,6 +40,8 @@ function planFor(
 test("assigns every persisted configuration field to one reconciliation owner", () => {
   expect(configFieldOwnership).toEqual({
     root: "restart-required",
+    gatewayHost: "restart-required",
+    gatewayPort: "restart-required",
     llmModelsDir: "restart-required",
     sttModelsDir: "restart-required",
     ttsModelsDir: "restart-required",

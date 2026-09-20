@@ -1,6 +1,7 @@
 import { readConfig, saveConfig, type LocalBaseConfig } from "../../manager";
 import type { DatabaseSession } from "../../db/client";
 import { canonicalLocalBaseRoot } from "../../utils/root";
+import { withRootOperation } from "../service/ownership";
 
 type DeepReadonly<Value> = Value extends (...args: never[]) => unknown
   ? Value
@@ -122,12 +123,18 @@ export class RuntimeConfigController {
     return this.replace(next);
   }
 
-  update(
+  async update(
     updateConfig: (config: LocalBaseConfig) => LocalBaseConfig | void,
-  ): RuntimeConfigSnapshot {
-    const next = copyConfig(this.snapshot.config);
-    const updated = updateConfig(next) ?? next;
-    return this.persist(updated);
+  ): Promise<RuntimeConfigSnapshot> {
+    return await withRootOperation(
+      this.root,
+      "update runtime configuration",
+      async () => {
+        const next = await readConfig(this.root);
+        const updated = updateConfig(next) ?? next;
+        return this.persist(updated);
+      },
+    );
   }
 
   private replace(config: LocalBaseConfig): RuntimeConfigSnapshot {

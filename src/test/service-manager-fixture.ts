@@ -1,3 +1,6 @@
+import { acknowledgeStaticConfiguration } from "../domains/config/activation";
+import { DatabaseSession } from "../db/client";
+import { readConfigIfPresent } from "../manager";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
@@ -632,6 +635,13 @@ export async function runManagedGatewayFixture(
           }),
         );
       }
+      if (pathname === "/health/ready" && lease) {
+        return Response.json({
+          status: "ready",
+          reason: "request_admission_available",
+          modalities: ["llm"],
+        });
+      }
       if (pathname === "/health" && lease) {
         return Response.json(
           gatewayHealthSchema.parse({
@@ -659,6 +669,17 @@ export async function runManagedGatewayFixture(
     ...(serviceId ? { serviceId, serviceToken } : {}),
   });
 
+  if (!foreground) {
+    const config = await readConfigIfPresent(canonical);
+    if (config) {
+      const database = new DatabaseSession();
+      try {
+        acknowledgeStaticConfiguration(database, canonical, config);
+      } finally {
+        database.close();
+      }
+    }
+  }
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
   await stopped;
