@@ -1,3 +1,4 @@
+import { persistConfiguration } from "../domains/config/declarative";
 import { mkdirSync, mkdtempSync, rmSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -231,7 +232,10 @@ export async function waitForLogEvent(
 export type GatewayFixtureOptions = {
   workingDirectory?: string;
   auth?: { mode?: "bearer" | "x-api-key" | "either" };
+  environmentApiKey?: string;
   gatewayHost?: string;
+  persistedGatewayHost?: string;
+  pendingRestart?: boolean;
   inferenceQueueCapacity?: number;
   inferenceQueueTimeoutMs?: number;
   managedIdentity?: boolean;
@@ -1643,6 +1647,10 @@ export async function startGatewayFixture(
   let apiKey: string | undefined;
   try {
     config = defaultConfig(root);
+    if (options.persistedGatewayHost) {
+      config.gatewayHost = options.persistedGatewayHost;
+      config.gatewayPort = reservePort();
+    }
     config.port = llmPort;
     config.sttPort = sttPort;
     config.activeLlmModel = LLM_MODEL;
@@ -1662,7 +1670,8 @@ export async function startGatewayFixture(
     config.otelSampleRatio = 100;
     config.parallel = options.parallel ?? config.parallel;
     const database = new DatabaseSession();
-    saveConfig(database, config);
+    if (options.pendingRestart) persistConfiguration(database, config);
+    else saveConfig(database, config);
     if (options.auth) {
       apiKey = createApiKey(database, config, "conformance").rawKey;
     }
@@ -1761,8 +1770,7 @@ export async function startGatewayFixture(
         "--root",
         root,
         ...(options.gatewayHost ? ["--host", options.gatewayHost] : []),
-        "--port",
-        String(port),
+        ...(options.persistedGatewayHost ? [] : ["--port", String(port)]),
         "--llm-port",
         String(llmPort),
         "--stt-port",
@@ -1790,6 +1798,7 @@ export async function startGatewayFixture(
         cwd: options.workingDirectory ?? PROJECT_ROOT,
         env: {
           ...process.env,
+          LOCALBASE_API_KEY: options.environmentApiKey,
           PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
           ...(options.llmRuntimeHttpBackend
             ? { LOCALBASE_TEST_PID_PATH: llmRuntimePidPath }

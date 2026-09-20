@@ -23,6 +23,8 @@ Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` ret
 
 TTS is disabled by default. The first supported model is `qwen3-tts-1.7b-base-q4_k_m`. Requests must explicitly set `voice` to `default`, `harbor`, or `willow`, and `response_format: "wav"`; `default` uses no reference file. Harbor and Willow are fixed, checksum-pinned CC0 references from Kyutai's verified Unmute voice donations ([provenance](https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations)); clients cannot supply audio paths, URLs, or uploads. Omitted formats do not fall back from OpenAI's MP3 default. Speed is fixed at `1`, instructions are unsupported, and input is limited to 256 characters. Each request runs a cold, bounded native generation and returns PCM16 mono WAV at 24 kHz. Human voice quality has not been assessed.
 
+Use [`local-base config`](docs/declarative-config.md) to validate, plan, apply, and export versioned TOML configuration without prompts.
+
 Public `GET` and `HEAD /health/ready` report whether at least one configured modality can admit a request, including bounded queue waiting. `/health` remains process liveness.
 
 ## Supported platforms
@@ -133,6 +135,28 @@ local-base configure --otel-endpoint http://localhost:4318 --otel-sample-ratio 2
 Standard `OTEL_EXPORTER_OTLP_ENDPOINT`, signal-specific endpoint/header variables, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_TRACES_SAMPLER`, and `OTEL_TRACES_SAMPLER_ARG` override persisted settings. LocalBase uses W3C `traceparent` and `tracestate`, propagates valid request context to backends, and correlates local logs with sampled spans. Baggage, prompts, responses, credentials, and arbitrary headers are never exported. Collector outages can drop bounded telemetry but do not delay or fail inference; shutdown gives all telemetry signals one shared five-second flush deadline.
 
 ## Automation and JSON output
+
+Stored API keys default to `inference:chat`, `inference:embeddings`, `inference:image`, `inference:video`, `inference:speech`, `inference:transcription`, and `models:read`. Existing keys migrate to this same set without administrative permissions. The `LOCALBASE_API_KEY` environment credential retains full access.
+
+```bash
+local-base keys create --name chat-client --scopes inference:chat,models:read --json
+local-base keys list --json
+local-base keys scopes key_ID --scopes inference:video,models:read --json
+local-base keys rotate key_ID --json
+local-base keys revoke key_ID --json
+```
+
+`keys scopes` replaces the complete scope set and takes effect on the next request without a restart. Use `--scopes ""` to grant no permissions. Scope lists accept only these permissions:
+
+```text
+inference:chat, inference:embeddings, inference:image, inference:video,
+inference:speech, inference:transcription, models:read, models:manage,
+configuration:read, configuration:manage, keys:read, keys:manage,
+access:read, access:manage, sessions:read, sessions:revoke,
+system:read, system:manage
+```
+
+Duplicates are removed and scopes are returned in the order above. Invalid scopes fail before any database changes. Creation and rotation show the secret once; list and scope output contain only key metadata. Rotation preserves scopes, expiry, revocation state, and the key ID used for video ownership. Scope changes also preserve revoked status. A missing, expired, revoked, or invalid credential returns HTTP 401; an active key without the required permission returns HTTP 403. Local CLI key management uses access to the data directory and does not require an API key.
 
 Use the global `--json` option for automation. It may appear before or after a command, but not after `--`.
 

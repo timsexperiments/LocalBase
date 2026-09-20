@@ -1,7 +1,16 @@
+import { acknowledgeStaticConfiguration } from "../../config/activation";
 import { z } from "zod";
 import { SpanStatusCode, context, trace } from "@opentelemetry/api";
 import { join, basename } from "node:path";
 import { resolveApiKey, type LocalBaseConfig } from "../../../manager";
+import {
+  authorize,
+  permissionSchema,
+  principalOwnerId,
+  principalSchema,
+  type AuthorizationRequirement,
+  type Principal,
+} from "../../auth/authorization";
 import {
   byId,
   CATALOG,
@@ -70,6 +79,7 @@ import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
 import { playgroundResponse } from "../../../ui/static";
 import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
+import { gatewayAuthorizationRequirement } from "../route-authorization";
 import { VideoJobManager } from "../video/video-job-manager";
 import { logVideoJobTerminal } from "../video/video-job-logging";
 import { createStableDiffusionVideoClient } from "../video/stable-diffusion-video-client";
@@ -122,15 +132,8 @@ export function httpBaseUrl(host: string, port: number): string {
 
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
 
-type GatewayCredential = Readonly<{
-  ownerId: string;
-  principalId: string;
-  principalName?: string;
-  source: "stored_key" | "environment";
-}>;
-
 type GatewayRequestAuth = Readonly<{
-  resolve(config: LocalBaseConfig): GatewayCredential | undefined;
+  resolve(config: LocalBaseConfig): Principal;
   telemetry(required: boolean): NonNullable<HttpRequestLogInput["auth"]>;
 }>;
 
@@ -272,6 +275,18 @@ function unauthorized(): Response {
     },
     401,
     { "www-authenticate": "Bearer" },
+  );
+}
+
+function forbidden(): Response {
+  return openAIErrorResponse(
+    {
+      message: "Forbidden: The credential lacks the required permission.",
+      type: "invalid_request_error",
+      param: null,
+      code: "insufficient_permissions",
+    },
+    403,
   );
 }
 
@@ -1782,9 +1797,13 @@ export async function runServe(
   execution: CommandExecution,
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
-  const wrapperHost = input.host ?? "127.0.0.1";
-  const wrapperPort = input.port ?? 2273;
-
+  const wrapperHost = input.host ?? config.gatewayHost;
+  const wrapperPort = input.port ?? config.gatewayPort;
+  const startupStaticConfig = {
+    gatewayHost: wrapperHost,
+    gatewayPort: wrapperPort,
+    memory: structuredClone(config.memory),
+  };
   const llmPort = input.llmPort ?? config.port;
   const sttPort = input.sttPort ?? config.sttPort;
   const imagePort = input.imagePort ?? 8090;
@@ -1841,44 +1860,53 @@ export async function runServe(
   const gatewayRequestAuth = (request: Request): GatewayRequestAuth => {
     const token = extractAuthToken(request, authMode);
     let resolved = false;
-    let credential: GatewayCredential | undefined;
+    let principal: Principal = { kind: "anonymous" };
     return Object.freeze({
       resolve(config: LocalBaseConfig) {
-        if (resolved) return credential;
+        if (resolved) return principal;
         resolved = true;
-        if (!token) return undefined;
+        if (!token) return principal;
         if (token === process.env.LOCALBASE_API_KEY) {
-          credential = Object.freeze({
-            ownerId: "environment",
-            principalId: "environment",
-            source: "environment",
+          principal = principalSchema.parse({
+            kind: "environment",
+            permissions: permissionSchema.options,
           });
-          return credential;
+          return principal;
         }
         const apiKey = resolveApiKey(ctx.database, config, token);
         if (apiKey) {
-          credential = Object.freeze({
-            ownerId: `api-key:${apiKey.id}`,
-            principalId: apiKey.id,
-            principalName: apiKey.name,
-            source: "stored_key",
+          principal = principalSchema.parse({
+            kind: "api-key",
+            id: apiKey.id,
+            name: apiKey.name,
+            permissions: apiKey.scopes,
           });
         }
-        return credential;
+        return principal;
       },
       telemetry(required: boolean): NonNullable<HttpRequestLogInput["auth"]> {
         if (!required) return { outcome: "disabled" };
-        if (credential) {
-          return {
-            outcome: "authenticated",
-            principalId: credential.principalId,
-            ...(credential.principalName
-              ? { principalName: credential.principalName }
-              : {}),
-            source: credential.source,
-          };
+        switch (principal.kind) {
+          case "api-key":
+            return {
+              outcome: "authenticated",
+              principalId: principal.id,
+              principalName: principal.name,
+              source: "stored_key",
+            };
+          case "environment":
+            return {
+              outcome: "authenticated",
+              principalId: "environment",
+              source: "environment",
+            };
+          case "anonymous":
+            return { outcome: token ? "invalid" : "missing" };
+          default: {
+            const exhaustive: never = principal;
+            return exhaustive;
+          }
         }
-        return { outcome: token ? "invalid" : "missing" };
       },
     });
   };
@@ -2330,6 +2358,7 @@ export async function runServe(
     requestId: string,
     startedAt: number,
     requestAuth: GatewayRequestAuth,
+    requirement: AuthorizationRequirement,
   ): Promise<Response> => {
     const playground = playgroundResponse(request, pathname);
     if (playground) return playground;
@@ -2362,6 +2391,16 @@ export async function runServe(
           internalSpanOptions({ "http.request.method": request.method }),
         ),
       });
+    const authorization = authorize({
+      principal:
+        requirement.kind === "public"
+          ? { kind: "anonymous" }
+          : requestAuth.resolve(ctx.runtimeConfig.copy()),
+      requirement,
+    });
+    if (authorization.kind === "unauthenticated") return unauthorized();
+    if (authorization.kind === "forbidden") return forbidden();
+
     if (route === "health") {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return methodNotAllowed("GET, HEAD");
@@ -2382,6 +2421,13 @@ export async function runServe(
         return methodNotAllowed("GET, HEAD");
       }
       const readiness = readinessSnapshot();
+      if (serviceId && serviceToken && readiness.status === "ready") {
+        acknowledgeStaticConfiguration(
+          ctx.database,
+          config.root,
+          startupStaticConfig,
+        );
+      }
       const body = JSON.stringify(readiness);
       return new Response(request.method === "HEAD" ? null : body, {
         status: readiness.status === "ready" ? 200 : 503,
@@ -2395,7 +2441,6 @@ export async function runServe(
     if (route === "modelMetadataList" || route === "modelMetadataDetail") {
       const currentConfig = ctx.runtimeConfig.copy();
       const runtimes = reconciler.lifecycleSnapshot();
-      if (!requestAuth.resolve(currentConfig)) return unauthorized();
       if (request.method !== "GET") return methodNotAllowed("GET");
 
       const metadataInput = {
@@ -2415,15 +2460,6 @@ export async function runServe(
       if (!modelId) return routeNotFound();
       const metadata = modelMetadataById(modelId, metadataInput);
       return metadata ? Response.json(metadata) : modelNotFound(modelId);
-    }
-
-    const routeAlwaysRequiresAuth =
-      route === "videoCreate" ||
-      route === "videoStatus" ||
-      route === "videoContent" ||
-      route === "videoCancel";
-    if ((authRequired && route !== "instance") || routeAlwaysRequiresAuth) {
-      if (!requestAuth.resolve(ctx.runtimeConfig.copy())) return unauthorized();
     }
 
     await reconciler.refreshConfiguration();
@@ -2447,18 +2483,17 @@ export async function runServe(
     if (requestExceedsSizeLimit(request)) return payloadTooLarge();
 
     if (
-      route === "videoCreate" ||
-      route === "videoStatus" ||
-      route === "videoContent" ||
-      route === "videoCancel"
+      authorization.kind === "authorized" &&
+      (route === "videoCreate" ||
+        route === "videoStatus" ||
+        route === "videoContent" ||
+        route === "videoCancel")
     ) {
-      const credential = requestAuth.resolve(currentConfig);
-      if (!credential) return unauthorized();
       return await handleVideoGatewayRequest({
         request,
         pathname,
         route,
-        ownerId: credential.ownerId,
+        ownerId: principalOwnerId(authorization.principal),
         jobs: videoJobs,
         createEnabled: currentConfig.selectedVideoModels.length > 0,
         admissionProvider: {
@@ -2967,17 +3002,11 @@ export async function runServe(
       const requestId = `lbreq_${crypto.randomUUID()}`;
       const requestAuth = gatewayRequestAuth(request);
       const route = selectGatewayRoute(pathname);
-      const requiresGatewayAuth =
-        route === "modelMetadataList" ||
-        route === "modelMetadataDetail" ||
-        route === "videoCreate" ||
-        route === "videoStatus" ||
-        route === "videoContent" ||
-        route === "videoCancel" ||
-        (authRequired &&
-          route !== "health" &&
-          route !== "readiness" &&
-          route !== "instance");
+      const requirement = gatewayAuthorizationRequirement({
+        route,
+        method,
+        authRequired,
+      });
       const parent = ctx.otel.extract(request.headers);
       const span = ctx.otel.startSpan(
         serverSpanName(method, pathname),
@@ -3019,6 +3048,7 @@ export async function runServe(
               requestId,
               start,
               requestAuth,
+              requirement,
             ),
         );
       } catch (err) {
@@ -3096,7 +3126,7 @@ export async function runServe(
         if (outcome !== "completed" || corsResponse.status >= 500) {
           span.setStatus({ code: SpanStatusCode.ERROR });
         }
-        const auth = requestAuth.telemetry(requiresGatewayAuth);
+        const auth = requestAuth.telemetry(requirement.kind !== "public");
         const safeAuth = redactLogAttributes({
           auth_outcome: auth.outcome,
           ...(auth.outcome === "authenticated"
@@ -3141,6 +3171,13 @@ export async function runServe(
     },
   });
 
+  if (serviceId && serviceToken && readinessSnapshot().status === "ready") {
+    acknowledgeStaticConfiguration(
+      ctx.database,
+      config.root,
+      startupStaticConfig,
+    );
+  }
   ctx.logger.event({
     severity: "info",
     eventName: "gateway.started",

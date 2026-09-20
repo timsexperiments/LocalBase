@@ -15,6 +15,20 @@
       "when": 1786139088167,
       "tag": "0001_video_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789923412655,
+      "tag": "0002_api_key_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789926239359,
+      "tag": "0003_declarative_configuration",
+      "breakpoints": true
     }
   ]
 }

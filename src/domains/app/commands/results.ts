@@ -9,6 +9,7 @@ import { logEventSchema } from "../../observability/logging";
 import type { OtelConfiguration } from "../../observability/otel";
 import { sanitizedOtelEndpoint } from "../../observability/otel-config";
 import { memorySafetyConfigSchema } from "../../runtime/memory-safety";
+import { permissionsSchema } from "../../auth/authorization";
 
 export const configurationOutputSchema = z
   .object({
@@ -75,6 +76,7 @@ export const apiKeyMetadataOutputSchema = z
     id: z.string(),
     name: z.string(),
     prefix: z.string(),
+    scopes: permissionsSchema,
     createdAt: z.string(),
     lastRotatedAt: z.string(),
     expiresAt: z.string().optional(),
@@ -146,7 +148,7 @@ export const keysListResultSchema = z
 export const keySecretResultSchema = z
   .object({ key: apiKeyMetadataOutputSchema, secret: z.string().min(1) })
   .strict();
-export const keyRevocationResultSchema = z
+export const keyMetadataResultSchema = z
   .object({ key: apiKeyMetadataOutputSchema })
   .strict();
 export const resetResultSchema = z
@@ -209,6 +211,7 @@ export function publicApiKey(record: ApiKeyRecord) {
     id: record.id,
     name: record.name,
     prefix: record.prefix,
+    scopes: record.scopes,
     createdAt: record.createdAt,
     lastRotatedAt: record.lastRotatedAt,
     ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}),

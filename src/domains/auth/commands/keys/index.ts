@@ -3,6 +3,7 @@ import {
   loadApiKeys,
   revokeApiKey,
   rotateApiKey,
+  setApiKeyScopes,
 } from "../../../../manager";
 import type { AppContext } from "../../../../context";
 import type { CommandExecution } from "../../../app/commands/framework";
@@ -10,6 +11,7 @@ import type {
   KeyIdInput,
   KeysCreateInput,
   KeysListInput,
+  KeysScopesInput,
 } from "../../../app/commands/inputs";
 import { publicApiKey } from "../../../app/commands/results";
 
@@ -27,7 +29,7 @@ export function runKeysList(
   }
   for (const key of keys) {
     execution.output.info(
-      `${key.id} | ${key.name} | prefix=${key.prefix} | created=${key.createdAt} | rotated=${key.lastRotatedAt}${key.expiresAt ? ` | expires=${key.expiresAt}` : ""}${key.revokedAt ? ` | revoked=${key.revokedAt}` : ""}`,
+      `${key.id} | ${key.name} | prefix=${key.prefix} | scopes=${key.scopes.join(",")} | created=${key.createdAt} | rotated=${key.lastRotatedAt}${key.expiresAt ? ` | expires=${key.expiresAt}` : ""}${key.revokedAt ? ` | revoked=${key.revokedAt}` : ""}`,
     );
   }
   return { data: { keys: keys.map(publicApiKey) } };
@@ -43,6 +45,7 @@ export function runKeysCreate(
     ctx.config,
     input.name,
     input.expiresDays,
+    input.scopes,
   );
   execution.output.info(
     `Created key id=${record.id} name=${record.name} prefix=${record.prefix}`,
@@ -52,6 +55,23 @@ export function runKeysCreate(
     execution.output.info("Store this secret now. It is not shown again.");
   }
   return { data: { key: publicApiKey(record), secret: rawKey } };
+}
+
+export function runKeysScopes(
+  input: KeysScopesInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+): { data: { key: ReturnType<typeof publicApiKey> } } {
+  const record = setApiKeyScopes(
+    ctx.database,
+    ctx.config,
+    input.keyId,
+    input.scopes,
+  );
+  execution.output.info(
+    `Updated scopes for key ${record.id}: ${record.scopes.join(",")}`,
+  );
+  return { data: { key: publicApiKey(record) } };
 }
 
 export function runKeysRevoke(

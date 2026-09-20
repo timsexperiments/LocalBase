@@ -18,6 +18,7 @@ import {
   keyIdInputSchema,
   keysCreateInputSchema,
   keysListInputSchema,
+  keysScopesInputSchema,
   logsInputSchema,
   recommendInputSchema,
   resetInputSchema,
@@ -35,6 +36,7 @@ import {
   type KeyIdInput,
   type KeysCreateInput,
   type KeysListInput,
+  type KeysScopesInput,
   type LogsInput,
   type RecommendInput,
   type ResetInput,
@@ -52,7 +54,7 @@ import {
   initResultSchema,
   installedResultSchema,
   installResultSchema,
-  keyRevocationResultSchema,
+  keyMetadataResultSchema,
   keySecretResultSchema,
   keysListResultSchema,
   logsResultSchema,
@@ -62,6 +64,21 @@ import {
   serveResultSchema,
   uninstallResultSchema,
 } from "./results";
+
+import {
+  configurationPlanSchema,
+  desiredConfigurationSchema,
+} from "../../config/declarative";
+import { configApplyResultSchema } from "../../config/apply";
+import {
+  configFileInputSchema,
+  configPlanInputSchema,
+  configApplyInputSchema,
+  runConfigValidate,
+  runConfigPlan,
+  runConfigApply,
+  runConfigShow,
+} from "../../config/commands/config";
 
 export { CliInputError } from "./errors";
 
@@ -84,6 +101,7 @@ type CommandBase<Input> = {
   args?: ArgsDef;
   positionals?: Positionals;
   requiresDatabase?: boolean;
+  inputErrorExitCode?: number;
   readOnlyConfiguration?: boolean;
   initializeUnderOperationLock?: boolean;
   longRunning?: boolean;
@@ -665,6 +683,12 @@ const keysCreateCommand = command<KeysCreateInput>({
   description: "Create an API key",
   args: {
     name: { type: "string", valueHint: "label", description: "Key label" },
+    scopes: {
+      type: "string",
+      valueHint: "permission,...",
+      description:
+        "Comma-separated permissions; defaults to inference and models:read. Empty grants none",
+    },
     "expires-days": {
       type: "string",
       valueHint: "days",
@@ -687,7 +711,7 @@ const keysRevokeCommand = command<KeyIdInput>({
   },
   positionals: { minimum: 1, maximum: 1 },
   parse: (input) => keyIdInputSchema.parse(input),
-  resultSchema: keyRevocationResultSchema,
+  resultSchema: keyMetadataResultSchema,
   run: async (input, context, execution) => {
     const { runKeysRevoke } = await import("../../auth/commands/keys");
     return runKeysRevoke(input, context, execution);
@@ -706,6 +730,27 @@ const keysRotateCommand = command<KeyIdInput>({
   run: async (input, context, execution) => {
     const { runKeysRotate } = await import("../../auth/commands/keys");
     return runKeysRotate(input, context, execution);
+  },
+});
+
+const keysScopesCommand = command<KeysScopesInput>({
+  path: ["keys", "scopes"],
+  description: "Replace an API key's scopes",
+  args: {
+    keyId: { type: "positional", description: "API key ID", required: true },
+    scopes: {
+      type: "string",
+      valueHint: "permission,...",
+      description: "Complete comma-separated permission set; empty grants none",
+      required: true,
+    },
+  },
+  positionals: { minimum: 1, maximum: 1 },
+  parse: (input) => keysScopesInputSchema.parse(input),
+  resultSchema: keyMetadataResultSchema,
+  run: async (input, context, execution) => {
+    const { runKeysScopes } = await import("../../auth/commands/keys");
+    return runKeysScopes(input, context, execution);
   },
 });
 
@@ -740,7 +785,80 @@ const uninstallCommand = command<UninstallInput>({
   },
 });
 
+const configFileArg = {
+  type: "string",
+  valueHint: "path|-",
+  description: "Versioned TOML file, or - for stdin",
+} satisfies ArgDef;
+const configValidateCommand = command({
+  path: ["config", "validate"],
+  description: "Validate a desired configuration without changing state",
+  minimalContext: true,
+  inputErrorExitCode: 1,
+  args: { file: configFileArg },
+  parse: (input) => configFileInputSchema.parse(input),
+  resultSchema: z
+    .object({
+      valid: z.literal(true),
+      configuration: desiredConfigurationSchema,
+    })
+    .strict(),
+  run: runConfigValidate,
+});
+const configPlanCommand = command({
+  path: ["config", "plan"],
+  description: "Compare desired configuration with persisted settings",
+  minimalContext: true,
+  inputErrorExitCode: 1,
+  args: {
+    file: configFileArg,
+    "detailed-exit-code": {
+      type: "boolean",
+      description: "Exit 2 for changes, 0 for no changes, 1 for errors",
+    },
+  },
+  parse: (input) => configPlanInputSchema.parse(input),
+  resultSchema: configurationPlanSchema,
+  run: runConfigPlan,
+});
+const configApplyCommand = command({
+  path: ["config", "apply"],
+  description: "Atomically apply desired configuration",
+  minimalContext: true,
+  inputErrorExitCode: 1,
+  args: {
+    file: configFileArg,
+    restart: {
+      type: "string",
+      valueHint: "auto|always|never",
+      description: "Restart policy (default: auto)",
+    },
+    wait: {
+      type: "boolean",
+      description: "Wait up to 30 seconds for gateway readiness",
+    },
+  },
+  parse: (input) => configApplyInputSchema.parse(input),
+  resultSchema: configApplyResultSchema,
+  run: runConfigApply,
+});
+const configShowCommand = command({
+  path: ["config", "show"],
+  description: "Emit a re-applicable TOML document with secrets omitted",
+  minimalContext: true,
+  inputErrorExitCode: 1,
+  parse: (input) => z.object({}).strict().parse(input),
+  resultSchema: z
+    .object({ document: z.string(), pendingRestart: z.boolean() })
+    .strict(),
+  run: runConfigShow,
+});
+
 export const commands = [
+  configValidateCommand,
+  configPlanCommand,
+  configApplyCommand,
+  configShowCommand,
   configureCommand,
   initCommand,
   doctorCommand,
@@ -759,6 +877,7 @@ export const commands = [
   keysCreateCommand,
   keysRevokeCommand,
   keysRotateCommand,
+  keysScopesCommand,
   resetCommand,
   uninstallCommand,
 ] as const satisfies readonly Command[];
@@ -782,6 +901,21 @@ export const keysCommand = defineCommand({
     create: keysCreateCommand.citty,
     revoke: keysRevokeCommand.citty,
     rotate: keysRotateCommand.citty,
+    scopes: keysScopesCommand.citty,
+  },
+});
+
+const configCommand = defineCommand({
+  meta: {
+    name: "local-base config",
+    description: "Manage declarative configuration",
+  },
+  args: globalArgs,
+  subCommands: {
+    validate: configValidateCommand.citty,
+    plan: configPlanCommand.citty,
+    apply: configApplyCommand.citty,
+    show: configShowCommand.citty,
   },
 });
 
@@ -795,6 +929,7 @@ export const rootCommand = defineCommand({
   subCommands: {
     init: initCommand.citty,
     configure: configureCommand.citty,
+    config: configCommand,
     doctor: doctorCommand.citty,
     models: modelsCommand,
     serve: serveCommand.citty,
@@ -814,5 +949,6 @@ export function groupForPath(path: string[]): CittyCommand | undefined {
   if (path.length !== 1) return undefined;
   if (path[0] === "models") return modelsCommand;
   if (path[0] === "keys") return keysCommand;
+  if (path[0] === "config") return configCommand;
   return undefined;
 }

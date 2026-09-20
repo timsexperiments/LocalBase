@@ -58,6 +58,15 @@ test("resolves nested commands and global options before context creation", asyn
 });
 
 test("rejects invalid CLI structure and contradictory interaction options", async () => {
+  for (const args of [
+    ["configure", "--stt-models"],
+    ["configure", "--stt-models", "--no-create-key"],
+  ]) {
+    await expect(resolveCli(args)).resolves.toMatchObject({
+      kind: "error",
+      message: "--stt-models requires a value",
+    });
+  }
   await expect(
     resolveCli(["models", "catalog", "--unknown"]),
   ).resolves.toMatchObject({

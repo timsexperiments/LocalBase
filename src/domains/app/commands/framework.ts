@@ -40,6 +40,7 @@ type ResolvedCommand =
   | {
       kind: "error";
       message: string;
+      exitCode?: number;
       command?: CittyCommand;
       parent?: CittyCommand;
       global?: GlobalOptions;
@@ -74,7 +75,8 @@ function validateOptionSyntax(rawArgs: string[], argsDef: ArgsDef): void {
   }
 
   let literal = false;
-  for (const token of rawArgs) {
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const token = rawArgs[index];
     if (token === "--") {
       literal = true;
       continue;
@@ -98,6 +100,15 @@ function validateOptionSyntax(rawArgs: string[], argsDef: ArgsDef): void {
     if (definition.type === "boolean" && valueProvided) {
       throw new CliInputError(`${name} does not accept a value`);
     }
+    const next = rawArgs[index + 1];
+    if (
+      definition.type === "string" &&
+      !valueProvided &&
+      (next === undefined || (next.startsWith("-") && next !== "-"))
+    ) {
+      throw new CliInputError(`${name} requires a value`);
+    }
+    if (definition.type === "string" && !valueProvided) index += 1;
   }
 }
 
@@ -112,7 +123,7 @@ function normalizeArgs(
 }
 
 function splitGlobalOptions(rawArgs: string[]): {
-  global: GlobalOptions;
+  globalInput: string[];
   args: string[];
 } {
   const args: string[] = [];
@@ -146,12 +157,7 @@ function splitGlobalOptions(rawArgs: string[]): {
     }
     args.push(token);
   }
-  validateOptionSyntax(globalInput, globalArgs);
-  const result = globalOptionsSchema.safeParse(
-    normalizeArgs(parseCittyArgs(globalInput, globalArgs)),
-  );
-  if (!result.success) throw new CliInputError(formatZodError(result.error));
-  return { global: result.data, args };
+  return { globalInput, args };
 }
 
 function validatePositionals(command: Command, positionals: string[]): void {
@@ -199,19 +205,26 @@ function parentFor(command: Command): CittyCommand {
 export async function resolveCli(rawArgs: string[]): Promise<ResolvedCommand> {
   let usageCommand: CittyCommand = rootCommand;
   let usageParent: CittyCommand | undefined;
+  let inputErrorExitCode: number | undefined;
   const explicitJson = hasExplicitJsonFlag(rawArgs);
   let global: GlobalOptions | undefined = explicitJson
     ? { json: true, nonInteractive: true }
     : undefined;
   try {
-    const split = splitGlobalOptions(rawArgs);
-    const { args } = split;
-    global = split.global;
+    const { args, globalInput } = splitGlobalOptions(rawArgs);
+    const { path, consumed } = findPath(args);
+    const command = commandForPath(path);
+    inputErrorExitCode = command?.inputErrorExitCode;
+    validateOptionSyntax(globalInput, globalArgs);
+    const parsedGlobal = globalOptionsSchema.safeParse(
+      normalizeArgs(parseCittyArgs(globalInput, globalArgs)),
+    );
+    if (!parsedGlobal.success)
+      throw new CliInputError(formatZodError(parsedGlobal.error));
+    global = parsedGlobal.data;
     if (args.length === 1 && ["--version", "-v"].includes(args[0])) {
       return { kind: "version", global };
     }
-    const { path, consumed } = findPath(args);
-    const command = commandForPath(path);
     const group = groupForPath(path);
     if (hasHelpFlag(args)) {
       if (command) {
@@ -252,6 +265,7 @@ export async function resolveCli(rawArgs: string[]): Promise<ResolvedCommand> {
         global,
       };
     }
+    inputErrorExitCode = resolved.inputErrorExitCode;
     usageCommand = resolved.citty;
     usageParent = parentFor(resolved);
     return {
@@ -273,6 +287,7 @@ export async function resolveCli(rawArgs: string[]): Promise<ResolvedCommand> {
         inputError?.message ??
         (error instanceof Error ? error.message : String(error)),
       command: usageCommand,
+      exitCode: inputErrorExitCode,
       parent: usageParent,
       global,
     };
