@@ -152,7 +152,7 @@ test("enable and activate require installation; changes use fresh config and pre
   await expect(
     f.management.run(f.model.modelId, "activate"),
   ).rejects.toMatchObject({ code: "conflict" });
-  f.runtimeConfig.update((config) => {
+  await f.runtimeConfig.update((config) => {
     config.parallel = 2;
   });
   await f.management.run(f.model.modelId, "enable");
@@ -524,4 +524,31 @@ test("uninstall rechecks configuration after waiting for another root operation"
   });
   await expect(uninstall).rejects.toMatchObject({ code: "conflict" });
   expect(existsSync(f.path)).toBe(true);
+});
+
+test("enable rechecks installation after a serialized uninstall", async () => {
+  const f = fixture();
+  writeFileSync(f.path, "abc");
+  await f.management.run(f.model.modelId, "uninstall");
+  await expect(
+    f.management.run(f.model.modelId, "enable"),
+  ).rejects.toMatchObject({ code: "conflict" });
+  expect(f.runtimeConfig.copy().selectedSttModels).not.toContain(
+    f.model.modelId,
+  );
+});
+
+test("install rechecks configuration after waiting for another root operation", async () => {
+  const f = fixture();
+  const fetchSpy = spyOn(globalThis, "fetch");
+  cleanup.push(() => fetchSpy.mockRestore());
+  let install!: Promise<unknown>;
+  await withRootOperation(f.root, "test configuration update", async () => {
+    install = f.management.run(f.model.modelId, "install");
+    const config = f.runtimeConfig.copy();
+    config.selectedSttModels.push(f.model.modelId);
+    saveConfig(f.database, config);
+  });
+  await expect(install).rejects.toMatchObject({ code: "conflict" });
+  expect(fetchSpy).not.toHaveBeenCalled();
 });

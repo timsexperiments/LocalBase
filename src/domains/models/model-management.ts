@@ -262,7 +262,6 @@ export function createModelManagement({
       );
     runtimeConfig.refreshSync();
     const config = runtimeConfig.copy();
-    const facts = inspect(config, model);
     const field = fields[model.kind];
     const operation: ModelManagementOperation = {
       action,
@@ -272,90 +271,97 @@ export function createModelManagement({
       totalBytes: null,
     };
     if (action === "install") {
-      safeFile(config.root, join(config[field.directory], ".checksums.json"));
-      const conflict = installConflict(
-        config,
-        model,
-        new Set([
-          ...protectedModelIds(),
-          ...Object.values(lifecycle()).map((runtime) => runtime.modelId),
-        ]),
-      );
-      if (conflict !== null)
-        throw new ModelManagementError("conflict", conflict);
-      if (facts.downloadBytes === null)
-        throw new ModelManagementError(
-          "invalid_request",
-          "Catalog model lacks authoritative sizes or SHA-256 hashes.",
-        );
-      const available = storageAt(config[field.directory]).availableBytes;
-      if (available === null)
-        throw new ModelManagementError(
-          "storage_unavailable",
-          "Could not determine available storage.",
-        );
-      // Reserve the full download even for present artifacts: verification may replace them.
-      if (available < facts.downloadBytes)
-        throw new ModelManagementError(
-          "insufficient_storage",
-          "Insufficient storage for model installation.",
-        );
       installing = modelId;
       const running: ModelManagementOperation = {
         ...operation,
         state: "running",
         detail: "Preparing installation",
         downloadedBytes: 0,
-        totalBytes: facts.downloadBytes,
+        totalBytes: null,
       };
-      operations.set(modelId, running);
+      const admission = Promise.withResolvers<void>();
+      let admitted = false;
       const progress = new Map<string, number>();
-      // Attach the rejection handler before the installer can run or throw.
-      inFlight = Promise.resolve()
-        .then(() =>
-          installModel(config, modelId, undefined, (event) => {
-            if (event.kind === "download-progress")
-              progress.set(event.artifactFilename, event.downloadedBytes);
-            if (event.kind === "verification-completed") {
-              const artifact = model.artifacts.find(
-                (item) => item.filename === event.artifactFilename,
-              );
-              if (artifact?.expectedSizeBytes !== undefined)
-                progress.set(
-                  event.artifactFilename,
-                  artifact.expectedSizeBytes,
-                );
-            }
-            operations.set(modelId, {
-              ...running,
-              detail: event.kind,
-              downloadedBytes: [...progress.values()].reduce(
-                (sum, value) => sum + value,
-                0,
-              ),
-            });
-          }),
-        )
-        .then(
-          () => {
-            operations.set(modelId, {
-              ...running,
-              state: "complete",
-              detail: "Installation complete",
-              downloadedBytes: running.totalBytes,
-            });
-            installing = null;
-          },
-          () => {
+      inFlight = withRootOperation(config.root, "install model", async () => {
+        runtimeConfig.refreshSync();
+        const fresh = runtimeConfig.copy();
+        safeFile(fresh.root, join(fresh[field.directory], ".checksums.json"));
+        const conflict = installConflict(
+          fresh,
+          model,
+          new Set([
+            ...protectedModelIds(),
+            ...Object.values(lifecycle()).map((runtime) => runtime.modelId),
+          ]),
+        );
+        if (conflict !== null)
+          throw new ModelManagementError("conflict", conflict);
+        const facts = inspect(fresh, model);
+        if (facts.downloadBytes === null)
+          throw new ModelManagementError(
+            "invalid_request",
+            "Catalog model lacks authoritative sizes or SHA-256 hashes.",
+          );
+        const available = storageAt(fresh[field.directory]).availableBytes;
+        if (available === null)
+          throw new ModelManagementError(
+            "storage_unavailable",
+            "Could not determine available storage.",
+          );
+        // Reserve the full download even for present artifacts: verification may replace them.
+        if (available < facts.downloadBytes)
+          throw new ModelManagementError(
+            "insufficient_storage",
+            "Insufficient storage for model installation.",
+          );
+        running.totalBytes = facts.downloadBytes;
+        operations.set(modelId, running);
+        admitted = true;
+        admission.resolve();
+        await installModel(fresh, modelId, undefined, (event) => {
+          if (event.kind === "download-progress")
+            progress.set(event.artifactFilename, event.downloadedBytes);
+          if (event.kind === "verification-completed") {
+            const artifact = model.artifacts.find(
+              (item) => item.filename === event.artifactFilename,
+            );
+            if (artifact?.expectedSizeBytes !== undefined)
+              progress.set(event.artifactFilename, artifact.expectedSizeBytes);
+          }
+          operations.set(modelId, {
+            ...running,
+            detail: event.kind,
+            downloadedBytes: [...progress.values()].reduce(
+              (sum, value) => sum + value,
+              0,
+            ),
+          });
+        });
+      }).then(
+        () => {
+          operations.set(modelId, {
+            ...running,
+            state: "complete",
+            detail: "Installation complete",
+            downloadedBytes: running.totalBytes,
+          });
+          installing = null;
+        },
+        (error) => {
+          if (admitted) {
             operations.set(modelId, {
               ...(operations.get(modelId) ?? running),
               state: "failed",
               detail:
                 "Installation failed. Check storage, network access, and catalog verification.",
             });
-            installing = null;
-          },
-        );
+          } else {
+            admission.reject(error);
+          }
+          installing = null;
+        },
+      );
+      await admission.promise;
       return running;
     }
     if (action === "uninstall") {
@@ -392,10 +398,16 @@ export function createModelManagement({
         for (const path of present) unlinkSync(path);
       });
     } else {
-      if ((action === "enable" || action === "activate") && !facts.installed)
-        throw new ModelManagementError("conflict", "Install the model first.");
       await runtimeConfig.update((fresh) => {
         const selected = fresh[field.selected];
+        if (
+          (action === "enable" || action === "activate") &&
+          !inspect(fresh, model).installed
+        )
+          throw new ModelManagementError(
+            "conflict",
+            "Install the model first.",
+          );
         if (action === "activate") {
           if (!selected.includes(modelId))
             throw new ModelManagementError(
