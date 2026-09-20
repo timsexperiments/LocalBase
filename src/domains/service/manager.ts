@@ -746,14 +746,14 @@ function statusFromObservations(
       (definitionInstalled || manager.loaded || ownedByService));
 
   let state: z.infer<typeof serviceStateSchema>;
-  if (!manager.available) {
-    state = "unknown";
-  } else if (owner.state === "invalid") {
+  if (owner.state === "invalid") {
     state = "unknown";
   } else if (managedIdentityMismatch) {
     state = "unknown";
   } else if (foregroundOwner) {
     state = owner.state === "active" ? "foreground" : "unknown";
+  } else if (!manager.available) {
+    state = "unknown";
   } else if (recordedInstance && !ownedByService) {
     state = "unknown";
   } else if (manifestIssue) {

@@ -106,6 +106,13 @@ export function acknowledgeStaticConfiguration(
   started: StaticConfiguration,
 ): void {
   const db = database.get(root);
+  const startedFingerprint = fingerprint(started);
+  const pending = db
+    .select({ fingerprint: configActivationTable.pendingStaticConfig })
+    .from(configActivationTable)
+    .where(eq(configActivationTable.id, "default"))
+    .get();
+  if (pending?.fingerprint !== startedFingerprint) return;
   db.transaction(
     () => {
       const saved = savedStaticConfiguration(db);
@@ -114,7 +121,7 @@ export function acknowledgeStaticConfiguration(
         .where(
           and(
             eq(configActivationTable.id, "default"),
-            eq(configActivationTable.pendingStaticConfig, fingerprint(started)),
+            eq(configActivationTable.pendingStaticConfig, startedFingerprint),
           ),
         )
         .run();

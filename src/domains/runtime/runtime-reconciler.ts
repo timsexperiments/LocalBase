@@ -623,7 +623,7 @@ export class RuntimeReconciler {
     }
     const target = await this.exclusive(async () => {
       dispatchLease?.throwIfCancelled();
-      const target = this.controller.update((config) => {
+      const target = await this.controller.update((config) => {
         config[field] = modelId;
       });
       this.snapshot = target;

@@ -1,4 +1,5 @@
 import { restartPending } from "../config/activation";
+import { persistConfiguration } from "../config/declarative";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -38,6 +39,7 @@ import { RuntimeMemoryAdmissionError } from "./memory-controller";
 import type { MemorySafetyTransition } from "./memory-safety";
 import { SpeechGenerationTimeoutError } from "./speech-supervisor";
 import { getGatewayInstanceState } from "../service/ownership";
+import { DatabaseSession } from "../../db/client";
 
 type ValidationCase = {
   name: string;
@@ -147,6 +149,36 @@ test.each([
     }
   },
 );
+
+test("managed gateways acknowledge settings reverted to their startup values", async () => {
+  const gateway = await startGatewayFixture({
+    managedIdentity: true,
+    persistedGatewayHost: "127.0.0.1",
+  });
+  const database = new DatabaseSession();
+  try {
+    const startup = gateway.readConfig();
+    persistConfiguration(database, {
+      ...startup,
+      memory: {
+        ...startup.memory,
+        systemReserve: {
+          ...startup.memory.systemReserve,
+          percent: startup.memory.systemReserve.percent + 1,
+        },
+      },
+    });
+    expect(await restartPending(gateway.root)).toBe(true);
+    persistConfiguration(database, startup);
+    expect(await restartPending(gateway.root)).toBe(true);
+
+    expect((await fetch(`${gateway.baseUrl}/health/ready`)).status).toBe(200);
+    expect(await restartPending(gateway.root)).toBe(false);
+  } finally {
+    database.close();
+    await gateway.stop();
+  }
+});
 
 test("normalizes unexpected gateway errors into an OpenAI error envelope", async () => {
   const response = internalGatewayFailure();

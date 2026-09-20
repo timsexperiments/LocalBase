@@ -1803,8 +1803,6 @@ export async function runServe(
     gatewayPort: wrapperPort,
     memory: structuredClone(config.memory),
   };
-  let startupAcknowledged = false;
-
   const llmPort = input.llmPort ?? config.port;
   const sttPort = input.sttPort ?? config.sttPort;
   const imagePort = input.imagePort ?? 8090;
@@ -2420,18 +2418,12 @@ export async function runServe(
         return methodNotAllowed("GET, HEAD");
       }
       const readiness = readinessSnapshot();
-      if (
-        !startupAcknowledged &&
-        serviceId &&
-        serviceToken &&
-        readiness.status === "ready"
-      ) {
+      if (serviceId && serviceToken && readiness.status === "ready") {
         acknowledgeStaticConfiguration(
           ctx.database,
           config.root,
           startupStaticConfig,
         );
-        startupAcknowledged = true;
       }
       const body = JSON.stringify(readiness);
       return new Response(request.method === "HEAD" ? null : body, {
@@ -3182,7 +3174,6 @@ export async function runServe(
       config.root,
       startupStaticConfig,
     );
-    startupAcknowledged = true;
   }
   ctx.logger.event({
     severity: "info",

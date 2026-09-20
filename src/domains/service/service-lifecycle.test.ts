@@ -877,6 +877,17 @@ describe.serial("compiled CLI service lifecycle", () => {
     await waitForFile(
       join(foregroundRoot, "runtime", "gateway.lock", "owner.json"),
     );
+    const foregroundStatus = await runCli(
+      executable,
+      ["--root", foregroundRoot, "status", "--json"],
+      environment("darwin", {
+        LOCALBASE_TEST_SERVICE_MANAGER_UNAVAILABLE: "launchctl",
+      }),
+    );
+    expectCliSuccess(foregroundStatus);
+    expect(jsonDocument(foregroundStatus.stdout).data).toMatchObject({
+      service: { state: "foreground", managerAvailable: false },
+    });
     const start = await runCli(
       executable,
       ["--root", foregroundRoot, "start", "--json"],
