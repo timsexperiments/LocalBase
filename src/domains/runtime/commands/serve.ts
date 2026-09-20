@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { SpanStatusCode, context, trace } from "@opentelemetry/api";
 import { join, basename } from "node:path";
-import { resolveApiKey, type LocalBaseConfig } from "../../../manager";
+import {
+  resolveActiveApiKeyById,
+  resolveApiKey,
+  type LocalBaseConfig,
+} from "../../../manager";
 import {
   byId,
   CATALOG,
@@ -151,6 +155,7 @@ type GatewayRequestAuth = Readonly<{
     config: LocalBaseConfig,
     request?: Request,
   ): GatewayCredential | undefined;
+  resolveUi(request: Request): GatewayCredential | undefined;
   telemetry(required: boolean): NonNullable<HttpRequestLogInput["auth"]>;
 }>;
 
@@ -1814,9 +1819,6 @@ export async function runServe(
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
   const managementAccess = await loadManagementAccess(config.root);
-  const uiAccess = createUiAccess({
-    config: await loadUiAccessConfig(config.root),
-  });
   const { host: wrapperHost, port: wrapperPort } = await loadGatewayListener(
     config.root,
     input,
@@ -1875,25 +1877,72 @@ export async function runServe(
   const sttPath = input.sttPath ?? "/inference";
   const authRequired = input.auth ?? true;
   const authMode = parseAuthMode(input.authMode);
+  const environmentApiKey = process.env.LOCALBASE_API_KEY;
+  const environmentBrowserCredential = environmentApiKey
+    ? Object.freeze({
+        ownerId: "environment",
+        signingSecret: new Bun.CryptoHasher("sha256")
+          .update(environmentApiKey)
+          .digest("hex"),
+      })
+    : undefined;
+  const browserCredentialForKey = (token: string) => {
+    if (environmentApiKey && token === environmentApiKey)
+      return environmentBrowserCredential;
+    const apiKey = resolveApiKey(ctx.database, ctx.runtimeConfig.copy(), token);
+    return apiKey
+      ? Object.freeze({
+          ownerId: `api-key:${apiKey.id}`,
+          signingSecret: apiKey.keyHash,
+        })
+      : undefined;
+  };
+  const browserCredentialForOwner = (ownerId: string) => {
+    if (ownerId === "environment") return environmentBrowserCredential;
+    if (!ownerId.startsWith("api-key:")) return undefined;
+    const apiKey = resolveActiveApiKeyById(
+      ctx.database,
+      ctx.runtimeConfig.copy(),
+      ownerId.slice("api-key:".length),
+    );
+    return apiKey
+      ? Object.freeze({ ownerId, signingSecret: apiKey.keyHash })
+      : undefined;
+  };
+  const uiAccess = createUiAccess({
+    config: await loadUiAccessConfig(config.root),
+    authenticateApiKey: browserCredentialForKey,
+    resolveSessionOwner: browserCredentialForOwner,
+  });
   const gatewayRequestAuth = (request: Request): GatewayRequestAuth => {
     const token = extractAuthToken(request, authMode);
+    const credentialPresented =
+      token !== null ||
+      request.headers.has("cookie") ||
+      request.headers.has("cf-access-jwt-assertion");
     let resolved = false;
     let credential: GatewayCredential | undefined;
+    const resolveUiCredential = (currentRequest: Request) => {
+      const uiCredential = uiAccess.credential(currentRequest);
+      if (!uiCredential) return undefined;
+      const principalId = uiCredential.ownerId.startsWith("api-key:")
+        ? uiCredential.ownerId.slice("api-key:".length)
+        : uiCredential.ownerId;
+      credential = Object.freeze({
+        ownerId: uiCredential.ownerId,
+        principalId,
+        source: "browser_session",
+      });
+      return credential;
+    };
     return Object.freeze({
       resolve(config: LocalBaseConfig, currentRequest = request) {
         if (resolved) return credential;
         resolved = true;
-        const uiCredential = uiAccess.credential(currentRequest);
-        if (uiCredential) {
-          credential = Object.freeze({
-            ownerId: uiCredential.ownerId,
-            principalId: uiCredential.ownerId,
-            source: "browser_session",
-          });
-          return credential;
-        }
+        const uiCredential = resolveUiCredential(currentRequest);
+        if (uiCredential) return uiCredential;
         if (!token) return undefined;
-        if (token === process.env.LOCALBASE_API_KEY) {
+        if (token === environmentApiKey) {
           credential = Object.freeze({
             ownerId: "environment",
             principalId: "environment",
@@ -1912,6 +1961,11 @@ export async function runServe(
         }
         return credential;
       },
+      resolveUi(currentRequest: Request) {
+        if (resolved) return credential;
+        resolved = true;
+        return resolveUiCredential(currentRequest);
+      },
       telemetry(required: boolean): NonNullable<HttpRequestLogInput["auth"]> {
         if (!required) return { outcome: "disabled" };
         if (credential) {
@@ -1924,7 +1978,7 @@ export async function runServe(
             source: credential.source,
           };
         }
-        return { outcome: token ? "invalid" : "missing" };
+        return { outcome: credentialPresented ? "invalid" : "missing" };
       },
     });
   };
@@ -2386,15 +2440,19 @@ export async function runServe(
     requestAuth: GatewayRequestAuth,
   ): Promise<Response> => {
     const uiResult = await uiAccess.handle(request);
-    if (uiResult.kind === "response") return uiResult.response;
+    if (uiResult.kind === "response") {
+      requestAuth.resolveUi(request);
+      return uiResult.response;
+    }
     if (uiResult.kind === "forward") {
       request = uiResult.request;
       pathname = uiResult.pathname;
+      requestAuth.resolveUi(request);
     }
     const playground = playgroundResponse(request, pathname);
     if (playground) return playground;
     if (pathname === "/_localbase/model-management") {
-      const credential = gatewayCredential(request, ctx.runtimeConfig.copy());
+      const credential = requestAuth.resolve(ctx.runtimeConfig.copy(), request);
       if (!credential) return unauthorized();
       const canManage = canManageModels(credential, managementAccess);
       const headers = { "cache-control": "no-store" };
@@ -3114,7 +3172,10 @@ export async function runServe(
       const requestId = `lbreq_${crypto.randomUUID()}`;
       const requestAuth = gatewayRequestAuth(request);
       const route = selectGatewayRoute(pathname);
+      const uiRequest = isUiAccessPath(pathname);
       const requiresGatewayAuth =
+        uiRequest ||
+        pathname === "/_localbase/model-management" ||
         route === "modelMetadataList" ||
         route === "modelMetadataDetail" ||
         route === "videoCreate" ||
@@ -3132,7 +3193,6 @@ export async function runServe(
         parent,
       );
       span.setAttribute("localbase.request_id", requestId);
-      const uiRequest = isUiAccessPath(pathname);
       if (method === "OPTIONS" && !uiRequest) {
         span.setAttribute("http.response.status_code", 204);
         span.end();

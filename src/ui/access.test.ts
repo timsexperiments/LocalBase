@@ -14,7 +14,7 @@ import {
   loadUiAccessConfig,
   uiAccessConfigSchema,
 } from "./access";
-import { startGatewayFixture } from "../test/gateway-fixture";
+import { startGatewayFixture, waitForLogEvent } from "../test/gateway-fixture";
 import { VideoJobManager } from "../domains/runtime/video/video-job-manager";
 import { canManageModels } from "./management-access";
 
@@ -241,6 +241,143 @@ test("LAN session offers API-key mode without granting Access identity or proxy 
   expect(access.credential(direct)).toBeUndefined();
 });
 
+test("exchanges a LAN link key for a revocable secure browser session", async () => {
+  let currentTime = Date.UTC(2026, 8, 19);
+  let active = true;
+  const credential = {
+    ownerId: "api-key:key_fixture",
+    signingSecret: "a".repeat(64),
+  };
+  const access = createUiAccess({
+    config,
+    keyResolver: resolver,
+    now: () => currentTime,
+    authenticateApiKey: (key) =>
+      key === "lb_fixture" && active ? credential : undefined,
+    resolveSessionOwner: (ownerId) =>
+      ownerId === credential.ownerId && active ? credential : undefined,
+  });
+  const origin = "https://lan.example.com";
+  const headers = {
+    "x-localbase-ui": "1",
+    "sec-fetch-site": "same-origin",
+    host: "lan.example.com",
+    origin,
+  };
+  const exchange = await responseFor(
+    access,
+    new Request(`${origin}/app/session`, {
+      method: "POST",
+      headers: { ...headers, authorization: "Bearer lb_fixture" },
+    }),
+  );
+  expect(exchange.status).toBe(200);
+  expect(await exchange.json()).toEqual({ authenticated: true });
+  const setCookie = exchange.headers.get("set-cookie") ?? "";
+  expect(setCookie).toContain("localbase_ui_session=");
+  expect(setCookie).toContain("Path=/app");
+  expect(setCookie).toContain("Max-Age=2592000");
+  expect(setCookie).toContain("HttpOnly");
+  expect(setCookie).toContain("Secure");
+  expect(setCookie).toContain("SameSite=Strict");
+  const cookie = setCookie.split(";")[0];
+
+  const session = await responseFor(
+    access,
+    new Request(`${origin}/app/session`, {
+      headers: { ...headers, cookie },
+    }),
+  );
+  expect(session.status).toBe(200);
+  expect(await session.json()).toEqual({ authenticated: true });
+
+  const mapped = await access.handle(
+    new Request(`${origin}/app/api/_localbase/models`, {
+      headers: { ...headers, cookie },
+    }),
+  );
+  if (mapped.kind !== "forward") throw new Error("Expected mapped request.");
+  expect(mapped.pathname).toBe("/_localbase/models");
+  expect(mapped.request.headers.has("cookie")).toBe(false);
+  expect(access.credential(mapped.request)).toEqual({
+    ownerId: credential.ownerId,
+  });
+
+  const tampered = `${cookie.slice(0, -1)}x`;
+  const tamperedResponse = await responseFor(
+    access,
+    new Request(`${origin}/app/session`, {
+      headers: { ...headers, cookie: tampered },
+    }),
+  );
+  expect(tamperedResponse.status).toBe(200);
+  expect(await tamperedResponse.json()).toEqual({
+    authenticated: false,
+    mode: "api-key",
+  });
+  expect(tamperedResponse.headers.get("set-cookie")).toContain("Max-Age=0");
+  currentTime += 30 * 24 * 60 * 60 * 1000 + 1;
+  const expired = await responseFor(
+    access,
+    new Request(`${origin}/app/session`, {
+      headers: { ...headers, cookie },
+    }),
+  );
+  expect(expired.status).toBe(200);
+  expect(await expired.json()).toEqual({
+    authenticated: false,
+    mode: "api-key",
+  });
+  expect(expired.headers.get("set-cookie")).toContain("Max-Age=0");
+  currentTime = Date.UTC(2026, 8, 19);
+  active = false;
+  const revoked = await responseFor(
+    access,
+    new Request(`${origin}/app/session`, {
+      headers: { ...headers, cookie },
+    }),
+  );
+  expect(revoked.status).toBe(200);
+  expect(await revoked.json()).toEqual({
+    authenticated: false,
+    mode: "api-key",
+  });
+  expect(revoked.headers.get("set-cookie")).toContain("Max-Age=0");
+});
+
+test("does not issue persistent browser sessions over HTTP", async () => {
+  let authenticationCalls = 0;
+  const access = createUiAccess({
+    config,
+    keyResolver: resolver,
+    authenticateApiKey: () => {
+      authenticationCalls++;
+      return { ownerId: "api-key:key_fixture", signingSecret: "secret" };
+    },
+    resolveSessionOwner: () => undefined,
+  });
+  const response = await responseFor(
+    access,
+    new Request("http://192.168.1.20:2273/app/session", {
+      method: "POST",
+      headers: {
+        "x-localbase-ui": "1",
+        "sec-fetch-site": "same-origin",
+        host: "192.168.1.20:2273",
+        origin: "http://192.168.1.20:2273",
+        authorization: "Bearer lb_fixture",
+      },
+    }),
+  );
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    authenticated: false,
+    mode: "api-key",
+  });
+  expect(response.headers.has("set-cookie")).toBe(false);
+  expect(authenticationCalls).toBe(0);
+});
+
 test("enforces exact host, origin, fetch-site, marker, method, and path boundaries", async () => {
   const access = createUiAccess({ config, keyResolver: resolver });
   const jwt = await token();
@@ -291,8 +428,14 @@ test("enforces exact host, origin, fetch-site, marker, method, and path boundari
     expect((await responseFor(access, request(jwt, path, method))).status).toBe(
       404,
     );
+  const cloudflarePost = await responseFor(
+    access,
+    request(jwt, "/app/session", "POST"),
+  );
+  expect(cloudflarePost.status).toBe(200);
+  expect(await cloudflarePost.json()).toEqual({ authenticated: true });
   expect(
-    (await responseFor(access, request(jwt, "/app/session", "POST"))).status,
+    (await responseFor(access, request(jwt, "/app/session", "DELETE"))).status,
   ).toBe(405);
 });
 
@@ -509,6 +652,122 @@ test("disabled gateway has manual fallback only; Access JWT never authenticates 
       mode: "api-key",
     });
     expect(session.headers.has("access-control-allow-origin")).toBe(false);
+    const lanOrigin = "https://lan.example.com";
+    const lanHeaders = {
+      host: "lan.example.com",
+      origin: lanOrigin,
+      "sec-fetch-site": "same-origin",
+      "x-localbase-ui": "1",
+    };
+    const exchange = await fetch(`${gateway.baseUrl}/app/session`, {
+      method: "POST",
+      headers: {
+        ...lanHeaders,
+        authorization: `Bearer ${gateway.apiKey}`,
+      },
+    });
+    expect(exchange.status).toBe(200);
+    expect(await exchange.json()).toEqual({ authenticated: true });
+    const exchangeEvent = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "http.request" &&
+        candidate.requestId === exchange.headers.get("x-localbase-request-id"),
+    );
+    expect(exchangeEvent.attributes).toMatchObject({
+      auth_outcome: "authenticated",
+      auth_source: "browser_session",
+    });
+    expect(exchangeEvent.attributes?.auth_principal_id).toMatch(/^key_/);
+    const browserCookie = (exchange.headers.get("set-cookie") ?? "").split(
+      ";",
+    )[0];
+    expect(browserCookie).toStartWith("localbase_ui_session=");
+    const remembered = await fetch(`${gateway.baseUrl}/app/session`, {
+      headers: { ...lanHeaders, cookie: browserCookie },
+    });
+    expect(remembered.status).toBe(200);
+    expect(await remembered.json()).toEqual({ authenticated: true });
+    const rememberedEvent = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "http.request" &&
+        candidate.requestId ===
+          remembered.headers.get("x-localbase-request-id"),
+    );
+    expect(rememberedEvent.attributes).toMatchObject({
+      auth_outcome: "authenticated",
+      auth_source: "browser_session",
+      auth_principal_id: exchangeEvent.attributes?.auth_principal_id,
+    });
+    const throughSession = await fetch(
+      `${gateway.baseUrl}/app/api/_localbase/models`,
+      { headers: { ...lanHeaders, cookie: browserCookie } },
+    );
+    expect(throughSession.status).toBe(200);
+    await throughSession.body?.cancel();
+    const throughSessionEvent = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "http.request" &&
+        candidate.requestId ===
+          throughSession.headers.get("x-localbase-request-id"),
+    );
+    expect(throughSessionEvent.attributes).toMatchObject({
+      auth_outcome: "authenticated",
+      auth_source: "browser_session",
+      auth_principal_id: exchangeEvent.attributes?.auth_principal_id,
+    });
+    const rejectedCookie = await fetch(`${gateway.baseUrl}/app/session`, {
+      headers: {
+        ...lanHeaders,
+        authorization: `Bearer ${gateway.apiKey}`,
+        cookie: `${browserCookie}x`,
+      },
+    });
+    expect(rejectedCookie.status).toBe(200);
+    expect(await rejectedCookie.json()).toEqual({
+      authenticated: false,
+      mode: "api-key",
+    });
+    const rejectedCookieEvent = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "http.request" &&
+        candidate.requestId ===
+          rejectedCookie.headers.get("x-localbase-request-id"),
+    );
+    expect(rejectedCookieEvent.attributes).toMatchObject({
+      auth_outcome: "invalid",
+    });
+    const uiChat = await fetch(
+      `${gateway.baseUrl}/app/api/v1/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          ...lanHeaders,
+          cookie: browserCookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: gateway.readConfig().activeLlmModel,
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      },
+    );
+    expect(uiChat.status).toBe(200);
+    await uiChat.body?.cancel();
+    const chatEvent = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "http.request" &&
+        candidate.requestId === uiChat.headers.get("x-localbase-request-id"),
+    );
+    expect(chatEvent.attributes).toMatchObject({
+      auth_outcome: "authenticated",
+      auth_source: "browser_session",
+      auth_principal_id: exchangeEvent.attributes?.auth_principal_id,
+    });
     for (const [method, path] of [
       ["GET", "/_localbase/models"],
       ["GET", "/_localbase/model-management"],

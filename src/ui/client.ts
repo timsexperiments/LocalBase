@@ -279,13 +279,20 @@ const sessionSchema = z.discriminatedUnion("authenticated", [
   z.object({ authenticated: z.literal(true) }),
   z.object({ authenticated: z.literal(false), mode: z.literal("api-key") }),
 ]);
-export async function readSession(signal?: AbortSignal): Promise<Session> {
+export async function readSession({
+  signal,
+  key = "",
+}: { signal?: AbortSignal; key?: string } = {}): Promise<Session> {
+  const headers = new Headers({ "x-localbase-ui": "1" });
+  const presentedKey = key.trim();
+  if (presentedKey) headers.set("authorization", `Bearer ${presentedKey}`);
   const response = await fetch("/app/session", {
+    method: presentedKey ? "POST" : "GET",
     signal,
     credentials: "same-origin",
     cache: "no-store",
     redirect: "error",
-    headers: { "x-localbase-ui": "1" },
+    headers,
   });
   if (response.status === 401 || response.status === 403) {
     await response.body?.cancel();

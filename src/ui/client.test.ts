@@ -43,7 +43,7 @@ describe("playground client boundaries", () => {
     };
     const replace = spyOn(history, "replaceState");
     const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
-      Response.json({ authenticated: false, mode: "api-key" }),
+      Response.json({ authenticated: true }),
     );
     try {
       const key = consumeFragmentKey({ location, history });
@@ -52,15 +52,19 @@ describe("playground client boundaries", () => {
       expect(fetchMock).not.toHaveBeenCalled();
       expect(consumeFragmentKey({ location, history })).toBe("");
       expect(replace).toHaveBeenCalledTimes(1);
-      const connection = sessionConnection(await readSession(), key);
-      expect(connection).toEqual({ kind: "api-key", key: "lb_fixture-key" });
+      const connection = sessionConnection(await readSession({ key }), key);
+      expect(connection).toEqual({ kind: "session" });
       if (!connection) throw new Error("Missing fixture connection");
-      await api("/_localbase/models", connection);
-      const [path, options] = fetchMock.mock.calls.at(-1) ?? [];
-      expect(path).toBe("/_localbase/models");
-      expect(new Headers(options?.headers).get("authorization")).toBe(
+      const [sessionPath, sessionOptions] = fetchMock.mock.calls[0] ?? [];
+      expect(sessionPath).toBe("/app/session");
+      expect(sessionOptions?.method).toBe("POST");
+      expect(new Headers(sessionOptions?.headers).get("authorization")).toBe(
         "Bearer lb_fixture-key",
       );
+      await api("/_localbase/models", connection);
+      const [path, options] = fetchMock.mock.calls.at(-1) ?? [];
+      expect(path).toBe("/app/api/_localbase/models");
+      expect(new Headers(options?.headers).has("authorization")).toBe(false);
     } finally {
       replace.mockRestore();
       fetchMock.mockRestore();
