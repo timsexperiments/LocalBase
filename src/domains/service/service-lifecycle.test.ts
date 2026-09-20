@@ -1,3 +1,8 @@
+import { defaultConfig } from "../../manager";
+import {
+  configurationDocument,
+  renderConfiguration,
+} from "../config/declarative";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   existsSync,
@@ -422,6 +427,177 @@ describe.serial("compiled CLI service lifecycle", () => {
     return `gui/${uid}/${serviceId}`;
   }
 
+  test(
+    "declarative apply uses managed restart handoff and waits for readiness",
+    async () => {
+      const root = join(directory, "declarative-service-root");
+      const source = join(directory, "service-config.toml");
+      const desired = configurationDocument(defaultConfig(root));
+      await Bun.write(source, renderConfiguration(desired));
+      const apply = (...flags: string[]) =>
+        runCli(
+          executable,
+          [
+            "--root",
+            root,
+            "config",
+            "apply",
+            "--file",
+            source,
+            "--json",
+            ...flags,
+          ],
+          environment("linux"),
+        );
+      expectCliSuccess(await apply("--restart", "never"));
+      const started = await apply("--restart", "always", "--wait");
+      expectCliSuccess(started);
+      expect(jsonDocument(started.stdout)).toMatchObject({
+        data: { changed: false, activation: "restarted", readiness: "ready" },
+      });
+      const before = await ownerRecord(root);
+      desired.runtime.ctxSize = 8192;
+      await Bun.write(source, renderConfiguration(desired));
+      const hot = await apply("--wait");
+      expectCliSuccess(hot);
+      expect(jsonDocument(hot.stdout)).toMatchObject({
+        data: { activation: "hot", readiness: "ready" },
+      });
+      expect((await ownerRecord(root)).instanceId).toBe(before.instanceId);
+      desired.memory.systemReserve.percent = 20;
+      await Bun.write(source, renderConfiguration(desired));
+      const deferred = await apply("--restart", "never");
+      expectCliSuccess(deferred);
+      expect(jsonDocument(deferred.stdout)).toMatchObject({
+        data: { pendingRestart: true },
+      });
+      expect((await ownerRecord(root)).instanceId).toBe(before.instanceId);
+      const plan = await runCli(
+        executable,
+        [
+          "--root",
+          root,
+          "config",
+          "plan",
+          "--file",
+          source,
+          "--json",
+          "--detailed-exit-code",
+        ],
+        environment("linux"),
+      );
+      expect(plan.exitCode).toBe(2);
+      expect(jsonDocument(plan.stdout)).toMatchObject({
+        data: { changed: false, pendingRestart: true },
+      });
+      const restarted = await apply("--wait");
+      expectCliSuccess(restarted);
+      expect(jsonDocument(restarted.stdout)).toMatchObject({
+        data: {
+          changed: false,
+          activation: "restarted",
+          readiness: "ready",
+          pendingRestart: false,
+        },
+      });
+      expect((await ownerRecord(root)).instanceId).not.toBe(before.instanceId);
+      expectCliSuccess(
+        await runCli(
+          executable,
+          ["--root", root, "stop", "--json"],
+          environment("linux"),
+        ),
+      );
+      desired.gateway.port += 1;
+      await Bun.write(source, renderConfiguration(desired));
+      expectCliSuccess(await apply("--restart", "never"));
+      const resumed = await apply("--wait");
+      expectCliSuccess(resumed);
+      expect(jsonDocument(resumed.stdout)).toMatchObject({
+        data: {
+          changed: false,
+          activation: "restarted",
+          pendingRestart: false,
+        },
+      });
+      expectCliSuccess(
+        await runCli(
+          executable,
+          ["--root", root, "stop", "--json"],
+          environment("linux"),
+        ),
+      );
+      desired.memory.systemReserve.percent += 1;
+      await Bun.write(source, renderConfiguration(desired));
+      expectCliSuccess(await apply("--restart", "never"));
+      const failed = await runCli(
+        executable,
+        [
+          "--root",
+          root,
+          "config",
+          "apply",
+          "--file",
+          source,
+          "--json",
+          "--wait",
+        ],
+        environment("linux", { LOCALBASE_TEST_SERVICE_MANAGER_FAIL: "start" }),
+      );
+      expect(failed.exitCode).toBe(1);
+      expect(jsonDocument(failed.stdout)).toMatchObject({
+        ok: false,
+        error: {
+          message: expect.stringContaining(
+            "Configuration is saved, but activation failed",
+          ),
+        },
+      });
+      const pending = await runCli(
+        executable,
+        ["--root", root, "config", "show", "--json"],
+        environment("linux"),
+      );
+      expect(jsonDocument(pending.stdout)).toMatchObject({
+        data: { pendingRestart: true },
+      });
+      expectCliSuccess(
+        await runCli(
+          executable,
+          ["--root", root, "start", "--json"],
+          environment("linux"),
+        ),
+      );
+      await waitForGatewayReady(executable, root, environment("linux"));
+      const activated = await runCli(
+        executable,
+        [
+          "--root",
+          root,
+          "config",
+          "plan",
+          "--file",
+          source,
+          "--json",
+          "--detailed-exit-code",
+        ],
+        environment("linux"),
+      );
+      expect(activated.exitCode).toBe(0);
+      expect(jsonDocument(activated.stdout)).toMatchObject({
+        data: { changed: false, pendingRestart: false },
+      });
+      expectCliSuccess(
+        await runCli(
+          executable,
+          ["--root", root, "stop", "--json"],
+          environment("linux"),
+        ),
+      );
+    },
+    { timeout: 30_000 },
+  );
+
   test("status is database-free and does not initialize an absent root", async () => {
     const root = join(directory, "absent-root");
     const canonical = await canonicalRoot(root);
@@ -701,6 +877,17 @@ describe.serial("compiled CLI service lifecycle", () => {
     await waitForFile(
       join(foregroundRoot, "runtime", "gateway.lock", "owner.json"),
     );
+    const foregroundStatus = await runCli(
+      executable,
+      ["--root", foregroundRoot, "status", "--json"],
+      environment("darwin", {
+        LOCALBASE_TEST_SERVICE_MANAGER_UNAVAILABLE: "launchctl",
+      }),
+    );
+    expectCliSuccess(foregroundStatus);
+    expect(jsonDocument(foregroundStatus.stdout).data).toMatchObject({
+      service: { state: "foreground", managerAvailable: false },
+    });
     const start = await runCli(
       executable,
       ["--root", foregroundRoot, "start", "--json"],

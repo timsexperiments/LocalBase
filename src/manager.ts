@@ -81,6 +81,8 @@ export type LocalBaseConfig = {
   ttsModelsDir: string;
   imageModelsDir: string;
   videoModelsDir: string;
+  gatewayHost: string;
+  gatewayPort: number;
   host: string;
   port: number;
   ctxSize: number;
@@ -123,6 +125,8 @@ const configRowSchema = z
   .object({
     id: z.literal("default"),
     root: absolutePathSchema,
+    gatewayHost: hostSchema,
+    gatewayPort: portSchema,
     host: hostSchema,
     port: portSchema,
     ctxSize: z.number().int().min(2048).max(2_147_483_647),
@@ -213,6 +217,8 @@ function toConfigRow(config: LocalBaseConfig) {
   return {
     id: "default",
     root: config.root,
+    gatewayHost: config.gatewayHost,
+    gatewayPort: config.gatewayPort,
     host: config.host,
     port: config.port,
     ctxSize: config.ctxSize,
@@ -330,6 +336,8 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
 
   return {
     root: data.root,
+    gatewayHost: data.gatewayHost,
+    gatewayPort: data.gatewayPort,
     ...modelDirectories(data.root),
     host: data.host,
     port: data.port,
@@ -398,6 +406,8 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
   return {
     root,
     ...modelDirectories(root),
+    gatewayHost: "127.0.0.1",
+    gatewayPort: 2273,
     host: "0.0.0.0",
     port: 18000,
     ctxSize: defaultCtxSize,

@@ -3,6 +3,8 @@ import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 export const configTable = sqliteTable("config", {
   id: text("id").primaryKey(),
   root: text("root").notNull(),
+  gatewayHost: text("gateway_host").default("127.0.0.1").notNull(),
+  gatewayPort: integer("gateway_port").default(2273).notNull(),
   host: text("host").notNull(),
   port: integer("port").notNull(),
   ctxSize: integer("ctx_size").notNull(),
@@ -33,6 +35,11 @@ export const configTable = sqliteTable("config", {
   memoryAcceleratorReserveMinimumGb: real(
     "memory_accelerator_reserve_minimum_gb",
   ).notNull(),
+});
+
+export const configActivationTable = sqliteTable("config_activation", {
+  id: text("id").primaryKey(),
+  pendingStaticConfig: text("pending_static_config").notNull(),
 });
 
 export const apiKeysTable = sqliteTable("api_keys", {

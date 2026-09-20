@@ -14,6 +14,8 @@ export type ConfigFieldOwnership =
 
 export const configFieldOwnership = {
   root: "restart-required",
+  gatewayHost: "restart-required",
+  gatewayPort: "restart-required",
   llmModelsDir: "restart-required",
   sttModelsDir: "restart-required",
   ttsModelsDir: "restart-required",
@@ -47,6 +49,8 @@ export type RuntimeConfigField = keyof LocalBaseConfig;
 export type RuntimeOverrideConfigField = Exclude<
   RuntimeConfigField,
   | "root"
+  | "gatewayHost"
+  | "gatewayPort"
   | "llmModelsDir"
   | "sttModelsDir"
   | "ttsModelsDir"
@@ -66,6 +70,8 @@ export type RestartRequiredPlan = Readonly<{
   action: "unchanged" | "restart-required";
   changedFields: readonly (
     | "root"
+    | "gatewayHost"
+    | "gatewayPort"
     | "llmModelsDir"
     | "sttModelsDir"
     | "ttsModelsDir"
@@ -121,6 +127,8 @@ export type RuntimeReconciliationPlan = Readonly<{
 
 const restartRequiredFields = [
   "root",
+  "gatewayHost",
+  "gatewayPort",
   "llmModelsDir",
   "sttModelsDir",
   "ttsModelsDir",

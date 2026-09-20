@@ -9,7 +9,6 @@ import {
   loadApiKeys,
   loadConfig,
   modelDirectories,
-  saveConfig,
   type LocalBaseConfig,
 } from "../../../manager";
 import {
@@ -36,6 +35,9 @@ import type { ConfigureInput } from "../../app/commands/inputs";
 import { publicApiKey, publicConfiguration } from "../../app/commands/results";
 import { resolveOtelConfiguration } from "../../observability/otel";
 import { memorySafetyConfigSchema } from "../../runtime/memory-safety";
+
+import { persistConfiguration } from "../declarative";
+import { withRootOperation } from "../../service/ownership";
 
 export const PARALLEL_SLOTS_PROMPT =
   "Parallel request slots count (type 'auto' for dynamic auto-allocation, or an integer like 1, 2, 4)";
@@ -619,7 +621,9 @@ export async function runConfigure(
 
   warnAboutParallelOomRisk(config.parallel, specs.gpuVramGb);
 
-  saveConfig(ctx.database, config);
+  await withRootOperation(config.root, "configure", async () => {
+    persistConfiguration(ctx.database, config);
+  });
   execution.output.info(`Saved configuration to ${config.root}/local-base.db`);
   execution.output.info(
     `Selected LLM models: ${config.selectedLlmModels.join(", ")}`,

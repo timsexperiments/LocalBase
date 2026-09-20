@@ -1,3 +1,5 @@
+import { restartPending } from "../config/activation";
+import { persistConfiguration } from "../config/declarative";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -37,6 +39,7 @@ import { RuntimeMemoryAdmissionError } from "./memory-controller";
 import type { MemorySafetyTransition } from "./memory-safety";
 import { SpeechGenerationTimeoutError } from "./speech-supervisor";
 import { getGatewayInstanceState } from "../service/ownership";
+import { DatabaseSession } from "../../db/client";
 
 type ValidationCase = {
   name: string;
@@ -103,6 +106,76 @@ test("compiled gateway preserves an explicit host override", async () => {
   try {
     await expectGatewayListenerHost(gateway, "localhost");
   } finally {
+    await gateway.stop();
+  }
+});
+
+test.each([undefined, "127.0.0.1"])(
+  "compiled gateway uses persisted listener settings and honors host override %s",
+  async (gatewayHost) => {
+    const gateway = await startGatewayFixture({
+      persistedGatewayHost: "localhost",
+      gatewayHost,
+    });
+    try {
+      await expectGatewayListenerHost(gateway, gatewayHost ?? "localhost");
+      expect(Number(new URL(gateway.baseUrl).port)).toBe(
+        gateway.readConfig().gatewayPort,
+      );
+    } finally {
+      await gateway.stop();
+    }
+  },
+);
+
+test.each([
+  { managedIdentity: true, gatewayHost: undefined, pending: false },
+  { managedIdentity: true, gatewayHost: "127.0.0.1", pending: true },
+  { managedIdentity: false, gatewayHost: undefined, pending: true },
+])(
+  "only a managed gateway using saved static settings acknowledges activation: %j",
+  async ({ managedIdentity, gatewayHost, pending }) => {
+    const gateway = await startGatewayFixture({
+      persistedGatewayHost: "localhost",
+      pendingRestart: true,
+      managedIdentity,
+      gatewayHost,
+    });
+    try {
+      expect((await fetch(`${gateway.baseUrl}/health/ready`)).status).toBe(200);
+      expect(await restartPending(gateway.root)).toBe(pending);
+    } finally {
+      await gateway.stop();
+    }
+  },
+);
+
+test("managed gateways acknowledge settings reverted to their startup values", async () => {
+  const gateway = await startGatewayFixture({
+    managedIdentity: true,
+    persistedGatewayHost: "127.0.0.1",
+  });
+  const database = new DatabaseSession();
+  try {
+    const startup = gateway.readConfig();
+    persistConfiguration(database, {
+      ...startup,
+      memory: {
+        ...startup.memory,
+        systemReserve: {
+          ...startup.memory.systemReserve,
+          percent: startup.memory.systemReserve.percent + 1,
+        },
+      },
+    });
+    expect(await restartPending(gateway.root)).toBe(true);
+    persistConfiguration(database, startup);
+    expect(await restartPending(gateway.root)).toBe(true);
+
+    expect((await fetch(`${gateway.baseUrl}/health/ready`)).status).toBe(200);
+    expect(await restartPending(gateway.root)).toBe(false);
+  } finally {
+    database.close();
     await gateway.stop();
   }
 });

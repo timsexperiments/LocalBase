@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSession } from "../../db/client";
 import { defaultConfig, readConfig, saveConfig } from "../../manager";
+import { withRootOperation } from "../service/ownership";
 import { RuntimeConfigController } from "./config-snapshot";
 
 function withController(
@@ -69,17 +70,42 @@ test("runtime configuration refresh is read-only and revisions change only with 
 
 test("runtime configuration updates persist without allowing root changes", async () => {
   await withController(async (controller, _database, root) => {
-    const updated = controller.update((config) => {
+    const updated = await controller.update((config) => {
       config.parallel = 2;
     });
     expect(updated.revision).toBe(1);
     expect((await readConfig(root)).parallel).toBe(2);
 
-    expect(() =>
+    await expect(
       controller.update((config) => {
         config.root = join(root, "another-root");
       }),
-    ).toThrow("Runtime configuration cannot change the process root.");
+    ).rejects.toThrow("Runtime configuration cannot change the process root.");
     expect(controller.read()).toBe(updated);
+  });
+});
+
+test("runtime updates preserve configuration saved by a concurrent root operation", async () => {
+  await withController(async (controller, database, root) => {
+    const runtimeSelectedModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    let runtimeUpdate: ReturnType<typeof controller.update> | undefined;
+    await withRootOperation(root, "test", async () => {
+      runtimeUpdate = controller.update((config) => {
+        config.activeLlmModel = runtimeSelectedModel;
+      });
+      const external = await readConfig(root);
+      external.ctxSize = 8192;
+      external.selectedLlmModels = [
+        ...external.selectedLlmModels,
+        runtimeSelectedModel,
+      ];
+      saveConfig(database, external);
+    });
+
+    await runtimeUpdate;
+    expect(await readConfig(root)).toMatchObject({
+      activeLlmModel: runtimeSelectedModel,
+      ctxSize: 8192,
+    });
   });
 });
