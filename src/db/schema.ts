@@ -40,6 +40,7 @@ export const apiKeysTable = sqliteTable("api_keys", {
   name: text("name").notNull(),
   prefix: text("prefix").notNull(),
   keyHash: text("key_hash").notNull(),
+  scopes: text("scopes").default("[]").notNull(),
   createdAt: text("created_at").notNull(),
   lastRotatedAt: text("last_rotated_at").notNull(),
   expiresAt: text("expires_at"),

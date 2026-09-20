@@ -1873,7 +1873,7 @@ export async function runServe(
             kind: "api-key",
             id: apiKey.id,
             name: apiKey.name,
-            permissions: permissionSchema.options,
+            permissions: apiKey.scopes,
           });
         }
         return principal;

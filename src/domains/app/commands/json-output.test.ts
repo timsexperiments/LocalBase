@@ -3,6 +3,15 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import {
+  defaultApiKeyScopes,
+  permissionSchema,
+} from "../../auth/authorization";
+import {
+  keyMetadataResultSchema,
+  keySecretResultSchema,
+  keysListResultSchema,
+} from "./results";
 
 const projectRoot = join(import.meta.dirname, "../../../..");
 
@@ -107,6 +116,10 @@ test(
         key: { id: string };
       };
       expect(createdData.secret).toMatch(/^lb_/);
+      expect(
+        keySecretResultSchema.parse(jsonDocument(created.stdout).data).key
+          .scopes,
+      ).toEqual(defaultApiKeyScopes);
       expect(created.stderr).not.toContain(createdData.secret);
 
       const rotated = await runCli(executable, [
@@ -190,6 +203,146 @@ test(
       expect(catalog.exitCode).toBe(0);
       expect(jsonDocument(catalog.stdout)).toMatchObject({ ok: true });
       expect(existsSync(catalogRoot)).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+  { timeout: 30_000 },
+);
+
+test(
+  "compiled key commands persist scopes, keep secrets private, and reject invalid edits before mutation",
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), "local-base-scoped-cli-"));
+    const executable = join(directory, "local-base");
+    const root = join(directory, "data");
+    const invoke = (...args: string[]) =>
+      runCli(executable, ["--root", root, "--json", "keys", ...args]);
+    try {
+      await compileCli(executable);
+      const invalidCreate = await invoke("create", "--scopes", "*");
+      expect(invalidCreate.exitCode).toBe(2);
+      expect(jsonDocument(invalidCreate.stdout)).toMatchObject({
+        ok: false,
+        error: { code: "invalid_input" },
+      });
+      expect(existsSync(root)).toBe(false);
+
+      const created = await invoke(
+        "create",
+        "--name",
+        "limited",
+        "--expires-days",
+        "30",
+        "--scopes",
+        " models:read, inference:video,models:read ",
+      );
+      expect(created.exitCode).toBe(0);
+      const initial = keySecretResultSchema.parse(
+        jsonDocument(created.stdout).data,
+      );
+      expect(initial.key.scopes).toEqual(["inference:video", "models:read"]);
+      expect(created.stderr).not.toContain(initial.secret);
+      expect(created.stdout.split(initial.secret)).toHaveLength(2);
+
+      const stored = readFileSync(join(root, "local-base.db"));
+      for (const args of [
+        ["scopes", initial.key.id],
+        ["scopes", initial.key.id, "--scopes", "models:read,"],
+        ["scopes", initial.key.id, "--scopes", "models:write"],
+        ["scopes", initial.key.id, "--scopes", "inference:*"],
+        ["create", "--scopes", "models:read,typo"],
+      ]) {
+        const invalid = await invoke(...args);
+        expect(invalid.exitCode).toBe(2);
+        expect(jsonDocument(invalid.stdout)).toMatchObject({
+          ok: false,
+          error: { code: "invalid_input" },
+        });
+        expect(readFileSync(join(root, "local-base.db"))).toEqual(stored);
+      }
+
+      const edited = await invoke(
+        "scopes",
+        initial.key.id,
+        "--scopes",
+        [...permissionSchema.options].reverse().join(","),
+      );
+      expect(edited.exitCode).toBe(0);
+      const editedData = keyMetadataResultSchema.parse(
+        jsonDocument(edited.stdout).data,
+      );
+      expect(editedData.key).toEqual({
+        ...initial.key,
+        scopes: permissionSchema.options,
+      });
+      expect(edited.stdout + edited.stderr).not.toContain(initial.secret);
+
+      const rotated = await invoke("rotate", initial.key.id);
+      expect(rotated.exitCode).toBe(0);
+      const rotation = keySecretResultSchema.parse(
+        jsonDocument(rotated.stdout).data,
+      );
+      expect(rotation.secret).not.toBe(initial.secret);
+      expect(rotation.key).toMatchObject({
+        id: initial.key.id,
+        expiresAt: initial.key.expiresAt,
+        scopes: permissionSchema.options,
+      });
+      expect(rotated.stderr).not.toContain(rotation.secret);
+      expect(rotated.stdout.split(rotation.secret)).toHaveLength(2);
+
+      const revoked = await invoke("revoke", initial.key.id);
+      expect(revoked.exitCode).toBe(0);
+      const revocation = keyMetadataResultSchema.parse(
+        jsonDocument(revoked.stdout).data,
+      );
+      expect(revocation.key).toEqual({
+        ...rotation.key,
+        revokedAt: expect.any(String),
+      });
+      const cleared = await invoke("scopes", initial.key.id, "--scopes", "");
+      expect(cleared.exitCode).toBe(0);
+      expect(
+        keyMetadataResultSchema.parse(jsonDocument(cleared.stdout).data).key,
+      ).toEqual({ ...revocation.key, scopes: [] });
+
+      const listed = await invoke("list");
+      expect(listed.exitCode).toBe(0);
+      expect(
+        keysListResultSchema.parse(jsonDocument(listed.stdout).data).keys,
+      ).toEqual([{ ...revocation.key, scopes: [] }]);
+      const humanList = await runCli(executable, [
+        "--root",
+        root,
+        "keys",
+        "list",
+        "--non-interactive",
+      ]);
+      expect(humanList.exitCode).toBe(0);
+      expect(humanList.stdout).toContain("scopes=");
+      for (const result of [revoked, cleared, listed, humanList]) {
+        expect(result.stdout + result.stderr).not.toContain(initial.secret);
+        expect(result.stdout + result.stderr).not.toContain(rotation.secret);
+        expect(result.stdout + result.stderr).not.toContain("keyHash");
+      }
+
+      const empty = await invoke("create", "--scopes", "");
+      expect(empty.exitCode).toBe(0);
+      expect(
+        keySecretResultSchema.parse(jsonDocument(empty.stdout).data).key.scopes,
+      ).toEqual([]);
+      const missing = await invoke(
+        "scopes",
+        "missing-key",
+        "--scopes",
+        "models:read",
+      );
+      expect(missing.exitCode).toBe(1);
+      expect(jsonDocument(missing.stdout)).toMatchObject({
+        ok: false,
+        error: { message: "API key not found: missing-key" },
+      });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
