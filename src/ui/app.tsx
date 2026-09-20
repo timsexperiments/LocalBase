@@ -9,6 +9,15 @@ import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import { ModelManagement } from "./model-management";
 import {
+  attachmentAccept,
+  attachmentStorageError,
+  chatRequestError,
+  conversationAttachmentError,
+  readAttachments,
+  messageToChat,
+  type Attachment,
+} from "./attachments";
+import {
   DictationButton,
   DictationProvider,
   appendDictation,
@@ -47,7 +56,6 @@ import {
   type Mode,
   type Model,
   type Media,
-  type ChatMessage,
 } from "./client";
 import "./style.css";
 import {
@@ -153,6 +161,39 @@ function MediaCard({ media }: { media: Media }) {
     </div>
   );
 }
+function AttachmentChips({
+  attachments,
+  remove,
+}: {
+  attachments: Attachment[];
+  remove?: (id: string) => void;
+}) {
+  if (!attachments.length) return null;
+  return (
+    <ul className="attachment-list" aria-label="Attachments">
+      {attachments.map((attachment) => (
+        <li className="attachment-chip" key={attachment.id}>
+          {attachment.kind === "image" && (
+            <img src={attachment.url} alt={attachment.name} />
+          )}
+          <span className="attachment-info">
+            <span title={attachment.name}>{attachment.name}</span>
+            <small>{Math.max(1, Math.ceil(attachment.size / 1024))} KB</small>
+          </span>
+          {remove && (
+            <button
+              type="button"
+              aria-label={`Remove ${attachment.name}`}
+              onClick={() => remove(attachment.id)}
+            >
+              ✕
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
 function Drawer({
   title,
   close,
@@ -240,6 +281,13 @@ function App() {
   const [activeId, setActiveId] = useState(initial.conversation.id);
   const [persistent, setPersistent] = useState(initial.persistent);
   const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachmentReadError, setAttachmentReadError] = useState("");
+  const [readingAttachments, setReadingAttachments] = useState(false);
+  const attachmentInput = useRef<HTMLInputElement>(null);
+  const attachmentEpoch = useRef(0);
+  const attachmentPickerEpoch = useRef<number | null>(null);
+  const attachmentRead = useRef<number | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [generationPreferences, setGenerationPreferences] =
     useState<GenerationPreferences>({});
@@ -261,6 +309,98 @@ function App() {
   const candidates = availableModels(models, active?.mode ?? "llm");
   const pickerModels = catalogModels(models, active?.mode ?? "llm");
   const model = candidates.find((m) => m.id === active?.model) ?? candidates[0];
+  const accept = active?.mode === "llm" ? attachmentAccept(model) : "";
+  const storedAttachments = conversations.flatMap((conversation) =>
+    conversation.messages.flatMap((message) => message.attachments ?? []),
+  );
+  const attachmentProblem =
+    attachmentStorageError([...storedAttachments, ...attachments]) ??
+    (active
+      ? conversationAttachmentError(
+          [
+            ...active.messages,
+            ...(draft.trim() || attachments.length
+              ? [
+                  {
+                    id: "draft",
+                    role: "user" as const,
+                    text: draft.trim(),
+                    attachments,
+                  },
+                ]
+              : []),
+          ],
+          model,
+        )
+      : null);
+  function invalidateAttachmentRead() {
+    attachmentEpoch.current += 1;
+    attachmentPickerEpoch.current = null;
+    attachmentRead.current = null;
+    setReadingAttachments(false);
+    if (attachmentInput.current) attachmentInput.current.value = "";
+  }
+  function clearAttachments() {
+    invalidateAttachmentRead();
+    setAttachments([]);
+    setAttachmentReadError("");
+  }
+  // Invalidate before paint, including automatic model fallback and auth loss.
+  useLayoutEffect(() => {
+    if (attachmentRead.current !== null)
+      setAttachmentReadError(
+        "File reading was canceled because the model or sign-in changed. Choose the files again.",
+      );
+    invalidateAttachmentRead();
+    return () => {
+      attachmentEpoch.current += 1;
+      attachmentPickerEpoch.current = null;
+    };
+  }, [
+    active?.id,
+    active?.mode,
+    model?.id,
+    JSON.stringify(model?.catalog),
+    session,
+  ]);
+  async function attachFiles(files: File[]) {
+    if (
+      !files.length ||
+      !model ||
+      !credential ||
+      !accept ||
+      busy ||
+      attachmentRead.current !== null ||
+      attachmentPickerEpoch.current !== attachmentEpoch.current
+    )
+      return;
+    const epoch = attachmentEpoch.current;
+    attachmentRead.current = epoch;
+    setReadingAttachments(true);
+    try {
+      const added = await readAttachments(
+        files,
+        model,
+        attachments,
+        storedAttachments,
+      );
+      if (epoch !== attachmentEpoch.current) return;
+      setAttachments((current) => [...current, ...added]);
+      setAttachmentReadError("");
+    } catch (cause) {
+      if (epoch !== attachmentEpoch.current) return;
+      setAttachmentReadError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not read the files. Choose them again.",
+      );
+    } finally {
+      if (epoch === attachmentEpoch.current) {
+        attachmentRead.current = null;
+        setReadingAttachments(false);
+      }
+    }
+  }
   const generationSettings = modelGenerationSettings(
     generationPreferences,
     model?.id,
@@ -371,6 +511,9 @@ function App() {
         restored.conversation.model !== active?.model
       ) {
         controller.current?.abort(navigationAbortReason);
+      }
+      if (restored.conversation.id !== activeId) {
+        clearAttachments();
         setDraft("");
         setFile(null);
         setError("");
@@ -445,6 +588,7 @@ function App() {
     const c = fresh(mode, workspace);
     setConversations((items) => [c, ...items].slice(0, 30));
     setActiveId(c.id);
+    clearAttachments();
     setDraft("");
     setFile(null);
     setError("");
@@ -459,14 +603,20 @@ function App() {
       !credential ||
       !model ||
       busy ||
+      readingAttachments ||
+      attachmentRead.current !== null ||
       unsupportedVideo ||
-      (!retry && active.mode !== "stt" && !draft.trim()) ||
+      (!retry &&
+        active.mode !== "stt" &&
+        !draft.trim() &&
+        !attachments.length) ||
       (!retry && active.mode === "tts" && draft.length > 256) ||
       (active.mode === "video" &&
         (generationSettings.video.negative_prompt?.length ?? 0) > 16384) ||
       (active.mode === "stt" && !file)
     )
       return;
+    if (attachmentProblem) return;
     const previousUser = active.messages.reduce(
       (last, m, index) => (m.role === "user" ? index : last),
       -1,
@@ -483,7 +633,16 @@ function App() {
       id: crypto.randomUUID(),
       role: "user",
       text: active.mode === "stt" ? (file?.name ?? "Audio file") : text,
+      attachments:
+        retry && previousUser >= 0
+          ? active.messages[previousUser]?.attachments
+          : attachments,
     };
+    const requestProblem = chatRequestError([...base, user], model);
+    if (requestProblem) {
+      setAttachmentReadError(requestProblem);
+      return;
+    }
     const reply: Message = {
       id: crypto.randomUUID(),
       role: "assistant",
@@ -494,12 +653,16 @@ function App() {
     setBusy(true);
     setWarnings([]);
     setError("");
-    if (!retry) setDraft("");
+    if (!retry) {
+      setDraft("");
+      invalidateAttachmentRead();
+      setAttachments([]);
+    }
     nearBottom.current = true;
     update(active.id, (c) => ({
       ...c,
       model: model.id,
-      title: base.length ? c.title : user.text.slice(0, 60),
+      title: base.length ? c.title : (user.text || "Attachments").slice(0, 60),
       messages: [...base, user, reply],
     }));
     const patch = (change: (m: Message) => Message) =>
@@ -517,10 +680,7 @@ function App() {
     try {
       switch (active.mode) {
         case "llm": {
-          const messages = [...base, user].flatMap(
-            (m): ChatMessage[] =>
-              m.protocol ?? (m.text ? [{ role: m.role, content: m.text }] : []),
-          );
+          const messages = [...base, user].flatMap(messageToChat);
           const protocol = await runChat({
             preferences: generationPreferences,
             model,
@@ -834,13 +994,28 @@ function App() {
                     >
                       {message.text}
                     </Markdown>
-                  ) : message.artifacts?.length ? null : busy &&
+                  ) : message.artifacts?.length ||
+                    (message.role === "user" && message.attachmentsMissing) ||
+                    message.attachments?.length ? null : busy &&
                     message.id === active.messages.at(-1)?.id ? (
                     <p className="thinking" role="status">
                       Working<span>…</span>
                     </p>
                   ) : (
                     <p className="muted">No response received.</p>
+                  )}
+                  {message.role === "user" && (
+                    <>
+                      <AttachmentChips
+                        attachments={message.attachments ?? []}
+                      />
+                      {message.attachmentsMissing && (
+                        <p className="muted">
+                          Attachments from the earlier session are no longer
+                          available.
+                        </p>
+                      )}
+                    </>
                   )}
                   {message.media && <MediaCard media={message.media} />}
                   {message.artifacts?.map((artifact) => (
@@ -870,7 +1045,13 @@ function App() {
                       message.id === active.messages.at(-1)?.id && (
                         <button
                           className="copy"
-                          disabled={!credential || !model || unsupportedVideo}
+                          disabled={
+                            !credential ||
+                            !model ||
+                            unsupportedVideo ||
+                            readingAttachments ||
+                            !!attachmentProblem
+                          }
                           onClick={() => void send(true)}
                         >
                           Try again
@@ -926,7 +1107,14 @@ function App() {
                 <span>{error}</span>
                 {active.messages.length > 0 && active.mode !== "stt" && (
                   <button
-                    disabled={busy || !credential || !model || unsupportedVideo}
+                    disabled={
+                      busy ||
+                      !credential ||
+                      !model ||
+                      unsupportedVideo ||
+                      readingAttachments ||
+                      !!attachmentProblem
+                    }
                     onClick={() => void send(true)}
                   >
                     Retry
@@ -936,6 +1124,28 @@ function App() {
                   ✕
                 </button>
               </div>
+            )}
+            {attachmentReadError && (
+              <div className="error" role="alert">
+                <span>{attachmentReadError}</span>
+                <button
+                  type="button"
+                  aria-label="Dismiss attachment error"
+                  onClick={() => setAttachmentReadError("")}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            {attachmentProblem && (
+              <p className="error" role="alert">
+                {attachmentProblem}
+              </p>
+            )}
+            {readingAttachments && (
+              <p className="notice" role="status">
+                Reading files. Wait before sending.
+              </p>
             )}
             {!model && session.kind !== "error" && (
               <p className="notice" role="status">
@@ -952,6 +1162,17 @@ function App() {
                 void send();
               }}
             >
+              <AttachmentChips
+                attachments={attachments}
+                remove={
+                  busy
+                    ? undefined
+                    : (id) =>
+                        setAttachments((items) =>
+                          items.filter((item) => item.id !== id),
+                        )
+                }
+              />
               {active.mode === "stt" ? (
                 <label className="upload">
                   Audio file
@@ -995,6 +1216,49 @@ function App() {
                 />
               )}
               <div className="composer-bottom">
+                {accept && (
+                  <>
+                    <input
+                      ref={attachmentInput}
+                      type="file"
+                      hidden
+                      multiple
+                      accept={accept}
+                      disabled={busy || readingAttachments || !credential}
+                      aria-label="Choose attachments"
+                      onChange={(event) => {
+                        const files = Array.from(
+                          event.currentTarget.files ?? [],
+                        );
+                        event.currentTarget.value = "";
+                        void attachFiles(files);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="attachment-button"
+                      aria-label="Attach files"
+                      title="Attach files"
+                      disabled={busy || readingAttachments || !credential}
+                      onClick={() => {
+                        attachmentPickerEpoch.current = attachmentEpoch.current;
+                        attachmentInput.current?.click();
+                      }}
+                    >
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        aria-hidden="true"
+                      >
+                        <path d="m8 13 7-7a3 3 0 0 1 4 4l-9 9a5 5 0 0 1-7-7l9-9a1 1 0 0 1 4 4l-9 9a1 1 0 0 1-2-2l8-8" />
+                      </svg>
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
                   className="model-picker"
@@ -1057,12 +1321,16 @@ function App() {
                     disabled={
                       !model ||
                       !credential ||
+                      readingAttachments ||
+                      !!attachmentProblem ||
                       unsupportedVideo ||
                       (active.mode === "tts" && draft.length > 256) ||
                       (active.mode === "video" &&
                         (generationSettings.video.negative_prompt?.length ??
                           0) > 16384) ||
-                      (active.mode === "stt" ? !file : !draft.trim())
+                      (active.mode === "stt"
+                        ? !file
+                        : !draft.trim() && !attachments.length)
                     }
                     aria-label="Send request"
                   >
@@ -1071,6 +1339,17 @@ function App() {
                 )}
               </div>
             </form>
+            {accept && (
+              <details className="attachment-hint">
+                <summary>Text/code files · Up to 4 · 128 KiB each</summary>
+                <p>
+                  UTF-8 text/code: 256 KiB total.
+                  {model?.catalog.inputModalities.includes("image") &&
+                    " PNG, JPEG, WebP: 5 MiB each."}{" "}
+                  No PDF or Office files. Attachments are session-only.
+                </p>
+              </details>
+            )}
             {active.mode === "tts" && (
               <p className="input-count">
                 {draft.length}/256 characters
@@ -1222,8 +1501,8 @@ function App() {
               </label>
               <p className="hint">
                 Optional browser storage, visible to others using this browser.
-                Credentials and generated media are never saved. Turning this
-                off removes saved history.
+                Credentials, attachments, and generated media are never saved.
+                Turning this off removes saved history.
               </p>
               <button
                 className="danger"
@@ -1235,6 +1514,7 @@ function App() {
                   const c = fresh();
                   setConversations([c]);
                   setActiveId(c.id);
+                  clearAttachments();
                   writeNavigation(
                     conversationNavigation(c, "settings"),
                     "push",
@@ -1406,6 +1686,7 @@ function App() {
                     aria-current={c.id === activeId ? "page" : undefined}
                     onClick={() => {
                       setActiveId(c.id);
+                      clearAttachments();
                       setDraft("");
                       setFile(null);
                       setError("");
