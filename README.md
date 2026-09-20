@@ -105,6 +105,14 @@ Stop aborts inference and media requests. Video submission is allowed to return 
 
 History lasts for the open page by default. Settings can opt into device-local text history; credentials, generated media, and tool protocol messages are never stored. The UI uses no service worker.
 
+Open **Manage models** from the model picker or `/app?panel=catalog` to browse the catalog, disk usage, and download sizes. Only installed, enabled models can be selected for inference. Installation downloads files; enabling makes them available for requests; setting a default chooses the model used when a request omits one. Disable a model and wait for its runtime to release it before uninstalling. Shared model files are retained.
+
+Management is read-only unless startup configuration `<root>/model-management.json` grants access. Set `{"allowUiSessions":true,"apiKeyIds":[]}` to allow verified browser sign-ins, or add specific stored key IDs to `apiKeyIds` for trusted API clients. Do not put raw keys in this file. Restart after changing these permissions. Ordinary client keys retain inference-only access.
+
+`GET /_localbase/model-management` returns catalog installation state, storage, operation progress, and `canManage`. Authorized clients use `POST` on the same endpoint with `{"modelId":"<catalog-id>","action":"install"}`. Actions are `install`, `uninstall`, `enable`, `disable`, and `activate`. Install returns HTTP 202; poll GET for completion or failure. One installation runs at a time, and progress is retained only for the running gateway process. Other actions return HTTP 200 when complete.
+
+Models sharing files with an installation must be disabled and released by their runtimes. Do not run concurrent CLI installs or re-enable affected models through the CLI while an API installation is running.
+
 `bun install`, `bun run db:prepare`, and release builds prepare the browser assets. After UI edits, run `bun run db:prepare` for source execution or `bun run build` for a standalone CLI. Compiled binaries embed the assets and need no checkout or runtime build.
 
 ## Structured outputs

@@ -7,6 +7,7 @@ import {
   sessionConnection,
   SessionRequiredError,
   availableModels,
+  catalogModels,
   modelsSchema,
   streamText,
   readHistory,
@@ -163,6 +164,30 @@ describe("playground client boundaries", () => {
       }
     },
   );
+  test("management permission denial does not expire a valid browser session", async () => {
+    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json(
+        {
+          error: {
+            code: "model_management_denied",
+            message: "Model management access denied.",
+          },
+        },
+        { status: 403 },
+      ),
+    );
+    try {
+      await expect(
+        api(
+          "/_localbase/model-management",
+          { kind: "session" },
+          { method: "POST" },
+        ),
+      ).rejects.toThrow("Model management access denied.");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
   test("unexpected HTML and network failures do not assert session expiry", async () => {
     const fetchMock = spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
@@ -412,6 +437,7 @@ describe("playground client boundaries", () => {
         name: "Test",
         kind: "llm",
         quantization: "Q4",
+        memory: { minimumVramEstimateGb: 1, storageEstimateGb: 1 },
         inputModalities: ["text"],
         outputModalities: ["text"],
         contextWindowTokens: null,
@@ -465,6 +491,15 @@ describe("playground client boundaries", () => {
       "lazy",
     ]);
     expect(availableModels(models, "image")).toEqual([]);
+    expect(catalogModels(models, "llm").map((model) => model.id)).toEqual([
+      "assigned",
+      "lazy",
+      "unselected",
+      "missing",
+    ]);
+    expect(catalogModels(models, "embedding").map((model) => model.id)).toEqual(
+      ["embedding"],
+    );
     const speechModels = availableModels(models, "tts");
     expect(speechModels.map((m) => m.id)).toEqual(["speech"]);
     expect(speechModels[0]?.catalog.capabilities).toEqual({
