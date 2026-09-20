@@ -1,3 +1,4 @@
+import { restartPending } from "../config/activation";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -106,6 +107,46 @@ test("compiled gateway preserves an explicit host override", async () => {
     await gateway.stop();
   }
 });
+
+test.each([undefined, "127.0.0.1"])(
+  "compiled gateway uses persisted listener settings and honors host override %s",
+  async (gatewayHost) => {
+    const gateway = await startGatewayFixture({
+      persistedGatewayHost: "localhost",
+      gatewayHost,
+    });
+    try {
+      await expectGatewayListenerHost(gateway, gatewayHost ?? "localhost");
+      expect(Number(new URL(gateway.baseUrl).port)).toBe(
+        gateway.readConfig().gatewayPort,
+      );
+    } finally {
+      await gateway.stop();
+    }
+  },
+);
+
+test.each([
+  { managedIdentity: true, gatewayHost: undefined, pending: false },
+  { managedIdentity: true, gatewayHost: "127.0.0.1", pending: true },
+  { managedIdentity: false, gatewayHost: undefined, pending: true },
+])(
+  "only a managed gateway using saved static settings acknowledges activation: %j",
+  async ({ managedIdentity, gatewayHost, pending }) => {
+    const gateway = await startGatewayFixture({
+      persistedGatewayHost: "localhost",
+      pendingRestart: true,
+      managedIdentity,
+      gatewayHost,
+    });
+    try {
+      expect((await fetch(`${gateway.baseUrl}/health/ready`)).status).toBe(200);
+      expect(await restartPending(gateway.root)).toBe(pending);
+    } finally {
+      await gateway.stop();
+    }
+  },
+);
 
 test("normalizes unexpected gateway errors into an OpenAI error envelope", async () => {
   const response = internalGatewayFailure();

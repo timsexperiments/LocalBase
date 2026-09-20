@@ -1,3 +1,4 @@
+import { acknowledgeStaticConfiguration } from "../../config/activation";
 import { z } from "zod";
 import { SpanStatusCode, context, trace } from "@opentelemetry/api";
 import { join, basename } from "node:path";
@@ -1795,8 +1796,14 @@ export async function runServe(
   execution: CommandExecution,
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
-  const wrapperHost = input.host ?? "127.0.0.1";
-  const wrapperPort = input.port ?? 2273;
+  const wrapperHost = input.host ?? config.gatewayHost;
+  const wrapperPort = input.port ?? config.gatewayPort;
+  const startupStaticConfig = {
+    gatewayHost: wrapperHost,
+    gatewayPort: wrapperPort,
+    memory: structuredClone(config.memory),
+  };
+  let startupAcknowledged = false;
 
   const llmPort = input.llmPort ?? config.port;
   const sttPort = input.sttPort ?? config.sttPort;
@@ -2413,6 +2420,19 @@ export async function runServe(
         return methodNotAllowed("GET, HEAD");
       }
       const readiness = readinessSnapshot();
+      if (
+        !startupAcknowledged &&
+        serviceId &&
+        serviceToken &&
+        readiness.status === "ready"
+      ) {
+        acknowledgeStaticConfiguration(
+          ctx.database,
+          config.root,
+          startupStaticConfig,
+        );
+        startupAcknowledged = true;
+      }
       const body = JSON.stringify(readiness);
       return new Response(request.method === "HEAD" ? null : body, {
         status: readiness.status === "ready" ? 200 : 503,
@@ -3156,6 +3176,14 @@ export async function runServe(
     },
   });
 
+  if (serviceId && serviceToken && readinessSnapshot().status === "ready") {
+    acknowledgeStaticConfiguration(
+      ctx.database,
+      config.root,
+      startupStaticConfig,
+    );
+    startupAcknowledged = true;
+  }
   ctx.logger.event({
     severity: "info",
     eventName: "gateway.started",

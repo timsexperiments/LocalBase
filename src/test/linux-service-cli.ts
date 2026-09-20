@@ -61,5 +61,9 @@ const code = await runCli(
       initializeUnderOperationLock,
     );
   },
+  async (options) => {
+    const { createMinimalAppContext } = await import("../context");
+    return createMinimalAppContext(options);
+  },
 );
 process.exit(code);
