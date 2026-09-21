@@ -48,9 +48,20 @@ const oidcClientAuthenticationSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
-export const oidcAccessProviderSchema = z
+export const oidcRegistrationIdSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/);
+
+export const oidcAccessRegistrationSchema = z
   .object({
-    kind: z.literal("oidc"),
+    id: oidcRegistrationIdSchema,
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .refine((value) => value.trim() === value),
     issuer: oidcIssuerSchema,
     clientId: z
       .string()
@@ -59,6 +70,29 @@ export const oidcAccessProviderSchema = z
     clientAuthentication: oidcClientAuthenticationSchema,
   })
   .strict();
+
+export type OidcAccessRegistration = z.infer<
+  typeof oidcAccessRegistrationSchema
+>;
+
+export const oidcAccessProviderSchema = z
+  .object({
+    kind: z.literal("oidc"),
+    registrations: z.array(oidcAccessRegistrationSchema).min(1).max(16),
+  })
+  .strict()
+  .superRefine((provider, context) => {
+    const ids = new Set<string>();
+    for (const [index, registration] of provider.registrations.entries()) {
+      if (ids.has(registration.id))
+        context.addIssue({
+          code: "custom",
+          path: ["registrations", index, "id"],
+          message: "OpenID Connect registration IDs must be unique.",
+        });
+      ids.add(registration.id);
+    }
+  });
 
 export type OidcAccessProvider = z.infer<typeof oidcAccessProviderSchema>;
 
@@ -90,11 +124,22 @@ export const browserAccessConfigSchema = z
 
 export type BrowserAccessConfig = z.infer<typeof browserAccessConfigSchema>;
 
-const oidcAccessProviderSummarySchema = oidcAccessProviderSchema
+export const oidcAccessRegistrationSummarySchema = oidcAccessRegistrationSchema
   .omit({ clientAuthentication: true })
   .extend({
     clientAuthentication: z.enum(["none", "client-secret-basic"]),
   });
+
+export type OidcAccessRegistrationSummary = z.infer<
+  typeof oidcAccessRegistrationSummarySchema
+>;
+
+const oidcAccessProviderSummarySchema = z
+  .object({
+    kind: z.literal("oidc"),
+    registrations: z.array(oidcAccessRegistrationSummarySchema).min(1).max(16),
+  })
+  .strict();
 
 export const browserAccessConfigSummarySchema = z
   .object({
@@ -121,9 +166,13 @@ export function summarizeBrowserAccessConfig(
     ...config,
     provider: {
       kind: config.provider.kind,
-      issuer: config.provider.issuer,
-      clientId: config.provider.clientId,
-      clientAuthentication: config.provider.clientAuthentication.kind,
+      registrations: config.provider.registrations.map((registration) => ({
+        id: registration.id,
+        name: registration.name,
+        issuer: registration.issuer,
+        clientId: registration.clientId,
+        clientAuthentication: registration.clientAuthentication.kind,
+      })),
     },
   });
 }

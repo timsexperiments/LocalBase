@@ -116,7 +116,9 @@ process arguments:
 
 ```bash
 export LOCALBASE_OIDC_SECRET='...'
-local-base access oidc \
+local-base access oidc add \
+  --id company \
+  --name "Company sign-in" \
   --issuer https://identity.example.com \
   --client-id YOUR_CLIENT_ID \
   --client-secret-env LOCALBASE_OIDC_SECRET \
@@ -126,6 +128,13 @@ local-base restart
 
 Use `--public-client` instead of `--client-secret-env` only when the provider
 registration is explicitly a public client.
+
+Repeat `access oidc add` with another ID to offer multiple sign-in providers. The
+first registration receives the default browser permissions; later additions
+preserve the configured permissions unless `--permissions` is supplied.
+Use `local-base access oidc list` to inspect them and
+`local-base access oidc remove ID` to remove one. Removing the last registration
+disables browser access.
 
 Use `local-base access show --json` to inspect the active non-secret configuration and `local-base access disable` to disable browser sign-in. The default browser permissions cover inference, model discovery, and model management; pass `--permissions` to replace them. Access configuration is restart-scoped and every command supports `--non-interactive` and `--json`.
 

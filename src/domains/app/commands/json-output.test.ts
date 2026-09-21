@@ -17,7 +17,8 @@ import {
 } from "../../auth/authorization";
 import {
   accessConfigureResultSchema,
-  accessDisableResultSchema,
+  accessOidcListResultSchema,
+  accessOidcRemoveResultSchema,
   accessPolicyApplyResultSchema,
   accessPolicyClearResultSchema,
   accessPolicyTestResultSchema,
@@ -191,6 +192,40 @@ test(
           jsonDocument(browserAccess.stdout).data,
         ).config.permissions,
       ).toEqual(defaultBrowserPermissions);
+      const restrictedBrowserAccess = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "cloudflare",
+        "--team-domain",
+        "updated.cloudflareaccess.com",
+        "--audience",
+        "updated-audience",
+        "--origin",
+        "https://localbase.example.com",
+        "--permissions",
+        "inference:chat",
+      ]);
+      expect(restrictedBrowserAccess.exitCode).toBe(0);
+      const updatedBrowserAccess = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "cloudflare",
+        "--team-domain",
+        "team.cloudflareaccess.com",
+        "--audience",
+        "audience",
+        "--origin",
+        "https://localbase.example.com",
+      ]);
+      expect(
+        accessConfigureResultSchema.parse(
+          jsonDocument(updatedBrowserAccess.stdout).data,
+        ).config.permissions,
+      ).toEqual(["inference:chat"]);
       const shownAccess = await runCli(executable, [
         "--root",
         root,
@@ -211,6 +246,11 @@ test(
           "--json",
           "access",
           "oidc",
+          "add",
+          "--id",
+          "primary",
+          "--name",
+          "Primary",
           "--issuer",
           "https://identity.example.com/tenant",
           "--client-id",
@@ -219,6 +259,8 @@ test(
           "TEST_OIDC_SECRET",
           "--origin",
           "https://localbase.example.com",
+          "--permissions",
+          "inference:chat",
         ],
         undefined,
         { TEST_OIDC_SECRET: oidcSecret },
@@ -229,10 +271,17 @@ test(
       );
       expect(oidcOutput.config.provider).toEqual({
         kind: "oidc",
-        issuer: "https://identity.example.com/tenant",
-        clientId: "localbase-client",
-        clientAuthentication: "client-secret-basic",
+        registrations: [
+          {
+            id: "primary",
+            name: "Primary",
+            issuer: "https://identity.example.com/tenant",
+            clientId: "localbase-client",
+            clientAuthentication: "client-secret-basic",
+          },
+        ],
       });
+      expect(oidcOutput.config.permissions).toEqual(["inference:chat"]);
       expect(oidcAccess.stdout).not.toContain(oidcSecret);
       expect(oidcAccess.stderr).not.toContain(oidcSecret);
       const shownOidc = await runCli(executable, [
@@ -294,6 +343,11 @@ test(
           "--json",
           "access",
           "oidc",
+          "add",
+          "--id",
+          "primary",
+          "--name",
+          "Primary",
           "--issuer",
           "https://identity.example.com/tenant",
           "--client-id",
@@ -307,6 +361,28 @@ test(
         { TEST_OIDC_SECRET: oidcSecret },
       );
       expect(reconfiguredOidc.exitCode).toBe(0);
+      expect(
+        accessConfigureResultSchema.parse(
+          jsonDocument(reconfiguredOidc.stdout).data,
+        ).config.permissions,
+      ).toEqual(["inference:chat"]);
+      const listedOidc = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "oidc",
+        "list",
+      ]);
+      expect(
+        accessOidcListResultSchema.parse(jsonDocument(listedOidc.stdout).data)
+          .registrations,
+      ).toEqual([
+        expect.objectContaining({
+          id: "primary",
+          clientId: "replacement-client",
+        }),
+      ]);
       const testedPolicy = await runCli(executable, [
         "--root",
         root,
@@ -388,13 +464,15 @@ test(
         root,
         "--json",
         "access",
-        "disable",
+        "oidc",
+        "remove",
+        "primary",
       ]);
       expect(
-        accessDisableResultSchema.parse(
+        accessOidcRemoveResultSchema.parse(
           jsonDocument(disabledAccess.stdout).data,
         ),
-      ).toEqual({ disabled: true, restartRequired: true });
+      ).toEqual({ removed: true, config: null, restartRequired: true });
 
       const configuredDatabase = readFileSync(join(root, "local-base.db"));
       const doctor = await runCli(executable, [

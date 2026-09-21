@@ -10,7 +10,9 @@ import { byId, type ModelKind } from "../../../catalog";
 import {
   accessCloudflareInputSchema,
   accessDisableInputSchema,
-  accessOidcInputSchema,
+  accessOidcAddInputSchema,
+  accessOidcListInputSchema,
+  accessOidcRemoveInputSchema,
   accessPolicyApplyInputSchema,
   accessPolicyClearInputSchema,
   accessPolicyShowInputSchema,
@@ -35,7 +37,9 @@ import {
   uninstallInputSchema,
   type AccessCloudflareInput,
   type AccessDisableInput,
-  type AccessOidcInput,
+  type AccessOidcAddInput,
+  type AccessOidcListInput,
+  type AccessOidcRemoveInput,
   type AccessPolicyApplyInput,
   type AccessPolicyClearInput,
   type AccessPolicyShowInput,
@@ -65,6 +69,8 @@ import { CliInputError } from "./errors";
 import {
   accessConfigureResultSchema,
   accessDisableResultSchema,
+  accessOidcListResultSchema,
+  accessOidcRemoveResultSchema,
   accessPolicyApplyResultSchema,
   accessPolicyClearResultSchema,
   accessPolicyShowResultSchema,
@@ -814,7 +820,7 @@ const accessCloudflareCommand = command<AccessCloudflareInput>({
       type: "string",
       valueHint: "permission,...",
       description:
-        "Browser permissions; defaults to inference and model management",
+        "Browser permissions; preserves the current set when omitted",
     },
   },
   parse: (input) => accessCloudflareInputSchema.parse(input),
@@ -825,10 +831,22 @@ const accessCloudflareCommand = command<AccessCloudflareInput>({
   },
 });
 
-const accessOidcCommand = command<AccessOidcInput>({
-  path: ["access", "oidc"],
-  description: "Configure OpenID Connect browser authentication",
+const accessOidcAddCommand = command<AccessOidcAddInput>({
+  path: ["access", "oidc", "add"],
+  description: "Add or update an OpenID Connect registration",
   args: {
+    id: {
+      type: "string",
+      valueHint: "provider-id",
+      description: "Stable lowercase registration ID",
+      required: true,
+    },
+    name: {
+      type: "string",
+      valueHint: "Provider name",
+      description: "Name shown on the sign-in page",
+      required: true,
+    },
     issuer: {
       type: "string",
       valueHint: "https://identity.example.com",
@@ -863,11 +881,42 @@ const accessOidcCommand = command<AccessOidcInput>({
         "Browser permissions; defaults to inference and model management",
     },
   },
-  parse: (input) => accessOidcInputSchema.parse(input),
+  parse: (input) => accessOidcAddInputSchema.parse(input),
   resultSchema: accessConfigureResultSchema,
   run: async (input, context, execution) => {
-    const { runAccessOidc } = await import("../../auth/commands/access");
-    return await runAccessOidc(input, context, execution);
+    const { runAccessOidcAdd } = await import("../../auth/commands/access");
+    return await runAccessOidcAdd(input, context, execution);
+  },
+});
+
+const accessOidcListCommand = command<AccessOidcListInput>({
+  path: ["access", "oidc", "list"],
+  description: "List OpenID Connect registrations",
+  parse: (input) => accessOidcListInputSchema.parse(input),
+  resultSchema: accessOidcListResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessOidcList } = await import("../../auth/commands/access");
+    return await runAccessOidcList(input, context, execution);
+  },
+});
+
+const accessOidcRemoveCommand = command<AccessOidcRemoveInput>({
+  path: ["access", "oidc", "remove"],
+  description: "Remove an OpenID Connect registration",
+  args: {
+    id: {
+      type: "positional",
+      valueHint: "provider-id",
+      description: "Registration ID",
+      required: true,
+    },
+  },
+  positionals: { minimum: 1, maximum: 1 },
+  parse: (input) => accessOidcRemoveInputSchema.parse(input),
+  resultSchema: accessOidcRemoveResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessOidcRemove } = await import("../../auth/commands/access");
+    return await runAccessOidcRemove(input, context, execution);
   },
 });
 
@@ -1079,7 +1128,9 @@ export const commands = [
   keysScopesCommand,
   accessShowCommand,
   accessCloudflareCommand,
-  accessOidcCommand,
+  accessOidcAddCommand,
+  accessOidcListCommand,
+  accessOidcRemoveCommand,
   accessDisableCommand,
   accessPolicyShowCommand,
   accessPolicyApplyCommand,
@@ -1126,13 +1177,26 @@ const accessPolicyCommand = defineCommand({
   },
 });
 
+const accessOidcCommand = defineCommand({
+  meta: {
+    name: "local-base access oidc",
+    description: "Manage OpenID Connect registrations",
+  },
+  args: globalArgs,
+  subCommands: {
+    list: accessOidcListCommand.citty,
+    add: accessOidcAddCommand.citty,
+    remove: accessOidcRemoveCommand.citty,
+  },
+});
+
 export const accessCommand = defineCommand({
   meta: { name: "local-base access", description: "Manage browser access" },
   args: globalArgs,
   subCommands: {
     show: accessShowCommand.citty,
     cloudflare: accessCloudflareCommand.citty,
-    oidc: accessOidcCommand.citty,
+    oidc: accessOidcCommand,
     disable: accessDisableCommand.citty,
     policy: accessPolicyCommand,
   },
@@ -1182,6 +1246,8 @@ export const rootCommand = defineCommand({
 export function groupForPath(path: string[]): CittyCommand | undefined {
   if (path.length === 2 && path[0] === "access" && path[1] === "policy")
     return accessPolicyCommand;
+  if (path.length === 2 && path[0] === "access" && path[1] === "oidc")
+    return accessOidcCommand;
   if (path.length !== 1) return undefined;
   if (path[0] === "models") return modelsCommand;
   if (path[0] === "keys") return keysCommand;

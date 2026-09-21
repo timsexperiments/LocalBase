@@ -95,7 +95,7 @@ function providerLabel(config: AccessConfig) {
   if (!config) return "Not configured";
   return config.provider.kind === "cloudflare-access"
     ? `Cloudflare Access · ${config.provider.teamDomain}`
-    : `OpenID Connect · ${config.provider.issuer}`;
+    : `OpenID Connect · ${config.provider.registrations.length} ${config.provider.registrations.length === 1 ? "registration" : "registrations"}`;
 }
 
 export function apiKeyStatus(
@@ -128,6 +128,8 @@ export function AuthManagement({
   const [origin, setOrigin] = useState("");
   const [teamDomain, setTeamDomain] = useState("");
   const [audience, setAudience] = useState("");
+  const [registrationId, setRegistrationId] = useState("");
+  const [registrationName, setRegistrationName] = useState("");
   const [issuer, setIssuer] = useState("");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -154,11 +156,24 @@ export function AuthManagement({
       setTeamDomain(config.provider.teamDomain);
       setAudience(config.provider.audience);
     } else {
-      setIssuer(config.provider.issuer);
-      setClientId(config.provider.clientId);
-      setPublicClient(config.provider.clientAuthentication === "none");
-      setClientSecret("");
+      editRegistration(config.provider.registrations[0]);
     }
+  }
+
+  function editRegistration(
+    registration:
+      | Extract<
+          NonNullable<AccessConfig>["provider"],
+          { kind: "oidc" }
+        >["registrations"][number]
+      | undefined,
+  ) {
+    setRegistrationId(registration?.id ?? "");
+    setRegistrationName(registration?.name ?? "");
+    setIssuer(registration?.issuer ?? "");
+    setClientId(registration?.clientId ?? "");
+    setPublicClient(registration?.clientAuthentication === "none");
+    setClientSecret("");
   }
 
   async function load(signal?: AbortSignal) {
@@ -217,26 +232,29 @@ export function AuthManagement({
     setNotice("");
     setAccessError("");
     try {
-      const providerConfig =
-        provider === "cloudflare-access"
-          ? { kind: provider, teamDomain, audience }
-          : {
-              kind: provider,
-              issuer,
-              clientId,
-              clientAuthentication: publicClient
-                ? { kind: "none" as const }
-                : {
-                    kind: "client-secret-basic" as const,
-                    clientSecret,
-                  },
-            };
       const response = await post("/_localbase/access-management", {
         action:
           provider === "cloudflare-access"
             ? "configure-cloudflare"
-            : "configure-oidc",
-        provider: providerConfig,
+            : "upsert-oidc",
+        ...(provider === "cloudflare-access"
+          ? {
+              provider: { kind: provider, teamDomain, audience },
+            }
+          : {
+              registration: {
+                id: registrationId,
+                name: registrationName,
+                issuer,
+                clientId,
+                clientAuthentication: publicClient
+                  ? { kind: "none" as const }
+                  : {
+                      kind: "client-secret-basic" as const,
+                      clientSecret,
+                    },
+              },
+            }),
         origin,
         permissions: accessPermissions,
       });
@@ -251,6 +269,39 @@ export function AuthManagement({
         error instanceof Error
           ? error.message
           : "Browser access update failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeRegistration(id: string) {
+    setBusy(true);
+    setNotice("");
+    setAccessError("");
+    try {
+      const response = await post("/_localbase/access-management", {
+        action: "remove-oidc",
+        registrationId: id,
+      });
+      const result = accessManagementMutationResponseSchema.parse(
+        await response.json(),
+      );
+      if (!("removedRegistrationId" in result))
+        throw new Error("The registration was not removed.");
+      hydrate(result.config);
+      if (!result.config) editRegistration(undefined);
+      setConfirming("");
+      setNotice(
+        result.config
+          ? "Registration removed. Restart LocalBase to apply the change."
+          : "Last registration removed. Browser access will be disabled after restart.",
+      );
+    } catch (error) {
+      setAccessError(
+        error instanceof Error
+          ? error.message
+          : "Could not remove the registration.",
       );
     } finally {
       setBusy(false);
@@ -480,6 +531,102 @@ export function AuthManagement({
                 </>
               ) : (
                 <>
+                  {access?.provider.kind === "oidc" && (
+                    <div className="key-list">
+                      {access.provider.registrations.map((registration) => (
+                        <article className="key-card" key={registration.id}>
+                          <div className="admin-card-heading">
+                            <div>
+                              <strong>{registration.name}</strong>
+                              <p>
+                                {registration.id} · {registration.issuer}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => editRegistration(registration)}
+                            >
+                              Edit
+                            </button>
+                          </div>
+                          {confirming === `remove-oidc:${registration.id}` ? (
+                            <div className="inline-confirmation">
+                              <p>
+                                Remove this registration? Removing the last one
+                                disables browser access.
+                              </p>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void removeRegistration(registration.id)
+                                }
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirming("")}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              className="danger"
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                setConfirming(`remove-oidc:${registration.id}`)
+                              }
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </article>
+                      ))}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => editRegistration(undefined)}
+                      >
+                        Add registration
+                      </button>
+                    </div>
+                  )}
+                  <label>
+                    Registration ID
+                    <input
+                      required
+                      pattern="[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?"
+                      maxLength={64}
+                      disabled={
+                        busy ||
+                        (access?.provider.kind === "oidc" &&
+                          access.provider.registrations.some(
+                            ({ id }) => id === registrationId,
+                          ))
+                      }
+                      value={registrationId}
+                      placeholder="google"
+                      onChange={(event) =>
+                        setRegistrationId(event.target.value)
+                      }
+                    />
+                  </label>
+                  <label>
+                    Sign-in name
+                    <input
+                      required
+                      maxLength={64}
+                      value={registrationName}
+                      placeholder="Google"
+                      onChange={(event) =>
+                        setRegistrationName(event.target.value)
+                      }
+                    />
+                  </label>
                   <label>
                     Issuer
                     <input
@@ -538,7 +685,7 @@ export function AuthManagement({
                 />
               </details>
               <button className="primary-action" disabled={busy} type="submit">
-                Save provider
+                {provider === "oidc" ? "Save registration" : "Save provider"}
               </button>
             </form>
           </section>

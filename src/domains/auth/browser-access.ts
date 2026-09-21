@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
   browserAccessConfigSchema,
   type BrowserAccessConfig,
+  type OidcAccessRegistration,
 } from "./browser-access-contract";
 
 export * from "./browser-access-contract";
@@ -68,4 +69,53 @@ export async function disableBrowserAccess(root: string): Promise<boolean> {
       return false;
     throw new Error("Unable to disable browser access.");
   }
+}
+
+export function upsertOidcRegistration(
+  current: BrowserAccessConfig | null,
+  input: {
+    registration: OidcAccessRegistration;
+    origin: string;
+    permissions: BrowserAccessConfig["permissions"];
+  },
+): BrowserAccessConfig {
+  const registrations =
+    current?.provider.kind === "oidc"
+      ? current.provider.registrations.filter(
+          (registration) => registration.id !== input.registration.id,
+        )
+      : [];
+  registrations.push(input.registration);
+  registrations.sort((left, right) => left.id.localeCompare(right.id));
+  return browserAccessConfigSchema.parse({
+    provider: { kind: "oidc", registrations },
+    origin: input.origin,
+    permissions: input.permissions,
+    ...(current?.policy ? { policy: current.policy } : {}),
+  });
+}
+
+export type OidcRegistrationRemoval =
+  | Readonly<{ kind: "not-found" }>
+  | Readonly<{ kind: "disabled" }>
+  | Readonly<{ kind: "configured"; config: BrowserAccessConfig }>;
+
+export function removeOidcRegistration(
+  current: BrowserAccessConfig | null,
+  registrationId: string,
+): OidcRegistrationRemoval {
+  if (current?.provider.kind !== "oidc") return { kind: "not-found" };
+  const registrations = current.provider.registrations.filter(
+    (registration) => registration.id !== registrationId,
+  );
+  if (registrations.length === current.provider.registrations.length)
+    return { kind: "not-found" };
+  if (registrations.length === 0) return { kind: "disabled" };
+  return {
+    kind: "configured",
+    config: browserAccessConfigSchema.parse({
+      ...current,
+      provider: { kind: "oidc", registrations },
+    }),
+  };
 }

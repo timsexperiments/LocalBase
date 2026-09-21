@@ -34,7 +34,9 @@ session cookie. Register `${LOCALBASE_PUBLIC_ORIGIN}/oidc/callback` as the exact
 redirect URI at the provider.
 
 ```bash
-local-base --non-interactive --json access oidc \
+local-base --non-interactive --json access oidc add \
+  --id company \
+  --name "Company sign-in" \
   --issuer "$LOCALBASE_OIDC_ISSUER" \
   --client-id "$LOCALBASE_OIDC_CLIENT_ID" \
   --client-secret-env LOCALBASE_OIDC_CLIENT_SECRET \
@@ -47,6 +49,17 @@ The variable named by `--client-secret-env` must exist in the command
 environment. LocalBase stores the secret privately and never returns it from
 the CLI, management endpoint, or browser UI. Use `--public-client` only for a
 provider registration that explicitly permits public clients.
+
+Each registration has a stable ID and display name. Repeat the command with a
+different ID to add another provider; using an existing ID updates it. With
+multiple registrations, `/app/login` presents a provider picker. Automation can
+list and remove registrations with `access oidc list` and
+`access oidc remove ID`.
+
+OIDC discovery keeps this integration provider-neutral. Google, Microsoft
+Entra, Okta, Auth0, Keycloak, and other standards-compliant OIDC providers use
+the same command and callback. OAuth-only identity services require a separate
+adapter because they do not issue the ID token LocalBase verifies.
 
 LocalBase does not consume SAML assertions directly. Put a SAML provider behind
 Cloudflare Access or an identity broker that exposes OpenID Connect to
@@ -176,7 +189,9 @@ set -eu
 : "${LOCALBASE_OIDC_CLIENT_ID:?required}"
 : "${LOCALBASE_OIDC_CLIENT_SECRET:?required}"
 
-local-base --non-interactive --json access oidc \
+local-base --non-interactive --json access oidc add \
+  --id company \
+  --name "Company sign-in" \
   --issuer "$LOCALBASE_OIDC_ISSUER" \
   --client-id "$LOCALBASE_OIDC_CLIENT_ID" \
   --client-secret-env LOCALBASE_OIDC_CLIENT_SECRET \
@@ -208,6 +223,10 @@ the management endpoints:
 
 - `GET` and `POST /_localbase/access-management`
 - `GET` and `POST /_localbase/api-keys`
+
+OIDC management uses the `upsert-oidc` action with one complete registration or
+the `remove-oidc` action with its registration ID. Reads return every
+registration with client secrets redacted.
 
 The gateway checks `access:read`, `access:manage`, `keys:read`, or
 `keys:manage` for each operation. Provider responses omit OIDC client secrets.

@@ -190,7 +190,9 @@ export function createUiAccess({
         if (!exactHost) return respond(failure(403));
         if (!oidc) return respond(redirect(`${config.origin}/app`));
         try {
-          return respond(await oidc.startLogin());
+          return respond(
+            await oidc.startLogin(url.searchParams.get("provider")),
+          );
         } catch {
           return respond(failure(503));
         }

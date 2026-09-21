@@ -6,15 +6,20 @@ import { createUiAccess, isUiAccessPath, uiAccessConfigSchema } from "./access";
 const issuer = "https://identity.example.com/tenant";
 const origin = "https://ui.example.com";
 const clientId = "localbase-client";
+const registration = {
+  id: "primary",
+  name: "Primary identity",
+  issuer,
+  clientId,
+  clientAuthentication: {
+    kind: "client-secret-basic" as const,
+    clientSecret: "secret",
+  },
+};
 const config = uiAccessConfigSchema.parse({
   provider: {
     kind: "oidc",
-    issuer,
-    clientId,
-    clientAuthentication: {
-      kind: "client-secret-basic",
-      clientSecret: "secret",
-    },
+    registrations: [registration],
   },
   origin,
   permissions: defaultBrowserPermissions,
@@ -81,6 +86,96 @@ function discovery() {
     token_endpoint_auth_methods_supported: ["client_secret_basic"],
   };
 }
+
+test("chooses among named OIDC registrations before starting a login", async () => {
+  const secondIssuer = "https://login.example.org";
+  let discoveries = 0;
+  let selectedNonce = "";
+  const access = createUiAccess({
+    config: uiAccessConfigSchema.parse({
+      ...config,
+      provider: {
+        kind: "oidc",
+        registrations: [
+          registration,
+          {
+            id: "secondary",
+            name: "Secondary & partners",
+            issuer: secondIssuer,
+            clientId: "secondary-client",
+            clientAuthentication: { kind: "none" },
+          },
+        ],
+      },
+    }),
+    keyResolver: resolver,
+    fetcher: async (input) => {
+      if (!String(input).includes(".well-known")) {
+        expect(String(input)).toBe(`${secondIssuer}/token`);
+        return Response.json({
+          id_token: await new SignJWT({
+            iss: secondIssuer,
+            aud: "secondary-client",
+            exp: Math.floor(Date.now() / 1_000) + 300,
+            sub: "secondary-user",
+            nonce: selectedNonce,
+          })
+            .setProtectedHeader({ alg: "RS256", kid: "oidc" })
+            .setIssuedAt()
+            .sign(keys.privateKey),
+        });
+      }
+      discoveries += 1;
+      expect(String(input)).toBe(
+        `${secondIssuer}/.well-known/openid-configuration`,
+      );
+      return Response.json({
+        ...discovery(),
+        issuer: secondIssuer,
+        authorization_endpoint: `${secondIssuer}/authorize`,
+        token_endpoint: `${secondIssuer}/token`,
+        jwks_uri: `${secondIssuer}/keys`,
+        token_endpoint_auth_methods_supported: ["none"],
+      });
+    },
+  });
+
+  const choice = await responseFor(access, directRequest("/app/login"));
+  expect(choice.status).toBe(200);
+  expect(choice.headers.get("cache-control")).toBe("no-store");
+  const html = await choice.text();
+  expect(html).toContain("Primary identity");
+  expect(html).toContain("Secondary &amp; partners");
+  expect(html).toContain("/app/login?provider=secondary");
+  expect(discoveries).toBe(0);
+
+  const login = await responseFor(
+    access,
+    directRequest("/app/login?provider=secondary"),
+  );
+  expect(login.status).toBe(303);
+  const authorization = new URL(login.headers.get("location") ?? "");
+  expect(authorization.origin).toBe(secondIssuer);
+  expect(authorization.searchParams.get("client_id")).toBe("secondary-client");
+  selectedNonce = authorization.searchParams.get("nonce") ?? "";
+  expect(discoveries).toBe(1);
+
+  const callback = await responseFor(
+    access,
+    directRequest(
+      `/oidc/callback?code=secondary-code&state=${authorization.searchParams.get("state")}`,
+      {
+        cookie: cookieFrom(login, "__Host-localbase-oidc-state"),
+      },
+    ),
+  );
+  expect(callback.headers.get("location")).toBe(`${origin}/app`);
+
+  expect(
+    (await responseFor(access, directRequest("/app/login?provider=unknown")))
+      .status,
+  ).toBe(404);
+});
 
 test("completes an OIDC code flow and keeps the opaque session server-side", async () => {
   let nonce = "";
@@ -232,9 +327,12 @@ test("rejects unbound callbacks and incompatible discovery", async () => {
     ...config,
     provider: {
       kind: "oidc",
-      issuer,
-      clientId,
-      clientAuthentication: { kind: "none" },
+      registrations: [
+        {
+          ...registration,
+          clientAuthentication: { kind: "none" },
+        },
+      ],
     },
   });
   const omittedAuthenticationMethods = createUiAccess({
