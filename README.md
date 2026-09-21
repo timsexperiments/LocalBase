@@ -110,7 +110,7 @@ local-base restart
 ```
 
 Direct OpenID Connect uses Authorization Code with PKCE. Register
-`https://localbase.example.com/app/callback` as the exact redirect URI. Read a
+`https://localbase.example.com/oidc/callback` as the exact redirect URI. Read a
 confidential client's secret from the environment so it never appears in the
 process arguments:
 
