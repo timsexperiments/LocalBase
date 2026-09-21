@@ -43,7 +43,11 @@ const tokenResponseSchema = z.object({
 });
 
 const identitySchema = z.object({
-  sub: z.string().trim().min(1),
+  sub: z
+    .string()
+    .min(1)
+    .max(255)
+    .regex(/^[\x00-\x7F]+$/),
   nonce: z.string().min(1),
   aud: z.union([z.string(), z.array(z.string()).nonempty()]),
   azp: z.string().optional(),

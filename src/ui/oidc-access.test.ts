@@ -103,7 +103,7 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
         iss: issuer,
         aud: clientId,
         exp: Math.floor(Date.now() / 1_000) + 300,
-        sub: "person-one",
+        sub: " person-one ",
         nonce,
       })
         .setProtectedHeader({ alg: "RS256", kid: "oidc" })
@@ -152,8 +152,11 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
   const session = await responseFor(access, sessionRequest);
   expect(session.status).toBe(200);
   const ownerId = access.credential(sessionRequest)?.ownerId;
+  const expectedOwnerId = `browser:${new Bun.CryptoHasher("sha256")
+    .update(JSON.stringify(["oidc", issuer, " person-one "]))
+    .digest("hex")}`;
   expect(access.credential(sessionRequest)).toMatchObject({
-    ownerId: expect.stringMatching(/^browser:[0-9a-f]{64}$/),
+    ownerId: expectedOwnerId,
     permissions: defaultBrowserPermissions,
   });
 
@@ -261,6 +264,8 @@ test("rejects ID tokens outside the exact OIDC transaction", async () => {
     { nonce: "other-nonce" },
     { aud: [clientId, "other-client"], azp: "other-client" },
     { exp: 1 },
+    { sub: "person-😀" },
+    { sub: "x".repeat(256) },
   ]) {
     let nonce = "";
     const access = createUiAccess({
