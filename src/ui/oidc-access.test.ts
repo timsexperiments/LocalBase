@@ -179,6 +179,59 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
   expect(tokenRequests).toBe(1);
 });
 
+test("uses OIDC email bindings only for email_verified identities", async () => {
+  const policyConfig = uiAccessConfigSchema.parse({
+    ...config,
+    policy: {
+      roles: { chat: ["inference:chat"] },
+      bindings: [{ kind: "email-domain", role: "chat", domain: "example.com" }],
+    },
+  });
+  for (const emailVerified of [false, true]) {
+    let nonce = "";
+    const access = createUiAccess({
+      config: policyConfig,
+      keyResolver: resolver,
+      fetcher: async (input) => {
+        if (String(input).includes(".well-known"))
+          return Response.json(discovery());
+        return Response.json({
+          id_token: await new SignJWT({
+            iss: issuer,
+            aud: clientId,
+            exp: Math.floor(Date.now() / 1_000) + 300,
+            sub: "person-email",
+            nonce,
+            email: "person@example.com",
+            email_verified: emailVerified,
+          })
+            .setProtectedHeader({ alg: "RS256", kid: "oidc" })
+            .setIssuedAt()
+            .sign(keys.privateKey),
+        });
+      },
+    });
+    const login = await responseFor(access, directRequest("/app/login"));
+    const authorization = new URL(login.headers.get("location") ?? "");
+    nonce = authorization.searchParams.get("nonce") ?? "";
+    const callback = await responseFor(
+      access,
+      directRequest(
+        `/app/callback?code=authorization-code&state=${authorization.searchParams.get("state") ?? ""}`,
+        { cookie: cookieFrom(login, "__Host-localbase-oidc-state") },
+      ),
+    );
+    const sessionRequest = directRequest("/app/session", {
+      cookie: cookieFrom(callback, "__Host-localbase-session"),
+      marker: true,
+    });
+    expect((await responseFor(access, sessionRequest)).status).toBe(200);
+    expect(access.credential(sessionRequest)?.permissions).toEqual(
+      emailVerified ? ["inference:chat"] : [],
+    );
+  }
+});
+
 test("rejects unbound callbacks and incompatible discovery", async () => {
   let currentTime = Date.now();
   const incompatible = createUiAccess({

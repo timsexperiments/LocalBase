@@ -11,6 +11,10 @@ import {
   accessCloudflareInputSchema,
   accessDisableInputSchema,
   accessOidcInputSchema,
+  accessPolicyApplyInputSchema,
+  accessPolicyClearInputSchema,
+  accessPolicyShowInputSchema,
+  accessPolicyTestInputSchema,
   accessShowInputSchema,
   catalogInputSchema,
   configureInputSchema,
@@ -32,6 +36,10 @@ import {
   type AccessCloudflareInput,
   type AccessDisableInput,
   type AccessOidcInput,
+  type AccessPolicyApplyInput,
+  type AccessPolicyClearInput,
+  type AccessPolicyShowInput,
+  type AccessPolicyTestInput,
   type AccessShowInput,
   type CatalogInput,
   type ConfigureInput,
@@ -57,6 +65,10 @@ import { CliInputError } from "./errors";
 import {
   accessConfigureResultSchema,
   accessDisableResultSchema,
+  accessPolicyApplyResultSchema,
+  accessPolicyClearResultSchema,
+  accessPolicyShowResultSchema,
+  accessPolicyTestResultSchema,
   accessShowResultSchema,
   catalogResultSchema,
   configureResultSchema,
@@ -870,6 +882,90 @@ const accessDisableCommand = command<AccessDisableInput>({
   },
 });
 
+const accessPolicyShowCommand = command<AccessPolicyShowInput>({
+  path: ["access", "policy", "show"],
+  description: "Show local browser authorization policy",
+  parse: (input) => accessPolicyShowInputSchema.parse(input),
+  resultSchema: accessPolicyShowResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessPolicyShow } = await import("../../auth/commands/access");
+    return await runAccessPolicyShow(input, context, execution);
+  },
+});
+
+const accessPolicyApplyCommand = command<AccessPolicyApplyInput>({
+  path: ["access", "policy", "apply"],
+  description: "Replace the local browser authorization policy from JSON",
+  args: {
+    file: {
+      type: "string",
+      valueHint: "PATH",
+      description: "Complete browser authorization policy JSON file",
+      required: true,
+    },
+  },
+  parse: (input) => accessPolicyApplyInputSchema.parse(input),
+  resultSchema: accessPolicyApplyResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessPolicyApply } = await import("../../auth/commands/access");
+    return await runAccessPolicyApply(input, context, execution);
+  },
+});
+
+const accessPolicyTestCommand = command<AccessPolicyTestInput>({
+  path: ["access", "policy", "test"],
+  description: "Evaluate a local browser authorization policy offline",
+  args: {
+    issuer: {
+      type: "string",
+      valueHint: "ISSUER",
+      description: "Verified browser identity issuer",
+      required: true,
+    },
+    subject: {
+      type: "string",
+      valueHint: "SUBJECT",
+      description: "Exact verified browser identity subject",
+      required: true,
+    },
+    email: {
+      type: "string",
+      valueHint: "EMAIL",
+      description: "Verified browser identity email",
+    },
+  },
+  parse: (input) => accessPolicyTestInputSchema.parse(input),
+  resultSchema: accessPolicyTestResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessPolicyTest } = await import("../../auth/commands/access");
+    return await runAccessPolicyTest(input, context, execution);
+  },
+});
+
+const accessPolicyClearCommand = command<AccessPolicyClearInput>({
+  path: ["access", "policy", "clear"],
+  description: "Clear the local browser authorization policy",
+  parse: (input) => accessPolicyClearInputSchema.parse(input),
+  resultSchema: accessPolicyClearResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessPolicyClear } = await import("../../auth/commands/access");
+    return await runAccessPolicyClear(input, context, execution);
+  },
+});
+
+const accessPolicyCommand = defineCommand({
+  meta: {
+    name: "local-base access policy",
+    description: "Manage local browser authorization policy",
+  },
+  subCommands: {
+    show: accessPolicyShowCommand.citty,
+    apply: accessPolicyApplyCommand.citty,
+    test: accessPolicyTestCommand.citty,
+    clear: accessPolicyClearCommand.citty,
+  },
+});
+
 const resetCommand = command<ResetInput>({
   path: ["reset"],
   description: "Reset the LocalBase configuration database",
@@ -998,6 +1094,10 @@ export const commands = [
   accessCloudflareCommand,
   accessOidcCommand,
   accessDisableCommand,
+  accessPolicyShowCommand,
+  accessPolicyApplyCommand,
+  accessPolicyTestCommand,
+  accessPolicyClearCommand,
   resetCommand,
   uninstallCommand,
 ] as const satisfies readonly Command[];
@@ -1033,6 +1133,7 @@ export const accessCommand = defineCommand({
     cloudflare: accessCloudflareCommand.citty,
     oidc: accessOidcCommand.citty,
     disable: accessDisableCommand.citty,
+    policy: accessPolicyCommand,
   },
 });
 
@@ -1078,6 +1179,8 @@ export const rootCommand = defineCommand({
 });
 
 export function groupForPath(path: string[]): CittyCommand | undefined {
+  if (path.length === 2 && path[0] === "access" && path[1] === "policy")
+    return accessPolicyCommand;
   if (path.length !== 1) return undefined;
   if (path[0] === "models") return modelsCommand;
   if (path[0] === "keys") return keysCommand;

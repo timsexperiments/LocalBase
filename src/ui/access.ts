@@ -2,7 +2,9 @@ import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { z } from "zod";
 import {
   browserAccessConfigSchema,
+  evaluateBrowserAccessPolicy,
   loadBrowserAccessConfig,
+  type BrowserIdentity,
   type BrowserAccessConfig,
 } from "../domains/auth/browser-access";
 import type { Permission } from "../domains/auth/authorization";
@@ -15,7 +17,11 @@ export {
 };
 
 const humanClaimsSchema = z.object({
-  sub: z.string().trim().min(1),
+  sub: z
+    .string()
+    .min(1)
+    .max(255)
+    .regex(/^[\x00-\x7F]+$/),
   email: z
     .string()
     .email()
@@ -203,6 +209,7 @@ export function createUiAccess({
         return respond(failure(404));
 
       let ownerId: string;
+      let identity: BrowserIdentity;
       if (config.provider.kind === "cloudflare-access") {
         const token = request.headers.get("cf-access-jwt-assertion");
         if (!token || !cloudflareIssuer || !cloudflareKeys)
@@ -224,19 +231,27 @@ export function createUiAccess({
               ]),
             )
             .digest("hex")}`;
+          identity = {
+            issuer: cloudflareIssuer,
+            subject: human.sub,
+            // Cloudflare Access documents this email as IdP-verified.
+            email: human.email,
+          };
         } catch {
           return respond(failure(401));
         }
       } else {
         const authenticated = oidc?.authenticate(request);
         if (!authenticated) return respond(failure(401));
-        ownerId = authenticated;
+        ownerId = authenticated.ownerId;
+        identity = authenticated.identity;
       }
+      const access = evaluateBrowserAccessPolicy({ config, identity });
 
       if (sessionRequest) {
         credentials.set(
           request,
-          Object.freeze({ ownerId, permissions: config.permissions }),
+          Object.freeze({ ownerId, permissions: access.permissions }),
         );
         return respond(
           Response.json(
@@ -265,7 +280,7 @@ export function createUiAccess({
       });
       credentials.set(
         forwarded,
-        Object.freeze({ ownerId, permissions: config.permissions }),
+        Object.freeze({ ownerId, permissions: access.permissions }),
       );
       return { kind: "forward", request: forwarded, pathname };
     },

@@ -10,7 +10,10 @@ import type { OtelConfiguration } from "../../observability/otel";
 import { sanitizedOtelEndpoint } from "../../observability/otel-config";
 import { memorySafetyConfigSchema } from "../../runtime/memory-safety";
 import { permissionsSchema } from "../../auth/authorization";
-import { browserAccessConfigSummarySchema } from "../../auth/browser-access";
+import {
+  browserAccessConfigSummarySchema,
+  browserAccessPolicySchema,
+} from "../../auth/browser-access";
 
 export const configurationOutputSchema = z
   .object({
@@ -163,6 +166,25 @@ export const accessConfigureResultSchema = z
   .strict();
 export const accessDisableResultSchema = z
   .object({ disabled: z.boolean(), restartRequired: z.boolean() })
+  .strict();
+export const accessPolicyShowResultSchema = z
+  .object({ policy: browserAccessPolicySchema.nullable() })
+  .strict();
+export const accessPolicyApplyResultSchema = z
+  .object({
+    policy: browserAccessPolicySchema,
+    restartRequired: z.literal(true),
+  })
+  .strict();
+export const accessPolicyTestResultSchema = z
+  .object({ matchedRoles: z.array(z.string()), permissions: permissionsSchema })
+  .strict();
+export const accessPolicyClearResultSchema = z
+  .object({
+    cleared: z.boolean(),
+    permissions: permissionsSchema,
+    restartRequired: z.boolean(),
+  })
   .strict();
 export const resetResultSchema = z
   .object({ reset: z.literal(true), root: z.string() })

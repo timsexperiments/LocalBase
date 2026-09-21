@@ -13,9 +13,12 @@ import {
 } from "../../auth/authorization";
 import {
   browserAccessConfigSchema,
+  browserIdentityIssuerSchema,
+  browserIdentitySubjectSchema,
   cloudflareAccessProviderSchema,
   defaultBrowserPermissions,
   oidcAccessProviderSchema,
+  verifiedBrowserEmailSchema,
 } from "../../auth/browser-access";
 
 export const modelKindSchema = z.enum(["llm", "stt", "tts", "image", "video"]);
@@ -267,6 +270,28 @@ export type AccessOidcInput = z.infer<typeof accessOidcInputSchema>;
 
 export const accessDisableInputSchema = z.object({});
 export type AccessDisableInput = z.infer<typeof accessDisableInputSchema>;
+
+export const accessPolicyShowInputSchema = z.object({});
+export type AccessPolicyShowInput = z.infer<typeof accessPolicyShowInputSchema>;
+
+export const accessPolicyApplyInputSchema = z.object({
+  file: z.string().trim().min(1).max(4_096),
+});
+export type AccessPolicyApplyInput = z.infer<
+  typeof accessPolicyApplyInputSchema
+>;
+
+export const accessPolicyTestInputSchema = z.object({
+  issuer: browserIdentityIssuerSchema,
+  subject: browserIdentitySubjectSchema,
+  email: verifiedBrowserEmailSchema.optional(),
+});
+export type AccessPolicyTestInput = z.infer<typeof accessPolicyTestInputSchema>;
+
+export const accessPolicyClearInputSchema = z.object({});
+export type AccessPolicyClearInput = z.infer<
+  typeof accessPolicyClearInputSchema
+>;
 
 export const resetInputSchema = z.object({
   yes: z.boolean().default(false),

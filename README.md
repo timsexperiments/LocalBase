@@ -125,6 +125,43 @@ registration is explicitly a public client.
 
 Use `local-base access show --json` to inspect the active non-secret configuration and `local-base access disable` to disable browser sign-in. The default browser permissions cover inference, model discovery, and model management; pass `--permissions` to replace them. Access configuration is restart-scoped and every command supports `--non-interactive` and `--json`.
 
+### Browser authorization policy
+
+Without a policy, every verified browser identity receives the provider-wide `--permissions` configured by `local-base access cloudflare` or `local-base access oidc`. A policy replaces that behavior. Matching bindings grant the union of their roles' permissions. An identity with no matching binding receives no permissions.
+
+`policy.json` has strict JSON fields. `kind: "subject"` matches an exact issuer and opaque subject. `kind: "email"` and `kind: "email-domain"` use a verified email. Direct OIDC exposes email only when the ID token sets `email_verified: true`. Cloudflare Access email is treated as IdP-verified. Groups are not supported because they are not a portable OIDC claim.
+
+```json
+{
+  "roles": {
+    "operator": ["access:manage", "models:manage"],
+    "chat": ["inference:chat"]
+  },
+  "bindings": [
+    {
+      "kind": "subject",
+      "role": "operator",
+      "issuer": "https://identity.example.com",
+      "subject": "00u123example"
+    },
+    { "kind": "email-domain", "role": "chat", "domain": "example.com" }
+  ]
+}
+```
+
+```bash
+local-base access policy apply --file policy.json
+local-base access policy show --json
+local-base access policy test \
+  --issuer https://identity.example.com \
+  --subject 00u123example \
+  --email person@example.com \
+  --json
+local-base access policy clear
+```
+
+`apply` parses the complete file before replacing `ui-access.json`. It rejects a policy unless at least one binding grants a role with `access:manage`. `clear` removes the policy and returns to the provider-wide configured permissions. Restart LocalBase after `apply` or `clear`.
+
 Open `/app` on the configured HTTPS origin. The playground requires a verified human session from Cloudflare Access or the configured OpenID Connect provider; gateway API keys cannot authenticate the browser UI. Direct OpenID Connect sessions are opaque, HTTP-only cookies and are cleared when LocalBase restarts. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
 
 Model Lab calls models directly without generation tools. It supports chat, images, speech, audio-file transcription, text-to-video, and embeddings. Voice choices, embedding dimension bounds, and the fixed video profile come from model metadata. Completed videos play inline and download as MP4 in Chat and Model Lab. Speech-to-video portrait and audio inputs are not supported in Model Lab yet.

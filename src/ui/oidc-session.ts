@@ -2,7 +2,10 @@ import { Buffer } from "node:buffer";
 import { timingSafeEqual } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { z } from "zod";
-import type { OidcAccessProvider } from "../domains/auth/browser-access";
+import type {
+  BrowserIdentity,
+  OidcAccessProvider,
+} from "../domains/auth/browser-access";
 
 const loginStateCookie = "__Host-localbase-oidc-state";
 const sessionCookie = "__Host-localbase-session";
@@ -53,6 +56,8 @@ const identitySchema = z.object({
   azp: z.string().optional(),
   exp: z.number().int().positive(),
   iat: z.number().int().nonnegative(),
+  email: z.string().email().max(320).optional(),
+  email_verified: z.boolean().optional(),
 });
 
 type Metadata = z.infer<typeof metadataSchema>;
@@ -65,7 +70,11 @@ type LoginState = Readonly<{
   nonce: string;
   expiresAt: number;
 }>;
-type BrowserSession = Readonly<{ ownerId: string; expiresAt: number }>;
+type BrowserSession = Readonly<{
+  ownerId: string;
+  identity: BrowserIdentity;
+  expiresAt: number;
+}>;
 
 function redirect(location: string, cookies: readonly string[] = []): Response {
   const headers = new Headers({
@@ -312,6 +321,13 @@ export function createOidcSessionManager({
       ownerId: `browser:${new Bun.CryptoHasher("sha256")
         .update(JSON.stringify([provider.kind, provider.issuer, identity.sub]))
         .digest("hex")}`,
+      identity: {
+        issuer: provider.issuer,
+        subject: identity.sub,
+        ...(identity.email_verified && identity.email
+          ? { email: identity.email }
+          : {}),
+      },
       expiresAt: Math.min(identity.exp * 1_000, now() + sessionTtlMs),
     };
   };
@@ -386,14 +402,14 @@ export function createOidcSessionManager({
       }
     },
 
-    authenticate(request: Request): string | null {
+    authenticate(request: Request): BrowserSession | null {
       const token = cookieValue(request, sessionCookie);
       const session = token ? sessions.get(token) : null;
       if (!token || !session || session.expiresAt <= now()) {
         if (token) sessions.delete(token);
         return null;
       }
-      return session.ownerId;
+      return session;
     },
 
     logout(request: Request): Response {
