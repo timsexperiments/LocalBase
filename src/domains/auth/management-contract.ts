@@ -5,7 +5,7 @@ import {
   browserAccessConfigSummarySchema,
   cloudflareAccessProviderSchema,
   oidcAccessProviderSchema,
-} from "./browser-access";
+} from "./browser-access-contract";
 import { browserAccessPolicySchema } from "./browser-policy";
 import { apiKeyMetadataSchema } from "./api-key-public";
 
