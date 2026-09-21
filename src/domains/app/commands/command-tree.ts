@@ -820,7 +820,7 @@ const accessCloudflareCommand = command<AccessCloudflareInput>({
       type: "string",
       valueHint: "permission,...",
       description:
-        "Browser permissions; defaults to inference and model management",
+        "Browser permissions; preserves the current set when omitted",
     },
   },
   parse: (input) => accessCloudflareInputSchema.parse(input),

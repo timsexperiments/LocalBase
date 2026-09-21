@@ -255,7 +255,7 @@ export const accessOidcAddInputSchema = z
       .optional(),
     publicClient: z.boolean().default(false),
     origin: browserAccessConfigSchema.shape.origin,
-    permissions: keyScopesInputSchema.default(defaultBrowserPermissions),
+    permissions: keyScopesInputSchema.optional(),
   })
   .superRefine((input, context) => {
     if (input.publicClient === Boolean(input.clientSecretEnv)) {

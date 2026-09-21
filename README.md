@@ -129,7 +129,9 @@ local-base restart
 Use `--public-client` instead of `--client-secret-env` only when the provider
 registration is explicitly a public client.
 
-Repeat `access oidc add` with another ID to offer multiple sign-in providers.
+Repeat `access oidc add` with another ID to offer multiple sign-in providers. The
+first registration receives the default browser permissions; later additions
+preserve the configured permissions unless `--permissions` is supplied.
 Use `local-base access oidc list` to inspect them and
 `local-base access oidc remove ID` to remove one. Removing the last registration
 disables browser access.

@@ -225,6 +225,8 @@ test(
           "TEST_OIDC_SECRET",
           "--origin",
           "https://localbase.example.com",
+          "--permissions",
+          "inference:chat",
         ],
         undefined,
         { TEST_OIDC_SECRET: oidcSecret },
@@ -245,6 +247,7 @@ test(
           },
         ],
       });
+      expect(oidcOutput.config.permissions).toEqual(["inference:chat"]);
       expect(oidcAccess.stdout).not.toContain(oidcSecret);
       expect(oidcAccess.stderr).not.toContain(oidcSecret);
       const shownOidc = await runCli(executable, [
@@ -324,6 +327,11 @@ test(
         { TEST_OIDC_SECRET: oidcSecret },
       );
       expect(reconfiguredOidc.exitCode).toBe(0);
+      expect(
+        accessConfigureResultSchema.parse(
+          jsonDocument(reconfiguredOidc.stdout).data,
+        ).config.permissions,
+      ).toEqual(["inference:chat"]);
       const listedOidc = await runCli(executable, [
         "--root",
         root,

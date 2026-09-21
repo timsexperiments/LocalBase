@@ -16,6 +16,7 @@ import type {
 } from "../../../app/commands/inputs";
 import {
   disableBrowserAccess,
+  defaultBrowserPermissions,
   loadBrowserAccessConfig,
   removeOidcRegistration,
   saveBrowserAccessConfig,
@@ -26,6 +27,7 @@ import {
   browserAccessPolicySchema,
   evaluateBrowserAccessPolicy,
 } from "../../browser-policy";
+import { withRootOperation } from "../../../service/ownership";
 
 export async function runAccessShow(
   _input: AccessShowInput,
@@ -48,17 +50,23 @@ export async function runAccessCloudflare(
   ctx: AppContext,
   execution: CommandExecution,
 ) {
-  const current = await loadBrowserAccessConfig(ctx.config.root);
-  const config = await saveBrowserAccessConfig(ctx.config.root, {
-    provider: {
-      kind: "cloudflare-access",
-      teamDomain: input.teamDomain,
-      audience: input.audience,
+  const config = await withRootOperation(
+    ctx.config.root,
+    "configure browser access",
+    async (root) => {
+      const current = await loadBrowserAccessConfig(root);
+      return await saveBrowserAccessConfig(root, {
+        provider: {
+          kind: "cloudflare-access",
+          teamDomain: input.teamDomain,
+          audience: input.audience,
+        },
+        origin: input.origin,
+        permissions: input.permissions,
+        ...(current?.policy ? { policy: current.policy } : {}),
+      });
     },
-    origin: input.origin,
-    permissions: input.permissions,
-    ...(current?.policy ? { policy: current.policy } : {}),
-  });
+  );
   execution.output.info(
     "Saved Cloudflare Access configuration. Restart LocalBase to apply it.",
   );
@@ -75,7 +83,6 @@ export async function runAccessOidcAdd(
   ctx: AppContext,
   execution: CommandExecution,
 ) {
-  const current = await loadBrowserAccessConfig(ctx.config.root);
   const clientAuthentication = input.publicClient
     ? ({ kind: "none" } as const)
     : ({
@@ -90,19 +97,29 @@ export async function runAccessOidcAdd(
       `OpenID Connect client secret environment variable ${input.clientSecretEnv} is empty or unavailable.`,
     );
   }
-  const config = await saveBrowserAccessConfig(
+  const config = await withRootOperation(
     ctx.config.root,
-    upsertOidcRegistration(current, {
-      registration: {
-        id: input.id,
-        name: input.name,
-        issuer: input.issuer,
-        clientId: input.clientId,
-        clientAuthentication,
-      },
-      origin: input.origin,
-      permissions: input.permissions,
-    }),
+    "configure browser access",
+    async (root) => {
+      const current = await loadBrowserAccessConfig(root);
+      return await saveBrowserAccessConfig(
+        root,
+        upsertOidcRegistration(current, {
+          registration: {
+            id: input.id,
+            name: input.name,
+            issuer: input.issuer,
+            clientId: input.clientId,
+            clientAuthentication,
+          },
+          origin: input.origin,
+          permissions:
+            input.permissions ??
+            current?.permissions ??
+            defaultBrowserPermissions,
+        }),
+      );
+    },
   );
   execution.output.info(
     `Saved OpenID Connect registration ${input.id}. Restart LocalBase to apply it.`,
@@ -133,14 +150,24 @@ export async function runAccessOidcRemove(
   ctx: AppContext,
   execution: CommandExecution,
 ) {
-  const current = await loadBrowserAccessConfig(ctx.config.root);
-  const removal = removeOidcRegistration(current, input.id);
-  if (removal.kind === "not-found")
-    throw new CliInputError(
-      `OpenID Connect registration ${input.id} not found.`,
-    );
-  if (removal.kind === "disabled") {
-    await disableBrowserAccess(ctx.config.root);
+  const result = await withRootOperation(
+    ctx.config.root,
+    "configure browser access",
+    async (root) => {
+      const current = await loadBrowserAccessConfig(root);
+      const removal = removeOidcRegistration(current, input.id);
+      if (removal.kind === "not-found")
+        throw new CliInputError(
+          `OpenID Connect registration ${input.id} not found.`,
+        );
+      if (removal.kind === "disabled") {
+        await disableBrowserAccess(root);
+        return null;
+      }
+      return await saveBrowserAccessConfig(root, removal.config);
+    },
+  );
+  if (!result) {
     execution.output.info(
       `Removed ${input.id} and disabled browser access. Restart LocalBase to apply it.`,
     );
@@ -152,14 +179,13 @@ export async function runAccessOidcRemove(
       },
     };
   }
-  const config = await saveBrowserAccessConfig(ctx.config.root, removal.config);
   execution.output.info(
     `Removed OpenID Connect registration ${input.id}. Restart LocalBase to apply it.`,
   );
   return {
     data: {
       removed: true as const,
-      config: summarizeBrowserAccessConfig(config),
+      config: summarizeBrowserAccessConfig(result),
       restartRequired: true as const,
     },
   };
@@ -170,7 +196,11 @@ export async function runAccessDisable(
   ctx: AppContext,
   execution: CommandExecution,
 ) {
-  const disabled = await disableBrowserAccess(ctx.config.root);
+  const disabled = await withRootOperation(
+    ctx.config.root,
+    "configure browser access",
+    disableBrowserAccess,
+  );
   execution.output.info(
     `${disabled ? "Disabled browser access." : "Browser access was already disabled."} Restart LocalBase to apply it.`,
   );
@@ -197,9 +227,6 @@ export async function runAccessPolicyApply(
   ctx: AppContext,
   execution: CommandExecution,
 ) {
-  const config = await loadBrowserAccessConfig(ctx.config.root);
-  if (!config)
-    throw new CliInputError("Configure a browser identity provider first.");
   let source: string;
   try {
     source = await readFile(input.file, "utf8");
@@ -217,10 +244,19 @@ export async function runAccessPolicyApply(
     throw new CliInputError(
       `Invalid access policy: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`,
     );
-  const saved = await saveBrowserAccessConfig(ctx.config.root, {
-    ...config,
-    policy: parsed.data,
-  });
+  const saved = await withRootOperation(
+    ctx.config.root,
+    "configure browser access",
+    async (root) => {
+      const config = await loadBrowserAccessConfig(root);
+      if (!config)
+        throw new CliInputError("Configure a browser identity provider first.");
+      return await saveBrowserAccessConfig(root, {
+        ...config,
+        policy: parsed.data,
+      });
+    },
+  );
   execution.output.info(
     "Saved browser access policy. Restart LocalBase to apply it.",
   );
@@ -261,15 +297,23 @@ export async function runAccessPolicyClear(
   ctx: AppContext,
   execution: CommandExecution,
 ) {
-  const config = await loadBrowserAccessConfig(ctx.config.root);
-  if (!config)
-    throw new CliInputError("Configure a browser identity provider first.");
-  if (!config.policy) {
+  const cleared = await withRootOperation(
+    ctx.config.root,
+    "configure browser access",
+    async (root) => {
+      const config = await loadBrowserAccessConfig(root);
+      if (!config)
+        throw new CliInputError("Configure a browser identity provider first.");
+      if (!config.policy) return false;
+      const { policy: _, ...providerWideConfig } = config;
+      await saveBrowserAccessConfig(root, providerWideConfig);
+      return true;
+    },
+  );
+  if (!cleared) {
     execution.output.info("Browser access policy was already clear.");
     return { data: { cleared: false, restartRequired: false } };
   }
-  const { policy: _, ...providerWideConfig } = config;
-  await saveBrowserAccessConfig(ctx.config.root, providerWideConfig);
   execution.output.info(
     "Cleared browser access policy. Provider-wide permissions apply after restart.",
   );
