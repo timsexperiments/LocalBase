@@ -3,7 +3,7 @@ import { join } from "node:path";
 import {
   browserAccessConfigSchema,
   type BrowserAccessConfig,
-  type OidcAccessRegistration,
+  type DirectAccessRegistration,
 } from "./browser-access-contract";
 
 export * from "./browser-access-contract";
@@ -71,16 +71,16 @@ export async function disableBrowserAccess(root: string): Promise<boolean> {
   }
 }
 
-export function upsertOidcRegistration(
+export function upsertAccessRegistration(
   current: BrowserAccessConfig | null,
   input: {
-    registration: OidcAccessRegistration;
+    registration: DirectAccessRegistration;
     origin: string;
     permissions: BrowserAccessConfig["permissions"];
   },
 ): BrowserAccessConfig {
   const registrations =
-    current?.provider.kind === "oidc"
+    current?.provider.kind === "direct"
       ? current.provider.registrations.filter(
           (registration) => registration.id !== input.registration.id,
         )
@@ -88,23 +88,23 @@ export function upsertOidcRegistration(
   registrations.push(input.registration);
   registrations.sort((left, right) => left.id.localeCompare(right.id));
   return browserAccessConfigSchema.parse({
-    provider: { kind: "oidc", registrations },
+    provider: { kind: "direct", registrations },
     origin: input.origin,
     permissions: input.permissions,
     ...(current?.policy ? { policy: current.policy } : {}),
   });
 }
 
-export type OidcRegistrationRemoval =
+export type AccessRegistrationRemoval =
   | Readonly<{ kind: "not-found" }>
   | Readonly<{ kind: "disabled" }>
   | Readonly<{ kind: "configured"; config: BrowserAccessConfig }>;
 
-export function removeOidcRegistration(
+export function removeAccessRegistration(
   current: BrowserAccessConfig | null,
   registrationId: string,
-): OidcRegistrationRemoval {
-  if (current?.provider.kind !== "oidc") return { kind: "not-found" };
+): AccessRegistrationRemoval {
+  if (current?.provider.kind !== "direct") return { kind: "not-found" };
   const registrations = current.provider.registrations.filter(
     (registration) => registration.id !== registrationId,
   );
@@ -115,7 +115,7 @@ export function removeOidcRegistration(
     kind: "configured",
     config: browserAccessConfigSchema.parse({
       ...current,
-      provider: { kind: "oidc", registrations },
+      provider: { kind: "direct", registrations },
     }),
   };
 }

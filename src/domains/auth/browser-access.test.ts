@@ -7,10 +7,10 @@ import {
   defaultBrowserPermissions,
   disableBrowserAccess,
   loadBrowserAccessConfig,
-  removeOidcRegistration,
+  removeAccessRegistration,
   saveBrowserAccessConfig,
   summarizeBrowserAccessConfig,
-  upsertOidcRegistration,
+  upsertAccessRegistration,
 } from "./browser-access";
 
 test("persists strict browser access configuration atomically", async () => {
@@ -42,9 +42,10 @@ test("persists strict browser access configuration atomically", async () => {
   }
 });
 
-test("upserts and removes named OIDC registrations", () => {
-  const first = upsertOidcRegistration(null, {
+test("upserts and removes direct identity registrations", () => {
+  const first = upsertAccessRegistration(null, {
     registration: {
+      kind: "oidc",
       id: "google",
       name: "Google",
       issuer: "https://accounts.google.com",
@@ -54,33 +55,33 @@ test("upserts and removes named OIDC registrations", () => {
     origin: "https://localbase.example.com",
     permissions: defaultBrowserPermissions,
   });
-  const second = upsertOidcRegistration(first, {
+  const second = upsertAccessRegistration(first, {
     registration: {
-      id: "microsoft",
-      name: "Microsoft",
-      issuer: "https://login.microsoftonline.com/common/v2.0",
-      clientId: "microsoft-client",
-      clientAuthentication: { kind: "none" },
+      kind: "github-oauth",
+      id: "github",
+      name: "GitHub",
+      clientId: "github-client",
+      clientSecret: "github-secret",
     },
     origin: first.origin,
     permissions: first.permissions,
   });
   expect(
-    second.provider.kind === "oidc"
+    second.provider.kind === "direct"
       ? second.provider.registrations.map(({ id }) => id)
       : [],
-  ).toEqual(["google", "microsoft"]);
+  ).toEqual(["github", "google"]);
 
-  const removed = removeOidcRegistration(second, "google");
+  const removed = removeAccessRegistration(second, "google");
   expect(removed).toMatchObject({
     kind: "configured",
-    config: { provider: { registrations: [{ id: "microsoft" }] } },
+    config: { provider: { registrations: [{ id: "github" }] } },
   });
   if (removed.kind !== "configured") throw new Error("Expected a config.");
-  expect(removeOidcRegistration(removed.config, "microsoft")).toEqual({
+  expect(removeAccessRegistration(removed.config, "github")).toEqual({
     kind: "disabled",
   });
-  expect(removeOidcRegistration(second, "unknown")).toEqual({
+  expect(removeAccessRegistration(second, "unknown")).toEqual({
     kind: "not-found",
   });
 });
@@ -90,9 +91,10 @@ test("persists OIDC credentials privately and redacts command output", async () 
   const clientSecret = "private-oidc-secret";
   const config = {
     provider: {
-      kind: "oidc" as const,
+      kind: "direct" as const,
       registrations: [
         {
+          kind: "oidc" as const,
           id: "primary",
           name: "Primary",
           issuer: "https://identity.example.com/tenant",
@@ -116,7 +118,7 @@ test("persists OIDC credentials privately and redacts command output", async () 
     expect(summarizeBrowserAccessConfig(config)).toEqual({
       ...config,
       provider: {
-        kind: "oidc",
+        kind: "direct",
         registrations: [
           {
             ...config.provider.registrations[0],

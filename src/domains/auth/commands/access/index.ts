@@ -5,6 +5,9 @@ import { CliInputError } from "../../../app/commands/errors";
 import type {
   AccessCloudflareInput,
   AccessDisableInput,
+  AccessGithubAddInput,
+  AccessGithubListInput,
+  AccessGithubRemoveInput,
   AccessOidcAddInput,
   AccessOidcListInput,
   AccessOidcRemoveInput,
@@ -18,10 +21,10 @@ import {
   disableBrowserAccess,
   defaultBrowserPermissions,
   loadBrowserAccessConfig,
-  removeOidcRegistration,
+  removeAccessRegistration,
   saveBrowserAccessConfig,
   summarizeBrowserAccessConfig,
-  upsertOidcRegistration,
+  upsertAccessRegistration,
 } from "../../browser-access";
 import {
   browserAccessPolicySchema,
@@ -107,8 +110,9 @@ export async function runAccessOidcAdd(
       const current = await loadBrowserAccessConfig(root);
       return await saveBrowserAccessConfig(
         root,
-        upsertOidcRegistration(current, {
+        upsertAccessRegistration(current, {
           registration: {
+            kind: "oidc",
             id: input.id,
             name: input.name,
             issuer: input.issuer,
@@ -143,7 +147,11 @@ export async function runAccessOidcList(
   const current = await loadBrowserAccessConfig(ctx.config.root);
   const summary = current ? summarizeBrowserAccessConfig(current) : null;
   const registrations =
-    summary?.provider.kind === "oidc" ? summary.provider.registrations : [];
+    summary?.provider.kind === "direct"
+      ? summary.provider.registrations.filter(
+          (registration) => registration.kind === "oidc",
+        )
+      : [];
   execution.output.info(`${registrations.length} OIDC registrations.`);
   return { data: { registrations } };
 }
@@ -158,7 +166,17 @@ export async function runAccessOidcRemove(
     "configure browser access",
     async (root) => {
       const current = await loadBrowserAccessConfig(root);
-      const removal = removeOidcRegistration(current, input.id);
+      const registration =
+        current?.provider.kind === "direct"
+          ? current.provider.registrations.find(
+              (candidate) => candidate.id === input.id,
+            )
+          : undefined;
+      if (registration?.kind !== "oidc")
+        throw new CliInputError(
+          `OpenID Connect registration ${input.id} not found.`,
+        );
+      const removal = removeAccessRegistration(current, input.id);
       if (removal.kind === "not-found")
         throw new CliInputError(
           `OpenID Connect registration ${input.id} not found.`,
@@ -189,6 +207,114 @@ export async function runAccessOidcRemove(
     data: {
       removed: true as const,
       config: summarizeBrowserAccessConfig(result),
+      restartRequired: true as const,
+    },
+  };
+}
+
+export async function runAccessGithubAdd(
+  input: AccessGithubAddInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const clientSecret = process.env[input.clientSecretEnv] ?? "";
+  if (!clientSecret)
+    throw new CliInputError(
+      `GitHub client secret environment variable ${input.clientSecretEnv} is empty or unavailable.`,
+    );
+  const config = await withRootOperation(
+    ctx.config.root,
+    "configure browser access",
+    async (root) => {
+      const current = await loadBrowserAccessConfig(root);
+      return await saveBrowserAccessConfig(
+        root,
+        upsertAccessRegistration(current, {
+          registration: {
+            kind: "github-oauth",
+            id: input.id,
+            name: input.name,
+            clientId: input.clientId,
+            clientSecret,
+          },
+          origin: input.origin,
+          permissions:
+            input.permissions ??
+            current?.permissions ??
+            defaultBrowserPermissions,
+        }),
+      );
+    },
+  );
+  execution.output.info(
+    `Saved GitHub OAuth registration ${input.id}. Restart LocalBase to apply it.`,
+  );
+  return {
+    data: {
+      config: summarizeBrowserAccessConfig(config),
+      restartRequired: true as const,
+    },
+  };
+}
+
+export async function runAccessGithubList(
+  _input: AccessGithubListInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const current = await loadBrowserAccessConfig(ctx.config.root);
+  const summary = current ? summarizeBrowserAccessConfig(current) : null;
+  const registrations =
+    summary?.provider.kind === "direct"
+      ? summary.provider.registrations.filter(
+          (registration) => registration.kind === "github-oauth",
+        )
+      : [];
+  execution.output.info(`${registrations.length} GitHub OAuth registrations.`);
+  return { data: { registrations } };
+}
+
+export async function runAccessGithubRemove(
+  input: AccessGithubRemoveInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const result = await withRootOperation(
+    ctx.config.root,
+    "configure browser access",
+    async (root) => {
+      const current = await loadBrowserAccessConfig(root);
+      const registration =
+        current?.provider.kind === "direct"
+          ? current.provider.registrations.find(
+              (candidate) => candidate.id === input.id,
+            )
+          : undefined;
+      if (registration?.kind !== "github-oauth")
+        throw new CliInputError(
+          `GitHub OAuth registration ${input.id} not found.`,
+        );
+      const removal = removeAccessRegistration(current, input.id);
+      if (removal.kind === "not-found")
+        throw new CliInputError(
+          `GitHub OAuth registration ${input.id} not found.`,
+        );
+      if (removal.kind === "disabled") {
+        await disableBrowserAccess(root);
+        return null;
+      }
+      return await saveBrowserAccessConfig(root, removal.config);
+    },
+  );
+  execution.output.info(
+    result
+      ? `Removed GitHub OAuth registration ${input.id}. Restart LocalBase to apply it.`
+      : `Removed ${input.id} and disabled browser access. Restart LocalBase to apply it.`,
+  );
+  return {
+    data: {
+      removed: true as const,
+      config: result ? summarizeBrowserAccessConfig(result) : null,
       restartRequired: true as const,
     },
   };

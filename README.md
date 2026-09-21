@@ -129,12 +129,25 @@ local-base restart
 Use `--public-client` instead of `--client-secret-env` only when the provider
 registration is explicitly a public client.
 
-Repeat `access oidc add` with another ID to offer multiple sign-in providers. The
-first registration receives the default browser permissions; later additions
-preserve the configured permissions unless `--permissions` is supplied.
-Use `local-base access oidc list` to inspect them and
-`local-base access oidc remove ID` to remove one. Removing the last registration
-disables browser access.
+GitHub uses OAuth rather than OpenID Connect. Register
+`https://localbase.example.com/github/callback` as the OAuth app callback URL:
+
+```bash
+export LOCALBASE_GITHUB_SECRET='...'
+local-base access github add \
+  --id github \
+  --name GitHub \
+  --client-id YOUR_GITHUB_CLIENT_ID \
+  --client-secret-env LOCALBASE_GITHUB_SECRET \
+  --origin https://localbase.example.com
+local-base restart
+```
+
+OIDC and GitHub registrations can coexist on the same sign-in page. The first
+registration receives the default browser permissions. Later additions preserve
+the configured permissions unless `--permissions` is supplied. Use the matching
+`access oidc` or `access github` `list` and `remove` commands. Removing the last
+registration disables browser access.
 
 Use `local-base access show --json` to inspect the active non-secret configuration and `local-base access disable` to disable browser sign-in. The default browser permissions cover inference, model discovery, and model management; pass `--permissions` to replace them. Access configuration is restart-scoped and every command supports `--non-interactive` and `--json`.
 
@@ -180,10 +193,10 @@ local-base restart
 
 `access policy test` treats `--email` as verified input for offline evaluation.
 `access policy clear` restores the provider-wide permissions configured by
-`access cloudflare` or `access oidc`. Applying and clearing a policy require a
+`access cloudflare`, `access oidc`, or `access github`. Applying and clearing a policy require a
 restart.
 
-Open `/app` on the configured HTTPS origin. The playground requires a verified human session from Cloudflare Access or the configured OpenID Connect provider; gateway API keys cannot authenticate the browser UI. Direct OpenID Connect sessions are opaque, HTTP-only cookies and are cleared when LocalBase restarts. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
+Open `/app` on the configured HTTPS origin. The playground requires a verified human session from Cloudflare Access, OpenID Connect, or GitHub; gateway API keys cannot authenticate the browser UI. Direct sessions are opaque, HTTP-only cookies and are cleared when LocalBase restarts. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
 
 Open **Access & API keys** from Settings or `/app?panel=admin` to inspect and update identity-provider configuration, access policies, API-key scopes, rotation, and revocation. The page appears only after human sign-in and each operation still requires its corresponding `access:*` or `keys:*` permission. New and rotated API-key secrets are held only in page memory and shown once.
 
@@ -201,7 +214,7 @@ Microphone buttons dictate into text fields using the installed, enabled STT mod
 
 Open **Manage models** from the model picker or `/app?panel=catalog` to browse the catalog, disk usage, and download sizes. Only installed, enabled models can be selected for inference. Installation downloads files; enabling makes them available for requests; setting a default chooses the model used when a request omits one. Disable a model and wait for its runtime to release it before uninstalling. Shared model files are retained.
 
-Model administration requires `models:manage`; catalog reads require `models:read`. Browser sessions receive the permissions configured by `local-base access cloudflare` or `local-base access oidc`. Machine clients can receive the same capability with `local-base keys create --scopes models:read,models:manage`. Ordinary client keys retain inference and model-read access by default.
+Model administration requires `models:manage`; catalog reads require `models:read`. Browser sessions receive the permissions configured by `local-base access cloudflare`, `local-base access oidc`, or `local-base access github`. Machine clients can receive the same capability with `local-base keys create --scopes models:read,models:manage`. Ordinary client keys retain inference and model-read access by default.
 
 `GET /_localbase/model-management` returns catalog installation state, storage, operation progress, and `canManage`. Authorized clients use `POST` on the same endpoint with `{"modelId":"<catalog-id>","action":"install"}`. Actions are `install`, `uninstall`, `enable`, `disable`, and `activate`. Install returns HTTP 202; poll GET for completion or failure. One installation runs at a time, and progress is retained only for the running gateway process. Other actions return HTTP 200 when complete.
 
@@ -210,7 +223,7 @@ Authentication administration uses two exact, always-authenticated endpoints:
 - `GET` and `POST /_localbase/access-management` require `access:read` for reads and policy tests, or `access:manage` for provider and policy changes.
 - `GET /_localbase/api-keys` requires `keys:read`. `POST` requires `keys:manage` and accepts `create`, `rotate`, `revoke`, or `set-scopes` actions.
 
-Provider responses never include OIDC client secrets. API-key creation and rotation return the new key secret once; reads and later mutations return metadata only. Access provider and policy changes report `restartRequired`; key changes take effect on the next request. These permissions are not granted to browser sessions or ordinary API keys automatically. Grant them explicitly with `local-base access ... --permissions`, an access policy, or `local-base keys create --scopes ...`. The CLI remains the primary recovery and automation interface because it works directly against the local data directory.
+Provider responses never include client secrets. API-key creation and rotation return the new key secret once; reads and later mutations return metadata only. Access provider and policy changes report `restartRequired`; key changes take effect on the next request. These permissions are not granted to browser sessions or ordinary API keys automatically. Grant them explicitly with `local-base access ... --permissions`, an access policy, or `local-base keys create --scopes ...`. The CLI remains the primary recovery and automation interface because it works directly against the local data directory.
 
 Models sharing files with an installation must be disabled and released by their runtimes. Do not run concurrent CLI installs or re-enable affected models through the CLI while an API installation is running.
 
