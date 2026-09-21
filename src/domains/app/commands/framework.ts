@@ -197,7 +197,7 @@ function hasExplicitJsonFlag(args: string[]): boolean {
 }
 
 function parentFor(command: Command): CittyCommand {
-  return command.path.length === 2
+  return command.path.length > 1
     ? groupForPath(command.path.slice(0, -1))!
     : rootCommand;
 }

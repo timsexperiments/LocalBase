@@ -213,6 +213,30 @@ test("verifies every human session and never falls back after a JWT failure", as
   expect((await responseFor(access, cookieOnly)).status).toBe(401);
 });
 
+test("evaluates Cloudflare verified identity claims with the local policy", async () => {
+  const access = createUiAccess({
+    config: uiAccessConfigSchema.parse({
+      ...config,
+      policy: {
+        roles: { admin: ["access:manage", "models:manage"] },
+        bindings: [
+          {
+            role: "admin",
+            match: { kind: "email-domain", domain: "example.com" },
+          },
+        ],
+      },
+    }),
+    keyResolver: resolver,
+  });
+  const sessionRequest = request(await token());
+  expect((await responseFor(access, sessionRequest)).status).toBe(200);
+  expect(access.credential(sessionRequest)).toMatchObject({
+    matchedRoles: ["admin"],
+    permissions: ["models:manage", "access:manage"],
+  });
+});
+
 test("enforces exact host, origin, fetch-site, marker, method, and path boundaries", async () => {
   const access = createUiAccess({ config, keyResolver: resolver });
   const jwt = await token();

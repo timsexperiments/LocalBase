@@ -2,6 +2,7 @@ import { chmod, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { defaultApiKeyScopes, permissionsSchema } from "./authorization";
+import { browserAccessPolicySchema } from "./browser-policy";
 
 export const defaultBrowserPermissions = permissionsSchema.parse([
   ...defaultApiKeyScopes,
@@ -85,6 +86,7 @@ export const browserAccessConfigSchema = z
     provider: browserAccessProviderSchema,
     origin: exactHttpsOriginSchema,
     permissions: permissionsSchema,
+    policy: browserAccessPolicySchema.optional(),
   })
   .strict();
 
@@ -106,6 +108,7 @@ export const browserAccessConfigSummarySchema = z
     ]),
     origin: exactHttpsOriginSchema,
     permissions: permissionsSchema,
+    policy: browserAccessPolicySchema.optional(),
   })
   .strict();
 
