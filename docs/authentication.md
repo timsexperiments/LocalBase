@@ -1,0 +1,197 @@
+# Authentication and authorization
+
+LocalBase separates browser users from machine clients.
+
+| Caller              | Credential                                             | Configuration           |
+| ------------------- | ------------------------------------------------------ | ----------------------- |
+| Browser user        | Cloudflare Access JWT or direct OpenID Connect session | `local-base access ...` |
+| Machine client      | Scoped LocalBase API key                               | `local-base keys ...`   |
+| Local administrator | Read and write access to the LocalBase data directory  | Local CLI               |
+
+The browser UI does not accept API keys. LocalBase does not provide an
+unauthenticated LAN mode or a shared-link bypass. Keep the gateway bound to
+loopback and publish it through an authenticated HTTPS proxy when remote access
+is required.
+
+## Choose a browser provider
+
+Cloudflare Access is the shortest setup when a Cloudflare Tunnel already
+publishes LocalBase. LocalBase verifies the Access application token at the
+origin, including its signature, issuer, audience, and expiry.
+
+```bash
+local-base --non-interactive --json access cloudflare \
+  --team-domain "$LOCALBASE_ACCESS_TEAM_DOMAIN" \
+  --audience "$LOCALBASE_ACCESS_AUDIENCE" \
+  --origin "$LOCALBASE_PUBLIC_ORIGIN" \
+  --permissions 'inference:chat,models:read,models:manage'
+local-base --non-interactive --json restart
+```
+
+Use direct OpenID Connect when the operator does not want Cloudflare Access.
+LocalBase uses Authorization Code with PKCE and stores an opaque, HTTP-only
+session cookie. Register `${LOCALBASE_PUBLIC_ORIGIN}/app/callback` as the exact
+redirect URI at the provider.
+
+```bash
+local-base --non-interactive --json access oidc \
+  --issuer "$LOCALBASE_OIDC_ISSUER" \
+  --client-id "$LOCALBASE_OIDC_CLIENT_ID" \
+  --client-secret-env LOCALBASE_OIDC_CLIENT_SECRET \
+  --origin "$LOCALBASE_PUBLIC_ORIGIN" \
+  --permissions 'inference:chat,models:read,models:manage'
+local-base --non-interactive --json restart
+```
+
+The variable named by `--client-secret-env` must exist in the command
+environment. LocalBase stores the secret privately and never returns it from
+the CLI, management endpoint, or browser UI. Use `--public-client` only for a
+provider registration that explicitly permits public clients.
+
+LocalBase does not consume SAML assertions directly. Put a SAML provider behind
+Cloudflare Access or an identity broker that exposes OpenID Connect to
+LocalBase. This keeps one verified identity contract inside the gateway.
+
+### Email sign-in
+
+Email delivery and sign-in-token issuance belong to the identity provider.
+LocalBase deliberately does not send login mail or issue email tokens.
+
+For Cloudflare Access, configure its
+[one-time PIN provider](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/one-time-pin/)
+and allow the user's address in the Access application policy. For direct
+OpenID Connect, select a provider that supports passwordless email sign-in.
+LocalBase receives the resulting verified OIDC identity in the same way as any
+other OIDC login.
+
+## Limit browser permissions
+
+Provider permissions apply to every verified browser user unless a local access
+policy is configured. A policy maps verified identities to named roles. Email
+bindings only match provider-verified email claims.
+
+```json
+{
+  "roles": {
+    "admin": [
+      "access:read",
+      "access:manage",
+      "keys:read",
+      "keys:manage",
+      "models:read",
+      "models:manage"
+    ],
+    "user": ["inference:chat", "models:read"]
+  },
+  "bindings": [
+    {
+      "role": "admin",
+      "match": { "kind": "email", "email": "owner@example.com" }
+    },
+    {
+      "role": "user",
+      "match": { "kind": "email-domain", "domain": "example.com" }
+    }
+  ]
+}
+```
+
+Apply and test the checked-in policy before restarting:
+
+```bash
+local-base --non-interactive --json access policy apply \
+  --file ./localbase-access-policy.json
+local-base --non-interactive --json access policy test \
+  --issuer "$LOCALBASE_OIDC_ISSUER" \
+  --subject "$TEST_SUBJECT" \
+  --email owner@example.com
+local-base --non-interactive --json restart
+```
+
+A valid policy must leave at least one identity binding with
+`access:manage`. This prevents the browser administrator from removing the last
+browser recovery path. The local CLI remains available to an administrator who
+can access the LocalBase data directory.
+
+## Create machine credentials
+
+Give each application its own key and only the permissions it needs.
+
+```bash
+local-base --non-interactive --json keys create \
+  --name reconciliation-worker \
+  --scopes 'inference:chat,models:read'
+```
+
+The command returns the secret once. Store that value in the application's
+secret manager. Key listings and later mutations return metadata only.
+
+```bash
+local-base --non-interactive --json keys list
+local-base --non-interactive --json keys scopes key_ID \
+  --scopes 'inference:chat,inference:embeddings,models:read'
+local-base --non-interactive --json keys rotate key_ID
+local-base --non-interactive --json keys revoke key_ID
+```
+
+Scope changes, rotation, and revocation apply to the next request without a
+restart. Provider and access-policy changes require a restart.
+
+Keys that administer LocalBase need explicit management scopes. Ordinary
+inference keys do not receive them.
+
+```bash
+local-base --non-interactive --json keys create \
+  --name automation-admin \
+  --scopes 'access:read,access:manage,keys:read,keys:manage,models:read,models:manage'
+```
+
+## Configure LocalBase in CI
+
+Keep provider settings in normal CI variables and provider secrets in the CI
+secret store. Commit the access-policy JSON beside the deployment code. A job
+can then configure the full authentication state without prompts:
+
+```bash
+set -eu
+
+: "${LOCALBASE_PUBLIC_ORIGIN:?required}"
+: "${LOCALBASE_OIDC_ISSUER:?required}"
+: "${LOCALBASE_OIDC_CLIENT_ID:?required}"
+: "${LOCALBASE_OIDC_CLIENT_SECRET:?required}"
+
+local-base --non-interactive --json access oidc \
+  --issuer "$LOCALBASE_OIDC_ISSUER" \
+  --client-id "$LOCALBASE_OIDC_CLIENT_ID" \
+  --client-secret-env LOCALBASE_OIDC_CLIENT_SECRET \
+  --origin "$LOCALBASE_PUBLIC_ORIGIN" \
+  --permissions 'inference:chat,models:read'
+
+local-base --non-interactive --json access policy apply \
+  --file ./localbase-access-policy.json
+
+local-base --non-interactive --json restart
+local-base --non-interactive --json status
+```
+
+Every finite `--json` command emits one JSON document to standard output and
+uses exit code `0`, `1`, or `2` for success, operational failure, or invalid
+input. Progress and diagnostics go to standard error.
+
+## Administer through the gateway
+
+The local CLI is the primary setup and recovery path. After authentication is
+working, authorized callers can use the browser page at `/app?panel=admin` or
+the management endpoints:
+
+- `GET` and `POST /_localbase/access-management`
+- `GET` and `POST /_localbase/api-keys`
+
+The gateway checks `access:read`, `access:manage`, `keys:read`, or
+`keys:manage` for each operation. Provider responses omit OIDC client secrets.
+API-key creation and rotation return a new secret once.
+
+Use `local-base access show --json` to inspect non-secret provider state. If a
+provider is misconfigured, correct it with the local CLI and restart LocalBase.
+`local-base access disable` removes browser sign-in entirely; it does not enable
+anonymous browser access.
