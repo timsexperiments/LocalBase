@@ -181,6 +181,7 @@ test("chooses among named OIDC registrations before starting a login", async () 
 });
 
 test("completes GitHub OAuth with a stable account identity", async () => {
+  let expectedChallenge = "";
   const githubConfig = uiAccessConfigSchema.parse({
     provider: {
       kind: "direct",
@@ -213,6 +214,17 @@ test("completes GitHub OAuth with a stable account identity", async () => {
       if (url === "https://github.com/login/oauth/access_token") {
         expect(init?.method).toBe("POST");
         expect(String(init?.body)).toContain("client_secret=github-secret");
+        const verifier = new URLSearchParams(String(init?.body)).get(
+          "code_verifier",
+        );
+        expect(verifier).toHaveLength(86);
+        const challenge = Buffer.from(
+          await crypto.subtle.digest(
+            "SHA-256",
+            new TextEncoder().encode(verifier ?? ""),
+          ),
+        ).toString("base64url");
+        expect(challenge).toBe(expectedChallenge);
         expect(String(init?.body)).toContain(
           `redirect_uri=${encodeURIComponent(`${origin}/github/callback`)}`,
         );
@@ -243,6 +255,9 @@ test("completes GitHub OAuth with a stable account identity", async () => {
   expect(authorization.origin).toBe("https://github.com");
   expect(authorization.pathname).toBe("/login/oauth/authorize");
   expect(authorization.searchParams.get("scope")).toBe("read:user user:email");
+  expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
+  expectedChallenge = authorization.searchParams.get("code_challenge") ?? "";
+  expect(expectedChallenge).toHaveLength(43);
   const state = authorization.searchParams.get("state") ?? "";
   const callback = await responseFor(
     access,

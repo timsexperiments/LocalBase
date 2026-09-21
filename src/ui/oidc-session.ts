@@ -101,6 +101,7 @@ type LoginState =
   | Readonly<{
       kind: "github-oauth";
       registrationId: string;
+      verifier: string;
       expiresAt: number;
     }>;
 type BrowserSession = Readonly<{
@@ -432,6 +433,7 @@ export function createDirectSessionManager({
 
   const exchangeGithub = async (
     code: string,
+    state: Extract<LoginState, { kind: "github-oauth" }>,
     registration: GithubAccessRegistration,
     request: Request,
   ): Promise<BrowserSession> => {
@@ -449,6 +451,7 @@ export function createDirectSessionManager({
         client_id: registration.clientId,
         client_secret: registration.clientSecret,
         code,
+        code_verifier: state.verifier,
         redirect_uri: `${origin}${githubCallbackPath}`,
       }),
       redirect: "error",
@@ -507,10 +510,12 @@ export function createDirectSessionManager({
         });
       const state = randomToken();
       if (registration.kind === "github-oauth") {
+        const verifier = randomToken(64);
         prune(loginStates, now(), maximumLoginStates);
         loginStates.set(state, {
           kind: registration.kind,
           registrationId: registration.id,
+          verifier,
           expiresAt: now() + loginStateTtlMs,
         });
         const authorization = new URL(githubAuthorizationEndpoint);
@@ -519,6 +524,8 @@ export function createDirectSessionManager({
           redirect_uri: `${origin}${githubCallbackPath}`,
           scope: "read:user user:email",
           state,
+          code_challenge: await sha256Base64Url(verifier),
+          code_challenge_method: "S256",
         }))
           authorization.searchParams.set(key, value);
         return redirect(authorization.href, [
@@ -598,7 +605,7 @@ export function createDirectSessionManager({
           identity = await exchange(code, state, request);
         } else {
           if (registration.kind !== "github-oauth") return failed();
-          identity = await exchangeGithub(code, registration, request);
+          identity = await exchangeGithub(code, state, registration, request);
         }
         if (identity.expiresAt <= now()) return failed();
         prune(sessions, now(), maximumSessions);
