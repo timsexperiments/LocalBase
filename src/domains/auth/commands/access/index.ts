@@ -44,6 +44,7 @@ export async function runAccessCloudflare(
   ctx: AppContext,
   execution: CommandExecution,
 ) {
+  const current = await loadBrowserAccessConfig(ctx.config.root);
   const config = await saveBrowserAccessConfig(ctx.config.root, {
     provider: {
       kind: "cloudflare-access",
@@ -52,6 +53,7 @@ export async function runAccessCloudflare(
     },
     origin: input.origin,
     permissions: input.permissions,
+    ...(current?.policy ? { policy: current.policy } : {}),
   });
   execution.output.info(
     "Saved Cloudflare Access configuration. Restart LocalBase to apply it.",
@@ -69,6 +71,7 @@ export async function runAccessOidc(
   ctx: AppContext,
   execution: CommandExecution,
 ) {
+  const current = await loadBrowserAccessConfig(ctx.config.root);
   const clientAuthentication = input.publicClient
     ? ({ kind: "none" } as const)
     : ({
@@ -92,6 +95,7 @@ export async function runAccessOidc(
     },
     origin: input.origin,
     permissions: input.permissions,
+    ...(current?.policy ? { policy: current.policy } : {}),
   });
   execution.output.info(
     "Saved OpenID Connect configuration. Restart LocalBase to apply it.",

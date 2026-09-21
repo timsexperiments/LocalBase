@@ -286,6 +286,27 @@ test(
           jsonDocument(appliedPolicy.stdout).data,
         ).policy.bindings,
       ).toHaveLength(2);
+      const reconfiguredOidc = await runCli(
+        executable,
+        [
+          "--root",
+          root,
+          "--json",
+          "access",
+          "oidc",
+          "--issuer",
+          "https://identity.example.com/tenant",
+          "--client-id",
+          "replacement-client",
+          "--client-secret-env",
+          "TEST_OIDC_SECRET",
+          "--origin",
+          "https://localbase.example.com",
+        ],
+        undefined,
+        { TEST_OIDC_SECRET: oidcSecret },
+      );
+      expect(reconfiguredOidc.exitCode).toBe(0);
       const testedPolicy = await runCli(executable, [
         "--root",
         root,
