@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ApiKeyRecord, LocalBaseConfig } from "../../../manager";
+import type { LocalBaseConfig } from "../../../manager";
 import { modelSpecSchema } from "../../../catalog";
 import {
   gatewayReadinessSchema,
@@ -12,6 +12,9 @@ import { memorySafetyConfigSchema } from "../../runtime/memory-safety";
 import { permissionsSchema } from "../../auth/authorization";
 import { browserAccessConfigSummarySchema } from "../../auth/browser-access";
 import { browserAccessPolicySchema } from "../../auth/browser-policy";
+import { apiKeyMetadataSchema } from "../../auth/api-key-public";
+
+export { publicApiKey } from "../../auth/api-key-public";
 
 export const configurationOutputSchema = z
   .object({
@@ -73,18 +76,7 @@ export const hardwareOutputSchema = z
 
 export const modelOutputSchema = modelSpecSchema.strict();
 
-export const apiKeyMetadataOutputSchema = z
-  .object({
-    id: z.string(),
-    name: z.string(),
-    prefix: z.string(),
-    scopes: permissionsSchema,
-    createdAt: z.string(),
-    lastRotatedAt: z.string(),
-    expiresAt: z.string().optional(),
-    revokedAt: z.string().optional(),
-  })
-  .strict();
+export const apiKeyMetadataOutputSchema = apiKeyMetadataSchema;
 
 export const initResultSchema = z
   .object({ configuration: configurationOutputSchema })
@@ -235,19 +227,5 @@ export function publicConfiguration(
       sampler: effective?.sampler ?? "parentbased_traceidratio",
       sampleRatio: effective?.sampleRatio ?? config.otelSampleRatio / 100,
     },
-  });
-}
-
-/** API-key hashes are deliberately never part of command output. */
-export function publicApiKey(record: ApiKeyRecord) {
-  return apiKeyMetadataOutputSchema.parse({
-    id: record.id,
-    name: record.name,
-    prefix: record.prefix,
-    scopes: record.scopes,
-    createdAt: record.createdAt,
-    lastRotatedAt: record.lastRotatedAt,
-    ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}),
-    ...(record.revokedAt ? { revokedAt: record.revokedAt } : {}),
   });
 }

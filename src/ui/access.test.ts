@@ -278,6 +278,10 @@ test("enforces exact host, origin, fetch-site, marker, method, and path boundari
     ["DELETE", "/app/api/_localbase/model-management"],
     ["PUT", "/app/api/_localbase/model-management"],
     ["POST", "/app/api/_localbase/models"],
+    ["GET", "/app/api/_localbase/access-management/"],
+    ["PATCH", "/app/api/_localbase/access-management"],
+    ["GET", "/app/api/_localbase/api-keys/extra"],
+    ["DELETE", "/app/api/_localbase/api-keys"],
     ["GET", "/app/api/health"],
     ["OPTIONS", "/app/api/v1/videos"],
     ["GET", "/app/api/v1/videos"],
@@ -297,6 +301,10 @@ test("maps only allowlisted UI calls and keeps credentials off headers and reque
   const jwt = await token();
   const id = crypto.randomUUID();
   const routes = [
+    ["GET", "/_localbase/access-management"],
+    ["POST", "/_localbase/access-management"],
+    ["GET", "/_localbase/api-keys"],
+    ["POST", "/_localbase/api-keys"],
     ["GET", "/_localbase/model-management"],
     ["POST", "/_localbase/model-management"],
     ["GET", "/_localbase/models"],

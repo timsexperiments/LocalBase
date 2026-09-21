@@ -13,7 +13,7 @@ import type {
   KeysListInput,
   KeysScopesInput,
 } from "../../../app/commands/inputs";
-import { publicApiKey } from "../../../app/commands/results";
+import { publicApiKey } from "../../api-key-public";
 
 export function runKeysList(
   _input: KeysListInput,

@@ -2,6 +2,8 @@ export type GatewayRoute =
   | "health"
   | "readiness"
   | "instance"
+  | "accessManagement"
+  | "keyManagement"
   | "transcription"
   | "speechGeneration"
   | "imageGeneration"
@@ -20,6 +22,8 @@ export const gatewayHttpRoutes = [
   "/health",
   "/health/ready",
   "/_localbase/instance",
+  "/_localbase/access-management",
+  "/_localbase/api-keys",
   "/_localbase/models",
   "/_localbase/models/{model_id}",
   "/v1/models",
@@ -73,6 +77,10 @@ export function selectGatewayRoute(pathname: string): GatewayRoute {
       return "readiness";
     case "/_localbase/instance":
       return "instance";
+    case "/_localbase/access-management":
+      return "accessManagement";
+    case "/_localbase/api-keys":
+      return "keyManagement";
     case "/_localbase/models":
       return "modelMetadataList";
     case "/v1/audio/transcriptions":
@@ -112,6 +120,10 @@ export function canonicalGatewayHttpRoute(value: string): GatewayHttpRoute {
       return "/health/ready";
     case "instance":
       return "/_localbase/instance";
+    case "accessManagement":
+      return "/_localbase/access-management";
+    case "keyManagement":
+      return "/_localbase/api-keys";
     case "modelMetadataList":
       return "/_localbase/models";
     case "modelMetadataDetail":
