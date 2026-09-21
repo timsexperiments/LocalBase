@@ -62,7 +62,10 @@ export async function runAccessCloudflare(
           audience: input.audience,
         },
         origin: input.origin,
-        permissions: input.permissions,
+        permissions:
+          input.permissions ??
+          current?.permissions ??
+          defaultBrowserPermissions,
         ...(current?.policy ? { policy: current.policy } : {}),
       });
     },

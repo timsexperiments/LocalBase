@@ -192,6 +192,40 @@ test(
           jsonDocument(browserAccess.stdout).data,
         ).config.permissions,
       ).toEqual(defaultBrowserPermissions);
+      const restrictedBrowserAccess = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "cloudflare",
+        "--team-domain",
+        "updated.cloudflareaccess.com",
+        "--audience",
+        "updated-audience",
+        "--origin",
+        "https://localbase.example.com",
+        "--permissions",
+        "inference:chat",
+      ]);
+      expect(restrictedBrowserAccess.exitCode).toBe(0);
+      const updatedBrowserAccess = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "cloudflare",
+        "--team-domain",
+        "team.cloudflareaccess.com",
+        "--audience",
+        "audience",
+        "--origin",
+        "https://localbase.example.com",
+      ]);
+      expect(
+        accessConfigureResultSchema.parse(
+          jsonDocument(updatedBrowserAccess.stdout).data,
+        ).config.permissions,
+      ).toEqual(["inference:chat"]);
       const shownAccess = await runCli(executable, [
         "--root",
         root,

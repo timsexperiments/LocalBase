@@ -14,7 +14,6 @@ import {
 import {
   browserAccessConfigSchema,
   cloudflareAccessProviderSchema,
-  defaultBrowserPermissions,
   oidcAccessRegistrationSchema,
   oidcRegistrationIdSchema,
 } from "../../auth/browser-access";
@@ -239,7 +238,7 @@ export const accessCloudflareInputSchema = z.object({
   teamDomain: cloudflareAccessProviderSchema.shape.teamDomain,
   audience: cloudflareAccessProviderSchema.shape.audience,
   origin: browserAccessConfigSchema.shape.origin,
-  permissions: keyScopesInputSchema.default(defaultBrowserPermissions),
+  permissions: keyScopesInputSchema.optional(),
 });
 export type AccessCloudflareInput = z.infer<typeof accessCloudflareInputSchema>;
 
