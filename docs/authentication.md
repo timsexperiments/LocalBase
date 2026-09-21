@@ -96,22 +96,27 @@ bindings only match provider-verified email claims.
 }
 ```
 
-Apply and test the checked-in policy before restarting:
+For direct OIDC, set `LOCALBASE_POLICY_ISSUER` to the configured OIDC issuer.
+For Cloudflare Access, set it to `https://<team-domain>`. Then apply and test
+the checked-in policy before restarting:
 
 ```bash
+: "${LOCALBASE_POLICY_ISSUER:?required}"
+
 local-base --non-interactive --json access policy apply \
   --file ./localbase-access-policy.json
 local-base --non-interactive --json access policy test \
-  --issuer "$LOCALBASE_OIDC_ISSUER" \
+  --issuer "$LOCALBASE_POLICY_ISSUER" \
   --subject "$TEST_SUBJECT" \
   --email owner@example.com
 local-base --non-interactive --json restart
 ```
 
-A valid policy must leave at least one identity binding with
-`access:manage`. This prevents the browser administrator from removing the last
-browser recovery path. The local CLI remains available to an administrator who
-can access the LocalBase data directory.
+A valid policy must contain at least one binding whose role includes
+`access:manage`, but LocalBase cannot prove that the bound identity belongs to
+a current administrator. Test the intended administrator identity before
+restarting. The local CLI remains available to an administrator who can access
+the LocalBase data directory.
 
 ## Create machine credentials
 
@@ -124,7 +129,8 @@ local-base --non-interactive --json keys create \
 ```
 
 The command returns the secret once. Store that value in the application's
-secret manager. Key listings and later mutations return metadata only.
+secret manager. Key listings, scope changes, and revocation return metadata
+only. Rotation returns a new secret once.
 
 ```bash
 local-base --non-interactive --json keys list
@@ -146,15 +152,25 @@ local-base --non-interactive --json keys create \
   --scopes 'access:read,access:manage,keys:read,keys:manage,models:read,models:manage'
 ```
 
+Key creation is a bootstrap operation, not a replay-safe declaration. Names are
+labels and are not unique. Do not run `keys create` on every deployment. Create
+the key once, store its returned secret, and use its stable key ID for later
+scope changes, rotation, or revocation.
+
 ## Configure LocalBase in CI
 
 Keep provider settings in normal CI variables and provider secrets in the CI
-secret store. Commit the access-policy JSON beside the deployment code. A job
-can then configure the full authentication state without prompts:
+secret store. Commit the access-policy JSON beside the deployment code. Run the
+job on the target LocalBase host as the same user that owns its launchd or
+systemd user service. A self-hosted runner or an SSH deployment step can do
+this. Select the intended data directory with `LOCALBASE_ROOT`.
+
+The job can then configure browser authentication without prompts:
 
 ```bash
 set -eu
 
+: "${LOCALBASE_ROOT:?required}"
 : "${LOCALBASE_PUBLIC_ORIGIN:?required}"
 : "${LOCALBASE_OIDC_ISSUER:?required}"
 : "${LOCALBASE_OIDC_CLIENT_ID:?required}"
@@ -171,8 +187,14 @@ local-base --non-interactive --json access policy apply \
   --file ./localbase-access-policy.json
 
 local-base --non-interactive --json restart
-local-base --non-interactive --json status
+curl --fail --silent --show-error \
+  --retry 30 --retry-all-errors --retry-delay 1 --max-time 2 \
+  http://127.0.0.1:2273/health/ready >/dev/null
 ```
+
+`restart` returns when the service manager reports a running or starting
+process. The bounded readiness request above is the deployment gate. Change
+the URL when the persisted gateway listener uses a different loopback port.
 
 Every finite `--json` command emits one JSON document to standard output and
 uses exit code `0`, `1`, or `2` for success, operational failure, or invalid
