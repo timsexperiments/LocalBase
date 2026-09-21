@@ -29,6 +29,24 @@ const protectedRoutes: {
     alwaysRequired: true,
   },
   {
+    path: "/_localbase/access-management",
+    method: "GET",
+    permission: "access:read",
+    alwaysRequired: true,
+  },
+  {
+    path: "/_localbase/api-keys",
+    method: "GET",
+    permission: "keys:read",
+    alwaysRequired: true,
+  },
+  {
+    path: "/_localbase/api-keys",
+    method: "POST",
+    permission: "keys:manage",
+    alwaysRequired: true,
+  },
+  {
     path: "/v1/chat/completions",
     method: "POST",
     permission: "inference:chat",
@@ -147,7 +165,11 @@ test("preflight is public on protected and unknown paths", () => {
 });
 
 test("nonstandard methods retain authorization requirements", () => {
-  for (const { path, permission } of protectedRoutes) {
+  for (const { path, permission } of protectedRoutes.filter(
+    ({ path }) =>
+      path !== "/_localbase/access-management" &&
+      path !== "/_localbase/api-keys",
+  )) {
     expect(
       gatewayAuthorizationRequirement({
         route: selectGatewayRoute(path),
@@ -155,6 +177,18 @@ test("nonstandard methods retain authorization requirements", () => {
         authRequired: true,
       }),
     ).toEqual({ kind: "permission", permission });
+  }
+});
+
+test("defers access-management POST actions to the body-aware handler", () => {
+  for (const authRequired of [true, false]) {
+    expect(
+      gatewayAuthorizationRequirement({
+        route: selectGatewayRoute("/_localbase/access-management"),
+        method: "POST",
+        authRequired,
+      }),
+    ).toEqual({ kind: "authenticated" });
   }
 });
 
