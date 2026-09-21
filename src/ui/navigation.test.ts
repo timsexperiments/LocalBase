@@ -72,6 +72,7 @@ describe("playground navigation boundary", () => {
         "history",
         "generation",
         "catalog",
+        "admin",
       ] as const) {
         const route = conversationNavigation(
           { ...saved, mode, model: "vendor/model:q4@v1" },
