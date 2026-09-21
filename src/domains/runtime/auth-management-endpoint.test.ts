@@ -88,9 +88,10 @@ test("auth management endpoints enforce their scopes even when inference auth is
       method: "POST",
       headers: headers(manager.rawKey),
       body: JSON.stringify({
-        action: "configure-oidc",
-        provider: {
-          kind: "oidc",
+        action: "upsert-oidc",
+        registration: {
+          id: "primary",
+          name: "Primary",
           issuer: "https://identity.example.com",
           clientId: "localbase",
           clientAuthentication: {

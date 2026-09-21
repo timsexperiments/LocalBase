@@ -5,7 +5,9 @@ import { CliInputError } from "../../../app/commands/errors";
 import type {
   AccessCloudflareInput,
   AccessDisableInput,
-  AccessOidcInput,
+  AccessOidcAddInput,
+  AccessOidcListInput,
+  AccessOidcRemoveInput,
   AccessPolicyApplyInput,
   AccessPolicyClearInput,
   AccessPolicyShowInput,
@@ -15,8 +17,10 @@ import type {
 import {
   disableBrowserAccess,
   loadBrowserAccessConfig,
+  removeOidcRegistration,
   saveBrowserAccessConfig,
   summarizeBrowserAccessConfig,
+  upsertOidcRegistration,
 } from "../../browser-access";
 import {
   browserAccessPolicySchema,
@@ -66,8 +70,8 @@ export async function runAccessCloudflare(
   };
 }
 
-export async function runAccessOidc(
-  input: AccessOidcInput,
+export async function runAccessOidcAdd(
+  input: AccessOidcAddInput,
   ctx: AppContext,
   execution: CommandExecution,
 ) {
@@ -86,22 +90,75 @@ export async function runAccessOidc(
       `OpenID Connect client secret environment variable ${input.clientSecretEnv} is empty or unavailable.`,
     );
   }
-  const config = await saveBrowserAccessConfig(ctx.config.root, {
-    provider: {
-      kind: "oidc",
-      issuer: input.issuer,
-      clientId: input.clientId,
-      clientAuthentication,
-    },
-    origin: input.origin,
-    permissions: input.permissions,
-    ...(current?.policy ? { policy: current.policy } : {}),
-  });
+  const config = await saveBrowserAccessConfig(
+    ctx.config.root,
+    upsertOidcRegistration(current, {
+      registration: {
+        id: input.id,
+        name: input.name,
+        issuer: input.issuer,
+        clientId: input.clientId,
+        clientAuthentication,
+      },
+      origin: input.origin,
+      permissions: input.permissions,
+    }),
+  );
   execution.output.info(
-    "Saved OpenID Connect configuration. Restart LocalBase to apply it.",
+    `Saved OpenID Connect registration ${input.id}. Restart LocalBase to apply it.`,
   );
   return {
     data: {
+      config: summarizeBrowserAccessConfig(config),
+      restartRequired: true as const,
+    },
+  };
+}
+
+export async function runAccessOidcList(
+  _input: AccessOidcListInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const current = await loadBrowserAccessConfig(ctx.config.root);
+  const summary = current ? summarizeBrowserAccessConfig(current) : null;
+  const registrations =
+    summary?.provider.kind === "oidc" ? summary.provider.registrations : [];
+  execution.output.info(`${registrations.length} OIDC registrations.`);
+  return { data: { registrations } };
+}
+
+export async function runAccessOidcRemove(
+  input: AccessOidcRemoveInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const current = await loadBrowserAccessConfig(ctx.config.root);
+  const removal = removeOidcRegistration(current, input.id);
+  if (removal.kind === "not-found")
+    throw new CliInputError(
+      `OpenID Connect registration ${input.id} not found.`,
+    );
+  if (removal.kind === "disabled") {
+    await disableBrowserAccess(ctx.config.root);
+    execution.output.info(
+      `Removed ${input.id} and disabled browser access. Restart LocalBase to apply it.`,
+    );
+    return {
+      data: {
+        removed: true as const,
+        config: null,
+        restartRequired: true as const,
+      },
+    };
+  }
+  const config = await saveBrowserAccessConfig(ctx.config.root, removal.config);
+  execution.output.info(
+    `Removed OpenID Connect registration ${input.id}. Restart LocalBase to apply it.`,
+  );
+  return {
+    data: {
+      removed: true as const,
       config: summarizeBrowserAccessConfig(config),
       restartRequired: true as const,
     },

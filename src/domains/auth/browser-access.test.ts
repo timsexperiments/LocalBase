@@ -7,8 +7,10 @@ import {
   defaultBrowserPermissions,
   disableBrowserAccess,
   loadBrowserAccessConfig,
+  removeOidcRegistration,
   saveBrowserAccessConfig,
   summarizeBrowserAccessConfig,
+  upsertOidcRegistration,
 } from "./browser-access";
 
 test("persists strict browser access configuration atomically", async () => {
@@ -40,18 +42,67 @@ test("persists strict browser access configuration atomically", async () => {
   }
 });
 
+test("upserts and removes named OIDC registrations", () => {
+  const first = upsertOidcRegistration(null, {
+    registration: {
+      id: "google",
+      name: "Google",
+      issuer: "https://accounts.google.com",
+      clientId: "google-client",
+      clientAuthentication: { kind: "none" },
+    },
+    origin: "https://localbase.example.com",
+    permissions: defaultBrowserPermissions,
+  });
+  const second = upsertOidcRegistration(first, {
+    registration: {
+      id: "microsoft",
+      name: "Microsoft",
+      issuer: "https://login.microsoftonline.com/common/v2.0",
+      clientId: "microsoft-client",
+      clientAuthentication: { kind: "none" },
+    },
+    origin: first.origin,
+    permissions: first.permissions,
+  });
+  expect(
+    second.provider.kind === "oidc"
+      ? second.provider.registrations.map(({ id }) => id)
+      : [],
+  ).toEqual(["google", "microsoft"]);
+
+  const removed = removeOidcRegistration(second, "google");
+  expect(removed).toMatchObject({
+    kind: "configured",
+    config: { provider: { registrations: [{ id: "microsoft" }] } },
+  });
+  if (removed.kind !== "configured") throw new Error("Expected a config.");
+  expect(removeOidcRegistration(removed.config, "microsoft")).toEqual({
+    kind: "disabled",
+  });
+  expect(removeOidcRegistration(second, "unknown")).toEqual({
+    kind: "not-found",
+  });
+});
+
 test("persists OIDC credentials privately and redacts command output", async () => {
   const root = await mkdtemp(join(tmpdir(), "localbase-browser-access-"));
   const clientSecret = "private-oidc-secret";
   const config = {
     provider: {
       kind: "oidc" as const,
-      issuer: "https://identity.example.com/tenant",
-      clientId: "localbase-client",
-      clientAuthentication: {
-        kind: "client-secret-basic" as const,
-        clientSecret,
-      },
+      registrations: [
+        {
+          id: "primary",
+          name: "Primary",
+          issuer: "https://identity.example.com/tenant",
+          clientId: "localbase-client",
+          clientAuthentication: {
+            kind: "client-secret-basic" as const,
+            clientSecret,
+          },
+        },
+      ],
     },
     origin: "https://localbase.example.com",
     permissions: defaultBrowserPermissions,
@@ -66,9 +117,12 @@ test("persists OIDC credentials privately and redacts command output", async () 
       ...config,
       provider: {
         kind: "oidc",
-        issuer: config.provider.issuer,
-        clientId: config.provider.clientId,
-        clientAuthentication: "client-secret-basic",
+        registrations: [
+          {
+            ...config.provider.registrations[0],
+            clientAuthentication: "client-secret-basic",
+          },
+        ],
       },
     });
     expect(JSON.stringify(summarizeBrowserAccessConfig(config))).not.toContain(

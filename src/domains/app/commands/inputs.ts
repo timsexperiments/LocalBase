@@ -15,7 +15,8 @@ import {
   browserAccessConfigSchema,
   cloudflareAccessProviderSchema,
   defaultBrowserPermissions,
-  oidcAccessProviderSchema,
+  oidcAccessRegistrationSchema,
+  oidcRegistrationIdSchema,
 } from "../../auth/browser-access";
 
 export const modelKindSchema = z.enum(["llm", "stt", "tts", "image", "video"]);
@@ -242,10 +243,12 @@ export const accessCloudflareInputSchema = z.object({
 });
 export type AccessCloudflareInput = z.infer<typeof accessCloudflareInputSchema>;
 
-export const accessOidcInputSchema = z
+export const accessOidcAddInputSchema = z
   .object({
-    issuer: oidcAccessProviderSchema.shape.issuer,
-    clientId: oidcAccessProviderSchema.shape.clientId,
+    id: oidcAccessRegistrationSchema.shape.id,
+    name: oidcAccessRegistrationSchema.shape.name,
+    issuer: oidcAccessRegistrationSchema.shape.issuer,
+    clientId: oidcAccessRegistrationSchema.shape.clientId,
     clientSecretEnv: z
       .string()
       .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
@@ -263,7 +266,15 @@ export const accessOidcInputSchema = z
       });
     }
   });
-export type AccessOidcInput = z.infer<typeof accessOidcInputSchema>;
+export type AccessOidcAddInput = z.infer<typeof accessOidcAddInputSchema>;
+
+export const accessOidcListInputSchema = z.object({});
+export type AccessOidcListInput = z.infer<typeof accessOidcListInputSchema>;
+
+export const accessOidcRemoveInputSchema = z.object({
+  id: oidcRegistrationIdSchema,
+});
+export type AccessOidcRemoveInput = z.infer<typeof accessOidcRemoveInputSchema>;
 
 export const accessDisableInputSchema = z.object({});
 export type AccessDisableInput = z.infer<typeof accessDisableInputSchema>;

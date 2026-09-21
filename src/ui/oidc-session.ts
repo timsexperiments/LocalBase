@@ -2,7 +2,10 @@ import { Buffer } from "node:buffer";
 import { timingSafeEqual } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { z } from "zod";
-import type { OidcAccessProvider } from "../domains/auth/browser-access";
+import type {
+  OidcAccessProvider,
+  OidcAccessRegistration,
+} from "../domains/auth/browser-access";
 import type { BrowserIdentity } from "../domains/auth/browser-policy";
 
 const loginStateCookie = "__Host-localbase-oidc-state";
@@ -65,6 +68,7 @@ type Fetcher = (
   init?: RequestInit,
 ) => Promise<Response>;
 type LoginState = Readonly<{
+  registrationId: string;
   verifier: string;
   nonce: string;
   expiresAt: number;
@@ -83,6 +87,42 @@ function redirect(location: string, cookies: readonly string[] = []): Response {
   });
   for (const cookie of cookies) headers.append("set-cookie", cookie);
   return new Response(null, { status: 303, headers });
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[character] ?? character,
+  );
+}
+
+function providerChoice(provider: OidcAccessProvider): Response {
+  const links = provider.registrations
+    .map(
+      (registration) =>
+        `<a href="/app/login?provider=${encodeURIComponent(registration.id)}">${escapeHtml(registration.name)}</a>`,
+    )
+    .join("");
+  return new Response(
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in to LocalBase</title><style>body{font:16px system-ui;margin:0;background:#201e25;color:#eee9f1}main{max-width:28rem;margin:12vh auto;padding:1.5rem}h1{font-size:1.6rem}nav{display:grid;gap:.75rem}a{color:inherit;text-decoration:none;border:1px solid #453b4c;border-radius:.75rem;padding:1rem;background:#2b2730}a:focus,a:hover{border-color:#a4d3bc}</style><main><h1>Sign in to LocalBase</h1><nav>${links}</nav></main></html>`,
+    {
+      headers: {
+        "cache-control": "no-store",
+        "content-security-policy":
+          "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        "content-type": "text/html; charset=utf-8",
+        "referrer-policy": "no-referrer",
+        "x-content-type-options": "nosniff",
+      },
+    },
+  );
 }
 
 function secureCookie(
@@ -211,21 +251,36 @@ export function createOidcSessionManager({
 }) {
   const loginStates = new Map<string, LoginState>();
   const sessions = new Map<string, BrowserSession>();
-  let metadataPromise: Promise<Metadata> | null = null;
-  let keys: JWTVerifyGetKey | null = keyResolver ?? null;
+  const runtimes = new Map(
+    provider.registrations.map((registration) => [
+      registration.id,
+      {
+        registration,
+        metadataPromise: null as Promise<Metadata> | null,
+        keys: keyResolver ?? null,
+      },
+    ]),
+  );
 
-  const metadata = async (): Promise<Metadata> => {
-    if (metadataPromise) return metadataPromise;
-    metadataPromise = (async () => {
-      const response = await fetcher(discoveryUrl(provider.issuer), {
-        headers: { accept: "application/json" },
-        redirect: "error",
-        signal: AbortSignal.timeout(5_000),
-      });
+  const metadata = async (runtime: {
+    registration: OidcAccessRegistration;
+    metadataPromise: Promise<Metadata> | null;
+    keys: JWTVerifyGetKey | null;
+  }): Promise<Metadata> => {
+    if (runtime.metadataPromise) return runtime.metadataPromise;
+    runtime.metadataPromise = (async () => {
+      const response = await fetcher(
+        discoveryUrl(runtime.registration.issuer),
+        {
+          headers: { accept: "application/json" },
+          redirect: "error",
+          signal: AbortSignal.timeout(5_000),
+        },
+      );
       if (!response.ok) throw new Error("OpenID Connect discovery failed.");
       const value = metadataSchema.parse(await boundedJson(response));
       if (
-        value.issuer !== provider.issuer ||
+        value.issuer !== runtime.registration.issuer ||
         !value.response_types_supported.includes("code") ||
         !value.code_challenge_methods_supported?.includes("S256") ||
         !isHttpsUrl(value.authorization_endpoint) ||
@@ -239,7 +294,7 @@ export function createOidcSessionManager({
       )
         throw new Error("OpenID Connect discovery is incompatible.");
       const authentication =
-        provider.clientAuthentication.kind === "client-secret-basic"
+        runtime.registration.clientAuthentication.kind === "client-secret-basic"
           ? "client_secret_basic"
           : "none";
       const supportedAuthentication =
@@ -248,17 +303,17 @@ export function createOidcSessionManager({
         throw new Error(
           "OpenID Connect token endpoint authentication is incompatible.",
         );
-      keys ??= createRemoteJWKSet(new URL(value.jwks_uri), {
+      runtime.keys ??= createRemoteJWKSet(new URL(value.jwks_uri), {
         timeoutDuration: 5_000,
         cooldownDuration: 30_000,
         cacheMaxAge: 600_000,
       });
       return value;
     })().catch((error: unknown) => {
-      metadataPromise = null;
+      runtime.metadataPromise = null;
       throw error;
     });
-    return metadataPromise;
+    return runtime.metadataPromise;
   };
 
   const exchange = async (
@@ -266,7 +321,11 @@ export function createOidcSessionManager({
     state: LoginState,
     request: Request,
   ): Promise<BrowserSession> => {
-    const discovered = await metadata();
+    const runtime = runtimes.get(state.registrationId);
+    if (!runtime)
+      throw new Error("OpenID Connect registration is unavailable.");
+    const { registration } = runtime;
+    const discovered = await metadata(runtime);
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       code,
@@ -277,11 +336,11 @@ export function createOidcSessionManager({
       accept: "application/json",
       "content-type": "application/x-www-form-urlencoded",
     });
-    if (provider.clientAuthentication.kind === "none") {
-      body.set("client_id", provider.clientId);
+    if (registration.clientAuthentication.kind === "none") {
+      body.set("client_id", registration.clientId);
     } else {
       const basic = Buffer.from(
-        `${formComponent(provider.clientId)}:${formComponent(provider.clientAuthentication.clientSecret)}`,
+        `${formComponent(registration.clientId)}:${formComponent(registration.clientAuthentication.clientSecret)}`,
       ).toString("base64");
       headers.set("authorization", `Basic ${basic}`);
     }
@@ -294,17 +353,17 @@ export function createOidcSessionManager({
     });
     if (!response.ok) throw new Error("OpenID Connect token exchange failed.");
     const token = tokenResponseSchema.parse(await boundedJson(response));
-    if (!keys) throw new Error("OpenID Connect keys are unavailable.");
+    if (!runtime.keys) throw new Error("OpenID Connect keys are unavailable.");
     const algorithms = discovered.id_token_signing_alg_values_supported.filter(
       (algorithm): algorithm is (typeof allowedAlgorithms)[number] =>
         allowedAlgorithms.includes(
           algorithm as (typeof allowedAlgorithms)[number],
         ),
     );
-    const { payload } = await jwtVerify(token.id_token, keys, {
+    const { payload } = await jwtVerify(token.id_token, runtime.keys, {
       algorithms,
-      issuer: provider.issuer,
-      audience: provider.clientId,
+      issuer: registration.issuer,
+      audience: registration.clientId,
       requiredClaims: ["exp", "iat", "sub", "nonce"],
     });
     const identity = identitySchema.parse(payload);
@@ -312,8 +371,8 @@ export function createOidcSessionManager({
       throw new Error("OpenID Connect nonce did not match.");
     if (
       Array.isArray(identity.aud) && identity.aud.length > 1
-        ? identity.azp !== provider.clientId
-        : identity.azp !== undefined && identity.azp !== provider.clientId
+        ? identity.azp !== registration.clientId
+        : identity.azp !== undefined && identity.azp !== registration.clientId
     )
       throw new Error("OpenID Connect authorized party did not match.");
     const verifiedEmail =
@@ -322,10 +381,12 @@ export function createOidcSessionManager({
         : undefined;
     return {
       ownerId: `browser:${new Bun.CryptoHasher("sha256")
-        .update(JSON.stringify([provider.kind, provider.issuer, identity.sub]))
+        .update(
+          JSON.stringify([provider.kind, registration.issuer, identity.sub]),
+        )
         .digest("hex")}`,
       identity: {
-        issuer: provider.issuer,
+        issuer: registration.issuer,
         subject: identity.sub,
         ...(verifiedEmail ? { verifiedEmail } : {}),
       },
@@ -334,13 +395,25 @@ export function createOidcSessionManager({
   };
 
   return {
-    async startLogin(): Promise<Response> {
-      const discovered = await metadata();
+    async startLogin(registrationId: string | null): Promise<Response> {
+      if (registrationId === null && provider.registrations.length > 1)
+        return providerChoice(provider);
+      const runtime =
+        registrationId === null
+          ? runtimes.get(provider.registrations[0].id)
+          : runtimes.get(registrationId);
+      if (!runtime)
+        return new Response("OpenID Connect provider not found.", {
+          status: 404,
+          headers: { "cache-control": "no-store" },
+        });
+      const discovered = await metadata(runtime);
       const state = randomToken();
       const verifier = randomToken(64);
       const nonce = randomToken();
       prune(loginStates, now(), maximumLoginStates);
       loginStates.set(state, {
+        registrationId: runtime.registration.id,
         verifier,
         nonce,
         expiresAt: now() + loginStateTtlMs,
@@ -348,7 +421,7 @@ export function createOidcSessionManager({
       const authorization = new URL(discovered.authorization_endpoint);
       for (const [key, value] of Object.entries({
         response_type: "code",
-        client_id: provider.clientId,
+        client_id: runtime.registration.clientId,
         redirect_uri: `${origin}${oidcCallbackPath}`,
         scope: "openid profile email",
         state,

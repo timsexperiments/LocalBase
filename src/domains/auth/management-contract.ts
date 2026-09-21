@@ -4,7 +4,7 @@ import {
   browserAccessConfigSchema,
   browserAccessConfigSummarySchema,
   cloudflareAccessProviderSchema,
-  oidcAccessProviderSchema,
+  oidcAccessRegistrationSchema,
 } from "./browser-access-contract";
 import { browserAccessPolicySchema } from "./browser-policy";
 import { apiKeyMetadataSchema } from "./api-key-public";
@@ -28,10 +28,16 @@ export const accessManagementRequestSchema = z.discriminatedUnion("action", [
     .strict(),
   z
     .object({
-      action: z.literal("configure-oidc"),
-      provider: oidcAccessProviderSchema,
+      action: z.literal("upsert-oidc"),
+      registration: oidcAccessRegistrationSchema,
       origin: browserAccessConfigSchema.shape.origin,
       permissions: permissionsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("remove-oidc"),
+      registrationId: oidcAccessRegistrationSchema.shape.id,
     })
     .strict(),
   z.object({ action: z.literal("disable") }).strict(),
@@ -84,6 +90,7 @@ export const managementErrorSchema = z
           "payload_too_large",
           "request_aborted",
           "provider_not_configured",
+          "registration_not_found",
           "key_not_found",
         ]),
         message: z.string().min(1).max(512),
@@ -104,6 +111,13 @@ export const accessManagementMutationResponseSchema = z.union([
     })
     .strict(),
   z.object({ disabled: z.boolean(), restartRequired: z.boolean() }).strict(),
+  z
+    .object({
+      removedRegistrationId: oidcAccessRegistrationSchema.shape.id,
+      config: browserAccessConfigSummarySchema.nullable(),
+      restartRequired: z.literal(true),
+    })
+    .strict(),
   z
     .object({
       policy: browserAccessPolicySchema,
