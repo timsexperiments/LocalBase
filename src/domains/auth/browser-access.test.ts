@@ -13,6 +13,10 @@ import {
   upsertAccessRegistration,
 } from "./browser-access";
 
+test("default browser permissions allow chat and model discovery only", () => {
+  expect(defaultBrowserPermissions).toEqual(["inference:chat", "models:read"]);
+});
+
 test("persists strict browser access configuration atomically", async () => {
   const root = await mkdtemp(join(tmpdir(), "localbase-browser-access-"));
   const config = {
