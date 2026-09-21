@@ -8,6 +8,10 @@ import {
 test("selects each supported gateway route by its exact path", () => {
   expect(selectGatewayRoute("/health")).toBe("health");
   expect(selectGatewayRoute("/_localbase/instance")).toBe("instance");
+  expect(selectGatewayRoute("/_localbase/access-management")).toBe(
+    "accessManagement",
+  );
+  expect(selectGatewayRoute("/_localbase/api-keys")).toBe("keyManagement");
   expect(selectGatewayRoute("/_localbase/models")).toBe("modelMetadataList");
   expect(selectGatewayRoute("/_localbase/models/qwen%2Ftest")).toBe(
     "modelMetadataDetail",
@@ -39,6 +43,12 @@ test("normalizes dynamic gateway paths without recording identifiers", () => {
   expect(canonicalGatewayHttpRoute("/_localbase/models/qwen%2Ftest")).toBe(
     "/_localbase/models/{model_id}",
   );
+  expect(canonicalGatewayHttpRoute("/_localbase/access-management")).toBe(
+    "/_localbase/access-management",
+  );
+  expect(canonicalGatewayHttpRoute("/_localbase/api-keys")).toBe(
+    "/_localbase/api-keys",
+  );
   expect(
     canonicalGatewayHttpRoute(
       "/v1/videos/00000000-0000-4000-8000-000000000000/cancel",
@@ -54,6 +64,8 @@ test("classifies unexposed and near-match paths as not found", () => {
   expect(selectGatewayRoute("/health/")).toBe("notFound");
   expect(selectGatewayRoute("/v1/models/")).toBe("notFound");
   expect(selectGatewayRoute("/_localbase/models/")).toBe("notFound");
+  expect(selectGatewayRoute("/_localbase/access-management/")).toBe("notFound");
+  expect(selectGatewayRoute("/_localbase/api-keys/extra")).toBe("notFound");
   expect(selectGatewayRoute("/_localbase/models/not/a-model")).toBe("notFound");
   expect(selectGatewayRoute("/v1/videos/not-a-job")).toBe("notFound");
   expect(

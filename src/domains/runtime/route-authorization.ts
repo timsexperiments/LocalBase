@@ -17,6 +17,15 @@ export function gatewayAuthorizationRequirement({
     // The instance handler separately verifies the private lease token.
     case "instance":
       return { kind: "public" };
+    case "accessManagement":
+      return method === "GET"
+        ? { kind: "permission", permission: "access:read" }
+        : { kind: "authenticated" };
+    case "keyManagement":
+      return {
+        kind: "permission",
+        permission: method === "GET" ? "keys:read" : "keys:manage",
+      };
     case "modelMetadataList":
     case "modelMetadataDetail":
       return { kind: "permission", permission: "models:read" };

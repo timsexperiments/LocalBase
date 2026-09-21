@@ -51,6 +51,10 @@ export function isUiAccessPath(pathname: string): boolean {
 }
 
 function allowedUiRoute(method: string, pathname: string): boolean {
+  if (
+    ["/_localbase/access-management", "/_localbase/api-keys"].includes(pathname)
+  )
+    return method === "GET" || method === "POST";
   if (pathname === "/_localbase/model-management")
     return method === "GET" || method === "POST";
   if (method === "GET" && pathname === "/_localbase/models") return true;

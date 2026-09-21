@@ -190,6 +190,13 @@ Model administration requires `models:manage`; catalog reads require `models:rea
 
 `GET /_localbase/model-management` returns catalog installation state, storage, operation progress, and `canManage`. Authorized clients use `POST` on the same endpoint with `{"modelId":"<catalog-id>","action":"install"}`. Actions are `install`, `uninstall`, `enable`, `disable`, and `activate`. Install returns HTTP 202; poll GET for completion or failure. One installation runs at a time, and progress is retained only for the running gateway process. Other actions return HTTP 200 when complete.
 
+Authentication administration uses two exact, always-authenticated endpoints:
+
+- `GET` and `POST /_localbase/access-management` require `access:read` for reads and policy tests, or `access:manage` for provider and policy changes.
+- `GET /_localbase/api-keys` requires `keys:read`. `POST` requires `keys:manage` and accepts `create`, `rotate`, `revoke`, or `set-scopes` actions.
+
+Provider responses never include OIDC client secrets. API-key creation and rotation return the new key secret once; reads and later mutations return metadata only. Access provider and policy changes report `restartRequired`; key changes take effect on the next request. These permissions are not granted to browser sessions or ordinary API keys automatically. Grant them explicitly with `local-base access ... --permissions`, an access policy, or `local-base keys create --scopes ...`. The CLI remains the primary recovery and automation interface because it works directly against the local data directory.
+
 Models sharing files with an installation must be disabled and released by their runtimes. Do not run concurrent CLI installs or re-enable affected models through the CLI while an API installation is running.
 
 `bun install`, `bun run db:prepare`, and release builds prepare the browser assets. After UI edits, run `bun run db:prepare` for source execution or `bun run build` for a standalone CLI. Compiled binaries embed the assets and need no checkout or runtime build.

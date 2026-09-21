@@ -113,6 +113,7 @@ import {
   type OtelRuntime,
 } from "../../observability/otel";
 import { gatewayIdentitySchema } from "../health";
+import { createAuthManagement } from "../../auth/management-http";
 import { openAIErrorResponseSchema, type OpenAIError } from "../openai-error";
 import {
   chatResponseFormatSchema,
@@ -2377,6 +2378,11 @@ export async function runServe(
     lifecycle: () => reconciler.lifecycleSnapshot(),
     protectedModelIds: () => reconciler.protectedModelIds(),
   });
+  const authManagement = createAuthManagement({
+    root: config.root,
+    database: ctx.database,
+    configuration: () => ctx.runtimeConfig.copy(),
+  });
   const memoryPressureMonitor = new MemoryPressureMonitor({
     controller: memorySafety,
     onElevatedPressure: async (transition) => {
@@ -2436,6 +2442,11 @@ export async function runServe(
       pathname = uiResult.pathname;
       requestAuth.resolveUi(request);
     }
+    const authManagementResponse = await authManagement(
+      request,
+      requestAuth.resolve(ctx.runtimeConfig.copy()),
+    );
+    if (authManagementResponse) return authManagementResponse;
     const publicAsset = playground ?? playgroundResponse(request, pathname);
     if (publicAsset) return publicAsset;
     if (pathname === "/_localbase/model-management") {
