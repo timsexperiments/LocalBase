@@ -14,7 +14,10 @@ import {
   loadUiAccessConfig,
   uiAccessConfigSchema,
 } from "./access";
-import { defaultBrowserPermissions } from "../domains/auth/browser-access";
+import {
+  cloudflareAccessProviderSchema,
+  defaultBrowserPermissions,
+} from "../domains/auth/browser-access";
 import { startGatewayFixture } from "../test/gateway-fixture";
 import { VideoJobManager } from "../domains/runtime/video/video-job-manager";
 
@@ -27,7 +30,10 @@ const config = uiAccessConfigSchema.parse({
   origin: "https://ui.example.com",
   permissions: defaultBrowserPermissions,
 });
-const issuer = `https://${config.provider.teamDomain}`;
+const cloudflareProvider = cloudflareAccessProviderSchema.parse(
+  config.provider,
+);
+const issuer = `https://${cloudflareProvider.teamDomain}`;
 let keys: Awaited<ReturnType<typeof generateKeyPair>>;
 let resolver: ReturnType<typeof createLocalJWKSet>;
 
@@ -41,7 +47,7 @@ beforeAll(async () => {
 async function token(overrides: JWTPayload = {}) {
   return new SignJWT({
     iss: issuer,
-    aud: config.provider.audience,
+    aud: cloudflareProvider.audience,
     exp: Math.floor(Date.now() / 1000) + 300,
     sub: "person-one",
     email: "person@example.com",
@@ -140,7 +146,7 @@ test("verifies every human session and never falls back after a JWT failure", as
   const forgedKeys = await generateKeyPair("RS256");
   const forged = await new SignJWT({
     iss: issuer,
-    aud: config.provider.audience,
+    aud: cloudflareProvider.audience,
     exp: 9999999999,
     sub: "person",
     email: "person@example.com",
@@ -150,7 +156,7 @@ test("verifies every human session and never falls back after a JWT failure", as
     .sign(forgedKeys.privateKey);
   const hmac = await new SignJWT({
     iss: issuer,
-    aud: config.provider.audience,
+    aud: cloudflareProvider.audience,
     exp: 9999999999,
     sub: "person",
     email: "person@example.com",

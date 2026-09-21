@@ -10,7 +10,7 @@ import type { OtelConfiguration } from "../../observability/otel";
 import { sanitizedOtelEndpoint } from "../../observability/otel-config";
 import { memorySafetyConfigSchema } from "../../runtime/memory-safety";
 import { permissionsSchema } from "../../auth/authorization";
-import { browserAccessConfigSchema } from "../../auth/browser-access";
+import { browserAccessConfigSummarySchema } from "../../auth/browser-access";
 
 export const configurationOutputSchema = z
   .object({
@@ -153,11 +153,11 @@ export const keyMetadataResultSchema = z
   .object({ key: apiKeyMetadataOutputSchema })
   .strict();
 export const accessShowResultSchema = z
-  .object({ config: browserAccessConfigSchema.nullable() })
+  .object({ config: browserAccessConfigSummarySchema.nullable() })
   .strict();
 export const accessConfigureResultSchema = z
   .object({
-    config: browserAccessConfigSchema,
+    config: browserAccessConfigSummarySchema,
     restartRequired: z.literal(true),
   })
   .strict();

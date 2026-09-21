@@ -15,6 +15,7 @@ import {
   browserAccessConfigSchema,
   cloudflareAccessProviderSchema,
   defaultBrowserPermissions,
+  oidcAccessProviderSchema,
 } from "../../auth/browser-access";
 
 export const modelKindSchema = z.enum(["llm", "stt", "tts", "image", "video"]);
@@ -240,6 +241,29 @@ export const accessCloudflareInputSchema = z.object({
   permissions: keyScopesInputSchema.default(defaultBrowserPermissions),
 });
 export type AccessCloudflareInput = z.infer<typeof accessCloudflareInputSchema>;
+
+export const accessOidcInputSchema = z
+  .object({
+    issuer: oidcAccessProviderSchema.shape.issuer,
+    clientId: oidcAccessProviderSchema.shape.clientId,
+    clientSecretEnv: z
+      .string()
+      .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
+      .optional(),
+    publicClient: z.boolean().default(false),
+    origin: browserAccessConfigSchema.shape.origin,
+    permissions: keyScopesInputSchema.default(defaultBrowserPermissions),
+  })
+  .superRefine((input, context) => {
+    if (input.publicClient === Boolean(input.clientSecretEnv)) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Choose exactly one of --public-client or --client-secret-env.",
+      });
+    }
+  });
+export type AccessOidcInput = z.infer<typeof accessOidcInputSchema>;
 
 export const accessDisableInputSchema = z.object({});
 export type AccessDisableInput = z.infer<typeof accessDisableInputSchema>;

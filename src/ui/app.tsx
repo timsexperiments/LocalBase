@@ -1087,7 +1087,7 @@ function App() {
             {session.kind === "error" && (
               <div className="error session-notice" role="alert">
                 <span>{session.message}</span>
-                <a className="download" href="/app">
+                <a className="download" href="/app/login">
                   Sign in again
                 </a>
                 <button disabled={busy} onClick={() => void checkSession()}>
@@ -1463,7 +1463,7 @@ function App() {
                 Refresh connection
               </button>
               {session.kind === "error" && (
-                <a className="download" href="/app">
+                <a className="download" href="/app/login">
                   Sign in again
                 </a>
               )}

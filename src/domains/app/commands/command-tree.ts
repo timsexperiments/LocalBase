@@ -10,6 +10,7 @@ import { byId, type ModelKind } from "../../../catalog";
 import {
   accessCloudflareInputSchema,
   accessDisableInputSchema,
+  accessOidcInputSchema,
   accessShowInputSchema,
   catalogInputSchema,
   configureInputSchema,
@@ -30,6 +31,7 @@ import {
   uninstallInputSchema,
   type AccessCloudflareInput,
   type AccessDisableInput,
+  type AccessOidcInput,
   type AccessShowInput,
   type CatalogInput,
   type ConfigureInput,
@@ -811,6 +813,52 @@ const accessCloudflareCommand = command<AccessCloudflareInput>({
   },
 });
 
+const accessOidcCommand = command<AccessOidcInput>({
+  path: ["access", "oidc"],
+  description: "Configure OpenID Connect browser authentication",
+  args: {
+    issuer: {
+      type: "string",
+      valueHint: "https://identity.example.com",
+      description: "Exact OpenID Connect issuer",
+      required: true,
+    },
+    "client-id": {
+      type: "string",
+      valueHint: "CLIENT_ID",
+      description: "OpenID Connect client ID",
+      required: true,
+    },
+    "client-secret-env": {
+      type: "string",
+      valueHint: "ENVIRONMENT_VARIABLE",
+      description: "Environment variable containing the client secret",
+    },
+    "public-client": {
+      type: "boolean",
+      description: "Configure an OpenID Connect public client",
+    },
+    origin: {
+      type: "string",
+      valueHint: "https://localbase.example.com",
+      description: "Exact public UI origin",
+      required: true,
+    },
+    permissions: {
+      type: "string",
+      valueHint: "permission,...",
+      description:
+        "Browser permissions; defaults to inference and model management",
+    },
+  },
+  parse: (input) => accessOidcInputSchema.parse(input),
+  resultSchema: accessConfigureResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessOidc } = await import("../../auth/commands/access");
+    return await runAccessOidc(input, context, execution);
+  },
+});
+
 const accessDisableCommand = command<AccessDisableInput>({
   path: ["access", "disable"],
   description: "Disable browser authentication",
@@ -948,6 +996,7 @@ export const commands = [
   keysScopesCommand,
   accessShowCommand,
   accessCloudflareCommand,
+  accessOidcCommand,
   accessDisableCommand,
   resetCommand,
   uninstallCommand,
@@ -982,6 +1031,7 @@ export const accessCommand = defineCommand({
   subCommands: {
     show: accessShowCommand.citty,
     cloudflare: accessCloudflareCommand.citty,
+    oidc: accessOidcCommand.citty,
     disable: accessDisableCommand.citty,
   },
 });
