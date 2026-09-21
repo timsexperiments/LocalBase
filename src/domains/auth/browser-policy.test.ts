@@ -68,4 +68,15 @@ test("rejects unknown roles and policies without an access administrator", () =>
       ],
     }).success,
   ).toBe(false);
+  expect(
+    browserAccessPolicySchema.safeParse({
+      roles: { admin: ["access:manage"] },
+      bindings: [
+        {
+          role: "constructor",
+          match: { kind: "email", email: "a@example.com" },
+        },
+      ],
+    }).success,
+  ).toBe(false);
 });

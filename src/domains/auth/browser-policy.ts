@@ -51,7 +51,7 @@ export const browserAccessPolicySchema = z
   .strict()
   .superRefine((policy, context) => {
     for (const [index, binding] of policy.bindings.entries()) {
-      if (!(binding.role in policy.roles))
+      if (!Object.hasOwn(policy.roles, binding.role))
         context.addIssue({
           code: "custom",
           path: ["bindings", index, "role"],
@@ -59,8 +59,10 @@ export const browserAccessPolicySchema = z
         });
     }
     if (
-      !policy.bindings.some((binding) =>
-        policy.roles[binding.role]?.includes("access:manage"),
+      !policy.bindings.some(
+        (binding) =>
+          Object.hasOwn(policy.roles, binding.role) &&
+          policy.roles[binding.role]?.includes("access:manage"),
       )
     )
       context.addIssue({
@@ -115,7 +117,9 @@ export function evaluateBrowserAccessPolicy(
   return Object.freeze({
     matchedRoles,
     permissions: permissionsSchema.parse(
-      matchedRoles.flatMap((role) => policy.roles[role] ?? []),
+      matchedRoles.flatMap((role) =>
+        Object.hasOwn(policy.roles, role) ? (policy.roles[role] ?? []) : [],
+      ),
     ),
   });
 }
