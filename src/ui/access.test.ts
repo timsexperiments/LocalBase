@@ -213,6 +213,34 @@ test("verifies every human session and never falls back after a JWT failure", as
   expect((await responseFor(access, cookieOnly)).status).toBe(401);
 });
 
+test("applies Cloudflare Access subject bindings without falling back to provider permissions", async () => {
+  const policyConfig = uiAccessConfigSchema.parse({
+    ...config,
+    policy: {
+      roles: { limited: ["inference:chat"] },
+      bindings: [
+        {
+          kind: "subject",
+          role: "limited",
+          issuer,
+          subject: "person-one",
+        },
+      ],
+    },
+  });
+  const access = createUiAccess({
+    config: policyConfig,
+    keyResolver: resolver,
+  });
+  const matched = request(await token());
+  expect((await responseFor(access, matched)).status).toBe(200);
+  expect(access.credential(matched)?.permissions).toEqual(["inference:chat"]);
+
+  const distinctSubject = request(await token({ sub: "person-one " }));
+  expect((await responseFor(access, distinctSubject)).status).toBe(200);
+  expect(access.credential(distinctSubject)?.permissions).toEqual([]);
+});
+
 test("enforces exact host, origin, fetch-site, marker, method, and path boundaries", async () => {
   const access = createUiAccess({ config, keyResolver: resolver });
   const jwt = await token();

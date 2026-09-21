@@ -18,6 +18,10 @@ import {
 import {
   accessConfigureResultSchema,
   accessDisableResultSchema,
+  accessPolicyApplyResultSchema,
+  accessPolicyClearResultSchema,
+  accessPolicyShowResultSchema,
+  accessPolicyTestResultSchema,
   accessShowResultSchema,
   keyMetadataResultSchema,
   keySecretResultSchema,
@@ -199,6 +203,130 @@ test(
         accessShowResultSchema.parse(jsonDocument(shownAccess.stdout).data)
           .config,
       ).toMatchObject({ origin: "https://localbase.example.com" });
+      const noAdminPolicyPath = join(root, "no-admin-policy.json");
+      await Bun.write(
+        noAdminPolicyPath,
+        JSON.stringify({
+          roles: { reader: ["models:read"] },
+          bindings: [
+            {
+              kind: "subject",
+              role: "reader",
+              issuer: "https://team.cloudflareaccess.com",
+              subject: "person-one",
+            },
+          ],
+        }),
+      );
+      const rejectedPolicy = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "policy",
+        "apply",
+        "--file",
+        noAdminPolicyPath,
+      ]);
+      expect(rejectedPolicy.exitCode).toBe(2);
+      expect(
+        accessPolicyShowResultSchema.parse(
+          jsonDocument(
+            (
+              await runCli(executable, [
+                "--root",
+                root,
+                "--json",
+                "access",
+                "policy",
+                "show",
+              ])
+            ).stdout,
+          ).data,
+        ),
+      ).toEqual({ policy: null });
+
+      const policyPath = join(root, "browser-policy.json");
+      await Bun.write(
+        policyPath,
+        JSON.stringify({
+          roles: {
+            chat: ["inference:chat"],
+            operator: ["models:manage", "access:manage"],
+            reader: ["models:read"],
+          },
+          bindings: [
+            {
+              kind: "subject",
+              role: "operator",
+              issuer: "https://team.cloudflareaccess.com",
+              subject: "person-one",
+            },
+            { kind: "email-domain", role: "chat", domain: "example.com" },
+            { kind: "email", role: "reader", email: "person@example.com" },
+          ],
+        }),
+      );
+      const appliedPolicy = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "policy",
+        "apply",
+        "--file",
+        policyPath,
+      ]);
+      expect(appliedPolicy.exitCode).toBe(0);
+      expect(
+        accessPolicyApplyResultSchema.parse(
+          jsonDocument(appliedPolicy.stdout).data,
+        ).policy.roles,
+      ).toHaveProperty("operator");
+      const testedPolicy = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "policy",
+        "test",
+        "--issuer",
+        "https://team.cloudflareaccess.com",
+        "--subject",
+        "person-one",
+        "--email",
+        "PERSON@example.com",
+      ]);
+      expect(
+        accessPolicyTestResultSchema.parse(
+          jsonDocument(testedPolicy.stdout).data,
+        ),
+      ).toEqual({
+        matchedRoles: ["chat", "operator", "reader"],
+        permissions: [
+          "inference:chat",
+          "models:read",
+          "models:manage",
+          "access:manage",
+        ],
+      });
+      const clearedPolicy = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "policy",
+        "clear",
+      ]);
+      expect(
+        accessPolicyClearResultSchema.parse(
+          jsonDocument(clearedPolicy.stdout).data,
+        ),
+      ).toEqual({
+        cleared: true,
+        permissions: defaultBrowserPermissions,
+        restartRequired: true,
+      });
       const oidcSecret = "oidc-secret-value";
       const oidcAccess = await runCli(
         executable,

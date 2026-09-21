@@ -4,12 +4,100 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   browserAccessConfigPath,
+  browserAccessPolicySchema,
   defaultBrowserPermissions,
   disableBrowserAccess,
+  evaluateBrowserAccessPolicy,
   loadBrowserAccessConfig,
   saveBrowserAccessConfig,
   summarizeBrowserAccessConfig,
 } from "./browser-access";
+
+const policy = browserAccessPolicySchema.parse({
+  roles: {
+    admin: ["access:manage", "models:manage"],
+    reader: ["models:read", "access:manage"],
+    chat: ["inference:chat"],
+  },
+  bindings: [
+    {
+      kind: "subject",
+      role: "admin",
+      issuer: "https://identity.example.com/tenant",
+      subject: "person-one",
+    },
+    { kind: "email", role: "reader", email: "person@example.com" },
+    { kind: "email-domain", role: "chat", domain: "example.com" },
+  ],
+});
+
+const policyConfig = {
+  provider: {
+    kind: "oidc" as const,
+    issuer: "https://identity.example.com/tenant",
+    clientId: "localbase-client",
+    clientAuthentication: { kind: "none" as const },
+  },
+  origin: "https://localbase.example.com",
+  permissions: defaultBrowserPermissions,
+  policy,
+};
+
+test("evaluates exact bindings with deterministic role and permission unions", () => {
+  expect(
+    evaluateBrowserAccessPolicy({
+      config: policyConfig,
+      identity: {
+        issuer: policyConfig.provider.issuer,
+        subject: "person-one",
+        email: "PERSON@example.com",
+      },
+    }),
+  ).toEqual({
+    matchedRoles: ["admin", "chat", "reader"],
+    permissions: [
+      "inference:chat",
+      "models:read",
+      "models:manage",
+      "access:manage",
+    ],
+  });
+  expect(
+    evaluateBrowserAccessPolicy({
+      config: policyConfig,
+      identity: {
+        issuer: policyConfig.provider.issuer,
+        subject: "person-one ",
+        email: "person@example.net",
+      },
+    }),
+  ).toEqual({ matchedRoles: [], permissions: [] });
+  expect(
+    evaluateBrowserAccessPolicy({
+      config: policyConfig,
+      identity: {
+        issuer: policyConfig.provider.issuer,
+        subject: "person-two",
+      },
+    }),
+  ).toEqual({ matchedRoles: [], permissions: [] });
+});
+
+test("rejects policy bindings that reference unknown roles", () => {
+  expect(
+    browserAccessPolicySchema.safeParse({
+      roles: { admin: ["access:manage"] },
+      bindings: [
+        {
+          kind: "subject",
+          role: "missing",
+          issuer: "https://identity.example.com",
+          subject: "person-one",
+        },
+      ],
+    }).success,
+  ).toBe(false);
+});
 
 test("persists strict browser access configuration atomically", async () => {
   const root = await mkdtemp(join(tmpdir(), "localbase-browser-access-"));
