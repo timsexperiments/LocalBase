@@ -12,8 +12,10 @@ import { authorize, type Permission, type Principal } from "./authorization";
 import {
   disableBrowserAccess,
   loadBrowserAccessConfig,
+  removeOidcRegistration,
   saveBrowserAccessConfig,
   summarizeBrowserAccessConfig,
+  upsertOidcRegistration,
 } from "./browser-access";
 import { evaluateBrowserAccessPolicy } from "./browser-policy";
 import { publicApiKey } from "./api-key-public";
@@ -38,6 +40,7 @@ type ManagementErrorCode =
   | "payload_too_large"
   | "request_aborted"
   | "provider_not_configured"
+  | "registration_not_found"
   | "key_not_found";
 
 const errorMessages: Record<ManagementErrorCode, string> = {
@@ -47,6 +50,7 @@ const errorMessages: Record<ManagementErrorCode, string> = {
   payload_too_large: "The management request exceeds the size limit.",
   request_aborted: "The management request was cancelled.",
   provider_not_configured: "Configure a browser identity provider first.",
+  registration_not_found: "The OpenID Connect registration was not found.",
   key_not_found: "The API key was not found.",
 };
 
@@ -232,8 +236,7 @@ export function createAuthManagement({
         async (canonicalRoot) => {
           const current = await loadBrowserAccessConfig(canonicalRoot);
           switch (input.action) {
-            case "configure-cloudflare":
-            case "configure-oidc": {
+            case "configure-cloudflare": {
               const config = await saveBrowserAccessConfig(canonicalRoot, {
                 provider: input.provider,
                 origin: input.origin,
@@ -243,6 +246,46 @@ export function createAuthManagement({
               return Response.json(
                 accessManagementMutationResponseSchema.parse({
                   config: summarizeBrowserAccessConfig(config),
+                  restartRequired: true,
+                }),
+                { headers },
+              );
+            }
+            case "upsert-oidc": {
+              const config = await saveBrowserAccessConfig(
+                canonicalRoot,
+                upsertOidcRegistration(current, input),
+              );
+              return Response.json(
+                accessManagementMutationResponseSchema.parse({
+                  config: summarizeBrowserAccessConfig(config),
+                  restartRequired: true,
+                }),
+                { headers },
+              );
+            }
+            case "remove-oidc": {
+              const removal = removeOidcRegistration(
+                current,
+                input.registrationId,
+              );
+              if (removal.kind === "not-found")
+                return Response.json(errorBody("registration_not_found"), {
+                  status: 404,
+                  headers,
+                });
+              let config = null;
+              if (removal.kind === "disabled") {
+                await disableBrowserAccess(canonicalRoot);
+              } else {
+                config = summarizeBrowserAccessConfig(
+                  await saveBrowserAccessConfig(canonicalRoot, removal.config),
+                );
+              }
+              return Response.json(
+                accessManagementMutationResponseSchema.parse({
+                  removedRegistrationId: input.registrationId,
+                  config,
                   restartRequired: true,
                 }),
                 { headers },

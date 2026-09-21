@@ -44,9 +44,10 @@ test("manages browser access without returning OIDC secrets", async () => {
   });
   const configured = await handle(
     request("/_localbase/access-management", {
-      action: "configure-oidc",
-      provider: {
-        kind: "oidc",
+      action: "upsert-oidc",
+      registration: {
+        id: "primary",
+        name: "Primary",
         issuer: "https://identity.example.com",
         clientId: "localbase",
         clientAuthentication: {
@@ -61,6 +62,42 @@ test("manages browser access without returning OIDC secrets", async () => {
   );
   expect(configured?.status).toBe(200);
   expect(await configured?.text()).not.toContain("private-secret");
+
+  const second = await handle(
+    request("/_localbase/access-management", {
+      action: "upsert-oidc",
+      registration: {
+        id: "secondary",
+        name: "Secondary",
+        issuer: "https://login.example.org",
+        clientId: "secondary-client",
+        clientAuthentication: { kind: "none" },
+      },
+      origin: "https://localbase.example.com",
+      permissions: ["access:read", "access:manage"],
+    }),
+    administrator,
+  );
+  expect(second?.status).toBe(200);
+  const stored = await loadBrowserAccessConfig(root);
+  expect(
+    stored?.provider.kind === "oidc"
+      ? stored.provider.registrations.map(({ id }) => id)
+      : [],
+  ).toEqual(["primary", "secondary"]);
+
+  const removed = await handle(
+    request("/_localbase/access-management", {
+      action: "remove-oidc",
+      registrationId: "secondary",
+    }),
+    administrator,
+  );
+  expect(removed?.status).toBe(200);
+  expect(await removed?.json()).toMatchObject({
+    removedRegistrationId: "secondary",
+    config: { provider: { registrations: [{ id: "primary" }] } },
+  });
 
   const applied = await handle(
     request("/_localbase/access-management", {

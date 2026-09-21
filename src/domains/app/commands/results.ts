@@ -10,7 +10,10 @@ import type { OtelConfiguration } from "../../observability/otel";
 import { sanitizedOtelEndpoint } from "../../observability/otel-config";
 import { memorySafetyConfigSchema } from "../../runtime/memory-safety";
 import { permissionsSchema } from "../../auth/authorization";
-import { browserAccessConfigSummarySchema } from "../../auth/browser-access";
+import {
+  browserAccessConfigSummarySchema,
+  oidcAccessRegistrationSummarySchema,
+} from "../../auth/browser-access";
 import { browserAccessPolicySchema } from "../../auth/browser-policy";
 import { apiKeyMetadataSchema } from "../../auth/api-key-public";
 
@@ -151,6 +154,16 @@ export const accessShowResultSchema = z
 export const accessConfigureResultSchema = z
   .object({
     config: browserAccessConfigSummarySchema,
+    restartRequired: z.literal(true),
+  })
+  .strict();
+export const accessOidcListResultSchema = z
+  .object({ registrations: z.array(oidcAccessRegistrationSummarySchema) })
+  .strict();
+export const accessOidcRemoveResultSchema = z
+  .object({
+    removed: z.literal(true),
+    config: browserAccessConfigSummarySchema.nullable(),
     restartRequired: z.literal(true),
   })
   .strict();
