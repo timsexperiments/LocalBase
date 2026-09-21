@@ -95,6 +95,10 @@ Use `local-base status` to inspect the service and `local-base logs --follow` to
 
 ### Browser playground
 
+See [Authentication and authorization](docs/authentication.md) for the trust
+model, CI setup, identity-provider choices, access policies, API-key scopes,
+and recovery procedures.
+
 Configure the human identity provider, then restart LocalBase:
 
 ```bash
