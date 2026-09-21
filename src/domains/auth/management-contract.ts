@@ -82,6 +82,7 @@ export const managementErrorSchema = z
           "provider_not_configured",
           "key_not_found",
         ]),
+        message: z.string().min(1).max(512),
       })
       .strict(),
   })

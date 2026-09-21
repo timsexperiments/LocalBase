@@ -152,13 +152,16 @@ test("denies anonymous and malformed management requests", async () => {
     database,
     configuration: () => defaultConfig(root),
   });
-  expect(
-    (
-      await handle(request("/_localbase/access-management"), {
-        kind: "anonymous",
-      })
-    )?.status,
-  ).toBe(401);
+  const anonymous = await handle(request("/_localbase/access-management"), {
+    kind: "anonymous",
+  });
+  expect(anonymous?.status).toBe(401);
+  expect(await anonymous?.json()).toEqual({
+    error: {
+      code: "invalid_api_key",
+      message: "Authentication is required.",
+    },
+  });
   expect(
     (
       await handle(

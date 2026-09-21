@@ -30,13 +30,34 @@ const accessPath = "/_localbase/access-management";
 const keysPath = "/_localbase/api-keys";
 const maximumBodyBytes = 64 * 1_024;
 
+type ManagementErrorCode =
+  | "invalid_api_key"
+  | "insufficient_permissions"
+  | "validation_failed"
+  | "payload_too_large"
+  | "request_aborted"
+  | "provider_not_configured"
+  | "key_not_found";
+
+const errorMessages: Record<ManagementErrorCode, string> = {
+  invalid_api_key: "Authentication is required.",
+  insufficient_permissions: "This identity cannot perform that action.",
+  validation_failed: "The management request is invalid.",
+  payload_too_large: "The management request exceeds the size limit.",
+  request_aborted: "The management request was cancelled.",
+  provider_not_configured: "Configure a browser identity provider first.",
+  key_not_found: "The API key was not found.",
+};
+
+function errorBody(code: ManagementErrorCode) {
+  return managementErrorSchema.parse({
+    error: { code, message: errorMessages[code] },
+  });
+}
+
 function denied(status: 401 | 403): Response {
   return Response.json(
-    managementErrorSchema.parse({
-      error: {
-        code: status === 401 ? "invalid_api_key" : "insufficient_permissions",
-      },
-    }),
+    errorBody(status === 401 ? "invalid_api_key" : "insufficient_permissions"),
     { status, headers: { "cache-control": "no-store" } },
   );
 }
@@ -135,7 +156,7 @@ export function createAuthManagement({
               (error instanceof Error && error.message === "aborted")
             ? "request_aborted"
             : "validation_failed";
-      return Response.json(managementErrorSchema.parse({ error: { code } }), {
+      return Response.json(errorBody(code), {
         status:
           code === "payload_too_large"
             ? 413
@@ -149,12 +170,10 @@ export function createAuthManagement({
     if (pathname === accessPath) {
       const parsed = accessManagementRequestSchema.safeParse(value);
       if (!parsed.success)
-        return Response.json(
-          managementErrorSchema.parse({
-            error: { code: "validation_failed" },
-          }),
-          { status: 400, headers },
-        );
+        return Response.json(errorBody("validation_failed"), {
+          status: 400,
+          headers,
+        });
       const input = parsed.data;
       const required =
         input.action === "test-policy" ? "access:read" : "access:manage";
@@ -189,12 +208,10 @@ export function createAuthManagement({
         }
         case "apply-policy": {
           if (!current)
-            return Response.json(
-              managementErrorSchema.parse({
-                error: { code: "provider_not_configured" },
-              }),
-              { status: 409, headers },
-            );
+            return Response.json(errorBody("provider_not_configured"), {
+              status: 409,
+              headers,
+            });
           const config = await saveBrowserAccessConfig(root, {
             ...current,
             policy: input.policy,
@@ -228,12 +245,10 @@ export function createAuthManagement({
         }
         case "test-policy": {
           if (!current)
-            return Response.json(
-              managementErrorSchema.parse({
-                error: { code: "provider_not_configured" },
-              }),
-              { status: 409, headers },
-            );
+            return Response.json(errorBody("provider_not_configured"), {
+              status: 409,
+              headers,
+            });
           const decision = current.policy
             ? evaluateBrowserAccessPolicy(current.policy, input.identity)
             : { matchedRoles: [], permissions: current.permissions };
@@ -250,12 +265,10 @@ export function createAuthManagement({
 
     const parsed = keyManagementRequestSchema.safeParse(value);
     if (!parsed.success)
-      return Response.json(
-        managementErrorSchema.parse({
-          error: { code: "validation_failed" },
-        }),
-        { status: 400, headers },
-      );
+      return Response.json(errorBody("validation_failed"), {
+        status: 400,
+        headers,
+      });
     if (!permits(principal, "keys:manage")) return denied(403);
     const config = configuration();
     const input = parsed.data;
@@ -264,10 +277,10 @@ export function createAuthManagement({
         (key) => key.id === input.keyId,
       );
       if (!exists)
-        return Response.json(
-          managementErrorSchema.parse({ error: { code: "key_not_found" } }),
-          { status: 404, headers },
-        );
+        return Response.json(errorBody("key_not_found"), {
+          status: 404,
+          headers,
+        });
     }
     switch (input.action) {
       case "create": {
