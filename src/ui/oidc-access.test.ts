@@ -1,7 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { defaultBrowserPermissions } from "../domains/auth/browser-access";
-import { createUiAccess, uiAccessConfigSchema } from "./access";
+import { createUiAccess, isUiAccessPath, uiAccessConfigSchema } from "./access";
 
 const issuer = "https://identity.example.com/tenant";
 const origin = "https://ui.example.com";
@@ -28,6 +28,11 @@ beforeAll(async () => {
   resolver = createLocalJWKSet({
     keys: [{ ...(await exportJWK(keys.publicKey)), kid: "oidc", alg: "RS256" }],
   });
+});
+
+test("recognizes only the canonical OIDC callback path", () => {
+  expect(isUiAccessPath("/oidc/callback")).toBe(true);
+  expect(isUiAccessPath("/app/callback")).toBe(false);
 });
 
 function directRequest(
@@ -96,7 +101,7 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
     const body = new URLSearchParams(String(init?.body));
     expect(body.get("grant_type")).toBe("authorization_code");
     expect(body.get("code")).toBe("authorization-code");
-    expect(body.get("redirect_uri")).toBe(`${origin}/app/callback`);
+    expect(body.get("redirect_uri")).toBe(`${origin}/oidc/callback`);
     expect(body.get("code_verifier")).toMatch(/^[A-Za-z0-9_-]{80,128}$/);
     return Response.json({
       id_token: await new SignJWT({
@@ -151,7 +156,7 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
   expect(authorization.searchParams.get("provider")).toBe("fixed");
   expect(authorization.searchParams.get("client_id")).toBe(clientId);
   expect(authorization.searchParams.get("redirect_uri")).toBe(
-    `${origin}/app/callback`,
+    `${origin}/oidc/callback`,
   );
   expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
   expect(authorization.searchParams.get("code_challenge")).toMatch(
@@ -163,7 +168,7 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
 
   const callback = await responseFor(
     access,
-    directRequest(`/app/callback?code=authorization-code&state=${state}`, {
+    directRequest(`/oidc/callback?code=authorization-code&state=${state}`, {
       cookie: stateCookie,
     }),
   );
@@ -200,7 +205,7 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
 
   const replay = await responseFor(
     access,
-    directRequest(`/app/callback?code=authorization-code&state=${state}`, {
+    directRequest(`/oidc/callback?code=authorization-code&state=${state}`, {
       cookie: stateCookie,
     }),
   );
@@ -279,7 +284,7 @@ test("rejects unbound callbacks and incompatible discovery", async () => {
   const wrongCookie = `__Host-localbase-oidc-state=${"a".repeat(43)}`;
   const rejected = await responseFor(
     access,
-    directRequest(`/app/callback?code=code&state=${state}`, {
+    directRequest(`/oidc/callback?code=code&state=${state}`, {
       cookie: wrongCookie,
     }),
   );
@@ -324,7 +329,7 @@ test("rejects ID tokens outside the exact OIDC transaction", async () => {
     const state = authorization.searchParams.get("state") ?? "";
     const callback = await responseFor(
       access,
-      directRequest(`/app/callback?code=code&state=${state}`, {
+      directRequest(`/oidc/callback?code=code&state=${state}`, {
         cookie: cookieFrom(login, "__Host-localbase-oidc-state"),
       }),
     );
