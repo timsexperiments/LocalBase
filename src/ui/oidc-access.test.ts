@@ -67,7 +67,7 @@ function cookieFrom(response: Response, name: string): string {
 function discovery() {
   return {
     issuer,
-    authorization_endpoint: `${issuer}/authorize`,
+    authorization_endpoint: `${issuer}/authorize?provider=fixed`,
     token_endpoint: `${issuer}/token`,
     jwks_uri: `${issuer}/keys`,
     response_types_supported: ["code"],
@@ -82,7 +82,10 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
   let tokenRequests = 0;
   const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (url.includes(".well-known")) return Response.json(discovery());
+    if (url.includes(".well-known")) {
+      expect(url).toBe(`${issuer}/.well-known/openid-configuration`);
+      return Response.json(discovery());
+    }
     expect(url).toBe(`${issuer}/token`);
     tokenRequests += 1;
     expect(init?.method).toBe("POST");
@@ -117,6 +120,7 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
     `${issuer}/authorize`,
   );
   expect(authorization.searchParams.get("response_type")).toBe("code");
+  expect(authorization.searchParams.get("provider")).toBe("fixed");
   expect(authorization.searchParams.get("client_id")).toBe(clientId);
   expect(authorization.searchParams.get("redirect_uri")).toBe(
     `${origin}/app/callback`,
@@ -185,6 +189,33 @@ test("rejects unbound callbacks and incompatible discovery", async () => {
   });
   expect(
     (await responseFor(incompatible, directRequest("/app/login"))).status,
+  ).toBe(503);
+
+  const publicClientConfig = uiAccessConfigSchema.parse({
+    ...config,
+    provider: {
+      kind: "oidc",
+      issuer,
+      clientId,
+      clientAuthentication: { kind: "none" },
+    },
+  });
+  const omittedAuthenticationMethods = createUiAccess({
+    config: publicClientConfig,
+    keyResolver: resolver,
+    fetcher: async () => {
+      const { token_endpoint_auth_methods_supported: _, ...metadata } =
+        discovery();
+      return Response.json(metadata);
+    },
+  });
+  expect(
+    (
+      await responseFor(
+        omittedAuthenticationMethods,
+        directRequest("/app/login"),
+      )
+    ).status,
   ).toBe(503);
 
   let nonce = "";

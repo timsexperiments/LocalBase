@@ -132,8 +132,8 @@ function prune<T extends { expiresAt: number }>(
 
 function discoveryUrl(issuer: string): URL {
   const url = new URL(issuer);
-  const issuerPath = url.pathname === "/" ? "" : url.pathname;
-  url.pathname = `/.well-known/openid-configuration${issuerPath}`;
+  const issuerPath = url.pathname.replace(/\/$/, "");
+  url.pathname = `${issuerPath}/.well-known/openid-configuration`;
   return url;
 }
 
@@ -230,10 +230,9 @@ export function createOidcSessionManager({
         provider.clientAuthentication.kind === "client-secret-basic"
           ? "client_secret_basic"
           : "none";
-      if (
-        value.token_endpoint_auth_methods_supported &&
-        !value.token_endpoint_auth_methods_supported.includes(authentication)
-      )
+      const supportedAuthentication =
+        value.token_endpoint_auth_methods_supported ?? ["client_secret_basic"];
+      if (!supportedAuthentication.includes(authentication))
         throw new Error(
           "OpenID Connect token endpoint authentication is incompatible.",
         );
@@ -326,7 +325,7 @@ export function createOidcSessionManager({
         expiresAt: now() + loginStateTtlMs,
       });
       const authorization = new URL(discovered.authorization_endpoint);
-      authorization.search = new URLSearchParams({
+      for (const [key, value] of Object.entries({
         response_type: "code",
         client_id: provider.clientId,
         redirect_uri: `${origin}/app/callback`,
@@ -335,7 +334,8 @@ export function createOidcSessionManager({
         nonce,
         code_challenge: await sha256Base64Url(verifier),
         code_challenge_method: "S256",
-      }).toString();
+      }))
+        authorization.searchParams.set(key, value);
       return redirect(authorization.href, [
         secureCookie(
           loginStateCookie,
