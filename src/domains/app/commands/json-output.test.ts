@@ -8,7 +8,7 @@ import {
 } from "../../config/declarative";
 import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -18,6 +18,9 @@ import {
 import {
   accessConfigureResultSchema,
   accessDisableResultSchema,
+  accessPolicyApplyResultSchema,
+  accessPolicyClearResultSchema,
+  accessPolicyTestResultSchema,
   accessShowResultSchema,
   keyMetadataResultSchema,
   keySecretResultSchema,
@@ -244,6 +247,121 @@ test(
         accessShowResultSchema.parse(jsonDocument(shownOidc.stdout).data).config
           ?.provider,
       ).toEqual(oidcOutput.config.provider);
+      const policyPath = join(directory, "browser-policy.json");
+      await writeFile(
+        policyPath,
+        JSON.stringify({
+          roles: {
+            admin: ["access:manage", "models:manage"],
+            user: ["inference:chat"],
+          },
+          bindings: [
+            {
+              role: "admin",
+              match: {
+                kind: "subject",
+                issuer: "https://identity.example.com/tenant",
+                subject: "owner",
+              },
+            },
+            {
+              role: "user",
+              match: { kind: "email-domain", domain: "example.com" },
+            },
+          ],
+        }),
+      );
+      const appliedPolicy = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "policy",
+        "apply",
+        "--file",
+        policyPath,
+      ]);
+      expect(
+        accessPolicyApplyResultSchema.parse(
+          jsonDocument(appliedPolicy.stdout).data,
+        ).policy.bindings,
+      ).toHaveLength(2);
+      const testedPolicy = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "policy",
+        "test",
+        "--issuer",
+        "https://identity.example.com/tenant",
+        "--subject",
+        "owner",
+        "--email",
+        "person@example.com",
+      ]);
+      expect(
+        accessPolicyTestResultSchema.parse(
+          jsonDocument(testedPolicy.stdout).data,
+        ),
+      ).toEqual({
+        policyConfigured: true,
+        matchedRoles: ["admin", "user"],
+        permissions: ["inference:chat", "models:manage", "access:manage"],
+      });
+      await writeFile(
+        policyPath,
+        JSON.stringify({
+          roles: { user: ["inference:chat"] },
+          bindings: [
+            {
+              role: "user",
+              match: { kind: "email", email: "person@example.com" },
+            },
+          ],
+        }),
+      );
+      const rejectedPolicy = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "policy",
+        "apply",
+        "--file",
+        policyPath,
+      ]);
+      expect(rejectedPolicy.exitCode).not.toBe(0);
+      const stillConfigured = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "policy",
+        "test",
+        "--issuer",
+        "https://identity.example.com/tenant",
+        "--subject",
+        "owner",
+      ]);
+      expect(
+        accessPolicyTestResultSchema.parse(
+          jsonDocument(stillConfigured.stdout).data,
+        ).matchedRoles,
+      ).toEqual(["admin"]);
+      const clearedPolicy = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "policy",
+        "clear",
+      ]);
+      expect(
+        accessPolicyClearResultSchema.parse(
+          jsonDocument(clearedPolicy.stdout).data,
+        ),
+      ).toEqual({ cleared: true, restartRequired: true });
       const disabledAccess = await runCli(executable, [
         "--root",
         root,

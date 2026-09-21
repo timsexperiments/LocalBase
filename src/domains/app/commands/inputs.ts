@@ -268,6 +268,28 @@ export type AccessOidcInput = z.infer<typeof accessOidcInputSchema>;
 export const accessDisableInputSchema = z.object({});
 export type AccessDisableInput = z.infer<typeof accessDisableInputSchema>;
 
+export const accessPolicyShowInputSchema = z.object({});
+export type AccessPolicyShowInput = z.infer<typeof accessPolicyShowInputSchema>;
+
+export const accessPolicyApplyInputSchema = z.object({
+  file: z.string().min(1),
+});
+export type AccessPolicyApplyInput = z.infer<
+  typeof accessPolicyApplyInputSchema
+>;
+
+export const accessPolicyTestInputSchema = z.object({
+  issuer: z.string().url().max(2_048),
+  subject: z.string().min(1).max(512),
+  email: z.string().email().max(320).optional(),
+});
+export type AccessPolicyTestInput = z.infer<typeof accessPolicyTestInputSchema>;
+
+export const accessPolicyClearInputSchema = z.object({});
+export type AccessPolicyClearInput = z.infer<
+  typeof accessPolicyClearInputSchema
+>;
+
 export const resetInputSchema = z.object({
   yes: z.boolean().default(false),
 });

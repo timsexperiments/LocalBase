@@ -125,6 +125,51 @@ registration is explicitly a public client.
 
 Use `local-base access show --json` to inspect the active non-secret configuration and `local-base access disable` to disable browser sign-in. The default browser permissions cover inference, model discovery, and model management; pass `--permissions` to replace them. Access configuration is restart-scoped and every command supports `--non-interactive` and `--json`.
 
+An optional local policy replaces provider-wide permissions with named roles and
+identity bindings. Subject bindings compare the exact issuer and opaque subject.
+Email and email-domain bindings use only provider-verified email addresses. A
+policy grants no permissions when no binding matches and must retain at least
+one binding whose role grants `access:manage`.
+
+```json
+{
+  "roles": {
+    "admin": ["access:manage", "models:read", "models:manage"],
+    "user": ["inference:chat", "models:read"]
+  },
+  "bindings": [
+    {
+      "role": "admin",
+      "match": {
+        "kind": "subject",
+        "issuer": "https://identity.example.com",
+        "subject": "exact-provider-subject"
+      }
+    },
+    {
+      "role": "user",
+      "match": { "kind": "email-domain", "domain": "example.com" }
+    }
+  ]
+}
+```
+
+```bash
+local-base access policy apply --file access-policy.json --json
+local-base access policy show --json
+local-base access policy test \
+  --issuer https://identity.example.com \
+  --subject exact-provider-subject \
+  --email person@example.com \
+  --json
+local-base restart
+```
+
+`access policy test` treats `--email` as verified input for offline evaluation.
+`access policy clear` restores the provider-wide permissions configured by
+`access cloudflare` or `access oidc`. Applying and clearing a policy require a
+restart.
+
 Open `/app` on the configured HTTPS origin. The playground requires a verified human session from Cloudflare Access or the configured OpenID Connect provider; gateway API keys cannot authenticate the browser UI. Direct OpenID Connect sessions are opaque, HTTP-only cookies and are cleared when LocalBase restarts. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
 
 Model Lab calls models directly without generation tools. It supports chat, images, speech, audio-file transcription, text-to-video, and embeddings. Voice choices, embedding dimension bounds, and the fixed video profile come from model metadata. Completed videos play inline and download as MP4 in Chat and Model Lab. Speech-to-video portrait and audio inputs are not supported in Model Lab yet.

@@ -105,13 +105,41 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
         exp: Math.floor(Date.now() / 1_000) + 300,
         sub: " person-one ",
         nonce,
+        email: "person@example.com",
+        email_verified: false,
       })
         .setProtectedHeader({ alg: "RS256", kid: "oidc" })
         .setIssuedAt()
         .sign(keys.privateKey),
     });
   };
-  const access = createUiAccess({ config, keyResolver: resolver, fetcher });
+  const access = createUiAccess({
+    config: uiAccessConfigSchema.parse({
+      ...config,
+      policy: {
+        roles: {
+          admin: ["access:manage"],
+          email: ["inference:chat"],
+        },
+        bindings: [
+          {
+            role: "admin",
+            match: {
+              kind: "subject",
+              issuer,
+              subject: " person-one ",
+            },
+          },
+          {
+            role: "email",
+            match: { kind: "email", email: "person@example.com" },
+          },
+        ],
+      },
+    }),
+    keyResolver: resolver,
+    fetcher,
+  });
 
   const login = await responseFor(access, directRequest("/app/login"));
   expect(login.status).toBe(303);
@@ -157,7 +185,8 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
     .digest("hex")}`;
   expect(access.credential(sessionRequest)).toMatchObject({
     ownerId: expectedOwnerId,
-    permissions: defaultBrowserPermissions,
+    matchedRoles: ["admin"],
+    permissions: ["access:manage"],
   });
 
   const apiRequest = directRequest("/app/api/_localbase/models", {

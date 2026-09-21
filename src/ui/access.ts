@@ -6,6 +6,10 @@ import {
   type BrowserAccessConfig,
 } from "../domains/auth/browser-access";
 import type { Permission } from "../domains/auth/authorization";
+import {
+  evaluateBrowserAccessPolicy,
+  type BrowserIdentity,
+} from "../domains/auth/browser-policy";
 import { videoJobIdFromPath } from "../domains/runtime/route-dispatch";
 import { createOidcSessionManager } from "./oidc-session";
 
@@ -15,7 +19,11 @@ export {
 };
 
 const humanClaimsSchema = z.object({
-  sub: z.string().trim().min(1),
+  sub: z
+    .string()
+    .min(1)
+    .max(255)
+    .regex(/^[\x00-\x7F]+$/),
   email: z
     .string()
     .email()
@@ -110,7 +118,11 @@ export function createUiAccess({
 }) {
   const credentials = new WeakMap<
     Request,
-    Readonly<{ ownerId: string; permissions: readonly Permission[] }>
+    Readonly<{
+      ownerId: string;
+      permissions: readonly Permission[];
+      matchedRoles: readonly string[];
+    }>
   >();
   const cloudflareIssuer =
     config?.provider.kind === "cloudflare-access"
@@ -203,6 +215,7 @@ export function createUiAccess({
         return respond(failure(404));
 
       let ownerId: string;
+      let identity: BrowserIdentity;
       if (config.provider.kind === "cloudflare-access") {
         const token = request.headers.get("cf-access-jwt-assertion");
         if (!token || !cloudflareIssuer || !cloudflareKeys)
@@ -224,20 +237,28 @@ export function createUiAccess({
               ]),
             )
             .digest("hex")}`;
+          identity = {
+            issuer: cloudflareIssuer,
+            subject: human.sub,
+            verifiedEmail: human.email,
+          };
         } catch {
           return respond(failure(401));
         }
       } else {
         const authenticated = oidc?.authenticate(request);
         if (!authenticated) return respond(failure(401));
-        ownerId = authenticated;
+        ownerId = authenticated.ownerId;
+        identity = authenticated.identity;
       }
 
+      const authorization = config.policy
+        ? evaluateBrowserAccessPolicy(config.policy, identity)
+        : { matchedRoles: [], permissions: config.permissions };
+      const credential = Object.freeze({ ownerId, ...authorization });
+
       if (sessionRequest) {
-        credentials.set(
-          request,
-          Object.freeze({ ownerId, permissions: config.permissions }),
-        );
+        credentials.set(request, credential);
         return respond(
           Response.json(
             { authenticated: true },
@@ -263,10 +284,7 @@ export function createUiAccess({
         body: request.body,
         signal: request.signal,
       });
-      credentials.set(
-        forwarded,
-        Object.freeze({ ownerId, permissions: config.permissions }),
-      );
+      credentials.set(forwarded, credential);
       return { kind: "forward", request: forwarded, pathname };
     },
   };
