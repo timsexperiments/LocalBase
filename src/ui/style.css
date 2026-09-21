@@ -981,6 +981,144 @@ dialog.management-page {
 .uninstall-confirmation p {
   margin-bottom: 8px;
 }
+.auth-management {
+  display: grid;
+  gap: 16px;
+}
+.admin-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+.admin-tabs button {
+  border: 0;
+}
+.admin-tabs button[aria-pressed="true"] {
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.admin-stack,
+.key-list {
+  display: grid;
+  gap: 12px;
+}
+.admin-card,
+.key-card,
+.secret-once {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.admin-card form {
+  margin-top: 16px;
+}
+.admin-card h3,
+.admin-card p,
+.key-card p,
+.secret-once p {
+  margin: 0;
+}
+.admin-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-card-heading p,
+.key-id {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.admin-card details,
+.key-card details {
+  margin-top: 12px;
+}
+.admin-card summary,
+.key-card summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.permission-groups {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.drawer .permission-groups fieldset {
+  padding: 10px 12px;
+}
+.permission-groups legend {
+  padding-inline: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.drawer .permission-option {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.permission-option input {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.primary-action {
+  justify-self: start;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.admin-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+.secret-once {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.secret-once code {
+  display: block;
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--canvas);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.inline-confirmation {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--error-border);
+  border-radius: 10px;
+  background: var(--error-surface);
+}
+.key-scope-editor > button {
+  margin-top: 12px;
+}
 @media (min-width: 760px) {
   .catalog-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -990,6 +1128,13 @@ dialog.management-page {
   }
   .catalog-filters .catalog-search {
     grid-column: auto;
+  }
+  .admin-stack {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .permission-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 .upload {

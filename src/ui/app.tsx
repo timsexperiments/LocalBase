@@ -8,6 +8,7 @@ import {
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import { ModelManagement } from "./model-management";
+import { AuthManagement } from "./auth-management";
 import {
   attachmentAccept,
   attachmentStorageError,
@@ -1373,17 +1374,19 @@ function App() {
       </div>
       {drawer && (
         <Drawer
-          fullPage={drawer === "catalog"}
+          fullPage={drawer === "catalog" || drawer === "admin"}
           title={
             drawer === "catalog"
               ? "Manage models"
-              : drawer === "generation"
-                ? "Generation settings"
-                : drawer === "settings"
-                  ? "Settings"
-                  : drawer === "models"
-                    ? "Models"
-                    : "History"
+              : drawer === "admin"
+                ? "Access & API keys"
+                : drawer === "generation"
+                  ? "Generation settings"
+                  : drawer === "settings"
+                    ? "Settings"
+                    : drawer === "models"
+                      ? "Models"
+                      : "History"
           }
           close={() => setDrawer(null)}
         >
@@ -1394,6 +1397,8 @@ function App() {
               refreshModels={refresh}
               openSettings={() => setDrawer("settings")}
             />
+          ) : drawer === "admin" ? (
+            <AuthManagement connection={credential} />
           ) : drawer === "generation" ? (
             <div className="generation-settings">
               {page === "chat" && model && (
@@ -1543,6 +1548,10 @@ function App() {
               >
                 Clear all history
               </button>
+              <hr />
+              <button onClick={() => setDrawer("admin")}>
+                Access & API keys
+              </button>
             </>
           ) : drawer === "models" ? (
             <>
@@ -1663,6 +1672,9 @@ function App() {
                 <button onClick={() => setDrawer("settings")}>Settings</button>
                 <button onClick={() => setDrawer("catalog")}>
                   Manage models
+                </button>
+                <button onClick={() => setDrawer("admin")}>
+                  Access & API keys
                 </button>
               </div>
               <div className="dictation-field">
