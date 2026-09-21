@@ -95,7 +95,7 @@ function providerLabel(config: AccessConfig) {
   if (!config) return "Not configured";
   return config.provider.kind === "cloudflare-access"
     ? `Cloudflare Access · ${config.provider.teamDomain}`
-    : `OpenID Connect · ${config.provider.registrations.length} ${config.provider.registrations.length === 1 ? "registration" : "registrations"}`;
+    : `Direct sign-in · ${config.provider.registrations.length} ${config.provider.registrations.length === 1 ? "registration" : "registrations"}`;
 }
 
 export function apiKeyStatus(
@@ -122,9 +122,9 @@ export function AuthManagement({
   const [busy, setBusy] = useState(false);
   const [secret, setSecret] = useState("");
   const [confirming, setConfirming] = useState("");
-  const [provider, setProvider] = useState<"cloudflare-access" | "oidc">(
-    "cloudflare-access",
-  );
+  const [provider, setProvider] = useState<
+    "cloudflare-access" | "oidc" | "github-oauth"
+  >("cloudflare-access");
   const [origin, setOrigin] = useState("");
   const [teamDomain, setTeamDomain] = useState("");
   const [audience, setAudience] = useState("");
@@ -149,10 +149,10 @@ export function AuthManagement({
     setAccess(config);
     setPolicy(config?.policy ? JSON.stringify(config.policy, null, 2) : "");
     if (!config) return;
-    setProvider(config.provider.kind);
     setOrigin(config.origin);
     setAccessPermissions([...config.permissions]);
     if (config.provider.kind === "cloudflare-access") {
+      setProvider(config.provider.kind);
       setTeamDomain(config.provider.teamDomain);
       setAudience(config.provider.audience);
     } else {
@@ -164,15 +164,19 @@ export function AuthManagement({
     registration:
       | Extract<
           NonNullable<AccessConfig>["provider"],
-          { kind: "oidc" }
+          { kind: "direct" }
         >["registrations"][number]
       | undefined,
   ) {
+    if (registration) setProvider(registration.kind);
     setRegistrationId(registration?.id ?? "");
     setRegistrationName(registration?.name ?? "");
-    setIssuer(registration?.issuer ?? "");
+    setIssuer(registration?.kind === "oidc" ? registration.issuer : "");
     setClientId(registration?.clientId ?? "");
-    setPublicClient(registration?.clientAuthentication === "none");
+    setPublicClient(
+      registration?.kind === "oidc" &&
+        registration.clientAuthentication === "none",
+    );
     setClientSecret("");
   }
 
@@ -236,25 +240,38 @@ export function AuthManagement({
         action:
           provider === "cloudflare-access"
             ? "configure-cloudflare"
-            : "upsert-oidc",
+            : provider === "oidc"
+              ? "upsert-oidc"
+              : "upsert-github",
         ...(provider === "cloudflare-access"
           ? {
               provider: { kind: provider, teamDomain, audience },
             }
-          : {
-              registration: {
-                id: registrationId,
-                name: registrationName,
-                issuer,
-                clientId,
-                clientAuthentication: publicClient
-                  ? { kind: "none" as const }
-                  : {
-                      kind: "client-secret-basic" as const,
-                      clientSecret,
-                    },
-              },
-            }),
+          : provider === "oidc"
+            ? {
+                registration: {
+                  kind: provider,
+                  id: registrationId,
+                  name: registrationName,
+                  issuer,
+                  clientId,
+                  clientAuthentication: publicClient
+                    ? { kind: "none" as const }
+                    : {
+                        kind: "client-secret-basic" as const,
+                        clientSecret,
+                      },
+                },
+              }
+            : {
+                registration: {
+                  kind: provider,
+                  id: registrationId,
+                  name: registrationName,
+                  clientId,
+                  clientSecret,
+                },
+              }),
         origin,
         permissions: accessPermissions,
       });
@@ -281,7 +298,7 @@ export function AuthManagement({
     setAccessError("");
     try {
       const response = await post("/_localbase/access-management", {
-        action: "remove-oidc",
+        action: "remove-registration",
         registrationId: id,
       });
       const result = accessManagementMutationResponseSchema.parse(
@@ -497,6 +514,7 @@ export function AuthManagement({
                 >
                   <option value="cloudflare-access">Cloudflare Access</option>
                   <option value="oidc">OpenID Connect</option>
+                  <option value="github-oauth">GitHub</option>
                 </select>
               </label>
               <label>
@@ -531,7 +549,7 @@ export function AuthManagement({
                 </>
               ) : (
                 <>
-                  {access?.provider.kind === "oidc" && (
+                  {access?.provider.kind === "direct" && (
                     <div className="key-list">
                       {access.provider.registrations.map((registration) => (
                         <article className="key-card" key={registration.id}>
@@ -539,7 +557,10 @@ export function AuthManagement({
                             <div>
                               <strong>{registration.name}</strong>
                               <p>
-                                {registration.id} · {registration.issuer}
+                                {registration.id} ·{" "}
+                                {registration.kind === "oidc"
+                                  ? registration.issuer
+                                  : "GitHub OAuth"}
                               </p>
                             </div>
                             <button
@@ -550,7 +571,8 @@ export function AuthManagement({
                               Edit
                             </button>
                           </div>
-                          {confirming === `remove-oidc:${registration.id}` ? (
+                          {confirming ===
+                          `remove-registration:${registration.id}` ? (
                             <div className="inline-confirmation">
                               <p>
                                 Remove this registration? Removing the last one
@@ -578,7 +600,9 @@ export function AuthManagement({
                               type="button"
                               disabled={busy}
                               onClick={() =>
-                                setConfirming(`remove-oidc:${registration.id}`)
+                                setConfirming(
+                                  `remove-registration:${registration.id}`,
+                                )
                               }
                             >
                               Remove
@@ -603,7 +627,7 @@ export function AuthManagement({
                       maxLength={64}
                       disabled={
                         busy ||
-                        (access?.provider.kind === "oidc" &&
+                        (access?.provider.kind === "direct" &&
                           access.provider.registrations.some(
                             ({ id }) => id === registrationId,
                           ))
@@ -627,16 +651,18 @@ export function AuthManagement({
                       }
                     />
                   </label>
-                  <label>
-                    Issuer
-                    <input
-                      required
-                      type="url"
-                      value={issuer}
-                      placeholder="https://identity.example.com"
-                      onChange={(event) => setIssuer(event.target.value)}
-                    />
-                  </label>
+                  {provider === "oidc" && (
+                    <label>
+                      Issuer
+                      <input
+                        required
+                        type="url"
+                        value={issuer}
+                        placeholder="https://identity.example.com"
+                        onChange={(event) => setIssuer(event.target.value)}
+                      />
+                    </label>
+                  )}
                   <label>
                     Client ID
                     <input
@@ -645,17 +671,19 @@ export function AuthManagement({
                       onChange={(event) => setClientId(event.target.value)}
                     />
                   </label>
-                  <label className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={publicClient}
-                      onChange={(event) =>
-                        setPublicClient(event.target.checked)
-                      }
-                    />
-                    Public client with PKCE
-                  </label>
-                  {!publicClient && (
+                  {provider === "oidc" && (
+                    <label className="toggle">
+                      <input
+                        type="checkbox"
+                        checked={publicClient}
+                        onChange={(event) =>
+                          setPublicClient(event.target.checked)
+                        }
+                      />
+                      Public client with PKCE
+                    </label>
+                  )}
+                  {(provider === "github-oauth" || !publicClient) && (
                     <label>
                       Client secret
                       <input
@@ -685,7 +713,9 @@ export function AuthManagement({
                 />
               </details>
               <button className="primary-action" disabled={busy} type="submit">
-                {provider === "oidc" ? "Save registration" : "Save provider"}
+                {provider === "cloudflare-access"
+                  ? "Save provider"
+                  : "Save registration"}
               </button>
             </form>
           </section>

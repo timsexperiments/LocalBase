@@ -10,6 +10,9 @@ import { byId, type ModelKind } from "../../../catalog";
 import {
   accessCloudflareInputSchema,
   accessDisableInputSchema,
+  accessGithubAddInputSchema,
+  accessGithubListInputSchema,
+  accessGithubRemoveInputSchema,
   accessOidcAddInputSchema,
   accessOidcListInputSchema,
   accessOidcRemoveInputSchema,
@@ -37,6 +40,9 @@ import {
   uninstallInputSchema,
   type AccessCloudflareInput,
   type AccessDisableInput,
+  type AccessGithubAddInput,
+  type AccessGithubListInput,
+  type AccessGithubRemoveInput,
   type AccessOidcAddInput,
   type AccessOidcListInput,
   type AccessOidcRemoveInput,
@@ -69,6 +75,8 @@ import { CliInputError } from "./errors";
 import {
   accessConfigureResultSchema,
   accessDisableResultSchema,
+  accessGithubListResultSchema,
+  accessGithubRemoveResultSchema,
   accessOidcListResultSchema,
   accessOidcRemoveResultSchema,
   accessPolicyApplyResultSchema,
@@ -878,7 +886,7 @@ const accessOidcAddCommand = command<AccessOidcAddInput>({
       type: "string",
       valueHint: "permission,...",
       description:
-        "Browser permissions; defaults to inference and model management",
+        "Browser permissions; preserves the current set when omitted",
     },
   },
   parse: (input) => accessOidcAddInputSchema.parse(input),
@@ -917,6 +925,87 @@ const accessOidcRemoveCommand = command<AccessOidcRemoveInput>({
   run: async (input, context, execution) => {
     const { runAccessOidcRemove } = await import("../../auth/commands/access");
     return await runAccessOidcRemove(input, context, execution);
+  },
+});
+
+const accessGithubAddCommand = command<AccessGithubAddInput>({
+  path: ["access", "github", "add"],
+  description: "Add or update a GitHub OAuth registration",
+  args: {
+    id: {
+      type: "string",
+      valueHint: "github",
+      description: "Stable lowercase registration ID",
+      required: true,
+    },
+    name: {
+      type: "string",
+      valueHint: "GitHub",
+      description: "Name shown on the sign-in page",
+      required: true,
+    },
+    "client-id": {
+      type: "string",
+      valueHint: "CLIENT_ID",
+      description: "GitHub OAuth app client ID",
+      required: true,
+    },
+    "client-secret-env": {
+      type: "string",
+      valueHint: "ENVIRONMENT_VARIABLE",
+      description: "Environment variable containing the client secret",
+      required: true,
+    },
+    origin: {
+      type: "string",
+      valueHint: "https://localbase.example.com",
+      description: "Exact public UI origin",
+      required: true,
+    },
+    permissions: {
+      type: "string",
+      valueHint: "permission,...",
+      description:
+        "Browser permissions; preserves the current set when omitted",
+    },
+  },
+  parse: (input) => accessGithubAddInputSchema.parse(input),
+  resultSchema: accessConfigureResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessGithubAdd } = await import("../../auth/commands/access");
+    return await runAccessGithubAdd(input, context, execution);
+  },
+});
+
+const accessGithubListCommand = command<AccessGithubListInput>({
+  path: ["access", "github", "list"],
+  description: "List GitHub OAuth registrations",
+  parse: (input) => accessGithubListInputSchema.parse(input),
+  resultSchema: accessGithubListResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessGithubList } = await import("../../auth/commands/access");
+    return await runAccessGithubList(input, context, execution);
+  },
+});
+
+const accessGithubRemoveCommand = command<AccessGithubRemoveInput>({
+  path: ["access", "github", "remove"],
+  description: "Remove a GitHub OAuth registration",
+  args: {
+    id: {
+      type: "positional",
+      valueHint: "provider-id",
+      description: "Registration ID",
+      required: true,
+    },
+  },
+  positionals: { minimum: 1, maximum: 1 },
+  parse: (input) => accessGithubRemoveInputSchema.parse(input),
+  resultSchema: accessGithubRemoveResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessGithubRemove } =
+      await import("../../auth/commands/access");
+    return await runAccessGithubRemove(input, context, execution);
   },
 });
 
@@ -1131,6 +1220,9 @@ export const commands = [
   accessOidcAddCommand,
   accessOidcListCommand,
   accessOidcRemoveCommand,
+  accessGithubAddCommand,
+  accessGithubListCommand,
+  accessGithubRemoveCommand,
   accessDisableCommand,
   accessPolicyShowCommand,
   accessPolicyApplyCommand,
@@ -1190,12 +1282,26 @@ const accessOidcCommand = defineCommand({
   },
 });
 
+const accessGithubCommand = defineCommand({
+  meta: {
+    name: "local-base access github",
+    description: "Manage GitHub OAuth registrations",
+  },
+  args: globalArgs,
+  subCommands: {
+    list: accessGithubListCommand.citty,
+    add: accessGithubAddCommand.citty,
+    remove: accessGithubRemoveCommand.citty,
+  },
+});
+
 export const accessCommand = defineCommand({
   meta: { name: "local-base access", description: "Manage browser access" },
   args: globalArgs,
   subCommands: {
     show: accessShowCommand.citty,
     cloudflare: accessCloudflareCommand.citty,
+    github: accessGithubCommand,
     oidc: accessOidcCommand,
     disable: accessDisableCommand.citty,
     policy: accessPolicyCommand,
@@ -1248,6 +1354,8 @@ export function groupForPath(path: string[]): CittyCommand | undefined {
     return accessPolicyCommand;
   if (path.length === 2 && path[0] === "access" && path[1] === "oidc")
     return accessOidcCommand;
+  if (path.length === 2 && path[0] === "access" && path[1] === "github")
+    return accessGithubCommand;
   if (path.length !== 1) return undefined;
   if (path[0] === "models") return modelsCommand;
   if (path[0] === "keys") return keysCommand;

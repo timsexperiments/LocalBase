@@ -3,12 +3,13 @@ import { timingSafeEqual } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { z } from "zod";
 import type {
-  OidcAccessProvider,
+  DirectAccessProvider,
+  GithubAccessRegistration,
   OidcAccessRegistration,
 } from "../domains/auth/browser-access";
 import type { BrowserIdentity } from "../domains/auth/browser-policy";
 
-const loginStateCookie = "__Host-localbase-oidc-state";
+const loginStateCookie = "__Host-localbase-login-state";
 const sessionCookie = "__Host-localbase-session";
 const loginStateTtlMs = 10 * 60 * 1_000;
 const sessionTtlMs = 12 * 60 * 60 * 1_000;
@@ -16,6 +17,12 @@ const maximumLoginStates = 128;
 const maximumSessions = 1_024;
 const maximumResponseBytes = 64 * 1_024;
 export const oidcCallbackPath = "/oidc/callback";
+export const githubCallbackPath = "/github/callback";
+const githubIssuer = "https://github.com";
+const githubAuthorizationEndpoint = "https://github.com/login/oauth/authorize";
+const githubTokenEndpoint = "https://github.com/login/oauth/access_token";
+const githubUserEndpoint = "https://api.github.com/user";
+const githubEmailsEndpoint = "https://api.github.com/user/emails";
 const allowedAlgorithms = [
   "RS256",
   "RS384",
@@ -47,6 +54,22 @@ const tokenResponseSchema = z.object({
     .max(48 * 1_024),
 });
 
+const githubTokenResponseSchema = z.object({
+  access_token: z.string().min(1).max(8_192),
+  token_type: z.string().toLowerCase().pipe(z.literal("bearer")),
+});
+
+const githubUserSchema = z.object({
+  id: z.number().int().positive(),
+  login: z.string().min(1).max(255),
+});
+
+const githubEmailSchema = z.object({
+  email: z.string().email(),
+  verified: z.boolean(),
+  primary: z.boolean(),
+});
+
 const identitySchema = z.object({
   sub: z
     .string()
@@ -67,12 +90,19 @@ type Fetcher = (
   input: string | URL | Request,
   init?: RequestInit,
 ) => Promise<Response>;
-type LoginState = Readonly<{
-  registrationId: string;
-  verifier: string;
-  nonce: string;
-  expiresAt: number;
-}>;
+type LoginState =
+  | Readonly<{
+      kind: "oidc";
+      registrationId: string;
+      verifier: string;
+      nonce: string;
+      expiresAt: number;
+    }>
+  | Readonly<{
+      kind: "github-oauth";
+      registrationId: string;
+      expiresAt: number;
+    }>;
 type BrowserSession = Readonly<{
   ownerId: string;
   identity: BrowserIdentity;
@@ -103,7 +133,7 @@ function escapeHtml(value: string): string {
   );
 }
 
-function providerChoice(provider: OidcAccessProvider): Response {
+function providerChoice(provider: DirectAccessProvider): Response {
   const links = provider.registrations
     .map(
       (registration) =>
@@ -206,7 +236,7 @@ function isHttpsUrl(value: string): boolean {
 async function boundedJson(response: Response): Promise<unknown> {
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > maximumResponseBytes)
-    throw new Error("OpenID Connect response exceeded its size limit.");
+    throw new Error("Identity provider response exceeded its size limit.");
   if (!response.body) return null;
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -217,7 +247,7 @@ async function boundedJson(response: Response): Promise<unknown> {
       if (done) break;
       size += value.byteLength;
       if (size > maximumResponseBytes)
-        throw new Error("OpenID Connect response exceeded its size limit.");
+        throw new Error("Identity provider response exceeded its size limit.");
       chunks.push(value);
     }
   } finally {
@@ -236,14 +266,14 @@ function formComponent(value: string): string {
   return new URLSearchParams({ value }).toString().slice("value=".length);
 }
 
-export function createOidcSessionManager({
+export function createDirectSessionManager({
   provider,
   origin,
   keyResolver,
   fetcher = fetch,
   now = Date.now,
 }: {
-  provider: OidcAccessProvider;
+  provider: DirectAccessProvider;
   origin: string;
   keyResolver?: JWTVerifyGetKey;
   fetcher?: Fetcher;
@@ -252,14 +282,16 @@ export function createOidcSessionManager({
   const loginStates = new Map<string, LoginState>();
   const sessions = new Map<string, BrowserSession>();
   const runtimes = new Map(
-    provider.registrations.map((registration) => [
-      registration.id,
-      {
-        registration,
-        metadataPromise: null as Promise<Metadata> | null,
-        keys: keyResolver ?? null,
-      },
-    ]),
+    provider.registrations
+      .filter((registration) => registration.kind === "oidc")
+      .map((registration) => [
+        registration.id,
+        {
+          registration,
+          metadataPromise: null as Promise<Metadata> | null,
+          keys: keyResolver ?? null,
+        },
+      ]),
   );
 
   const metadata = async (runtime: {
@@ -318,7 +350,7 @@ export function createOidcSessionManager({
 
   const exchange = async (
     code: string,
-    state: LoginState,
+    state: Extract<LoginState, { kind: "oidc" }>,
     request: Request,
   ): Promise<BrowserSession> => {
     const runtime = runtimes.get(state.registrationId);
@@ -382,7 +414,11 @@ export function createOidcSessionManager({
     return {
       ownerId: `browser:${new Bun.CryptoHasher("sha256")
         .update(
-          JSON.stringify([provider.kind, registration.issuer, identity.sub]),
+          JSON.stringify([
+            registration.kind,
+            registration.issuer,
+            identity.sub,
+          ]),
         )
         .digest("hex")}`,
       identity: {
@@ -394,26 +430,115 @@ export function createOidcSessionManager({
     };
   };
 
+  const exchangeGithub = async (
+    code: string,
+    registration: GithubAccessRegistration,
+    request: Request,
+  ): Promise<BrowserSession> => {
+    const signal = AbortSignal.any([
+      request.signal,
+      AbortSignal.timeout(5_000),
+    ]);
+    const tokenResponse = await fetcher(githubTokenEndpoint, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: registration.clientId,
+        client_secret: registration.clientSecret,
+        code,
+        redirect_uri: `${origin}${githubCallbackPath}`,
+      }),
+      redirect: "error",
+      signal,
+    });
+    if (!tokenResponse.ok) throw new Error("GitHub token exchange failed.");
+    const token = githubTokenResponseSchema.parse(
+      await boundedJson(tokenResponse),
+    );
+    const headers = {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${token.access_token}`,
+      "user-agent": "LocalBase",
+    };
+    const [userResponse, emailsResponse] = await Promise.all([
+      fetcher(githubUserEndpoint, { headers, redirect: "error", signal }),
+      fetcher(githubEmailsEndpoint, { headers, redirect: "error", signal }),
+    ]);
+    if (!userResponse.ok || !emailsResponse.ok)
+      throw new Error("GitHub identity lookup failed.");
+    const user = githubUserSchema.parse(await boundedJson(userResponse));
+    const emails = z
+      .array(githubEmailSchema)
+      .max(1_000)
+      .parse(await boundedJson(emailsResponse));
+    const verifiedEmail = emails.find(
+      (email) => email.primary && email.verified,
+    )?.email;
+    return {
+      ownerId: `browser:${new Bun.CryptoHasher("sha256")
+        .update(JSON.stringify([registration.kind, githubIssuer, user.id]))
+        .digest("hex")}`,
+      identity: {
+        issuer: githubIssuer,
+        subject: String(user.id),
+        ...(verifiedEmail ? { verifiedEmail } : {}),
+      },
+      expiresAt: now() + sessionTtlMs,
+    };
+  };
+
   return {
     async startLogin(registrationId: string | null): Promise<Response> {
       if (registrationId === null && provider.registrations.length > 1)
         return providerChoice(provider);
-      const runtime =
+      const registration =
         registrationId === null
-          ? runtimes.get(provider.registrations[0].id)
-          : runtimes.get(registrationId);
-      if (!runtime)
-        return new Response("OpenID Connect provider not found.", {
+          ? provider.registrations[0]
+          : provider.registrations.find(
+              (registration) => registration.id === registrationId,
+            );
+      if (!registration)
+        return new Response("Identity provider not found.", {
           status: 404,
           headers: { "cache-control": "no-store" },
         });
-      const discovered = await metadata(runtime);
       const state = randomToken();
+      if (registration.kind === "github-oauth") {
+        prune(loginStates, now(), maximumLoginStates);
+        loginStates.set(state, {
+          kind: registration.kind,
+          registrationId: registration.id,
+          expiresAt: now() + loginStateTtlMs,
+        });
+        const authorization = new URL(githubAuthorizationEndpoint);
+        for (const [key, value] of Object.entries({
+          client_id: registration.clientId,
+          redirect_uri: `${origin}${githubCallbackPath}`,
+          scope: "read:user user:email",
+          state,
+        }))
+          authorization.searchParams.set(key, value);
+        return redirect(authorization.href, [
+          secureCookie(
+            loginStateCookie,
+            state,
+            Math.floor(loginStateTtlMs / 1_000),
+          ),
+        ]);
+      }
+      const oidcRuntime = runtimes.get(registration.id);
+      if (!oidcRuntime)
+        throw new Error("OpenID Connect registration is unavailable.");
+      const discovered = await metadata(oidcRuntime);
       const verifier = randomToken(64);
       const nonce = randomToken();
       prune(loginStates, now(), maximumLoginStates);
       loginStates.set(state, {
-        registrationId: runtime.registration.id,
+        kind: registration.kind,
+        registrationId: registration.id,
         verifier,
         nonce,
         expiresAt: now() + loginStateTtlMs,
@@ -421,7 +546,7 @@ export function createOidcSessionManager({
       const authorization = new URL(discovered.authorization_endpoint);
       for (const [key, value] of Object.entries({
         response_type: "code",
-        client_id: runtime.registration.clientId,
+        client_id: registration.clientId,
         redirect_uri: `${origin}${oidcCallbackPath}`,
         scope: "openid profile email",
         state,
@@ -458,7 +583,23 @@ export function createOidcSessionManager({
       const code = url.searchParams.get("code");
       if (!code || code.length > 8_192) return failed();
       try {
-        const identity = await exchange(code, state, request);
+        const registration = provider.registrations.find(
+          (candidate) => candidate.id === state.registrationId,
+        );
+        if (!registration || registration.kind !== state.kind) return failed();
+        if (
+          (state.kind === "oidc" && url.pathname !== oidcCallbackPath) ||
+          (state.kind === "github-oauth" && url.pathname !== githubCallbackPath)
+        )
+          return failed();
+        let identity: BrowserSession;
+        if (state.kind === "oidc") {
+          if (registration.kind !== "oidc") return failed();
+          identity = await exchange(code, state, request);
+        } else {
+          if (registration.kind !== "github-oauth") return failed();
+          identity = await exchangeGithub(code, registration, request);
+        }
         if (identity.expiresAt <= now()) return failed();
         prune(sessions, now(), maximumSessions);
         const session = randomToken();

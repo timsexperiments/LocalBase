@@ -2,11 +2,11 @@
 
 LocalBase separates browser users from machine clients.
 
-| Caller              | Credential                                             | Configuration           |
-| ------------------- | ------------------------------------------------------ | ----------------------- |
-| Browser user        | Cloudflare Access JWT or direct OpenID Connect session | `local-base access ...` |
-| Machine client      | Scoped LocalBase API key                               | `local-base keys ...`   |
-| Local administrator | Read and write access to the LocalBase data directory  | Local CLI               |
+| Caller              | Credential                                            | Configuration           |
+| ------------------- | ----------------------------------------------------- | ----------------------- |
+| Browser user        | Cloudflare Access JWT, OIDC, or GitHub OAuth session  | `local-base access ...` |
+| Machine client      | Scoped LocalBase API key                              | `local-base keys ...`   |
+| Local administrator | Read and write access to the LocalBase data directory | Local CLI               |
 
 The browser UI does not accept API keys. LocalBase does not provide an
 unauthenticated LAN mode or a shared-link bypass. Keep the gateway bound to
@@ -58,8 +58,28 @@ list and remove registrations with `access oidc list` and
 
 OIDC discovery keeps this integration provider-neutral. Google, Microsoft
 Entra, Okta, Auth0, Keycloak, and other standards-compliant OIDC providers use
-the same command and callback. OAuth-only identity services require a separate
-adapter because they do not issue the ID token LocalBase verifies.
+the same command and callback.
+
+GitHub uses its OAuth web flow rather than OIDC. Create a GitHub OAuth app with
+`${LOCALBASE_PUBLIC_ORIGIN}/github/callback` as its callback URL, then configure
+it without putting the secret in process arguments:
+
+```bash
+: "${LOCALBASE_GITHUB_CLIENT_ID:?required}"
+: "${LOCALBASE_GITHUB_CLIENT_SECRET:?required}"
+
+local-base --non-interactive --json access github add \
+  --id github \
+  --name GitHub \
+  --client-id "$LOCALBASE_GITHUB_CLIENT_ID" \
+  --client-secret-env LOCALBASE_GITHUB_CLIENT_SECRET \
+  --origin "$LOCALBASE_PUBLIC_ORIGIN"
+```
+
+GitHub and OIDC registrations share the provider picker. LocalBase uses the
+immutable numeric GitHub account ID as the subject and accepts only the
+verified primary email for email-based policy bindings. Use `access github
+list` and `access github remove ID` for automation.
 
 LocalBase does not consume SAML assertions directly. Put a SAML provider behind
 Cloudflare Access or an identity broker that exposes OpenID Connect to
@@ -110,6 +130,7 @@ bindings only match provider-verified email claims.
 ```
 
 For direct OIDC, set `LOCALBASE_POLICY_ISSUER` to the configured OIDC issuer.
+For GitHub, use `https://github.com`.
 For Cloudflare Access, set it to `https://<team-domain>`. Then apply and test
 the checked-in policy before restarting:
 
@@ -224,12 +245,12 @@ the management endpoints:
 - `GET` and `POST /_localbase/access-management`
 - `GET` and `POST /_localbase/api-keys`
 
-OIDC management uses the `upsert-oidc` action with one complete registration or
-the `remove-oidc` action with its registration ID. Reads return every
-registration with client secrets redacted.
+Direct provider management uses `upsert-oidc`, `upsert-github`, and
+`remove-registration`. Reads return every registration with client secrets
+redacted.
 
 The gateway checks `access:read`, `access:manage`, `keys:read`, or
-`keys:manage` for each operation. Provider responses omit OIDC client secrets.
+`keys:manage` for each operation. Provider responses omit client secrets.
 API-key creation and rotation return a new secret once.
 
 Use `local-base access show --json` to inspect non-secret provider state. If a

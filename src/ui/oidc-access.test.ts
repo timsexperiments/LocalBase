@@ -7,6 +7,7 @@ const issuer = "https://identity.example.com/tenant";
 const origin = "https://ui.example.com";
 const clientId = "localbase-client";
 const registration = {
+  kind: "oidc" as const,
   id: "primary",
   name: "Primary identity",
   issuer,
@@ -18,7 +19,7 @@ const registration = {
 };
 const config = uiAccessConfigSchema.parse({
   provider: {
-    kind: "oidc",
+    kind: "direct",
     registrations: [registration],
   },
   origin,
@@ -37,6 +38,7 @@ beforeAll(async () => {
 
 test("recognizes only the canonical OIDC callback path", () => {
   expect(isUiAccessPath("/oidc/callback")).toBe(true);
+  expect(isUiAccessPath("/github/callback")).toBe(true);
   expect(isUiAccessPath("/app/callback")).toBe(false);
 });
 
@@ -95,10 +97,11 @@ test("chooses among named OIDC registrations before starting a login", async () 
     config: uiAccessConfigSchema.parse({
       ...config,
       provider: {
-        kind: "oidc",
+        kind: "direct",
         registrations: [
           registration,
           {
+            kind: "oidc",
             id: "secondary",
             name: "Secondary & partners",
             issuer: secondIssuer,
@@ -165,7 +168,7 @@ test("chooses among named OIDC registrations before starting a login", async () 
     directRequest(
       `/oidc/callback?code=secondary-code&state=${authorization.searchParams.get("state")}`,
       {
-        cookie: cookieFrom(login, "__Host-localbase-oidc-state"),
+        cookie: cookieFrom(login, "__Host-localbase-login-state"),
       },
     ),
   );
@@ -175,6 +178,90 @@ test("chooses among named OIDC registrations before starting a login", async () 
     (await responseFor(access, directRequest("/app/login?provider=unknown")))
       .status,
   ).toBe(404);
+});
+
+test("completes GitHub OAuth with a stable account identity", async () => {
+  const githubConfig = uiAccessConfigSchema.parse({
+    provider: {
+      kind: "direct",
+      registrations: [
+        {
+          kind: "github-oauth",
+          id: "github",
+          name: "GitHub",
+          clientId: "github-client",
+          clientSecret: "github-secret",
+        },
+      ],
+    },
+    origin,
+    permissions: [],
+    policy: {
+      roles: { owner: ["access:read", "access:manage"] },
+      bindings: [
+        {
+          role: "owner",
+          match: { kind: "email", email: "owner@example.com" },
+        },
+      ],
+    },
+  });
+  const access = createUiAccess({
+    config: githubConfig,
+    fetcher: async (input, init) => {
+      const url = String(input);
+      if (url === "https://github.com/login/oauth/access_token") {
+        expect(init?.method).toBe("POST");
+        expect(String(init?.body)).toContain("client_secret=github-secret");
+        expect(String(init?.body)).toContain(
+          `redirect_uri=${encodeURIComponent(`${origin}/github/callback`)}`,
+        );
+        return Response.json({
+          access_token: "github-access-token",
+          token_type: "bearer",
+        });
+      }
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer github-access-token",
+      );
+      if (url === "https://api.github.com/user")
+        return Response.json({ id: 123456, login: "owner" });
+      if (url === "https://api.github.com/user/emails")
+        return Response.json([
+          {
+            email: "owner@example.com",
+            verified: true,
+            primary: true,
+          },
+        ]);
+      throw new Error(`Unexpected GitHub request: ${url}`);
+    },
+  });
+
+  const login = await responseFor(access, directRequest("/app/login"));
+  const authorization = new URL(login.headers.get("location") ?? "");
+  expect(authorization.origin).toBe("https://github.com");
+  expect(authorization.pathname).toBe("/login/oauth/authorize");
+  expect(authorization.searchParams.get("scope")).toBe("read:user user:email");
+  const state = authorization.searchParams.get("state") ?? "";
+  const callback = await responseFor(
+    access,
+    directRequest(`/github/callback?code=github-code&state=${state}`, {
+      cookie: cookieFrom(login, "__Host-localbase-login-state"),
+    }),
+  );
+  expect(callback.status).toBe(303);
+  expect(callback.headers.get("location")).toBe(`${origin}/app`);
+
+  const sessionRequest = directRequest("/app/session", {
+    marker: true,
+    cookie: cookieFrom(callback, "__Host-localbase-session"),
+  });
+  expect((await responseFor(access, sessionRequest)).status).toBe(200);
+  expect(access.credential(sessionRequest)).toMatchObject({
+    matchedRoles: ["owner"],
+    permissions: ["access:read", "access:manage"],
+  });
 });
 
 test("completes an OIDC code flow and keeps the opaque session server-side", async () => {
@@ -259,7 +346,7 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
   );
   nonce = authorization.searchParams.get("nonce") ?? "";
   const state = authorization.searchParams.get("state") ?? "";
-  const stateCookie = cookieFrom(login, "__Host-localbase-oidc-state");
+  const stateCookie = cookieFrom(login, "__Host-localbase-login-state");
 
   const callback = await responseFor(
     access,
@@ -326,7 +413,7 @@ test("rejects unbound callbacks and incompatible discovery", async () => {
   const publicClientConfig = uiAccessConfigSchema.parse({
     ...config,
     provider: {
-      kind: "oidc",
+      kind: "direct",
       registrations: [
         {
           ...registration,
@@ -379,7 +466,7 @@ test("rejects unbound callbacks and incompatible discovery", async () => {
   const authorization = new URL(login.headers.get("location") ?? "");
   nonce = authorization.searchParams.get("nonce") ?? "";
   const state = authorization.searchParams.get("state") ?? "";
-  const wrongCookie = `__Host-localbase-oidc-state=${"a".repeat(43)}`;
+  const wrongCookie = `__Host-localbase-login-state=${"a".repeat(43)}`;
   const rejected = await responseFor(
     access,
     directRequest(`/oidc/callback?code=code&state=${state}`, {
@@ -428,7 +515,7 @@ test("rejects ID tokens outside the exact OIDC transaction", async () => {
     const callback = await responseFor(
       access,
       directRequest(`/oidc/callback?code=code&state=${state}`, {
-        cookie: cookieFrom(login, "__Host-localbase-oidc-state"),
+        cookie: cookieFrom(login, "__Host-localbase-login-state"),
       }),
     );
     expect(callback.headers.get("location")).toBe(
