@@ -1,4 +1,5 @@
 import type { DatabaseSession } from "../../db/client";
+import { withRootOperation } from "../service/ownership";
 import {
   createApiKey,
   loadApiKeys,
@@ -69,6 +70,23 @@ function permits(principal: Principal, permission: Permission): boolean {
   );
 }
 
+async function readChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal,
+) {
+  if (signal.aborted) throw new Error("aborted");
+  let rejectAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_, reject) => {
+    rejectAbort = () => reject(new Error("aborted"));
+    signal.addEventListener("abort", rejectAbort, { once: true });
+  });
+  try {
+    return await Promise.race([reader.read(), aborted]);
+  } finally {
+    if (rejectAbort) signal.removeEventListener("abort", rejectAbort);
+  }
+}
+
 async function boundedJson(request: Request): Promise<unknown> {
   const contentLength = request.headers.get("content-length");
   if (contentLength !== null) {
@@ -83,12 +101,15 @@ async function boundedJson(request: Request): Promise<unknown> {
   let size = 0;
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readChunk(reader, request.signal);
       if (done) break;
       size += value.byteLength;
       if (size > maximumBodyBytes) throw new Error("too_large");
       chunks.push(value);
     }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
   } finally {
     reader.releaseLock();
   }
@@ -145,6 +166,15 @@ export function createAuthManagement({
         headers: { allow: "GET, POST" },
       });
 
+    if (
+      pathname === accessPath &&
+      !permits(principal, "access:read") &&
+      !permits(principal, "access:manage")
+    )
+      return denied(403);
+    if (pathname === keysPath && !permits(principal, "keys:manage"))
+      return denied(403);
+
     let value: unknown;
     try {
       value = await boundedJson(request);
@@ -178,89 +208,96 @@ export function createAuthManagement({
       const required =
         input.action === "test-policy" ? "access:read" : "access:manage";
       if (!permits(principal, required)) return denied(403);
-      const current = await loadBrowserAccessConfig(root);
-      switch (input.action) {
-        case "configure-cloudflare":
-        case "configure-oidc": {
-          const config = await saveBrowserAccessConfig(root, {
-            provider: input.provider,
-            origin: input.origin,
-            permissions: input.permissions,
-            ...(current?.policy ? { policy: current.policy } : {}),
+      if (input.action === "test-policy") {
+        const current = await loadBrowserAccessConfig(root);
+        if (!current)
+          return Response.json(errorBody("provider_not_configured"), {
+            status: 409,
+            headers,
           });
-          return Response.json(
-            accessManagementMutationResponseSchema.parse({
-              config: summarizeBrowserAccessConfig(config),
-              restartRequired: true,
-            }),
-            { headers },
-          );
-        }
-        case "disable": {
-          const disabled = await disableBrowserAccess(root);
-          return Response.json(
-            accessManagementMutationResponseSchema.parse({
-              disabled,
-              restartRequired: disabled,
-            }),
-            { headers },
-          );
-        }
-        case "apply-policy": {
-          if (!current)
-            return Response.json(errorBody("provider_not_configured"), {
-              status: 409,
-              headers,
-            });
-          const config = await saveBrowserAccessConfig(root, {
-            ...current,
-            policy: input.policy,
-          });
-          return Response.json(
-            accessManagementMutationResponseSchema.parse({
-              policy: config.policy,
-              restartRequired: true,
-            }),
-            { headers },
-          );
-        }
-        case "clear-policy": {
-          if (!current?.policy)
-            return Response.json(
-              accessManagementMutationResponseSchema.parse({
-                cleared: false,
-                restartRequired: false,
-              }),
-              { headers },
-            );
-          const { policy: _, ...config } = current;
-          await saveBrowserAccessConfig(root, config);
-          return Response.json(
-            accessManagementMutationResponseSchema.parse({
-              cleared: true,
-              restartRequired: true,
-            }),
-            { headers },
-          );
-        }
-        case "test-policy": {
-          if (!current)
-            return Response.json(errorBody("provider_not_configured"), {
-              status: 409,
-              headers,
-            });
-          const decision = current.policy
-            ? evaluateBrowserAccessPolicy(current.policy, input.identity)
-            : { matchedRoles: [], permissions: current.permissions };
-          return Response.json(
-            accessManagementMutationResponseSchema.parse({
-              policyConfigured: Boolean(current.policy),
-              ...decision,
-            }),
-            { headers },
-          );
-        }
+        const decision = current.policy
+          ? evaluateBrowserAccessPolicy(current.policy, input.identity)
+          : { matchedRoles: [], permissions: current.permissions };
+        return Response.json(
+          accessManagementMutationResponseSchema.parse({
+            policyConfigured: Boolean(current.policy),
+            ...decision,
+          }),
+          { headers },
+        );
       }
+      return await withRootOperation(
+        root,
+        "update browser access",
+        async (canonicalRoot) => {
+          const current = await loadBrowserAccessConfig(canonicalRoot);
+          switch (input.action) {
+            case "configure-cloudflare":
+            case "configure-oidc": {
+              const config = await saveBrowserAccessConfig(canonicalRoot, {
+                provider: input.provider,
+                origin: input.origin,
+                permissions: input.permissions,
+                ...(current?.policy ? { policy: current.policy } : {}),
+              });
+              return Response.json(
+                accessManagementMutationResponseSchema.parse({
+                  config: summarizeBrowserAccessConfig(config),
+                  restartRequired: true,
+                }),
+                { headers },
+              );
+            }
+            case "disable": {
+              const disabled = await disableBrowserAccess(canonicalRoot);
+              return Response.json(
+                accessManagementMutationResponseSchema.parse({
+                  disabled,
+                  restartRequired: disabled,
+                }),
+                { headers },
+              );
+            }
+            case "apply-policy": {
+              if (!current)
+                return Response.json(errorBody("provider_not_configured"), {
+                  status: 409,
+                  headers,
+                });
+              const config = await saveBrowserAccessConfig(canonicalRoot, {
+                ...current,
+                policy: input.policy,
+              });
+              return Response.json(
+                accessManagementMutationResponseSchema.parse({
+                  policy: config.policy,
+                  restartRequired: true,
+                }),
+                { headers },
+              );
+            }
+            case "clear-policy": {
+              if (!current?.policy)
+                return Response.json(
+                  accessManagementMutationResponseSchema.parse({
+                    cleared: false,
+                    restartRequired: false,
+                  }),
+                  { headers },
+                );
+              const { policy: _, ...config } = current;
+              await saveBrowserAccessConfig(canonicalRoot, config);
+              return Response.json(
+                accessManagementMutationResponseSchema.parse({
+                  cleared: true,
+                  restartRequired: true,
+                }),
+                { headers },
+              );
+            }
+          }
+        },
+      );
     }
 
     const parsed = keyManagementRequestSchema.safeParse(value);
@@ -269,7 +306,6 @@ export function createAuthManagement({
         status: 400,
         headers,
       });
-    if (!permits(principal, "keys:manage")) return denied(403);
     const config = configuration();
     const input = parsed.data;
     if (input.action !== "create") {

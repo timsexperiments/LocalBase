@@ -7,6 +7,7 @@ import { DatabaseSession } from "../../db/client";
 import { defaultConfig } from "../../manager";
 import { permissionSchema, principalSchema } from "./authorization";
 import { createAuthManagement } from "./management-http";
+import { loadBrowserAccessConfig } from "./browser-access";
 
 let root: string;
 let database: DatabaseSession;
@@ -170,4 +171,88 @@ test("denies anonymous and malformed management requests", async () => {
       )
     )?.status,
   ).toBe(400);
+});
+
+test("cancels a pending request body and rejects whitespace-only key names", async () => {
+  const handle = createAuthManagement({
+    root,
+    database,
+    configuration: () => defaultConfig(root),
+  });
+  let started!: () => void;
+  const reading = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const controller = new AbortController();
+  const pending = handle(
+    new Request("http://127.0.0.1/_localbase/api-keys", {
+      method: "POST",
+      body: new ReadableStream({ pull: started }),
+      signal: controller.signal,
+    }),
+    administrator,
+  );
+  await reading;
+  controller.abort();
+  expect((await pending)?.status).toBe(499);
+
+  const invalidName = await handle(
+    request("/_localbase/api-keys", {
+      action: "create",
+      name: "  ",
+      scopes: ["inference:chat"],
+    }),
+    administrator,
+  );
+  expect(invalidName?.status).toBe(400);
+});
+
+test("serializes access mutations without losing provider or policy changes", async () => {
+  const handle = createAuthManagement({
+    root,
+    database,
+    configuration: () => defaultConfig(root),
+  });
+  const configure = (teamDomain: string) =>
+    handle(
+      request("/_localbase/access-management", {
+        action: "configure-cloudflare",
+        provider: {
+          kind: "cloudflare-access",
+          teamDomain,
+          audience: "localbase",
+        },
+        origin: "https://localbase.example.com",
+        permissions: ["access:read", "access:manage"],
+      }),
+      administrator,
+    );
+  expect((await configure("first.cloudflareaccess.com"))?.status).toBe(200);
+  const policy = {
+    roles: { admin: ["access:read", "access:manage"] },
+    bindings: [
+      {
+        role: "admin",
+        match: {
+          kind: "email" as const,
+          email: "owner@example.com",
+        },
+      },
+    ],
+  };
+  const [, applied] = await Promise.all([
+    configure("second.cloudflareaccess.com"),
+    handle(
+      request("/_localbase/access-management", {
+        action: "apply-policy",
+        policy,
+      }),
+      administrator,
+    ),
+  ]);
+  expect(applied?.status).toBe(200);
+  expect(await loadBrowserAccessConfig(root)).toMatchObject({
+    provider: { teamDomain: "second.cloudflareaccess.com" },
+    policy,
+  });
 });

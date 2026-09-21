@@ -53,7 +53,11 @@ export const keyManagementRequestSchema = z.discriminatedUnion("action", [
   z
     .object({
       action: z.literal("create"),
-      name: z.string().min(1).max(128),
+      name: z
+        .string()
+        .min(1)
+        .max(128)
+        .refine((value) => value.trim().length > 0),
       expiresDays: z.number().int().min(1).max(3_650).optional(),
       scopes: permissionsSchema,
     })
