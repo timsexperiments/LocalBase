@@ -149,7 +149,7 @@ the configured permissions unless `--permissions` is supplied. Use the matching
 `access oidc` or `access github` `list` and `remove` commands. Removing the last
 registration disables browser access.
 
-Use `local-base access show --json` to inspect the active non-secret configuration and `local-base access disable` to disable browser sign-in. The default browser permissions cover inference, model discovery, and model management; pass `--permissions` to replace them. Access configuration is restart-scoped and every command supports `--non-interactive` and `--json`.
+Use `local-base access show --json` to inspect the active non-secret configuration and `local-base access disable` to disable browser sign-in. The default browser permissions allow chat and model discovery. Grant other inference permissions and `models:manage` explicitly. Pass `--permissions` to replace the defaults. Access configuration is restart-scoped and every command supports `--non-interactive` and `--json`.
 
 An optional local policy replaces provider-wide permissions with named roles and
 identity bindings. Subject bindings compare the exact issuer and opaque subject.

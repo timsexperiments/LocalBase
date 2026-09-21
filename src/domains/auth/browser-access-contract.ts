@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { defaultApiKeyScopes, permissionsSchema } from "./authorization";
+import { permissionsSchema } from "./authorization";
 import { browserAccessPolicySchema } from "./browser-policy";
 
 export const defaultBrowserPermissions = permissionsSchema.parse([
-  ...defaultApiKeyScopes,
-  "models:manage",
+  "inference:chat",
+  "models:read",
 ]);
 
 export const cloudflareAccessProviderSchema = z

@@ -50,6 +50,9 @@ environment. LocalBase stores the secret privately and never returns it from
 the CLI, management endpoint, or browser UI. Use `--public-client` only for a
 provider registration that explicitly permits public clients.
 
+The examples grant `models:manage` intentionally. Omit `--permissions` to use
+the safer defaults, which allow chat and model discovery only.
+
 Each registration has a stable ID and display name. Repeat the command with a
 different ID to add another provider; using an existing ID updates it. With
 multiple registrations, `/app/login` presents a provider picker. Automation can
