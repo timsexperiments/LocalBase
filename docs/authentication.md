@@ -30,7 +30,7 @@ local-base --non-interactive --json restart
 
 Use direct OpenID Connect when the operator does not want Cloudflare Access.
 LocalBase uses Authorization Code with PKCE and stores an opaque, HTTP-only
-session cookie. Register `${LOCALBASE_PUBLIC_ORIGIN}/app/callback` as the exact
+session cookie. Register `${LOCALBASE_PUBLIC_ORIGIN}/oidc/callback` as the exact
 redirect URI at the provider.
 
 ```bash

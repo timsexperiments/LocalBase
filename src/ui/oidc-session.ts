@@ -12,6 +12,7 @@ const sessionTtlMs = 12 * 60 * 60 * 1_000;
 const maximumLoginStates = 128;
 const maximumSessions = 1_024;
 const maximumResponseBytes = 64 * 1_024;
+export const oidcCallbackPath = "/oidc/callback";
 const allowedAlgorithms = [
   "RS256",
   "RS384",
@@ -269,7 +270,7 @@ export function createOidcSessionManager({
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: `${origin}/app/callback`,
+      redirect_uri: `${origin}${oidcCallbackPath}`,
       code_verifier: state.verifier,
     });
     const headers = new Headers({
@@ -348,7 +349,7 @@ export function createOidcSessionManager({
       for (const [key, value] of Object.entries({
         response_type: "code",
         client_id: provider.clientId,
-        redirect_uri: `${origin}/app/callback`,
+        redirect_uri: `${origin}${oidcCallbackPath}`,
         scope: "openid profile email",
         state,
         nonce,

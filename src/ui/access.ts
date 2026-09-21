@@ -11,7 +11,7 @@ import {
   type BrowserIdentity,
 } from "../domains/auth/browser-policy";
 import { videoJobIdFromPath } from "../domains/runtime/route-dispatch";
-import { createOidcSessionManager } from "./oidc-session";
+import { createOidcSessionManager, oidcCallbackPath } from "./oidc-session";
 
 export {
   browserAccessConfigSchema as uiAccessConfigSchema,
@@ -42,7 +42,7 @@ type Fetcher = (
 export function isUiAccessPath(pathname: string): boolean {
   return (
     pathname === "/app/login" ||
-    pathname === "/app/callback" ||
+    pathname === oidcCallbackPath ||
     pathname === "/app/logout" ||
     pathname === "/app/session" ||
     pathname === "/app/api" ||
@@ -196,7 +196,7 @@ export function createUiAccess({
         }
       }
 
-      if (url.pathname === "/app/callback") {
+      if (url.pathname === oidcCallbackPath) {
         if (request.method !== "GET" || !exactHost || !oidc)
           return respond(failure(403));
         return respond(await oidc.completeLogin(request, url));
