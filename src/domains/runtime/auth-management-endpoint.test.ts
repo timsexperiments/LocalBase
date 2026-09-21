@@ -90,6 +90,7 @@ test("auth management endpoints enforce their scopes even when inference auth is
       body: JSON.stringify({
         action: "upsert-oidc",
         registration: {
+          kind: "oidc",
           id: "primary",
           name: "Primary",
           issuer: "https://identity.example.com",

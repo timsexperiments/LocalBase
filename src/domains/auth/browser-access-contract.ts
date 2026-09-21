@@ -48,7 +48,7 @@ const oidcClientAuthenticationSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
-export const oidcRegistrationIdSchema = z
+export const accessRegistrationIdSchema = z
   .string()
   .min(1)
   .max(64)
@@ -56,7 +56,8 @@ export const oidcRegistrationIdSchema = z
 
 export const oidcAccessRegistrationSchema = z
   .object({
-    id: oidcRegistrationIdSchema,
+    kind: z.literal("oidc"),
+    id: accessRegistrationIdSchema,
     name: z
       .string()
       .min(1)
@@ -75,10 +76,40 @@ export type OidcAccessRegistration = z.infer<
   typeof oidcAccessRegistrationSchema
 >;
 
-export const oidcAccessProviderSchema = z
+export const githubAccessRegistrationSchema = z
   .object({
-    kind: z.literal("oidc"),
-    registrations: z.array(oidcAccessRegistrationSchema).min(1).max(16),
+    kind: z.literal("github-oauth"),
+    id: accessRegistrationIdSchema,
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .refine((value) => value.trim() === value),
+    clientId: z
+      .string()
+      .min(1)
+      .refine((value) => value.trim() === value),
+    clientSecret: z.string().min(1),
+  })
+  .strict();
+
+export type GithubAccessRegistration = z.infer<
+  typeof githubAccessRegistrationSchema
+>;
+
+export const directAccessRegistrationSchema = z.discriminatedUnion("kind", [
+  oidcAccessRegistrationSchema,
+  githubAccessRegistrationSchema,
+]);
+
+export type DirectAccessRegistration = z.infer<
+  typeof directAccessRegistrationSchema
+>;
+
+export const directAccessProviderSchema = z
+  .object({
+    kind: z.literal("direct"),
+    registrations: z.array(directAccessRegistrationSchema).min(1).max(16),
   })
   .strict()
   .superRefine((provider, context) => {
@@ -88,17 +119,17 @@ export const oidcAccessProviderSchema = z
         context.addIssue({
           code: "custom",
           path: ["registrations", index, "id"],
-          message: "OpenID Connect registration IDs must be unique.",
+          message: "Identity provider registration IDs must be unique.",
         });
       ids.add(registration.id);
     }
   });
 
-export type OidcAccessProvider = z.infer<typeof oidcAccessProviderSchema>;
+export type DirectAccessProvider = z.infer<typeof directAccessProviderSchema>;
 
 const browserAccessProviderSchema = z.discriminatedUnion("kind", [
   cloudflareAccessProviderSchema,
-  oidcAccessProviderSchema,
+  directAccessProviderSchema,
 ]);
 
 const exactHttpsOriginSchema = z
@@ -134,10 +165,27 @@ export type OidcAccessRegistrationSummary = z.infer<
   typeof oidcAccessRegistrationSummarySchema
 >;
 
-const oidcAccessProviderSummarySchema = z
+export const githubAccessRegistrationSummarySchema =
+  githubAccessRegistrationSchema.omit({ clientSecret: true }).extend({
+    clientAuthentication: z.literal("client-secret"),
+  });
+
+export type GithubAccessRegistrationSummary = z.infer<
+  typeof githubAccessRegistrationSummarySchema
+>;
+
+export const directAccessRegistrationSummarySchema = z.discriminatedUnion(
+  "kind",
+  [oidcAccessRegistrationSummarySchema, githubAccessRegistrationSummarySchema],
+);
+
+const directAccessProviderSummarySchema = z
   .object({
-    kind: z.literal("oidc"),
-    registrations: z.array(oidcAccessRegistrationSummarySchema).min(1).max(16),
+    kind: z.literal("direct"),
+    registrations: z
+      .array(directAccessRegistrationSummarySchema)
+      .min(1)
+      .max(16),
   })
   .strict();
 
@@ -145,7 +193,7 @@ export const browserAccessConfigSummarySchema = z
   .object({
     provider: z.discriminatedUnion("kind", [
       cloudflareAccessProviderSchema,
-      oidcAccessProviderSummarySchema,
+      directAccessProviderSummarySchema,
     ]),
     origin: exactHttpsOriginSchema,
     permissions: permissionsSchema,
@@ -166,13 +214,26 @@ export function summarizeBrowserAccessConfig(
     ...config,
     provider: {
       kind: config.provider.kind,
-      registrations: config.provider.registrations.map((registration) => ({
-        id: registration.id,
-        name: registration.name,
-        issuer: registration.issuer,
-        clientId: registration.clientId,
-        clientAuthentication: registration.clientAuthentication.kind,
-      })),
+      registrations: config.provider.registrations.map((registration) =>
+        directAccessRegistrationSummarySchema.parse(
+          registration.kind === "oidc"
+            ? {
+                kind: registration.kind,
+                id: registration.id,
+                name: registration.name,
+                issuer: registration.issuer,
+                clientId: registration.clientId,
+                clientAuthentication: registration.clientAuthentication.kind,
+              }
+            : {
+                kind: registration.kind,
+                id: registration.id,
+                name: registration.name,
+                clientId: registration.clientId,
+                clientAuthentication: "client-secret",
+              },
+        ),
+      ),
     },
   });
 }

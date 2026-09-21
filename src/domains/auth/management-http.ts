@@ -12,10 +12,10 @@ import { authorize, type Permission, type Principal } from "./authorization";
 import {
   disableBrowserAccess,
   loadBrowserAccessConfig,
-  removeOidcRegistration,
+  removeAccessRegistration,
   saveBrowserAccessConfig,
   summarizeBrowserAccessConfig,
-  upsertOidcRegistration,
+  upsertAccessRegistration,
 } from "./browser-access";
 import { evaluateBrowserAccessPolicy } from "./browser-policy";
 import { publicApiKey } from "./api-key-public";
@@ -50,7 +50,7 @@ const errorMessages: Record<ManagementErrorCode, string> = {
   payload_too_large: "The management request exceeds the size limit.",
   request_aborted: "The management request was cancelled.",
   provider_not_configured: "Configure a browser identity provider first.",
-  registration_not_found: "The OpenID Connect registration was not found.",
+  registration_not_found: "The identity provider registration was not found.",
   key_not_found: "The API key was not found.",
 };
 
@@ -254,7 +254,7 @@ export function createAuthManagement({
             case "upsert-oidc": {
               const config = await saveBrowserAccessConfig(
                 canonicalRoot,
-                upsertOidcRegistration(current, input),
+                upsertAccessRegistration(current, input),
               );
               return Response.json(
                 accessManagementMutationResponseSchema.parse({
@@ -264,8 +264,21 @@ export function createAuthManagement({
                 { headers },
               );
             }
-            case "remove-oidc": {
-              const removal = removeOidcRegistration(
+            case "upsert-github": {
+              const config = await saveBrowserAccessConfig(
+                canonicalRoot,
+                upsertAccessRegistration(current, input),
+              );
+              return Response.json(
+                accessManagementMutationResponseSchema.parse({
+                  config: summarizeBrowserAccessConfig(config),
+                  restartRequired: true,
+                }),
+                { headers },
+              );
+            }
+            case "remove-registration": {
+              const removal = removeAccessRegistration(
                 current,
                 input.registrationId,
               );

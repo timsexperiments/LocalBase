@@ -46,6 +46,7 @@ test("manages browser access without returning OIDC secrets", async () => {
     request("/_localbase/access-management", {
       action: "upsert-oidc",
       registration: {
+        kind: "oidc",
         id: "primary",
         name: "Primary",
         issuer: "https://identity.example.com",
@@ -67,6 +68,7 @@ test("manages browser access without returning OIDC secrets", async () => {
     request("/_localbase/access-management", {
       action: "upsert-oidc",
       registration: {
+        kind: "oidc",
         id: "secondary",
         name: "Secondary",
         issuer: "https://login.example.org",
@@ -79,16 +81,33 @@ test("manages browser access without returning OIDC secrets", async () => {
     administrator,
   );
   expect(second?.status).toBe(200);
+  const github = await handle(
+    request("/_localbase/access-management", {
+      action: "upsert-github",
+      registration: {
+        kind: "github-oauth",
+        id: "github",
+        name: "GitHub",
+        clientId: "github-client",
+        clientSecret: "github-secret",
+      },
+      origin: "https://localbase.example.com",
+      permissions: ["access:read", "access:manage"],
+    }),
+    administrator,
+  );
+  expect(github?.status).toBe(200);
+  expect(await github?.text()).not.toContain("github-secret");
   const stored = await loadBrowserAccessConfig(root);
   expect(
-    stored?.provider.kind === "oidc"
+    stored?.provider.kind === "direct"
       ? stored.provider.registrations.map(({ id }) => id)
       : [],
-  ).toEqual(["primary", "secondary"]);
+  ).toEqual(["github", "primary", "secondary"]);
 
   const removed = await handle(
     request("/_localbase/access-management", {
-      action: "remove-oidc",
+      action: "remove-registration",
       registrationId: "secondary",
     }),
     administrator,
@@ -96,7 +115,14 @@ test("manages browser access without returning OIDC secrets", async () => {
   expect(removed?.status).toBe(200);
   expect(await removed?.json()).toMatchObject({
     removedRegistrationId: "secondary",
-    config: { provider: { registrations: [{ id: "primary" }] } },
+    config: {
+      provider: {
+        registrations: [
+          { id: "github", kind: "github-oauth" },
+          { id: "primary", kind: "oidc" },
+        ],
+      },
+    },
   });
 
   const applied = await handle(

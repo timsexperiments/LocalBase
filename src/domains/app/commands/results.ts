@@ -12,6 +12,7 @@ import { memorySafetyConfigSchema } from "../../runtime/memory-safety";
 import { permissionsSchema } from "../../auth/authorization";
 import {
   browserAccessConfigSummarySchema,
+  githubAccessRegistrationSummarySchema,
   oidcAccessRegistrationSummarySchema,
 } from "../../auth/browser-access";
 import { browserAccessPolicySchema } from "../../auth/browser-policy";
@@ -167,6 +168,10 @@ export const accessOidcRemoveResultSchema = z
     restartRequired: z.literal(true),
   })
   .strict();
+export const accessGithubListResultSchema = z
+  .object({ registrations: z.array(githubAccessRegistrationSummarySchema) })
+  .strict();
+export const accessGithubRemoveResultSchema = accessOidcRemoveResultSchema;
 export const accessDisableResultSchema = z
   .object({ disabled: z.boolean(), restartRequired: z.boolean() })
   .strict();

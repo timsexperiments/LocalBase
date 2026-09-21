@@ -17,6 +17,8 @@ import {
 } from "../../auth/authorization";
 import {
   accessConfigureResultSchema,
+  accessGithubListResultSchema,
+  accessGithubRemoveResultSchema,
   accessOidcListResultSchema,
   accessOidcRemoveResultSchema,
   accessPolicyApplyResultSchema,
@@ -270,9 +272,10 @@ test(
         jsonDocument(oidcAccess.stdout).data,
       );
       expect(oidcOutput.config.provider).toEqual({
-        kind: "oidc",
+        kind: "direct",
         registrations: [
           {
+            kind: "oidc",
             id: "primary",
             name: "Primary",
             issuer: "https://identity.example.com/tenant",
@@ -295,6 +298,67 @@ test(
       expect(
         accessShowResultSchema.parse(jsonDocument(shownOidc.stdout).data).config
           ?.provider,
+      ).toEqual(oidcOutput.config.provider);
+      const githubSecret = "github-secret-value";
+      const githubAccess = await runCli(
+        executable,
+        [
+          "--root",
+          root,
+          "--json",
+          "access",
+          "github",
+          "add",
+          "--id",
+          "github",
+          "--name",
+          "GitHub",
+          "--client-id",
+          "github-client",
+          "--client-secret-env",
+          "TEST_GITHUB_SECRET",
+          "--origin",
+          "https://localbase.example.com",
+        ],
+        undefined,
+        { TEST_GITHUB_SECRET: githubSecret },
+      );
+      expect(githubAccess.exitCode).toBe(0);
+      expect(githubAccess.stdout).not.toContain(githubSecret);
+      const listedGithub = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "github",
+        "list",
+      ]);
+      expect(
+        accessGithubListResultSchema.parse(
+          jsonDocument(listedGithub.stdout).data,
+        ).registrations,
+      ).toEqual([
+        {
+          kind: "github-oauth",
+          id: "github",
+          name: "GitHub",
+          clientId: "github-client",
+          clientAuthentication: "client-secret",
+        },
+      ]);
+      const removedGithub = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "github",
+        "remove",
+        "github",
+      ]);
+      expect(
+        accessGithubRemoveResultSchema.parse(
+          jsonDocument(removedGithub.stdout).data,
+        ).config?.provider,
       ).toEqual(oidcOutput.config.provider);
       const policyPath = join(directory, "browser-policy.json");
       await writeFile(

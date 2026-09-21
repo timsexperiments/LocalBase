@@ -11,7 +11,11 @@ import {
   type BrowserIdentity,
 } from "../domains/auth/browser-policy";
 import { videoJobIdFromPath } from "../domains/runtime/route-dispatch";
-import { createOidcSessionManager, oidcCallbackPath } from "./oidc-session";
+import {
+  createDirectSessionManager,
+  githubCallbackPath,
+  oidcCallbackPath,
+} from "./oidc-session";
 
 export {
   browserAccessConfigSchema as uiAccessConfigSchema,
@@ -43,6 +47,7 @@ export function isUiAccessPath(pathname: string): boolean {
   return (
     pathname === "/app/login" ||
     pathname === oidcCallbackPath ||
+    pathname === githubCallbackPath ||
     pathname === "/app/logout" ||
     pathname === "/app/session" ||
     pathname === "/app/api" ||
@@ -140,9 +145,9 @@ export function createUiAccess({
         cacheMaxAge: 600_000,
       }))
     : null;
-  const oidc =
-    config?.provider.kind === "oidc"
-      ? createOidcSessionManager({
+  const direct =
+    config?.provider.kind === "direct"
+      ? createDirectSessionManager({
           provider: config.provider,
           origin: config.origin,
           ...(keyResolver ? { keyResolver } : {}),
@@ -188,27 +193,30 @@ export function createUiAccess({
       if (url.pathname === "/app/login") {
         if (request.method !== "GET") return respond(failure(405));
         if (!exactHost) return respond(failure(403));
-        if (!oidc) return respond(redirect(`${config.origin}/app`));
+        if (!direct) return respond(redirect(`${config.origin}/app`));
         try {
           return respond(
-            await oidc.startLogin(url.searchParams.get("provider")),
+            await direct.startLogin(url.searchParams.get("provider")),
           );
         } catch {
           return respond(failure(503));
         }
       }
 
-      if (url.pathname === oidcCallbackPath) {
-        if (request.method !== "GET" || !exactHost || !oidc)
+      if (
+        url.pathname === oidcCallbackPath ||
+        url.pathname === githubCallbackPath
+      ) {
+        if (request.method !== "GET" || !exactHost || !direct)
           return respond(failure(403));
-        return respond(await oidc.completeLogin(request, url));
+        return respond(await direct.completeLogin(request, url));
       }
 
       if (url.pathname === "/app/logout") {
         if (request.method !== "POST" || !validateCommonRequest(request, url))
           return respond(failure(403));
         return respond(
-          oidc ? oidc.logout(request) : new Response(null, { status: 204 }),
+          direct ? direct.logout(request) : new Response(null, { status: 204 }),
         );
       }
 
@@ -252,7 +260,7 @@ export function createUiAccess({
           return respond(failure(401));
         }
       } else {
-        const authenticated = oidc?.authenticate(request);
+        const authenticated = direct?.authenticate(request);
         if (!authenticated) return respond(failure(401));
         ownerId = authenticated.ownerId;
         identity = authenticated.identity;

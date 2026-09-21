@@ -4,7 +4,9 @@ import {
   browserAccessConfigSchema,
   browserAccessConfigSummarySchema,
   cloudflareAccessProviderSchema,
+  githubAccessRegistrationSchema,
   oidcAccessRegistrationSchema,
+  accessRegistrationIdSchema,
 } from "./browser-access-contract";
 import { browserAccessPolicySchema } from "./browser-policy";
 import { apiKeyMetadataSchema } from "./api-key-public";
@@ -36,8 +38,16 @@ export const accessManagementRequestSchema = z.discriminatedUnion("action", [
     .strict(),
   z
     .object({
-      action: z.literal("remove-oidc"),
-      registrationId: oidcAccessRegistrationSchema.shape.id,
+      action: z.literal("upsert-github"),
+      registration: githubAccessRegistrationSchema,
+      origin: browserAccessConfigSchema.shape.origin,
+      permissions: permissionsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("remove-registration"),
+      registrationId: accessRegistrationIdSchema,
     })
     .strict(),
   z.object({ action: z.literal("disable") }).strict(),
@@ -113,7 +123,7 @@ export const accessManagementMutationResponseSchema = z.union([
   z.object({ disabled: z.boolean(), restartRequired: z.boolean() }).strict(),
   z
     .object({
-      removedRegistrationId: oidcAccessRegistrationSchema.shape.id,
+      removedRegistrationId: accessRegistrationIdSchema,
       config: browserAccessConfigSummarySchema.nullable(),
       restartRequired: z.literal(true),
     })

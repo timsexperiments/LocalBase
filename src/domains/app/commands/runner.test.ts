@@ -22,6 +22,7 @@ test("resolves nested commands and global options before context creation", asyn
   expect((await resolveCli(["keys"])).kind).toBe("help");
   expect((await resolveCli(["access"])).kind).toBe("help");
   expect((await resolveCli(["access", "oidc"])).kind).toBe("help");
+  expect((await resolveCli(["access", "github"])).kind).toBe("help");
   expect((await resolveCli(["--help"])).kind).toBe("help");
 
   await expect(resolveCli(["models", "catalog"])).resolves.toMatchObject({
@@ -41,6 +42,12 @@ test("resolves nested commands and global options before context creation", asyn
   ).resolves.toMatchObject({
     kind: "command",
     input: { id: "company" },
+  });
+  await expect(
+    resolveCli(["access", "github", "remove", "github"]),
+  ).resolves.toMatchObject({
+    kind: "command",
+    input: { id: "github" },
   });
 
   const serve = await resolveCli(["serve", "--no-auth"]);

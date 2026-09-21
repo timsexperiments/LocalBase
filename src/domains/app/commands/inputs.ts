@@ -12,10 +12,11 @@ import {
   permissionsSchema,
 } from "../../auth/authorization";
 import {
+  accessRegistrationIdSchema,
   browserAccessConfigSchema,
   cloudflareAccessProviderSchema,
+  githubAccessRegistrationSchema,
   oidcAccessRegistrationSchema,
-  oidcRegistrationIdSchema,
 } from "../../auth/browser-access";
 
 export const modelKindSchema = z.enum(["llm", "stt", "tts", "image", "video"]);
@@ -271,9 +272,29 @@ export const accessOidcListInputSchema = z.object({});
 export type AccessOidcListInput = z.infer<typeof accessOidcListInputSchema>;
 
 export const accessOidcRemoveInputSchema = z.object({
-  id: oidcRegistrationIdSchema,
+  id: accessRegistrationIdSchema,
 });
 export type AccessOidcRemoveInput = z.infer<typeof accessOidcRemoveInputSchema>;
+
+export const accessGithubAddInputSchema = z.object({
+  id: githubAccessRegistrationSchema.shape.id,
+  name: githubAccessRegistrationSchema.shape.name,
+  clientId: githubAccessRegistrationSchema.shape.clientId,
+  clientSecretEnv: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+  origin: browserAccessConfigSchema.shape.origin,
+  permissions: keyScopesInputSchema.optional(),
+});
+export type AccessGithubAddInput = z.infer<typeof accessGithubAddInputSchema>;
+
+export const accessGithubListInputSchema = z.object({});
+export type AccessGithubListInput = z.infer<typeof accessGithubListInputSchema>;
+
+export const accessGithubRemoveInputSchema = z.object({
+  id: accessRegistrationIdSchema,
+});
+export type AccessGithubRemoveInput = z.infer<
+  typeof accessGithubRemoveInputSchema
+>;
 
 export const accessDisableInputSchema = z.object({});
 export type AccessDisableInput = z.infer<typeof accessDisableInputSchema>;
