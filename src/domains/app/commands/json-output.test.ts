@@ -61,6 +61,7 @@ async function runCli(
   executable: string,
   args: string[],
   stdin?: string,
+  environment: Record<string, string> = {},
 ): Promise<CliResult> {
   const runtimeDirectory = join(dirname(executable), "runtime");
   await mkdir(runtimeDirectory, { recursive: true, mode: 0o700 });
@@ -69,7 +70,11 @@ async function runCli(
     stdin: stdin === undefined ? "ignore" : new Blob([stdin]),
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, XDG_RUNTIME_DIR: runtimeDirectory },
+    env: {
+      ...process.env,
+      ...environment,
+      XDG_RUNTIME_DIR: runtimeDirectory,
+    },
   });
   const [exitCode, stdout, stderr] = await Promise.all([
     child.exited,
@@ -194,6 +199,51 @@ test(
         accessShowResultSchema.parse(jsonDocument(shownAccess.stdout).data)
           .config,
       ).toMatchObject({ origin: "https://localbase.example.com" });
+      const oidcSecret = "oidc-secret-value";
+      const oidcAccess = await runCli(
+        executable,
+        [
+          "--root",
+          root,
+          "--json",
+          "access",
+          "oidc",
+          "--issuer",
+          "https://identity.example.com/tenant",
+          "--client-id",
+          "localbase-client",
+          "--client-secret-env",
+          "TEST_OIDC_SECRET",
+          "--origin",
+          "https://localbase.example.com",
+        ],
+        undefined,
+        { TEST_OIDC_SECRET: oidcSecret },
+      );
+      expect(oidcAccess.exitCode).toBe(0);
+      const oidcOutput = accessConfigureResultSchema.parse(
+        jsonDocument(oidcAccess.stdout).data,
+      );
+      expect(oidcOutput.config.provider).toEqual({
+        kind: "oidc",
+        issuer: "https://identity.example.com/tenant",
+        clientId: "localbase-client",
+        clientAuthentication: "client-secret-basic",
+      });
+      expect(oidcAccess.stdout).not.toContain(oidcSecret);
+      expect(oidcAccess.stderr).not.toContain(oidcSecret);
+      const shownOidc = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "show",
+      ]);
+      expect(shownOidc.stdout).not.toContain(oidcSecret);
+      expect(
+        accessShowResultSchema.parse(jsonDocument(shownOidc.stdout).data).config
+          ?.provider,
+      ).toEqual(oidcOutput.config.provider);
       const disabledAccess = await runCli(executable, [
         "--root",
         root,

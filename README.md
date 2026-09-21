@@ -105,9 +105,27 @@ local-base access cloudflare \
 local-base restart
 ```
 
+Direct OpenID Connect uses Authorization Code with PKCE. Register
+`https://localbase.example.com/app/callback` as the exact redirect URI. Read a
+confidential client's secret from the environment so it never appears in the
+process arguments:
+
+```bash
+export LOCALBASE_OIDC_SECRET='...'
+local-base access oidc \
+  --issuer https://identity.example.com \
+  --client-id YOUR_CLIENT_ID \
+  --client-secret-env LOCALBASE_OIDC_SECRET \
+  --origin https://localbase.example.com
+local-base restart
+```
+
+Use `--public-client` instead of `--client-secret-env` only when the provider
+registration is explicitly a public client.
+
 Use `local-base access show --json` to inspect the active non-secret configuration and `local-base access disable` to disable browser sign-in. The default browser permissions cover inference, model discovery, and model management; pass `--permissions` to replace them. Access configuration is restart-scoped and every command supports `--non-interactive` and `--json`.
 
-Open `/app` on the configured HTTPS origin. The playground requires a verified human Cloudflare Access session; gateway API keys cannot authenticate the browser UI. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
+Open `/app` on the configured HTTPS origin. The playground requires a verified human session from Cloudflare Access or the configured OpenID Connect provider; gateway API keys cannot authenticate the browser UI. Direct OpenID Connect sessions are opaque, HTTP-only cookies and are cleared when LocalBase restarts. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
 
 Model Lab calls models directly without generation tools. It supports chat, images, speech, audio-file transcription, text-to-video, and embeddings. Voice choices, embedding dimension bounds, and the fixed video profile come from model metadata. Completed videos play inline and download as MP4 in Chat and Model Lab. Speech-to-video portrait and audio inputs are not supported in Model Lab yet.
 
@@ -123,7 +141,7 @@ Microphone buttons dictate into text fields using the installed, enabled STT mod
 
 Open **Manage models** from the model picker or `/app?panel=catalog` to browse the catalog, disk usage, and download sizes. Only installed, enabled models can be selected for inference. Installation downloads files; enabling makes them available for requests; setting a default chooses the model used when a request omits one. Disable a model and wait for its runtime to release it before uninstalling. Shared model files are retained.
 
-Model administration requires `models:manage`; catalog reads require `models:read`. Browser sessions receive the permissions configured by `local-base access cloudflare`. Machine clients can receive the same capability with `local-base keys create --scopes models:read,models:manage`. Ordinary client keys retain inference and model-read access by default.
+Model administration requires `models:manage`; catalog reads require `models:read`. Browser sessions receive the permissions configured by `local-base access cloudflare` or `local-base access oidc`. Machine clients can receive the same capability with `local-base keys create --scopes models:read,models:manage`. Ordinary client keys retain inference and model-read access by default.
 
 `GET /_localbase/model-management` returns catalog installation state, storage, operation progress, and `canManage`. Authorized clients use `POST` on the same endpoint with `{"modelId":"<catalog-id>","action":"install"}`. Actions are `install`, `uninstall`, `enable`, `disable`, and `activate`. Install returns HTTP 202; poll GET for completion or failure. One installation runs at a time, and progress is retained only for the running gateway process. Other actions return HTTP 200 when complete.
 
