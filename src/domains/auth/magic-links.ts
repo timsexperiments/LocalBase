@@ -173,7 +173,7 @@ export function createMagicLinkService({
       const issued = issueMagicLink(db, { email });
       if (!issued) return;
       const signIn = new URL("/magic-link/callback", origin);
-      signIn.searchParams.set("token", issued.token);
+      signIn.hash = issued.token;
       try {
         await deliver(emailDelivery, {
           to: issued.email,

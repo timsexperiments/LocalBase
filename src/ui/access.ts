@@ -121,6 +121,7 @@ export function createUiAccess({
   keyResolver,
   fetcher,
   now,
+  defer,
   authorizeIdentity,
   magicLinks,
 }: {
@@ -128,6 +129,7 @@ export function createUiAccess({
   keyResolver?: JWTVerifyGetKey;
   fetcher?: Fetcher;
   now?: () => number;
+  defer?: (task: () => void) => void;
   authorizeIdentity?: (identity: BrowserIdentity) => Readonly<{
     matchedRoles: readonly string[];
     permissions: readonly Permission[];
@@ -162,6 +164,7 @@ export function createUiAccess({
           ...(keyResolver ? { keyResolver } : {}),
           ...(fetcher ? { fetcher } : {}),
           ...(now ? { now } : {}),
+          ...(defer ? { defer } : {}),
           ...(magicLinks ? { magicLinks } : {}),
         })
       : null;
@@ -229,9 +232,11 @@ export function createUiAccess({
       }
 
       if (url.pathname === magicLinkCallbackPath) {
-        if (request.method !== "GET" || !exactHost || !direct)
-          return respond(failure(403));
-        return respond(await direct.completeMagicLink(url));
+        if (!exactHost || !direct) return respond(failure(403));
+        if (request.method === "GET")
+          return respond(direct.magicLinkRedemption());
+        if (request.method !== "POST") return respond(failure(403));
+        return respond(await direct.completeMagicLink(request));
       }
 
       if (url.pathname === "/app/logout") {

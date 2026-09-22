@@ -187,6 +187,25 @@ function magicLinkRequested(): Response {
   );
 }
 
+function magicLinkRedemption(): Response {
+  const script = `const token=location.hash.slice(1);history.replaceState(null,"",location.pathname);const input=document.querySelector('input[name="token"]');const button=document.querySelector("button");if(/^[A-Za-z0-9_-]{43}$/.test(token)){input.value=token}else{button.disabled=true}`;
+  const scriptHash = new Bun.CryptoHasher("sha256")
+    .update(script)
+    .digest("base64");
+  return new Response(
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in to LocalBase</title><style>body{font:16px system-ui;margin:0;background:#201e25;color:#eee9f1}main{max-width:28rem;margin:12vh auto;padding:1.5rem}form{display:grid;gap:.75rem}button{font:inherit;border:0;border-radius:.75rem;padding:1rem;background:#a4d3bc;color:#14241d;font-weight:650}button:disabled{opacity:.5}</style><main><h1>Sign in to LocalBase</h1><p>Continue to use this one-time sign-in link.</p><form method="post" action="${magicLinkCallbackPath}"><input name="token" type="hidden"><button type="submit">Sign in</button></form></main><script>${script}</script></html>`,
+    {
+      headers: {
+        "cache-control": "no-store",
+        "content-security-policy": `default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-${scriptHash}'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`,
+        "content-type": "text/html; charset=utf-8",
+        "referrer-policy": "no-referrer",
+        "x-content-type-options": "nosniff",
+      },
+    },
+  );
+}
+
 function secureCookie(
   name: string,
   value: string,
@@ -336,6 +355,7 @@ export function createDirectSessionManager({
   keyResolver,
   fetcher = fetch,
   now = Date.now,
+  defer = (task) => setTimeout(task, 0),
   magicLinks,
 }: {
   provider: DirectAccessProvider;
@@ -343,6 +363,7 @@ export function createDirectSessionManager({
   keyResolver?: JWTVerifyGetKey;
   fetcher?: Fetcher;
   now?: () => number;
+  defer?: (task: () => void) => void;
   magicLinks?: MagicLinkSessionAdapter;
 }) {
   const loginStates = new Map<string, LoginState>();
@@ -733,14 +754,15 @@ export function createDirectSessionManager({
         )
           return magicLinkRequested();
         const key = await sha256Base64Url(email.toLowerCase());
+        const requestedAt = now();
+        for (const [candidate, timestamp] of magicLinkRequests)
+          if (requestedAt - timestamp >= 60_000)
+            magicLinkRequests.delete(candidate);
         const lastRequest = magicLinkRequests.get(key);
         if (lastRequest === undefined || now() - lastRequest >= 60_000) {
-          if (magicLinkRequests.size >= 1_024)
-            magicLinkRequests.delete(
-              magicLinkRequests.keys().next().value ?? "",
-            );
-          magicLinkRequests.set(key, now());
-          queueMicrotask(() => {
+          if (magicLinkRequests.size >= 1_024) return magicLinkRequested();
+          magicLinkRequests.set(key, requestedAt);
+          defer(() => {
             void Promise.resolve(magicLinks.request(registration, email)).catch(
               () => undefined,
             );
@@ -752,14 +774,36 @@ export function createDirectSessionManager({
       return magicLinkRequested();
     },
 
-    async completeMagicLink(url: URL): Promise<Response> {
+    magicLinkRedemption,
+
+    async completeMagicLink(request: Request): Promise<Response> {
       const registration = provider.registrations.find(
         (candidate) => candidate.kind === "magic-link",
       );
-      const token = url.searchParams.get("token");
-      if (!magicLinks || !registration || !token || token.length > 128)
+      const contentType = request.headers.get("content-type") ?? "";
+      if (
+        !magicLinks ||
+        !registration ||
+        request.headers.get("origin") !== origin ||
+        (request.headers.get("sec-fetch-site") !== null &&
+          request.headers.get("sec-fetch-site") !== "same-origin") ||
+        !contentType
+          .toLowerCase()
+          .startsWith("application/x-www-form-urlencoded")
+      )
         return redirect(`${origin}/app?signin=failed`);
       try {
+        const form = new URLSearchParams(
+          await boundedRequestText(request, 256),
+        );
+        const token = form.get("token");
+        if (
+          !token ||
+          token.length > 128 ||
+          form.getAll("token").length !== 1 ||
+          [...form.keys()].some((key) => key !== "token")
+        )
+          return redirect(`${origin}/app?signin=failed`);
         const identity = await magicLinks.consume(registration, token);
         if (!identity) return redirect(`${origin}/app?signin=failed`);
         return establishSession({

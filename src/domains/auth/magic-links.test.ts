@@ -160,7 +160,7 @@ test("magic-link delivery publishes a consumable URL and revokes failed mail", a
     await service.request(registration, "person@example.com");
     const link = delivered[0]?.match(/https:\/\/\S+/)?.[0];
     expect(link).toBeDefined();
-    const token = new URL(link ?? "").searchParams.get("token") ?? "";
+    const token = new URL(link ?? "").hash.slice(1);
     expect(await service.consume(registration, token)).toMatchObject({
       issuer: "https://localbase.example.com/magic-link",
       verifiedEmail: "person@example.com",
@@ -189,7 +189,7 @@ test("magic-link delivery publishes a consumable URL and revokes failed mail", a
     await failing.request(registration, "person@example.com");
     expect(failure).toBeInstanceOf(Error);
     const failedLink = failedText.match(/https:\/\/\S+/)?.[0] ?? "";
-    const failedToken = new URL(failedLink).searchParams.get("token") ?? "";
+    const failedToken = new URL(failedLink).hash.slice(1);
     expect(await failing.consume(registration, failedToken)).toBeNull();
   });
 });

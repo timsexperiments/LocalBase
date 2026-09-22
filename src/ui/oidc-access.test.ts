@@ -94,6 +94,7 @@ function discovery() {
 test("requests and consumes native magic links without disclosing users", async () => {
   const requested: string[] = [];
   const consumed = new Set<string>();
+  let currentTime = 1_000;
   const magicConfig = uiAccessConfigSchema.parse({
     provider: {
       kind: "direct",
@@ -106,6 +107,8 @@ test("requests and consumes native magic links without disclosing users", async 
   });
   const access = createUiAccess({
     config: magicConfig,
+    defer: (task) => task(),
+    now: () => currentTime,
     magicLinks: {
       request: (_registration, email) => {
         requested.push(email);
@@ -133,7 +136,7 @@ test("requests and consumes native magic links without disclosing users", async 
   expect(form.status).toBe(200);
   expect(await form.text()).toContain("Email sign-in");
 
-  const submit = () =>
+  const submit = (email = "person@example.com") =>
     responseFor(
       access,
       new Request(`${origin}/app/login/magic?provider=email`, {
@@ -143,7 +146,7 @@ test("requests and consumes native magic links without disclosing users", async 
           origin,
           "sec-fetch-site": "same-origin",
         },
-        body: new URLSearchParams({ email: "person@example.com" }),
+        body: new URLSearchParams({ email }),
       }),
     );
   const first = await submit();
@@ -152,10 +155,32 @@ test("requests and consumes native magic links without disclosing users", async 
   expect(await first.text()).toContain("If that address can sign in");
   expect(await second.text()).toContain("If that address can sign in");
   expect(requested).toEqual(["person@example.com"]);
+  for (let index = 0; index < 1_023; index += 1)
+    await submit(`other-${index}@example.com`);
+  await submit("overflow@example.com");
+  await submit();
+  expect(requested).toHaveLength(1_024);
+  currentTime += 60_000;
+  await submit();
+  expect(requested.at(-1)).toBe("person@example.com");
 
+  const landing = await responseFor(
+    access,
+    directRequest("/magic-link/callback"),
+  );
+  expect(landing.status).toBe(200);
+  expect(await landing.text()).toContain("Sign in to LocalBase");
   const callback = await responseFor(
     access,
-    directRequest("/magic-link/callback?token=valid-token"),
+    new Request(`${origin}/magic-link/callback`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        origin,
+        "sec-fetch-site": "same-origin",
+      },
+      body: new URLSearchParams({ token: "valid-token" }),
+    }),
   );
   expect(callback.headers.get("location")).toBe(`${origin}/app`);
   const sessionRequest = directRequest("/app/session", {
@@ -172,7 +197,15 @@ test("requests and consumes native magic links without disclosing users", async 
     (
       await responseFor(
         access,
-        directRequest("/magic-link/callback?token=valid-token"),
+        new Request(`${origin}/magic-link/callback`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+            origin,
+            "sec-fetch-site": "same-origin",
+          },
+          body: new URLSearchParams({ token: "valid-token" }),
+        }),
       )
     ).headers.get("location"),
   ).toBe(`${origin}/app?signin=failed`);

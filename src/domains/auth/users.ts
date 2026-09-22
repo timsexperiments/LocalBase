@@ -2,9 +2,9 @@ import { eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import type { LocalBaseDatabase } from "../../db/client";
 import {
+  authMagicLinkTokensTable,
   authRolesTable,
   authSettingsTable,
-  authMagicLinkTokensTable,
   authUserEmailsTable,
   authUserRolesTable,
   authUsersTable,
@@ -277,6 +277,11 @@ function setManagedUserStatus(
   return db.transaction(
     () => {
       const user = userByEmail(db, parsed.email);
+      if (user.status === "removed")
+        throw new BrowserAccessError(
+          "managed-user-not-found",
+          `Managed user ${parsed.email} was not found.`,
+        );
       db.update(authUsersTable)
         .set({ status, updatedAt: new Date().toISOString() })
         .where(eq(authUsersTable.id, user.id))
@@ -309,6 +314,11 @@ export function removeManagedUser(
   return db.transaction(
     () => {
       const user = userByEmail(db, parsed.email);
+      if (user.status === "removed")
+        throw new BrowserAccessError(
+          "managed-user-not-found",
+          `Managed user ${parsed.email} was not found.`,
+        );
       db.delete(authMagicLinkTokensTable)
         .where(eq(authMagicLinkTokensTable.userId, user.id))
         .run();

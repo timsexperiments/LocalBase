@@ -126,8 +126,9 @@ local-base --non-interactive --json restart
 ```
 
 The sign-in page accepts an invited email address without revealing whether it
-exists. A new request replaces the previous link for that user. Links expire
-after 15 minutes and are consumed once. Raw link tokens are not stored. Use
+exists. After the one-minute request cooldown, a new request replaces the
+previous link for that user. Links expire after 15 minutes and are consumed
+only by an explicit sign-in confirmation. Raw link tokens are not stored. Use
 `access magic-link list` and `access magic-link remove ID` for automation.
 Email delivery cannot be disabled while the registration exists.
 
