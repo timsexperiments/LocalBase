@@ -240,7 +240,7 @@ export function availableModels(models: Model[], mode: Mode) {
     (model) => model.device.installed && model.device.selected,
   );
 }
-export type Session = { kind: "session" };
+export type Session = { kind: "session"; verifiedEmail?: string };
 export type SessionState =
   Session | { kind: "checking" } | { kind: "error"; message: string };
 export type Connection = Session;
@@ -251,7 +251,10 @@ export class SessionRequiredError extends Error {
     super(message);
   }
 }
-const sessionSchema = z.object({ authenticated: z.literal(true) });
+const sessionSchema = z.object({
+  authenticated: z.literal(true),
+  verifiedEmail: z.email().optional(),
+});
 export async function readSession(signal?: AbortSignal): Promise<Session> {
   const response = await fetch("/app/session", {
     signal,
@@ -275,7 +278,12 @@ export async function readSession(signal?: AbortSignal): Promise<Session> {
     throw new Error(
       "Sign-in could not be verified. Reload this page to sign in.",
     );
-  return { kind: "session" };
+  return {
+    kind: "session",
+    ...(parsed.data.verifiedEmail
+      ? { verifiedEmail: parsed.data.verifiedEmail }
+      : {}),
+  };
 }
 export function sessionConnection(session: SessionState): Connection | null {
   return session.kind === "session" ? session : null;
