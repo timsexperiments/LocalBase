@@ -150,18 +150,19 @@ test("magic-link delivery publishes a consumable URL and revokes failed mail", a
       name: "Email",
     };
     const delivered: string[] = [];
+    let emailDelivery = {
+      host: "smtp.example.com",
+      port: 587,
+      security: "starttls" as const,
+      authentication: { kind: "none" as const },
+      from: "localbase@example.com",
+    };
     const service = createMagicLinkService({
       db,
       origin: "https://localbase.example.com",
-      emailDelivery: {
-        host: "smtp.example.com",
-        port: 587,
-        security: "starttls",
-        authentication: { kind: "none" },
-        from: "localbase@example.com",
-      },
-      deliver: async (_config, email) => {
-        delivered.push(email.text);
+      loadEmailDelivery: async () => emailDelivery,
+      deliver: async (config, email) => {
+        delivered.push(`${config.host}\n${email.text}`);
       },
     });
     await service.request(registration, "person@example.com");
@@ -172,19 +173,26 @@ test("magic-link delivery publishes a consumable URL and revokes failed mail", a
       issuer: "https://localbase.example.com/magic-link",
       verifiedEmail: "person@example.com",
     });
+    inviteManagedUser(db, {
+      email: "other@example.com",
+      roles: ["member"],
+    });
+    emailDelivery = { ...emailDelivery, host: "smtp.rotated.example.com" };
+    await service.request(registration, "other@example.com");
+    expect(delivered[1]).toStartWith("smtp.rotated.example.com\n");
 
     let failure: unknown;
     let failedText = "";
     const failing = createMagicLinkService({
       db,
       origin: "https://localbase.example.com",
-      emailDelivery: {
+      loadEmailDelivery: async () => ({
         host: "smtp.example.com",
         port: 587,
         security: "starttls",
         authentication: { kind: "none" },
         from: "localbase@example.com",
-      },
+      }),
       deliver: async (_config, email) => {
         failedText = email.text;
         throw new Error("provider response must not escape");

@@ -319,6 +319,7 @@ export function AuthManagement({
         setSmtpPasswordAuth(false);
         setSmtpUsername("");
         setSmtpPassword("");
+        setSendInviteEmail(false);
       }
       setInviteRoles((selected) =>
         reconcileInviteRoles(
@@ -507,7 +508,7 @@ export function AuthManagement({
         action: "invite-user",
         email: inviteEmail,
         roles: inviteRoles,
-        sendEmail: sendInviteEmail,
+        sendEmail: sendInviteEmail && emailDelivery !== null,
       });
       const result = accessManagementMutationResponseSchema.parse(
         await response.json(),
