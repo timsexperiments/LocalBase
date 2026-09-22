@@ -740,9 +740,11 @@ export function createDirectSessionManager({
               magicLinkRequests.keys().next().value ?? "",
             );
           magicLinkRequests.set(key, now());
-          void Promise.resolve(magicLinks.request(registration, email)).catch(
-            () => undefined,
-          );
+          queueMicrotask(() => {
+            void Promise.resolve(magicLinks.request(registration, email)).catch(
+              () => undefined,
+            );
+          });
         }
       } catch {
         // The response is deliberately identical for invalid and unknown users.
