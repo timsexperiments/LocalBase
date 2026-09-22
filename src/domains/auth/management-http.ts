@@ -18,6 +18,7 @@ import {
   upsertAccessRegistration,
 } from "./browser-access";
 import {
+  accessControlRevision,
   applyAccessControl,
   clearAccessControl,
   loadAccessControl,
@@ -60,7 +61,8 @@ type ManagementErrorCode =
   | "managed_user_not_found"
   | "managed_user_exists"
   | "role_not_found"
-  | "policy_conflict";
+  | "policy_conflict"
+  | "policy_revision_conflict";
 
 const errorMessages: Record<ManagementErrorCode, string> = {
   invalid_api_key: "Authentication is required.",
@@ -76,6 +78,8 @@ const errorMessages: Record<ManagementErrorCode, string> = {
   managed_user_exists: "The managed user already exists.",
   role_not_found: "One or more browser access roles were not found.",
   policy_conflict: "The browser access policy cannot be changed.",
+  policy_revision_conflict:
+    "The browser access policy changed. Refresh it and try again.",
 };
 
 function errorBody(code: ManagementErrorCode) {
@@ -109,6 +113,7 @@ function domainErrorResponse(
     "managed-user-exists": ["managed_user_exists", 409],
     "role-not-found": ["role_not_found", 400],
     "policy-conflict": ["policy_conflict", 409],
+    "policy-revision-conflict": ["policy_revision_conflict", 409],
   } as const satisfies Record<
     typeof error.code,
     readonly [ManagementErrorCode, 400 | 404 | 409]
@@ -199,6 +204,7 @@ export function createAuthManagement({
           accessManagementReadResponseSchema.parse({
             config: config ? summarizeBrowserAccessConfig(config) : null,
             policy,
+            policyRevision: accessControlRevision(policy),
             users: listManagedUsers(db),
             roles: policy?.roles ?? [],
           }),
@@ -434,6 +440,17 @@ export function createAuthManagement({
                     status: 409,
                     headers,
                   });
+                const currentPolicy = loadAccessControl(
+                  database.get(canonicalRoot),
+                );
+                if (
+                  accessControlRevision(currentPolicy) !==
+                  input.expectedPolicyRevision
+                )
+                  throw new BrowserAccessError(
+                    "policy-revision-conflict",
+                    "The browser access policy changed.",
+                  );
                 const policy = applyAccessControl(
                   database.get(canonicalRoot),
                   input.policy,
@@ -441,16 +458,29 @@ export function createAuthManagement({
                 return Response.json(
                   accessManagementMutationResponseSchema.parse({
                     policy,
+                    policyRevision: accessControlRevision(policy),
                     restartRequired: false,
                   }),
                   { headers },
                 );
               }
               case "clear-policy": {
+                const currentPolicy = loadAccessControl(
+                  database.get(canonicalRoot),
+                );
+                if (
+                  accessControlRevision(currentPolicy) !==
+                  input.expectedPolicyRevision
+                )
+                  throw new BrowserAccessError(
+                    "policy-revision-conflict",
+                    "The browser access policy changed.",
+                  );
                 const cleared = clearAccessControl(database.get(canonicalRoot));
                 return Response.json(
                   accessManagementMutationResponseSchema.parse({
                     cleared,
+                    policyRevision: null,
                     restartRequired: false,
                   }),
                   { headers },

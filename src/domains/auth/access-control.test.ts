@@ -13,6 +13,7 @@ import {
 } from "../../db/schema";
 import {
   accessControlConfigSchema,
+  accessControlRevision,
   applyAccessControl,
   clearAccessControl,
   loadAccessControl,
@@ -53,6 +54,47 @@ const config: AccessControlConfig = accessControlConfigSchema.parse({
     },
   ],
   defaultRole: null,
+});
+
+test("policy revisions ignore storage ordering but detect semantic changes", () => {
+  const reordered = {
+    ...config,
+    roles: [...config.roles].reverse().map((role) => ({
+      ...role,
+      permissions: [...role.permissions].reverse(),
+    })),
+    bindings: [...config.bindings].reverse(),
+  };
+  expect(accessControlRevision(reordered)).toBe(accessControlRevision(config));
+  expect(
+    accessControlRevision({
+      ...config,
+      roles: config.roles.map((role) =>
+        role.name === "member" ? { ...role, description: "Changed" } : role,
+      ),
+    }),
+  ).not.toBe(accessControlRevision(config));
+});
+
+test("policy revisions use a total ordering for Unicode subjects", () => {
+  const composed = {
+    kind: "subject" as const,
+    role: "admin",
+    issuer: "https://example.com",
+    subject: "é",
+  };
+  const decomposed = { ...composed, subject: "e\u0301" };
+  const policy = {
+    ...config,
+    bindings: [composed, decomposed],
+  };
+
+  expect(accessControlRevision(policy)).toBe(
+    accessControlRevision({
+      ...policy,
+      bindings: [...policy.bindings].reverse(),
+    }),
+  );
 });
 
 async function withDatabase(

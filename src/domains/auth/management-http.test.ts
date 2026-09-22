@@ -8,7 +8,7 @@ import { defaultConfig } from "../../manager";
 import { permissionSchema, principalSchema } from "./authorization";
 import { createAuthManagement } from "./management-http";
 import { loadBrowserAccessConfig } from "./browser-access";
-import { loadAccessControl } from "./access-control";
+import { accessControlRevision, loadAccessControl } from "./access-control";
 import { withRootOperation } from "../service/ownership";
 import {
   accessManagementMutationResponseSchema,
@@ -139,6 +139,7 @@ test("manages browser access without returning OIDC secrets", async () => {
   const applied = await handle(
     request("/_localbase/access-management", {
       action: "apply-policy",
+      expectedPolicyRevision: null,
       policy: {
         roles: [
           {
@@ -281,6 +282,7 @@ test("manages browser users through the access-management contract", async () =>
       await handle(
         request("/_localbase/access-management", {
           action: "apply-policy",
+          expectedPolicyRevision: null,
           policy,
         }),
         administrator,
@@ -369,6 +371,7 @@ test("manages browser users through the access-management contract", async () =>
   const assignedRoleConflict = await handle(
     request("/_localbase/access-management", {
       action: "apply-policy",
+      expectedPolicyRevision: accessControlRevision(policy),
       policy: {
         roles: [policy.roles[0]],
         bindings: [policy.bindings[0]],
@@ -480,6 +483,112 @@ test("keeps access-management reads available during unrelated root operations",
     release();
     await holding;
   }
+});
+
+test("rejects stale whole-policy writes without losing a newer change", async () => {
+  const handle = createAuthManagement({
+    root,
+    database,
+    configuration: () => defaultConfig(root),
+  });
+  await handle(
+    request("/_localbase/access-management", {
+      action: "configure-cloudflare",
+      provider: {
+        kind: "cloudflare-access",
+        teamDomain: "localbase.cloudflareaccess.com",
+        audience: "localbase",
+      },
+      origin: "https://localbase.example.com",
+      permissions: ["access:read", "access:manage"],
+    }),
+    administrator,
+  );
+  const policy = {
+    roles: [
+      {
+        name: "admin",
+        description: "Initial",
+        permissions: ["access:read", "access:manage"] as const,
+      },
+    ],
+    bindings: [
+      {
+        kind: "email" as const,
+        role: "admin",
+        email: "owner@example.com",
+      },
+    ],
+    defaultRole: null,
+  };
+  const created = accessManagementMutationResponseSchema.parse(
+    await jsonResponse(
+      await handle(
+        request("/_localbase/access-management", {
+          action: "apply-policy",
+          expectedPolicyRevision: null,
+          policy,
+        }),
+        administrator,
+      ),
+    ),
+  );
+  if (!("policyRevision" in created))
+    throw new Error("Policy revision was not returned.");
+  const firstRevision = created.policyRevision;
+  const newerPolicy = {
+    ...policy,
+    roles: [{ ...policy.roles[0], description: "Newer" }],
+  };
+  const updated = accessManagementMutationResponseSchema.parse(
+    await jsonResponse(
+      await handle(
+        request("/_localbase/access-management", {
+          action: "apply-policy",
+          expectedPolicyRevision: firstRevision,
+          policy: newerPolicy,
+        }),
+        administrator,
+      ),
+    ),
+  );
+  expect(updated).toMatchObject({ policy: newerPolicy });
+
+  const stale = await handle(
+    request("/_localbase/access-management", {
+      action: "apply-policy",
+      expectedPolicyRevision: firstRevision,
+      policy: { ...policy, defaultRole: "admin" },
+    }),
+    administrator,
+  );
+  expect(stale?.status).toBe(409);
+  expect(await stale?.json()).toMatchObject({
+    error: { code: "policy_revision_conflict" },
+  });
+  expect(loadAccessControl(database.get(root))).toEqual(newerPolicy);
+  const staleClear = await handle(
+    request("/_localbase/access-management", {
+      action: "clear-policy",
+      expectedPolicyRevision: firstRevision,
+    }),
+    administrator,
+  );
+  expect(staleClear?.status).toBe(409);
+  if (!("policyRevision" in updated))
+    throw new Error("Updated policy revision was not returned.");
+  const cleared = await handle(
+    request("/_localbase/access-management", {
+      action: "clear-policy",
+      expectedPolicyRevision: updated.policyRevision,
+    }),
+    administrator,
+  );
+  expect(await cleared?.json()).toEqual({
+    cleared: true,
+    policyRevision: null,
+    restartRequired: false,
+  });
 });
 
 test("keeps key secrets one-time and enforces separate read and manage scopes", async () => {
@@ -634,6 +743,7 @@ test("serializes access mutations without losing provider or policy changes", as
     handle(
       request("/_localbase/access-management", {
         action: "apply-policy",
+        expectedPolicyRevision: null,
         policy,
       }),
       administrator,

@@ -139,6 +139,7 @@ export function AuthManagement({
   ]);
   const [policy, setPolicy] = useState("");
   const [policyConfigured, setPolicyConfigured] = useState(false);
+  const [policyRevision, setPolicyRevision] = useState<string | null>(null);
   const [keyName, setKeyName] = useState("");
   const [keyExpiry, setKeyExpiry] = useState("");
   const [keyPermissions, setKeyPermissions] = useState<Permission[]>([
@@ -200,6 +201,7 @@ export function AuthManagement({
           : "",
       );
       setPolicyConfigured(accessResult.value.policy !== null);
+      setPolicyRevision(accessResult.value.policyRevision);
       setAccessError("");
     } else {
       setAccessError(
@@ -341,6 +343,7 @@ export function AuthManagement({
         await post("/_localbase/access-management", {
           action: "apply-policy",
           policy: parsed,
+          expectedPolicyRevision: policyRevision,
         })
       ).body?.cancel();
       setNotice("Policy saved. The change is active now.");
@@ -355,6 +358,7 @@ export function AuthManagement({
   }
 
   async function clearPolicy() {
+    if (!policyRevision) return;
     setBusy(true);
     setNotice("");
     setAccessError("");
@@ -362,6 +366,7 @@ export function AuthManagement({
       await (
         await post("/_localbase/access-management", {
           action: "clear-policy",
+          expectedPolicyRevision: policyRevision,
         })
       ).body?.cancel();
       setConfirming("");

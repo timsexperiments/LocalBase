@@ -3,7 +3,8 @@ export type BrowserAccessErrorCode =
   | "managed-user-not-found"
   | "managed-user-exists"
   | "role-not-found"
-  | "policy-conflict";
+  | "policy-conflict"
+  | "policy-revision-conflict";
 
 export class BrowserAccessError extends Error {
   constructor(
