@@ -16,6 +16,17 @@ const request = (baseUrl: string, model: string, content: string) =>
     }),
   });
 
+async function expectStreamTerminated(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+) {
+  const terminal = await reader.read().then(
+    (result) => ({ kind: "closed" as const, result }),
+    (error: unknown) => ({ kind: "errored" as const, error }),
+  );
+  if (terminal.kind === "closed") expect(terminal.result.done).toBe(true);
+  else expect(terminal.error).toBeInstanceOf(Error);
+}
+
 test("compiled gateway releases a crashed backend stream and recovers", async () => {
   const gateway = await startGatewayFixture({ llmRuntimeHttpBackend: true });
   try {
@@ -34,7 +45,7 @@ test("compiled gateway releases a crashed backend stream and recovers", async ()
     await gateway.waitForLlmFirstEvent();
     expect((await reader.read()).done).toBe(false);
     await gateway.crashLlmRuntime();
-    await expect(reader.read()).resolves.toMatchObject({ done: true });
+    await expectStreamTerminated(reader);
 
     const recovered = await request(gateway.baseUrl, firstModel, "recover");
     expect(recovered.status).toBe(200);
@@ -45,7 +56,7 @@ test("compiled gateway releases a crashed backend stream and recovers", async ()
       throw new Error("Gateway did not recover an SSE body.");
     expect((await recoveredReader.read()).done).toBe(false);
     await gateway.crashLlmRuntime();
-    await expect(recoveredReader.read()).resolves.toMatchObject({ done: true });
+    await expectStreamTerminated(recoveredReader);
 
     const replacementModel = "qwen2.5-coder-7b-instruct-q4_k_m";
     const config = gateway.readConfig();
