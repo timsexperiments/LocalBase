@@ -12,6 +12,9 @@ import type {
   AccessGithubAddInput,
   AccessGithubListInput,
   AccessGithubRemoveInput,
+  AccessMagicLinkAddInput,
+  AccessMagicLinkListInput,
+  AccessMagicLinkRemoveInput,
   AccessOidcAddInput,
   AccessOidcListInput,
   AccessOidcRemoveInput,
@@ -136,7 +139,19 @@ export async function runAccessEmailDisable(
   const disabled = await withRootOperation(
     ctx.config.root,
     "disable email delivery",
-    disableEmailDelivery,
+    async (root) => {
+      const browserAccess = await loadBrowserAccessConfig(root);
+      if (
+        browserAccess?.provider.kind === "direct" &&
+        browserAccess.provider.registrations.some(
+          (registration) => registration.kind === "magic-link",
+        )
+      )
+        throw new CliInputError(
+          "Remove the magic-link registration before disabling email delivery.",
+        );
+      return await disableEmailDelivery(root);
+    },
   );
   execution.output.info(
     disabled
@@ -423,6 +438,123 @@ export async function runAccessGithubRemove(
   execution.output.info(
     result
       ? `Removed GitHub OAuth registration ${input.id}. Restart LocalBase to apply it.`
+      : `Removed ${input.id} and disabled browser access. Restart LocalBase to apply it.`,
+  );
+  return {
+    data: {
+      removed: true as const,
+      config: result ? summarizeBrowserAccessConfig(result) : null,
+      restartRequired: true as const,
+    },
+  };
+}
+
+export async function runAccessMagicLinkAdd(
+  input: AccessMagicLinkAddInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const config = await withRootOperation(
+    ctx.config.root,
+    "configure browser access",
+    async (root) => {
+      if (!(await loadEmailDeliveryConfig(root)))
+        throw new CliInputError(
+          "Configure email delivery before enabling magic-link authentication.",
+        );
+      const current = await loadBrowserAccessConfig(root);
+      const otherMagicLink =
+        current?.provider.kind === "direct"
+          ? current.provider.registrations.find(
+              (registration) =>
+                registration.kind === "magic-link" &&
+                registration.id !== input.id,
+            )
+          : undefined;
+      if (otherMagicLink)
+        throw new CliInputError(
+          `Remove magic-link registration ${otherMagicLink.id} before adding another.`,
+        );
+      return await saveBrowserAccessConfig(
+        root,
+        upsertAccessRegistration(current, {
+          registration: {
+            kind: "magic-link",
+            id: input.id,
+            name: input.name,
+          },
+          origin: input.origin,
+          permissions:
+            input.permissions ??
+            current?.permissions ??
+            defaultBrowserPermissions,
+        }),
+      );
+    },
+  );
+  execution.output.info(
+    `Saved magic-link registration ${input.id}. Restart LocalBase to apply it.`,
+  );
+  return {
+    data: {
+      config: summarizeBrowserAccessConfig(config),
+      restartRequired: true as const,
+    },
+  };
+}
+
+export async function runAccessMagicLinkList(
+  _input: AccessMagicLinkListInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const current = await loadBrowserAccessConfig(ctx.config.root);
+  const summary = current ? summarizeBrowserAccessConfig(current) : null;
+  const registrations =
+    summary?.provider.kind === "direct"
+      ? summary.provider.registrations.filter(
+          (registration) => registration.kind === "magic-link",
+        )
+      : [];
+  execution.output.info(`${registrations.length} magic-link registrations.`);
+  return { data: { registrations } };
+}
+
+export async function runAccessMagicLinkRemove(
+  input: AccessMagicLinkRemoveInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const result = await withRootOperation(
+    ctx.config.root,
+    "configure browser access",
+    async (root) => {
+      const current = await loadBrowserAccessConfig(root);
+      const registration =
+        current?.provider.kind === "direct"
+          ? current.provider.registrations.find(
+              (candidate) => candidate.id === input.id,
+            )
+          : undefined;
+      if (registration?.kind !== "magic-link")
+        throw new CliInputError(
+          `Magic-link registration ${input.id} not found.`,
+        );
+      const removal = removeAccessRegistration(current, input.id);
+      if (removal.kind === "not-found")
+        throw new CliInputError(
+          `Magic-link registration ${input.id} not found.`,
+        );
+      if (removal.kind === "disabled") {
+        await disableBrowserAccess(root);
+        return null;
+      }
+      return await saveBrowserAccessConfig(root, removal.config);
+    },
+  );
+  execution.output.info(
+    result
+      ? `Removed magic-link registration ${input.id}. Restart LocalBase to apply it.`
       : `Removed ${input.id} and disabled browser access. Restart LocalBase to apply it.`,
   );
   return {

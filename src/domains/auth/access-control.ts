@@ -364,6 +364,7 @@ export function clearAccessControl(db: LocalBaseDatabase): boolean {
       const managedUser = db
         .select({ id: authUsersTable.id })
         .from(authUsersTable)
+        .where(notInArray(authUsersTable.status, ["removed"]))
         .limit(1)
         .get();
       if (managedUser)
@@ -403,11 +404,16 @@ export function resolveAccessControl(
         .select({
           userId: authIdentitiesTable.userId,
           status: authUsersTable.status,
+          email: authUserEmailsTable.email,
         })
         .from(authIdentitiesTable)
         .innerJoin(
           authUsersTable,
           eq(authIdentitiesTable.userId, authUsersTable.id),
+        )
+        .leftJoin(
+          authUserEmailsTable,
+          eq(authIdentitiesTable.userId, authUserEmailsTable.userId),
         )
         .where(
           and(
@@ -440,11 +446,16 @@ export function resolveAccessControl(
             .select({
               userId: authIdentitiesTable.userId,
               status: authUsersTable.status,
+              email: authUserEmailsTable.email,
             })
             .from(authIdentitiesTable)
             .innerJoin(
               authUsersTable,
               eq(authIdentitiesTable.userId, authUsersTable.id),
+            )
+            .leftJoin(
+              authUserEmailsTable,
+              eq(authIdentitiesTable.userId, authUserEmailsTable.userId),
             )
             .where(
               and(
@@ -463,6 +474,18 @@ export function resolveAccessControl(
             storedIdentity = { ...storedIdentity, status: "active" };
           }
         }
+      }
+      if (
+        storedIdentity?.status === "pending" &&
+        options.claimManagedUser === true &&
+        email === storedIdentity.email
+      ) {
+        const now = new Date().toISOString();
+        db.update(authUsersTable)
+          .set({ status: "active", updatedAt: now })
+          .where(eq(authUsersTable.id, storedIdentity.userId))
+          .run();
+        storedIdentity = { ...storedIdentity, status: "active" };
       }
       if (storedIdentity && storedIdentity.status !== "active")
         return { matchedRoles: [], permissions: [] };

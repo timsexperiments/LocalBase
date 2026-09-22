@@ -192,7 +192,7 @@ export function AuthManagement({
   const [secret, setSecret] = useState("");
   const [confirming, setConfirming] = useState("");
   const [provider, setProvider] = useState<
-    "cloudflare-access" | "oidc" | "github-oauth"
+    "cloudflare-access" | "oidc" | "github-oauth" | "magic-link"
   >("cloudflare-access");
   const [origin, setOrigin] = useState("");
   const [teamDomain, setTeamDomain] = useState("");
@@ -250,7 +250,11 @@ export function AuthManagement({
     setRegistrationId(registration?.id ?? "");
     setRegistrationName(registration?.name ?? "");
     setIssuer(registration?.kind === "oidc" ? registration.issuer : "");
-    setClientId(registration?.clientId ?? "");
+    setClientId(
+      registration?.kind === "oidc" || registration?.kind === "github-oauth"
+        ? registration.clientId
+        : "",
+    );
     setPublicClient(
       registration?.kind === "oidc" &&
         registration.clientAuthentication === "none",
@@ -339,7 +343,9 @@ export function AuthManagement({
             ? "configure-cloudflare"
             : provider === "oidc"
               ? "upsert-oidc"
-              : "upsert-github",
+              : provider === "github-oauth"
+                ? "upsert-github"
+                : "upsert-magic-link",
         ...(provider === "cloudflare-access"
           ? {
               provider: { kind: provider, teamDomain, audience },
@@ -360,15 +366,23 @@ export function AuthManagement({
                       },
                 },
               }
-            : {
-                registration: {
-                  kind: provider,
-                  id: registrationId,
-                  name: registrationName,
-                  clientId,
-                  clientSecret,
-                },
-              }),
+            : provider === "github-oauth"
+              ? {
+                  registration: {
+                    kind: provider,
+                    id: registrationId,
+                    name: registrationName,
+                    clientId,
+                    clientSecret,
+                  },
+                }
+              : {
+                  registration: {
+                    kind: provider,
+                    id: registrationId,
+                    name: registrationName,
+                  },
+                }),
         origin,
         permissions: accessPermissions,
       });
@@ -860,6 +874,7 @@ export function AuthManagement({
                   <option value="cloudflare-access">Cloudflare Access</option>
                   <option value="oidc">OpenID Connect</option>
                   <option value="github-oauth">GitHub</option>
+                  <option value="magic-link">Email magic link</option>
                 </select>
               </label>
               <label>
@@ -905,7 +920,9 @@ export function AuthManagement({
                                 {registration.id} ·{" "}
                                 {registration.kind === "oidc"
                                   ? registration.issuer
-                                  : "GitHub OAuth"}
+                                  : registration.kind === "github-oauth"
+                                    ? "GitHub OAuth"
+                                    : "Email magic link"}
                               </p>
                             </div>
                             <button
@@ -1008,14 +1025,16 @@ export function AuthManagement({
                       />
                     </label>
                   )}
-                  <label>
-                    Client ID
-                    <input
-                      required
-                      value={clientId}
-                      onChange={(event) => setClientId(event.target.value)}
-                    />
-                  </label>
+                  {provider !== "magic-link" && (
+                    <label>
+                      Client ID
+                      <input
+                        required
+                        value={clientId}
+                        onChange={(event) => setClientId(event.target.value)}
+                      />
+                    </label>
+                  )}
                   {provider === "oidc" && (
                     <label className="toggle">
                       <input
@@ -1028,21 +1047,22 @@ export function AuthManagement({
                       Public client with PKCE
                     </label>
                   )}
-                  {(provider === "github-oauth" || !publicClient) && (
-                    <label>
-                      Client secret
-                      <input
-                        required
-                        type="password"
-                        autoComplete="new-password"
-                        value={clientSecret}
-                        placeholder="Re-enter to save"
-                        onChange={(event) =>
-                          setClientSecret(event.target.value)
-                        }
-                      />
-                    </label>
-                  )}
+                  {provider !== "magic-link" &&
+                    (provider === "github-oauth" || !publicClient) && (
+                      <label>
+                        Client secret
+                        <input
+                          required
+                          type="password"
+                          autoComplete="new-password"
+                          value={clientSecret}
+                          placeholder="Re-enter to save"
+                          onChange={(event) =>
+                            setClientSecret(event.target.value)
+                          }
+                        />
+                      </label>
+                    )}
                 </>
               )}
               <details>

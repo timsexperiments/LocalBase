@@ -96,9 +96,26 @@ export type GithubAccessRegistration = z.infer<
   typeof githubAccessRegistrationSchema
 >;
 
+export const magicLinkAccessRegistrationSchema = z
+  .object({
+    kind: z.literal("magic-link"),
+    id: accessRegistrationIdSchema,
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .refine((value) => value.trim() === value),
+  })
+  .strict();
+
+export type MagicLinkAccessRegistration = z.infer<
+  typeof magicLinkAccessRegistrationSchema
+>;
+
 export const directAccessRegistrationSchema = z.discriminatedUnion("kind", [
   oidcAccessRegistrationSchema,
   githubAccessRegistrationSchema,
+  magicLinkAccessRegistrationSchema,
 ]);
 
 export type DirectAccessRegistration = z.infer<
@@ -122,6 +139,16 @@ export const directAccessProviderSchema = z
         });
       ids.add(registration.id);
     }
+    if (
+      provider.registrations.filter(
+        (registration) => registration.kind === "magic-link",
+      ).length > 1
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["registrations"],
+        message: "Only one magic-link registration may be configured.",
+      });
   });
 
 export type DirectAccessProvider = z.infer<typeof directAccessProviderSchema>;
@@ -174,7 +201,11 @@ export type GithubAccessRegistrationSummary = z.infer<
 
 export const directAccessRegistrationSummarySchema = z.discriminatedUnion(
   "kind",
-  [oidcAccessRegistrationSummarySchema, githubAccessRegistrationSummarySchema],
+  [
+    oidcAccessRegistrationSummarySchema,
+    githubAccessRegistrationSummarySchema,
+    magicLinkAccessRegistrationSchema,
+  ],
 );
 
 const directAccessProviderSummarySchema = z
@@ -222,13 +253,15 @@ export function summarizeBrowserAccessConfig(
                 clientId: registration.clientId,
                 clientAuthentication: registration.clientAuthentication.kind,
               }
-            : {
-                kind: registration.kind,
-                id: registration.id,
-                name: registration.name,
-                clientId: registration.clientId,
-                clientAuthentication: "client-secret",
-              },
+            : registration.kind === "github-oauth"
+              ? {
+                  kind: registration.kind,
+                  id: registration.id,
+                  name: registration.name,
+                  clientId: registration.clientId,
+                  clientAuthentication: "client-secret",
+                }
+              : registration,
         ),
       ),
     },

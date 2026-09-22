@@ -392,6 +392,7 @@ test("apply migrates the prior database under the operation lock and preserves p
   const { root, desired } = fixture();
   const old = new Database(databasePath(root));
   try {
+    old.exec("DROP TABLE auth_magic_link_tokens");
     old.exec("DROP TABLE auth_domain_role_bindings");
     old.exec("DROP TABLE auth_email_role_bindings");
     old.exec("DROP TABLE auth_subject_role_bindings");
@@ -406,7 +407,7 @@ test("apply migrates the prior database under the operation lock and preserves p
     old.exec("ALTER TABLE config DROP COLUMN gateway_host");
     old.exec("ALTER TABLE config DROP COLUMN gateway_port");
     old.exec(
-      "DELETE FROM __drizzle_migrations WHERE created_at IN (SELECT created_at FROM __drizzle_migrations ORDER BY created_at DESC LIMIT 3)",
+      "DELETE FROM __drizzle_migrations WHERE created_at NOT IN (SELECT created_at FROM __drizzle_migrations ORDER BY created_at ASC LIMIT 3)",
     );
   } finally {
     old.close();

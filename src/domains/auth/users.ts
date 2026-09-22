@@ -1,7 +1,8 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import type { LocalBaseDatabase } from "../../db/client";
 import {
+  authMagicLinkTokensTable,
   authRolesTable,
   authSettingsTable,
   authUserEmailsTable,
@@ -17,6 +18,7 @@ export const managedUserStatusSchema = z.enum([
   "pending",
   "active",
   "disabled",
+  "removed",
 ]);
 
 export const managedUserEmailSchema = z
@@ -162,6 +164,11 @@ export function listManagedUsers(
     const emails = db
       .select({ email: authUserEmailsTable.email })
       .from(authUserEmailsTable)
+      .innerJoin(
+        authUsersTable,
+        eq(authUserEmailsTable.userId, authUsersTable.id),
+      )
+      .where(ne(authUsersTable.status, "removed"))
       .all()
       .map((entry) => entry.email)
       .sort();
@@ -179,23 +186,40 @@ export function inviteManagedUser(
       requireAccessPolicy(db);
       roleIds(db, parsed.roles);
       const existing = db
-        .select({ userId: authUserEmailsTable.userId })
+        .select({
+          userId: authUserEmailsTable.userId,
+          status: authUsersTable.status,
+        })
         .from(authUserEmailsTable)
+        .innerJoin(
+          authUsersTable,
+          eq(authUserEmailsTable.userId, authUsersTable.id),
+        )
         .where(eq(authUserEmailsTable.email, parsed.email))
         .get();
-      if (existing)
+      if (existing && existing.status !== "removed")
         throw new BrowserAccessError(
           "managed-user-exists",
           `Managed user ${parsed.email} already exists.`,
         );
       const now = new Date().toISOString();
-      const id = crypto.randomUUID();
-      db.insert(authUsersTable)
-        .values({ id, status: "pending", createdAt: now, updatedAt: now })
-        .run();
-      db.insert(authUserEmailsTable)
-        .values({ userId: id, email: parsed.email })
-        .run();
+      const id = existing?.userId ?? crypto.randomUUID();
+      if (existing) {
+        db.update(authUsersTable)
+          .set({ status: "pending", updatedAt: now })
+          .where(eq(authUsersTable.id, id))
+          .run();
+        db.delete(authUserRolesTable)
+          .where(eq(authUserRolesTable.userId, id))
+          .run();
+      } else {
+        db.insert(authUsersTable)
+          .values({ id, status: "pending", createdAt: now, updatedAt: now })
+          .run();
+        db.insert(authUserEmailsTable)
+          .values({ userId: id, email: parsed.email })
+          .run();
+      }
       const ids = roleIds(db, parsed.roles);
       db.insert(authUserRolesTable)
         .values(
@@ -220,6 +244,11 @@ export function replaceManagedUserRoles(
     () => {
       requireAccessPolicy(db);
       const user = userByEmail(db, parsed.email);
+      if (user.status === "removed")
+        throw new BrowserAccessError(
+          "managed-user-not-found",
+          `Managed user ${parsed.email} was not found.`,
+        );
       const ids = roleIds(db, parsed.roles);
       db.delete(authUserRolesTable)
         .where(eq(authUserRolesTable.userId, user.id))
@@ -248,6 +277,11 @@ function setManagedUserStatus(
   return db.transaction(
     () => {
       const user = userByEmail(db, parsed.email);
+      if (user.status === "removed")
+        throw new BrowserAccessError(
+          "managed-user-not-found",
+          `Managed user ${parsed.email} was not found.`,
+        );
       db.update(authUsersTable)
         .set({ status, updatedAt: new Date().toISOString() })
         .where(eq(authUsersTable.id, user.id))
@@ -280,7 +314,21 @@ export function removeManagedUser(
   return db.transaction(
     () => {
       const user = userByEmail(db, parsed.email);
-      db.delete(authUsersTable).where(eq(authUsersTable.id, user.id)).run();
+      if (user.status === "removed")
+        throw new BrowserAccessError(
+          "managed-user-not-found",
+          `Managed user ${parsed.email} was not found.`,
+        );
+      db.delete(authMagicLinkTokensTable)
+        .where(eq(authMagicLinkTokensTable.userId, user.id))
+        .run();
+      db.delete(authUserRolesTable)
+        .where(eq(authUserRolesTable.userId, user.id))
+        .run();
+      db.update(authUsersTable)
+        .set({ status: "removed", updatedAt: new Date().toISOString() })
+        .where(eq(authUsersTable.id, user.id))
+        .run();
       return user;
     },
     { behavior: "immediate" },
