@@ -1859,7 +1859,12 @@ export async function runServe(
           magicLinks: createMagicLinkService({
             db: database,
             origin: browserAccess.origin,
-            emailDelivery,
+            loadEmailDelivery: async () => {
+              const current = await loadEmailDeliveryConfig(config.root);
+              if (!current)
+                throw new Error("Email delivery is not configured.");
+              return current;
+            },
             onDeliveryFailure: (error) =>
               ctx.logger.event({
                 severity: "error",

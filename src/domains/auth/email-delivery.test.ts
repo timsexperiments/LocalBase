@@ -10,6 +10,7 @@ import {
   saveEmailDeliveryConfig,
   sendEmail,
   summarizeEmailDeliveryConfig,
+  trySendEmail,
   type EmailDeliveryConfig,
 } from "./email-delivery";
 
@@ -81,6 +82,19 @@ test("reports safe SMTP failure categories without exposing credentials", async 
     expect((error as EmailDeliveryError).category).toBe("connect");
     expect((error as Error).message).not.toContain(password);
   }
+});
+
+test("reports recoverable delivery failure without hiding caller state", async () => {
+  expect(
+    await trySendEmail(
+      { ...config, host: "127.0.0.1", port: 1 },
+      {
+        to: "recipient@example.com",
+        subject: "Invitation",
+        text: "Sign in at https://localbase.example.com/app/login",
+      },
+    ),
+  ).toBe(false);
 });
 
 test("rejects malformed configuration without exposing file contents", async () => {

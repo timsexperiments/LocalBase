@@ -220,7 +220,11 @@ export const accessUsersListResultSchema = z
   .object({ users: z.array(managedUserSchema) })
   .strict();
 export const accessUsersInviteResultSchema = z
-  .object({ user: managedUserSchema, signInUrl: z.string().url() })
+  .object({
+    user: managedUserSchema,
+    signInUrl: z.string().url(),
+    emailDelivered: z.boolean(),
+  })
   .strict();
 export const accessUsersUserResultSchema = z
   .object({ user: managedUserSchema })

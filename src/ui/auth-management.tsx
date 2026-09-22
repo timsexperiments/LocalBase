@@ -29,6 +29,9 @@ type ManagedUser = z.infer<
 type AccessRole = z.infer<
   typeof accessManagementReadResponseSchema
 >["roles"][number];
+type EmailDelivery = z.infer<
+  typeof accessManagementReadResponseSchema
+>["emailDelivery"];
 type ApiKey = z.infer<typeof keyManagementReadResponseSchema>["keys"][number];
 
 const permissionGroups = [
@@ -151,6 +154,13 @@ export function reconcileInviteRoles(
   return fallback ? [fallback] : [];
 }
 
+export function shouldSendInvitationEmail(
+  requested: boolean,
+  emailDeliveryConfigured: boolean,
+): boolean {
+  return requested && emailDeliveryConfigured;
+}
+
 export function isCurrentManagedUser(
   userEmail: string,
   verifiedEmail: string | undefined,
@@ -211,6 +221,19 @@ export function AuthManagement({
   const [policyRevision, setPolicyRevision] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRoles, setInviteRoles] = useState<string[]>([]);
+  const [sendInviteEmail, setSendInviteEmail] = useState(false);
+  const [inviteUrl, setInviteUrl] = useState("");
+  const [emailDelivery, setEmailDelivery] = useState<EmailDelivery>(null);
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpSecurity, setSmtpSecurity] = useState<"tls" | "starttls">(
+    "starttls",
+  );
+  const [smtpFrom, setSmtpFrom] = useState("");
+  const [smtpPasswordAuth, setSmtpPasswordAuth] = useState(false);
+  const [smtpUsername, setSmtpUsername] = useState("");
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [smtpTestRecipient, setSmtpTestRecipient] = useState("");
   const [roleName, setRoleName] = useState("");
   const [roleDescription, setRoleDescription] = useState("");
   const [rolePermissions, setRolePermissions] = useState<Permission[]>([
@@ -286,6 +309,25 @@ export function AuthManagement({
       );
       setPolicyConfigured(accessResult.value.policy !== null);
       setPolicyRevision(accessResult.value.policyRevision);
+      setEmailDelivery(accessResult.value.emailDelivery);
+      if (accessResult.value.emailDelivery) {
+        setSmtpHost(accessResult.value.emailDelivery.host);
+        setSmtpPort(String(accessResult.value.emailDelivery.port));
+        setSmtpSecurity(accessResult.value.emailDelivery.security);
+        setSmtpFrom(accessResult.value.emailDelivery.from);
+        setSmtpPasswordAuth(
+          accessResult.value.emailDelivery.authentication === "password",
+        );
+      } else {
+        setSmtpHost("");
+        setSmtpPort("587");
+        setSmtpSecurity("starttls");
+        setSmtpFrom("");
+        setSmtpPasswordAuth(false);
+        setSmtpUsername("");
+        setSmtpPassword("");
+        setSendInviteEmail(false);
+      }
       setInviteRoles((selected) =>
         reconcileInviteRoles(
           accessResult.value.roles,
@@ -473,6 +515,10 @@ export function AuthManagement({
         action: "invite-user",
         email: inviteEmail,
         roles: inviteRoles,
+        sendEmail: shouldSendInvitationEmail(
+          sendInviteEmail,
+          emailDelivery !== null,
+        ),
       });
       const result = accessManagementMutationResponseSchema.parse(
         await response.json(),
@@ -480,11 +526,97 @@ export function AuthManagement({
       if (!("user" in result) || !("signInUrl" in result))
         throw new Error("The invitation response was incomplete.");
       setInviteEmail("");
-      setNotice(`User invited. Send them ${result.signInUrl}`);
+      setInviteUrl(result.signInUrl);
+      setNotice(
+        result.emailDelivered
+          ? "User invited and email sent."
+          : sendInviteEmail
+            ? "User invited, but email delivery failed. Copy the sign-in link."
+            : "User invited. Copy the sign-in link.",
+      );
       await load();
     } catch (error) {
       setAccessError(
         error instanceof Error ? error.message : "Could not invite the user.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveEmailDelivery(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setNotice("");
+    setAccessError("");
+    try {
+      const response = await post("/_localbase/access-management", {
+        action: "configure-email-delivery",
+        config: {
+          host: smtpHost,
+          port: Number(smtpPort),
+          security: smtpSecurity,
+          authentication: smtpPasswordAuth
+            ? {
+                kind: "password",
+                username: smtpUsername,
+                password: smtpPassword,
+              }
+            : { kind: "none" },
+          from: smtpFrom,
+        },
+      });
+      accessManagementMutationResponseSchema.parse(await response.json());
+      setSmtpPassword("");
+      setNotice("Email delivery saved.");
+      await load();
+    } catch (error) {
+      setAccessError(
+        error instanceof Error
+          ? error.message
+          : "Could not save email delivery.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function testEmailDelivery() {
+    setBusy(true);
+    setNotice("");
+    setAccessError("");
+    try {
+      const response = await post("/_localbase/access-management", {
+        action: "test-email-delivery",
+        to: smtpTestRecipient,
+      });
+      accessManagementMutationResponseSchema.parse(await response.json());
+      setNotice(`Test email sent to ${smtpTestRecipient}.`);
+    } catch (error) {
+      setAccessError(
+        error instanceof Error ? error.message : "Could not send test email.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disableEmailDeliveryConfig() {
+    setBusy(true);
+    setNotice("");
+    setAccessError("");
+    try {
+      const response = await post("/_localbase/access-management", {
+        action: "disable-email-delivery",
+      });
+      accessManagementMutationResponseSchema.parse(await response.json());
+      setNotice("Email delivery disabled.");
+      await load();
+    } catch (error) {
+      setAccessError(
+        error instanceof Error
+          ? error.message
+          : "Could not disable email delivery.",
       );
     } finally {
       setBusy(false);
@@ -828,12 +960,16 @@ export function AuthManagement({
           verifiedEmail={connection.verifiedEmail}
           inviteEmail={inviteEmail}
           inviteRoles={inviteRoles}
+          sendInviteEmail={sendInviteEmail}
+          canEmailInvite={emailDelivery !== null}
+          inviteUrl={inviteUrl}
           roleName={roleName}
           roleDescription={roleDescription}
           rolePermissions={rolePermissions}
           confirming={confirming}
           setInviteEmail={setInviteEmail}
           setInviteRoles={setInviteRoles}
+          setSendInviteEmail={setSendInviteEmail}
           setRoleName={setRoleName}
           setRoleDescription={setRoleDescription}
           setRolePermissions={setRolePermissions}
@@ -1085,6 +1221,140 @@ export function AuthManagement({
             </form>
           </section>
           <section className="admin-card">
+            <div className="admin-card-heading">
+              <div>
+                <h3>Email delivery</h3>
+                <p>
+                  {emailDelivery
+                    ? `${emailDelivery.host}:${emailDelivery.port} · ${emailDelivery.from}`
+                    : "SMTP is not configured"}
+                </p>
+              </div>
+              {emailDelivery && (
+                <span className="model-badge installed">Configured</span>
+              )}
+            </div>
+            <form onSubmit={saveEmailDelivery}>
+              <label>
+                SMTP host
+                <input
+                  required
+                  value={smtpHost}
+                  placeholder="smtp.example.com"
+                  onChange={(event) => setSmtpHost(event.target.value)}
+                />
+              </label>
+              <label>
+                Port
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  max="65535"
+                  value={smtpPort}
+                  onChange={(event) => setSmtpPort(event.target.value)}
+                />
+              </label>
+              <label>
+                Transport security
+                <select
+                  value={smtpSecurity}
+                  onChange={(event) =>
+                    setSmtpSecurity(event.target.value as typeof smtpSecurity)
+                  }
+                >
+                  <option value="starttls">STARTTLS</option>
+                  <option value="tls">TLS</option>
+                </select>
+              </label>
+              <label>
+                From address
+                <input
+                  required
+                  type="email"
+                  value={smtpFrom}
+                  onChange={(event) => setSmtpFrom(event.target.value)}
+                />
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={smtpPasswordAuth}
+                  onChange={(event) =>
+                    setSmtpPasswordAuth(event.target.checked)
+                  }
+                />
+                SMTP username and password
+              </label>
+              <label>
+                Username
+                <input
+                  required={smtpPasswordAuth}
+                  disabled={!smtpPasswordAuth}
+                  autoComplete="username"
+                  value={smtpUsername}
+                  onChange={(event) => setSmtpUsername(event.target.value)}
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  required={smtpPasswordAuth}
+                  disabled={!smtpPasswordAuth}
+                  value={smtpPassword}
+                  placeholder={
+                    emailDelivery?.authentication === "password"
+                      ? "Re-enter to replace credentials"
+                      : ""
+                  }
+                  onChange={(event) => setSmtpPassword(event.target.value)}
+                />
+              </label>
+              <div className="admin-actions">
+                <button
+                  className="primary-action"
+                  disabled={busy}
+                  type="submit"
+                >
+                  Save SMTP
+                </button>
+                {emailDelivery && (
+                  <button
+                    className="danger"
+                    disabled={busy}
+                    type="button"
+                    onClick={() => void disableEmailDeliveryConfig()}
+                  >
+                    Disable
+                  </button>
+                )}
+              </div>
+            </form>
+            {emailDelivery && (
+              <div className="admin-actions">
+                <label className="compact-field">
+                  Test recipient
+                  <input
+                    type="email"
+                    value={smtpTestRecipient}
+                    onChange={(event) =>
+                      setSmtpTestRecipient(event.target.value)
+                    }
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={busy || !smtpTestRecipient}
+                  onClick={() => void testEmailDelivery()}
+                >
+                  Send test
+                </button>
+              </div>
+            )}
+          </section>
+          <section className="admin-card">
             <h3>Access policy</h3>
             <p className="hint">
               JSON roles and identity bindings. At least one binding must retain
@@ -1308,12 +1578,16 @@ function PeopleAndRoles({
   verifiedEmail,
   inviteEmail,
   inviteRoles,
+  sendInviteEmail,
+  canEmailInvite,
+  inviteUrl,
   roleName,
   roleDescription,
   rolePermissions,
   confirming,
   setInviteEmail,
   setInviteRoles,
+  setSendInviteEmail,
   setRoleName,
   setRoleDescription,
   setRolePermissions,
@@ -1337,12 +1611,16 @@ function PeopleAndRoles({
   verifiedEmail?: string;
   inviteEmail: string;
   inviteRoles: readonly string[];
+  sendInviteEmail: boolean;
+  canEmailInvite: boolean;
+  inviteUrl: string;
   roleName: string;
   roleDescription: string;
   rolePermissions: readonly Permission[];
   confirming: string;
   setInviteEmail: (email: string) => void;
   setInviteRoles: (roles: string[]) => void;
+  setSendInviteEmail: (send: boolean) => void;
   setRoleName: (name: string) => void;
   setRoleDescription: (description: string) => void;
   setRolePermissions: (permissions: Permission[]) => void;
@@ -1455,6 +1733,20 @@ function PeopleAndRoles({
                   disabled={busy}
                 />
               </fieldset>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  disabled={busy || !canEmailInvite}
+                  checked={sendInviteEmail && canEmailInvite}
+                  onChange={(event) => setSendInviteEmail(event.target.checked)}
+                />
+                Send invitation email
+              </label>
+              {!canEmailInvite && (
+                <p className="hint">
+                  Configure SMTP under Browser access to send invitations.
+                </p>
+              )}
               <button
                 className="primary-action"
                 disabled={busy || !inviteRoles.length}
@@ -1462,6 +1754,22 @@ function PeopleAndRoles({
               >
                 Create invitation
               </button>
+              {inviteUrl && (
+                <div className="secret-once">
+                  <strong>Invitation link</strong>
+                  <code>{inviteUrl}</code>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void navigator.clipboard
+                        .writeText(inviteUrl)
+                        .catch(() => undefined)
+                    }
+                  >
+                    Copy link
+                  </button>
+                </div>
+              )}
             </form>
           </section>
           <section className="admin-card">

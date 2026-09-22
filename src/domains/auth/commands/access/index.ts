@@ -36,6 +36,7 @@ import {
   saveEmailDeliveryConfig,
   sendEmail,
   summarizeEmailDeliveryConfig,
+  trySendEmail,
 } from "../../email-delivery";
 import {
   disableBrowserAccess,
@@ -709,14 +710,44 @@ export async function runAccessUsersInvite(
       const config = await loadBrowserAccessConfig(root);
       if (!config)
         throw new CliInputError("Configure a browser identity provider first.");
-      const user = inviteManagedUser(ctx.database.get(root), input);
-      return { user, signInUrl: new URL("/app", config.origin).toString() };
+      const emailDelivery = input.sendEmail
+        ? await loadEmailDeliveryConfig(root)
+        : null;
+      if (input.sendEmail && !emailDelivery)
+        throw new CliInputError(
+          "Configure email delivery before sending an invitation email.",
+        );
+      const user = inviteManagedUser(ctx.database.get(root), {
+        email: input.email,
+        roles: input.roles,
+      });
+      return {
+        user,
+        signInUrl: new URL("/app/login", config.origin).toString(),
+        emailDelivery,
+      };
     },
   );
+  let emailDelivered = false;
+  if (result.emailDelivery) {
+    emailDelivered = await trySendEmail(result.emailDelivery, {
+      to: result.user.email,
+      subject: "You were invited to LocalBase",
+      text: `You were invited to LocalBase. Sign in here:\n\n${result.signInUrl}`,
+    });
+  }
   execution.output.info(
-    `Invited ${result.user.email}. Sign in at ${result.signInUrl}`,
+    emailDelivered
+      ? `Invited ${result.user.email} and sent an email.`
+      : `Invited ${result.user.email}. Sign in at ${result.signInUrl}`,
   );
-  return { data: result };
+  return {
+    data: {
+      user: result.user,
+      signInUrl: result.signInUrl,
+      emailDelivered,
+    },
+  };
 }
 
 export async function runAccessUsersRoles(

@@ -166,13 +166,13 @@ export function clearMagicLinks(db: LocalBaseDatabase): void {
 export function createMagicLinkService({
   db,
   origin,
-  emailDelivery,
+  loadEmailDelivery,
   deliver = sendEmail,
   onDeliveryFailure,
 }: Readonly<{
   db: LocalBaseDatabase;
   origin: string;
-  emailDelivery: EmailDeliveryConfig;
+  loadEmailDelivery: () => Promise<EmailDeliveryConfig>;
   deliver?: (
     config: EmailDeliveryConfig,
     email: OutboundEmail,
@@ -187,7 +187,7 @@ export function createMagicLinkService({
       const signIn = new URL("/magic-link/callback", origin);
       signIn.hash = issued.token;
       try {
-        await deliver(emailDelivery, {
+        await deliver(await loadEmailDelivery(), {
           to: issued.email,
           subject: "Sign in to LocalBase",
           text: `Sign in to LocalBase:\n\n${signIn.href}\n\nThis link expires in 15 minutes and can be used once.`,

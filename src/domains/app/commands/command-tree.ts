@@ -1314,6 +1314,10 @@ const accessUsersInviteCommand = command<AccessUsersInviteInput>({
       description: "Named roles to grant after first sign-in",
       required: true,
     },
+    "send-email": {
+      type: "boolean",
+      description: "Send the invitation using configured email delivery",
+    },
   },
   parse: (input) => accessUsersInviteInputSchema.parse(input),
   resultSchema: accessUsersInviteResultSchema,
