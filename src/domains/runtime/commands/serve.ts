@@ -1830,7 +1830,9 @@ export async function runServe(
   const uiAccess = createUiAccess({
     config: await loadUiAccessConfig(config.root),
     authorizeIdentity: (identity) =>
-      resolveAccessControl(ctx.database.get(config.root), identity),
+      resolveAccessControl(ctx.database.get(config.root), identity, {
+        claimManagedUser: true,
+      }),
   });
   const wrapperHost = input.host ?? config.gatewayHost;
   const wrapperPort = input.port ?? config.gatewayPort;

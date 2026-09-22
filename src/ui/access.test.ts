@@ -18,6 +18,13 @@ import {
   cloudflareAccessProviderSchema,
   defaultBrowserPermissions,
 } from "../domains/auth/browser-access";
+import {
+  accessControlConfigSchema,
+  applyAccessControl,
+  resolveAccessControl,
+} from "../domains/auth/access-control";
+import { disableManagedUser, inviteManagedUser } from "../domains/auth/users";
+import { DatabaseSession } from "../db/client";
 import { startGatewayFixture } from "../test/gateway-fixture";
 import { VideoJobManager } from "../domains/runtime/video/video-job-manager";
 
@@ -231,6 +238,68 @@ test("evaluates Cloudflare verified identity claims with the local policy", asyn
     matchedRoles: ["admin"],
     permissions: ["models:manage", "access:manage"],
   });
+});
+
+test("gives disabled managed users no UI permissions despite provider-wide roles", async () => {
+  const root = await mkdtemp(join(tmpdir(), "localbase-ui-managed-user-"));
+  const database = new DatabaseSession();
+  try {
+    const db = database.get(root);
+    applyAccessControl(
+      db,
+      accessControlConfigSchema.parse({
+        roles: [
+          {
+            name: "admin",
+            description: "Administrators",
+            permissions: ["access:manage"],
+          },
+          {
+            name: "member",
+            description: "Members",
+            permissions: ["inference:chat", "models:read"],
+          },
+        ],
+        bindings: [
+          {
+            kind: "email",
+            role: "admin",
+            email: "owner@example.com",
+          },
+        ],
+        defaultRole: "member",
+      }),
+    );
+    inviteManagedUser(db, { email: "person@example.com", roles: ["member"] });
+    const identity = {
+      issuer,
+      subject: "person-one",
+      verifiedEmail: "person@example.com",
+    };
+    expect(
+      resolveAccessControl(db, identity, { claimManagedUser: true })
+        ?.permissions,
+    ).toEqual(["inference:chat", "models:read"]);
+    disableManagedUser(db, { email: "person@example.com" });
+
+    const access = createUiAccess({
+      config,
+      keyResolver: resolver,
+      authorizeIdentity: (verifiedIdentity) =>
+        resolveAccessControl(db, verifiedIdentity, {
+          claimManagedUser: true,
+        }),
+    });
+    const sessionRequest = request(await token());
+    expect((await responseFor(access, sessionRequest)).status).toBe(200);
+    expect(access.credential(sessionRequest)).toMatchObject({
+      matchedRoles: [],
+      permissions: [],
+    });
+  } finally {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("enforces exact host, origin, fetch-site, marker, method, and path boundaries", async () => {

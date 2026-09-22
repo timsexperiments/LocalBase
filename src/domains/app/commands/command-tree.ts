@@ -21,6 +21,12 @@ import {
   accessPolicyShowInputSchema,
   accessPolicyTestInputSchema,
   accessShowInputSchema,
+  accessUsersDisableInputSchema,
+  accessUsersEnableInputSchema,
+  accessUsersInviteInputSchema,
+  accessUsersListInputSchema,
+  accessUsersRemoveInputSchema,
+  accessUsersRolesInputSchema,
   catalogInputSchema,
   configureInputSchema,
   diagnosticsInputSchema,
@@ -51,6 +57,12 @@ import {
   type AccessPolicyShowInput,
   type AccessPolicyTestInput,
   type AccessShowInput,
+  type AccessUsersDisableInput,
+  type AccessUsersEnableInput,
+  type AccessUsersInviteInput,
+  type AccessUsersListInput,
+  type AccessUsersRemoveInput,
+  type AccessUsersRolesInput,
   type CatalogInput,
   type ConfigureInput,
   type DiagnosticsInput,
@@ -84,6 +96,9 @@ import {
   accessPolicyShowResultSchema,
   accessPolicyTestResultSchema,
   accessShowResultSchema,
+  accessUsersInviteResultSchema,
+  accessUsersListResultSchema,
+  accessUsersUserResultSchema,
   catalogResultSchema,
   configureResultSchema,
   diagnosticsResultSchema,
@@ -1091,6 +1106,125 @@ const accessPolicyClearCommand = command<AccessPolicyClearInput>({
   },
 });
 
+const accessUsersListCommand = command<AccessUsersListInput>({
+  path: ["access", "users", "list"],
+  description: "List provisioned browser users",
+  parse: (input) => accessUsersListInputSchema.parse(input),
+  resultSchema: accessUsersListResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessUsersList } = await import("../../auth/commands/access");
+    return await runAccessUsersList(input, context, execution);
+  },
+});
+
+const accessUsersInviteCommand = command<AccessUsersInviteInput>({
+  path: ["access", "users", "invite"],
+  description: "Provision a browser user by verified email",
+  args: {
+    email: {
+      type: "string",
+      valueHint: "person@example.com",
+      description: "Verified email address",
+      required: true,
+    },
+    roles: {
+      type: "string",
+      valueHint: "role,...",
+      description: "Named roles to grant after first sign-in",
+      required: true,
+    },
+  },
+  parse: (input) => accessUsersInviteInputSchema.parse(input),
+  resultSchema: accessUsersInviteResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessUsersInvite } = await import("../../auth/commands/access");
+    return await runAccessUsersInvite(input, context, execution);
+  },
+});
+
+const accessUsersRolesCommand = command<AccessUsersRolesInput>({
+  path: ["access", "users", "roles"],
+  description: "Replace a browser user's named roles",
+  args: {
+    email: {
+      type: "string",
+      valueHint: "person@example.com",
+      description: "Managed user email address",
+      required: true,
+    },
+    roles: {
+      type: "string",
+      valueHint: "role,...",
+      description: "Complete named role set, or empty to grant none",
+      required: true,
+    },
+  },
+  parse: (input) => accessUsersRolesInputSchema.parse(input),
+  resultSchema: accessUsersUserResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessUsersRoles } = await import("../../auth/commands/access");
+    return await runAccessUsersRoles(input, context, execution);
+  },
+});
+
+const accessUsersEnableCommand = command<AccessUsersEnableInput>({
+  path: ["access", "users", "enable"],
+  description: "Enable a browser user",
+  args: {
+    email: {
+      type: "string",
+      valueHint: "person@example.com",
+      description: "Managed user email address",
+      required: true,
+    },
+  },
+  parse: (input) => accessUsersEnableInputSchema.parse(input),
+  resultSchema: accessUsersUserResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessUsersEnable } = await import("../../auth/commands/access");
+    return await runAccessUsersEnable(input, context, execution);
+  },
+});
+
+const accessUsersDisableCommand = command<AccessUsersDisableInput>({
+  path: ["access", "users", "disable"],
+  description: "Disable a browser user and revoke all browser permissions",
+  args: {
+    email: {
+      type: "string",
+      valueHint: "person@example.com",
+      description: "Managed user email address",
+      required: true,
+    },
+  },
+  parse: (input) => accessUsersDisableInputSchema.parse(input),
+  resultSchema: accessUsersUserResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessUsersDisable } =
+      await import("../../auth/commands/access");
+    return await runAccessUsersDisable(input, context, execution);
+  },
+});
+
+const accessUsersRemoveCommand = command<AccessUsersRemoveInput>({
+  path: ["access", "users", "remove"],
+  description: "Remove a browser user and linked identities",
+  args: {
+    email: {
+      type: "string",
+      valueHint: "person@example.com",
+      description: "Managed user email address",
+      required: true,
+    },
+  },
+  parse: (input) => accessUsersRemoveInputSchema.parse(input),
+  resultSchema: accessUsersUserResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessUsersRemove } = await import("../../auth/commands/access");
+    return await runAccessUsersRemove(input, context, execution);
+  },
+});
+
 const resetCommand = command<ResetInput>({
   path: ["reset"],
   description: "Reset the LocalBase configuration database",
@@ -1228,6 +1362,12 @@ export const commands = [
   accessPolicyApplyCommand,
   accessPolicyTestCommand,
   accessPolicyClearCommand,
+  accessUsersListCommand,
+  accessUsersInviteCommand,
+  accessUsersRolesCommand,
+  accessUsersEnableCommand,
+  accessUsersDisableCommand,
+  accessUsersRemoveCommand,
   resetCommand,
   uninstallCommand,
 ] as const satisfies readonly Command[];
@@ -1269,6 +1409,22 @@ const accessPolicyCommand = defineCommand({
   },
 });
 
+const accessUsersCommand = defineCommand({
+  meta: {
+    name: "local-base access users",
+    description: "Provision and manage browser users",
+  },
+  args: globalArgs,
+  subCommands: {
+    list: accessUsersListCommand.citty,
+    invite: accessUsersInviteCommand.citty,
+    roles: accessUsersRolesCommand.citty,
+    enable: accessUsersEnableCommand.citty,
+    disable: accessUsersDisableCommand.citty,
+    remove: accessUsersRemoveCommand.citty,
+  },
+});
+
 const accessOidcCommand = defineCommand({
   meta: {
     name: "local-base access oidc",
@@ -1305,6 +1461,7 @@ export const accessCommand = defineCommand({
     oidc: accessOidcCommand,
     disable: accessDisableCommand.citty,
     policy: accessPolicyCommand,
+    users: accessUsersCommand,
   },
 });
 
@@ -1356,6 +1513,8 @@ export function groupForPath(path: string[]): CittyCommand | undefined {
     return accessOidcCommand;
   if (path.length === 2 && path[0] === "access" && path[1] === "github")
     return accessGithubCommand;
+  if (path.length === 2 && path[0] === "access" && path[1] === "users")
+    return accessUsersCommand;
   if (path.length !== 1) return undefined;
   if (path[0] === "models") return modelsCommand;
   if (path[0] === "keys") return keysCommand;

@@ -202,6 +202,14 @@ local-base access policy test \
 `access cloudflare`, `access oidc`, or `access github`. Policy changes apply to
 the next request without restarting LocalBase.
 
+Provision users after applying a policy with `local-base access users invite
+--email person@example.com --roles user --json`. The command returns the
+configured `/app` sign-in URL. The first matching verified provider email links
+the identity and activates the user. `access users disable` denies all browser
+permissions for that linked identity, including provider-wide role matches.
+Use `access users list`, `roles`, `enable`, `disable`, and `remove` for
+automation. A policy cannot be cleared while managed users exist.
+
 Open `/app` on the configured HTTPS origin. The playground requires a verified human session from Cloudflare Access, OpenID Connect, or GitHub; gateway API keys cannot authenticate the browser UI. Direct sessions are opaque, HTTP-only cookies and are cleared when LocalBase restarts. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
 
 Open **Access & API keys** from Settings or `/app?panel=admin` to inspect and update identity-provider configuration, access policies, API-key scopes, rotation, and revocation. The page appears only after human sign-in and each operation still requires its corresponding `access:*` or `keys:*` permission. New and rotated API-key secrets are held only in page memory and shown once.

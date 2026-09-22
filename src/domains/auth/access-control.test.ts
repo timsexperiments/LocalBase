@@ -179,8 +179,12 @@ test("grants assignments only to active stored users", async () => {
       matchedRoles: [],
       permissions: [],
     });
+    expect(() => clearAccessControl(db)).toThrow(
+      "Cannot clear the browser access policy while managed users exist.",
+    );
+    expect(db.select().from(authUserRolesTable).all()).toHaveLength(1);
+    db.delete(authUsersTable).where(eq(authUsersTable.id, "user")).run();
     expect(clearAccessControl(db)).toBe(true);
-    expect(db.select().from(authUserRolesTable).all()).toEqual([]);
   });
 });
 
