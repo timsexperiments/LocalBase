@@ -5,9 +5,11 @@ import { z } from "zod";
 import type {
   DirectAccessProvider,
   GithubAccessRegistration,
+  MagicLinkAccessRegistration,
   OidcAccessRegistration,
 } from "../domains/auth/browser-access";
 import type { BrowserIdentity } from "../domains/auth/browser-identity";
+import type { MagicLinkSessionAdapter } from "../domains/auth/magic-links";
 
 const loginStateCookie = "__Host-localbase-login-state";
 const sessionCookie = "__Host-localbase-session";
@@ -18,6 +20,8 @@ const maximumSessions = 1_024;
 const maximumResponseBytes = 64 * 1_024;
 export const oidcCallbackPath = "/oidc/callback";
 export const githubCallbackPath = "/github/callback";
+export const magicLinkCallbackPath = "/magic-link/callback";
+export const magicLinkRequestPath = "/app/login/magic";
 const githubIssuer = "https://github.com";
 const githubAuthorizationEndpoint = "https://github.com/login/oauth/authorize";
 const githubTokenEndpoint = "https://github.com/login/oauth/access_token";
@@ -109,7 +113,6 @@ type BrowserSession = Readonly<{
   identity: BrowserIdentity;
   expiresAt: number;
 }>;
-
 function redirect(location: string, cookies: readonly string[] = []): Response {
   const headers = new Headers({
     location,
@@ -153,6 +156,34 @@ function providerChoice(provider: DirectAccessProvider): Response {
         "x-content-type-options": "nosniff",
       },
     },
+  );
+}
+
+function htmlResponse(body: string): Response {
+  return new Response(
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in to LocalBase</title><style>body{font:16px system-ui;margin:0;background:#201e25;color:#eee9f1}main{max-width:28rem;margin:12vh auto;padding:1.5rem}h1{font-size:1.6rem}form{display:grid;gap:.75rem}input,button{font:inherit;border:1px solid #453b4c;border-radius:.75rem;padding:1rem;background:#2b2730;color:inherit}button{background:#a4d3bc;color:#14241d;border:0;font-weight:650}</style><main>${body}</main></html>`,
+    {
+      headers: {
+        "cache-control": "no-store",
+        "content-security-policy":
+          "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+        "content-type": "text/html; charset=utf-8",
+        "referrer-policy": "no-referrer",
+        "x-content-type-options": "nosniff",
+      },
+    },
+  );
+}
+
+function magicLinkForm(registration: MagicLinkAccessRegistration): Response {
+  return htmlResponse(
+    `<h1>${escapeHtml(registration.name)}</h1><p>Enter your invited email address to receive a sign-in link.</p><form method="post" action="${magicLinkRequestPath}?provider=${encodeURIComponent(registration.id)}"><label>Email<input name="email" type="email" autocomplete="email" maxlength="320" required></label><button type="submit">Email sign-in link</button></form>`,
+  );
+}
+
+function magicLinkRequested(): Response {
+  return htmlResponse(
+    "<h1>Check your email</h1><p>If that address can sign in, a link is on its way. It expires in 15 minutes.</p>",
   );
 }
 
@@ -263,6 +294,38 @@ async function boundedJson(response: Response): Promise<unknown> {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
+async function boundedRequestText(
+  request: Request,
+  maximumBytes: number,
+): Promise<string> {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maximumBytes)
+    throw new Error("Request exceeded its size limit.");
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maximumBytes)
+        throw new Error("Request exceeded its size limit.");
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 function formComponent(value: string): string {
   return new URLSearchParams({ value }).toString().slice("value=".length);
 }
@@ -273,15 +336,18 @@ export function createDirectSessionManager({
   keyResolver,
   fetcher = fetch,
   now = Date.now,
+  magicLinks,
 }: {
   provider: DirectAccessProvider;
   origin: string;
   keyResolver?: JWTVerifyGetKey;
   fetcher?: Fetcher;
   now?: () => number;
+  magicLinks?: MagicLinkSessionAdapter;
 }) {
   const loginStates = new Map<string, LoginState>();
   const sessions = new Map<string, BrowserSession>();
+  const magicLinkRequests = new Map<string, number>();
   const runtimes = new Map(
     provider.registrations
       .filter((registration) => registration.kind === "oidc")
@@ -493,6 +559,28 @@ export function createDirectSessionManager({
     };
   };
 
+  const establishSession = (identity: BrowserSession): Response => {
+    if (identity.expiresAt <= now())
+      return redirect(`${origin}/app?signin=failed`);
+    prune(sessions, now(), maximumSessions);
+    const session = randomToken();
+    sessions.set(session, identity);
+    return redirect(`${origin}/app`, [
+      clearCookie(loginStateCookie),
+      secureCookie(
+        sessionCookie,
+        session,
+        Math.max(1, Math.floor((identity.expiresAt - now()) / 1_000)),
+      ),
+    ]);
+  };
+
+  const magicLinkRegistration = (id: string | null) =>
+    provider.registrations.find(
+      (registration): registration is MagicLinkAccessRegistration =>
+        registration.kind === "magic-link" && registration.id === id,
+    );
+
   return {
     async startLogin(registrationId: string | null): Promise<Response> {
       if (registrationId === null && provider.registrations.length > 1)
@@ -508,6 +596,11 @@ export function createDirectSessionManager({
           status: 404,
           headers: { "cache-control": "no-store" },
         });
+      if (registration.kind === "magic-link") {
+        if (!magicLinks)
+          throw new Error("Magic-link authentication is unavailable.");
+        return magicLinkForm(registration);
+      }
       const state = randomToken();
       if (registration.kind === "github-oauth") {
         const verifier = randomToken(64);
@@ -607,20 +700,81 @@ export function createDirectSessionManager({
           if (registration.kind !== "github-oauth") return failed();
           identity = await exchangeGithub(code, state, registration, request);
         }
-        if (identity.expiresAt <= now()) return failed();
-        prune(sessions, now(), maximumSessions);
-        const session = randomToken();
-        sessions.set(session, identity);
-        return redirect(`${origin}/app`, [
-          clearCookie(loginStateCookie),
-          secureCookie(
-            sessionCookie,
-            session,
-            Math.max(1, Math.floor((identity.expiresAt - now()) / 1_000)),
-          ),
-        ]);
+        return establishSession(identity);
       } catch {
         return failed();
+      }
+    },
+
+    async requestMagicLink(request: Request, url: URL): Promise<Response> {
+      const registration = magicLinkRegistration(
+        url.searchParams.get("provider"),
+      );
+      const contentType = request.headers.get("content-type") ?? "";
+      if (
+        !magicLinks ||
+        !registration ||
+        request.headers.get("origin") !== origin ||
+        (request.headers.get("sec-fetch-site") !== null &&
+          request.headers.get("sec-fetch-site") !== "same-origin") ||
+        !contentType
+          .toLowerCase()
+          .startsWith("application/x-www-form-urlencoded")
+      )
+        return magicLinkRequested();
+      try {
+        const form = new URLSearchParams(
+          await boundedRequestText(request, 512),
+        );
+        const email = z.string().email().max(320).parse(form.get("email"));
+        if (
+          form.getAll("email").length !== 1 ||
+          [...form.keys()].some((key) => key !== "email")
+        )
+          return magicLinkRequested();
+        const key = await sha256Base64Url(email.toLowerCase());
+        const lastRequest = magicLinkRequests.get(key);
+        if (lastRequest === undefined || now() - lastRequest >= 60_000) {
+          if (magicLinkRequests.size >= 1_024)
+            magicLinkRequests.delete(
+              magicLinkRequests.keys().next().value ?? "",
+            );
+          magicLinkRequests.set(key, now());
+          void Promise.resolve(magicLinks.request(registration, email)).catch(
+            () => undefined,
+          );
+        }
+      } catch {
+        // The response is deliberately identical for invalid and unknown users.
+      }
+      return magicLinkRequested();
+    },
+
+    async completeMagicLink(url: URL): Promise<Response> {
+      const registration = provider.registrations.find(
+        (candidate) => candidate.kind === "magic-link",
+      );
+      const token = url.searchParams.get("token");
+      if (!magicLinks || !registration || !token || token.length > 128)
+        return redirect(`${origin}/app?signin=failed`);
+      try {
+        const identity = await magicLinks.consume(registration, token);
+        if (!identity) return redirect(`${origin}/app?signin=failed`);
+        return establishSession({
+          ownerId: `browser:${new Bun.CryptoHasher("sha256")
+            .update(
+              JSON.stringify([
+                registration.kind,
+                identity.issuer,
+                identity.subject,
+              ]),
+            )
+            .digest("hex")}`,
+          identity,
+          expiresAt: now() + sessionTtlMs,
+        });
+      } catch {
+        return redirect(`${origin}/app?signin=failed`);
       }
     },
 

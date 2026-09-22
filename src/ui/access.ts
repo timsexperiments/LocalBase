@@ -7,10 +7,13 @@ import {
 } from "../domains/auth/browser-access";
 import type { Permission } from "../domains/auth/authorization";
 import type { BrowserIdentity } from "../domains/auth/browser-identity";
+import type { MagicLinkSessionAdapter } from "../domains/auth/magic-links";
 import { videoJobIdFromPath } from "../domains/runtime/route-dispatch";
 import {
   createDirectSessionManager,
   githubCallbackPath,
+  magicLinkCallbackPath,
+  magicLinkRequestPath,
   oidcCallbackPath,
 } from "./oidc-session";
 
@@ -45,6 +48,8 @@ export function isUiAccessPath(pathname: string): boolean {
     pathname === "/app/login" ||
     pathname === oidcCallbackPath ||
     pathname === githubCallbackPath ||
+    pathname === magicLinkCallbackPath ||
+    pathname === magicLinkRequestPath ||
     pathname === "/app/logout" ||
     pathname === "/app/session" ||
     pathname === "/app/api" ||
@@ -117,6 +122,7 @@ export function createUiAccess({
   fetcher,
   now,
   authorizeIdentity,
+  magicLinks,
 }: {
   config: BrowserAccessConfig | null;
   keyResolver?: JWTVerifyGetKey;
@@ -126,6 +132,7 @@ export function createUiAccess({
     matchedRoles: readonly string[];
     permissions: readonly Permission[];
   }> | null;
+  magicLinks?: MagicLinkSessionAdapter;
 }) {
   const credentials = new WeakMap<
     Request,
@@ -155,6 +162,7 @@ export function createUiAccess({
           ...(keyResolver ? { keyResolver } : {}),
           ...(fetcher ? { fetcher } : {}),
           ...(now ? { now } : {}),
+          ...(magicLinks ? { magicLinks } : {}),
         })
       : null;
 
@@ -212,6 +220,18 @@ export function createUiAccess({
         if (request.method !== "GET" || !exactHost || !direct)
           return respond(failure(403));
         return respond(await direct.completeLogin(request, url));
+      }
+
+      if (url.pathname === magicLinkRequestPath) {
+        if (request.method !== "POST" || !exactHost || !direct)
+          return respond(failure(403));
+        return respond(await direct.requestMagicLink(request, url));
+      }
+
+      if (url.pathname === magicLinkCallbackPath) {
+        if (request.method !== "GET" || !exactHost || !direct)
+          return respond(failure(403));
+        return respond(await direct.completeMagicLink(url));
       }
 
       if (url.pathname === "/app/logout") {

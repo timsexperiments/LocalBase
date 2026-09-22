@@ -124,8 +124,16 @@ test("provisions, activates, manages, and removes browser users by email", async
         },
         { claimManagedUser: true },
       ),
-    ).toEqual({ matchedRoles: [], permissions: [] });
-    expect(db.select().from(authIdentitiesTable).all()).toHaveLength(1);
+    ).toEqual({
+      matchedRoles: ["admin", "member"],
+      permissions: [
+        "inference:chat",
+        "models:read",
+        "models:manage",
+        "access:manage",
+      ],
+    });
+    expect(db.select().from(authIdentitiesTable).all()).toHaveLength(2);
 
     expect(
       replaceManagedUserRoles(db, {

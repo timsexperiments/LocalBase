@@ -45,8 +45,8 @@ export async function saveBrowserAccessConfig(
       flag: "wx",
       mode: 0o600,
     });
+    await chmod(temporary, 0o600);
     await rename(temporary, path);
-    await chmod(path, 0o600);
   } finally {
     await unlink(temporary).catch((error: unknown) => {
       if (!(

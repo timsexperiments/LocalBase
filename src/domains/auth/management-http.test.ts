@@ -10,6 +10,7 @@ import { createAuthManagement } from "./management-http";
 import { loadBrowserAccessConfig } from "./browser-access";
 import { accessControlRevision, loadAccessControl } from "./access-control";
 import { withRootOperation } from "../service/ownership";
+import { saveEmailDeliveryConfig } from "./email-delivery";
 import {
   accessManagementMutationResponseSchema,
   accessManagementReadResponseSchema,
@@ -109,12 +110,42 @@ test("manages browser access without returning OIDC secrets", async () => {
   );
   expect(github?.status).toBe(200);
   expect(await github?.text()).not.toContain("github-secret");
+  const missingEmail = await handle(
+    request("/_localbase/access-management", {
+      action: "upsert-magic-link",
+      registration: { kind: "magic-link", id: "email", name: "Email" },
+      origin: "https://localbase.example.com",
+      permissions: ["access:read", "access:manage"],
+    }),
+    administrator,
+  );
+  expect(missingEmail?.status).toBe(409);
+  expect(await missingEmail?.json()).toMatchObject({
+    error: { code: "email_delivery_not_configured" },
+  });
+  await saveEmailDeliveryConfig(root, {
+    host: "smtp.example.com",
+    port: 587,
+    security: "starttls",
+    authentication: { kind: "none" },
+    from: "localbase@example.com",
+  });
+  const magicLink = await handle(
+    request("/_localbase/access-management", {
+      action: "upsert-magic-link",
+      registration: { kind: "magic-link", id: "email", name: "Email" },
+      origin: "https://localbase.example.com",
+      permissions: ["access:read", "access:manage"],
+    }),
+    administrator,
+  );
+  expect(magicLink?.status).toBe(200);
   const stored = await loadBrowserAccessConfig(root);
   expect(
     stored?.provider.kind === "direct"
       ? stored.provider.registrations.map(({ id }) => id)
       : [],
-  ).toEqual(["github", "primary", "secondary"]);
+  ).toEqual(["email", "github", "primary", "secondary"]);
 
   const removed = await handle(
     request("/_localbase/access-management", {
@@ -129,6 +160,7 @@ test("manages browser access without returning OIDC secrets", async () => {
     config: {
       provider: {
         registrations: [
+          { id: "email", kind: "magic-link" },
           { id: "github", kind: "github-oauth" },
           { id: "primary", kind: "oidc" },
         ],

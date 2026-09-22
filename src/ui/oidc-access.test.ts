@@ -39,6 +39,8 @@ beforeAll(async () => {
 test("recognizes only the canonical OIDC callback path", () => {
   expect(isUiAccessPath("/oidc/callback")).toBe(true);
   expect(isUiAccessPath("/github/callback")).toBe(true);
+  expect(isUiAccessPath("/magic-link/callback")).toBe(true);
+  expect(isUiAccessPath("/app/login/magic")).toBe(true);
   expect(isUiAccessPath("/app/callback")).toBe(false);
 });
 
@@ -88,6 +90,93 @@ function discovery() {
     token_endpoint_auth_methods_supported: ["client_secret_basic"],
   };
 }
+
+test("requests and consumes native magic links without disclosing users", async () => {
+  const requested: string[] = [];
+  const consumed = new Set<string>();
+  const magicConfig = uiAccessConfigSchema.parse({
+    provider: {
+      kind: "direct",
+      registrations: [
+        { kind: "magic-link", id: "email", name: "Email sign-in" },
+      ],
+    },
+    origin,
+    permissions: [],
+  });
+  const access = createUiAccess({
+    config: magicConfig,
+    magicLinks: {
+      request: (_registration, email) => {
+        requested.push(email);
+      },
+      consume: (_registration, token) => {
+        if (token !== "valid-token" || consumed.has(token)) return null;
+        consumed.add(token);
+        return {
+          issuer: `${origin}/magic-link`,
+          subject: "managed-user-id",
+          verifiedEmail: "person@example.com",
+        };
+      },
+    },
+    authorizeIdentity: (identity) =>
+      identity.subject === "managed-user-id"
+        ? { matchedRoles: ["member"], permissions: ["inference:chat"] }
+        : null,
+  });
+
+  const form = await responseFor(
+    access,
+    directRequest("/app/login?provider=email"),
+  );
+  expect(form.status).toBe(200);
+  expect(await form.text()).toContain("Email sign-in");
+
+  const submit = () =>
+    responseFor(
+      access,
+      new Request(`${origin}/app/login/magic?provider=email`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          origin,
+          "sec-fetch-site": "same-origin",
+        },
+        body: new URLSearchParams({ email: "person@example.com" }),
+      }),
+    );
+  const first = await submit();
+  const second = await submit();
+  expect(first.status).toBe(200);
+  expect(await first.text()).toContain("If that address can sign in");
+  expect(await second.text()).toContain("If that address can sign in");
+  expect(requested).toEqual(["person@example.com"]);
+
+  const callback = await responseFor(
+    access,
+    directRequest("/magic-link/callback?token=valid-token"),
+  );
+  expect(callback.headers.get("location")).toBe(`${origin}/app`);
+  const sessionRequest = directRequest("/app/session", {
+    marker: true,
+    cookie: cookieFrom(callback, "__Host-localbase-session"),
+  });
+  expect((await responseFor(access, sessionRequest)).status).toBe(200);
+  expect(access.credential(sessionRequest)).toEqual({
+    ownerId: expect.stringMatching(/^browser:/),
+    matchedRoles: ["member"],
+    permissions: ["inference:chat"],
+  });
+  expect(
+    (
+      await responseFor(
+        access,
+        directRequest("/magic-link/callback?token=valid-token"),
+      )
+    ).headers.get("location"),
+  ).toBe(`${origin}/app?signin=failed`);
+});
 
 test("chooses among named OIDC registrations before starting a login", async () => {
   const secondIssuer = "https://login.example.org";

@@ -22,6 +22,8 @@ import {
   accessEmailShowResultSchema,
   accessGithubListResultSchema,
   accessGithubRemoveResultSchema,
+  accessMagicLinkListResultSchema,
+  accessMagicLinkRemoveResultSchema,
   accessOidcListResultSchema,
   accessOidcRemoveResultSchema,
   accessPolicyApplyResultSchema,
@@ -702,6 +704,75 @@ test(
         accessEmailShowResultSchema.parse(jsonDocument(shownEmail.stdout).data),
       ).toMatchObject({ config: { host: "smtp.example.com" } });
       expect(shownEmail.stdout).not.toContain(smtpPassword);
+
+      const configuredMagicLink = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "magic-link",
+        "add",
+        "--id",
+        "email",
+        "--name",
+        "Email",
+        "--origin",
+        "https://localbase.example.com",
+      ]);
+      expect(configuredMagicLink.exitCode).toBe(0);
+      expect(
+        accessConfigureResultSchema.parse(
+          jsonDocument(configuredMagicLink.stdout).data,
+        ),
+      ).toMatchObject({
+        config: {
+          provider: {
+            kind: "direct",
+            registrations: [{ kind: "magic-link", id: "email" }],
+          },
+        },
+        restartRequired: true,
+      });
+      const listedMagicLink = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "magic-link",
+        "list",
+      ]);
+      expect(
+        accessMagicLinkListResultSchema.parse(
+          jsonDocument(listedMagicLink.stdout).data,
+        ).registrations,
+      ).toEqual([{ kind: "magic-link", id: "email", name: "Email" }]);
+      const blockedEmailDisable = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "email",
+        "disable",
+      ]);
+      expect(blockedEmailDisable.exitCode).toBe(2);
+      expect(jsonDocument(blockedEmailDisable.stdout)).toMatchObject({
+        ok: false,
+        error: { code: "invalid_input" },
+      });
+      const removedMagicLink = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "magic-link",
+        "remove",
+        "email",
+      ]);
+      expect(
+        accessMagicLinkRemoveResultSchema.parse(
+          jsonDocument(removedMagicLink.stdout).data,
+        ),
+      ).toEqual({ removed: true, config: null, restartRequired: true });
       const disabledEmail = await runCli(executable, [
         "--root",
         root,

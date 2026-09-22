@@ -26,6 +26,7 @@ import {
 } from "./access-control";
 import { publicApiKey } from "./api-key-public";
 import { BrowserAccessError } from "./errors";
+import { loadEmailDeliveryConfig } from "./email-delivery";
 import {
   disableManagedUser,
   enableManagedUser,
@@ -55,6 +56,7 @@ type ManagementErrorCode =
   | "payload_too_large"
   | "request_aborted"
   | "provider_not_configured"
+  | "email_delivery_not_configured"
   | "policy_not_configured"
   | "registration_not_found"
   | "key_not_found"
@@ -71,6 +73,8 @@ const errorMessages: Record<ManagementErrorCode, string> = {
   payload_too_large: "The management request exceeds the size limit.",
   request_aborted: "The management request was cancelled.",
   provider_not_configured: "Configure a browser identity provider first.",
+  email_delivery_not_configured:
+    "Configure email delivery before enabling magic-link authentication.",
   policy_not_configured: "Configure a browser access policy first.",
   registration_not_found: "The identity provider registration was not found.",
   key_not_found: "The API key was not found.",
@@ -324,6 +328,37 @@ export function createAuthManagement({
                 );
               }
               case "upsert-github": {
+                const config = await saveBrowserAccessConfig(
+                  canonicalRoot,
+                  upsertAccessRegistration(current, input),
+                );
+                return Response.json(
+                  accessManagementMutationResponseSchema.parse({
+                    config: summarizeBrowserAccessConfig(config),
+                    restartRequired: true,
+                  }),
+                  { headers },
+                );
+              }
+              case "upsert-magic-link": {
+                if (!(await loadEmailDeliveryConfig(canonicalRoot)))
+                  return Response.json(
+                    errorBody("email_delivery_not_configured"),
+                    { status: 409, headers },
+                  );
+                const existing =
+                  current?.provider.kind === "direct"
+                    ? current.provider.registrations.find(
+                        (registration) =>
+                          registration.kind === "magic-link" &&
+                          registration.id !== input.registration.id,
+                      )
+                    : undefined;
+                if (existing)
+                  return Response.json(errorBody("validation_failed"), {
+                    status: 400,
+                    headers,
+                  });
                 const config = await saveBrowserAccessConfig(
                   canonicalRoot,
                   upsertAccessRegistration(current, input),

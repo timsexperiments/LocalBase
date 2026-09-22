@@ -2,11 +2,11 @@
 
 LocalBase separates browser users from machine clients.
 
-| Caller              | Credential                                            | Configuration           |
-| ------------------- | ----------------------------------------------------- | ----------------------- |
-| Browser user        | Cloudflare Access JWT, OIDC, or GitHub OAuth session  | `local-base access ...` |
-| Machine client      | Scoped LocalBase API key                              | `local-base keys ...`   |
-| Local administrator | Read and write access to the LocalBase data directory | Local CLI               |
+| Caller              | Credential                                             | Configuration           |
+| ------------------- | ------------------------------------------------------ | ----------------------- |
+| Browser user        | Cloudflare Access, OIDC, GitHub, or magic-link session | `local-base access ...` |
+| Machine client      | Scoped LocalBase API key                               | `local-base keys ...`   |
+| Local administrator | Read and write access to the LocalBase data directory  | Local CLI               |
 
 The browser UI does not accept API keys. LocalBase does not provide an
 unauthenticated LAN mode or a shared-link bypass. Keep the gateway bound to
@@ -110,6 +110,26 @@ Use `--security tls` for implicit TLS, commonly on port 465. Omit `--username`
 and `--password-env` only when the SMTP server does not require authentication.
 LocalBase stores `email-delivery.json` with owner-only permissions.
 `local-base access email disable` removes it.
+
+### Native magic links
+
+Magic-link authentication is limited to managed users created with
+`local-base access users invite`. Configure SMTP first, then add the native
+registration:
+
+```bash
+local-base --non-interactive --json access magic-link add \
+  --id email \
+  --name "Email sign-in" \
+  --origin "$LOCALBASE_PUBLIC_ORIGIN"
+local-base --non-interactive --json restart
+```
+
+The sign-in page accepts an invited email address without revealing whether it
+exists. A new request replaces the previous link for that user. Links expire
+after 15 minutes and are consumed once. Raw link tokens are not stored. Use
+`access magic-link list` and `access magic-link remove ID` for automation.
+Email delivery cannot be disabled while the registration exists.
 
 ## Limit browser permissions
 
