@@ -1,10 +1,13 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { z } from "zod";
 import {
   permissionSchema,
   type Permission,
 } from "../domains/auth/authorization";
-import { accessControlConfigSchema } from "../domains/auth/access-control";
+import {
+  accessControlConfigSchema,
+  accessControlRoleSchema,
+} from "../domains/auth/access-control";
 import { defaultBrowserPermissions } from "../domains/auth/browser-access-contract";
 import {
   accessManagementMutationResponseSchema,
@@ -17,6 +20,15 @@ import { api, type Connection } from "./client";
 type AccessConfig = z.infer<
   typeof accessManagementReadResponseSchema
 >["config"];
+type AccessPolicy = z.infer<
+  typeof accessManagementReadResponseSchema
+>["policy"];
+type ManagedUser = z.infer<
+  typeof accessManagementReadResponseSchema
+>["users"][number];
+type AccessRole = z.infer<
+  typeof accessManagementReadResponseSchema
+>["roles"][number];
 type ApiKey = z.infer<typeof keyManagementReadResponseSchema>["keys"][number];
 
 const permissionGroups = [
@@ -108,13 +120,70 @@ export function apiKeyStatus(
   return Number.isFinite(expiresAt) && expiresAt > now ? "Active" : "Expired";
 }
 
+export function starterAccessPolicy(email: string) {
+  return accessControlConfigSchema.parse({
+    roles: [
+      {
+        name: "admin",
+        description: "Full LocalBase administration",
+        permissions: permissionSchema.options,
+      },
+      {
+        name: "member",
+        description: "Chat and model discovery",
+        permissions: ["inference:chat", "models:read"],
+      },
+    ],
+    bindings: [{ kind: "email", role: "admin", email }],
+    defaultRole: "member",
+  });
+}
+
+export function reconcileInviteRoles(
+  roles: readonly AccessRole[],
+  selected: readonly string[],
+  defaultRole: string | null,
+): string[] {
+  const available = new Set(roles.map((role) => role.name));
+  const retained = selected.filter((role) => available.has(role));
+  if (retained.length) return retained;
+  const fallback = defaultRole ?? roles[0]?.name;
+  return fallback ? [fallback] : [];
+}
+
+export function isCurrentManagedUser(
+  userEmail: string,
+  verifiedEmail: string | undefined,
+): boolean {
+  return verifiedEmail?.toLowerCase() === userEmail.toLowerCase();
+}
+
+export function assignedRolesGrantAccessManagement(
+  assigned: readonly string[],
+  roles: readonly AccessRole[],
+): boolean {
+  return assigned.some((name) =>
+    roles
+      .find((role) => role.name === name)
+      ?.permissions.includes("access:manage"),
+  );
+}
+
 export function AuthManagement({
   connection,
 }: {
   connection: Connection | null;
 }) {
-  const [section, setSection] = useState<"access" | "keys">("access");
+  const [section, setSection] = useState<"people" | "access" | "keys">(
+    "people",
+  );
   const [access, setAccess] = useState<AccessConfig>(null);
+  const [accessPolicy, setAccessPolicy] = useState<AccessPolicy>(null);
+  const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [roles, setRoles] = useState<AccessRole[]>([]);
+  const [accessLoadState, setAccessLoadState] = useState<
+    "loading" | "loaded" | "error"
+  >("loading");
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [accessError, setAccessError] = useState("");
   const [keysError, setKeysError] = useState("");
@@ -140,6 +209,14 @@ export function AuthManagement({
   const [policy, setPolicy] = useState("");
   const [policyConfigured, setPolicyConfigured] = useState(false);
   const [policyRevision, setPolicyRevision] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRoles, setInviteRoles] = useState<string[]>([]);
+  const [roleName, setRoleName] = useState("");
+  const [roleDescription, setRoleDescription] = useState("");
+  const [rolePermissions, setRolePermissions] = useState<Permission[]>([
+    "inference:chat",
+    "models:read",
+  ]);
   const [keyName, setKeyName] = useState("");
   const [keyExpiry, setKeyExpiry] = useState("");
   const [keyPermissions, setKeyPermissions] = useState<Permission[]>([
@@ -195,6 +272,9 @@ export function AuthManagement({
     if (signal?.aborted) return;
     if (accessResult.status === "fulfilled") {
       hydrate(accessResult.value.config);
+      setAccessPolicy(accessResult.value.policy);
+      setUsers(accessResult.value.users);
+      setRoles(accessResult.value.roles);
       setPolicy(
         accessResult.value.policy
           ? JSON.stringify(accessResult.value.policy, null, 2)
@@ -202,8 +282,17 @@ export function AuthManagement({
       );
       setPolicyConfigured(accessResult.value.policy !== null);
       setPolicyRevision(accessResult.value.policyRevision);
+      setInviteRoles((selected) =>
+        reconcileInviteRoles(
+          accessResult.value.roles,
+          selected,
+          accessResult.value.policy?.defaultRole ?? null,
+        ),
+      );
+      setAccessLoadState("loaded");
       setAccessError("");
     } else {
+      setAccessLoadState("error");
       setAccessError(
         accessResult.reason instanceof Error
           ? accessResult.reason.message
@@ -339,18 +428,225 @@ export function AuthManagement({
     setAccessError("");
     try {
       const parsed = accessControlConfigSchema.parse(JSON.parse(policy));
-      await (
-        await post("/_localbase/access-management", {
-          action: "apply-policy",
-          policy: parsed,
-          expectedPolicyRevision: policyRevision,
-        })
-      ).body?.cancel();
+      await applyPolicy(parsed);
       setNotice("Policy saved. The change is active now.");
       await load();
     } catch (error) {
       setAccessError(
         error instanceof Error ? error.message : "Access policy update failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyPolicy(next: NonNullable<AccessPolicy>) {
+    const response = await post("/_localbase/access-management", {
+      action: "apply-policy",
+      policy: next,
+      expectedPolicyRevision: policyRevision,
+    });
+    accessManagementMutationResponseSchema.parse(await response.json());
+  }
+
+  async function inviteUser(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setNotice("");
+    setAccessError("");
+    try {
+      const response = await post("/_localbase/access-management", {
+        action: "invite-user",
+        email: inviteEmail,
+        roles: inviteRoles,
+      });
+      const result = accessManagementMutationResponseSchema.parse(
+        await response.json(),
+      );
+      if (!("user" in result) || !("signInUrl" in result))
+        throw new Error("The invitation response was incomplete.");
+      setInviteEmail("");
+      setNotice(`User invited. Send them ${result.signInUrl}`);
+      await load();
+    } catch (error) {
+      setAccessError(
+        error instanceof Error ? error.message : "Could not invite the user.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createStarterPolicy(event: FormEvent) {
+    event.preventDefault();
+    const verifiedEmail = connection?.verifiedEmail;
+    if (!verifiedEmail) {
+      setAccessError(
+        "Your identity provider did not supply a verified email. Configure the policy with Advanced JSON or the CLI.",
+      );
+      return;
+    }
+    setBusy(true);
+    setNotice("");
+    setAccessError("");
+    try {
+      await applyPolicy(starterAccessPolicy(verifiedEmail));
+      setNotice(
+        "Access policy created. Your verified email has the admin role.",
+      );
+      await load();
+    } catch (error) {
+      setAccessError(
+        error instanceof Error
+          ? error.message
+          : "Could not create the access policy.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function mutateUser(
+    action:
+      "replace-user-roles" | "enable-user" | "disable-user" | "remove-user",
+    email: string,
+    assignedRoles?: readonly string[],
+  ) {
+    setBusy(true);
+    setNotice("");
+    setAccessError("");
+    try {
+      const response = await post("/_localbase/access-management", {
+        action,
+        email,
+        ...(assignedRoles ? { roles: assignedRoles } : {}),
+      });
+      accessManagementMutationResponseSchema.parse(await response.json());
+      setConfirming("");
+      setNotice(
+        action === "remove-user"
+          ? `${email} removed.`
+          : action === "replace-user-roles"
+            ? `Roles saved for ${email}.`
+            : `${email} ${action === "enable-user" ? "enabled" : "disabled"}.`,
+      );
+      await load();
+    } catch (error) {
+      setAccessError(
+        error instanceof Error ? error.message : "Could not update the user.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveRole(event: FormEvent) {
+    event.preventDefault();
+    if (!accessPolicy) {
+      setAccessError("Configure an access policy before creating roles.");
+      return;
+    }
+    setBusy(true);
+    setNotice("");
+    setAccessError("");
+    try {
+      const role = accessControlRoleSchema.parse({
+        name: roleName,
+        description: roleDescription,
+        permissions: rolePermissions,
+      });
+      await applyPolicy(
+        accessControlConfigSchema.parse({
+          ...accessPolicy,
+          roles: [...accessPolicy.roles, role],
+        }),
+      );
+      setRoleName("");
+      setRoleDescription("");
+      setRolePermissions(["inference:chat", "models:read"]);
+      setNotice(`Role ${role.name} created.`);
+      await load();
+    } catch (error) {
+      setAccessError(
+        error instanceof Error ? error.message : "Could not create the role.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function replaceRole(role: AccessRole) {
+    if (!accessPolicy) return;
+    setBusy(true);
+    setNotice("");
+    setAccessError("");
+    try {
+      await applyPolicy(
+        accessControlConfigSchema.parse({
+          ...accessPolicy,
+          roles: accessPolicy.roles.map((candidate) =>
+            candidate.name === role.name ? role : candidate,
+          ),
+        }),
+      );
+      setNotice(`Role ${role.name} saved.`);
+      await load();
+    } catch (error) {
+      setAccessError(
+        error instanceof Error ? error.message : "Could not save the role.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeRole(name: string) {
+    if (!accessPolicy) return;
+    setBusy(true);
+    setNotice("");
+    setAccessError("");
+    try {
+      await applyPolicy(
+        accessControlConfigSchema.parse({
+          ...accessPolicy,
+          roles: accessPolicy.roles.filter((role) => role.name !== name),
+        }),
+      );
+      setConfirming("");
+      setNotice(`Role ${name} removed.`);
+      await load();
+    } catch (error) {
+      setAccessError(
+        error instanceof Error ? error.message : "Could not remove the role.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setDefaultRole(name: string | null) {
+    if (!accessPolicy) return;
+    setBusy(true);
+    setNotice("");
+    setAccessError("");
+    try {
+      await applyPolicy(
+        accessControlConfigSchema.parse({
+          ...accessPolicy,
+          defaultRole: name,
+        }),
+      );
+      setNotice(
+        name
+          ? `Eligible signed-in identities now receive ${name}.`
+          : "Default role cleared.",
+      );
+      await load();
+    } catch (error) {
+      setAccessError(
+        error instanceof Error
+          ? error.message
+          : "Could not change the default role.",
       );
     } finally {
       setBusy(false);
@@ -455,6 +751,13 @@ export function AuthManagement({
       <div className="admin-tabs" aria-label="Administration">
         <button
           type="button"
+          aria-pressed={section === "people"}
+          onClick={() => setSection("people")}
+        >
+          People & roles
+        </button>
+        <button
+          type="button"
           aria-pressed={section === "access"}
           onClick={() => setSection("access")}
         >
@@ -500,7 +803,38 @@ export function AuthManagement({
           </div>
         </section>
       )}
-      {section === "access" ? (
+      {section === "people" ? (
+        <PeopleAndRoles
+          policy={accessPolicy}
+          users={users}
+          roles={roles}
+          loadState={accessLoadState}
+          busy={busy}
+          error={accessError}
+          verifiedEmail={connection.verifiedEmail}
+          inviteEmail={inviteEmail}
+          inviteRoles={inviteRoles}
+          roleName={roleName}
+          roleDescription={roleDescription}
+          rolePermissions={rolePermissions}
+          confirming={confirming}
+          setInviteEmail={setInviteEmail}
+          setInviteRoles={setInviteRoles}
+          setRoleName={setRoleName}
+          setRoleDescription={setRoleDescription}
+          setRolePermissions={setRolePermissions}
+          setConfirming={setConfirming}
+          inviteUser={inviteUser}
+          createStarterPolicy={createStarterPolicy}
+          mutateUser={mutateUser}
+          saveRole={saveRole}
+          replaceRole={replaceRole}
+          removeRole={removeRole}
+          setDefaultRole={setDefaultRole}
+          refresh={() => void load()}
+          openPolicy={() => setSection("access")}
+        />
+      ) : section === "access" ? (
         <div className="admin-stack">
           <section className="admin-card">
             <div className="admin-card-heading">
@@ -904,6 +1238,534 @@ export function AuthManagement({
         </div>
       )}
     </div>
+  );
+}
+
+function RolePicker({
+  roles,
+  value,
+  onChange,
+  disabled,
+}: {
+  roles: readonly AccessRole[];
+  value: readonly string[];
+  onChange: (roles: string[]) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="role-picker">
+      {roles.map((role) => (
+        <label className="permission-option" key={role.name}>
+          <input
+            type="checkbox"
+            disabled={disabled}
+            checked={value.includes(role.name)}
+            onChange={(event) =>
+              onChange(
+                event.target.checked
+                  ? [...value, role.name]
+                  : value.filter((name) => name !== role.name),
+              )
+            }
+          />
+          <span>
+            <strong>{role.name}</strong>
+            {role.description && <small>{role.description}</small>}
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function PeopleAndRoles({
+  policy,
+  users,
+  roles,
+  loadState,
+  busy,
+  error,
+  verifiedEmail,
+  inviteEmail,
+  inviteRoles,
+  roleName,
+  roleDescription,
+  rolePermissions,
+  confirming,
+  setInviteEmail,
+  setInviteRoles,
+  setRoleName,
+  setRoleDescription,
+  setRolePermissions,
+  setConfirming,
+  inviteUser,
+  createStarterPolicy,
+  mutateUser,
+  saveRole,
+  replaceRole,
+  removeRole,
+  setDefaultRole,
+  refresh,
+  openPolicy,
+}: {
+  policy: AccessPolicy;
+  users: readonly ManagedUser[];
+  roles: readonly AccessRole[];
+  loadState: "loading" | "loaded" | "error";
+  busy: boolean;
+  error: string;
+  verifiedEmail?: string;
+  inviteEmail: string;
+  inviteRoles: readonly string[];
+  roleName: string;
+  roleDescription: string;
+  rolePermissions: readonly Permission[];
+  confirming: string;
+  setInviteEmail: (email: string) => void;
+  setInviteRoles: (roles: string[]) => void;
+  setRoleName: (name: string) => void;
+  setRoleDescription: (description: string) => void;
+  setRolePermissions: (permissions: Permission[]) => void;
+  setConfirming: (value: string) => void;
+  inviteUser: (event: FormEvent) => Promise<void>;
+  createStarterPolicy: (event: FormEvent) => Promise<void>;
+  mutateUser: (
+    action:
+      "replace-user-roles" | "enable-user" | "disable-user" | "remove-user",
+    email: string,
+    roles?: readonly string[],
+  ) => Promise<void>;
+  saveRole: (event: FormEvent) => Promise<void>;
+  replaceRole: (role: AccessRole) => Promise<void>;
+  removeRole: (name: string) => Promise<void>;
+  setDefaultRole: (name: string | null) => Promise<void>;
+  refresh: () => void;
+  openPolicy: () => void;
+}) {
+  return (
+    <div className="admin-stack people-management">
+      {error && (
+        <p className="error admin-span" role="alert">
+          {error}
+        </p>
+      )}
+      {loadState === "loading" ? (
+        <section
+          className="admin-card admin-span empty-state-card"
+          aria-live="polite"
+        >
+          <h3>Loading access policy</h3>
+          <p className="hint">Checking roles and managed users…</p>
+        </section>
+      ) : loadState === "error" ? (
+        <section className="admin-card admin-span empty-state-card">
+          <h3>Access policy unavailable</h3>
+          <p className="hint">
+            No changes are available until the current policy can be read.
+          </p>
+          <button disabled={busy} onClick={refresh}>
+            Try again
+          </button>
+        </section>
+      ) : !policy ? (
+        <section className="admin-card admin-span empty-state-card">
+          <h3>Set up roles</h3>
+          <p className="hint">
+            This creates an admin role for your verified email and a default
+            member role with chat access. Model management is not granted by
+            default.
+          </p>
+          <form onSubmit={createStarterPolicy}>
+            <label>
+              Your verified sign-in email
+              <input
+                required
+                type="email"
+                readOnly
+                disabled={!verifiedEmail}
+                value={verifiedEmail ?? ""}
+                placeholder="Verified email unavailable"
+              />
+            </label>
+            {!verifiedEmail && (
+              <p className="hint">
+                This provider did not supply a verified email. Use Advanced JSON
+                or the CLI to bind the first administrator.
+              </p>
+            )}
+            <div className="admin-actions">
+              <button
+                className="primary-action"
+                disabled={busy || !verifiedEmail}
+                type="submit"
+              >
+                Create roles
+              </button>
+              <button type="button" disabled={busy} onClick={openPolicy}>
+                Advanced JSON
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : (
+        <>
+          <section className="admin-card">
+            <h3>Invite a person</h3>
+            <p className="hint">
+              Their verified sign-in email claims this invitation on first
+              login.
+            </p>
+            <form onSubmit={inviteUser}>
+              <label>
+                Email
+                <input
+                  required
+                  type="email"
+                  autoComplete="email"
+                  value={inviteEmail}
+                  onChange={(event) => setInviteEmail(event.target.value)}
+                />
+              </label>
+              <fieldset>
+                <legend>Roles</legend>
+                <RolePicker
+                  roles={roles}
+                  value={inviteRoles}
+                  onChange={setInviteRoles}
+                  disabled={busy}
+                />
+              </fieldset>
+              <button
+                className="primary-action"
+                disabled={busy || !inviteRoles.length}
+                type="submit"
+              >
+                Create invitation
+              </button>
+            </form>
+          </section>
+          <section className="admin-card">
+            <div className="admin-card-heading">
+              <div>
+                <h3>People</h3>
+                <p>{users.length} managed users</p>
+              </div>
+              <button disabled={busy} onClick={refresh}>
+                Refresh
+              </button>
+            </div>
+            <div className="key-list">
+              {users.map((user) => (
+                <ManagedUserCard
+                  key={user.id}
+                  user={user}
+                  roles={roles}
+                  busy={busy}
+                  currentUser={isCurrentManagedUser(user.email, verifiedEmail)}
+                  confirming={confirming}
+                  setConfirming={setConfirming}
+                  mutate={mutateUser}
+                />
+              ))}
+              {!users.length && <p className="hint">No managed users.</p>}
+            </div>
+          </section>
+          <section className="admin-card admin-span">
+            <div className="admin-card-heading">
+              <div>
+                <h3>Roles</h3>
+                <p>{roles.length} roles</p>
+              </div>
+              <label className="compact-field">
+                Default for eligible sign-ins
+                <select
+                  disabled={busy}
+                  value={policy.defaultRole ?? ""}
+                  onChange={(event) =>
+                    void setDefaultRole(event.target.value || null)
+                  }
+                >
+                  <option value="">No default role</option>
+                  {roles.map((role) => (
+                    <option key={role.name} value={role.name}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="role-grid">
+              {roles.map((role) => (
+                <RoleEditor
+                  key={role.name}
+                  role={role}
+                  busy={busy}
+                  confirming={confirming}
+                  setConfirming={setConfirming}
+                  save={replaceRole}
+                  remove={removeRole}
+                />
+              ))}
+            </div>
+          </section>
+          <section className="admin-card admin-span">
+            <h3>Create a role</h3>
+            <form onSubmit={saveRole}>
+              <div className="role-fields">
+                <label>
+                  Name
+                  <input
+                    required
+                    pattern="[a-z][a-z0-9-]*"
+                    maxLength={64}
+                    value={roleName}
+                    placeholder="video-creator"
+                    onChange={(event) => setRoleName(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Description
+                  <input
+                    maxLength={256}
+                    value={roleDescription}
+                    placeholder="Can create and inspect videos"
+                    onChange={(event) => setRoleDescription(event.target.value)}
+                  />
+                </label>
+              </div>
+              <PermissionPicker
+                value={rolePermissions}
+                onChange={setRolePermissions}
+                disabled={busy}
+              />
+              <button className="primary-action" disabled={busy} type="submit">
+                Create role
+              </button>
+            </form>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ManagedUserCard({
+  user,
+  roles,
+  busy,
+  currentUser,
+  confirming,
+  setConfirming,
+  mutate,
+}: {
+  user: ManagedUser;
+  roles: readonly AccessRole[];
+  busy: boolean;
+  currentUser: boolean;
+  confirming: string;
+  setConfirming: (value: string) => void;
+  mutate: (
+    action:
+      "replace-user-roles" | "enable-user" | "disable-user" | "remove-user",
+    email: string,
+    roles?: readonly string[],
+  ) => Promise<void>;
+}) {
+  const [assigned, setAssigned] = useState<string[]>([...user.roles]);
+  const forgetButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => setAssigned([...user.roles]), [user.roles.join(",")]);
+  const removalKey = `remove-user:${user.id}`;
+  const removesOwnManagement =
+    currentUser && !assignedRolesGrantAccessManagement(assigned, roles);
+  return (
+    <article className="key-card">
+      <div className="admin-card-heading">
+        <div>
+          <strong>{user.email}</strong>
+          <p>Added {new Date(user.createdAt).toLocaleDateString()}</p>
+        </div>
+        <span
+          className={`model-badge ${user.status === "active" ? "installed" : ""}`}
+        >
+          {user.status}
+        </span>
+      </div>
+      <RolePicker
+        roles={roles}
+        value={assigned}
+        onChange={setAssigned}
+        disabled={busy || user.status === "disabled"}
+      />
+      <div className="admin-actions">
+        <button
+          disabled={
+            busy ||
+            user.status === "disabled" ||
+            removesOwnManagement ||
+            assigned.join(",") === user.roles.join(",")
+          }
+          onClick={() =>
+            void mutate("replace-user-roles", user.email, assigned)
+          }
+        >
+          Save roles
+        </button>
+        <button
+          disabled={busy || (currentUser && user.status === "active")}
+          onClick={() =>
+            void mutate(
+              user.status === "disabled" ? "enable-user" : "disable-user",
+              user.email,
+            )
+          }
+        >
+          {user.status === "disabled" ? "Enable access" : "Disable access"}
+        </button>
+        <button
+          className="danger"
+          disabled={busy || currentUser}
+          ref={forgetButton}
+          aria-expanded={confirming === removalKey}
+          onClick={() => setConfirming(removalKey)}
+        >
+          Forget record
+        </button>
+      </div>
+      {currentUser && user.status === "active" && (
+        <p className="hint">
+          The signed-in account cannot disable or forget itself, and must retain
+          an assigned role with access:manage.
+        </p>
+      )}
+      {confirming === removalKey && (
+        <div
+          className="inline-confirmation"
+          role="group"
+          aria-live="polite"
+          aria-labelledby={`forget-user-${user.id}`}
+        >
+          <p id={`forget-user-${user.id}`}>
+            Forget this user and linked identity? This is not revocation: they
+            may regain access through a default role or another policy binding.
+            Use Disable to block access.
+          </p>
+          <button
+            disabled={busy}
+            onClick={() => void mutate("remove-user", user.email)}
+          >
+            Confirm forget
+          </button>
+          <button
+            onClick={() => {
+              setConfirming("");
+              forgetButton.current?.focus();
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function RoleEditor({
+  role,
+  busy,
+  confirming,
+  setConfirming,
+  save,
+  remove,
+}: {
+  role: AccessRole;
+  busy: boolean;
+  confirming: string;
+  setConfirming: (value: string) => void;
+  save: (role: AccessRole) => Promise<void>;
+  remove: (name: string) => Promise<void>;
+}) {
+  const [description, setDescription] = useState(role.description);
+  const removeButton = useRef<HTMLButtonElement>(null);
+  const [permissions, setPermissions] = useState<Permission[]>([
+    ...role.permissions,
+  ]);
+  useEffect(() => {
+    setDescription(role.description);
+    setPermissions([...role.permissions]);
+  }, [role.description, role.permissions.join(",")]);
+  const removalKey = `remove-role:${role.name}`;
+  const changed =
+    description !== role.description ||
+    permissions.join(",") !== role.permissions.join(",");
+  return (
+    <article className="key-card">
+      <strong>{role.name}</strong>
+      <label>
+        Description
+        <input
+          maxLength={256}
+          disabled={busy}
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+        />
+      </label>
+      <details>
+        <summary>{permissions.length} permissions</summary>
+        <PermissionPicker
+          value={permissions}
+          onChange={setPermissions}
+          disabled={busy}
+        />
+      </details>
+      <div className="admin-actions">
+        <button
+          disabled={busy || !changed}
+          onClick={() =>
+            void save(
+              accessControlRoleSchema.parse({
+                name: role.name,
+                description,
+                permissions,
+              }),
+            )
+          }
+        >
+          Save role
+        </button>
+        <button
+          className="danger"
+          disabled={busy}
+          ref={removeButton}
+          aria-expanded={confirming === removalKey}
+          onClick={() => setConfirming(removalKey)}
+        >
+          Remove
+        </button>
+      </div>
+      {confirming === removalKey && (
+        <div
+          className="inline-confirmation"
+          role="group"
+          aria-live="polite"
+          aria-labelledby={`remove-role-${role.name}`}
+        >
+          <p id={`remove-role-${role.name}`}>
+            Remove this role? Assigned or policy-bound roles cannot be removed.
+          </p>
+          <button disabled={busy} onClick={() => void remove(role.name)}>
+            Confirm remove
+          </button>
+          <button
+            onClick={() => {
+              setConfirming("");
+              removeButton.current?.focus();
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+    </article>
   );
 }
 

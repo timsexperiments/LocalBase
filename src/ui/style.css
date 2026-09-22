@@ -987,7 +987,7 @@ dialog.management-page {
 }
 .admin-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
   border-radius: 12px;
@@ -1004,6 +1004,9 @@ dialog.management-page {
 .key-list {
   display: grid;
   gap: 12px;
+}
+.admin-span {
+  grid-column: 1 / -1;
 }
 .admin-card,
 .key-card,
@@ -1075,6 +1078,44 @@ dialog.management-page {
   width: 18px;
   height: 18px;
 }
+.role-picker {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+.role-picker .permission-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding-block: 8px;
+}
+.role-picker .permission-option span {
+  display: grid;
+  gap: 2px;
+}
+.role-picker small {
+  color: var(--muted);
+}
+.role-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.role-grid .key-card > label {
+  margin-top: 12px;
+}
+.role-fields {
+  display: grid;
+  gap: 12px;
+}
+.compact-field {
+  width: min(100%, 280px);
+  font-size: 11px;
+}
+.empty-state-card .primary-action {
+  margin-top: 16px;
+}
 .admin-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1134,6 +1175,10 @@ dialog.management-page {
     align-items: start;
   }
   .permission-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .role-grid,
+  .role-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

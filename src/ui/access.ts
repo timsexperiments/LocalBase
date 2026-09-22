@@ -278,7 +278,12 @@ export function createUiAccess({
         credentials.set(request, credential);
         return respond(
           Response.json(
-            { authenticated: true },
+            {
+              authenticated: true,
+              ...(identity.verifiedEmail
+                ? { verifiedEmail: identity.verifiedEmail }
+                : {}),
+            },
             { headers: { "cache-control": "no-store" } },
           ),
         );
