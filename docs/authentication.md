@@ -88,17 +88,28 @@ LocalBase does not consume SAML assertions directly. Put a SAML provider behind
 Cloudflare Access or an identity broker that exposes OpenID Connect to
 LocalBase. This keeps one verified identity contract inside the gateway.
 
-### Email sign-in
+### Email delivery
 
-Email delivery and sign-in-token issuance belong to the identity provider.
-LocalBase deliberately does not send login mail or issue email tokens.
+Configure SMTP delivery once. Pass the password through an environment
+variable; LocalBase never returns it from later reads.
 
-For Cloudflare Access, configure its
-[one-time PIN provider](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/one-time-pin/)
-and allow the user's address in the Access application policy. For direct
-OpenID Connect, select a provider that supports passwordless email sign-in.
-LocalBase receives the resulting verified OIDC identity in the same way as any
-other OIDC login.
+```bash
+export LOCALBASE_SMTP_PASSWORD='...'
+local-base --non-interactive access email configure \
+  --host smtp.example.com \
+  --port 587 \
+  --security starttls \
+  --username localbase \
+  --password-env LOCALBASE_SMTP_PASSWORD \
+  --from localbase@example.com
+local-base --non-interactive access email test --to owner@example.com
+local-base access email show --json
+```
+
+Use `--security tls` for implicit TLS, commonly on port 465. Omit `--username`
+and `--password-env` only when the SMTP server does not require authentication.
+LocalBase stores `email-delivery.json` with owner-only permissions.
+`local-base access email disable` removes it.
 
 ## Limit browser permissions
 

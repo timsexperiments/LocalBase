@@ -17,6 +17,9 @@ import {
 } from "../../auth/authorization";
 import {
   accessConfigureResultSchema,
+  accessEmailConfigureResultSchema,
+  accessEmailDisableResultSchema,
+  accessEmailShowResultSchema,
   accessGithubListResultSchema,
   accessGithubRemoveResultSchema,
   accessOidcListResultSchema,
@@ -649,6 +652,69 @@ test(
           jsonDocument(disabledAccess.stdout).data,
         ),
       ).toEqual({ removed: true, config: null, restartRequired: true });
+
+      const smtpPassword = "smtp-password-value";
+      const configuredEmail = await runCli(
+        executable,
+        [
+          "--root",
+          root,
+          "--json",
+          "access",
+          "email",
+          "configure",
+          "--host",
+          "smtp.example.com",
+          "--port",
+          "587",
+          "--security",
+          "starttls",
+          "--username",
+          "localbase",
+          "--password-env",
+          "SMTP_PASSWORD",
+          "--from",
+          "localbase@example.com",
+        ],
+        undefined,
+        { SMTP_PASSWORD: smtpPassword },
+      );
+      expect(configuredEmail.exitCode).toBe(0);
+      expect(configuredEmail.stdout).not.toContain(smtpPassword);
+      expect(configuredEmail.stderr).not.toContain(smtpPassword);
+      expect(
+        accessEmailConfigureResultSchema.parse(
+          jsonDocument(configuredEmail.stdout).data,
+        ),
+      ).toMatchObject({
+        config: { authentication: "password" },
+        restartRequired: false,
+      });
+      const shownEmail = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "email",
+        "show",
+      ]);
+      expect(
+        accessEmailShowResultSchema.parse(jsonDocument(shownEmail.stdout).data),
+      ).toMatchObject({ config: { host: "smtp.example.com" } });
+      expect(shownEmail.stdout).not.toContain(smtpPassword);
+      const disabledEmail = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "email",
+        "disable",
+      ]);
+      expect(
+        accessEmailDisableResultSchema.parse(
+          jsonDocument(disabledEmail.stdout).data,
+        ),
+      ).toEqual({ disabled: true, restartRequired: false });
 
       const configuredDatabase = readFileSync(join(root, "local-base.db"));
       const doctor = await runCli(executable, [

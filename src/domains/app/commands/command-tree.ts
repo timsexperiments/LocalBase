@@ -10,6 +10,10 @@ import { byId, type ModelKind } from "../../../catalog";
 import {
   accessCloudflareInputSchema,
   accessDisableInputSchema,
+  accessEmailConfigureInputSchema,
+  accessEmailDisableInputSchema,
+  accessEmailShowInputSchema,
+  accessEmailTestInputSchema,
   accessGithubAddInputSchema,
   accessGithubListInputSchema,
   accessGithubRemoveInputSchema,
@@ -46,6 +50,10 @@ import {
   uninstallInputSchema,
   type AccessCloudflareInput,
   type AccessDisableInput,
+  type AccessEmailConfigureInput,
+  type AccessEmailDisableInput,
+  type AccessEmailShowInput,
+  type AccessEmailTestInput,
   type AccessGithubAddInput,
   type AccessGithubListInput,
   type AccessGithubRemoveInput,
@@ -87,6 +95,10 @@ import { CliInputError } from "./errors";
 import {
   accessConfigureResultSchema,
   accessDisableResultSchema,
+  accessEmailConfigureResultSchema,
+  accessEmailDisableResultSchema,
+  accessEmailShowResultSchema,
+  accessEmailTestResultSchema,
   accessGithubListResultSchema,
   accessGithubRemoveResultSchema,
   accessOidcListResultSchema,
@@ -1035,6 +1047,96 @@ const accessDisableCommand = command<AccessDisableInput>({
   },
 });
 
+const accessEmailShowCommand = command<AccessEmailShowInput>({
+  path: ["access", "email", "show"],
+  description: "Show email delivery configuration",
+  parse: (input) => accessEmailShowInputSchema.parse(input),
+  resultSchema: accessEmailShowResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessEmailShow } = await import("../../auth/commands/access");
+    return await runAccessEmailShow(input, context, execution);
+  },
+});
+
+const accessEmailConfigureCommand = command<AccessEmailConfigureInput>({
+  path: ["access", "email", "configure"],
+  description: "Configure SMTP email delivery",
+  args: {
+    host: {
+      type: "string",
+      valueHint: "smtp.example.com",
+      description: "SMTP server hostname",
+      required: true,
+    },
+    port: {
+      type: "string",
+      valueHint: "587",
+      description: "SMTP server port",
+      required: true,
+    },
+    security: {
+      type: "string",
+      valueHint: "tls|starttls",
+      description: "SMTP transport security",
+      required: true,
+    },
+    username: {
+      type: "string",
+      valueHint: "username",
+      description: "SMTP username",
+    },
+    "password-env": {
+      type: "string",
+      valueHint: "ENVIRONMENT_VARIABLE",
+      description: "Environment variable containing the SMTP password",
+    },
+    from: {
+      type: "string",
+      valueHint: "localbase@example.com",
+      description: "Sender email address",
+      required: true,
+    },
+  },
+  parse: (input) => accessEmailConfigureInputSchema.parse(input),
+  resultSchema: accessEmailConfigureResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessEmailConfigure } =
+      await import("../../auth/commands/access");
+    return await runAccessEmailConfigure(input, context, execution);
+  },
+});
+
+const accessEmailTestCommand = command<AccessEmailTestInput>({
+  path: ["access", "email", "test"],
+  description: "Send a test email",
+  args: {
+    to: {
+      type: "string",
+      valueHint: "person@example.com",
+      description: "Test recipient",
+      required: true,
+    },
+  },
+  parse: (input) => accessEmailTestInputSchema.parse(input),
+  resultSchema: accessEmailTestResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessEmailTest } = await import("../../auth/commands/access");
+    return await runAccessEmailTest(input, context, execution);
+  },
+});
+
+const accessEmailDisableCommand = command<AccessEmailDisableInput>({
+  path: ["access", "email", "disable"],
+  description: "Disable email delivery",
+  parse: (input) => accessEmailDisableInputSchema.parse(input),
+  resultSchema: accessEmailDisableResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessEmailDisable } =
+      await import("../../auth/commands/access");
+    return await runAccessEmailDisable(input, context, execution);
+  },
+});
+
 const accessPolicyShowCommand = command<AccessPolicyShowInput>({
   path: ["access", "policy", "show"],
   description: "Show the browser authorization policy",
@@ -1358,6 +1460,10 @@ export const commands = [
   accessGithubListCommand,
   accessGithubRemoveCommand,
   accessDisableCommand,
+  accessEmailShowCommand,
+  accessEmailConfigureCommand,
+  accessEmailTestCommand,
+  accessEmailDisableCommand,
   accessPolicyShowCommand,
   accessPolicyApplyCommand,
   accessPolicyTestCommand,
@@ -1451,6 +1557,20 @@ const accessGithubCommand = defineCommand({
   },
 });
 
+const accessEmailCommand = defineCommand({
+  meta: {
+    name: "local-base access email",
+    description: "Manage email delivery",
+  },
+  args: globalArgs,
+  subCommands: {
+    show: accessEmailShowCommand.citty,
+    configure: accessEmailConfigureCommand.citty,
+    test: accessEmailTestCommand.citty,
+    disable: accessEmailDisableCommand.citty,
+  },
+});
+
 export const accessCommand = defineCommand({
   meta: { name: "local-base access", description: "Manage browser access" },
   args: globalArgs,
@@ -1458,6 +1578,7 @@ export const accessCommand = defineCommand({
     show: accessShowCommand.citty,
     cloudflare: accessCloudflareCommand.citty,
     github: accessGithubCommand,
+    email: accessEmailCommand,
     oidc: accessOidcCommand,
     disable: accessDisableCommand.citty,
     policy: accessPolicyCommand,
@@ -1513,6 +1634,8 @@ export function groupForPath(path: string[]): CittyCommand | undefined {
     return accessOidcCommand;
   if (path.length === 2 && path[0] === "access" && path[1] === "github")
     return accessGithubCommand;
+  if (path.length === 2 && path[0] === "access" && path[1] === "email")
+    return accessEmailCommand;
   if (path.length === 2 && path[0] === "access" && path[1] === "users")
     return accessUsersCommand;
   if (path.length !== 1) return undefined;
