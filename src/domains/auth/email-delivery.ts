@@ -148,3 +148,16 @@ export async function sendEmail(
     client.close();
   }
 }
+
+export async function trySendEmail(
+  config: EmailDeliveryConfig,
+  email: OutboundEmail,
+): Promise<boolean> {
+  try {
+    await sendEmail(config, email);
+    return true;
+  } catch (error) {
+    if (error instanceof EmailDeliveryError) return false;
+    throw error;
+  }
+}

@@ -7,6 +7,7 @@ import {
   apiKeyStatus,
   isCurrentManagedUser,
   reconcileInviteRoles,
+  shouldSendInvitationEmail,
   starterAccessPolicy,
 } from "./auth-management";
 
@@ -86,6 +87,12 @@ test("invite roles retain valid selections and replace deleted selections", () =
   ]);
   expect(reconcileInviteRoles(roles, ["deleted"], null)).toEqual(["admin"]);
   expect(reconcileInviteRoles([], ["deleted"], null)).toEqual([]);
+});
+
+test("invitation email requires both a user choice and SMTP configuration", () => {
+  expect(shouldSendInvitationEmail(true, true)).toBe(true);
+  expect(shouldSendInvitationEmail(true, false)).toBe(false);
+  expect(shouldSendInvitationEmail(false, true)).toBe(false);
 });
 
 test("does not offer starter policy creation before the policy read completes", () => {

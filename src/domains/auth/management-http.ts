@@ -33,6 +33,7 @@ import {
   saveEmailDeliveryConfig,
   sendEmail,
   summarizeEmailDeliveryConfig,
+  trySendEmail,
 } from "./email-delivery";
 import {
   disableManagedUser,
@@ -375,16 +376,11 @@ export function createAuthManagement({
             });
           let emailDelivered = false;
           if (invitation.emailDelivery)
-            try {
-              await sendEmail(invitation.emailDelivery, {
-                to: invitation.user.email,
-                subject: "You were invited to LocalBase",
-                text: `You were invited to LocalBase. Sign in here:\n\n${invitation.signInUrl}`,
-              });
-              emailDelivered = true;
-            } catch {
-              emailDelivered = false;
-            }
+            emailDelivered = await trySendEmail(invitation.emailDelivery, {
+              to: invitation.user.email,
+              subject: "You were invited to LocalBase",
+              text: `You were invited to LocalBase. Sign in here:\n\n${invitation.signInUrl}`,
+            });
           return Response.json(
             accessManagementMutationResponseSchema.parse({
               user: invitation.user,

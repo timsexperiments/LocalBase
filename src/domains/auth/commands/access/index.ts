@@ -32,11 +32,11 @@ import type {
 } from "../../../app/commands/inputs";
 import {
   disableEmailDelivery,
-  EmailDeliveryError,
   loadEmailDeliveryConfig,
   saveEmailDeliveryConfig,
   sendEmail,
   summarizeEmailDeliveryConfig,
+  trySendEmail,
 } from "../../email-delivery";
 import {
   disableBrowserAccess,
@@ -730,16 +730,11 @@ export async function runAccessUsersInvite(
   );
   let emailDelivered = false;
   if (result.emailDelivery) {
-    try {
-      await sendEmail(result.emailDelivery, {
-        to: result.user.email,
-        subject: "You were invited to LocalBase",
-        text: `You were invited to LocalBase. Sign in here:\n\n${result.signInUrl}`,
-      });
-      emailDelivered = true;
-    } catch (error) {
-      if (!(error instanceof EmailDeliveryError)) throw error;
-    }
+    emailDelivered = await trySendEmail(result.emailDelivery, {
+      to: result.user.email,
+      subject: "You were invited to LocalBase",
+      text: `You were invited to LocalBase. Sign in here:\n\n${result.signInUrl}`,
+    });
   }
   execution.output.info(
     emailDelivered

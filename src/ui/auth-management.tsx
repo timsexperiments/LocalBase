@@ -154,6 +154,13 @@ export function reconcileInviteRoles(
   return fallback ? [fallback] : [];
 }
 
+export function shouldSendInvitationEmail(
+  requested: boolean,
+  emailDeliveryConfigured: boolean,
+): boolean {
+  return requested && emailDeliveryConfigured;
+}
+
 export function isCurrentManagedUser(
   userEmail: string,
   verifiedEmail: string | undefined,
@@ -508,7 +515,10 @@ export function AuthManagement({
         action: "invite-user",
         email: inviteEmail,
         roles: inviteRoles,
-        sendEmail: sendInviteEmail && emailDelivery !== null,
+        sendEmail: shouldSendInvitationEmail(
+          sendInviteEmail,
+          emailDelivery !== null,
+        ),
       });
       const result = accessManagementMutationResponseSchema.parse(
         await response.json(),
