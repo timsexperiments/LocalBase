@@ -144,7 +144,10 @@ test("verifies every human session and never falls back after a JWT failure", as
   const validRequest = request(await token());
   const valid = await responseFor(access, validRequest);
   expect(valid.status).toBe(200);
-  expect(await valid.json()).toEqual({ authenticated: true });
+  expect(await valid.json()).toEqual({
+    authenticated: true,
+    verifiedEmail: "person@example.com",
+  });
   expect(valid.headers.get("cache-control")).toBe("no-store");
   expect(access.credential(validRequest)).toMatchObject({
     ownerId: expect.stringMatching(/^browser:[0-9a-f]{64}$/),

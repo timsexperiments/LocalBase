@@ -64,13 +64,21 @@ describe("playground client boundaries", () => {
   });
   test("requires a verified browser session", async () => {
     const fetchMock = spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(Response.json({ authenticated: true }))
+      .mockResolvedValueOnce(
+        Response.json({
+          authenticated: true,
+          verifiedEmail: "person@example.com",
+        }),
+      )
       .mockResolvedValueOnce(
         Response.json({ authenticated: false, mode: "api-key" }),
       );
     try {
       const session = await readSession();
-      expect(sessionConnection(session)).toEqual({ kind: "session" });
+      expect(sessionConnection(session)).toEqual({
+        kind: "session",
+        verifiedEmail: "person@example.com",
+      });
       const [path, options] = fetchMock.mock.calls[0] ?? [];
       expect(path).toBe("/app/session");
       expect(options).toMatchObject({
