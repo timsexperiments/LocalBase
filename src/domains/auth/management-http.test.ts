@@ -9,6 +9,11 @@ import { permissionSchema, principalSchema } from "./authorization";
 import { createAuthManagement } from "./management-http";
 import { loadBrowserAccessConfig } from "./browser-access";
 import { loadAccessControl } from "./access-control";
+import { withRootOperation } from "../service/ownership";
+import {
+  accessManagementMutationResponseSchema,
+  accessManagementReadResponseSchema,
+} from "./management-contract";
 
 let root: string;
 let database: DatabaseSession;
@@ -35,6 +40,11 @@ function request(path: string, body?: unknown): Request {
       body === undefined ? undefined : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+}
+
+async function jsonResponse(response: Response | null): Promise<unknown> {
+  if (!response) throw new Error("Expected a management response.");
+  return await response.json();
 }
 
 test("manages browser access without returning OIDC secrets", async () => {
@@ -165,6 +175,311 @@ test("manages browser access without returning OIDC secrets", async () => {
     matchedRoles: ["admin"],
     permissions: ["access:read", "access:manage"],
   });
+});
+
+test("manages browser users through the access-management contract", async () => {
+  const handle = createAuthManagement({
+    root,
+    database,
+    configuration: () => defaultConfig(root),
+  });
+  const reader = principalSchema.parse({
+    kind: "browser-session",
+    ownerId: "browser:reader",
+    permissions: ["access:read"],
+  });
+  const initial = accessManagementReadResponseSchema.parse(
+    await jsonResponse(
+      await handle(request("/_localbase/access-management"), reader),
+    ),
+  );
+  expect(initial.users).toEqual([]);
+  expect(initial.roles).toEqual([]);
+  const missingProvider = await handle(
+    request("/_localbase/access-management", {
+      action: "invite-user",
+      email: "person@example.com",
+      roles: ["member"],
+    }),
+    administrator,
+  );
+  expect(missingProvider?.status).toBe(409);
+  expect(await missingProvider?.json()).toMatchObject({
+    error: { code: "provider_not_configured" },
+  });
+  expect(
+    (
+      await handle(
+        request("/_localbase/access-management", {
+          action: "invite-user",
+          email: "person@example.com",
+          roles: ["member"],
+        }),
+        reader,
+      )
+    )?.status,
+  ).toBe(403);
+
+  const configured = await handle(
+    request("/_localbase/access-management", {
+      action: "configure-cloudflare",
+      provider: {
+        kind: "cloudflare-access",
+        teamDomain: "localbase.cloudflareaccess.com",
+        audience: "localbase",
+      },
+      origin: "https://localbase.example.com",
+      permissions: ["access:read", "access:manage"],
+    }),
+    administrator,
+  );
+  expect(configured?.status).toBe(200);
+
+  const missingPolicy = await handle(
+    request("/_localbase/access-management", {
+      action: "invite-user",
+      email: "person@example.com",
+      roles: ["member"],
+    }),
+    administrator,
+  );
+  expect(missingPolicy?.status).toBe(409);
+  expect(await missingPolicy?.json()).toMatchObject({
+    error: { code: "policy_not_configured" },
+  });
+
+  const policy = {
+    roles: [
+      {
+        name: "admin",
+        description: "Administrators",
+        permissions: ["access:read", "access:manage"] as const,
+      },
+      {
+        name: "member",
+        description: "Members",
+        permissions: ["inference:chat"] as const,
+      },
+    ],
+    bindings: [
+      {
+        kind: "subject" as const,
+        role: "admin",
+        issuer: "https://identity.example.com",
+        subject: "owner",
+      },
+      {
+        kind: "email" as const,
+        role: "member",
+        email: "person@example.com",
+      },
+    ],
+    defaultRole: null,
+  };
+  expect(
+    (
+      await handle(
+        request("/_localbase/access-management", {
+          action: "apply-policy",
+          policy,
+        }),
+        administrator,
+      )
+    )?.status,
+  ).toBe(200);
+
+  const invited = await handle(
+    request("/_localbase/access-management", {
+      action: "invite-user",
+      email: "Person@Example.com",
+      roles: ["member"],
+    }),
+    administrator,
+  );
+  expect(invited?.status).toBe(201);
+  const invitedBody = accessManagementMutationResponseSchema.parse(
+    await invited?.json(),
+  );
+  expect(invitedBody).toMatchObject({
+    user: { email: "person@example.com", status: "pending", roles: ["member"] },
+    signInUrl: "https://localbase.example.com/app",
+  });
+
+  const duplicate = await handle(
+    request("/_localbase/access-management", {
+      action: "invite-user",
+      email: "person@example.com",
+      roles: ["member"],
+    }),
+    administrator,
+  );
+  expect(duplicate?.status).toBe(409);
+  expect(await duplicate?.json()).toMatchObject({
+    error: { code: "managed_user_exists" },
+  });
+
+  const unknownRole = await handle(
+    request("/_localbase/access-management", {
+      action: "replace-user-roles",
+      email: "person@example.com",
+      roles: ["missing"],
+    }),
+    administrator,
+  );
+  expect(unknownRole?.status).toBe(400);
+  expect(await unknownRole?.json()).toMatchObject({
+    error: { code: "role_not_found" },
+  });
+
+  const unknownUser = await handle(
+    request("/_localbase/access-management", {
+      action: "disable-user",
+      email: "missing@example.com",
+    }),
+    administrator,
+  );
+  expect(unknownUser?.status).toBe(404);
+  expect(await unknownUser?.json()).toMatchObject({
+    error: { code: "managed_user_not_found" },
+  });
+
+  const testedPending = await handle(
+    request("/_localbase/access-management", {
+      action: "test-policy",
+      identity: {
+        issuer: "https://identity.example.com",
+        subject: "pending-user",
+        verifiedEmail: "PERSON@example.com",
+      },
+    }),
+    administrator,
+  );
+  expect(await testedPending?.json()).toMatchObject({
+    matchedRoles: ["member"],
+    permissions: ["inference:chat"],
+  });
+  expect(
+    accessManagementReadResponseSchema.parse(
+      await jsonResponse(
+        await handle(request("/_localbase/access-management"), reader),
+      ),
+    ).users[0],
+  ).toMatchObject({ status: "pending" });
+
+  const assignedRoleConflict = await handle(
+    request("/_localbase/access-management", {
+      action: "apply-policy",
+      policy: {
+        roles: [policy.roles[0]],
+        bindings: [policy.bindings[0]],
+        defaultRole: null,
+      },
+    }),
+    administrator,
+  );
+  expect(assignedRoleConflict?.status).toBe(409);
+  expect(await assignedRoleConflict?.json()).toMatchObject({
+    error: { code: "policy_conflict" },
+  });
+
+  const disabled = await handle(
+    request("/_localbase/access-management", {
+      action: "disable-user",
+      email: "PERSON@example.com",
+    }),
+    administrator,
+  );
+  expect(disabled?.status).toBe(200);
+  expect((await disabled?.json()).user.status).toBe("disabled");
+
+  const enabled = await handle(
+    request("/_localbase/access-management", {
+      action: "enable-user",
+      email: "person@example.com",
+    }),
+    administrator,
+  );
+  expect(enabled?.status).toBe(200);
+  expect((await enabled?.json()).user.status).toBe("active");
+
+  const replaced = await handle(
+    request("/_localbase/access-management", {
+      action: "replace-user-roles",
+      email: "person@example.com",
+      roles: ["admin"],
+    }),
+    administrator,
+  );
+  expect((await replaced?.json()).user.roles).toEqual(["admin"]);
+
+  const missingUser = await handle(
+    request("/_localbase/access-management", {
+      action: "disable-user",
+      email: "missing@example.com",
+    }),
+    administrator,
+  );
+  expect(missingUser?.status).toBe(404);
+  expect(await missingUser?.json()).toMatchObject({
+    error: { code: "managed_user_not_found" },
+  });
+
+  const removed = await handle(
+    request("/_localbase/access-management", {
+      action: "remove-user",
+      email: "person@example.com",
+    }),
+    administrator,
+  );
+  expect(removed?.status).toBe(200);
+  expect((await removed?.json()).user.email).toBe("person@example.com");
+  expect(
+    accessManagementReadResponseSchema.parse(
+      await jsonResponse(
+        await handle(request("/_localbase/access-management"), reader),
+      ),
+    ).users,
+  ).toEqual([]);
+});
+
+test("keeps access-management reads available during unrelated root operations", async () => {
+  const handle = createAuthManagement({
+    root,
+    database,
+    configuration: () => defaultConfig(root),
+  });
+  const reader = principalSchema.parse({
+    kind: "browser-session",
+    ownerId: "browser:reader",
+    permissions: ["access:read"],
+  });
+  let release!: () => void;
+  let acquired!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const ready = new Promise<void>((resolve) => {
+    acquired = resolve;
+  });
+  const holding = withRootOperation(root, "install model", async () => {
+    acquired();
+    await blocked;
+  });
+
+  try {
+    await ready;
+    const response = await handle(
+      request("/_localbase/access-management"),
+      reader,
+    );
+    expect(response?.status).toBe(200);
+    expect(
+      accessManagementReadResponseSchema.parse(await response?.json()),
+    ).toMatchObject({ users: [], roles: [] });
+  } finally {
+    release();
+    await holding;
+  }
 });
 
 test("keeps key secrets one-time and enforces separate read and manage scopes", async () => {

@@ -8,8 +8,17 @@ import {
   oidcAccessRegistrationSchema,
   accessRegistrationIdSchema,
 } from "./browser-access-contract";
-import { accessControlConfigSchema } from "./access-control";
+import {
+  accessControlConfigSchema,
+  accessControlRoleSchema,
+} from "./access-control";
 import { apiKeyMetadataSchema } from "./api-key-public";
+import {
+  inviteManagedUserInputSchema,
+  managedUserEmailInputSchema,
+  managedUserSchema,
+  replaceManagedUserRolesInputSchema,
+} from "./users";
 
 const identitySchema = z
   .object({
@@ -51,6 +60,36 @@ export const accessManagementRequestSchema = z.discriminatedUnion("action", [
     })
     .strict(),
   z.object({ action: z.literal("disable") }).strict(),
+  z
+    .object({
+      action: z.literal("invite-user"),
+      ...inviteManagedUserInputSchema.shape,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("replace-user-roles"),
+      ...replaceManagedUserRolesInputSchema.shape,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("enable-user"),
+      ...managedUserEmailInputSchema.shape,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("disable-user"),
+      ...managedUserEmailInputSchema.shape,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("remove-user"),
+      ...managedUserEmailInputSchema.shape,
+    })
+    .strict(),
   z
     .object({
       action: z.literal("apply-policy"),
@@ -100,8 +139,13 @@ export const managementErrorSchema = z
           "payload_too_large",
           "request_aborted",
           "provider_not_configured",
+          "policy_not_configured",
           "registration_not_found",
           "key_not_found",
+          "managed_user_not_found",
+          "managed_user_exists",
+          "role_not_found",
+          "policy_conflict",
         ]),
         message: z.string().min(1).max(512),
       })
@@ -113,6 +157,8 @@ export const accessManagementReadResponseSchema = z
   .object({
     config: browserAccessConfigSummarySchema.nullable(),
     policy: accessControlConfigSchema.nullable(),
+    users: z.array(managedUserSchema),
+    roles: z.array(accessControlRoleSchema).max(64),
   })
   .strict();
 
@@ -145,6 +191,13 @@ export const accessManagementMutationResponseSchema = z.union([
       permissions: permissionsSchema,
     })
     .strict(),
+  z
+    .object({
+      user: managedUserSchema,
+      signInUrl: z.string().url(),
+    })
+    .strict(),
+  z.object({ user: managedUserSchema }).strict(),
 ]);
 
 export const keyManagementReadResponseSchema = z
