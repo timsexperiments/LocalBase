@@ -17,6 +17,7 @@ import {
 } from "../../auth/browser-access";
 import { accessControlConfigSchema } from "../../auth/access-control";
 import { apiKeyMetadataSchema } from "../../auth/api-key-public";
+import { managedUserSchema } from "../../auth/users";
 
 export { publicApiKey } from "../../auth/api-key-public";
 
@@ -193,6 +194,15 @@ export const accessPolicyTestResultSchema = z
   .strict();
 export const accessPolicyClearResultSchema = z
   .object({ cleared: z.boolean(), restartRequired: z.boolean() })
+  .strict();
+export const accessUsersListResultSchema = z
+  .object({ users: z.array(managedUserSchema) })
+  .strict();
+export const accessUsersInviteResultSchema = z
+  .object({ user: managedUserSchema, signInUrl: z.string().url() })
+  .strict();
+export const accessUsersUserResultSchema = z
+  .object({ user: managedUserSchema })
   .strict();
 export const resetResultSchema = z
   .object({ reset: z.literal(true), root: z.string() })

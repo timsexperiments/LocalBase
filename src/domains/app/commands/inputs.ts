@@ -18,6 +18,10 @@ import {
   githubAccessRegistrationSchema,
   oidcAccessRegistrationSchema,
 } from "../../auth/browser-access";
+import {
+  managedUserEmailSchema,
+  managedUserRolesSchema,
+} from "../../auth/users";
 
 export const modelKindSchema = z.enum(["llm", "stt", "tts", "image", "video"]);
 
@@ -319,6 +323,48 @@ export type AccessPolicyTestInput = z.infer<typeof accessPolicyTestInputSchema>;
 export const accessPolicyClearInputSchema = z.object({});
 export type AccessPolicyClearInput = z.infer<
   typeof accessPolicyClearInputSchema
+>;
+
+const managedUserRolesInputSchema = z
+  .string()
+  .transform((value): unknown =>
+    value.trim() === "" ? [] : value.split(",").map((role) => role.trim()),
+  )
+  .pipe(managedUserRolesSchema);
+
+export const accessUsersListInputSchema = z.object({});
+export type AccessUsersListInput = z.infer<typeof accessUsersListInputSchema>;
+
+export const accessUsersInviteInputSchema = z
+  .object({
+    email: managedUserEmailSchema,
+    roles: managedUserRolesInputSchema.pipe(z.array(z.string()).min(1)),
+  })
+  .strict();
+export type AccessUsersInviteInput = z.infer<
+  typeof accessUsersInviteInputSchema
+>;
+
+export const accessUsersRolesInputSchema = z
+  .object({ email: managedUserEmailSchema, roles: managedUserRolesInputSchema })
+  .strict();
+export type AccessUsersRolesInput = z.infer<typeof accessUsersRolesInputSchema>;
+
+export const accessUsersEnableInputSchema = z
+  .object({ email: managedUserEmailSchema })
+  .strict();
+export type AccessUsersEnableInput = z.infer<
+  typeof accessUsersEnableInputSchema
+>;
+
+export const accessUsersDisableInputSchema = accessUsersEnableInputSchema;
+export type AccessUsersDisableInput = z.infer<
+  typeof accessUsersDisableInputSchema
+>;
+
+export const accessUsersRemoveInputSchema = accessUsersEnableInputSchema;
+export type AccessUsersRemoveInput = z.infer<
+  typeof accessUsersRemoveInputSchema
 >;
 
 export const resetInputSchema = z.object({
