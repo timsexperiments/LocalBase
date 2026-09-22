@@ -16,6 +16,12 @@ import type {
   AccessPolicyShowInput,
   AccessPolicyTestInput,
   AccessShowInput,
+  AccessUsersDisableInput,
+  AccessUsersEnableInput,
+  AccessUsersInviteInput,
+  AccessUsersListInput,
+  AccessUsersRemoveInput,
+  AccessUsersRolesInput,
 } from "../../../app/commands/inputs";
 import {
   disableBrowserAccess,
@@ -33,6 +39,14 @@ import {
   loadAccessControl,
   resolveAccessControl,
 } from "../../access-control";
+import {
+  disableManagedUser,
+  enableManagedUser,
+  inviteManagedUser,
+  listManagedUsers,
+  removeManagedUser,
+  replaceManagedUserRoles,
+} from "../../users";
 import { withRootOperation } from "../../../service/ownership";
 
 export async function runAccessShow(
@@ -441,4 +455,92 @@ export async function runAccessPolicyClear(
     "Cleared browser access policy. Provider-wide permissions now apply.",
   );
   return { data: { cleared: true, restartRequired: false } };
+}
+
+export async function runAccessUsersList(
+  _input: AccessUsersListInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const users = listManagedUsers(ctx.database.get(ctx.config.root));
+  execution.output.info(`${users.length} managed users.`);
+  return { data: { users } };
+}
+
+export async function runAccessUsersInvite(
+  input: AccessUsersInviteInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const result = await withRootOperation(
+    ctx.config.root,
+    "provision a browser user",
+    async (root) => {
+      const config = await loadBrowserAccessConfig(root);
+      if (!config)
+        throw new CliInputError("Configure a browser identity provider first.");
+      const user = inviteManagedUser(ctx.database.get(root), input);
+      return { user, signInUrl: new URL("/app", config.origin).toString() };
+    },
+  );
+  execution.output.info(
+    `Invited ${result.user.email}. Sign in at ${result.signInUrl}`,
+  );
+  return { data: result };
+}
+
+export async function runAccessUsersRoles(
+  input: AccessUsersRolesInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const user = await withRootOperation(
+    ctx.config.root,
+    "replace browser user roles",
+    async (root) => replaceManagedUserRoles(ctx.database.get(root), input),
+  );
+  execution.output.info(`Replaced roles for ${user.email}.`);
+  return { data: { user } };
+}
+
+export async function runAccessUsersEnable(
+  input: AccessUsersEnableInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const user = await withRootOperation(
+    ctx.config.root,
+    "enable a browser user",
+    async (root) => enableManagedUser(ctx.database.get(root), input),
+  );
+  execution.output.info(`Enabled ${user.email}.`);
+  return { data: { user } };
+}
+
+export async function runAccessUsersDisable(
+  input: AccessUsersDisableInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const user = await withRootOperation(
+    ctx.config.root,
+    "disable a browser user",
+    async (root) => disableManagedUser(ctx.database.get(root), input),
+  );
+  execution.output.info(`Disabled ${user.email}.`);
+  return { data: { user } };
+}
+
+export async function runAccessUsersRemove(
+  input: AccessUsersRemoveInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const user = await withRootOperation(
+    ctx.config.root,
+    "remove a browser user",
+    async (root) => removeManagedUser(ctx.database.get(root), input),
+  );
+  execution.output.info(`Removed ${user.email}.`);
+  return { data: { user } };
 }

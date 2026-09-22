@@ -395,6 +395,7 @@ test("apply migrates the prior database under the operation lock and preserves p
     old.exec("DROP TABLE auth_domain_role_bindings");
     old.exec("DROP TABLE auth_email_role_bindings");
     old.exec("DROP TABLE auth_subject_role_bindings");
+    old.exec("DROP TABLE auth_user_emails");
     old.exec("DROP TABLE auth_user_roles");
     old.exec("DROP TABLE auth_identities");
     old.exec("DROP TABLE auth_settings");
@@ -405,7 +406,7 @@ test("apply migrates the prior database under the operation lock and preserves p
     old.exec("ALTER TABLE config DROP COLUMN gateway_host");
     old.exec("ALTER TABLE config DROP COLUMN gateway_port");
     old.exec(
-      "DELETE FROM __drizzle_migrations WHERE created_at IN (SELECT created_at FROM __drizzle_migrations ORDER BY created_at DESC LIMIT 2)",
+      "DELETE FROM __drizzle_migrations WHERE created_at IN (SELECT created_at FROM __drizzle_migrations ORDER BY created_at DESC LIMIT 3)",
     );
   } finally {
     old.close();

@@ -9,13 +9,14 @@ import {
   authRolePermissionsTable,
   authSettingsTable,
   authSubjectRoleBindingsTable,
+  authUserEmailsTable,
   authUserRolesTable,
   authUsersTable,
 } from "../../db/schema";
 import { permissionsSchema, type Permission } from "./authorization";
 import type { BrowserIdentity } from "./browser-identity";
 
-const roleNameSchema = z
+export const roleNameSchema = z
   .string()
   .min(1)
   .max(64)
@@ -160,6 +161,25 @@ export function applyAccessControl(
             set: { description: role.description, updatedAt: now },
           })
           .run();
+      }
+      const removedRoleIds = [...existing.entries()]
+        .filter(([name]) => !roleIds.has(name))
+        .map(([, id]) => id);
+      if (removedRoleIds.length) {
+        const assignedRole = db
+          .select({ name: authRolesTable.name })
+          .from(authUserRolesTable)
+          .innerJoin(
+            authRolesTable,
+            eq(authUserRolesTable.roleId, authRolesTable.id),
+          )
+          .where(inArray(authUserRolesTable.roleId, removedRoleIds))
+          .limit(1)
+          .get();
+        if (assignedRole)
+          throw new Error(
+            `Cannot remove browser access role ${assignedRole.name} while it is assigned to a managed user.`,
+          );
       }
       db.delete(authSubjectRoleBindingsTable).run();
       db.delete(authEmailRoleBindingsTable).run();
@@ -315,6 +335,15 @@ export function clearAccessControl(db: LocalBaseDatabase): boolean {
   if (!configured) return false;
   db.transaction(
     () => {
+      const managedUser = db
+        .select({ id: authUsersTable.id })
+        .from(authUsersTable)
+        .limit(1)
+        .get();
+      if (managedUser)
+        throw new Error(
+          "Cannot clear the browser access policy while managed users exist.",
+        );
       db.delete(authSubjectRoleBindingsTable).run();
       db.delete(authEmailRoleBindingsTable).run();
       db.delete(authDomainRoleBindingsTable).run();
@@ -329,85 +358,142 @@ export function clearAccessControl(db: LocalBaseDatabase): boolean {
 export function resolveAccessControl(
   db: LocalBaseDatabase,
   identity: BrowserIdentity,
+  options: Readonly<{ claimManagedUser?: boolean }> = {},
 ): Readonly<{
   matchedRoles: readonly string[];
   permissions: readonly Permission[];
 }> | null {
-  return db.transaction(() => {
-    const settings = db
-      .select({ defaultRoleId: authSettingsTable.defaultRoleId })
-      .from(authSettingsTable)
-      .where(eq(authSettingsTable.id, settingsId))
-      .get();
-    if (!settings) return null;
-    const roleIds = new Set<string>();
-    if (settings.defaultRoleId) roleIds.add(settings.defaultRoleId);
-    for (const binding of db
-      .select({ roleId: authSubjectRoleBindingsTable.roleId })
-      .from(authSubjectRoleBindingsTable)
-      .where(
-        and(
-          eq(authSubjectRoleBindingsTable.issuer, identity.issuer),
-          eq(authSubjectRoleBindingsTable.subject, identity.subject),
-        ),
-      )
-      .all())
-      roleIds.add(binding.roleId);
-    if (identity.verifiedEmail) {
-      const email = identity.verifiedEmail.toLowerCase();
+  return db.transaction(
+    () => {
+      const settings = db
+        .select({ defaultRoleId: authSettingsTable.defaultRoleId })
+        .from(authSettingsTable)
+        .where(eq(authSettingsTable.id, settingsId))
+        .get();
+      if (!settings) return null;
+      const email = identity.verifiedEmail?.toLowerCase();
+      let storedIdentity = db
+        .select({
+          userId: authIdentitiesTable.userId,
+          status: authUsersTable.status,
+        })
+        .from(authIdentitiesTable)
+        .innerJoin(
+          authUsersTable,
+          eq(authIdentitiesTable.userId, authUsersTable.id),
+        )
+        .where(
+          and(
+            eq(authIdentitiesTable.issuer, identity.issuer),
+            eq(authIdentitiesTable.subject, identity.subject),
+          ),
+        )
+        .get();
+      if (!storedIdentity && email && options.claimManagedUser === true) {
+        const invitedUser = db
+          .select({ userId: authUserEmailsTable.userId })
+          .from(authUserEmailsTable)
+          .where(eq(authUserEmailsTable.email, email))
+          .get();
+        if (invitedUser) {
+          const now = new Date().toISOString();
+          db.insert(authIdentitiesTable)
+            .values({
+              id: crypto.randomUUID(),
+              userId: invitedUser.userId,
+              issuer: identity.issuer,
+              subject: identity.subject,
+              verifiedEmail: email,
+              createdAt: now,
+              lastSeenAt: now,
+            })
+            .onConflictDoNothing()
+            .run();
+          storedIdentity = db
+            .select({
+              userId: authIdentitiesTable.userId,
+              status: authUsersTable.status,
+            })
+            .from(authIdentitiesTable)
+            .innerJoin(
+              authUsersTable,
+              eq(authIdentitiesTable.userId, authUsersTable.id),
+            )
+            .where(
+              and(
+                eq(authIdentitiesTable.issuer, identity.issuer),
+                eq(authIdentitiesTable.subject, identity.subject),
+              ),
+            )
+            .get();
+          if (storedIdentity?.userId !== invitedUser.userId)
+            return { matchedRoles: [], permissions: [] };
+          if (storedIdentity.status === "pending") {
+            db.update(authUsersTable)
+              .set({ status: "active", updatedAt: now })
+              .where(eq(authUsersTable.id, invitedUser.userId))
+              .run();
+            storedIdentity = { ...storedIdentity, status: "active" };
+          }
+        }
+      }
+      if (storedIdentity && storedIdentity.status !== "active")
+        return { matchedRoles: [], permissions: [] };
+
+      const roleIds = new Set<string>();
+      if (settings.defaultRoleId) roleIds.add(settings.defaultRoleId);
       for (const binding of db
-        .select({ roleId: authEmailRoleBindingsTable.roleId })
-        .from(authEmailRoleBindingsTable)
-        .where(eq(authEmailRoleBindingsTable.email, email))
+        .select({ roleId: authSubjectRoleBindingsTable.roleId })
+        .from(authSubjectRoleBindingsTable)
+        .where(
+          and(
+            eq(authSubjectRoleBindingsTable.issuer, identity.issuer),
+            eq(authSubjectRoleBindingsTable.subject, identity.subject),
+          ),
+        )
         .all())
         roleIds.add(binding.roleId);
-      const domain = email.split("@").at(-1);
-      if (domain)
+      if (email) {
         for (const binding of db
-          .select({ roleId: authDomainRoleBindingsTable.roleId })
-          .from(authDomainRoleBindingsTable)
-          .where(eq(authDomainRoleBindingsTable.domain, domain))
+          .select({ roleId: authEmailRoleBindingsTable.roleId })
+          .from(authEmailRoleBindingsTable)
+          .where(eq(authEmailRoleBindingsTable.email, email))
           .all())
           roleIds.add(binding.roleId);
-    }
-    const storedIdentity = db
-      .select({ userId: authIdentitiesTable.userId })
-      .from(authIdentitiesTable)
-      .innerJoin(
-        authUsersTable,
-        eq(authIdentitiesTable.userId, authUsersTable.id),
-      )
-      .where(
-        and(
-          eq(authIdentitiesTable.issuer, identity.issuer),
-          eq(authIdentitiesTable.subject, identity.subject),
-          eq(authUsersTable.status, "active"),
+        const domain = email.split("@").at(-1);
+        if (domain)
+          for (const binding of db
+            .select({ roleId: authDomainRoleBindingsTable.roleId })
+            .from(authDomainRoleBindingsTable)
+            .where(eq(authDomainRoleBindingsTable.domain, domain))
+            .all())
+            roleIds.add(binding.roleId);
+      }
+      if (storedIdentity)
+        for (const assignment of db
+          .select({ roleId: authUserRolesTable.roleId })
+          .from(authUserRolesTable)
+          .where(eq(authUserRolesTable.userId, storedIdentity.userId))
+          .all())
+          roleIds.add(assignment.roleId);
+      if (!roleIds.size) return { matchedRoles: [], permissions: [] };
+      const roles = db
+        .select({ id: authRolesTable.id, name: authRolesTable.name })
+        .from(authRolesTable)
+        .where(inArray(authRolesTable.id, [...roleIds]))
+        .all();
+      const permissions = db
+        .select({ permission: authRolePermissionsTable.permission })
+        .from(authRolePermissionsTable)
+        .where(inArray(authRolePermissionsTable.roleId, [...roleIds]))
+        .all();
+      return {
+        matchedRoles: roles.map((role) => role.name).sort(),
+        permissions: permissionsSchema.parse(
+          permissions.map((permission) => permission.permission),
         ),
-      )
-      .get();
-    if (storedIdentity)
-      for (const assignment of db
-        .select({ roleId: authUserRolesTable.roleId })
-        .from(authUserRolesTable)
-        .where(eq(authUserRolesTable.userId, storedIdentity.userId))
-        .all())
-        roleIds.add(assignment.roleId);
-    if (!roleIds.size) return { matchedRoles: [], permissions: [] };
-    const roles = db
-      .select({ id: authRolesTable.id, name: authRolesTable.name })
-      .from(authRolesTable)
-      .where(inArray(authRolesTable.id, [...roleIds]))
-      .all();
-    const permissions = db
-      .select({ permission: authRolePermissionsTable.permission })
-      .from(authRolePermissionsTable)
-      .where(inArray(authRolePermissionsTable.roleId, [...roleIds]))
-      .all();
-    return {
-      matchedRoles: roles.map((role) => role.name).sort(),
-      permissions: permissionsSchema.parse(
-        permissions.map((permission) => permission.permission),
-      ),
-    };
-  });
+      };
+    },
+    { behavior: "immediate" },
+  );
 }

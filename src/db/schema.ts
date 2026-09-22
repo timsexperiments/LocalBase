@@ -91,6 +91,17 @@ export const authUsersTable = sqliteTable("auth_users", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const authUserEmailsTable = sqliteTable(
+  "auth_user_emails",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => authUsersTable.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+  },
+  (table) => [uniqueIndex("auth_user_emails_email_unique").on(table.email)],
+);
+
 export const authIdentitiesTable = sqliteTable(
   "auth_identities",
   {
@@ -105,6 +116,7 @@ export const authIdentitiesTable = sqliteTable(
     lastSeenAt: text("last_seen_at").notNull(),
   },
   (table) => [
+    uniqueIndex("auth_identities_user_id_unique").on(table.userId),
     uniqueIndex("auth_identities_issuer_subject_unique").on(
       table.issuer,
       table.subject,

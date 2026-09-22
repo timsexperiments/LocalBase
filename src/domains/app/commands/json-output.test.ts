@@ -25,6 +25,9 @@ import {
   accessPolicyClearResultSchema,
   accessPolicyTestResultSchema,
   accessShowResultSchema,
+  accessUsersInviteResultSchema,
+  accessUsersListResultSchema,
+  accessUsersUserResultSchema,
   keyMetadataResultSchema,
   keySecretResultSchema,
   keysListResultSchema,
@@ -473,6 +476,110 @@ test(
         matchedRoles: ["admin", "user"],
         permissions: ["inference:chat", "models:manage", "access:manage"],
       });
+      const invitedUser = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "users",
+        "invite",
+        "--email",
+        "person@example.com",
+        "--roles",
+        "user",
+      ]);
+      expect(invitedUser.exitCode).toBe(0);
+      expect(
+        accessUsersInviteResultSchema.parse(
+          jsonDocument(invitedUser.stdout).data,
+        ),
+      ).toMatchObject({
+        user: {
+          email: "person@example.com",
+          status: "pending",
+          roles: ["user"],
+        },
+        signInUrl: "https://localbase.example.com/app",
+      });
+      const listedUsers = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "users",
+        "list",
+      ]);
+      expect(
+        accessUsersListResultSchema.parse(
+          jsonDocument(listedUsers.stdout).data,
+        ),
+      ).toMatchObject({
+        users: [
+          { email: "person@example.com", status: "pending", roles: ["user"] },
+        ],
+      });
+      const disabledUser = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "users",
+        "disable",
+        "--email",
+        "person@example.com",
+      ]);
+      expect(
+        accessUsersUserResultSchema.parse(
+          jsonDocument(disabledUser.stdout).data,
+        ),
+      ).toMatchObject({ user: { status: "disabled" } });
+      const enabledUser = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "users",
+        "enable",
+        "--email",
+        "person@example.com",
+      ]);
+      expect(
+        accessUsersUserResultSchema.parse(
+          jsonDocument(enabledUser.stdout).data,
+        ),
+      ).toMatchObject({ user: { status: "active" } });
+      const replacedUserRoles = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "users",
+        "roles",
+        "--email",
+        "person@example.com",
+        "--roles",
+        "",
+      ]);
+      expect(
+        accessUsersUserResultSchema.parse(
+          jsonDocument(replacedUserRoles.stdout).data,
+        ),
+      ).toMatchObject({ user: { roles: [] } });
+      const removedUser = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "users",
+        "remove",
+        "--email",
+        "person@example.com",
+      ]);
+      expect(
+        accessUsersUserResultSchema.parse(
+          jsonDocument(removedUser.stdout).data,
+        ),
+      ).toMatchObject({ user: { email: "person@example.com" } });
       await writeFile(
         policyPath,
         JSON.stringify({

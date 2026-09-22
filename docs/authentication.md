@@ -160,6 +160,31 @@ a current administrator. Test the intended administrator identity before
 closing the current session. The local CLI remains available to an administrator who can access
 the LocalBase data directory.
 
+## Provision browser users
+
+After applying a policy, provision people by their provider-verified email and
+the policy's role names. The command returns the configured `/app` sign-in URL.
+It does not send mail or mint a token.
+
+```bash
+local-base --non-interactive --json access users invite \
+  --email person@example.com \
+  --roles user
+local-base --non-interactive --json access users list
+local-base --non-interactive --json access users roles \
+  --email person@example.com \
+  --roles user,video-user
+```
+
+An invited user is pending until a provider returns that exact verified email.
+LocalBase links the provider identity and activates the user in the same
+authorization transaction. Disable a user to deny every browser permission,
+including default, email, and email-domain roles. Enable or remove users with
+`access users enable`, `access users disable`, and `access users remove`.
+
+LocalBase refuses `access policy clear` while managed users exist. Remove the
+users first if returning to provider-wide permissions is intentional.
+
 ## Create machine credentials
 
 Give each application its own key and only the permissions it needs.
