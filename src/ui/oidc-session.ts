@@ -7,7 +7,7 @@ import type {
   GithubAccessRegistration,
   OidcAccessRegistration,
 } from "../domains/auth/browser-access";
-import type { BrowserIdentity } from "../domains/auth/browser-policy";
+import type { BrowserIdentity } from "../domains/auth/browser-identity";
 
 const loginStateCookie = "__Host-localbase-login-state";
 const sessionCookie = "__Host-localbase-session";

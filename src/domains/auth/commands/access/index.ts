@@ -27,9 +27,12 @@ import {
   upsertAccessRegistration,
 } from "../../browser-access";
 import {
-  browserAccessPolicySchema,
-  evaluateBrowserAccessPolicy,
-} from "../../browser-policy";
+  accessControlConfigSchema,
+  applyAccessControl,
+  clearAccessControl,
+  loadAccessControl,
+  resolveAccessControl,
+} from "../../access-control";
 import { withRootOperation } from "../../../service/ownership";
 
 export async function runAccessShow(
@@ -69,7 +72,6 @@ export async function runAccessCloudflare(
           input.permissions ??
           current?.permissions ??
           defaultBrowserPermissions,
-        ...(current?.policy ? { policy: current.policy } : {}),
       });
     },
   );
@@ -341,11 +343,10 @@ export async function runAccessPolicyShow(
   ctx: AppContext,
   execution: CommandExecution,
 ) {
-  const config = await loadBrowserAccessConfig(ctx.config.root);
-  const policy = config?.policy ?? null;
+  const policy = loadAccessControl(ctx.database.get(ctx.config.root));
   execution.output.info(
     policy
-      ? `Browser access policy: ${Object.keys(policy.roles).length} roles, ${policy.bindings.length} bindings.`
+      ? `Browser access policy: ${policy.roles.length} roles, ${policy.bindings.length} bindings.`
       : "Browser access policy is not configured.",
   );
   return { data: { policy } };
@@ -368,7 +369,7 @@ export async function runAccessPolicyApply(
   } catch {
     throw new CliInputError("Access policy must be valid JSON.");
   }
-  const parsed = browserAccessPolicySchema.safeParse(value);
+  const parsed = accessControlConfigSchema.safeParse(value);
   if (!parsed.success)
     throw new CliInputError(
       `Invalid access policy: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`,
@@ -380,17 +381,14 @@ export async function runAccessPolicyApply(
       const config = await loadBrowserAccessConfig(root);
       if (!config)
         throw new CliInputError("Configure a browser identity provider first.");
-      return await saveBrowserAccessConfig(root, {
-        ...config,
-        policy: parsed.data,
-      });
+      return applyAccessControl(ctx.database.get(root), parsed.data);
     },
   );
   execution.output.info(
-    "Saved browser access policy. Restart LocalBase to apply it.",
+    "Saved browser access policy. Changes apply immediately.",
   );
   return {
-    data: { policy: saved.policy!, restartRequired: true as const },
+    data: { policy: saved, restartRequired: false as const },
   };
 }
 
@@ -402,19 +400,18 @@ export async function runAccessPolicyTest(
   const config = await loadBrowserAccessConfig(ctx.config.root);
   if (!config)
     throw new CliInputError("Configure a browser identity provider first.");
-  const decision = config.policy
-    ? evaluateBrowserAccessPolicy(config.policy, {
-        issuer: input.issuer,
-        subject: input.subject,
-        ...(input.email ? { verifiedEmail: input.email } : {}),
-      })
-    : { matchedRoles: [], permissions: config.permissions };
+  const decision = resolveAccessControl(ctx.database.get(ctx.config.root), {
+    issuer: input.issuer,
+    subject: input.subject,
+    ...(input.email ? { verifiedEmail: input.email } : {}),
+  }) ?? { matchedRoles: [], permissions: config.permissions };
   execution.output.info(
     `Matched ${decision.matchedRoles.length} roles and ${decision.permissions.length} permissions.`,
   );
   return {
     data: {
-      policyConfigured: Boolean(config.policy),
+      policyConfigured:
+        loadAccessControl(ctx.database.get(ctx.config.root)) !== null,
       matchedRoles: decision.matchedRoles,
       permissions: decision.permissions,
     },
@@ -433,10 +430,7 @@ export async function runAccessPolicyClear(
       const config = await loadBrowserAccessConfig(root);
       if (!config)
         throw new CliInputError("Configure a browser identity provider first.");
-      if (!config.policy) return false;
-      const { policy: _, ...providerWideConfig } = config;
-      await saveBrowserAccessConfig(root, providerWideConfig);
-      return true;
+      return clearAccessControl(ctx.database.get(root));
     },
   );
   if (!cleared) {
@@ -444,7 +438,7 @@ export async function runAccessPolicyClear(
     return { data: { cleared: false, restartRequired: false } };
   }
   execution.output.info(
-    "Cleared browser access policy. Provider-wide permissions apply after restart.",
+    "Cleared browser access policy. Provider-wide permissions now apply.",
   );
-  return { data: { cleared: true, restartRequired: true } };
+  return { data: { cleared: true, restartRequired: false } };
 }

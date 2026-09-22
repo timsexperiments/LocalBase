@@ -30,6 +30,7 @@ export class DatabaseSession {
 
     mkdirSync(canonicalRoot, { recursive: true });
     const sqlite = new Database(path);
+    sqlite.exec("PRAGMA foreign_keys = ON");
     const db = drizzle({ client: sqlite, schema });
     try {
       migrate(db, { migrationsFolder: migrationsFolder() });
@@ -62,6 +63,7 @@ export function openReadOnlyDatabase(root: string): {
     readonly: true,
     create: false,
   });
+  sqlite.exec("PRAGMA foreign_keys = ON");
   return {
     db: drizzle({ client: sqlite, schema }),
     close: () => sqlite.close(),

@@ -17,7 +17,12 @@ import {
   summarizeBrowserAccessConfig,
   upsertAccessRegistration,
 } from "./browser-access";
-import { evaluateBrowserAccessPolicy } from "./browser-policy";
+import {
+  applyAccessControl,
+  clearAccessControl,
+  loadAccessControl,
+  resolveAccessControl,
+} from "./access-control";
 import { publicApiKey } from "./api-key-public";
 import {
   accessManagementMutationResponseSchema,
@@ -153,6 +158,7 @@ export function createAuthManagement({
         return Response.json(
           accessManagementReadResponseSchema.parse({
             config: config ? summarizeBrowserAccessConfig(config) : null,
+            policy: loadAccessControl(database.get(root)),
           }),
           { headers },
         );
@@ -219,12 +225,17 @@ export function createAuthManagement({
             status: 409,
             headers,
           });
-        const decision = current.policy
-          ? evaluateBrowserAccessPolicy(current.policy, input.identity)
-          : { matchedRoles: [], permissions: current.permissions };
+        const policy = loadAccessControl(database.get(root));
+        const decision = resolveAccessControl(
+          database.get(root),
+          input.identity,
+        ) ?? {
+          matchedRoles: [],
+          permissions: current.permissions,
+        };
         return Response.json(
           accessManagementMutationResponseSchema.parse({
-            policyConfigured: Boolean(current.policy),
+            policyConfigured: policy !== null,
             ...decision,
           }),
           { headers },
@@ -241,7 +252,6 @@ export function createAuthManagement({
                 provider: input.provider,
                 origin: input.origin,
                 permissions: input.permissions,
-                ...(current?.policy ? { policy: current.policy } : {}),
               });
               return Response.json(
                 accessManagementMutationResponseSchema.parse({
@@ -320,33 +330,24 @@ export function createAuthManagement({
                   status: 409,
                   headers,
                 });
-              const config = await saveBrowserAccessConfig(canonicalRoot, {
-                ...current,
-                policy: input.policy,
-              });
+              const policy = applyAccessControl(
+                database.get(canonicalRoot),
+                input.policy,
+              );
               return Response.json(
                 accessManagementMutationResponseSchema.parse({
-                  policy: config.policy,
-                  restartRequired: true,
+                  policy,
+                  restartRequired: false,
                 }),
                 { headers },
               );
             }
             case "clear-policy": {
-              if (!current?.policy)
-                return Response.json(
-                  accessManagementMutationResponseSchema.parse({
-                    cleared: false,
-                    restartRequired: false,
-                  }),
-                  { headers },
-                );
-              const { policy: _, ...config } = current;
-              await saveBrowserAccessConfig(canonicalRoot, config);
+              const cleared = clearAccessControl(database.get(canonicalRoot));
               return Response.json(
                 accessManagementMutationResponseSchema.parse({
-                  cleared: true,
-                  restartRequired: true,
+                  cleared,
+                  restartRequired: false,
                 }),
                 { headers },
               );

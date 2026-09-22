@@ -6,10 +6,7 @@ import {
   type BrowserAccessConfig,
 } from "../domains/auth/browser-access";
 import type { Permission } from "../domains/auth/authorization";
-import {
-  evaluateBrowserAccessPolicy,
-  type BrowserIdentity,
-} from "../domains/auth/browser-policy";
+import type { BrowserIdentity } from "../domains/auth/browser-identity";
 import { videoJobIdFromPath } from "../domains/runtime/route-dispatch";
 import {
   createDirectSessionManager,
@@ -119,11 +116,16 @@ export function createUiAccess({
   keyResolver,
   fetcher,
   now,
+  authorizeIdentity,
 }: {
   config: BrowserAccessConfig | null;
   keyResolver?: JWTVerifyGetKey;
   fetcher?: Fetcher;
   now?: () => number;
+  authorizeIdentity?: (identity: BrowserIdentity) => Readonly<{
+    matchedRoles: readonly string[];
+    permissions: readonly Permission[];
+  }> | null;
 }) {
   const credentials = new WeakMap<
     Request,
@@ -266,9 +268,10 @@ export function createUiAccess({
         identity = authenticated.identity;
       }
 
-      const authorization = config.policy
-        ? evaluateBrowserAccessPolicy(config.policy, identity)
-        : { matchedRoles: [], permissions: config.permissions };
+      const authorization = authorizeIdentity?.(identity) ?? {
+        matchedRoles: [],
+        permissions: config.permissions,
+      };
       const credential = Object.freeze({ ownerId, ...authorization });
 
       if (sessionRequest) {

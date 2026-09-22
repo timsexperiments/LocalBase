@@ -364,24 +364,27 @@ test(
       await writeFile(
         policyPath,
         JSON.stringify({
-          roles: {
-            admin: ["access:manage", "models:manage"],
-            user: ["inference:chat"],
-          },
+          roles: [
+            {
+              name: "admin",
+              permissions: ["access:manage", "models:manage"],
+            },
+            { name: "user", permissions: ["inference:chat"] },
+          ],
           bindings: [
             {
+              kind: "subject",
               role: "admin",
-              match: {
-                kind: "subject",
-                issuer: "https://identity.example.com/tenant",
-                subject: "owner",
-              },
+              issuer: "https://identity.example.com/tenant",
+              subject: "owner",
             },
             {
+              kind: "email-domain",
               role: "user",
-              match: { kind: "email-domain", domain: "example.com" },
+              domain: "example.com",
             },
           ],
+          defaultRole: null,
         }),
       );
       const appliedPolicy = await runCli(executable, [
@@ -473,13 +476,15 @@ test(
       await writeFile(
         policyPath,
         JSON.stringify({
-          roles: { user: ["inference:chat"] },
+          roles: [{ name: "user", permissions: ["inference:chat"] }],
           bindings: [
             {
+              kind: "email",
               role: "user",
-              match: { kind: "email", email: "person@example.com" },
+              email: "person@example.com",
             },
           ],
+          defaultRole: null,
         }),
       );
       const rejectedPolicy = await runCli(executable, [
@@ -522,7 +527,7 @@ test(
         accessPolicyClearResultSchema.parse(
           jsonDocument(clearedPolicy.stdout).data,
         ),
-      ).toEqual({ cleared: true, restartRequired: true });
+      ).toEqual({ cleared: true, restartRequired: false });
       const disabledAccess = await runCli(executable, [
         "--root",
         root,

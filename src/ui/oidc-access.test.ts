@@ -197,18 +197,16 @@ test("completes GitHub OAuth with a stable account identity", async () => {
     },
     origin,
     permissions: [],
-    policy: {
-      roles: { owner: ["access:read", "access:manage"] },
-      bindings: [
-        {
-          role: "owner",
-          match: { kind: "email", email: "owner@example.com" },
-        },
-      ],
-    },
   });
   const access = createUiAccess({
     config: githubConfig,
+    authorizeIdentity: (identity) =>
+      identity.verifiedEmail === "owner@example.com"
+        ? {
+            matchedRoles: ["owner"],
+            permissions: ["access:read", "access:manage"],
+          }
+        : { matchedRoles: [], permissions: [] },
     fetcher: async (input, init) => {
       const url = String(input);
       if (url === "https://github.com/login/oauth/access_token") {
@@ -316,31 +314,13 @@ test("completes an OIDC code flow and keeps the opaque session server-side", asy
     });
   };
   const access = createUiAccess({
-    config: uiAccessConfigSchema.parse({
-      ...config,
-      policy: {
-        roles: {
-          admin: ["access:manage"],
-          email: ["inference:chat"],
-        },
-        bindings: [
-          {
-            role: "admin",
-            match: {
-              kind: "subject",
-              issuer,
-              subject: " person-one ",
-            },
-          },
-          {
-            role: "email",
-            match: { kind: "email", email: "person@example.com" },
-          },
-        ],
-      },
-    }),
+    config,
     keyResolver: resolver,
     fetcher,
+    authorizeIdentity: (identity) =>
+      identity.issuer === issuer && identity.subject === " person-one "
+        ? { matchedRoles: ["admin"], permissions: ["access:manage"] }
+        : { matchedRoles: [], permissions: [] },
   });
 
   const login = await responseFor(access, directRequest("/app/login"));

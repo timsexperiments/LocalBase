@@ -151,32 +151,39 @@ registration disables browser access.
 
 Use `local-base access show --json` to inspect the active non-secret configuration and `local-base access disable` to disable browser sign-in. The default browser permissions allow chat and model discovery. Grant other inference permissions and `models:manage` explicitly. Pass `--permissions` to replace the defaults. Access configuration is restart-scoped and every command supports `--non-interactive` and `--json`.
 
-An optional local policy replaces provider-wide permissions with named roles and
-identity bindings. Subject bindings compare the exact issuer and opaque subject.
+An optional database-backed policy replaces provider-wide permissions with named
+roles and identity bindings. Subject bindings compare the exact issuer and opaque subject.
 Email and email-domain bindings use only provider-verified email addresses. A
 policy grants no permissions when no binding matches and must retain at least
 one binding whose role grants `access:manage`.
 
 ```json
 {
-  "roles": {
-    "admin": ["access:manage", "models:read", "models:manage"],
-    "user": ["inference:chat", "models:read"]
-  },
-  "bindings": [
+  "roles": [
     {
-      "role": "admin",
-      "match": {
-        "kind": "subject",
-        "issuer": "https://identity.example.com",
-        "subject": "exact-provider-subject"
-      }
+      "name": "admin",
+      "description": "LocalBase administrators",
+      "permissions": ["access:manage", "models:read", "models:manage"]
     },
     {
-      "role": "user",
-      "match": { "kind": "email-domain", "domain": "example.com" }
+      "name": "user",
+      "permissions": ["inference:chat", "models:read"]
     }
-  ]
+  ],
+  "bindings": [
+    {
+      "kind": "subject",
+      "role": "admin",
+      "issuer": "https://identity.example.com",
+      "subject": "exact-provider-subject"
+    },
+    {
+      "kind": "email-domain",
+      "role": "user",
+      "domain": "example.com"
+    }
+  ],
+  "defaultRole": null
 }
 ```
 
@@ -188,13 +195,12 @@ local-base access policy test \
   --subject exact-provider-subject \
   --email person@example.com \
   --json
-local-base restart
 ```
 
 `access policy test` treats `--email` as verified input for offline evaluation.
 `access policy clear` restores the provider-wide permissions configured by
-`access cloudflare`, `access oidc`, or `access github`. Applying and clearing a policy require a
-restart.
+`access cloudflare`, `access oidc`, or `access github`. Policy changes apply to
+the next request without restarting LocalBase.
 
 Open `/app` on the configured HTTPS origin. The playground requires a verified human session from Cloudflare Access, OpenID Connect, or GitHub; gateway API keys cannot authenticate the browser UI. Direct sessions are opaque, HTTP-only cookies and are cleared when LocalBase restarts. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
 
@@ -223,7 +229,7 @@ Authentication administration uses two exact, always-authenticated endpoints:
 - `GET` and `POST /_localbase/access-management` require `access:read` for reads and policy tests, or `access:manage` for provider and policy changes.
 - `GET /_localbase/api-keys` requires `keys:read`. `POST` requires `keys:manage` and accepts `create`, `rotate`, `revoke`, or `set-scopes` actions.
 
-Provider responses never include client secrets. API-key creation and rotation return the new key secret once; reads and later mutations return metadata only. Access provider and policy changes report `restartRequired`; key changes take effect on the next request. These permissions are not granted to browser sessions or ordinary API keys automatically. Grant them explicitly with `local-base access ... --permissions`, an access policy, or `local-base keys create --scopes ...`. The CLI remains the primary recovery and automation interface because it works directly against the local data directory.
+Provider responses never include client secrets. API-key creation and rotation return the new key secret once; reads and later mutations return metadata only. Provider changes require a restart; policy and key changes take effect on the next request. These permissions are not granted to browser sessions or ordinary API keys automatically. Grant them explicitly with `local-base access ... --permissions`, an access policy, or `local-base keys create --scopes ...`. The CLI remains the primary recovery and automation interface because it works directly against the local data directory.
 
 Models sharing files with an installation must be disabled and released by their runtimes. Do not run concurrent CLI installs or re-enable affected models through the CLI while an API installation is running.
 

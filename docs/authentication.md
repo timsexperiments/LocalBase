@@ -108,34 +108,40 @@ bindings only match provider-verified email claims.
 
 ```json
 {
-  "roles": {
-    "admin": [
-      "access:read",
-      "access:manage",
-      "keys:read",
-      "keys:manage",
-      "models:read",
-      "models:manage"
-    ],
-    "user": ["inference:chat", "models:read"]
-  },
+  "roles": [
+    {
+      "name": "admin",
+      "permissions": [
+        "access:read",
+        "access:manage",
+        "keys:read",
+        "keys:manage",
+        "models:read",
+        "models:manage"
+      ]
+    },
+    { "name": "user", "permissions": ["inference:chat", "models:read"] }
+  ],
   "bindings": [
     {
+      "kind": "email",
       "role": "admin",
-      "match": { "kind": "email", "email": "owner@example.com" }
+      "email": "owner@example.com"
     },
     {
+      "kind": "email-domain",
       "role": "user",
-      "match": { "kind": "email-domain", "domain": "example.com" }
+      "domain": "example.com"
     }
-  ]
+  ],
+  "defaultRole": null
 }
 ```
 
 For direct OIDC, set `LOCALBASE_POLICY_ISSUER` to the configured OIDC issuer.
 For GitHub, use `https://github.com`.
 For Cloudflare Access, set it to `https://<team-domain>`. Then apply and test
-the checked-in policy before restarting:
+the checked-in policy:
 
 ```bash
 : "${LOCALBASE_POLICY_ISSUER:?required}"
@@ -146,13 +152,12 @@ local-base --non-interactive --json access policy test \
   --issuer "$LOCALBASE_POLICY_ISSUER" \
   --subject "$TEST_SUBJECT" \
   --email owner@example.com
-local-base --non-interactive --json restart
 ```
 
 A valid policy must contain at least one binding whose role includes
 `access:manage`, but LocalBase cannot prove that the bound identity belongs to
 a current administrator. Test the intended administrator identity before
-restarting. The local CLI remains available to an administrator who can access
+closing the current session. The local CLI remains available to an administrator who can access
 the LocalBase data directory.
 
 ## Create machine credentials

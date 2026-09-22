@@ -215,19 +215,15 @@ test("verifies every human session and never falls back after a JWT failure", as
 
 test("evaluates Cloudflare verified identity claims with the local policy", async () => {
   const access = createUiAccess({
-    config: uiAccessConfigSchema.parse({
-      ...config,
-      policy: {
-        roles: { admin: ["access:manage", "models:manage"] },
-        bindings: [
-          {
-            role: "admin",
-            match: { kind: "email-domain", domain: "example.com" },
-          },
-        ],
-      },
-    }),
+    config,
     keyResolver: resolver,
+    authorizeIdentity: (identity) =>
+      identity.verifiedEmail?.endsWith("@example.com")
+        ? {
+            matchedRoles: ["admin"],
+            permissions: ["models:manage", "access:manage"],
+          }
+        : { matchedRoles: [], permissions: [] },
   });
   const sessionRequest = request(await token());
   expect((await responseFor(access, sessionRequest)).status).toBe(200);

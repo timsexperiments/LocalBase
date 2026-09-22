@@ -1,4 +1,11 @@
-import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 export const configTable = sqliteTable("config", {
   id: text("id").primaryKey(),
@@ -52,4 +59,129 @@ export const apiKeysTable = sqliteTable("api_keys", {
   lastRotatedAt: text("last_rotated_at").notNull(),
   expiresAt: text("expires_at"),
   revokedAt: text("revoked_at"),
+});
+
+export const authRolesTable = sqliteTable(
+  "auth_roles",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [uniqueIndex("auth_roles_name_unique").on(table.name)],
+);
+
+export const authRolePermissionsTable = sqliteTable(
+  "auth_role_permissions",
+  {
+    roleId: text("role_id")
+      .notNull()
+      .references(() => authRolesTable.id, { onDelete: "cascade" }),
+    permission: text("permission").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.roleId, table.permission] })],
+);
+
+export const authUsersTable = sqliteTable("auth_users", {
+  id: text("id").primaryKey(),
+  status: text("status").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const authIdentitiesTable = sqliteTable(
+  "auth_identities",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsersTable.id, { onDelete: "cascade" }),
+    issuer: text("issuer").notNull(),
+    subject: text("subject").notNull(),
+    verifiedEmail: text("verified_email"),
+    createdAt: text("created_at").notNull(),
+    lastSeenAt: text("last_seen_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("auth_identities_issuer_subject_unique").on(
+      table.issuer,
+      table.subject,
+    ),
+  ],
+);
+
+export const authUserRolesTable = sqliteTable(
+  "auth_user_roles",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUsersTable.id, { onDelete: "cascade" }),
+    roleId: text("role_id")
+      .notNull()
+      .references(() => authRolesTable.id, { onDelete: "cascade" }),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.roleId] })],
+);
+
+export const authSubjectRoleBindingsTable = sqliteTable(
+  "auth_subject_role_bindings",
+  {
+    id: text("id").primaryKey(),
+    roleId: text("role_id")
+      .notNull()
+      .references(() => authRolesTable.id, { onDelete: "cascade" }),
+    issuer: text("issuer").notNull(),
+    subject: text("subject").notNull(),
+  },
+  (table) => [
+    uniqueIndex("auth_subject_role_bindings_unique").on(
+      table.roleId,
+      table.issuer,
+      table.subject,
+    ),
+  ],
+);
+
+export const authEmailRoleBindingsTable = sqliteTable(
+  "auth_email_role_bindings",
+  {
+    id: text("id").primaryKey(),
+    roleId: text("role_id")
+      .notNull()
+      .references(() => authRolesTable.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+  },
+  (table) => [
+    uniqueIndex("auth_email_role_bindings_unique").on(
+      table.roleId,
+      table.email,
+    ),
+  ],
+);
+
+export const authDomainRoleBindingsTable = sqliteTable(
+  "auth_domain_role_bindings",
+  {
+    id: text("id").primaryKey(),
+    roleId: text("role_id")
+      .notNull()
+      .references(() => authRolesTable.id, { onDelete: "cascade" }),
+    domain: text("domain").notNull(),
+  },
+  (table) => [
+    uniqueIndex("auth_domain_role_bindings_unique").on(
+      table.roleId,
+      table.domain,
+    ),
+  ],
+);
+
+export const authSettingsTable = sqliteTable("auth_settings", {
+  id: text("id").primaryKey(),
+  defaultRoleId: text("default_role_id").references(() => authRolesTable.id, {
+    onDelete: "set null",
+  }),
+  updatedAt: text("updated_at").notNull(),
 });

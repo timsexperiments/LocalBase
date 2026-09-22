@@ -4,7 +4,7 @@ import {
   permissionSchema,
   type Permission,
 } from "../domains/auth/authorization";
-import { browserAccessPolicySchema } from "../domains/auth/browser-policy";
+import { accessControlConfigSchema } from "../domains/auth/access-control";
 import { defaultBrowserPermissions } from "../domains/auth/browser-access-contract";
 import {
   accessManagementMutationResponseSchema,
@@ -138,6 +138,7 @@ export function AuthManagement({
     ...defaultBrowserPermissions,
   ]);
   const [policy, setPolicy] = useState("");
+  const [policyConfigured, setPolicyConfigured] = useState(false);
   const [keyName, setKeyName] = useState("");
   const [keyExpiry, setKeyExpiry] = useState("");
   const [keyPermissions, setKeyPermissions] = useState<Permission[]>([
@@ -147,7 +148,6 @@ export function AuthManagement({
 
   function hydrate(config: AccessConfig) {
     setAccess(config);
-    setPolicy(config?.policy ? JSON.stringify(config.policy, null, 2) : "");
     if (!config) return;
     setOrigin(config.origin);
     setAccessPermissions([...config.permissions]);
@@ -194,6 +194,12 @@ export function AuthManagement({
     if (signal?.aborted) return;
     if (accessResult.status === "fulfilled") {
       hydrate(accessResult.value.config);
+      setPolicy(
+        accessResult.value.policy
+          ? JSON.stringify(accessResult.value.policy, null, 2)
+          : "",
+      );
+      setPolicyConfigured(accessResult.value.policy !== null);
       setAccessError("");
     } else {
       setAccessError(
@@ -330,14 +336,14 @@ export function AuthManagement({
     setNotice("");
     setAccessError("");
     try {
-      const parsed = browserAccessPolicySchema.parse(JSON.parse(policy));
+      const parsed = accessControlConfigSchema.parse(JSON.parse(policy));
       await (
         await post("/_localbase/access-management", {
           action: "apply-policy",
           policy: parsed,
         })
       ).body?.cancel();
-      setNotice("Policy saved. Restart LocalBase to apply it.");
+      setNotice("Policy saved. The change is active now.");
       await load();
     } catch (error) {
       setAccessError(
@@ -359,7 +365,7 @@ export function AuthManagement({
         })
       ).body?.cancel();
       setConfirming("");
-      setNotice("Policy cleared. Restart LocalBase to apply the change.");
+      setNotice("Policy cleared. Provider-wide permissions now apply.");
       await load();
     } catch (error) {
       setAccessError(
@@ -731,7 +737,7 @@ export function AuthManagement({
               value={policy}
               disabled={busy || !access}
               spellCheck={false}
-              placeholder='{"roles":{"admin":["access:manage"]},"bindings":[{"role":"admin","match":{"kind":"email","email":"owner@example.com"}}]}'
+              placeholder='{"roles":[{"name":"admin","permissions":["access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"owner@example.com"}],"defaultRole":null}'
               onChange={(event) => setPolicy(event.target.value)}
             />
             <div className="admin-actions">
@@ -741,7 +747,7 @@ export function AuthManagement({
               >
                 Save policy
               </button>
-              {access?.policy && confirming !== "clear-policy" && (
+              {policyConfigured && confirming !== "clear-policy" && (
                 <button
                   className="danger"
                   disabled={busy}
@@ -753,7 +759,7 @@ export function AuthManagement({
             </div>
             {confirming === "clear-policy" && (
               <div className="inline-confirmation">
-                <p>Use provider-wide permissions after the next restart?</p>
+                <p>Use provider-wide permissions instead?</p>
                 <button disabled={busy} onClick={() => void clearPolicy()}>
                   Confirm clear
                 </button>

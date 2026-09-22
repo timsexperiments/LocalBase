@@ -8,6 +8,7 @@ import { defaultConfig } from "../../manager";
 import { permissionSchema, principalSchema } from "./authorization";
 import { createAuthManagement } from "./management-http";
 import { loadBrowserAccessConfig } from "./browser-access";
+import { loadAccessControl } from "./access-control";
 
 let root: string;
 let database: DatabaseSession;
@@ -129,17 +130,22 @@ test("manages browser access without returning OIDC secrets", async () => {
     request("/_localbase/access-management", {
       action: "apply-policy",
       policy: {
-        roles: { admin: ["access:read", "access:manage"] },
-        bindings: [
+        roles: [
           {
-            role: "admin",
-            match: {
-              kind: "subject",
-              issuer: "https://identity.example.com",
-              subject: "owner",
-            },
+            name: "admin",
+            description: "Administrators",
+            permissions: ["access:read", "access:manage"],
           },
         ],
+        bindings: [
+          {
+            kind: "subject",
+            role: "admin",
+            issuer: "https://identity.example.com",
+            subject: "owner",
+          },
+        ],
+        defaultRole: null,
       },
     }),
     administrator,
@@ -292,16 +298,21 @@ test("serializes access mutations without losing provider or policy changes", as
     );
   expect((await configure("first.cloudflareaccess.com"))?.status).toBe(200);
   const policy = {
-    roles: { admin: ["access:read", "access:manage"] },
-    bindings: [
+    roles: [
       {
-        role: "admin",
-        match: {
-          kind: "email" as const,
-          email: "owner@example.com",
-        },
+        name: "admin",
+        description: "Administrators",
+        permissions: ["access:read", "access:manage"] as const,
       },
     ],
+    bindings: [
+      {
+        kind: "email" as const,
+        role: "admin",
+        email: "owner@example.com",
+      },
+    ],
+    defaultRole: null,
   };
   const [, applied] = await Promise.all([
     configure("second.cloudflareaccess.com"),
@@ -316,6 +327,6 @@ test("serializes access mutations without losing provider or policy changes", as
   expect(applied?.status).toBe(200);
   expect(await loadBrowserAccessConfig(root)).toMatchObject({
     provider: { teamDomain: "second.cloudflareaccess.com" },
-    policy,
   });
+  expect(loadAccessControl(database.get(root))).toEqual(policy);
 });

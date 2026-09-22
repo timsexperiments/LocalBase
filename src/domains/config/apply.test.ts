@@ -392,11 +392,20 @@ test("apply migrates the prior database under the operation lock and preserves p
   const { root, desired } = fixture();
   const old = new Database(databasePath(root));
   try {
+    old.exec("DROP TABLE auth_domain_role_bindings");
+    old.exec("DROP TABLE auth_email_role_bindings");
+    old.exec("DROP TABLE auth_subject_role_bindings");
+    old.exec("DROP TABLE auth_user_roles");
+    old.exec("DROP TABLE auth_identities");
+    old.exec("DROP TABLE auth_settings");
+    old.exec("DROP TABLE auth_role_permissions");
+    old.exec("DROP TABLE auth_users");
+    old.exec("DROP TABLE auth_roles");
     old.exec("DROP TABLE config_activation");
     old.exec("ALTER TABLE config DROP COLUMN gateway_host");
     old.exec("ALTER TABLE config DROP COLUMN gateway_port");
     old.exec(
-      "DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
+      "DELETE FROM __drizzle_migrations WHERE created_at IN (SELECT created_at FROM __drizzle_migrations ORDER BY created_at DESC LIMIT 2)",
     );
   } finally {
     old.close();
