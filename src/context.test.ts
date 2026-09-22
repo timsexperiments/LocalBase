@@ -93,10 +93,12 @@ test("serve context initialization waits for the external root operation lock", 
     release = resolve;
   });
   const holding = withRootOperation(root, "reset", async () => await blocked);
+  let creating: ReturnType<typeof createAppContext> | undefined;
+  let context: Awaited<ReturnType<typeof createAppContext>> | undefined;
 
   try {
     await Bun.sleep(25);
-    const creating = createAppContext(
+    creating = createAppContext(
       { root, nonInteractive: false, json: false },
       true,
       true,
@@ -105,14 +107,21 @@ test("serve context initialization waits for the external root operation lock", 
     expect(existsSync(root)).toBe(false);
     release();
     await holding;
-    const context = await creating;
+    context = await creating;
     expect(existsSync(join(root, "local-base.db"))).toBe(true);
-    await context.initializationOperation?.release();
-    context.database.close();
   } finally {
     release();
     await holding;
-    rmSync(directory, { recursive: true, force: true });
+    try {
+      try {
+        context ??= await creating;
+      } catch {}
+      await context?.initializationOperation?.release();
+      context?.database.close();
+      await context?.logger.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   }
 });
 
