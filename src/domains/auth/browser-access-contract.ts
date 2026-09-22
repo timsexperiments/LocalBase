@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { permissionsSchema } from "./authorization";
-import { browserAccessPolicySchema } from "./browser-policy";
 
 export const defaultBrowserPermissions = permissionsSchema.parse([
   "inference:chat",
@@ -149,7 +148,6 @@ export const browserAccessConfigSchema = z
     provider: browserAccessProviderSchema,
     origin: exactHttpsOriginSchema,
     permissions: permissionsSchema,
-    policy: browserAccessPolicySchema.optional(),
   })
   .strict();
 
@@ -197,7 +195,6 @@ export const browserAccessConfigSummarySchema = z
     ]),
     origin: exactHttpsOriginSchema,
     permissions: permissionsSchema,
-    policy: browserAccessPolicySchema.optional(),
   })
   .strict();
 
