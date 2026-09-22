@@ -2,7 +2,15 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import { DatabaseSession } from "../../db/client";
+import {
+  authIdentitiesTable,
+  authRolesTable,
+  authRolePermissionsTable,
+  authUserRolesTable,
+  authUsersTable,
+} from "../../db/schema";
 import {
   accessControlConfigSchema,
   applyAccessControl,
@@ -129,6 +137,53 @@ test("uses a configurable default role and applies changes live", async () => {
   });
 });
 
+test("grants assignments only to active stored users", async () => {
+  await withDatabase((database, root) => {
+    const db = database.get(root);
+    applyAccessControl(db, config);
+    const admin = db
+      .select({ id: authRolesTable.id })
+      .from(authRolesTable)
+      .where(eq(authRolesTable.name, "admin"))
+      .get();
+    expect(admin).toBeDefined();
+    if (!admin) return;
+    const now = new Date().toISOString();
+    db.insert(authUsersTable)
+      .values({ id: "user", status: "active", createdAt: now, updatedAt: now })
+      .run();
+    db.insert(authIdentitiesTable)
+      .values({
+        id: "identity",
+        userId: "user",
+        issuer: "https://identity.example.com",
+        subject: "assigned-user",
+        createdAt: now,
+        lastSeenAt: now,
+      })
+      .run();
+    db.insert(authUserRolesTable)
+      .values({ userId: "user", roleId: admin.id })
+      .run();
+    const identity = {
+      issuer: "https://identity.example.com",
+      subject: "assigned-user",
+    };
+    expect(resolveAccessControl(db, identity)?.matchedRoles).toEqual(["admin"]);
+
+    db.update(authUsersTable)
+      .set({ status: "disabled", updatedAt: new Date().toISOString() })
+      .where(eq(authUsersTable.id, "user"))
+      .run();
+    expect(resolveAccessControl(db, identity)).toEqual({
+      matchedRoles: [],
+      permissions: [],
+    });
+    expect(clearAccessControl(db)).toBe(true);
+    expect(db.select().from(authUserRolesTable).all()).toEqual([]);
+  });
+});
+
 test("applies configurations transactionally and clears them", async () => {
   await withDatabase((database, root) => {
     const db = database.get(root);
@@ -143,6 +198,7 @@ test("applies configurations transactionally and clears them", async () => {
     expect(clearAccessControl(db)).toBe(true);
     expect(clearAccessControl(db)).toBe(false);
     expect(loadAccessControl(db)).toBeNull();
+    expect(db.select().from(authRolePermissionsTable).all()).toEqual([]);
   });
 });
 
@@ -154,6 +210,10 @@ test("rejects unknown permissions, roles, defaults, and unreachable administrato
       bindings: [{ kind: "email", role: "missing", email: "a@example.com" }],
     },
     { ...config, defaultRole: "missing" },
+    {
+      ...config,
+      bindings: [config.bindings[1], config.bindings[1]],
+    },
     {
       roles: [
         {

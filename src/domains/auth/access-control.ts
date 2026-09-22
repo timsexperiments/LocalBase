@@ -10,6 +10,7 @@ import {
   authSettingsTable,
   authSubjectRoleBindingsTable,
   authUserRolesTable,
+  authUsersTable,
 } from "../../db/schema";
 import { permissionsSchema, type Permission } from "./authorization";
 import type { BrowserIdentity } from "./browser-identity";
@@ -89,6 +90,17 @@ export const accessControlConfigSchema = z
           path: ["bindings", index, "role"],
           message: `Unknown role: ${binding.role}`,
         });
+    const bindings = new Set<string>();
+    for (const [index, binding] of config.bindings.entries()) {
+      const key = JSON.stringify(binding);
+      if (bindings.has(key))
+        context.addIssue({
+          code: "custom",
+          path: ["bindings", index],
+          message: "Bindings must be unique.",
+        });
+      bindings.add(key);
+    }
     const reachableRoles = new Set([
       ...(config.defaultRole ? [config.defaultRole] : []),
       ...config.bindings.map((binding) => binding.role),
@@ -321,74 +333,81 @@ export function resolveAccessControl(
   matchedRoles: readonly string[];
   permissions: readonly Permission[];
 }> | null {
-  const settings = db
-    .select({ defaultRoleId: authSettingsTable.defaultRoleId })
-    .from(authSettingsTable)
-    .where(eq(authSettingsTable.id, settingsId))
-    .get();
-  if (!settings) return null;
-  const roleIds = new Set<string>();
-  if (settings.defaultRoleId) roleIds.add(settings.defaultRoleId);
-  for (const binding of db
-    .select({ roleId: authSubjectRoleBindingsTable.roleId })
-    .from(authSubjectRoleBindingsTable)
-    .where(
-      and(
-        eq(authSubjectRoleBindingsTable.issuer, identity.issuer),
-        eq(authSubjectRoleBindingsTable.subject, identity.subject),
-      ),
-    )
-    .all())
-    roleIds.add(binding.roleId);
-  if (identity.verifiedEmail) {
-    const email = identity.verifiedEmail.toLowerCase();
+  return db.transaction(() => {
+    const settings = db
+      .select({ defaultRoleId: authSettingsTable.defaultRoleId })
+      .from(authSettingsTable)
+      .where(eq(authSettingsTable.id, settingsId))
+      .get();
+    if (!settings) return null;
+    const roleIds = new Set<string>();
+    if (settings.defaultRoleId) roleIds.add(settings.defaultRoleId);
     for (const binding of db
-      .select({ roleId: authEmailRoleBindingsTable.roleId })
-      .from(authEmailRoleBindingsTable)
-      .where(eq(authEmailRoleBindingsTable.email, email))
+      .select({ roleId: authSubjectRoleBindingsTable.roleId })
+      .from(authSubjectRoleBindingsTable)
+      .where(
+        and(
+          eq(authSubjectRoleBindingsTable.issuer, identity.issuer),
+          eq(authSubjectRoleBindingsTable.subject, identity.subject),
+        ),
+      )
       .all())
       roleIds.add(binding.roleId);
-    const domain = email.split("@").at(-1);
-    if (domain)
+    if (identity.verifiedEmail) {
+      const email = identity.verifiedEmail.toLowerCase();
       for (const binding of db
-        .select({ roleId: authDomainRoleBindingsTable.roleId })
-        .from(authDomainRoleBindingsTable)
-        .where(eq(authDomainRoleBindingsTable.domain, domain))
+        .select({ roleId: authEmailRoleBindingsTable.roleId })
+        .from(authEmailRoleBindingsTable)
+        .where(eq(authEmailRoleBindingsTable.email, email))
         .all())
         roleIds.add(binding.roleId);
-  }
-  const storedIdentity = db
-    .select({ userId: authIdentitiesTable.userId })
-    .from(authIdentitiesTable)
-    .where(
-      and(
-        eq(authIdentitiesTable.issuer, identity.issuer),
-        eq(authIdentitiesTable.subject, identity.subject),
+      const domain = email.split("@").at(-1);
+      if (domain)
+        for (const binding of db
+          .select({ roleId: authDomainRoleBindingsTable.roleId })
+          .from(authDomainRoleBindingsTable)
+          .where(eq(authDomainRoleBindingsTable.domain, domain))
+          .all())
+          roleIds.add(binding.roleId);
+    }
+    const storedIdentity = db
+      .select({ userId: authIdentitiesTable.userId })
+      .from(authIdentitiesTable)
+      .innerJoin(
+        authUsersTable,
+        eq(authIdentitiesTable.userId, authUsersTable.id),
+      )
+      .where(
+        and(
+          eq(authIdentitiesTable.issuer, identity.issuer),
+          eq(authIdentitiesTable.subject, identity.subject),
+          eq(authUsersTable.status, "active"),
+        ),
+      )
+      .get();
+    if (storedIdentity)
+      for (const assignment of db
+        .select({ roleId: authUserRolesTable.roleId })
+        .from(authUserRolesTable)
+        .where(eq(authUserRolesTable.userId, storedIdentity.userId))
+        .all())
+        roleIds.add(assignment.roleId);
+    if (!roleIds.size) return { matchedRoles: [], permissions: [] };
+    const roles = db
+      .select({ id: authRolesTable.id, name: authRolesTable.name })
+      .from(authRolesTable)
+      .where(inArray(authRolesTable.id, [...roleIds]))
+      .all();
+    const permissions = db
+      .select({ permission: authRolePermissionsTable.permission })
+      .from(authRolePermissionsTable)
+      .where(inArray(authRolePermissionsTable.roleId, [...roleIds]))
+      .all();
+    return {
+      matchedRoles: roles.map((role) => role.name).sort(),
+      permissions: permissionsSchema.parse(
+        permissions.map((permission) => permission.permission),
       ),
-    )
-    .get();
-  if (storedIdentity)
-    for (const assignment of db
-      .select({ roleId: authUserRolesTable.roleId })
-      .from(authUserRolesTable)
-      .where(eq(authUserRolesTable.userId, storedIdentity.userId))
-      .all())
-      roleIds.add(assignment.roleId);
-  if (!roleIds.size) return { matchedRoles: [], permissions: [] };
-  const roles = db
-    .select({ id: authRolesTable.id, name: authRolesTable.name })
-    .from(authRolesTable)
-    .where(inArray(authRolesTable.id, [...roleIds]))
-    .all();
-  const permissions = db
-    .select({ permission: authRolePermissionsTable.permission })
-    .from(authRolePermissionsTable)
-    .where(inArray(authRolePermissionsTable.roleId, [...roleIds]))
-    .all();
-  return {
-    matchedRoles: roles.map((role) => role.name).sort(),
-    permissions: permissionsSchema.parse(
-      permissions.map((permission) => permission.permission),
-    ),
-  };
+    };
+  });
 }
