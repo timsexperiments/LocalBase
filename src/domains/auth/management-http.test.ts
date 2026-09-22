@@ -140,6 +140,16 @@ test("manages browser access without returning OIDC secrets", async () => {
     administrator,
   );
   expect(magicLink?.status).toBe(200);
+  const emailInUse = await handle(
+    request("/_localbase/access-management", {
+      action: "disable-email-delivery",
+    }),
+    administrator,
+  );
+  expect(emailInUse?.status).toBe(409);
+  expect(await emailInUse?.json()).toMatchObject({
+    error: { code: "email_delivery_in_use" },
+  });
   const stored = await loadBrowserAccessConfig(root);
   expect(
     stored?.provider.kind === "direct"
@@ -322,6 +332,20 @@ test("manages browser users through the access-management contract", async () =>
     )?.status,
   ).toBe(200);
 
+  const missingEmailDelivery = await handle(
+    request("/_localbase/access-management", {
+      action: "invite-user",
+      email: "person@example.com",
+      roles: ["member"],
+      sendEmail: true,
+    }),
+    administrator,
+  );
+  expect(missingEmailDelivery?.status).toBe(409);
+  expect(await missingEmailDelivery?.json()).toMatchObject({
+    error: { code: "email_delivery_not_configured" },
+  });
+
   const invited = await handle(
     request("/_localbase/access-management", {
       action: "invite-user",
@@ -336,7 +360,8 @@ test("manages browser users through the access-management contract", async () =>
   );
   expect(invitedBody).toMatchObject({
     user: { email: "person@example.com", status: "pending", roles: ["member"] },
-    signInUrl: "https://localbase.example.com/app",
+    signInUrl: "https://localbase.example.com/app/login",
+    emailDelivered: false,
   });
 
   const duplicate = await handle(
@@ -475,6 +500,60 @@ test("manages browser users through the access-management contract", async () =>
       ),
     ).users,
   ).toEqual([]);
+});
+
+test("manages redacted SMTP configuration through the access endpoint", async () => {
+  const handle = createAuthManagement({
+    root,
+    database,
+    configuration: () => defaultConfig(root),
+  });
+  const password = "smtp-secret-that-must-not-be-returned";
+  const configured = await handle(
+    request("/_localbase/access-management", {
+      action: "configure-email-delivery",
+      config: {
+        host: "smtp.example.com",
+        port: 587,
+        security: "starttls",
+        authentication: {
+          kind: "password",
+          username: "localbase",
+          password,
+        },
+        from: "localbase@example.com",
+      },
+    }),
+    administrator,
+  );
+  expect(configured?.status).toBe(200);
+  const configuredBody = JSON.stringify(await configured?.json());
+  expect(configuredBody).not.toContain(password);
+  expect(configuredBody).toContain('"authentication":"password"');
+
+  const read = accessManagementReadResponseSchema.parse(
+    await jsonResponse(
+      await handle(request("/_localbase/access-management"), administrator),
+    ),
+  );
+  expect(read.emailDelivery).toEqual({
+    host: "smtp.example.com",
+    port: 587,
+    security: "starttls",
+    authentication: "password",
+    from: "localbase@example.com",
+  });
+
+  const disabled = await handle(
+    request("/_localbase/access-management", {
+      action: "disable-email-delivery",
+    }),
+    administrator,
+  );
+  expect(await disabled?.json()).toMatchObject({
+    emailDeliveryDisabled: true,
+    restartRequired: false,
+  });
 });
 
 test("keeps access-management reads available during unrelated root operations", async () => {

@@ -195,13 +195,15 @@ the LocalBase data directory.
 ## Provision browser users
 
 After applying a policy, provision people by their provider-verified email and
-the policy's role names. The command returns the configured `/app` sign-in URL.
-It does not send mail or mint a token.
+the policy's role names. The command returns the configured `/app/login`
+sign-in URL. Add `--send-email` to send that URL through the configured SMTP
+server. Invitations do not mint a login token.
 
 ```bash
 local-base --non-interactive --json access users invite \
   --email person@example.com \
-  --roles user
+  --roles user \
+  --send-email
 local-base --non-interactive --json access users list
 local-base --non-interactive --json access users roles \
   --email person@example.com \
@@ -314,8 +316,14 @@ Direct provider management uses `upsert-oidc`, `upsert-github`, and
 `remove-registration`. Reads return every registration with client secrets
 redacted, along with managed users and the configured role summaries. Managed
 user mutations use `invite-user`, `replace-user-roles`, `enable-user`,
-`disable-user`, and `remove-user`. Invitations return the `/app` sign-in URL;
-they do not send mail or mint a login token.
+`disable-user`, and `remove-user`. Invitations return the `/app/login` URL and
+can send it through configured SMTP by setting `sendEmail` to `true`. They do
+not mint a login token.
+
+Email delivery management uses `configure-email-delivery`,
+`test-email-delivery`, and `disable-email-delivery`. Reads expose only the SMTP
+host, port, security mode, sender, and authentication kind. Passwords are never
+returned. Email delivery changes are live and do not restart the gateway.
 
 The gateway checks `access:read`, `access:manage`, `keys:read`, or
 `keys:manage` for each operation. Provider responses omit client secrets.

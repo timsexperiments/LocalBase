@@ -481,6 +481,20 @@ test(
         matchedRoles: ["admin", "user"],
         permissions: ["inference:chat", "models:manage", "access:manage"],
       });
+      const missingInviteEmail = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "access",
+        "users",
+        "invite",
+        "--email",
+        "email-invite@example.com",
+        "--roles",
+        "user",
+        "--send-email",
+      ]);
+      expect(missingInviteEmail.exitCode).toBe(2);
       const invitedUser = await runCli(executable, [
         "--root",
         root,
@@ -493,7 +507,7 @@ test(
         "--roles",
         "user",
       ]);
-      expect(invitedUser.exitCode).toBe(0);
+      expect(invitedUser.exitCode, invitedUser.stderr).toBe(0);
       expect(
         accessUsersInviteResultSchema.parse(
           jsonDocument(invitedUser.stdout).data,
@@ -504,7 +518,8 @@ test(
           status: "pending",
           roles: ["user"],
         },
-        signInUrl: "https://localbase.example.com/app",
+        signInUrl: "https://localbase.example.com/app/login",
+        emailDelivered: false,
       });
       const listedUsers = await runCli(executable, [
         "--root",
