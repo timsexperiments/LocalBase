@@ -654,11 +654,17 @@ export type ModelInstallEvent =
 
 export type ModelInstallReporter = (event: ModelInstallEvent) => void;
 
+export type ModelArtifactFetcher = (
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+) => ReturnType<typeof fetch>;
+
 export async function installModel(
   config: LocalBaseConfig,
   modelId: string,
   filename?: string,
   reporter?: ModelInstallReporter,
+  fetchArtifact: ModelArtifactFetcher = fetch,
 ): Promise<string> {
   let failurePhase: ModelInstallFailurePhase = "preparing";
   try {
@@ -697,6 +703,7 @@ export async function installModel(
         (phase) => {
           failurePhase = phase;
         },
+        fetchArtifact,
       );
     }
 
@@ -942,6 +949,7 @@ async function installArtifact(
   artifactIndex: number,
   reporter?: ModelInstallReporter,
   setFailurePhase: (phase: ModelInstallFailurePhase) => void = () => {},
+  fetchArtifact: ModelArtifactFetcher = fetch,
 ): Promise<void> {
   safeFilenameSchema.parse(filename);
   const authority = authoritativeArtifact(artifact, spec.modelId);
@@ -1041,7 +1049,7 @@ async function installArtifact(
 
   let response: Response;
   try {
-    response = await fetch(url, { headers });
+    response = await fetchArtifact(url, { headers });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} ${response.statusText}`);
     }
