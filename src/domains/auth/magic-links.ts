@@ -17,6 +17,7 @@ import {
 import { managedUserEmailSchema } from "./users";
 
 export const magicLinkTtlMs = 15 * 60 * 1_000;
+export const magicLinkRequestCooldownMs = 60 * 1_000;
 
 export type MagicLinkSessionAdapter = Readonly<{
   request: (
@@ -69,6 +70,17 @@ export function issueMagicLink(
         .where(eq(authUserEmailsTable.email, email))
         .get();
       if (!user || !["pending", "active"].includes(user.status)) return null;
+      const existing = db
+        .select({ createdAt: authMagicLinkTokensTable.createdAt })
+        .from(authMagicLinkTokensTable)
+        .where(eq(authMagicLinkTokensTable.userId, user.id))
+        .get();
+      if (
+        existing &&
+        Number.isFinite(Date.parse(existing.createdAt)) &&
+        now - Date.parse(existing.createdAt) < magicLinkRequestCooldownMs
+      )
+        return null;
       const token = randomToken();
       const hash = tokenHash(token);
       const createdAt = new Date(now).toISOString();

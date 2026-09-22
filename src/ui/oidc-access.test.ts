@@ -94,7 +94,6 @@ function discovery() {
 test("requests and consumes native magic links without disclosing users", async () => {
   const requested: string[] = [];
   const consumed = new Set<string>();
-  let currentTime = 1_000;
   const magicConfig = uiAccessConfigSchema.parse({
     provider: {
       kind: "direct",
@@ -108,7 +107,6 @@ test("requests and consumes native magic links without disclosing users", async 
   const access = createUiAccess({
     config: magicConfig,
     defer: (task) => task(),
-    now: () => currentTime,
     magicLinks: {
       request: (_registration, email) => {
         requested.push(email);
@@ -154,15 +152,7 @@ test("requests and consumes native magic links without disclosing users", async 
   expect(first.status).toBe(200);
   expect(await first.text()).toContain("If that address can sign in");
   expect(await second.text()).toContain("If that address can sign in");
-  expect(requested).toEqual(["person@example.com"]);
-  for (let index = 0; index < 1_023; index += 1)
-    await submit(`other-${index}@example.com`);
-  await submit("overflow@example.com");
-  await submit();
-  expect(requested).toHaveLength(1_024);
-  currentTime += 60_000;
-  await submit();
-  expect(requested.at(-1)).toBe("person@example.com");
+  expect(requested).toEqual(["person@example.com", "person@example.com"]);
 
   const landing = await responseFor(
     access,

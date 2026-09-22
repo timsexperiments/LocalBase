@@ -9,6 +9,7 @@ import {
   createMagicLinkService,
   issueMagicLink,
   magicLinkIssuer,
+  magicLinkRequestCooldownMs,
 } from "./magic-links";
 import { disableManagedUser, inviteManagedUser } from "./users";
 
@@ -56,9 +57,15 @@ test("magic links are replacement, expiring, single-use credentials", async () =
       email: "Person@Example.com",
       now,
     });
+    expect(
+      issueMagicLink(db, {
+        email: "person@example.com",
+        now: now + 1,
+      }),
+    ).toBeNull();
     const second = issueMagicLink(db, {
       email: "person@example.com",
-      now: now + 1,
+      now: now + magicLinkRequestCooldownMs,
     });
     expect(first?.token).not.toBe(second?.token);
     expect(

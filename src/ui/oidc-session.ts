@@ -368,7 +368,6 @@ export function createDirectSessionManager({
 }) {
   const loginStates = new Map<string, LoginState>();
   const sessions = new Map<string, BrowserSession>();
-  const magicLinkRequests = new Map<string, number>();
   const runtimes = new Map(
     provider.registrations
       .filter((registration) => registration.kind === "oidc")
@@ -753,21 +752,11 @@ export function createDirectSessionManager({
           [...form.keys()].some((key) => key !== "email")
         )
           return magicLinkRequested();
-        const key = await sha256Base64Url(email.toLowerCase());
-        const requestedAt = now();
-        for (const [candidate, timestamp] of magicLinkRequests)
-          if (requestedAt - timestamp >= 60_000)
-            magicLinkRequests.delete(candidate);
-        const lastRequest = magicLinkRequests.get(key);
-        if (lastRequest === undefined || now() - lastRequest >= 60_000) {
-          if (magicLinkRequests.size >= 1_024) return magicLinkRequested();
-          magicLinkRequests.set(key, requestedAt);
-          defer(() => {
-            void Promise.resolve(magicLinks.request(registration, email)).catch(
-              () => undefined,
-            );
-          });
-        }
+        defer(() => {
+          void Promise.resolve(magicLinks.request(registration, email)).catch(
+            () => undefined,
+          );
+        });
       } catch {
         // The response is deliberately identical for invalid and unknown users.
       }
