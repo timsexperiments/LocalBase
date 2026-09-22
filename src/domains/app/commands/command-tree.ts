@@ -17,6 +17,9 @@ import {
   accessGithubAddInputSchema,
   accessGithubListInputSchema,
   accessGithubRemoveInputSchema,
+  accessMagicLinkAddInputSchema,
+  accessMagicLinkListInputSchema,
+  accessMagicLinkRemoveInputSchema,
   accessOidcAddInputSchema,
   accessOidcListInputSchema,
   accessOidcRemoveInputSchema,
@@ -57,6 +60,9 @@ import {
   type AccessGithubAddInput,
   type AccessGithubListInput,
   type AccessGithubRemoveInput,
+  type AccessMagicLinkAddInput,
+  type AccessMagicLinkListInput,
+  type AccessMagicLinkRemoveInput,
   type AccessOidcAddInput,
   type AccessOidcListInput,
   type AccessOidcRemoveInput,
@@ -101,6 +107,8 @@ import {
   accessEmailTestResultSchema,
   accessGithubListResultSchema,
   accessGithubRemoveResultSchema,
+  accessMagicLinkListResultSchema,
+  accessMagicLinkRemoveResultSchema,
   accessOidcListResultSchema,
   accessOidcRemoveResultSchema,
   accessPolicyApplyResultSchema,
@@ -1036,6 +1044,77 @@ const accessGithubRemoveCommand = command<AccessGithubRemoveInput>({
   },
 });
 
+const accessMagicLinkAddCommand = command<AccessMagicLinkAddInput>({
+  path: ["access", "magic-link", "add"],
+  description: "Add or update native magic-link authentication",
+  args: {
+    id: {
+      type: "string",
+      valueHint: "email",
+      description: "Stable lowercase registration ID",
+      required: true,
+    },
+    name: {
+      type: "string",
+      valueHint: "Email",
+      description: "Name shown on the sign-in page",
+      required: true,
+    },
+    origin: {
+      type: "string",
+      valueHint: "https://localbase.example.com",
+      description: "Exact public UI origin",
+      required: true,
+    },
+    permissions: {
+      type: "string",
+      valueHint: "permission,...",
+      description:
+        "Browser permissions; preserves the current set when omitted",
+    },
+  },
+  parse: (input) => accessMagicLinkAddInputSchema.parse(input),
+  resultSchema: accessConfigureResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessMagicLinkAdd } =
+      await import("../../auth/commands/access");
+    return await runAccessMagicLinkAdd(input, context, execution);
+  },
+});
+
+const accessMagicLinkListCommand = command<AccessMagicLinkListInput>({
+  path: ["access", "magic-link", "list"],
+  description: "List magic-link registrations",
+  parse: (input) => accessMagicLinkListInputSchema.parse(input),
+  resultSchema: accessMagicLinkListResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessMagicLinkList } =
+      await import("../../auth/commands/access");
+    return await runAccessMagicLinkList(input, context, execution);
+  },
+});
+
+const accessMagicLinkRemoveCommand = command<AccessMagicLinkRemoveInput>({
+  path: ["access", "magic-link", "remove"],
+  description: "Remove native magic-link authentication",
+  args: {
+    id: {
+      type: "positional",
+      valueHint: "provider-id",
+      description: "Registration ID",
+      required: true,
+    },
+  },
+  positionals: { minimum: 1, maximum: 1 },
+  parse: (input) => accessMagicLinkRemoveInputSchema.parse(input),
+  resultSchema: accessMagicLinkRemoveResultSchema,
+  run: async (input, context, execution) => {
+    const { runAccessMagicLinkRemove } =
+      await import("../../auth/commands/access");
+    return await runAccessMagicLinkRemove(input, context, execution);
+  },
+});
+
 const accessDisableCommand = command<AccessDisableInput>({
   path: ["access", "disable"],
   description: "Disable browser authentication",
@@ -1459,6 +1538,9 @@ export const commands = [
   accessGithubAddCommand,
   accessGithubListCommand,
   accessGithubRemoveCommand,
+  accessMagicLinkAddCommand,
+  accessMagicLinkListCommand,
+  accessMagicLinkRemoveCommand,
   accessDisableCommand,
   accessEmailShowCommand,
   accessEmailConfigureCommand,
@@ -1557,6 +1639,19 @@ const accessGithubCommand = defineCommand({
   },
 });
 
+const accessMagicLinkCommand = defineCommand({
+  meta: {
+    name: "local-base access magic-link",
+    description: "Manage native magic-link authentication",
+  },
+  args: globalArgs,
+  subCommands: {
+    list: accessMagicLinkListCommand.citty,
+    add: accessMagicLinkAddCommand.citty,
+    remove: accessMagicLinkRemoveCommand.citty,
+  },
+});
+
 const accessEmailCommand = defineCommand({
   meta: {
     name: "local-base access email",
@@ -1578,6 +1673,7 @@ export const accessCommand = defineCommand({
     show: accessShowCommand.citty,
     cloudflare: accessCloudflareCommand.citty,
     github: accessGithubCommand,
+    "magic-link": accessMagicLinkCommand,
     email: accessEmailCommand,
     oidc: accessOidcCommand,
     disable: accessDisableCommand.citty,
@@ -1634,6 +1730,8 @@ export function groupForPath(path: string[]): CittyCommand | undefined {
     return accessOidcCommand;
   if (path.length === 2 && path[0] === "access" && path[1] === "github")
     return accessGithubCommand;
+  if (path.length === 2 && path[0] === "access" && path[1] === "magic-link")
+    return accessMagicLinkCommand;
   if (path.length === 2 && path[0] === "access" && path[1] === "email")
     return accessEmailCommand;
   if (path.length === 2 && path[0] === "access" && path[1] === "users")

@@ -5,6 +5,7 @@ import {
   browserAccessConfigSummarySchema,
   cloudflareAccessProviderSchema,
   githubAccessRegistrationSchema,
+  magicLinkAccessRegistrationSchema,
   oidcAccessRegistrationSchema,
   accessRegistrationIdSchema,
 } from "./browser-access-contract";
@@ -51,6 +52,14 @@ export const accessManagementRequestSchema = z.discriminatedUnion("action", [
     .object({
       action: z.literal("upsert-github"),
       registration: githubAccessRegistrationSchema,
+      origin: browserAccessConfigSchema.shape.origin,
+      permissions: permissionsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("upsert-magic-link"),
+      registration: magicLinkAccessRegistrationSchema,
       origin: browserAccessConfigSchema.shape.origin,
       permissions: permissionsSchema,
     })
@@ -147,6 +156,7 @@ export const managementErrorSchema = z
           "payload_too_large",
           "request_aborted",
           "provider_not_configured",
+          "email_delivery_not_configured",
           "policy_not_configured",
           "registration_not_found",
           "key_not_found",

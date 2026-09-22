@@ -143,11 +143,23 @@ local-base access github add \
 local-base restart
 ```
 
-OIDC and GitHub registrations can coexist on the same sign-in page. The first
-registration receives the default browser permissions. Later additions preserve
-the configured permissions unless `--permissions` is supplied. Use the matching
-`access oidc` or `access github` `list` and `remove` commands. Removing the last
-registration disables browser access.
+OIDC, GitHub, and magic-link registrations can coexist on the same sign-in
+page. The first registration receives the default browser permissions. Later
+additions preserve the configured permissions unless `--permissions` is
+supplied. Use the matching provider's `list` and `remove` commands. Removing
+the last registration disables browser access.
+
+Native email sign-in uses the SMTP configuration described in
+[Authentication and authorization](docs/authentication.md). It accepts only
+invited managed users:
+
+```bash
+local-base access magic-link add \
+  --id email \
+  --name "Email sign-in" \
+  --origin https://localbase.example.com
+local-base restart
+```
 
 Use `local-base access show --json` to inspect the active non-secret configuration and `local-base access disable` to disable browser sign-in. The default browser permissions allow chat and model discovery. Grant other inference permissions and `models:manage` explicitly. Pass `--permissions` to replace the defaults. Access configuration is restart-scoped and every command supports `--non-interactive` and `--json`.
 

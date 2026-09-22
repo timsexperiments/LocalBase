@@ -13,6 +13,7 @@ import { permissionsSchema } from "../../auth/authorization";
 import {
   browserAccessConfigSummarySchema,
   githubAccessRegistrationSummarySchema,
+  magicLinkAccessRegistrationSchema,
   oidcAccessRegistrationSummarySchema,
 } from "../../auth/browser-access";
 import { emailDeliveryConfigSummarySchema } from "../../auth/email-delivery";
@@ -174,6 +175,10 @@ export const accessGithubListResultSchema = z
   .object({ registrations: z.array(githubAccessRegistrationSummarySchema) })
   .strict();
 export const accessGithubRemoveResultSchema = accessOidcRemoveResultSchema;
+export const accessMagicLinkListResultSchema = z
+  .object({ registrations: z.array(magicLinkAccessRegistrationSchema) })
+  .strict();
+export const accessMagicLinkRemoveResultSchema = accessOidcRemoveResultSchema;
 export const accessDisableResultSchema = z
   .object({ disabled: z.boolean(), restartRequired: z.boolean() })
   .strict();

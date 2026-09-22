@@ -13,6 +13,11 @@ import {
 } from "../../auth/authorization";
 import { resolveAccessControl } from "../../auth/access-control";
 import {
+  clearMagicLinks,
+  createMagicLinkService,
+} from "../../auth/magic-links";
+import { loadEmailDeliveryConfig } from "../../auth/email-delivery";
+import {
   byId,
   CATALOG,
   evaluateModelFit,
@@ -1827,12 +1832,50 @@ export async function runServe(
   execution: CommandExecution,
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
+  const browserAccess = await loadUiAccessConfig(config.root);
+  const magicLinkRegistration =
+    browserAccess?.provider.kind === "direct"
+      ? browserAccess.provider.registrations.find(
+          (registration) => registration.kind === "magic-link",
+        )
+      : undefined;
+  const emailDelivery = magicLinkRegistration
+    ? await loadEmailDeliveryConfig(config.root)
+    : null;
+  if (magicLinkRegistration && !emailDelivery)
+    throw new CliInputError(
+      "Magic-link authentication requires configured email delivery.",
+    );
+  const database = ctx.database.get(config.root);
+  if (!magicLinkRegistration) clearMagicLinks(database);
   const uiAccess = createUiAccess({
-    config: await loadUiAccessConfig(config.root),
+    config: browserAccess,
     authorizeIdentity: (identity) =>
-      resolveAccessControl(ctx.database.get(config.root), identity, {
+      resolveAccessControl(database, identity, {
         claimManagedUser: true,
       }),
+    ...(magicLinkRegistration && emailDelivery && browserAccess
+      ? {
+          magicLinks: createMagicLinkService({
+            db: database,
+            origin: browserAccess.origin,
+            emailDelivery,
+            onDeliveryFailure: (error) =>
+              ctx.logger.event({
+                severity: "error",
+                eventName: "authentication.magic-link-delivery-failed",
+                category: "gateway",
+                component: "authentication",
+                runtime: "gateway",
+                message: "Magic-link email delivery failed.",
+                error:
+                  error instanceof Error
+                    ? { type: error.name, message: error.message }
+                    : undefined,
+              }),
+          }),
+        }
+      : {}),
   });
   const wrapperHost = input.host ?? config.gatewayHost;
   const wrapperPort = input.port ?? config.gatewayPort;

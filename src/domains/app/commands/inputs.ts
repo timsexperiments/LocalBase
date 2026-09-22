@@ -16,6 +16,7 @@ import {
   browserAccessConfigSchema,
   cloudflareAccessProviderSchema,
   githubAccessRegistrationSchema,
+  magicLinkAccessRegistrationSchema,
   oidcAccessRegistrationSchema,
 } from "../../auth/browser-access";
 import {
@@ -298,6 +299,28 @@ export const accessGithubRemoveInputSchema = z.object({
 });
 export type AccessGithubRemoveInput = z.infer<
   typeof accessGithubRemoveInputSchema
+>;
+
+export const accessMagicLinkAddInputSchema = z.object({
+  id: magicLinkAccessRegistrationSchema.shape.id,
+  name: magicLinkAccessRegistrationSchema.shape.name,
+  origin: browserAccessConfigSchema.shape.origin,
+  permissions: keyScopesInputSchema.optional(),
+});
+export type AccessMagicLinkAddInput = z.infer<
+  typeof accessMagicLinkAddInputSchema
+>;
+
+export const accessMagicLinkListInputSchema = z.object({});
+export type AccessMagicLinkListInput = z.infer<
+  typeof accessMagicLinkListInputSchema
+>;
+
+export const accessMagicLinkRemoveInputSchema = z.object({
+  id: accessRegistrationIdSchema,
+});
+export type AccessMagicLinkRemoveInput = z.infer<
+  typeof accessMagicLinkRemoveInputSchema
 >;
 
 export const accessDisableInputSchema = z.object({});

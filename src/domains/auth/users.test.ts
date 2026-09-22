@@ -124,8 +124,16 @@ test("provisions, activates, manages, and removes browser users by email", async
         },
         { claimManagedUser: true },
       ),
-    ).toEqual({ matchedRoles: [], permissions: [] });
-    expect(db.select().from(authIdentitiesTable).all()).toHaveLength(1);
+    ).toEqual({
+      matchedRoles: ["admin", "member"],
+      permissions: [
+        "inference:chat",
+        "models:read",
+        "models:manage",
+        "access:manage",
+      ],
+    });
+    expect(db.select().from(authIdentitiesTable).all()).toHaveLength(2);
 
     expect(
       replaceManagedUserRoles(db, {
@@ -165,7 +173,25 @@ test("provisions, activates, manages, and removes browser users by email", async
         .from(authIdentitiesTable)
         .where(eq(authIdentitiesTable.subject, "person-subject"))
         .all(),
-    ).toEqual([]);
+    ).toHaveLength(1);
+    expect(
+      resolveAccessControl(db, identity, { claimManagedUser: true }),
+    ).toEqual({
+      matchedRoles: [],
+      permissions: [],
+    });
+    expect(
+      inviteManagedUser(db, {
+        email: "person@example.com",
+        roles: ["member"],
+      }),
+    ).toMatchObject({ status: "pending" });
+    expect(
+      resolveAccessControl(db, identity, { claimManagedUser: true }),
+    ).toEqual({
+      matchedRoles: ["member"],
+      permissions: ["inference:chat", "models:read"],
+    });
   });
 });
 

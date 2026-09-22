@@ -116,7 +116,6 @@ export const authIdentitiesTable = sqliteTable(
     lastSeenAt: text("last_seen_at").notNull(),
   },
   (table) => [
-    uniqueIndex("auth_identities_user_id_unique").on(table.userId),
     uniqueIndex("auth_identities_issuer_subject_unique").on(
       table.issuer,
       table.subject,
@@ -135,6 +134,21 @@ export const authUserRolesTable = sqliteTable(
       .references(() => authRolesTable.id, { onDelete: "cascade" }),
   },
   (table) => [primaryKey({ columns: [table.userId, table.roleId] })],
+);
+
+export const authMagicLinkTokensTable = sqliteTable(
+  "auth_magic_link_tokens",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => authUsersTable.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("auth_magic_link_tokens_hash_unique").on(table.tokenHash),
+  ],
 );
 
 export const authSubjectRoleBindingsTable = sqliteTable(
