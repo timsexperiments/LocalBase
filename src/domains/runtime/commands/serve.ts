@@ -11,6 +11,7 @@ import {
   type AuthorizationRequirement,
   type Principal,
 } from "../../auth/authorization";
+import { resolveAccessControl } from "../../auth/access-control";
 import {
   byId,
   CATALOG,
@@ -1828,6 +1829,8 @@ export async function runServe(
   const config = ctx.config;
   const uiAccess = createUiAccess({
     config: await loadUiAccessConfig(config.root),
+    authorizeIdentity: (identity) =>
+      resolveAccessControl(ctx.database.get(config.root), identity),
   });
   const wrapperHost = input.host ?? config.gatewayHost;
   const wrapperPort = input.port ?? config.gatewayPort;

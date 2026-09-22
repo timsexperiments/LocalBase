@@ -91,7 +91,6 @@ export function upsertAccessRegistration(
     provider: { kind: "direct", registrations },
     origin: input.origin,
     permissions: input.permissions,
-    ...(current?.policy ? { policy: current.policy } : {}),
   });
 }
 

@@ -8,7 +8,7 @@ import {
   oidcAccessRegistrationSchema,
   accessRegistrationIdSchema,
 } from "./browser-access-contract";
-import { browserAccessPolicySchema } from "./browser-policy";
+import { accessControlConfigSchema } from "./access-control";
 import { apiKeyMetadataSchema } from "./api-key-public";
 
 const identitySchema = z
@@ -54,7 +54,7 @@ export const accessManagementRequestSchema = z.discriminatedUnion("action", [
   z
     .object({
       action: z.literal("apply-policy"),
-      policy: browserAccessPolicySchema,
+      policy: accessControlConfigSchema,
     })
     .strict(),
   z.object({ action: z.literal("clear-policy") }).strict(),
@@ -110,7 +110,10 @@ export const managementErrorSchema = z
   .strict();
 
 export const accessManagementReadResponseSchema = z
-  .object({ config: browserAccessConfigSummarySchema.nullable() })
+  .object({
+    config: browserAccessConfigSummarySchema.nullable(),
+    policy: accessControlConfigSchema.nullable(),
+  })
   .strict();
 
 export const accessManagementMutationResponseSchema = z.union([
@@ -130,8 +133,8 @@ export const accessManagementMutationResponseSchema = z.union([
     .strict(),
   z
     .object({
-      policy: browserAccessPolicySchema,
-      restartRequired: z.literal(true),
+      policy: accessControlConfigSchema,
+      restartRequired: z.literal(false),
     })
     .strict(),
   z.object({ cleared: z.boolean(), restartRequired: z.boolean() }).strict(),

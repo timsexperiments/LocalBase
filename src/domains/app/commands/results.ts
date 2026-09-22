@@ -15,7 +15,7 @@ import {
   githubAccessRegistrationSummarySchema,
   oidcAccessRegistrationSummarySchema,
 } from "../../auth/browser-access";
-import { browserAccessPolicySchema } from "../../auth/browser-policy";
+import { accessControlConfigSchema } from "../../auth/access-control";
 import { apiKeyMetadataSchema } from "../../auth/api-key-public";
 
 export { publicApiKey } from "../../auth/api-key-public";
@@ -176,12 +176,12 @@ export const accessDisableResultSchema = z
   .object({ disabled: z.boolean(), restartRequired: z.boolean() })
   .strict();
 export const accessPolicyShowResultSchema = z
-  .object({ policy: browserAccessPolicySchema.nullable() })
+  .object({ policy: accessControlConfigSchema.nullable() })
   .strict();
 export const accessPolicyApplyResultSchema = z
   .object({
-    policy: browserAccessPolicySchema,
-    restartRequired: z.literal(true),
+    policy: accessControlConfigSchema,
+    restartRequired: z.literal(false),
   })
   .strict();
 export const accessPolicyTestResultSchema = z
