@@ -15,6 +15,10 @@ import {
 } from "./access-control";
 import { apiKeyMetadataSchema } from "./api-key-public";
 import {
+  emailDeliveryConfigSchema,
+  emailDeliveryConfigSummarySchema,
+} from "./email-delivery-contract";
+import {
   inviteManagedUserInputSchema,
   managedUserEmailInputSchema,
   managedUserSchema,
@@ -73,8 +77,22 @@ export const accessManagementRequestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("disable") }).strict(),
   z
     .object({
+      action: z.literal("configure-email-delivery"),
+      config: emailDeliveryConfigSchema,
+    })
+    .strict(),
+  z.object({ action: z.literal("disable-email-delivery") }).strict(),
+  z
+    .object({
+      action: z.literal("test-email-delivery"),
+      to: z.string().email().max(320),
+    })
+    .strict(),
+  z
+    .object({
       action: z.literal("invite-user"),
       ...inviteManagedUserInputSchema.shape,
+      sendEmail: z.boolean().default(false),
     })
     .strict(),
   z
@@ -157,6 +175,8 @@ export const managementErrorSchema = z
           "request_aborted",
           "provider_not_configured",
           "email_delivery_not_configured",
+          "email_delivery_in_use",
+          "email_delivery_failed",
           "policy_not_configured",
           "registration_not_found",
           "key_not_found",
@@ -179,6 +199,7 @@ export const accessManagementReadResponseSchema = z
     policyRevision: accessPolicyRevisionSchema.nullable(),
     users: z.array(managedUserSchema),
     roles: z.array(accessControlRoleSchema).max(64),
+    emailDelivery: emailDeliveryConfigSummarySchema.nullable(),
   })
   .strict();
 
@@ -222,7 +243,23 @@ export const accessManagementMutationResponseSchema = z.union([
     .object({
       user: managedUserSchema,
       signInUrl: z.string().url(),
+      emailDelivered: z.boolean(),
     })
+    .strict(),
+  z
+    .object({
+      emailDelivery: emailDeliveryConfigSummarySchema,
+      restartRequired: z.literal(false),
+    })
+    .strict(),
+  z
+    .object({
+      emailDeliveryDisabled: z.boolean(),
+      restartRequired: z.literal(false),
+    })
+    .strict(),
+  z
+    .object({ emailDelivered: z.literal(true), to: z.string().email() })
     .strict(),
   z.object({ user: managedUserSchema }).strict(),
 ]);

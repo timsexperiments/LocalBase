@@ -399,6 +399,7 @@ export const accessUsersInviteInputSchema = z
   .object({
     email: managedUserEmailSchema,
     roles: managedUserRolesInputSchema.pipe(z.array(z.string()).min(1)),
+    sendEmail: z.boolean().default(false),
   })
   .strict();
 export type AccessUsersInviteInput = z.infer<

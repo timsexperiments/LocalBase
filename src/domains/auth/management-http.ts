@@ -26,7 +26,14 @@ import {
 } from "./access-control";
 import { publicApiKey } from "./api-key-public";
 import { BrowserAccessError } from "./errors";
-import { loadEmailDeliveryConfig } from "./email-delivery";
+import {
+  disableEmailDelivery,
+  EmailDeliveryError,
+  loadEmailDeliveryConfig,
+  saveEmailDeliveryConfig,
+  sendEmail,
+  summarizeEmailDeliveryConfig,
+} from "./email-delivery";
 import {
   disableManagedUser,
   enableManagedUser,
@@ -57,6 +64,8 @@ type ManagementErrorCode =
   | "request_aborted"
   | "provider_not_configured"
   | "email_delivery_not_configured"
+  | "email_delivery_in_use"
+  | "email_delivery_failed"
   | "policy_not_configured"
   | "registration_not_found"
   | "key_not_found"
@@ -75,6 +84,9 @@ const errorMessages: Record<ManagementErrorCode, string> = {
   provider_not_configured: "Configure a browser identity provider first.",
   email_delivery_not_configured:
     "Configure email delivery before enabling magic-link authentication.",
+  email_delivery_in_use:
+    "Remove the magic-link registration before disabling email delivery.",
+  email_delivery_failed: "Email delivery failed.",
   policy_not_configured: "Configure a browser access policy first.",
   registration_not_found: "The identity provider registration was not found.",
   key_not_found: "The API key was not found.",
@@ -204,6 +216,7 @@ export function createAuthManagement({
         const config = await loadBrowserAccessConfig(root);
         const db = database.get(root);
         const policy = loadAccessControl(db);
+        const emailDelivery = await loadEmailDeliveryConfig(root);
         return Response.json(
           accessManagementReadResponseSchema.parse({
             config: config ? summarizeBrowserAccessConfig(config) : null,
@@ -211,6 +224,9 @@ export function createAuthManagement({
             policyRevision: accessControlRevision(policy),
             users: listManagedUsers(db),
             roles: policy?.roles ?? [],
+            emailDelivery: emailDelivery
+              ? summarizeEmailDeliveryConfig(emailDelivery)
+              : null,
           }),
           { headers },
         );
@@ -293,6 +309,96 @@ export function createAuthManagement({
           { headers },
         );
       }
+      if (input.action === "test-email-delivery") {
+        const emailDelivery = await loadEmailDeliveryConfig(root);
+        if (!emailDelivery)
+          return Response.json(errorBody("email_delivery_not_configured"), {
+            status: 409,
+            headers,
+          });
+        try {
+          await sendEmail(emailDelivery, {
+            to: input.to,
+            subject: "LocalBase email delivery test",
+            text: "LocalBase successfully sent this test email.",
+          });
+        } catch (error) {
+          if (error instanceof EmailDeliveryError)
+            return Response.json(errorBody("email_delivery_failed"), {
+              status: 502,
+              headers,
+            });
+          throw error;
+        }
+        return Response.json(
+          accessManagementMutationResponseSchema.parse({
+            emailDelivered: true,
+            to: input.to,
+          }),
+          { headers },
+        );
+      }
+      if (input.action === "invite-user") {
+        try {
+          const invitation = await withRootOperation(
+            root,
+            "invite browser user",
+            async (canonicalRoot) => {
+              const current = await loadBrowserAccessConfig(canonicalRoot);
+              if (!current) return { kind: "provider-not-configured" as const };
+              const emailDelivery = input.sendEmail
+                ? await loadEmailDeliveryConfig(canonicalRoot)
+                : null;
+              if (input.sendEmail && !emailDelivery)
+                return { kind: "email-not-configured" as const };
+              const user = inviteManagedUser(database.get(canonicalRoot), {
+                email: input.email,
+                roles: input.roles,
+              });
+              return {
+                kind: "invited" as const,
+                user,
+                signInUrl: new URL("/app/login", current.origin).toString(),
+                emailDelivery,
+              };
+            },
+          );
+          if (invitation.kind === "provider-not-configured")
+            return Response.json(errorBody("provider_not_configured"), {
+              status: 409,
+              headers,
+            });
+          if (invitation.kind === "email-not-configured")
+            return Response.json(errorBody("email_delivery_not_configured"), {
+              status: 409,
+              headers,
+            });
+          let emailDelivered = false;
+          if (invitation.emailDelivery)
+            try {
+              await sendEmail(invitation.emailDelivery, {
+                to: invitation.user.email,
+                subject: "You were invited to LocalBase",
+                text: `You were invited to LocalBase. Sign in here:\n\n${invitation.signInUrl}`,
+              });
+              emailDelivered = true;
+            } catch {
+              emailDelivered = false;
+            }
+          return Response.json(
+            accessManagementMutationResponseSchema.parse({
+              user: invitation.user,
+              signInUrl: invitation.signInUrl,
+              emailDelivered,
+            }),
+            { status: 201, headers },
+          );
+        } catch (error) {
+          const response = domainErrorResponse(error, headers);
+          if (response) return response;
+          throw error;
+        }
+      }
       try {
         return await withRootOperation(
           root,
@@ -344,7 +450,10 @@ export function createAuthManagement({
                 if (!(await loadEmailDeliveryConfig(canonicalRoot)))
                   return Response.json(
                     errorBody("email_delivery_not_configured"),
-                    { status: 409, headers },
+                    {
+                      status: 409,
+                      headers,
+                    },
                   );
                 const existing =
                   current?.provider.kind === "direct"
@@ -411,22 +520,38 @@ export function createAuthManagement({
                   { headers },
                 );
               }
-              case "invite-user": {
-                if (!current)
-                  return Response.json(errorBody("provider_not_configured"), {
+              case "configure-email-delivery": {
+                const emailDelivery = await saveEmailDeliveryConfig(
+                  canonicalRoot,
+                  input.config,
+                );
+                return Response.json(
+                  accessManagementMutationResponseSchema.parse({
+                    emailDelivery: summarizeEmailDeliveryConfig(emailDelivery),
+                    restartRequired: false,
+                  }),
+                  { headers },
+                );
+              }
+              case "disable-email-delivery": {
+                if (
+                  current?.provider.kind === "direct" &&
+                  current.provider.registrations.some(
+                    (registration) => registration.kind === "magic-link",
+                  )
+                )
+                  return Response.json(errorBody("email_delivery_in_use"), {
                     status: 409,
                     headers,
                   });
-                const user = inviteManagedUser(database.get(canonicalRoot), {
-                  email: input.email,
-                  roles: input.roles,
-                });
+                const emailDeliveryDisabled =
+                  await disableEmailDelivery(canonicalRoot);
                 return Response.json(
                   accessManagementMutationResponseSchema.parse({
-                    user,
-                    signInUrl: new URL("/app", current.origin).toString(),
+                    emailDeliveryDisabled,
+                    restartRequired: false,
                   }),
-                  { status: 201, headers },
+                  { headers },
                 );
               }
               case "replace-user-roles": {
