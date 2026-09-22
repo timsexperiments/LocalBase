@@ -15,6 +15,7 @@ import {
   githubAccessRegistrationSummarySchema,
   oidcAccessRegistrationSummarySchema,
 } from "../../auth/browser-access";
+import { emailDeliveryConfigSummarySchema } from "../../auth/email-delivery";
 import { accessControlConfigSchema } from "../../auth/access-control";
 import { apiKeyMetadataSchema } from "../../auth/api-key-public";
 import { managedUserSchema } from "../../auth/users";
@@ -175,6 +176,21 @@ export const accessGithubListResultSchema = z
 export const accessGithubRemoveResultSchema = accessOidcRemoveResultSchema;
 export const accessDisableResultSchema = z
   .object({ disabled: z.boolean(), restartRequired: z.boolean() })
+  .strict();
+export const accessEmailShowResultSchema = z
+  .object({ config: emailDeliveryConfigSummarySchema.nullable() })
+  .strict();
+export const accessEmailConfigureResultSchema = z
+  .object({
+    config: emailDeliveryConfigSummarySchema,
+    restartRequired: z.literal(false),
+  })
+  .strict();
+export const accessEmailDisableResultSchema = z
+  .object({ disabled: z.boolean(), restartRequired: z.literal(false) })
+  .strict();
+export const accessEmailTestResultSchema = z
+  .object({ delivered: z.literal(true), to: z.email() })
   .strict();
 export const accessPolicyShowResultSchema = z
   .object({ policy: accessControlConfigSchema.nullable() })

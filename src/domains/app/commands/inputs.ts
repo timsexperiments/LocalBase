@@ -303,6 +303,43 @@ export type AccessGithubRemoveInput = z.infer<
 export const accessDisableInputSchema = z.object({});
 export type AccessDisableInput = z.infer<typeof accessDisableInputSchema>;
 
+export const accessEmailConfigureInputSchema = z
+  .object({
+    host: z.string().min(1).max(253),
+    port: z.coerce.number().int().min(1).max(65_535),
+    security: z.enum(["tls", "starttls"]),
+    username: z.string().min(1).max(512).optional(),
+    passwordEnv: z
+      .string()
+      .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
+      .optional(),
+    from: z.email().max(320),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (Boolean(input.username) !== Boolean(input.passwordEnv))
+      context.addIssue({
+        code: "custom",
+        message: "Provide both --username and --password-env, or neither.",
+      });
+  });
+export type AccessEmailConfigureInput = z.infer<
+  typeof accessEmailConfigureInputSchema
+>;
+
+export const accessEmailShowInputSchema = z.object({});
+export type AccessEmailShowInput = z.infer<typeof accessEmailShowInputSchema>;
+
+export const accessEmailDisableInputSchema = z.object({});
+export type AccessEmailDisableInput = z.infer<
+  typeof accessEmailDisableInputSchema
+>;
+
+export const accessEmailTestInputSchema = z.object({
+  to: z.email().max(320),
+});
+export type AccessEmailTestInput = z.infer<typeof accessEmailTestInputSchema>;
+
 export const accessPolicyShowInputSchema = z.object({});
 export type AccessPolicyShowInput = z.infer<typeof accessPolicyShowInputSchema>;
 

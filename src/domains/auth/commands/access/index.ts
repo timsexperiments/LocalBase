@@ -5,6 +5,10 @@ import { CliInputError } from "../../../app/commands/errors";
 import type {
   AccessCloudflareInput,
   AccessDisableInput,
+  AccessEmailConfigureInput,
+  AccessEmailDisableInput,
+  AccessEmailShowInput,
+  AccessEmailTestInput,
   AccessGithubAddInput,
   AccessGithubListInput,
   AccessGithubRemoveInput,
@@ -23,6 +27,13 @@ import type {
   AccessUsersRemoveInput,
   AccessUsersRolesInput,
 } from "../../../app/commands/inputs";
+import {
+  disableEmailDelivery,
+  loadEmailDeliveryConfig,
+  saveEmailDeliveryConfig,
+  sendEmail,
+  summarizeEmailDeliveryConfig,
+} from "../../email-delivery";
 import {
   disableBrowserAccess,
   defaultBrowserPermissions,
@@ -63,6 +74,93 @@ export async function runAccessShow(
   return {
     data: { config: config ? summarizeBrowserAccessConfig(config) : null },
   };
+}
+
+export async function runAccessEmailShow(
+  _input: AccessEmailShowInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const config = await loadEmailDeliveryConfig(ctx.config.root);
+  execution.output.info(
+    config
+      ? `Email delivery: ${config.host}:${config.port} from ${config.from}`
+      : "Email delivery is not configured.",
+  );
+  return {
+    data: { config: config ? summarizeEmailDeliveryConfig(config) : null },
+  };
+}
+
+export async function runAccessEmailConfigure(
+  input: AccessEmailConfigureInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const password = input.passwordEnv
+    ? (process.env[input.passwordEnv] ?? "")
+    : null;
+  if (input.passwordEnv && !password)
+    throw new CliInputError(
+      `SMTP password environment variable ${input.passwordEnv} is empty or unavailable.`,
+    );
+  const config = await withRootOperation(
+    ctx.config.root,
+    "configure email delivery",
+    async (root) =>
+      await saveEmailDeliveryConfig(root, {
+        host: input.host,
+        port: input.port,
+        security: input.security,
+        authentication:
+          input.username && password
+            ? { kind: "password", username: input.username, password }
+            : { kind: "none" },
+        from: input.from,
+      }),
+  );
+  execution.output.info("Saved email delivery configuration.");
+  return {
+    data: {
+      config: summarizeEmailDeliveryConfig(config),
+      restartRequired: false as const,
+    },
+  };
+}
+
+export async function runAccessEmailDisable(
+  _input: AccessEmailDisableInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const disabled = await withRootOperation(
+    ctx.config.root,
+    "disable email delivery",
+    disableEmailDelivery,
+  );
+  execution.output.info(
+    disabled
+      ? "Disabled email delivery."
+      : "Email delivery was already disabled.",
+  );
+  return { data: { disabled, restartRequired: false as const } };
+}
+
+export async function runAccessEmailTest(
+  input: AccessEmailTestInput,
+  ctx: AppContext,
+  execution: CommandExecution,
+) {
+  const config = await loadEmailDeliveryConfig(ctx.config.root);
+  if (!config)
+    throw new CliInputError("Configure email delivery before testing it.");
+  await sendEmail(config, {
+    to: input.to,
+    subject: "LocalBase email delivery test",
+    text: "LocalBase successfully sent this test email.",
+  });
+  execution.output.info(`Sent a test email to ${input.to}.`);
+  return { data: { delivered: true as const, to: input.to } };
 }
 
 export async function runAccessCloudflare(
