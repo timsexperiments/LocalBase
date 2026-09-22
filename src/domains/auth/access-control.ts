@@ -15,6 +15,7 @@ import {
 } from "../../db/schema";
 import { permissionsSchema, type Permission } from "./authorization";
 import type { BrowserIdentity } from "./browser-identity";
+import { BrowserAccessError } from "./errors";
 
 export const roleNameSchema = z
   .string()
@@ -22,7 +23,7 @@ export const roleNameSchema = z
   .max(64)
   .regex(/^[a-z][a-z0-9-]*$/);
 
-const roleSchema = z
+export const accessControlRoleSchema = z
   .object({
     name: roleNameSchema,
     description: z.string().max(256).default(""),
@@ -65,7 +66,7 @@ const bindingSchema = z.discriminatedUnion("kind", [
 
 export const accessControlConfigSchema = z
   .object({
-    roles: z.array(roleSchema).min(1).max(64),
+    roles: z.array(accessControlRoleSchema).min(1).max(64),
     bindings: z.array(bindingSchema).max(256),
     defaultRole: roleNameSchema.nullable().default(null),
   })
@@ -177,7 +178,8 @@ export function applyAccessControl(
           .limit(1)
           .get();
         if (assignedRole)
-          throw new Error(
+          throw new BrowserAccessError(
+            "policy-conflict",
             `Cannot remove browser access role ${assignedRole.name} while it is assigned to a managed user.`,
           );
       }
@@ -341,7 +343,8 @@ export function clearAccessControl(db: LocalBaseDatabase): boolean {
         .limit(1)
         .get();
       if (managedUser)
-        throw new Error(
+        throw new BrowserAccessError(
+          "policy-conflict",
           "Cannot clear the browser access policy while managed users exist.",
         );
       db.delete(authSubjectRoleBindingsTable).run();
