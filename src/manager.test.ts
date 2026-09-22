@@ -32,6 +32,7 @@ import {
   uninstallManaged,
   validateApiKey,
   type LocalBaseConfig,
+  type ModelArtifactFetcher,
   type ModelInstallEvent,
 } from "./manager";
 import { ensureLocalBaseRootMarker } from "./utils/root";
@@ -67,7 +68,6 @@ type ArtifactRequest = {
 
 async function createArtifactServer(
   files: Record<string, Uint8Array>,
-  interruptedRequests = new Map<string, number>(),
   options: {
     invalidRangePaths?: Set<string>;
   } = {},
@@ -93,20 +93,6 @@ async function createArtifactServer(
       response.writeHead(404).end();
       return;
     }
-    const interruptionsLeft = interruptedRequests.get(path) ?? 0;
-    if (interruptionsLeft > 0) {
-      interruptedRequests.set(path, interruptionsLeft - 1);
-      response.writeHead(200, {
-        Connection: "close",
-        "Content-Length": String(body.byteLength),
-      });
-      response.end(
-        body.subarray(0, Math.max(1, Math.floor(body.byteLength / 2))),
-        () => setTimeout(() => request.socket.destroy(), 10),
-      );
-      return;
-    }
-
     const range = /^bytes=(\d+)-$/.exec(request.headers.range ?? "");
     if (range) {
       const start = Number(range[1]);
@@ -407,15 +393,12 @@ describe.serial("transactional model artifact installation", () => {
       supplementary,
       "supplementary",
     );
-    const server = await createArtifactServer(
-      {
-        "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00001.gguf":
-          primary,
-        "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00002.gguf":
-          supplementary,
-      },
-      new Map(),
-    );
+    const server = await createArtifactServer({
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00001.gguf":
+        primary,
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00002.gguf":
+        supplementary,
+    });
     const modelId = installFixtureModel(server.source, [
       primaryArtifact,
       supplementaryArtifact,
@@ -533,9 +516,12 @@ describe.serial("transactional model artifact installation", () => {
     const modelArtifact = artifact("model.gguf", content, "primary");
     const path =
       "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model.gguf";
-    const server = await createArtifactServer({ [path]: content }, new Map(), {
-      invalidRangePaths: new Set([path]),
-    });
+    const server = await createArtifactServer(
+      { [path]: content },
+      {
+        invalidRangePaths: new Set([path]),
+      },
+    );
     const modelId = installFixtureModel(server.source, [modelArtifact]);
     const config = createInstallConfig();
     const partial = join(config.llmModelsDir, "model.gguf.partial");
@@ -562,14 +548,11 @@ describe.serial("transactional model artifact installation", () => {
     );
     const secondPath =
       "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00002.gguf";
-    const server = await createArtifactServer(
-      {
-        "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00001.gguf":
-          primary,
-        [secondPath]: supplementary,
-      },
-      new Map([[secondPath, 1]]),
-    );
+    const server = await createArtifactServer({
+      "/repo/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/model-00001.gguf":
+        primary,
+      [secondPath]: supplementary,
+    });
     const modelId = installFixtureModel(server.source, [
       primaryArtifact,
       supplementaryArtifact,
@@ -579,10 +562,42 @@ describe.serial("transactional model artifact installation", () => {
       config.llmModelsDir,
       `${supplementaryArtifact.filename}.partial`,
     );
-
-    await expect(installModel(config, modelId)).rejects.toThrow(
-      "Failed to download model",
+    const supplementaryUrl = `${server.source}/resolve/${TEST_REVISION}/${supplementaryArtifact.sourcePath}`;
+    const prefix = supplementary.subarray(
+      0,
+      Math.max(1, Math.floor(supplementary.byteLength / 2)),
     );
+    let interruptSupplementaryDownload = true;
+    const fetchArtifact: ModelArtifactFetcher = async (input, init) => {
+      if (
+        interruptSupplementaryDownload &&
+        input.toString() === supplementaryUrl
+      ) {
+        interruptSupplementaryDownload = false;
+        let deliveredPrefix = false;
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              if (!deliveredPrefix) {
+                deliveredPrefix = true;
+                controller.enqueue(prefix);
+                return;
+              }
+              controller.error(new Error("interrupted download"));
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Length": String(supplementary.byteLength) },
+          },
+        );
+      }
+      return fetch(input, init);
+    };
+
+    await expect(
+      installModel(config, modelId, undefined, undefined, fetchArtifact),
+    ).rejects.toThrow("Failed to download model");
     expect(
       await Bun.file(
         join(config.llmModelsDir, primaryArtifact.filename),
