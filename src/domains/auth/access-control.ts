@@ -328,6 +328,30 @@ export function loadAccessControl(
   });
 }
 
+export function accessControlRevision(
+  policy: AccessControlConfig | null,
+): string | null {
+  if (!policy) return null;
+  const parsed = accessControlConfigSchema.parse(policy);
+  const compareStrings = (left: string, right: string) =>
+    left < right ? -1 : left > right ? 1 : 0;
+  const canonical = {
+    roles: [...parsed.roles]
+      .sort((left, right) => compareStrings(left.name, right.name))
+      .map((role) => ({
+        ...role,
+        permissions: [...role.permissions].sort(compareStrings),
+      })),
+    bindings: [...parsed.bindings].sort((left, right) =>
+      compareStrings(JSON.stringify(left), JSON.stringify(right)),
+    ),
+    defaultRole: parsed.defaultRole,
+  };
+  return new Bun.CryptoHasher("sha256")
+    .update(JSON.stringify(canonical))
+    .digest("hex");
+}
+
 export function clearAccessControl(db: LocalBaseDatabase): boolean {
   const configured = db
     .select({ id: authSettingsTable.id })

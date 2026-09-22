@@ -28,6 +28,8 @@ const identitySchema = z
   })
   .strict();
 
+export const accessPolicyRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/);
+
 export const accessManagementRequestSchema = z.discriminatedUnion("action", [
   z
     .object({
@@ -94,9 +96,15 @@ export const accessManagementRequestSchema = z.discriminatedUnion("action", [
     .object({
       action: z.literal("apply-policy"),
       policy: accessControlConfigSchema,
+      expectedPolicyRevision: accessPolicyRevisionSchema.nullable(),
     })
     .strict(),
-  z.object({ action: z.literal("clear-policy") }).strict(),
+  z
+    .object({
+      action: z.literal("clear-policy"),
+      expectedPolicyRevision: accessPolicyRevisionSchema,
+    })
+    .strict(),
   z
     .object({ action: z.literal("test-policy"), identity: identitySchema })
     .strict(),
@@ -146,6 +154,7 @@ export const managementErrorSchema = z
           "managed_user_exists",
           "role_not_found",
           "policy_conflict",
+          "policy_revision_conflict",
         ]),
         message: z.string().min(1).max(512),
       })
@@ -157,6 +166,7 @@ export const accessManagementReadResponseSchema = z
   .object({
     config: browserAccessConfigSummarySchema.nullable(),
     policy: accessControlConfigSchema.nullable(),
+    policyRevision: accessPolicyRevisionSchema.nullable(),
     users: z.array(managedUserSchema),
     roles: z.array(accessControlRoleSchema).max(64),
   })
@@ -180,10 +190,17 @@ export const accessManagementMutationResponseSchema = z.union([
   z
     .object({
       policy: accessControlConfigSchema,
+      policyRevision: accessPolicyRevisionSchema,
       restartRequired: z.literal(false),
     })
     .strict(),
-  z.object({ cleared: z.boolean(), restartRequired: z.boolean() }).strict(),
+  z
+    .object({
+      cleared: z.boolean(),
+      policyRevision: z.null(),
+      restartRequired: z.boolean(),
+    })
+    .strict(),
   z
     .object({
       policyConfigured: z.boolean(),
