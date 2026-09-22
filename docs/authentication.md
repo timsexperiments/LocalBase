@@ -280,7 +280,10 @@ the management endpoints:
 
 Direct provider management uses `upsert-oidc`, `upsert-github`, and
 `remove-registration`. Reads return every registration with client secrets
-redacted.
+redacted, along with managed users and the configured role summaries. Managed
+user mutations use `invite-user`, `replace-user-roles`, `enable-user`,
+`disable-user`, and `remove-user`. Invitations return the `/app` sign-in URL;
+they do not send mail or mint a login token.
 
 The gateway checks `access:read`, `access:manage`, `keys:read`, or
 `keys:manage` for each operation. Provider responses omit client secrets.

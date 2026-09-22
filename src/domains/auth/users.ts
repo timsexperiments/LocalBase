@@ -9,6 +9,7 @@ import {
   authUsersTable,
 } from "../../db/schema";
 import { roleNameSchema } from "./access-control";
+import { BrowserAccessError } from "./errors";
 
 const settingsId = "default";
 
@@ -81,7 +82,11 @@ function requireAccessPolicy(db: LocalBaseDatabase): void {
     .from(authSettingsTable)
     .where(eq(authSettingsTable.id, settingsId))
     .get();
-  if (!settings) throw new Error("Configure a browser access policy first.");
+  if (!settings)
+    throw new BrowserAccessError(
+      "policy-not-configured",
+      "Configure a browser access policy first.",
+    );
 }
 
 function roleIds(
@@ -98,7 +103,10 @@ function roleIds(
   const ids = new Map(stored.map((role) => [role.name, role.id]));
   const missing = roles.filter((role) => !ids.has(role));
   if (missing.length)
-    throw new Error(`Unknown browser access role: ${missing.join(", ")}.`);
+    throw new BrowserAccessError(
+      "role-not-found",
+      `Unknown browser access role: ${missing.join(", ")}.`,
+    );
   return ids;
 }
 
@@ -107,7 +115,11 @@ function requiredRoleId(
   role: string,
 ): string {
   const id = ids.get(role);
-  if (!id) throw new Error(`Unknown browser access role: ${role}.`);
+  if (!id)
+    throw new BrowserAccessError(
+      "role-not-found",
+      `Unknown browser access role: ${role}.`,
+    );
   return id;
 }
 
@@ -127,7 +139,11 @@ function userByEmail(db: LocalBaseDatabase, email: string): ManagedUser {
     )
     .where(eq(authUserEmailsTable.email, email))
     .get();
-  if (!user) throw new Error(`Managed user ${email} was not found.`);
+  if (!user)
+    throw new BrowserAccessError(
+      "managed-user-not-found",
+      `Managed user ${email} was not found.`,
+    );
   const roles = db
     .select({ name: authRolesTable.name })
     .from(authUserRolesTable)
@@ -168,7 +184,10 @@ export function inviteManagedUser(
         .where(eq(authUserEmailsTable.email, parsed.email))
         .get();
       if (existing)
-        throw new Error(`Managed user ${parsed.email} already exists.`);
+        throw new BrowserAccessError(
+          "managed-user-exists",
+          `Managed user ${parsed.email} already exists.`,
+        );
       const now = new Date().toISOString();
       const id = crypto.randomUUID();
       db.insert(authUsersTable)
