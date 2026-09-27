@@ -2006,6 +2006,60 @@ describe("API gateway integration", () => {
     expect(stream).toContain('"usage":{"prompt_tokens":3');
   });
 
+  test("normalizes non-streaming llama.cpp reasoning for API clients", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "llama-wire-response",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [{ role: "user", content: "Return JSONL." }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: null,
+            reasoning: "Preparing the JSONL result.",
+          },
+        },
+      ],
+      usage: {
+        completion_tokens: 12560,
+        completion_tokens_details: { reasoning_tokens: 12560 },
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("reasoning_content");
+  });
+
+  test("accepts normalized reasoning in assistant history", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [
+          {
+            role: "assistant",
+            content: null,
+            reasoning: "Preserved reasoning from the previous turn.",
+          },
+          { role: "user", content: "Continue." },
+        ],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
   test("accepts strict llama.cpp reasoning, usage, and tool-call chunks", async () => {
     const response = await request("/v1/chat/completions", {
       method: "POST",
@@ -2021,7 +2075,8 @@ describe("API gateway integration", () => {
     });
     expect(response.status).toBe(200);
     const stream = await response.text();
-    expect(stream).toContain('"reasoning_content":"Considering tools."');
+    expect(stream).toContain('"reasoning":"Canonical reasoning."');
+    expect(stream).not.toContain("reasoning_content");
     expect(stream).toContain('"tool_calls"');
     expect(stream).toContain(
       '"id":1234,"token":"weather","bytes":[119,101,97,116,104,101,114]',
@@ -2031,6 +2086,9 @@ describe("API gateway integration", () => {
     );
     expect(stream).toContain('"choices":[],"usage":{"prompt_tokens":3');
     expect(stream).toContain('"prompt_tokens_details":{"cached_tokens":1}');
+    expect(stream).toContain(
+      '"completion_tokens_details":{"reasoning_tokens":2}',
+    );
     expect(stream).toContain('"timings"');
     expect(stream.endsWith("data: [DONE]\n\n")).toBe(true);
   });
