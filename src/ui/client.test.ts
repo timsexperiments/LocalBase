@@ -68,6 +68,7 @@ describe("playground client boundaries", () => {
       .mockResolvedValueOnce(
         Response.json({
           authenticated: true,
+          permissions: ["inference:chat", "models:manage"],
           verifiedEmail: "person@example.com",
           logoutUrl: "/cdn-cgi/access/logout",
         }),
@@ -79,6 +80,7 @@ describe("playground client boundaries", () => {
       const session = await readSession();
       expect(sessionConnection(session)).toEqual({
         kind: "session",
+        permissions: ["inference:chat", "models:manage"],
         verifiedEmail: "person@example.com",
         logoutUrl: "/cdn-cgi/access/logout",
       });

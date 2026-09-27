@@ -5,6 +5,7 @@ import {
   type Mode,
 } from "./client";
 import {
+  canOpenPanel,
   conversationNavigation,
   navigationUrl,
   readNavigation,
@@ -33,6 +34,16 @@ function fresh(mode: Mode, workspace: Conversation["workspace"]): Conversation {
 }
 
 describe("playground navigation boundary", () => {
+  test("requires the matching permission for administrative panels", () => {
+    expect(canOpenPanel("catalog", null)).toBe(false);
+    expect(canOpenPanel("catalog", ["models:read"])).toBe(false);
+    expect(canOpenPanel("catalog", ["models:manage"])).toBe(true);
+    expect(canOpenPanel("admin", ["access:read"])).toBe(true);
+    expect(canOpenPanel("admin", ["access:manage"])).toBe(false);
+    expect(canOpenPanel("models", [])).toBe(true);
+    expect(canOpenPanel(null, null)).toBe(true);
+  });
+
   test("missing and invalid query fields fall back independently", () => {
     const defaults: Navigation = {
       view: "chat",

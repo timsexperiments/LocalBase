@@ -305,6 +305,7 @@ export function createUiAccess({
           Response.json(
             {
               authenticated: true,
+              permissions: authorization.permissions,
               ...(identity.verifiedEmail
                 ? { verifiedEmail: identity.verifiedEmail }
                 : {}),
