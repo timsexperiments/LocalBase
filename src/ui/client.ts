@@ -285,6 +285,20 @@ export async function readSession(signal?: AbortSignal): Promise<Session> {
       : {}),
   };
 }
+export async function logoutSession(): Promise<void> {
+  const response = await fetch("/app/logout", {
+    method: "POST",
+    credentials: "same-origin",
+    cache: "no-store",
+    redirect: "error",
+    headers: { "x-localbase-ui": "1" },
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error("Could not sign out. Try again.");
+  }
+  await response.body?.cancel();
+}
 export function sessionConnection(session: SessionState): Connection | null {
   return session.kind === "session" ? session : null;
 }

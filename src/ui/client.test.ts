@@ -3,6 +3,7 @@ import type { ModelMetadata } from "../domains/models/model-metadata";
 import {
   api,
   discardLegacyFragmentCredential,
+  logoutSession,
   readSession,
   sessionConnection,
   SessionRequiredError,
@@ -92,6 +93,25 @@ describe("playground client boundaries", () => {
       expect(
         sessionConnection({ kind: "error", message: "Expired" }),
       ).toBeNull();
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  test("signs out through the same-origin session endpoint", async () => {
+    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
+    try {
+      await logoutSession();
+      const [path, options] = fetchMock.mock.calls[0] ?? [];
+      expect(path).toBe("/app/logout");
+      expect(options).toMatchObject({
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        redirect: "error",
+      });
+      expect(new Headers(options?.headers).get("x-localbase-ui")).toBe("1");
     } finally {
       fetchMock.mockRestore();
     }

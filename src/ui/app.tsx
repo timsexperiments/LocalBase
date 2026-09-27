@@ -42,6 +42,7 @@ import {
   catalogModels,
   historyKey,
   imageResponseSchema,
+  logoutSession,
   modelMemorySummary,
   modelsSchema,
   modes,
@@ -51,6 +52,7 @@ import {
   sessionConnection,
   SessionRequiredError,
   type SessionState,
+  type Session,
   transcriptionSchema,
   writeHistory,
   type Conversation,
@@ -243,6 +245,63 @@ function Drawer({
     </dialog>
   );
 }
+function AccountMenu({
+  session,
+  signingOut,
+  signOut,
+}: {
+  session: Session;
+  signingOut: boolean;
+  signOut: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const label = session.verifiedEmail ?? "Signed in";
+  const initial = session.verifiedEmail?.charAt(0).toUpperCase() ?? "U";
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !root.current?.contains(event.target))
+        setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+  return (
+    <div className="account-menu" ref={root}>
+      <button
+        className="account-trigger"
+        aria-label={`Account: ${label}`}
+        aria-expanded={open}
+        aria-haspopup="true"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span aria-hidden="true">{initial}</span>
+      </button>
+      {open && (
+        <div className="account-popover">
+          <span className="account-avatar" aria-hidden="true">
+            {initial}
+          </span>
+          <div className="account-identity">
+            <strong>Signed in</strong>
+            <span title={label}>{label}</span>
+          </div>
+          <button disabled={signingOut} onClick={() => void signOut()}>
+            {signingOut ? "Signing out…" : "Sign out"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 function App() {
   const [session, setSession] = useState<SessionState>(() => {
     discardLegacyFragmentCredential();
@@ -300,6 +359,7 @@ function App() {
   const [error, setError] = useState(initial.error);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
   const [historySearch, setHistorySearch] = useState("");
   const [showLatest, setShowLatest] = useState(false);
@@ -453,6 +513,23 @@ function App() {
               : "Sign-in could not be verified. Reload this page to sign in, or refresh to try again.",
         });
       }
+    }
+  }
+  async function signOut() {
+    setSigningOut(true);
+    try {
+      await logoutSession();
+      setModels([]);
+      setHostMemory(null);
+      setSession({ kind: "error", message: "You signed out." });
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not sign out. Try again.",
+      );
+    } finally {
+      setSigningOut(false);
     }
   }
   async function refresh(signal?: AbortSignal) {
@@ -933,6 +1010,13 @@ function App() {
         >
           ＋
         </button>
+        {session.kind === "session" && (
+          <AccountMenu
+            session={session}
+            signingOut={signingOut}
+            signOut={signOut}
+          />
+        )}
       </header>
       <div className="workspace">
         <main
