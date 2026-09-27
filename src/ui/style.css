@@ -185,6 +185,69 @@ select {
   font-size: 13px;
   font-weight: 600;
 }
+.account-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+.account-trigger {
+  display: grid;
+  place-items: center;
+  padding: 5px;
+  border-radius: 999px;
+}
+.account-trigger > span,
+.account-avatar {
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+}
+.account-trigger > span {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+.account-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(300px, calc(100vw - 24px));
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.account-avatar {
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
+}
+.account-identity {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  line-height: 1.35;
+}
+.account-identity > span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-popover > button {
+  grid-column: 1 / -1;
+  border-color: var(--border);
+  background: var(--surface-muted);
+  text-align: left;
+}
 .workspace {
   width: 100%;
   min-width: 0;

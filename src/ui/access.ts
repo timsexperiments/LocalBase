@@ -308,6 +308,9 @@ export function createUiAccess({
               ...(identity.verifiedEmail
                 ? { verifiedEmail: identity.verifiedEmail }
                 : {}),
+              ...(config.provider.kind === "cloudflare-access"
+                ? { logoutUrl: "/cdn-cgi/access/logout" }
+                : {}),
             },
             { headers: { "cache-control": "no-store" } },
           ),
