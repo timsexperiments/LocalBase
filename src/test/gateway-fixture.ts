@@ -509,6 +509,31 @@ function startMockUpstream(
           "/private/tmp/backend-model.gguf",
         );
       }
+      if (mode === "llama-wire-response") {
+        return Response.json({
+          id: "chatcmpl-llama-wire",
+          object: "chat.completion",
+          created: 0,
+          model: LLM_MODEL,
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                reasoning_content: "Preparing the JSONL result.",
+              },
+              finish_reason: "stop",
+            },
+          ],
+          usage: {
+            prompt_tokens: 3,
+            completion_tokens: 12560,
+            total_tokens: 12563,
+            completion_tokens_details: { reasoning_tokens: 12560 },
+          },
+        });
+      }
       if (mode === "unsafe-model-stream") {
         return eventStream([
           chatCompletionChunk(
@@ -1270,6 +1295,7 @@ function startMockUpstream(
               {
                 index: 0,
                 delta: {
+                  reasoning: "Canonical reasoning.",
                   reasoning_content: "Considering tools.",
                   content: "weather",
                 },
@@ -1363,6 +1389,7 @@ function startMockUpstream(
               completion_tokens: 2,
               total_tokens: 5,
               prompt_tokens_details: { cached_tokens: 1 },
+              completion_tokens_details: { reasoning_tokens: 2 },
             },
             timings: {
               cache_n: 1,

@@ -578,14 +578,19 @@ const assistantMessageSchema = z
     name: z.string().optional(),
     tool_calls: z.array(chatToolCallSchema).optional(),
     refusal: z.string().nullable().optional(),
+    reasoning: z.string().nullable().optional(),
+    reasoning_content: z.string().nullable().optional(),
     function_call: z.never().optional(),
   })
   .refine(
     (message) =>
       (message.content !== undefined && message.content !== null) ||
       (message.tool_calls?.length ?? 0) > 0 ||
-      (message.refusal !== undefined && message.refusal !== null),
-    "assistant messages require content, tool_calls, or refusal",
+      (message.refusal !== undefined && message.refusal !== null) ||
+      (message.reasoning !== undefined && message.reasoning !== null) ||
+      (message.reasoning_content !== undefined &&
+        message.reasoning_content !== null),
+    "assistant messages require content, reasoning, tool_calls, or refusal",
   )
   .passthrough();
 
@@ -771,11 +776,24 @@ const chatCompletionResponseSchema = z
   })
   .passthrough();
 
+function normalizeReasoningContent<
+  T extends {
+    reasoning?: string | null;
+    reasoning_content?: string | null;
+  },
+>(source: T): Omit<T, "reasoning_content"> & { reasoning?: string | null } {
+  const { reasoning_content, ...normalized } = source;
+  return reasoning_content == null || normalized.reasoning !== undefined
+    ? normalized
+    : { ...normalized, reasoning: reasoning_content };
+}
+
 const chatCompletionStreamDeltaSchema = z
   .object({
     role: z.literal("assistant").optional(),
     content: z.string().nullable().optional(),
     refusal: z.string().nullable().optional(),
+    reasoning: z.string().nullable().optional(),
     reasoning_content: z.string().nullable().optional(),
     tool_calls: z
       .array(
@@ -1225,7 +1243,16 @@ function validateEventStream(
         if (!parsed.success) {
           return fail(controller, terminateOnFailure);
         }
-        const value = parsed.data;
+        const value =
+          "error" in parsed.data
+            ? parsed.data
+            : {
+                ...parsed.data,
+                choices: parsed.data.choices.map((choice) => ({
+                  ...choice,
+                  delta: normalizeReasoningContent(choice.delta),
+                })),
+              };
         onValidatedEvent?.(value);
         if ("error" in value) {
           controller.enqueue(encoder.encode(event));
@@ -1434,15 +1461,25 @@ async function proxyRequest(
       }
       onValidatedEvent?.(parsed.data, upstream.status);
 
+      const publicData = chatResponse.success
+        ? {
+            ...chatResponse.data,
+            choices: chatResponse.data.choices.map((choice) => ({
+              ...choice,
+              message: normalizeReasoningContent(choice.message),
+            })),
+          }
+        : parsed.data;
+
       const headers = filterProxyHeaders(upstream.headers);
       headers.delete("content-length");
       return Response.json(
         canonicalModelId &&
-          typeof parsed.data === "object" &&
-          parsed.data !== null &&
-          "model" in parsed.data
-          ? { ...parsed.data, model: canonicalModelId }
-          : parsed.data,
+          typeof publicData === "object" &&
+          publicData !== null &&
+          "model" in publicData
+          ? { ...publicData, model: canonicalModelId }
+          : publicData,
         {
           status: upstream.status,
           headers,
