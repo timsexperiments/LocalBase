@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  permissionsSchema,
+  type Permission,
+} from "../domains/auth/authorization";
 import type {
   ModelMetadata,
   ModelMetadataList,
@@ -240,14 +244,17 @@ export function availableModels(models: Model[], mode: Mode) {
     (model) => model.device.installed && model.device.selected,
   );
 }
-export type Session = {
+export type Connection = {
   kind: "session";
+  permissions?: readonly Permission[];
   verifiedEmail?: string;
   logoutUrl?: "/cdn-cgi/access/logout";
 };
+export type Session = Connection & {
+  permissions: readonly Permission[];
+};
 export type SessionState =
   Session | { kind: "checking" } | { kind: "error"; message: string };
-export type Connection = Session;
 export class SessionRequiredError extends Error {
   constructor(
     message = "Your sign-in is missing or expired. Sign in again, then refresh.",
@@ -257,6 +264,7 @@ export class SessionRequiredError extends Error {
 }
 const sessionSchema = z.object({
   authenticated: z.literal(true),
+  permissions: permissionsSchema,
   verifiedEmail: z.email().optional(),
   logoutUrl: z.literal("/cdn-cgi/access/logout").optional(),
 });
@@ -285,6 +293,7 @@ export async function readSession(signal?: AbortSignal): Promise<Session> {
     );
   return {
     kind: "session",
+    permissions: parsed.data.permissions,
     ...(parsed.data.verifiedEmail
       ? { verifiedEmail: parsed.data.verifiedEmail }
       : {}),

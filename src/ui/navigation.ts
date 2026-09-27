@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Permission } from "../domains/auth/authorization";
 import { modes, type Conversation, type Mode } from "./client";
 
 const identifier = z
@@ -18,6 +19,21 @@ const navigationSchema = z.object({
   conversation: identifier,
 });
 export type Navigation = z.infer<typeof navigationSchema>;
+
+const panelPermissions: Partial<
+  Record<NonNullable<Navigation["panel"]>, Permission>
+> = {
+  catalog: "models:manage",
+  admin: "access:read",
+};
+
+export function canOpenPanel(
+  panel: Navigation["panel"],
+  permissions: readonly Permission[] | null,
+): boolean {
+  const required = panel ? panelPermissions[panel] : undefined;
+  return !required || permissions?.includes(required) === true;
+}
 
 export function readNavigation(search: string): Navigation {
   const params = new URLSearchParams(search);
