@@ -240,7 +240,11 @@ export function availableModels(models: Model[], mode: Mode) {
     (model) => model.device.installed && model.device.selected,
   );
 }
-export type Session = { kind: "session"; verifiedEmail?: string };
+export type Session = {
+  kind: "session";
+  verifiedEmail?: string;
+  logoutUrl?: "/cdn-cgi/access/logout";
+};
 export type SessionState =
   Session | { kind: "checking" } | { kind: "error"; message: string };
 export type Connection = Session;
@@ -254,6 +258,7 @@ export class SessionRequiredError extends Error {
 const sessionSchema = z.object({
   authenticated: z.literal(true),
   verifiedEmail: z.email().optional(),
+  logoutUrl: z.literal("/cdn-cgi/access/logout").optional(),
 });
 export async function readSession(signal?: AbortSignal): Promise<Session> {
   const response = await fetch("/app/session", {
@@ -283,6 +288,7 @@ export async function readSession(signal?: AbortSignal): Promise<Session> {
     ...(parsed.data.verifiedEmail
       ? { verifiedEmail: parsed.data.verifiedEmail }
       : {}),
+    ...(parsed.data.logoutUrl ? { logoutUrl: parsed.data.logoutUrl } : {}),
   };
 }
 export async function logoutSession(): Promise<void> {

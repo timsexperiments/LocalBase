@@ -256,6 +256,7 @@ function AccountMenu({
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const label = session.verifiedEmail ?? "Signed in";
   const initial = session.verifiedEmail?.charAt(0).toUpperCase() ?? "U";
   useEffect(() => {
@@ -265,7 +266,9 @@ function AccountMenu({
         setOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      trigger.current?.focus();
     };
     document.addEventListener("pointerdown", closeOutside);
     document.addEventListener("keydown", closeOnEscape);
@@ -277,16 +280,17 @@ function AccountMenu({
   return (
     <div className="account-menu" ref={root}>
       <button
+        ref={trigger}
         className="account-trigger"
         aria-label={`Account: ${label}`}
         aria-expanded={open}
-        aria-haspopup="true"
+        aria-haspopup="dialog"
         onClick={() => setOpen((current) => !current)}
       >
         <span aria-hidden="true">{initial}</span>
       </button>
       {open && (
-        <div className="account-popover">
+        <div className="account-popover" role="dialog" aria-label="Account">
           <span className="account-avatar" aria-hidden="true">
             {initial}
           </span>
@@ -519,6 +523,10 @@ function App() {
     setSigningOut(true);
     try {
       await logoutSession();
+      if (session.kind === "session" && session.logoutUrl) {
+        location.assign(session.logoutUrl);
+        return;
+      }
       setModels([]);
       setHostMemory(null);
       setSession({ kind: "error", message: "You signed out." });

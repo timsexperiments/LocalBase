@@ -146,6 +146,7 @@ test("verifies every human session and never falls back after a JWT failure", as
   expect(valid.status).toBe(200);
   expect(await valid.json()).toEqual({
     authenticated: true,
+    logoutUrl: "/cdn-cgi/access/logout",
     verifiedEmail: "person@example.com",
   });
   expect(valid.headers.get("cache-control")).toBe("no-store");
@@ -236,7 +237,12 @@ test("evaluates Cloudflare verified identity claims with the local policy", asyn
         : { matchedRoles: [], permissions: [] },
   });
   const sessionRequest = request(await token());
-  expect((await responseFor(access, sessionRequest)).status).toBe(200);
+  const sessionResponse = await responseFor(access, sessionRequest);
+  expect(sessionResponse.status).toBe(200);
+  expect(await sessionResponse.json()).toMatchObject({
+    authenticated: true,
+    logoutUrl: "/cdn-cgi/access/logout",
+  });
   expect(access.credential(sessionRequest)).toMatchObject({
     matchedRoles: ["admin"],
     permissions: ["models:manage", "access:manage"],

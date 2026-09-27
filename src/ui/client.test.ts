@@ -69,6 +69,7 @@ describe("playground client boundaries", () => {
         Response.json({
           authenticated: true,
           verifiedEmail: "person@example.com",
+          logoutUrl: "/cdn-cgi/access/logout",
         }),
       )
       .mockResolvedValueOnce(
@@ -79,6 +80,7 @@ describe("playground client boundaries", () => {
       expect(sessionConnection(session)).toEqual({
         kind: "session",
         verifiedEmail: "person@example.com",
+        logoutUrl: "/cdn-cgi/access/logout",
       });
       const [path, options] = fetchMock.mock.calls[0] ?? [];
       expect(path).toBe("/app/session");
