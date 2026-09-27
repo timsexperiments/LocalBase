@@ -283,14 +283,14 @@ function AccountMenu({
         ref={trigger}
         className="account-trigger"
         aria-label={`Account: ${label}`}
+        aria-controls="account-popover"
         aria-expanded={open}
-        aria-haspopup="dialog"
         onClick={() => setOpen((current) => !current)}
       >
         <span aria-hidden="true">{initial}</span>
       </button>
       {open && (
-        <div className="account-popover" role="dialog" aria-label="Account">
+        <div className="account-popover" id="account-popover">
           <span className="account-avatar" aria-hidden="true">
             {initial}
           </span>
