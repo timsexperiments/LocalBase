@@ -518,11 +518,12 @@ input::placeholder {
   justify-content: flex-end;
 }
 .send {
-  flex-shrink: 0;
+  flex: 0 0 44px;
   background: var(--accent);
   color: var(--accent-text);
   width: 44px;
-  min-width: 44px;
+  height: 44px;
+  padding: 0;
   border-radius: 50%;
   font-size: 20px;
   font-weight: 600;
