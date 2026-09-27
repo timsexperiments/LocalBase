@@ -5,6 +5,7 @@ import {
   type Mode,
 } from "./client";
 import {
+  administrationSections,
   canOpenPanel,
   conversationNavigation,
   navigationUrl,
@@ -39,7 +40,14 @@ describe("playground navigation boundary", () => {
     expect(canOpenPanel("catalog", ["models:read"])).toBe(false);
     expect(canOpenPanel("catalog", ["models:manage"])).toBe(true);
     expect(canOpenPanel("admin", ["access:read"])).toBe(true);
-    expect(canOpenPanel("admin", ["access:manage"])).toBe(false);
+    expect(canOpenPanel("admin", ["keys:read"])).toBe(true);
+    expect(canOpenPanel("admin", ["access:manage", "keys:manage"])).toBe(false);
+    expect(administrationSections(["keys:read"])).toEqual(["keys"]);
+    expect(administrationSections(["access:read", "keys:read"])).toEqual([
+      "people",
+      "access",
+      "keys",
+    ]);
     expect(canOpenPanel("models", [])).toBe(true);
     expect(canOpenPanel(null, null)).toBe(true);
   });

@@ -15,7 +15,11 @@ import {
   keyManagementMutationResponseSchema,
   keyManagementReadResponseSchema,
 } from "../domains/auth/management-contract";
-import { api, type Connection } from "./client";
+import { api, hasPermission, type Connection } from "./client";
+import {
+  administrationSections,
+  type AdministrationSection,
+} from "./navigation";
 
 type AccessConfig = z.infer<
   typeof accessManagementReadResponseSchema
@@ -181,11 +185,18 @@ export function assignedRolesGrantAccessManagement(
 
 export function AuthManagement({
   connection,
+  permissions,
 }: {
   connection: Connection | null;
+  permissions: readonly Permission[];
 }) {
-  const [section, setSection] = useState<"people" | "access" | "keys">(
-    "people",
+  const sections = administrationSections(permissions);
+  const canReadAccess = hasPermission(permissions, "access:read");
+  const canManageAccess = hasPermission(permissions, "access:manage");
+  const canReadKeys = hasPermission(permissions, "keys:read");
+  const canManageKeys = hasPermission(permissions, "keys:manage");
+  const [section, setSection] = useState<AdministrationSection>(
+    sections[0] ?? "people",
   );
   const [access, setAccess] = useState<AccessConfig>(null);
   const [accessPolicy, setAccessPolicy] = useState<AccessPolicy>(null);
@@ -289,35 +300,34 @@ export function AuthManagement({
     if (!connection) return;
     setConfirming("");
     const [accessResult, keyResult] = await Promise.allSettled([
-      api("/_localbase/access-management", connection, { signal })
-        .then((response) => response.json())
-        .then((value) => accessManagementReadResponseSchema.parse(value)),
-      api("/_localbase/api-keys", connection, { signal })
-        .then((response) => response.json())
-        .then((value) => keyManagementReadResponseSchema.parse(value)),
+      canReadAccess
+        ? api("/_localbase/access-management", connection, { signal })
+            .then((response) => response.json())
+            .then((value) => accessManagementReadResponseSchema.parse(value))
+        : null,
+      canReadKeys
+        ? api("/_localbase/api-keys", connection, { signal })
+            .then((response) => response.json())
+            .then((value) => keyManagementReadResponseSchema.parse(value))
+        : null,
     ]);
     if (signal?.aborted) return;
-    if (accessResult.status === "fulfilled") {
-      hydrate(accessResult.value.config);
-      setAccessPolicy(accessResult.value.policy);
-      setUsers(accessResult.value.users);
-      setRoles(accessResult.value.roles);
-      setPolicy(
-        accessResult.value.policy
-          ? JSON.stringify(accessResult.value.policy, null, 2)
-          : "",
-      );
-      setPolicyConfigured(accessResult.value.policy !== null);
-      setPolicyRevision(accessResult.value.policyRevision);
-      setEmailDelivery(accessResult.value.emailDelivery);
-      if (accessResult.value.emailDelivery) {
-        setSmtpHost(accessResult.value.emailDelivery.host);
-        setSmtpPort(String(accessResult.value.emailDelivery.port));
-        setSmtpSecurity(accessResult.value.emailDelivery.security);
-        setSmtpFrom(accessResult.value.emailDelivery.from);
-        setSmtpPasswordAuth(
-          accessResult.value.emailDelivery.authentication === "password",
-        );
+    if (accessResult.status === "fulfilled" && accessResult.value) {
+      const value = accessResult.value;
+      hydrate(value.config);
+      setAccessPolicy(value.policy);
+      setUsers(value.users);
+      setRoles(value.roles);
+      setPolicy(value.policy ? JSON.stringify(value.policy, null, 2) : "");
+      setPolicyConfigured(value.policy !== null);
+      setPolicyRevision(value.policyRevision);
+      setEmailDelivery(value.emailDelivery);
+      if (value.emailDelivery) {
+        setSmtpHost(value.emailDelivery.host);
+        setSmtpPort(String(value.emailDelivery.port));
+        setSmtpSecurity(value.emailDelivery.security);
+        setSmtpFrom(value.emailDelivery.from);
+        setSmtpPasswordAuth(value.emailDelivery.authentication === "password");
       } else {
         setSmtpHost("");
         setSmtpPort("587");
@@ -330,14 +340,14 @@ export function AuthManagement({
       }
       setInviteRoles((selected) =>
         reconcileInviteRoles(
-          accessResult.value.roles,
+          value.roles,
           selected,
-          accessResult.value.policy?.defaultRole ?? null,
+          value.policy?.defaultRole ?? null,
         ),
       );
       setAccessLoadState("loaded");
       setAccessError("");
-    } else {
+    } else if (canReadAccess && accessResult.status === "rejected") {
       setAccessLoadState("error");
       setAccessError(
         accessResult.reason instanceof Error
@@ -345,10 +355,10 @@ export function AuthManagement({
           : "Could not load browser access.",
       );
     }
-    if (keyResult.status === "fulfilled") {
+    if (keyResult.status === "fulfilled" && keyResult.value) {
       setKeys(keyResult.value.keys);
       setKeysError("");
-    } else {
+    } else if (canReadKeys && keyResult.status === "rejected") {
       setKeysError(
         keyResult.reason instanceof Error
           ? keyResult.reason.message
@@ -362,7 +372,12 @@ export function AuthManagement({
     const abort = new AbortController();
     void load(abort.signal);
     return () => abort.abort();
-  }, [connection?.kind]);
+  }, [connection?.kind, canReadAccess, canReadKeys]);
+
+  useEffect(() => {
+    if (sections.includes(section)) return;
+    setSection(sections[0] ?? "people");
+  }, [section, sections.join(",")]);
 
   async function post(path: string, value: unknown) {
     if (!connection) throw new Error("Sign in to manage LocalBase.");
@@ -895,27 +910,33 @@ export function AuthManagement({
   return (
     <div className="auth-management">
       <div className="admin-tabs" aria-label="Administration">
-        <button
-          type="button"
-          aria-pressed={section === "people"}
-          onClick={() => setSection("people")}
-        >
-          People & roles
-        </button>
-        <button
-          type="button"
-          aria-pressed={section === "access"}
-          onClick={() => setSection("access")}
-        >
-          Browser access
-        </button>
-        <button
-          type="button"
-          aria-pressed={section === "keys"}
-          onClick={() => setSection("keys")}
-        >
-          API keys
-        </button>
+        {sections.includes("people") && (
+          <button
+            type="button"
+            aria-pressed={section === "people"}
+            onClick={() => setSection("people")}
+          >
+            People & roles
+          </button>
+        )}
+        {sections.includes("access") && (
+          <button
+            type="button"
+            aria-pressed={section === "access"}
+            onClick={() => setSection("access")}
+          >
+            Browser access
+          </button>
+        )}
+        {sections.includes("keys") && (
+          <button
+            type="button"
+            aria-pressed={section === "keys"}
+            onClick={() => setSection("keys")}
+          >
+            API keys
+          </button>
+        )}
       </div>
       {notice && (
         <div className="notice admin-notice" role="status">
@@ -925,7 +946,7 @@ export function AuthManagement({
           </button>
         </div>
       )}
-      {secret && (
+      {canManageKeys && secret && (
         <section className="secret-once" aria-label="New API key secret">
           <strong>Copy this secret now</strong>
           <p>It will not be shown again.</p>
@@ -949,7 +970,15 @@ export function AuthManagement({
           </div>
         </section>
       )}
-      {section === "people" ? (
+      {section === "people" && !canManageAccess ? (
+        <ReadOnlyPeopleAndRoles
+          policy={accessPolicy}
+          users={users}
+          roles={roles}
+          loadState={accessLoadState}
+          error={accessError}
+        />
+      ) : section === "people" ? (
         <PeopleAndRoles
           policy={accessPolicy}
           users={users}
@@ -983,6 +1012,13 @@ export function AuthManagement({
           setDefaultRole={setDefaultRole}
           refresh={() => void load()}
           openPolicy={() => setSection("access")}
+        />
+      ) : section === "access" && !canManageAccess ? (
+        <ReadOnlyAccess
+          access={access}
+          policy={accessPolicy}
+          emailDelivery={emailDelivery}
+          error={accessError}
         />
       ) : section === "access" ? (
         <div className="admin-stack">
@@ -1399,42 +1435,48 @@ export function AuthManagement({
         </div>
       ) : (
         <div className="admin-stack">
-          <section className="admin-card">
-            <h3>Create API key</h3>
-            {keysError && <p className="error">{keysError}</p>}
-            <form onSubmit={createKey}>
-              <label>
-                Name
-                <input
-                  required
-                  maxLength={128}
-                  value={keyName}
-                  onChange={(event) => setKeyName(event.target.value)}
-                />
-              </label>
-              <label>
-                Expires after days <span className="muted">(optional)</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="3650"
-                  value={keyExpiry}
-                  onChange={(event) => setKeyExpiry(event.target.value)}
-                />
-              </label>
-              <details>
-                <summary>Scopes · {keyPermissions.length} selected</summary>
-                <PermissionPicker
-                  value={keyPermissions}
-                  onChange={setKeyPermissions}
+          {canManageKeys && (
+            <section className="admin-card">
+              <h3>Create API key</h3>
+              {keysError && <p className="error">{keysError}</p>}
+              <form onSubmit={createKey}>
+                <label>
+                  Name
+                  <input
+                    required
+                    maxLength={128}
+                    value={keyName}
+                    onChange={(event) => setKeyName(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Expires after days <span className="muted">(optional)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="3650"
+                    value={keyExpiry}
+                    onChange={(event) => setKeyExpiry(event.target.value)}
+                  />
+                </label>
+                <details>
+                  <summary>Scopes · {keyPermissions.length} selected</summary>
+                  <PermissionPicker
+                    value={keyPermissions}
+                    onChange={setKeyPermissions}
+                    disabled={busy}
+                  />
+                </details>
+                <button
+                  className="primary-action"
                   disabled={busy}
-                />
-              </details>
-              <button className="primary-action" disabled={busy} type="submit">
-                Create key
-              </button>
-            </form>
-          </section>
+                  type="submit"
+                >
+                  Create key
+                </button>
+              </form>
+            </section>
+          )}
           <section className="admin-card">
             <div className="admin-card-heading">
               <div>
@@ -1465,17 +1507,21 @@ export function AuthManagement({
                       </span>
                     </div>
                     <p className="key-id">{key.id}</p>
-                    <details>
-                      <summary>{key.scopes.length} scopes</summary>
-                      <KeyScopeEditor
-                        apiKey={key}
-                        busy={busy || !active}
-                        save={(scopes) =>
-                          void mutateKey(key, "set-scopes", scopes)
-                        }
-                      />
-                    </details>
-                    {active && (
+                    {canManageKeys ? (
+                      <details>
+                        <summary>{key.scopes.length} scopes</summary>
+                        <KeyScopeEditor
+                          apiKey={key}
+                          busy={busy || !active}
+                          save={(scopes) =>
+                            void mutateKey(key, "set-scopes", scopes)
+                          }
+                        />
+                      </details>
+                    ) : (
+                      <p className="key-id">{key.scopes.join(", ")}</p>
+                    )}
+                    {canManageKeys && active && (
                       <div className="admin-actions">
                         <button
                           disabled={busy}
@@ -1492,31 +1538,33 @@ export function AuthManagement({
                         </button>
                       </div>
                     )}
-                    {active && confirming.endsWith(`:${key.id}`) && (
-                      <div className="inline-confirmation">
-                        <p>
-                          {confirming.startsWith("rotate")
-                            ? "The current secret will stop working immediately."
-                            : "This key will stop working immediately."}
-                        </p>
-                        <button
-                          disabled={busy}
-                          onClick={() =>
-                            void mutateKey(
-                              key,
-                              confirming.startsWith("rotate")
-                                ? "rotate"
-                                : "revoke",
-                            )
-                          }
-                        >
-                          Confirm
-                        </button>
-                        <button onClick={() => setConfirming("")}>
-                          Cancel
-                        </button>
-                      </div>
-                    )}
+                    {canManageKeys &&
+                      active &&
+                      confirming.endsWith(`:${key.id}`) && (
+                        <div className="inline-confirmation">
+                          <p>
+                            {confirming.startsWith("rotate")
+                              ? "The current secret will stop working immediately."
+                              : "This key will stop working immediately."}
+                          </p>
+                          <button
+                            disabled={busy}
+                            onClick={() =>
+                              void mutateKey(
+                                key,
+                                confirming.startsWith("rotate")
+                                  ? "rotate"
+                                  : "revoke",
+                              )
+                            }
+                          >
+                            Confirm
+                          </button>
+                          <button onClick={() => setConfirming("")}>
+                            Cancel
+                          </button>
+                        </div>
+                      )}
                   </article>
                 );
               })}
@@ -1564,6 +1612,98 @@ function RolePicker({
           </span>
         </label>
       ))}
+    </div>
+  );
+}
+
+function ReadOnlyPeopleAndRoles({
+  policy,
+  users,
+  roles,
+  loadState,
+  error,
+}: {
+  policy: AccessPolicy;
+  users: readonly ManagedUser[];
+  roles: readonly AccessRole[];
+  loadState: "loading" | "loaded" | "error";
+  error: string;
+}) {
+  if (loadState === "loading")
+    return <p className="notice">Loading people and roles…</p>;
+  if (loadState === "error")
+    return <p className="error">{error || "Access policy unavailable."}</p>;
+  return (
+    <div className="admin-stack">
+      <section className="admin-card">
+        <h3>People</h3>
+        <div className="key-list">
+          {users.map((user) => (
+            <article className="key-card" key={user.id}>
+              <strong>{user.email}</strong>
+              <p>
+                {user.status} · {user.roles.join(", ") || "No roles"}
+              </p>
+            </article>
+          ))}
+          {!users.length && <p className="hint">No managed users.</p>}
+        </div>
+      </section>
+      <section className="admin-card">
+        <h3>Roles</h3>
+        <p className="hint">
+          Default: {policy?.defaultRole ?? "No default role"}
+        </p>
+        <div className="key-list">
+          {roles.map((role) => (
+            <article className="key-card" key={role.name}>
+              <strong>{role.name}</strong>
+              {role.description && <p>{role.description}</p>}
+              <p>{role.permissions.join(", ") || "No permissions"}</p>
+            </article>
+          ))}
+          {!roles.length && <p className="hint">No roles configured.</p>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ReadOnlyAccess({
+  access,
+  policy,
+  emailDelivery,
+  error,
+}: {
+  access: AccessConfig;
+  policy: AccessPolicy;
+  emailDelivery: EmailDelivery;
+  error: string;
+}) {
+  return (
+    <div className="admin-stack">
+      {error && <p className="error admin-span">{error}</p>}
+      <section className="admin-card">
+        <h3>Human sign-in</h3>
+        <p>{providerLabel(access)}</p>
+        {access && <p className="hint">{access.origin}</p>}
+      </section>
+      <section className="admin-card">
+        <h3>Email delivery</h3>
+        <p>
+          {emailDelivery
+            ? `${emailDelivery.host}:${emailDelivery.port} · ${emailDelivery.from}`
+            : "SMTP is not configured"}
+        </p>
+      </section>
+      <section className="admin-card admin-span">
+        <h3>Access policy</h3>
+        <p>
+          {policy
+            ? `${policy.roles.length} roles configured`
+            : "Not configured"}
+        </p>
+      </section>
     </div>
   );
 }

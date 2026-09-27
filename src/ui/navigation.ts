@@ -24,13 +24,26 @@ const panelPermissions: Partial<
   Record<NonNullable<Navigation["panel"]>, Permission>
 > = {
   catalog: "models:manage",
-  admin: "access:read",
 };
+
+export type AdministrationSection = "people" | "access" | "keys";
+
+export function administrationSections(
+  permissions: readonly Permission[] | null,
+): AdministrationSection[] {
+  return [
+    ...(hasPermission(permissions, "access:read")
+      ? (["people", "access"] as const)
+      : []),
+    ...(hasPermission(permissions, "keys:read") ? (["keys"] as const) : []),
+  ];
+}
 
 export function canOpenPanel(
   panel: Navigation["panel"],
   permissions: readonly Permission[] | null,
 ): boolean {
+  if (panel === "admin") return administrationSections(permissions).length > 0;
   const required = panel ? panelPermissions[panel] : undefined;
   return !required || hasPermission(permissions, required);
 }
