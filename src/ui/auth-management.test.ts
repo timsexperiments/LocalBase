@@ -99,8 +99,32 @@ test("does not offer starter policy creation before the policy read completes", 
   const markup = renderToStaticMarkup(
     createElement(AuthManagement, {
       connection: { kind: "session", verifiedEmail: "owner@example.com" },
+      permissions: ["access:read", "access:manage"],
     }),
   );
   expect(markup).toContain("Loading access policy");
   expect(markup).not.toContain("Create roles");
+});
+
+test("renders only readable administration sections and authorized actions", () => {
+  const accessReader = renderToStaticMarkup(
+    createElement(AuthManagement, {
+      connection: { kind: "session", verifiedEmail: "owner@example.com" },
+      permissions: ["access:read"],
+    }),
+  );
+  expect(accessReader).toContain("People &amp; roles");
+  expect(accessReader).toContain("Browser access");
+  expect(accessReader).not.toContain("API keys");
+  expect(accessReader).not.toContain("Invite a person");
+
+  const keyReader = renderToStaticMarkup(
+    createElement(AuthManagement, {
+      connection: { kind: "session", verifiedEmail: "owner@example.com" },
+      permissions: ["keys:read"],
+    }),
+  );
+  expect(keyReader).toContain("API keys");
+  expect(keyReader).not.toContain("People &amp; roles");
+  expect(keyReader).not.toContain("Create API key");
 });

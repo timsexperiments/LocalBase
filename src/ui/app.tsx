@@ -405,7 +405,7 @@ function App() {
       : canReadModels && activeModeAllowed);
   const visibleDrawer = canOpenDrawer(drawer) ? drawer : null;
   const canManageModels = canOpenPanel("catalog", permissions);
-  const canReadAccess = canOpenPanel("admin", permissions);
+  const canReadAdministration = canOpenPanel("admin", permissions);
   const accept = active?.mode === "llm" ? attachmentAccept(model) : "";
   const storedAttachments = conversations.flatMap((conversation) =>
     conversation.messages.flatMap((message) => message.attachments ?? []),
@@ -1582,7 +1582,10 @@ function App() {
               canDictate={canDictate}
             />
           ) : visibleDrawer === "admin" ? (
-            <AuthManagement connection={credential} />
+            <AuthManagement
+              connection={credential}
+              permissions={permissions ?? []}
+            />
           ) : visibleDrawer === "generation" ? (
             <div className="generation-settings">
               {page === "chat" && model && (
@@ -1746,7 +1749,7 @@ function App() {
               >
                 Clear all history
               </button>
-              {canReadAccess && (
+              {canReadAdministration && (
                 <>
                   <hr />
                   <button onClick={() => setDrawer("admin")}>
@@ -1881,7 +1884,7 @@ function App() {
                     Manage models
                   </button>
                 )}
-                {canReadAccess && (
+                {canReadAdministration && (
                   <button onClick={() => setDrawer("admin")}>
                     Access & API keys
                   </button>
