@@ -64,6 +64,7 @@ import {
 } from "./client";
 import "./style.css";
 import {
+  canOpenPanel,
   conversationNavigation,
   navigationUrl,
   readNavigation,
@@ -312,6 +313,7 @@ function App() {
     return { kind: "checking" };
   });
   const credential = sessionConnection(session);
+  const permissions = session.kind === "session" ? session.permissions : null;
   const [models, setModels] = useState<Model[]>([]);
   const [hostMemory, setHostMemory] = useState<
     ModelsResponse["host"]["memory"] | null
@@ -379,6 +381,9 @@ function App() {
   const candidates = availableModels(models, active?.mode ?? "llm");
   const pickerModels = catalogModels(models, active?.mode ?? "llm");
   const model = candidates.find((m) => m.id === active?.model) ?? candidates[0];
+  const visibleDrawer = canOpenPanel(drawer, permissions) ? drawer : null;
+  const canManageModels = canOpenPanel("catalog", permissions);
+  const canReadAccess = canOpenPanel("admin", permissions);
   const accept = active?.mode === "llm" ? attachmentAccept(model) : "";
   const storedAttachments = conversations.flatMap((conversation) =>
     conversation.messages.flatMap((message) => message.attachments ?? []),
@@ -491,7 +496,7 @@ function App() {
       items.map((c) => (c.id === id ? change(c) : c)),
     );
   function setDrawer(panel: Navigation["panel"]) {
-    if (!active) return;
+    if (!active || !canOpenPanel(panel, permissions)) return;
     setModelSearch("");
     setHistorySearch("");
     setPanel(panel);
@@ -573,6 +578,19 @@ function App() {
     void checkSession(abort.signal);
     return () => abort.abort();
   }, []);
+  useEffect(() => {
+    if (
+      session.kind !== "session" ||
+      canOpenPanel(drawer, session.permissions) ||
+      !active
+    )
+      return;
+    setPanel(null);
+    writeNavigation(
+      conversationNavigation(active, null, model?.id ?? active.model),
+      "replace",
+    );
+  }, [session, drawer, active?.id, active?.model, model?.id]);
   useEffect(() => {
     if (!credential) {
       setModels([]);
@@ -1464,34 +1482,34 @@ function App() {
           </div>
         </footer>
       </div>
-      {drawer && (
+      {visibleDrawer && (
         <Drawer
-          fullPage={drawer === "catalog" || drawer === "admin"}
+          fullPage={visibleDrawer === "catalog" || visibleDrawer === "admin"}
           title={
-            drawer === "catalog"
+            visibleDrawer === "catalog"
               ? "Manage models"
-              : drawer === "admin"
+              : visibleDrawer === "admin"
                 ? "Access & API keys"
-                : drawer === "generation"
+                : visibleDrawer === "generation"
                   ? "Generation settings"
-                  : drawer === "settings"
+                  : visibleDrawer === "settings"
                     ? "Settings"
-                    : drawer === "models"
+                    : visibleDrawer === "models"
                       ? "Models"
                       : "History"
           }
           close={() => setDrawer(null)}
         >
-          {drawer === "catalog" ? (
+          {visibleDrawer === "catalog" ? (
             <ModelManagement
               connection={credential}
               models={models}
               refreshModels={refresh}
               openSettings={() => setDrawer("settings")}
             />
-          ) : drawer === "admin" ? (
+          ) : visibleDrawer === "admin" ? (
             <AuthManagement connection={credential} />
-          ) : drawer === "generation" ? (
+          ) : visibleDrawer === "generation" ? (
             <div className="generation-settings">
               {page === "chat" && model && (
                 <p className="generation-settings-hint">
@@ -1553,7 +1571,7 @@ function App() {
                   ));
                 })}
             </div>
-          ) : drawer === "settings" ? (
+          ) : visibleDrawer === "settings" ? (
             <>
               <p className="muted">{connectionLabel}</p>
               <button disabled={busy} onClick={() => void checkSession()}>
@@ -1640,12 +1658,16 @@ function App() {
               >
                 Clear all history
               </button>
-              <hr />
-              <button onClick={() => setDrawer("admin")}>
-                Access & API keys
-              </button>
+              {canReadAccess && (
+                <>
+                  <hr />
+                  <button onClick={() => setDrawer("admin")}>
+                    Access & API keys
+                  </button>
+                </>
+              )}
             </>
-          ) : drawer === "models" ? (
+          ) : visibleDrawer === "models" ? (
             <>
               <div className="dictation-field">
                 <input
@@ -1663,26 +1685,28 @@ function App() {
                 />
               </div>
               <p className="hint">Install or enable a model to use it here.</p>
-              <a
-                className="manage-models-link"
-                href={navigationUrl(
-                  location.href,
-                  conversationNavigation(active, "catalog"),
-                )}
-                onClick={(event) => {
-                  if (
-                    event.metaKey ||
-                    event.ctrlKey ||
-                    event.shiftKey ||
-                    event.altKey
-                  )
-                    return;
-                  event.preventDefault();
-                  setDrawer("catalog");
-                }}
-              >
-                Manage models →
-              </a>
+              {canManageModels && (
+                <a
+                  className="manage-models-link"
+                  href={navigationUrl(
+                    location.href,
+                    conversationNavigation(active, "catalog"),
+                  )}
+                  onClick={(event) => {
+                    if (
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    )
+                      return;
+                    event.preventDefault();
+                    setDrawer("catalog");
+                  }}
+                >
+                  Manage models →
+                </a>
+              )}
               {page === "lab" && (
                 <div className="modes">
                   {modes.map((mode) => (
@@ -1762,12 +1786,16 @@ function App() {
                   ＋ New conversation
                 </button>
                 <button onClick={() => setDrawer("settings")}>Settings</button>
-                <button onClick={() => setDrawer("catalog")}>
-                  Manage models
-                </button>
-                <button onClick={() => setDrawer("admin")}>
-                  Access & API keys
-                </button>
+                {canManageModels && (
+                  <button onClick={() => setDrawer("catalog")}>
+                    Manage models
+                  </button>
+                )}
+                {canReadAccess && (
+                  <button onClick={() => setDrawer("admin")}>
+                    Access & API keys
+                  </button>
+                )}
               </div>
               <div className="dictation-field">
                 <input
