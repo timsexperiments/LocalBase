@@ -149,11 +149,13 @@ export function GenerationSettingsFields({
   model,
   settings,
   onChange,
+  canDictate,
 }: {
   mode: Mode;
   model: Model;
   settings: GenerationSettings;
   onChange: (settings: GenerationSettings) => void;
+  canDictate: boolean;
 }) {
   const cap = model.catalog.capabilities;
   const voices = cap?.kind === "speech" ? cap.voice.requestValues : [];
@@ -244,20 +246,22 @@ export function GenerationSettingsFields({
                   generating video.
                 </p>
               )}
-              <DictationButton
-                label="negative prompt"
-                onText={(text) =>
-                  onChange({
-                    ...settings,
-                    video: {
-                      negative_prompt: appendDictation(
-                        settings.video.negative_prompt ?? "",
-                        text,
-                      ),
-                    },
-                  })
-                }
-              />
+              {canDictate && (
+                <DictationButton
+                  label="negative prompt"
+                  onText={(text) =>
+                    onChange({
+                      ...settings,
+                      video: {
+                        negative_prompt: appendDictation(
+                          settings.video.negative_prompt ?? "",
+                          text,
+                        ),
+                      },
+                    })
+                  }
+                />
+              )}
             </div>
           )}
         </>
@@ -323,21 +327,23 @@ export function GenerationSettingsFields({
                   }
                 />
               </Field>
-              <DictationButton
-                label="language"
-                onText={(text) =>
-                  onChange({
-                    ...settings,
-                    stt: {
-                      ...settings.stt,
-                      language: appendDictation(
-                        settings.stt.language ?? "",
-                        text,
-                      ),
-                    },
-                  })
-                }
-              />
+              {canDictate && (
+                <DictationButton
+                  label="language"
+                  onText={(text) =>
+                    onChange({
+                      ...settings,
+                      stt: {
+                        ...settings.stt,
+                        language: appendDictation(
+                          settings.stt.language ?? "",
+                          text,
+                        ),
+                      },
+                    })
+                  }
+                />
+              )}
             </div>
           )}
           <Field label="Transcription prompt">
@@ -356,18 +362,20 @@ export function GenerationSettingsFields({
               }
             />
           </Field>
-          <DictationButton
-            label="transcription prompt"
-            onText={(text) =>
-              onChange({
-                ...settings,
-                stt: {
-                  ...settings.stt,
-                  prompt: appendDictation(settings.stt.prompt ?? "", text),
-                },
-              })
-            }
-          />
+          {canDictate && (
+            <DictationButton
+              label="transcription prompt"
+              onText={(text) =>
+                onChange({
+                  ...settings,
+                  stt: {
+                    ...settings.stt,
+                    prompt: appendDictation(settings.stt.prompt ?? "", text),
+                  },
+                })
+              }
+            />
+          )}
         </>
       )}
       {mode === "embedding" &&

@@ -9,8 +9,12 @@ import {
   SessionRequiredError,
   availableModels,
   catalogModels,
+  canUseMode,
+  hasPermission,
   modelMemorySummary,
   modelsSchema,
+  permittedModes,
+  permittedUiModes,
   streamText,
   readHistory,
   writeHistory,
@@ -28,6 +32,20 @@ function streaming(parts: Uint8Array[]) {
   );
 }
 describe("playground client boundaries", () => {
+  test("maps inference permissions to the visible UI modes", () => {
+    const permissions = ["inference:chat", "inference:video"] as const;
+    expect(permittedModes(permissions)).toEqual(["llm", "video"]);
+    expect(canUseMode(permissions, "video")).toBe(true);
+    expect(canUseMode(permissions, "image")).toBe(false);
+    expect(hasPermission(permissions, "inference:speech")).toBe(false);
+    expect(permittedModes(null)).toEqual([]);
+    expect(permittedUiModes(permissions)).toEqual([]);
+    expect(permittedUiModes([...permissions, "models:read"])).toEqual([
+      "llm",
+      "video",
+    ]);
+  });
+
   test("discards obsolete key fragments without accepting their value", () => {
     const location = new URL(
       "https://localbase.example/app?view=chat#key=obsolete-secret",
