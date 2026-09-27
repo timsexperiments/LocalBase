@@ -1802,6 +1802,54 @@ export async function applyElevatedMemoryPressure(
   }
 }
 
+export async function admitVideoWithIdleRecovery(
+  reconciler: Pick<RuntimeReconciler, "admitModel" | "evictIdleRuntimes">,
+  modelId: string,
+  signal: AbortSignal,
+): Promise<Awaited<ReturnType<RuntimeReconciler["admitModel"]>>> {
+  const first = await reconciler.admitModel("video", modelId, signal);
+  if (first.kind !== "admitted") return first;
+  let current = first.value;
+  const ready = current.admission.ready.catch(async (error) => {
+    if (!(error instanceof RuntimeMemoryAdmissionError) || signal.aborted)
+      throw error;
+    current.admission.cancel();
+    await current.admission.supervisor.kill();
+    signal.throwIfAborted();
+    await reconciler.evictIdleRuntimes();
+    const retry = await reconciler.admitModel("video", modelId, signal);
+    if (retry.kind !== "admitted")
+      throw new Error("Video runtime admission is unavailable after recovery.");
+    current = retry.value;
+    await current.admission.ready;
+  });
+  return {
+    ...first,
+    value: {
+      ...first.value,
+      admission: {
+        get modality() {
+          return current.admission.modality;
+        },
+        get snapshot() {
+          return current.admission.snapshot;
+        },
+        get supervisor() {
+          return current.admission.supervisor;
+        },
+        ready,
+        onPendingDetach: (callback) =>
+          current.admission.onPendingDetach(callback),
+        onIdleCancellation: (callback) =>
+          current.admission.onIdleCancellation(callback),
+        markResponseStarted: () => current.admission.markResponseStarted(),
+        cancel: () => current.admission.cancel(),
+        release: () => current.admission.release(),
+      },
+    },
+  };
+}
+
 export function reportMemoryPressureTransition(
   logger: Pick<ILogger, "event">,
   transition: MemorySafetyTransition,
@@ -2725,8 +2773,8 @@ export async function runServe(
         createEnabled: currentConfig.selectedVideoModels.length > 0,
         admissionProvider: {
           admit: async (modelId, signal) => {
-            const selection = await reconciler.admitModel(
-              "video",
+            const selection = await admitVideoWithIdleRecovery(
+              reconciler,
               modelId,
               signal,
             );
