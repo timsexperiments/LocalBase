@@ -58,6 +58,11 @@ function fixture(
 }
 const chat = fixture("chat", "llm");
 const image = fixture("image", "image");
+const generationPermissions = [
+  "inference:image",
+  "inference:video",
+  "inference:speech",
+] as const;
 const video = fixture("video", "video", {
   kind: "video",
   mode: "t2v",
@@ -119,6 +124,7 @@ test("aborted media stops the loop without returning pending tool protocol", asy
         signal: abort.signal,
         messages: [],
         toolsEnabled: true,
+        permissions: generationPermissions,
         append: () => {},
         artifact: (a) => artifacts.push(a),
         register: () => {},
@@ -149,16 +155,30 @@ test("advertises only installed selected tools with t2v and tool-calling support
     outputFormats: ["mp4"],
   });
   expect(
-    generationTools([image, video, s2v, absent], chat).map(
-      (t) => t.function.name,
-    ),
+    generationTools(
+      [image, video, s2v, absent],
+      chat,
+      generationPermissions,
+    ).map((t) => t.function.name),
   ).toEqual(["generate_image", "generate_video"]);
   expect(
-    generationTools([image], {
-      ...chat,
-      catalog: { ...chat.catalog, features: [] },
-    }),
+    generationTools(
+      [image],
+      {
+        ...chat,
+        catalog: { ...chat.catalog, features: [] },
+      },
+      generationPermissions,
+    ),
   ).toEqual([]);
+});
+test("advertises only generation tools authorized for the browser session", () => {
+  expect(
+    generationTools([image, video, fixture("speech", "tts")], chat, [
+      "inference:image",
+    ]).map((tool) => tool.function.name),
+  ).toEqual(["generate_image"]);
+  expect(generationTools([image, video], chat, [])).toEqual([]);
 });
 test("releases chat body before media and retains tool protocol without media bytes", async () => {
   const prefix = "/app/api";
@@ -206,6 +226,7 @@ test("releases chat body before media and retains tool protocol without media by
       signal: new AbortController().signal,
       messages: [{ role: "user", content: "Draw the sun" }],
       toolsEnabled: true,
+      permissions: generationPermissions,
       append: () => {},
       artifact: (a) => artifacts.push(a),
       register: (url) => urls.push(url),
@@ -286,6 +307,7 @@ test("browser IDs reserve history and allow raw IDs to repeat across rounds", as
         { role: "tool", tool_call_id: existingId, content: "Error" },
       ],
       toolsEnabled: true,
+      permissions: generationPermissions,
       append: () => {},
       artifact: (a) => artifacts.push(a),
       register: () => {},
@@ -348,6 +370,7 @@ test.each([502, 401, 403])(
         signal: new AbortController().signal,
         messages: [],
         toolsEnabled: true,
+        permissions: generationPermissions,
         append: () => {},
         artifact: (a) => artifacts.push(a),
         register: (url) => urls.push(url),
@@ -400,6 +423,7 @@ test.each([
       signal: new AbortController().signal,
       messages: [],
       toolsEnabled: true,
+      permissions: generationPermissions,
       append: () => {},
       artifact: (a) => artifacts.push(a),
       register: () => {},
@@ -426,6 +450,7 @@ test("stops at four model rounds without executing a last-round tool", async () 
         signal: new AbortController().signal,
         messages: [],
         toolsEnabled: true,
+        permissions: generationPermissions,
         append: () => {},
         artifact: () => {},
         register: () => {},
@@ -496,6 +521,7 @@ test("expired session during a tool stops before another model round", async () 
         signal: new AbortController().signal,
         messages: [],
         toolsEnabled: true,
+        permissions: generationPermissions,
         append: () => {},
         artifact: () => {},
         register: () => {},
@@ -645,7 +671,8 @@ test("speech tool uses the user's advertised voice and defaults require no model
         response_format: "wav",
       },
     ]);
-    const schema = generationTools([speech], chat)[0]?.function.parameters;
+    const schema = generationTools([speech], chat, generationPermissions)[0]
+      ?.function.parameters;
     expect(JSON.stringify(schema)).not.toContain('"voice"');
   } finally {
     mock.mockRestore();
