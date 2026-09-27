@@ -133,6 +133,42 @@ export const modes = [
   "embedding",
 ] as const;
 export type Mode = (typeof modes)[number];
+const modePermissions = {
+  llm: "inference:chat",
+  image: "inference:image",
+  tts: "inference:speech",
+  stt: "inference:transcription",
+  video: "inference:video",
+  embedding: "inference:embeddings",
+} as const satisfies Record<Mode, Permission>;
+
+export function hasPermission(
+  permissions: readonly Permission[] | null,
+  permission: Permission,
+): boolean {
+  return permissions?.includes(permission) === true;
+}
+
+export function canUseMode(
+  permissions: readonly Permission[] | null,
+  mode: Mode,
+): boolean {
+  return hasPermission(permissions, modePermissions[mode]);
+}
+
+export function permittedModes(
+  permissions: readonly Permission[] | null,
+): Mode[] {
+  return modes.filter((mode) => canUseMode(permissions, mode));
+}
+
+export function permittedUiModes(
+  permissions: readonly Permission[] | null,
+): Mode[] {
+  return hasPermission(permissions, "models:read")
+    ? permittedModes(permissions)
+    : [];
+}
 export type ToolCall = {
   id: string;
   type: "function";

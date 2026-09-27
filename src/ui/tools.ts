@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Permission } from "../domains/auth/authorization";
 import {
   chatParameters,
   defaultGenerationSettings,
@@ -21,6 +22,7 @@ import {
   type Connection,
   SessionRequiredError,
 } from "./client";
+import { hasPermission } from "./client";
 
 const promptSchema = z
   .object({
@@ -55,9 +57,20 @@ export function toolModels(models: Model[], name: ToolName) {
         model.catalog.capabilities.mode === "t2v"),
   );
 }
-export function generationTools(models: Model[], chatModel: Model) {
+const toolPermissions = {
+  generate_image: "inference:image",
+  generate_video: "inference:video",
+  synthesize_speech: "inference:speech",
+} as const satisfies Record<ToolName, Permission>;
+
+export function generationTools(
+  models: Model[],
+  chatModel: Model,
+  permissions: readonly Permission[],
+) {
   if (!chatModel.catalog.features.includes("tool-calling")) return [];
   return toolNames.flatMap((name) => {
+    if (!hasPermission(permissions, toolPermissions[name])) return [];
     const candidates = toolModels(models, name);
     if (!candidates.length) return [];
     const schema = name === "synthesize_speech" ? speechSchema : promptSchema;
@@ -292,13 +305,16 @@ export async function runChat(options: {
   signal: AbortSignal;
   messages: ChatMessage[];
   toolsEnabled: boolean;
+  permissions: readonly Permission[];
   append: (text: string) => void;
   artifact: (artifact: Artifact) => void;
   register: (url: string) => void;
   warning: (detail: string) => void;
 }): Promise<ChatMessage[]> {
   const { model, models, connection, signal, append, artifact } = options;
-  const tools = options.toolsEnabled ? generationTools(models, model) : [];
+  const tools = options.toolsEnabled
+    ? generationTools(models, model, options.permissions)
+    : [];
   const history = [...options.messages];
   const result: ChatMessage[] = [];
   let count = 0;

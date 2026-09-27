@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Permission } from "../domains/auth/authorization";
-import { modes, type Conversation, type Mode } from "./client";
+import { hasPermission, modes, type Conversation, type Mode } from "./client";
 
 const identifier = z
   .string()
@@ -32,7 +32,7 @@ export function canOpenPanel(
   permissions: readonly Permission[] | null,
 ): boolean {
   const required = panel ? panelPermissions[panel] : undefined;
-  return !required || permissions?.includes(required) === true;
+  return !required || hasPermission(permissions, required);
 }
 
 export function readNavigation(search: string): Navigation {

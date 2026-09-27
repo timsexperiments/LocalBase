@@ -35,11 +35,13 @@ export function ModelManagement({
   models,
   refreshModels,
   openSettings,
+  canDictate,
 }: {
   connection: Connection | null;
   models: Model[];
   refreshModels: (signal?: AbortSignal) => Promise<void>;
   openSettings: () => void;
+  canDictate: boolean;
 }) {
   const [state, setState] = useState<ManagementState | null>(null);
   const [search, setSearch] = useState("");
@@ -176,12 +178,14 @@ export function ModelManagement({
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
-              <DictationButton
-                label="catalog search"
-                onText={(text) =>
-                  setSearch((value) => appendDictation(value, text))
-                }
-              />
+              {canDictate && (
+                <DictationButton
+                  label="catalog search"
+                  onText={(text) =>
+                    setSearch((value) => appendDictation(value, text))
+                  }
+                />
+              )}
             </div>
             <select
               aria-label="Filter model mode"

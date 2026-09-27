@@ -37,15 +37,19 @@ import {
 } from "./generation-settings";
 import {
   api,
+  canUseMode,
   discardLegacyFragmentCredential,
   availableModels,
   catalogModels,
   historyKey,
+  hasPermission,
   imageResponseSchema,
   logoutSession,
   modelMemorySummary,
   modelsSchema,
   modes,
+  permittedModes,
+  permittedUiModes,
   readHistory,
   readinessSchema,
   readSession,
@@ -314,12 +318,16 @@ function App() {
   });
   const credential = sessionConnection(session);
   const permissions = session.kind === "session" ? session.permissions : null;
+  const canReadModels = hasPermission(permissions, "models:read");
+  const inferenceModes = permittedModes(permissions);
+  const allowedModes = permittedUiModes(permissions);
+  const canDictate = hasPermission(permissions, "inference:transcription");
   const [models, setModels] = useState<Model[]>([]);
   const [hostMemory, setHostMemory] = useState<
     ModelsResponse["host"]["memory"] | null
   >(null);
   const [dictationModelId, setDictationModelId] = useState("");
-  const sttModels = availableModels(models, "stt");
+  const sttModels = canDictate ? availableModels(models, "stt") : [];
   const dictationModel =
     sttModels.find((model) => model.id === dictationModelId) ?? sttModels[0];
   const [connection, setConnection] = useState("Connecting");
@@ -378,10 +386,24 @@ function App() {
   const active =
     conversations.find((c) => c.id === activeId) ?? conversations[0];
   const page = active?.workspace ?? "chat";
-  const candidates = availableModels(models, active?.mode ?? "llm");
-  const pickerModels = catalogModels(models, active?.mode ?? "llm");
+  const activeModeAllowed = active
+    ? canReadModels && canUseMode(permissions, active.mode)
+    : false;
+  const candidates =
+    canReadModels && activeModeAllowed
+      ? availableModels(models, active?.mode ?? "llm")
+      : [];
+  const pickerModels =
+    canReadModels && activeModeAllowed
+      ? catalogModels(models, active?.mode ?? "llm")
+      : [];
   const model = candidates.find((m) => m.id === active?.model) ?? candidates[0];
-  const visibleDrawer = canOpenPanel(drawer, permissions) ? drawer : null;
+  const canOpenDrawer = (panel: Navigation["panel"]) =>
+    canOpenPanel(panel, permissions) &&
+    (panel !== "models" && panel !== "generation"
+      ? true
+      : canReadModels && activeModeAllowed);
+  const visibleDrawer = canOpenDrawer(drawer) ? drawer : null;
   const canManageModels = canOpenPanel("catalog", permissions);
   const canReadAccess = canOpenPanel("admin", permissions);
   const accept = active?.mode === "llm" ? attachmentAccept(model) : "";
@@ -496,7 +518,7 @@ function App() {
       items.map((c) => (c.id === id ? change(c) : c)),
     );
   function setDrawer(panel: Navigation["panel"]) {
-    if (!active || !canOpenPanel(panel, permissions)) return;
+    if (!active || !canOpenDrawer(panel)) return;
     setModelSearch("");
     setHistorySearch("");
     setPanel(panel);
@@ -549,16 +571,18 @@ function App() {
     if (!credential) return;
     try {
       const [metadata, readiness] = await Promise.all([
-        api("/_localbase/models", credential, { signal })
-          .then((r) => r.json())
-          .then((v) => modelsSchema.parse(v)),
+        canReadModels
+          ? api("/_localbase/models", credential, { signal })
+              .then((r) => r.json())
+              .then((v) => modelsSchema.parse(v))
+          : null,
         fetch("/health/ready", { signal, cache: "no-store" })
           .then((r) => r.json())
           .then((v) => readinessSchema.parse(v)),
       ]);
       signal?.throwIfAborted();
-      setModels(metadata.data);
-      setHostMemory(metadata.host.memory);
+      setModels(metadata?.data ?? []);
+      setHostMemory(metadata?.host.memory ?? null);
       setConnection(
         readiness.status === "ready" ? "Gateway ready" : "Gateway not ready",
       );
@@ -579,18 +603,33 @@ function App() {
     return () => abort.abort();
   }, []);
   useEffect(() => {
-    if (
-      session.kind !== "session" ||
-      canOpenPanel(drawer, session.permissions) ||
-      !active
-    )
-      return;
+    if (session.kind !== "session" || canOpenDrawer(drawer) || !active) return;
     setPanel(null);
     writeNavigation(
       conversationNavigation(active, null, model?.id ?? active.model),
       "replace",
     );
   }, [session, drawer, active?.id, active?.model, model?.id]);
+  useLayoutEffect(() => {
+    if (
+      session.kind !== "session" ||
+      !active ||
+      canUseMode(session.permissions, active.mode)
+    )
+      return;
+    const fallback = allowedModes[0];
+    if (!fallback) return;
+    const conversation = fresh(fallback, fallback === "llm" ? "chat" : "lab");
+    setConversations((items) => [conversation, ...items].slice(0, 30));
+    setActiveId(conversation.id);
+    setPanel(null);
+    clearAttachments();
+    setDraft("");
+    setFile(null);
+    setError("");
+    setWarnings([]);
+    writeNavigation(conversationNavigation(conversation, null), "replace");
+  }, [session, active?.id, active?.mode]);
   useEffect(() => {
     if (!credential) {
       setModels([]);
@@ -697,7 +736,7 @@ function App() {
     workspace = page,
     panel: Navigation["panel"] = null,
   ) {
-    if (busy) return;
+    if (busy || !allowedModes.includes(mode)) return;
     const c = fresh(mode, workspace);
     setConversations((items) => [c, ...items].slice(0, 30));
     setActiveId(c.id);
@@ -713,6 +752,7 @@ function App() {
   async function send(retry = false) {
     if (
       !active ||
+      !canUseMode(permissions, active.mode) ||
       !credential ||
       !model ||
       busy ||
@@ -802,6 +842,7 @@ function App() {
             signal: abort.signal,
             messages,
             toolsEnabled: page === "chat",
+            permissions: permissions ?? [],
             append: (text) => patch((m) => ({ ...m, text: m.text + text })),
             artifact: (artifact) =>
               patch((m) => ({
@@ -1004,38 +1045,49 @@ function App() {
         <button
           type="button"
           className="brand"
-          disabled={busy}
-          onClick={() => newChat("llm", "chat")}
+          disabled={busy || !allowedModes.length}
+          onClick={() => {
+            const mode = canUseMode(permissions, "llm")
+              ? "llm"
+              : allowedModes[0];
+            if (mode) newChat(mode, mode === "llm" ? "chat" : "lab");
+          }}
         >
           <span className="brand-mark">L</span>LocalBase
         </button>
-        <select
-          className="workspace-picker"
-          aria-label="Workspace"
-          value={page === "chat" ? "chat" : active.mode}
-          disabled={busy}
-          onChange={(event) => {
-            const mode = modes.find((mode) => mode === event.target.value);
-            newChat(mode ?? "llm", mode ? "lab" : "chat");
-          }}
-        >
-          <option value="chat">Chat</option>
-          <optgroup label="Model Lab">
-            {modes.map((mode) => (
-              <option value={mode} key={mode}>
-                {labels[mode]} lab
-              </option>
-            ))}
-          </optgroup>
-        </select>
-        <button
-          disabled={busy}
-          onClick={() => newChat()}
-          aria-label="New conversation"
-          title="New conversation"
-        >
-          ＋
-        </button>
+        {allowedModes.length > 0 && (
+          <>
+            <select
+              className="workspace-picker"
+              aria-label="Workspace"
+              value={page === "chat" ? "chat" : active.mode}
+              disabled={busy}
+              onChange={(event) => {
+                const mode = modes.find((mode) => mode === event.target.value);
+                newChat(mode ?? "llm", mode ? "lab" : "chat");
+              }}
+            >
+              {canUseMode(permissions, "llm") && (
+                <option value="chat">Chat</option>
+              )}
+              <optgroup label="Model Lab">
+                {allowedModes.map((mode) => (
+                  <option value={mode} key={mode}>
+                    {labels[mode]} lab
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <button
+              disabled={busy}
+              onClick={() => newChat()}
+              aria-label="New conversation"
+              title="New conversation"
+            >
+              ＋
+            </button>
+          </>
+        )}
         {session.kind === "session" && (
           <AccountMenu
             session={session}
@@ -1045,7 +1097,24 @@ function App() {
         )}
       </header>
       <div className="workspace">
+        {session.kind === "session" && !activeModeAllowed && (
+          <main className="conversation">
+            <section className="empty">
+              <h1>
+                {inferenceModes.length
+                  ? "No model access"
+                  : "No inference access"}
+              </h1>
+              <p>
+                {inferenceModes.length
+                  ? "Your account cannot discover the models needed by this interface."
+                  : "Your account has no permission to use an inference modality."}
+              </p>
+            </section>
+          </main>
+        )}
         <main
+          hidden={!activeModeAllowed}
           ref={transcript}
           aria-label="Conversation"
           onScroll={(e) => {
@@ -1184,7 +1253,7 @@ function App() {
             ))}
           </div>
         </main>
-        <footer className="composer-area">
+        <footer className="composer-area" hidden={!activeModeAllowed}>
           {showLatest && (
             <button
               className="jump-latest"
@@ -1380,44 +1449,48 @@ function App() {
                     </button>
                   </>
                 )}
-                <button
-                  type="button"
-                  className="model-picker"
-                  disabled={busy}
-                  aria-label={`Choose model: ${model?.catalog.name ?? "none selected"}`}
-                  onClick={() => setDrawer("models")}
-                  title={model?.catalog.name ?? "Choose a model"}
-                >
-                  <span
-                    className={`status-dot ${connectionLabel === "Gateway ready" ? "ready" : ""}`}
-                    aria-hidden="true"
-                  />
-                  <span>{model?.catalog.name ?? "Choose model"}</span>
-                  <span aria-hidden="true">⌄</span>
-                </button>
-                <button
-                  type="button"
-                  className="generation-settings-button"
-                  disabled={busy || !model}
-                  onClick={() => setDrawer("generation")}
-                  aria-label="Generation controls"
-                  title="Generation controls"
-                >
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    aria-hidden="true"
-                  >
-                    <path d="M4 7h7m4 0h5M4 17h3m4 0h9" />
-                    <circle cx="13" cy="7" r="2" />
-                    <circle cx="9" cy="17" r="2" />
-                  </svg>
-                </button>
-                {active.mode !== "stt" && (
+                {canReadModels && (
+                  <>
+                    <button
+                      type="button"
+                      className="model-picker"
+                      disabled={busy}
+                      aria-label={`Choose model: ${model?.catalog.name ?? "none selected"}`}
+                      onClick={() => setDrawer("models")}
+                      title={model?.catalog.name ?? "Choose a model"}
+                    >
+                      <span
+                        className={`status-dot ${connectionLabel === "Gateway ready" ? "ready" : ""}`}
+                        aria-hidden="true"
+                      />
+                      <span>{model?.catalog.name ?? "Choose model"}</span>
+                      <span aria-hidden="true">⌄</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="generation-settings-button"
+                      disabled={busy || !model}
+                      onClick={() => setDrawer("generation")}
+                      aria-label="Generation controls"
+                      title="Generation controls"
+                    >
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        aria-hidden="true"
+                      >
+                        <path d="M4 7h7m4 0h5M4 17h3m4 0h9" />
+                        <circle cx="13" cy="7" r="2" />
+                        <circle cx="9" cy="17" r="2" />
+                      </svg>
+                    </button>
+                  </>
+                )}
+                {canDictate && active.mode !== "stt" && (
                   <DictationButton
                     label="message"
                     disabled={busy}
@@ -1506,6 +1579,7 @@ function App() {
               models={models}
               refreshModels={refresh}
               openSettings={() => setDrawer("settings")}
+              canDictate={canDictate}
             />
           ) : visibleDrawer === "admin" ? (
             <AuthManagement connection={credential} />
@@ -1513,8 +1587,12 @@ function App() {
             <div className="generation-settings">
               {page === "chat" && model && (
                 <p className="generation-settings-hint">
-                  {generationTools(models, model).length
-                    ? `Chat tools: ${generationTools(models, model)
+                  {generationTools(models, model, permissions ?? []).length
+                    ? `Chat tools: ${generationTools(
+                        models,
+                        model,
+                        permissions ?? [],
+                      )
                         .map((tool) => tool.function.name.replaceAll("_", " "))
                         .join(", ")}.`
                     : "Text chat only. Tools need a tool-calling chat model and installed media models."}
@@ -1531,6 +1609,7 @@ function App() {
                     mode={active.mode}
                     model={model}
                     settings={generationSettings}
+                    canDictate={canDictate}
                     onChange={(settings) =>
                       setModelSettings(model.id, settings)
                     }
@@ -1543,33 +1622,36 @@ function App() {
               )}
               {page === "chat" &&
                 model &&
-                generationTools(models, model).flatMap((tool) => {
-                  const name = tool.function.name;
-                  const mode =
-                    name === "generate_image"
-                      ? "image"
-                      : name === "generate_video"
-                        ? "video"
-                        : "tts";
-                  return toolModels(models, name).map((target) => (
-                    <details className="tool-settings" key={target.id}>
-                      <summary>
-                        {target.catalog.name} · {labels[mode]}
-                      </summary>
-                      <GenerationSettingsFields
-                        mode={mode}
-                        model={target}
-                        settings={modelGenerationSettings(
-                          generationPreferences,
-                          target.id,
-                        )}
-                        onChange={(settings) =>
-                          setModelSettings(target.id, settings)
-                        }
-                      />
-                    </details>
-                  ));
-                })}
+                generationTools(models, model, permissions ?? []).flatMap(
+                  (tool) => {
+                    const name = tool.function.name;
+                    const mode =
+                      name === "generate_image"
+                        ? "image"
+                        : name === "generate_video"
+                          ? "video"
+                          : "tts";
+                    return toolModels(models, name).map((target) => (
+                      <details className="tool-settings" key={target.id}>
+                        <summary>
+                          {target.catalog.name} · {labels[mode]}
+                        </summary>
+                        <GenerationSettingsFields
+                          mode={mode}
+                          model={target}
+                          settings={modelGenerationSettings(
+                            generationPreferences,
+                            target.id,
+                          )}
+                          canDictate={canDictate}
+                          onChange={(settings) =>
+                            setModelSettings(target.id, settings)
+                          }
+                        />
+                      </details>
+                    ));
+                  },
+                )}
             </div>
           ) : visibleDrawer === "settings" ? (
             <>
@@ -1583,30 +1665,36 @@ function App() {
                 </a>
               )}
               <hr />
-              <label>
-                Dictation model
-                <select
-                  value={dictationModel?.id ?? ""}
-                  disabled={!sttModels.length}
-                  onChange={(event) => setDictationModelId(event.target.value)}
-                >
-                  {!sttModels.length && (
-                    <option value="">
-                      No installed, enabled transcription model
-                    </option>
-                  )}
-                  {sttModels.map((model) => (
-                    <option value={model.id} key={model.id}>
-                      {model.id} · {modelMemorySummary(model, hostMemory)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="hint">
-                Microphone buttons add text without sending. Recordings last up
-                to one minute and are sent only to this LocalBase gateway. Use
-                HTTPS or localhost for microphone access.
-              </p>
+              {canDictate && (
+                <>
+                  <label>
+                    Dictation model
+                    <select
+                      value={dictationModel?.id ?? ""}
+                      disabled={!sttModels.length}
+                      onChange={(event) =>
+                        setDictationModelId(event.target.value)
+                      }
+                    >
+                      {!sttModels.length && (
+                        <option value="">
+                          No installed, enabled transcription model
+                        </option>
+                      )}
+                      {sttModels.map((model) => (
+                        <option value={model.id} key={model.id}>
+                          {model.id} · {modelMemorySummary(model, hostMemory)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="hint">
+                    Microphone buttons add text without sending. Recordings last
+                    up to one minute and are sent only to this LocalBase
+                    gateway. Use HTTPS or localhost for microphone access.
+                  </p>
+                </>
+              )}
               <label className="toggle">
                 <input
                   type="checkbox"
@@ -1677,12 +1765,14 @@ function App() {
                   value={modelSearch}
                   onChange={(event) => setModelSearch(event.target.value)}
                 />
-                <DictationButton
-                  label="model search"
-                  onText={(text) =>
-                    setModelSearch((value) => appendDictation(value, text))
-                  }
-                />
+                {canDictate && (
+                  <DictationButton
+                    label="model search"
+                    onText={(text) =>
+                      setModelSearch((value) => appendDictation(value, text))
+                    }
+                  />
+                )}
               </div>
               <p className="hint">Install or enable a model to use it here.</p>
               {canManageModels && (
@@ -1709,7 +1799,7 @@ function App() {
               )}
               {page === "lab" && (
                 <div className="modes">
-                  {modes.map((mode) => (
+                  {allowedModes.map((mode) => (
                     <button
                       disabled={busy}
                       className={active.mode === mode ? "selected" : ""}
@@ -1805,12 +1895,14 @@ function App() {
                   value={historySearch}
                   onChange={(event) => setHistorySearch(event.target.value)}
                 />
-                <DictationButton
-                  label="conversation search"
-                  onText={(text) =>
-                    setHistorySearch((value) => appendDictation(value, text))
-                  }
-                />
+                {canDictate && (
+                  <DictationButton
+                    label="conversation search"
+                    onText={(text) =>
+                      setHistorySearch((value) => appendDictation(value, text))
+                    }
+                  />
+                )}
               </div>
               <p className="hint">
                 {persistent
@@ -1818,6 +1910,9 @@ function App() {
                   : "Conversations disappear when this page closes or reloads."}
               </p>
               {conversations
+                .filter((conversation) =>
+                  canUseMode(permissions, conversation.mode),
+                )
                 .filter((c) =>
                   c.title.toLowerCase().includes(historySearch.toLowerCase()),
                 )
