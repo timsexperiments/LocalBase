@@ -1496,6 +1496,49 @@ function startMockUpstream(
           })),
         });
       }
+      if (path === "/inference" && formData?.get("prompt") === "messy") {
+        const format = formData.get("response_format");
+        const messy = " Hello there.\n And then...\n";
+        if (format === "text") return new Response(`${messy}\n`);
+        if (format === "srt") {
+          return new Response(
+            "1\n00:00:00,000 --> 00:00:01,000\n Hello there.\n\n",
+          );
+        }
+        if (format === "vtt") {
+          return new Response(
+            "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n Hello there.\n\n",
+          );
+        }
+        const segment = {
+          id: 0,
+          seek: 0,
+          start: 0,
+          end: 0.5,
+          tokens: [1],
+          temperature: 0,
+          avg_logprob: 0,
+          compression_ratio: 1,
+          no_speech_prob: 0,
+        };
+        return Response.json(
+          format === "verbose_json"
+            ? {
+                task:
+                  formData.get("translate") === "true"
+                    ? "translate"
+                    : "transcribe",
+                language: "english",
+                duration: 0.5,
+                text: messy,
+                segments: [
+                  { ...segment, text: " Hello there.\n" },
+                  { ...segment, id: 1, text: " And then...\n" },
+                ],
+              }
+            : { text: messy },
+        );
+      }
       if (path === "/inference" || path.startsWith("/v1/audio/")) {
         return Response.json({
           task: "transcribe",

@@ -49,6 +49,12 @@ import {
   type InferenceTerminalSource,
   type StructuredOutputValidationTelemetry,
 } from "../../observability/inference";
+import {
+  isPlainTextTranscriptionFormat,
+  normalizePlainTranscription,
+  normalizeTranscriptionJson,
+  type TranscriptionResponseFormat,
+} from "../transcript";
 import { modalityComponents, type RuntimeModality } from "../modality";
 import {
   RuntimeReconciler,
@@ -1361,6 +1367,7 @@ async function proxyRequest(
   canonicalModelId?: string,
   onUpstreamStatus?: (status: number) => void,
   parentContext?: Parameters<OtelRuntime["startSpan"]>[2],
+  transcriptionFormat?: TranscriptionResponseFormat,
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
@@ -1434,6 +1441,27 @@ async function proxyRequest(
     );
   }
 
+  if (
+    transcriptionFormat &&
+    isPlainTextTranscriptionFormat(transcriptionFormat) &&
+    upstream.ok
+  ) {
+    try {
+      const text = normalizePlainTranscription(
+        await upstream.text(),
+        transcriptionFormat,
+      );
+      const headers = filterProxyHeaders(upstream.headers);
+      headers.delete("content-length");
+      headers.set("content-type", "text/plain; charset=utf-8");
+      return new Response(text, { status: upstream.status, headers });
+    } catch {
+      if (request.signal.aborted) return requestAborted();
+      onInvalidEvent?.(502);
+      return upstreamFailure("The upstream service returned malformed text.");
+    }
+  }
+
   if (responseSchema && !isEventStream(upstream) && upstream.ok) {
     try {
       const parsed = responseSchema.safeParse(await upstream.json());
@@ -1461,18 +1489,24 @@ async function proxyRequest(
       }
       onValidatedEvent?.(parsed.data, upstream.status);
 
-      const publicData = chatResponse.success
-        ? {
-            ...chatResponse.data,
-            choices: chatResponse.data.choices.map((choice) => ({
-              ...choice,
-              message: normalizeReasoningContent(choice.message),
-            })),
-          }
-        : parsed.data;
+      const publicData = transcriptionFormat
+        ? normalizeTranscriptionJson(
+            parsed.data as Parameters<typeof normalizeTranscriptionJson>[0],
+            transcriptionFormat,
+          )
+        : chatResponse.success
+          ? {
+              ...chatResponse.data,
+              choices: chatResponse.data.choices.map((choice) => ({
+                ...choice,
+                message: normalizeReasoningContent(choice.message),
+              })),
+            }
+          : parsed.data;
 
       const headers = filterProxyHeaders(upstream.headers);
       headers.delete("content-length");
+      if (transcriptionFormat) headers.set("content-type", "application/json");
       return Response.json(
         canonicalModelId &&
           typeof publicData === "object" &&
@@ -2929,6 +2963,7 @@ export async function runServe(
     if (route === "transcription") {
       let admission: RuntimeAdmission | undefined;
       let admitted: AdmittedModel | undefined;
+      let transcriptionFormat: TranscriptionResponseFormat = "json";
       try {
         const body = await readBoundedRequestBody(request);
         const multipartBody = new ArrayBuffer(body.byteLength);
@@ -2979,6 +3014,7 @@ export async function runServe(
         if (selected.kind === "unavailable") return serviceUnavailable("STT");
         admitted = selected.value;
         admission = selected.value.admission;
+        transcriptionFormat = parsed.data.response_format ?? "json";
         const normalizedForm = new FormData();
         for (const [key, value] of Object.entries(parsed.data)) {
           if (value === undefined) continue;
@@ -2993,6 +3029,10 @@ export async function runServe(
               item instanceof Blob ? item : String(item),
             );
           }
+        }
+        // whisper-server has one /inference endpoint; translation is a flag.
+        if (new URL(request.url).pathname === "/v1/audio/translations") {
+          normalizedForm.set("translate", "true");
         }
         request = new Request(request.url, {
           method: request.method,
@@ -3036,6 +3076,7 @@ export async function runServe(
             undefined,
             (status) => inference.observeUpstreamStatus(status),
             inference.context(),
+            transcriptionFormat,
           ),
         (terminal) => inference.finish(terminal),
       );
