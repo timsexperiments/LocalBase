@@ -23,8 +23,9 @@ import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
 const LOOPBACK_HOST = "127.0.0.1";
 function isUnspecifiedHost(host: string): boolean {
   if (host === "" || host === "*") return true;
-  const unbracketed =
+  const withoutBrackets =
     host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+  const unbracketed = withoutBrackets.split("%", 1)[0] ?? "";
   try {
     if (unbracketed.includes(":")) {
       // WHATWG parsing canonicalizes every IPv6 spelling (0::0, long zero
@@ -35,7 +36,8 @@ function isUnspecifiedHost(host: string): boolean {
     // inet_aton-style forms (0, 0.0, 0x0, 00, 000.000.000.000).
     return new URL(`http://${unbracketed}`).hostname === "0.0.0.0";
   } catch {
-    return false;
+    // Malformed IPv6-like values must not reach a backend bind call.
+    return host.includes(":");
   }
 }
 

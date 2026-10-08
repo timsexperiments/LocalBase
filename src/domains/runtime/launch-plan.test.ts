@@ -7,6 +7,8 @@ import {
   resolveSttLaunchPlan,
   resolveVideoLaunchPlan,
 } from "./launch-plan";
+import { buildLlamaServerArgs } from "./launcher";
+import { runtimeEndpoint } from "./supervisor-factory";
 import { SupervisorRegistry } from "./supervisor-registry";
 
 const root = "/tmp/local-base";
@@ -546,6 +548,14 @@ describe("backend bind host", () => {
     "[0::0]",
     "0000:0000:0000:0000:0000:0000:0000:0000",
     "::ffff:0.0.0.0",
+    "::%0",
+    "::%lo0",
+    "0::0%1",
+    "[::%0]",
+    "[::%lo0]",
+    "[0::0%1]",
+    "::ffff:0:0%lo0",
+    "[::ffff:0:0%1]",
     "0",
     "0.0",
     "0x0",
@@ -560,6 +570,9 @@ describe("backend bind host", () => {
     expect(backendBindHost("::2")).toBe("::2");
     expect(backendBindHost("10.0.0.1")).toBe("10.0.0.1");
     expect(backendBindHost("localhost")).toBe("localhost");
+    expect(backendBindHost("fe80::1%lo0")).toBe("fe80::1%lo0");
+    expect(backendBindHost("[fe80::1%lo0]")).toBe("[fe80::1%lo0]");
+    expect(backendBindHost("::invalid-address")).toBe("127.0.0.1");
   });
 
   test.each(["0::0", "0", "0000:0000:0000:0000:0000:0000:0000:0000"])(
@@ -581,6 +594,37 @@ describe("backend bind host", () => {
       });
       expect(plan.host).toBe("127.0.0.1");
       expect(plan.healthUrl).toBe("http://127.0.0.1:8080/health");
+    },
+  );
+
+  test.each(["::%0", "::%lo0", "0::0%1", "[::%lo0]"])(
+    "launch args, health URLs, and factory endpoints use loopback for scoped wildcard %p",
+    (host) => {
+      const plan = resolveLlmLaunchPlan({
+        root,
+        modelId: "model",
+        host,
+        modelRequirementGb: 1,
+        artifactBytes: 1024 ** 3,
+        runtimeId: "llm:1",
+        modelsDirectory: `${root}/models/llm`,
+        modelFile: "model.gguf",
+        port: 8080,
+        ctxSize: 8192,
+        parallel: "auto",
+        hardware: { memoryGb: 16 },
+      });
+      const launch = buildLlamaServerArgs(plan);
+
+      expect(plan.host).toBe("127.0.0.1");
+      expect(plan.healthUrl).toBe("http://127.0.0.1:8080/health");
+      expect(
+        launch.args.slice(
+          launch.args.indexOf("--host"),
+          launch.args.indexOf("--host") + 2,
+        ),
+      ).toEqual(["--host", "127.0.0.1"]);
+      expect(runtimeEndpoint(host, 8080)).toBe("http://127.0.0.1:8080");
     },
   );
 

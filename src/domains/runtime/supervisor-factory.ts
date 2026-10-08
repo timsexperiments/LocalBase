@@ -72,9 +72,12 @@ export type RuntimeSupervisorFactoryDependencies = Readonly<{
   memorySafety: MemorySafetyController;
 }>;
 
-function endpoint(host: string, port: number): string {
+export function runtimeEndpoint(host: string, port: number): string {
+  const safeHost = backendBindHost(host);
   const urlHost =
-    host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+    safeHost.includes(":") && !safeHost.startsWith("[")
+      ? `[${safeHost}]`
+      : safeHost;
   return `http://${urlHost}:${port}`;
 }
 
@@ -354,20 +357,20 @@ export function createRuntimeSupervisorFactory(
     snapshot: RuntimeConfigSnapshot,
   ): string => {
     if (modality === "llm") {
-      return endpoint(
+      return runtimeEndpoint(
         llmHost(snapshot.config, overrides),
         llmPort(snapshot.config, overrides),
       );
     }
     if (modality === "stt") {
-      return endpoint(
+      return runtimeEndpoint(
         sttHost(snapshot.config, overrides),
         sttPort(snapshot.config, overrides),
       );
     }
     return modality === "image"
-      ? endpoint(imageHost(overrides), imagePort(overrides))
-      : endpoint(videoHost(overrides), videoPort(overrides));
+      ? runtimeEndpoint(imageHost(overrides), imagePort(overrides))
+      : runtimeEndpoint(videoHost(overrides), videoPort(overrides));
   };
 
   const create = (
