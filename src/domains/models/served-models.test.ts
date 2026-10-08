@@ -135,6 +135,47 @@ describe("listServedModels", () => {
     expect(byId(data, modelId)?.context_length).toBe(4096);
   });
 
+  test("keeps listing models when one launch plan cannot be resolved", async () => {
+    const activeModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const selectedModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const data = await listServedModels(
+      {
+        ...config,
+        activeLlmModel: activeModel,
+        selectedLlmModels: [activeModel, selectedModel],
+        ctxSize: 8192,
+        parallel: 4,
+      },
+      undefined,
+      { memoryGb: 8 },
+    );
+
+    expect(byId(data, activeModel)?.context_length).toBe(2048);
+    expect(byId(data, selectedModel)).toBeDefined();
+    expect(byId(data, selectedModel)?.context_length).toBeUndefined();
+  });
+
+  test("uses the pinned active runtime context for a model-file override", async () => {
+    const activeModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const selectedModel = "qwen2.5-coder-14b-instruct-q4_k_m";
+    const data = await listServedModels(
+      {
+        ...config,
+        activeLlmModel: activeModel,
+        selectedLlmModels: [activeModel, selectedModel],
+        ctxSize: 32768,
+        parallel: 2,
+      },
+      undefined,
+      {
+        memoryGb: 16,
+        llmModelFile: `${activeModel}.gguf`,
+      },
+    );
+
+    expect(byId(data, selectedModel)?.context_length).toBe(16384);
+  });
+
   test("uses GGUF KV geometry when allocating automatic slots", async () => {
     const geometry = {
       architecture: "qwen2",

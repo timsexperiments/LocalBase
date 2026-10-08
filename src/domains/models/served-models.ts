@@ -117,6 +117,12 @@ function project(kind: ModelKind, id: string, spec?: ModelSpec): OpenAiModel {
   };
 }
 
+function omitContextLength(model: OpenAiModel): OpenAiModel {
+  const { context_length, ...withoutContextLength } = model;
+  void context_length;
+  return withoutContextLength;
+}
+
 /**
  * Lists the models the gateway would route requests to: per kind, the active
  * model plus selected models (the reconciler's resolution rule), skipping
@@ -147,33 +153,44 @@ export async function listServedModels(
       seen.add(id);
       let model = project(kind, id, spec);
       if (kind === "llm") {
+        // A model-file override pins the active runtime across selected model
+        // IDs. Resolve its context with the same model profile the supervisor
+        // launched, rather than the requested model's profile.
+        const launchModelId = options.llmModelFile ? config.activeLlmModel : id;
+        const launchSpec = byId(launchModelId);
         const modelFile =
           options.llmModelFile ??
           (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
         const modelPath = join(config.llmModelsDir, modelFile);
         const artifactBytes =
-          (spec ? primaryArtifact(spec).expectedSizeBytes : undefined) ??
+          (launchSpec
+            ? primaryArtifact(launchSpec).expectedSizeBytes
+            : undefined) ??
           (await Bun.file(modelPath)
             .stat()
             .then((file) => file.size)
             .catch(() => 0));
-        const launch = resolveConfiguredLlmLaunchPlan({
-          runtimeId: `models-list:${id}`,
-          root: config.root,
-          modelsDirectory: config.llmModelsDir,
-          modelId: id,
-          modelFile,
-          host: "127.0.0.1",
-          port: 1,
-          model: spec,
-          configCtxSize: config.ctxSize,
-          ctxSizeOverride: options.ctxSizeOverride,
-          parallel: options.parallel ?? config.parallel ?? 1,
-          artifactBytes,
-          memoryGb: options.memoryGb ?? 0,
-          kvGeometry: await options.kvGeometryForModel?.(id),
-        });
-        model = { ...model, context_length: launch.parallel.contextPerSlot };
+        try {
+          const launch = resolveConfiguredLlmLaunchPlan({
+            runtimeId: `models-list:${launchModelId}`,
+            root: config.root,
+            modelsDirectory: config.llmModelsDir,
+            modelId: launchModelId,
+            modelFile,
+            host: "127.0.0.1",
+            port: 1,
+            model: launchSpec,
+            configCtxSize: config.ctxSize,
+            ctxSizeOverride: options.ctxSizeOverride,
+            parallel: options.parallel ?? config.parallel ?? 1,
+            artifactBytes,
+            memoryGb: options.memoryGb ?? 0,
+            kvGeometry: await options.kvGeometryForModel?.(launchModelId),
+          });
+          model = { ...model, context_length: launch.parallel.contextPerSlot };
+        } catch {
+          model = omitContextLength(model);
+        }
       }
       data.push(model);
     }
