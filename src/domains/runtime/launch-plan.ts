@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { join } from "node:path";
 import {
   allocateParallelSlots,
@@ -46,11 +47,22 @@ function isUnspecifiedHost(host: string): boolean {
  * they must never listen on every interface. Wildcard hosts, including the old
  * persisted `0.0.0.0` default, are normalized to loopback. Wildcards are also
  * invalid connect targets, so the same value is used for gateway-to-backend
- * requests. Specific hosts (for example from explicit overrides) pass through.
+ * requests. Only IP literals and localhost pass through; other hostnames fall
+ * back to loopback so DNS cannot make a configured hostname resolve to a
+ * wildcard address.
  */
 export function backendBindHost(host: string): string {
   const trimmed = host.trim();
-  return isUnspecifiedHost(trimmed) ? LOOPBACK_HOST : trimmed;
+  if (isUnspecifiedHost(trimmed)) return LOOPBACK_HOST;
+
+  if (/^localhost\.?$/i.test(trimmed)) return trimmed;
+
+  const address =
+    trimmed.startsWith("[") && trimmed.endsWith("]")
+      ? trimmed.slice(1, -1)
+      : trimmed;
+  const unscopedAddress = address.split("%", 1)[0] ?? "";
+  return isIP(unscopedAddress) !== 0 ? trimmed : LOOPBACK_HOST;
 }
 
 function urlHost(host: string): string {

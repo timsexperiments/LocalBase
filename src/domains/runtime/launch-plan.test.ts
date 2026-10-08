@@ -575,6 +575,17 @@ describe("backend bind host", () => {
     expect(backendBindHost("::invalid-address")).toBe("127.0.0.1");
   });
 
+  test.each(["0.0.0.0.nip.io", "example.com"])(
+    "maps hostname %p to loopback without DNS resolution",
+    (host) => {
+      expect(backendBindHost(host)).toBe("127.0.0.1");
+    },
+  );
+
+  test("preserves localhost case and trailing dot", () => {
+    expect(backendBindHost("LOCALHOST.")).toBe("LOCALHOST.");
+  });
+
   test.each(["0::0", "0", "0000:0000:0000:0000:0000:0000:0000:0000"])(
     "launch args and health URLs use loopback for wildcard spelling %p",
     (host) => {
@@ -631,6 +642,37 @@ describe("backend bind host", () => {
   test("keeps explicit specific hosts", () => {
     expect(backendBindHost("127.0.0.1")).toBe("127.0.0.1");
     expect(backendBindHost("::1")).toBe("::1");
+    expect(backendBindHost("192.168.1.20")).toBe("192.168.1.20");
+    expect(backendBindHost("2001:db8::1")).toBe("2001:db8::1");
+  });
+
+  test("normalizes hostname consistently for launch args, health, and proxy URL", () => {
+    const host = "0.0.0.0.nip.io";
+    const plan = resolveLlmLaunchPlan({
+      root,
+      modelId: "model",
+      host,
+      modelRequirementGb: 1,
+      artifactBytes: 1024 ** 3,
+      runtimeId: "llm:1",
+      modelsDirectory: `${root}/models/llm`,
+      modelFile: "model.gguf",
+      port: 8080,
+      ctxSize: 8192,
+      parallel: "auto",
+      hardware: { memoryGb: 16 },
+    });
+    const launch = buildLlamaServerArgs(plan);
+
+    expect(plan.host).toBe("127.0.0.1");
+    expect(plan.healthUrl).toBe("http://127.0.0.1:8080/health");
+    expect(
+      launch.args.slice(
+        launch.args.indexOf("--host"),
+        launch.args.indexOf("--host") + 2,
+      ),
+    ).toEqual(["--host", "127.0.0.1"]);
+    expect(runtimeEndpoint(host, 8080)).toBe("http://127.0.0.1:8080");
   });
 
   test.each(["0.0.0.0", "::", "192.168.1.20"].map((h) => [h]))(
