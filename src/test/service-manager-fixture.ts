@@ -4,6 +4,7 @@ import { readConfigIfPresent } from "../manager";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
+import { recordPid, reapRecordedPids } from "./process-cleanup";
 import {
   parseLaunchdDefinition,
   parseSystemdDefinition,
@@ -168,6 +169,10 @@ async function stopFixtureProcess(service: FixtureService): Promise<void> {
   throw new Error("Fixture gateway did not release ownership after shutdown.");
 }
 
+function pidLedger(statePath: string): string {
+  return `${statePath}.pids`;
+}
+
 export async function stopFixtureServices(statePath: string): Promise<void> {
   const state = await readJson<FixtureState>(statePath, fixtureStateSchema, {
     version: 1,
@@ -176,9 +181,11 @@ export async function stopFixtureServices(statePath: string): Promise<void> {
   for (const service of Object.values(state.services)) {
     await stopFixtureProcess(service);
   }
+  await reapRecordedPids(pidLedger(statePath));
 }
 
 async function startFixtureProcess(
+  statePath: string,
   service: FixtureService,
   invocation: string[],
 ): Promise<FixtureService> {
@@ -194,6 +201,7 @@ async function startFixtureProcess(
       LOCALBASE_TEST_MANAGED_GATEWAY: "1",
     },
   });
+  await recordPid(pidLedger(statePath), child.pid);
   await Bun.sleep(10);
   if (child.exitCode !== null) {
     throw new Error(
@@ -465,6 +473,7 @@ export function createServiceManagerFixtureRunner(): ServiceManagerCommandRunner
                 ...(lastExitCode !== undefined ? { lastExitCode } : {}),
               }
             : await startFixtureProcess(
+                statePath,
                 { ...parsed.service, enabled: true },
                 parsed.invocation,
               );
@@ -550,6 +559,7 @@ export function createServiceManagerFixtureRunner(): ServiceManagerCommandRunner
         const parsed = await systemdService(unitName);
         const existing = state.services[unitName];
         state.services[unitName] = await startFixtureProcess(
+          statePath,
           {
             ...parsed.service,
             enabled: existing?.enabled ?? true,

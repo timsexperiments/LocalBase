@@ -265,8 +265,8 @@ test(
       config.selectedLlmModels = [INITIAL_MODEL, SWITCHED_MODEL];
       config.activeSttModel = "";
       config.selectedSttModels = [];
-      config.activeImageModel = "";
-      config.selectedImageModels = [];
+      config.activeImageModel = "stable-diffusion-v1-5";
+      config.selectedImageModels = ["stable-diffusion-v1-5"];
       saveTestConfig(config);
 
       mkdirSync(join(root, "bin"), { recursive: true });
@@ -333,6 +333,19 @@ test(
 
       const baseUrl = `http://127.0.0.1:${wrapperPort}`;
       await waitForGateway(gateway, baseUrl);
+
+      const modelsResponse = await fetch(`${baseUrl}/v1/models`);
+      expect(modelsResponse.status).toBe(200);
+      const servedModels = (await modelsResponse.json()) as {
+        data: Array<{ id: string; context_length?: number }>;
+      };
+      expect(
+        servedModels.data.some(({ id }) => id === "stable-diffusion-v1-5"),
+      ).toBe(false);
+      expect(
+        servedModels.data.find(({ id }) => id === INITIAL_MODEL)
+          ?.context_length,
+      ).toBeLessThanOrEqual(8192);
 
       const configure = Bun.spawn(
         [

@@ -16,6 +16,7 @@ import {
   latestUpstreamRequestBody,
 } from "../../test/ai-sdk-conformance";
 import {
+  registerGatewayFixtureCleanup,
   startGatewayFixture,
   type GatewayFixture,
   type GatewayFixtureOptions,
@@ -23,6 +24,8 @@ import {
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 import { minimalWav, tinyPng, tinyPngBase64 } from "../../test/media-fixtures";
+
+registerGatewayFixtureCleanup();
 
 const PRIMARY_LLM_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const SWITCHED_LLM_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";

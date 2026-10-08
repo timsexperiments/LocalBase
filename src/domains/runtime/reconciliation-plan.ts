@@ -1,5 +1,6 @@
 import { modelDirectories, type LocalBaseConfig } from "../../manager";
 import type { RuntimeConfigSnapshot } from "./config-snapshot";
+import { backendBindHost } from "./launch-plan";
 import { runtimeModalities, type RuntimeModality } from "./modality";
 
 export type ConfigFieldOwnership =
@@ -200,6 +201,22 @@ function valuesEqual(left: unknown, right: unknown): boolean {
   return left === right;
 }
 
+const backendHostFields: ReadonlySet<RuntimeConfigField> = new Set([
+  "host",
+  "sttHost",
+]);
+
+/** Backend hosts compare by effective bind address, not by spelling. */
+function effectiveValue(
+  snapshot: RuntimeConfigSnapshot,
+  field: RuntimeConfigField,
+): unknown {
+  const value = snapshot.config[field];
+  return backendHostFields.has(field) && typeof value === "string"
+    ? backendBindHost(value)
+    : value;
+}
+
 function changedFields<Field extends RuntimeConfigField>(
   source: RuntimeConfigSnapshot,
   target: RuntimeConfigSnapshot,
@@ -210,7 +227,10 @@ function changedFields<Field extends RuntimeConfigField>(
     fields.filter(
       (field) =>
         !overrides.has(field) &&
-        !valuesEqual(source.config[field], target.config[field]),
+        !valuesEqual(
+          effectiveValue(source, field),
+          effectiveValue(target, field),
+        ),
     ),
   );
 }

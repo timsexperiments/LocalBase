@@ -5,6 +5,7 @@ import { videoJobIdFromPath } from "../route-dispatch";
 import {
   projectVideoJob,
   qualifiedVideoInput,
+  videoProfileMismatchMessage,
   type VideoCreateRequest,
 } from "./gateway-contract";
 import type { VideoJob, VideoJobManager } from "./video-job-manager";
@@ -114,7 +115,7 @@ export async function handleVideoGatewayRequest(
   const videoInput = qualifiedVideoInput(parsed.data, spec);
   if (!videoInput) {
     return dependencies.badRequest(
-      "This local video model only accepts its qualified width, height, frames, and fps profile.",
+      videoProfileMismatchMessage(parsed.data, spec),
     );
   }
 

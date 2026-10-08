@@ -10,7 +10,9 @@ import {
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import type { RuntimeLaunchPlan } from "./launch-plan";
 import type { RuntimeMemoryDemand } from "./memory-safety";
+import { llamaContextPerSequence } from "../config/parallel";
 import { stopNativeProcess } from "./native-process";
+import type { LlmSupervisorProfile } from "./supervisor-registry";
 
 const CHILD_STOP_GRACE_MS = 500;
 const HEALTH_PROBE_TIMEOUT_MS = 2_000;
@@ -51,6 +53,7 @@ export type ManagedServiceOptions = {
   otel: OtelRuntime;
   startupTimeoutMs?: number;
   onFatal?: () => Promise<void>;
+  llmProfile?: LlmSupervisorProfile;
 };
 
 /** Manages one lazily-started backend process and its recovery lifecycle. */
@@ -130,6 +133,22 @@ export class ManagedService {
   resolvedSlots(): number | undefined {
     const plan = this.resolvedPlan;
     return plan?.modality === "llm" ? plan.parallel.slots : undefined;
+  }
+
+  resolvedContextLength(): number | undefined {
+    const plan = this.resolvedPlan;
+    return plan?.modality === "llm"
+      ? Math.min(
+          llamaContextPerSequence(plan.ctxSize, plan.parallel.slots),
+          plan.trainingContextLength ??
+            plan.kvGeometry?.contextLength ??
+            Number.POSITIVE_INFINITY,
+        )
+      : undefined;
+  }
+
+  llmProfile(): LlmSupervisorProfile | undefined {
+    return this.options.llmProfile;
   }
 
   private exited(proc: Bun.Subprocess): boolean {

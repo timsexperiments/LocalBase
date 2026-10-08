@@ -25,11 +25,11 @@ host = "127.0.0.1"
 port = 2273
 
 [runtime]
-host = "0.0.0.0"
+host = "127.0.0.1"
 port = 18000
 ctxSize = 131072
 parallel = "auto"
-sttHost = "0.0.0.0"
+sttHost = "127.0.0.1"
 sttPort = 18080
 
 [models]
@@ -53,7 +53,7 @@ percent = 10
 minimumGb = 2
 ```
 
-`gateway` controls the public listener. Explicit `serve --host` and `serve --port` flags override its persisted defaults for that process. `runtime.host` and `runtime.port` control the LLM backend; the STT fields control the STT backend. `parallel` accepts `"auto"` or integers 1 through 4. `ctxSize` accepts integers from 2048 through 2147483647. Memory percentages range from 0 through 100; minimum reserves are nonnegative GiB values.
+`gateway` controls the public listener. Explicit `serve --host` and `serve --port` flags override its persisted defaults for that process. `runtime.host` and `runtime.port` control the LLM backend; the STT fields control the STT backend. Backends have no authentication of their own, so wildcard hosts (`0.0.0.0`, `::`) are treated as `127.0.0.1`; only the gateway is meant to be exposed. `parallel` accepts `"auto"` or integers 1 through 4. `ctxSize` accepts integers from 2048 through 2147483647. Memory percentages range from 0 through 100; minimum reserves are nonnegative GiB values.
 
 `show` emits canonical TOML with selected model lists sorted. Secrets, API keys, telemetry configuration, root paths, and process-only flags are omitted. Applying the export preserves those existing values. There are no secret placeholders that could overwrite credentials. `show --json` returns the TOML string as `data.document` and activation status as `data.pendingRestart` inside the usual `{ "ok": true, "data": ... }` envelope. Human output reports pending activation on stderr so redirected TOML remains re-applicable.
 

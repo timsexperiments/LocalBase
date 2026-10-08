@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { byId, primaryArtifact } from "../../catalog";
 import {
+  registerGatewayFixtureCleanup,
   startGatewayFixture,
   type GatewayFixture,
   waitForLogEvent,
@@ -47,6 +48,8 @@ import { SpeechGenerationTimeoutError } from "./speech-supervisor";
 import { getGatewayInstanceState } from "../service/ownership";
 import { DatabaseSession } from "../../db/client";
 
+registerGatewayFixtureCleanup();
+
 type ValidationCase = {
   name: string;
   path: string;
@@ -79,7 +82,7 @@ async function expectGatewayListenerHost(
   gateway: GatewayFixture,
   expectedHost: string,
 ): Promise<void> {
-  expect(gateway.readConfig().host).toBe("0.0.0.0");
+  expect(gateway.readConfig().host).toBe("127.0.0.1");
   expect(new URL(gateway.baseUrl).hostname).toBe(expectedHost);
   expect((await fetch(`${gateway.baseUrl}/health`)).status).toBe(200);
 
@@ -1814,15 +1817,25 @@ describe("API gateway integration", () => {
         object: string;
         created: number;
         owned_by: string;
+        architecture: {
+          input_modalities: string[];
+          output_modalities: string[];
+        };
       }>;
     };
     expect(body.object).toBe("list");
-    expect(body.data).toContainEqual({
-      id: "qwen2.5-coder-1.5b-instruct-q4_k_m",
-      object: "model",
-      created: 1670000000,
-      owned_by: "local-base",
-    });
+    expect(body.data).toContainEqual(
+      expect.objectContaining({
+        id: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        object: "model",
+        created: 1670000000,
+        owned_by: "local-base",
+        architecture: {
+          input_modalities: ["text"],
+          output_modalities: ["text"],
+        },
+      }),
+    );
   });
 
   test("proxies validated chat requests without gateway credentials", async () => {

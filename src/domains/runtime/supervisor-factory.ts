@@ -2,7 +2,6 @@ import { basename, join } from "node:path";
 import { verifyAuthoritativeFile } from "../../utils/checksum";
 import {
   byId,
-  calculateMaxSafeContextSize,
   primaryArtifact,
   resolveCatalogInstallation,
   ttsReferenceArtifacts,
@@ -17,10 +16,15 @@ import {
 } from "../../manager";
 import type { ServeInput } from "../app/commands/inputs";
 import type { RuntimeConfigSnapshot } from "./config-snapshot";
-import { readLlmKvGeometry } from "./gguf-metadata";
 import {
+  readLlmKvGeometry,
+  readLlmTrainingContextLength,
+} from "./gguf-metadata";
+import {
+  backendBindHost,
+  configuredLlmContextSize,
   resolveImageLaunchPlan,
-  resolveLlmLaunchPlan,
+  resolveConfiguredLlmLaunchPlan,
   resolveSttLaunchPlan,
   resolveVideoLaunchPlan,
 } from "./launch-plan";
@@ -71,9 +75,12 @@ export type RuntimeSupervisorFactoryDependencies = Readonly<{
   memorySafety: MemorySafetyController;
 }>;
 
-function endpoint(host: string, port: number): string {
+export function runtimeEndpoint(host: string, port: number): string {
+  const safeHost = backendBindHost(host);
   const urlHost =
-    host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+    safeHost.includes(":") && !safeHost.startsWith("[")
+      ? `[${safeHost}]`
+      : safeHost;
   return `http://${urlHost}:${port}`;
 }
 
@@ -81,7 +88,7 @@ function llmHost(
   config: RuntimeConfigSnapshot["config"],
   overrides: RuntimeLaunchOverrides,
 ): string {
-  return overrides.llmHost ?? config.host;
+  return backendBindHost(overrides.llmHost ?? config.host);
 }
 
 function llmPort(
@@ -95,7 +102,7 @@ function sttHost(
   config: RuntimeConfigSnapshot["config"],
   overrides: RuntimeLaunchOverrides,
 ): string {
-  return overrides.sttHost ?? config.sttHost;
+  return backendBindHost(overrides.sttHost ?? config.sttHost);
 }
 
 function sttPort(
@@ -106,7 +113,7 @@ function sttPort(
 }
 
 function imageHost(overrides: RuntimeLaunchOverrides): string {
-  return overrides.imageHost ?? "127.0.0.1";
+  return backendBindHost(overrides.imageHost ?? "127.0.0.1");
 }
 
 function imagePort(overrides: RuntimeLaunchOverrides): number {
@@ -114,7 +121,7 @@ function imagePort(overrides: RuntimeLaunchOverrides): number {
 }
 
 function videoHost(overrides: RuntimeLaunchOverrides): string {
-  return overrides.videoHost ?? "127.0.0.1";
+  return backendBindHost(overrides.videoHost ?? "127.0.0.1");
 }
 
 function videoPort(overrides: RuntimeLaunchOverrides): number {
@@ -353,20 +360,20 @@ export function createRuntimeSupervisorFactory(
     snapshot: RuntimeConfigSnapshot,
   ): string => {
     if (modality === "llm") {
-      return endpoint(
+      return runtimeEndpoint(
         llmHost(snapshot.config, overrides),
         llmPort(snapshot.config, overrides),
       );
     }
     if (modality === "stt") {
-      return endpoint(
+      return runtimeEndpoint(
         sttHost(snapshot.config, overrides),
         sttPort(snapshot.config, overrides),
       );
     }
     return modality === "image"
-      ? endpoint(imageHost(overrides), imagePort(overrides))
-      : endpoint(videoHost(overrides), videoPort(overrides));
+      ? runtimeEndpoint(imageHost(overrides), imagePort(overrides))
+      : runtimeEndpoint(videoHost(overrides), videoPort(overrides));
   };
 
   const create = (
@@ -383,6 +390,17 @@ export function createRuntimeSupervisorFactory(
         runtimeId,
         modality,
         component: "llama-server",
+        llmProfile: {
+          modelId,
+          ...(overrides.llmModelFile
+            ? { modelFile: overrides.llmModelFile }
+            : {}),
+          configCtxSize: config.ctxSize,
+          ...(overrides.ctxSize !== undefined
+            ? { ctxSizeOverride: overrides.ctxSize }
+            : {}),
+          parallel: config.parallel,
+        },
         healthUrl: `${base}/health`,
         logger: ctx.logger,
         preflightDemand: async (signal) => {
@@ -404,18 +422,8 @@ export function createRuntimeSupervisorFactory(
               if (!modelFile) return undefined;
             }
           }
-          const spec = byId(modelId);
-          const ctxSize =
-            overrides.ctxSize ??
-            Math.min(
-              spec
-                ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
-                : ctx.specs.gpuVramGb >= 32
-                  ? 32768
-                  : 8192,
-              config.ctxSize,
-            );
-          const plan = resolveLlmLaunchPlan({
+          const modelPath = join(config.llmModelsDir, modelFile);
+          const plan = resolveConfiguredLlmLaunchPlan({
             runtimeId,
             root: config.root,
             modelsDirectory: config.llmModelsDir,
@@ -423,20 +431,19 @@ export function createRuntimeSupervisorFactory(
             modelFile,
             host: llmHost(snapshot.config, overrides),
             port: llmPort(snapshot.config, overrides),
-            ctxSize,
-            contextWindowTokens: spec?.contextWindowTokens,
+            model: byId(modelId),
+            configCtxSize: config.ctxSize,
+            ctxSizeOverride: overrides.ctxSize,
             parallel: config.parallel,
-            modelRequirementGb: spec?.minVramGb,
             artifactBytes: await artifactBytes(
               modelId,
               config.llmModelsDir,
               modelFile,
             ),
-            hardware: { memoryGb: ctx.specs.gpuVramGb },
-            embedding: spec?.llmRuntime ?? null,
-            kvGeometry: await readLlmKvGeometry(
-              join(config.llmModelsDir, modelFile),
-            ),
+            memoryGb: ctx.specs.gpuVramGb,
+            kvGeometry: await readLlmKvGeometry(modelPath),
+            trainingContextLength:
+              await readLlmTrainingContextLength(modelPath),
           });
           return signal?.aborted ? undefined : plan.memoryDemand;
         },
@@ -483,18 +490,18 @@ export function createRuntimeSupervisorFactory(
             }
           }
           const spec = byId(modelId);
-          const recommended = spec
-            ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
-            : ctx.specs.gpuVramGb >= 32
-              ? 32768
-              : 8192;
-          const ctxSize =
-            overrides.ctxSize ?? Math.min(recommended, config.ctxSize);
+          const ctxSize = configuredLlmContextSize(
+            spec,
+            config.ctxSize,
+            ctx.specs.gpuVramGb,
+            overrides.ctxSize,
+          );
           ctx.logger.info(
             "llama-server",
             `Spawning model "${modelId}" (file: ${modelFile}, context: ${ctxSize} tokens)`,
           );
-          return resolveLlmLaunchPlan({
+          const modelPath = join(config.llmModelsDir, modelFile);
+          return resolveConfiguredLlmLaunchPlan({
             runtimeId,
             root: config.root,
             modelsDirectory: config.llmModelsDir,
@@ -502,20 +509,19 @@ export function createRuntimeSupervisorFactory(
             modelFile,
             host: llmHost(snapshot.config, overrides),
             port: llmPort(snapshot.config, overrides),
-            ctxSize,
-            contextWindowTokens: spec?.contextWindowTokens,
+            model: spec,
+            configCtxSize: config.ctxSize,
+            ctxSizeOverride: overrides.ctxSize,
             parallel: config.parallel,
-            modelRequirementGb: spec?.minVramGb,
             artifactBytes: await artifactBytes(
               modelId,
               config.llmModelsDir,
               modelFile,
             ),
-            hardware: { memoryGb: ctx.specs.gpuVramGb },
-            embedding: spec?.llmRuntime ?? null,
-            kvGeometry: await readLlmKvGeometry(
-              join(config.llmModelsDir, modelFile),
-            ),
+            memoryGb: ctx.specs.gpuVramGb,
+            kvGeometry: await readLlmKvGeometry(modelPath),
+            trainingContextLength:
+              await readLlmTrainingContextLength(modelPath),
           });
         },
         start: async (plan) => {

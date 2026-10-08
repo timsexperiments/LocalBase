@@ -1,11 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import {
   allocateParallelSlots,
+  llamaContextPerSequence,
   parseOptionalParallelSlots,
   parseParallelSlots,
 } from "./parallel";
 
 describe("parallel slot configuration", () => {
+  test("matches llama.cpp b10419 per-sequence context padding", () => {
+    expect(llamaContextPerSequence(8192, 3)).toBe(2816);
+    expect(llamaContextPerSequence(8192, 2)).toBe(4096);
+    expect(llamaContextPerSequence(8192, 3, true)).toBe(8192);
+  });
+
   test("parses supported values without coercing invalid input", () => {
     expect(parseParallelSlots("auto")).toBe("auto");
     expect(parseParallelSlots(" AUTO ")).toBe("auto");

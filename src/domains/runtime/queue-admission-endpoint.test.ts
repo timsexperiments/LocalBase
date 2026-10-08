@@ -4,11 +4,14 @@ import {
   type ModelMetadata,
 } from "../models/model-metadata";
 import {
+  registerGatewayFixtureCleanup,
   startGatewayFixture,
   type GatewayFixture,
   waitForLogEvent,
 } from "../../test/gateway-fixture";
 import { gatewayReadinessSchema } from "./readiness";
+
+registerGatewayFixtureCleanup();
 
 const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 

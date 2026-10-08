@@ -8,11 +8,14 @@ import {
   modelMetadataSchema,
 } from "../models/model-metadata";
 import {
+  registerGatewayFixtureCleanup,
   startGatewayFixture,
   type GatewayFixture,
   waitForLogEvent,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
+
+registerGatewayFixtureCleanup();
 
 const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const alternateModelId = "qwen2.5-coder-3b-instruct-q4_k_m";

@@ -31,6 +31,9 @@ import {
   modelMetadataById,
   projectModelMetadataList,
 } from "../../models/model-metadata";
+import { listServedModels } from "../../models/served-models";
+import { createLlmKvGeometryReader } from "../gguf-geometry-cache";
+import { readLlmTrainingContextLength } from "../gguf-metadata";
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
@@ -49,6 +52,12 @@ import {
   type InferenceTerminalSource,
   type StructuredOutputValidationTelemetry,
 } from "../../observability/inference";
+import {
+  isPlainTextTranscriptionFormat,
+  normalizePlainTranscription,
+  normalizeTranscriptionJson,
+  type TranscriptionResponseFormat,
+} from "../transcript";
 import { modalityComponents, type RuntimeModality } from "../modality";
 import {
   RuntimeReconciler,
@@ -150,6 +159,8 @@ export function httpBaseUrl(host: string, port: number): string {
 }
 
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
+// Job owner when gateway auth is disabled and requests carry no principal.
+const LOCAL_VIDEO_OWNER_ID = "anonymous:local";
 
 type GatewayRequestAuth = Readonly<{
   resolve(config: LocalBaseConfig): Principal;
@@ -400,6 +411,24 @@ function upstreamFailure(message: string): Response {
     },
     502,
   );
+}
+
+/** Whisper reports failures as JSON bodies; successful text formats are never JSON-typed. */
+function looksLikeBackendError(upstream: Response, body: string): boolean {
+  if (!upstream.headers.get("content-type")?.includes("json")) return false;
+  const trimmed = body.trimStart();
+  if (!trimmed.startsWith("{")) return false;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed) &&
+      "error" in parsed
+    );
+  } catch {
+    return false;
+  }
 }
 
 function speechTimeout(): Response {
@@ -968,15 +997,20 @@ const transcriptionResponseSchema = z
         z
           .object({
             id: z.number(),
-            seek: z.number(),
-            start: z.number(),
-            end: z.number(),
+            seek: z.number().optional(),
+            start: z.number().optional(),
+            end: z.number().optional(),
             text: z.string(),
-            tokens: z.array(z.number()),
-            temperature: z.number(),
-            avg_logprob: z.number(),
-            compression_ratio: z.number(),
-            no_speech_prob: z.number(),
+            speaker: z.string().optional(),
+            tokens: z.array(z.number()).optional(),
+            words: z
+              .array(z.object({ word: z.string() }).passthrough())
+              .optional(),
+            // whisper.cpp serializes NaN (e.g. avg_logprob with no tokens) as null.
+            temperature: z.number().nullable().optional(),
+            avg_logprob: z.number().nullable().optional(),
+            compression_ratio: z.number().nullable().optional(),
+            no_speech_prob: z.number().nullable().optional(),
           })
           .passthrough(),
       )
@@ -1364,6 +1398,7 @@ async function proxyRequest(
   canonicalModelId?: string,
   onUpstreamStatus?: (status: number) => void,
   parentContext?: Parameters<OtelRuntime["startSpan"]>[2],
+  transcriptionFormat?: TranscriptionResponseFormat,
 ): Promise<Response> {
   const incoming = new URL(request.url);
   const path = pathOverride ?? incoming.pathname;
@@ -1437,6 +1472,31 @@ async function proxyRequest(
     );
   }
 
+  if (
+    transcriptionFormat &&
+    isPlainTextTranscriptionFormat(transcriptionFormat) &&
+    upstream.ok
+  ) {
+    try {
+      const raw = await upstream.text();
+      if (looksLikeBackendError(upstream, raw)) {
+        onInvalidEvent?.(502);
+        return upstreamFailure(
+          "The upstream service returned an invalid response.",
+        );
+      }
+      const text = normalizePlainTranscription(raw, transcriptionFormat);
+      const headers = filterProxyHeaders(upstream.headers);
+      headers.delete("content-length");
+      headers.set("content-type", "text/plain; charset=utf-8");
+      return new Response(text, { status: upstream.status, headers });
+    } catch {
+      if (request.signal.aborted) return requestAborted();
+      onInvalidEvent?.(502);
+      return upstreamFailure("The upstream service returned malformed text.");
+    }
+  }
+
   if (responseSchema && !isEventStream(upstream) && upstream.ok) {
     try {
       const parsed = responseSchema.safeParse(await upstream.json());
@@ -1464,18 +1524,24 @@ async function proxyRequest(
       }
       onValidatedEvent?.(parsed.data, upstream.status);
 
-      const publicData = chatResponse.success
-        ? {
-            ...chatResponse.data,
-            choices: chatResponse.data.choices.map((choice) => ({
-              ...choice,
-              message: normalizeReasoningContent(choice.message),
-            })),
-          }
-        : parsed.data;
+      const publicData = transcriptionFormat
+        ? normalizeTranscriptionJson(
+            parsed.data as Parameters<typeof normalizeTranscriptionJson>[0],
+            transcriptionFormat,
+          )
+        : chatResponse.success
+          ? {
+              ...chatResponse.data,
+              choices: chatResponse.data.choices.map((choice) => ({
+                ...choice,
+                message: normalizeReasoningContent(choice.message),
+              })),
+            }
+          : parsed.data;
 
       const headers = filterProxyHeaders(upstream.headers);
       headers.delete("content-length");
+      if (transcriptionFormat) headers.set("content-type", "application/json");
       return Response.json(
         canonicalModelId &&
           typeof publicData === "object" &&
@@ -2498,6 +2564,7 @@ export async function runServe(
       ? {}
       : { sttPort: config.sttPort }),
   });
+  const readCachedLlmKvGeometry = createLlmKvGeometryReader();
   const memoryProvider = createHostMemoryProvider();
   const memorySafety = new MemorySafetyController(
     memoryProvider,
@@ -2843,7 +2910,8 @@ export async function runServe(
     if (requestExceedsSizeLimit(request)) return payloadTooLarge();
 
     if (
-      authorization.kind === "authorized" &&
+      (authorization.kind === "authorized" ||
+        (authorization.kind === "public" && request.method !== "OPTIONS")) &&
       (route === "videoCreate" ||
         route === "videoStatus" ||
         route === "videoContent" ||
@@ -2853,7 +2921,10 @@ export async function runServe(
         request,
         pathname,
         route,
-        ownerId: principalOwnerId(authorization.principal),
+        ownerId:
+          authorization.kind === "authorized"
+            ? principalOwnerId(authorization.principal)
+            : LOCAL_VIDEO_OWNER_ID,
         jobs: videoJobs,
         createEnabled: currentConfig.selectedVideoModels.length > 0,
         admissionProvider: {
@@ -2985,6 +3056,7 @@ export async function runServe(
     if (route === "transcription") {
       let admission: RuntimeAdmission | undefined;
       let admitted: AdmittedModel | undefined;
+      let transcriptionFormat: TranscriptionResponseFormat = "json";
       try {
         const body = await readBoundedRequestBody(request);
         const multipartBody = new ArrayBuffer(body.byteLength);
@@ -3038,6 +3110,7 @@ export async function runServe(
         }
         admitted = selected.value;
         admission = selected.value.admission;
+        transcriptionFormat = parsed.data.response_format ?? "json";
         const normalizedForm = new FormData();
         for (const [key, value] of Object.entries(parsed.data)) {
           if (value === undefined) continue;
@@ -3052,6 +3125,10 @@ export async function runServe(
               item instanceof Blob ? item : String(item),
             );
           }
+        }
+        // whisper-server has one /inference endpoint; translation is a flag.
+        if (new URL(request.url).pathname === "/v1/audio/translations") {
+          normalizedForm.set("translate", "true");
         }
         request = new Request(request.url, {
           method: request.method,
@@ -3095,6 +3172,7 @@ export async function runServe(
             undefined,
             (status) => inference.observeUpstreamStatus(status),
             inference.context(),
+            transcriptionFormat,
           ),
         (terminal) => inference.finish(terminal),
       );
@@ -3349,20 +3427,46 @@ export async function runServe(
     }
 
     if (route === "models") {
-      const modelsList = [
-        ...new Set([
-          currentConfig.activeLlmModel,
-          ...currentConfig.selectedLlmModels,
-          currentConfig.activeTtsModel,
-          ...currentConfig.selectedTtsModels,
-        ]),
-      ].filter(Boolean);
-      const data = modelsList.map((modelId) => ({
-        id: modelId,
-        object: "model",
-        created: 1670000000,
-        owned_by: "local-base",
-      }));
+      const data = await listServedModels(
+        currentConfig,
+        authorization.kind === "authorized"
+          ? authorization.principal.permissions
+          : undefined,
+        {
+          enabled: {
+            llm: input.llm !== false,
+            stt: input.stt ?? currentConfig.selectedSttModels.length > 0,
+            tts: input.tts ?? currentConfig.selectedTtsModels.length > 0,
+            image: input.image ?? currentConfig.selectedImageModels.length > 0,
+            video: input.video ?? currentConfig.selectedVideoModels.length > 0,
+          },
+          ctxSizeOverride: launchOverrides.ctxSize,
+          llmModelFile: launchOverrides.llmModelFile,
+          pinnedContextLength: supervisors
+            .get("llm")
+            ?.resolvedContextLength?.(),
+          llmProfile: supervisors.get("llm")?.llmProfile?.(),
+          parallel: currentConfig.parallel,
+          memoryGb: ctx.specs.gpuVramGb,
+          kvGeometryForModel: async (id) => {
+            const spec = byId(id);
+            const modelFile =
+              launchOverrides.llmModelFile ??
+              (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
+            const path = join(currentConfig.llmModelsDir, modelFile);
+            return readCachedLlmKvGeometry(path);
+          },
+          trainingContextLengthForModel: async (id) => {
+            const spec = byId(id);
+            const modelFile =
+              launchOverrides.llmModelFile ??
+              (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
+            return readLlmTrainingContextLength(
+              join(currentConfig.llmModelsDir, modelFile),
+            );
+          },
+        },
+      );
       return Response.json({
         object: "list",
         data,

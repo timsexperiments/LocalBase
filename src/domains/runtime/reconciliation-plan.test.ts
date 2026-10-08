@@ -119,7 +119,7 @@ test.each([
   {
     field: "host",
     update: (config: ReturnType<typeof defaultConfig>) => {
-      config.host = "127.0.0.1";
+      config.host = "127.0.0.2";
     },
   },
   {
@@ -159,7 +159,7 @@ test.each([
     modality: "stt" as const,
     field: "sttHost",
     update: (config: ReturnType<typeof defaultConfig>) => {
-      config.sttHost = "127.0.0.1";
+      config.sttHost = "127.0.0.2";
     },
   },
   {
@@ -337,10 +337,10 @@ test.each([
 test("respects serve-time ownership for launch settings", () => {
   const plan = planFor(
     (config) => {
-      config.host = "127.0.0.1";
+      config.host = "127.0.0.2";
       config.port = 18001;
       config.ctxSize = 8192;
-      config.sttHost = "127.0.0.1";
+      config.sttHost = "127.0.0.2";
       config.sttPort = 18081;
     },
     {
@@ -418,3 +418,23 @@ test("registry detaches supervisors without stopping them", () => {
   expect(registry.take("stt")).toBeUndefined();
   expect(calls).toEqual([]);
 });
+
+test.each([
+  { field: "host", from: "0.0.0.0", to: "127.0.0.1" },
+  { field: "host", from: "::", to: "0::0" },
+  { field: "sttHost", from: "0.0.0.0", to: "127.0.0.1" },
+] as const)(
+  "leaves supervisors unchanged when $field $from and $to bind identically",
+  ({ field, from, to }) => {
+    const plan = createRuntimeReconciliationPlan(
+      snapshot(3, (config) => {
+        config[field] = from;
+      }),
+      snapshot(4, (config) => {
+        config[field] = to;
+      }),
+    );
+    expect(plan.modalities.llm.action).toBe("unchanged");
+    expect(plan.modalities.stt.action).toBe("unchanged");
+  },
+);
