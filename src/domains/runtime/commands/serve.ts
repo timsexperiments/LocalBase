@@ -32,6 +32,7 @@ import {
   projectModelMetadataList,
 } from "../../models/model-metadata";
 import { listServedModels } from "../../models/served-models";
+import { readLlmKvGeometry } from "../gguf-metadata";
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
@@ -2514,6 +2515,10 @@ export async function runServe(
       ? {}
       : { sttPort: config.sttPort }),
   });
+  const llmKvGeometryCache = new Map<
+    string,
+    ReturnType<typeof readLlmKvGeometry>
+  >();
   const memoryProvider = createHostMemoryProvider();
   const memorySafety = new MemorySafetyController(
     memoryProvider,
@@ -3356,16 +3361,36 @@ export async function runServe(
     }
 
     if (route === "models") {
-      const data = listServedModels(
+      const data = await listServedModels(
         currentConfig,
         authorization.kind === "authorized"
           ? authorization.principal.permissions
           : undefined,
         {
-          enabled,
-          ctxSize,
+          enabled: {
+            llm: input.llm !== false,
+            stt: input.stt !== false,
+            tts: input.tts !== false,
+            image: input.image !== false,
+            video: input.video !== false,
+          },
+          ctxSizeOverride: launchOverrides.ctxSize,
+          llmModelFile: launchOverrides.llmModelFile,
           parallel: currentConfig.parallel,
           memoryGb: ctx.specs.gpuVramGb,
+          kvGeometryForModel: (id) => {
+            const spec = byId(id);
+            const modelFile =
+              launchOverrides.llmModelFile ??
+              (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
+            const path = join(currentConfig.llmModelsDir, modelFile);
+            let geometry = llmKvGeometryCache.get(path);
+            if (!geometry) {
+              geometry = readLlmKvGeometry(path);
+              llmKvGeometryCache.set(path, geometry);
+            }
+            return geometry;
+          },
         },
       );
       return Response.json({

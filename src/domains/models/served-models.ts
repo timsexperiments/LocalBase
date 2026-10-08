@@ -1,8 +1,15 @@
-import { byId, type ModelKind, type ModelSpec } from "../../catalog";
+import { join } from "node:path";
+import {
+  byId,
+  primaryArtifact,
+  type ModelKind,
+  type ModelSpec,
+} from "../../catalog";
 import type { LocalBaseConfig } from "../../manager";
 import type { Permission } from "../auth/authorization";
-import { resolveLlmLaunchPlan } from "../runtime/launch-plan";
+import { resolveConfiguredLlmLaunchPlan } from "../runtime/launch-plan";
 import type { ParallelSlots } from "../config/parallel";
+import type { LlmKvGeometry } from "../runtime/gguf-metadata";
 
 type ServedModelConfig = Pick<
   LocalBaseConfig,
@@ -16,6 +23,10 @@ type ServedModelConfig = Pick<
   | "selectedImageModels"
   | "activeVideoModel"
   | "selectedVideoModels"
+  | "ctxSize"
+  | "parallel"
+  | "root"
+  | "llmModelsDir"
 >;
 
 export type OpenAiModel = Readonly<{
@@ -112,16 +123,18 @@ function project(kind: ModelKind, id: string, spec?: ModelSpec): OpenAiModel {
  * unconfigured modalities and empty ids. When `permissions` is given, models
  * the caller cannot invoke are omitted.
  */
-export function listServedModels(
+export async function listServedModels(
   config: ServedModelConfig,
   permissions?: readonly Permission[],
   options: Readonly<{
     enabled?: Partial<Record<ModelKind, boolean>>;
-    ctxSize?: number;
+    ctxSizeOverride?: number;
     parallel?: ParallelSlots;
     memoryGb?: number;
+    llmModelFile?: string;
+    kvGeometryForModel?: (id: string) => Promise<LlmKvGeometry | null>;
   }> = {},
-): OpenAiModel[] {
+): Promise<OpenAiModel[]> {
   const seen = new Set<string>();
   const data: OpenAiModel[] = [];
   for (const kind of kindOrder) {
@@ -133,22 +146,31 @@ export function listServedModels(
       if (permissions && !permissions.includes(permission)) continue;
       seen.add(id);
       let model = project(kind, id, spec);
-      if (kind === "llm" && spec?.contextWindowTokens && options.ctxSize) {
-        const launch = resolveLlmLaunchPlan({
+      if (kind === "llm" && spec?.contextWindowTokens) {
+        const modelFile =
+          options.llmModelFile ?? primaryArtifact(spec).filename;
+        const modelPath = join(config.llmModelsDir, modelFile);
+        const artifactBytes =
+          primaryArtifact(spec).expectedSizeBytes ??
+          (await Bun.file(modelPath)
+            .stat()
+            .then((file) => file.size)
+            .catch(() => 0));
+        const launch = resolveConfiguredLlmLaunchPlan({
           runtimeId: `models-list:${id}`,
-          root: ".",
-          modelsDirectory: ".",
+          root: config.root,
+          modelsDirectory: config.llmModelsDir,
           modelId: id,
-          modelFile: "",
+          modelFile,
           host: "127.0.0.1",
           port: 1,
-          ctxSize: options.ctxSize,
-          contextWindowTokens: spec.contextWindowTokens,
-          parallel: options.parallel ?? 1,
-          modelRequirementGb: spec.minVramGb,
-          artifactBytes: 0,
-          hardware: { memoryGb: options.memoryGb ?? 0 },
-          embedding: spec.llmRuntime,
+          model: spec,
+          configCtxSize: config.ctxSize,
+          ctxSizeOverride: options.ctxSizeOverride,
+          parallel: options.parallel ?? config.parallel ?? 1,
+          artifactBytes,
+          memoryGb: options.memoryGb ?? 0,
+          kvGeometry: await options.kvGeometryForModel?.(id),
         });
         model = { ...model, context_length: launch.parallel.contextPerSlot };
       }

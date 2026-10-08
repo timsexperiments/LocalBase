@@ -10,9 +10,11 @@ import {
 import type {
   EmbeddingLlmRuntimeProfile,
   ImageRuntimeProfile,
+  ModelSpec,
   VideoRuntimeProfile,
   VideoRuntimeTarget,
 } from "../../catalog";
+import { calculateMaxSafeContextSize } from "../../catalog";
 import {
   kvCacheBytes,
   type KvCacheType,
@@ -61,6 +63,63 @@ export const DEFAULT_LLM_KV_CACHE_TYPE: KvCacheType = "q8_0";
 export const LLAMA_PROMPT_CACHE_RAM_MIB = 2048;
 
 export type RuntimeHardware = { memoryGb: number };
+
+/** Context budget used by both runtime startup and the served-model listing. */
+export function configuredLlmContextSize(
+  model: ModelSpec | undefined,
+  configCtxSize: number,
+  memoryGb: number,
+  override?: number,
+): number {
+  if (override !== undefined) return override;
+  const recommended = model
+    ? calculateMaxSafeContextSize(model, memoryGb)
+    : memoryGb >= 32
+      ? 32768
+      : 8192;
+  return Math.min(recommended, configCtxSize);
+}
+
+/** Build a model launch plan from the same config and model inputs in every caller. */
+export function resolveConfiguredLlmLaunchPlan(input: {
+  runtimeId: string;
+  root: string;
+  modelsDirectory: string;
+  modelId: string;
+  modelFile: string;
+  host: string;
+  port: number;
+  model: ModelSpec | undefined;
+  configCtxSize: number;
+  ctxSizeOverride?: number;
+  parallel: ParallelSlots;
+  artifactBytes: number;
+  memoryGb: number;
+  kvGeometry?: LlmKvGeometry | null;
+}): LlmLaunchPlan {
+  return resolveLlmLaunchPlan({
+    runtimeId: input.runtimeId,
+    root: input.root,
+    modelsDirectory: input.modelsDirectory,
+    modelId: input.modelId,
+    modelFile: input.modelFile,
+    host: input.host,
+    port: input.port,
+    modelRequirementGb: input.model?.minVramGb,
+    ctxSize: configuredLlmContextSize(
+      input.model,
+      input.configCtxSize,
+      input.memoryGb,
+      input.ctxSizeOverride,
+    ),
+    contextWindowTokens: input.model?.contextWindowTokens,
+    parallel: input.parallel,
+    artifactBytes: input.artifactBytes,
+    hardware: { memoryGb: input.memoryGb },
+    embedding: input.model?.llmRuntime,
+    kvGeometry: input.kvGeometry,
+  });
+}
 
 type LaunchPlanBase<
   Modality extends RuntimeModality,

@@ -339,9 +339,12 @@ test(
       const servedModels = (await modelsResponse.json()) as {
         data: Array<{ id: string; context_length?: number }>;
       };
-      expect(servedModels.data.some(({ id }) => id === "stable-diffusion-v1-5")).toBe(false);
       expect(
-        servedModels.data.find(({ id }) => id === INITIAL_MODEL)?.context_length,
+        servedModels.data.some(({ id }) => id === "stable-diffusion-v1-5"),
+      ).toBe(false);
+      expect(
+        servedModels.data.find(({ id }) => id === INITIAL_MODEL)
+          ?.context_length,
       ).toBeLessThanOrEqual(8192);
 
       const configure = Bun.spawn(
