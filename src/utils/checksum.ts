@@ -1,8 +1,17 @@
 import { createReadStream, statSync } from "node:fs";
-import { rename, rm } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { setImmediate } from "node:timers/promises";
+import { setImmediate, setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
+import { processIsAbsent } from "./root";
 
 export const sha256Schema = z.string().regex(/^[a-fA-F0-9]{64}$/);
 export const safeFilenameSchema = z
@@ -148,11 +157,19 @@ function storeFilePath(dir: string): string {
 
 const storeLocks = new Map<string, Promise<void>>();
 
-/** Serializes store read-modify-write cycles per directory; a failed task does not poison later ones. */
+/** Serializes store read-modify-write cycles per directory, in-process and across processes; a failed task does not poison later ones. */
 async function withStoreLock<T>(dir: string, fn: () => Promise<T>): Promise<T> {
   const key = resolve(dir);
   const previous = storeLocks.get(key) ?? Promise.resolve();
-  const result = previous.then(fn);
+  const result = previous.then(async () => {
+    const owner = await acquireDirectoryLock(dir);
+    try {
+      await removeOrphanedTempFiles(dir);
+      return await fn();
+    } finally {
+      await releaseDirectoryLock(dir, owner);
+    }
+  });
   const tail = result.then(
     () => undefined,
     () => undefined,
@@ -162,6 +179,147 @@ async function withStoreLock<T>(dir: string, fn: () => Promise<T>): Promise<T> {
     return await result;
   } finally {
     if (storeLocks.get(key) === tail) storeLocks.delete(key);
+  }
+}
+
+const LOCK_NAME = ".checksums.json.lock";
+const LOCK_OWNER_NAME = "owner.json";
+const LOCK_STALE_MS = 30_000;
+const LOCK_DEADLINE_MS = 10_000;
+const TEMP_STALE_MS = 60_000;
+
+const lockOwnerSchema = z.object({
+  pid: z.number().int().positive(),
+  token: z.string().min(1),
+  acquiredAt: z.number().nonnegative(),
+});
+
+type LockOwner = z.infer<typeof lockOwnerSchema>;
+
+function errorCode(error: unknown): string | undefined {
+  return (error as NodeJS.ErrnoException | undefined)?.code;
+}
+
+async function readLockOwner(lockPath: string): Promise<LockOwner | null> {
+  try {
+    const parsed = lockOwnerSchema.safeParse(
+      JSON.parse(await readFile(join(lockPath, LOCK_OWNER_NAME), "utf8")),
+    );
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Breaks a dead or expired lock; returns after the attempt so the caller retries. */
+async function breakStaleLock(lockPath: string): Promise<void> {
+  const owner = await readLockOwner(lockPath);
+  let acquiredAt = owner?.acquiredAt;
+  if (acquiredAt === undefined) {
+    try {
+      acquiredAt = (await stat(lockPath)).mtimeMs;
+    } catch (error) {
+      if (errorCode(error) === "ENOENT") return;
+      throw error;
+    }
+  }
+  const expired = Date.now() - acquiredAt > LOCK_STALE_MS;
+  if (!expired && !(owner && processIsAbsent(owner.pid))) return;
+
+  const stale = `${lockPath}.${owner?.token ?? crypto.randomUUID()}.stale`;
+  try {
+    await rename(lockPath, stale);
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") return;
+    throw error;
+  }
+  // Another breaker may have replaced the lock between our read and rename.
+  const moved = await readLockOwner(stale);
+  if ((moved?.token ?? null) !== (owner?.token ?? null)) {
+    try {
+      await rename(stale, lockPath);
+      return;
+    } catch {
+      // A new lock already exists; fall through and discard the moved one.
+    }
+  }
+  await rm(stale, { recursive: true, force: true });
+}
+
+async function acquireDirectoryLock(dir: string): Promise<LockOwner> {
+  const lockPath = join(dir, LOCK_NAME);
+  const deadline = Date.now() + LOCK_DEADLINE_MS;
+  for (;;) {
+    try {
+      await mkdir(lockPath);
+      const owner: LockOwner = {
+        pid: process.pid,
+        token: crypto.randomUUID(),
+        acquiredAt: Date.now(),
+      };
+      try {
+        await writeFile(
+          join(lockPath, LOCK_OWNER_NAME),
+          JSON.stringify(owner),
+          { flag: "wx", mode: 0o600 },
+        );
+      } catch (error) {
+        await rm(lockPath, { recursive: true, force: true });
+        throw error;
+      }
+      return owner;
+    } catch (error) {
+      if (errorCode(error) !== "EEXIST") throw error;
+    }
+    await breakStaleLock(lockPath);
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Timed out waiting for the checksum store lock at ${lockPath}. ` +
+          `If no other LocalBase process is running, delete that directory and retry.`,
+      );
+    }
+    await sleep(10 + Math.floor(Math.random() * 40));
+  }
+}
+
+async function releaseDirectoryLock(
+  dir: string,
+  owner: LockOwner,
+): Promise<void> {
+  const lockPath = join(dir, LOCK_NAME);
+  const current = await readLockOwner(lockPath);
+  if (current?.token !== owner.token) return;
+  const released = `${lockPath}.${owner.token}.stale`;
+  try {
+    await rename(lockPath, released);
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") return;
+    throw error;
+  }
+  await rm(released, { recursive: true, force: true });
+}
+
+/** Removes temp files left by crashed or failed writers. Call only while holding the lock. */
+async function removeOrphanedTempFiles(dir: string): Promise<void> {
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const match = /^\.checksums\.json\.(.+)\.tmp$/.exec(name);
+    if (!match) continue;
+    const pid = Number(/^(\d+)\./.exec(match[1]!)?.[1]);
+    const path = join(dir, name);
+    try {
+      const old = Date.now() - (await stat(path)).mtimeMs > TEMP_STALE_MS;
+      const dead =
+        Number.isInteger(pid) && pid > 0 ? processIsAbsent(pid) : false;
+      if (old || dead) await rm(path, { force: true });
+    } catch {
+      // Best-effort cleanup; the file may have vanished or be unreadable.
+    }
   }
 }
 
@@ -204,8 +362,8 @@ export async function writeChecksumStore(
     dir,
     `.checksums.json.${process.pid}.${crypto.randomUUID()}.tmp`,
   );
-  await Bun.write(tempPath, JSON.stringify(parsed.data, null, 2));
   try {
+    await Bun.write(tempPath, JSON.stringify(parsed.data, null, 2));
     await rename(tempPath, storeFilePath(dir));
   } catch (error) {
     await rm(tempPath, { force: true });

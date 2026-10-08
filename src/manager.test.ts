@@ -9,6 +9,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:http";
@@ -1158,6 +1159,140 @@ describe.serial("checksum inputs and continuity cache", () => {
     expect(readdirSync(root).filter((name) => name.endsWith(".tmp"))).toEqual(
       [],
     );
+  });
+
+  test("merges verifications from separate processes without losing entries", async () => {
+    const root = createInstallConfig().root;
+    const scriptDir = mkdtempSync(join(tmpdir(), "localbase-checksum-child-"));
+    try {
+      const script = join(scriptDir, "child.ts");
+      writeFileSync(
+        script,
+        `import { verifyAuthoritativeFile } from ${JSON.stringify(
+          join(import.meta.dir, "utils", "checksum.ts"),
+        )};
+const [dir, prefix, count] = process.argv.slice(2);
+for (let i = 0; i < Number(count); i++) {
+  const filename = prefix + "-" + i + ".bin";
+  const content = filename;
+  await verifyAuthoritativeFile(
+    dir + "/" + filename,
+    {
+      filename,
+      expectedSizeBytes: new TextEncoder().encode(content).byteLength,
+      sha256: new Bun.CryptoHasher("sha256").update(content).digest("hex"),
+    },
+    dir,
+  );
+}
+`,
+      );
+      const count = 20;
+      const expected: string[] = [];
+      for (const prefix of ["a", "b"]) {
+        for (let i = 0; i < count; i++) {
+          const filename = `${prefix}-${i}.bin`;
+          writeFileSync(join(root, filename), filename);
+          expected.push(filename);
+        }
+      }
+      const children = ["a", "b"].map((prefix) =>
+        Bun.spawn([process.execPath, script, root, prefix, String(count)], {
+          stdout: "ignore",
+          stderr: "pipe",
+        }),
+      );
+      const results = await Promise.all(
+        children.map(async (child) => ({
+          code: await child.exited,
+          stderr: await new Response(child.stderr).text(),
+        })),
+      );
+      for (const result of results) {
+        expect(result.stderr).toBe("");
+        expect(result.code).toBe(0);
+      }
+      const store = await readChecksumStore(root);
+      expect(Object.keys(store.entries).sort()).toEqual(expected.sort());
+      expect(existsSync(join(root, ".checksums.json.lock"))).toBe(false);
+    } finally {
+      rmSync(scriptDir, { recursive: true, force: true });
+    }
+  });
+
+  async function verifyOne(root: string, filename = "model.bin") {
+    const content = "lock test model";
+    const file = join(root, filename);
+    writeFileSync(file, content);
+    return verifyAuthoritativeFile(
+      file,
+      {
+        filename,
+        expectedSizeBytes: textBytes(content).byteLength,
+        sha256: new Bun.CryptoHasher("sha256").update(content).digest("hex"),
+      },
+      root,
+    );
+  }
+
+  test("breaks a checksum store lock held by a dead process", async () => {
+    const root = createInstallConfig().root;
+    const lock = join(root, ".checksums.json.lock");
+    mkdirSync(lock);
+    writeFileSync(
+      join(lock, "owner.json"),
+      JSON.stringify({
+        pid: 2 ** 30,
+        token: crypto.randomUUID(),
+        acquiredAt: Date.now(),
+      }),
+    );
+    expect(await verifyOne(root)).toBe("sha256");
+    expect(existsSync(lock)).toBe(false);
+    expect(Object.keys((await readChecksumStore(root)).entries)).toEqual([
+      "model.bin",
+    ]);
+    expect(readdirSync(root).filter((name) => name.endsWith(".stale"))).toEqual(
+      [],
+    );
+  });
+
+  test("breaks an expired checksum store lock without a valid owner", async () => {
+    const root = createInstallConfig().root;
+    const lock = join(root, ".checksums.json.lock");
+    mkdirSync(lock);
+    writeFileSync(join(lock, "owner.json"), "{not json");
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lock, old, old);
+    expect(await verifyOne(root)).toBe("sha256");
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  test("removes the temporary file when writing the checksum store fails", async () => {
+    const root = createInstallConfig().root;
+    mkdirSync(join(root, ".checksums.json"));
+    await expect(
+      writeChecksumStore(root, { version: 1, entries: {} }),
+    ).rejects.toThrow();
+    await expect(verifyOne(root)).rejects.toThrow();
+    expect(readdirSync(root).filter((name) => name.endsWith(".tmp"))).toEqual(
+      [],
+    );
+    expect(existsSync(join(root, ".checksums.json.lock"))).toBe(false);
+  });
+
+  test("removes orphaned checksum store temp files while writing", async () => {
+    const root = createInstallConfig().root;
+    const orphan = join(
+      root,
+      `.checksums.json.999999999.${crypto.randomUUID()}.tmp`,
+    );
+    const unparsable = join(root, ".checksums.json.weird.tmp");
+    writeFileSync(orphan, "partial");
+    writeFileSync(unparsable, "recent");
+    await verifyOne(root);
+    expect(existsSync(orphan)).toBe(false);
+    expect(existsSync(unparsable)).toBe(true);
   });
 });
 
