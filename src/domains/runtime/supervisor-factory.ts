@@ -829,7 +829,10 @@ export function createRuntimeSupervisorFactory(
         if (spec?.imageRuntime) {
           modelFile = primaryArtifact(spec).filename;
         } else if (!modelFile) {
-          modelFile = await configuredModelFile(config, modelId, modality);
+          // A missing catalog artifact is admitted on its catalog demand.
+          modelFile =
+            (await configuredModelFile(config, modelId, modality)) ||
+            (spec ? primaryArtifact(spec).filename : undefined);
           if (!modelFile) return undefined;
         }
         const plan = resolveImageLaunchPlan({

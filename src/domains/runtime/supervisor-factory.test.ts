@@ -170,6 +170,7 @@ test("preflights catalog capacity demand when LLM artifacts are missing", async 
 test.each([
   ["stt", "whisper-large-v3-turbo"],
   ["image", "flux1-schnell-q4_0"],
+  ["image", "sdxl-base-1.0"],
   ["video", "wan2.1-t2v-1.3b-q8_0"],
 ] as const)(
   "preflights catalog capacity demand for missing %s artifacts",
