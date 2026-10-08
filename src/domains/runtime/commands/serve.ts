@@ -150,6 +150,8 @@ export function httpBaseUrl(host: string, port: number): string {
 }
 
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
+// Job owner when gateway auth is disabled and requests carry no principal.
+const LOCAL_VIDEO_OWNER_ID = "anonymous:local";
 
 type GatewayRequestAuth = Readonly<{
   resolve(config: LocalBaseConfig): Principal;
@@ -2795,7 +2797,8 @@ export async function runServe(
     if (requestExceedsSizeLimit(request)) return payloadTooLarge();
 
     if (
-      authorization.kind === "authorized" &&
+      (authorization.kind === "authorized" ||
+        (authorization.kind === "public" && request.method !== "OPTIONS")) &&
       (route === "videoCreate" ||
         route === "videoStatus" ||
         route === "videoContent" ||
@@ -2805,7 +2808,10 @@ export async function runServe(
         request,
         pathname,
         route,
-        ownerId: principalOwnerId(authorization.principal),
+        ownerId:
+          authorization.kind === "authorized"
+            ? principalOwnerId(authorization.principal)
+            : LOCAL_VIDEO_OWNER_ID,
         jobs: videoJobs,
         createEnabled: currentConfig.selectedVideoModels.length > 0,
         admissionProvider: {

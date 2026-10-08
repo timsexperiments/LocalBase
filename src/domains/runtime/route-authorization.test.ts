@@ -86,31 +86,31 @@ const protectedRoutes: {
     path: "/v1/videos",
     method: "POST",
     permission: "inference:video",
-    alwaysRequired: true,
+    alwaysRequired: false,
   },
   {
     path: job,
     method: "GET",
     permission: "inference:video",
-    alwaysRequired: true,
+    alwaysRequired: false,
   },
   {
     path: job,
     method: "DELETE",
     permission: "inference:video",
-    alwaysRequired: true,
+    alwaysRequired: false,
   },
   {
     path: `${job}/content`,
     method: "GET",
     permission: "inference:video",
-    alwaysRequired: true,
+    alwaysRequired: false,
   },
   {
     path: `${job}/cancel`,
     method: "POST",
     permission: "inference:video",
-    alwaysRequired: true,
+    alwaysRequired: false,
   },
 ];
 
