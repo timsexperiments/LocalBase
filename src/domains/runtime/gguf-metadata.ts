@@ -492,8 +492,8 @@ export function kvGeometryFromMetadata(
     bounded(get("attention.key_length"), MAX_HEAD_LENGTH) ?? fallbackLength;
   const declaredValueLength =
     bounded(get("attention.value_length"), MAX_HEAD_LENGTH) ??
-    keyLength ??
-    fallbackLength;
+    fallbackLength ??
+    keyLength;
   if (!keyLength || !declaredValueLength || keyLength > MAX_HEAD_LENGTH) {
     return null;
   }

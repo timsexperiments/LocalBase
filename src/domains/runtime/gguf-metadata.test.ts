@@ -143,6 +143,20 @@ describe("readLlmKvGeometry", () => {
     });
   });
 
+  test("defaults value length independently of an explicit key length", async () => {
+    const path = write(
+      "value-fallback.gguf",
+      base("llama", [
+        { key: "llama.embedding_length", type: "u32", value: 5120 },
+        { key: "llama.attention.key_length", type: "u32", value: 128 },
+      ]),
+    );
+    expect(await readLlmKvGeometry(path)).toMatchObject({
+      keyLength: 128,
+      valueLength: 160,
+    });
+  });
+
   test("handles per-layer KV head arrays with zero-head layers", async () => {
     const heads = Array.from({ length: 40 }, (_, i) => (i % 2 ? 0 : 4));
     const path = write(
