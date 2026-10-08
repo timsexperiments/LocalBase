@@ -245,7 +245,12 @@ export function resolveLlmLaunchPlan(input: {
     input.contextWindowTokens ?? input.ctxSize,
   );
   const kvGeometry = input.kvGeometry ?? null;
-  const kvType = input.embedding ? "f16" : DEFAULT_LLM_KV_CACHE_TYPE;
+  // q8_0 needs every head dim to be a multiple of 32; unknown geometry or a
+  // misfit falls back to f16 so llama.cpp does not refuse to start.
+  const kvType =
+    input.embedding || !kvGeometry?.q8Compatible
+      ? "f16"
+      : DEFAULT_LLM_KV_CACHE_TYPE;
   const kvCache = Object.freeze({ typeK: kvType, typeV: kvType });
   const promptCacheRamMib = input.embedding ? 0 : LLAMA_PROMPT_CACHE_RAM_MIB;
   const parallel = allocateParallelSlots({

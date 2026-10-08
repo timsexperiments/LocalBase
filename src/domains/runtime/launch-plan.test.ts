@@ -307,6 +307,10 @@ describe("runtime launch plans", () => {
       slidingWindow: null,
       keyLength: 128,
       valueLength: 128,
+      swaKeyLength: 128,
+      swaValueLength: 128,
+      q8Compatible: true,
+      recurrentBytesPerSlot: 0,
       contextLength: null,
     };
     const input = {
@@ -334,6 +338,28 @@ describe("runtime launch plans", () => {
       expect(plan.memoryDemand.hostBytes).toBe(
         14 * 1024 ** 3 + 0.5 * 1024 ** 3 + kv + 2048 * 1024 ** 2,
       );
+    });
+
+    test("falls back to f16 when head dims are not divisible by 32", () => {
+      const odd = { ...mistral, keyLength: 80, q8Compatible: false };
+      const plan = resolveLlmLaunchPlan({ ...input, kvGeometry: odd });
+      expect(plan.kvCache).toEqual({ typeK: "f16", typeV: "f16" });
+      const kv = kvCacheBytes(odd, {
+        ctxTokens: 32768,
+        slots: 1,
+        cacheTypeK: "f16",
+        cacheTypeV: "f16",
+      });
+      expect(plan.memoryDemand.acceleratorBytes).toBe(
+        14 * 1024 ** 3 + kv + 0.5 * 1024 ** 3,
+      );
+    });
+
+    test("uses f16 when geometry is unknown", () => {
+      expect(resolveLlmLaunchPlan(input).kvCache).toEqual({
+        typeK: "f16",
+        typeV: "f16",
+      });
     });
 
     test("falls back to the flat estimate without geometry", () => {
@@ -369,6 +395,10 @@ describe("runtime launch plans", () => {
         slidingWindow: 1024,
         keyLength: 256,
         valueLength: 256,
+        swaKeyLength: 256,
+        swaValueLength: 256,
+        q8Compatible: true,
+        recurrentBytesPerSlot: 0,
         contextLength: 131072,
       };
       const gemmaInput = {
