@@ -1,6 +1,7 @@
 import { kvCacheBytes } from "./gguf-metadata";
 import { describe, expect, test } from "bun:test";
 import {
+  backendBindHost,
   resolveImageLaunchPlan,
   resolveLlmLaunchPlan,
   resolveSttLaunchPlan,
@@ -529,4 +530,62 @@ test("supervisor registry reports configured state and shuts down each superviso
   ).toEqual({ kind: "unknown" });
   await registry.shutdown();
   expect(shutdowns).toBe(2);
+});
+
+describe("backend bind host", () => {
+  test.each(["0.0.0.0", "::", "[::]", "", "*"])(
+    "normalizes wildcard %p to loopback",
+    (host) => {
+      expect(backendBindHost(host)).toBe("127.0.0.1");
+    },
+  );
+
+  test("keeps explicit specific hosts", () => {
+    expect(backendBindHost("127.0.0.1")).toBe("127.0.0.1");
+    expect(backendBindHost("::1")).toBe("::1");
+  });
+
+  test.each(["0.0.0.0", "::", "192.168.1.20"].map((h) => [h]))(
+    "llm, stt and image plans never bind or connect via wildcard host %p",
+    (host) => {
+      const base = {
+        root,
+        modelId: "model",
+        host,
+        modelRequirementGb: 1,
+        artifactBytes: 1024 ** 3,
+      };
+      const expected = host === "192.168.1.20" ? host : "127.0.0.1";
+      const plans = [
+        resolveLlmLaunchPlan({
+          ...base,
+          runtimeId: "llm:1",
+          modelsDirectory: `${root}/models/llm`,
+          modelFile: "model.gguf",
+          port: 8080,
+          ctxSize: 8192,
+          parallel: "auto",
+          hardware: { memoryGb: 16 },
+        }),
+        resolveSttLaunchPlan({
+          ...base,
+          runtimeId: "stt:1",
+          modelsDirectory: `${root}/models/stt`,
+          modelFile: "model.bin",
+          port: 8081,
+        }),
+        resolveImageLaunchPlan({
+          ...base,
+          runtimeId: "image:1",
+          modelsDirectory: `${root}/models/image`,
+          modelFile: "model.safetensors",
+          port: 8082,
+        }),
+      ];
+      for (const plan of plans) {
+        expect(plan.host).toBe(expected);
+        expect(plan.healthUrl.startsWith(`http://${expected}:`)).toBe(true);
+      }
+    },
+  );
 });

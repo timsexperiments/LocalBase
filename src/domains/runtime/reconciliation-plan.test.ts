@@ -119,7 +119,7 @@ test.each([
   {
     field: "host",
     update: (config: ReturnType<typeof defaultConfig>) => {
-      config.host = "127.0.0.1";
+      config.host = "127.0.0.2";
     },
   },
   {
@@ -159,7 +159,7 @@ test.each([
     modality: "stt" as const,
     field: "sttHost",
     update: (config: ReturnType<typeof defaultConfig>) => {
-      config.sttHost = "127.0.0.1";
+      config.sttHost = "127.0.0.2";
     },
   },
   {
@@ -337,10 +337,10 @@ test.each([
 test("respects serve-time ownership for launch settings", () => {
   const plan = planFor(
     (config) => {
-      config.host = "127.0.0.1";
+      config.host = "127.0.0.2";
       config.port = 18001;
       config.ctxSize = 8192;
-      config.sttHost = "127.0.0.1";
+      config.sttHost = "127.0.0.2";
       config.sttPort = 18081;
     },
     {

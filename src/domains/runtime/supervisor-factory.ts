@@ -19,6 +19,7 @@ import type { ServeInput } from "../app/commands/inputs";
 import type { RuntimeConfigSnapshot } from "./config-snapshot";
 import { readLlmKvGeometry } from "./gguf-metadata";
 import {
+  backendBindHost,
   resolveImageLaunchPlan,
   resolveLlmLaunchPlan,
   resolveSttLaunchPlan,
@@ -81,7 +82,7 @@ function llmHost(
   config: RuntimeConfigSnapshot["config"],
   overrides: RuntimeLaunchOverrides,
 ): string {
-  return overrides.llmHost ?? config.host;
+  return backendBindHost(overrides.llmHost ?? config.host);
 }
 
 function llmPort(
@@ -95,7 +96,7 @@ function sttHost(
   config: RuntimeConfigSnapshot["config"],
   overrides: RuntimeLaunchOverrides,
 ): string {
-  return overrides.sttHost ?? config.sttHost;
+  return backendBindHost(overrides.sttHost ?? config.sttHost);
 }
 
 function sttPort(
@@ -106,7 +107,7 @@ function sttPort(
 }
 
 function imageHost(overrides: RuntimeLaunchOverrides): string {
-  return overrides.imageHost ?? "127.0.0.1";
+  return backendBindHost(overrides.imageHost ?? "127.0.0.1");
 }
 
 function imagePort(overrides: RuntimeLaunchOverrides): number {
@@ -114,7 +115,7 @@ function imagePort(overrides: RuntimeLaunchOverrides): number {
 }
 
 function videoHost(overrides: RuntimeLaunchOverrides): string {
-  return overrides.videoHost ?? "127.0.0.1";
+  return backendBindHost(overrides.videoHost ?? "127.0.0.1");
 }
 
 function videoPort(overrides: RuntimeLaunchOverrides): number {

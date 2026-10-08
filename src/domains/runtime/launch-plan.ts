@@ -20,6 +20,26 @@ import {
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
 
+const LOOPBACK_HOST = "127.0.0.1";
+const WILDCARD_HOSTS = new Set(["", "*", "0.0.0.0", "::", "[::]", "0:0:0:0:0:0:0:0"]);
+
+/**
+ * Supervised backends (llama/whisper/sd servers) have no auth of their own, so
+ * they must never listen on every interface. Wildcard hosts, including the old
+ * persisted `0.0.0.0` default, are normalized to loopback. Wildcards are also
+ * invalid connect targets, so the same value is used for gateway-to-backend
+ * requests. Specific hosts (for example from explicit overrides) pass through.
+ */
+export function backendBindHost(host: string): string {
+  const trimmed = host.trim();
+  return WILDCARD_HOSTS.has(trimmed.toLowerCase()) ? LOOPBACK_HOST : trimmed;
+}
+
+function urlHost(host: string): string {
+  const bound = backendBindHost(host);
+  return bound.includes(":") && !bound.startsWith("[") ? `[${bound}]` : bound;
+}
+
 const RUNTIME_HOST_OVERHEAD_BYTES = 512 * 1024 * 1024;
 
 /** KV cache type for chat models; the estimate and llama-server argv share it. */
@@ -278,9 +298,9 @@ export function resolveLlmLaunchPlan(input: {
     modelId: input.modelId,
     modelFile: input.modelFile,
     modelPath: join(input.modelsDirectory, input.modelFile),
-    host: input.host,
+    host: backendBindHost(input.host),
     port: input.port,
-    healthUrl: `http://${input.host}:${input.port}/health`,
+    healthUrl: `http://${urlHost(input.host)}:${input.port}/health`,
     ctxSize,
     parallel: Object.freeze({ ...parallel }),
     modelRequirementGb: input.modelRequirementGb,
@@ -319,9 +339,9 @@ export function resolveSttLaunchPlan(input: {
     modelId: input.modelId,
     modelFile: input.modelFile,
     modelPath: join(input.modelsDirectory, input.modelFile),
-    host: input.host,
+    host: backendBindHost(input.host),
     port: input.port,
-    healthUrl: `http://${input.host}:${input.port}/health`,
+    healthUrl: `http://${urlHost(input.host)}:${input.port}/health`,
     memoryDemand: runtimeMemoryDemand(input),
   });
 }
@@ -350,9 +370,9 @@ export function resolveImageLaunchPlan(input: {
     modelId: input.modelId,
     modelFile: input.modelFile,
     modelPath: join(input.modelsDirectory, input.modelFile),
-    host: input.host,
+    host: backendBindHost(input.host),
     port: input.port,
-    healthUrl: `http://${input.host}:${input.port}/`,
+    healthUrl: `http://${urlHost(input.host)}:${input.port}/`,
     memoryDemand: imageMemoryDemand(input),
     ...(imageRuntime ? { imageRuntime } : {}),
   });
@@ -441,9 +461,9 @@ export function resolveVideoLaunchPlan(input: {
     }),
     generation: Object.freeze({ ...qualification.generation }),
     launchOptions: Object.freeze({ ...qualification.launchOptions }),
-    host: input.host,
+    host: backendBindHost(input.host),
     port: input.port,
-    healthUrl: `http://${input.host}:${input.port}/`,
+    healthUrl: `http://${urlHost(input.host)}:${input.port}/`,
     memoryDemand,
   } satisfies VideoLaunchPlanBase;
   return input.videoRuntime.mode === "s2v"
