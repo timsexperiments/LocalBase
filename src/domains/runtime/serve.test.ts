@@ -78,7 +78,7 @@ async function expectGatewayListenerHost(
   gateway: GatewayFixture,
   expectedHost: string,
 ): Promise<void> {
-  expect(gateway.readConfig().host).toBe("0.0.0.0");
+  expect(gateway.readConfig().host).toBe("127.0.0.1");
   expect(new URL(gateway.baseUrl).hostname).toBe(expectedHost);
   expect((await fetch(`${gateway.baseUrl}/health`)).status).toBe(200);
 

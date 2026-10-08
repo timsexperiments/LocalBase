@@ -1,11 +1,14 @@
 import { kvCacheBytes } from "./gguf-metadata";
 import { describe, expect, test } from "bun:test";
 import {
+  backendBindHost,
   resolveImageLaunchPlan,
   resolveLlmLaunchPlan,
   resolveSttLaunchPlan,
   resolveVideoLaunchPlan,
 } from "./launch-plan";
+import { buildLlamaServerArgs } from "./launcher";
+import { runtimeEndpoint } from "./supervisor-factory";
 import { SupervisorRegistry } from "./supervisor-registry";
 
 const root = "/tmp/local-base";
@@ -529,4 +532,136 @@ test("supervisor registry reports configured state and shuts down each superviso
   ).toEqual({ kind: "unknown" });
   await registry.shutdown();
   expect(shutdowns).toBe(2);
+});
+
+describe("backend bind host", () => {
+  test.each([
+    ["127.0.0.1", "127.0.0.1"],
+    ["127.12.34.56", "127.12.34.56"],
+    ["::1", "::1"],
+    ["[::1]", "::1"],
+    ["::1%lo0", "::1"],
+    ["[::1%anything]", "::1"],
+    ["localhost", "localhost"],
+    ["LOCALHOST.", "LOCALHOST."],
+    ["0.0.0.0", "127.0.0.1"],
+    ["::", "127.0.0.1"],
+    ["*", "127.0.0.1"],
+    ["192.168.1.20", "127.0.0.1"],
+    ["10.0.0.1", "127.0.0.1"],
+    ["2001:db8::1", "127.0.0.1"],
+    ["fe80::1%lo0", "127.0.0.1"],
+    ["::ffff:192.168.1.20", "127.0.0.1"],
+    ["example.com", "127.0.0.1"],
+    ["0.0.0.0.nip.io", "127.0.0.1"],
+    ["::invalid-address", "127.0.0.1"],
+    ["", "127.0.0.1"],
+  ])("normalizes %p to %p with consistent parseable URLs", (host, expected) => {
+    const normalized = backendBindHost(host);
+    const plan = resolveLlmLaunchPlan({
+      root,
+      modelId: "model",
+      host,
+      modelRequirementGb: 1,
+      artifactBytes: 1024 ** 3,
+      runtimeId: "llm:1",
+      modelsDirectory: `${root}/models/llm`,
+      modelFile: "model.gguf",
+      port: 8080,
+      ctxSize: 8192,
+      parallel: "auto",
+      hardware: { memoryGb: 16 },
+    });
+    const proxyUrl = runtimeEndpoint(host, 8080);
+    const launch = buildLlamaServerArgs(plan);
+
+    expect(normalized).toBe(expected);
+    expect(plan.host).toBe(expected);
+    expect(new URL(plan.healthUrl).hostname).toBe(
+      expected.includes(":") ? `[${expected}]` : expected.toLowerCase(),
+    );
+    expect(new URL(proxyUrl).hostname).toBe(
+      expected.includes(":") ? `[${expected}]` : expected.toLowerCase(),
+    );
+    expect(
+      launch.args.slice(
+        launch.args.indexOf("--host"),
+        launch.args.indexOf("--host") + 2,
+      ),
+    ).toEqual(["--host", expected]);
+  });
+
+  test("normalizes hostname consistently for launch args, health, and proxy URL", () => {
+    const host = "0.0.0.0.nip.io";
+    const plan = resolveLlmLaunchPlan({
+      root,
+      modelId: "model",
+      host,
+      modelRequirementGb: 1,
+      artifactBytes: 1024 ** 3,
+      runtimeId: "llm:1",
+      modelsDirectory: `${root}/models/llm`,
+      modelFile: "model.gguf",
+      port: 8080,
+      ctxSize: 8192,
+      parallel: "auto",
+      hardware: { memoryGb: 16 },
+    });
+    const launch = buildLlamaServerArgs(plan);
+
+    expect(plan.host).toBe("127.0.0.1");
+    expect(plan.healthUrl).toBe("http://127.0.0.1:8080/health");
+    expect(
+      launch.args.slice(
+        launch.args.indexOf("--host"),
+        launch.args.indexOf("--host") + 2,
+      ),
+    ).toEqual(["--host", "127.0.0.1"]);
+    expect(runtimeEndpoint(host, 8080)).toBe("http://127.0.0.1:8080");
+  });
+
+  test.each(["0.0.0.0", "::", "192.168.1.20"].map((h) => [h]))(
+    "llm, stt and image plans never bind or connect via wildcard host %p",
+    (host) => {
+      const base = {
+        root,
+        modelId: "model",
+        host,
+        modelRequirementGb: 1,
+        artifactBytes: 1024 ** 3,
+      };
+      const expected = "127.0.0.1";
+      const plans = [
+        resolveLlmLaunchPlan({
+          ...base,
+          runtimeId: "llm:1",
+          modelsDirectory: `${root}/models/llm`,
+          modelFile: "model.gguf",
+          port: 8080,
+          ctxSize: 8192,
+          parallel: "auto",
+          hardware: { memoryGb: 16 },
+        }),
+        resolveSttLaunchPlan({
+          ...base,
+          runtimeId: "stt:1",
+          modelsDirectory: `${root}/models/stt`,
+          modelFile: "model.bin",
+          port: 8081,
+        }),
+        resolveImageLaunchPlan({
+          ...base,
+          runtimeId: "image:1",
+          modelsDirectory: `${root}/models/image`,
+          modelFile: "model.safetensors",
+          port: 8082,
+        }),
+      ];
+      for (const plan of plans) {
+        expect(plan.host).toBe(expected);
+        expect(plan.healthUrl.startsWith(`http://${expected}:`)).toBe(true);
+        expect(() => new URL(plan.healthUrl)).not.toThrow();
+      }
+    },
+  );
 });

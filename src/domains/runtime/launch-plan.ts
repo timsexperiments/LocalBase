@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { join } from "node:path";
 import {
   allocateParallelSlots,
@@ -19,6 +20,37 @@ import {
 } from "./gguf-metadata";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
+
+const LOOPBACK_HOST = "127.0.0.1";
+
+/**
+ * Supervised backends (llama/whisper/sd servers) have no auth of their own, so
+ * they must never listen on every interface. Wildcard hosts, including the old
+ * persisted `0.0.0.0` default, are normalized to loopback. Wildcards are also
+ * invalid connect targets, so the same value is used for gateway-to-backend
+ * requests. Only IPv4 loopback, IPv6 loopback, and localhost pass through;
+ * every other address and hostname falls back to loopback.
+ */
+export function backendBindHost(host: string): string {
+  const trimmed = host.trim();
+  if (/^localhost\.?$/i.test(trimmed)) return trimmed;
+
+  const address =
+    trimmed.startsWith("[") && trimmed.endsWith("]")
+      ? trimmed.slice(1, -1)
+      : trimmed;
+  const unscopedAddress = address.split("%", 1)[0] ?? "";
+  if (unscopedAddress.toLowerCase() === "::1") return "::1";
+  if (isIP(unscopedAddress) === 4 && unscopedAddress.startsWith("127.")) {
+    return unscopedAddress;
+  }
+  return LOOPBACK_HOST;
+}
+
+function urlHost(host: string): string {
+  const bound = backendBindHost(host);
+  return bound.includes(":") && !bound.startsWith("[") ? `[${bound}]` : bound;
+}
 
 const RUNTIME_HOST_OVERHEAD_BYTES = 512 * 1024 * 1024;
 
@@ -278,9 +310,9 @@ export function resolveLlmLaunchPlan(input: {
     modelId: input.modelId,
     modelFile: input.modelFile,
     modelPath: join(input.modelsDirectory, input.modelFile),
-    host: input.host,
+    host: backendBindHost(input.host),
     port: input.port,
-    healthUrl: `http://${input.host}:${input.port}/health`,
+    healthUrl: `http://${urlHost(input.host)}:${input.port}/health`,
     ctxSize,
     parallel: Object.freeze({ ...parallel }),
     modelRequirementGb: input.modelRequirementGb,
@@ -319,9 +351,9 @@ export function resolveSttLaunchPlan(input: {
     modelId: input.modelId,
     modelFile: input.modelFile,
     modelPath: join(input.modelsDirectory, input.modelFile),
-    host: input.host,
+    host: backendBindHost(input.host),
     port: input.port,
-    healthUrl: `http://${input.host}:${input.port}/health`,
+    healthUrl: `http://${urlHost(input.host)}:${input.port}/health`,
     memoryDemand: runtimeMemoryDemand(input),
   });
 }
@@ -350,9 +382,9 @@ export function resolveImageLaunchPlan(input: {
     modelId: input.modelId,
     modelFile: input.modelFile,
     modelPath: join(input.modelsDirectory, input.modelFile),
-    host: input.host,
+    host: backendBindHost(input.host),
     port: input.port,
-    healthUrl: `http://${input.host}:${input.port}/`,
+    healthUrl: `http://${urlHost(input.host)}:${input.port}/`,
     memoryDemand: imageMemoryDemand(input),
     ...(imageRuntime ? { imageRuntime } : {}),
   });
@@ -441,9 +473,9 @@ export function resolveVideoLaunchPlan(input: {
     }),
     generation: Object.freeze({ ...qualification.generation }),
     launchOptions: Object.freeze({ ...qualification.launchOptions }),
-    host: input.host,
+    host: backendBindHost(input.host),
     port: input.port,
-    healthUrl: `http://${input.host}:${input.port}/`,
+    healthUrl: `http://${urlHost(input.host)}:${input.port}/`,
     memoryDemand,
   } satisfies VideoLaunchPlanBase;
   return input.videoRuntime.mode === "s2v"

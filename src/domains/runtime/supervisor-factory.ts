@@ -19,6 +19,7 @@ import type { ServeInput } from "../app/commands/inputs";
 import type { RuntimeConfigSnapshot } from "./config-snapshot";
 import { readLlmKvGeometry } from "./gguf-metadata";
 import {
+  backendBindHost,
   resolveImageLaunchPlan,
   resolveLlmLaunchPlan,
   resolveSttLaunchPlan,
@@ -71,9 +72,12 @@ export type RuntimeSupervisorFactoryDependencies = Readonly<{
   memorySafety: MemorySafetyController;
 }>;
 
-function endpoint(host: string, port: number): string {
+export function runtimeEndpoint(host: string, port: number): string {
+  const safeHost = backendBindHost(host);
   const urlHost =
-    host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+    safeHost.includes(":") && !safeHost.startsWith("[")
+      ? `[${safeHost}]`
+      : safeHost;
   return `http://${urlHost}:${port}`;
 }
 
@@ -81,7 +85,7 @@ function llmHost(
   config: RuntimeConfigSnapshot["config"],
   overrides: RuntimeLaunchOverrides,
 ): string {
-  return overrides.llmHost ?? config.host;
+  return backendBindHost(overrides.llmHost ?? config.host);
 }
 
 function llmPort(
@@ -95,7 +99,7 @@ function sttHost(
   config: RuntimeConfigSnapshot["config"],
   overrides: RuntimeLaunchOverrides,
 ): string {
-  return overrides.sttHost ?? config.sttHost;
+  return backendBindHost(overrides.sttHost ?? config.sttHost);
 }
 
 function sttPort(
@@ -106,7 +110,7 @@ function sttPort(
 }
 
 function imageHost(overrides: RuntimeLaunchOverrides): string {
-  return overrides.imageHost ?? "127.0.0.1";
+  return backendBindHost(overrides.imageHost ?? "127.0.0.1");
 }
 
 function imagePort(overrides: RuntimeLaunchOverrides): number {
@@ -114,7 +118,7 @@ function imagePort(overrides: RuntimeLaunchOverrides): number {
 }
 
 function videoHost(overrides: RuntimeLaunchOverrides): string {
-  return overrides.videoHost ?? "127.0.0.1";
+  return backendBindHost(overrides.videoHost ?? "127.0.0.1");
 }
 
 function videoPort(overrides: RuntimeLaunchOverrides): number {
@@ -353,20 +357,20 @@ export function createRuntimeSupervisorFactory(
     snapshot: RuntimeConfigSnapshot,
   ): string => {
     if (modality === "llm") {
-      return endpoint(
+      return runtimeEndpoint(
         llmHost(snapshot.config, overrides),
         llmPort(snapshot.config, overrides),
       );
     }
     if (modality === "stt") {
-      return endpoint(
+      return runtimeEndpoint(
         sttHost(snapshot.config, overrides),
         sttPort(snapshot.config, overrides),
       );
     }
     return modality === "image"
-      ? endpoint(imageHost(overrides), imagePort(overrides))
-      : endpoint(videoHost(overrides), videoPort(overrides));
+      ? runtimeEndpoint(imageHost(overrides), imagePort(overrides))
+      : runtimeEndpoint(videoHost(overrides), videoPort(overrides));
   };
 
   const create = (
