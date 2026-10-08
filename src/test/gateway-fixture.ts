@@ -1,6 +1,11 @@
 import { persistConfiguration } from "../domains/config/declarative";
 import { mkdirSync, mkdtempSync, rmSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { afterAll } from "bun:test";
+import {
+  assertNoProcessesMatching,
+  reapProcessesMatching,
+} from "./process-cleanup";
 import { dirname, join } from "node:path";
 import { byId, primaryArtifact } from "../catalog";
 import {
@@ -138,7 +143,9 @@ export async function writeCompleteCatalogArtifacts(
 ): Promise<string[]> {
   const model = byId(modelId);
   if (!model) throw new Error(`Unknown catalog model: ${modelId}`);
-  return await Promise.all(
+  // Settle every write before failing so a late sibling cannot recreate a
+  // directory the caller has already cleaned up.
+  const results = await Promise.allSettled(
     model.artifacts.map(async (artifact) => {
       if (artifact.expectedSizeBytes === undefined) {
         throw new Error(
@@ -150,6 +157,13 @@ export async function writeCompleteCatalogArtifacts(
       truncateSync(path, artifact.expectedSizeBytes);
       return path;
     }),
+  );
+  const failed = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (failed) throw failed.reason;
+  return results.map(
+    (result) => (result as PromiseFulfilledResult<string>).value,
   );
 }
 
@@ -1678,10 +1692,33 @@ async function waitForReady(
   );
 }
 
+// Fixtures not stopped by their test (failure, timeout) are reaped when the
+// importing test file finishes, then asserted gone.
+const liveFixtureRoots = new Set<string>();
+export function registerGatewayFixtureCleanup(): void {
+  afterAll(reapLiveFixtures);
+}
+
+async function reapLiveFixtures(): Promise<void> {
+  const roots = [...liveFixtureRoots];
+  liveFixtureRoots.clear();
+  for (const root of roots) {
+    await reapProcessesMatching(root);
+    rmSync(root, { recursive: true, force: true });
+  }
+  for (const root of roots) await assertNoProcessesMatching(root);
+}
+
+function reapedDuringStartup(): Error {
+  return new Error("Gateway fixture was reaped before startup finished.");
+}
+
 export async function startGatewayFixture(
   options: GatewayFixtureOptions = {},
 ): Promise<GatewayFixture> {
   const root = mkdtempSync(join(tmpdir(), "localbase-gateway-"));
+  // Register at once so afterAll can reap a fixture that times out mid-start.
+  liveFixtureRoots.add(root);
   const runtimeDir = join(root, "test-runtimes");
   const cliPath = join(root, "local-base");
   const llmLaunchesPath = join(root, "llama-launches.jsonl");
@@ -1691,7 +1728,10 @@ export async function startGatewayFixture(
   const imageLaunchesPath = join(root, "sd-launches.jsonl");
   const llmFailureMarkerPath = join(root, "llama-runtime-failure");
   const llmRuntimePidPath = join(root, "llama-runtime.pid");
-  const cleanup = () => rmSync(root, { recursive: true, force: true });
+  const cleanup = () => {
+    rmSync(root, { recursive: true, force: true });
+    liveFixtureRoots.delete(root);
+  };
   const upstreamRequests: UpstreamRequest[] = [];
   const controlledStreams = new Map<string, ControlledStream>();
   const controlledHeaderWaits = new Map<string, ControlledHeaderWait>();
@@ -1765,7 +1805,9 @@ export async function startGatewayFixture(
     mkdirSync(config.videoModelsDir, { recursive: true });
     mkdirSync(join(config.root, "bin"), { recursive: true });
     mkdirSync(runtimeDir, { recursive: true });
-    await Promise.all([
+    // Settle every step before failing so no sibling recreates the root after
+    // cleanup deletes it.
+    const setup = await Promise.allSettled([
       writeCompleteCatalogArtifact(config.llmModelsDir, LLM_MODEL),
       ...(options.ttsEnabled || options.ttsInstalled
         ? [
@@ -1828,6 +1870,11 @@ export async function startGatewayFixture(
       }),
       compileGatewayCli(cliPath),
     ]);
+    const failed = setup.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failed) throw failed.reason;
+    if (!liveFixtureRoots.has(root)) throw reapedDuringStartup();
   } catch (error) {
     llmUpstream.server.stop(true);
     sttUpstream.server.stop(true);
@@ -1843,6 +1890,12 @@ export async function startGatewayFixture(
   let baseUrl = "";
   let lastError: unknown;
   for (let attempt = 0; attempt < MAX_START_ATTEMPTS; attempt++) {
+    // The afterAll reaper may have deleted the root during setup or a failed
+    // attempt; never launch into (and so recreate) a reaped root.
+    if (!liveFixtureRoots.has(root)) {
+      lastError = reapedDuringStartup();
+      break;
+    }
     const port = reservePort();
     const gatewayProcess = Bun.spawn(
       [
@@ -2065,6 +2118,7 @@ export async function startGatewayFixture(
     },
     stop: async (stopOptions) => {
       await stopProcess(serverProcess);
+      await reapProcessesMatching(root);
       await Promise.all([stdout, stderr]);
       llmUpstream.server.stop(true);
       sttUpstream.server.stop(true);

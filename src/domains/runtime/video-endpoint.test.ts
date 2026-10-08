@@ -1,7 +1,13 @@
 import { expect, test } from "bun:test";
 import { DatabaseSession } from "../../db/client";
 import { resolveApiKey, revokeApiKey } from "../../manager";
-import { startGatewayFixture, VIDEO_MODEL } from "../../test/gateway-fixture";
+import {
+  registerGatewayFixtureCleanup,
+  startGatewayFixture,
+  VIDEO_MODEL,
+} from "../../test/gateway-fixture";
+
+registerGatewayFixtureCleanup();
 
 test("rejects an unqualified video request before zero-byte fixture artifacts can launch", async () => {
   const gateway = await startGatewayFixture({

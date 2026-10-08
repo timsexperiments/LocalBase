@@ -26,6 +26,10 @@ import {
 } from "./definitions";
 import { canonicalRoot, canonicalRootHash } from "./ownership";
 import { stopFixtureServices } from "../../test/service-manager-fixture";
+import {
+  assertNoProcessesMatching,
+  reapProcessesMatching,
+} from "../../test/process-cleanup";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import { parseLaunchctlStatus, parseLaunchdEnabled } from "./manager";
 
@@ -381,9 +385,19 @@ describe.serial("compiled CLI service lifecycle", () => {
   });
 
   afterAll(async () => {
-    await stopFixtureServices(darwinStatePath);
-    await stopFixtureServices(linuxStatePath);
-    rmSync(directory, { recursive: true, force: true });
+    try {
+      await stopFixtureServices(darwinStatePath);
+      await stopFixtureServices(linuxStatePath);
+    } finally {
+      // Sweep anything started under this run's temp dir (foreground
+      // gateways from failed tests, orphaned managed `serve` children).
+      await reapProcessesMatching(directory);
+      try {
+        await assertNoProcessesMatching(directory);
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    }
   });
 
   function environment(

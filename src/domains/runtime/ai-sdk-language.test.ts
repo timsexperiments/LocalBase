@@ -7,10 +7,13 @@ import {
   latestUpstreamRequestBody,
 } from "../../test/ai-sdk-conformance";
 import {
+  registerGatewayFixtureCleanup,
   startGatewayFixture,
   type GatewayFixture,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
+
+registerGatewayFixtureCleanup();
 
 const PRIMARY_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const SWITCHED_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
