@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
 
 import {
+  registerGatewayFixtureCleanup,
   startGatewayFixture,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
+
+registerGatewayFixtureCleanup();
 
 const request = (baseUrl: string, model: string, content: string) =>
   fetch(`${baseUrl}/v1/chat/completions`, {

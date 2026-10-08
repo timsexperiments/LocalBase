@@ -25,8 +25,13 @@ import {
 } from "../domains/auth/access-control";
 import { disableManagedUser, inviteManagedUser } from "../domains/auth/users";
 import { DatabaseSession } from "../db/client";
-import { startGatewayFixture } from "../test/gateway-fixture";
+import {
+  registerGatewayFixtureCleanup,
+  startGatewayFixture,
+} from "../test/gateway-fixture";
 import { VideoJobManager } from "../domains/runtime/video/video-job-manager";
+
+registerGatewayFixtureCleanup();
 
 const config = uiAccessConfigSchema.parse({
   provider: {

@@ -156,17 +156,27 @@ test("streams pure JSONL and exits cleanly when follow receives a signal", async
       streamedOutput += decoder.decode(value, { stream: true });
     }
   })();
-  await Bun.sleep(100);
-  writer.enqueue(event(2));
-  await writer.flush();
-  await waitFor(() => streamedOutput.includes('"sequence":2'));
-  child.kill("SIGTERM");
-  const [exitCode, output, stderr] = await Promise.all([
-    child.exited,
-    stdout,
-    new Response(child.stderr).text(),
-  ]);
-  await writer.close();
+  let exitCode: number;
+  let output: string;
+  let stderr: string;
+  try {
+    await Bun.sleep(100);
+    writer.enqueue(event(2));
+    await writer.flush();
+    await waitFor(() => streamedOutput.includes('"sequence":2'));
+    child.kill("SIGTERM");
+    [exitCode, output, stderr] = await Promise.all([
+      child.exited,
+      stdout,
+      new Response(child.stderr).text(),
+    ]);
+  } finally {
+    if (child.exitCode === null) {
+      child.kill("SIGKILL");
+      await child.exited;
+    }
+    await writer.close();
+  }
 
   expect(exitCode).toBe(0);
   expect(stderr).toBe("");

@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
+  registerGatewayFixtureCleanup,
   startGatewayFixture,
   type GatewayFixture,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 import { modelMetadataListSchema } from "../models/model-metadata";
 import { gatewayReadinessSchema } from "./readiness";
+
+registerGatewayFixtureCleanup();
 
 const activeModelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const replacementModelId = "qwen2.5-coder-3b-instruct-q4_k_m";
