@@ -162,6 +162,8 @@ export class RuntimeReconciler {
     RuntimeModality,
     AbortController
   >();
+  /** Recovery owns detached barriers until its claim is released. */
+  private readonly recoveryClaims = new Map<RuntimeModality, symbol>();
   private transitions = Promise.resolve();
   private readonly modalityTransitions: ModalityTransitions =
     Object.fromEntries(
@@ -299,7 +301,7 @@ export class RuntimeReconciler {
           try {
             await supervisor.kill();
           } finally {
-            barrier.attach();
+            this.attachBarrier(modality);
           }
         }),
       ),
@@ -333,6 +335,7 @@ export class RuntimeReconciler {
     const claims: Array<{
       modality: RuntimeModality;
       supervisor: RuntimeSupervisor;
+      token: symbol;
     }> = [];
     try {
       await Promise.all(
@@ -344,7 +347,9 @@ export class RuntimeReconciler {
               const supervisor = this.supervisors.get(peerModality);
               if (!supervisor || supervisor.state() !== "running") return;
               if (!this.barriers[peerModality].detachIfIdle()) return;
-              claims.push({ modality: peerModality, supervisor });
+              const token = Symbol(peerModality);
+              this.recoveryClaims.set(peerModality, token);
+              claims.push({ modality: peerModality, supervisor, token });
             },
             signal,
           ),
@@ -362,6 +367,7 @@ export class RuntimeReconciler {
 
       const allClaimsStillCurrent = claims.every(
         (claim) =>
+          this.recoveryClaimIsCurrent(claim) &&
           this.supervisors.get(claim.modality) === claim.supervisor &&
           claim.supervisor.state() === "running",
       );
@@ -372,31 +378,50 @@ export class RuntimeReconciler {
           claims.some((claim) => claim.modality === peerModality),
         ),
         async () => {
+          this.throwIfAborted(signal);
           if (
-            !claims.every(
-              (claim) =>
+            !claims.every((claim) => {
+              const admission = this.barriers[claim.modality].snapshot();
+              return (
+                this.recoveryClaimIsCurrent(claim) &&
                 this.supervisors.get(claim.modality) === claim.supervisor &&
-                claim.supervisor.state() === "running",
-            )
+                claim.supervisor.state() === "running" &&
+                admission.kind === "known" &&
+                admission.activeCount === 0 &&
+                !admission.accepting
+              );
+            })
           ) {
             return false;
           }
           for (const claim of claims) {
+            this.throwIfAborted(signal);
             await claim.supervisor.kill();
           }
+          this.throwIfAborted(signal);
           return true;
         },
+        signal,
       );
       return stopped;
     } finally {
-      await Promise.all(
+      for (const claim of claims) {
+        if (this.recoveryClaimIsCurrent(claim))
+          this.recoveryClaims.delete(claim.modality);
+      }
+      const releaseClaims = Promise.all(
         claims.map(({ modality: peerModality }) =>
           this.exclusiveModality(peerModality, async () => {
-            if (this.configured[peerModality])
-              this.barriers[peerModality].attach();
+            if (this.recoveryClaims.has(peerModality)) return;
+            this.attachBarrier(peerModality);
           }),
         ),
       );
+      if (signal?.aborted) {
+        void releaseClaims.catch(() => {});
+      } else {
+        await releaseClaims;
+      }
     }
   }
 
@@ -473,7 +498,7 @@ export class RuntimeReconciler {
           }
           await drain;
           this.supervisors.clearDraining(modality);
-          if (this.configured[modality]) barrier.attach();
+          this.attachBarrier(modality);
           if (killError) throw killError;
         }),
       ),
@@ -679,13 +704,28 @@ export class RuntimeReconciler {
   private async exclusiveModalities<Value>(
     modalities: readonly RuntimeModality[],
     work: () => Promise<Value>,
+    signal?: AbortSignal,
   ): Promise<Value> {
     const [modality, ...remaining] = modalities;
     if (!modality) return await work();
     return await this.exclusiveModality(
       modality,
-      async () => await this.exclusiveModalities(remaining, work),
+      async () => await this.exclusiveModalities(remaining, work, signal),
+      signal,
     );
+  }
+
+  private recoveryClaimIsCurrent(claim: {
+    modality: RuntimeModality;
+    token: symbol;
+  }): boolean {
+    return this.recoveryClaims.get(claim.modality) === claim.token;
+  }
+
+  /** Reattachment invalidates recovery ownership before reopening admission. */
+  private attachBarrier(modality: RuntimeModality): void {
+    this.recoveryClaims.delete(modality);
+    if (this.configured[modality]) this.barriers[modality].attach();
   }
 
   private async coordinate(): Promise<CoordinatedSnapshot> {
@@ -771,7 +811,7 @@ export class RuntimeReconciler {
             this.configured[admission.modality] &&
             this.supervisors.get(admission.modality) === admission.supervisor
           ) {
-            this.barriers[admission.modality].attach();
+            this.attachBarrier(admission.modality);
           }
         }
       });
@@ -889,7 +929,7 @@ export class RuntimeReconciler {
         if (error instanceof RuntimeRequestAbortedError) {
           await drain;
           this.supervisors.clearDraining(modality);
-          this.barriers[modality].attach();
+          this.attachBarrier(modality);
         }
         throw error;
       }
@@ -909,7 +949,7 @@ export class RuntimeReconciler {
         dispatchLease?.throwIfCancelled();
       } catch (error) {
         this.supervisors.clearDraining(modality);
-        this.barriers[modality].attach();
+        this.attachBarrier(modality);
         throw error;
       }
       const previous = this.supervisors.take(modality);
@@ -917,7 +957,7 @@ export class RuntimeReconciler {
       dispatchLease?.throwIfCancelled();
       this.supervisors.add(modality, this.factory.create(modality, target));
       this.appliedSnapshots[modality] = target;
-      this.barriers[modality].attach();
+      this.attachBarrier(modality);
       this.logger.event({
         severity: "info",
         eventName: "model.switched",
@@ -1010,7 +1050,7 @@ export class RuntimeReconciler {
       ) {
         try {
           this.supervisors.add(modality, this.factory.create(modality, target));
-          this.barriers[modality].attach();
+          this.attachBarrier(modality);
         } catch (error) {
           this.recordReconciliationFailure(modality, target, "add", error);
           return;
@@ -1037,7 +1077,7 @@ export class RuntimeReconciler {
     try {
       if (action.action === "add") {
         this.supervisors.add(modality, this.factory.create(modality, target));
-        this.barriers[modality].attach();
+        this.attachBarrier(modality);
         this.appliedSnapshots[modality] = target;
         return;
       }
@@ -1096,7 +1136,7 @@ export class RuntimeReconciler {
 
       if (action.action === "drain-and-replace") {
         this.supervisors.add(modality, this.factory.create(modality, target));
-        this.barriers[modality].attach();
+        this.attachBarrier(modality);
       }
       this.appliedSnapshots[modality] = target;
     } catch (error) {
