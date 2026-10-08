@@ -143,7 +143,9 @@ export async function writeCompleteCatalogArtifacts(
 ): Promise<string[]> {
   const model = byId(modelId);
   if (!model) throw new Error(`Unknown catalog model: ${modelId}`);
-  return await Promise.all(
+  // Settle every write before failing so a late sibling cannot recreate a
+  // directory the caller has already cleaned up.
+  const results = await Promise.allSettled(
     model.artifacts.map(async (artifact) => {
       if (artifact.expectedSizeBytes === undefined) {
         throw new Error(
@@ -155,6 +157,13 @@ export async function writeCompleteCatalogArtifacts(
       truncateSync(path, artifact.expectedSizeBytes);
       return path;
     }),
+  );
+  const failed = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (failed) throw failed.reason;
+  return results.map(
+    (result) => (result as PromiseFulfilledResult<string>).value,
   );
 }
 
