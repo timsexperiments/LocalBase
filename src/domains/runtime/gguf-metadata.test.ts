@@ -7,6 +7,7 @@ import {
   kvCacheBytes,
   kvGeometryFromMetadata,
   readLlmKvGeometry,
+  readLlmTrainingContextLength,
 } from "./gguf-metadata";
 
 const directory = mkdtempSync(join(tmpdir(), "local-base-gguf-"));
@@ -102,6 +103,17 @@ function base(arch: string, extra: Entry[]): Entry[] {
 }
 
 describe("readLlmKvGeometry", () => {
+  test("reads training context when recurrent KV geometry is unknown", async () => {
+    const path = write("mamba-context.gguf", [
+      ...base("mamba", [
+        { key: "mamba.context_length", type: "u32", value: 2048 },
+      ]),
+    ]);
+
+    expect(await readLlmKvGeometry(path)).toBeNull();
+    expect(await readLlmTrainingContextLength(path)).toBe(2048);
+  });
+
   test("parses scalar KV heads and skips large string arrays", async () => {
     const path = write(
       "llama.gguf",

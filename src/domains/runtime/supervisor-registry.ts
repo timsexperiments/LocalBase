@@ -7,11 +7,22 @@ import {
 import { runtimeModalities, type RuntimeModality } from "./modality";
 import type { InferenceQueueSnapshot } from "./inference-queue";
 import type { SpeechGenerationInput } from "./speech-supervisor";
+import type { ParallelSlots } from "../config/parallel";
+
+export type LlmSupervisorProfile = Readonly<{
+  modelId: string;
+  modelFile?: string;
+  configCtxSize: number;
+  ctxSizeOverride?: number;
+  parallel: ParallelSlots;
+}>;
 
 type CommonRuntimeSupervisor = {
   runtimeId(): string;
   state(): ModalityLifecycleState;
   resolvedSlots?(): number | undefined;
+  resolvedContextLength?(): number | undefined;
+  llmProfile?(): LlmSupervisorProfile | undefined;
   ensureRunning(): Promise<void>;
   kill(): Promise<void>;
   shutdown(): Promise<void>;
