@@ -4,7 +4,7 @@ import { readConfigIfPresent } from "../manager";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
-import { reapPids, recordPid, recordedPids } from "./process-cleanup";
+import { recordPid, reapRecordedPids } from "./process-cleanup";
 import {
   parseLaunchdDefinition,
   parseSystemdDefinition,
@@ -181,7 +181,7 @@ export async function stopFixtureServices(statePath: string): Promise<void> {
   for (const service of Object.values(state.services)) {
     await stopFixtureProcess(service);
   }
-  await reapPids(recordedPids(pidLedger(statePath)));
+  await reapRecordedPids(pidLedger(statePath));
 }
 
 async function startFixtureProcess(
@@ -201,7 +201,7 @@ async function startFixtureProcess(
       LOCALBASE_TEST_MANAGED_GATEWAY: "1",
     },
   });
-  recordPid(pidLedger(statePath), child.pid);
+  await recordPid(pidLedger(statePath), child.pid);
   await Bun.sleep(10);
   if (child.exitCode !== null) {
     throw new Error(

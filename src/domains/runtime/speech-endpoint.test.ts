@@ -5,12 +5,15 @@ import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { readLogSnapshot } from "../observability/logging";
 import {
+  registerGatewayFixtureCleanup,
   startGatewayFixture,
   TTS_MODEL,
   type GatewayFixture,
   waitForLogEvent,
 } from "../../test/gateway-fixture";
 import { validateSpeechWav } from "./speech-supervisor";
+
+registerGatewayFixtureCleanup();
 
 function speechBody(overrides: Record<string, unknown> = {}) {
   return {

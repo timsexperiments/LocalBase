@@ -7,9 +7,15 @@ import {
   rotateApiKey,
   setApiKeyScopes,
 } from "../../manager";
-import { startGatewayFixture, TTS_MODEL } from "../../test/gateway-fixture";
+import {
+  registerGatewayFixtureCleanup,
+  startGatewayFixture,
+  TTS_MODEL,
+} from "../../test/gateway-fixture";
 import { minimalWav } from "../../test/media-fixtures";
 import { defaultApiKeyScopes, type Permission } from "../auth/authorization";
+
+registerGatewayFixtureCleanup();
 
 const job = "/v1/videos/00000000-0000-4000-8000-000000000000";
 const scopedRoutes: {

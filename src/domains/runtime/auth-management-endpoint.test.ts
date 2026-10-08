@@ -1,11 +1,16 @@
 import { expect, test } from "bun:test";
 import { DatabaseSession } from "../../db/client";
 import { createApiKey } from "../../manager";
-import { startGatewayFixture } from "../../test/gateway-fixture";
+import {
+  registerGatewayFixtureCleanup,
+  startGatewayFixture,
+} from "../../test/gateway-fixture";
 import {
   keyManagementReadResponseSchema,
   keyManagementSecretResponseSchema,
 } from "../auth/management-contract";
+
+registerGatewayFixtureCleanup();
 
 function headers(key: string): HeadersInit {
   return {

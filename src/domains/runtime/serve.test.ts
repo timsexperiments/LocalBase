@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { byId, primaryArtifact } from "../../catalog";
 import {
+  registerGatewayFixtureCleanup,
   startGatewayFixture,
   type GatewayFixture,
   waitForLogEvent,
@@ -45,6 +46,8 @@ import type {
 import { SpeechGenerationTimeoutError } from "./speech-supervisor";
 import { getGatewayInstanceState } from "../service/ownership";
 import { DatabaseSession } from "../../db/client";
+
+registerGatewayFixtureCleanup();
 
 type ValidationCase = {
   name: string;

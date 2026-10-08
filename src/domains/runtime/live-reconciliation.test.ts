@@ -2,11 +2,14 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { byId, primaryArtifact } from "../../catalog";
 import {
+  registerGatewayFixtureCleanup,
   startGatewayFixture,
   type GatewayFixture,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 import { gatewayHealthSchema } from "./health";
+
+registerGatewayFixtureCleanup();
 
 const STT_MODEL = "whisper-large-v3-turbo";
 const IMAGE_MODEL = "stable-diffusion-v1-5";

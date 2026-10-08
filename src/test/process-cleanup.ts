@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 
 function alive(pid: number): boolean {
   try {
@@ -37,22 +37,36 @@ export async function reapPids(
   while (Date.now() < killDeadline && targets.some(alive)) await Bun.sleep(25);
 }
 
-/** Pids whose command line contains `needle` (never includes this process). */
-export async function pidsMatching(needle: string): Promise<number[]> {
-  if (!needle) return [];
-  const listing = Bun.spawn(["pgrep", "-f", "--", needle], {
+async function runPs(args: string[]): Promise<string> {
+  const proc = Bun.spawn(["ps", ...args], {
     stdin: "ignore",
     stdout: "pipe",
-    stderr: "ignore",
+    stderr: "pipe",
   });
-  const output = await new Response(listing.stdout).text();
-  await listing.exited;
-  return output
-    .split("\n")
-    .map((line) => Number(line.trim()))
-    .filter(
-      (pid) => Number.isSafeInteger(pid) && pid > 0 && pid !== process.pid,
-    );
+  const [output, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (code !== 0 && code !== 1) {
+    throw new Error(`ps ${args.join(" ")} exited ${code}: ${stderr.trim()}`);
+  }
+  return output;
+}
+
+/** Pids whose command line literally contains `needle` (never this process). */
+export async function pidsMatching(needle: string): Promise<number[]> {
+  if (!needle) return [];
+  const output = await runPs(["-Ao", "pid=,command="]);
+  const pids: number[] = [];
+  for (const line of output.split("\n")) {
+    const match = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    if (pid === process.pid || !Number.isSafeInteger(pid) || pid <= 0) continue;
+    if (match[2].includes(needle)) pids.push(pid);
+  }
+  return pids;
 }
 
 /** Kill every process whose command line mentions `needle` (a temp dir path). */
@@ -70,14 +84,36 @@ export async function assertNoProcessesMatching(needle: string): Promise<void> {
   }
 }
 
-export function recordPid(ledgerPath: string, pid: number): void {
-  appendFileSync(ledgerPath, `${pid}\n`);
+/** Process start time (stable identity for a pid), or null if it is gone. */
+async function startTime(pid: number): Promise<string | null> {
+  const output = (await runPs(["-o", "lstart=", "-p", String(pid)])).trim();
+  return output || null;
 }
 
-export function recordedPids(ledgerPath: string): number[] {
-  if (!existsSync(ledgerPath)) return [];
-  return readFileSync(ledgerPath, "utf8")
+/** Record `pid` with its start time so a reused pid is never signalled. */
+export async function recordPid(
+  ledgerPath: string,
+  pid: number,
+): Promise<void> {
+  const started = await startTime(pid);
+  if (started) appendFileSync(ledgerPath, `${pid}\t${started}\n`);
+}
+
+/**
+ * SIGTERM/SIGKILL recorded pids whose start time still matches, then drop the
+ * ledger. Entries for exited or reused pids are pruned without signalling.
+ */
+export async function reapRecordedPids(ledgerPath: string): Promise<void> {
+  if (!existsSync(ledgerPath)) return;
+  const entries = readFileSync(ledgerPath, "utf8")
     .split("\n")
-    .map((line) => Number(line.trim()))
-    .filter((pid) => Number.isSafeInteger(pid) && pid > 0);
+    .map((line) => /^(\d+)\t(.+)$/.exec(line))
+    .filter((match): match is RegExpExecArray => match !== null);
+  const targets: number[] = [];
+  for (const [, pidText, started] of entries) {
+    const pid = Number(pidText);
+    if ((await startTime(pid)) === started) targets.push(pid);
+  }
+  await reapPids(targets);
+  rmSync(ledgerPath, { force: true });
 }

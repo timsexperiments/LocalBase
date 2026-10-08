@@ -1,9 +1,14 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { startGatewayFixture } from "../test/gateway-fixture";
+import {
+  registerGatewayFixtureCleanup,
+  startGatewayFixture,
+} from "../test/gateway-fixture";
 import { DatabaseSession } from "../db/client";
 import { resolveApiKey, setApiKeyScopes } from "../manager";
 import { defaultApiKeyScopes } from "../domains/auth/authorization";
+
+registerGatewayFixtureCleanup();
 
 test("authorized management HTTP validates bounded JSON and persists config mutations", async () => {
   const gateway = await startGatewayFixture({ auth: { mode: "bearer" } });

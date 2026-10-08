@@ -1632,7 +1632,11 @@ async function waitForReady(
 // Fixtures not stopped by their test (failure, timeout) are reaped when the
 // importing test file finishes, then asserted gone.
 const liveFixtureRoots = new Set<string>();
-afterAll(async () => {
+export function registerGatewayFixtureCleanup(): void {
+  afterAll(reapLiveFixtures);
+}
+
+async function reapLiveFixtures(): Promise<void> {
   const roots = [...liveFixtureRoots];
   liveFixtureRoots.clear();
   for (const root of roots) {
@@ -1640,7 +1644,7 @@ afterAll(async () => {
     rmSync(root, { recursive: true, force: true });
   }
   for (const root of roots) await assertNoProcessesMatching(root);
-});
+}
 
 export async function startGatewayFixture(
   options: GatewayFixtureOptions = {},
