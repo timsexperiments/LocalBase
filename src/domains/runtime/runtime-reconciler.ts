@@ -316,6 +316,75 @@ export class RuntimeReconciler {
     modelId: string,
     signal?: AbortSignal,
   ): Promise<boolean> {
+    return await this.projectCanAdmitAfterIdleEviction(
+      modality,
+      modelId,
+      signal,
+    );
+  }
+
+  /** Claims idle peers before projecting or stopping them, closing the gap in
+   * which a peer could accept work after it was counted as releasable. */
+  async recoverWithIdleEviction(
+    modality: RuntimeModality,
+    modelId: string,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    const claims: Array<{
+      modality: RuntimeModality;
+      supervisor: RuntimeSupervisor;
+    }> = [];
+    try {
+      await Promise.all(
+        runtimeModalities.map((peerModality) =>
+          this.exclusiveModality(peerModality, async () => {
+            if (peerModality === modality) return;
+            const supervisor = this.supervisors.get(peerModality);
+            if (!supervisor || supervisor.state() !== "running") return;
+            if (!this.barriers[peerModality].detachIfIdle()) return;
+            claims.push({ modality: peerModality, supervisor });
+          }),
+        ),
+      );
+      this.throwIfAborted(signal);
+      const canAdmit = await this.projectCanAdmitAfterIdleEviction(
+        modality,
+        modelId,
+        signal,
+        claims.map(({ supervisor }) => supervisor.runtimeId()),
+      );
+      this.throwIfAborted(signal);
+      if (!canAdmit) return false;
+
+      for (const claim of claims) {
+        await this.exclusiveModality(claim.modality, async () => {
+          if (
+            this.supervisors.get(claim.modality) === claim.supervisor &&
+            claim.supervisor.state() === "running"
+          ) {
+            await claim.supervisor.kill();
+          }
+        });
+      }
+      return true;
+    } finally {
+      await Promise.all(
+        claims.map(({ modality: peerModality }) =>
+          this.exclusiveModality(peerModality, async () => {
+            if (this.configured[peerModality])
+              this.barriers[peerModality].attach();
+          }),
+        ),
+      );
+    }
+  }
+
+  private async projectCanAdmitAfterIdleEviction(
+    modality: RuntimeModality,
+    modelId: string,
+    signal?: AbortSignal,
+    claimedRuntimeIds?: readonly string[],
+  ): Promise<boolean> {
     try {
       const source = this.snapshot;
       if (!configuredRuntimeModality(modality, source.config, this.ownership))
@@ -326,21 +395,31 @@ export class RuntimeReconciler {
       });
       if (!candidate.preflight) return false;
 
-      const releasingRuntimeIds = runtimeModalities.flatMap((peerModality) => {
-        if (peerModality === modality) return [];
-        const supervisor = this.supervisors.get(peerModality);
-        const admission = this.barriers[peerModality].snapshot();
-        if (
-          !supervisor ||
-          supervisor.state() !== "running" ||
-          admission.kind !== "known" ||
-          !admission.accepting ||
-          admission.activeCount !== 0
-        ) {
-          return [];
-        }
-        return [supervisor.runtimeId()];
-      });
+      const releasingRuntimeIds = [
+        ...(claimedRuntimeIds ??
+          runtimeModalities.flatMap((peerModality) => {
+            if (peerModality === modality) return [];
+            const supervisor = this.supervisors.get(peerModality);
+            const admission = this.barriers[peerModality].snapshot();
+            if (
+              !supervisor ||
+              supervisor.state() !== "running" ||
+              admission.kind !== "known" ||
+              !admission.accepting ||
+              admission.activeCount !== 0
+            ) {
+              return [];
+            }
+            return [supervisor.runtimeId()];
+          })),
+      ];
+      if (
+        modality === "video" &&
+        modelId !== activeModel("video", source.config)
+      ) {
+        const currentVideo = this.supervisors.get("video");
+        if (currentVideo) releasingRuntimeIds.push(currentVideo.runtimeId());
+      }
 
       const rejection = await this.waitForAbort(
         candidate.preflight(releasingRuntimeIds, signal),

@@ -372,11 +372,9 @@ test("video admission evicts idle peers and retries once after memory rejection"
       if (attempts === 2) return recovered;
       return admitted(admission(Promise.reject(failure)));
     },
-    async canAdmitAfterIdleEviction() {
-      return true;
-    },
-    async evictIdleRuntimes() {
+    async recoverWithIdleEviction() {
       evictions += 1;
+      return true;
     },
   };
 
@@ -437,11 +435,9 @@ test("video admission does not evict or retry unrelated startup failures", async
         },
       };
     },
-    async canAdmitAfterIdleEviction() {
-      return false;
-    },
-    async evictIdleRuntimes() {
+    async recoverWithIdleEviction() {
       evictions += 1;
+      return false;
     },
   };
 
@@ -470,7 +466,6 @@ test("video model switch retries transient preflight rejection after idle evicti
   });
   let attempts = 0;
   let evictions = 0;
-  let evictedExcept: string | undefined;
   const recovered: ModelAdmissionResult = {
     kind: "admitted",
     value: {
@@ -497,12 +492,9 @@ test("video model switch retries transient preflight rejection after idle evicti
         ? { kind: "insufficient-memory", error }
         : recovered;
     },
-    async canAdmitAfterIdleEviction() {
-      return true;
-    },
-    async evictIdleRuntimes(excludedModality?: string) {
+    async recoverWithIdleEviction() {
       evictions += 1;
-      evictedExcept = excludedModality;
+      return true;
     },
   };
 
@@ -512,10 +504,9 @@ test("video model switch retries transient preflight rejection after idle evicti
     new AbortController().signal,
   );
   expect(result).toBe(recovered);
-  expect({ attempts, evictions, evictedExcept }).toEqual({
+  expect({ attempts, evictions }).toEqual({
     attempts: 2,
     evictions: 1,
-    evictedExcept: "video",
   });
 });
 
@@ -568,11 +559,9 @@ test("video startup capacity rejection skips idle eviction and retry", async () 
         },
       };
     },
-    async canAdmitAfterIdleEviction() {
-      return false;
-    },
-    async evictIdleRuntimes() {
+    async recoverWithIdleEviction() {
       evictions += 1;
+      return false;
     },
   };
 
@@ -598,7 +587,7 @@ test("video ready rejection preserves idle peers when recovery cannot fit", asyn
     poolId: "system",
   });
   let attempts = 0;
-  let evictions = 0;
+  let recoveryProjections = 0;
   let stops = 0;
   const admission: RuntimeAdmission = {
     modality: "video",
@@ -628,11 +617,9 @@ test("video ready rejection preserves idle peers when recovery cannot fit", asyn
         },
       };
     },
-    async canAdmitAfterIdleEviction() {
+    async recoverWithIdleEviction() {
+      recoveryProjections += 1;
       return false;
-    },
-    async evictIdleRuntimes() {
-      evictions += 1;
     },
   };
 
@@ -643,9 +630,9 @@ test("video ready rejection preserves idle peers when recovery cannot fit", asyn
   );
   if (result.kind !== "admitted") throw new Error("Expected admission.");
   await expect(result.value.admission.ready).rejects.toBe(error);
-  expect({ attempts, evictions, stops }).toEqual({
+  expect({ attempts, recoveryProjections, stops }).toEqual({
     attempts: 1,
-    evictions: 0,
+    recoveryProjections: 1,
     stops: 1,
   });
 });

@@ -1869,10 +1869,7 @@ export async function applyElevatedMemoryPressure(
 }
 
 export async function admitVideoWithIdleRecovery(
-  reconciler: Pick<
-    RuntimeReconciler,
-    "admitModel" | "evictIdleRuntimes" | "canAdmitAfterIdleEviction"
-  >,
+  reconciler: Pick<RuntimeReconciler, "admitModel" | "recoverWithIdleEviction">,
   modelId: string,
   signal: AbortSignal,
 ): Promise<Awaited<ReturnType<RuntimeReconciler["admitModel"]>>> {
@@ -1882,13 +1879,9 @@ export async function admitVideoWithIdleRecovery(
     first.error.capacity === undefined
   ) {
     signal.throwIfAborted();
-    if (
-      !(await reconciler.canAdmitAfterIdleEviction("video", modelId, signal))
-    ) {
+    if (!(await reconciler.recoverWithIdleEviction("video", modelId, signal))) {
       return first;
     }
-    signal.throwIfAborted();
-    await reconciler.evictIdleRuntimes("video");
     signal.throwIfAborted();
     const retry = await reconciler.admitModel("video", modelId, signal);
     return retry.kind === "admitted" ? retry : first;
@@ -1902,13 +1895,10 @@ export async function admitVideoWithIdleRecovery(
     await current.admission.supervisor.kill();
     signal.throwIfAborted();
     if (error.capacity !== undefined) throw error;
-    if (
-      !(await reconciler.canAdmitAfterIdleEviction("video", modelId, signal))
-    ) {
+    if (!(await reconciler.recoverWithIdleEviction("video", modelId, signal))) {
       throw error;
     }
     signal.throwIfAborted();
-    await reconciler.evictIdleRuntimes("video");
     const retry = await reconciler.admitModel("video", modelId, signal);
     if (retry.kind !== "admitted") throw error;
     current = retry.value;

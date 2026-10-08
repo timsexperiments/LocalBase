@@ -241,6 +241,12 @@ export class ManagedService {
         }
 
         this.assertStartupActive(attempt);
+        const preflightRejection = await this.preflight(
+          [],
+          attempt.controller.signal,
+        );
+        this.assertStartupActive(attempt);
+        if (preflightRejection) throw preflightRejection;
         this.lifecycle("backend.starting", "info", { crashCount });
         const plan = await this.options.launch();
         this.assertStartupActive(attempt);
