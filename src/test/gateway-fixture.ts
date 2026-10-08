@@ -1,6 +1,11 @@
 import { persistConfiguration } from "../domains/config/declarative";
 import { mkdirSync, mkdtempSync, rmSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { afterAll } from "bun:test";
+import {
+  assertNoProcessesMatching,
+  reapProcessesMatching,
+} from "./process-cleanup";
 import { dirname, join } from "node:path";
 import { byId, primaryArtifact } from "../catalog";
 import {
@@ -1624,6 +1629,19 @@ async function waitForReady(
   );
 }
 
+// Fixtures not stopped by their test (failure, timeout) are reaped when the
+// importing test file finishes, then asserted gone.
+const liveFixtureRoots = new Set<string>();
+afterAll(async () => {
+  const roots = [...liveFixtureRoots];
+  liveFixtureRoots.clear();
+  for (const root of roots) {
+    await reapProcessesMatching(root);
+    rmSync(root, { recursive: true, force: true });
+  }
+  for (const root of roots) await assertNoProcessesMatching(root);
+});
+
 export async function startGatewayFixture(
   options: GatewayFixtureOptions = {},
 ): Promise<GatewayFixture> {
@@ -1884,6 +1902,8 @@ export async function startGatewayFixture(
       : new Error("Gateway process was not created.");
   }
 
+  liveFixtureRoots.add(root);
+
   const runtimeLaunches = (path: string, name: string) => {
     const read = async (): Promise<string[][]> => {
       const file = Bun.file(path);
@@ -2010,7 +2030,9 @@ export async function startGatewayFixture(
       return headerWait.aborted;
     },
     stop: async (stopOptions) => {
+      liveFixtureRoots.delete(root);
       await stopProcess(serverProcess);
+      await reapProcessesMatching(root);
       await Promise.all([stdout, stderr]);
       llmUpstream.server.stop(true);
       sttUpstream.server.stop(true);
