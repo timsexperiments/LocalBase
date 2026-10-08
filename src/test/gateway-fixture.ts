@@ -1646,6 +1646,10 @@ async function reapLiveFixtures(): Promise<void> {
   for (const root of roots) await assertNoProcessesMatching(root);
 }
 
+function reapedDuringStartup(): Error {
+  return new Error("Gateway fixture was reaped before startup finished.");
+}
+
 export async function startGatewayFixture(
   options: GatewayFixtureOptions = {},
 ): Promise<GatewayFixture> {
@@ -1807,6 +1811,7 @@ export async function startGatewayFixture(
       (result): result is PromiseRejectedResult => result.status === "rejected",
     );
     if (failed) throw failed.reason;
+    if (!liveFixtureRoots.has(root)) throw reapedDuringStartup();
   } catch (error) {
     llmUpstream.server.stop(true);
     sttUpstream.server.stop(true);
@@ -1822,6 +1827,12 @@ export async function startGatewayFixture(
   let baseUrl = "";
   let lastError: unknown;
   for (let attempt = 0; attempt < MAX_START_ATTEMPTS; attempt++) {
+    // The afterAll reaper may have deleted the root during setup or a failed
+    // attempt; never launch into (and so recreate) a reaped root.
+    if (!liveFixtureRoots.has(root)) {
+      lastError = reapedDuringStartup();
+      break;
+    }
     const port = reservePort();
     const gatewayProcess = Bun.spawn(
       [
