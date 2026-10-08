@@ -1632,15 +1632,25 @@ describe("API gateway integration", () => {
         object: string;
         created: number;
         owned_by: string;
+        architecture: {
+          input_modalities: string[];
+          output_modalities: string[];
+        };
       }>;
     };
     expect(body.object).toBe("list");
-    expect(body.data).toContainEqual({
-      id: "qwen2.5-coder-1.5b-instruct-q4_k_m",
-      object: "model",
-      created: 1670000000,
-      owned_by: "local-base",
-    });
+    expect(body.data).toContainEqual(
+      expect.objectContaining({
+        id: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        object: "model",
+        created: 1670000000,
+        owned_by: "local-base",
+        architecture: {
+          input_modalities: ["text"],
+          output_modalities: ["text"],
+        },
+      }),
+    );
   });
 
   test("proxies validated chat requests without gateway credentials", async () => {

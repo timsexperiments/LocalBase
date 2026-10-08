@@ -31,6 +31,7 @@ import {
   modelMetadataById,
   projectModelMetadataList,
 } from "../../models/model-metadata";
+import { listServedModels } from "../../models/served-models";
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
@@ -3355,20 +3356,12 @@ export async function runServe(
     }
 
     if (route === "models") {
-      const modelsList = [
-        ...new Set([
-          currentConfig.activeLlmModel,
-          ...currentConfig.selectedLlmModels,
-          currentConfig.activeTtsModel,
-          ...currentConfig.selectedTtsModels,
-        ]),
-      ].filter(Boolean);
-      const data = modelsList.map((modelId) => ({
-        id: modelId,
-        object: "model",
-        created: 1670000000,
-        owned_by: "local-base",
-      }));
+      const data = listServedModels(
+        currentConfig,
+        authorization.kind === "authorized"
+          ? authorization.principal.permissions
+          : undefined,
+      );
       return Response.json({
         object: "list",
         data,
