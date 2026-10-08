@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { byId as catalogModelById } from "../../catalog";
 import { listServedModels } from "./served-models";
 
 const config = {
@@ -115,6 +116,23 @@ describe("listServedModels", () => {
     expect(
       byId(data, "qwen2.5-coder-1.5b-instruct-q4_k_m")?.context_length,
     ).toBe(2048);
+  });
+
+  test("calculates context for models without catalog context metadata", async () => {
+    const modelId = "qwen2.5-coder-7b-instruct-q4_k_m";
+    expect(catalogModelById(modelId)?.contextWindowTokens).toBeNull();
+    const data = await listServedModels(
+      {
+        ...config,
+        activeLlmModel: modelId,
+        selectedLlmModels: [modelId],
+        ctxSize: 8192,
+        parallel: 2,
+      },
+      undefined,
+      { memoryGb: 16 },
+    );
+    expect(byId(data, modelId)?.context_length).toBe(4096);
   });
 
   test("uses GGUF KV geometry when allocating automatic slots", async () => {

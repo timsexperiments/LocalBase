@@ -32,7 +32,7 @@ import {
   projectModelMetadataList,
 } from "../../models/model-metadata";
 import { listServedModels } from "../../models/served-models";
-import { readLlmKvGeometry } from "../gguf-metadata";
+import { createLlmKvGeometryReader } from "../gguf-geometry-cache";
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
@@ -2515,10 +2515,7 @@ export async function runServe(
       ? {}
       : { sttPort: config.sttPort }),
   });
-  const llmKvGeometryCache = new Map<
-    string,
-    ReturnType<typeof readLlmKvGeometry>
-  >();
+  const readCachedLlmKvGeometry = createLlmKvGeometryReader();
   const memoryProvider = createHostMemoryProvider();
   const memorySafety = new MemorySafetyController(
     memoryProvider,
@@ -3378,18 +3375,13 @@ export async function runServe(
           llmModelFile: launchOverrides.llmModelFile,
           parallel: currentConfig.parallel,
           memoryGb: ctx.specs.gpuVramGb,
-          kvGeometryForModel: (id) => {
+          kvGeometryForModel: async (id) => {
             const spec = byId(id);
             const modelFile =
               launchOverrides.llmModelFile ??
               (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
             const path = join(currentConfig.llmModelsDir, modelFile);
-            let geometry = llmKvGeometryCache.get(path);
-            if (!geometry) {
-              geometry = readLlmKvGeometry(path);
-              llmKvGeometryCache.set(path, geometry);
-            }
-            return geometry;
+            return readCachedLlmKvGeometry(path);
           },
         },
       );

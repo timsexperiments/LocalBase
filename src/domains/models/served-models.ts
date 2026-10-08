@@ -146,12 +146,13 @@ export async function listServedModels(
       if (permissions && !permissions.includes(permission)) continue;
       seen.add(id);
       let model = project(kind, id, spec);
-      if (kind === "llm" && spec?.contextWindowTokens) {
+      if (kind === "llm") {
         const modelFile =
-          options.llmModelFile ?? primaryArtifact(spec).filename;
+          options.llmModelFile ??
+          (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
         const modelPath = join(config.llmModelsDir, modelFile);
         const artifactBytes =
-          primaryArtifact(spec).expectedSizeBytes ??
+          (spec ? primaryArtifact(spec).expectedSizeBytes : undefined) ??
           (await Bun.file(modelPath)
             .stat()
             .then((file) => file.size)
