@@ -117,7 +117,9 @@ export class ManagedService {
     return plan?.modality === "llm"
       ? Math.min(
           llamaContextPerSequence(plan.ctxSize, plan.parallel.slots),
-          plan.kvGeometry?.contextLength ?? Number.POSITIVE_INFINITY,
+          plan.trainingContextLength ??
+            plan.kvGeometry?.contextLength ??
+            Number.POSITIVE_INFINITY,
         )
       : undefined;
   }

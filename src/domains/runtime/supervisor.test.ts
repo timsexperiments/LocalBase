@@ -272,20 +272,8 @@ test("resolved context length is capped at GGUF training context", async () => {
     launch: async () => ({
       ...testLaunchPlan("llm:stop:1"),
       parallel: { slots: 3, isAuto: false, contextPerSlot: 2816 },
-      kvGeometry: {
-        architecture: "test",
-        blockCount: 1,
-        fullKvHeads: 1,
-        swaKvHeads: 0,
-        slidingWindow: null,
-        keyLength: 1,
-        valueLength: 1,
-        swaKeyLength: 1,
-        swaValueLength: 1,
-        q8Compatible: true,
-        recurrentBytesPerSlot: 0,
-        contextLength: 2048,
-      },
+      kvGeometry: null,
+      trainingContextLength: 2048,
     }),
   });
   try {

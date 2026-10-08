@@ -96,6 +96,7 @@ export function resolveConfiguredLlmLaunchPlan(input: {
   artifactBytes: number;
   memoryGb: number;
   kvGeometry?: LlmKvGeometry | null;
+  trainingContextLength?: number | null;
 }): LlmLaunchPlan {
   return resolveLlmLaunchPlan({
     runtimeId: input.runtimeId,
@@ -118,6 +119,7 @@ export function resolveConfiguredLlmLaunchPlan(input: {
     hardware: { memoryGb: input.memoryGb },
     embedding: input.model?.llmRuntime,
     kvGeometry: input.kvGeometry,
+    trainingContextLength: input.trainingContextLength,
   });
 }
 
@@ -140,6 +142,7 @@ type LaunchPlanBase<
 
 export type LlmLaunchPlan = LaunchPlanBase<"llm", "llama-server"> & {
   readonly ctxSize: number;
+  readonly trainingContextLength?: number | null;
   readonly parallel: ParallelAllocation;
   readonly modelRequirementGb: number | undefined;
   readonly hardware: Readonly<RuntimeHardware>;
@@ -330,6 +333,7 @@ export function resolveLlmLaunchPlan(input: {
   hardware: RuntimeHardware;
   embedding?: EmbeddingLlmRuntimeProfile | null;
   kvGeometry?: LlmKvGeometry | null;
+  trainingContextLength?: number | null;
 }): LlmLaunchPlan {
   const ctxSize = Math.min(
     input.ctxSize,
@@ -379,6 +383,9 @@ export function resolveLlmLaunchPlan(input: {
     embedding: input.embedding ? Object.freeze({ ...input.embedding }) : null,
     kvCache,
     kvGeometry,
+    ...(input.trainingContextLength !== undefined
+      ? { trainingContextLength: input.trainingContextLength }
+      : {}),
     promptCacheRamMib,
     memoryDemand: llmMemoryDemand({
       ...input,

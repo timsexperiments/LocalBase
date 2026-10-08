@@ -177,6 +177,33 @@ describe("listServedModels", () => {
     expect(byId(data, config.activeLlmModel)?.context_length).toBe(2048);
   });
 
+  test("caps recurrent models at training context without KV geometry", async () => {
+    const trainingContextLengthForModel = async () => 2048;
+    const threeSlots = await listServedModels(
+      { ...config, ctxSize: 8192, parallel: 3 },
+      undefined,
+      {
+        memoryGb: 16,
+        kvGeometryForModel: async () => null,
+        trainingContextLengthForModel,
+      },
+    );
+    const automaticSlots = await listServedModels(
+      { ...config, ctxSize: 8192, parallel: "auto" },
+      undefined,
+      {
+        memoryGb: 16,
+        kvGeometryForModel: async () => null,
+        trainingContextLengthForModel,
+      },
+    );
+
+    expect(byId(threeSlots, config.activeLlmModel)?.context_length).toBe(2048);
+    expect(
+      byId(automaticSlots, config.activeLlmModel)?.context_length,
+    ).toBeLessThanOrEqual(2048);
+  });
+
   test("uses the current config context after a hot reload", async () => {
     const reloaded = { ...config, ctxSize: 4096, parallel: 2 as const };
     const data = await listServedModels(reloaded, undefined, { memoryGb: 16 });
@@ -314,6 +341,32 @@ describe("listServedModels", () => {
 
     expect(byId(data, selectedModel)?.context_length).toBe(16384);
     expect(byId(data, pinnedModel)?.context_length).toBe(16384);
+  });
+
+  test("applies a captured supervisor profile only to its model without a file override", async () => {
+    const activeModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const selectedModel = "qwen2.5-coder-14b-instruct-q4_k_m";
+    const data = await listServedModels(
+      {
+        ...config,
+        activeLlmModel: activeModel,
+        selectedLlmModels: [activeModel, selectedModel],
+        ctxSize: 32768,
+        parallel: 2,
+      },
+      undefined,
+      {
+        memoryGb: 16,
+        llmProfile: {
+          modelId: activeModel,
+          configCtxSize: 32768,
+          parallel: 2,
+        },
+      },
+    );
+
+    expect(byId(data, activeModel)?.context_length).toBe(16384);
+    expect(byId(data, selectedModel)?.context_length).toBe(4096);
   });
 
   test("uses GGUF KV geometry when allocating automatic slots", async () => {

@@ -145,6 +145,7 @@ export async function listServedModels(
     memoryGb?: number;
     llmModelFile?: string;
     kvGeometryForModel?: (id: string) => Promise<LlmKvGeometry | null>;
+    trainingContextLengthForModel?: (id: string) => Promise<number | null>;
     llmProfile?: LlmSupervisorProfile;
   }> = {},
 ): Promise<OpenAiModel[]> {
@@ -160,21 +161,30 @@ export async function listServedModels(
       seen.add(id);
       let model = project(kind, id, spec);
       if (kind === "llm") {
-        const profile = options.llmProfile;
+        const capturedProfile = options.llmProfile;
+        const profile =
+          capturedProfile &&
+          (id === capturedProfile.modelId ||
+            (options.llmModelFile !== undefined &&
+              capturedProfile.modelFile === options.llmModelFile))
+            ? capturedProfile
+            : undefined;
         if (options.llmModelFile && options.pinnedContextLength !== undefined) {
           const geometry = await options.kvGeometryForModel?.(
-            profile?.modelId ?? config.activeLlmModel,
+            config.activeLlmModel,
           );
+          const trainingContextLength =
+            (await options.trainingContextLengthForModel?.(
+              config.activeLlmModel,
+            )) ?? geometry?.contextLength;
           model = {
             ...model,
             context_length: Math.min(
               options.pinnedContextLength,
-              geometry?.contextLength ?? Number.POSITIVE_INFINITY,
+              trainingContextLength ?? Number.POSITIVE_INFINITY,
             ),
           };
         } else {
-          // Use the captured supervisor profile even before its lazy launch
-          // has resolved. Config is only a fallback when no supervisor exists.
           const launchModelId =
             profile?.modelId ??
             (options.llmModelFile ? config.activeLlmModel : id);
@@ -221,13 +231,15 @@ export async function listServedModels(
                 launch.parallel.slots,
               ),
             };
-            const geometry = launch.kvGeometry;
-            if (geometry?.contextLength != null) {
+            const trainingContextLength =
+              (await options.trainingContextLengthForModel?.(launchModelId)) ??
+              launch.kvGeometry?.contextLength;
+            if (trainingContextLength != null) {
               model = {
                 ...model,
                 context_length: Math.min(
                   model.context_length ?? Number.POSITIVE_INFINITY,
-                  geometry.contextLength,
+                  trainingContextLength,
                 ),
               };
             }

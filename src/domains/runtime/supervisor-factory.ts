@@ -16,7 +16,10 @@ import {
 } from "../../manager";
 import type { ServeInput } from "../app/commands/inputs";
 import type { RuntimeConfigSnapshot } from "./config-snapshot";
-import { readLlmKvGeometry } from "./gguf-metadata";
+import {
+  readLlmKvGeometry,
+  readLlmTrainingContextLength,
+} from "./gguf-metadata";
 import {
   backendBindHost,
   configuredLlmContextSize,
@@ -453,6 +456,7 @@ export function createRuntimeSupervisorFactory(
             "llama-server",
             `Spawning model "${modelId}" (file: ${modelFile}, context: ${ctxSize} tokens)`,
           );
+          const modelPath = join(config.llmModelsDir, modelFile);
           return resolveConfiguredLlmLaunchPlan({
             runtimeId,
             root: config.root,
@@ -471,9 +475,9 @@ export function createRuntimeSupervisorFactory(
               modelFile,
             ),
             memoryGb: ctx.specs.gpuVramGb,
-            kvGeometry: await readLlmKvGeometry(
-              join(config.llmModelsDir, modelFile),
-            ),
+            kvGeometry: await readLlmKvGeometry(modelPath),
+            trainingContextLength:
+              await readLlmTrainingContextLength(modelPath),
           });
         },
         start: async (plan) => {

@@ -614,6 +614,29 @@ export function kvGeometryFromMetadata(
   });
 }
 
+/** Reads the GGUF training context independently of whether KV geometry is known. */
+export function trainingContextLengthFromMetadata(
+  values: Map<string, GgufValue>,
+): number | null {
+  const architecture = values.get("general.architecture");
+  if (typeof architecture !== "string" || !architecture) return null;
+  return bounded(values.get(`${architecture}.context_length`), MAX_TOKENS);
+}
+
+/** Reads only the GGUF header; returns null on any failure or missing metadata. */
+export async function readLlmTrainingContextLength(
+  path: string,
+  options: { maxParseWork?: number } = {},
+): Promise<number | null> {
+  try {
+    return trainingContextLengthFromMetadata(
+      await readKeyValues(ggufMetadataPath(path), options.maxParseWork),
+    );
+  } catch {
+    return null;
+  }
+}
+
 /** Reads only the GGUF header; returns null on any failure. */
 export async function readLlmKvGeometry(
   path: string,

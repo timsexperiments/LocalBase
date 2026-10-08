@@ -33,6 +33,7 @@ import {
 } from "../../models/model-metadata";
 import { listServedModels } from "../../models/served-models";
 import { createLlmKvGeometryReader } from "../gguf-geometry-cache";
+import { readLlmTrainingContextLength } from "../gguf-metadata";
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
@@ -3386,6 +3387,15 @@ export async function runServe(
               (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
             const path = join(currentConfig.llmModelsDir, modelFile);
             return readCachedLlmKvGeometry(path);
+          },
+          trainingContextLengthForModel: async (id) => {
+            const spec = byId(id);
+            const modelFile =
+              launchOverrides.llmModelFile ??
+              (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
+            return readLlmTrainingContextLength(
+              join(currentConfig.llmModelsDir, modelFile),
+            );
           },
         },
       );
