@@ -1650,6 +1650,8 @@ export async function startGatewayFixture(
   options: GatewayFixtureOptions = {},
 ): Promise<GatewayFixture> {
   const root = mkdtempSync(join(tmpdir(), "localbase-gateway-"));
+  // Register at once so afterAll can reap a fixture that times out mid-start.
+  liveFixtureRoots.add(root);
   const runtimeDir = join(root, "test-runtimes");
   const cliPath = join(root, "local-base");
   const llmLaunchesPath = join(root, "llama-launches.jsonl");
@@ -1659,7 +1661,10 @@ export async function startGatewayFixture(
   const imageLaunchesPath = join(root, "sd-launches.jsonl");
   const llmFailureMarkerPath = join(root, "llama-runtime-failure");
   const llmRuntimePidPath = join(root, "llama-runtime.pid");
-  const cleanup = () => rmSync(root, { recursive: true, force: true });
+  const cleanup = () => {
+    rmSync(root, { recursive: true, force: true });
+    liveFixtureRoots.delete(root);
+  };
   const upstreamRequests: UpstreamRequest[] = [];
   const controlledStreams = new Map<string, ControlledStream>();
   const controlledHeaderWaits = new Map<string, ControlledHeaderWait>();
@@ -1906,8 +1911,6 @@ export async function startGatewayFixture(
       : new Error("Gateway process was not created.");
   }
 
-  liveFixtureRoots.add(root);
-
   const runtimeLaunches = (path: string, name: string) => {
     const read = async (): Promise<string[][]> => {
       const file = Bun.file(path);
@@ -2034,7 +2037,6 @@ export async function startGatewayFixture(
       return headerWait.aborted;
     },
     stop: async (stopOptions) => {
-      liveFixtureRoots.delete(root);
       await stopProcess(serverProcess);
       await reapProcessesMatching(root);
       await Promise.all([stdout, stderr]);
