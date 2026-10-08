@@ -464,6 +464,7 @@ test("video model switch retries transient preflight rejection after idle evicti
   });
   let attempts = 0;
   let evictions = 0;
+  let evictedExcept: string | undefined;
   const recovered: ModelAdmissionResult = {
     kind: "admitted",
     value: {
@@ -490,8 +491,9 @@ test("video model switch retries transient preflight rejection after idle evicti
         ? { kind: "insufficient-memory", error }
         : recovered;
     },
-    async evictIdleRuntimes() {
+    async evictIdleRuntimes(excludedModality?: string) {
       evictions += 1;
+      evictedExcept = excludedModality;
     },
   };
 
@@ -501,7 +503,11 @@ test("video model switch retries transient preflight rejection after idle evicti
     new AbortController().signal,
   );
   expect(result).toBe(recovered);
-  expect({ attempts, evictions }).toEqual({ attempts: 2, evictions: 1 });
+  expect({ attempts, evictions, evictedExcept }).toEqual({
+    attempts: 2,
+    evictions: 1,
+    evictedExcept: "video",
+  });
 });
 
 test("classifies the owned speech deadline without inferring other failures", async () => {

@@ -287,10 +287,11 @@ export class RuntimeReconciler {
     return (await this.coordinate()).snapshot;
   }
 
-  async evictIdleRuntimes(): Promise<void> {
+  async evictIdleRuntimes(excludedModality?: RuntimeModality): Promise<void> {
     await Promise.all(
       runtimeModalities.map((modality) =>
         this.exclusiveModality(modality, async () => {
+          if (modality === excludedModality) return;
           const supervisor = this.supervisors.get(modality);
           if (!supervisor || supervisor.state() !== "running") return;
           const barrier = this.barriers[modality];
@@ -874,6 +875,46 @@ export class RuntimeReconciler {
         this.barriers[modality].attach();
         this.appliedSnapshots[modality] = target;
         return;
+      }
+
+      if (
+        action.action === "drain-and-replace" &&
+        this.supervisors.get(modality) !== undefined &&
+        activeModel(modality, this.appliedSnapshots[modality].config) !==
+          activeModel(modality, target.config)
+      ) {
+        try {
+          await this.assertSwitchFits(
+            modality,
+            activeModel(modality, target.config),
+            target,
+          );
+        } catch (error) {
+          if (error instanceof ModelSwitchRejectedError) {
+            this.logger.event({
+              severity: "error",
+              eventName: "model.switch-preflight-rejected",
+              category: "runtime",
+              component: modalityComponents[modality],
+              runtime: modality,
+              message:
+                "Configuration model switch was rejected before shutdown.",
+              error: {
+                type: error.cause.name,
+                message: error.cause.message,
+              },
+              attributes: {
+                from_model: activeModel(
+                  modality,
+                  this.appliedSnapshots[modality].config,
+                ),
+                to_model: activeModel(modality, target.config),
+              },
+            });
+            return;
+          }
+          throw error;
+        }
       }
 
       await this.hooks.beforeModalityDrain?.(modality);

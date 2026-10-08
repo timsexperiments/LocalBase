@@ -1475,6 +1475,84 @@ test.each([
   }
 });
 
+test("configuration model replacement preflights before draining the current runtime", async () => {
+  const root = mkdtempSync(
+    join(tmpdir(), "localbase-config-switch-preflight-"),
+  );
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelA = config.activeLlmModel;
+  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [modelA, modelB];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  const shutdowns: string[] = [];
+  const events: LogEventInput[] = [];
+  const failure = new RuntimeMemoryAdmissionError(
+    {
+      kind: "rejected",
+      reason: "system-memory",
+      poolId: "system",
+    },
+    undefined,
+    {
+      poolId: "system",
+      requiredBytes: 64 * 1024 ** 3,
+      usableBytes: 24 * 1024 ** 3,
+      capacityBytes: 32 * 1024 ** 3,
+    },
+  );
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(modality, snapshot) {
+      const modelId = activeModel(modality, snapshot.config);
+      return {
+        kind: "server",
+        runtimeId: () => `${modality}:${modelId}`,
+        state: () => "running",
+        async ensureRunning() {},
+        async kill() {},
+        async shutdown() {
+          shutdowns.push(modelId);
+        },
+        async preflight() {
+          return modelId === modelB ? failure : undefined;
+        },
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: factory.create("llm", controller.read()) }),
+    factory,
+    { event: (event) => events.push(event) },
+  );
+
+  try {
+    await controller.update((next) => {
+      next.activeLlmModel = modelB;
+    });
+    await reconciler.refresh();
+
+    expect(shutdowns).toEqual([]);
+    expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+      modelId: modelA,
+      runtimeId: `llm:${modelA}`,
+      state: "running",
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        eventName: "model.switch-preflight-rejected",
+        error: expect.objectContaining({ message: failure.message }),
+      }),
+    );
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("keeps the selected switch when actual admission fails after preflight", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-switch-start-failure-"));
   const database = new DatabaseSession();

@@ -391,11 +391,6 @@ export function createRuntimeSupervisorFactory(
           if (!modelFile) {
             const spec = byId(modelId);
             if (spec) {
-              const installation = await resolveCatalogInstallation(
-                spec,
-                config.llmModelsDir,
-              );
-              if (!installation.complete) return undefined;
               modelFile = primaryArtifact(spec).filename;
             } else {
               for (const candidate of [`${modelId}.bin`, `${modelId}.gguf`]) {
