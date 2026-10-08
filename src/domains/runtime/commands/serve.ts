@@ -3373,7 +3373,9 @@ export async function runServe(
           },
           ctxSizeOverride: launchOverrides.ctxSize,
           llmModelFile: launchOverrides.llmModelFile,
-          pinnedLlmModelId: initialSnapshot.config.activeLlmModel,
+          pinnedContextLength: supervisors
+            .get("llm")
+            ?.resolvedContextLength?.(),
           parallel: currentConfig.parallel,
           memoryGb: ctx.specs.gpuVramGb,
           kvGeometryForModel: async (id) => {

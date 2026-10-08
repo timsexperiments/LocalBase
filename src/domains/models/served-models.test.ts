@@ -135,6 +135,22 @@ describe("listServedModels", () => {
     ).toBeLessThanOrEqual(2048);
   });
 
+  test("reports llama.cpp padded contexts for non-divisible and divisible slots", async () => {
+    const threeSlots = await listServedModels(
+      { ...config, ctxSize: 8192, parallel: 3 },
+      undefined,
+      { memoryGb: 16 },
+    );
+    const twoSlots = await listServedModels(
+      { ...config, ctxSize: 8192, parallel: 2 },
+      undefined,
+      { memoryGb: 16 },
+    );
+
+    expect(byId(threeSlots, config.activeLlmModel)?.context_length).toBe(2816);
+    expect(byId(twoSlots, config.activeLlmModel)?.context_length).toBe(4096);
+  });
+
   test("uses the current config context after a hot reload", async () => {
     const reloaded = { ...config, ctxSize: 4096, parallel: 2 as const };
     const data = await listServedModels(reloaded, undefined, { memoryGb: 16 });
@@ -201,7 +217,7 @@ describe("listServedModels", () => {
     expect(byId(data, selectedModel)?.context_length).toBe(16384);
   });
 
-  test("keeps the startup-pinned context after persisted active model changes", async () => {
+  test("uses the reloaded active model launch plan after activation with a file override", async () => {
     const pinnedModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
     const persistedActiveModel = "qwen2.5-coder-14b-instruct-q4_k_m";
     const data = await listServedModels(
@@ -210,17 +226,40 @@ describe("listServedModels", () => {
         activeLlmModel: persistedActiveModel,
         selectedLlmModels: [pinnedModel, persistedActiveModel],
         ctxSize: 32768,
-        parallel: 2,
+        parallel: 1,
       },
       undefined,
       {
         memoryGb: 16,
         llmModelFile: `${pinnedModel}.gguf`,
-        pinnedLlmModelId: pinnedModel,
       },
     );
 
-    expect(byId(data, persistedActiveModel)?.context_length).toBe(16384);
+    expect(byId(data, persistedActiveModel)?.context_length).toBe(8192);
+    expect(byId(data, pinnedModel)?.context_length).toBe(8192);
+  });
+
+  test("uses the current replacement supervisor context for a file override", async () => {
+    const activeModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const selectedModel = "qwen2.5-coder-14b-instruct-q4_k_m";
+    const data = await listServedModels(
+      {
+        ...config,
+        activeLlmModel: selectedModel,
+        selectedLlmModels: [activeModel, selectedModel],
+        ctxSize: 32768,
+        parallel: 1,
+      },
+      undefined,
+      {
+        memoryGb: 16,
+        llmModelFile: `${activeModel}.gguf`,
+        pinnedContextLength: 8192,
+      },
+    );
+
+    expect(byId(data, selectedModel)?.context_length).toBe(8192);
+    expect(byId(data, activeModel)?.context_length).toBe(8192);
   });
 
   test("uses GGUF KV geometry when allocating automatic slots", async () => {
@@ -249,7 +288,7 @@ describe("listServedModels", () => {
     );
     expect(
       byId(data, "qwen2.5-coder-1.5b-instruct-q4_k_m")?.context_length,
-    ).toBe(10922);
+    ).toBe(11008);
   });
 
   test("lists a modality configured after gateway startup", async () => {

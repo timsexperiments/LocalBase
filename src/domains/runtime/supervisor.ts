@@ -9,6 +9,7 @@ import {
 } from "./memory-controller";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import type { RuntimeLaunchPlan } from "./launch-plan";
+import { llamaContextPerSequence } from "../config/parallel";
 import { stopNativeProcess } from "./native-process";
 
 const CHILD_STOP_GRACE_MS = 500;
@@ -107,6 +108,13 @@ export class ManagedService {
   resolvedSlots(): number | undefined {
     const plan = this.resolvedPlan;
     return plan?.modality === "llm" ? plan.parallel.slots : undefined;
+  }
+
+  resolvedContextLength(): number | undefined {
+    const plan = this.resolvedPlan;
+    return plan?.modality === "llm"
+      ? llamaContextPerSequence(plan.ctxSize, plan.parallel.slots)
+      : undefined;
   }
 
   private exited(proc: Bun.Subprocess): boolean {

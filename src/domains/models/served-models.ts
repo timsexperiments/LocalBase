@@ -8,7 +8,10 @@ import {
 import type { LocalBaseConfig } from "../../manager";
 import type { Permission } from "../auth/authorization";
 import { resolveConfiguredLlmLaunchPlan } from "../runtime/launch-plan";
-import type { ParallelSlots } from "../config/parallel";
+import {
+  llamaContextPerSequence,
+  type ParallelSlots,
+} from "../config/parallel";
 import type { LlmKvGeometry } from "../runtime/gguf-metadata";
 
 type ServedModelConfig = Pick<
@@ -137,9 +140,9 @@ export async function listServedModels(
     enabled?: Partial<Record<ModelKind, boolean>>;
     ctxSizeOverride?: number;
     parallel?: ParallelSlots;
+    pinnedContextLength?: number;
     memoryGb?: number;
     llmModelFile?: string;
-    pinnedLlmModelId?: string;
     kvGeometryForModel?: (id: string) => Promise<LlmKvGeometry | null>;
   }> = {},
 ): Promise<OpenAiModel[]> {
@@ -155,45 +158,55 @@ export async function listServedModels(
       seen.add(id);
       let model = project(kind, id, spec);
       if (kind === "llm") {
-        // A model-file override pins the active runtime across selected model
-        // IDs. Resolve its context with the same model profile the supervisor
-        // launched, rather than the requested model's profile.
-        const launchModelId = options.llmModelFile
-          ? (options.pinnedLlmModelId ?? config.activeLlmModel)
-          : id;
-        const launchSpec = byId(launchModelId);
-        const modelFile =
-          options.llmModelFile ??
-          (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
-        const modelPath = join(config.llmModelsDir, modelFile);
-        const artifactBytes =
-          (launchSpec
-            ? primaryArtifact(launchSpec).expectedSizeBytes
-            : undefined) ??
-          (await Bun.file(modelPath)
-            .stat()
-            .then((file) => file.size)
-            .catch(() => 0));
-        try {
-          const launch = resolveConfiguredLlmLaunchPlan({
-            runtimeId: `models-list:${launchModelId}`,
-            root: config.root,
-            modelsDirectory: config.llmModelsDir,
-            modelId: launchModelId,
-            modelFile,
-            host: "127.0.0.1",
-            port: 1,
-            model: launchSpec,
-            configCtxSize: config.ctxSize,
-            ctxSizeOverride: options.ctxSizeOverride,
-            parallel: options.parallel ?? config.parallel ?? 1,
-            artifactBytes,
-            memoryGb: options.memoryGb ?? 0,
-            kvGeometry: await options.kvGeometryForModel?.(launchModelId),
-          });
-          model = { ...model, context_length: launch.parallel.contextPerSlot };
-        } catch {
-          model = omitContextLength(model);
+        if (options.llmModelFile && options.pinnedContextLength !== undefined) {
+          model = { ...model, context_length: options.pinnedContextLength };
+        } else {
+          // A model-file override pins the active runtime across selected
+          // model IDs. Use the current active model and config as the fallback
+          // profile when the supervisor has not resolved a launch plan yet.
+          const launchModelId = options.llmModelFile
+            ? config.activeLlmModel
+            : id;
+          const launchSpec = byId(launchModelId);
+          const modelFile =
+            options.llmModelFile ??
+            (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
+          const modelPath = join(config.llmModelsDir, modelFile);
+          const artifactBytes =
+            (launchSpec
+              ? primaryArtifact(launchSpec).expectedSizeBytes
+              : undefined) ??
+            (await Bun.file(modelPath)
+              .stat()
+              .then((file) => file.size)
+              .catch(() => 0));
+          try {
+            const launch = resolveConfiguredLlmLaunchPlan({
+              runtimeId: `models-list:${launchModelId}`,
+              root: config.root,
+              modelsDirectory: config.llmModelsDir,
+              modelId: launchModelId,
+              modelFile,
+              host: "127.0.0.1",
+              port: 1,
+              model: launchSpec,
+              configCtxSize: config.ctxSize,
+              ctxSizeOverride: options.ctxSizeOverride,
+              parallel: options.parallel ?? config.parallel ?? 1,
+              artifactBytes,
+              memoryGb: options.memoryGb ?? 0,
+              kvGeometry: await options.kvGeometryForModel?.(launchModelId),
+            });
+            model = {
+              ...model,
+              context_length: llamaContextPerSequence(
+                launch.ctxSize,
+                launch.parallel.slots,
+              ),
+            };
+          } catch {
+            model = omitContextLength(model);
+          }
         }
       }
       data.push(model);

@@ -12,6 +12,7 @@ type CommonRuntimeSupervisor = {
   runtimeId(): string;
   state(): ModalityLifecycleState;
   resolvedSlots?(): number | undefined;
+  resolvedContextLength?(): number | undefined;
   ensureRunning(): Promise<void>;
   kill(): Promise<void>;
   shutdown(): Promise<void>;

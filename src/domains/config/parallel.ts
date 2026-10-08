@@ -40,6 +40,22 @@ export type ParallelAllocation = {
   contextPerSlot: number;
 };
 
+/**
+ * Matches llama.cpp b10419 context normalization for the value exposed by
+ * /v1/models. LocalBase does not pass --kv-unified, so slots receive separate
+ * contexts padded to 256 tokens after the total context is padded.
+ */
+export function llamaContextPerSequence(
+  ctxSize: number,
+  slots: number,
+  kvUnified = false,
+): number {
+  const paddedContext = Math.ceil(ctxSize / 256) * 256;
+  if (kvUnified) return paddedContext;
+  const perSequence = Math.floor(paddedContext / slots);
+  return Math.ceil(perSequence / 256) * 256;
+}
+
 function invalidParallelSlots(value: unknown): never {
   throw new Error(
     `Invalid parallel slots ${JSON.stringify(value)}. Use "auto" or an integer from 1 to ${MAX_PARALLEL_SLOTS}.`,
