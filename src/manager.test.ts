@@ -1246,7 +1246,7 @@ for (let i = 0; i < Number(count); i++) {
         )};
 await withChecksumStoreLock(process.argv[2]!, async () => {
   console.log("locked");
-  await new Promise(() => {});
+  await Bun.sleep(60_000);
 });
 `,
       );
@@ -1254,18 +1254,24 @@ await withChecksumStoreLock(process.argv[2]!, async () => {
         stdout: "pipe",
         stderr: "ignore",
       });
-      const reader = child.stdout.getReader();
-      expect(new TextDecoder().decode((await reader.read()).value)).toContain(
-        "locked",
-      );
-      await expect(
-        withChecksumStoreLock(root, async () => {}, 200),
-      ).rejects.toThrow("Timed out");
-      child.kill("SIGKILL");
-      await child.exited;
-      const started = Date.now();
-      expect(await withChecksumStoreLock(root, async () => "ok")).toBe("ok");
-      expect(Date.now() - started).toBeLessThan(2_000);
+      try {
+        const reader = child.stdout.getReader();
+        expect(new TextDecoder().decode((await reader.read()).value)).toContain(
+          "locked",
+        );
+        await expect(
+          withChecksumStoreLock(root, async () => {}, 200),
+        ).rejects.toThrow("Timed out");
+        expect(child.exitCode).toBeNull();
+        child.kill("SIGKILL");
+        await child.exited;
+        const started = Date.now();
+        expect(await withChecksumStoreLock(root, async () => "ok")).toBe("ok");
+        expect(Date.now() - started).toBeLessThan(2_000);
+      } finally {
+        child.kill("SIGKILL");
+        await child.exited;
+      }
     } finally {
       rmSync(scriptDir, { recursive: true, force: true });
     }

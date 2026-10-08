@@ -1,5 +1,12 @@
 import { Database } from "bun:sqlite";
-import { chmodSync, createReadStream, existsSync, statSync } from "node:fs";
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  createReadStream,
+  existsSync,
+  statSync,
+} from "node:fs";
 import { readdir, rename, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setImmediate, setTimeout as sleep } from "node:timers/promises";
@@ -161,6 +168,11 @@ export async function withChecksumStoreLock<T>(
   deadlineMs = LOCK_DEADLINE_MS,
 ): Promise<T> {
   const lockPath = join(dir, ".checksums.json.lock.db");
+  // Bun leaks the native handle when `new Database` throws, so reject predictable failures first.
+  if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error(`Checksum store directory ${dir} does not exist.`);
+  }
+  accessSync(dir, constants.W_OK | constants.X_OK);
   const created = !existsSync(lockPath);
   const db = new Database(lockPath, { create: true });
   try {
