@@ -381,11 +381,9 @@ async function parseVideoJob({
         media: parseCompletedMedia(job.result, maxMediaBytes),
       };
     case "failed":
-    case "cancelled":
-      return {
-        id: job.id,
-        status: job.status,
-      };
+    case "cancelled": {
+      return { id: job.id, status: job.status };
+    }
     default: {
       const exhaustive: never = job.status;
       return exhaustive;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RuntimeMemoryAdmissionError } from "../memory-controller";
 import type { ModelSpec } from "../../../catalog";
 import {
   videoConditioningInputSchema,
@@ -45,7 +46,12 @@ export const videoJobResponseSchema = z.discriminatedUnion("status", [
   videoJobResponseBaseSchema.extend({
     status: z.literal("failed"),
     completed_at: z.number().int().nonnegative(),
-    error: z.object({ code: z.literal("video_generation_failed") }).strict(),
+    error: z
+      .object({
+        code: z.enum(["video_generation_failed", "insufficient_memory"]),
+        message: z.string().min(1).optional(),
+      })
+      .strict(),
   }),
   videoJobResponseBaseSchema.extend({
     status: z.literal("cancelled"),
@@ -141,7 +147,7 @@ export function projectVideoJob(job: VideoJob): VideoJobResponse {
         status: job.state,
         created_at: unixSeconds(job.createdAtMs),
         completed_at: unixSeconds(job.terminalAtMs),
-        error: { code: "video_generation_failed" },
+        error: videoFailureError(job.failure),
       });
     case "cancelled":
       return videoJobResponseSchema.parse({
@@ -153,4 +159,66 @@ export function projectVideoJob(job: VideoJob): VideoJobResponse {
         cancellation_reason: job.reason,
       });
   }
+}
+
+function formatBytes(bytes: number | "unavailable" | undefined): string {
+  if (typeof bytes !== "number") return "an unknown amount";
+  return `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
+}
+
+const FREE_MEMORY_HINT =
+  "Free memory (unload other models or close applications) and retry.";
+
+function videoFailureError(
+  failure: Error,
+): Extract<VideoJobResponse, { status: "failed" }>["error"] {
+  if (failure instanceof RuntimeMemoryAdmissionError) {
+    return {
+      code: "insufficient_memory",
+      message: memoryAdmissionMessage(failure),
+    };
+  }
+  return { code: "video_generation_failed" };
+}
+
+function memoryAdmissionMessage(failure: RuntimeMemoryAdmissionError): string {
+  const { reason } = failure.decision;
+  const diagnostics = failure.diagnostics;
+  const accelerator = reason === "accelerator-memory";
+  const pool = accelerator ? "accelerator (GPU) memory" : "memory";
+  if (reason === "memory-pressure") {
+    return `The host is under ${accelerator ? "accelerator " : ""}memory pressure, so the video runtime was not started. ${FREE_MEMORY_HINT}`;
+  }
+  if (reason === "measurement-unavailable") {
+    return `Available memory could not be measured reliably, so the video runtime was not started. Retry shortly.`;
+  }
+  const requested = diagnostics?.requested_bytes;
+  const available = diagnostics?.effective_available_bytes;
+  const reserve = diagnostics?.reserve_bytes;
+  const usable =
+    typeof available === "number" && typeof reserve === "number"
+      ? Math.max(0, available - reserve)
+      : undefined;
+  return `Not enough free ${pool} to start the video runtime: it needs ${formatBytes(requested)} but only ${formatBytes(usable)} is usable after the safety reserve. ${FREE_MEMORY_HINT}`;
+}
+
+/** Names the accepted profile so a rejected request is actionable. */
+export function videoProfileMismatchMessage(
+  request: VideoCreateRequest,
+  model: ModelSpec,
+): string {
+  if (model.kind !== "video" || !model.videoRuntime) {
+    return "This model does not support video generation.";
+  }
+  const { qualification, mode } = model.videoRuntime;
+  const inputKind =
+    mode === "s2v" ? "speech" : mode === "t2v" ? "text" : undefined;
+  const wrongInput =
+    inputKind !== undefined && request.input.kind !== inputKind;
+  return (
+    `This local video model accepts exactly ${qualification.maxWidth}x${qualification.maxHeight} (width x height), ` +
+    `${qualification.maxFrames} frames at ${qualification.fps} fps; ` +
+    `got ${request.width}x${request.height}, ${request.frames} frames at ${request.fps} fps.` +
+    (wrongInput ? ` It also requires input.kind "${inputKind}".` : "")
+  );
 }
