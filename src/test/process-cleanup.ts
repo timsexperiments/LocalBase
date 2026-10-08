@@ -85,6 +85,8 @@ async function reapIdentities(
 
 async function runPs(args: string[]): Promise<string> {
   const proc = Bun.spawn(["ps", ...args], {
+    // The parsers rely on the fixed-width C-locale `lstart` format.
+    env: { ...process.env, LC_ALL: "C" },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
