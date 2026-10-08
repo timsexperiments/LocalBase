@@ -158,12 +158,27 @@ export class MemorySafetyController {
   ): readonly ProjectedMemoryDemand[] {
     const topology = this.provider.topology;
     const pending = pendingDemandByPool(this.reservations.values());
-    const transition = this.observe(snapshot);
-    if (transition.action !== "allow") {
+    // Only poll() advances hysteresis; reserve() must not count as a sample.
+    if (this.hysteresis.state !== "healthy") {
       this.reject(request, snapshot, pending, {
         kind: "rejected",
         reason: "memory-pressure",
         poolId: this.pressurePoolId,
+      });
+    }
+    const observation = observeMemoryPressure({
+      topology,
+      snapshot,
+      config: this.config,
+    });
+    if (
+      observation.pressure === "constrained" ||
+      observation.pressure === "critical"
+    ) {
+      this.reject(request, snapshot, pending, {
+        kind: "rejected",
+        reason: "memory-pressure",
+        poolId: observation.poolId,
       });
     }
 

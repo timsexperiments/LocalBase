@@ -291,13 +291,32 @@ describe("memory controller", () => {
     expect(snapshotCount).toBe(0);
   });
 
-  test("blocks starts while constrained until three normal samples recover", async () => {
-    const source = sequencedProvider([
-      9 * gibibyte,
-      32 * gibibyte,
-      32 * gibibyte,
-      32 * gibibyte,
-    ]);
+  test("reserve rejects fresh critical pressure without mutating hysteresis", async () => {
+    const source = sequencedProvider([7 * gibibyte, 32 * gibibyte]);
+    const controller = new MemorySafetyController(
+      source.provider,
+      defaultMemorySafetyConfig(),
+    );
+
+    await expect(
+      controller.reserve({ runtimeId: "llm:model:1", demand }),
+    ).rejects.toMatchObject({
+      decision: {
+        kind: "rejected",
+        reason: "memory-pressure",
+        poolId: "system",
+      },
+      diagnostics: { safety_state: "healthy", recovery_samples: 0 },
+    });
+    expect(await controller.poll()).toMatchObject({
+      previous: { state: "healthy" },
+      current: { state: "healthy" },
+      action: "allow",
+    });
+  });
+
+  test("blocks starts while constrained until three polled normal samples recover", async () => {
+    const source = sequencedProvider([9 * gibibyte, 32 * gibibyte]);
     const controller = new MemorySafetyController(
       source.provider,
       defaultMemorySafetyConfig(),
@@ -307,7 +326,7 @@ describe("memory controller", () => {
       current: { state: "constrained", consecutiveNormalSnapshots: 0 },
       action: "constrain",
     });
-    for (let index = 1; index <= 2; index += 1) {
+    for (let index = 1; index <= 4; index += 1) {
       await expect(
         controller.reserve({ runtimeId: `llm:model:${index}`, demand }),
       ).rejects.toMatchObject({
@@ -323,17 +342,23 @@ describe("memory controller", () => {
           requested_bytes: demand.unifiedBytes,
           measured_pressure: "normal",
           safety_state: "constrained",
-          recovery_samples: index,
+          recovery_samples: 0,
         },
       });
     }
 
+    await controller.poll();
+    await controller.poll();
+    expect(await controller.poll()).toMatchObject({
+      current: { state: "healthy" },
+    });
+
     const reservation = await controller.reserve({
-      runtimeId: "llm:model:3",
+      runtimeId: "llm:model:5",
       demand,
     });
     reservation.release();
-    expect(source.snapshotCount()).toBe(4);
+    expect(source.snapshotCount()).toBe(9);
   });
 
   test("enters critical immediately and rejects new starts", async () => {
