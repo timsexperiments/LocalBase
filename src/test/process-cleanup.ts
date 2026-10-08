@@ -1,8 +1,31 @@
 import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 
-function alive(pid: number): boolean {
+type ProcessIdentity = { pid: number; started: string; root?: string };
+
+type CleanupDeps = {
+  readIdentity: (
+    pid: number,
+  ) => Promise<{ started: string; command: string } | null>;
+  signal: (pid: number, signal: NodeJS.Signals | 0) => void;
+  sleep: (ms: number) => Promise<void>;
+  now: () => number;
+};
+
+const defaultDeps: CleanupDeps = {
+  readIdentity: async (pid) => {
+    const output = await runPs(["-o", "lstart=,command=", "-p", String(pid)]);
+    const line = output.trimStart().trimEnd();
+    const match = /^(.{24})\s+(.*)$/.exec(line);
+    return match ? { started: match[1].trim(), command: match[2] } : null;
+  },
+  signal: (pid, signal) => process.kill(pid, signal),
+  sleep: (ms) => Bun.sleep(ms),
+  now: Date.now,
+};
+
+function alive(pid: number, signal: CleanupDeps["signal"]): boolean {
   try {
-    process.kill(pid, 0);
+    signal(pid, 0);
     return true;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "EPERM";
@@ -20,21 +43,44 @@ export async function reapPids(
   const targets = [...new Set(pids)].filter(
     (pid) => Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid,
   );
-  for (const pid of targets) {
+  await reapIdentities(
+    targets.map((pid) => ({ pid, started: "" })),
+    () => Promise.resolve(true),
+    graceMs,
+  );
+}
+
+async function reapIdentities(
+  identities: ProcessIdentity[],
+  stillSame: (identity: ProcessIdentity) => Promise<boolean>,
+  graceMs: number,
+  deps: CleanupDeps = defaultDeps,
+): Promise<void> {
+  for (const identity of identities) {
+    if (!(await stillSame(identity))) continue;
     try {
-      process.kill(pid, "SIGTERM");
+      deps.signal(identity.pid, "SIGTERM");
     } catch {}
   }
-  const deadline = Date.now() + graceMs;
-  while (Date.now() < deadline && targets.some(alive)) await Bun.sleep(25);
-  for (const pid of targets) {
-    if (!alive(pid)) continue;
+  const deadline = deps.now() + graceMs;
+  while (
+    deps.now() < deadline &&
+    identities.some(({ pid }) => alive(pid, deps.signal))
+  )
+    await deps.sleep(25);
+  for (const identity of identities) {
+    if (!(await stillSame(identity)) || !alive(identity.pid, deps.signal))
+      continue;
     try {
-      process.kill(pid, "SIGKILL");
+      deps.signal(identity.pid, "SIGKILL");
     } catch {}
   }
-  const killDeadline = Date.now() + 2_000;
-  while (Date.now() < killDeadline && targets.some(alive)) await Bun.sleep(25);
+  const killDeadline = deps.now() + 2_000;
+  while (
+    deps.now() < killDeadline &&
+    identities.some(({ pid }) => alive(pid, deps.signal))
+  )
+    await deps.sleep(25);
 }
 
 async function runPs(args: string[]): Promise<string> {
@@ -69,9 +115,36 @@ export async function pidsMatching(needle: string): Promise<number[]> {
   return pids;
 }
 
+async function identitiesMatching(needle: string): Promise<ProcessIdentity[]> {
+  if (!needle) return [];
+  const output = await runPs(["-Ao", "pid=,lstart=,command="]);
+  const identities: ProcessIdentity[] = [];
+  for (const line of output.split("\n")) {
+    const match = /^\s*(\d+)\s+(.{24})\s+(.*)$/.exec(line);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    const started = match[2].trim();
+    if (pid === process.pid || !Number.isSafeInteger(pid) || pid <= 0) continue;
+    if (match[3].includes(needle))
+      identities.push({ pid, started, root: needle });
+  }
+  return identities;
+}
+
 /** Kill every process whose command line mentions `needle` (a temp dir path). */
 export async function reapProcessesMatching(needle: string): Promise<void> {
-  await reapPids(await pidsMatching(needle));
+  const identities = await identitiesMatching(needle);
+  await reapIdentities(
+    identities,
+    async (identity) => {
+      const current = await defaultDeps.readIdentity(identity.pid);
+      return (
+        current?.started === identity.started &&
+        current.command.includes(identity.root ?? "")
+      );
+    },
+    3_000,
+  );
 }
 
 /** Throws if any process command line still mentions `needle`. */
@@ -103,17 +176,27 @@ export async function recordPid(
  * SIGTERM/SIGKILL recorded pids whose start time still matches, then drop the
  * ledger. Entries for exited or reused pids are pruned without signalling.
  */
-export async function reapRecordedPids(ledgerPath: string): Promise<void> {
+export async function reapRecordedPids(
+  ledgerPath: string,
+  deps: CleanupDeps = defaultDeps,
+): Promise<void> {
   if (!existsSync(ledgerPath)) return;
   const entries = readFileSync(ledgerPath, "utf8")
     .split("\n")
     .map((line) => /^(\d+)\t(.+)$/.exec(line))
     .filter((match): match is RegExpExecArray => match !== null);
-  const targets: number[] = [];
+  const targets: ProcessIdentity[] = [];
   for (const [, pidText, started] of entries) {
     const pid = Number(pidText);
-    if ((await startTime(pid)) === started) targets.push(pid);
+    const current = await deps.readIdentity(pid);
+    if (current?.started === started) targets.push({ pid, started });
   }
-  await reapPids(targets);
+  await reapIdentities(
+    targets,
+    async (identity) =>
+      (await deps.readIdentity(identity.pid))?.started === identity.started,
+    3_000,
+    deps,
+  );
   rmSync(ledgerPath, { force: true });
 }
