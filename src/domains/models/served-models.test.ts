@@ -89,4 +89,17 @@ describe("listServedModels", () => {
       "whisper-tiny-q8_0",
     ]);
   });
+
+  test("applies serve modality disables and reduced per-slot context", () => {
+    const data = listServedModels(config, undefined, {
+      enabled: { image: false },
+      ctxSize: 4096,
+      parallel: 2,
+      memoryGb: 16,
+    });
+    expect(data.some(({ id }) => id === "flux1-schnell-q4_0")).toBe(false);
+    expect(
+      byId(data, "qwen2.5-coder-1.5b-instruct-q4_k_m")?.context_length,
+    ).toBeLessThanOrEqual(2048);
+  });
 });

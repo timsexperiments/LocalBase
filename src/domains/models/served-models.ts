@@ -1,6 +1,8 @@
 import { byId, type ModelKind, type ModelSpec } from "../../catalog";
 import type { LocalBaseConfig } from "../../manager";
 import type { Permission } from "../auth/authorization";
+import { resolveLlmLaunchPlan } from "../runtime/launch-plan";
+import type { ParallelSlots } from "../config/parallel";
 
 type ServedModelConfig = Pick<
   LocalBaseConfig,
@@ -113,17 +115,44 @@ function project(kind: ModelKind, id: string, spec?: ModelSpec): OpenAiModel {
 export function listServedModels(
   config: ServedModelConfig,
   permissions?: readonly Permission[],
+  options: Readonly<{
+    enabled?: Partial<Record<ModelKind, boolean>>;
+    ctxSize?: number;
+    parallel?: ParallelSlots;
+    memoryGb?: number;
+  }> = {},
 ): OpenAiModel[] {
   const seen = new Set<string>();
   const data: OpenAiModel[] = [];
   for (const kind of kindOrder) {
+    if (options.enabled?.[kind] === false) continue;
     for (const id of configuredIds(kind, config)) {
       if (!id || seen.has(id)) continue;
       const spec = byId(id);
       const permission = permissionFor(kind, spec);
       if (permissions && !permissions.includes(permission)) continue;
       seen.add(id);
-      data.push(project(kind, id, spec));
+      let model = project(kind, id, spec);
+      if (kind === "llm" && spec?.contextWindowTokens && options.ctxSize) {
+        const launch = resolveLlmLaunchPlan({
+          runtimeId: `models-list:${id}`,
+          root: ".",
+          modelsDirectory: ".",
+          modelId: id,
+          modelFile: "",
+          host: "127.0.0.1",
+          port: 1,
+          ctxSize: options.ctxSize,
+          contextWindowTokens: spec.contextWindowTokens,
+          parallel: options.parallel ?? 1,
+          modelRequirementGb: spec.minVramGb,
+          artifactBytes: 0,
+          hardware: { memoryGb: options.memoryGb ?? 0 },
+          embedding: spec.llmRuntime,
+        });
+        model = { ...model, context_length: launch.parallel.contextPerSlot };
+      }
+      data.push(model);
     }
   }
   return data;

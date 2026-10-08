@@ -3361,6 +3361,12 @@ export async function runServe(
         authorization.kind === "authorized"
           ? authorization.principal.permissions
           : undefined,
+        {
+          enabled,
+          ctxSize,
+          parallel: currentConfig.parallel,
+          memoryGb: ctx.specs.gpuVramGb,
+        },
       );
       return Response.json({
         object: "list",
