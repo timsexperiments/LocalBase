@@ -9,7 +9,6 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:http";
@@ -45,6 +44,7 @@ import {
   parseChecksumFile,
   readChecksumStore,
   verifyAuthoritativeFile,
+  withChecksumStoreLock,
   writeChecksumStore,
 } from "./utils/checksum";
 import {
@@ -1214,7 +1214,6 @@ for (let i = 0; i < Number(count); i++) {
       }
       const store = await readChecksumStore(root);
       expect(Object.keys(store.entries).sort()).toEqual(expected.sort());
-      expect(existsSync(join(root, ".checksums.json.lock"))).toBe(false);
     } finally {
       rmSync(scriptDir, { recursive: true, force: true });
     }
@@ -1235,37 +1234,65 @@ for (let i = 0; i < Number(count); i++) {
     );
   }
 
-  test("breaks a checksum store lock held by a dead process", async () => {
+  test("releases the checksum store lock when its holder is killed", async () => {
     const root = createInstallConfig().root;
-    const lock = join(root, ".checksums.json.lock");
-    mkdirSync(lock);
-    writeFileSync(
-      join(lock, "owner.json"),
-      JSON.stringify({
-        pid: 2 ** 30,
-        token: crypto.randomUUID(),
-        acquiredAt: Date.now(),
-      }),
-    );
-    expect(await verifyOne(root)).toBe("sha256");
-    expect(existsSync(lock)).toBe(false);
-    expect(Object.keys((await readChecksumStore(root)).entries)).toEqual([
-      "model.bin",
-    ]);
-    expect(readdirSync(root).filter((name) => name.endsWith(".stale"))).toEqual(
-      [],
-    );
+    const scriptDir = mkdtempSync(join(tmpdir(), "localbase-checksum-hold-"));
+    try {
+      const script = join(scriptDir, "hold.ts");
+      writeFileSync(
+        script,
+        `import { withChecksumStoreLock } from ${JSON.stringify(
+          join(import.meta.dir, "utils", "checksum.ts"),
+        )};
+await withChecksumStoreLock(process.argv[2]!, async () => {
+  console.log("locked");
+  await new Promise(() => {});
+});
+`,
+      );
+      const child = Bun.spawn([process.execPath, script, root], {
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+      const reader = child.stdout.getReader();
+      expect(new TextDecoder().decode((await reader.read()).value)).toContain(
+        "locked",
+      );
+      await expect(
+        withChecksumStoreLock(root, async () => {}, 200),
+      ).rejects.toThrow("Timed out");
+      child.kill("SIGKILL");
+      await child.exited;
+      const started = Date.now();
+      expect(await withChecksumStoreLock(root, async () => "ok")).toBe("ok");
+      expect(Date.now() - started).toBeLessThan(2_000);
+    } finally {
+      rmSync(scriptDir, { recursive: true, force: true });
+    }
   });
 
-  test("breaks an expired checksum store lock without a valid owner", async () => {
+  test("a live checksum store lock holder excludes others until release", async () => {
     const root = createInstallConfig().root;
-    const lock = join(root, ".checksums.json.lock");
-    mkdirSync(lock);
-    writeFileSync(join(lock, "owner.json"), "{not json");
-    const old = new Date(Date.now() - 60_000);
-    utimesSync(lock, old, old);
-    expect(await verifyOne(root)).toBe("sha256");
-    expect(existsSync(lock)).toBe(false);
+    const events: string[] = [];
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let entered!: () => void;
+    const holding = new Promise<void>((resolve) => (entered = resolve));
+    const first = withChecksumStoreLock(root, async () => {
+      events.push("first-in");
+      entered();
+      await held;
+      events.push("first-out");
+    });
+    await holding;
+    const second = withChecksumStoreLock(root, async () => {
+      events.push("second-in");
+    });
+    await timers.setTimeout(300);
+    expect(events).toEqual(["first-in"]);
+    release();
+    await Promise.all([first, second]);
+    expect(events).toEqual(["first-in", "first-out", "second-in"]);
   });
 
   test("removes the temporary file when writing the checksum store fails", async () => {
@@ -1278,7 +1305,6 @@ for (let i = 0; i < Number(count); i++) {
     expect(readdirSync(root).filter((name) => name.endsWith(".tmp"))).toEqual(
       [],
     );
-    expect(existsSync(join(root, ".checksums.json.lock"))).toBe(false);
   });
 
   test("removes orphaned checksum store temp files while writing", async () => {
