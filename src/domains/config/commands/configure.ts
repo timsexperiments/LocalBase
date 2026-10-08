@@ -231,12 +231,18 @@ async function interactiveConfigureSelective(
     config.root = await textPrompt("Root directory", config.root);
 
   if (!locked.has("host"))
-    config.host = await textPrompt("LLM host", config.host);
+    config.host = await textPrompt(
+      "LLM backend bind host (loopback recommended)",
+      config.host,
+    );
   if (!locked.has("port"))
     config.port = await numberPrompt("LLM port", config.port);
 
   if (!locked.has("sttHost"))
-    config.sttHost = await textPrompt("STT host", config.sttHost);
+    config.sttHost = await textPrompt(
+      "STT backend bind host (loopback recommended)",
+      config.sttHost,
+    );
   if (!locked.has("sttPort"))
     config.sttPort = await numberPrompt("STT port", config.sttPort);
 
