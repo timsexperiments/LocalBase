@@ -879,9 +879,7 @@ export class RuntimeReconciler {
 
       if (
         action.action === "drain-and-replace" &&
-        this.supervisors.get(modality) !== undefined &&
-        activeModel(modality, this.appliedSnapshots[modality].config) !==
-          activeModel(modality, target.config)
+        this.supervisors.get(modality) !== undefined
       ) {
         try {
           await this.assertSwitchFits(

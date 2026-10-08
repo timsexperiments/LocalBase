@@ -1892,6 +1892,7 @@ export async function admitVideoWithIdleRecovery(
     current.admission.cancel();
     await current.admission.supervisor.kill();
     signal.throwIfAborted();
+    if (error.capacity !== undefined) throw error;
     await reconciler.evictIdleRuntimes("video");
     const retry = await reconciler.admitModel("video", modelId, signal);
     if (retry.kind !== "admitted") throw error;

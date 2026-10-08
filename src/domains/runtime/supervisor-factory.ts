@@ -543,24 +543,26 @@ export function createRuntimeSupervisorFactory(
         logger: ctx.logger,
         preflightDemand: async (signal) => {
           if (signal?.aborted) return undefined;
+          const spec = byId(modelId);
           const modelFile =
             overrides.sttModelFile ??
             (await configuredModelFile(config, modelId, modality));
-          if (!modelFile) return undefined;
-          const spec = byId(modelId);
+          const preflightModelFile =
+            modelFile || (spec ? primaryArtifact(spec).filename : undefined);
+          if (!preflightModelFile) return undefined;
           const plan = resolveSttLaunchPlan({
             runtimeId,
             root: config.root,
             modelsDirectory: config.sttModelsDir,
             modelId,
-            modelFile,
+            modelFile: preflightModelFile,
             host: sttHost(snapshot.config, overrides),
             port: sttPort(snapshot.config, overrides),
             modelRequirementGb: spec?.minVramGb,
             artifactBytes: await artifactBytes(
               modelId,
               config.sttModelsDir,
-              modelFile,
+              preflightModelFile,
             ),
           });
           return signal?.aborted ? undefined : plan.memoryDemand;
@@ -698,7 +700,14 @@ export function createRuntimeSupervisorFactory(
             spec,
             config.videoModelsDir,
           );
-          if (!installation.complete) return undefined;
+          if (!installation.complete) {
+            return signal?.aborted
+              ? undefined
+              : {
+                  ...spec.videoRuntime.estimatedMemoryDemand,
+                  confidence: "estimated" as const,
+                };
+          }
           const plan = resolveVideoLaunchPlan({
             runtimeId,
             root: config.root,
@@ -818,11 +827,6 @@ export function createRuntimeSupervisorFactory(
         const spec = byId(modelId);
         let modelFile = overrides.imageModelFile;
         if (spec?.imageRuntime) {
-          const installation = await resolveCatalogInstallation(
-            spec,
-            config.imageModelsDir,
-          );
-          if (!installation.complete) return undefined;
           modelFile = primaryArtifact(spec).filename;
         } else if (!modelFile) {
           modelFile = await configuredModelFile(config, modelId, modality);

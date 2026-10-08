@@ -229,7 +229,7 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
     saveConfig(database, replaceLlm);
     await reconciler.refresh();
     expect(records.filter(({ modality }) => modality === "llm")).toHaveLength(
-      2,
+      3,
     );
     expect(records.filter(({ modality }) => modality === "stt")).toHaveLength(
       1,
@@ -428,7 +428,7 @@ test("advances applied generations only inside the modality owner", async () => 
       launchChange.port,
     );
     expect(appliedPort).toBe(launchChange.port);
-    expect(creations).toBe(2);
+    expect(creations).toBe(3);
     admission.value.admission.release();
   } finally {
     releaseKill?.();
@@ -1547,6 +1547,78 @@ test("configuration model replacement preflights before draining the current run
         error: expect.objectContaining({ message: failure.message }),
       }),
     );
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("configuration replacement preflights parallel demand before draining", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-parallel-preflight-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  config.parallel = 1;
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  const originalModel = config.activeLlmModel;
+  const shutdowns: string[] = [];
+  let replacementPreflights = 0;
+  const failure = new RuntimeMemoryAdmissionError(
+    {
+      kind: "rejected",
+      reason: "system-memory",
+      poolId: "system",
+    },
+    undefined,
+    {
+      poolId: "system",
+      requiredBytes: 9 * 1024 ** 3,
+      usableBytes: 8 * 1024 ** 3,
+      capacityBytes: 16 * 1024 ** 3,
+    },
+  );
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(modality, snapshot) {
+      const modelId = activeModel(modality, snapshot.config);
+      const parallel = snapshot.config.parallel;
+      return {
+        kind: "server",
+        runtimeId: () => `${modality}:${modelId}:${parallel}`,
+        state: () => "running",
+        async ensureRunning() {},
+        async kill() {},
+        async shutdown() {
+          shutdowns.push(`${modelId}:${parallel}`);
+        },
+        async preflight() {
+          if (parallel === 4) replacementPreflights += 1;
+          return parallel === 4 ? failure : undefined;
+        },
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: factory.create("llm", controller.read()) }),
+    factory,
+    { event() {} },
+  );
+
+  try {
+    await controller.update((next) => {
+      next.parallel = 4;
+    });
+    await reconciler.refresh();
+
+    expect(replacementPreflights).toBe(1);
+    expect(shutdowns).toEqual([]);
+    expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+      modelId: originalModel,
+      runtimeId: `llm:${originalModel}:1`,
+      state: "running",
+    });
   } finally {
     database.close();
     rmSync(root, { recursive: true, force: true });
