@@ -408,7 +408,7 @@ function upstreamFailure(message: string): Response {
   );
 }
 
-/** Whisper reports failures as JSON bodies, sometimes with a 200 status. */
+/** Whisper reports failures as JSON bodies; successful text formats are never JSON-typed. */
 function looksLikeBackendError(upstream: Response, body: string): boolean {
   if (!upstream.headers.get("content-type")?.includes("json")) return false;
   const trimmed = body.trimStart();
