@@ -306,6 +306,54 @@ export class RuntimeReconciler {
     );
   }
 
+  /**
+   * Checks whether stopping every currently eligible idle peer would make the
+   * requested model admissible, without stopping peers or changing admission
+   * state.
+   */
+  async canAdmitAfterIdleEviction(
+    modality: RuntimeModality,
+    modelId: string,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    try {
+      const source = this.snapshot;
+      if (!configuredRuntimeModality(modality, source.config, this.ownership))
+        return false;
+      const candidate = this.factory.create(modality, {
+        ...source,
+        config: { ...source.config, [activeModelField(modality)]: modelId },
+      });
+      if (!candidate.preflight) return false;
+
+      const releasingRuntimeIds = runtimeModalities.flatMap((peerModality) => {
+        if (peerModality === modality) return [];
+        const supervisor = this.supervisors.get(peerModality);
+        const admission = this.barriers[peerModality].snapshot();
+        if (
+          !supervisor ||
+          supervisor.state() !== "running" ||
+          admission.kind !== "known" ||
+          !admission.accepting ||
+          admission.activeCount !== 0
+        ) {
+          return [];
+        }
+        return [supervisor.runtimeId()];
+      });
+
+      const rejection = await this.waitForAbort(
+        candidate.preflight(releasingRuntimeIds, signal),
+        signal,
+      );
+      return rejection === undefined;
+    } catch (error) {
+      if (signal?.aborted || error instanceof RuntimeRequestAbortedError)
+        throw new RuntimeRequestAbortedError();
+      return false;
+    }
+  }
+
   async evictAllRuntimes(): Promise<void> {
     for (const preflight of this.switchPreflights.values()) preflight.abort();
     this.rejectQueued("Inference rejected by memory emergency.");

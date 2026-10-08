@@ -1869,7 +1869,10 @@ export async function applyElevatedMemoryPressure(
 }
 
 export async function admitVideoWithIdleRecovery(
-  reconciler: Pick<RuntimeReconciler, "admitModel" | "evictIdleRuntimes">,
+  reconciler: Pick<
+    RuntimeReconciler,
+    "admitModel" | "evictIdleRuntimes" | "canAdmitAfterIdleEviction"
+  >,
   modelId: string,
   signal: AbortSignal,
 ): Promise<Awaited<ReturnType<RuntimeReconciler["admitModel"]>>> {
@@ -1878,6 +1881,12 @@ export async function admitVideoWithIdleRecovery(
     first.kind === "insufficient-memory" &&
     first.error.capacity === undefined
   ) {
+    signal.throwIfAborted();
+    if (
+      !(await reconciler.canAdmitAfterIdleEviction("video", modelId, signal))
+    ) {
+      return first;
+    }
     signal.throwIfAborted();
     await reconciler.evictIdleRuntimes("video");
     signal.throwIfAborted();
@@ -1893,6 +1902,12 @@ export async function admitVideoWithIdleRecovery(
     await current.admission.supervisor.kill();
     signal.throwIfAborted();
     if (error.capacity !== undefined) throw error;
+    if (
+      !(await reconciler.canAdmitAfterIdleEviction("video", modelId, signal))
+    ) {
+      throw error;
+    }
+    signal.throwIfAborted();
     await reconciler.evictIdleRuntimes("video");
     const retry = await reconciler.admitModel("video", modelId, signal);
     if (retry.kind !== "admitted") throw error;
