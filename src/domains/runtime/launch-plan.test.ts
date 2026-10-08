@@ -1,3 +1,4 @@
+import { kvCacheBytes } from "./gguf-metadata";
 import { describe, expect, test } from "bun:test";
 import {
   resolveImageLaunchPlan,
@@ -356,6 +357,36 @@ describe("runtime launch plans", () => {
       expect(plan.promptCacheRamMib).toBe(0);
       expect(plan.memoryDemand.hostBytes).toBe(
         14 * 1024 ** 3 + 0.5 * 1024 ** 3 + 5 * 1024 ** 3,
+      );
+    });
+
+    test("admits Gemma 3 12B at 32K by counting sliding-window layers per slot", () => {
+      const gemma = {
+        architecture: "gemma3",
+        blockCount: 48,
+        fullKvHeads: 8 * 8,
+        swaKvHeads: 40 * 8,
+        slidingWindow: 1024,
+        keyLength: 256,
+        valueLength: 256,
+        contextLength: 131072,
+      };
+      const gemmaInput = {
+        ...input,
+        modelRequirementGb: 7.5,
+        artifactBytes: 7.5 * 1024 ** 3,
+        hardware: { memoryGb: 24 },
+      };
+      const plan = resolveLlmLaunchPlan({ ...gemmaInput, kvGeometry: gemma });
+      const kv = kvCacheBytes(gemma, {
+        ctxTokens: 32768,
+        slots: 1,
+        cacheTypeK: "q8_0",
+        cacheTypeV: "q8_0",
+      });
+      expect(kv).toBeLessThan(1.4 * 1024 ** 3);
+      expect(plan.memoryDemand.acceleratorBytes).toBe(
+        7.5 * 1024 ** 3 + kv + 0.5 * 1024 ** 3,
       );
     });
 

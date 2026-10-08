@@ -10,6 +10,29 @@ const SWA_UBATCH_TOKENS = 512;
 /** llama.cpp hardcodes a 4-layer full-attention period for qwen3next. */
 const QWEN3NEXT_FULL_ATTENTION_INTERVAL = 4;
 
+/**
+ * Sliding-window architectures. `period` is llama.cpp's swa_period default
+ * (src/models/<arch>.cpp). set_swa_pattern(n) makes layer il sliding-window
+ * unless il % n == n - 1, so layers with (il + 1) % n == 0 are full.
+ * A scalar `attention.sliding_window_pattern` overrides the default.
+ */
+const SWA_ARCHITECTURES: Record<
+  string,
+  { period: number; defaultWindow?: number; kvLayers?: number }
+> = {
+  "gpt-oss": { period: 2 },
+  gemma2: { period: 2, defaultWindow: 4096 },
+  gemma3: { period: 6 },
+  gemma3n: { period: 5, kvLayers: 20 },
+  cohere2: { period: 4 },
+};
+
+/** Upper bounds that reject corrupt or hostile headers before any looping. */
+const MAX_BLOCK_COUNT = 4096;
+const MAX_HEAD_COUNT = 4096;
+const MAX_HEAD_LENGTH = 65536;
+const MAX_TOKENS = 2 ** 31;
+
 const BYTES_PER_ELEMENT = {
   f32: 4,
   f16: 2,
@@ -34,6 +57,7 @@ export type LlmKvGeometry = {
   readonly swaKvHeads: number;
   readonly slidingWindow: number | null;
   readonly keyLength: number;
+  /** V length per head; 0 for MLA models, whose cache holds only K. */
   readonly valueLength: number;
   readonly contextLength: number | null;
 };
@@ -146,8 +170,7 @@ class GgufReader {
   async value(type: number, keep: boolean): Promise<GgufValue> {
     if (type === 8) return await this.string(keep);
     if (type !== 9) {
-      const value = await this.scalar(type);
-      return typeof value === "bigint" ? Number(value) : value;
+      return safeNumber(await this.scalar(type));
     }
     const elementType = await this.u32();
     const count = await this.u64();
@@ -165,10 +188,19 @@ class GgufReader {
     }
     const values: number[] = [];
     for (let index = 0; index < count; index += 1) {
-      values.push(Number(await this.scalar(elementType)));
+      values.push(Number(safeNumber(await this.scalar(elementType))));
     }
     return values;
   }
+}
+
+/** 64-bit integers beyond 2^53 become NaN so validation rejects them. */
+function safeNumber(value: number | bigint | boolean): number | boolean {
+  if (typeof value !== "bigint") return value;
+  return value >= BigInt(Number.MIN_SAFE_INTEGER) &&
+    value <= BigInt(Number.MAX_SAFE_INTEGER)
+    ? Number(value)
+    : Number.NaN;
 }
 
 const KEPT_SUFFIXES = [
@@ -180,6 +212,9 @@ const KEPT_SUFFIXES = [
   ".attention.key_length",
   ".attention.value_length",
   ".attention.sliding_window",
+  ".attention.sliding_window_pattern",
+  ".attention.key_length_mla",
+  ".attention.value_length_mla",
   ".full_attention_interval",
 ];
 
@@ -218,8 +253,12 @@ async function readKeyValues(path: string): Promise<Map<string, GgufValue>> {
   return values;
 }
 
-function positive(value: GgufValue | undefined): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
+/** A safe integer in [1, max], otherwise null. */
+function bounded(value: GgufValue | undefined, max: number): number | null {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0 &&
+    value <= max
     ? value
     : null;
 }
@@ -231,43 +270,87 @@ export function kvGeometryFromMetadata(
   const architecture = values.get("general.architecture");
   if (typeof architecture !== "string" || !architecture) return null;
   const get = (suffix: string) => values.get(`${architecture}.${suffix}`);
-  const blockCount = positive(get("block_count"));
-  const headCount = positive(get("attention.head_count"));
+
+  // Validate every untrusted size before it can drive a loop.
+  const blockCount = bounded(get("block_count"), MAX_BLOCK_COUNT);
+  const headCount = bounded(get("attention.head_count"), MAX_HEAD_COUNT);
   if (!blockCount || !headCount) return null;
 
   const kvHeadsValue = get("attention.head_count_kv");
-  const headsForLayer = (layer: number): number => {
-    if (Array.isArray(kvHeadsValue)) return kvHeadsValue[layer] ?? 0;
-    return positive(kvHeadsValue) ?? headCount;
-  };
-  if (Array.isArray(kvHeadsValue) && kvHeadsValue.length < blockCount) {
-    return null;
+  let kvHeadsArray: number[] | null = null;
+  let kvHeadsScalar = headCount;
+  if (Array.isArray(kvHeadsValue)) {
+    if (kvHeadsValue.length < blockCount) return null;
+    for (let layer = 0; layer < blockCount; layer += 1) {
+      const heads = kvHeadsValue[layer];
+      if (
+        heads === undefined ||
+        !Number.isSafeInteger(heads) ||
+        heads < 0 ||
+        heads > MAX_HEAD_COUNT
+      ) {
+        return null;
+      }
+    }
+    kvHeadsArray = kvHeadsValue;
+  } else if (kvHeadsValue !== undefined) {
+    const scalar = bounded(kvHeadsValue, MAX_HEAD_COUNT);
+    if (!scalar) return null;
+    kvHeadsScalar = scalar;
   }
+  const headsForLayer = (layer: number): number =>
+    kvHeadsArray ? (kvHeadsArray[layer] ?? 0) : kvHeadsScalar;
 
-  const embeddingLength = positive(get("embedding_length"));
+  const embeddingLength = bounded(get("embedding_length"), MAX_TOKENS);
   const fallbackLength = embeddingLength
     ? Math.floor(embeddingLength / headCount)
     : null;
-  const keyLength = positive(get("attention.key_length")) ?? fallbackLength;
-  const valueLength =
-    positive(get("attention.value_length")) ?? keyLength ?? fallbackLength;
-  if (!keyLength || !valueLength) return null;
+  const keyLength =
+    bounded(get("attention.key_length"), MAX_HEAD_LENGTH) ?? fallbackLength;
+  let valueLength =
+    bounded(get("attention.value_length"), MAX_HEAD_LENGTH) ??
+    keyLength ??
+    fallbackLength;
+  if (!keyLength || !valueLength || keyLength > MAX_HEAD_LENGTH) return null;
 
-  const slidingWindow = positive(get("attention.sliding_window"));
+  // llama_hparams::is_mla(): both MLA lengths set. The cache then holds only
+  // K (llama-kv-cache.cpp has_v = !is_mla), sized by the regular key length.
+  const mla =
+    bounded(get("attention.key_length_mla"), MAX_HEAD_LENGTH) !== null &&
+    bounded(get("attention.value_length_mla"), MAX_HEAD_LENGTH) !== null;
+  if (mla) valueLength = 0;
+
+  const swaSpec = SWA_ARCHITECTURES[architecture];
+  const slidingWindow = swaSpec
+    ? (bounded(get("attention.sliding_window"), MAX_TOKENS) ??
+      swaSpec.defaultWindow ??
+      null)
+    : null;
+  const patternValue = get("attention.sliding_window_pattern");
+  // Only a scalar pattern is honoured; llama.cpp falls back to the default
+  // period otherwise.
+  const period =
+    typeof patternValue === "number" &&
+    Number.isSafeInteger(patternValue) &&
+    patternValue >= 0 &&
+    patternValue <= MAX_BLOCK_COUNT
+      ? patternValue
+      : (swaSpec?.period ?? 0);
+  const kvLayers = Math.min(blockCount, swaSpec?.kvLayers ?? blockCount);
   const interval =
-    positive(get("full_attention_interval")) ??
+    bounded(get("full_attention_interval"), MAX_BLOCK_COUNT) ??
     (architecture === "qwen3next" ? QWEN3NEXT_FULL_ATTENTION_INTERVAL : null);
-  const alternatesSwa = architecture === "gpt-oss" && slidingWindow !== null;
 
   let fullKvHeads = 0;
   let swaKvHeads = 0;
-  for (let layer = 0; layer < blockCount; layer += 1) {
+  for (let layer = 0; layer < kvLayers; layer += 1) {
     const heads = headsForLayer(layer);
     if (heads <= 0) continue;
     if (interval !== null) {
       if ((layer + 1) % interval === 0) fullKvHeads += heads;
-    } else if (alternatesSwa) {
-      if (layer % 2 === 0) fullKvHeads += heads;
+    } else if (slidingWindow !== null) {
+      // period 0 means every layer is sliding-window.
+      if (period > 0 && (layer + 1) % period === 0) fullKvHeads += heads;
       else swaKvHeads += heads;
     } else {
       fullKvHeads += heads;
@@ -279,10 +362,10 @@ export function kvGeometryFromMetadata(
     blockCount,
     fullKvHeads,
     swaKvHeads,
-    slidingWindow: alternatesSwa ? slidingWindow : null,
+    slidingWindow,
     keyLength,
     valueLength,
-    contextLength: positive(get("context_length")),
+    contextLength: bounded(get("context_length"), MAX_TOKENS),
   });
 }
 
