@@ -99,7 +99,7 @@ test("video recovery preserves idle peers when releasing them cannot admit the r
       },
     },
     {},
-    { memorySafety },
+    { memorySafety, host: { platform: "darwin", arch: "arm64" } },
   );
   const resident = async (runtimeId: string, gb: number) => {
     const reservation = await memorySafety.reserve({

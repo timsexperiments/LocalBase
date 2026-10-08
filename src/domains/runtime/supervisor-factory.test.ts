@@ -239,7 +239,7 @@ test.each([
         },
       },
       {},
-      { memorySafety },
+      { memorySafety, host: { platform: "darwin", arch: "arm64" } },
     );
 
     try {

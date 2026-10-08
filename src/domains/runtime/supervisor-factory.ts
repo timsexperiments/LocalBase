@@ -73,6 +73,8 @@ export type RuntimeSupervisorFactory = Readonly<{
 
 export type RuntimeSupervisorFactoryDependencies = Readonly<{
   memorySafety: MemorySafetyController;
+  /** Host platform used to select the video runtime target; defaults to this process. */
+  host?: Readonly<{ platform: NodeJS.Platform; arch: NodeJS.Architecture }>;
 }>;
 
 export function runtimeEndpoint(host: string, port: number): string {
@@ -128,10 +130,16 @@ function videoPort(overrides: RuntimeLaunchOverrides): number {
   return overrides.videoPort ?? 8091;
 }
 
-function videoRuntimeTarget(topology: MemoryTopology): VideoRuntimeTarget {
+function videoRuntimeTarget(
+  topology: MemoryTopology,
+  host: Readonly<{
+    platform: NodeJS.Platform;
+    arch: NodeJS.Architecture;
+  }> = process,
+): VideoRuntimeTarget {
   if (
-    process.platform === "linux" &&
-    process.arch === "x64" &&
+    host.platform === "linux" &&
+    host.arch === "x64" &&
     topology.kind === "discrete" &&
     topology.accelerators.length === 1 &&
     topology.accelerators[0]?.id.startsWith("nvidia:")
@@ -139,8 +147,8 @@ function videoRuntimeTarget(topology: MemoryTopology): VideoRuntimeTarget {
     return { platform: "linux", architecture: "x64", accelerator: "nvidia" };
   }
   if (
-    process.platform === "darwin" &&
-    process.arch === "arm64" &&
+    host.platform === "darwin" &&
+    host.arch === "arm64" &&
     topology.kind === "unified"
   ) {
     return {
@@ -699,7 +707,10 @@ export function createRuntimeSupervisorFactory(
         logger: ctx.logger,
         preflightDemand: async (signal) => {
           if (signal?.aborted) return undefined;
-          const target = videoRuntimeTarget(dependencies.memorySafety.topology);
+          const target = videoRuntimeTarget(
+            dependencies.memorySafety.topology,
+            dependencies.host,
+          );
           const spec = byId(modelId);
           if (!spec || spec.kind !== "video" || !spec.videoRuntime)
             return undefined;
@@ -730,7 +741,10 @@ export function createRuntimeSupervisorFactory(
           return signal?.aborted ? undefined : plan.memoryDemand;
         },
         launch: async () => {
-          const target = videoRuntimeTarget(dependencies.memorySafety.topology);
+          const target = videoRuntimeTarget(
+            dependencies.memorySafety.topology,
+            dependencies.host,
+          );
           const spec = byId(modelId);
           if (!spec || spec.kind !== "video" || !spec.videoRuntime) {
             throw new Error(
