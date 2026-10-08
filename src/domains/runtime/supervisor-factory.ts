@@ -385,6 +385,66 @@ export function createRuntimeSupervisorFactory(
         component: "llama-server",
         healthUrl: `${base}/health`,
         logger: ctx.logger,
+        preflightDemand: async (signal) => {
+          if (signal?.aborted) return undefined;
+          let modelFile = overrides.llmModelFile;
+          if (!modelFile) {
+            const spec = byId(modelId);
+            if (spec) {
+              const installation = await resolveCatalogInstallation(
+                spec,
+                config.llmModelsDir,
+              );
+              if (!installation.complete) return undefined;
+              modelFile = primaryArtifact(spec).filename;
+            } else {
+              for (const candidate of [`${modelId}.bin`, `${modelId}.gguf`]) {
+                if (
+                  await Bun.file(join(config.llmModelsDir, candidate)).exists()
+                ) {
+                  modelFile = candidate;
+                  break;
+                }
+              }
+              if (!modelFile) return undefined;
+            }
+          }
+          const spec = byId(modelId);
+          const ctxSize =
+            overrides.ctxSize ??
+            Math.min(
+              spec
+                ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
+                : ctx.specs.gpuVramGb >= 32
+                  ? 32768
+                  : 8192,
+              config.ctxSize,
+            );
+          const plan = resolveLlmLaunchPlan({
+            runtimeId,
+            root: config.root,
+            modelsDirectory: config.llmModelsDir,
+            modelId,
+            modelFile,
+            host: llmHost(snapshot.config, overrides),
+            port: llmPort(snapshot.config, overrides),
+            ctxSize,
+            contextWindowTokens: spec?.contextWindowTokens,
+            parallel: config.parallel,
+            modelRequirementGb: spec?.minVramGb,
+            artifactBytes: await artifactBytes(
+              modelId,
+              config.llmModelsDir,
+              modelFile,
+            ),
+            hardware: { memoryGb: ctx.specs.gpuVramGb },
+            embedding: spec?.llmRuntime ?? null,
+            kvGeometry: await readLlmKvGeometry(
+              join(config.llmModelsDir, modelFile),
+            ),
+          });
+          return signal?.aborted ? undefined : plan.memoryDemand;
+        },
         launch: async () => {
           let modelFile = overrides.llmModelFile;
           if (!modelFile) {
@@ -486,6 +546,30 @@ export function createRuntimeSupervisorFactory(
         component: "whisper-server",
         healthUrl: `${base}/health`,
         logger: ctx.logger,
+        preflightDemand: async (signal) => {
+          if (signal?.aborted) return undefined;
+          const modelFile =
+            overrides.sttModelFile ??
+            (await configuredModelFile(config, modelId, modality));
+          if (!modelFile) return undefined;
+          const spec = byId(modelId);
+          const plan = resolveSttLaunchPlan({
+            runtimeId,
+            root: config.root,
+            modelsDirectory: config.sttModelsDir,
+            modelId,
+            modelFile,
+            host: sttHost(snapshot.config, overrides),
+            port: sttPort(snapshot.config, overrides),
+            modelRequirementGb: spec?.minVramGb,
+            artifactBytes: await artifactBytes(
+              modelId,
+              config.sttModelsDir,
+              modelFile,
+            ),
+          });
+          return signal?.aborted ? undefined : plan.memoryDemand;
+        },
         launch: async () => {
           let modelFile = overrides.sttModelFile;
           if (!modelFile) {
@@ -610,6 +694,30 @@ export function createRuntimeSupervisorFactory(
         component: "sd-server",
         healthUrl: `${base}/`,
         logger: ctx.logger,
+        preflightDemand: async (signal) => {
+          if (signal?.aborted) return undefined;
+          const spec = byId(modelId);
+          if (!spec || spec.kind !== "video" || !spec.videoRuntime)
+            return undefined;
+          const installation = await resolveCatalogInstallation(
+            spec,
+            config.videoModelsDir,
+          );
+          if (!installation.complete) return undefined;
+          const plan = resolveVideoLaunchPlan({
+            runtimeId,
+            root: config.root,
+            modelsDirectory: config.videoModelsDir,
+            modelId,
+            diffusionModelFile: spec.videoRuntime.artifacts.diffusionModel,
+            textEncoderFile: spec.videoRuntime.artifacts.textEncoder,
+            host: videoHost(overrides),
+            port: videoPort(overrides),
+            videoRuntime: spec.videoRuntime,
+            target: videoRuntimeTarget(dependencies.memorySafety.topology),
+          });
+          return signal?.aborted ? undefined : plan.memoryDemand;
+        },
         launch: async () => {
           const spec = byId(modelId);
           if (!spec || spec.kind !== "video" || !spec.videoRuntime) {
@@ -710,6 +818,40 @@ export function createRuntimeSupervisorFactory(
       component: "sd-server",
       healthUrl: `${base}/`,
       logger: ctx.logger,
+      preflightDemand: async (signal) => {
+        if (signal?.aborted) return undefined;
+        const spec = byId(modelId);
+        let modelFile = overrides.imageModelFile;
+        if (spec?.imageRuntime) {
+          const installation = await resolveCatalogInstallation(
+            spec,
+            config.imageModelsDir,
+          );
+          if (!installation.complete) return undefined;
+          modelFile = primaryArtifact(spec).filename;
+        } else if (!modelFile) {
+          modelFile = await configuredModelFile(config, modelId, modality);
+          if (!modelFile) return undefined;
+        }
+        const plan = resolveImageLaunchPlan({
+          runtimeId,
+          root: config.root,
+          modelsDirectory: config.imageModelsDir,
+          modelId,
+          modelFile,
+          host: imageHost(overrides),
+          port: imagePort(overrides),
+          modelRequirementGb: spec?.minVramGb,
+          imageRuntime: spec?.imageRuntime,
+          artifactBytes: spec?.imageRuntime
+            ? spec.artifacts.reduce(
+                (total, artifact) => total + (artifact.expectedSizeBytes ?? 0),
+                0,
+              )
+            : await artifactBytes(modelId, config.imageModelsDir, modelFile),
+        });
+        return signal?.aborted ? undefined : plan.memoryDemand;
+      },
       launch: async () => {
         let modelFile = overrides.imageModelFile;
         const imageSpec = byId(modelId);

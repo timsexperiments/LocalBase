@@ -334,6 +334,9 @@ export class MemorySafetyController {
           ? topology.accelerators.find(({ id }) => id === demand.poolId)
           : undefined;
       if (!pool) continue;
+      // A zero capacity is used for pools whose capacity has not yet been
+      // measured. Do not turn that unknown state into a permanent rejection.
+      if (pool.capacityBytes <= 0) continue;
       const usableBytes = Math.max(
         0,
         pool.capacityBytes -

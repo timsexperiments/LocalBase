@@ -16,6 +16,7 @@ type CommonRuntimeSupervisor = {
   /** Side-effect-free memory admission probe used before model switches. */
   preflight?(
     releasingRuntimeIds: readonly string[],
+    signal?: AbortSignal,
   ): Promise<RuntimeMemoryAdmissionError | undefined>;
   ensureRunning(): Promise<void>;
   kill(): Promise<void>;

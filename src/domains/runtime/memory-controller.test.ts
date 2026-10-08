@@ -502,6 +502,61 @@ describe("memory controller", () => {
   });
 
   describe("checkAdmission", () => {
+    test("does not permanently reject an unknown capacity after a failed sample", async () => {
+      let memoryTopology: MemoryTopology = {
+        kind: "unified",
+        system: { id: "system", capacityBytes: 0 },
+      };
+      let sample = 0;
+      const controller = new MemorySafetyController(
+        {
+          get topology() {
+            return memoryTopology;
+          },
+          async snapshot() {
+            sample += 1;
+            if (sample === 1) {
+              return {
+                capturedAtMs: sample,
+                pools: [
+                  {
+                    poolId: "system",
+                    availability: "unavailable",
+                    pressure: "unknown",
+                  },
+                ],
+              };
+            }
+            memoryTopology = {
+              kind: "unified",
+              system: { id: "system", capacityBytes: 32 * gibibyte },
+            };
+            return {
+              capturedAtMs: sample,
+              pools: [
+                {
+                  poolId: "system",
+                  availability: "available",
+                  availableBytes: 32 * gibibyte,
+                  pressure: "normal",
+                },
+              ],
+            };
+          },
+          async close() {},
+        },
+        defaultMemorySafetyConfig(),
+      );
+
+      const initial = await controller.checkAdmission({ demand });
+      expect(initial).toMatchObject({
+        decision: { reason: "measurement-unavailable" },
+        capacity: undefined,
+      });
+      expect(await controller.checkAdmission({ demand })).toBeUndefined();
+      expect(sample).toBe(2);
+    });
+
     test("admits a switch only because the releasing runtime frees memory", async () => {
       const controller = new MemorySafetyController(
         // Plenty free at load time, then 10 GiB once the model is resident:

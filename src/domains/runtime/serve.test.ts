@@ -456,6 +456,54 @@ test("video admission does not evict or retry unrelated startup failures", async
   });
 });
 
+test("video model switch retries transient preflight rejection after idle eviction", async () => {
+  const error = new RuntimeMemoryAdmissionError({
+    kind: "rejected",
+    reason: "system-memory",
+    poolId: "system",
+  });
+  let attempts = 0;
+  let evictions = 0;
+  const recovered: ModelAdmissionResult = {
+    kind: "admitted",
+    value: {
+      modelId: "video-model",
+      admission: {
+        modality: "video",
+        snapshot: {} as RuntimeAdmission["snapshot"],
+        supervisor: { async kill() {} } as RuntimeAdmission["supervisor"],
+        ready: Promise.resolve(),
+        onPendingDetach() {},
+        onIdleCancellation() {},
+        markResponseStarted() {},
+        cancel() {},
+        release() {},
+      },
+      queueWaitMs: 0,
+      admissionSnapshot: { active: 1, slots: 1, waiting: 0 },
+    },
+  };
+  const reconciler = {
+    async admitModel(): Promise<ModelAdmissionResult> {
+      attempts += 1;
+      return attempts === 1
+        ? { kind: "insufficient-memory", error }
+        : recovered;
+    },
+    async evictIdleRuntimes() {
+      evictions += 1;
+    },
+  };
+
+  const result = await admitVideoWithIdleRecovery(
+    reconciler,
+    "video-model",
+    new AbortController().signal,
+  );
+  expect(result).toBe(recovered);
+  expect({ attempts, evictions }).toEqual({ attempts: 2, evictions: 1 });
+});
+
 test("classifies the owned speech deadline without inferring other failures", async () => {
   const timeout = speechGenerationFailure(new SpeechGenerationTimeoutError());
   expect(timeout.source).toBe("speech_timeout");

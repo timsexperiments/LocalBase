@@ -1874,6 +1874,16 @@ export async function admitVideoWithIdleRecovery(
   signal: AbortSignal,
 ): Promise<Awaited<ReturnType<RuntimeReconciler["admitModel"]>>> {
   const first = await reconciler.admitModel("video", modelId, signal);
+  if (
+    first.kind === "insufficient-memory" &&
+    first.error.capacity === undefined
+  ) {
+    signal.throwIfAborted();
+    await reconciler.evictIdleRuntimes();
+    signal.throwIfAborted();
+    const retry = await reconciler.admitModel("video", modelId, signal);
+    return retry.kind === "admitted" ? retry : first;
+  }
   if (first.kind !== "admitted") return first;
   let current = first.value;
   const ready = current.admission.ready.catch(async (error) => {
@@ -1884,10 +1894,13 @@ export async function admitVideoWithIdleRecovery(
     signal.throwIfAborted();
     await reconciler.evictIdleRuntimes();
     const retry = await reconciler.admitModel("video", modelId, signal);
-    if (retry.kind !== "admitted")
-      throw new Error("Video runtime admission is unavailable after recovery.");
+    if (retry.kind !== "admitted") throw error;
     current = retry.value;
-    await current.admission.ready;
+    try {
+      await current.admission.ready;
+    } catch {
+      throw error;
+    }
   });
   return {
     ...first,

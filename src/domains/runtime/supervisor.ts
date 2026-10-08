@@ -9,6 +9,7 @@ import {
 } from "./memory-controller";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import type { RuntimeLaunchPlan } from "./launch-plan";
+import type { RuntimeMemoryDemand } from "./memory-safety";
 import { stopNativeProcess } from "./native-process";
 
 const CHILD_STOP_GRACE_MS = 500;
@@ -41,6 +42,9 @@ export type ManagedServiceOptions = {
   healthUrl: string;
   logger: ILogger;
   launch: () => Promise<RuntimeLaunchPlan>;
+  preflightDemand?: (
+    signal?: AbortSignal,
+  ) => Promise<RuntimeMemoryDemand | undefined>;
   start: (plan: RuntimeLaunchPlan) => Promise<Bun.Subprocess>;
   startGuardian?: (backend: Bun.Subprocess) => Bun.Subprocess;
   memorySafety: MemorySafetyController;
@@ -110,10 +114,15 @@ export class ManagedService {
    */
   async preflight(
     releasingRuntimeIds: readonly string[],
+    signal?: AbortSignal,
   ): Promise<RuntimeMemoryAdmissionError | undefined> {
-    const plan = await this.options.launch();
+    if (!this.options.preflightDemand) return undefined;
+    if (signal?.aborted) throw new StartupCancelledError(this.name);
+    const demand = await this.options.preflightDemand(signal);
+    if (signal?.aborted) throw new StartupCancelledError(this.name);
+    if (!demand) return undefined;
     return await this.options.memorySafety.checkAdmission(
-      { demand: plan.memoryDemand },
+      { demand },
       { releasingRuntimeIds },
     );
   }

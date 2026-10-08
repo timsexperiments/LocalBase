@@ -158,6 +158,10 @@ export class RuntimeReconciler {
   >;
   private readonly reconciliationScheduled = new Set<RuntimeModality>();
   private readonly pendingModelReferences = new Set<ReadonlySet<string>>();
+  private readonly switchPreflights = new Map<
+    RuntimeModality,
+    AbortController
+  >();
   private transitions = Promise.resolve();
   private readonly modalityTransitions: ModalityTransitions =
     Object.fromEntries(
@@ -302,6 +306,7 @@ export class RuntimeReconciler {
   }
 
   async evictAllRuntimes(): Promise<void> {
+    for (const preflight of this.switchPreflights.values()) preflight.abort();
     this.rejectQueued("Inference rejected by memory emergency.");
     const results = await Promise.allSettled(
       runtimeModalities.map((modality) =>
@@ -638,20 +643,31 @@ export class RuntimeReconciler {
     modality: RuntimeModality,
     modelId: string,
     source: RuntimeConfigSnapshot,
+    signal?: AbortSignal,
   ): Promise<void> {
     const current = this.supervisors.get(modality);
-    const candidate = this.factory.create(modality, {
-      ...source,
-      config: { ...source.config, [activeModelField(modality)]: modelId },
-    });
+    const preflightController = new AbortController();
+    this.switchPreflights.set(modality, preflightController);
+    const preflightSignal = signal
+      ? AbortSignal.any([signal, preflightController.signal])
+      : preflightController.signal;
     try {
+      const candidate = this.factory.create(modality, {
+        ...source,
+        config: { ...source.config, [activeModelField(modality)]: modelId },
+      });
       if (!candidate.preflight) return;
-      const rejection = await candidate.preflight(
-        current ? [current.runtimeId()] : [],
+      const rejection = await this.waitForAbort(
+        candidate.preflight(
+          current ? [current.runtimeId()] : [],
+          preflightSignal,
+        ),
+        preflightSignal,
       );
       if (rejection) throw new ModelSwitchRejectedError(rejection);
     } catch (error) {
       if (error instanceof ModelSwitchRejectedError) throw error;
+      if (error instanceof RuntimeRequestAbortedError) throw error;
       // Resolution failures surface through the normal startup path.
       this.logger.event({
         severity: "warn",
@@ -665,6 +681,9 @@ export class RuntimeReconciler {
           message: error instanceof Error ? error.message : String(error),
         },
       });
+    } finally {
+      if (this.switchPreflights.get(modality) === preflightController)
+        this.switchPreflights.delete(modality);
     }
   }
 
@@ -684,7 +703,7 @@ export class RuntimeReconciler {
     ]);
     this.pendingModelReferences.add(pending);
     try {
-      await this.assertSwitchFits(modality, modelId, source);
+      await this.assertSwitchFits(modality, modelId, source, signal);
       this.logger.event({
         severity: "info",
         eventName: "model.switching",
