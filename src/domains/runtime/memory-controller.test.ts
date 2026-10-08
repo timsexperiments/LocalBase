@@ -500,4 +500,92 @@ describe("memory controller", () => {
     reservation.materialize();
     reservation.release();
   });
+
+  describe("checkAdmission", () => {
+    test("admits a switch only because the releasing runtime frees memory", async () => {
+      const controller = new MemorySafetyController(
+        // Plenty free at load time, then 10 GiB once the model is resident:
+        // a second 14 GiB model fits only once the resident one is gone.
+        sequencedProvider([32 * gibibyte, 10 * gibibyte]).provider,
+        defaultMemorySafetyConfig(),
+      );
+      const resident = await controller.reserve({
+        runtimeId: "llm:a:1",
+        demand,
+      });
+      resident.materialize();
+
+      const without = await controller.checkAdmission({ demand });
+      expect(without).toBeInstanceOf(RuntimeMemoryAdmissionError);
+      expect(without?.capacity).toBeUndefined();
+      expect(
+        await controller.checkAdmission(
+          { demand },
+          { releasingRuntimeIds: ["llm:a:1"] },
+        ),
+      ).toBeUndefined();
+
+      // Probing creates no reservation and the resident one is untouched.
+      const next = await controller
+        .reserve({ runtimeId: "llm:b:2", demand })
+        .catch((error: unknown) => error);
+      expect(next).toBeInstanceOf(RuntimeMemoryAdmissionError);
+    });
+
+    test("rejects a switch that cannot fit even after the release", async () => {
+      const controller = new MemorySafetyController(
+        sequencedProvider([32 * gibibyte, 2 * gibibyte]).provider,
+        defaultMemorySafetyConfig(),
+      );
+      const resident = await controller.reserve({
+        runtimeId: "llm:a:1",
+        demand: { ...demand, unifiedBytes: 4 * gibibyte },
+      });
+      resident.materialize();
+
+      const rejection = await controller.checkAdmission(
+        { demand },
+        { releasingRuntimeIds: ["llm:a:1"] },
+      );
+      expect(rejection).toBeInstanceOf(RuntimeMemoryAdmissionError);
+      expect(rejection?.capacity).toBeUndefined();
+    });
+
+    test("does not advance hysteresis or reserve memory", async () => {
+      const sequenced = sequencedProvider([32 * gibibyte]);
+      const controller = new MemorySafetyController(
+        sequenced.provider,
+        defaultMemorySafetyConfig(),
+      );
+      await controller.checkAdmission({ demand });
+      await controller.checkAdmission({ demand });
+      // Both probes see an empty pending set: two full-size starts still fit.
+      const first = await controller.reserve({ runtimeId: "llm:a:1", demand });
+      first.release();
+      expect(await controller.poll()).toMatchObject({
+        previous: { state: "healthy", consecutiveNormalSnapshots: 0 },
+      });
+    });
+
+    test("classifies a model larger than usable capacity as permanent", async () => {
+      const controller = new MemorySafetyController(
+        provider(32 * gibibyte),
+        defaultMemorySafetyConfig(),
+      );
+      const rejection = await controller.checkAdmission({
+        demand: { ...demand, unifiedBytes: 40 * gibibyte },
+      });
+      expect(rejection?.capacity).toMatchObject({
+        poolId: "system",
+        requiredBytes: 40 * gibibyte,
+        capacityBytes: 32 * gibibyte,
+      });
+      await expect(
+        controller.reserve({
+          runtimeId: "llm:big:1",
+          demand: { ...demand, unifiedBytes: 40 * gibibyte },
+        }),
+      ).rejects.toMatchObject({ capacity: { requiredBytes: 40 * gibibyte } });
+    });
+  });
 });

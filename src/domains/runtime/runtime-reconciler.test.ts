@@ -8,6 +8,7 @@ import { createModelManagement } from "../models/model-management";
 import type { LogEventInput } from "../observability/logging";
 import { defaultConfig, readConfig, saveConfig } from "../../manager";
 import { RuntimeConfigController } from "./config-snapshot";
+import { RuntimeMemoryAdmissionError } from "./memory-controller";
 import {
   RuntimeReconciler,
   RuntimeRequestAbortedError,
@@ -1167,7 +1168,8 @@ test("cancels queued model activation during emergency eviction and recovers", a
 
     releaseShutdown();
     await eviction;
-    expect(created).toEqual([]);
+    // The only supervisor built is the discarded admission-preflight probe.
+    expect(created.length).toBeLessThanOrEqual(1);
     expect(starts).toEqual([]);
     expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
       admission: { kind: "known", activeCount: 0 },
@@ -1182,7 +1184,8 @@ test("cancels queued model activation during emergency eviction and recovers", a
       `llm:${modelB}`,
     );
     recovered.value.admission.release();
-    expect(created).toEqual([modelB]);
+    // Each activation builds a discarded preflight probe plus the real one.
+    expect(new Set(created)).toEqual(new Set([modelB]));
     expect(starts).toEqual([modelB]);
     expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
       admission: { kind: "known", activeCount: 0 },
@@ -1314,6 +1317,87 @@ test("drains a warming video job when the model is disabled", async () => {
       admission: { kind: "known", activeCount: 0 },
       queue: { waiting: 0, active: 0 },
     });
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  ["fits after eviction", false],
+  ["cannot fit even after eviction", true],
+])("model switch %s", async (_name, rejects) => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-switch-admission-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelA = config.activeLlmModel;
+  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [modelA, modelB];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  const events: string[] = [];
+  const preflights: Array<{ modelId: string; releasing: readonly string[] }> =
+    [];
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(modality, snapshot) {
+      const modelId = activeModel(modality, snapshot.config);
+      return {
+        kind: "server" as const,
+        runtimeId: () => `${modality}:${modelId}`,
+        state: () => "running",
+        async ensureRunning() {},
+        async kill() {
+          events.push(`kill:${modelId}`);
+        },
+        async shutdown() {
+          events.push(`shutdown:${modelId}`);
+        },
+        async preflight(releasing) {
+          preflights.push({ modelId, releasing });
+          return rejects
+            ? new RuntimeMemoryAdmissionError({
+                kind: "rejected",
+                reason: "system-memory",
+                poolId: "system",
+              })
+            : undefined;
+        },
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: factory.create("llm", controller.read()) }),
+    factory,
+    { event() {} },
+  );
+  try {
+    const result = await reconciler.admitModel("llm", modelB);
+    expect(preflights).toEqual([
+      { modelId: modelB, releasing: [`llm:${modelA}`] },
+    ]);
+    if (rejects) {
+      expect(result.kind).toBe("insufficient-memory");
+      expect(events).toEqual([]);
+      expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+        modelId: modelA,
+        runtimeId: `llm:${modelA}`,
+      });
+      expect(controller.read().config.activeLlmModel).toBe(modelA);
+      // The current model is still admissible.
+      const still = await reconciler.admitModel("llm", modelA);
+      expect(still.kind).toBe("admitted");
+      if (still.kind === "admitted") still.value.admission.release();
+    } else {
+      expect(result.kind).toBe("admitted");
+      expect(events).toEqual([`shutdown:${modelA}`]);
+      expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+        modelId: modelB,
+      });
+      if (result.kind === "admitted") result.value.admission.release();
+    }
   } finally {
     database.close();
     rmSync(root, { recursive: true, force: true });

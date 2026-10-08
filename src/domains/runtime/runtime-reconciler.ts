@@ -5,6 +5,7 @@ import {
   type RuntimeConfigSnapshot,
 } from "./config-snapshot";
 import { ModalityAdmissionBarrier } from "./modality-admission";
+import type { RuntimeMemoryAdmissionError } from "./memory-controller";
 import type { RuntimeLifecycleSnapshot } from "./lifecycle-snapshot";
 import {
   InferenceQueue,
@@ -57,7 +58,18 @@ type ModelAdmission = PreparedModelAdmission &
 type ModelAdmissionFailure =
   | Readonly<{ kind: "not-configured" }>
   | Readonly<{ kind: "model-not-found" }>
-  | Readonly<{ kind: "unavailable" }>;
+  | Readonly<{ kind: "unavailable" }>
+  | Readonly<{
+      kind: "insufficient-memory";
+      error: RuntimeMemoryAdmissionError;
+    }>;
+
+/** Raised before any state changes when the requested model cannot fit. */
+class ModelSwitchRejectedError extends Error {
+  constructor(readonly cause: RuntimeMemoryAdmissionError) {
+    super(cause.message);
+  }
+}
 
 type PreparedModelAdmissionResult =
   | Readonly<{ kind: "admitted"; value: PreparedModelAdmission }>
@@ -458,6 +470,9 @@ export class RuntimeReconciler {
         } catch (error) {
           if (error instanceof ModelNoLongerSelectedError)
             return { kind: "model-not-found" };
+          if (error instanceof ModelSwitchRejectedError) {
+            return { kind: "insufficient-memory", error: error.cause };
+          }
           throw error;
         }
       }
@@ -614,6 +629,45 @@ export class RuntimeReconciler {
     );
   }
 
+  /**
+   * Verifies the target model would be admitted once the current one is
+   * stopped, before anything is drained or stopped. Throws
+   * ModelSwitchRejectedError (leaving the current model running) otherwise.
+   */
+  private async assertSwitchFits(
+    modality: RuntimeModality,
+    modelId: string,
+    source: RuntimeConfigSnapshot,
+  ): Promise<void> {
+    const current = this.supervisors.get(modality);
+    const candidate = this.factory.create(modality, {
+      ...source,
+      config: { ...source.config, [activeModelField(modality)]: modelId },
+    });
+    try {
+      if (!candidate.preflight) return;
+      const rejection = await candidate.preflight(
+        current ? [current.runtimeId()] : [],
+      );
+      if (rejection) throw new ModelSwitchRejectedError(rejection);
+    } catch (error) {
+      if (error instanceof ModelSwitchRejectedError) throw error;
+      // Resolution failures surface through the normal startup path.
+      this.logger.event({
+        severity: "warn",
+        eventName: "model.switch-preflight-failed",
+        category: "runtime",
+        component: modalityComponents[modality],
+        runtime: modality,
+        message: "Memory preflight for the model switch could not run.",
+        error: {
+          type: error instanceof Error ? error.name : "Error",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
   private async activateModel(
     modality: RuntimeModality,
     modelId: string,
@@ -630,6 +684,7 @@ export class RuntimeReconciler {
     ]);
     this.pendingModelReferences.add(pending);
     try {
+      await this.assertSwitchFits(modality, modelId, source);
       this.logger.event({
         severity: "info",
         eventName: "model.switching",

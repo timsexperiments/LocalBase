@@ -29,6 +29,7 @@ import {
   inferenceQueueError,
   proxyWithAdmission,
   reportMemoryPressureTransition,
+  resourceUnavailable,
   speechGenerationFailure,
   withResponseLease,
 } from "./commands/serve";
@@ -3100,4 +3101,40 @@ describe("API gateway integration", () => {
       "model",
     );
   });
+});
+
+test("memory admission failures distinguish transient pressure from models that can never fit", async () => {
+  const decision = {
+    kind: "rejected",
+    reason: "system-memory",
+    poolId: "system",
+  } as const;
+  const transient = resourceUnavailable(
+    new RuntimeMemoryAdmissionError(decision),
+  );
+  expect(transient.status).toBe(503);
+  expect(transient.headers.get("Retry-After")).toBe("5");
+  await expect(transient.json()).resolves.toMatchObject({
+    error: { code: "insufficient_memory" },
+  });
+
+  const gib = 1024 ** 3;
+  const permanent = resourceUnavailable(
+    new RuntimeMemoryAdmissionError(decision, undefined, {
+      poolId: "system",
+      requiredBytes: 40 * gib,
+      usableBytes: 28 * gib,
+      capacityBytes: 32 * gib,
+    }),
+  );
+  expect(permanent.status).toBe(422);
+  expect(permanent.headers.get("Retry-After")).toBeNull();
+  const body = (await permanent.json()) as {
+    error: { message: string; code: string };
+  };
+  expect(body.error.code).toBe("model_too_large");
+  expect(body.error.message).toContain("40.0 GiB");
+  expect(body.error.message).toContain("28.0 GiB");
+  expect(body.error.message).toContain("smaller quantization");
+  expect(body.error.message).not.toContain("try again");
 });

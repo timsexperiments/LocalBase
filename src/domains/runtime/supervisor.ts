@@ -104,6 +104,20 @@ export class ManagedService {
     return this.options.runtimeId;
   }
 
+  /**
+   * Checks, without reserving or starting anything, whether this runtime could
+   * be admitted once the given runtimes have been stopped.
+   */
+  async preflight(
+    releasingRuntimeIds: readonly string[],
+  ): Promise<RuntimeMemoryAdmissionError | undefined> {
+    const plan = await this.options.launch();
+    return await this.options.memorySafety.checkAdmission(
+      { demand: plan.memoryDemand },
+      { releasingRuntimeIds },
+    );
+  }
+
   resolvedSlots(): number | undefined {
     const plan = this.resolvedPlan;
     return plan?.modality === "llm" ? plan.parallel.slots : undefined;

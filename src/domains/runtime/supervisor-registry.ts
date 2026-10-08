@@ -1,4 +1,5 @@
 import type { ModalityLifecycleState } from "./health";
+import type { RuntimeMemoryAdmissionError } from "./memory-controller";
 import {
   createRuntimeLifecycleSnapshot,
   type RuntimeAdmissionSnapshot,
@@ -12,6 +13,10 @@ type CommonRuntimeSupervisor = {
   runtimeId(): string;
   state(): ModalityLifecycleState;
   resolvedSlots?(): number | undefined;
+  /** Side-effect-free memory admission probe used before model switches. */
+  preflight?(
+    releasingRuntimeIds: readonly string[],
+  ): Promise<RuntimeMemoryAdmissionError | undefined>;
   ensureRunning(): Promise<void>;
   kill(): Promise<void>;
   shutdown(): Promise<void>;

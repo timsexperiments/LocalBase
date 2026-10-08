@@ -11,6 +11,7 @@ import {
   type MemorySafetyTransition,
   type ProjectedMemoryDemand,
   type RuntimeMemoryDemand,
+  projectRuntimeMemoryDemand,
   transitionMemorySafetyState,
 } from "./memory-safety";
 
@@ -79,11 +80,24 @@ type MemoryAdmissionDiagnostics = Readonly<{
   demand_confidence: RuntimeMemoryDemand["confidence"];
 }>;
 
+/**
+ * Set when a runtime can never be admitted on this host, even with every other
+ * runtime stopped, because its demand exceeds the pool's usable capacity.
+ */
+export type RuntimeMemoryCapacityShortfall = Readonly<{
+  poolId: string;
+  requiredBytes: number;
+  usableBytes: number;
+  capacityBytes: number;
+}>;
+
 /** Rejects backend starts that would violate the current host-memory policy. */
 export class RuntimeMemoryAdmissionError extends Error {
   constructor(
     readonly decision: Extract<MemoryAdmissionDecision, { kind: "rejected" }>,
     readonly diagnostics?: MemoryAdmissionDiagnostics,
+    /** Present only for permanent failures; absent means retrying may help. */
+    readonly capacity?: RuntimeMemoryCapacityShortfall,
   ) {
     super("Insufficient memory to start the requested runtime.");
     this.name = "RuntimeMemoryAdmissionError";
@@ -147,6 +161,39 @@ export class MemorySafetyController {
     });
   }
 
+  /**
+   * Side-effect-free admission probe. Evaluates the request as if the given
+   * runtimes were already stopped, without creating a reservation, advancing
+   * hysteresis, or mutating any state. Returns the rejection, if any.
+   *
+   * Freed memory is estimated from the releasing runtimes' projected demand.
+   */
+  async checkAdmission(
+    request: Omit<RuntimeMemoryReservationRequest, "runtimeId"> & {
+      runtimeId?: string;
+    },
+    options: { releasingRuntimeIds?: readonly string[] } = {},
+  ): Promise<RuntimeMemoryAdmissionError | undefined> {
+    if (this.bypassAdmission) return undefined;
+    return await this.exclusive(async () => {
+      const releasing = new Set(options.releasingRuntimeIds ?? []);
+      try {
+        this.evaluate(
+          {
+            runtimeId: request.runtimeId ?? "admission-check",
+            demand: request.demand,
+          },
+          await this.provider.snapshot(),
+          releasing,
+        );
+        return undefined;
+      } catch (error) {
+        if (error instanceof RuntimeMemoryAdmissionError) return error;
+        throw error;
+      }
+    });
+  }
+
   private materialize(runtimeId: string, token: symbol): void {
     const current = this.reservations.get(runtimeId);
     if (current?.token === token) current.state = "resident";
@@ -154,10 +201,32 @@ export class MemorySafetyController {
 
   private evaluate(
     request: RuntimeMemoryReservationRequest,
-    snapshot: HostMemorySnapshot,
+    rawSnapshot: HostMemorySnapshot,
+    releasing: ReadonlySet<string> = new Set(),
   ): readonly ProjectedMemoryDemand[] {
     const topology = this.provider.topology;
-    const pending = pendingDemandByPool(this.reservations.values());
+    const remaining = [...this.reservations].filter(
+      ([id]) => !releasing.has(id),
+    );
+    const pending = pendingDemandByPool(remaining.map(([, entry]) => entry));
+    const snapshot = this.addReleasedMemory(rawSnapshot, releasing);
+    const capacity = this.capacityShortfall(request);
+    if (capacity) {
+      this.reject(
+        request,
+        snapshot,
+        pending,
+        {
+          kind: "rejected",
+          reason:
+            capacity.poolId === topology.system.id
+              ? "system-memory"
+              : "accelerator-memory",
+          poolId: capacity.poolId,
+        },
+        capacity,
+      );
+    }
     // Only poll() advances hysteresis; reserve() must not count as a sample.
     if (this.hysteresis.state !== "healthy") {
       this.reject(request, snapshot, pending, {
@@ -208,11 +277,91 @@ export class MemorySafetyController {
     return decision.projectedDemand;
   }
 
+  /** Adds back the resident bytes of runtimes that are about to be stopped. */
+  private addReleasedMemory(
+    snapshot: HostMemorySnapshot,
+    releasing: ReadonlySet<string>,
+  ): HostMemorySnapshot {
+    if (releasing.size === 0) return snapshot;
+    const freed = new Map<string, number>();
+    for (const id of releasing) {
+      const entry = this.reservations.get(id);
+      // Pending reservations are not part of the measured sample.
+      if (entry?.state !== "resident") continue;
+      for (const demand of entry.projectedDemand) {
+        freed.set(
+          demand.poolId,
+          (freed.get(demand.poolId) ?? 0) + demand.bytes,
+        );
+      }
+    }
+    return {
+      ...snapshot,
+      pools: snapshot.pools.map((pool) =>
+        pool.availability === "unavailable"
+          ? pool
+          : {
+              ...pool,
+              availableBytes:
+                pool.availableBytes + (freed.get(pool.poolId) ?? 0),
+            },
+      ),
+    };
+  }
+
+  /** Detects demand that exceeds a pool's usable capacity on an idle host. */
+  private capacityShortfall(
+    request: RuntimeMemoryReservationRequest,
+  ): RuntimeMemoryCapacityShortfall | undefined {
+    const topology = this.provider.topology;
+    const requiresAccelerator =
+      topology.kind === "discrete" && request.demand.acceleratorBytes > 0;
+    if (requiresAccelerator && topology.accelerators.length !== 1) {
+      return undefined;
+    }
+    const projected = projectRuntimeMemoryDemand({
+      topology,
+      demand: request.demand,
+      ...(requiresAccelerator && topology.kind === "discrete"
+        ? { acceleratorPoolId: topology.accelerators[0]!.id }
+        : {}),
+    });
+    for (const demand of projected) {
+      const isSystem = demand.poolId === topology.system.id;
+      const pool = isSystem
+        ? topology.system
+        : topology.kind === "discrete"
+          ? topology.accelerators.find(({ id }) => id === demand.poolId)
+          : undefined;
+      if (!pool) continue;
+      const usableBytes = Math.max(
+        0,
+        pool.capacityBytes -
+          effectiveMemoryReserveBytes(
+            isSystem
+              ? this.config.systemReserve
+              : this.config.acceleratorReserve,
+            pool.capacityBytes,
+          ),
+      );
+      if (demand.bytes > usableBytes) {
+        return {
+          poolId: pool.id,
+          requiredBytes: demand.bytes,
+          usableBytes,
+          capacityBytes: pool.capacityBytes,
+        };
+      }
+    }
+    return undefined;
+  }
+
   private reject(
     request: RuntimeMemoryReservationRequest,
     snapshot: HostMemorySnapshot,
     pending: ReadonlyMap<string, number>,
     decision: Extract<MemoryAdmissionDecision, { kind: "rejected" }>,
+    capacity?: RuntimeMemoryCapacityShortfall,
   ): never {
     const topology = this.provider.topology;
     const isSystem = decision.poolId === topology.system.id;
@@ -230,37 +379,41 @@ export class MemorySafetyController {
         ? observed.availableBytes
         : "unavailable";
 
-    throw new RuntimeMemoryAdmissionError(decision, {
-      measured_available_bytes: measuredBytes,
-      reserve_bytes: pool
-        ? effectiveMemoryReserveBytes(
-            isSystem
-              ? this.config.systemReserve
-              : this.config.acceleratorReserve,
-            pool.capacityBytes,
-          )
-        : "unavailable",
-      pending_bytes: pendingBytes,
-      requested_bytes:
-        topology.kind === "unified"
-          ? request.demand.unifiedBytes
-          : isSystem
-            ? request.demand.hostBytes
-            : request.demand.acceleratorBytes === 0 ||
-                topology.accelerators.length === 1
-              ? request.demand.acceleratorBytes
-              : "unavailable",
-      effective_available_bytes:
-        typeof measuredBytes === "number" && typeof pendingBytes === "number"
-          ? Math.max(0, measuredBytes - pendingBytes)
+    throw new RuntimeMemoryAdmissionError(
+      decision,
+      {
+        measured_available_bytes: measuredBytes,
+        reserve_bytes: pool
+          ? effectiveMemoryReserveBytes(
+              isSystem
+                ? this.config.systemReserve
+                : this.config.acceleratorReserve,
+              pool.capacityBytes,
+            )
           : "unavailable",
-      sample_captured_at_ms: snapshot.capturedAtMs,
-      sample_age_ms: Math.max(0, Date.now() - snapshot.capturedAtMs),
-      measured_pressure: observed?.pressure ?? "unknown",
-      safety_state: this.hysteresis.state,
-      recovery_samples: this.hysteresis.consecutiveNormalSnapshots,
-      demand_confidence: request.demand.confidence,
-    });
+        pending_bytes: pendingBytes,
+        requested_bytes:
+          topology.kind === "unified"
+            ? request.demand.unifiedBytes
+            : isSystem
+              ? request.demand.hostBytes
+              : request.demand.acceleratorBytes === 0 ||
+                  topology.accelerators.length === 1
+                ? request.demand.acceleratorBytes
+                : "unavailable",
+        effective_available_bytes:
+          typeof measuredBytes === "number" && typeof pendingBytes === "number"
+            ? Math.max(0, measuredBytes - pendingBytes)
+            : "unavailable",
+        sample_captured_at_ms: snapshot.capturedAtMs,
+        sample_age_ms: Math.max(0, Date.now() - snapshot.capturedAtMs),
+        measured_pressure: observed?.pressure ?? "unknown",
+        safety_state: this.hysteresis.state,
+        recovery_samples: this.hysteresis.consecutiveNormalSnapshots,
+        demand_confidence: request.demand.confidence,
+      },
+      capacity,
+    );
   }
 
   private observe(snapshot: HostMemorySnapshot): MemorySafetyTransition {
