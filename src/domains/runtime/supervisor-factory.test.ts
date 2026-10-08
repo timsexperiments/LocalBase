@@ -81,3 +81,178 @@ test("rejects an unsupported video topology before installation or launch", asyn
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("preflights catalog capacity demand when LLM artifacts are missing", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-missing-llm-preflight-"));
+  const memorySafety = new MemorySafetyController(
+    {
+      topology: {
+        kind: "unified",
+        system: { id: "system", capacityBytes: 32 * gibibyte },
+      },
+      async snapshot() {
+        return {
+          capturedAtMs: Date.now(),
+          pools: [
+            {
+              poolId: "system",
+              availability: "available",
+              availableBytes: 32 * gibibyte,
+              pressure: "normal",
+            },
+          ],
+        };
+      },
+      async close() {},
+    },
+    defaultMemorySafetyConfig(),
+  );
+  const otel = new OtelRuntimeHolder(
+    createOtelRuntime({
+      enabled: false,
+      headers: {},
+      tracesHeaders: {},
+      logsHeaders: {},
+      sampleRatio: 1,
+      sampler: "always_on",
+      source: "persistent",
+      displayEndpoint: "disabled",
+    }),
+  );
+  const config = defaultConfig(root, 32);
+  config.selectedLlmModels = ["qwen3-coder-next-q4_k_m"];
+  config.activeLlmModel = "qwen3-coder-next-q4_k_m";
+  const factory = createRuntimeSupervisorFactory(
+    {
+      logger: createLogger(),
+      otel,
+      specs: {
+        osName: "test",
+        ramGb: 32,
+        cpuModel: "test",
+        gpuName: "test",
+        gpuVramGb: 32,
+        isMac: false,
+        isAppleSilicon: false,
+      },
+    },
+    {},
+    { memorySafety },
+  );
+
+  try {
+    const supervisor = factory.create("llm", { revision: 0, config });
+    if (!supervisor.preflight) throw new Error("Expected preflight support.");
+    const rejection = await supervisor.preflight(["llm:current"]);
+    expect(rejection).toMatchObject({
+      decision: {
+        kind: "rejected",
+        reason: "system-memory",
+      },
+      capacity: {
+        capacityBytes: 32 * gibibyte,
+      },
+    });
+    await expect(
+      Bun.file(
+        join(
+          config.llmModelsDir,
+          "Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
+        ),
+      ).exists(),
+    ).resolves.toBe(false);
+  } finally {
+    await otel.shutdown();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  ["stt", "whisper-large-v3-turbo"],
+  ["image", "flux1-schnell-q4_0"],
+  ["image", "sdxl-base-1.0"],
+  ["video", "wan2.1-t2v-1.3b-q8_0"],
+] as const)(
+  "preflights catalog capacity demand for missing %s artifacts",
+  async (modality, modelId) => {
+    const root = mkdtempSync(
+      join(tmpdir(), `localbase-missing-${modality}-preflight-`),
+    );
+    const memorySafety = new MemorySafetyController(
+      {
+        topology: {
+          kind: "unified",
+          system: { id: "system", capacityBytes: 4 * gibibyte },
+        },
+        async snapshot() {
+          return {
+            capturedAtMs: Date.now(),
+            pools: [
+              {
+                poolId: "system",
+                availability: "available",
+                availableBytes: 4 * gibibyte,
+                pressure: "normal",
+              },
+            ],
+          };
+        },
+        async close() {},
+      },
+      defaultMemorySafetyConfig(),
+    );
+    const otel = new OtelRuntimeHolder(
+      createOtelRuntime({
+        enabled: false,
+        headers: {},
+        tracesHeaders: {},
+        logsHeaders: {},
+        sampleRatio: 1,
+        sampler: "always_on",
+        source: "persistent",
+        displayEndpoint: "disabled",
+      }),
+    );
+    const config = defaultConfig(root, 4);
+    if (modality === "stt") {
+      config.selectedSttModels = [modelId];
+      config.activeSttModel = modelId;
+    } else if (modality === "image") {
+      config.selectedImageModels = [modelId];
+      config.activeImageModel = modelId;
+    } else {
+      config.selectedVideoModels = [modelId];
+      config.activeVideoModel = modelId;
+    }
+    const factory = createRuntimeSupervisorFactory(
+      {
+        logger: createLogger(),
+        otel,
+        specs: {
+          osName: "test",
+          ramGb: 4,
+          cpuModel: "test",
+          gpuName: "test",
+          gpuVramGb: 4,
+          isMac: false,
+          isAppleSilicon: false,
+        },
+      },
+      {},
+      { memorySafety, host: { platform: "darwin", arch: "arm64" } },
+    );
+
+    try {
+      const supervisor = factory.create(modality, { revision: 0, config });
+      if (!supervisor.preflight) throw new Error("Expected preflight support.");
+      const rejection = await supervisor.preflight([`${modality}:current`]);
+      expect(rejection).toMatchObject({
+        decision: { kind: "rejected", reason: "system-memory" },
+        capacity: { capacityBytes: 4 * gibibyte },
+      });
+    } finally {
+      await otel.shutdown();
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);

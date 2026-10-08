@@ -30,6 +30,7 @@ import {
   inferenceQueueError,
   proxyWithAdmission,
   reportMemoryPressureTransition,
+  resourceUnavailable,
   speechGenerationFailure,
   withResponseLease,
 } from "./commands/serve";
@@ -374,8 +375,9 @@ test("video admission evicts idle peers and retries once after memory rejection"
       if (attempts === 2) return recovered;
       return admitted(admission(Promise.reject(failure)));
     },
-    async evictIdleRuntimes() {
+    async recoverWithIdleEviction() {
       evictions += 1;
+      return true;
     },
   };
 
@@ -436,8 +438,9 @@ test("video admission does not evict or retry unrelated startup failures", async
         },
       };
     },
-    async evictIdleRuntimes() {
+    async recoverWithIdleEviction() {
       evictions += 1;
+      return false;
     },
   };
 
@@ -454,6 +457,185 @@ test("video admission does not evict or retry unrelated startup failures", async
     cancellations: 0,
     evictions: 0,
     releases: 1,
+    stops: 1,
+  });
+});
+
+test("video model switch retries transient preflight rejection after idle eviction", async () => {
+  const error = new RuntimeMemoryAdmissionError({
+    kind: "rejected",
+    reason: "system-memory",
+    poolId: "system",
+  });
+  let attempts = 0;
+  let evictions = 0;
+  const recovered: ModelAdmissionResult = {
+    kind: "admitted",
+    value: {
+      modelId: "video-model",
+      admission: {
+        modality: "video",
+        snapshot: {} as RuntimeAdmission["snapshot"],
+        supervisor: { async kill() {} } as RuntimeAdmission["supervisor"],
+        ready: Promise.resolve(),
+        onPendingDetach() {},
+        onIdleCancellation() {},
+        markResponseStarted() {},
+        cancel() {},
+        release() {},
+      },
+      queueWaitMs: 0,
+      admissionSnapshot: { active: 1, slots: 1, waiting: 0 },
+    },
+  };
+  const reconciler = {
+    async admitModel(): Promise<ModelAdmissionResult> {
+      attempts += 1;
+      return attempts === 1
+        ? { kind: "insufficient-memory", error }
+        : recovered;
+    },
+    async recoverWithIdleEviction() {
+      evictions += 1;
+      return true;
+    },
+  };
+
+  const result = await admitVideoWithIdleRecovery(
+    reconciler,
+    "video-model",
+    new AbortController().signal,
+  );
+  expect(result).toBe(recovered);
+  expect({ attempts, evictions }).toEqual({
+    attempts: 2,
+    evictions: 1,
+  });
+});
+
+test("video startup capacity rejection skips idle eviction and retry", async () => {
+  const error = new RuntimeMemoryAdmissionError(
+    {
+      kind: "rejected",
+      reason: "system-memory",
+      poolId: "system",
+    },
+    undefined,
+    {
+      poolId: "system",
+      requiredBytes: 24 * 1024 ** 3,
+      usableBytes: 13 * 1024 ** 3,
+      capacityBytes: 16 * 1024 ** 3,
+    },
+  );
+  let attempts = 0;
+  let cancellations = 0;
+  let evictions = 0;
+  let stops = 0;
+  const admission: RuntimeAdmission = {
+    modality: "video",
+    snapshot: {} as RuntimeAdmission["snapshot"],
+    supervisor: {
+      kill: async () => {
+        stops += 1;
+      },
+    } as RuntimeAdmission["supervisor"],
+    ready: Promise.reject(error),
+    onPendingDetach: () => {},
+    onIdleCancellation: () => {},
+    markResponseStarted: () => {},
+    cancel: () => {
+      cancellations += 1;
+    },
+    release: () => {},
+  };
+  const reconciler = {
+    async admitModel(): Promise<ModelAdmissionResult> {
+      attempts += 1;
+      return {
+        kind: "admitted",
+        value: {
+          modelId: "video-model",
+          admission,
+          queueWaitMs: 0,
+          admissionSnapshot: { active: 1, slots: 1, waiting: 0 },
+        },
+      };
+    },
+    async recoverWithIdleEviction() {
+      evictions += 1;
+      return false;
+    },
+  };
+
+  const result = await admitVideoWithIdleRecovery(
+    reconciler,
+    "video-model",
+    new AbortController().signal,
+  );
+  if (result.kind !== "admitted") throw new Error("Expected admission.");
+  await expect(result.value.admission.ready).rejects.toBe(error);
+  expect({ attempts, cancellations, evictions, stops }).toEqual({
+    attempts: 1,
+    cancellations: 1,
+    evictions: 0,
+    stops: 1,
+  });
+});
+
+test("video ready rejection preserves idle peers when recovery cannot fit", async () => {
+  const error = new RuntimeMemoryAdmissionError({
+    kind: "rejected",
+    reason: "system-memory",
+    poolId: "system",
+  });
+  let attempts = 0;
+  let recoveryProjections = 0;
+  let stops = 0;
+  const admission: RuntimeAdmission = {
+    modality: "video",
+    snapshot: {} as RuntimeAdmission["snapshot"],
+    supervisor: {
+      async kill() {
+        stops += 1;
+      },
+    } as RuntimeAdmission["supervisor"],
+    ready: Promise.reject(error),
+    onPendingDetach() {},
+    onIdleCancellation() {},
+    markResponseStarted() {},
+    cancel() {},
+    release() {},
+  };
+  const reconciler = {
+    async admitModel(): Promise<ModelAdmissionResult> {
+      attempts += 1;
+      return {
+        kind: "admitted",
+        value: {
+          modelId: "video-model",
+          admission,
+          queueWaitMs: 0,
+          admissionSnapshot: { active: 1, slots: 1, waiting: 0 },
+        },
+      };
+    },
+    async recoverWithIdleEviction() {
+      recoveryProjections += 1;
+      return false;
+    },
+  };
+
+  const result = await admitVideoWithIdleRecovery(
+    reconciler,
+    "video-model",
+    new AbortController().signal,
+  );
+  if (result.kind !== "admitted") throw new Error("Expected admission.");
+  await expect(result.value.admission.ready).rejects.toBe(error);
+  expect({ attempts, recoveryProjections, stops }).toEqual({
+    attempts: 1,
+    recoveryProjections: 1,
     stops: 1,
   });
 });
@@ -3113,4 +3295,40 @@ describe("API gateway integration", () => {
       "model",
     );
   });
+});
+
+test("memory admission failures distinguish transient pressure from models that can never fit", async () => {
+  const decision = {
+    kind: "rejected",
+    reason: "system-memory",
+    poolId: "system",
+  } as const;
+  const transient = resourceUnavailable(
+    new RuntimeMemoryAdmissionError(decision),
+  );
+  expect(transient.status).toBe(503);
+  expect(transient.headers.get("Retry-After")).toBe("5");
+  await expect(transient.json()).resolves.toMatchObject({
+    error: { code: "insufficient_memory" },
+  });
+
+  const gib = 1024 ** 3;
+  const permanent = resourceUnavailable(
+    new RuntimeMemoryAdmissionError(decision, undefined, {
+      poolId: "system",
+      requiredBytes: 40 * gib,
+      usableBytes: 28 * gib,
+      capacityBytes: 32 * gib,
+    }),
+  );
+  expect(permanent.status).toBe(422);
+  expect(permanent.headers.get("Retry-After")).toBeNull();
+  const body = (await permanent.json()) as {
+    error: { message: string; code: string };
+  };
+  expect(body.error.code).toBe("model_too_large");
+  expect(body.error.message).toContain("40.0 GiB");
+  expect(body.error.message).toContain("28.0 GiB");
+  expect(body.error.message).toContain("smaller quantization");
+  expect(body.error.message).not.toContain("try again");
 });

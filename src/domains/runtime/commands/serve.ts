@@ -448,7 +448,10 @@ export function speechGenerationFailure(error: unknown): Readonly<{
   source?: InferenceTerminalSource;
 }> {
   if (error instanceof RuntimeMemoryAdmissionError) {
-    return { response: resourceUnavailable(), source: "memory_admission" };
+    return {
+      response: resourceUnavailable(error),
+      source: "memory_admission",
+    };
   }
   if (error instanceof SpeechGenerationTimeoutError) {
     return { response: speechTimeout(), source: "speech_timeout" };
@@ -1787,7 +1790,33 @@ export function inferenceQueueError(
   return inferenceQueueErrorResponse(rejection);
 }
 
-export function resourceUnavailable(): Response {
+const gibibytes = (bytes: number): string =>
+  `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
+
+/**
+ * Maps a memory admission failure to a response. Transient shortages keep the
+ * retryable 503; a model that exceeds the host's usable capacity can never be
+ * admitted, so it gets a non-retryable 422 without Retry-After.
+ */
+export function resourceUnavailable(error?: unknown): Response {
+  const capacity =
+    error instanceof RuntimeMemoryAdmissionError ? error.capacity : undefined;
+  if (capacity) {
+    return openAIErrorResponse(
+      {
+        message:
+          `This model requires about ${gibibytes(capacity.requiredBytes)} of memory, ` +
+          `but only ${gibibytes(capacity.usableBytes)} is available for models on this host ` +
+          `(${gibibytes(capacity.capacityBytes)} total, after the safety reserve). ` +
+          "It cannot be loaded here even when nothing else is running. " +
+          "Use a smaller quantization or a smaller model.",
+        type: "invalid_request_error",
+        param: "model",
+        code: "model_too_large",
+      },
+      422,
+    );
+  }
   return openAIErrorResponse(
     {
       message:
@@ -1839,7 +1868,7 @@ export async function proxyWithAdmission(
     }
     admission.release();
     if (error instanceof RuntimeMemoryAdmissionError) {
-      const response = resourceUnavailable();
+      const response = resourceUnavailable(error);
       onSettled?.({
         outcome: "error",
         httpStatus: response.status,
@@ -1906,11 +1935,23 @@ export async function applyElevatedMemoryPressure(
 }
 
 export async function admitVideoWithIdleRecovery(
-  reconciler: Pick<RuntimeReconciler, "admitModel" | "evictIdleRuntimes">,
+  reconciler: Pick<RuntimeReconciler, "admitModel" | "recoverWithIdleEviction">,
   modelId: string,
   signal: AbortSignal,
 ): Promise<Awaited<ReturnType<RuntimeReconciler["admitModel"]>>> {
   const first = await reconciler.admitModel("video", modelId, signal);
+  if (
+    first.kind === "insufficient-memory" &&
+    first.error.capacity === undefined
+  ) {
+    signal.throwIfAborted();
+    if (!(await reconciler.recoverWithIdleEviction("video", modelId, signal))) {
+      return first;
+    }
+    signal.throwIfAborted();
+    const retry = await reconciler.admitModel("video", modelId, signal);
+    return retry.kind === "admitted" ? retry : first;
+  }
   if (first.kind !== "admitted") return first;
   let current = first.value;
   const ready = current.admission.ready.catch(async (error) => {
@@ -1919,12 +1960,19 @@ export async function admitVideoWithIdleRecovery(
     current.admission.cancel();
     await current.admission.supervisor.kill();
     signal.throwIfAborted();
-    await reconciler.evictIdleRuntimes();
+    if (error.capacity !== undefined) throw error;
+    if (!(await reconciler.recoverWithIdleEviction("video", modelId, signal))) {
+      throw error;
+    }
+    signal.throwIfAborted();
     const retry = await reconciler.admitModel("video", modelId, signal);
-    if (retry.kind !== "admitted")
-      throw new Error("Video runtime admission is unavailable after recovery.");
+    if (retry.kind !== "admitted") throw error;
     current = retry.value;
-    await current.admission.ready;
+    try {
+      await current.admission.ready;
+    } catch {
+      throw error;
+    }
   });
   return {
     ...first,
@@ -2886,6 +2934,11 @@ export async function runServe(
               modelId,
               signal,
             );
+            // Video jobs are asynchronous, so a memory rejection surfaces as an
+            // unavailable runtime on the job rather than an HTTP error.
+            if (selection.kind === "insufficient-memory") {
+              return { kind: "unavailable" };
+            }
             if (selection.kind !== "admitted") return selection;
             return {
               kind: "admitted",
@@ -2933,6 +2986,9 @@ export async function runServe(
           return modelNotFound(parsed.data.model);
         }
         if (selected.kind === "unavailable") return serviceUnavailable("TTS");
+        if (selected.kind === "insufficient-memory") {
+          return resourceUnavailable(selected.error);
+        }
         admission = selected.value.admission;
         inference = beginInference("tts", selected.value);
         if (admission.supervisor.kind !== "speech") {
@@ -3049,6 +3105,9 @@ export async function runServe(
           return modelNotFound(parsed.data.model ?? "");
         }
         if (selected.kind === "unavailable") return serviceUnavailable("STT");
+        if (selected.kind === "insufficient-memory") {
+          return resourceUnavailable(selected.error);
+        }
         admitted = selected.value;
         admission = selected.value.admission;
         transcriptionFormat = parsed.data.response_format ?? "json";
@@ -3145,6 +3204,9 @@ export async function runServe(
         return modelNotFound(parsed.data.model ?? "");
       }
       if (selected.kind === "unavailable") return serviceUnavailable("Image");
+      if (selected.kind === "insufficient-memory") {
+        return resourceUnavailable(selected.error);
+      }
       const inference = beginInference("image", selected.value);
       const response = await proxyWithAdmission(
         selected.value.admission,
@@ -3233,6 +3295,9 @@ export async function runServe(
         return modelNotFound(parsed.data.model ?? "");
       }
       if (selected.kind === "unavailable") return serviceUnavailable("LLM");
+      if (selected.kind === "insufficient-memory") {
+        return resourceUnavailable(selected.error);
+      }
       const streaming = parsed.data.stream === true;
       const inference = beginInference("llm", selected.value, {
         streaming,
@@ -3328,6 +3393,9 @@ export async function runServe(
         return modelNotFound(parsed.data.model ?? "");
       }
       if (selected.kind === "unavailable") return serviceUnavailable("LLM");
+      if (selected.kind === "insufficient-memory") {
+        return resourceUnavailable(selected.error);
+      }
       const inference = beginInference("llm", selected.value);
       const response = await proxyWithAdmission(
         selected.value.admission,
