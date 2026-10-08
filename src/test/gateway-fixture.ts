@@ -1738,7 +1738,9 @@ export async function startGatewayFixture(
     mkdirSync(config.videoModelsDir, { recursive: true });
     mkdirSync(join(config.root, "bin"), { recursive: true });
     mkdirSync(runtimeDir, { recursive: true });
-    await Promise.all([
+    // Settle every step before failing so no sibling recreates the root after
+    // cleanup deletes it.
+    const setup = await Promise.allSettled([
       writeCompleteCatalogArtifact(config.llmModelsDir, LLM_MODEL),
       ...(options.ttsEnabled || options.ttsInstalled
         ? [
@@ -1801,6 +1803,10 @@ export async function startGatewayFixture(
       }),
       compileGatewayCli(cliPath),
     ]);
+    const failed = setup.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failed) throw failed.reason;
   } catch (error) {
     llmUpstream.server.stop(true);
     sttUpstream.server.stop(true);
