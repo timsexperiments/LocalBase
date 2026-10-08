@@ -711,6 +711,82 @@ test("memory admission rejection remains retryable", async () => {
   }
 });
 
+test("rejects oversized catalog demand before launch installs missing artifacts", async () => {
+  const otel = createOtelRuntime({
+    enabled: false,
+    headers: {},
+    tracesHeaders: {},
+    logsHeaders: {},
+    sampleRatio: 1,
+    sampler: "always_on",
+    source: "persistent",
+    displayEndpoint: "disabled",
+  });
+  let launches = 0;
+  let starts = 0;
+  const memorySafety = new MemorySafetyController(
+    {
+      topology: {
+        kind: "unified",
+        system: { id: "system", capacityBytes: 16 * gibibyte },
+      },
+      async snapshot() {
+        return {
+          capturedAtMs: Date.now(),
+          pools: [
+            {
+              poolId: "system",
+              availability: "available",
+              availableBytes: 16 * gibibyte,
+              pressure: "normal",
+            },
+          ],
+        };
+      },
+      async close() {},
+    },
+    defaultMemorySafetyConfig(),
+  );
+  const service = new ManagedService({
+    runtimeId: "video:active-wan",
+    modality: "video",
+    component: "sd-server",
+    healthUrl: "http://127.0.0.1:1/",
+    logger: recordingLogger([]),
+    preflightDemand: async () => ({
+      unifiedBytes: 24 * gibibyte,
+      hostBytes: 24 * gibibyte,
+      acceleratorBytes: 24 * gibibyte,
+      confidence: "estimated",
+    }),
+    launch: async () => {
+      launches += 1;
+      return testLaunchPlan("video:active-wan");
+    },
+    start: async () => {
+      starts += 1;
+      return Bun.spawn(["/bin/sleep", "60"]);
+    },
+    memorySafety,
+    otel,
+  });
+
+  try {
+    await expect(service.ensureRunning()).rejects.toMatchObject({
+      name: "RuntimeMemoryAdmissionError",
+      capacity: { capacityBytes: 16 * gibibyte },
+    });
+    expect({ launches, starts, state: service.state() }).toEqual({
+      launches: 0,
+      starts: 0,
+      state: "idle",
+    });
+  } finally {
+    await service.shutdown();
+    await otel.shutdown();
+  }
+});
+
 test("cancelling while memory reservation is pending prevents backend start", async () => {
   const otel = createOtelRuntime({
     enabled: false,

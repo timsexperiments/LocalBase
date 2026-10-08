@@ -9,6 +9,7 @@ import {
 } from "./memory-controller";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import type { RuntimeLaunchPlan } from "./launch-plan";
+import type { RuntimeMemoryDemand } from "./memory-safety";
 import { llamaContextPerSequence } from "../config/parallel";
 import { stopNativeProcess } from "./native-process";
 import type { LlmSupervisorProfile } from "./supervisor-registry";
@@ -43,6 +44,9 @@ export type ManagedServiceOptions = {
   healthUrl: string;
   logger: ILogger;
   launch: () => Promise<RuntimeLaunchPlan>;
+  preflightDemand?: (
+    signal?: AbortSignal,
+  ) => Promise<RuntimeMemoryDemand | undefined>;
   start: (plan: RuntimeLaunchPlan) => Promise<Bun.Subprocess>;
   startGuardian?: (backend: Bun.Subprocess) => Bun.Subprocess;
   memorySafety: MemorySafetyController;
@@ -105,6 +109,25 @@ export class ManagedService {
 
   runtimeId(): string {
     return this.options.runtimeId;
+  }
+
+  /**
+   * Checks, without reserving or starting anything, whether this runtime could
+   * be admitted once the given runtimes have been stopped.
+   */
+  async preflight(
+    releasingRuntimeIds: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<RuntimeMemoryAdmissionError | undefined> {
+    if (!this.options.preflightDemand) return undefined;
+    if (signal?.aborted) throw new StartupCancelledError(this.name);
+    const demand = await this.options.preflightDemand(signal);
+    if (signal?.aborted) throw new StartupCancelledError(this.name);
+    if (!demand) return undefined;
+    return await this.options.memorySafety.checkAdmission(
+      { demand },
+      { releasingRuntimeIds },
+    );
   }
 
   resolvedSlots(): number | undefined {
@@ -237,6 +260,12 @@ export class ManagedService {
         }
 
         this.assertStartupActive(attempt);
+        const preflightRejection = await this.preflight(
+          [],
+          attempt.controller.signal,
+        );
+        this.assertStartupActive(attempt);
+        if (preflightRejection) throw preflightRejection;
         this.lifecycle("backend.starting", "info", { crashCount });
         const plan = await this.options.launch();
         this.assertStartupActive(attempt);

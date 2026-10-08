@@ -8,6 +8,8 @@ import { createModelManagement } from "../models/model-management";
 import type { LogEventInput } from "../observability/logging";
 import { defaultConfig, readConfig, saveConfig } from "../../manager";
 import { RuntimeConfigController } from "./config-snapshot";
+import { RuntimeMemoryAdmissionError } from "./memory-controller";
+import { resourceUnavailable } from "./commands/serve";
 import {
   RuntimeReconciler,
   RuntimeRequestAbortedError,
@@ -227,7 +229,7 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
     saveConfig(database, replaceLlm);
     await reconciler.refresh();
     expect(records.filter(({ modality }) => modality === "llm")).toHaveLength(
-      2,
+      3,
     );
     expect(records.filter(({ modality }) => modality === "stt")).toHaveLength(
       1,
@@ -426,7 +428,7 @@ test("advances applied generations only inside the modality owner", async () => 
       launchChange.port,
     );
     expect(appliedPort).toBe(launchChange.port);
-    expect(creations).toBe(2);
+    expect(creations).toBe(3);
     admission.value.admission.release();
   } finally {
     releaseKill?.();
@@ -1167,7 +1169,8 @@ test("cancels queued model activation during emergency eviction and recovers", a
 
     releaseShutdown();
     await eviction;
-    expect(created).toEqual([]);
+    // The only supervisor built is the discarded admission-preflight probe.
+    expect(created.length).toBeLessThanOrEqual(1);
     expect(starts).toEqual([]);
     expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
       admission: { kind: "known", activeCount: 0 },
@@ -1182,7 +1185,8 @@ test("cancels queued model activation during emergency eviction and recovers", a
       `llm:${modelB}`,
     );
     recovered.value.admission.release();
-    expect(created).toEqual([modelB]);
+    // Each activation builds one probe and one admitted supervisor.
+    expect(created).toEqual([modelB, modelB]);
     expect(starts).toEqual([modelB]);
     expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
       admission: { kind: "known", activeCount: 0 },
@@ -1190,6 +1194,76 @@ test("cancels queued model activation during emergency eviction and recovers", a
     });
   } finally {
     releaseShutdown();
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("emergency eviction cancels a blocked switch preflight", async () => {
+  const root = mkdtempSync(
+    join(tmpdir(), "localbase-blocked-switch-preflight-"),
+  );
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelA = config.activeLlmModel;
+  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [modelA, modelB];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let currentKills = 0;
+  let preflightStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    preflightStarted = resolve;
+  });
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(modality, snapshot) {
+      const modelId = activeModel(modality, snapshot.config);
+      return {
+        kind: "server",
+        runtimeId: () => `${modality}:${modelId}`,
+        state: () => "running",
+        async ensureRunning() {},
+        async kill() {
+          if (modelId === modelA) currentKills += 1;
+        },
+        async shutdown() {},
+        async preflight(_releasing, signal) {
+          preflightStarted();
+          await new Promise<void>((_resolve, reject) => {
+            signal?.addEventListener(
+              "abort",
+              () => reject(new RuntimeRequestAbortedError()),
+              { once: true },
+            );
+          });
+          return undefined;
+        },
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: factory.create("llm", controller.read()) }),
+    factory,
+    { event() {} },
+  );
+  try {
+    const switching = reconciler.admitModel("llm", modelB);
+    await started;
+    await reconciler.evictAllRuntimes();
+    await expect(switching).rejects.toThrow(
+      "Inference rejected by memory emergency.",
+    );
+    expect(currentKills).toBe(1);
+    expect(controller.read().config.activeLlmModel).toBe(modelA);
+    expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+      modelId: modelA,
+      state: "running",
+      admission: { kind: "known", activeCount: 0 },
+    });
+  } finally {
     database.close();
     rmSync(root, { recursive: true, force: true });
   }
@@ -1314,6 +1388,312 @@ test("drains a warming video job when the model is disabled", async () => {
       admission: { kind: "known", activeCount: 0 },
       queue: { waiting: 0, active: 0 },
     });
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  ["fits after eviction", false],
+  ["cannot fit even after eviction", true],
+])("model switch %s", async (_name, rejects) => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-switch-admission-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelA = config.activeLlmModel;
+  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [modelA, modelB];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  const events: string[] = [];
+  const preflights: Array<{ modelId: string; releasing: readonly string[] }> =
+    [];
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(modality, snapshot) {
+      const modelId = activeModel(modality, snapshot.config);
+      return {
+        kind: "server" as const,
+        runtimeId: () => `${modality}:${modelId}`,
+        state: () => "running",
+        async ensureRunning() {},
+        async kill() {
+          events.push(`kill:${modelId}`);
+        },
+        async shutdown() {
+          events.push(`shutdown:${modelId}`);
+        },
+        async preflight(releasing) {
+          preflights.push({ modelId, releasing });
+          return rejects
+            ? new RuntimeMemoryAdmissionError({
+                kind: "rejected",
+                reason: "system-memory",
+                poolId: "system",
+              })
+            : undefined;
+        },
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: factory.create("llm", controller.read()) }),
+    factory,
+    { event() {} },
+  );
+  try {
+    const result = await reconciler.admitModel("llm", modelB);
+    expect(preflights).toEqual([
+      { modelId: modelB, releasing: [`llm:${modelA}`] },
+    ]);
+    if (rejects) {
+      expect(result.kind).toBe("insufficient-memory");
+      expect(events).toEqual([]);
+      expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+        modelId: modelA,
+        runtimeId: `llm:${modelA}`,
+      });
+      expect(controller.read().config.activeLlmModel).toBe(modelA);
+      // The current model is still admissible.
+      const still = await reconciler.admitModel("llm", modelA);
+      expect(still.kind).toBe("admitted");
+      if (still.kind === "admitted") still.value.admission.release();
+    } else {
+      expect(result.kind).toBe("admitted");
+      expect(events).toEqual([`shutdown:${modelA}`]);
+      expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+        modelId: modelB,
+      });
+      if (result.kind === "admitted") result.value.admission.release();
+    }
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("configuration model replacement preflights before draining the current runtime", async () => {
+  const root = mkdtempSync(
+    join(tmpdir(), "localbase-config-switch-preflight-"),
+  );
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelA = config.activeLlmModel;
+  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [modelA, modelB];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  const shutdowns: string[] = [];
+  const events: LogEventInput[] = [];
+  const failure = new RuntimeMemoryAdmissionError(
+    {
+      kind: "rejected",
+      reason: "system-memory",
+      poolId: "system",
+    },
+    undefined,
+    {
+      poolId: "system",
+      requiredBytes: 64 * 1024 ** 3,
+      usableBytes: 24 * 1024 ** 3,
+      capacityBytes: 32 * 1024 ** 3,
+    },
+  );
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(modality, snapshot) {
+      const modelId = activeModel(modality, snapshot.config);
+      return {
+        kind: "server",
+        runtimeId: () => `${modality}:${modelId}`,
+        state: () => "running",
+        async ensureRunning() {},
+        async kill() {},
+        async shutdown() {
+          shutdowns.push(modelId);
+        },
+        async preflight() {
+          return modelId === modelB ? failure : undefined;
+        },
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: factory.create("llm", controller.read()) }),
+    factory,
+    { event: (event) => events.push(event) },
+  );
+
+  try {
+    await controller.update((next) => {
+      next.activeLlmModel = modelB;
+    });
+    await reconciler.refresh();
+
+    expect(shutdowns).toEqual([]);
+    expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+      modelId: modelA,
+      runtimeId: `llm:${modelA}`,
+      state: "running",
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        eventName: "model.switch-preflight-rejected",
+        error: expect.objectContaining({ message: failure.message }),
+      }),
+    );
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("configuration replacement preflights parallel demand before draining", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-parallel-preflight-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  config.parallel = 1;
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  const originalModel = config.activeLlmModel;
+  const shutdowns: string[] = [];
+  let replacementPreflights = 0;
+  const failure = new RuntimeMemoryAdmissionError(
+    {
+      kind: "rejected",
+      reason: "system-memory",
+      poolId: "system",
+    },
+    undefined,
+    {
+      poolId: "system",
+      requiredBytes: 9 * 1024 ** 3,
+      usableBytes: 8 * 1024 ** 3,
+      capacityBytes: 16 * 1024 ** 3,
+    },
+  );
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(modality, snapshot) {
+      const modelId = activeModel(modality, snapshot.config);
+      const parallel = snapshot.config.parallel;
+      return {
+        kind: "server",
+        runtimeId: () => `${modality}:${modelId}:${parallel}`,
+        state: () => "running",
+        async ensureRunning() {},
+        async kill() {},
+        async shutdown() {
+          shutdowns.push(`${modelId}:${parallel}`);
+        },
+        async preflight() {
+          if (parallel === 4) replacementPreflights += 1;
+          return parallel === 4 ? failure : undefined;
+        },
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: factory.create("llm", controller.read()) }),
+    factory,
+    { event() {} },
+  );
+
+  try {
+    await controller.update((next) => {
+      next.parallel = 4;
+    });
+    await reconciler.refresh();
+
+    expect(replacementPreflights).toBe(1);
+    expect(shutdowns).toEqual([]);
+    expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+      modelId: originalModel,
+      runtimeId: `llm:${originalModel}:1`,
+      state: "running",
+    });
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps the selected switch when actual admission fails after preflight", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-switch-start-failure-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelA = config.activeLlmModel;
+  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  config.selectedLlmModels = [modelA, modelB];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let preflights = 0;
+  const failure = new RuntimeMemoryAdmissionError({
+    kind: "rejected",
+    reason: "system-memory",
+    poolId: "system",
+  });
+  const initial: RuntimeSupervisor = {
+    kind: "server",
+    runtimeId: () => `llm:${modelA}`,
+    state: () => "running",
+    async ensureRunning() {},
+    async kill() {},
+    async shutdown() {},
+  };
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create(_modality, snapshot) {
+      const modelId = snapshot.config.activeLlmModel;
+      return {
+        kind: "server",
+        runtimeId: () => `llm:${modelId}`,
+        state: () => "idle",
+        async preflight() {
+          preflights += 1;
+          return undefined;
+        },
+        async ensureRunning() {
+          throw failure;
+        },
+        async kill() {},
+        async shutdown() {},
+      };
+    },
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ llm: initial }),
+    factory,
+    { event() {} },
+  );
+  try {
+    const result = await reconciler.admitModel("llm", modelB);
+    expect(result.kind).toBe("admitted");
+    if (result.kind !== "admitted") throw new Error("Expected admission.");
+    await expect(result.value.admission.ready).rejects.toBe(failure);
+    const response = resourceUnavailable(failure);
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("5");
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "insufficient_memory" },
+    });
+    expect(preflights).toBe(1);
+    expect(controller.read().config.activeLlmModel).toBe(modelB);
+    expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+      modelId: modelB,
+      runtimeId: `llm:${modelB}`,
+      state: "idle",
+    });
+    result.value.admission.release();
   } finally {
     database.close();
     rmSync(root, { recursive: true, force: true });

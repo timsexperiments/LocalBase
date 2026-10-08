@@ -5,6 +5,7 @@ import {
   type RuntimeConfigSnapshot,
 } from "./config-snapshot";
 import { ModalityAdmissionBarrier } from "./modality-admission";
+import type { RuntimeMemoryAdmissionError } from "./memory-controller";
 import type { RuntimeLifecycleSnapshot } from "./lifecycle-snapshot";
 import {
   InferenceQueue,
@@ -57,7 +58,18 @@ type ModelAdmission = PreparedModelAdmission &
 type ModelAdmissionFailure =
   | Readonly<{ kind: "not-configured" }>
   | Readonly<{ kind: "model-not-found" }>
-  | Readonly<{ kind: "unavailable" }>;
+  | Readonly<{ kind: "unavailable" }>
+  | Readonly<{
+      kind: "insufficient-memory";
+      error: RuntimeMemoryAdmissionError;
+    }>;
+
+/** Raised before any state changes when the requested model cannot fit. */
+class ModelSwitchRejectedError extends Error {
+  constructor(readonly cause: RuntimeMemoryAdmissionError) {
+    super(cause.message);
+  }
+}
 
 type PreparedModelAdmissionResult =
   | Readonly<{ kind: "admitted"; value: PreparedModelAdmission }>
@@ -146,6 +158,12 @@ export class RuntimeReconciler {
   >;
   private readonly reconciliationScheduled = new Set<RuntimeModality>();
   private readonly pendingModelReferences = new Set<ReadonlySet<string>>();
+  private readonly switchPreflights = new Map<
+    RuntimeModality,
+    AbortController
+  >();
+  /** Recovery owns detached barriers until its claim is released. */
+  private readonly recoveryClaims = new Map<RuntimeModality, symbol>();
   private transitions = Promise.resolve();
   private readonly modalityTransitions: ModalityTransitions =
     Object.fromEntries(
@@ -271,10 +289,11 @@ export class RuntimeReconciler {
     return (await this.coordinate()).snapshot;
   }
 
-  async evictIdleRuntimes(): Promise<void> {
+  async evictIdleRuntimes(excludedModality?: RuntimeModality): Promise<void> {
     await Promise.all(
       runtimeModalities.map((modality) =>
         this.exclusiveModality(modality, async () => {
+          if (modality === excludedModality) return;
           const supervisor = this.supervisors.get(modality);
           if (!supervisor || supervisor.state() !== "running") return;
           const barrier = this.barriers[modality];
@@ -282,14 +301,186 @@ export class RuntimeReconciler {
           try {
             await supervisor.kill();
           } finally {
-            barrier.attach();
+            this.attachBarrier(modality);
           }
         }),
       ),
     );
   }
 
+  /**
+   * Checks whether stopping every currently eligible idle peer would make the
+   * requested model admissible, without stopping peers or changing admission
+   * state.
+   */
+  async canAdmitAfterIdleEviction(
+    modality: RuntimeModality,
+    modelId: string,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    return await this.projectCanAdmitAfterIdleEviction(
+      modality,
+      modelId,
+      signal,
+    );
+  }
+
+  /** Claims idle peers before projecting or stopping them, closing the gap in
+   * which a peer could accept work after it was counted as releasable. */
+  async recoverWithIdleEviction(
+    modality: RuntimeModality,
+    modelId: string,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    const claims: Array<{
+      modality: RuntimeModality;
+      supervisor: RuntimeSupervisor;
+      token: symbol;
+    }> = [];
+    try {
+      await Promise.all(
+        runtimeModalities.map((peerModality) =>
+          this.exclusiveModality(
+            peerModality,
+            async () => {
+              if (peerModality === modality) return;
+              const supervisor = this.supervisors.get(peerModality);
+              if (!supervisor || supervisor.state() !== "running") return;
+              if (!this.barriers[peerModality].detachIfIdle()) return;
+              const token = Symbol(peerModality);
+              this.recoveryClaims.set(peerModality, token);
+              claims.push({ modality: peerModality, supervisor, token });
+            },
+            signal,
+          ),
+        ),
+      );
+      this.throwIfAborted(signal);
+      const canAdmit = await this.projectCanAdmitAfterIdleEviction(
+        modality,
+        modelId,
+        signal,
+        claims.map(({ supervisor }) => supervisor.runtimeId()),
+      );
+      this.throwIfAborted(signal);
+      if (!canAdmit) return false;
+
+      const allClaimsStillCurrent = claims.every(
+        (claim) =>
+          this.recoveryClaimIsCurrent(claim) &&
+          this.supervisors.get(claim.modality) === claim.supervisor &&
+          claim.supervisor.state() === "running",
+      );
+      if (!allClaimsStillCurrent) return false;
+
+      const stopped = await this.exclusiveModalities(
+        runtimeModalities.filter((peerModality) =>
+          claims.some((claim) => claim.modality === peerModality),
+        ),
+        async () => {
+          this.throwIfAborted(signal);
+          if (
+            !claims.every((claim) => {
+              const admission = this.barriers[claim.modality].snapshot();
+              return (
+                this.recoveryClaimIsCurrent(claim) &&
+                this.supervisors.get(claim.modality) === claim.supervisor &&
+                claim.supervisor.state() === "running" &&
+                admission.kind === "known" &&
+                admission.activeCount === 0 &&
+                !admission.accepting
+              );
+            })
+          ) {
+            return false;
+          }
+          for (const claim of claims) {
+            this.throwIfAborted(signal);
+            await claim.supervisor.kill();
+          }
+          this.throwIfAborted(signal);
+          return true;
+        },
+        signal,
+      );
+      return stopped;
+    } finally {
+      for (const claim of claims) {
+        if (this.recoveryClaimIsCurrent(claim))
+          this.recoveryClaims.delete(claim.modality);
+      }
+      const releaseClaims = Promise.all(
+        claims.map(({ modality: peerModality }) =>
+          this.exclusiveModality(peerModality, async () => {
+            if (this.recoveryClaims.has(peerModality)) return;
+            this.attachBarrier(peerModality);
+          }),
+        ),
+      );
+      if (signal?.aborted) {
+        void releaseClaims.catch(() => {});
+      } else {
+        await releaseClaims;
+      }
+    }
+  }
+
+  private async projectCanAdmitAfterIdleEviction(
+    modality: RuntimeModality,
+    modelId: string,
+    signal?: AbortSignal,
+    claimedRuntimeIds?: readonly string[],
+  ): Promise<boolean> {
+    try {
+      const source = this.snapshot;
+      if (!configuredRuntimeModality(modality, source.config, this.ownership))
+        return false;
+      const candidate = this.factory.create(modality, {
+        ...source,
+        config: { ...source.config, [activeModelField(modality)]: modelId },
+      });
+      if (!candidate.preflight) return false;
+
+      const releasingRuntimeIds = [
+        ...(claimedRuntimeIds ??
+          runtimeModalities.flatMap((peerModality) => {
+            if (peerModality === modality) return [];
+            const supervisor = this.supervisors.get(peerModality);
+            const admission = this.barriers[peerModality].snapshot();
+            if (
+              !supervisor ||
+              supervisor.state() !== "running" ||
+              admission.kind !== "known" ||
+              !admission.accepting ||
+              admission.activeCount !== 0
+            ) {
+              return [];
+            }
+            return [supervisor.runtimeId()];
+          })),
+      ];
+      if (
+        modality === "video" &&
+        modelId !== activeModel("video", this.appliedSnapshots.video.config)
+      ) {
+        const currentVideo = this.supervisors.get("video");
+        if (currentVideo) releasingRuntimeIds.push(currentVideo.runtimeId());
+      }
+
+      const rejection = await this.waitForAbort(
+        candidate.preflight(releasingRuntimeIds, signal),
+        signal,
+      );
+      return rejection === undefined;
+    } catch (error) {
+      if (signal?.aborted || error instanceof RuntimeRequestAbortedError)
+        throw new RuntimeRequestAbortedError();
+      return false;
+    }
+  }
+
   async evictAllRuntimes(): Promise<void> {
+    for (const preflight of this.switchPreflights.values()) preflight.abort();
     this.rejectQueued("Inference rejected by memory emergency.");
     const results = await Promise.allSettled(
       runtimeModalities.map((modality) =>
@@ -307,7 +498,7 @@ export class RuntimeReconciler {
           }
           await drain;
           this.supervisors.clearDraining(modality);
-          if (this.configured[modality]) barrier.attach();
+          this.attachBarrier(modality);
           if (killError) throw killError;
         }),
       ),
@@ -458,6 +649,9 @@ export class RuntimeReconciler {
         } catch (error) {
           if (error instanceof ModelNoLongerSelectedError)
             return { kind: "model-not-found" };
+          if (error instanceof ModelSwitchRejectedError) {
+            return { kind: "insufficient-memory", error: error.cause };
+          }
           throw error;
         }
       }
@@ -492,14 +686,46 @@ export class RuntimeReconciler {
   private async exclusiveModality<Value>(
     modality: RuntimeModality,
     work: () => Promise<Value>,
+    signal?: AbortSignal,
   ): Promise<Value> {
     const previous = this.modalityTransitions[modality];
-    const next = previous.then(work, work);
+    const run = async () => {
+      this.throwIfAborted(signal);
+      return await work();
+    };
+    const next = previous.then(run, run);
     this.modalityTransitions[modality] = next.then(
       () => undefined,
       () => undefined,
     );
-    return await next;
+    return await this.waitForAbort(next, signal);
+  }
+
+  private async exclusiveModalities<Value>(
+    modalities: readonly RuntimeModality[],
+    work: () => Promise<Value>,
+    signal?: AbortSignal,
+  ): Promise<Value> {
+    const [modality, ...remaining] = modalities;
+    if (!modality) return await work();
+    return await this.exclusiveModality(
+      modality,
+      async () => await this.exclusiveModalities(remaining, work, signal),
+      signal,
+    );
+  }
+
+  private recoveryClaimIsCurrent(claim: {
+    modality: RuntimeModality;
+    token: symbol;
+  }): boolean {
+    return this.recoveryClaims.get(claim.modality) === claim.token;
+  }
+
+  /** Reattachment invalidates recovery ownership before reopening admission. */
+  private attachBarrier(modality: RuntimeModality): void {
+    this.recoveryClaims.delete(modality);
+    if (this.configured[modality]) this.barriers[modality].attach();
   }
 
   private async coordinate(): Promise<CoordinatedSnapshot> {
@@ -585,7 +811,7 @@ export class RuntimeReconciler {
             this.configured[admission.modality] &&
             this.supervisors.get(admission.modality) === admission.supervisor
           ) {
-            this.barriers[admission.modality].attach();
+            this.attachBarrier(admission.modality);
           }
         }
       });
@@ -614,6 +840,59 @@ export class RuntimeReconciler {
     );
   }
 
+  /**
+   * Verifies the target model would be admitted once the current one is
+   * stopped, before anything is drained or stopped. Throws
+   * ModelSwitchRejectedError (leaving the current model running) otherwise.
+   */
+  private async assertSwitchFits(
+    modality: RuntimeModality,
+    modelId: string,
+    source: RuntimeConfigSnapshot,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const current = this.supervisors.get(modality);
+    const preflightController = new AbortController();
+    this.switchPreflights.set(modality, preflightController);
+    const preflightSignal = signal
+      ? AbortSignal.any([signal, preflightController.signal])
+      : preflightController.signal;
+    try {
+      const candidate = this.factory.create(modality, {
+        ...source,
+        config: { ...source.config, [activeModelField(modality)]: modelId },
+      });
+      if (!candidate.preflight) return;
+      const rejection = await this.waitForAbort(
+        candidate.preflight(
+          current ? [current.runtimeId()] : [],
+          preflightSignal,
+        ),
+        preflightSignal,
+      );
+      if (rejection) throw new ModelSwitchRejectedError(rejection);
+    } catch (error) {
+      if (error instanceof ModelSwitchRejectedError) throw error;
+      if (error instanceof RuntimeRequestAbortedError) throw error;
+      // Resolution failures surface through the normal startup path.
+      this.logger.event({
+        severity: "warn",
+        eventName: "model.switch-preflight-failed",
+        category: "runtime",
+        component: modalityComponents[modality],
+        runtime: modality,
+        message: "Memory preflight for the model switch could not run.",
+        error: {
+          type: error instanceof Error ? error.name : "Error",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    } finally {
+      if (this.switchPreflights.get(modality) === preflightController)
+        this.switchPreflights.delete(modality);
+    }
+  }
+
   private async activateModel(
     modality: RuntimeModality,
     modelId: string,
@@ -630,6 +909,7 @@ export class RuntimeReconciler {
     ]);
     this.pendingModelReferences.add(pending);
     try {
+      await this.assertSwitchFits(modality, modelId, source, signal);
       this.logger.event({
         severity: "info",
         eventName: "model.switching",
@@ -649,7 +929,7 @@ export class RuntimeReconciler {
         if (error instanceof RuntimeRequestAbortedError) {
           await drain;
           this.supervisors.clearDraining(modality);
-          this.barriers[modality].attach();
+          this.attachBarrier(modality);
         }
         throw error;
       }
@@ -669,7 +949,7 @@ export class RuntimeReconciler {
         dispatchLease?.throwIfCancelled();
       } catch (error) {
         this.supervisors.clearDraining(modality);
-        this.barriers[modality].attach();
+        this.attachBarrier(modality);
         throw error;
       }
       const previous = this.supervisors.take(modality);
@@ -677,7 +957,7 @@ export class RuntimeReconciler {
       dispatchLease?.throwIfCancelled();
       this.supervisors.add(modality, this.factory.create(modality, target));
       this.appliedSnapshots[modality] = target;
-      this.barriers[modality].attach();
+      this.attachBarrier(modality);
       this.logger.event({
         severity: "info",
         eventName: "model.switched",
@@ -770,7 +1050,7 @@ export class RuntimeReconciler {
       ) {
         try {
           this.supervisors.add(modality, this.factory.create(modality, target));
-          this.barriers[modality].attach();
+          this.attachBarrier(modality);
         } catch (error) {
           this.recordReconciliationFailure(modality, target, "add", error);
           return;
@@ -797,9 +1077,47 @@ export class RuntimeReconciler {
     try {
       if (action.action === "add") {
         this.supervisors.add(modality, this.factory.create(modality, target));
-        this.barriers[modality].attach();
+        this.attachBarrier(modality);
         this.appliedSnapshots[modality] = target;
         return;
+      }
+
+      if (
+        action.action === "drain-and-replace" &&
+        this.supervisors.get(modality) !== undefined
+      ) {
+        try {
+          await this.assertSwitchFits(
+            modality,
+            activeModel(modality, target.config),
+            target,
+          );
+        } catch (error) {
+          if (error instanceof ModelSwitchRejectedError) {
+            this.logger.event({
+              severity: "error",
+              eventName: "model.switch-preflight-rejected",
+              category: "runtime",
+              component: modalityComponents[modality],
+              runtime: modality,
+              message:
+                "Configuration model switch was rejected before shutdown.",
+              error: {
+                type: error.cause.name,
+                message: error.cause.message,
+              },
+              attributes: {
+                from_model: activeModel(
+                  modality,
+                  this.appliedSnapshots[modality].config,
+                ),
+                to_model: activeModel(modality, target.config),
+              },
+            });
+            return;
+          }
+          throw error;
+        }
       }
 
       await this.hooks.beforeModalityDrain?.(modality);
@@ -818,7 +1136,7 @@ export class RuntimeReconciler {
 
       if (action.action === "drain-and-replace") {
         this.supervisors.add(modality, this.factory.create(modality, target));
-        this.barriers[modality].attach();
+        this.attachBarrier(modality);
       }
       this.appliedSnapshots[modality] = target;
     } catch (error) {
