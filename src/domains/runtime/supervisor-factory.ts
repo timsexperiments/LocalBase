@@ -387,6 +387,17 @@ export function createRuntimeSupervisorFactory(
         runtimeId,
         modality,
         component: "llama-server",
+        llmProfile: {
+          modelId,
+          ...(overrides.llmModelFile
+            ? { modelFile: overrides.llmModelFile }
+            : {}),
+          configCtxSize: config.ctxSize,
+          ...(overrides.ctxSize !== undefined
+            ? { ctxSizeOverride: overrides.ctxSize }
+            : {}),
+          parallel: config.parallel,
+        },
         healthUrl: `${base}/health`,
         logger: ctx.logger,
         launch: async () => {

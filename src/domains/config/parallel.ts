@@ -42,7 +42,7 @@ export type ParallelAllocation = {
 
 /**
  * Matches llama.cpp b10419 context normalization for the value exposed by
- * /v1/models. LocalBase does not pass --kv-unified, so slots receive separate
+ * /v1/models. LocalBase passes --no-kv-unified, so slots receive separate
  * contexts padded to 256 tokens after the total context is padded.
  */
 export function llamaContextPerSequence(

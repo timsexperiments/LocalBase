@@ -13,6 +13,7 @@ import {
   type ParallelSlots,
 } from "../config/parallel";
 import type { LlmKvGeometry } from "../runtime/gguf-metadata";
+import type { LlmSupervisorProfile } from "../runtime/supervisor-registry";
 
 type ServedModelConfig = Pick<
   LocalBaseConfig,
@@ -144,6 +145,7 @@ export async function listServedModels(
     memoryGb?: number;
     llmModelFile?: string;
     kvGeometryForModel?: (id: string) => Promise<LlmKvGeometry | null>;
+    llmProfile?: LlmSupervisorProfile;
   }> = {},
 ): Promise<OpenAiModel[]> {
   const seen = new Set<string>();
@@ -158,19 +160,31 @@ export async function listServedModels(
       seen.add(id);
       let model = project(kind, id, spec);
       if (kind === "llm") {
+        const profile = options.llmProfile;
         if (options.llmModelFile && options.pinnedContextLength !== undefined) {
-          model = { ...model, context_length: options.pinnedContextLength };
+          const geometry = await options.kvGeometryForModel?.(
+            profile?.modelId ?? config.activeLlmModel,
+          );
+          model = {
+            ...model,
+            context_length: Math.min(
+              options.pinnedContextLength,
+              geometry?.contextLength ?? Number.POSITIVE_INFINITY,
+            ),
+          };
         } else {
-          // A model-file override pins the active runtime across selected
-          // model IDs. Use the current active model and config as the fallback
-          // profile when the supervisor has not resolved a launch plan yet.
-          const launchModelId = options.llmModelFile
-            ? config.activeLlmModel
-            : id;
+          // Use the captured supervisor profile even before its lazy launch
+          // has resolved. Config is only a fallback when no supervisor exists.
+          const launchModelId =
+            profile?.modelId ??
+            (options.llmModelFile ? config.activeLlmModel : id);
           const launchSpec = byId(launchModelId);
           const modelFile =
+            profile?.modelFile ??
             options.llmModelFile ??
-            (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
+            (launchSpec
+              ? primaryArtifact(launchSpec).filename
+              : `${launchModelId}.gguf`);
           const modelPath = join(config.llmModelsDir, modelFile);
           const artifactBytes =
             (launchSpec
@@ -190,9 +204,12 @@ export async function listServedModels(
               host: "127.0.0.1",
               port: 1,
               model: launchSpec,
-              configCtxSize: config.ctxSize,
-              ctxSizeOverride: options.ctxSizeOverride,
-              parallel: options.parallel ?? config.parallel ?? 1,
+              configCtxSize: profile?.configCtxSize ?? config.ctxSize,
+              ctxSizeOverride: profile
+                ? profile.ctxSizeOverride
+                : options.ctxSizeOverride,
+              parallel:
+                profile?.parallel ?? options.parallel ?? config.parallel ?? 1,
               artifactBytes,
               memoryGb: options.memoryGb ?? 0,
               kvGeometry: await options.kvGeometryForModel?.(launchModelId),
@@ -204,6 +221,16 @@ export async function listServedModels(
                 launch.parallel.slots,
               ),
             };
+            const geometry = launch.kvGeometry;
+            if (geometry?.contextLength != null) {
+              model = {
+                ...model,
+                context_length: Math.min(
+                  model.context_length ?? Number.POSITIVE_INFINITY,
+                  geometry.contextLength,
+                ),
+              };
+            }
           } catch {
             model = omitContextLength(model);
           }

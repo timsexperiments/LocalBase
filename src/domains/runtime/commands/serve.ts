@@ -3376,6 +3376,7 @@ export async function runServe(
           pinnedContextLength: supervisors
             .get("llm")
             ?.resolvedContextLength?.(),
+          llmProfile: supervisors.get("llm")?.llmProfile?.(),
           parallel: currentConfig.parallel,
           memoryGb: ctx.specs.gpuVramGb,
           kvGeometryForModel: async (id) => {

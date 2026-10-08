@@ -574,6 +574,7 @@ describe("backend bind host", () => {
     });
     const proxyUrl = runtimeEndpoint(host, 8080);
     const launch = buildLlamaServerArgs(plan);
+    expect(launch.args).toContain("--no-kv-unified");
 
     expect(normalized).toBe(expected);
     expect(plan.host).toBe(expected);

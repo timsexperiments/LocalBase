@@ -151,6 +151,32 @@ describe("listServedModels", () => {
     expect(byId(twoSlots, config.activeLlmModel)?.context_length).toBe(4096);
   });
 
+  test("caps reported per-slot context at GGUF training context", async () => {
+    const data = await listServedModels(
+      { ...config, ctxSize: 8192, parallel: 3 },
+      undefined,
+      {
+        memoryGb: 16,
+        kvGeometryForModel: async () => ({
+          architecture: "qwen2",
+          blockCount: 1,
+          fullKvHeads: 1,
+          swaKvHeads: 0,
+          slidingWindow: null,
+          keyLength: 1,
+          valueLength: 1,
+          swaKeyLength: 1,
+          swaValueLength: 1,
+          q8Compatible: true,
+          recurrentBytesPerSlot: 0,
+          contextLength: 2048,
+        }),
+      },
+    );
+
+    expect(byId(data, config.activeLlmModel)?.context_length).toBe(2048);
+  });
+
   test("uses the current config context after a hot reload", async () => {
     const reloaded = { ...config, ctxSize: 4096, parallel: 2 as const };
     const data = await listServedModels(reloaded, undefined, { memoryGb: 16 });
@@ -260,6 +286,34 @@ describe("listServedModels", () => {
 
     expect(byId(data, selectedModel)?.context_length).toBe(8192);
     expect(byId(data, activeModel)?.context_length).toBe(8192);
+  });
+
+  test("uses the captured idle supervisor profile after activation with a file override", async () => {
+    const pinnedModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const selectedModel = "qwen2.5-coder-14b-instruct-q4_k_m";
+    const data = await listServedModels(
+      {
+        ...config,
+        activeLlmModel: selectedModel,
+        selectedLlmModels: [pinnedModel, selectedModel],
+        ctxSize: 32768,
+        parallel: 2,
+      },
+      undefined,
+      {
+        memoryGb: 16,
+        llmModelFile: `${pinnedModel}.gguf`,
+        llmProfile: {
+          modelId: pinnedModel,
+          modelFile: `${pinnedModel}.gguf`,
+          configCtxSize: 32768,
+          parallel: 2,
+        },
+      },
+    );
+
+    expect(byId(data, selectedModel)?.context_length).toBe(16384);
+    expect(byId(data, pinnedModel)?.context_length).toBe(16384);
   });
 
   test("uses GGUF KV geometry when allocating automatic slots", async () => {
