@@ -3366,13 +3366,14 @@ export async function runServe(
         {
           enabled: {
             llm: input.llm !== false,
-            stt: input.stt !== false,
-            tts: input.tts !== false,
-            image: input.image !== false,
-            video: input.video !== false,
+            stt: input.stt ?? currentConfig.selectedSttModels.length > 0,
+            tts: input.tts ?? currentConfig.selectedTtsModels.length > 0,
+            image: input.image ?? currentConfig.selectedImageModels.length > 0,
+            video: input.video ?? currentConfig.selectedVideoModels.length > 0,
           },
           ctxSizeOverride: launchOverrides.ctxSize,
           llmModelFile: launchOverrides.llmModelFile,
+          pinnedLlmModelId: initialSnapshot.config.activeLlmModel,
           parallel: currentConfig.parallel,
           memoryGb: ctx.specs.gpuVramGb,
           kvGeometryForModel: async (id) => {

@@ -58,24 +58,25 @@ const defaultModalities: Record<
 function configuredIds(
   kind: ModelKind,
   config: ServedModelConfig,
+  enabled: boolean | undefined,
 ): readonly string[] {
   switch (kind) {
     case "llm":
       return [config.activeLlmModel, ...config.selectedLlmModels];
     case "stt":
-      return config.selectedSttModels.length > 0
+      return enabled || config.selectedSttModels.length > 0
         ? [config.activeSttModel, ...config.selectedSttModels]
         : [];
     case "tts":
-      return config.selectedTtsModels.length > 0
+      return enabled || config.selectedTtsModels.length > 0
         ? [config.activeTtsModel, ...config.selectedTtsModels]
         : [];
     case "image":
-      return config.selectedImageModels.length > 0
+      return enabled || config.selectedImageModels.length > 0
         ? [config.activeImageModel, ...config.selectedImageModels]
         : [];
     case "video":
-      return config.selectedVideoModels.length > 0
+      return enabled || config.selectedVideoModels.length > 0
         ? [config.activeVideoModel, ...config.selectedVideoModels]
         : [];
   }
@@ -138,6 +139,7 @@ export async function listServedModels(
     parallel?: ParallelSlots;
     memoryGb?: number;
     llmModelFile?: string;
+    pinnedLlmModelId?: string;
     kvGeometryForModel?: (id: string) => Promise<LlmKvGeometry | null>;
   }> = {},
 ): Promise<OpenAiModel[]> {
@@ -145,7 +147,7 @@ export async function listServedModels(
   const data: OpenAiModel[] = [];
   for (const kind of kindOrder) {
     if (options.enabled?.[kind] === false) continue;
-    for (const id of configuredIds(kind, config)) {
+    for (const id of configuredIds(kind, config, options.enabled?.[kind])) {
       if (!id || seen.has(id)) continue;
       const spec = byId(id);
       const permission = permissionFor(kind, spec);
@@ -156,7 +158,9 @@ export async function listServedModels(
         // A model-file override pins the active runtime across selected model
         // IDs. Resolve its context with the same model profile the supervisor
         // launched, rather than the requested model's profile.
-        const launchModelId = options.llmModelFile ? config.activeLlmModel : id;
+        const launchModelId = options.llmModelFile
+          ? (options.pinnedLlmModelId ?? config.activeLlmModel)
+          : id;
         const launchSpec = byId(launchModelId);
         const modelFile =
           options.llmModelFile ??

@@ -83,6 +83,31 @@ describe("listServedModels", () => {
     ]);
   });
 
+  test("includes active models for explicitly enabled modalities without selections", async () => {
+    const data = await listServedModels(
+      {
+        ...config,
+        selectedSttModels: [],
+        selectedTtsModels: [],
+        selectedImageModels: [],
+        selectedVideoModels: [],
+      },
+      undefined,
+      {
+        enabled: { stt: true, tts: true, image: true, video: true },
+      },
+    );
+
+    expect(data.map(({ id }) => id)).toEqual([
+      config.activeLlmModel,
+      "qwen3-embedding-0.6b-q8_0",
+      config.activeSttModel,
+      config.activeTtsModel,
+      config.activeImageModel,
+      config.activeVideoModel,
+    ]);
+  });
+
   test("omits models the caller lacks inference permission for", async () => {
     const data = await listServedModels(config, [
       "models:read",
@@ -174,6 +199,28 @@ describe("listServedModels", () => {
     );
 
     expect(byId(data, selectedModel)?.context_length).toBe(16384);
+  });
+
+  test("keeps the startup-pinned context after persisted active model changes", async () => {
+    const pinnedModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const persistedActiveModel = "qwen2.5-coder-14b-instruct-q4_k_m";
+    const data = await listServedModels(
+      {
+        ...config,
+        activeLlmModel: persistedActiveModel,
+        selectedLlmModels: [pinnedModel, persistedActiveModel],
+        ctxSize: 32768,
+        parallel: 2,
+      },
+      undefined,
+      {
+        memoryGb: 16,
+        llmModelFile: `${pinnedModel}.gguf`,
+        pinnedLlmModelId: pinnedModel,
+      },
+    );
+
+    expect(byId(data, persistedActiveModel)?.context_length).toBe(16384);
   });
 
   test("uses GGUF KV geometry when allocating automatic slots", async () => {
