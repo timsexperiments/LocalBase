@@ -408,6 +408,24 @@ function upstreamFailure(message: string): Response {
   );
 }
 
+/** Whisper reports failures as JSON bodies, sometimes with a 200 status. */
+function looksLikeBackendError(upstream: Response, body: string): boolean {
+  if (upstream.headers.get("content-type")?.includes("json")) return true;
+  const trimmed = body.trimStart();
+  if (!trimmed.startsWith("{")) return false;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed) &&
+      "error" in parsed
+    );
+  } catch {
+    return false;
+  }
+}
+
 function speechTimeout(): Response {
   return openAIErrorResponse(
     {
@@ -971,15 +989,20 @@ const transcriptionResponseSchema = z
         z
           .object({
             id: z.number(),
-            seek: z.number(),
-            start: z.number(),
-            end: z.number(),
+            seek: z.number().optional(),
+            start: z.number().optional(),
+            end: z.number().optional(),
             text: z.string(),
-            tokens: z.array(z.number()),
-            temperature: z.number(),
-            avg_logprob: z.number(),
-            compression_ratio: z.number(),
-            no_speech_prob: z.number(),
+            speaker: z.string().optional(),
+            tokens: z.array(z.number()).optional(),
+            words: z
+              .array(z.object({ word: z.string() }).passthrough())
+              .optional(),
+            // whisper.cpp serializes NaN (e.g. avg_logprob with no tokens) as null.
+            temperature: z.number().nullable().optional(),
+            avg_logprob: z.number().nullable().optional(),
+            compression_ratio: z.number().nullable().optional(),
+            no_speech_prob: z.number().nullable().optional(),
           })
           .passthrough(),
       )
@@ -1447,10 +1470,14 @@ async function proxyRequest(
     upstream.ok
   ) {
     try {
-      const text = normalizePlainTranscription(
-        await upstream.text(),
-        transcriptionFormat,
-      );
+      const raw = await upstream.text();
+      if (looksLikeBackendError(upstream, raw)) {
+        onInvalidEvent?.(502);
+        return upstreamFailure(
+          "The upstream service returned an invalid response.",
+        );
+      }
+      const text = normalizePlainTranscription(raw, transcriptionFormat);
       const headers = filterProxyHeaders(upstream.headers);
       headers.delete("content-length");
       headers.set("content-type", "text/plain; charset=utf-8");

@@ -24,7 +24,7 @@ describe("transcription response formats", () => {
       "file",
       new File([minimalWav], "fixture.wav", { type: "audio/wav" }),
     );
-    form.append("prompt", "messy");
+    if (!("prompt" in fields)) form.append("prompt", "messy");
     for (const [key, value] of Object.entries(fields)) form.append(key, value);
     return fetch(`${gateway.baseUrl}/v1/audio/${route}`, {
       method: "POST",
@@ -83,6 +83,23 @@ describe("transcription response formats", () => {
       "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n Hello there.\n\n",
     );
   });
+
+  test.each(["text", "srt", "vtt"])(
+    "%s sanitizes a 200 JSON error body from the backend",
+    async (format) => {
+      const response = await post({
+        response_format: format,
+        prompt: "backend-error",
+      });
+      expect(response.status).toBe(502);
+      expect(response.headers.get("content-type")).toContain(
+        "application/json",
+      );
+      const raw = await response.text();
+      expect(raw).not.toContain("private backend failed");
+      expect(JSON.parse(raw).error.code).toBe("upstream_error");
+    },
+  );
 
   test("translations sets translate=true; transcriptions does not", async () => {
     const translated = await post(

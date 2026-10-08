@@ -1496,6 +1496,13 @@ function startMockUpstream(
           })),
         });
       }
+      if (
+        path === "/inference" &&
+        formData?.get("prompt") === "backend-error"
+      ) {
+        // whisper.cpp reports some failures as JSON bodies with a 200 status.
+        return Response.json({ error: "private backend failed" });
+      }
       if (path === "/inference" && formData?.get("prompt") === "messy") {
         const format = formData.get("response_format");
         const messy = " Hello there.\n And then...\n";
@@ -1512,13 +1519,11 @@ function startMockUpstream(
         }
         const segment = {
           id: 0,
-          seek: 0,
           start: 0,
           end: 0.5,
           tokens: [1],
           temperature: 0,
           avg_logprob: 0,
-          compression_ratio: 1,
           no_speech_prob: 0,
         };
         return Response.json(
@@ -1548,14 +1553,12 @@ function startMockUpstream(
           segments: [
             {
               id: 0,
-              seek: 0,
               start: 0,
               end: 0.5,
               text: "fixture transcript",
               tokens: [1],
               temperature: 0,
               avg_logprob: 0,
-              compression_ratio: 1,
               no_speech_prob: 0,
             },
           ],
