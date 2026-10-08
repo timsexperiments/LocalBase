@@ -31,6 +31,9 @@ import {
   modelMetadataById,
   projectModelMetadataList,
 } from "../../models/model-metadata";
+import { listServedModels } from "../../models/served-models";
+import { createLlmKvGeometryReader } from "../gguf-geometry-cache";
+import { readLlmTrainingContextLength } from "../gguf-metadata";
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
@@ -2513,6 +2516,7 @@ export async function runServe(
       ? {}
       : { sttPort: config.sttPort }),
   });
+  const readCachedLlmKvGeometry = createLlmKvGeometryReader();
   const memoryProvider = createHostMemoryProvider();
   const memorySafety = new MemorySafetyController(
     memoryProvider,
@@ -3355,20 +3359,46 @@ export async function runServe(
     }
 
     if (route === "models") {
-      const modelsList = [
-        ...new Set([
-          currentConfig.activeLlmModel,
-          ...currentConfig.selectedLlmModels,
-          currentConfig.activeTtsModel,
-          ...currentConfig.selectedTtsModels,
-        ]),
-      ].filter(Boolean);
-      const data = modelsList.map((modelId) => ({
-        id: modelId,
-        object: "model",
-        created: 1670000000,
-        owned_by: "local-base",
-      }));
+      const data = await listServedModels(
+        currentConfig,
+        authorization.kind === "authorized"
+          ? authorization.principal.permissions
+          : undefined,
+        {
+          enabled: {
+            llm: input.llm !== false,
+            stt: input.stt ?? currentConfig.selectedSttModels.length > 0,
+            tts: input.tts ?? currentConfig.selectedTtsModels.length > 0,
+            image: input.image ?? currentConfig.selectedImageModels.length > 0,
+            video: input.video ?? currentConfig.selectedVideoModels.length > 0,
+          },
+          ctxSizeOverride: launchOverrides.ctxSize,
+          llmModelFile: launchOverrides.llmModelFile,
+          pinnedContextLength: supervisors
+            .get("llm")
+            ?.resolvedContextLength?.(),
+          llmProfile: supervisors.get("llm")?.llmProfile?.(),
+          parallel: currentConfig.parallel,
+          memoryGb: ctx.specs.gpuVramGb,
+          kvGeometryForModel: async (id) => {
+            const spec = byId(id);
+            const modelFile =
+              launchOverrides.llmModelFile ??
+              (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
+            const path = join(currentConfig.llmModelsDir, modelFile);
+            return readCachedLlmKvGeometry(path);
+          },
+          trainingContextLengthForModel: async (id) => {
+            const spec = byId(id);
+            const modelFile =
+              launchOverrides.llmModelFile ??
+              (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
+            return readLlmTrainingContextLength(
+              join(currentConfig.llmModelsDir, modelFile),
+            );
+          },
+        },
+      );
       return Response.json({
         object: "list",
         data,

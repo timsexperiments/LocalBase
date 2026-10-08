@@ -153,7 +153,9 @@ function deferredBackend(): DeferredBackend {
 }
 
 function controlledStopService(
-  options: Pick<ManagedServiceOptions, "startGuardian"> = {},
+  options: Partial<
+    Pick<ManagedServiceOptions, "launch" | "startGuardian">
+  > = {},
 ): {
   service: ManagedService;
   events: string[];
@@ -259,6 +261,26 @@ test("kill reports a managed backend stop only after its process exits", async (
     expect(memory.releases).toEqual(["llm:stop:1"]);
     expect(service.state()).toBe("idle");
   } finally {
+    await service.shutdown();
+    restoreFetch();
+    await otel.shutdown();
+  }
+});
+
+test("resolved context length is capped at GGUF training context", async () => {
+  const { service, backends, restoreFetch, otel } = controlledStopService({
+    launch: async () => ({
+      ...testLaunchPlan("llm:stop:1"),
+      parallel: { slots: 3, isAuto: false, contextPerSlot: 2816 },
+      kvGeometry: null,
+      trainingContextLength: 2048,
+    }),
+  });
+  try {
+    await service.ensureRunning();
+    expect(service.resolvedContextLength()).toBe(2048);
+  } finally {
+    for (const backend of backends) backend.exit();
     await service.shutdown();
     restoreFetch();
     await otel.shutdown();

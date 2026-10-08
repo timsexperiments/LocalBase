@@ -10,9 +10,11 @@ import {
 import type {
   EmbeddingLlmRuntimeProfile,
   ImageRuntimeProfile,
+  ModelSpec,
   VideoRuntimeProfile,
   VideoRuntimeTarget,
 } from "../../catalog";
+import { calculateMaxSafeContextSize } from "../../catalog";
 import {
   kvCacheBytes,
   type KvCacheType,
@@ -62,6 +64,65 @@ export const LLAMA_PROMPT_CACHE_RAM_MIB = 2048;
 
 export type RuntimeHardware = { memoryGb: number };
 
+/** Context budget used by both runtime startup and the served-model listing. */
+export function configuredLlmContextSize(
+  model: ModelSpec | undefined,
+  configCtxSize: number,
+  memoryGb: number,
+  override?: number,
+): number {
+  if (override !== undefined) return override;
+  const recommended = model
+    ? calculateMaxSafeContextSize(model, memoryGb)
+    : memoryGb >= 32
+      ? 32768
+      : 8192;
+  return Math.min(recommended, configCtxSize);
+}
+
+/** Build a model launch plan from the same config and model inputs in every caller. */
+export function resolveConfiguredLlmLaunchPlan(input: {
+  runtimeId: string;
+  root: string;
+  modelsDirectory: string;
+  modelId: string;
+  modelFile: string;
+  host: string;
+  port: number;
+  model: ModelSpec | undefined;
+  configCtxSize: number;
+  ctxSizeOverride?: number;
+  parallel: ParallelSlots;
+  artifactBytes: number;
+  memoryGb: number;
+  kvGeometry?: LlmKvGeometry | null;
+  trainingContextLength?: number | null;
+}): LlmLaunchPlan {
+  return resolveLlmLaunchPlan({
+    runtimeId: input.runtimeId,
+    root: input.root,
+    modelsDirectory: input.modelsDirectory,
+    modelId: input.modelId,
+    modelFile: input.modelFile,
+    host: input.host,
+    port: input.port,
+    modelRequirementGb: input.model?.minVramGb,
+    ctxSize: configuredLlmContextSize(
+      input.model,
+      input.configCtxSize,
+      input.memoryGb,
+      input.ctxSizeOverride,
+    ),
+    contextWindowTokens: input.model?.contextWindowTokens,
+    parallel: input.parallel,
+    artifactBytes: input.artifactBytes,
+    hardware: { memoryGb: input.memoryGb },
+    embedding: input.model?.llmRuntime,
+    kvGeometry: input.kvGeometry,
+    trainingContextLength: input.trainingContextLength,
+  });
+}
+
 type LaunchPlanBase<
   Modality extends RuntimeModality,
   Component extends RuntimeComponent,
@@ -81,6 +142,7 @@ type LaunchPlanBase<
 
 export type LlmLaunchPlan = LaunchPlanBase<"llm", "llama-server"> & {
   readonly ctxSize: number;
+  readonly trainingContextLength?: number | null;
   readonly parallel: ParallelAllocation;
   readonly modelRequirementGb: number | undefined;
   readonly hardware: Readonly<RuntimeHardware>;
@@ -271,6 +333,7 @@ export function resolveLlmLaunchPlan(input: {
   hardware: RuntimeHardware;
   embedding?: EmbeddingLlmRuntimeProfile | null;
   kvGeometry?: LlmKvGeometry | null;
+  trainingContextLength?: number | null;
 }): LlmLaunchPlan {
   const ctxSize = Math.min(
     input.ctxSize,
@@ -320,6 +383,9 @@ export function resolveLlmLaunchPlan(input: {
     embedding: input.embedding ? Object.freeze({ ...input.embedding }) : null,
     kvCache,
     kvGeometry,
+    ...(input.trainingContextLength !== undefined
+      ? { trainingContextLength: input.trainingContextLength }
+      : {}),
     promptCacheRamMib,
     memoryDemand: llmMemoryDemand({
       ...input,

@@ -65,6 +65,7 @@ export function buildLlamaServerArgs(
     String(plan.ctxSize),
     "--parallel",
     String(plan.parallel.slots),
+    "--no-kv-unified",
   ];
 
   if (plan.embedding) {

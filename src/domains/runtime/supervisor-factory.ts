@@ -2,7 +2,6 @@ import { basename, join } from "node:path";
 import { verifyAuthoritativeFile } from "../../utils/checksum";
 import {
   byId,
-  calculateMaxSafeContextSize,
   primaryArtifact,
   resolveCatalogInstallation,
   ttsReferenceArtifacts,
@@ -17,11 +16,15 @@ import {
 } from "../../manager";
 import type { ServeInput } from "../app/commands/inputs";
 import type { RuntimeConfigSnapshot } from "./config-snapshot";
-import { readLlmKvGeometry } from "./gguf-metadata";
+import {
+  readLlmKvGeometry,
+  readLlmTrainingContextLength,
+} from "./gguf-metadata";
 import {
   backendBindHost,
+  configuredLlmContextSize,
   resolveImageLaunchPlan,
-  resolveLlmLaunchPlan,
+  resolveConfiguredLlmLaunchPlan,
   resolveSttLaunchPlan,
   resolveVideoLaunchPlan,
 } from "./launch-plan";
@@ -387,6 +390,17 @@ export function createRuntimeSupervisorFactory(
         runtimeId,
         modality,
         component: "llama-server",
+        llmProfile: {
+          modelId,
+          ...(overrides.llmModelFile
+            ? { modelFile: overrides.llmModelFile }
+            : {}),
+          configCtxSize: config.ctxSize,
+          ...(overrides.ctxSize !== undefined
+            ? { ctxSizeOverride: overrides.ctxSize }
+            : {}),
+          parallel: config.parallel,
+        },
         healthUrl: `${base}/health`,
         logger: ctx.logger,
         launch: async () => {
@@ -432,18 +446,18 @@ export function createRuntimeSupervisorFactory(
             }
           }
           const spec = byId(modelId);
-          const recommended = spec
-            ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
-            : ctx.specs.gpuVramGb >= 32
-              ? 32768
-              : 8192;
-          const ctxSize =
-            overrides.ctxSize ?? Math.min(recommended, config.ctxSize);
+          const ctxSize = configuredLlmContextSize(
+            spec,
+            config.ctxSize,
+            ctx.specs.gpuVramGb,
+            overrides.ctxSize,
+          );
           ctx.logger.info(
             "llama-server",
             `Spawning model "${modelId}" (file: ${modelFile}, context: ${ctxSize} tokens)`,
           );
-          return resolveLlmLaunchPlan({
+          const modelPath = join(config.llmModelsDir, modelFile);
+          return resolveConfiguredLlmLaunchPlan({
             runtimeId,
             root: config.root,
             modelsDirectory: config.llmModelsDir,
@@ -451,20 +465,19 @@ export function createRuntimeSupervisorFactory(
             modelFile,
             host: llmHost(snapshot.config, overrides),
             port: llmPort(snapshot.config, overrides),
-            ctxSize,
-            contextWindowTokens: spec?.contextWindowTokens,
+            model: spec,
+            configCtxSize: config.ctxSize,
+            ctxSizeOverride: overrides.ctxSize,
             parallel: config.parallel,
-            modelRequirementGb: spec?.minVramGb,
             artifactBytes: await artifactBytes(
               modelId,
               config.llmModelsDir,
               modelFile,
             ),
-            hardware: { memoryGb: ctx.specs.gpuVramGb },
-            embedding: spec?.llmRuntime ?? null,
-            kvGeometry: await readLlmKvGeometry(
-              join(config.llmModelsDir, modelFile),
-            ),
+            memoryGb: ctx.specs.gpuVramGb,
+            kvGeometry: await readLlmKvGeometry(modelPath),
+            trainingContextLength:
+              await readLlmTrainingContextLength(modelPath),
           });
         },
         start: async (plan) => {
