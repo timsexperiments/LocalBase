@@ -12,10 +12,21 @@ import type {
   VideoRuntimeProfile,
   VideoRuntimeTarget,
 } from "../../catalog";
+import {
+  kvCacheBytes,
+  type KvCacheType,
+  type LlmKvGeometry,
+} from "./gguf-metadata";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
 
 const RUNTIME_HOST_OVERHEAD_BYTES = 512 * 1024 * 1024;
+
+/** KV cache type for chat models; the estimate and llama-server argv share it. */
+export const DEFAULT_LLM_KV_CACHE_TYPE: KvCacheType = "q8_0";
+
+/** Host RAM (MiB) llama-server may spend on prompt-cache states for chat models. */
+export const LLAMA_PROMPT_CACHE_RAM_MIB = 2048;
 
 export type RuntimeHardware = { memoryGb: number };
 
@@ -42,6 +53,9 @@ export type LlmLaunchPlan = LaunchPlanBase<"llm", "llama-server"> & {
   readonly modelRequirementGb: number | undefined;
   readonly hardware: Readonly<RuntimeHardware>;
   readonly embedding: EmbeddingLlmRuntimeProfile | null;
+  readonly kvCache: Readonly<{ typeK: KvCacheType; typeV: KvCacheType }>;
+  readonly kvGeometry: LlmKvGeometry | null;
+  readonly promptCacheRamMib: number;
 };
 
 export type SttLaunchPlan = LaunchPlanBase<"stt", "whisper-server">;
@@ -170,22 +184,40 @@ function llmMemoryDemand(input: {
   modelRequirementGb: number | undefined;
   ctxSize: number;
   parallel: ParallelAllocation;
-  hardware: RuntimeHardware;
+  kvCache: LlmLaunchPlan["kvCache"];
+  kvGeometry: LlmKvGeometry | null;
+  promptCacheRamMib: number;
 }): RuntimeMemoryDemand {
-  const contextBytes = Math.ceil(
-    (input.ctxSize / 8192) * CONTEXT_MEMORY_GB_PER_8K_TOKENS * gibibyte,
-  );
+  const contextBytes = input.kvGeometry
+    ? kvCacheBytes(input.kvGeometry, {
+        ctxTokens: input.ctxSize,
+        slots: input.parallel.slots,
+        cacheTypeK: input.kvCache.typeK,
+        cacheTypeV: input.kvCache.typeV,
+      })
+    : Math.ceil(
+        (input.ctxSize / 8192) * CONTEXT_MEMORY_GB_PER_8K_TOKENS * gibibyte,
+      );
   const slotBytes = Math.ceil(
     input.parallel.slots * PARALLEL_SLOT_OVERHEAD_GB * gibibyte,
   );
+  const promptCacheBytes = input.promptCacheRamMib * 1024 * 1024;
   const requirementBytes = modelBytes(
     input.artifactBytes,
     input.modelRequirementGb,
   );
   return Object.freeze({
     unifiedBytes:
-      requirementBytes + contextBytes + slotBytes + RUNTIME_HOST_OVERHEAD_BYTES,
-    hostBytes: input.artifactBytes + RUNTIME_HOST_OVERHEAD_BYTES + contextBytes,
+      requirementBytes +
+      contextBytes +
+      slotBytes +
+      promptCacheBytes +
+      RUNTIME_HOST_OVERHEAD_BYTES,
+    hostBytes:
+      input.artifactBytes +
+      RUNTIME_HOST_OVERHEAD_BYTES +
+      contextBytes +
+      promptCacheBytes,
     acceleratorBytes: requirementBytes + contextBytes + slotBytes,
     confidence: "estimated",
   });
@@ -206,16 +238,37 @@ export function resolveLlmLaunchPlan(input: {
   artifactBytes: number;
   hardware: RuntimeHardware;
   embedding?: EmbeddingLlmRuntimeProfile | null;
+  kvGeometry?: LlmKvGeometry | null;
 }): LlmLaunchPlan {
   const ctxSize = Math.min(
     input.ctxSize,
     input.contextWindowTokens ?? input.ctxSize,
   );
+  const kvGeometry = input.kvGeometry ?? null;
+  // q8_0 needs every head dim to be a multiple of 32; unknown geometry or a
+  // misfit falls back to f16 so llama.cpp does not refuse to start.
+  const kvType =
+    input.embedding || !kvGeometry?.q8Compatible
+      ? "f16"
+      : DEFAULT_LLM_KV_CACHE_TYPE;
+  const kvCache = Object.freeze({ typeK: kvType, typeV: kvType });
+  const promptCacheRamMib = input.embedding ? 0 : LLAMA_PROMPT_CACHE_RAM_MIB;
   const parallel = allocateParallelSlots({
     parallel: input.parallel,
     memoryGb: input.hardware.memoryGb,
     modelRequirementGb: input.modelRequirementGb,
     ctxSize,
+    ...(kvGeometry
+      ? {
+          kvCacheGb: (slots: number) =>
+            kvCacheBytes(kvGeometry, {
+              ctxTokens: ctxSize,
+              slots,
+              cacheTypeK: kvCache.typeK,
+              cacheTypeV: kvCache.typeV,
+            }) / gibibyte,
+        }
+      : {}),
   });
   return Object.freeze({
     runtimeId: input.runtimeId,
@@ -233,7 +286,17 @@ export function resolveLlmLaunchPlan(input: {
     modelRequirementGb: input.modelRequirementGb,
     hardware: Object.freeze({ ...input.hardware }),
     embedding: input.embedding ? Object.freeze({ ...input.embedding }) : null,
-    memoryDemand: llmMemoryDemand({ ...input, ctxSize, parallel }),
+    kvCache,
+    kvGeometry,
+    promptCacheRamMib,
+    memoryDemand: llmMemoryDemand({
+      ...input,
+      ctxSize,
+      parallel,
+      kvCache,
+      kvGeometry,
+      promptCacheRamMib,
+    }),
   });
 }
 

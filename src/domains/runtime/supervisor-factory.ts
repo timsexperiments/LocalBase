@@ -17,6 +17,7 @@ import {
 } from "../../manager";
 import type { ServeInput } from "../app/commands/inputs";
 import type { RuntimeConfigSnapshot } from "./config-snapshot";
+import { readLlmKvGeometry } from "./gguf-metadata";
 import {
   resolveImageLaunchPlan,
   resolveLlmLaunchPlan,
@@ -457,6 +458,9 @@ export function createRuntimeSupervisorFactory(
             ),
             hardware: { memoryGb: ctx.specs.gpuVramGb },
             embedding: spec?.llmRuntime ?? null,
+            kvGeometry: await readLlmKvGeometry(
+              join(config.llmModelsDir, modelFile),
+            ),
           });
         },
         start: async (plan) => {

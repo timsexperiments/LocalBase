@@ -50,6 +50,8 @@ export function buildLlamaServerArgs(
     | "modelRequirementGb"
     | "hardware"
     | "embedding"
+    | "kvCache"
+    | "promptCacheRamMib"
   >,
 ): LlamaServerArgs {
   const args = [
@@ -67,13 +69,24 @@ export function buildLlamaServerArgs(
 
   if (plan.embedding) {
     args.push("--embedding", "--pooling", plan.embedding.pooling);
+    if (process.platform === "darwin" && process.arch === "arm64") {
+      args.push("--flash-attn", "auto");
+    }
   } else {
-    args.push("--jinja", "--embeddings");
+    // Quantized V cache requires flash attention. ctx is passed explicitly, so
+    // llama-server's default --fit only adjusts unset args such as GPU layers.
+    args.push("--jinja", "--embeddings", "--flash-attn", "on");
   }
 
-  if (process.platform === "darwin" && process.arch === "arm64") {
-    args.push("--flash-attn", "auto");
-  }
+  args.push(
+    "--cache-type-k",
+    plan.kvCache.typeK,
+    "--cache-type-v",
+    plan.kvCache.typeV,
+    "--cache-ram",
+    String(plan.promptCacheRamMib),
+  );
+  if (!plan.embedding) args.push("--cache-reuse", "256");
 
   return { args, parallel: plan.parallel };
 }
