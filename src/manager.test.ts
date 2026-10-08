@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -43,6 +44,7 @@ import {
   parseChecksumFile,
   readChecksumStore,
   verifyAuthoritativeFile,
+  withChecksumStoreLock,
   writeChecksumStore,
 } from "./utils/checksum";
 import {
@@ -1092,10 +1094,237 @@ describe.serial("checksum inputs and continuity cache", () => {
       (await readChecksumStore(root)).entries["model.bin"]?.authoritativeSha256,
     ).toBe(digest);
 
-    await Bun.write(join(root, ".checksums.json"), "{not json");
-    await expect(readChecksumStore(root)).rejects.toThrow(
-      "Invalid continuity checksum cache",
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await Bun.write(join(root, ".checksums.json"), "{not json");
+      expect(await readChecksumStore(root)).toEqual({
+        version: 1,
+        entries: {},
+      });
+      expect(await verifyAuthoritativeFile(file, authority, root)).toBe(
+        "sha256",
+      );
+      expect(
+        (await readChecksumStore(root)).entries["model.bin"]
+          ?.authoritativeSha256,
+      ).toBe(digest);
+
+      await Bun.write(
+        join(root, ".checksums.json"),
+        '{"version":2,"entries":{}}',
+      );
+      expect(await readChecksumStore(root)).toEqual({
+        version: 1,
+        entries: {},
+      });
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("merges concurrent verifications in the same directory", async () => {
+    const root = createInstallConfig().root;
+    const contents = { "a.bin": "first model", "b.bin": "second model" };
+    const authorities = Object.entries(contents).map(([filename, content]) => {
+      const file = join(root, filename);
+      writeFileSync(file, content);
+      return {
+        file,
+        authority: {
+          filename,
+          expectedSizeBytes: textBytes(content).byteLength,
+          sha256: new Bun.CryptoHasher("sha256").update(content).digest("hex"),
+        },
+      };
+    });
+
+    await Promise.all(
+      authorities.map(({ file, authority }) =>
+        verifyAuthoritativeFile(file, authority, root),
+      ),
     );
+    const store = await readChecksumStore(root);
+    expect(Object.keys(store.entries).sort()).toEqual(["a.bin", "b.bin"]);
+    for (const { authority } of authorities) {
+      expect(store.entries[authority.filename]?.authoritativeSha256).toBe(
+        authority.sha256,
+      );
+    }
+  });
+
+  test("leaves no temporary files after writing the checksum store", async () => {
+    const root = createInstallConfig().root;
+    await writeChecksumStore(root, { version: 1, entries: {} });
+    expect(readdirSync(root).filter((name) => name.endsWith(".tmp"))).toEqual(
+      [],
+    );
+  });
+
+  test("merges verifications from separate processes without losing entries", async () => {
+    const root = createInstallConfig().root;
+    const scriptDir = mkdtempSync(join(tmpdir(), "localbase-checksum-child-"));
+    try {
+      const script = join(scriptDir, "child.ts");
+      writeFileSync(
+        script,
+        `import { verifyAuthoritativeFile } from ${JSON.stringify(
+          join(import.meta.dir, "utils", "checksum.ts"),
+        )};
+const [dir, prefix, count] = process.argv.slice(2);
+for (let i = 0; i < Number(count); i++) {
+  const filename = prefix + "-" + i + ".bin";
+  const content = filename;
+  await verifyAuthoritativeFile(
+    dir + "/" + filename,
+    {
+      filename,
+      expectedSizeBytes: new TextEncoder().encode(content).byteLength,
+      sha256: new Bun.CryptoHasher("sha256").update(content).digest("hex"),
+    },
+    dir,
+  );
+}
+`,
+      );
+      const count = 20;
+      const expected: string[] = [];
+      for (const prefix of ["a", "b"]) {
+        for (let i = 0; i < count; i++) {
+          const filename = `${prefix}-${i}.bin`;
+          writeFileSync(join(root, filename), filename);
+          expected.push(filename);
+        }
+      }
+      const children = ["a", "b"].map((prefix) =>
+        Bun.spawn([process.execPath, script, root, prefix, String(count)], {
+          stdout: "ignore",
+          stderr: "pipe",
+        }),
+      );
+      const results = await Promise.all(
+        children.map(async (child) => ({
+          code: await child.exited,
+          stderr: await new Response(child.stderr).text(),
+        })),
+      );
+      for (const result of results) {
+        expect(result.stderr).toBe("");
+        expect(result.code).toBe(0);
+      }
+      const store = await readChecksumStore(root);
+      expect(Object.keys(store.entries).sort()).toEqual(expected.sort());
+    } finally {
+      rmSync(scriptDir, { recursive: true, force: true });
+    }
+  });
+
+  async function verifyOne(root: string, filename = "model.bin") {
+    const content = "lock test model";
+    const file = join(root, filename);
+    writeFileSync(file, content);
+    return verifyAuthoritativeFile(
+      file,
+      {
+        filename,
+        expectedSizeBytes: textBytes(content).byteLength,
+        sha256: new Bun.CryptoHasher("sha256").update(content).digest("hex"),
+      },
+      root,
+    );
+  }
+
+  test("releases the checksum store lock when its holder is killed", async () => {
+    const root = createInstallConfig().root;
+    const scriptDir = mkdtempSync(join(tmpdir(), "localbase-checksum-hold-"));
+    try {
+      const script = join(scriptDir, "hold.ts");
+      writeFileSync(
+        script,
+        `import { withChecksumStoreLock } from ${JSON.stringify(
+          join(import.meta.dir, "utils", "checksum.ts"),
+        )};
+await withChecksumStoreLock(process.argv[2]!, async () => {
+  console.log("locked");
+  await Bun.sleep(60_000);
+});
+`,
+      );
+      const child = Bun.spawn([process.execPath, script, root], {
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+      try {
+        const reader = child.stdout.getReader();
+        expect(new TextDecoder().decode((await reader.read()).value)).toContain(
+          "locked",
+        );
+        await expect(
+          withChecksumStoreLock(root, async () => {}, 200),
+        ).rejects.toThrow("Timed out");
+        expect(child.exitCode).toBeNull();
+        child.kill("SIGKILL");
+        await child.exited;
+        const started = Date.now();
+        expect(await withChecksumStoreLock(root, async () => "ok")).toBe("ok");
+        expect(Date.now() - started).toBeLessThan(2_000);
+      } finally {
+        child.kill("SIGKILL");
+        await child.exited;
+      }
+    } finally {
+      rmSync(scriptDir, { recursive: true, force: true });
+    }
+  });
+
+  test("a live checksum store lock holder excludes others until release", async () => {
+    const root = createInstallConfig().root;
+    const events: string[] = [];
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let entered!: () => void;
+    const holding = new Promise<void>((resolve) => (entered = resolve));
+    const first = withChecksumStoreLock(root, async () => {
+      events.push("first-in");
+      entered();
+      await held;
+      events.push("first-out");
+    });
+    await holding;
+    const second = withChecksumStoreLock(root, async () => {
+      events.push("second-in");
+    });
+    await timers.setTimeout(300);
+    expect(events).toEqual(["first-in"]);
+    release();
+    await Promise.all([first, second]);
+    expect(events).toEqual(["first-in", "first-out", "second-in"]);
+  });
+
+  test("removes the temporary file when writing the checksum store fails", async () => {
+    const root = createInstallConfig().root;
+    mkdirSync(join(root, ".checksums.json"));
+    await expect(
+      writeChecksumStore(root, { version: 1, entries: {} }),
+    ).rejects.toThrow();
+    await expect(verifyOne(root)).rejects.toThrow();
+    expect(readdirSync(root).filter((name) => name.endsWith(".tmp"))).toEqual(
+      [],
+    );
+  });
+
+  test("removes orphaned checksum store temp files while writing", async () => {
+    const root = createInstallConfig().root;
+    const orphan = join(
+      root,
+      `.checksums.json.999999999.${crypto.randomUUID()}.tmp`,
+    );
+    const unparsable = join(root, ".checksums.json.weird.tmp");
+    writeFileSync(orphan, "partial");
+    writeFileSync(unparsable, "recent");
+    await verifyOne(root);
+    expect(existsSync(orphan)).toBe(false);
+    expect(existsSync(unparsable)).toBe(true);
   });
 });
 

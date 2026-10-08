@@ -1,7 +1,17 @@
-import { createReadStream, statSync } from "node:fs";
-import { join } from "node:path";
-import { setImmediate } from "node:timers/promises";
+import { Database } from "bun:sqlite";
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  createReadStream,
+  existsSync,
+  statSync,
+} from "node:fs";
+import { readdir, rename, rm, stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { setImmediate, setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
+import { processIsAbsent } from "./root";
 
 export const sha256Schema = z.string().regex(/^[a-fA-F0-9]{64}$/);
 export const safeFilenameSchema = z
@@ -145,27 +155,124 @@ function storeFilePath(dir: string): string {
   return join(dir, ".checksums.json");
 }
 
+const LOCK_DEADLINE_MS = 10_000;
+const TEMP_STALE_MS = 60_000;
+
+/**
+ * Holds an OS-backed exclusive SQLite lock on a sidecar database while `fn` runs.
+ * The kernel drops the lock if the holder dies, so no staleness heuristics exist.
+ */
+export async function withChecksumStoreLock<T>(
+  dir: string,
+  fn: () => Promise<T>,
+  deadlineMs = LOCK_DEADLINE_MS,
+): Promise<T> {
+  const lockPath = join(dir, ".checksums.json.lock.db");
+  // Bun leaks the native handle when `new Database` throws, so reject predictable failures first.
+  if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error(`Checksum store directory ${dir} does not exist.`);
+  }
+  accessSync(dir, constants.W_OK | constants.X_OK);
+  const created = !existsSync(lockPath);
+  const db = new Database(lockPath, { create: true });
+  try {
+    if (created) chmodSync(lockPath, 0o600);
+    db.exec("PRAGMA busy_timeout = 0");
+    const deadline = Date.now() + deadlineMs;
+    for (;;) {
+      try {
+        db.exec("BEGIN EXCLUSIVE");
+        break;
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        if (!code?.startsWith("SQLITE_BUSY")) throw error;
+        if (Date.now() >= deadline) {
+          throw new Error(
+            `Timed out waiting for the checksum store lock at ${lockPath}; another LocalBase process is holding it.`,
+          );
+        }
+        await sleep(10 + Math.floor(Math.random() * 40));
+      }
+    }
+    try {
+      return await fn();
+    } finally {
+      db.exec("ROLLBACK");
+    }
+  } finally {
+    db.close();
+  }
+}
+
+const storeLocks = new Map<string, Promise<void>>();
+
+/** Serializes store read-modify-write cycles per directory, in-process and across processes; a failed task does not poison later ones. */
+async function withStoreLock<T>(dir: string, fn: () => Promise<T>): Promise<T> {
+  const key = resolve(dir);
+  const previous = storeLocks.get(key) ?? Promise.resolve();
+  const result = previous.then(() =>
+    withChecksumStoreLock(dir, async () => {
+      await removeOrphanedTempFiles(dir);
+      return await fn();
+    }),
+  );
+  const tail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  storeLocks.set(key, tail);
+  try {
+    return await result;
+  } finally {
+    if (storeLocks.get(key) === tail) storeLocks.delete(key);
+  }
+}
+
+/** Removes temp files left by crashed or failed writers. Call only while holding the lock. */
+async function removeOrphanedTempFiles(dir: string): Promise<void> {
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const match = /^\.checksums\.json\.(.+)\.tmp$/.exec(name);
+    if (!match) continue;
+    const pid = Number(/^(\d+)\./.exec(match[1]!)?.[1]);
+    const path = join(dir, name);
+    try {
+      const old = Date.now() - (await stat(path)).mtimeMs > TEMP_STALE_MS;
+      const dead =
+        Number.isInteger(pid) && pid > 0 ? processIsAbsent(pid) : false;
+      if (old || dead) await rm(path, { force: true });
+    } catch {
+      // Best-effort cleanup; the file may have vanished or be unreadable.
+    }
+  }
+}
+
 /** This cache records prior verification; its digest never replaces upstream authority. */
 export async function readChecksumStore(dir: string): Promise<ChecksumStore> {
   const filePath = storeFilePath(dir);
   const file = Bun.file(filePath);
   if (!(await file.exists())) return emptyChecksumStore();
 
+  const reject = (reason: string) => {
+    console.warn(
+      `⚠️ Ignoring invalid continuity checksum cache at ${filePath}: ${reason}. Files will be re-verified.`,
+    );
+    return emptyChecksumStore();
+  };
+
   let value: unknown;
   try {
     value = JSON.parse(await file.text());
-  } catch (error) {
-    throw new Error(
-      `Invalid continuity checksum cache at ${filePath}: malformed JSON. Delete the cache and retry authoritative verification.`,
-      { cause: error },
-    );
+  } catch {
+    return reject("malformed JSON");
   }
   const parsed = checksumStoreSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new Error(
-      `Invalid continuity checksum cache at ${filePath}: ${issueSummary(parsed.error)}. Delete the cache and retry authoritative verification.`,
-    );
-  }
+  if (!parsed.success) return reject(issueSummary(parsed.error));
   return parsed.data;
 }
 
@@ -179,7 +286,18 @@ export async function writeChecksumStore(
       `Invalid continuity checksum cache: ${issueSummary(parsed.error)}.`,
     );
   }
-  await Bun.write(storeFilePath(dir), JSON.stringify(parsed.data, null, 2));
+  // Write-then-rename keeps the final file whole if the process dies mid-write.
+  const tempPath = join(
+    dir,
+    `.checksums.json.${process.pid}.${crypto.randomUUID()}.tmp`,
+  );
+  try {
+    await Bun.write(tempPath, JSON.stringify(parsed.data, null, 2));
+    await rename(tempPath, storeFilePath(dir));
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
 }
 
 /** Skips rehashing only when catalog authority and stable file identity all match. */
@@ -216,12 +334,16 @@ export async function verifyAuthoritativeFile(
     return "cached-identity";
   }
 
+  // Hashing can take minutes, so the lock is taken only for the merge-and-write.
   await verifyChecksum(filePath, digest, parsed.filename);
-  store.entries[parsed.filename] = {
-    authoritativeSha256: digest,
-    expectedSizeBytes: parsed.expectedSizeBytes,
-    file: identity,
-  };
-  await writeChecksumStore(cacheDir, store);
+  await withStoreLock(cacheDir, async () => {
+    const fresh = await readChecksumStore(cacheDir);
+    fresh.entries[parsed.filename] = {
+      authoritativeSha256: digest,
+      expectedSizeBytes: parsed.expectedSizeBytes,
+      file: identity,
+    };
+    await writeChecksumStore(cacheDir, fresh);
+  });
   return "sha256";
 }
