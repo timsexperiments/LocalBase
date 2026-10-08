@@ -1544,6 +1544,14 @@ function startMockUpstream(
             : { text: messy },
         );
       }
+      if (
+        path === "/inference" &&
+        formData?.get("prompt") === "json-transcript"
+      ) {
+        return new Response(' {"error":"Please try again."}\n', {
+          headers: { "content-type": "text/html" },
+        });
+      }
       if (path === "/inference" || path.startsWith("/v1/audio/")) {
         return Response.json({
           task: "transcribe",

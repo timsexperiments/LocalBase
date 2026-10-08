@@ -29,6 +29,24 @@ export function normalizeTranscriptionJson(
       ? {
           segments: data.segments.map((segment) => ({
             ...segment,
+            seek:
+              typeof segment.seek === "number"
+                ? segment.seek
+                : typeof segment.start === "number"
+                  ? Math.round(segment.start * 100)
+                  : 0,
+            temperature:
+              typeof segment.temperature === "number" ? segment.temperature : 0,
+            avg_logprob:
+              typeof segment.avg_logprob === "number" ? segment.avg_logprob : 0,
+            compression_ratio:
+              typeof segment.compression_ratio === "number"
+                ? segment.compression_ratio
+                : 0,
+            no_speech_prob:
+              typeof segment.no_speech_prob === "number"
+                ? segment.no_speech_prob
+                : 0,
             text: normalizeTranscriptText(segment.text),
           })),
         }

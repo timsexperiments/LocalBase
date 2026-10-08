@@ -55,6 +55,15 @@ describe("transcription response formats", () => {
     expect(await response.text()).toBe("Hello there. And then...");
   });
 
+  test("text passes through JSON-shaped transcript with the success content type", async () => {
+    const response = await post({
+      response_format: "text",
+      prompt: "json-transcript",
+    });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('{"error":"Please try again."}');
+  });
+
   test("verbose_json normalizes text and each segment", async () => {
     const response = await post({ response_format: "verbose_json" });
     expect(response.headers.get("content-type")).toContain("application/json");

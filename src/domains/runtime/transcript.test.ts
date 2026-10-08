@@ -27,8 +27,8 @@ describe("transcript normalization", () => {
         task: "transcribe",
         text: " a.\n b.",
         segments: [
-          { id: 0, text: " a.\n" },
-          { id: 1, text: " b." },
+          { id: 0, start: 0.23, text: " a.\n", temperature: null },
+          { id: 1, start: 1.25, text: " b." },
         ],
       },
       "verbose_json",
@@ -37,8 +37,26 @@ describe("transcript normalization", () => {
       task: "transcribe",
       text: "a. b.",
       segments: [
-        { id: 0, text: "a." },
-        { id: 1, text: "b." },
+        {
+          id: 0,
+          start: 0.23,
+          text: "a.",
+          temperature: 0,
+          seek: 23,
+          avg_logprob: 0,
+          compression_ratio: 0,
+          no_speech_prob: 0,
+        },
+        {
+          id: 1,
+          start: 1.25,
+          text: "b.",
+          seek: 125,
+          temperature: 0,
+          avg_logprob: 0,
+          compression_ratio: 0,
+          no_speech_prob: 0,
+        },
       ],
     });
   });
