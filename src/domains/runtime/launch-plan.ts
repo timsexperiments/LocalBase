@@ -22,39 +22,17 @@ import type { RuntimeComponent, RuntimeModality } from "./modality";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
 
 const LOOPBACK_HOST = "127.0.0.1";
-function isUnspecifiedHost(host: string): boolean {
-  if (host === "" || host === "*") return true;
-  const withoutBrackets =
-    host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
-  const unbracketed = withoutBrackets.split("%", 1)[0] ?? "";
-  try {
-    if (unbracketed.includes(":")) {
-      // WHATWG parsing canonicalizes every IPv6 spelling (0::0, long zero
-      // forms, ::0) and IPv4-mapped any-address (::ffff:0.0.0.0).
-      const canonical = new URL(`http://[${unbracketed}]`).hostname;
-      return canonical === "[::]" || canonical === "[::ffff:0:0]";
-    }
-    // inet_aton-style forms (0, 0.0, 0x0, 00, 000.000.000.000).
-    return new URL(`http://${unbracketed}`).hostname === "0.0.0.0";
-  } catch {
-    // Malformed IPv6-like values must not reach a backend bind call.
-    return host.includes(":");
-  }
-}
 
 /**
  * Supervised backends (llama/whisper/sd servers) have no auth of their own, so
  * they must never listen on every interface. Wildcard hosts, including the old
  * persisted `0.0.0.0` default, are normalized to loopback. Wildcards are also
  * invalid connect targets, so the same value is used for gateway-to-backend
- * requests. Only IP literals and localhost pass through; other hostnames fall
- * back to loopback so DNS cannot make a configured hostname resolve to a
- * wildcard address.
+ * requests. Only IPv4 loopback, IPv6 loopback, and localhost pass through;
+ * every other address and hostname falls back to loopback.
  */
 export function backendBindHost(host: string): string {
   const trimmed = host.trim();
-  if (isUnspecifiedHost(trimmed)) return LOOPBACK_HOST;
-
   if (/^localhost\.?$/i.test(trimmed)) return trimmed;
 
   const address =
@@ -62,7 +40,11 @@ export function backendBindHost(host: string): string {
       ? trimmed.slice(1, -1)
       : trimmed;
   const unscopedAddress = address.split("%", 1)[0] ?? "";
-  return isIP(unscopedAddress) !== 0 ? trimmed : LOOPBACK_HOST;
+  if (unscopedAddress.toLowerCase() === "::1") return "::1";
+  if (isIP(unscopedAddress) === 4 && unscopedAddress.startsWith("127.")) {
+    return unscopedAddress;
+  }
+  return LOOPBACK_HOST;
 }
 
 function urlHost(host: string): string {

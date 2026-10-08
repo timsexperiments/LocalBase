@@ -535,115 +535,60 @@ test("supervisor registry reports configured state and shuts down each superviso
 });
 
 describe("backend bind host", () => {
-  test.each(["0.0.0.0", "::", "[::]", "", "*"])(
-    "normalizes wildcard %p to loopback",
-    (host) => {
-      expect(backendBindHost(host)).toBe("127.0.0.1");
-    },
-  );
-
   test.each([
-    "0::0",
-    "::0",
-    "[0::0]",
-    "0000:0000:0000:0000:0000:0000:0000:0000",
-    "::ffff:0.0.0.0",
-    "::%0",
-    "::%lo0",
-    "0::0%1",
-    "[::%0]",
-    "[::%lo0]",
-    "[0::0%1]",
-    "::ffff:0:0%lo0",
-    "[::ffff:0:0%1]",
-    "0",
-    "0.0",
-    "0x0",
-    "00",
-    "000.000.000.000",
-    " 0.0.0.0 ",
-  ])("normalizes equivalent wildcard spelling %p to loopback", (host) => {
-    expect(backendBindHost(host)).toBe("127.0.0.1");
-  });
+    ["127.0.0.1", "127.0.0.1"],
+    ["127.12.34.56", "127.12.34.56"],
+    ["::1", "::1"],
+    ["[::1]", "::1"],
+    ["::1%lo0", "::1"],
+    ["[::1%anything]", "::1"],
+    ["localhost", "localhost"],
+    ["LOCALHOST.", "LOCALHOST."],
+    ["0.0.0.0", "127.0.0.1"],
+    ["::", "127.0.0.1"],
+    ["*", "127.0.0.1"],
+    ["192.168.1.20", "127.0.0.1"],
+    ["10.0.0.1", "127.0.0.1"],
+    ["2001:db8::1", "127.0.0.1"],
+    ["fe80::1%lo0", "127.0.0.1"],
+    ["::ffff:192.168.1.20", "127.0.0.1"],
+    ["example.com", "127.0.0.1"],
+    ["0.0.0.0.nip.io", "127.0.0.1"],
+    ["::invalid-address", "127.0.0.1"],
+    ["", "127.0.0.1"],
+  ])("normalizes %p to %p with consistent parseable URLs", (host, expected) => {
+    const normalized = backendBindHost(host);
+    const plan = resolveLlmLaunchPlan({
+      root,
+      modelId: "model",
+      host,
+      modelRequirementGb: 1,
+      artifactBytes: 1024 ** 3,
+      runtimeId: "llm:1",
+      modelsDirectory: `${root}/models/llm`,
+      modelFile: "model.gguf",
+      port: 8080,
+      ctxSize: 8192,
+      parallel: "auto",
+      hardware: { memoryGb: 16 },
+    });
+    const proxyUrl = runtimeEndpoint(host, 8080);
+    const launch = buildLlamaServerArgs(plan);
 
-  test("does not treat non-wildcard addresses as wildcards", () => {
-    expect(backendBindHost("::2")).toBe("::2");
-    expect(backendBindHost("10.0.0.1")).toBe("10.0.0.1");
-    expect(backendBindHost("localhost")).toBe("localhost");
-    expect(backendBindHost("fe80::1%lo0")).toBe("fe80::1%lo0");
-    expect(backendBindHost("[fe80::1%lo0]")).toBe("[fe80::1%lo0]");
-    expect(backendBindHost("::invalid-address")).toBe("127.0.0.1");
-  });
-
-  test.each(["0.0.0.0.nip.io", "example.com"])(
-    "maps hostname %p to loopback without DNS resolution",
-    (host) => {
-      expect(backendBindHost(host)).toBe("127.0.0.1");
-    },
-  );
-
-  test("preserves localhost case and trailing dot", () => {
-    expect(backendBindHost("LOCALHOST.")).toBe("LOCALHOST.");
-  });
-
-  test.each(["0::0", "0", "0000:0000:0000:0000:0000:0000:0000:0000"])(
-    "launch args and health URLs use loopback for wildcard spelling %p",
-    (host) => {
-      const plan = resolveLlmLaunchPlan({
-        root,
-        modelId: "model",
-        host,
-        modelRequirementGb: 1,
-        artifactBytes: 1024 ** 3,
-        runtimeId: "llm:1",
-        modelsDirectory: `${root}/models/llm`,
-        modelFile: "model.gguf",
-        port: 8080,
-        ctxSize: 8192,
-        parallel: "auto",
-        hardware: { memoryGb: 16 },
-      });
-      expect(plan.host).toBe("127.0.0.1");
-      expect(plan.healthUrl).toBe("http://127.0.0.1:8080/health");
-    },
-  );
-
-  test.each(["::%0", "::%lo0", "0::0%1", "[::%lo0]"])(
-    "launch args, health URLs, and factory endpoints use loopback for scoped wildcard %p",
-    (host) => {
-      const plan = resolveLlmLaunchPlan({
-        root,
-        modelId: "model",
-        host,
-        modelRequirementGb: 1,
-        artifactBytes: 1024 ** 3,
-        runtimeId: "llm:1",
-        modelsDirectory: `${root}/models/llm`,
-        modelFile: "model.gguf",
-        port: 8080,
-        ctxSize: 8192,
-        parallel: "auto",
-        hardware: { memoryGb: 16 },
-      });
-      const launch = buildLlamaServerArgs(plan);
-
-      expect(plan.host).toBe("127.0.0.1");
-      expect(plan.healthUrl).toBe("http://127.0.0.1:8080/health");
-      expect(
-        launch.args.slice(
-          launch.args.indexOf("--host"),
-          launch.args.indexOf("--host") + 2,
-        ),
-      ).toEqual(["--host", "127.0.0.1"]);
-      expect(runtimeEndpoint(host, 8080)).toBe("http://127.0.0.1:8080");
-    },
-  );
-
-  test("keeps explicit specific hosts", () => {
-    expect(backendBindHost("127.0.0.1")).toBe("127.0.0.1");
-    expect(backendBindHost("::1")).toBe("::1");
-    expect(backendBindHost("192.168.1.20")).toBe("192.168.1.20");
-    expect(backendBindHost("2001:db8::1")).toBe("2001:db8::1");
+    expect(normalized).toBe(expected);
+    expect(plan.host).toBe(expected);
+    expect(new URL(plan.healthUrl).hostname).toBe(
+      expected.includes(":") ? `[${expected}]` : expected.toLowerCase(),
+    );
+    expect(new URL(proxyUrl).hostname).toBe(
+      expected.includes(":") ? `[${expected}]` : expected.toLowerCase(),
+    );
+    expect(
+      launch.args.slice(
+        launch.args.indexOf("--host"),
+        launch.args.indexOf("--host") + 2,
+      ),
+    ).toEqual(["--host", expected]);
   });
 
   test("normalizes hostname consistently for launch args, health, and proxy URL", () => {
@@ -685,7 +630,7 @@ describe("backend bind host", () => {
         modelRequirementGb: 1,
         artifactBytes: 1024 ** 3,
       };
-      const expected = host === "192.168.1.20" ? host : "127.0.0.1";
+      const expected = "127.0.0.1";
       const plans = [
         resolveLlmLaunchPlan({
           ...base,
@@ -715,6 +660,7 @@ describe("backend bind host", () => {
       for (const plan of plans) {
         expect(plan.host).toBe(expected);
         expect(plan.healthUrl.startsWith(`http://${expected}:`)).toBe(true);
+        expect(() => new URL(plan.healthUrl)).not.toThrow();
       }
     },
   );
