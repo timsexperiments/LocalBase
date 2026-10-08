@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -1092,9 +1093,70 @@ describe.serial("checksum inputs and continuity cache", () => {
       (await readChecksumStore(root)).entries["model.bin"]?.authoritativeSha256,
     ).toBe(digest);
 
-    await Bun.write(join(root, ".checksums.json"), "{not json");
-    await expect(readChecksumStore(root)).rejects.toThrow(
-      "Invalid continuity checksum cache",
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await Bun.write(join(root, ".checksums.json"), "{not json");
+      expect(await readChecksumStore(root)).toEqual({
+        version: 1,
+        entries: {},
+      });
+      expect(await verifyAuthoritativeFile(file, authority, root)).toBe(
+        "sha256",
+      );
+      expect(
+        (await readChecksumStore(root)).entries["model.bin"]
+          ?.authoritativeSha256,
+      ).toBe(digest);
+
+      await Bun.write(
+        join(root, ".checksums.json"),
+        '{"version":2,"entries":{}}',
+      );
+      expect(await readChecksumStore(root)).toEqual({
+        version: 1,
+        entries: {},
+      });
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("merges concurrent verifications in the same directory", async () => {
+    const root = createInstallConfig().root;
+    const contents = { "a.bin": "first model", "b.bin": "second model" };
+    const authorities = Object.entries(contents).map(([filename, content]) => {
+      const file = join(root, filename);
+      writeFileSync(file, content);
+      return {
+        file,
+        authority: {
+          filename,
+          expectedSizeBytes: textBytes(content).byteLength,
+          sha256: new Bun.CryptoHasher("sha256").update(content).digest("hex"),
+        },
+      };
+    });
+
+    await Promise.all(
+      authorities.map(({ file, authority }) =>
+        verifyAuthoritativeFile(file, authority, root),
+      ),
+    );
+    const store = await readChecksumStore(root);
+    expect(Object.keys(store.entries).sort()).toEqual(["a.bin", "b.bin"]);
+    for (const { authority } of authorities) {
+      expect(store.entries[authority.filename]?.authoritativeSha256).toBe(
+        authority.sha256,
+      );
+    }
+  });
+
+  test("leaves no temporary files after writing the checksum store", async () => {
+    const root = createInstallConfig().root;
+    await writeChecksumStore(root, { version: 1, entries: {} });
+    expect(readdirSync(root).filter((name) => name.endsWith(".tmp"))).toEqual(
+      [],
     );
   });
 });
