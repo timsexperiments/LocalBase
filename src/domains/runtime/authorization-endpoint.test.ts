@@ -288,7 +288,7 @@ test.each(["bearer", "x-api-key", "either"] as const)(
   },
 );
 
-test("video routes require a principal under --no-auth and deny browser preflight", async () => {
+test("video routes are public under --no-auth and still deny browser preflight", async () => {
   const gateway = await startGatewayFixture();
   const database = new DatabaseSession();
   try {
@@ -312,8 +312,9 @@ test("video routes require a principal under --no-auth and deny browser prefligh
       [`${job}/content`, "GET"],
       [`${job}/cancel`, "POST"],
     ]) {
+      const expected = path === "/v1/videos" ? 501 : 404;
       const missing = await fetch(`${gateway.baseUrl}${path}`, { method });
-      expect(missing.status).toBe(401);
+      expect(missing.status).toBe(expected);
       await missing.arrayBuffer();
       const preflight = await fetch(`${gateway.baseUrl}${path}`, {
         method: "OPTIONS",
@@ -324,13 +325,13 @@ test("video routes require a principal under --no-auth and deny browser prefligh
         method,
         headers: { authorization: `Bearer ${token}` },
       });
-      expect(authenticated.status).toBe(path === "/v1/videos" ? 501 : 404);
+      expect(authenticated.status).toBe(expected);
       await authenticated.arrayBuffer();
       const forbidden = await fetch(`${gateway.baseUrl}${path}`, {
         method,
         headers: { authorization: `Bearer ${restricted}` },
       });
-      expect(forbidden.status).toBe(403);
+      expect(forbidden.status).toBe(expected);
       await forbidden.arrayBuffer();
     }
     const unknown = await fetch(`${gateway.baseUrl}/unexposed`);

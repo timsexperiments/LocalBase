@@ -6,10 +6,7 @@ import {
   videoGenerationInputSchema,
   type VideoGenerationInput,
 } from "./video-input";
-import {
-  VideoBackendJobFailureError,
-  type VideoJob,
-} from "./video-job-manager";
+import type { VideoJob } from "./video-job-manager";
 
 export const videoCreateRequestSchema = z
   .object({
@@ -169,24 +166,40 @@ function formatBytes(bytes: number | "unavailable" | undefined): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
 }
 
+const FREE_MEMORY_HINT =
+  "Free memory (unload other models or close applications) and retry.";
+
 function videoFailureError(
   failure: Error,
 ): Extract<VideoJobResponse, { status: "failed" }>["error"] {
   if (failure instanceof RuntimeMemoryAdmissionError) {
-    const diagnostics = failure.diagnostics;
     return {
       code: "insufficient_memory",
-      message: `Not enough free memory to start the video runtime: it needs ${formatBytes(diagnostics?.requested_bytes)} but only ${formatBytes(diagnostics?.effective_available_bytes)} is available. Free memory (unload other models or close applications) and retry.`,
-    };
-  }
-  if (failure instanceof VideoBackendJobFailureError && failure.outOfMemory) {
-    return {
-      code: "insufficient_memory",
-      message:
-        "The video backend ran out of memory while generating. Free memory (unload other models or close applications) and retry.",
+      message: memoryAdmissionMessage(failure),
     };
   }
   return { code: "video_generation_failed" };
+}
+
+function memoryAdmissionMessage(failure: RuntimeMemoryAdmissionError): string {
+  const { reason } = failure.decision;
+  const diagnostics = failure.diagnostics;
+  const accelerator = reason === "accelerator-memory";
+  const pool = accelerator ? "accelerator (GPU) memory" : "memory";
+  if (reason === "memory-pressure") {
+    return `The host is under ${accelerator ? "accelerator " : ""}memory pressure, so the video runtime was not started. ${FREE_MEMORY_HINT}`;
+  }
+  if (reason === "measurement-unavailable") {
+    return `Available memory could not be measured reliably, so the video runtime was not started. Retry shortly.`;
+  }
+  const requested = diagnostics?.requested_bytes;
+  const available = diagnostics?.effective_available_bytes;
+  const reserve = diagnostics?.reserve_bytes;
+  const usable =
+    typeof available === "number" && typeof reserve === "number"
+      ? Math.max(0, available - reserve)
+      : undefined;
+  return `Not enough free ${pool} to start the video runtime: it needs ${formatBytes(requested)} but only ${formatBytes(usable)} is usable after the safety reserve. ${FREE_MEMORY_HINT}`;
 }
 
 /** Names the accepted profile so a rejected request is actionable. */

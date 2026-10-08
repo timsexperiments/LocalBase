@@ -27,7 +27,6 @@ export type VideoBackendJob =
   | Readonly<{
       id: string;
       status: "failed" | "cancelled";
-      outOfMemory?: boolean;
     }>;
 
 /** Matches the local stable-diffusion.cpp video adapter without exposing it here. */
@@ -138,7 +137,7 @@ export class VideoJobArtifactLimitError extends Error {
 }
 
 export class VideoBackendJobFailureError extends Error {
-  constructor(readonly outOfMemory = false) {
+  constructor() {
     super("Video backend job failed.");
     this.name = "VideoBackendJobFailureError";
   }
@@ -448,10 +447,7 @@ export class VideoJobManager {
       return;
     }
     if (update.status === "failed") {
-      this.finishFailure(
-        job,
-        new VideoBackendJobFailureError(update.outOfMemory),
-      );
+      this.finishFailure(job, new VideoBackendJobFailureError());
       return;
     }
     this.finishCancelled(job, "backend");

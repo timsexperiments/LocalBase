@@ -189,7 +189,7 @@ test("projects memory failures as insufficient_memory", () => {
       { kind: "rejected", reason: "system-memory", poolId: "system" },
       {
         measured_available_bytes: 2 * 1024 ** 3,
-        reserve_bytes: 0,
+        reserve_bytes: 1024 ** 3,
         pending_bytes: 0,
         requested_bytes: 8 * 1024 ** 3,
         effective_available_bytes: 2 * 1024 ** 3,
@@ -208,13 +208,8 @@ test("projects memory failures as insufficient_memory", () => {
   });
   const message = (admission as { error: { message?: string } }).error.message;
   expect(message).toContain("8.0 GiB");
-  expect(message).toContain("2.0 GiB");
-
-  const backend = projectVideoJob({
-    ...base,
-    failure: new VideoBackendJobFailureError(true),
-  });
-  expect(backend).toMatchObject({ error: { code: "insufficient_memory" } });
+  expect(message).toContain("only 1.0 GiB is usable");
+  expect(message).not.toContain("2.0 GiB");
 
   expect(
     projectVideoJob({ ...base, failure: new VideoBackendJobFailureError() }),
