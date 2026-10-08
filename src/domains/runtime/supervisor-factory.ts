@@ -693,6 +693,7 @@ export function createRuntimeSupervisorFactory(
         logger: ctx.logger,
         preflightDemand: async (signal) => {
           if (signal?.aborted) return undefined;
+          const target = videoRuntimeTarget(dependencies.memorySafety.topology);
           const spec = byId(modelId);
           if (!spec || spec.kind !== "video" || !spec.videoRuntime)
             return undefined;
@@ -718,11 +719,12 @@ export function createRuntimeSupervisorFactory(
             host: videoHost(overrides),
             port: videoPort(overrides),
             videoRuntime: spec.videoRuntime,
-            target: videoRuntimeTarget(dependencies.memorySafety.topology),
+            target,
           });
           return signal?.aborted ? undefined : plan.memoryDemand;
         },
         launch: async () => {
+          const target = videoRuntimeTarget(dependencies.memorySafety.topology);
           const spec = byId(modelId);
           if (!spec || spec.kind !== "video" || !spec.videoRuntime) {
             throw new Error(
@@ -740,7 +742,7 @@ export function createRuntimeSupervisorFactory(
             host: videoHost(overrides),
             port: videoPort(overrides),
             videoRuntime: spec.videoRuntime,
-            target: videoRuntimeTarget(dependencies.memorySafety.topology),
+            target,
           });
           let installation = await resolveCatalogInstallation(
             spec,

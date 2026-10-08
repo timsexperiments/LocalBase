@@ -337,13 +337,17 @@ export class RuntimeReconciler {
     try {
       await Promise.all(
         runtimeModalities.map((peerModality) =>
-          this.exclusiveModality(peerModality, async () => {
-            if (peerModality === modality) return;
-            const supervisor = this.supervisors.get(peerModality);
-            if (!supervisor || supervisor.state() !== "running") return;
-            if (!this.barriers[peerModality].detachIfIdle()) return;
-            claims.push({ modality: peerModality, supervisor });
-          }),
+          this.exclusiveModality(
+            peerModality,
+            async () => {
+              if (peerModality === modality) return;
+              const supervisor = this.supervisors.get(peerModality);
+              if (!supervisor || supervisor.state() !== "running") return;
+              if (!this.barriers[peerModality].detachIfIdle()) return;
+              claims.push({ modality: peerModality, supervisor });
+            },
+            signal,
+          ),
         ),
       );
       this.throwIfAborted(signal);
@@ -356,17 +360,34 @@ export class RuntimeReconciler {
       this.throwIfAborted(signal);
       if (!canAdmit) return false;
 
-      for (const claim of claims) {
-        await this.exclusiveModality(claim.modality, async () => {
+      const allClaimsStillCurrent = claims.every(
+        (claim) =>
+          this.supervisors.get(claim.modality) === claim.supervisor &&
+          claim.supervisor.state() === "running",
+      );
+      if (!allClaimsStillCurrent) return false;
+
+      const stopped = await this.exclusiveModalities(
+        runtimeModalities.filter((peerModality) =>
+          claims.some((claim) => claim.modality === peerModality),
+        ),
+        async () => {
           if (
-            this.supervisors.get(claim.modality) === claim.supervisor &&
-            claim.supervisor.state() === "running"
+            !claims.every(
+              (claim) =>
+                this.supervisors.get(claim.modality) === claim.supervisor &&
+                claim.supervisor.state() === "running",
+            )
           ) {
+            return false;
+          }
+          for (const claim of claims) {
             await claim.supervisor.kill();
           }
-        });
-      }
-      return true;
+          return true;
+        },
+      );
+      return stopped;
     } finally {
       await Promise.all(
         claims.map(({ modality: peerModality }) =>
@@ -415,7 +436,7 @@ export class RuntimeReconciler {
       ];
       if (
         modality === "video" &&
-        modelId !== activeModel("video", source.config)
+        modelId !== activeModel("video", this.appliedSnapshots.video.config)
       ) {
         const currentVideo = this.supervisors.get("video");
         if (currentVideo) releasingRuntimeIds.push(currentVideo.runtimeId());
@@ -640,14 +661,31 @@ export class RuntimeReconciler {
   private async exclusiveModality<Value>(
     modality: RuntimeModality,
     work: () => Promise<Value>,
+    signal?: AbortSignal,
   ): Promise<Value> {
     const previous = this.modalityTransitions[modality];
-    const next = previous.then(work, work);
+    const run = async () => {
+      this.throwIfAborted(signal);
+      return await work();
+    };
+    const next = previous.then(run, run);
     this.modalityTransitions[modality] = next.then(
       () => undefined,
       () => undefined,
     );
-    return await next;
+    return await this.waitForAbort(next, signal);
+  }
+
+  private async exclusiveModalities<Value>(
+    modalities: readonly RuntimeModality[],
+    work: () => Promise<Value>,
+  ): Promise<Value> {
+    const [modality, ...remaining] = modalities;
+    if (!modality) return await work();
+    return await this.exclusiveModality(
+      modality,
+      async () => await this.exclusiveModalities(remaining, work),
+    );
   }
 
   private async coordinate(): Promise<CoordinatedSnapshot> {
