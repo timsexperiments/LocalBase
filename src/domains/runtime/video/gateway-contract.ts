@@ -1,11 +1,15 @@
 import { z } from "zod";
+import { RuntimeMemoryAdmissionError } from "../memory-controller";
 import type { ModelSpec } from "../../../catalog";
 import {
   videoConditioningInputSchema,
   videoGenerationInputSchema,
   type VideoGenerationInput,
 } from "./video-input";
-import type { VideoJob } from "./video-job-manager";
+import {
+  VideoBackendJobFailureError,
+  type VideoJob,
+} from "./video-job-manager";
 
 export const videoCreateRequestSchema = z
   .object({
@@ -45,7 +49,12 @@ export const videoJobResponseSchema = z.discriminatedUnion("status", [
   videoJobResponseBaseSchema.extend({
     status: z.literal("failed"),
     completed_at: z.number().int().nonnegative(),
-    error: z.object({ code: z.literal("video_generation_failed") }).strict(),
+    error: z
+      .object({
+        code: z.enum(["video_generation_failed", "insufficient_memory"]),
+        message: z.string().min(1).optional(),
+      })
+      .strict(),
   }),
   videoJobResponseBaseSchema.extend({
     status: z.literal("cancelled"),
@@ -141,7 +150,7 @@ export function projectVideoJob(job: VideoJob): VideoJobResponse {
         status: job.state,
         created_at: unixSeconds(job.createdAtMs),
         completed_at: unixSeconds(job.terminalAtMs),
-        error: { code: "video_generation_failed" },
+        error: videoFailureError(job.failure),
       });
     case "cancelled":
       return videoJobResponseSchema.parse({
@@ -153,4 +162,50 @@ export function projectVideoJob(job: VideoJob): VideoJobResponse {
         cancellation_reason: job.reason,
       });
   }
+}
+
+function formatBytes(bytes: number | "unavailable" | undefined): string {
+  if (typeof bytes !== "number") return "an unknown amount";
+  return `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
+}
+
+function videoFailureError(
+  failure: Error,
+): Extract<VideoJobResponse, { status: "failed" }>["error"] {
+  if (failure instanceof RuntimeMemoryAdmissionError) {
+    const diagnostics = failure.diagnostics;
+    return {
+      code: "insufficient_memory",
+      message: `Not enough free memory to start the video runtime: it needs ${formatBytes(diagnostics?.requested_bytes)} but only ${formatBytes(diagnostics?.effective_available_bytes)} is available. Free memory (unload other models or close applications) and retry.`,
+    };
+  }
+  if (failure instanceof VideoBackendJobFailureError && failure.outOfMemory) {
+    return {
+      code: "insufficient_memory",
+      message:
+        "The video backend ran out of memory while generating. Free memory (unload other models or close applications) and retry.",
+    };
+  }
+  return { code: "video_generation_failed" };
+}
+
+/** Names the accepted profile so a rejected request is actionable. */
+export function videoProfileMismatchMessage(
+  request: VideoCreateRequest,
+  model: ModelSpec,
+): string {
+  if (model.kind !== "video" || !model.videoRuntime) {
+    return "This model does not support video generation.";
+  }
+  const { qualification, mode } = model.videoRuntime;
+  const inputKind =
+    mode === "s2v" ? "speech" : mode === "t2v" ? "text" : undefined;
+  const wrongInput =
+    inputKind !== undefined && request.input.kind !== inputKind;
+  return (
+    `This local video model accepts exactly ${qualification.maxWidth}x${qualification.maxHeight} (width x height), ` +
+    `${qualification.maxFrames} frames at ${qualification.fps} fps; ` +
+    `got ${request.width}x${request.height}, ${request.frames} frames at ${request.fps} fps.` +
+    (wrongInput ? ` It also requires input.kind "${inputKind}".` : "")
+  );
 }

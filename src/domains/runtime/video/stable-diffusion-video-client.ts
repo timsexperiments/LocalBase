@@ -110,6 +110,7 @@ export type VideoJob =
   | {
       id: string;
       status: "failed" | "cancelled";
+      outOfMemory?: boolean;
     };
 
 export type StableDiffusionVideoClient = {
@@ -381,11 +382,14 @@ async function parseVideoJob({
         media: parseCompletedMedia(job.result, maxMediaBytes),
       };
     case "failed":
-    case "cancelled":
+    case "cancelled": {
+      const outOfMemory = job.status === "failed" && isOutOfMemory(job.error);
       return {
         id: job.id,
         status: job.status,
+        ...(outOfMemory ? { outOfMemory } : {}),
       };
+    }
     default: {
       const exhaustive: never = job.status;
       return exhaustive;
@@ -541,4 +545,18 @@ function invalidBackendResponse() {
     "backend_response_invalid",
     "Video backend returned an invalid response.",
   );
+}
+
+const OUT_OF_MEMORY_PATTERN =
+  /out of memory|\boom\b|cannot allocate|failed to allocate|alloc(?:ation)? failed|insufficient (?:\w+ )?memory/i;
+
+/** Classifies backend error text without ever exposing it to callers. */
+function isOutOfMemory(error: unknown): boolean {
+  const text =
+    typeof error === "string"
+      ? error
+      : error && typeof error === "object" && "message" in error
+        ? error.message
+        : undefined;
+  return typeof text === "string" && OUT_OF_MEMORY_PATTERN.test(text);
 }
