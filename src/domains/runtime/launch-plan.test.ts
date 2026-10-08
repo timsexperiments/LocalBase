@@ -540,6 +540,50 @@ describe("backend bind host", () => {
     },
   );
 
+  test.each([
+    "0::0",
+    "::0",
+    "[0::0]",
+    "0000:0000:0000:0000:0000:0000:0000:0000",
+    "::ffff:0.0.0.0",
+    "0",
+    "0.0",
+    "0x0",
+    "00",
+    "000.000.000.000",
+    " 0.0.0.0 ",
+  ])("normalizes equivalent wildcard spelling %p to loopback", (host) => {
+    expect(backendBindHost(host)).toBe("127.0.0.1");
+  });
+
+  test("does not treat non-wildcard addresses as wildcards", () => {
+    expect(backendBindHost("::2")).toBe("::2");
+    expect(backendBindHost("10.0.0.1")).toBe("10.0.0.1");
+    expect(backendBindHost("localhost")).toBe("localhost");
+  });
+
+  test.each(["0::0", "0", "0000:0000:0000:0000:0000:0000:0000:0000"])(
+    "launch args and health URLs use loopback for wildcard spelling %p",
+    (host) => {
+      const plan = resolveLlmLaunchPlan({
+        root,
+        modelId: "model",
+        host,
+        modelRequirementGb: 1,
+        artifactBytes: 1024 ** 3,
+        runtimeId: "llm:1",
+        modelsDirectory: `${root}/models/llm`,
+        modelFile: "model.gguf",
+        port: 8080,
+        ctxSize: 8192,
+        parallel: "auto",
+        hardware: { memoryGb: 16 },
+      });
+      expect(plan.host).toBe("127.0.0.1");
+      expect(plan.healthUrl).toBe("http://127.0.0.1:8080/health");
+    },
+  );
+
   test("keeps explicit specific hosts", () => {
     expect(backendBindHost("127.0.0.1")).toBe("127.0.0.1");
     expect(backendBindHost("::1")).toBe("::1");

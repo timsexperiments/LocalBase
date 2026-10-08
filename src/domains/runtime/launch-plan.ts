@@ -21,7 +21,23 @@ import type { RuntimeComponent, RuntimeModality } from "./modality";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
 
 const LOOPBACK_HOST = "127.0.0.1";
-const WILDCARD_HOSTS = new Set(["", "*", "0.0.0.0", "::", "[::]", "0:0:0:0:0:0:0:0"]);
+function isUnspecifiedHost(host: string): boolean {
+  if (host === "" || host === "*") return true;
+  const unbracketed =
+    host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+  try {
+    if (unbracketed.includes(":")) {
+      // WHATWG parsing canonicalizes every IPv6 spelling (0::0, long zero
+      // forms, ::0) and IPv4-mapped any-address (::ffff:0.0.0.0).
+      const canonical = new URL(`http://[${unbracketed}]`).hostname;
+      return canonical === "[::]" || canonical === "[::ffff:0:0]";
+    }
+    // inet_aton-style forms (0, 0.0, 0x0, 00, 000.000.000.000).
+    return new URL(`http://${unbracketed}`).hostname === "0.0.0.0";
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Supervised backends (llama/whisper/sd servers) have no auth of their own, so
@@ -32,7 +48,7 @@ const WILDCARD_HOSTS = new Set(["", "*", "0.0.0.0", "::", "[::]", "0:0:0:0:0:0:0
  */
 export function backendBindHost(host: string): string {
   const trimmed = host.trim();
-  return WILDCARD_HOSTS.has(trimmed.toLowerCase()) ? LOOPBACK_HOST : trimmed;
+  return isUnspecifiedHost(trimmed) ? LOOPBACK_HOST : trimmed;
 }
 
 function urlHost(host: string): string {
