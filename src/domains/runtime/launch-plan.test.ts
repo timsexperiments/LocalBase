@@ -34,8 +34,8 @@ describe("runtime launch plans", () => {
         modelPath: `${root}/models/llm/model.gguf`,
         healthUrl: "http://127.0.0.1:8080/health",
         memoryDemand: {
-          unifiedBytes: 7 * 1024 ** 3,
-          hostBytes: 5 * 1024 ** 3,
+          unifiedBytes: 9 * 1024 ** 3,
+          hostBytes: 7 * 1024 ** 3,
           acceleratorBytes: 6.5 * 1024 ** 3,
           confidence: "estimated",
         },
@@ -295,6 +295,82 @@ describe("runtime launch plans", () => {
 
     expect(plan.ctxSize).toBe(32_768);
     expect(plan.parallel.contextPerSlot).toBe(32_768);
+  });
+
+  describe("model-specific KV estimates", () => {
+    const mistral = {
+      architecture: "llama",
+      blockCount: 40,
+      fullKvHeads: 320,
+      swaKvHeads: 0,
+      slidingWindow: null,
+      keyLength: 128,
+      valueLength: 128,
+      contextLength: null,
+    };
+    const input = {
+      runtimeId: "llm:model:1",
+      root,
+      modelsDirectory: `${root}/models/llm`,
+      modelId: "model",
+      modelFile: "model.gguf",
+      host: "127.0.0.1",
+      port: 8080,
+      ctxSize: 32768,
+      parallel: 1 as const,
+      modelRequirementGb: 14,
+      artifactBytes: 14 * 1024 ** 3,
+      hardware: { memoryGb: 64 },
+    };
+
+    test("uses geometry with q8_0 cache for chat models", () => {
+      const plan = resolveLlmLaunchPlan({ ...input, kvGeometry: mistral });
+      const kv = (5 * 1024 ** 3 * 34) / 64;
+      expect(plan.kvCache).toEqual({ typeK: "q8_0", typeV: "q8_0" });
+      expect(plan.memoryDemand.acceleratorBytes).toBe(
+        14 * 1024 ** 3 + kv + 0.5 * 1024 ** 3,
+      );
+      expect(plan.memoryDemand.hostBytes).toBe(
+        14 * 1024 ** 3 + 0.5 * 1024 ** 3 + kv + 2048 * 1024 ** 2,
+      );
+    });
+
+    test("falls back to the flat estimate without geometry", () => {
+      const plan = resolveLlmLaunchPlan(input);
+      expect(plan.memoryDemand.acceleratorBytes).toBe(
+        14 * 1024 ** 3 + 2 * 1024 ** 3 + 0.5 * 1024 ** 3,
+      );
+    });
+
+    test("keeps embedding models on f16 without prompt-cache RAM", () => {
+      const plan = resolveLlmLaunchPlan({
+        ...input,
+        kvGeometry: mistral,
+        embedding: {
+          capability: "embedding-only",
+          pooling: "last",
+          dimensions: { minimum: 1024, maximum: 1024 },
+        },
+      });
+      expect(plan.kvCache).toEqual({ typeK: "f16", typeV: "f16" });
+      expect(plan.promptCacheRamMib).toBe(0);
+      expect(plan.memoryDemand.hostBytes).toBe(
+        14 * 1024 ** 3 + 0.5 * 1024 ** 3 + 5 * 1024 ** 3,
+      );
+    });
+
+    test("allocates fewer auto slots for heavy-KV models", () => {
+      const tight = {
+        ...input,
+        parallel: "auto" as const,
+        modelRequirementGb: 14,
+        hardware: { memoryGb: 20 },
+      };
+      expect(resolveLlmLaunchPlan(tight).parallel.slots).toBe(4);
+      expect(
+        resolveLlmLaunchPlan({ ...tight, kvGeometry: mistral }).parallel.slots,
+      ).toBe(2);
+    });
   });
 
   test("rejects video admission on an unsupported platform", () => {

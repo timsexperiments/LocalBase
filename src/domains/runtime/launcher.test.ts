@@ -695,10 +695,17 @@ function expectedLlamaArgs(modelPath: string, parallel: string): string[] {
     parallel,
     "--jinja",
     "--embeddings",
+    "--flash-attn",
+    "on",
+    "--cache-type-k",
+    "q8_0",
+    "--cache-type-v",
+    "q8_0",
+    "--cache-ram",
+    "2048",
+    "--cache-reuse",
+    "256",
   ];
-  if (process.platform === "darwin" && process.arch === "arm64") {
-    args.push("--flash-attn", "auto");
-  }
   return args;
 }
 
@@ -721,6 +728,14 @@ function expectedEmbeddingArgs(modelPath: string, parallel: string): string[] {
   if (process.platform === "darwin" && process.arch === "arm64") {
     args.push("--flash-attn", "auto");
   }
+  args.push(
+    "--cache-type-k",
+    "f16",
+    "--cache-type-v",
+    "f16",
+    "--cache-ram",
+    "0",
+  );
   return args;
 }
 
