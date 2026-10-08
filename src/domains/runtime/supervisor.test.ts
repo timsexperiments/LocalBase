@@ -28,6 +28,9 @@ function testLaunchPlan(runtimeId: string): RuntimeLaunchPlan {
     modelRequirementGb: 1,
     hardware: { memoryGb: 1 },
     embedding: null,
+    kvCache: { typeK: "q8_0", typeV: "q8_0" },
+    kvGeometry: null,
+    promptCacheRamMib: 2048,
     memoryDemand: {
       unifiedBytes: 1,
       hostBytes: 1,

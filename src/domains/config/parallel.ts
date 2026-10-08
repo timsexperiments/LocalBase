@@ -30,6 +30,8 @@ export type ParallelAllocationInput = {
   memoryGb: number;
   modelRequirementGb?: number;
   ctxSize: number;
+  /** Model-specific KV cache size in GB for a slot count; replaces the flat estimate. */
+  kvCacheGb?: (slots: number) => number;
 };
 
 export type ParallelAllocation = {
@@ -117,22 +119,20 @@ export function allocateParallelSlots(
     return { slots: 1, isAuto: true, contextPerSlot: input.ctxSize };
   }
 
-  const contextMemoryGb =
-    (Math.max(0, input.ctxSize) / 8192) * CONTEXT_MEMORY_GB_PER_8K_TOKENS;
-  const slotHeadroomGb = Math.max(
-    0,
+  const availableGb =
     input.memoryGb -
-      (input.modelRequirementGb ?? 0) -
-      RESERVED_RUNTIME_MEMORY_GB -
-      contextMemoryGb,
-  );
-  const memoryLimitedSlots = Math.max(
-    1,
-    Math.min(
-      MAX_PARALLEL_SLOTS,
-      Math.floor(slotHeadroomGb / PARALLEL_SLOT_OVERHEAD_GB),
-    ),
-  );
+    (input.modelRequirementGb ?? 0) -
+    RESERVED_RUNTIME_MEMORY_GB;
+  let memoryLimitedSlots = 1;
+  for (let slots = MAX_PARALLEL_SLOTS; slots > 1; slots -= 1) {
+    const contextMemoryGb = input.kvCacheGb
+      ? input.kvCacheGb(slots)
+      : (Math.max(0, input.ctxSize) / 8192) * CONTEXT_MEMORY_GB_PER_8K_TOKENS;
+    if (availableGb - contextMemoryGb >= slots * PARALLEL_SLOT_OVERHEAD_GB) {
+      memoryLimitedSlots = slots;
+      break;
+    }
+  }
   const slots = Math.min(contextLimitedSlots, memoryLimitedSlots);
 
   return {

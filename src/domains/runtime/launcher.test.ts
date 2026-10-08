@@ -681,7 +681,11 @@ async function createLlamaLaunchFixture(
   return { argsPath, config, modelFile, modelPath };
 }
 
-function expectedLlamaArgs(modelPath: string, parallel: string): string[] {
+function expectedLlamaArgs(
+  modelPath: string,
+  parallel: string,
+  cacheType = "f16",
+): string[] {
   const args = [
     "-m",
     modelPath,
@@ -695,10 +699,17 @@ function expectedLlamaArgs(modelPath: string, parallel: string): string[] {
     parallel,
     "--jinja",
     "--embeddings",
+    "--flash-attn",
+    "on",
+    "--cache-type-k",
+    cacheType,
+    "--cache-type-v",
+    cacheType,
+    "--cache-ram",
+    "2048",
+    "--cache-reuse",
+    "256",
   ];
-  if (process.platform === "darwin" && process.arch === "arm64") {
-    args.push("--flash-attn", "auto");
-  }
   return args;
 }
 
@@ -721,6 +732,14 @@ function expectedEmbeddingArgs(modelPath: string, parallel: string): string[] {
   if (process.platform === "darwin" && process.arch === "arm64") {
     args.push("--flash-attn", "auto");
   }
+  args.push(
+    "--cache-type-k",
+    "f16",
+    "--cache-type-v",
+    "f16",
+    "--cache-ram",
+    "0",
+  );
   return args;
 }
 
@@ -795,6 +814,50 @@ describe.serial("llama runtime launch", () => {
     ).toEqual([
       "🤖 Dynamic Concurrency: Calculated 2 parallel slots based on 9.5 GB VRAM and context memory constraints. 4096 tokens per slot.",
     ]);
+  });
+
+  test("quantizes the KV cache only for q8_0-compatible geometry", async () => {
+    const fixture = await createLlamaLaunchFixture(2);
+    const geometry = (q8Compatible: boolean) => ({
+      architecture: "llama",
+      blockCount: 4,
+      fullKvHeads: 4,
+      swaKvHeads: 0,
+      slidingWindow: null,
+      keyLength: q8Compatible ? 128 : 80,
+      valueLength: q8Compatible ? 128 : 80,
+      swaKeyLength: q8Compatible ? 128 : 80,
+      swaValueLength: q8Compatible ? 128 : 80,
+      q8Compatible,
+      recurrentBytesPerSlot: 0,
+      contextLength: null,
+    });
+    for (const compatible of [true, false]) {
+      const process = await startLlamaServerProcess(
+        resolveLlmLaunchPlan({
+          runtimeId: "llm:test:1",
+          root: fixture.config.root,
+          modelsDirectory: fixture.config.llmModelsDir,
+          modelId: fixture.config.activeLlmModel,
+          modelFile: fixture.modelFile,
+          host: "127.0.0.1",
+          port: 18000,
+          ctxSize: 8192,
+          parallel: 2,
+          modelRequirementGb: 1,
+          artifactBytes: 1024 ** 3,
+          hardware: { memoryGb: 64 },
+          kvGeometry: geometry(compatible),
+        }),
+      );
+      await readCapturedArgs(fixture.argsPath);
+      process.kill();
+      await process.exited;
+      expect(await readCapturedArgs(fixture.argsPath)).toEqual(
+        expectedLlamaArgs(fixture.modelPath, "2", compatible ? "q8_0" : "f16"),
+      );
+      rmSync(fixture.argsPath, { force: true });
+    }
   });
 
   test("uses the embedding-only pooling profile", async () => {
