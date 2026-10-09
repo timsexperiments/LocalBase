@@ -9,6 +9,7 @@ import {
 } from "./gateway-contract";
 import { VideoBackendJobFailureError } from "./video-job-manager";
 import { assertModelEligible } from "../../models/model-eligibility";
+import { ModelManagementError } from "../../models/model-management-contract";
 import { testPcm16Wav, testPng } from "./video-input.fixtures";
 
 const model = byId("wan2.1-t2v-1.3b-q8_0");
@@ -227,6 +228,26 @@ test("projects memory failures as insufficient_memory", () => {
       message: "Install with --install-missing.",
     },
   });
+  expect(
+    projectVideoJob({
+      ...base,
+      failure: new ModelManagementError(
+        "invalid_request",
+        "Experimental models require models.allowExperimental = true.",
+      ),
+    }),
+  ).toMatchObject({
+    error: {
+      code: "experimental_model_not_allowed",
+      message: "Experimental models require models.allowExperimental = true.",
+    },
+  });
+  expect(
+    projectVideoJob({
+      ...base,
+      failure: new ModelManagementError("invalid_request", "internal detail"),
+    }),
+  ).toMatchObject({ error: { code: "video_generation_failed" } });
   expect(
     projectVideoJob({
       ...base,

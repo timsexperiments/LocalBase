@@ -8,7 +8,11 @@ import {
   type VideoGenerationInput,
 } from "./video-input";
 import type { VideoJob } from "./video-job-manager";
-import { ModelHardwareIneligibleError } from "../../models/model-eligibility";
+import {
+  experimentalModelOptInRequired,
+  ModelHardwareIneligibleError,
+} from "../../models/model-eligibility";
+import { ModelManagementError } from "../../models/model-management-contract";
 
 export const videoCreateRequestSchema = z
   .object({
@@ -55,6 +59,7 @@ export const videoJobResponseSchema = z.discriminatedUnion("status", [
           "insufficient_memory",
           "model_install_consent_required",
           "model_hardware_ineligible",
+          "experimental_model_not_allowed",
         ]),
         message: z.string().min(1).optional(),
       })
@@ -190,6 +195,16 @@ function videoFailureError(
   }
   if (failure instanceof ModelHardwareIneligibleError) {
     return { code: "model_hardware_ineligible", message: failure.message };
+  }
+  if (
+    failure instanceof ModelManagementError &&
+    failure.code === "invalid_request" &&
+    failure.message === experimentalModelOptInRequired
+  ) {
+    return {
+      code: "experimental_model_not_allowed",
+      message: failure.message,
+    };
   }
   return { code: "video_generation_failed" };
 }
