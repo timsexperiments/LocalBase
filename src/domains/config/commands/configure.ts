@@ -36,6 +36,7 @@ import type { ConfigureInput } from "../../app/commands/inputs";
 import { publicApiKey, publicConfiguration } from "../../app/commands/results";
 import { resolveOtelConfiguration } from "../../observability/otel";
 import { memorySafetyConfigSchema } from "../../runtime/memory-safety";
+import { modelEligibilityReason } from "../../models/model-eligibility";
 
 import { persistConfiguration } from "../declarative";
 import { withRootOperation } from "../../service/ownership";
@@ -47,9 +48,10 @@ function validateExternalModelList(
   modelIds: string[] | undefined,
   kind: "llm" | "stt" | "tts" | "image" | "video",
   videoTarget: ReturnType<typeof detectHostVideoTarget>,
+  checkEligibility = true,
 ): string[] | undefined {
   try {
-    return validateModelList(modelIds, kind, videoTarget);
+    return validateModelList(modelIds, kind, videoTarget, checkEligibility);
   } catch (error) {
     throw new CliInputError(
       error instanceof Error ? error.message : String(error),
@@ -60,8 +62,13 @@ function validateExternalModelList(
 function validateComposedModelConfiguration(
   config: LocalBaseConfig,
   videoTarget: ReturnType<typeof detectHostVideoTarget>,
+  previousVideoModels: readonly string[],
 ): void {
-  const result = createModelConfigurationSchema(videoTarget).safeParse({
+  const result = createModelConfigurationSchema(
+    videoTarget,
+    true,
+    false,
+  ).safeParse({
     allowExperimental: config.allowExperimental,
     selectedLlmModels: config.selectedLlmModels,
     selectedSttModels: config.selectedSttModels,
@@ -75,6 +82,17 @@ function validateComposedModelConfiguration(
     activeVideoModel: config.activeVideoModel,
   });
   if (!result.success) throw new CliInputError(formatZodError(result.error));
+  const previous = new Set(previousVideoModels);
+  for (const modelId of config.selectedVideoModels) {
+    if (previous.has(modelId)) continue;
+    const model = byId(modelId);
+    if (!model) continue;
+    const reason = modelEligibilityReason(model, {
+      allowExperimental: config.allowExperimental,
+      target: videoTarget,
+    });
+    if (reason) throw new CliInputError(`${modelId}: ${reason}`);
+  }
 }
 
 function warnAboutParallelOomRisk(
@@ -474,6 +492,7 @@ export async function runConfigure(
   const hasConfig = await Bun.file(`${root}/local-base.db`).exists();
 
   let config = loadConfig(ctx.database, root, specs.gpuVramGb);
+  const previousVideoModels = [...config.selectedVideoModels];
   const llmFromFlags = validateExternalModelList(
     flags.llmModels,
     "llm",
@@ -498,6 +517,7 @@ export async function runConfigure(
     flags.videoModels,
     "video",
     videoTarget,
+    false,
   );
   const llmFromToml = rawToml.selectedLlmModels;
   const sttFromToml = rawToml.selectedSttModels;
@@ -656,7 +676,7 @@ export async function runConfigure(
       videoTarget,
     );
 
-  validateComposedModelConfiguration(config, videoTarget);
+  validateComposedModelConfiguration(config, videoTarget, previousVideoModels);
 
   warnAboutParallelOomRisk(config.parallel, specs.gpuVramGb);
 

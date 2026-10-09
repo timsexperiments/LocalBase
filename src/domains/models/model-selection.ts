@@ -100,6 +100,7 @@ export function selectedModelsSchema(
 export function createModelConfigurationSchema(
   videoTarget: VideoRuntimeTarget | null,
   checkEligibility = true,
+  checkVideoEligibility = checkEligibility,
 ) {
   return z
     .object({
@@ -131,7 +132,7 @@ export function createModelConfigurationSchema(
           required,
           allowExperimental,
           videoTarget,
-          checkEligibility,
+          kind === "video" ? checkVideoEligibility : checkEligibility,
         ).safeParse(ids);
         if (!parsed.success) {
           for (const issue of parsed.error.issues)
@@ -140,7 +141,7 @@ export function createModelConfigurationSchema(
         for (const [index, id] of ids.entries()) {
           const model = byId(id);
           const reason =
-            checkEligibility &&
+            (kind === "video" ? checkVideoEligibility : checkEligibility) &&
             model &&
             modelEligibilityReason(model, {
               allowExperimental,
@@ -169,7 +170,7 @@ export function createModelConfigurationSchema(
           kind,
           allowExperimental,
           videoTarget,
-          checkEligibility,
+          kind === "video" ? checkVideoEligibility : checkEligibility,
         ).safeParse(id);
         if (!parsed.success)
           for (const issue of parsed.error.issues)
@@ -208,9 +209,14 @@ export function validateModelList(
   ids: string[] | undefined,
   kind: ModelKind,
   videoTarget: VideoRuntimeTarget | null,
+  checkEligibility = true,
 ): string[] | undefined {
   if (!ids) return undefined;
-  return selectedModelsSchema(kind, kind === "llm", false, videoTarget).parse(
-    ids,
-  );
+  return selectedModelsSchema(
+    kind,
+    kind === "llm",
+    false,
+    videoTarget,
+    checkEligibility,
+  ).parse(ids);
 }

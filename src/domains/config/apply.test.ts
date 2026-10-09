@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { acknowledgeStaticConfiguration, restartPending } from "./activation";
 import { persistConfiguration } from "./declarative";
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,10 +13,11 @@ import {
   readConfig,
   saveConfig,
 } from "../../manager";
+import * as manager from "../../manager";
 import { withRootOperation } from "../service/ownership";
 import { type ServiceInspection } from "../service/manager";
 import { applyConfiguration } from "./apply";
-import { configurationDocument } from "./declarative";
+import { configurationDocument, planConfiguration } from "./declarative";
 
 const directories: string[] = [];
 let previousRuntimeDirectory: string | undefined;
@@ -48,6 +49,38 @@ function fixture(initialize = true) {
   }
   return { root: config.root, desired: configurationDocument(config) };
 }
+
+test("removes a persisted video selection after its hardware becomes unavailable", async () => {
+  const { root } = fixture();
+  const database = new DatabaseSession();
+  const unsupported = loadConfig(database, root);
+  unsupported.allowExperimental = true;
+  unsupported.selectedVideoModels = ["wan2.2-s2v-14b-fp8"];
+  unsupported.activeVideoModel = "wan2.2-s2v-14b-fp8";
+  const target = spyOn(manager, "detectHostVideoTarget").mockReturnValue({
+    platform: "linux",
+    architecture: "x64",
+    accelerator: "nvidia",
+  });
+  try {
+    saveConfig(database, unsupported);
+  } finally {
+    target.mockRestore();
+    database.close();
+  }
+
+  const desired = configurationDocument({
+    ...unsupported,
+    selectedVideoModels: [],
+    activeVideoModel: "",
+  });
+  expect(planConfiguration(unsupported, desired).changed).toBe(true);
+  await applyConfiguration(root, desired, { restart: "never", wait: false });
+  expect(await readConfig(root)).toMatchObject({
+    selectedVideoModels: [],
+    activeVideoModel: "",
+  });
+});
 
 function serviceFixture(
   state: ServiceInspection["service"]["state"] = "running",
@@ -407,6 +440,7 @@ test("apply migrates the prior database under the operation lock and preserves p
     old.exec("ALTER TABLE config DROP COLUMN gateway_host");
     old.exec("ALTER TABLE config DROP COLUMN gateway_port");
     old.exec("ALTER TABLE config DROP COLUMN install_missing_models");
+    old.exec("ALTER TABLE config DROP COLUMN allow_experimental");
     old.exec(
       "DELETE FROM __drizzle_migrations WHERE created_at NOT IN (SELECT created_at FROM __drizzle_migrations ORDER BY created_at ASC LIMIT 3)",
     );

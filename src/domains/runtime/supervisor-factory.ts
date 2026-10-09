@@ -37,7 +37,12 @@ import {
 } from "./launcher";
 import type { RuntimeModality } from "./modality";
 import type { VideoRuntimeTarget } from "../../catalog";
-import { assertModelEligible } from "../models/model-eligibility";
+import {
+  assertModelEligible,
+  ModelHardwareIneligibleError,
+  unsupportedModelTargetReason,
+  videoTargetFromTopology,
+} from "../models/model-eligibility";
 import type { MemorySafetyController } from "./memory-controller";
 import type { MemoryTopology } from "./memory-safety";
 import { SpeechSupervisor, type SpeechPreparation } from "./speech-supervisor";
@@ -134,33 +139,16 @@ function videoPort(overrides: RuntimeLaunchOverrides): number {
 }
 
 function videoRuntimeTarget(
+  modelId: string,
   topology: MemoryTopology,
   host: Readonly<{
     platform: NodeJS.Platform;
     arch: NodeJS.Architecture;
   }> = process,
 ): VideoRuntimeTarget {
-  if (
-    host.platform === "linux" &&
-    host.arch === "x64" &&
-    topology.kind === "discrete" &&
-    topology.accelerators.length === 1 &&
-    topology.accelerators[0]?.id.startsWith("nvidia:")
-  ) {
-    return { platform: "linux", architecture: "x64", accelerator: "nvidia" };
-  }
-  if (
-    host.platform === "darwin" &&
-    host.arch === "arm64" &&
-    topology.kind === "unified"
-  ) {
-    return {
-      platform: "darwin",
-      architecture: "arm64",
-      accelerator: "apple-unified",
-    };
-  }
-  throw new Error("Video runtime target is not supported.");
+  const target = videoTargetFromTopology(topology, host);
+  if (target) return target;
+  throw new ModelHardwareIneligibleError(modelId, unsupportedModelTargetReason);
 }
 
 function component(
@@ -733,13 +721,14 @@ export function createRuntimeSupervisorFactory(
         logger: ctx.logger,
         preflightDemand: async (signal) => {
           if (signal?.aborted) return undefined;
-          const target = videoRuntimeTarget(
-            dependencies.memorySafety.topology,
-            dependencies.host,
-          );
           const spec = byId(modelId);
           if (!spec || spec.kind !== "video" || !spec.videoRuntime)
             return undefined;
+          const target = videoRuntimeTarget(
+            modelId,
+            dependencies.memorySafety.topology,
+            dependencies.host,
+          );
           assertModelEligible(spec, {
             allowExperimental: config.allowExperimental,
             target,
@@ -771,16 +760,21 @@ export function createRuntimeSupervisorFactory(
           return signal?.aborted ? undefined : plan.memoryDemand;
         },
         launch: async () => {
-          const target = videoRuntimeTarget(
-            dependencies.memorySafety.topology,
-            dependencies.host,
-          );
           const spec = byId(modelId);
           if (!spec || spec.kind !== "video" || !spec.videoRuntime) {
             throw new Error(
               `Video model \"${modelId}\" has no runtime profile.`,
             );
           }
+          const target = videoRuntimeTarget(
+            modelId,
+            dependencies.memorySafety.topology,
+            dependencies.host,
+          );
+          assertModelEligible(spec, {
+            allowExperimental: config.allowExperimental,
+            target,
+          });
           const artifacts = spec.videoRuntime.artifacts;
           const plan = resolveVideoLaunchPlan({
             runtimeId,

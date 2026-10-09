@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { type DatabaseSession } from "../../db/client";
+import { existsSync } from "node:fs";
+import { databasePath, type DatabaseSession } from "../../db/client";
 import {
   detectHostVideoTarget,
   type LocalBaseConfig,
@@ -16,10 +17,13 @@ import {
   savedStaticConfiguration,
   staticConfigurationChanged,
 } from "./activation";
+import { byId } from "../../catalog";
+import { modelEligibilityReason } from "../models/model-eligibility";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 
 export function createDesiredConfigurationSchema(
   videoTarget = detectHostVideoTarget(),
+  checkVideoEligibility = true,
 ) {
   return z
     .object({
@@ -35,13 +39,20 @@ export function createDesiredConfigurationSchema(
           sttPort: portSchema,
         })
         .strict(),
-      models: createModelConfigurationSchema(videoTarget),
+      models: createModelConfigurationSchema(
+        videoTarget,
+        true,
+        checkVideoEligibility,
+      ),
       memory: memorySafetyConfigSchema,
     })
     .strict();
 }
 
-export const desiredConfigurationSchema = createDesiredConfigurationSchema();
+export const desiredConfigurationSchema = createDesiredConfigurationSchema(
+  undefined,
+  false,
+);
 
 export type DesiredConfiguration = z.infer<typeof desiredConfigurationSchema>;
 
@@ -86,7 +97,9 @@ export function parseConfiguration(text: string): DesiredConfiguration {
     // Parser diagnostics can contain source text, including accidentally pasted secrets.
     throw new CliInputError("Invalid TOML configuration.");
   }
-  const parsed = createDesiredConfigurationSchema().safeParse(value);
+  const parsed = createDesiredConfigurationSchema(undefined, false).safeParse(
+    value,
+  );
   if (!parsed.success) throw new CliInputError(formatZodError(parsed.error));
   return normalize(parsed.data);
 }
@@ -95,7 +108,7 @@ export function configurationDocument(
   config: LocalBaseConfig,
 ): DesiredConfiguration {
   return normalize(
-    createDesiredConfigurationSchema().parse({
+    createDesiredConfigurationSchema(undefined, false).parse({
       version: 1,
       gateway: { host: config.gatewayHost, port: config.gatewayPort },
       runtime: {
@@ -151,6 +164,17 @@ export function planConfiguration(
   desired: DesiredConfiguration,
   pendingRestart = false,
 ): ConfigurationPlan {
+  const previousVideoModels = new Set(current?.selectedVideoModels ?? []);
+  for (const modelId of desired.models.selectedVideoModels) {
+    if (previousVideoModels.has(modelId)) continue;
+    const model = byId(modelId);
+    if (!model) continue;
+    const reason = modelEligibilityReason(model, {
+      allowExperimental: desired.models.allowExperimental,
+      target: detectHostVideoTarget(),
+    });
+    if (reason) throw new CliInputError(`${modelId}: ${reason}`);
+  }
   const before = current ? configurationDocument(current) : undefined;
   const after = normalize(desired);
   const changes: ConfigurationPlan["changes"] = [];
@@ -214,6 +238,25 @@ export function persistConfiguration(
   config: LocalBaseConfig,
 ): void {
   configurationDocument(config);
+  if (!existsSync(databasePath(config.root))) {
+    const eligibility = createModelConfigurationSchema(
+      detectHostVideoTarget(),
+    ).safeParse({
+      allowExperimental: config.allowExperimental,
+      selectedLlmModels: config.selectedLlmModels,
+      selectedSttModels: config.selectedSttModels,
+      selectedTtsModels: config.selectedTtsModels,
+      selectedImageModels: config.selectedImageModels,
+      selectedVideoModels: config.selectedVideoModels,
+      activeLlmModel: config.activeLlmModel,
+      activeSttModel: config.activeSttModel,
+      activeTtsModel: config.activeTtsModel,
+      activeImageModel: config.activeImageModel,
+      activeVideoModel: config.activeVideoModel,
+    });
+    if (!eligibility.success)
+      throw new CliInputError(formatZodError(eligibility.error));
+  }
   ensureLocalBaseRootMarker(config.root);
   const db = database.get(config.root);
   db.transaction(

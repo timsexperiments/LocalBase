@@ -9,6 +9,7 @@ import type { AppContext } from "../../../context";
 import { defaultConfig, loadConfig } from "../../../manager";
 import * as manager from "../../../manager";
 import { runConfigure } from "./configure";
+import { runConfigShow } from "./config";
 import { DatabaseSession } from "../../../db/client";
 import { migrationsFolder } from "../../../db/migration-assets";
 import * as schema from "../../../db/schema";
@@ -198,6 +199,46 @@ test("configure validates TOML parallel overrides and warns on low VRAM", async 
   });
 });
 
+test("configure allows unrelated writes with an unsupported persisted video selection", async () => {
+  await withTempRoot(async (root) => {
+    const context = makeContext(root);
+    const existing = defaultConfig(root);
+    existing.allowExperimental = true;
+    existing.selectedVideoModels = ["wan2.2-s2v-14b-fp8"];
+    existing.activeVideoModel = "wan2.2-s2v-14b-fp8";
+    const target = spyOn(manager, "detectHostVideoTarget").mockReturnValue({
+      platform: "linux",
+      architecture: "x64",
+      accelerator: "nvidia",
+    });
+    try {
+      manager.saveConfig(context.database, existing);
+    } finally {
+      target.mockRestore();
+    }
+
+    try {
+      const shown = await runConfigShow({}, context, nonInteractiveExecution);
+      expect(shown.data.document).toContain('"wan2.2-s2v-14b-fp8"');
+      await runConfigure(
+        { all: false, defaults: true, parallel: 2, createKey: false },
+        context,
+        nonInteractiveExecution,
+      );
+    } finally {
+      context.database.close();
+    }
+
+    const database = new DatabaseSession();
+    expect(loadConfig(database, root)).toMatchObject({
+      allowExperimental: true,
+      selectedVideoModels: ["wan2.2-s2v-14b-fp8"],
+      parallel: 2,
+    });
+    database.close();
+  });
+});
+
 test("configure merges partial TOML memory reserves with persisted defaults", async () => {
   await withTempRoot(async (root) => {
     const configPath = join(root, "local-base.toml");
@@ -350,6 +391,16 @@ test("configure validates video selections against the detected target", async (
       });
 
       target.mockReturnValue(null);
+      await runConfigure(
+        {
+          all: false,
+          defaults: true,
+          videoModels: [],
+          createKey: false,
+        },
+        context,
+        nonInteractiveExecution,
+      );
       await expect(
         runConfigure(
           {
@@ -361,7 +412,7 @@ test("configure validates video selections against the detected target", async (
           context,
           nonInteractiveExecution,
         ),
-      ).rejects.toThrow("unsupported on this platform");
+      ).rejects.toThrow("single NVIDIA GPU");
     } finally {
       target.mockRestore();
       context.database.close();

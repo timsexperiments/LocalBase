@@ -17,6 +17,7 @@ import {
 } from "./supervisor-registry";
 import { SpeechSupervisor } from "./speech-supervisor";
 import { generateSpeechWithIdleRecovery } from "./commands/serve";
+import { projectVideoJob } from "./video/gateway-contract";
 
 test("rejects an unsupported video topology before installation or launch", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-target-"));
@@ -80,9 +81,27 @@ test("rejects an unsupported video topology before installation or launch", asyn
   );
 
   try {
-    await expect(
-      factory.create("video", { revision: 0, config }).ensureRunning(),
-    ).rejects.toThrow(/Video runtime target is not supported|does not support/);
+    let failure: unknown;
+    try {
+      await factory.create("video", { revision: 0, config }).ensureRunning();
+    } catch (error) {
+      failure = error;
+    }
+    if (!(failure instanceof Error))
+      throw new Error("Expected video startup to fail with an Error.");
+    const projected = projectVideoJob({
+      id: "00000000-0000-4000-8000-000000000000",
+      createdAtMs: 1,
+      terminalAtMs: 2,
+      state: "failed",
+      failure,
+    });
+    expect(projected).toMatchObject({
+      error: {
+        code: "model_hardware_ineligible",
+        message: expect.stringContaining("single NVIDIA GPU"),
+      },
+    });
     expect(existsSync(config.videoModelsDir)).toBe(false);
     expect(snapshots).toBe(0);
   } finally {

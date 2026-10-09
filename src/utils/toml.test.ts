@@ -37,6 +37,18 @@ test("parses standard TOML arrays and inline comments", async () => {
   );
 });
 
+test("accepts structurally valid existing video model selections", async () => {
+  await withToml(
+    'selectedVideoModels = ["wan2.1-t2v-1.3b-q8_0"]\nactiveVideoModel = "wan2.1-t2v-1.3b-q8_0"\n',
+    async (path) => {
+      await expect(loadTomlOverrides(path)).resolves.toMatchObject({
+        selectedVideoModels: ["wan2.1-t2v-1.3b-q8_0"],
+        activeVideoModel: "wan2.1-t2v-1.3b-q8_0",
+      });
+    },
+  );
+});
+
 test("rejects malformed TOML", async () => {
   await withToml("selectedLlmModels = [\n", async (path) => {
     await expect(loadTomlOverrides(path)).rejects.toBeInstanceOf(CliInputError);
