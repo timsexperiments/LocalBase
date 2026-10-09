@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { RuntimeMemoryAdmissionError } from "../memory-controller";
+import { ModelInstallConsentError } from "../startup-preflight";
 import type { ModelSpec } from "../../../catalog";
 import {
   videoConditioningInputSchema,
@@ -48,7 +49,11 @@ export const videoJobResponseSchema = z.discriminatedUnion("status", [
     completed_at: z.number().int().nonnegative(),
     error: z
       .object({
-        code: z.enum(["video_generation_failed", "insufficient_memory"]),
+        code: z.enum([
+          "video_generation_failed",
+          "insufficient_memory",
+          "model_install_consent_required",
+        ]),
         message: z.string().min(1).optional(),
       })
       .strict(),
@@ -177,6 +182,9 @@ function videoFailureError(
       code: "insufficient_memory",
       message: memoryAdmissionMessage(failure),
     };
+  }
+  if (failure instanceof ModelInstallConsentError) {
+    return { code: "model_install_consent_required", message: failure.message };
   }
   return { code: "video_generation_failed" };
 }

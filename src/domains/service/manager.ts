@@ -1056,6 +1056,7 @@ async function startServiceAtRoot(
   root: string,
   restart: boolean,
   handoff: (serviceToken: string) => Promise<void>,
+  installMissing = false,
 ): Promise<ServiceInspection> {
   ensureLocalBaseRootMarker(root);
   const previousManifest = await readManifest(root);
@@ -1069,7 +1070,7 @@ async function startServiceAtRoot(
   );
   const definition = await createServiceDefinition(
     root,
-    await resolveServiceInvocation(root),
+    await resolveServiceInvocation(root, installMissing),
     undefined,
     serviceToken,
     otelServiceEnvironment(process.env),
@@ -1115,19 +1116,25 @@ async function startServiceAtRoot(
   return await inspectServiceAtRoot(root, true);
 }
 
-export async function startService(root: string): Promise<ServiceInspection> {
+export async function startService(
+  root: string,
+  installMissing = false,
+): Promise<ServiceInspection> {
   return await withServiceStartHandoff(
     root,
     async (canonical, handoff) =>
-      await startServiceAtRoot(canonical, false, handoff),
+      await startServiceAtRoot(canonical, false, handoff, installMissing),
   );
 }
 
-export async function restartService(root: string): Promise<ServiceInspection> {
+export async function restartService(
+  root: string,
+  installMissing = false,
+): Promise<ServiceInspection> {
   return await withServiceStartHandoff(
     root,
     async (canonical, handoff) =>
-      await startServiceAtRoot(canonical, true, handoff),
+      await startServiceAtRoot(canonical, true, handoff, installMissing),
   );
 }
 

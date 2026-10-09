@@ -28,6 +28,9 @@ export const configTable = sqliteTable("config", {
   activeImageModel: text("active_image_model").notNull(),
   activeVideoModel: text("active_video_model").notNull(),
   hfToken: text("hf_token").notNull(),
+  installMissingModels: integer("install_missing_models", { mode: "boolean" })
+    .default(false)
+    .notNull(),
   parallel: text("parallel").default("auto").notNull(),
   otelEndpoint: text("otel_endpoint").default("").notNull(),
   otelHeaders: text("otel_headers").default("").notNull(),

@@ -115,6 +115,8 @@ import { videoCreateRequestSchema } from "../video/gateway-contract";
 import {
   acquireGatewayLease,
   acquireGatewayLeaseForServe,
+  getGatewayInstanceStateAtRoot,
+  RootOwnershipError,
 } from "../../service/ownership";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ServeInput } from "../../app/commands/inputs";
@@ -128,6 +130,12 @@ import {
   type OtelRuntime,
 } from "../../observability/otel";
 import { gatewayIdentitySchema } from "../health";
+import {
+  assertServePortsAvailable,
+  assertModelInstallConsent,
+  installMissingModel,
+  ModelInstallConsentError,
+} from "../startup-preflight";
 import { createAuthManagement } from "../../auth/management-http";
 import {
   openAIErrorResponseSchema,
@@ -147,6 +155,18 @@ import {
 type AuthMode = "bearer" | "x-api-key" | "either";
 
 type ModalityState = Record<RuntimeModality, boolean>;
+function serveModalityState(
+  config: LocalBaseConfig,
+  input: ServeInput,
+): ModalityState {
+  return {
+    llm: input.llm ?? true,
+    stt: input.stt ?? config.selectedSttModels.length > 0,
+    tts: input.tts ?? config.selectedTtsModels.length > 0,
+    image: input.image ?? config.selectedImageModels.length > 0,
+    video: input.video ?? config.selectedVideoModels.length > 0,
+  };
+}
 type AdmittedModel = Extract<
   ModelAdmissionResult,
   { kind: "admitted" }
@@ -447,10 +467,29 @@ function speechTimeout(): Response {
   );
 }
 
+function modelInstallConsentResponse(
+  error: ModelInstallConsentError,
+): Response {
+  return openAIErrorResponse(
+    {
+      message: error.message,
+      type: "invalid_request_error",
+      param: "model",
+      code: "model_install_consent_required",
+    },
+    409,
+  );
+}
+
 export function speechGenerationFailure(error: unknown): Readonly<{
   response: Response;
   source?: InferenceTerminalSource;
 }> {
+  if (error instanceof ModelInstallConsentError) {
+    return {
+      response: modelInstallConsentResponse(error),
+    };
+  }
   if (error instanceof RuntimeMemoryAdmissionError) {
     return {
       response: resourceUnavailable(error),
@@ -1909,6 +1948,19 @@ export async function proxyWithAdmission(
       });
       return response;
     }
+    if (error instanceof ModelInstallConsentError) {
+      const response = openAIErrorResponse(
+        {
+          message: error.message,
+          type: "invalid_request_error",
+          param: "model",
+          code: "model_install_consent_required",
+        },
+        409,
+      );
+      onSettled?.({ outcome: "error", httpStatus: response.status });
+      return response;
+    }
     const response = serviceUnavailable(serviceName);
     onSettled?.({ outcome: "error", httpStatus: response.status });
     return response;
@@ -2100,6 +2152,24 @@ export async function runServe(
   execution: CommandExecution,
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
+  const enabled = serveModalityState(config, input);
+  const owner = await getGatewayInstanceStateAtRoot(config.root);
+  if (owner.state === "active") {
+    throw new RootOwnershipError(
+      `A LocalBase gateway already owns ${config.root}. Stop the existing gateway before starting another one.`,
+    );
+  }
+  if (owner.state === "unknown") {
+    throw new RootOwnershipError(
+      `Cannot prove whether a LocalBase gateway owns ${config.root} (${owner.detail}). Stop the existing gateway before starting another one.`,
+    );
+  }
+  await assertServePortsAvailable(config, {
+    ...input,
+    ...enabled,
+    backendPortPreflight:
+      process.env.LOCALBASE_TEST_SKIP_BACKEND_PORT_PREFLIGHT !== "1",
+  });
   const browserAccess = await loadUiAccessConfig(config.root);
   const magicLinkRegistration =
     browserAccess?.provider.kind === "direct"
@@ -2172,22 +2242,6 @@ export async function runServe(
     port: processSettings.gateway.port,
     ...(serviceId || serviceToken ? { serviceId, serviceToken } : {}),
   };
-  const gatewayLease = ctx.initializationOperation
-    ? await acquireGatewayLease(processSettings.root, endpoint)
-    : await acquireGatewayLeaseForServe(processSettings.root, endpoint);
-  await ctx.logger.enableFileLogging(processSettings.root);
-  await ctx.initializationOperation?.release();
-  ctx.initializationOperation = undefined;
-  await activateContextOtel(ctx);
-  ctx.logger.event({
-    severity: "info",
-    eventName: "gateway.starting",
-    category: "gateway",
-    component: "gateway",
-    runtime: "gateway",
-    message: "Starting LocalBase gateway.",
-  });
-
   let ctxSize = input.ctxSize ?? 0;
   if (!ctxSize) {
     const spec = byId(config.activeLlmModel);
@@ -2368,14 +2422,6 @@ export async function runServe(
     join(config.imageModelsDir, imageModelFile),
   ).exists();
 
-  const enabled: ModalityState = {
-    llm: input.llm ?? true,
-    stt: input.stt ?? config.selectedSttModels.length > 0,
-    tts: input.tts ?? config.selectedTtsModels.length > 0,
-    image: input.image ?? config.selectedImageModels.length > 0,
-    video: input.video ?? config.selectedVideoModels.length > 0,
-  };
-
   if (enabled.stt && !config.activeSttModel) {
     throw new Error(
       "STT modality is enabled but no active STT model is configured. Run `local-base configure` first.",
@@ -2518,47 +2564,77 @@ export async function runServe(
     }
   }
 
-  // Automatically download models if they pass memory checks and are missing.
+  // Model weights require explicit consent; managed runtime binaries remain automatic.
   if (enabled.llm && !llmModelExists) {
-    console.log(
-      `LLM model is incomplete. Automatically installing "${config.activeLlmModel}"...`,
-    );
-    const installedPath = await installSelectedModel(
-      ctx,
+    const spec = byId(config.activeLlmModel);
+    const installedPath = await installMissingModel(
       config,
-      "llm",
+      spec,
       config.activeLlmModel,
-      "incomplete",
+      input.installMissing || config.installMissingModels,
+      () => {
+        console.log(
+          `Installing missing LLM model "${config.activeLlmModel}"...`,
+        );
+        return installSelectedModel(
+          ctx,
+          config,
+          "llm",
+          config.activeLlmModel,
+          "incomplete",
+          input.installMissing || config.installMissingModels,
+        );
+      },
     );
     llmModelFile = basename(installedPath);
     llmModelExists = true;
   }
 
   if (enabled.stt && !sttModelExists) {
-    console.log(
-      `STT model file is missing. Automatically installing "${config.activeSttModel}"...`,
-    );
-    const installedPath = await installSelectedModel(
-      ctx,
+    const spec = byId(config.activeSttModel);
+    const installedPath = await installMissingModel(
       config,
-      "stt",
+      spec,
       config.activeSttModel,
-      "missing",
+      input.installMissing || config.installMissingModels,
+      () => {
+        console.log(
+          `Installing missing STT model "${config.activeSttModel}"...`,
+        );
+        return installSelectedModel(
+          ctx,
+          config,
+          "stt",
+          config.activeSttModel,
+          "missing",
+          input.installMissing || config.installMissingModels,
+        );
+      },
     );
     sttModelFile = basename(installedPath);
     sttModelExists = true;
   }
 
   if (enabled.image && !imageModelExists) {
-    console.log(
-      `Image model file is missing. Automatically installing "${config.activeImageModel}"...`,
-    );
-    const installedPath = await installSelectedModel(
-      ctx,
+    const spec = byId(config.activeImageModel);
+    const installedPath = await installMissingModel(
       config,
-      "image",
+      spec,
       config.activeImageModel,
-      "missing",
+      input.installMissing || config.installMissingModels,
+      () => {
+        console.log(
+          `Installing missing image model "${config.activeImageModel}"...`,
+        );
+        return installSelectedModel(
+          ctx,
+          config,
+          "image",
+          config.activeImageModel,
+          "missing",
+          input.installMissing || config.installMissingModels,
+        );
+      },
     );
     imageModelFile = basename(installedPath);
     imageModelExists = true;
@@ -2588,6 +2664,22 @@ export async function runServe(
   if (!enabled.image && input.image === undefined) {
     console.log("Image route auto-disabled (no local Image model file found).");
   }
+
+  const gatewayLease = ctx.initializationOperation
+    ? await acquireGatewayLease(processSettings.root, endpoint)
+    : await acquireGatewayLeaseForServe(processSettings.root, endpoint);
+  await ctx.logger.enableFileLogging(processSettings.root);
+  await ctx.initializationOperation?.release();
+  ctx.initializationOperation = undefined;
+  await activateContextOtel(ctx);
+  ctx.logger.event({
+    severity: "info",
+    eventName: "gateway.starting",
+    category: "gateway",
+    component: "gateway",
+    runtime: "gateway",
+    message: "Starting LocalBase gateway.",
+  });
 
   const configuredOverrides: RuntimeOverrideOwnership = {
     configFields: [
@@ -2642,6 +2734,7 @@ export async function runServe(
   );
   const factory = createRuntimeSupervisorFactory(ctx, launchOverrides, {
     memorySafety,
+    installMissing: input.installMissing || config.installMissingModels,
   });
   const initialSnapshot = ctx.runtimeConfig.read();
   const supervisors = new SupervisorRegistry({
@@ -2995,6 +3088,19 @@ export async function runServe(
             : LOCAL_VIDEO_OWNER_ID,
         jobs: videoJobs,
         createEnabled: currentConfig.selectedVideoModels.length > 0,
+        assertInstallConsent: async (modelId) => {
+          const spec = byId(modelId);
+          if (!spec || spec.kind !== "video") return;
+          const installation = await resolveCatalogInstallation(
+            spec,
+            currentConfig.videoModelsDir,
+          );
+          if (!installation.complete)
+            assertModelInstallConsent(
+              modelId,
+              input.installMissing || currentConfig.installMissingModels,
+            );
+        },
         admissionProvider: {
           admit: async (modelId, signal) => {
             const selection = await admitVideoWithIdleRecovery(
@@ -3678,32 +3784,36 @@ export async function runServe(
             ),
         );
       } catch (err) {
-        const error =
-          err instanceof Error ? err : new Error("Unknown request failure");
-        const parsedMethod =
-          logHttpMetadataSchema.shape.method.safeParse(method);
-        ctx.logger.event({
-          severity: "error",
-          eventName: "http.handler-failed",
-          category: "http",
-          component: "gateway",
-          runtime: "gateway",
-          message: "Gateway request handler failed.",
-          requestId,
-          trace: spanCorrelation(span),
-          ...(parsedMethod.success
-            ? {
-                http: {
-                  method: parsedMethod.data,
-                  path: pathname,
-                  status: 500,
-                  durationMs: performance.now() - start,
-                },
-              }
-            : {}),
-          error: { type: error.name, message: error.message },
-        });
-        response = internalGatewayFailure();
+        if (err instanceof ModelInstallConsentError) {
+          response = modelInstallConsentResponse(err);
+        } else {
+          const error =
+            err instanceof Error ? err : new Error("Unknown request failure");
+          const parsedMethod =
+            logHttpMetadataSchema.shape.method.safeParse(method);
+          ctx.logger.event({
+            severity: "error",
+            eventName: "http.handler-failed",
+            category: "http",
+            component: "gateway",
+            runtime: "gateway",
+            message: "Gateway request handler failed.",
+            requestId,
+            trace: spanCorrelation(span),
+            ...(parsedMethod.success
+              ? {
+                  http: {
+                    method: parsedMethod.data,
+                    path: pathname,
+                    status: 500,
+                    durationMs: performance.now() - start,
+                  },
+                }
+              : {}),
+            error: { type: error.name, message: error.message },
+          });
+          response = internalGatewayFailure();
+        }
       }
 
       const headers = new Headers(response.headers);

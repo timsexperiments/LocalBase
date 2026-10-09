@@ -1,0 +1,1 @@
+ALTER TABLE `config` ADD `install_missing_models` integer DEFAULT false NOT NULL;

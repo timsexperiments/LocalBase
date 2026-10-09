@@ -28,6 +28,7 @@ import {
   resolveSttLaunchPlan,
   resolveVideoLaunchPlan,
 } from "./launch-plan";
+import { assertModelInstallConsent } from "./startup-preflight";
 import {
   startLlamaServerProcess,
   startSdServerProcess,
@@ -73,6 +74,7 @@ export type RuntimeSupervisorFactory = Readonly<{
 
 export type RuntimeSupervisorFactoryDependencies = Readonly<{
   memorySafety: MemorySafetyController;
+  installMissing?: boolean;
   /** Host platform used to select the video runtime target; defaults to this process. */
   host?: Readonly<{ platform: NodeJS.Platform; arch: NodeJS.Architecture }>;
 }>;
@@ -345,7 +347,9 @@ export async function installSelectedModel(
   modality: RuntimeModality,
   modelId: string,
   reason: "incomplete" | "missing",
+  installMissing = false,
 ): Promise<string> {
+  assertModelInstallConsent(modelId, installMissing);
   return await installModel(
     config,
     modelId,
@@ -490,6 +494,7 @@ export function createRuntimeSupervisorFactory(
                       modality,
                       modelId,
                       "incomplete",
+                      dependencies.installMissing,
                     ),
                   );
             } else {
@@ -510,6 +515,7 @@ export function createRuntimeSupervisorFactory(
                       modality,
                       modelId,
                       "missing",
+                      dependencies.installMissing,
                     ),
                   );
             }
@@ -610,6 +616,7 @@ export function createRuntimeSupervisorFactory(
                   modality,
                   modelId,
                   "missing",
+                  dependencies.installMissing,
                 ),
               );
             }
@@ -674,6 +681,7 @@ export function createRuntimeSupervisorFactory(
               modality,
               modelId,
               "incomplete",
+              dependencies.installMissing,
             );
             installation = await resolveCatalogInstallation(
               spec,
@@ -792,6 +800,7 @@ export function createRuntimeSupervisorFactory(
               modality,
               modelId,
               "incomplete",
+              dependencies.installMissing,
             );
             installation = await resolveCatalogInstallation(
               spec,
@@ -913,6 +922,7 @@ export function createRuntimeSupervisorFactory(
               modality,
               modelId,
               "incomplete",
+              dependencies.installMissing,
             );
             installation = await resolveCatalogInstallation(
               imageSpec,
@@ -933,6 +943,7 @@ export function createRuntimeSupervisorFactory(
                 modality,
                 modelId,
                 "missing",
+                dependencies.installMissing,
               ),
             );
           }

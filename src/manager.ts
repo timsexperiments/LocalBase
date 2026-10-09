@@ -37,9 +37,9 @@ import {
   type ModelArtifact,
   type ModelSpec,
   type ModelKind,
-  recommendedForVram,
   recommendedSttForVram,
 } from "./catalog";
+import { assertModelDiskSpace } from "./domains/runtime/startup-preflight";
 import { modelConfigurationSchema } from "./domains/models/model-selection";
 import {
   parseParallelSlots,
@@ -101,6 +101,7 @@ export type LocalBaseConfig = {
   activeImageModel: string;
   activeVideoModel: string;
   hfToken: string;
+  installMissingModels: boolean;
   parallel: ParallelSlots;
   otelEndpoint: string;
   otelHeaders: string;
@@ -145,6 +146,7 @@ const configRowSchema = z
     activeImageModel: z.string(),
     activeVideoModel: z.string(),
     hfToken: z.string(),
+    installMissingModels: z.boolean(),
     parallel: z.enum(["auto", "1", "2", "3", "4"]),
     otelEndpoint: z.union([z.literal(""), otelEndpointSchema]),
     otelHeaders: otelHeadersTextSchema,
@@ -237,6 +239,7 @@ function toConfigRow(config: LocalBaseConfig) {
     activeImageModel: config.activeImageModel,
     activeVideoModel: config.activeVideoModel,
     hfToken: config.hfToken || "",
+    installMissingModels: config.installMissingModels,
     parallel: String(parseParallelSlots(config.parallel)),
     otelEndpoint: config.otelEndpoint,
     otelHeaders: config.otelHeaders,
@@ -348,6 +351,7 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     sttPort: data.sttPort,
     ...models.data,
     hfToken: data.hfToken,
+    installMissingModels: data.installMissingModels,
     parallel: parseParallelSlots(data.parallel),
     otelEndpoint: data.otelEndpoint,
     otelHeaders: data.otelHeaders,
@@ -397,9 +401,7 @@ export function defaultRoot(): string {
 
 export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
   root = canonicalLocalBaseRoot(root);
-  const llm =
-    recommendedForVram(vramGb)[0]?.modelId ??
-    "qwen2.5-coder-7b-instruct-q4_k_m";
+  const llm = "qwen2.5-coder-7b-instruct-q4_k_m";
   const stt =
     recommendedSttForVram(vramGb)[2]?.modelId ??
     recommendedSttForVram(vramGb)[0]?.modelId ??
@@ -426,6 +428,7 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     activeImageModel: "stable-diffusion-v1-5",
     activeVideoModel: "",
     hfToken: "",
+    installMissingModels: false,
     parallel: "auto",
     otelEndpoint: "",
     otelHeaders: "",
@@ -675,6 +678,7 @@ export async function installModel(
     }
 
     const targetDir = kindDir(config, spec.kind);
+    assertModelDiskSpace(config, spec);
     ensureDirs(config);
     mkdirSync(targetDir, { recursive: true });
 

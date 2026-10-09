@@ -195,6 +195,24 @@ function createInstallConfig(): LocalBaseConfig {
   return defaultConfig(root);
 }
 
+test("fresh configuration defaults to the tool-capable Qwen 7B model", () => {
+  expect(defaultConfig("/tmp/local-base-default-model").activeLlmModel).toBe(
+    "qwen2.5-coder-7b-instruct-q4_k_m",
+  );
+});
+
+test("lazy supervisor installation refuses without serve consent", async () => {
+  await expect(
+    installSelectedModel(
+      {} as Parameters<typeof installSelectedModel>[0],
+      createInstallConfig(),
+      "llm",
+      "lazy-test-model",
+      "missing",
+    ),
+  ).rejects.toThrow(/models install lazy-test-model.*--install-missing/);
+});
+
 function artifactPath(
   source: string,
   sourcePath: string,
@@ -696,6 +714,7 @@ describe.serial("transactional model artifact installation", () => {
           "llm",
           hashModel,
           "incomplete",
+          true,
         ),
       ).rejects.toThrow("Checksum mismatch");
     } finally {
