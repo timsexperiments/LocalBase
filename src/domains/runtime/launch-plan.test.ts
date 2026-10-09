@@ -1,3 +1,4 @@
+import { byId, primaryArtifact } from "../../catalog";
 import { kvCacheBytes } from "./gguf-metadata";
 import { describe, expect, test } from "bun:test";
 import {
@@ -14,6 +15,36 @@ import { SupervisorRegistry } from "./supervisor-registry";
 const root = "/tmp/local-base";
 
 describe("runtime launch plans", () => {
+  test("uses measured weights instead of catalog minVramGb for LLM demand", () => {
+    const model = byId("qwen3-coder-next-q4_k_m");
+    if (!model) throw new Error("Missing Qwen3-Coder-Next fixture model.");
+    const artifactBytes = model.artifacts.reduce(
+      (total, artifact) => total + (artifact.expectedSizeBytes ?? 0),
+      0,
+    );
+    const plan = resolveLlmLaunchPlan({
+      runtimeId: "llm:qwen3-coder-next:1",
+      root,
+      modelsDirectory: `${root}/models/llm`,
+      modelId: model.modelId,
+      modelFile: primaryArtifact(model).filename,
+      host: "127.0.0.1",
+      port: 8080,
+      ctxSize: 8192,
+      contextWindowTokens: model.contextWindowTokens,
+      parallel: "auto",
+      modelRequirementGb: model.minVramGb,
+      artifactBytes,
+      hardware: { memoryGb: 64 },
+    });
+
+    expect(model.minVramGb).toBe(64);
+    expect(artifactBytes).toBeGreaterThan(48 * 10 ** 9);
+    expect(plan.memoryDemand.unifiedBytes / 1024 ** 3).toBeCloseTo(50.1, 1);
+    expect(plan.parallel.slots).toBe(4);
+    expect(plan.memoryDemand.unifiedBytes).toBeLessThan(54.4 * 1024 ** 3);
+  });
+
   test.each([
     {
       name: "llm",

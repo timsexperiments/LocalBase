@@ -220,6 +220,23 @@ async function artifactBytes(
   return (await Bun.file(join(directory, modelFile)).stat()).size;
 }
 
+// Sharded GGUF weights list every shard after the first as a supplementary
+// artifact, and llama-server keeps all of them resident.
+async function llmArtifactBytes(
+  modelId: string,
+  directory: string,
+  modelFile: string,
+): Promise<number> {
+  const spec = byId(modelId);
+  if (spec) {
+    return spec.artifacts.reduce(
+      (total, { expectedSizeBytes }) => total + (expectedSizeBytes ?? 0),
+      0,
+    );
+  }
+  return await artifactBytes(modelId, directory, modelFile);
+}
+
 function createModelInstallReporter(
   ctx: Pick<AppContext, "logger">,
   modality: RuntimeModality,
@@ -443,7 +460,7 @@ export function createRuntimeSupervisorFactory(
             configCtxSize: config.ctxSize,
             ctxSizeOverride: overrides.ctxSize,
             parallel: config.parallel,
-            artifactBytes: await artifactBytes(
+            artifactBytes: await llmArtifactBytes(
               modelId,
               config.llmModelsDir,
               modelFile,
@@ -521,7 +538,7 @@ export function createRuntimeSupervisorFactory(
             configCtxSize: config.ctxSize,
             ctxSizeOverride: overrides.ctxSize,
             parallel: config.parallel,
-            artifactBytes: await artifactBytes(
+            artifactBytes: await llmArtifactBytes(
               modelId,
               config.llmModelsDir,
               modelFile,

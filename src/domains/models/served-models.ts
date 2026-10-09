@@ -198,7 +198,11 @@ export async function listServedModels(
           const modelPath = join(config.llmModelsDir, modelFile);
           const artifactBytes =
             (launchSpec
-              ? primaryArtifact(launchSpec).expectedSizeBytes
+              ? launchSpec.artifacts.reduce(
+                  (total, { expectedSizeBytes }) =>
+                    total + (expectedSizeBytes ?? 0),
+                  0,
+                ) || undefined
               : undefined) ??
             (await Bun.file(modelPath)
               .stat()

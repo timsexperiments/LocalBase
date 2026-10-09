@@ -120,6 +120,89 @@ function discreteProvider(
 }
 
 describe("memory controller", () => {
+  test("admits Coder-Next under available memory and rejects a larger artifact", async () => {
+    const availableBytes = 54.4 * gibibyte;
+    const testTopology: MemoryTopology = {
+      kind: "unified",
+      system: { id: "system", capacityBytes: 64 * gibibyte },
+    };
+    const memoryProvider = {
+      topology: testTopology,
+      snapshot: async (): Promise<HostMemorySnapshot> => ({
+        capturedAtMs: 1,
+        pools: [
+          {
+            poolId: "system",
+            availability: "available",
+            availableBytes,
+            pressure: "normal",
+          },
+        ],
+      }),
+      async close() {},
+    };
+    const noReserveConfig = {
+      systemReserve: { percent: 0, minimumGb: 0 },
+      acceleratorReserve: { percent: 0, minimumGb: 0 },
+    };
+    const model = byId("qwen3-coder-next-q4_k_m");
+    if (!model) throw new Error("Missing Qwen3-Coder-Next fixture model.");
+    const coderNext = resolveLlmLaunchPlan({
+      runtimeId: "llm:qwen3-coder-next:1",
+      root: "/unused",
+      modelsDirectory: "/unused/models",
+      modelId: model.modelId,
+      modelFile: primaryArtifact(model).filename,
+      host: "127.0.0.1",
+      port: 1,
+      ctxSize: 8192,
+      parallel: "auto",
+      modelRequirementGb: model.minVramGb,
+      artifactBytes: model.artifacts.reduce(
+        (total, artifact) => total + (artifact.expectedSizeBytes ?? 0),
+        0,
+      ),
+      hardware: { memoryGb: 64 },
+    });
+
+    const admittingController = new MemorySafetyController(
+      memoryProvider,
+      noReserveConfig,
+    );
+    const reservation = await admittingController.reserve({
+      runtimeId: coderNext.runtimeId,
+      demand: coderNext.memoryDemand,
+    });
+    reservation.release();
+
+    const tooLarge = resolveLlmLaunchPlan({
+      runtimeId: "llm:too-large:1",
+      root: "/unused",
+      modelsDirectory: "/unused/models",
+      modelId: "too-large",
+      modelFile: "too-large.gguf",
+      host: "127.0.0.1",
+      port: 1,
+      ctxSize: 8192,
+      parallel: 1,
+      modelRequirementGb: 64,
+      artifactBytes: 60 * gibibyte,
+      hardware: { memoryGb: 64 },
+    });
+    const rejectingController = new MemorySafetyController(
+      memoryProvider,
+      noReserveConfig,
+    );
+    await expect(
+      rejectingController.reserve({
+        runtimeId: tooLarge.runtimeId,
+        demand: tooLarge.memoryDemand,
+      }),
+    ).rejects.toMatchObject({
+      decision: { kind: "rejected", reason: "system-memory" },
+    });
+  });
+
   test("serializes concurrent reservations against pending demand", async () => {
     const controller = new MemorySafetyController(
       provider(),

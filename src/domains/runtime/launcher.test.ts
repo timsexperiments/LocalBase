@@ -809,12 +809,12 @@ describe.serial("llama runtime launch", () => {
     }
 
     expect(await readCapturedArgs(fixture.argsPath)).toEqual(
-      expectedLlamaArgs(fixture.modelPath, "2"),
+      expectedLlamaArgs(fixture.modelPath, "4"),
     );
     expect(
       output.filter((line) => line.includes("Dynamic Concurrency")),
     ).toEqual([
-      "🤖 Dynamic Concurrency: Calculated 2 parallel slots based on 9.5 GB VRAM and context memory constraints. 4096 tokens per slot.",
+      "🤖 Dynamic Concurrency: Calculated 4 parallel slots based on 9.5 GB VRAM and context memory constraints. 2048 tokens per slot.",
     ]);
   });
 
