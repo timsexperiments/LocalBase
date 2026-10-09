@@ -1459,6 +1459,119 @@ test("emergency eviction aborts stopped-video preflight without leaking an admis
 });
 
 test.each([
+  ["admits when preflight passes", "pass"],
+  ["returns memory rejection without starting backend", "reject"],
+  ["skips preflight for an already running backend", "running"],
+  ["does not preflight a stopped active LLM", "llm"],
+  ["cancels and releases lease when preflight is aborted", "abort"],
+])("stopped active model preflight: %s", async (_name, scenario) => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-active-preflight-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelId = "wan2.1-t2v-1.3b-q8_0";
+  if (scenario === "llm") {
+    config.selectedLlmModels = [config.activeLlmModel];
+  } else {
+    config.selectedVideoModels = [modelId];
+    config.activeVideoModel = modelId;
+  }
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let preflights = 0;
+  let starts = 0;
+  let rejectPreflight = false;
+  const activeModality = scenario === "llm" ? "llm" : "video";
+  const activeId = scenario === "llm" ? config.activeLlmModel : modelId;
+  const makeSupervisor = (modality: RuntimeModality, id: string) => ({
+    kind: "server" as const,
+    runtimeId: () => `${modality}:${id}`,
+    state: () =>
+      scenario === "running" ? ("running" as const) : ("idle" as const),
+    async ensureRunning() {
+      starts += 1;
+    },
+    async kill() {},
+    async shutdown() {},
+    async preflight(_releasing: readonly string[], signal?: AbortSignal) {
+      preflights += 1;
+      if (scenario === "abort") {
+        return await new Promise<undefined>((_resolve, reject) => {
+          signal?.addEventListener(
+            "abort",
+            () => reject(new Error("aborted")),
+            { once: true },
+          );
+        });
+      }
+      if (rejectPreflight)
+        return new RuntimeMemoryAdmissionError({
+          kind: "rejected",
+          reason: "system-memory",
+          poolId: "system",
+        });
+      return undefined;
+    },
+  });
+  const initialSupervisor = makeSupervisor(activeModality, activeId);
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create: (modality, snapshot) =>
+      makeSupervisor(modality, activeModel(modality, snapshot.config)),
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ [activeModality]: initialSupervisor }),
+    factory,
+    { event() {} },
+  );
+  try {
+    rejectPreflight = scenario === "reject";
+    const abort = new AbortController();
+    const admission = reconciler.admitModel(
+      activeModality,
+      activeId,
+      abort.signal,
+    );
+    if (scenario === "abort") {
+      await Bun.sleep(0);
+      abort.abort();
+      await expect(admission).rejects.toBeInstanceOf(
+        RuntimeRequestAbortedError,
+      );
+    } else {
+      const result = await admission;
+      if (scenario === "reject") {
+        expect(result).toMatchObject({
+          kind: "insufficient-memory",
+          error: expect.any(RuntimeMemoryAdmissionError),
+        });
+        expect(starts).toBe(0);
+        expect(reconciler.lifecycleSnapshot().video.admission).toMatchObject({
+          kind: "known",
+          activeCount: 0,
+        });
+      } else {
+        expect(result.kind).toBe("admitted");
+        if (result.kind === "admitted") result.value.admission.release();
+      }
+    }
+    expect(preflights).toBe(
+      scenario === "running" || scenario === "llm" ? 0 : 1,
+    );
+    if (scenario === "abort") {
+      expect(reconciler.lifecycleSnapshot().video.admission).toMatchObject({
+        kind: "known",
+        activeCount: 0,
+      });
+    }
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
   ["fits after eviction", false],
   ["cannot fit even after eviction", true],
 ])("model switch %s", async (_name, rejects) => {
