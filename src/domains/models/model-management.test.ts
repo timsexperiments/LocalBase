@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { CATALOG, type ModelSpec } from "../../catalog";
 import { DatabaseSession } from "../../db/client";
+import { configTable } from "../../db/schema";
 import { defaultConfig, saveConfig } from "../../manager";
 import { RuntimeConfigController } from "../runtime/config-snapshot";
 import { createRuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
@@ -400,20 +401,32 @@ test("disable preserves external persisted updates and read refreshes enabled st
   ).toBe(true);
 });
 
-test("configured video model remains disableable when its GPU target disappears", async () => {
+test("persisted Wan selection remains unavailable, disableable, and uninstallable without NVIDIA", async () => {
   const f = fixture();
   const id = "wan2.1-t2v-1.3b-q8_0";
-  await f.runtimeConfig.update((config) => {
-    config.selectedVideoModels = [id];
-    config.activeVideoModel = id;
-  });
+  f.database
+    .get(f.root)
+    .update(configTable)
+    .set({
+      selectedVideoModels: JSON.stringify([id]),
+      activeVideoModel: id,
+    })
+    .run();
   const management = createModelManagement({
     runtimeConfig: f.runtimeConfig,
     lifecycle: () => f.runtimes,
     videoTarget: () => null,
   });
+  expect(
+    (await management.read()).models.find((model) => model.id === id),
+  ).toMatchObject({
+    enabled: true,
+    canInstall: false,
+    installUnavailableReason: "Requires Linux x64 with a single NVIDIA GPU.",
+  });
   await management.run(id, "disable");
   expect(f.runtimeConfig.copy().selectedVideoModels).toEqual([]);
+  await management.run(id, "uninstall");
 });
 
 test("uninstall rejects externally enabled models even when the controller was stale", async () => {

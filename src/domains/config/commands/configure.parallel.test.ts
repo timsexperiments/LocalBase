@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AppContext } from "../../../context";
 import { defaultConfig, loadConfig } from "../../../manager";
+import * as manager from "../../../manager";
 import { runConfigure } from "./configure";
 import { DatabaseSession } from "../../../db/client";
 import { migrationsFolder } from "../../../db/migration-assets";
@@ -317,6 +318,52 @@ test("configure persists and disables the canonical TTS selection", async () => 
         activeTtsModel: "",
       });
     } finally {
+      context.database.close();
+    }
+  });
+});
+
+test("configure validates video selections against the detected target", async () => {
+  await withTempRoot(async (root) => {
+    const context = makeContext(root);
+    const target = spyOn(manager, "detectHostVideoTarget").mockReturnValue({
+      platform: "linux",
+      architecture: "x64",
+      accelerator: "nvidia",
+    });
+    const modelId = "wan2.1-t2v-1.3b-q8_0";
+    try {
+      await runConfigure(
+        {
+          all: false,
+          defaults: true,
+          videoModels: [modelId],
+          activeVideo: modelId,
+          createKey: false,
+        },
+        context,
+        nonInteractiveExecution,
+      );
+      expect(loadConfig(context.database, root)).toMatchObject({
+        selectedVideoModels: [modelId],
+        activeVideoModel: modelId,
+      });
+
+      target.mockReturnValue(null);
+      await expect(
+        runConfigure(
+          {
+            all: false,
+            defaults: true,
+            videoModels: [modelId],
+            createKey: false,
+          },
+          context,
+          nonInteractiveExecution,
+        ),
+      ).rejects.toThrow("unsupported on this platform");
+    } finally {
+      target.mockRestore();
       context.database.close();
     }
   });

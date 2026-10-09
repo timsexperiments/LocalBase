@@ -46,9 +46,10 @@ export const PARALLEL_SLOTS_PROMPT =
 function validateExternalModelList(
   modelIds: string[] | undefined,
   kind: "llm" | "stt" | "tts" | "image" | "video",
+  videoTarget: ReturnType<typeof detectHostVideoTarget>,
 ): string[] | undefined {
   try {
-    return validateModelList(modelIds, kind);
+    return validateModelList(modelIds, kind, videoTarget);
   } catch (error) {
     throw new CliInputError(
       error instanceof Error ? error.message : String(error),
@@ -56,10 +57,11 @@ function validateExternalModelList(
   }
 }
 
-function validateComposedModelConfiguration(config: LocalBaseConfig): void {
-  const result = createModelConfigurationSchema(
-    detectHostVideoTarget(),
-  ).safeParse({
+function validateComposedModelConfiguration(
+  config: LocalBaseConfig,
+  videoTarget: ReturnType<typeof detectHostVideoTarget>,
+): void {
+  const result = createModelConfigurationSchema(videoTarget).safeParse({
     allowExperimental: config.allowExperimental,
     selectedLlmModels: config.selectedLlmModels,
     selectedSttModels: config.selectedSttModels,
@@ -214,6 +216,7 @@ async function interactiveConfigureSelective(
   config: LocalBaseConfig,
   locked: Set<keyof LocalBaseConfig>,
   vramGb: number,
+  videoTarget: ReturnType<typeof detectHostVideoTarget>,
 ): Promise<LocalBaseConfig> {
   console.log("\nInteractive setup mode");
 
@@ -259,6 +262,7 @@ async function interactiveConfigureSelective(
           true,
         ),
         "llm",
+        videoTarget,
       ) ?? config.selectedLlmModels;
   }
 
@@ -320,6 +324,7 @@ async function interactiveConfigureSelective(
           false,
         ),
         "stt",
+        videoTarget,
       ) ?? config.selectedSttModels;
   }
 
@@ -353,6 +358,7 @@ async function interactiveConfigureSelective(
           false,
         ),
         "tts",
+        videoTarget,
       ) ?? config.selectedTtsModels;
   }
 
@@ -386,6 +392,7 @@ async function interactiveConfigureSelective(
           false,
         ),
         "image",
+        videoTarget,
       ) ?? config.selectedImageModels;
   }
 
@@ -453,6 +460,7 @@ export async function runConfigure(
   };
 }> {
   const specs = ctx.specs;
+  const videoTarget = detectHostVideoTarget();
   const rawToml = flags.configPath
     ? await loadTomlOverrides(flags.configPath)
     : {};
@@ -466,11 +474,31 @@ export async function runConfigure(
   const hasConfig = await Bun.file(`${root}/local-base.db`).exists();
 
   let config = loadConfig(ctx.database, root, specs.gpuVramGb);
-  const llmFromFlags = validateExternalModelList(flags.llmModels, "llm");
-  const sttFromFlags = validateExternalModelList(flags.sttModels, "stt");
-  const ttsFromFlags = validateExternalModelList(flags.ttsModels, "tts");
-  const imageFromFlags = validateExternalModelList(flags.imageModels, "image");
-  const videoFromFlags = validateExternalModelList(flags.videoModels, "video");
+  const llmFromFlags = validateExternalModelList(
+    flags.llmModels,
+    "llm",
+    videoTarget,
+  );
+  const sttFromFlags = validateExternalModelList(
+    flags.sttModels,
+    "stt",
+    videoTarget,
+  );
+  const ttsFromFlags = validateExternalModelList(
+    flags.ttsModels,
+    "tts",
+    videoTarget,
+  );
+  const imageFromFlags = validateExternalModelList(
+    flags.imageModels,
+    "image",
+    videoTarget,
+  );
+  const videoFromFlags = validateExternalModelList(
+    flags.videoModels,
+    "video",
+    videoTarget,
+  );
   const llmFromToml = rawToml.selectedLlmModels;
   const sttFromToml = rawToml.selectedSttModels;
   const ttsFromToml = rawToml.selectedTtsModels;
@@ -625,9 +653,10 @@ export async function runConfigure(
       config,
       locked,
       specs.gpuVramGb,
+      videoTarget,
     );
 
-  validateComposedModelConfiguration(config);
+  validateComposedModelConfiguration(config, videoTarget);
 
   warnAboutParallelOomRisk(config.parallel, specs.gpuVramGb);
 

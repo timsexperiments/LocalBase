@@ -337,9 +337,7 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     "selectedTtsModels",
     openedRoot,
   );
-  const models = createModelConfigurationSchema(
-    detectHostVideoTarget(),
-  ).safeParse({
+  const models = createModelConfigurationSchema(null, false).safeParse({
     allowExperimental: data.allowExperimental,
     selectedLlmModels,
     selectedSttModels,
@@ -474,6 +472,27 @@ export function saveConfig(
     ...modelDirectories(config.root),
   };
   const row = toConfigRow(canonicalConfig);
+  const eligibility = createModelConfigurationSchema(
+    detectHostVideoTarget(),
+  ).safeParse({
+    allowExperimental: canonicalConfig.allowExperimental,
+    selectedLlmModels: canonicalConfig.selectedLlmModels,
+    selectedSttModels: canonicalConfig.selectedSttModels,
+    selectedTtsModels: canonicalConfig.selectedTtsModels,
+    selectedImageModels: canonicalConfig.selectedImageModels,
+    selectedVideoModels: canonicalConfig.selectedVideoModels,
+    activeLlmModel: canonicalConfig.activeLlmModel,
+    activeSttModel: canonicalConfig.activeSttModel,
+    activeTtsModel: canonicalConfig.activeTtsModel,
+    activeImageModel: canonicalConfig.activeImageModel,
+    activeVideoModel: canonicalConfig.activeVideoModel,
+  });
+  if (!eligibility.success) {
+    throw invalidConfiguration(
+      canonicalConfig.root,
+      issueSummary(eligibility.error),
+    );
+  }
   fromConfigRow(row, canonicalConfig.root);
   ensureLocalBaseRootMarker(canonicalConfig.root);
   ensureDirs(canonicalConfig);

@@ -34,6 +34,7 @@ export function modelIdSchema(
   kind: ModelKind,
   allowExperimental = false,
   videoTarget: VideoRuntimeTarget | null = null,
+  checkEligibility = true,
 ) {
   return z
     .string()
@@ -57,6 +58,7 @@ export function modelIdSchema(
     })
     .refine(
       (id) => {
+        if (!checkEligibility) return true;
         const model = byId(id);
         return (
           !model ||
@@ -79,8 +81,14 @@ export function selectedModelsSchema(
   requireOne: boolean,
   allowExperimental = false,
   videoTarget: VideoRuntimeTarget | null = null,
+  checkEligibility = true,
 ) {
-  const schema = modelIdSchema(kind, allowExperimental, videoTarget)
+  const schema = modelIdSchema(
+    kind,
+    allowExperimental,
+    videoTarget,
+    checkEligibility,
+  )
     .array()
     .refine(
       (ids) => new Set(ids).size === ids.length,
@@ -91,6 +99,7 @@ export function selectedModelsSchema(
 
 export function createModelConfigurationSchema(
   videoTarget: VideoRuntimeTarget | null,
+  checkEligibility = true,
 ) {
   return z
     .object({
@@ -108,6 +117,7 @@ export function createModelConfigurationSchema(
     })
     .strict()
     .superRefine((config, ctx) => {
+      const allowExperimental = !checkEligibility || config.allowExperimental;
       const selections = [
         ["selectedLlmModels", config.selectedLlmModels, "llm", true],
         ["selectedSttModels", config.selectedSttModels, "stt", false],
@@ -119,8 +129,9 @@ export function createModelConfigurationSchema(
         const parsed = selectedModelsSchema(
           kind,
           required,
-          config.allowExperimental,
+          allowExperimental,
           videoTarget,
+          checkEligibility,
         ).safeParse(ids);
         if (!parsed.success) {
           for (const issue of parsed.error.issues)
@@ -129,9 +140,10 @@ export function createModelConfigurationSchema(
         for (const [index, id] of ids.entries()) {
           const model = byId(id);
           const reason =
+            checkEligibility &&
             model &&
             modelEligibilityReason(model, {
-              allowExperimental: config.allowExperimental,
+              allowExperimental,
               ...(model.videoRuntime
                 ? { target: videoTarget }
                 : { platform: process.platform, architecture: process.arch }),
@@ -155,8 +167,9 @@ export function createModelConfigurationSchema(
         if (!id) continue;
         const parsed = modelIdSchema(
           kind,
-          config.allowExperimental,
+          allowExperimental,
           videoTarget,
+          checkEligibility,
         ).safeParse(id);
         if (!parsed.success)
           for (const issue of parsed.error.issues)
@@ -194,7 +207,7 @@ export const modelConfigurationSchema = createModelConfigurationSchema(null);
 export function validateModelList(
   ids: string[] | undefined,
   kind: ModelKind,
-  videoTarget: VideoRuntimeTarget | null = null,
+  videoTarget: VideoRuntimeTarget | null,
 ): string[] | undefined {
   if (!ids) return undefined;
   return selectedModelsSchema(kind, kind === "llm", false, videoTarget).parse(
