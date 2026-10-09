@@ -131,6 +131,7 @@ import { gatewayIdentitySchema } from "../health";
 import {
   assertServePortsAvailable,
   installMissingModel,
+  ModelInstallConsentError,
 } from "../startup-preflight";
 import { createAuthManagement } from "../../auth/management-http";
 import {
@@ -151,6 +152,18 @@ import {
 type AuthMode = "bearer" | "x-api-key" | "either";
 
 type ModalityState = Record<RuntimeModality, boolean>;
+function serveModalityState(
+  config: LocalBaseConfig,
+  input: ServeInput,
+): ModalityState {
+  return {
+    llm: input.llm ?? true,
+    stt: input.stt ?? config.selectedSttModels.length > 0,
+    tts: input.tts ?? config.selectedTtsModels.length > 0,
+    image: input.image ?? config.selectedImageModels.length > 0,
+    video: input.video ?? config.selectedVideoModels.length > 0,
+  };
+}
 type AdmittedModel = Extract<
   ModelAdmissionResult,
   { kind: "admitted" }
@@ -455,6 +468,19 @@ export function speechGenerationFailure(error: unknown): Readonly<{
   response: Response;
   source?: InferenceTerminalSource;
 }> {
+  if (error instanceof ModelInstallConsentError) {
+    return {
+      response: openAIErrorResponse(
+        {
+          message: error.message,
+          type: "invalid_request_error",
+          param: "model",
+          code: "model_install_consent_required",
+        },
+        409,
+      ),
+    };
+  }
   if (error instanceof RuntimeMemoryAdmissionError) {
     return {
       response: resourceUnavailable(error),
@@ -1913,6 +1939,19 @@ export async function proxyWithAdmission(
       });
       return response;
     }
+    if (error instanceof ModelInstallConsentError) {
+      const response = openAIErrorResponse(
+        {
+          message: error.message,
+          type: "invalid_request_error",
+          param: "model",
+          code: "model_install_consent_required",
+        },
+        409,
+      );
+      onSettled?.({ outcome: "error", httpStatus: response.status });
+      return response;
+    }
     const response = serviceUnavailable(serviceName);
     onSettled?.({ outcome: "error", httpStatus: response.status });
     return response;
@@ -2104,7 +2143,11 @@ export async function runServe(
   execution: CommandExecution,
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
-  assertServePortsAvailable(config, input);
+  const enabled = serveModalityState(config, input);
+  assertServePortsAvailable(config, {
+    ...input,
+    ...enabled,
+  });
   const browserAccess = await loadUiAccessConfig(config.root);
   const magicLinkRegistration =
     browserAccess?.provider.kind === "direct"
@@ -2357,14 +2400,6 @@ export async function runServe(
     join(config.imageModelsDir, imageModelFile),
   ).exists();
 
-  const enabled: ModalityState = {
-    llm: input.llm ?? true,
-    stt: input.stt ?? config.selectedSttModels.length > 0,
-    tts: input.tts ?? config.selectedTtsModels.length > 0,
-    image: input.image ?? config.selectedImageModels.length > 0,
-    video: input.video ?? config.selectedVideoModels.length > 0,
-  };
-
   if (enabled.stt && !config.activeSttModel) {
     throw new Error(
       "STT modality is enabled but no active STT model is configured. Run `local-base configure` first.",
@@ -2525,6 +2560,7 @@ export async function runServe(
           "llm",
           config.activeLlmModel,
           "incomplete",
+          input.installMissing,
         );
       },
     );
@@ -2549,6 +2585,7 @@ export async function runServe(
           "stt",
           config.activeSttModel,
           "missing",
+          input.installMissing,
         );
       },
     );
@@ -2573,6 +2610,7 @@ export async function runServe(
           "image",
           config.activeImageModel,
           "missing",
+          input.installMissing,
         );
       },
     );
@@ -2674,6 +2712,7 @@ export async function runServe(
   );
   const factory = createRuntimeSupervisorFactory(ctx, launchOverrides, {
     memorySafety,
+    installMissing: input.installMissing,
   });
   const initialSnapshot = ctx.runtimeConfig.read();
   const supervisors = new SupervisorRegistry({

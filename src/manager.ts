@@ -39,6 +39,7 @@ import {
   type ModelKind,
   recommendedSttForVram,
 } from "./catalog";
+import { assertModelDiskSpace } from "./domains/runtime/startup-preflight";
 import { modelConfigurationSchema } from "./domains/models/model-selection";
 import {
   parseParallelSlots,
@@ -396,7 +397,7 @@ export function defaultRoot(): string {
 
 export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
   root = canonicalLocalBaseRoot(root);
-  const llm = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+  const llm = "qwen2.5-coder-7b-instruct-q4_k_m";
   const stt =
     recommendedSttForVram(vramGb)[2]?.modelId ??
     recommendedSttForVram(vramGb)[0]?.modelId ??
@@ -672,6 +673,7 @@ export async function installModel(
     }
 
     const targetDir = kindDir(config, spec.kind);
+    assertModelDiskSpace(config, spec);
     ensureDirs(config);
     mkdirSync(targetDir, { recursive: true });
 

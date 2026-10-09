@@ -1,24 +1,30 @@
-import { statfsSync } from "node:fs";
+import { existsSync, statSync, statfsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { ModelSpec } from "../../catalog";
 import type { LocalBaseConfig } from "../../manager";
+import { backendBindHost } from "./launch-plan";
+
+export class ModelInstallConsentError extends Error {
+  constructor(modelId: string) {
+    super(
+      `Model "${modelId}" is not installed. Install it with "local-base models install ${modelId}" or restart serve with --install-missing.`,
+    );
+    this.name = "ModelInstallConsentError";
+  }
+}
 
 export function assertModelInstallConsent(
   modelId: string,
   installMissing: boolean,
 ): void {
   if (installMissing) return;
-  throw new Error(
-    `Model "${modelId}" is not installed. Install it with "local-base models install ${modelId}" or rerun serve with --install-missing to allow downloads.`,
-  );
+  throw new ModelInstallConsentError(modelId);
 }
 
 export function assertModelDiskSpace(
   config: LocalBaseConfig,
   model: ModelSpec,
-  availableBytes = (() => {
-    const stats = statfsSync(config.root);
-    return stats.bavail * stats.bsize;
-  })(),
+  availableBytes?: number,
 ): void {
   const directory = {
     llm: config.llmModelsDir,
@@ -27,13 +33,33 @@ export function assertModelDiskSpace(
     image: config.imageModelsDir,
     video: config.videoModelsDir,
   }[model.kind];
-  const requiredBytes = model.artifacts.reduce(
-    (total, artifact) => total + (artifact.expectedSizeBytes ?? 0),
-    0,
-  );
-  if (availableBytes < requiredBytes) {
+  let destination = directory;
+  while (!existsSync(destination)) destination = dirname(destination);
+  const stats =
+    availableBytes === undefined ? statfsSync(destination) : undefined;
+  const available = availableBytes ?? stats!.bavail * stats!.bsize;
+  const requiredBytes = model.artifacts.reduce((total, artifact) => {
+    try {
+      if (
+        statSync(join(directory, artifact.filename)).size ===
+        artifact.expectedSizeBytes
+      )
+        return total;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const partial = join(directory, `${artifact.filename}.partial`);
+    let remaining = artifact.expectedSizeBytes ?? 0;
+    try {
+      remaining = Math.max(0, remaining - statSync(partial).size);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    return total + remaining;
+  }, 0);
+  if (available < requiredBytes) {
     throw new Error(
-      `Insufficient disk space to install "${model.modelId}": requires ${(requiredBytes / 1_073_741_824).toFixed(2)} GiB, ${(availableBytes / 1_073_741_824).toFixed(2)} GiB available at ${directory}.`,
+      `Insufficient disk space to install "${model.modelId}": requires ${(requiredBytes / 1_073_741_824).toFixed(2)} GiB, ${(available / 1_073_741_824).toFixed(2)} GiB available at ${directory}.`,
     );
   }
 }
@@ -88,28 +114,53 @@ export function assertServePortsAvailable(
     video?: boolean;
   },
 ): void {
-  assertPortAvailable(
-    input.host ?? config.gatewayHost,
-    input.port ?? config.gatewayPort,
-  );
+  const bindings = [
+    {
+      name: "gateway",
+      host: backendBindHost(input.host ?? config.gatewayHost),
+      port: input.port ?? config.gatewayPort,
+    },
+  ];
   if (input.llm !== false)
-    assertPortAvailable(
-      input.llmHost ?? config.host,
-      input.llmPort ?? config.port,
-    );
+    bindings.push({
+      name: "LLM",
+      host: backendBindHost(input.llmHost ?? config.host),
+      port: input.llmPort ?? config.port,
+    });
   if (input.stt !== false)
-    assertPortAvailable(
-      input.sttHost ?? config.sttHost,
-      input.sttPort ?? config.sttPort,
-    );
+    bindings.push({
+      name: "STT",
+      host: backendBindHost(input.sttHost ?? config.sttHost),
+      port: input.sttPort ?? config.sttPort,
+    });
   if (input.image !== false)
-    assertPortAvailable(
-      input.imageHost ?? "127.0.0.1",
-      input.imagePort ?? 8090,
-    );
+    bindings.push({
+      name: "image",
+      host: backendBindHost(input.imageHost ?? "127.0.0.1"),
+      port: input.imagePort ?? 8090,
+    });
   if (input.video !== false)
-    assertPortAvailable(
-      input.videoHost ?? "127.0.0.1",
-      input.videoPort ?? 8091,
-    );
+    bindings.push({
+      name: "video",
+      host: backendBindHost(input.videoHost ?? "127.0.0.1"),
+      port: input.videoPort ?? 8091,
+    });
+  for (let i = 0; i < bindings.length; i++)
+    for (let j = i + 1; j < bindings.length; j++) {
+      const left = bindings[i]!;
+      const right = bindings[j]!;
+      if (
+        left.port === right.port &&
+        (left.host === right.host ||
+          left.host === "0.0.0.0" ||
+          right.host === "0.0.0.0" ||
+          left.host === "::" ||
+          right.host === "::")
+      )
+        throw new Error(
+          `Planned ${left.name} and ${right.name} bindings overlap on port ${left.port}. Choose distinct ports.`,
+        );
+    }
+  for (const binding of bindings)
+    assertPortAvailable(binding.host, binding.port);
 }

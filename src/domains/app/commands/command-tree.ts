@@ -627,6 +627,12 @@ const serveCommand = command<ServeInput>({
 const startCommand = command<ServiceInput>({
   path: ["start"],
   description: "Install, enable, and start the LocalBase user service",
+  args: {
+    "install-missing": {
+      type: "boolean",
+      description: "Allow the service to download selected models",
+    },
+  },
   requiresDatabase: false,
   parse: (input) => serviceInputSchema.parse(input),
   resultSchema: serviceLifecycleResultSchema,
@@ -651,6 +657,12 @@ const stopCommand = command<ServiceInput>({
 const restartCommand = command<ServiceInput>({
   path: ["restart"],
   description: "Refresh, enable, and restart the LocalBase user service",
+  args: {
+    "install-missing": {
+      type: "boolean",
+      description: "Allow the service to download selected models",
+    },
+  },
   requiresDatabase: false,
   parse: (input) => serviceInputSchema.parse(input),
   resultSchema: serviceLifecycleResultSchema,
