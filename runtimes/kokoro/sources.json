@@ -1,6 +1,31 @@
 {
   "bunVersion": "1.3.14",
   "bunCommit": "0d9b296af33f2b851fcbf4df3e9ec89751734ba4",
+  "correspondingSources": {
+    "phonemizer": {
+      "version": "1.2.1",
+      "repository": "https://github.com/xenova/phonemizer.js",
+      "commit": "6835144b7ee9043129222549c1ed2f6a27216278",
+      "commitUrl": "https://github.com/xenova/phonemizer.js/tree/6835144b7ee9043129222549c1ed2f6a27216278",
+      "evidence": "npm view phonemizer@1.2.1 reports this gitHead; the commit is titled Update to v1.2.1 and its package.json declares version 1.2.1.",
+      "buildInstructions": "At the pinned repository commit, install the declared development dependencies and run npm run build (package.json: build). This rebuilds the JS bundles and declarations; upstream does not document rebuilding its embedded eSpeak-ng WASM/data.",
+      "espeakNg": {
+        "repository": "https://github.com/espeak-ng/espeak-ng",
+        "license": "GPL-3.0-or-later",
+        "commit": null,
+        "status": "Unresolved: the pinned phonemizer source has generated WASM/data but no eSpeak-ng submodule, source revision, or eSpeak-ng build recipe. No exact eSpeak-ng commit can be established from this source."
+      }
+    },
+    "bunWebKit": {
+      "bunVersion": "1.3.14",
+      "bunCommit": "0d9b296af33f2b851fcbf4df3e9ec89751734ba4",
+      "webkitCommit": "5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b",
+      "webkitCommitUrl": "https://github.com/oven-sh/WebKit/tree/5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b",
+      "pinEvidenceUrl": "https://raw.githubusercontent.com/oven-sh/bun/0d9b296af33f2b851fcbf4df3e9ec89751734ba4/scripts/build/deps/webkit.ts",
+      "bunLicenseNoticeUrl": "https://raw.githubusercontent.com/oven-sh/bun/0d9b296af33f2b851fcbf4df3e9ec89751734ba4/LICENSE.md",
+      "relink": "The LocalBase/Kokoro application source is public under AGPL-3.0-or-later. A recipient can modify and rebuild Bun with a modified WebKit/JavaScriptCore using Bun's published source and build instructions."
+    }
+  },
   "targets": {
     "macos-arm64": {
       "url": "https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-darwin-aarch64.zip",
