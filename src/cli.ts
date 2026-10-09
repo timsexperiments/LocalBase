@@ -34,10 +34,16 @@ async function main(): Promise<number> {
   );
 }
 
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code !== "EPIPE") throw error;
+  });
+}
+
 try {
   const code = await main();
-  process.exit(code);
+  process.exitCode = code;
 } catch (error) {
   console.error(`Error: ${redactExternalLogText((error as Error).message)}`);
-  process.exit(1);
+  process.exitCode = 1;
 }

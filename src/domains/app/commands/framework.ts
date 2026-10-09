@@ -18,6 +18,7 @@ import {
 import { createCommandOutput, type CommandOutput } from "./output";
 import type { CommandResult } from "./output";
 import { CliInputError, formatZodError, toCliInputError } from "./errors";
+import { shouldUseColor, stripAnsiCodes } from "../../../utils/color";
 
 export { CliInputError } from "./errors";
 export type { CommandExecution } from "./command-tree";
@@ -310,10 +311,11 @@ export function parseCommandInput(
 export async function commandHelpText(
   command: CittyCommand,
   parent?: CittyCommand,
+  options: { stream?: NodeJS.WriteStream; json?: boolean } = {},
 ): Promise<string> {
   const usage = await renderUsage(command, parent);
   const examples = commands.find((entry) => entry.citty === command)?.examples;
-  return [
+  const text = [
     usage,
     examples?.length
       ? `EXAMPLES\n\n${examples.map((example) => `  ${example}`).join("\n")}`
@@ -322,13 +324,18 @@ export async function commandHelpText(
   ]
     .filter(Boolean)
     .join("\n\n");
+  if (options.json || !shouldUseColor(options.stream ?? process.stdout))
+    return stripAnsiCodes(text);
+  return `\x1b[36m${stripAnsiCodes(text)}\x1b[0m`;
 }
 
 export async function printCommandHelp(
   command: CittyCommand,
   parent?: CittyCommand,
 ): Promise<void> {
-  console.log(await commandHelpText(command, parent));
+  process.stdout.write(
+    `${await commandHelpText(command, parent, { stream: process.stdout })}\n`,
+  );
 }
 
 export function rootCommandDefinition(): CittyCommand {

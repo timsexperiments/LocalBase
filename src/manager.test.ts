@@ -1123,6 +1123,23 @@ describe.serial("checksum inputs and continuity cache", () => {
     }
   });
 
+  test("sanitizes terminal controls in invalid checksum cache warnings", async () => {
+    const root = mkdtempSync(
+      join(tmpdir(), "local-base-checksum-\x1b[31mred\x1b[0m\rhidden-"),
+    );
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await Bun.write(join(root, ".checksums.json"), "{not json");
+      await readChecksumStore(root);
+      const message = String(warn.mock.calls[0]?.[0]);
+      expect(message).toContain("redhidden");
+      expect(message).not.toMatch(/[\x1b\r]/);
+    } finally {
+      warn.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("merges concurrent verifications in the same directory", async () => {
     const root = createInstallConfig().root;
     const contents = { "a.bin": "first model", "b.bin": "second model" };

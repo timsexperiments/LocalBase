@@ -13,6 +13,7 @@ import {
   verifyAuthoritativeFile,
   type AuthoritativeVerification,
 } from "./utils/checksum";
+import { shouldShowOperationalOutput } from "./utils/operational-output";
 import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -912,7 +913,8 @@ function createDownloadProgress(
   initialSize: number,
   report: (downloadedSize: number, percent: number) => void,
 ) {
-  const enabled = process.stderr.isTTY === true;
+  const enabled =
+    process.stderr.isTTY === true && shouldShowOperationalOutput();
   let lastPercent = Math.floor((initialSize / totalSize) * 100);
   let lastReportedPercent = -1;
   const reportPercent = (downloadedSize: number): void => {
@@ -1036,7 +1038,8 @@ async function installArtifact(
 
   const url = artifactDownloadUrl(spec, artifact);
   setFailurePhase("downloading");
-  console.log(`⬇️  Downloading model "${spec.modelId}" from ${url}...`);
+  if (shouldShowOperationalOutput())
+    console.log(`⬇️  Downloading model "${spec.modelId}" from ${url}...`);
   const token = config.hfToken || process.env.HF_TOKEN || "";
   const partialSize = (await Bun.file(partial).exists())
     ? (await Bun.file(partial).stat()).size

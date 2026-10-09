@@ -26,6 +26,8 @@ import {
   syncOwnedPrivateDirectory,
 } from "./secure-log-files";
 import type { OtelRuntime } from "./otel";
+import { shouldUseColor, stripAnsiCodes } from "../../utils/color";
+import { shouldShowOperationalOutput } from "../../utils/operational-output";
 
 export const LOG_SCHEMA_VERSION = 2 as const;
 export const LOG_DIRECTORY_NAME = "logs";
@@ -242,7 +244,9 @@ function boundedText(
   value: unknown,
   maximum = MAX_EVENT_MESSAGE_LENGTH,
 ): string {
-  const text = typeof value === "string" ? value : String(value ?? "");
+  const text = stripAnsiCodes(
+    typeof value === "string" ? value : String(value ?? ""),
+  );
   if (embeddedContentPattern.test(text)) {
     return "[REDACTED REQUEST OR MODEL CONTENT]";
   }
@@ -310,7 +314,7 @@ export function redactLogEventForDiagnostics(
 }
 
 function normalizedComponent(value: string): string {
-  const normalized = value
+  const normalized = stripAnsiCodes(value)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -321,7 +325,7 @@ function normalizedComponent(value: string): string {
 }
 
 function normalizedEventName(value: string): string {
-  const normalized = value
+  const normalized = stripAnsiCodes(value)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
@@ -403,13 +407,17 @@ export function createLogEvent(
   input: LogEventInput,
   ambientTrace?: LogTraceCorrelation,
 ): LogEvent {
+  const errorCode =
+    typeof input.error?.code === "string" && input.error.code
+      ? boundedText(input.error.code, 128)
+      : undefined;
   const error = input.error
     ? {
-        type: boundedText(input.error.type || "Error", 128),
-        message: boundedText(input.error.message || "Unknown error"),
-        ...(typeof input.error.code === "string" && input.error.code
-          ? { code: boundedText(input.error.code, 128) }
-          : {}),
+        type: boundedText(input.error.type || "Error", 128) || "Error",
+        message:
+          boundedText(input.error.message || "Unknown error") ||
+          "Unknown error",
+        ...(errorCode ? { code: errorCode } : {}),
       }
     : undefined;
   const parsedHttp = input.http
@@ -423,7 +431,7 @@ export function createLogEvent(
     input.trace ?? ambientTrace,
   );
   const attributes = redactLogAttributes(input.attributes);
-  return logEventSchema.parse({
+  const event = logEventSchema.parse({
     schemaVersion: LOG_SCHEMA_VERSION,
     id: crypto.randomUUID(),
     timestamp: new Date().toISOString(),
@@ -432,13 +440,14 @@ export function createLogEvent(
     category: input.category,
     component: normalizedComponent(input.component),
     runtime: input.runtime,
-    message: boundedText(input.message),
+    message: boundedText(input.message) || "Unknown error",
     ...(requestId ? { requestId } : {}),
     ...(parsedTrace.success ? { trace: parsedTrace.data } : {}),
     ...(parsedHttp?.success ? { http: parsedHttp.data } : {}),
     ...(error ? { error } : {}),
     ...(attributes ? { attributes } : {}),
   });
+  return event;
 }
 
 function runtimeForComponent(component: string): LogRuntime {
@@ -453,8 +462,13 @@ function runtimeForComponent(component: string): LogRuntime {
 }
 
 function consoleWrite(event: LogEvent, format: "human" | "json"): void {
+  if (
+    !shouldShowOperationalOutput() &&
+    (event.severity === "info" || event.severity === "debug")
+  )
+    return;
   if (format === "json") {
-    console.log(JSON.stringify(event));
+    process.stdout.write(`${JSON.stringify(event)}\n`);
     return;
   }
   const color =
@@ -465,10 +479,16 @@ function consoleWrite(event: LogEvent, format: "human" | "json"): void {
         : event.severity === "debug"
           ? "\x1b[90m"
           : "\x1b[32m";
-  const line = `[${event.timestamp}] ${color}[${event.severity.toUpperCase()}]\x1b[0m [\x1b[36m${event.component}\x1b[0m] ${event.message}`;
-  if (event.severity === "error") console.error(line);
-  else if (event.severity === "warn") console.warn(line);
-  else console.log(line);
+  const stream =
+    event.severity === "error" || event.severity === "warn"
+      ? process.stderr
+      : process.stdout;
+  const line = shouldUseColor(stream)
+    ? `[${event.timestamp}] ${color}[${event.severity.toUpperCase()}]\x1b[0m [\x1b[36m${event.component}\x1b[0m] ${event.message}`
+    : `[${event.timestamp}] [${event.severity.toUpperCase()}] [${event.component}] ${event.message}`;
+  if (event.severity === "error" || event.severity === "warn")
+    process.stderr.write(`${line}\n`);
+  else process.stdout.write(`${line}\n`);
 }
 
 export function logDirectory(root: string): string {
