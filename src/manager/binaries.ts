@@ -33,6 +33,7 @@ import {
   sha256Schema,
   verifyAuthoritativeFile,
 } from "../utils/checksum";
+import { shouldShowOperationalOutput } from "../utils/operational-output";
 import {
   managedRuntimeRelease,
   platformSupportTier,
@@ -731,9 +732,10 @@ async function installManagedRuntimeNow(
   mkdirSync(stagingDir);
 
   try {
-    console.log(
-      `⬇️  Downloading pinned ${release.name} release ${release.tag}...`,
-    );
+    if (shouldShowOperationalOutput())
+      console.log(
+        `⬇️  Downloading pinned ${release.name} release ${release.tag}...`,
+      );
     await downloadRelease(
       release.url,
       downloadPath,
@@ -814,9 +816,10 @@ async function installManagedRuntimeNow(
     await writeReceipt(publicationDir, receipt);
     options.signal?.throwIfAborted();
     if (freshPackage) renameSync(stagingDir, packageDir);
-    console.log(
-      `✅ ${release.name} installed from authoritative release ${release.tag}.`,
-    );
+    if (shouldShowOperationalOutput())
+      console.log(
+        `✅ ${release.name} installed from authoritative release ${release.tag}.`,
+      );
     return destPath;
   } finally {
     rmSync(installDir, { recursive: true, force: true });
@@ -876,18 +879,20 @@ export async function ensureBinary(
       return localBin;
     }
     if (userManagedBinary && resolve(userManagedBinary) !== resolve(localBin)) {
-      console.log(
-        `ℹ️  Using user-managed ${name} at ${userManagedBinary}; LocalBase does not verify user-managed binaries.`,
-      );
+      if (shouldShowOperationalOutput())
+        console.log(
+          `ℹ️  Using user-managed ${name} at ${userManagedBinary}; LocalBase does not verify user-managed binaries.`,
+        );
       return userManagedBinary;
     }
     return await installManagedRuntime(config, release);
   }
 
   if (userManagedBinary) {
-    console.log(
-      `ℹ️  Using user-managed ${name} at ${userManagedBinary}; LocalBase does not verify user-managed binaries.`,
-    );
+    if (shouldShowOperationalOutput())
+      console.log(
+        `ℹ️  Using user-managed ${name} at ${userManagedBinary}; LocalBase does not verify user-managed binaries.`,
+      );
     return userManagedBinary;
   }
   if (!release) {

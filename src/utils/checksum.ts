@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 import { setImmediate, setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 import { processIsAbsent } from "./root";
+import { shouldShowOperationalOutput } from "./operational-output";
 
 export const sha256Schema = z.string().regex(/^[a-fA-F0-9]{64}$/);
 export const safeFilenameSchema = z
@@ -110,7 +111,8 @@ export async function verifyChecksum(
   label: string,
 ): Promise<void> {
   const digest = sha256Schema.parse(expected).toLowerCase();
-  console.log(`🔍 Verifying checksum for ${label}...`);
+  if (shouldShowOperationalOutput())
+    console.log(`🔍 Verifying checksum for ${label}...`);
   const actual = await computeSha256(filePath);
   if (actual !== digest) {
     throw new Error(
@@ -120,7 +122,8 @@ export async function verifyChecksum(
         `  File may be corrupted or tampered with. Delete it and retry.`,
     );
   }
-  console.log(`✅ Checksum verified for ${label}`);
+  if (shouldShowOperationalOutput())
+    console.log(`✅ Checksum verified for ${label}`);
 }
 
 /** Parses a complete sha256sum response and rejects ambiguous or unsafe rows. */

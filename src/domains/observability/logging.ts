@@ -27,6 +27,7 @@ import {
 } from "./secure-log-files";
 import type { OtelRuntime } from "./otel";
 import { shouldUseColor } from "../../utils/color";
+import { shouldShowOperationalOutput } from "../../utils/operational-output";
 
 export const LOG_SCHEMA_VERSION = 2 as const;
 export const LOG_DIRECTORY_NAME = "logs";
@@ -467,11 +468,7 @@ function runtimeForComponent(component: string): LogRuntime {
 }
 
 function consoleWrite(event: LogEvent, format: "human" | "json"): void {
-  if (
-    process.env.LOCALBASE_QUIET_TEST_LOGS === "1" &&
-    process.env.LOCALBASE_TEST_LOGS !== "1"
-  )
-    return;
+  if (!shouldShowOperationalOutput()) return;
   if (format === "json") {
     console.log(JSON.stringify(event));
     return;
