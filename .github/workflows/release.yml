@@ -104,18 +104,17 @@ jobs:
             --target ${{ matrix.target }} \
             --output release-artifacts/${{ matrix.target }}
 
-      - name: Package Linux CLI
-        if: matrix.platform == 'linux'
-        run: |
-          tar -czf release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}.tar.gz \
-            -C release-artifacts/${{ matrix.target }} \
-            local-base-${{ matrix.target }}
-
       - name: Sign macOS CLI
         if: matrix.platform == 'macos'
         run: |
           codesign --force --options runtime --timestamp --sign "Developer ID Application:" \
             release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}
+
+      - name: Package CLI, license, and notices
+        run: |
+          bun run scripts/release-artifacts.ts package \
+            --target ${{ matrix.target }} \
+            --output release-artifacts/${{ matrix.target }}
 
       - name: Notarize macOS CLI
         if: matrix.platform == 'macos'
@@ -124,8 +123,6 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          zip -j release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}.zip \
-            release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}
           xcrun notarytool submit release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}.zip \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_PASSWORD" \

@@ -67,6 +67,16 @@ test("rejects a changed canonical package", async () => {
   );
 });
 
+test("supports only the four non-Windows release targets", () => {
+  expect(releaseTargetSchema.options).toEqual([
+    "macos-arm64",
+    "macos-x64",
+    "linux-x64",
+    "linux-arm64",
+  ]);
+  expect(() => releaseTargetSchema.parse("windows-x64")).toThrow();
+});
+
 test("rejects a package whose extracted CLI differs from the manifest", async () => {
   const { directory, extracted } = await artifacts("macos-arm64");
   await Bun.write(join(extracted, "local-base-macos-arm64"), "tampered");

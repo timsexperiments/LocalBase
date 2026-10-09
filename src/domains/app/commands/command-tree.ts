@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 import type { AppContext, MinimalAppContext } from "../../../context";
 import { byId, type ModelKind } from "../../../catalog";
+import { LOCALBASE_VERSION } from "../../../version";
 import {
   accessCloudflareInputSchema,
   accessDisableInputSchema,
@@ -1719,7 +1720,7 @@ const configCommand = defineCommand({
 export const rootCommand = defineCommand({
   meta: {
     name: "local-base",
-    version: "0.1.0",
+    version: LOCALBASE_VERSION,
     description: "Local AI installer, manager, and OpenAI-compatible gateway",
   },
   args: globalArgs,

@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import {
@@ -285,6 +285,76 @@ export async function buildReleaseArtifacts(
   await build("src/cli.ts", cliFilename(target));
 }
 
+async function run(command: string, args: string[]) {
+  const child = Bun.spawn([command, ...args], {
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  if ((await child.exited) !== 0)
+    throw new Error(`${command} failed while packaging release artifacts.`);
+}
+
+export async function packageReleaseArtifact(
+  target: ReleaseTarget,
+  directory: string,
+) {
+  const output = resolve(directory);
+  const cli = artifactPath(output, cliFilename(target));
+  const license = resolve("LICENSE");
+  if (!(await Bun.file(license).exists()))
+    throw new Error("Missing root LICENSE file (expected AGPL-3.0 license).");
+  const noticesPath = join(output, "THIRD_PARTY_NOTICES.txt");
+  const notices = await import("./release-notices");
+  await Bun.write(noticesPath, await notices.generateReleaseNotices());
+  await cp(license, join(output, "LICENSE"));
+  const archive = artifactPath(output, releasePackageFilename(target));
+  await rm(archive, { force: true });
+  if (target.startsWith("macos-")) {
+    await run("zip", [
+      "-j",
+      archive,
+      cli,
+      join(output, "LICENSE"),
+      noticesPath,
+    ]);
+  } else {
+    await run("tar", [
+      "-czf",
+      archive,
+      "-C",
+      output,
+      cliFilename(target),
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.txt",
+    ]);
+  }
+  console.log(
+    `Packaged ${releasePackageFilename(target)} with ${cliFilename(target)}, LICENSE, THIRD_PARTY_NOTICES.txt`,
+  );
+}
+
+async function dryRun() {
+  const platform =
+    process.platform === "darwin"
+      ? "macos"
+      : process.platform === "linux"
+        ? "linux"
+        : "unsupported";
+  const arch =
+    process.arch === "arm64"
+      ? "arm64"
+      : process.arch === "x64"
+        ? "x64"
+        : "unsupported";
+  const target = releaseTargetSchema.parse(`${platform}-${arch}`);
+  const output = `release-artifacts/dry-run/${target}`;
+  await buildReleaseArtifacts(target, output);
+  await packageReleaseArtifact(target, output);
+  console.log(
+    `Dry run file list (${target}):\n${[cliFilename(target), "LICENSE", "THIRD_PARTY_NOTICES.txt", releasePackageFilename(target)].map((name) => `- ${name}`).join("\n")}`,
+  );
+}
+
 export async function qualifyArtifactDirectory(
   target: ReleaseTarget,
   directory: string,
@@ -385,6 +455,7 @@ const commandSchema = z.enum([
   "verify-package",
   "qualify",
   "stage",
+  "package",
 ]);
 function options(args: string[]) {
   const result: Record<string, string | string[]> = {};
@@ -401,6 +472,7 @@ function options(args: string[]) {
 }
 
 async function main() {
+  if (Bun.argv[2] === "--dry-run") return dryRun();
   const command = commandSchema.parse(Bun.argv[2]);
   const raw = options(Bun.argv.slice(3));
   if (command === "stage") {
@@ -415,6 +487,7 @@ async function main() {
   const target = releaseTargetSchema.parse(raw.target);
   const output = z.string().min(1).parse(raw.output);
   if (command === "build") await buildReleaseArtifacts(target, output);
+  else if (command === "package") await packageReleaseArtifact(target, output);
   else if (command === "manifest") await writeArtifactManifest(target, output);
   else if (command === "verify") await verifyArtifactDirectory(target, output);
   else {

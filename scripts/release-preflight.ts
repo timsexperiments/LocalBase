@@ -1,6 +1,7 @@
 import packageJson from "../package.json";
 import { z } from "zod";
 import { LOCALBASE_VERSION } from "../src/version";
+import { existsSync } from "node:fs";
 
 const packageMetadataSchema = z
   .object({ version: z.string().min(1) })
@@ -25,6 +26,9 @@ export function validateReleasePreflight(
 }
 
 export function runReleasePreflight(gitTag: unknown): void {
+  if (!existsSync("LICENSE")) {
+    throw new Error("Missing root LICENSE file (expected AGPL-3.0 license).");
+  }
   const packageVersion = packageMetadataSchema.parse(packageJson).version;
   validateReleasePreflight(gitTag, packageVersion);
   console.log(`Release preflight passed for ${gitTag}.`);
