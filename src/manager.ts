@@ -37,7 +37,6 @@ import {
   type ModelArtifact,
   type ModelSpec,
   type ModelKind,
-  recommendedForVram,
   recommendedSttForVram,
 } from "./catalog";
 import { modelConfigurationSchema } from "./domains/models/model-selection";
@@ -397,9 +396,7 @@ export function defaultRoot(): string {
 
 export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
   root = canonicalLocalBaseRoot(root);
-  const llm =
-    recommendedForVram(vramGb)[0]?.modelId ??
-    "qwen2.5-coder-7b-instruct-q4_k_m";
+  const llm = "qwen2.5-coder-1.5b-instruct-q4_k_m";
   const stt =
     recommendedSttForVram(vramGb)[2]?.modelId ??
     recommendedSttForVram(vramGb)[0]?.modelId ??

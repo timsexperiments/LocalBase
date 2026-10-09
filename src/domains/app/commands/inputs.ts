@@ -153,6 +153,7 @@ export const installInputSchema = z
 export type InstallInput = z.infer<typeof installInputSchema>;
 
 export const serveInputSchema = z.object({
+  installMissing: z.boolean().default(false),
   host: hostSchema.optional(),
   port: portInputSchema.optional(),
   llm: z.boolean().optional(),

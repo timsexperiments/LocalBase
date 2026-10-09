@@ -230,28 +230,6 @@ test(
     const runtimeDir = join(root, "test-runtimes");
     const wrapperPort = reservePort();
     const backendPort = reservePort();
-    const backend = Bun.serve({
-      hostname: "127.0.0.1",
-      port: backendPort,
-      fetch: (request) => {
-        if (new URL(request.url).pathname === "/health") {
-          return Response.json({ status: "ok" });
-        }
-        return Response.json({
-          id: "chatcmpl-test",
-          object: "chat.completion",
-          created: 0,
-          model: SWITCHED_MODEL,
-          choices: [
-            {
-              index: 0,
-              message: { role: "assistant", content: "ok" },
-              finish_reason: "stop",
-            },
-          ],
-        });
-      },
-    });
     let gateway: Bun.Subprocess | undefined;
     let gatewayStdout: Promise<string> | undefined;
     let gatewayStderr: Promise<string> | undefined;
@@ -280,7 +258,9 @@ test(
           join(config.llmModelsDir, `${SWITCHED_MODEL}.gguf`),
           "model placeholder",
         ),
-        compileRuntimeFixture(join(runtimeDir, "llama-server")),
+        compileRuntimeFixture(join(runtimeDir, "llama-server"), {
+          httpBackend: true,
+        }),
       ]);
       for (const modelId of [INITIAL_MODEL, SWITCHED_MODEL]) {
         const expectedSizeBytes = byId(modelId)?.artifacts.find(
@@ -414,7 +394,6 @@ test(
     } finally {
       if (gateway) await stopProcess(gateway);
       await Promise.all([gatewayStdout, gatewayStderr].filter(Boolean));
-      backend.stop(true);
       rmSync(root, { recursive: true, force: true });
     }
   },
@@ -440,28 +419,6 @@ test(
       [`/repo/resolve/${repositoryRevision}/${primaryName}`]: primary,
       [artifactPath]: supplementary,
     });
-    const backend = Bun.serve({
-      hostname: "127.0.0.1",
-      port: backendPort,
-      fetch: (request) => {
-        if (new URL(request.url).pathname === "/health") {
-          return Response.json({ status: "ok" });
-        }
-        return Response.json({
-          id: "chatcmpl-test",
-          object: "chat.completion",
-          created: 0,
-          model: modelId,
-          choices: [
-            {
-              index: 0,
-              message: { role: "assistant", content: "ok" },
-              finish_reason: "stop",
-            },
-          ],
-        });
-      },
-    });
     let gateway: Bun.Subprocess | undefined;
     let gatewayStdout: Promise<string> | undefined;
     let gatewayStderr: Promise<string> | undefined;
@@ -481,7 +438,9 @@ test(
       mkdirSync(runtimeDir, { recursive: true });
       mkdirSync(config.llmModelsDir, { recursive: true });
       await Bun.write(join(config.llmModelsDir, primaryName), primary);
-      await compileRuntimeFixture(join(runtimeDir, "llama-server"));
+      await compileRuntimeFixture(join(runtimeDir, "llama-server"), {
+        httpBackend: true,
+      });
 
       const model = {
         modelId,
@@ -536,6 +495,7 @@ test(
         "--no-image",
         "--no-auth",
         "--bypass-memory-check",
+        "--install-missing",
       ];
       gateway = Bun.spawn([process.execPath, "--eval", serveRunnerSource()], {
         cwd: PROJECT_ROOT,
@@ -621,7 +581,6 @@ test(
     } finally {
       if (gateway) await stopProcess(gateway);
       await Promise.all([gatewayStdout, gatewayStderr].filter(Boolean));
-      backend.stop(true);
       await artifacts.stop();
       rmSync(root, { recursive: true, force: true });
     }
@@ -641,28 +600,6 @@ test(
     const wrapperPort = reservePort();
     const backendPort = reservePort();
     const modelFile = "custom-model.gguf";
-    const backend = Bun.serve({
-      hostname: "127.0.0.1",
-      port: backendPort,
-      fetch: (request) => {
-        if (new URL(request.url).pathname === "/health") {
-          return Response.json({ status: "ok" });
-        }
-        return Response.json({
-          id: "chatcmpl-test",
-          object: "chat.completion",
-          created: 0,
-          model: "custom-model",
-          choices: [
-            {
-              index: 0,
-              message: { role: "assistant", content: "ok" },
-              finish_reason: "stop",
-            },
-          ],
-        });
-      },
-    });
     let gateway: Bun.Subprocess | undefined;
     let gatewayStdout: Promise<string> | undefined;
     let gatewayStderr: Promise<string> | undefined;
@@ -681,7 +618,9 @@ test(
       mkdirSync(join(root, "bin"), { recursive: true });
       mkdirSync(runtimeDir, { recursive: true });
       await Bun.write(join(config.llmModelsDir, modelFile), "custom model");
-      await compileRuntimeFixture(join(runtimeDir, "llama-server"));
+      await compileRuntimeFixture(join(runtimeDir, "llama-server"), {
+        httpBackend: true,
+      });
 
       const buildProcess = Bun.spawn(
         [
@@ -783,7 +722,6 @@ test(
     } finally {
       if (gateway) await stopProcess(gateway);
       await Promise.all([gatewayStdout, gatewayStderr].filter(Boolean));
-      backend.stop(true);
       rmSync(root, { recursive: true, force: true });
     }
   },
