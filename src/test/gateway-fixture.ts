@@ -267,6 +267,7 @@ export type GatewayFixtureOptions = {
   imageEnabled?: boolean;
   videoEnabled?: boolean;
   parallel?: LocalBaseConfig["parallel"];
+  ctxSize?: number;
 };
 
 async function readProcessOutput(
@@ -1805,6 +1806,7 @@ export async function startGatewayFixture(
     config.otelEndpoint = options.otelEndpoint ?? "";
     config.otelSampleRatio = 100;
     config.parallel = options.parallel ?? config.parallel;
+    config.ctxSize = options.ctxSize ?? config.ctxSize;
     const database = new DatabaseSession();
     if (options.pendingRestart) persistConfiguration(database, config);
     else saveConfig(database, config);

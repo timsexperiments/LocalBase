@@ -25,6 +25,12 @@ test("validates environment overrides without mutating process state", () => {
   expect(() =>
     parseEnvironmentOverrides({ LOCALBASE_PORT: "not-a-port" }),
   ).toThrow("LOCALBASE_PORT: LOCALBASE_PORT must be an integer");
+  expect(() =>
+    parseEnvironmentOverrides({ LOCALBASE_DEFAULT_MAX_TOKENS: "0" }),
+  ).toThrow("LOCALBASE_DEFAULT_MAX_TOKENS");
+  expect(() =>
+    parseEnvironmentOverrides({ LOCALBASE_DEFAULT_MAX_TOKENS: "1.5" }),
+  ).toThrow("LOCALBASE_DEFAULT_MAX_TOKENS must be an integer");
 
   expect(
     parseEnvironmentOverrides({

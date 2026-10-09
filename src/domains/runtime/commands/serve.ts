@@ -3285,12 +3285,36 @@ export async function runServe(
       );
       if (!parsed.success) return parsed.response;
       const requestedModel = byId(parsed.data.model);
-      const hasToolRequest =
-        (parsed.data.tools?.length ?? 0) > 0 ||
-        (Array.isArray(parsed.data.functions) &&
-          parsed.data.functions.length > 0) ||
-        (parsed.data.tool_choice !== undefined &&
-          parsed.data.tool_choice !== "none");
+      const unsupportedToolParam = (() => {
+        if ((parsed.data.tools?.length ?? 0) > 0) return "tools";
+        if (
+          parsed.data.tool_choice !== undefined &&
+          parsed.data.tool_choice !== "none"
+        )
+          return "tool_choice";
+        if (
+          Array.isArray(parsed.data.functions) &&
+          parsed.data.functions.length > 0
+        )
+          return "functions";
+        if (
+          parsed.data.function_call !== undefined &&
+          parsed.data.function_call !== "none"
+        )
+          return "function_call";
+        const messageIndex = parsed.data.messages.findIndex(
+          (message) =>
+            message.role === "tool" ||
+            (message.role === "assistant" &&
+              (message.tool_calls?.length ?? 0) > 0),
+        );
+        if (messageIndex < 0) return undefined;
+        const message = parsed.data.messages[messageIndex];
+        return message.role === "assistant"
+          ? `messages[${messageIndex}].tool_calls`
+          : `messages[${messageIndex}]`;
+      })();
+      const hasToolRequest = unsupportedToolParam !== undefined;
       if (
         hasToolRequest &&
         requestedModel &&
@@ -3300,7 +3324,7 @@ export async function runServe(
           {
             message: `Model '${requestedModel.modelId}' does not support tool calling. Choose a tool-capable model from GET /v1/models.`,
             type: "invalid_request_error",
-            param: "tools",
+            param: unsupportedToolParam,
             code: "unsupported_model_capability",
           },
           400,
@@ -3317,9 +3341,18 @@ export async function runServe(
         parsed.data.max_completion_tokens === undefined
           ? {
               ...preparedRequest,
+              // llama.cpp exposes tokenization only after applying its chat
+              // template; this gateway has no cheap template-aware tokenizer.
+              // Keep the default within a conservative per-slot context budget.
               max_tokens: Math.min(
                 ctx.defaultMaxTokens,
-                requestedModel?.contextWindowTokens ?? ctx.config.ctxSize,
+                requestedModel?.contextWindowTokens ?? currentConfig.ctxSize,
+                Math.floor(
+                  currentConfig.ctxSize /
+                    (currentConfig.parallel === "auto"
+                      ? 4
+                      : currentConfig.parallel),
+                ),
               ),
             }
           : preparedRequest;

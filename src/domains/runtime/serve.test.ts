@@ -2107,9 +2107,9 @@ describe("API gateway integration", () => {
     expect(health.modalities.llm.state).toBe("running");
   });
 
-  test("rejects tool requests for models without catalog tool support", async () => {
+  test("rejects tool requests and tool history for models without catalog tool support", async () => {
     const requestOffset = gateway.upstreamRequests.length;
-    for (const toolFields of [
+    for (const toolCase of [
       {
         tools: [
           {
@@ -2119,9 +2119,38 @@ describe("API gateway integration", () => {
         ],
         tool_choice: "required",
       },
-      { tool_choice: "auto" },
-      { functions: [{ name: "weather", parameters: { type: "object" } }] },
+      { tool_choice: "auto", param: "tool_choice" },
+      {
+        functions: [{ name: "weather", parameters: { type: "object" } }],
+        param: "functions",
+      },
+      { function_call: "auto", param: "function_call" },
+      {
+        messages: [
+          { role: "user", content: "hello" },
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: { name: "weather", arguments: "{}" },
+              },
+            ],
+          },
+        ],
+        param: "messages[1].tool_calls",
+      },
+      {
+        messages: [
+          { role: "user", content: "hello" },
+          { role: "tool", tool_call_id: "call_1", content: "sunny" },
+        ],
+        param: "messages[1]",
+      },
     ]) {
+      const { param, ...toolFields } = toolCase as Record<string, unknown>;
       const response = await request("/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2135,7 +2164,8 @@ describe("API gateway integration", () => {
       expect(await response.json()).toMatchObject({
         error: {
           type: "invalid_request_error",
-          param: "tools",
+          param: param ?? "tools",
+          code: "unsupported_model_capability",
           message: expect.stringContaining(
             "qwen2.5-coder-1.5b-instruct-q4_k_m",
           ),
@@ -2162,6 +2192,54 @@ describe("API gateway integration", () => {
         JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}"),
       ).toMatchObject(limit);
     }
+  });
+
+  test.each([
+    { name: "small context", ctxSize: 2048, parallel: 1, expected: 2048 },
+    { name: "parallel slots", ctxSize: 8192, parallel: 2, expected: 4096 },
+  ])(
+    "caps default generation for $name",
+    async ({ ctxSize, parallel, expected }) => {
+      const boundedGateway = await startGatewayFixture({ ctxSize, parallel });
+      try {
+        const response = await fetch(
+          `${boundedGateway.baseUrl}/v1/chat/completions`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+              messages: [{ role: "user", content: "hello" }],
+            }),
+          },
+        );
+        expect(response.status).toBe(200);
+        await response.text();
+        expect(
+          JSON.parse(boundedGateway.upstreamRequests.at(-1)?.body ?? "{}")
+            .max_tokens,
+        ).toBe(expected);
+      } finally {
+        await boundedGateway.stop();
+      }
+    },
+  );
+
+  test("caps default generation on streaming requests", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [{ role: "user", content: "hello" }],
+        stream: true,
+      }),
+    });
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(
+      JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}").max_tokens,
+    ).toBe(4096);
   });
 
   test("forwards user-only chat requests without injected instructions", async () => {

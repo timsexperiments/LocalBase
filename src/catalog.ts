@@ -1898,8 +1898,9 @@ const CATALOG_SOURCE = [
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
-    commercialStatus: "open",
-    catch: "License is not specified in the pinned GGUF repository.",
+    commercialStatus: "conditional",
+    catch:
+      "Qwen license; authorization is required for products with over 100 million monthly active users. See the upstream Qwen license.",
     notes:
       "Top-tier 72B reasoning and coding model. Superb logic, math, and code generation.",
   },
