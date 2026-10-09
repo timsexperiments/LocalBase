@@ -1941,7 +1941,10 @@ export async function applyElevatedMemoryPressure(
 }
 
 export async function admitVideoWithIdleRecovery(
-  reconciler: Pick<RuntimeReconciler, "admitModel" | "recoverWithIdleEviction">,
+  reconciler: Pick<
+    RuntimeReconciler,
+    "admitModel" | "recoverWithIdleEviction" | "waitForAdmissionAfterEviction"
+  >,
   modelId: string,
   signal: AbortSignal,
 ): Promise<Awaited<ReturnType<RuntimeReconciler["admitModel"]>>> {
@@ -1952,6 +1955,16 @@ export async function admitVideoWithIdleRecovery(
   ) {
     signal.throwIfAborted();
     if (!(await reconciler.recoverWithIdleEviction("video", modelId, signal))) {
+      return first;
+    }
+    signal.throwIfAborted();
+    if (
+      !(await reconciler.waitForAdmissionAfterEviction(
+        "video",
+        modelId,
+        signal,
+      ))
+    ) {
       return first;
     }
     signal.throwIfAborted();
@@ -1968,6 +1981,16 @@ export async function admitVideoWithIdleRecovery(
     signal.throwIfAborted();
     if (error.capacity !== undefined) throw error;
     if (!(await reconciler.recoverWithIdleEviction("video", modelId, signal))) {
+      throw error;
+    }
+    signal.throwIfAborted();
+    if (
+      !(await reconciler.waitForAdmissionAfterEviction(
+        "video",
+        modelId,
+        signal,
+      ))
+    ) {
       throw error;
     }
     signal.throwIfAborted();

@@ -78,6 +78,9 @@ type PreparedModelAdmissionResult =
 export type ModelAdmissionResult =
   Readonly<{ kind: "admitted"; value: ModelAdmission }> | ModelAdmissionFailure;
 
+const MEMORY_SETTLE_TIMEOUT_MS = 3_000;
+const MEMORY_SETTLE_POLL_INTERVAL_MS = 100;
+
 type ConfiguredModalities = Record<RuntimeModality, boolean>;
 type ModalityTransitions = Record<RuntimeModality, Promise<void>>;
 
@@ -422,6 +425,62 @@ export class RuntimeReconciler {
       } else {
         await releaseClaims;
       }
+    }
+  }
+
+  /**
+   * Waits for an uncredited host-memory sample to admit a model after runtimes
+   * have stopped. Projected credits are used to decide whether eviction is
+   * worthwhile, but are never carried into the actual post-stop admission.
+   */
+  async waitForAdmissionAfterEviction(
+    modality: RuntimeModality,
+    modelId: string,
+    signal?: AbortSignal,
+    source: RuntimeConfigSnapshot = this.snapshot,
+  ): Promise<boolean> {
+    if (!configuredRuntimeModality(modality, source.config, this.ownership))
+      return false;
+    const candidate = this.factory.create(modality, {
+      ...source,
+      config: { ...source.config, [activeModelField(modality)]: modelId },
+    });
+    if (!candidate.preflight) return true;
+    const stillToBeStopped =
+      modality === "video" &&
+      modelId !== activeModel(modality, this.appliedSnapshots[modality].config)
+        ? [this.supervisors.get(modality)?.runtimeId()].filter(
+            (runtimeId): runtimeId is string => runtimeId !== undefined,
+          )
+        : [];
+
+    const deadline = Date.now() + MEMORY_SETTLE_TIMEOUT_MS;
+    while (true) {
+      this.throwIfAborted(signal);
+      try {
+        const rejection = await this.waitForAbort(
+          candidate.preflight(stillToBeStopped, signal),
+          signal,
+        );
+        if (!rejection) return true;
+        if (rejection.capacity) return false;
+      } catch (error) {
+        if (signal?.aborted || error instanceof RuntimeRequestAbortedError)
+          throw new RuntimeRequestAbortedError();
+        return false;
+      }
+
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) return false;
+      await this.waitForAbort(
+        new Promise<void>((resolve) =>
+          setTimeout(
+            resolve,
+            Math.min(MEMORY_SETTLE_POLL_INTERVAL_MS, remainingMs),
+          ),
+        ),
+        signal,
+      );
     }
   }
 
@@ -954,6 +1013,13 @@ export class RuntimeReconciler {
       }
       const previous = this.supervisors.take(modality);
       await previous?.shutdown();
+      dispatchLease?.throwIfCancelled();
+      await this.waitForAdmissionAfterEviction(
+        modality,
+        modelId,
+        signal,
+        source,
+      );
       dispatchLease?.throwIfCancelled();
       this.supervisors.add(modality, this.factory.create(modality, target));
       this.appliedSnapshots[modality] = target;
