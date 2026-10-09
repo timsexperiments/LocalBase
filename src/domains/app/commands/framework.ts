@@ -318,6 +318,7 @@ export async function commandHelpText(
     examples?.length
       ? `EXAMPLES\n\n${examples.map((example) => `  ${example}`).join("\n")}`
       : "",
+    "License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase",
   ]
     .filter(Boolean)
     .join("\n\n");
