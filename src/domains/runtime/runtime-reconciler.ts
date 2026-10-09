@@ -1,5 +1,11 @@
 import type { ILogger } from "../observability/logging";
 import type { LocalBaseConfig } from "../../manager";
+import { byId } from "../../catalog";
+import {
+  experimentalModelOptInRequired,
+  modelEligibilityReason,
+} from "../models/model-eligibility";
+import { ModelManagementError } from "../models/model-management-contract";
 import {
   type RuntimeConfigController,
   type RuntimeConfigSnapshot,
@@ -712,6 +718,16 @@ export class RuntimeReconciler {
         desiredSnapshot,
       );
       if (!modelId) return { kind: "model-not-found" };
+      if (modality === "video") {
+        const model = byId(modelId);
+        const reason = model
+          ? modelEligibilityReason(model, {
+              allowExperimental: desiredSnapshot.config.allowExperimental,
+            })
+          : null;
+        if (reason === experimentalModelOptInRequired)
+          throw new ModelManagementError("invalid_request", reason);
+      }
       let admissionSnapshot = this.appliedSnapshots[modality];
       if (
         modelId !== activeModel(modality, admissionSnapshot.config) &&

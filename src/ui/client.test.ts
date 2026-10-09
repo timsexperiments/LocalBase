@@ -503,6 +503,7 @@ describe("playground client boundaries", () => {
         name: "Test",
         kind: "llm",
         quantization: "Q4",
+        qualificationState: "qualified",
         memory: { minimumVramEstimateGb: 1, storageEstimateGb: 1 },
         inputModalities: ["text"],
         outputModalities: ["text"],

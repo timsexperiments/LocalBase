@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test";
-import { ModelInstallConsentError } from "../startup-preflight";
 import { byId } from "../../../catalog";
 import { RuntimeMemoryAdmissionError } from "../memory-controller";
+import { ModelInstallConsentError } from "../startup-preflight";
 import {
   projectVideoJob,
   qualifiedVideoInput,
   videoProfileMismatchMessage,
 } from "./gateway-contract";
 import { VideoBackendJobFailureError } from "./video-job-manager";
+import { assertModelEligible } from "../../models/model-eligibility";
+import { ModelManagementError } from "../../models/model-management-contract";
 import { testPcm16Wav, testPng } from "./video-input.fixtures";
 
 const model = byId("wan2.1-t2v-1.3b-q8_0");
@@ -224,6 +226,48 @@ test("projects memory failures as insufficient_memory", () => {
     error: {
       code: "model_install_consent_required",
       message: expect.stringContaining("--install-missing"),
+    },
+  });
+  expect(
+    projectVideoJob({
+      ...base,
+      failure: new ModelManagementError(
+        "invalid_request",
+        "Experimental models require models.allowExperimental = true.",
+      ),
+    }),
+  ).toMatchObject({
+    error: {
+      code: "experimental_model_not_allowed",
+      message: "Experimental models require models.allowExperimental = true.",
+    },
+  });
+  expect(
+    projectVideoJob({
+      ...base,
+      failure: new ModelManagementError("invalid_request", "internal detail"),
+    }),
+  ).toMatchObject({ error: { code: "video_generation_failed" } });
+  expect(
+    projectVideoJob({
+      ...base,
+      failure: (() => {
+        try {
+          assertModelEligible(byId("wan2.2-s2v-14b-fp8")!, {
+            allowExperimental: true,
+            target: null,
+          });
+        } catch (error) {
+          return error as Error;
+        }
+        throw new Error("Expected the S2V model to be hardware-ineligible.");
+      })(),
+    }),
+  ).toMatchObject({
+    error: {
+      code: "model_hardware_ineligible",
+      message:
+        "wan2.2-s2v-14b-fp8: Requires Linux x64 with a single NVIDIA GPU.",
     },
   });
 });

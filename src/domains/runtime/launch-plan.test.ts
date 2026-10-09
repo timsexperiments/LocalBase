@@ -279,6 +279,7 @@ describe("runtime launch plans", () => {
     expect(plan).toMatchObject({
       mode: "s2v",
       audioEncoderPath: `${root}/models/video/wav2vec2.safetensors`,
+      memoryDemand: { confidence: "estimated" },
     });
   });
 

@@ -94,6 +94,7 @@ import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
 import { playgroundResponse } from "../../../ui/static";
 import { createModelManagement } from "../../models/model-management";
+import { videoTargetFromTopology } from "../../models/model-eligibility";
 import {
   ModelManagementError,
   modelManagementRequestSchema,
@@ -2927,6 +2928,7 @@ export async function runServe(
     runtimeConfig: ctx.runtimeConfig,
     lifecycle: () => reconciler.lifecycleSnapshot(),
     protectedModelIds: () => reconciler.protectedModelIds(),
+    videoTarget: () => videoTargetFromTopology(memoryProvider.topology),
   });
   const authManagement = createAuthManagement({
     root: config.root,

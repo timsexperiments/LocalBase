@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { CATALOG, type ModelSpec } from "../../catalog";
 import { DatabaseSession } from "../../db/client";
+import { configTable } from "../../db/schema";
 import { defaultConfig, saveConfig } from "../../manager";
 import { RuntimeConfigController } from "../runtime/config-snapshot";
 import { createRuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
@@ -119,7 +120,10 @@ test("full catalog contract includes installed, enabled, active and exact footpr
   const f = fixture();
   writeFileSync(f.path, "abc");
   const response = modelManagementSchema.parse(await f.management.read());
-  expect(response.models).toHaveLength(CATALOG.length);
+  expect(response.models).toHaveLength(
+    CATALOG.filter((entry) => entry.qualificationState !== "experimental")
+      .length,
+  );
   expect(
     response.models.find((entry) => entry.id === f.model.modelId),
   ).toMatchObject({
@@ -140,6 +144,65 @@ test("full catalog contract includes installed, enabled, active and exact footpr
   ).toBe(false);
   await expect(f.management.run("../outside", "install")).rejects.toMatchObject(
     { code: "invalid_request" },
+  );
+});
+
+test("experimental models stay hidden and cannot install or activate without opt-in", async () => {
+  const f = fixture();
+  const model: ModelSpec = {
+    ...f.model,
+    modelId: `${f.model.modelId}-experimental`,
+    qualificationState: "experimental",
+  };
+  mutableCatalog.push(model);
+  cleanup.push(() => mutableCatalog.splice(mutableCatalog.indexOf(model), 1));
+  expect(
+    (await f.management.read()).models.some(
+      (entry) => entry.id === model.modelId,
+    ),
+  ).toBe(false);
+  await expect(f.management.run(model.modelId, "install")).rejects.toThrow(
+    "models.allowExperimental = true",
+  );
+  await expect(f.management.run(model.modelId, "activate")).rejects.toThrow(
+    "models.allowExperimental = true",
+  );
+
+  writeFileSync(f.path, "abc");
+  await f.runtimeConfig.update((config) => {
+    config.allowExperimental = true;
+  });
+  expect(
+    (await f.management.read()).models.some(
+      (entry) => entry.id === model.modelId,
+    ),
+  ).toBe(true);
+  await f.management.run(model.modelId, "enable");
+  await f.management.run(model.modelId, "activate");
+  expect(f.runtimeConfig.copy().activeSttModel).toBe(model.modelId);
+});
+
+test("S2V management disables installation when no supported GPU target is present", async () => {
+  const f = fixture();
+  await f.runtimeConfig.update((config) => {
+    config.allowExperimental = true;
+  });
+  const management = createModelManagement({
+    runtimeConfig: f.runtimeConfig,
+    lifecycle: () => f.runtimes,
+    videoTarget: () => null,
+  });
+  const s2v = CATALOG.find((model) => model.modelId === "wan2.2-s2v-14b-fp8");
+  if (!s2v) throw new Error("Expected the Wan S2V profile");
+  const entry = (await management.read()).models.find(
+    (model) => model.id === s2v.modelId,
+  );
+  expect(entry).toMatchObject({
+    canInstall: false,
+    installUnavailableReason: "Requires Linux x64 with a single NVIDIA GPU.",
+  });
+  await expect(management.run(s2v.modelId, "install")).rejects.toThrow(
+    "Requires Linux x64 with a single NVIDIA GPU",
   );
 });
 
@@ -224,6 +287,26 @@ test("partial downloads count toward disk footprint and can be uninstalled", asy
   await f.management.run(f.model.modelId, "uninstall");
   expect(existsSync(`${f.path}.partial`)).toBe(false);
   expect(await entry()).toMatchObject({ installed: false, installedBytes: 0 });
+});
+
+test("partial S2V download can be uninstalled after its GPU target disappears", async () => {
+  const f = fixture();
+  const model = CATALOG.find((entry) => entry.modelId === "wan2.2-s2v-14b-fp8");
+  if (!model) throw new Error("Expected the Wan S2V profile");
+  await f.runtimeConfig.update((config) => {
+    config.allowExperimental = true;
+  });
+  const management = createModelManagement({
+    runtimeConfig: f.runtimeConfig,
+    lifecycle: () => f.runtimes,
+    videoTarget: () => null,
+  });
+  const artifact = model.artifacts[0];
+  if (!artifact) throw new Error("Expected an S2V artifact");
+  const path = join(f.config.videoModelsDir, artifact.filename);
+  writeFileSync(`${path}.partial`, "partial");
+  await management.run(model.modelId, "uninstall");
+  expect(existsSync(`${path}.partial`)).toBe(false);
 });
 
 test("unsafe partial target prevents deletion of a valid final artifact", async () => {
@@ -316,6 +399,34 @@ test("disable preserves external persisted updates and read refreshes enabled st
       (entry) => entry.id === f.model.modelId,
     )?.enabled,
   ).toBe(true);
+});
+
+test("persisted Wan selection remains unavailable, disableable, and uninstallable without NVIDIA", async () => {
+  const f = fixture();
+  const id = "wan2.1-t2v-1.3b-q8_0";
+  f.database
+    .get(f.root)
+    .update(configTable)
+    .set({
+      selectedVideoModels: JSON.stringify([id]),
+      activeVideoModel: id,
+    })
+    .run();
+  const management = createModelManagement({
+    runtimeConfig: f.runtimeConfig,
+    lifecycle: () => f.runtimes,
+    videoTarget: () => null,
+  });
+  expect(
+    (await management.read()).models.find((model) => model.id === id),
+  ).toMatchObject({
+    enabled: true,
+    canInstall: false,
+    installUnavailableReason: "Requires Linux x64 with a single NVIDIA GPU.",
+  });
+  await management.run(id, "disable");
+  expect(f.runtimeConfig.copy().selectedVideoModels).toEqual([]);
+  await management.run(id, "uninstall");
 });
 
 test("uninstall rejects externally enabled models even when the controller was stale", async () => {

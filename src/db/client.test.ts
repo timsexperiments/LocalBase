@@ -11,6 +11,60 @@ import { migrationsFolder } from "./migration-assets";
 import { validateMigrationJournal } from "./migration-integrity";
 import * as schema from "./schema";
 import { defaultApiKeyScopes } from "../domains/auth/authorization";
+import { defaultConfig, loadConfig, saveConfig } from "../manager";
+
+test("adds the default-off experimental opt-in without replacing the config row", () => {
+  const root = mkdtempSync(
+    join(tmpdir(), "local-base-experimental-migration-"),
+  );
+  const session = new DatabaseSession();
+  const sqlite = new Database(":memory:");
+  try {
+    saveConfig(session, defaultConfig(root));
+    const source = new Database(databasePath(root), { readonly: true });
+    const row = source.query("SELECT * FROM config").get() as Record<
+      string,
+      unknown
+    >;
+    source.close();
+    delete row.allow_experimental;
+    const history = readMigrationFiles({
+      migrationsFolder: migrationsFolder(),
+    });
+    sqlite.exec(
+      "CREATE TABLE __drizzle_migrations (id INTEGER PRIMARY KEY, hash TEXT NOT NULL, created_at INTEGER)",
+    );
+    for (const migration of history.slice(0, -1)) {
+      for (const statement of migration.sql) sqlite.exec(statement);
+      sqlite
+        .prepare(
+          "INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)",
+        )
+        .run(migration.hash, migration.folderMillis);
+    }
+    const columns = Object.keys(row);
+    sqlite
+      .prepare(
+        `INSERT INTO config (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`,
+      )
+      .run(...(Object.values(row) as (string | number | null)[]));
+    migrate(drizzle({ client: sqlite, schema }), {
+      migrationsFolder: migrationsFolder(),
+    });
+    expect(sqlite.query("SELECT * FROM config").get()).toEqual({
+      ...row,
+      allow_experimental: 0,
+    });
+    const config = loadConfig(session, root);
+    config.allowExperimental = true;
+    saveConfig(session, config);
+    expect(loadConfig(session, root).allowExperimental).toBe(true);
+  } finally {
+    sqlite.close();
+    session.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("migrates existing active, expired, and revoked keys without changing credentials or ownership", () => {
   const sqlite = new Database(":memory:");
