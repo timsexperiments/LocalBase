@@ -1394,6 +1394,70 @@ test("drains a warming video job when the model is disabled", async () => {
   }
 });
 
+test("emergency eviction aborts stopped-video preflight without leaking an admission lease", async () => {
+  const root = mkdtempSync(
+    join(tmpdir(), "localbase-video-preflight-emergency-"),
+  );
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  const modelId = "wan2.1-t2v-1.3b-q8_0";
+  config.selectedVideoModels = [modelId];
+  config.activeVideoModel = modelId;
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let preflightStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    preflightStarted = resolve;
+  });
+  const supervisor: RuntimeSupervisor = {
+    kind: "server",
+    runtimeId: () => `video:${modelId}`,
+    state: () => "idle",
+    async ensureRunning() {},
+    async kill() {},
+    async shutdown() {},
+  };
+  const factory: RuntimeSupervisorFactory = {
+    baseUrl: () => "http://127.0.0.1:1",
+    create: () => ({
+      ...supervisor,
+      async preflight(_releasing, signal) {
+        preflightStarted();
+        return await new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            "abort",
+            () => reject(new Error("aborted")),
+            {
+              once: true,
+            },
+          );
+        });
+      },
+    }),
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ video: supervisor }),
+    factory,
+    { event() {} },
+  );
+
+  try {
+    const admission = reconciler.admitModel("video", modelId);
+    await started;
+    await reconciler.evictAllRuntimes();
+    await expect(admission).rejects.toThrow();
+    expect(reconciler.lifecycleSnapshot().video).toMatchObject({
+      admission: { kind: "known", activeCount: 0 },
+      queue: { active: 0, waiting: 0 },
+    });
+  } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test.each([
   ["fits after eviction", false],
   ["cannot fit even after eviction", true],

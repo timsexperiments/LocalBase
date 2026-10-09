@@ -753,6 +753,9 @@ test("evicts runtimes only for elevated memory-pressure transitions", async () =
     async evictAllRuntimes() {
       allEvictions += 1;
     },
+    isWithinReclaimGrace() {
+      return false;
+    },
   };
   const videoJobs = {
     async failActiveForMemoryPressure() {
@@ -826,6 +829,9 @@ test("applies constrained and critical pressure policy using the current sample"
       async evictAllRuntimes() {
         events.push("all");
       },
+      isWithinReclaimGrace() {
+        return false;
+      },
     };
     const videoJobs = {
       async failActiveForMemoryPressure() {
@@ -844,6 +850,51 @@ test("applies constrained and critical pressure policy using the current sample"
   expect(await run("constrained", 0, 0)).toEqual(["idle", "fail"]);
   expect(await run("constrained", 2, 0)).toEqual(["idle"]);
   expect(await run("critical", 0, 0)).toEqual(["fail", "all"]);
+});
+
+test("constrained pressure respects reclaim grace while critical pressure bypasses it", async () => {
+  let withinGrace = true;
+  const events: string[] = [];
+  const reconciler = {
+    async evictIdleRuntimes() {
+      return 0;
+    },
+    async evictAllRuntimes() {
+      events.push("evict-all");
+    },
+    isWithinReclaimGrace() {
+      return withinGrace;
+    },
+  };
+  const jobs = {
+    async failActiveForMemoryPressure() {
+      events.push("fail");
+    },
+  };
+  const transition = (
+    state: "constrained" | "critical",
+  ): MemorySafetyTransition => ({
+    previous: { state: "constrained", consecutiveNormalSnapshots: 0 },
+    current: { state, consecutiveNormalSnapshots: 0 },
+    action: state === "critical" ? "emergency-stop" : "constrain",
+  });
+
+  await applyElevatedMemoryPressure(
+    reconciler,
+    jobs,
+    transition("constrained"),
+  );
+  expect(events).toEqual([]);
+  withinGrace = false;
+  await applyElevatedMemoryPressure(
+    reconciler,
+    jobs,
+    transition("constrained"),
+  );
+  expect(events).toEqual(["fail"]);
+  withinGrace = true;
+  await applyElevatedMemoryPressure(reconciler, jobs, transition("critical"));
+  expect(events).toEqual(["fail", "fail", "evict-all"]);
 });
 
 test("cancels response leases on cancellation and releases them on completion", async () => {

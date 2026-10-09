@@ -1929,14 +1929,22 @@ export async function finalizeGatewayShutdown(
 }
 
 export async function applyElevatedMemoryPressure(
-  reconciler: Pick<RuntimeReconciler, "evictIdleRuntimes" | "evictAllRuntimes">,
+  reconciler: Pick<
+    RuntimeReconciler,
+    "evictIdleRuntimes" | "evictAllRuntimes"
+  > &
+    Partial<Pick<RuntimeReconciler, "isWithinReclaimGrace">>,
   videoJobs: Pick<VideoJobManager, "failActiveForMemoryPressure">,
   transition: MemorySafetyTransition,
 ): Promise<void> {
   const { current } = transition;
   if (current.state === "constrained") {
     const evicted = await reconciler.evictIdleRuntimes();
-    if (evicted === 0 && current.consecutiveNormalSnapshots === 0) {
+    if (
+      evicted === 0 &&
+      current.consecutiveNormalSnapshots === 0 &&
+      !reconciler.isWithinReclaimGrace?.()
+    ) {
       await videoJobs.failActiveForMemoryPressure();
     }
   } else if (current.state === "critical") {
@@ -2967,10 +2975,9 @@ export async function runServe(
               modelId,
               signal,
             );
-            // Video jobs are asynchronous, so a memory rejection surfaces as an
-            // unavailable runtime on the job rather than an HTTP error.
+            // Preserve the memory error so the asynchronous job reports its code.
             if (selection.kind === "insufficient-memory") {
-              return { kind: "unavailable" };
+              throw selection.error;
             }
             if (selection.kind !== "admitted") return selection;
             return {
