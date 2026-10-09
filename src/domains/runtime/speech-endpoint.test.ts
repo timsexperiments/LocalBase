@@ -77,7 +77,11 @@ describe("OpenAI speech endpoint", () => {
         body: JSON.stringify(speechBody(overrides)),
       });
       expect(response.status).toBe(400);
-      expect(JSON.stringify(await response.json())).toContain(expected);
+      const body = await response.json();
+      expect(JSON.stringify(body)).toContain(expected);
+      if (overrides.response_format === "mp3") {
+        expect(body).toMatchObject({ error: { param: "response_format" } });
+      }
     }
     expect(await gateway.readTtsRuntimeEvents()).toHaveLength(before);
     expect(

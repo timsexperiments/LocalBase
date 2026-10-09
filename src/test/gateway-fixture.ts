@@ -280,10 +280,21 @@ async function readProcessOutput(
 }
 
 function reservePort(): number {
+  const minPort = Number(process.env.LOCALBASE_TEST_PORT_MIN ?? 24_000);
+  const maxPort = Number(process.env.LOCALBASE_TEST_PORT_MAX ?? 29_999);
+  if (
+    !Number.isInteger(minPort) ||
+    !Number.isInteger(maxPort) ||
+    minPort < 1 ||
+    maxPort > 65_535 ||
+    minPort > maxPort
+  ) {
+    throw new Error("Invalid LOCALBASE_TEST_PORT_MIN/MAX range.");
+  }
   for (let attempt = 0; attempt < 20; attempt++) {
     const random = new Uint32Array(1);
     crypto.getRandomValues(random);
-    const port = 24_000 + (random[0] % 6_000);
+    const port = minPort + (random[0] % (maxPort - minPort + 1));
     try {
       const reservation = Bun.serve({
         hostname: "127.0.0.1",
@@ -1105,6 +1116,23 @@ function startMockUpstream(
                 controller.error(new Error("fixture upstream stream failure")),
               20,
             );
+          },
+        });
+        return new Response(body, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      if (mode === "error-mid-event") {
+        let emitted = false;
+        const body = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            if (emitted) {
+              await new Promise((resolve) => setTimeout(resolve, 20));
+              controller.error("fixture partial event failure");
+              return;
+            }
+            emitted = true;
+            controller.enqueue(new TextEncoder().encode('data: {"id":"cut'));
           },
         });
         return new Response(body, {

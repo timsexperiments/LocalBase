@@ -361,12 +361,12 @@ function notConfigured(feature: string): Response {
   );
 }
 
-function badRequest(message: string): Response {
+function badRequest(message: string, param: string | null = null): Response {
   return openAIErrorResponse(
     {
       message,
       type: "invalid_request_error",
-      param: null,
+      param,
       code: "validation_failed",
     },
     400,
@@ -542,7 +542,12 @@ function validationFailure(error: z.ZodError): Response {
   const issues = error.issues
     .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
     .join(", ");
-  return badRequest(`Validation failed: ${issues}`);
+  const param = error.issues.some(
+    (issue) => issue.path[0] === "response_format",
+  )
+    ? "response_format"
+    : null;
+  return badRequest(`Validation failed: ${issues}`, param);
 }
 
 const chatToolCallSchema = z
@@ -1422,30 +1427,61 @@ function validateEventStream(
   );
 }
 
-function recoverEventStreamReadErrors(
+export function recoverEventStreamReadErrors(
   body: ReadableStream<Uint8Array>,
   onError?: () => void,
 ): ReadableStream<Uint8Array> {
   const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffered = "";
   let failed = false;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    reader.releaseLock();
+  };
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       if (failed) return;
       try {
-        const result = await reader.read();
-        if (result.done) controller.close();
-        else controller.enqueue(result.value);
+        while (true) {
+          const result = await reader.read();
+          if (result.done) {
+            buffered += decoder.decode();
+            if (buffered) controller.enqueue(encoder.encode(buffered));
+            controller.close();
+            release();
+            return;
+          }
+          buffered += decoder.decode(result.value, { stream: true });
+          const boundaries = [
+            ...buffered.matchAll(/(?:\r\n|\r|\n)(?:\r\n|\r|\n)/g),
+          ];
+          const last = boundaries.at(-1);
+          if (last?.index !== undefined) {
+            const end = last.index + last[0].length;
+            controller.enqueue(encoder.encode(buffered.slice(0, end)));
+            buffered = buffered.slice(end);
+            return;
+          }
+        }
       } catch {
         failed = true;
         onError?.();
-        // OpenAI's stream parsers treat the error payload as terminal. Do not
-        // append [DONE]: clients must not mistake a partial completion for success.
+        buffered = "";
         controller.enqueue(upstreamErrorEvent("The upstream stream failed."));
         controller.close();
+        release();
       }
     },
     async cancel(reason) {
-      await reader.cancel(reason);
+      try {
+        await reader.cancel(reason);
+      } finally {
+        release();
+      }
     },
   });
 }
@@ -2165,6 +2201,37 @@ export async function admitModelWithIdleRecovery(
       },
     },
   };
+}
+
+export async function generateSpeechWithIdleRecovery<T>(
+  reconciler: Pick<
+    RuntimeReconciler,
+    "recoverWithIdleEviction" | "waitForAdmissionAfterEviction"
+  >,
+  modelId: string,
+  signal: AbortSignal,
+  generate: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await generate();
+  } catch (error) {
+    if (
+      !(error instanceof RuntimeMemoryAdmissionError) ||
+      error.capacity !== undefined ||
+      signal.aborted ||
+      !(await reconciler.recoverWithIdleEviction("tts", modelId, signal))
+    ) {
+      throw error;
+    }
+    signal.throwIfAborted();
+    if (
+      !(await reconciler.waitForAdmissionAfterEviction("tts", modelId, signal))
+    ) {
+      throw error;
+    }
+    signal.throwIfAborted();
+    return await generate();
+  }
 }
 
 export function reportMemoryPressureTransition(
@@ -3217,13 +3284,21 @@ export async function runServe(
           inference.finish({ outcome: "error", httpStatus: response.status });
           return response;
         }
+        const speechSupervisor = admission.supervisor;
 
         await waitForRequestAbort(admission.ready, request.signal);
-        const wav = await admission.supervisor.generateSpeech({
-          text: parsed.data.input,
-          voice: parsed.data.voice,
-          signal: request.signal,
-        });
+        const generate = () =>
+          speechSupervisor.generateSpeech({
+            text: parsed.data.input,
+            voice: parsed.data.voice,
+            signal: request.signal,
+          });
+        const wav = await generateSpeechWithIdleRecovery(
+          reconciler,
+          parsed.data.model,
+          request.signal,
+          generate,
+        );
         admission.markResponseStarted();
         admission.release();
         admission = undefined;

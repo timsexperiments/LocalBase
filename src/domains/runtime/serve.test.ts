@@ -25,10 +25,12 @@ import {
   admitModelWithIdleRecovery,
   applyElevatedMemoryPressure,
   finalizeGatewayShutdown,
+  generateSpeechWithIdleRecovery,
   httpBaseUrl,
   internalGatewayFailure,
   inferenceQueueError,
   proxyWithAdmission,
+  recoverEventStreamReadErrors,
   reportMemoryPressureTransition,
   resourceUnavailable,
   speechGenerationFailure,
@@ -76,6 +78,43 @@ test("formats IPv4, hostnames, and IPv6 literals as HTTP base URLs", () => {
   expect(httpBaseUrl("127.0.0.1", 2273)).toBe("http://127.0.0.1:2273");
   expect(httpBaseUrl("localhost", 2273)).toBe("http://localhost:2273");
   expect(httpBaseUrl("::1", 2273)).toBe("http://[::1]:2273");
+});
+
+test("releases upstream stream readers after completion, failure, and cancellation", async () => {
+  const encoder = new TextEncoder();
+  const completed = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode("data: ok\n\n"));
+      controller.close();
+    },
+  });
+  await new Response(recoverEventStreamReadErrors(completed)).arrayBuffer();
+  expect(completed.locked).toBe(false);
+
+  const failed = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.error(new Error("read failure"));
+    },
+  });
+  const failedResult = await new Response(
+    recoverEventStreamReadErrors(failed),
+  ).text();
+  expect(failedResult).toContain('"code":"upstream_error"');
+  expect(failed.locked).toBe(false);
+
+  let cancelObserved = false;
+  const cancelled = new ReadableStream<Uint8Array>({
+    cancel() {
+      cancelObserved = true;
+    },
+  });
+  const response = new Response(recoverEventStreamReadErrors(cancelled));
+  const clientReader = response.body!.getReader();
+  const pendingRead = clientReader.read();
+  await clientReader.cancel("client aborted");
+  await pendingRead;
+  expect(cancelObserved).toBe(true);
+  expect(cancelled.locked).toBe(false);
 });
 
 async function expectGatewayListenerHost(
@@ -320,7 +359,7 @@ test("formats memory admission rejection as a retryable OpenAI error", async () 
   });
 });
 
-test.each(["image", "video", "stt", "tts"] as const)(
+test.each(["image", "video", "stt"] as const)(
   "%s admission evicts idle peers and retries once after memory rejection",
   async (modality) => {
     const failure = new RuntimeMemoryAdmissionError({
@@ -407,6 +446,44 @@ test.each(["image", "video", "stt", "tts"] as const)(
     });
   },
 );
+
+test("TTS generation memory rejection recovers once while retaining its admission", async () => {
+  const rejection = new RuntimeMemoryAdmissionError({
+    kind: "rejected",
+    reason: "system-memory",
+    poolId: "system",
+  });
+  let attempts = 0;
+  let evictions = 0;
+  let waits = 0;
+  const reconciler = {
+    async recoverWithIdleEviction(modality: string, modelId: string) {
+      expect([modality, modelId]).toEqual(["tts", "speech-model"]);
+      evictions += 1;
+      return true;
+    },
+    async waitForAdmissionAfterEviction() {
+      waits += 1;
+      return true;
+    },
+  };
+  const result = await generateSpeechWithIdleRecovery(
+    reconciler,
+    "speech-model",
+    new AbortController().signal,
+    async () => {
+      attempts += 1;
+      if (attempts === 1) throw rejection;
+      return new Uint8Array([1, 2, 3]);
+    },
+  );
+  expect([...result]).toEqual([1, 2, 3]);
+  expect({ attempts, evictions, waits }).toEqual({
+    attempts: 2,
+    evictions: 1,
+    waits: 1,
+  });
+});
 
 test("video admission does not evict or retry unrelated startup failures", async () => {
   const failure = new Error("startup failed");
@@ -3131,7 +3208,7 @@ describe("API gateway integration", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-test-upstream": "error-mid-stream",
+        "x-test-upstream": "error-mid-event",
       },
       body: JSON.stringify({
         model: loadGatewayConfig().activeLlmModel,
@@ -3141,11 +3218,12 @@ describe("API gateway integration", () => {
     });
     expect(response.status).toBe(200);
     const stream = await response.text();
-    expect(stream).toContain('"content":"partial"');
+    expect(stream).not.toContain('"id":"cut');
     expect(stream).toContain('"type":"server_error"');
     expect(stream).toContain('"param":null');
     expect(stream).toContain('"code":"upstream_error"');
     expect(stream).not.toContain("[DONE]");
+    expect(stream.match(/"code":"upstream_error"/g)).toHaveLength(1);
   });
 
   test("serves STT while an LLM configuration replacement drains", async () => {
