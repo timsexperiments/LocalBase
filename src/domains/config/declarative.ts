@@ -97,6 +97,7 @@ export function configurationDocument(
         sttPort: config.sttPort,
       },
       models: {
+        allowExperimental: config.allowExperimental,
         selectedLlmModels: config.selectedLlmModels,
         selectedSttModels: config.selectedSttModels,
         selectedTtsModels: config.selectedTtsModels,

@@ -940,6 +940,7 @@ describe("catalog artifact validation", () => {
   test("pins the S2V speech encoder and bounds its full-VAE Linux profile", () => {
     const speechVideo = byId("wan2.2-s2v-14b-fp8");
     expect(speechVideo).toMatchObject({
+      qualificationState: "experimental",
       repositoryRevision: "c4f60d30c55a624e35427060fdd217579a6c1d77",
       inputModalities: ["text", "image", "audio"],
       outputModalities: ["video"],

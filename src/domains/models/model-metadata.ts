@@ -78,6 +78,7 @@ export const modelMetadataSchema = z
         name: z.string().min(1),
         revision: z.string().min(1),
         kind: z.enum(["llm", "stt", "tts", "image", "video"]),
+        qualificationState: z.enum(["qualified", "experimental"]),
         quantization: z.string().min(1),
         features: z.array(z.string()),
         artifacts: z
@@ -233,6 +234,7 @@ export function projectModelMetadata(
       name: model.family,
       revision: model.repositoryRevision,
       kind: model.kind,
+      qualificationState: model.qualificationState ?? "qualified",
       quantization: model.quant,
       features: model.features,
       artifacts: model.artifacts.map((artifact) => ({

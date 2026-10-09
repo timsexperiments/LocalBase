@@ -225,6 +225,11 @@ const estimatedVideoMemoryDemandSchema = z
   })
   .strict();
 
+export const modelQualificationStateSchema = z.enum([
+  "qualified",
+  "experimental",
+]);
+
 const videoRuntimeTargetSchema = z
   .object({
     platform: z.enum(["darwin", "linux"]),
@@ -269,6 +274,7 @@ export type ModelArtifact = Omit<
 export const modelSpecSchema = z
   .object({
     modelId: z.string().min(1),
+    qualificationState: modelQualificationStateSchema.default("qualified"),
     kind: modelKindSchema,
     provider: z.string().min(1),
     family: z.string().min(1),
@@ -481,7 +487,11 @@ export const modelSpecSchema = z
       });
     }
   });
-export type ModelSpec = Omit<z.output<typeof modelSpecSchema>, "artifacts"> & {
+export type ModelSpec = Omit<
+  z.output<typeof modelSpecSchema>,
+  "artifacts" | "qualificationState"
+> & {
+  qualificationState?: z.infer<typeof modelQualificationStateSchema>;
   artifacts: ModelArtifact[];
 };
 type ModelSpecInput = z.input<typeof modelSpecSchema>;
@@ -2982,6 +2992,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "wan2.2-s2v-14b-fp8",
+    qualificationState: "experimental",
     kind: "video",
     provider: "Wan/Comfy-Org",
     family: "Wan2.2-S2V",
@@ -3081,7 +3092,7 @@ const CATALOG_SOURCE = [
     catch:
       "Apache-2.0 licenses for the pinned artifacts. Output audio is the supplied driving track, not generated speech.",
     notes:
-      "Experimental Linux x64 single-NVIDIA portrait animation at exactly 480x640, 33 frames, and 16 fps. Requires a portrait and speech no longer than 2.0625 seconds. Lip-sync quality and longer clips are not qualified.",
+      "Experimental and unqualified Linux x64 single-NVIDIA portrait animation at exactly 480x640, 33 frames, and 16 fps. Admission reservations are estimates and must be re-measured in a pinned-runtime hardware run before qualification. Requires a portrait and speech no longer than 2.0625 seconds. Lip-sync quality and longer clips are not qualified.",
   },
   {
     modelId: "fastwan2.2-ti2v-5b-q6_k",
@@ -3405,8 +3416,15 @@ export function artifactDownloadUrl(
   return `${base}/resolve/${revision}/${sourcePath}`;
 }
 
-export function listModels(kind?: ModelKind): ModelSpec[] {
-  return kind ? CATALOG.filter((m) => m.kind === kind) : [...CATALOG];
+export function listModels(
+  kind?: ModelKind,
+  allowExperimental = false,
+): ModelSpec[] {
+  return CATALOG.filter(
+    (model) =>
+      (!kind || model.kind === kind) &&
+      (allowExperimental || model.qualificationState !== "experimental"),
+  );
 }
 
 export function recommendedForVram(vramGb: number): ModelSpec[] {

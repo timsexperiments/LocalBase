@@ -119,7 +119,10 @@ test("full catalog contract includes installed, enabled, active and exact footpr
   const f = fixture();
   writeFileSync(f.path, "abc");
   const response = modelManagementSchema.parse(await f.management.read());
-  expect(response.models).toHaveLength(CATALOG.length);
+  expect(response.models).toHaveLength(
+    CATALOG.filter((entry) => entry.qualificationState !== "experimental")
+      .length,
+  );
   expect(
     response.models.find((entry) => entry.id === f.model.modelId),
   ).toMatchObject({
@@ -141,6 +144,41 @@ test("full catalog contract includes installed, enabled, active and exact footpr
   await expect(f.management.run("../outside", "install")).rejects.toMatchObject(
     { code: "invalid_request" },
   );
+});
+
+test("experimental models stay hidden and cannot install or activate without opt-in", async () => {
+  const f = fixture();
+  const model: ModelSpec = {
+    ...f.model,
+    modelId: `${f.model.modelId}-experimental`,
+    qualificationState: "experimental",
+  };
+  mutableCatalog.push(model);
+  cleanup.push(() => mutableCatalog.splice(mutableCatalog.indexOf(model), 1));
+  expect(
+    (await f.management.read()).models.some(
+      (entry) => entry.id === model.modelId,
+    ),
+  ).toBe(false);
+  await expect(f.management.run(model.modelId, "install")).rejects.toThrow(
+    "models.allowExperimental = true",
+  );
+  await expect(f.management.run(model.modelId, "activate")).rejects.toThrow(
+    "models.allowExperimental = true",
+  );
+
+  writeFileSync(f.path, "abc");
+  await f.runtimeConfig.update((config) => {
+    config.allowExperimental = true;
+  });
+  expect(
+    (await f.management.read()).models.some(
+      (entry) => entry.id === model.modelId,
+    ),
+  ).toBe(true);
+  await f.management.run(model.modelId, "enable");
+  await f.management.run(model.modelId, "activate");
+  expect(f.runtimeConfig.copy().activeSttModel).toBe(model.modelId);
 });
 
 test("enable and activate require installation; changes use fresh config and preserve unrelated settings", async () => {

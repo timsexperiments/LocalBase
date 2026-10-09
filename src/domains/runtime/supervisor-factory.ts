@@ -37,6 +37,7 @@ import {
 } from "./launcher";
 import type { RuntimeModality } from "./modality";
 import type { VideoRuntimeTarget } from "../../catalog";
+import { assertModelEligible } from "../models/model-eligibility";
 import type { MemorySafetyController } from "./memory-controller";
 import type { MemoryTopology } from "./memory-safety";
 import { SpeechSupervisor, type SpeechPreparation } from "./speech-supervisor";
@@ -739,6 +740,10 @@ export function createRuntimeSupervisorFactory(
           const spec = byId(modelId);
           if (!spec || spec.kind !== "video" || !spec.videoRuntime)
             return undefined;
+          assertModelEligible(spec, {
+            allowExperimental: config.allowExperimental,
+            target,
+          });
           const installation = await resolveCatalogInstallation(
             spec,
             config.videoModelsDir,

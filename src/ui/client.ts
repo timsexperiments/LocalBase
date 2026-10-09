@@ -66,6 +66,7 @@ const modelSchema = z.object({
   catalog: z.object({
     name: z.string(),
     kind: z.enum(["llm", "image", "tts", "stt", "video"]),
+    qualificationState: z.enum(["qualified", "experimental"]),
     quantization: z.string(),
     memory: z.object({
       minimumVramEstimateGb: z.number().nonnegative(),

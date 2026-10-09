@@ -24,6 +24,13 @@ test("strict versioned TOML round-trips without secrets or implicit host default
   expect(() => parseConfiguration("version = 1")).toThrow("gateway");
 });
 
+test("persists the explicit experimental model opt-in in declarative TOML", () => {
+  const config = { ...current, allowExperimental: true };
+  const rendered = renderConfiguration(configurationDocument(config));
+  expect(rendered).toContain("allowExperimental = true");
+  expect(parseConfiguration(rendered).models.allowExperimental).toBe(true);
+});
+
 test.each([
   ["version", text.replace("version = 1", "version = 2")],
   ["unknown table", `${text}\n[identity]\nprovider = 'unknown'`],

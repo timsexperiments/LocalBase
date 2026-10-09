@@ -41,6 +41,7 @@ import {
 } from "./catalog";
 import { assertModelDiskSpace } from "./domains/runtime/startup-preflight";
 import { modelConfigurationSchema } from "./domains/models/model-selection";
+import { assertModelEligible } from "./domains/models/model-eligibility";
 import {
   parseParallelSlots,
   type ParallelSlots,
@@ -95,6 +96,7 @@ export type LocalBaseConfig = {
   selectedTtsModels: string[];
   selectedImageModels: string[];
   selectedVideoModels: string[];
+  allowExperimental: boolean;
   activeLlmModel: string;
   activeSttModel: string;
   activeTtsModel: string;
@@ -140,6 +142,7 @@ const configRowSchema = z
     selectedTtsModels: z.string(),
     selectedImageModels: z.string(),
     selectedVideoModels: z.string(),
+    allowExperimental: z.boolean(),
     activeLlmModel: z.string().min(1),
     activeSttModel: z.string(),
     activeTtsModel: z.string(),
@@ -233,6 +236,7 @@ function toConfigRow(config: LocalBaseConfig) {
     selectedTtsModels: JSON.stringify(config.selectedTtsModels),
     selectedImageModels: JSON.stringify(config.selectedImageModels),
     selectedVideoModels: JSON.stringify(config.selectedVideoModels),
+    allowExperimental: config.allowExperimental,
     activeLlmModel: config.activeLlmModel,
     activeSttModel: config.activeSttModel,
     activeTtsModel: config.activeTtsModel,
@@ -324,6 +328,7 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     openedRoot,
   );
   const models = modelConfigurationSchema.safeParse({
+    allowExperimental: data.allowExperimental,
     selectedLlmModels,
     selectedSttModels,
     selectedTtsModels,
@@ -422,6 +427,7 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     selectedTtsModels: [],
     selectedImageModels: ["stable-diffusion-v1-5"],
     selectedVideoModels: [],
+    allowExperimental: false,
     activeLlmModel: llm,
     activeSttModel: stt,
     activeTtsModel: "",
@@ -676,6 +682,11 @@ export async function installModel(
     if (!spec) {
       throw new Error(`Unknown model id: ${modelId}`);
     }
+    assertModelEligible(spec, {
+      allowExperimental: config.allowExperimental,
+      platform: process.platform,
+      architecture: process.arch,
+    });
 
     const targetDir = kindDir(config, spec.kind);
     assertModelDiskSpace(config, spec);

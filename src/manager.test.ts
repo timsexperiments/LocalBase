@@ -273,6 +273,24 @@ afterEach(async () => {
 });
 
 describe.serial("transactional model artifact installation", () => {
+  test("refuses the experimental S2V profile before creating directories or downloading", async () => {
+    const config = createInstallConfig();
+    const fetchSpy = spyOn(globalThis, "fetch");
+    try {
+      await expect(installModel(config, "wan2.2-s2v-14b-fp8")).rejects.toThrow(
+        "models.allowExperimental = true",
+      );
+      config.allowExperimental = true;
+      await expect(installModel(config, "wan2.2-s2v-14b-fp8")).rejects.toThrow(
+        "Requires Linux x64 with a single NVIDIA GPU",
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(existsSync(config.videoModelsDir)).toBe(false);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   test.each([
     { source: "https://huggingface.co/test/model", authenticated: true },
     { source: "http://huggingface.co/test/model", authenticated: false },

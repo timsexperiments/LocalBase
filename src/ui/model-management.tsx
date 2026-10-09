@@ -118,6 +118,11 @@ export function ModelManagement({
 
   const selectedMode = modes.find((value) => value === mode);
   const filtered = (selectedMode ? catalogModels(models, selectedMode) : models)
+    .filter(
+      (model) =>
+        model.catalog.qualificationState !== "experimental" ||
+        state?.models.some((entry) => entry.id === model.id),
+    )
     .filter((model) =>
       `${model.id} ${model.catalog.name} ${model.catalog.quantization}`
         .toLowerCase()
@@ -234,6 +239,9 @@ export function ModelManagement({
                 <article className="catalog-card" key={model.id}>
                   <header>
                     <h3>{model.catalog.name}</h3>
+                    {model.catalog.qualificationState === "experimental" && (
+                      <span className="model-badge">Experimental</span>
+                    )}
                     <span
                       className={`model-badge ${model.device.installed ? "installed" : ""}`}
                     >
@@ -241,6 +249,12 @@ export function ModelManagement({
                     </span>
                   </header>
                   <p className="model-id">{model.id}</p>
+                  {model.catalog.qualificationState === "experimental" && (
+                    <p className="hint">
+                      Unqualified; hardware behavior and admission estimates
+                      need validation.
+                    </p>
+                  )}
                   <p className="model-facts">
                     {model.catalog.quantization} ·{" "}
                     {model.device.selected ? "Enabled" : "Disabled"}
@@ -346,7 +360,11 @@ export function ModelManagement({
                       <button
                         className="install-model"
                         disabled={locked || !local?.canInstall}
-                        onClick={() => void run(model.id, "install")}
+                        onClick={() =>
+                          model.catalog.qualificationState === "experimental"
+                            ? setConfirmation(model.id)
+                            : void run(model.id, "install")
+                        }
                       >
                         {operation?.state === "running"
                           ? "Installing…"
@@ -369,20 +387,45 @@ export function ModelManagement({
                     <div
                       className="uninstall-confirmation"
                       role="group"
-                      aria-label={`Confirm uninstall ${model.id}`}
+                      aria-label={
+                        model.catalog.qualificationState === "experimental" &&
+                        !model.device.installed
+                          ? `Confirm experimental install ${model.id}`
+                          : `Confirm uninstall ${model.id}`
+                      }
                     >
-                      <p>
-                        Remove {model.catalog.name}'s downloaded files from this
-                        computer? Shared files will be kept. Reinstalling
-                        requires another download.
-                      </p>
-                      <button
-                        disabled={locked}
-                        className="danger"
-                        onClick={() => void run(model.id, "uninstall")}
-                      >
-                        Confirm uninstall
-                      </button>
+                      {model.catalog.qualificationState === "experimental" &&
+                      !model.device.installed ? (
+                        <>
+                          <p>
+                            This unqualified experimental model downloads about{" "}
+                            {model.catalog.memory.storageEstimateGb} GB. Its
+                            behavior and resource estimates have not been
+                            hardware qualified.
+                          </p>
+                          <button
+                            disabled={locked || !local?.canInstall}
+                            onClick={() => void run(model.id, "install")}
+                          >
+                            Acknowledge and install
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <p>
+                            Remove {model.catalog.name}'s downloaded files from
+                            this computer? Shared files will be kept.
+                            Reinstalling requires another download.
+                          </p>
+                          <button
+                            disabled={locked}
+                            className="danger"
+                            onClick={() => void run(model.id, "uninstall")}
+                          >
+                            Confirm uninstall
+                          </button>
+                        </>
+                      )}
                       <button onClick={() => setConfirmation(null)}>
                         Keep model
                       </button>

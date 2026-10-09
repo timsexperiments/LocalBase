@@ -5,6 +5,7 @@ import {
   type ModelSpec,
 } from "../../catalog";
 import { z } from "zod";
+import { modelEligibilityReason } from "./model-eligibility";
 
 const expectedModalities = {
   llm: { input: "text", output: "text" },
@@ -28,7 +29,7 @@ function modelHasExpectedModalities(
   );
 }
 
-export function modelIdSchema(kind: ModelKind) {
+export function modelIdSchema(kind: ModelKind, allowExperimental = false) {
   return z
     .string()
     .min(1)
@@ -48,11 +49,31 @@ export function modelIdSchema(kind: ModelKind) {
     .refine((id) => !byId(id)?.videoCatalogOnly, {
       message:
         "catalog-only models cannot be selected or active because LocalBase inference is unavailable",
-    });
+    })
+    .refine(
+      (id) => {
+        const model = byId(id);
+        return (
+          !model ||
+          !modelEligibilityReason(model, {
+            allowExperimental,
+            platform: process.platform,
+            architecture: process.arch,
+          })
+        );
+      },
+      {
+        message: "model is experimental or unsupported on this platform",
+      },
+    );
 }
 
-export function selectedModelsSchema(kind: ModelKind, requireOne: boolean) {
-  const schema = modelIdSchema(kind)
+export function selectedModelsSchema(
+  kind: ModelKind,
+  requireOne: boolean,
+  allowExperimental = false,
+) {
+  const schema = modelIdSchema(kind, allowExperimental)
     .array()
     .refine(
       (ids) => new Set(ids).size === ids.length,
@@ -63,19 +84,70 @@ export function selectedModelsSchema(kind: ModelKind, requireOne: boolean) {
 
 export const modelConfigurationSchema = z
   .object({
-    selectedLlmModels: selectedModelsSchema("llm", true),
-    selectedSttModels: selectedModelsSchema("stt", false),
-    selectedTtsModels: selectedModelsSchema("tts", false),
-    selectedImageModels: selectedModelsSchema("image", false),
-    selectedVideoModels: selectedModelsSchema("video", false),
-    activeLlmModel: modelIdSchema("llm"),
-    activeSttModel: z.union([z.literal(""), modelIdSchema("stt")]),
-    activeTtsModel: z.union([z.literal(""), modelIdSchema("tts")]),
-    activeImageModel: z.union([z.literal(""), modelIdSchema("image")]),
-    activeVideoModel: z.union([z.literal(""), modelIdSchema("video")]),
+    allowExperimental: z.boolean().default(false),
+    selectedLlmModels: z.array(z.string().min(1)),
+    selectedSttModels: z.array(z.string().min(1)),
+    selectedTtsModels: z.array(z.string().min(1)),
+    selectedImageModels: z.array(z.string().min(1)),
+    selectedVideoModels: z.array(z.string().min(1)),
+    activeLlmModel: z.string().min(1),
+    activeSttModel: z.string(),
+    activeTtsModel: z.string(),
+    activeImageModel: z.string(),
+    activeVideoModel: z.string(),
   })
   .strict()
   .superRefine((config, ctx) => {
+    const selections = [
+      ["selectedLlmModels", config.selectedLlmModels, "llm", true],
+      ["selectedSttModels", config.selectedSttModels, "stt", false],
+      ["selectedTtsModels", config.selectedTtsModels, "tts", false],
+      ["selectedImageModels", config.selectedImageModels, "image", false],
+      ["selectedVideoModels", config.selectedVideoModels, "video", false],
+    ] as const;
+    for (const [field, ids, kind, required] of selections) {
+      const parsed = selectedModelsSchema(
+        kind,
+        required,
+        config.allowExperimental,
+      ).safeParse(ids);
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues)
+          ctx.addIssue({ ...issue, path: [field, ...issue.path] });
+      }
+      for (const [index, id] of ids.entries()) {
+        const model = byId(id);
+        const reason =
+          model &&
+          modelEligibilityReason(model, {
+            allowExperimental: config.allowExperimental,
+            platform: process.platform,
+            architecture: process.arch,
+          });
+        if (reason)
+          ctx.addIssue({
+            code: "custom",
+            path: [field, index],
+            message: reason,
+          });
+      }
+    }
+    const activeFields = [
+      ["activeLlmModel", config.activeLlmModel, "llm"],
+      ["activeSttModel", config.activeSttModel, "stt"],
+      ["activeTtsModel", config.activeTtsModel, "tts"],
+      ["activeImageModel", config.activeImageModel, "image"],
+      ["activeVideoModel", config.activeVideoModel, "video"],
+    ] as const;
+    for (const [field, id, kind] of activeFields) {
+      if (!id) continue;
+      const parsed = modelIdSchema(kind, config.allowExperimental).safeParse(
+        id,
+      );
+      if (!parsed.success)
+        for (const issue of parsed.error.issues)
+          ctx.addIssue({ ...issue, path: [field, ...issue.path] });
+    }
     const activeModels = [
       ["activeLlmModel", config.activeLlmModel, config.selectedLlmModels],
       ["activeSttModel", config.activeSttModel, config.selectedSttModels],

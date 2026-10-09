@@ -57,6 +57,7 @@ function validateExternalModelList(
 
 function validateComposedModelConfiguration(config: LocalBaseConfig): void {
   const result = modelConfigurationSchema.safeParse({
+    allowExperimental: config.allowExperimental,
     selectedLlmModels: config.selectedLlmModels,
     selectedSttModels: config.selectedSttModels,
     selectedTtsModels: config.selectedTtsModels,
