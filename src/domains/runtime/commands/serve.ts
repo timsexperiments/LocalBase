@@ -439,7 +439,9 @@ function upstreamFailure(message: string): Response {
 }
 
 function upstreamErrorEvent(message: string): Uint8Array {
-  const error = openAIErrorResponseSchema.parse({ error: upstreamError(message) });
+  const error = openAIErrorResponseSchema.parse({
+    error: upstreamError(message),
+  });
   return new TextEncoder().encode(`data: ${JSON.stringify(error)}\n\n`);
 }
 
@@ -2070,27 +2072,30 @@ export async function applyElevatedMemoryPressure(
   }
 }
 
-export async function admitVideoWithIdleRecovery(
+export async function admitModelWithIdleRecovery(
   reconciler: Pick<
     RuntimeReconciler,
     "admitModel" | "recoverWithIdleEviction" | "waitForAdmissionAfterEviction"
   >,
+  modality: RuntimeModality,
   modelId: string,
   signal: AbortSignal,
 ): Promise<Awaited<ReturnType<RuntimeReconciler["admitModel"]>>> {
-  const first = await reconciler.admitModel("video", modelId, signal);
+  const first = await reconciler.admitModel(modality, modelId, signal);
   if (
     first.kind === "insufficient-memory" &&
     first.error.capacity === undefined
   ) {
     signal.throwIfAborted();
-    if (!(await reconciler.recoverWithIdleEviction("video", modelId, signal))) {
+    if (
+      !(await reconciler.recoverWithIdleEviction(modality, modelId, signal))
+    ) {
       return first;
     }
     signal.throwIfAborted();
     if (
       !(await reconciler.waitForAdmissionAfterEviction(
-        "video",
+        modality,
         modelId,
         signal,
       ))
@@ -2098,7 +2103,7 @@ export async function admitVideoWithIdleRecovery(
       return first;
     }
     signal.throwIfAborted();
-    const retry = await reconciler.admitModel("video", modelId, signal);
+    const retry = await reconciler.admitModel(modality, modelId, signal);
     return retry.kind === "admitted" ? retry : first;
   }
   if (first.kind !== "admitted") return first;
@@ -2110,13 +2115,15 @@ export async function admitVideoWithIdleRecovery(
     await current.admission.supervisor.kill();
     signal.throwIfAborted();
     if (error.capacity !== undefined) throw error;
-    if (!(await reconciler.recoverWithIdleEviction("video", modelId, signal))) {
+    if (
+      !(await reconciler.recoverWithIdleEviction(modality, modelId, signal))
+    ) {
       throw error;
     }
     signal.throwIfAborted();
     if (
       !(await reconciler.waitForAdmissionAfterEviction(
-        "video",
+        modality,
         modelId,
         signal,
       ))
@@ -2124,7 +2131,7 @@ export async function admitVideoWithIdleRecovery(
       throw error;
     }
     signal.throwIfAborted();
-    const retry = await reconciler.admitModel("video", modelId, signal);
+    const retry = await reconciler.admitModel(modality, modelId, signal);
     if (retry.kind !== "admitted") throw error;
     current = retry.value;
     try {
@@ -3141,8 +3148,9 @@ export async function runServe(
         },
         admissionProvider: {
           admit: async (modelId, signal) => {
-            const selection = await admitVideoWithIdleRecovery(
+            const selection = await admitModelWithIdleRecovery(
               reconciler,
+              "video",
               modelId,
               signal,
             );
@@ -3187,7 +3195,8 @@ export async function runServe(
       let admission: RuntimeAdmission | undefined;
       let inference: InferenceTelemetry | undefined;
       try {
-        const selected = await reconciler.admitModel(
+        const selected = await admitModelWithIdleRecovery(
+          reconciler,
           "tts",
           parsed.data.model,
           request.signal,
@@ -3306,9 +3315,10 @@ export async function runServe(
         if (!parsed.success) {
           return validationFailure(parsed.error);
         }
-        const selected = await reconciler.admitModel(
+        const selected = await admitModelWithIdleRecovery(
+          reconciler,
           "stt",
-          parsed.data.model,
+          parsed.data.model ?? currentConfig.activeSttModel,
           request.signal,
         );
         if (selected.kind === "not-configured") return notConfigured("STT");
@@ -3398,9 +3408,10 @@ export async function runServe(
       if (!parsed.success) return parsed.response;
       let selected;
       try {
-        selected = await reconciler.admitModel(
+        selected = await admitModelWithIdleRecovery(
+          reconciler,
           "image",
-          parsed.data.model,
+          parsed.data.model ?? currentConfig.activeImageModel,
           request.signal,
         );
       } catch (error) {

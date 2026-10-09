@@ -22,7 +22,7 @@ import type { InferenceTerminal } from "../observability/inference";
 import { gatewayHealthSchema } from "./health";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
-  admitVideoWithIdleRecovery,
+  admitModelWithIdleRecovery,
   applyElevatedMemoryPressure,
   finalizeGatewayShutdown,
   httpBaseUrl,
@@ -320,89 +320,93 @@ test("formats memory admission rejection as a retryable OpenAI error", async () 
   });
 });
 
-test("video admission evicts idle peers and retries once after memory rejection", async () => {
-  const failure = new RuntimeMemoryAdmissionError({
-    kind: "rejected",
-    reason: "system-memory",
-    poolId: "system",
-  });
-  let attempts = 0;
-  let cancellations = 0;
-  let evictions = 0;
-  let releases = 0;
-  let stops = 0;
-  const admission = (ready: Promise<void>): RuntimeAdmission => ({
-    modality: "video",
-    snapshot: {} as RuntimeAdmission["snapshot"],
-    supervisor: {
-      kill: async () => {
-        stops += 1;
+test.each(["image", "video", "stt", "tts"] as const)(
+  "%s admission evicts idle peers and retries once after memory rejection",
+  async (modality) => {
+    const failure = new RuntimeMemoryAdmissionError({
+      kind: "rejected",
+      reason: "system-memory",
+      poolId: "system",
+    });
+    let attempts = 0;
+    let cancellations = 0;
+    let evictions = 0;
+    let releases = 0;
+    let stops = 0;
+    const admission = (ready: Promise<void>): RuntimeAdmission => ({
+      modality,
+      snapshot: {} as RuntimeAdmission["snapshot"],
+      supervisor: {
+        kill: async () => {
+          stops += 1;
+        },
+      } as RuntimeAdmission["supervisor"],
+      ready,
+      onPendingDetach: () => {},
+      onIdleCancellation: () => {},
+      markResponseStarted: () => {},
+      cancel: () => {
+        cancellations += 1;
       },
-    } as RuntimeAdmission["supervisor"],
-    ready,
-    onPendingDetach: () => {},
-    onIdleCancellation: () => {},
-    markResponseStarted: () => {},
-    cancel: () => {
-      cancellations += 1;
-    },
-    release: () => {
-      releases += 1;
-    },
-  });
-  const admitted = (value: RuntimeAdmission): ModelAdmissionResult => ({
-    kind: "admitted",
-    value: {
-      modelId: "video-model",
-      admission: value,
-      queueWaitMs: 0,
-      admissionSnapshot: { active: 1, slots: 1, waiting: 0 },
-    },
-  });
-  const recovered = admitted(admission(Promise.resolve()));
-  const reconciler = {
-    async admitModel(
-      modality: string,
-      modelId: string | undefined,
-      signal?: AbortSignal,
-    ) {
-      expect([modality, modelId, signal?.aborted]).toEqual([
-        "video",
-        "video-model",
-        false,
-      ]);
-      attempts += 1;
-      if (attempts === 2) return recovered;
-      return admitted(admission(Promise.reject(failure)));
-    },
-    async recoverWithIdleEviction() {
-      evictions += 1;
-      return true;
-    },
-    async waitForAdmissionAfterEviction() {
-      return true;
-    },
-  };
+      release: () => {
+        releases += 1;
+      },
+    });
+    const admitted = (value: RuntimeAdmission): ModelAdmissionResult => ({
+      kind: "admitted",
+      value: {
+        modelId: "video-model",
+        admission: value,
+        queueWaitMs: 0,
+        admissionSnapshot: { active: 1, slots: 1, waiting: 0 },
+      },
+    });
+    const recovered = admitted(admission(Promise.resolve()));
+    const reconciler = {
+      async admitModel(
+        requestedModality: string,
+        modelId: string | undefined,
+        signal?: AbortSignal,
+      ) {
+        expect([requestedModality, modelId, signal?.aborted]).toEqual([
+          modality,
+          "video-model",
+          false,
+        ]);
+        attempts += 1;
+        if (attempts === 2) return recovered;
+        return admitted(admission(Promise.reject(failure)));
+      },
+      async recoverWithIdleEviction() {
+        evictions += 1;
+        return true;
+      },
+      async waitForAdmissionAfterEviction() {
+        return true;
+      },
+    };
 
-  const result = await admitVideoWithIdleRecovery(
-    reconciler,
-    "video-model",
-    new AbortController().signal,
-  );
+    const result = await admitModelWithIdleRecovery(
+      reconciler,
+      modality,
+      "video-model",
+      new AbortController().signal,
+    );
 
-  expect(result.kind).toBe("admitted");
-  if (result.kind !== "admitted") throw new Error("Expected admission.");
-  await result.value.admission.ready;
-  result.value.admission.release();
-  await result.value.admission.supervisor.kill();
-  expect({ attempts, cancellations, evictions, releases, stops }).toEqual({
-    attempts: 2,
-    cancellations: 1,
-    evictions: 1,
-    releases: 1,
-    stops: 2,
-  });
-});
+    expect(result.kind).toBe("admitted");
+    if (result.kind !== "admitted") throw new Error("Expected admission.");
+    await result.value.admission.ready;
+    result.value.admission.release();
+    await result.value.admission.supervisor.kill();
+    expect({ attempts, cancellations, evictions, releases, stops }).toEqual({
+      attempts: 2,
+      cancellations: 1,
+      evictions: 1,
+      releases: 1,
+      stops: 2,
+    });
+  },
+);
 
 test("video admission does not evict or retry unrelated startup failures", async () => {
   const failure = new Error("startup failed");
@@ -450,8 +454,9 @@ test("video admission does not evict or retry unrelated startup failures", async
     },
   };
 
-  const result = await admitVideoWithIdleRecovery(
+  const result = await admitModelWithIdleRecovery(
     reconciler,
+    "video",
     "video-model",
     new AbortController().signal,
   );
@@ -510,8 +515,9 @@ test("video model switch retries transient preflight rejection after idle evicti
     },
   };
 
-  const result = await admitVideoWithIdleRecovery(
+  const result = await admitModelWithIdleRecovery(
     reconciler,
+    "video",
     "video-model",
     new AbortController().signal,
   );
@@ -580,8 +586,9 @@ test("video admission waits for a lagging post-eviction memory sample", async ()
     },
   };
 
-  const result = await admitVideoWithIdleRecovery(
+  const result = await admitModelWithIdleRecovery(
     reconciler,
+    "video",
     "video-model",
     new AbortController().signal,
   );
@@ -651,8 +658,9 @@ test("video startup capacity rejection skips idle eviction and retry", async () 
     },
   };
 
-  const result = await admitVideoWithIdleRecovery(
+  const result = await admitModelWithIdleRecovery(
     reconciler,
+    "video",
     "video-model",
     new AbortController().signal,
   );
@@ -712,8 +720,9 @@ test("video ready rejection preserves idle peers when recovery cannot fit", asyn
     },
   };
 
-  const result = await admitVideoWithIdleRecovery(
+  const result = await admitModelWithIdleRecovery(
     reconciler,
+    "video",
     "video-model",
     new AbortController().signal,
   );

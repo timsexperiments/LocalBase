@@ -1082,18 +1082,27 @@ function startMockUpstream(
       if (mode === "error-mid-stream") {
         const body = new ReadableStream<Uint8Array>({
           start(controller) {
-            controller.enqueue(new TextEncoder().encode(
-              `data: ${JSON.stringify({
-                id: "chatcmpl-mid-stream-error",
-                object: "chat.completion.chunk",
-                created: 0,
-                model: LLM_MODEL,
-                choices: [{ index: 0, delta: { content: "partial" }, finish_reason: null }],
-                usage: null,
-              })}\n\n`,
-            ));
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  id: "chatcmpl-mid-stream-error",
+                  object: "chat.completion.chunk",
+                  created: 0,
+                  model: LLM_MODEL,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: { content: "partial" },
+                      finish_reason: null,
+                    },
+                  ],
+                  usage: null,
+                })}\n\n`,
+              ),
+            );
             setTimeout(
-              () => controller.error(new Error("fixture upstream stream failure")),
+              () =>
+                controller.error(new Error("fixture upstream stream failure")),
               20,
             );
           },
