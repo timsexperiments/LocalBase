@@ -15,6 +15,7 @@ type Lockfile = {
 };
 
 export const nativeNoticeManifest: Record<string, string[]> = {
+  "License source and provenance record": ["SOURCES.txt"],
   Bun: ["Bun-MIT.txt"],
   "uWebSockets and uSockets": ["Apache-2.0.txt"],
   "WebKit/JavaScriptCore": ["LGPL-2.1-only.txt"],
