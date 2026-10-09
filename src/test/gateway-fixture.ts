@@ -1035,6 +1035,24 @@ function startMockUpstream(
           ],
         });
       }
+      if (mode === "unframed-stream-eof") {
+        return new Response(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-unframed-eof",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              {
+                index: 0,
+                delta: { content: "UNFRAMED_MUST_NOT_LEAK" },
+                finish_reason: null,
+              },
+            ],
+          })}`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
       if (mode === "stream") {
         return new Response(
           `data: ${JSON.stringify({

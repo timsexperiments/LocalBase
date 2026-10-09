@@ -1318,7 +1318,7 @@ function validateEventStream(
       param: null,
       code: "upstream_error",
     },
-  })}\n\ndata: [DONE]\n\n`;
+  })}\n\n`;
 
   const fail = (
     controller: TransformStreamDefaultController<Uint8Array>,
@@ -1415,9 +1415,11 @@ function validateEventStream(
       },
       flush(controller) {
         buffered += decoder.decode();
-        if (buffered && !flushEvent(controller, buffered, false, false)) return;
+        // An SSE event is only complete after its blank-line delimiter.
+        const hasUnframedEvent = buffered.length > 0;
+        buffered = "";
         if (failed) return;
-        if (!doneEvent) {
+        if (hasUnframedEvent || !doneEvent) {
           fail(controller, false);
           return;
         }
@@ -1450,7 +1452,13 @@ export function recoverEventStreamReadErrors(
           const result = await reader.read();
           if (result.done) {
             buffered += decoder.decode();
-            if (buffered) controller.enqueue(encoder.encode(buffered));
+            if (buffered) {
+              buffered = "";
+              onError?.();
+              controller.enqueue(
+                upstreamErrorEvent("The upstream stream ended mid-event."),
+              );
+            }
             controller.close();
             release();
             return;
@@ -1747,6 +1755,7 @@ export function withResponseLease(
   }
 
   let completed = false;
+  let readerReleased = false;
   let removeAbortListener = () => {};
   const settleOnce = (terminal: InferenceTerminal) => {
     if (completed) return;
@@ -1757,13 +1766,25 @@ export function withResponseLease(
     onSettled?.(terminal);
   };
   const reader = response.body.getReader();
+  const releaseReader = () => {
+    if (readerReleased) return;
+    readerReleased = true;
+    reader.releaseLock();
+  };
+  const cancelReader = async (reason?: unknown) => {
+    try {
+      await reader.cancel(reason);
+    } finally {
+      releaseReader();
+    }
+  };
   const cancelForRequestAbort = () => {
     settleOnce({
       outcome: "cancelled",
       httpStatus: response.status,
       source: "request_aborted",
     });
-    void reader.cancel(requestSignal.reason);
+    void cancelReader(requestSignal.reason);
   };
   requestSignal.addEventListener("abort", cancelForRequestAbort, {
     once: true,
@@ -1777,6 +1798,7 @@ export function withResponseLease(
         const { done, value } = await reader.read();
         if (done) {
           settleOnce({ outcome: "completed", httpStatus: response.status });
+          releaseReader();
           controller.close();
           return;
         }
@@ -1787,6 +1809,7 @@ export function withResponseLease(
           httpStatus: response.status,
           source: "response_stream_error",
         });
+        releaseReader();
         controller.error(error);
       }
     },
@@ -1796,7 +1819,7 @@ export function withResponseLease(
         httpStatus: response.status,
         source: "response_cancelled",
       });
-      await reader.cancel(reason);
+      await cancelReader(reason);
     },
   });
 

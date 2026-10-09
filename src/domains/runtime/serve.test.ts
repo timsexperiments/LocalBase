@@ -66,7 +66,7 @@ const STREAM_VALIDATION_FAILURE = `data: ${JSON.stringify({
     param: null,
     code: "upstream_error",
   },
-})}\n\ndata: [DONE]\n\n`;
+})}\n\n`;
 
 function modelArtifactFile(modelId: string): string {
   const model = byId(modelId);
@@ -115,6 +115,18 @@ test("releases upstream stream readers after completion, failure, and cancellati
   await pendingRead;
   expect(cancelObserved).toBe(true);
   expect(cancelled.locked).toBe(false);
+
+  const unfinished = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"id":"cut'));
+      controller.close();
+    },
+  });
+  const unfinishedResult = await new Response(
+    recoverEventStreamReadErrors(unfinished),
+  ).text();
+  expect(unfinishedResult).not.toContain('"id":"cut');
+  expect(unfinishedResult.match(/"code":"upstream_error"/g)).toHaveLength(1);
 });
 
 async function expectGatewayListenerHost(
@@ -1021,6 +1033,7 @@ test("cancels response leases on cancellation and releases them on completion", 
     (terminal) => streamTerminals.push(terminal),
   );
   const streamReader = leasedStream.body!.getReader();
+  expect(streamCancellation.response.body!.locked).toBe(true);
   await streamReader.read();
   await streamReader.cancel();
   await streamCancellation.cancelled;
@@ -1034,6 +1047,7 @@ test("cancels response leases on cancellation and releases them on completion", 
       source: "response_cancelled",
     },
   ]);
+  expect(streamCancellation.response.body!.locked).toBe(false);
 
   const requestCancellation = createLeasedResponse();
   const requestAbort = new AbortController();
@@ -1065,8 +1079,9 @@ test("cancels response leases on cancellation and releases them on completion", 
 
   let completedReleases = 0;
   let completedCancels = 0;
+  const completedUpstream = new Response(new Uint8Array([1]));
   const completed = withResponseLease(
-    new Response(new Uint8Array([1])),
+    completedUpstream,
     () => {
       completedReleases += 1;
     },
@@ -1076,6 +1091,7 @@ test("cancels response leases on cancellation and releases them on completion", 
     new AbortController().signal,
   );
   await completed.arrayBuffer();
+  expect(completedUpstream.body!.locked).toBe(false);
   expect(completedReleases).toBe(1);
   expect(completedCancels).toBe(0);
 
@@ -1100,6 +1116,7 @@ test("cancels response leases on cancellation and releases them on completion", 
     (terminal) => failedTerminals.push(terminal),
   );
   await expect(failed.arrayBuffer()).rejects.toThrow("upstream read failed");
+  expect(failed.body!.locked).toBe(false);
   expect({ failedReleases, failedCancels, failedTerminals }).toEqual({
     failedReleases: 0,
     failedCancels: 1,
@@ -2919,7 +2936,28 @@ describe("API gateway integration", () => {
     expect(response.status).toBe(200);
     const stream = await response.text();
     expect(stream).toContain('"finish_reason":"stop"');
-    expect(stream.endsWith(STREAM_VALIDATION_FAILURE)).toBe(true);
+    expect(stream.match(/"code":"upstream_error"/g)).toHaveLength(1);
+    expect(stream).not.toContain("[DONE]");
+  });
+
+  test("discards an unframed final chat event and emits one terminal error", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "unframed-stream-eof",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).not.toContain("UNFRAMED_MUST_NOT_LEAK");
+    expect(stream.match(/"code":"upstream_error"/g)).toHaveLength(1);
+    expect(stream).not.toContain("[DONE]");
   });
 
   test("requires every observed choice to finish before done", async () => {
