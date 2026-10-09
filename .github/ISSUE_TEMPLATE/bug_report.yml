@@ -1,0 +1,38 @@
+name: Bug report
+description: Report a reproducible problem with LocalBase.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Share enough detail to reproduce the issue. Do not include API keys or other secrets.
+  - type: input
+    id: version
+    attributes:
+      label: LocalBase version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, installation method, and relevant backend/runtime.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact credentials and personal data before posting.

@@ -1,6 +1,15 @@
 {
   "name": "local-base",
   "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "description": "An OpenAI-compatible gateway for local AI runtimes, with model management and a web interface.",
+  "repository": "git+https://github.com/timsexperiments/LocalBase.git",
+  "homepage": "https://github.com/timsexperiments/LocalBase#readme",
+  "bugs": "https://github.com/timsexperiments/LocalBase/issues",
+  "author": {
+    "name": "TimsExperiments",
+    "url": "https://github.com/timsexperiments"
+  },
   "packageManager": "bun@1.3.14",
   "type": "module",
   "scripts": {
