@@ -71,7 +71,7 @@ test("validates one redacted event contract before console or file sinks", () =>
     component: "gateway",
     runtime: "gateway",
     message:
-      'Authorization: Bearer secret-value hf_abcdefghijklmnop {"messages":["never persist this"]}',
+      "\x1b[31mcolored\x1b[0m text \x1b]8;;https://example.test\x07linked\x1b]8;;\x1b\\ text \u009b31mC1 CSI é € こんにちは 🧪\u0080\u0081\u0082\u0083\u0084\u0085\u0086\u0087\u0088\u0089\u008a\u008b\u008c\u008d\u008e\u008f\u0090\u0091\u0092\u0093\u0094\u0095\u0096\u0097\u0098\u0099\u009a\u009b\u009c\u009d\u009e\u009f",
     requestId: "request-42",
     error: { type: "Error", message: "token=private-token" },
     attributes: {
@@ -85,11 +85,41 @@ test("validates one redacted event contract before console or file sinks", () =>
   const serialized = JSON.stringify(logged);
   expect(serialized).not.toContain("private-token");
   expect(serialized).not.toContain("never persist this");
+  expect(logged.message).toBe(
+    "colored text linked text C1 CSI é € こんにちは 🧪",
+  );
+  expect(logged.error?.message).toBe("token=[REDACTED]");
+  expect(logged.attributes?.safevalue).toBe("Bearer [REDACTED]");
+  expect(serialized).not.toMatch(/[\x1b\u009b\u009d]/);
+  expect(serialized).not.toMatch(/[\u0080-\u009f]/);
   expect(logged.attributes).toEqual({
     authorization: "[REDACTED]",
     prompt: "[REDACTED]",
     safevalue: "Bearer [REDACTED]",
   });
+
+  const ansiOnly = createLogEvent({
+    severity: "info",
+    eventName: "gateway.test",
+    category: "gateway",
+    component: "gateway",
+    runtime: "gateway",
+    message: "\x1b[31m\x1b[0m",
+  });
+  expect(ansiOnly.message).toBe("Unknown error");
+
+  const normalizedIdentifiers = createLogEvent({
+    severity: "error",
+    eventName: "\x1b[32mgateway.test\x1b[0m",
+    category: "gateway",
+    component: "\x1b[32mgateway\x1b[0m",
+    runtime: "gateway",
+    message: "identifier test",
+    error: { type: "Error", message: "failed", code: "\x1b[31m\x1b[0m" },
+  });
+  expect(normalizedIdentifiers.eventName).toBe("gateway.test");
+  expect(normalizedIdentifiers.component).toBe("gateway");
+  expect(normalizedIdentifiers.error?.code).toBeUndefined();
 
   const bypasses = createLogEvent({
     severity: "error",
@@ -151,6 +181,78 @@ test("validates one redacted event contract before console or file sinks", () =>
       }).requestId,
     ).toBeUndefined();
   }
+});
+
+test("removes C0 controls and lone ESC from messages, errors, and attributes", () => {
+  const controls = "\x00\x01\x08\x0b\x0c\x0e\x1f\x7f\x1b";
+  const logged = createLogEvent({
+    severity: "error",
+    eventName: "gateway.test",
+    category: "gateway",
+    component: "gateway",
+    runtime: "gateway",
+    message: `before${controls}\t\n after é🧪`,
+    error: { type: "Error", message: `failure${controls}é` },
+    attributes: { detail: `value${controls}é` },
+  });
+  expect(logged.message).toBe("before\t\n after é🧪");
+  expect(logged.error?.message).toBe("failureé");
+  expect(logged.attributes?.detail).toBe("valueé");
+});
+
+test("quiet test logs suppress routine output but keep warnings and errors", () => {
+  const originalQuiet = process.env.LOCALBASE_QUIET_TEST_LOGS;
+  const originalOverride = process.env.LOCALBASE_TEST_LOGS;
+  const writes = { stdout: 0, stderr: 0 };
+  const originalWrites = {
+    stdout: process.stdout.write,
+    stderr: process.stderr.write,
+  };
+  process.env.LOCALBASE_QUIET_TEST_LOGS = "1";
+  delete process.env.LOCALBASE_TEST_LOGS;
+  process.stdout.write = (() => {
+    writes.stdout++;
+    return true;
+  }) as typeof process.stdout.write;
+  process.stderr.write = (() => {
+    writes.stderr++;
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    const logger = new LocalBaseLogger();
+    logger.info("runtime", "routine");
+    logger.warn("runtime", "warning");
+    logger.error("runtime", "failure");
+  } finally {
+    process.stdout.write = originalWrites.stdout;
+    process.stderr.write = originalWrites.stderr;
+    if (originalQuiet === undefined)
+      delete process.env.LOCALBASE_QUIET_TEST_LOGS;
+    else process.env.LOCALBASE_QUIET_TEST_LOGS = originalQuiet;
+    if (originalOverride === undefined) delete process.env.LOCALBASE_TEST_LOGS;
+    else process.env.LOCALBASE_TEST_LOGS = originalOverride;
+  }
+  expect(writes).toEqual({ stdout: 0, stderr: 2 });
+});
+
+test("JSON logger writes only JSON lines to stdout", () => {
+  const writes: string[] = [];
+  const originalWrite = process.stdout.write;
+  const originalTestLogs = process.env.LOCALBASE_TEST_LOGS;
+  process.env.LOCALBASE_TEST_LOGS = "1";
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    writes.push(String(chunk));
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    new LocalBaseLogger("json").info("runtime", "started");
+  } finally {
+    process.stdout.write = originalWrite;
+    if (originalTestLogs === undefined) delete process.env.LOCALBASE_TEST_LOGS;
+    else process.env.LOCALBASE_TEST_LOGS = originalTestLogs;
+  }
+  expect(writes).toHaveLength(1);
+  expect(JSON.parse(writes[0])).toMatchObject({ message: "started" });
 });
 
 test("persists a complete inference event without truncating attributes", async () => {

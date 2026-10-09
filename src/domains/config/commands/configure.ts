@@ -631,21 +631,19 @@ export async function runConfigure(
     persistConfiguration(ctx.database, config);
   });
   execution.output.info(`Saved configuration to ${config.root}/local-base.db`);
-  execution.output.info(
-    `Selected LLM models: ${config.selectedLlmModels.join(", ")}`,
-  );
-  execution.output.info(
-    `Selected STT models: ${config.selectedSttModels.join(", ")}`,
-  );
-  execution.output.info(
-    `Selected TTS models: ${config.selectedTtsModels.join(", ")}`,
-  );
-  execution.output.info(
-    `Selected Image models: ${config.selectedImageModels.join(", ")}`,
-  );
-  execution.output.info(
-    `Selected Video models: ${config.selectedVideoModels.join(", ")}`,
-  );
+  const selections = [
+    ["LLM", config.selectedLlmModels],
+    ["STT", config.selectedSttModels],
+    ["TTS", config.selectedTtsModels],
+    ["Image", config.selectedImageModels],
+    ["Video", config.selectedVideoModels],
+  ] as const;
+  for (const [capability, models] of selections) {
+    if (models.length > 0)
+      execution.output.info(
+        `Selected ${capability} models: ${models.join(", ")}`,
+      );
+  }
 
   const hasAnyKeys = loadApiKeys(ctx.database, config).some(
     (k) => !k.revokedAt,

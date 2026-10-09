@@ -145,18 +145,24 @@ test(
         "keys",
         "create",
         "--name",
-        "automation",
+        "\x1b[31mreview\x1b[0m",
       ]);
+      expect(created.stderr).not.toMatch(
+        /[\x1b\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/,
+      );
       const createdData = jsonDocument(created.stdout).data as {
         secret: string;
-        key: { id: string };
+        key: { id: string; name: string };
       };
+      expect(createdData.key.name).toBe("\x1b[31mreview\x1b[0m");
+      expect(created.stdout).toContain("\\u001b");
       expect(createdData.secret).toMatch(/^lb_/);
       expect(
         keySecretResultSchema.parse(jsonDocument(created.stdout).data).key
           .scopes,
       ).toEqual(defaultApiKeyScopes);
       expect(created.stderr).not.toContain(createdData.secret);
+      expect(created.stdout).not.toMatch(/\x1b/);
 
       const rotated = await runCli(executable, [
         "--root",
@@ -981,6 +987,33 @@ test(
       ]);
       expect(humanList.exitCode).toBe(0);
       expect(humanList.stdout).toContain("scopes=");
+      const carriageKey = await runCli(executable, [
+        "--root",
+        root,
+        "keys",
+        "create",
+        "--name",
+        "visible\rhidden",
+      ]);
+      expect(carriageKey.exitCode).toBe(0);
+      const carriageList = await runCli(executable, [
+        "--root",
+        root,
+        "keys",
+        "list",
+      ]);
+      expect(carriageList.stdout).not.toContain("\r");
+      const carriageMissing = await runCli(executable, [
+        "--root",
+        root,
+        "keys",
+        "scopes",
+        "missing\r-key",
+        "--scopes",
+        "models:read",
+      ]);
+      expect(carriageMissing.exitCode).toBe(1);
+      expect(carriageMissing.stderr).not.toContain("\r");
       for (const result of [revoked, cleared, listed, humanList]) {
         expect(result.stdout + result.stderr).not.toContain(initial.secret);
         expect(result.stdout + result.stderr).not.toContain(rotation.secret);
