@@ -994,11 +994,11 @@ test("evicts only running runtimes without admitted requests", async () => {
     const active = await reconciler.admitModel("llm", config.activeLlmModel);
     if (active.kind !== "admitted") throw new Error("Expected admission.");
 
-    await reconciler.evictIdleRuntimes();
+    expect(await reconciler.evictIdleRuntimes()).toBe(0);
     expect(kills).toBe(0);
 
     active.value.admission.release();
-    await reconciler.evictIdleRuntimes();
+    expect(await reconciler.evictIdleRuntimes()).toBe(1);
     expect(kills).toBe(1);
 
     const reattached = await reconciler.admitModel(

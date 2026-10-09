@@ -293,23 +293,25 @@ export class RuntimeReconciler {
     return (await this.coordinate()).snapshot;
   }
 
-  async evictIdleRuntimes(excludedModality?: RuntimeModality): Promise<void> {
-    await Promise.all(
+  async evictIdleRuntimes(excludedModality?: RuntimeModality): Promise<number> {
+    const evicted = await Promise.all(
       runtimeModalities.map((modality) =>
         this.exclusiveModality(modality, async () => {
-          if (modality === excludedModality) return;
+          if (modality === excludedModality) return 0;
           const supervisor = this.supervisors.get(modality);
-          if (!supervisor || supervisor.state() !== "running") return;
+          if (!supervisor || supervisor.state() !== "running") return 0;
           const barrier = this.barriers[modality];
-          if (!barrier.detachIfIdle()) return;
+          if (!barrier.detachIfIdle()) return 0;
           try {
             await supervisor.kill();
+            return 1;
           } finally {
             this.attachBarrier(modality);
           }
         }),
       ),
     );
+    return evicted.reduce<number>((count, result) => count + result, 0);
   }
 
   /**

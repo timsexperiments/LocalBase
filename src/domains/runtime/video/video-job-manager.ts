@@ -1,8 +1,8 @@
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { RuntimeMemoryAdmissionError } from "../memory-controller";
 import type { RuntimeAdmission } from "../runtime-reconciler";
 import type { VideoGenerationInput } from "./video-input";
-import { RuntimeMemoryAdmissionError } from "../memory-controller";
 
 const DEFAULT_MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
 const DEFAULT_MAX_ARTIFACT_BYTES_TOTAL = 256 * 1024 * 1024;

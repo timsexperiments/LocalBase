@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { projectVideoJob } from "./gateway-contract";
 import {
   VideoJobArtifactLimitError,
   VideoJobManager,
@@ -9,6 +10,46 @@ import {
   type VideoJobBackend,
   type VideoJobManagerOptions,
 } from "./video-job-manager";
+
+test("fails active work for memory pressure as insufficient_memory", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-pressure-"));
+  const manager = createManager({
+    temporaryDirectory: root,
+    backend: {
+      async submitVideo({ signal }) {
+        await new Promise<void>((resolve) => {
+          if (signal?.aborted) resolve();
+          else
+            signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        throw new Error("stopped");
+      },
+      async getJob() {
+        return { id: "unused", status: "cancelled" };
+      },
+    },
+    acquireAdmission: async () => ({ ready: Promise.resolve(), release() {} }),
+    supervisedStop: async () => {},
+  });
+  try {
+    const started = await manager.start({
+      jobDeadlineMs: 60_000,
+      ownerId: "owner",
+      input: { kind: "text", prompt: "test" },
+    });
+    if (started.kind !== "accepted") throw new Error("Expected accepted job.");
+    await manager.failActiveForMemoryPressure();
+    const terminal = await started.terminal;
+    expect(terminal.state).toBe("failed");
+    expect(projectVideoJob(terminal)).toMatchObject({
+      status: "failed",
+      error: { code: "insufficient_memory" },
+    });
+    await manager.failActiveForMemoryPressure();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 type VideoJobManagerTestOptions = Omit<
   VideoJobManagerOptions,

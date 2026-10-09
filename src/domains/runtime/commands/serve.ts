@@ -1930,12 +1930,17 @@ export async function finalizeGatewayShutdown(
 
 export async function applyElevatedMemoryPressure(
   reconciler: Pick<RuntimeReconciler, "evictIdleRuntimes" | "evictAllRuntimes">,
+  videoJobs: Pick<VideoJobManager, "failActiveForMemoryPressure">,
   transition: MemorySafetyTransition,
 ): Promise<void> {
   const { current } = transition;
   if (current.state === "constrained") {
-    await reconciler.evictIdleRuntimes();
+    const evicted = await reconciler.evictIdleRuntimes();
+    if (evicted === 0 && current.consecutiveNormalSnapshots === 0) {
+      await videoJobs.failActiveForMemoryPressure();
+    }
   } else if (current.state === "critical") {
+    await videoJobs.failActiveForMemoryPressure();
     await reconciler.evictAllRuntimes();
   }
 }
@@ -2668,10 +2673,7 @@ export async function runServe(
   const memoryPressureMonitor = new MemoryPressureMonitor({
     controller: memorySafety,
     onElevatedPressure: async (transition) => {
-      await applyElevatedMemoryPressure(reconciler, transition);
-      const afterEviction = await memorySafety.poll();
-      if (afterEviction.current.state !== "healthy")
-        await videoJobs.failActiveForMemoryPressure();
+      await applyElevatedMemoryPressure(reconciler, videoJobs, transition);
     },
     onTransition: (transition) =>
       reportMemoryPressureTransition(ctx.logger, transition),
