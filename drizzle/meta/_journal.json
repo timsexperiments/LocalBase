@@ -64,6 +64,13 @@
       "when": 1791576014573,
       "tag": "0008_majestic_spirit",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791579311933,
+      "tag": "0009_third_whizzer",
+      "breakpoints": true
     }
   ]
 }

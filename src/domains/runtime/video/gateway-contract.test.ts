@@ -220,12 +220,12 @@ test("projects memory failures as insufficient_memory", () => {
   expect(
     projectVideoJob({
       ...base,
-      failure: new ModelInstallConsentError("Install with --install-missing."),
+      failure: new ModelInstallConsentError("missing-video-model"),
     }),
   ).toMatchObject({
     error: {
       code: "model_install_consent_required",
-      message: "Install with --install-missing.",
+      message: expect.stringContaining("--install-missing"),
     },
   });
   expect(

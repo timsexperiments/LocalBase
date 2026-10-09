@@ -40,7 +40,6 @@ import {
   recommendedSttForVram,
 } from "./catalog";
 import { assertModelDiskSpace } from "./domains/runtime/startup-preflight";
-import { modelConfigurationSchema } from "./domains/models/model-selection";
 import { createModelConfigurationSchema } from "./domains/models/model-selection";
 import { assertModelEligible } from "./domains/models/model-eligibility";
 import { videoTargetFromTopology } from "./domains/models/model-eligibility";
