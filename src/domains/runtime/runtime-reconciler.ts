@@ -78,7 +78,8 @@ type PreparedModelAdmissionResult =
 export type ModelAdmissionResult =
   Readonly<{ kind: "admitted"; value: ModelAdmission }> | ModelAdmissionFailure;
 
-const MEMORY_SETTLE_TIMEOUT_MS = 3_000;
+// macOS can take several seconds to return reclaimed pages after a backend exits.
+const MEMORY_SETTLE_TIMEOUT_MS = 10_000;
 const MEMORY_SETTLE_POLL_INTERVAL_MS = 100;
 
 type ConfiguredModalities = Record<RuntimeModality, boolean>;
@@ -86,6 +87,7 @@ type ModalityTransitions = Record<RuntimeModality, Promise<void>>;
 
 export type RuntimeReconciliationHooks = Readonly<{
   beforeModalityDrain?: (modality: RuntimeModality) => Promise<void>;
+  now?: () => number;
 }>;
 
 type CoordinatedSnapshot = Readonly<{
@@ -167,6 +169,7 @@ export class RuntimeReconciler {
   >();
   /** Recovery owns detached barriers until its claim is released. */
   private readonly recoveryClaims = new Map<RuntimeModality, symbol>();
+  private lastMemoryEvictionAt: number | undefined;
   private transitions = Promise.resolve();
   private readonly modalityTransitions: ModalityTransitions =
     Object.fromEntries(
@@ -231,6 +234,14 @@ export class RuntimeReconciler {
     return Object.freeze({ ...this.configured });
   }
 
+  isWithinReclaimGrace(): boolean {
+    return (
+      this.lastMemoryEvictionAt !== undefined &&
+      (this.hooks.now?.() ?? Date.now()) - this.lastMemoryEvictionAt <
+        MEMORY_SETTLE_TIMEOUT_MS
+    );
+  }
+
   protectedModelIds(): ReadonlySet<string> {
     const ids = new Set<string>();
     for (const modality of runtimeModalities) {
@@ -292,23 +303,27 @@ export class RuntimeReconciler {
     return (await this.coordinate()).snapshot;
   }
 
-  async evictIdleRuntimes(excludedModality?: RuntimeModality): Promise<void> {
-    await Promise.all(
+  async evictIdleRuntimes(excludedModality?: RuntimeModality): Promise<number> {
+    const evicted = await Promise.all(
       runtimeModalities.map((modality) =>
         this.exclusiveModality(modality, async () => {
-          if (modality === excludedModality) return;
+          if (modality === excludedModality) return 0;
           const supervisor = this.supervisors.get(modality);
-          if (!supervisor || supervisor.state() !== "running") return;
+          if (!supervisor || supervisor.state() !== "running") return 0;
           const barrier = this.barriers[modality];
-          if (!barrier.detachIfIdle()) return;
+          if (!barrier.detachIfIdle()) return 0;
           try {
             await supervisor.kill();
+            return 1;
           } finally {
             this.attachBarrier(modality);
           }
         }),
       ),
     );
+    const count = evicted.reduce<number>((total, result) => total + result, 0);
+    if (count > 0) this.lastMemoryEvictionAt = this.hooks.now?.() ?? Date.now();
+    return count;
   }
 
   /**
@@ -406,6 +421,8 @@ export class RuntimeReconciler {
         },
         signal,
       );
+      if (stopped && claims.length > 0)
+        this.lastMemoryEvictionAt = this.hooks.now?.() ?? Date.now();
       return stopped;
     } finally {
       for (const claim of claims) {
@@ -716,20 +733,47 @@ export class RuntimeReconciler {
       }
       this.throwIfAborted(signal);
       dispatchLease?.throwIfCancelled();
+      // The active model can still have a stopped backend. In that case the
+      // model-switch preflight was skipped, but starting video still needs it.
+      if (modality === "video") {
+        const supervisor = this.supervisors.get(modality);
+        if (supervisor && supervisor.state() !== "running") {
+          const candidate = this.factory.create(modality, admissionSnapshot);
+          const preflightController = new AbortController();
+          this.switchPreflights.set(modality, preflightController);
+          const preflightSignal = signal
+            ? AbortSignal.any([signal, preflightController.signal])
+            : preflightController.signal;
+          try {
+            const rejection = await this.waitForAbort(
+              candidate.preflight?.([], preflightSignal) ??
+                Promise.resolve(undefined),
+              preflightSignal,
+            );
+            this.throwIfAborted(signal);
+            dispatchLease?.throwIfCancelled();
+            if (rejection)
+              return { kind: "insufficient-memory", error: rejection };
+          } finally {
+            if (this.switchPreflights.get(modality) === preflightController)
+              this.switchPreflights.delete(modality);
+          }
+        }
+      }
+      this.throwIfAborted(signal);
+      dispatchLease?.throwIfCancelled();
       const admission = this.acquire(modality, admissionSnapshot);
       if (!admission) return { kind: "unavailable" };
-      dispatchLease?.throwIfCancelled();
-      const prepared = this.prepare(admission);
       try {
+        this.throwIfAborted(signal);
         dispatchLease?.throwIfCancelled();
+        const prepared = this.prepare(admission);
+        dispatchLease?.throwIfCancelled();
+        return { kind: "admitted", value: { modelId, admission: prepared } };
       } catch (error) {
-        prepared.cancel();
+        admission.release();
         throw error;
       }
-      return {
-        kind: "admitted",
-        value: { modelId, admission: prepared },
-      };
     });
   }
 
