@@ -275,7 +275,6 @@ function imageMemoryDemand(input: {
 
 function llmMemoryDemand(input: {
   artifactBytes: number;
-  modelRequirementGb: number | undefined;
   ctxSize: number;
   parallel: ParallelAllocation;
   kvCache: LlmLaunchPlan["kvCache"];
@@ -296,13 +295,13 @@ function llmMemoryDemand(input: {
     input.parallel.slots * PARALLEL_SLOT_OVERHEAD_GB * gibibyte,
   );
   const promptCacheBytes = input.promptCacheRamMib * 1024 * 1024;
-  const requirementBytes = modelBytes(
-    input.artifactBytes,
-    input.modelRequirementGb,
-  );
+  // Catalog minVramGb describes a whole-machine hardware class. It is not
+  // the resident weight size and must not be stacked with computed runtime
+  // allocations when comparing demand with currently available memory.
+  const weightBytes = input.artifactBytes;
   return Object.freeze({
     unifiedBytes:
-      requirementBytes +
+      weightBytes +
       contextBytes +
       slotBytes +
       promptCacheBytes +
@@ -312,7 +311,7 @@ function llmMemoryDemand(input: {
       RUNTIME_HOST_OVERHEAD_BYTES +
       contextBytes +
       promptCacheBytes,
-    acceleratorBytes: requirementBytes + contextBytes + slotBytes,
+    acceleratorBytes: weightBytes + contextBytes + slotBytes,
     confidence: "estimated",
   });
 }
@@ -351,7 +350,7 @@ export function resolveLlmLaunchPlan(input: {
   const parallel = allocateParallelSlots({
     parallel: input.parallel,
     memoryGb: input.hardware.memoryGb,
-    modelRequirementGb: input.modelRequirementGb,
+    modelRequirementGb: input.artifactBytes / gibibyte,
     ctxSize,
     ...(kvGeometry
       ? {
@@ -388,7 +387,7 @@ export function resolveLlmLaunchPlan(input: {
       : {}),
     promptCacheRamMib,
     memoryDemand: llmMemoryDemand({
-      ...input,
+      artifactBytes: input.artifactBytes,
       ctxSize,
       parallel,
       kvCache,

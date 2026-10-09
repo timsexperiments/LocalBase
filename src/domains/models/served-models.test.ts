@@ -395,7 +395,7 @@ describe("listServedModels", () => {
     );
     expect(
       byId(data, "qwen2.5-coder-1.5b-instruct-q4_k_m")?.context_length,
-    ).toBe(11008);
+    ).toBe(8192);
   });
 
   test("lists a modality configured after gateway startup", async () => {

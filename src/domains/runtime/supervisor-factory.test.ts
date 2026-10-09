@@ -153,6 +153,9 @@ test("preflights catalog capacity demand when LLM artifacts are missing", async 
         capacityBytes: 32 * gibibyte,
       },
     });
+    // All four shards are resident, so demand must cover their sum, not only
+    // the first shard.
+    expect(rejection?.capacity?.requiredBytes).toBeGreaterThan(45 * gibibyte);
     await expect(
       Bun.file(
         join(
