@@ -427,6 +427,11 @@ test("configure rejects invalid composed model selections before persistence", a
     const db = drizzle({ client: sqlite, schema });
     migrate(db, { migrationsFolder: migrationsFolder() });
     const getDatabase = spyOn(context.database, "get").mockReturnValue(db);
+    const target = spyOn(manager, "detectHostVideoTarget").mockReturnValue({
+      platform: "linux",
+      architecture: "x64",
+      accelerator: "nvidia",
+    });
     try {
       const video = "wan2.1-t2v-1.3b-q8_0";
       const catalogOnlyVideo = "wan2.2-ti2v-5b-q6_k";
@@ -470,6 +475,7 @@ test("configure rejects invalid composed model selections before persistence", a
       }
     } finally {
       getDatabase.mockRestore();
+      target.mockRestore();
       sqlite.close();
       context.database.close();
     }

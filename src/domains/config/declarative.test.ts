@@ -1,8 +1,9 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSession } from "../../db/client";
 import { defaultConfig } from "../../manager";
+import * as manager from "../../manager";
 import {
   configurationDocument,
   parseConfiguration,
@@ -16,6 +17,7 @@ test("unverified S2V config is rejected before persistence creates its root", ()
   const root = join(parent, "root");
   const database = new DatabaseSession();
   const config = defaultConfig(root);
+  const target = spyOn(manager, "detectHostVideoTarget").mockReturnValue(null);
   config.allowExperimental = true;
   config.selectedVideoModels = ["wan2.2-s2v-14b-fp8"];
   config.activeVideoModel = config.selectedVideoModels[0]!;
@@ -25,6 +27,7 @@ test("unverified S2V config is rejected before persistence creates its root", ()
     );
     expect(existsSync(root)).toBe(false);
   } finally {
+    target.mockRestore();
     database.close();
     rmSync(parent, { recursive: true, force: true });
   }

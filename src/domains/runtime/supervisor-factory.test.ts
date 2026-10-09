@@ -18,6 +18,9 @@ import {
 import { SpeechSupervisor } from "./speech-supervisor";
 import { generateSpeechWithIdleRecovery } from "./commands/serve";
 import { projectVideoJob } from "./video/gateway-contract";
+import { useSupportedVideoHost } from "../../test/video-host";
+
+useSupportedVideoHost();
 
 test("rejects an unsupported video topology before installation or launch", async () => {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-target-"));

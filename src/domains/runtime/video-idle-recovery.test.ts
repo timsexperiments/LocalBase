@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { CATALOG } from "../../catalog";
 import { DatabaseSession } from "../../db/client";
 import { defaultConfig, saveConfig } from "../../manager";
+import { useSupportedVideoHost } from "../../test/video-host";
 import { createLogger } from "../observability/logging";
 import { createOtelRuntime, OtelRuntimeHolder } from "../observability/otel";
 import { admitModelWithIdleRecovery } from "./commands/serve";
@@ -19,6 +20,8 @@ import {
   SupervisorRegistry,
   type RuntimeSupervisor,
 } from "./supervisor-registry";
+
+useSupportedVideoHost();
 
 function insufficientMemory(): RuntimeMemoryAdmissionError {
   return new RuntimeMemoryAdmissionError({

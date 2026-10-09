@@ -8,6 +8,7 @@ import { createModelManagement } from "../models/model-management";
 import type { LogEventInput } from "../observability/logging";
 import * as manager from "../../manager";
 import { defaultConfig, readConfig, saveConfig } from "../../manager";
+import { useSupportedVideoHost } from "../../test/video-host";
 import { RuntimeConfigController } from "./config-snapshot";
 import { RuntimeMemoryAdmissionError } from "./memory-controller";
 import { resourceUnavailable } from "./commands/serve";
@@ -25,6 +26,8 @@ import {
   VideoJobManager,
   type VideoJobBackend,
 } from "./video/video-job-manager";
+
+useSupportedVideoHost();
 
 type ServiceRecord = {
   modality: RuntimeModality;
