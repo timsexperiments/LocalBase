@@ -9,6 +9,8 @@ import {
   saveConfig,
 } from "../../../manager";
 import { DatabaseSession } from "../../../db/client";
+import { RuntimeMemoryAdmissionError } from "../memory-controller";
+import { admitVideoWithIdleRecovery } from "../commands/serve";
 import {
   handleVideoGatewayRequest,
   type VideoGatewayHandlerDependencies,
@@ -453,6 +455,95 @@ test("reserves one accepted video job while admission warms and clears it after 
       }),
     );
     expect(recovered.status).toBe(202);
+  } finally {
+    credentials.database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("reports permanent video preflight rejection as insufficient_memory on the job", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-preflight-reject-"));
+  const credentials = createCredentials(root);
+  const jobs = new VideoJobManager({
+    backend: {
+      async submitVideo() {
+        throw new Error("backend must not start");
+      },
+      async getJob() {
+        throw new Error("backend must not start");
+      },
+    },
+    temporaryDirectory: root,
+    onContainmentFailure: () => {},
+  });
+  const memoryError = new RuntimeMemoryAdmissionError({
+    kind: "rejected",
+    reason: "system-memory",
+    poolId: "system",
+  });
+  let preflights = 0;
+  let evictions = 0;
+  const admissionProvider: VideoModelAdmissionProvider = {
+    async admit(modelId, signal) {
+      const selection = await admitVideoWithIdleRecovery(
+        {
+          async admitModel(modality, requestedModel, requestSignal) {
+            expect([modality, requestedModel, requestSignal]).toEqual([
+              "video",
+              modelId,
+              signal,
+            ]);
+            preflights += 1;
+            return { kind: "insufficient-memory", error: memoryError };
+          },
+          async recoverWithIdleEviction() {
+            evictions += 1;
+            return false;
+          },
+          async waitForAdmissionAfterEviction() {
+            return true;
+          },
+        },
+        modelId,
+        signal,
+      );
+      if (selection.kind === "insufficient-memory") throw selection.error;
+      if (selection.kind === "admitted") {
+        return { kind: "admitted", admission: selection.value.admission };
+      }
+      return selection;
+    },
+  };
+  try {
+    const created = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: createRequest("Generate despite permanent memory rejection."),
+        pathname: "/v1/videos",
+        route: "videoCreate",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+      }),
+    );
+    expect(created.status).toBe(202);
+    const job = (await created.json()) as { id: string };
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const status = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: new Request(`http://local.test/v1/videos/${job.id}`),
+        pathname: `/v1/videos/${job.id}`,
+        route: "videoStatus",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+      }),
+    );
+    expect(status.status).toBe(200);
+    await expect(status.json()).resolves.toMatchObject({
+      status: "failed",
+      error: { code: "insufficient_memory" },
+    });
+    expect({ preflights, evictions }).toEqual({ preflights: 1, evictions: 1 });
   } finally {
     credentials.database.close();
     rmSync(root, { recursive: true, force: true });
