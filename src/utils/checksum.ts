@@ -13,6 +13,7 @@ import { setImmediate, setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 import { processIsAbsent } from "./root";
 import { shouldShowOperationalOutput } from "./operational-output";
+import { stripAnsiCodes } from "./color";
 
 export const sha256Schema = z.string().regex(/^[a-fA-F0-9]{64}$/);
 export const safeFilenameSchema = z
@@ -263,7 +264,9 @@ export async function readChecksumStore(dir: string): Promise<ChecksumStore> {
 
   const reject = (reason: string) => {
     console.warn(
-      `⚠️ Ignoring invalid continuity checksum cache at ${filePath}: ${reason}. Files will be re-verified.`,
+      stripAnsiCodes(
+        `⚠️ Ignoring invalid continuity checksum cache at ${filePath}: ${reason}. Files will be re-verified.`,
+      ),
     );
     return emptyChecksumStore();
   };
