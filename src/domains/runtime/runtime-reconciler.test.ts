@@ -1448,6 +1448,7 @@ test.each([
     const result = await reconciler.admitModel("llm", modelB);
     expect(preflights).toEqual([
       { modelId: modelB, releasing: [`llm:${modelA}`] },
+      ...(!rejects ? [{ modelId: modelB, releasing: [] }] : []),
     ]);
     if (rejects) {
       expect(result.kind).toBe("insufficient-memory");
@@ -1686,7 +1687,7 @@ test("keeps the selected switch when actual admission fails after preflight", as
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "insufficient_memory" },
     });
-    expect(preflights).toBe(1);
+    expect(preflights).toBe(2);
     expect(controller.read().config.activeLlmModel).toBe(modelB);
     expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
       modelId: modelB,

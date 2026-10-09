@@ -216,6 +216,7 @@ test("video switch projection credits the old video generation and admits after 
   const released = new Set<string>();
   const projectedReleases: string[][] = [];
   let videoPreflights = 0;
+  let staleSamples = 0;
   const oldVideo = testSupervisor(
     "video:old",
     () => "running",
@@ -229,6 +230,7 @@ test("video switch projection credits the old video generation and admits after 
     () => "running",
     async () => {
       released.add("llm:idle");
+      staleSamples = 3;
     },
   );
   const factory: RuntimeSupervisorFactory = {
@@ -252,13 +254,21 @@ test("video switch projection credits the old video generation and admits after 
                 videoPreflights += 1;
                 if (videoPreflights === 1) return insufficientMemory();
                 const releasesOldVideo =
-                  releasingRuntimeIds.includes("video:old");
+                  releasingRuntimeIds.includes("video:old") ||
+                  released.has("video:old");
                 const releasesIdleLlm =
                   releasingRuntimeIds.includes("llm:idle");
-                return releasesOldVideo &&
-                  (releasesIdleLlm || released.has("llm:idle"))
-                  ? undefined
-                  : insufficientMemory();
+                if (
+                  !releasesOldVideo ||
+                  !(releasesIdleLlm || released.has("llm:idle"))
+                ) {
+                  return insufficientMemory();
+                }
+                if (released.has("llm:idle") && staleSamples > 0) {
+                  staleSamples -= 1;
+                  return insufficientMemory();
+                }
+                return undefined;
               },
             }
           : {}),
