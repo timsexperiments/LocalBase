@@ -1,8 +1,12 @@
 import { z } from "zod";
 import { type DatabaseSession } from "../../db/client";
-import { type LocalBaseConfig, saveConfig } from "../../manager";
+import {
+  detectHostVideoTarget,
+  type LocalBaseConfig,
+  saveConfig,
+} from "../../manager";
 import { CliInputError, formatZodError } from "../app/commands/errors";
-import { modelConfigurationSchema } from "../models/model-selection";
+import { createModelConfigurationSchema } from "../models/model-selection";
 import { memorySafetyConfigSchema } from "../runtime/memory-safety";
 import { configFieldOwnership } from "../runtime/reconciliation-plan";
 import { parallelSlotsSchema } from "./parallel";
@@ -14,24 +18,30 @@ import {
 } from "./activation";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 
-export const desiredConfigurationSchema = z
-  .object({
-    version: z.literal(1),
-    gateway: z.object({ host: hostSchema, port: portSchema }).strict(),
-    runtime: z
-      .object({
-        host: hostSchema,
-        port: portSchema,
-        ctxSize: z.number().int().min(2048).max(2_147_483_647),
-        parallel: parallelSlotsSchema,
-        sttHost: hostSchema,
-        sttPort: portSchema,
-      })
-      .strict(),
-    models: modelConfigurationSchema,
-    memory: memorySafetyConfigSchema,
-  })
-  .strict();
+export function createDesiredConfigurationSchema(
+  videoTarget = detectHostVideoTarget(),
+) {
+  return z
+    .object({
+      version: z.literal(1),
+      gateway: z.object({ host: hostSchema, port: portSchema }).strict(),
+      runtime: z
+        .object({
+          host: hostSchema,
+          port: portSchema,
+          ctxSize: z.number().int().min(2048).max(2_147_483_647),
+          parallel: parallelSlotsSchema,
+          sttHost: hostSchema,
+          sttPort: portSchema,
+        })
+        .strict(),
+      models: createModelConfigurationSchema(videoTarget),
+      memory: memorySafetyConfigSchema,
+    })
+    .strict();
+}
+
+export const desiredConfigurationSchema = createDesiredConfigurationSchema();
 
 export type DesiredConfiguration = z.infer<typeof desiredConfigurationSchema>;
 
@@ -76,7 +86,7 @@ export function parseConfiguration(text: string): DesiredConfiguration {
     // Parser diagnostics can contain source text, including accidentally pasted secrets.
     throw new CliInputError("Invalid TOML configuration.");
   }
-  const parsed = desiredConfigurationSchema.safeParse(value);
+  const parsed = createDesiredConfigurationSchema().safeParse(value);
   if (!parsed.success) throw new CliInputError(formatZodError(parsed.error));
   return normalize(parsed.data);
 }
@@ -85,7 +95,7 @@ export function configurationDocument(
   config: LocalBaseConfig,
 ): DesiredConfiguration {
   return normalize(
-    desiredConfigurationSchema.parse({
+    createDesiredConfigurationSchema().parse({
       version: 1,
       gateway: { host: config.gatewayHost, port: config.gatewayPort },
       runtime: {

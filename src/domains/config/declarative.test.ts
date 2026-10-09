@@ -1,11 +1,34 @@
 import { expect, test } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { DatabaseSession } from "../../db/client";
 import { defaultConfig } from "../../manager";
 import {
   configurationDocument,
   parseConfiguration,
   planConfiguration,
+  persistConfiguration,
   renderConfiguration,
 } from "./declarative";
+
+test("unverified S2V config is rejected before persistence creates its root", () => {
+  const parent = mkdtempSync("/tmp/localbase-declarative-s2v-");
+  const root = join(parent, "root");
+  const database = new DatabaseSession();
+  const config = defaultConfig(root);
+  config.allowExperimental = true;
+  config.selectedVideoModels = ["wan2.2-s2v-14b-fp8"];
+  config.activeVideoModel = config.selectedVideoModels[0]!;
+  try {
+    expect(() => persistConfiguration(database, config)).toThrow(
+      "Requires Linux x64 with a single NVIDIA GPU.",
+    );
+    expect(existsSync(root)).toBe(false);
+  } finally {
+    database.close();
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
 
 const current = defaultConfig("/tmp/localbase-config-test");
 const document = configurationDocument(current);

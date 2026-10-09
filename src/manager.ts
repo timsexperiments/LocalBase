@@ -41,6 +41,7 @@ import {
 } from "./catalog";
 import { assertModelDiskSpace } from "./domains/runtime/startup-preflight";
 import { modelConfigurationSchema } from "./domains/models/model-selection";
+import { createModelConfigurationSchema } from "./domains/models/model-selection";
 import { assertModelEligible } from "./domains/models/model-eligibility";
 import { videoTargetFromTopology } from "./domains/models/model-eligibility";
 import { createHostMemoryProvider } from "./domains/runtime/memory/host-memory-provider";
@@ -292,6 +293,13 @@ export function modelDirectories(
   };
 }
 
+export function detectHostVideoTarget() {
+  const provider = createHostMemoryProvider();
+  const target = videoTargetFromTopology(provider.topology);
+  void provider.close();
+  return target;
+}
+
 function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
   const parsed = configRowSchema.safeParse(row);
   if (!parsed.success) {
@@ -329,7 +337,9 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     "selectedTtsModels",
     openedRoot,
   );
-  const models = modelConfigurationSchema.safeParse({
+  const models = createModelConfigurationSchema(
+    detectHostVideoTarget(),
+  ).safeParse({
     allowExperimental: data.allowExperimental,
     selectedLlmModels,
     selectedSttModels,

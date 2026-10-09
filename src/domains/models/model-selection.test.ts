@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { byId } from "../../catalog";
-import { modelConfigurationSchema } from "./model-selection";
+import {
+  createModelConfigurationSchema,
+  modelConfigurationSchema,
+} from "./model-selection";
 import {
   modelEligibilityReason,
   unsupportedModelTargetReason,
@@ -43,6 +46,31 @@ test("experimental S2V selection requires a persisted opt-in", () => {
       target: linuxNvidia,
     }),
   ).toBeNull();
+  expect(
+    createModelConfigurationSchema(linuxNvidia).safeParse({
+      ...selection,
+      allowExperimental: true,
+    }).success,
+  ).toBe(true);
+});
+
+test("S2V configuration requires a detected single NVIDIA GPU even with opt-in", () => {
+  const config = defaultConfig("/tmp/localbase-model-selection-test");
+  expect(
+    modelConfigurationSchema.safeParse({
+      allowExperimental: true,
+      selectedLlmModels: config.selectedLlmModels,
+      selectedSttModels: config.selectedSttModels,
+      selectedTtsModels: config.selectedTtsModels,
+      selectedImageModels: config.selectedImageModels,
+      selectedVideoModels: [id],
+      activeLlmModel: config.activeLlmModel,
+      activeSttModel: config.activeSttModel,
+      activeTtsModel: config.activeTtsModel,
+      activeImageModel: config.activeImageModel,
+      activeVideoModel: id,
+    }).success,
+  ).toBe(false);
 });
 
 test("S2V target eligibility rejects macOS ARM64 with the install reason", () => {

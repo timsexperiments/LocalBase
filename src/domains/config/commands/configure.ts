@@ -9,6 +9,7 @@ import {
   loadApiKeys,
   loadConfig,
   modelDirectories,
+  detectHostVideoTarget,
   type LocalBaseConfig,
 } from "../../../manager";
 import {
@@ -17,7 +18,7 @@ import {
   type AppContext,
 } from "../../../context";
 import {
-  modelConfigurationSchema,
+  createModelConfigurationSchema,
   validateModelList,
 } from "../../models/model-selection";
 import {
@@ -56,7 +57,9 @@ function validateExternalModelList(
 }
 
 function validateComposedModelConfiguration(config: LocalBaseConfig): void {
-  const result = modelConfigurationSchema.safeParse({
+  const result = createModelConfigurationSchema(
+    detectHostVideoTarget(),
+  ).safeParse({
     allowExperimental: config.allowExperimental,
     selectedLlmModels: config.selectedLlmModels,
     selectedSttModels: config.selectedSttModels,

@@ -290,7 +290,7 @@ export function createModelManagement({
     runtimeConfig.refreshSync();
     const config = runtimeConfig.copy();
     const field = fields[model.kind];
-    if (action !== "uninstall") {
+    if (action === "install" || action === "enable" || action === "activate") {
       const reason = modelEligibilityReason(
         model,
         model.videoRuntime && videoTarget

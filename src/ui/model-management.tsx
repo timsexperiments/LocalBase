@@ -49,7 +49,10 @@ export function ModelManagement({
   const [installation, setInstallation] = useState("all");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  const [confirmation, setConfirmation] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{
+    modelId: string;
+    action: "install" | "uninstall";
+  } | null>(null);
   const [revision, setRevision] = useState(0);
   const connectionKind = connection?.kind;
 
@@ -318,7 +321,12 @@ export function ModelManagement({
                             model.device.selected ||
                             Boolean(model.device.runtime?.configured)
                           }
-                          onClick={() => setConfirmation(model.id)}
+                          onClick={() =>
+                            setConfirmation({
+                              modelId: model.id,
+                              action: "uninstall",
+                            })
+                          }
                         >
                           Uninstall
                         </button>
@@ -351,7 +359,12 @@ export function ModelManagement({
                             model.device.selected ||
                             Boolean(model.device.runtime?.configured)
                           }
-                          onClick={() => setConfirmation(model.id)}
+                          onClick={() =>
+                            setConfirmation({
+                              modelId: model.id,
+                              action: "uninstall",
+                            })
+                          }
                         >
                           Uninstall
                         </button>
@@ -362,7 +375,10 @@ export function ModelManagement({
                         disabled={locked || !local?.canInstall}
                         onClick={() =>
                           model.catalog.qualificationState === "experimental"
-                            ? setConfirmation(model.id)
+                            ? setConfirmation({
+                                modelId: model.id,
+                                action: "install",
+                              })
                             : void run(model.id, "install")
                         }
                       >
@@ -383,19 +399,17 @@ export function ModelManagement({
                         before uninstalling.
                       </p>
                     )}
-                  {confirmation === model.id && (
+                  {confirmation?.modelId === model.id && (
                     <div
                       className="uninstall-confirmation"
                       role="group"
                       aria-label={
-                        model.catalog.qualificationState === "experimental" &&
-                        !model.device.installed
+                        confirmation.action === "install"
                           ? `Confirm experimental install ${model.id}`
                           : `Confirm uninstall ${model.id}`
                       }
                     >
-                      {model.catalog.qualificationState === "experimental" &&
-                      !model.device.installed ? (
+                      {confirmation.action === "install" ? (
                         <>
                           <p>
                             This unqualified experimental model downloads about{" "}
@@ -427,7 +441,9 @@ export function ModelManagement({
                         </>
                       )}
                       <button onClick={() => setConfirmation(null)}>
-                        Keep model
+                        {confirmation.action === "install"
+                          ? "Keep model"
+                          : "Cancel"}
                       </button>
                     </div>
                   )}

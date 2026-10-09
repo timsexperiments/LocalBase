@@ -288,6 +288,26 @@ test("partial downloads count toward disk footprint and can be uninstalled", asy
   expect(await entry()).toMatchObject({ installed: false, installedBytes: 0 });
 });
 
+test("partial S2V download can be uninstalled after its GPU target disappears", async () => {
+  const f = fixture();
+  const model = CATALOG.find((entry) => entry.modelId === "wan2.2-s2v-14b-fp8");
+  if (!model) throw new Error("Expected the Wan S2V profile");
+  await f.runtimeConfig.update((config) => {
+    config.allowExperimental = true;
+  });
+  const management = createModelManagement({
+    runtimeConfig: f.runtimeConfig,
+    lifecycle: () => f.runtimes,
+    videoTarget: () => null,
+  });
+  const artifact = model.artifacts[0];
+  if (!artifact) throw new Error("Expected an S2V artifact");
+  const path = join(f.config.videoModelsDir, artifact.filename);
+  writeFileSync(`${path}.partial`, "partial");
+  await management.run(model.modelId, "uninstall");
+  expect(existsSync(`${path}.partial`)).toBe(false);
+});
+
 test("unsafe partial target prevents deletion of a valid final artifact", async () => {
   const f = fixture();
   writeFileSync(f.path, "abc");
@@ -378,6 +398,22 @@ test("disable preserves external persisted updates and read refreshes enabled st
       (entry) => entry.id === f.model.modelId,
     )?.enabled,
   ).toBe(true);
+});
+
+test("configured video model remains disableable when its GPU target disappears", async () => {
+  const f = fixture();
+  const id = "wan2.1-t2v-1.3b-q8_0";
+  await f.runtimeConfig.update((config) => {
+    config.selectedVideoModels = [id];
+    config.activeVideoModel = id;
+  });
+  const management = createModelManagement({
+    runtimeConfig: f.runtimeConfig,
+    lifecycle: () => f.runtimes,
+    videoTarget: () => null,
+  });
+  await management.run(id, "disable");
+  expect(f.runtimeConfig.copy().selectedVideoModels).toEqual([]);
 });
 
 test("uninstall rejects externally enabled models even when the controller was stale", async () => {
