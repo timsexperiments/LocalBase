@@ -20,7 +20,16 @@
     }
   },
   "licenseSources": {
+    "LICENSE.Apache-2.0.txt": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/Apache-2.0.txt",
+    "LICENSE.BSD-3-Clause.txt": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/BSD-3-Clause.txt",
+    "LICENSE.BlueOak-1.0.0.txt": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/BlueOak-1.0.0.txt",
+    "LICENSE.CC0-1.0.txt": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/CC0-1.0.txt",
     "LICENSE.bun.md": "https://raw.githubusercontent.com/oven-sh/bun/0d9b296af33f2b851fcbf4df3e9ec89751734ba4/LICENSE.md",
+    "LICENSE.GPL-3.0-or-later.txt": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-3.0-or-later.txt",
+    "LICENSE.ISC.txt": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/ISC.txt",
+    "LICENSE.LGPL-2.1-only.txt": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/LGPL-2.1-only.txt",
+    "LICENSE.LGPL-3.0-or-later.txt": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/LGPL-3.0-or-later.txt",
+    "LICENSE.MIT.txt": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/MIT.txt",
     "LICENSE.onnxruntime.txt": "https://raw.githubusercontent.com/microsoft/onnxruntime/e0b66cad282043d4377cea5269083f17771b6dfc/LICENSE",
     "ThirdPartyNotices.onnxruntime.txt": "https://raw.githubusercontent.com/microsoft/onnxruntime/e0b66cad282043d4377cea5269083f17771b6dfc/ThirdPartyNotices.txt"
   }

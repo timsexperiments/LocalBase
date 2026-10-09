@@ -26,6 +26,9 @@ import {
   kokoroArtifactSchema,
   kokoroInvocation,
   kokoroReleaseManifestSchema,
+  requiredKokoroLicenses,
+  verifyDependencyLicenses,
+  verifyKokoroLicenses,
 } from "./kokoro-package-contract";
 
 const directories: string[] = [];
@@ -38,6 +41,34 @@ async function temp() {
   directories.push(directory);
   return directory;
 }
+
+test("release packaging requires every declared runtime license text", async () => {
+  const root = await temp();
+  for (const license of requiredKokoroLicenses)
+    await writeFile(join(root, license), "license text");
+  await expect(verifyKokoroLicenses(root)).resolves.toBeUndefined();
+  await rm(join(root, requiredKokoroLicenses[1]!));
+  await expect(verifyKokoroLicenses(root)).rejects.toThrow(
+    requiredKokoroLicenses[1],
+  );
+  await writeFile(join(root, requiredKokoroLicenses[1]!), "");
+  await expect(verifyKokoroLicenses(root)).rejects.toThrow(
+    requiredKokoroLicenses[1],
+  );
+});
+
+test("dependency license inventory rejects absent declarations and texts", async () => {
+  const root = await temp();
+  await writeFile(join(root, "LICENSE.MIT.txt"), "MIT terms");
+  await expect(
+    verifyDependencyLicenses(root, [
+      { name: "known", license: "(MIT OR CC0-1.0)" },
+    ]),
+  ).rejects.toThrow("CC0-1.0");
+  await expect(
+    verifyDependencyLicenses(root, [{ name: "unknown", license: undefined }]),
+  ).rejects.toThrow("no declared license");
+});
 
 test("Kokoro converts finite bounded float audio into the existing strict PCM16 contract", () => {
   const wav = pcm16Wav(new Float32Array([-1, -0.5, 0, 0.5, 1]));

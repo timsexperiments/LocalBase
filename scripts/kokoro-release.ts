@@ -32,6 +32,8 @@ import {
   kokoroReleaseManifestSchema,
   kokoroTagSchema,
   kokoroTargetSchema,
+  verifyDependencyLicenses,
+  verifyKokoroLicenses,
   type KokoroArtifact,
   type KokoroTarget,
 } from "./kokoro-package-contract";
@@ -379,6 +381,7 @@ export async function packageRuntime(
       "Package sidecar must be emitted by the pinned Bun version.",
     );
   const root = resolve(directory);
+  await verifyKokoroLicenses(join(runtimeSource, "licenses"));
   // Recheck at packaging, so a separate verification step cannot become stale.
   await verifyDependencies(target, root);
   const result = await Bun.build({
@@ -400,6 +403,7 @@ export async function packageRuntime(
   });
   await cp(join(runtimeSource, "sources.json"), join(root, "sources.json"));
   const packages = await installedPackages(root);
+  await verifyDependencyLicenses(join(root, "licenses"), packages);
   await writeFile(
     join(root, "licenses/dependencies.json"),
     JSON.stringify(
