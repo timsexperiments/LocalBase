@@ -204,7 +204,13 @@ test("video switch projection credits the old video generation and admits after 
   const root = mkdtempSync("/tmp/localbase-video-switch-recovery-");
   const database = new DatabaseSession();
   const config = defaultConfig(root, 48);
-  const videoModels = CATALOG.filter((model) => model.kind === "video");
+  const videoModels = CATALOG.filter(
+    (model) =>
+      model.kind === "video" &&
+      model.videoRuntime?.supportedTargets.some(
+        (target) => target.accelerator === "apple-unified",
+      ),
+  );
   const previousVideoModel = videoModels[0]?.modelId;
   const targetVideoModel = videoModels[1]?.modelId;
   if (!previousVideoModel || !targetVideoModel)

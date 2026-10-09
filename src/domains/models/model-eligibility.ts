@@ -5,6 +5,13 @@ export const experimentalModelOptInRequired =
 export const unsupportedModelTargetReason =
   "Requires Linux x64 with a single NVIDIA GPU.";
 
+export class ModelHardwareIneligibleError extends Error {
+  constructor(modelId: string, reason: string) {
+    super(`${modelId}: ${reason}`);
+    this.name = "ModelHardwareIneligibleError";
+  }
+}
+
 export function videoTargetFromTopology(
   topology:
     | { kind: "unified" }
@@ -85,5 +92,7 @@ export function assertModelEligible(
   options?: Parameters<typeof modelEligibilityReason>[1],
 ): void {
   const reason = modelEligibilityReason(model, options);
+  if (reason === unsupportedModelTargetReason)
+    throw new ModelHardwareIneligibleError(model.modelId, reason);
   if (reason) throw new Error(`${model.modelId}: ${reason}`);
 }

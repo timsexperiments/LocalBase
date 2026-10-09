@@ -472,6 +472,16 @@ export function saveConfig(
     ...modelDirectories(config.root),
   };
   const row = toConfigRow(canonicalConfig);
+  ensureLocalBaseRootMarker(canonicalConfig.root);
+  const previousRow = withDatabase(database, canonicalConfig.root, (db) =>
+    db.select().from(configTable).where(eq(configTable.id, "default")).get(),
+  );
+  const previouslySelectedVideoModels = previousRow
+    ? fromConfigRow(previousRow, canonicalConfig.root).selectedVideoModels
+    : [];
+  const newlySelectedVideoModels = canonicalConfig.selectedVideoModels.filter(
+    (modelId) => !previouslySelectedVideoModels.includes(modelId),
+  );
   const eligibility = createModelConfigurationSchema(
     detectHostVideoTarget(),
   ).safeParse({
@@ -480,12 +490,16 @@ export function saveConfig(
     selectedSttModels: canonicalConfig.selectedSttModels,
     selectedTtsModels: canonicalConfig.selectedTtsModels,
     selectedImageModels: canonicalConfig.selectedImageModels,
-    selectedVideoModels: canonicalConfig.selectedVideoModels,
+    selectedVideoModels: newlySelectedVideoModels,
     activeLlmModel: canonicalConfig.activeLlmModel,
     activeSttModel: canonicalConfig.activeSttModel,
     activeTtsModel: canonicalConfig.activeTtsModel,
     activeImageModel: canonicalConfig.activeImageModel,
-    activeVideoModel: canonicalConfig.activeVideoModel,
+    activeVideoModel: newlySelectedVideoModels.includes(
+      canonicalConfig.activeVideoModel,
+    )
+      ? canonicalConfig.activeVideoModel
+      : "",
   });
   if (!eligibility.success) {
     throw invalidConfiguration(
@@ -494,7 +508,6 @@ export function saveConfig(
     );
   }
   fromConfigRow(row, canonicalConfig.root);
-  ensureLocalBaseRootMarker(canonicalConfig.root);
   ensureDirs(canonicalConfig);
   withDatabase(database, canonicalConfig.root, (db) => {
     db.insert(configTable)
