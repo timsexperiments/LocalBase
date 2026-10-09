@@ -70,18 +70,18 @@ Configure a small LLM and create an API key:
 ```bash
 local-base init
 local-base --non-interactive configure --defaults \
-  --llm-models qwen2.5-coder-1.5b-instruct-q4_k_m \
-  --active-llm qwen2.5-coder-1.5b-instruct-q4_k_m \
+  --llm-models qwen2.5-coder-7b-instruct-q4_k_m \
+  --active-llm qwen2.5-coder-7b-instruct-q4_k_m \
   --stt-models '' \
   --tts-models '' \
   --image-models '' \
   --parallel auto \
   --create-key
-local-base models install qwen2.5-coder-1.5b-instruct-q4_k_m
+local-base models install qwen2.5-coder-7b-instruct-q4_k_m
 local-base start
 ```
 
-Fresh configuration defaults to the small Qwen2.5 Coder 1.5B quickstart model. `serve` never downloads model weights without consent: install them with `local-base models install <id>`, or pass `local-base serve --install-missing` to approve missing selected models. Backend runtime binaries remain managed automatically.
+Fresh configuration defaults to Qwen2.5 Coder 7B Instruct Q4_K_M (Apache-2.0, tool-capable, about 4.68 GB). `serve` never downloads model weights without consent: install them with `local-base models install <id>`, or pass `local-base serve --install-missing` to approve missing selected models. Backend runtime binaries remain managed automatically.
 
 Store the displayed API key, then verify inference:
 
@@ -90,7 +90,7 @@ export LOCALBASE_API_KEY='lb_...'
 curl http://127.0.0.1:2273/v1/chat/completions \
   -H "Authorization: Bearer $LOCALBASE_API_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"qwen2.5-coder-1.5b-instruct-q4_k_m","messages":[{"role":"user","content":"Say hello in two words."}]}'
+  -d '{"model":"qwen2.5-coder-7b-instruct-q4_k_m","messages":[{"role":"user","content":"Say hello in two words."}]}'
 ```
 
 Use `local-base status` to inspect the service and `local-base logs --follow` to stream logs.

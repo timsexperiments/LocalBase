@@ -35,13 +35,14 @@ function printStatus(
 
 async function runManagedStart(
   action: "start" | "restart",
+  input: ServiceInput,
   ctx: AppContext,
   execution: CommandExecution,
 ) {
   const inspection =
     action === "start"
-      ? await startService(ctx.config.root)
-      : await restartService(ctx.config.root);
+      ? await startService(ctx.config.root, input.installMissing)
+      : await restartService(ctx.config.root, input.installMissing);
   if (
     inspection.service.state !== "running" &&
     inspection.service.state !== "starting"
@@ -58,19 +59,19 @@ async function runManagedStart(
 }
 
 export async function runStart(
-  _input: ServiceInput,
+  input: ServiceInput,
   ctx: AppContext,
   execution: CommandExecution,
 ) {
-  return { data: await runManagedStart("start", ctx, execution) };
+  return { data: await runManagedStart("start", input, ctx, execution) };
 }
 
 export async function runRestart(
-  _input: ServiceInput,
+  input: ServiceInput,
   ctx: AppContext,
   execution: CommandExecution,
 ) {
-  return { data: await runManagedStart("restart", ctx, execution) };
+  return { data: await runManagedStart("restart", input, ctx, execution) };
 }
 
 export async function runStop(

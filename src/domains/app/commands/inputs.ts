@@ -186,7 +186,9 @@ export type ServeInput = z.infer<typeof serveInputSchema>;
 export const doctorInputSchema = z.object({});
 export type DoctorInput = z.infer<typeof doctorInputSchema>;
 
-export const serviceInputSchema = z.object({});
+export const serviceInputSchema = z.object({
+  installMissing: z.boolean().default(false),
+});
 export type ServiceInput = z.infer<typeof serviceInputSchema>;
 
 export const logsInputSchema = z.object({
