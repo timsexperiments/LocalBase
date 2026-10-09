@@ -71,7 +71,7 @@ test("validates one redacted event contract before console or file sinks", () =>
     component: "gateway",
     runtime: "gateway",
     message:
-      'Authorization: Bearer secret-value hf_abcdefghijklmnop {"messages":["never persist this"]}',
+      '\x1b[31mcolored\x1b[0m Authorization: Bearer secret-value hf_abcdefghijklmnop {"messages":["never persist this"]}',
     requestId: "request-42",
     error: { type: "Error", message: "token=private-token" },
     attributes: {
@@ -85,6 +85,7 @@ test("validates one redacted event contract before console or file sinks", () =>
   const serialized = JSON.stringify(logged);
   expect(serialized).not.toContain("private-token");
   expect(serialized).not.toContain("never persist this");
+  expect(serialized).not.toContain("\x1b[");
   expect(logged.attributes).toEqual({
     authorization: "[REDACTED]",
     prompt: "[REDACTED]",

@@ -89,6 +89,37 @@ test("configure input rejects malformed and out-of-range parallel values", () =>
   }
 });
 
+test("configure omits model selection lines for empty capabilities", async () => {
+  await withTempRoot(async (root) => {
+    const context = makeContext(root);
+    const lines: string[] = [];
+    const execution: CommandExecution = {
+      ...nonInteractiveExecution,
+      output: {
+        info: (message) => lines.push(message),
+        error() {},
+        lifecycle() {},
+      },
+    };
+    try {
+      await runConfigure(
+        { all: false, defaults: true, createKey: false },
+        context,
+        execution,
+      );
+    } finally {
+      context.database.close();
+    }
+
+    expect(lines.filter((line) => line.startsWith("Selected "))).not.toContain(
+      "Selected STT models: ",
+    );
+    expect(lines.filter((line) => /^Selected .* models: $/.test(line))).toEqual(
+      [],
+    );
+  });
+});
+
 test("configure rejects malformed OTLP settings before persistence", async () => {
   await withTempRoot(async (root) => {
     const context = makeContext(root);

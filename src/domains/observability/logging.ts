@@ -26,6 +26,7 @@ import {
   syncOwnedPrivateDirectory,
 } from "./secure-log-files";
 import type { OtelRuntime } from "./otel";
+import { shouldUseColor } from "../../utils/color";
 
 export const LOG_SCHEMA_VERSION = 2 as const;
 export const LOG_DIRECTORY_NAME = "logs";
@@ -423,7 +424,7 @@ export function createLogEvent(
     input.trace ?? ambientTrace,
   );
   const attributes = redactLogAttributes(input.attributes);
-  return logEventSchema.parse({
+  const event = logEventSchema.parse({
     schemaVersion: LOG_SCHEMA_VERSION,
     id: crypto.randomUUID(),
     timestamp: new Date().toISOString(),
@@ -439,6 +440,19 @@ export function createLogEvent(
     ...(error ? { error } : {}),
     ...(attributes ? { attributes } : {}),
   });
+  return stripAnsiStrings(event);
+}
+
+function stripAnsiStrings<T>(value: T): T {
+  if (typeof value === "string")
+    return value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "") as T;
+  if (Array.isArray(value)) return value.map(stripAnsiStrings) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, stripAnsiStrings(item)]),
+    ) as T;
+  }
+  return value;
 }
 
 function runtimeForComponent(component: string): LogRuntime {
@@ -453,6 +467,11 @@ function runtimeForComponent(component: string): LogRuntime {
 }
 
 function consoleWrite(event: LogEvent, format: "human" | "json"): void {
+  if (
+    process.env.LOCALBASE_QUIET_TEST_LOGS === "1" &&
+    process.env.LOCALBASE_TEST_LOGS !== "1"
+  )
+    return;
   if (format === "json") {
     console.log(JSON.stringify(event));
     return;
@@ -465,7 +484,13 @@ function consoleWrite(event: LogEvent, format: "human" | "json"): void {
         : event.severity === "debug"
           ? "\x1b[90m"
           : "\x1b[32m";
-  const line = `[${event.timestamp}] ${color}[${event.severity.toUpperCase()}]\x1b[0m [\x1b[36m${event.component}\x1b[0m] ${event.message}`;
+  const stream =
+    event.severity === "error" || event.severity === "warn"
+      ? process.stderr
+      : process.stdout;
+  const line = shouldUseColor(stream)
+    ? `[${event.timestamp}] ${color}[${event.severity.toUpperCase()}]\x1b[0m [\x1b[36m${event.component}\x1b[0m] ${event.message}`
+    : `[${event.timestamp}] [${event.severity.toUpperCase()}] [${event.component}] ${event.message}`;
   if (event.severity === "error") console.error(line);
   else if (event.severity === "warn") console.warn(line);
   else console.log(line);
