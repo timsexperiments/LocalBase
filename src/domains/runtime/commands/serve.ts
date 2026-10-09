@@ -425,16 +425,22 @@ function payloadTooLarge(): Response {
   );
 }
 
+function upstreamError(message: string): OpenAIError {
+  return openAIErrorResponseSchema.shape.error.parse({
+    message,
+    type: "server_error",
+    param: null,
+    code: "upstream_error",
+  });
+}
+
 function upstreamFailure(message: string): Response {
-  return openAIErrorResponse(
-    {
-      message,
-      type: "server_error",
-      param: null,
-      code: "upstream_error",
-    },
-    502,
-  );
+  return openAIErrorResponse(upstreamError(message), 502);
+}
+
+function upstreamErrorEvent(message: string): Uint8Array {
+  const error = openAIErrorResponseSchema.parse({ error: upstreamError(message) });
+  return new TextEncoder().encode(`data: ${JSON.stringify(error)}\n\n`);
 }
 
 /** Whisper reports failures as JSON bodies; successful text formats are never JSON-typed. */
@@ -1412,6 +1418,34 @@ function validateEventStream(
   );
 }
 
+function recoverEventStreamReadErrors(
+  body: ReadableStream<Uint8Array>,
+  onError?: () => void,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  let failed = false;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (failed) return;
+      try {
+        const result = await reader.read();
+        if (result.done) controller.close();
+        else controller.enqueue(result.value);
+      } catch {
+        failed = true;
+        onError?.();
+        // OpenAI's stream parsers treat the error payload as terminal. Do not
+        // append [DONE]: clients must not mistake a partial completion for success.
+        controller.enqueue(upstreamErrorEvent("The upstream stream failed."));
+        controller.close();
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    },
+  });
+}
+
 function inferenceMetadata(
   modality: RuntimeModality,
   modelId: string,
@@ -1528,7 +1562,9 @@ async function proxyRequest(
     headers.delete("content-length");
     return new Response(
       validateEventStream(
-        upstream.body,
+        recoverEventStreamReadErrors(upstream.body, () =>
+          onInvalidEvent?.(502),
+        ),
         eventStreamSchema,
         (value) => onValidatedEvent?.(value, upstream.status),
         () => onInvalidEvent?.(upstream.status),

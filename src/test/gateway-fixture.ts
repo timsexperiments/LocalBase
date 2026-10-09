@@ -1079,6 +1079,29 @@ function startMockUpstream(
           headers: { "content-type": "text/event-stream" },
         });
       }
+      if (mode === "error-mid-stream") {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(
+              `data: ${JSON.stringify({
+                id: "chatcmpl-mid-stream-error",
+                object: "chat.completion.chunk",
+                created: 0,
+                model: LLM_MODEL,
+                choices: [{ index: 0, delta: { content: "partial" }, finish_reason: null }],
+                usage: null,
+              })}\n\n`,
+            ));
+            setTimeout(
+              () => controller.error(new Error("fixture upstream stream failure")),
+              20,
+            );
+          },
+        });
+        return new Response(body, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
       if (mode === "post-done-stream") {
         return new Response(
           `data: ${JSON.stringify({

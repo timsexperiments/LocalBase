@@ -3117,6 +3117,28 @@ describe("API gateway integration", () => {
     await completeB.text();
   });
 
+  test("normalizes upstream read failures as terminal OpenAI SSE errors", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "error-mid-stream",
+      },
+      body: JSON.stringify({
+        model: loadGatewayConfig().activeLlmModel,
+        stream: true,
+        messages: [{ role: "user", content: "fail after headers" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).toContain('"content":"partial"');
+    expect(stream).toContain('"type":"server_error"');
+    expect(stream).toContain('"param":null');
+    expect(stream).toContain('"code":"upstream_error"');
+    expect(stream).not.toContain("[DONE]");
+  });
+
   test("serves STT while an LLM configuration replacement drains", async () => {
     const transcribe = () => {
       const body = new FormData();
