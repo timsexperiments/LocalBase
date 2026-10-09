@@ -668,6 +668,7 @@ const chatCompletionRequestSchema = z
       .nullable()
       .optional(),
     max_tokens: z.number().positive().optional(),
+    max_completion_tokens: z.number().positive().optional(),
     presence_penalty: z.number().min(-2).max(2).optional(),
     frequency_penalty: z.number().min(-2).max(2).optional(),
     logit_bias: z.record(z.string(), z.number()).nullable().optional(),
@@ -696,6 +697,32 @@ const chatCompletionRequestSchema = z
   });
 
 type ChatCompletionRequest = z.output<typeof chatCompletionRequestSchema>;
+
+function stripNoopToolFields(
+  request: ChatCompletionRequest,
+): ChatCompletionRequest {
+  const { tools, functions, tool_choice, function_call, messages, ...rest } =
+    request;
+  return {
+    ...rest,
+    ...(tools?.length ? { tools } : {}),
+    ...(functions !== undefined &&
+    !(Array.isArray(functions) && functions.length === 0)
+      ? { functions }
+      : {}),
+    ...(tool_choice && tool_choice !== "none" ? { tool_choice } : {}),
+    ...(function_call !== undefined && function_call !== "none"
+      ? { function_call }
+      : {}),
+    messages: messages.map((message) => {
+      if (message.role !== "assistant" || message.tool_calls?.length) {
+        return message;
+      }
+      const { tool_calls: _emptyToolCalls, ...assistantMessage } = message;
+      return assistantMessage;
+    }),
+  } as ChatCompletionRequest;
+}
 
 function prepareChatCompletionRequest(
   request: ChatCompletionRequest,
@@ -3284,12 +3311,59 @@ export async function runServe(
       );
       if (!parsed.success) return parsed.response;
       const requestedModel = byId(parsed.data.model);
+      const unsupportedToolParam = (() => {
+        if ((parsed.data.tools?.length ?? 0) > 0) return "tools";
+        if (
+          parsed.data.tool_choice !== undefined &&
+          parsed.data.tool_choice !== "none"
+        )
+          return "tool_choice";
+        if (
+          Array.isArray(parsed.data.functions) &&
+          parsed.data.functions.length > 0
+        )
+          return "functions";
+        if (
+          parsed.data.function_call !== undefined &&
+          parsed.data.function_call !== "none"
+        )
+          return "function_call";
+        const messageIndex = parsed.data.messages.findIndex(
+          (message) =>
+            message.role === "tool" ||
+            (message.role === "assistant" &&
+              (message.tool_calls?.length ?? 0) > 0),
+        );
+        if (messageIndex < 0) return undefined;
+        const message = parsed.data.messages[messageIndex];
+        return message.role === "assistant"
+          ? `messages[${messageIndex}].tool_calls`
+          : `messages[${messageIndex}]`;
+      })();
+      const hasToolRequest = unsupportedToolParam !== undefined;
+      if (
+        hasToolRequest &&
+        requestedModel &&
+        !requestedModel.features.includes("tool-calling")
+      ) {
+        return openAIErrorResponse(
+          {
+            message: `Model '${requestedModel.modelId}' does not support tool calling. Choose a tool-capable model from GET /v1/models.`,
+            type: "invalid_request_error",
+            param: unsupportedToolParam,
+            code: "unsupported_model_capability",
+          },
+          400,
+        );
+      }
       if (requestedModel?.llmRuntime) {
         return badRequest(
           `Model '${requestedModel.modelId}' supports embeddings only.`,
         );
       }
-      const backendRequest = prepareChatCompletionRequest(parsed.data);
+      const preparedRequest = prepareChatCompletionRequest(
+        stripNoopToolFields(parsed.data),
+      );
       const preparationStartedAt = performance.now();
       const structuredOutput = prepareStructuredOutput(
         parsed.data.response_format,
@@ -3338,6 +3412,42 @@ export async function runServe(
       if (selected.kind === "insufficient-memory") {
         return resourceUnavailable(selected.error);
       }
+      // Resolve the per-slot context only after admission is ready: the
+      // supervisor learns the runtime's real context length once it starts.
+      const resolveBackendRequest = () => {
+        if (
+          parsed.data.max_tokens !== undefined ||
+          parsed.data.max_completion_tokens !== undefined
+        ) {
+          return preparedRequest;
+        }
+        const admittedSupervisor = selected.value.admission.supervisor;
+        const supervisorProfile = admittedSupervisor.llmProfile?.();
+        const configuredContext =
+          supervisorProfile?.ctxSizeOverride ??
+          supervisorProfile?.configCtxSize ??
+          selected.value.admission.snapshot.config.ctxSize;
+        const configuredSlots =
+          supervisorProfile?.parallel === "auto"
+            ? 4
+            : Number(
+                supervisorProfile?.parallel ??
+                  selected.value.admission.snapshot.config.parallel,
+              );
+        const effectiveContextLength = Math.min(
+          admittedSupervisor.resolvedContextLength?.() ??
+            Math.floor(configuredContext / configuredSlots),
+          requestedModel?.contextWindowTokens ?? Number.POSITIVE_INFINITY,
+          selected.value.admission.snapshot.config.ctxSize,
+        );
+        return {
+          ...preparedRequest,
+          // llama.cpp exposes tokenization only after applying its chat
+          // template; this gateway has no cheap template-aware tokenizer.
+          // Keep the default within the resolved per-slot context budget.
+          max_tokens: Math.min(ctx.defaultMaxTokens, effectiveContextLength),
+        };
+      };
       const streaming = parsed.data.stream === true;
       const inference = beginInference("llm", selected.value, {
         streaming,
@@ -3356,7 +3466,7 @@ export async function runServe(
         request.signal,
         async () =>
           await proxyRequest(
-            requestWithJsonBody(request, backendRequest),
+            requestWithJsonBody(request, resolveBackendRequest()),
             factory.baseUrl("llm", selected.value.admission.snapshot),
             undefined,
             chatCompletionResponseSchema,

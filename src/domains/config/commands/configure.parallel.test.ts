@@ -41,6 +41,7 @@ function makeContext(root: string, gpuVramGb = 16): AppContext {
     otelConfiguration,
     database,
     config,
+    defaultMaxTokens: 4096,
     runtimeConfig: new RuntimeConfigController(database, root, config),
     specs: {
       osName: "Test OS",

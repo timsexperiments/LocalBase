@@ -1,7 +1,7 @@
 import { restartPending } from "../config/activation";
 import { persistConfiguration } from "../config/declarative";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, rmSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { byId, primaryArtifact } from "../../catalog";
@@ -2071,6 +2071,7 @@ describe("API gateway integration", () => {
     expect(upstream?.headers.get("x-test-header")).toBe("retained");
     expect(JSON.parse(upstream?.body ?? "{}")).toMatchObject({
       model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+      max_tokens: 4096,
       provider_option: "preserved",
       messages: [
         { role: "developer", content: "hello" },
@@ -2104,6 +2105,289 @@ describe("API gateway integration", () => {
       await (await request("/health")).json(),
     );
     expect(health.modalities.llm.state).toBe("running");
+  });
+
+  test("rejects tool requests and tool history for models without catalog tool support", async () => {
+    const requestOffset = gateway.upstreamRequests.length;
+    for (const toolCase of [
+      {
+        tools: [
+          {
+            type: "function",
+            function: { name: "weather", parameters: { type: "object" } },
+          },
+        ],
+        tool_choice: "required",
+      },
+      { tool_choice: "auto", param: "tool_choice" },
+      {
+        functions: [{ name: "weather", parameters: { type: "object" } }],
+        param: "functions",
+      },
+      { function_call: "auto", param: "function_call" },
+      {
+        messages: [
+          { role: "user", content: "hello" },
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: { name: "weather", arguments: "{}" },
+              },
+            ],
+          },
+        ],
+        param: "messages[1].tool_calls",
+      },
+      {
+        messages: [
+          { role: "user", content: "hello" },
+          { role: "tool", tool_call_id: "call_1", content: "sunny" },
+        ],
+        param: "messages[1]",
+      },
+    ]) {
+      const { param, ...toolFields } = toolCase as Record<string, unknown>;
+      for (const stream of [false, true]) {
+        const response = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+            messages: [{ role: "user", content: "hello" }],
+            stream,
+            ...toolFields,
+          }),
+        });
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          error: {
+            type: "invalid_request_error",
+            param: param ?? "tools",
+            code: "unsupported_model_capability",
+            message: expect.stringContaining(
+              "qwen2.5-coder-1.5b-instruct-q4_k_m",
+            ),
+          },
+        });
+      }
+    }
+    expect(gateway.upstreamRequests.slice(requestOffset)).toHaveLength(0);
+  });
+
+  test("strips no-op tool fields for models without catalog tool support", async () => {
+    for (const noOpFields of [
+      { tools: [] },
+      { functions: [] },
+      { tool_choice: "none" },
+      { function_call: "none" },
+      { messages: [{ role: "assistant", content: "hello", tool_calls: [] }] },
+      {
+        tools: [],
+        functions: [],
+        tool_choice: "none",
+        function_call: "none",
+        messages: [{ role: "assistant", content: "hello", tool_calls: [] }],
+      },
+    ]) {
+      for (const stream of [false, true]) {
+        const response = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+            messages: [{ role: "user", content: "hello" }],
+            stream,
+            ...noOpFields,
+          }),
+        });
+        expect(response.status).toBe(200);
+        await response.text();
+        const forwarded = JSON.parse(
+          gateway.upstreamRequests.at(-1)?.body ?? "{}",
+        );
+        expect(forwarded).not.toHaveProperty("tools");
+        expect(forwarded).not.toHaveProperty("functions");
+        expect(forwarded).not.toHaveProperty("tool_choice");
+        expect(forwarded).not.toHaveProperty("function_call");
+        expect(forwarded.messages).not.toContainEqual(
+          expect.objectContaining({ tool_calls: [] }),
+        );
+      }
+    }
+  });
+
+  test("preserves explicit generation limits and supplies the default only when omitted", async () => {
+    for (const limit of [{ max_tokens: 73 }, { max_completion_tokens: 91 }]) {
+      const response = await request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+          ...limit,
+        }),
+      });
+      expect(response.status).toBe(200);
+      await response.text();
+      expect(
+        JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}"),
+      ).toMatchObject(limit);
+    }
+  });
+
+  test.each([
+    { name: "small context", ctxSize: 2048, parallel: 1, expected: 2048 },
+    { name: "parallel slots", ctxSize: 8192, parallel: 2, expected: 4096 },
+  ])(
+    "caps default generation for $name",
+    async ({ ctxSize, parallel, expected }) => {
+      // Override the launch context so host memory cannot shrink it.
+      const boundedGateway = await startGatewayFixture({
+        ctxSize,
+        parallel,
+        ctxSizeOverride: ctxSize,
+      });
+      try {
+        const response = await fetch(
+          `${boundedGateway.baseUrl}/v1/chat/completions`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+              messages: [{ role: "user", content: "hello" }],
+            }),
+          },
+        );
+        expect(response.status).toBe(200);
+        await response.text();
+        expect(
+          JSON.parse(boundedGateway.upstreamRequests.at(-1)?.body ?? "{}")
+            .max_tokens,
+        ).toBe(expected);
+      } finally {
+        await boundedGateway.stop();
+      }
+    },
+  );
+
+  test("caps default generation using the effective launch context override", async () => {
+    const boundedGateway = await startGatewayFixture({
+      ctxSize: 8192,
+      parallel: 1,
+      ctxSizeOverride: 2048,
+    });
+    try {
+      const response = await fetch(
+        `${boundedGateway.baseUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+            messages: [{ role: "user", content: "hello" }],
+          }),
+        },
+      );
+      expect(response.status).toBe(200);
+      await response.text();
+      expect(
+        JSON.parse(boundedGateway.upstreamRequests.at(-1)?.body ?? "{}")
+          .max_tokens,
+      ).toBe(2048);
+    } finally {
+      await boundedGateway.stop();
+    }
+  });
+
+  test.each([false, true])(
+    "caps cold-start default generation by the runtime training context (stream=%p)",
+    async (stream) => {
+      const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+      const boundedGateway = await startGatewayFixture({
+        ctxSize: 8192,
+        parallel: 1,
+      });
+      try {
+        const modelPath = join(
+          boundedGateway.readConfig().llmModelsDir,
+          primaryArtifact(byId(modelId)!).filename,
+        );
+        const u32 = (value: number) => {
+          const buffer = Buffer.alloc(4);
+          buffer.writeUInt32LE(value);
+          return buffer;
+        };
+        const u64 = (value: number) => {
+          const buffer = Buffer.alloc(8);
+          buffer.writeBigUInt64LE(BigInt(value));
+          return buffer;
+        };
+        const ggufString = (value: string) => {
+          const bytes = Buffer.from(value);
+          return Buffer.concat([u64(bytes.length), bytes]);
+        };
+        const header = Buffer.concat([
+          u32(0x46554747),
+          u32(3),
+          u64(0),
+          u64(2),
+          ggufString("general.architecture"),
+          u32(8),
+          ggufString("llama"),
+          ggufString("llama.context_length"),
+          u32(4),
+          u32(1024),
+        ]);
+        const fd = openSync(modelPath, "r+");
+        try {
+          writeSync(fd, header);
+        } finally {
+          closeSync(fd);
+        }
+        const response = await fetch(
+          `${boundedGateway.baseUrl}/v1/chat/completions`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: modelId,
+              messages: [{ role: "user", content: "hello" }],
+              stream,
+            }),
+          },
+        );
+        expect(response.status).toBe(200);
+        await response.text();
+        expect(
+          JSON.parse(boundedGateway.upstreamRequests.at(-1)?.body ?? "{}")
+            .max_tokens,
+        ).toBe(1024);
+      } finally {
+        await boundedGateway.stop();
+      }
+    },
+  );
+
+  test("caps default generation on streaming requests", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [{ role: "user", content: "hello" }],
+        stream: true,
+      }),
+    });
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(
+      JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}").max_tokens,
+    ).toBe(4096);
   });
 
   test("forwards user-only chat requests without injected instructions", async () => {
