@@ -698,6 +698,32 @@ const chatCompletionRequestSchema = z
 
 type ChatCompletionRequest = z.output<typeof chatCompletionRequestSchema>;
 
+function stripNoopToolFields(
+  request: ChatCompletionRequest,
+): ChatCompletionRequest {
+  const { tools, functions, tool_choice, function_call, messages, ...rest } =
+    request;
+  return {
+    ...rest,
+    ...(tools?.length ? { tools } : {}),
+    ...(functions !== undefined &&
+    !(Array.isArray(functions) && functions.length === 0)
+      ? { functions }
+      : {}),
+    ...(tool_choice && tool_choice !== "none" ? { tool_choice } : {}),
+    ...(function_call !== undefined && function_call !== "none"
+      ? { function_call }
+      : {}),
+    messages: messages.map((message) => {
+      if (message.role !== "assistant" || message.tool_calls?.length) {
+        return message;
+      }
+      const { tool_calls: _emptyToolCalls, ...assistantMessage } = message;
+      return assistantMessage;
+    }),
+  } as ChatCompletionRequest;
+}
+
 function prepareChatCompletionRequest(
   request: ChatCompletionRequest,
 ): ChatCompletionRequest {
@@ -3335,27 +3361,9 @@ export async function runServe(
           `Model '${requestedModel.modelId}' supports embeddings only.`,
         );
       }
-      const preparedRequest = prepareChatCompletionRequest(parsed.data);
-      const backendRequest =
-        parsed.data.max_tokens === undefined &&
-        parsed.data.max_completion_tokens === undefined
-          ? {
-              ...preparedRequest,
-              // llama.cpp exposes tokenization only after applying its chat
-              // template; this gateway has no cheap template-aware tokenizer.
-              // Keep the default within a conservative per-slot context budget.
-              max_tokens: Math.min(
-                ctx.defaultMaxTokens,
-                requestedModel?.contextWindowTokens ?? currentConfig.ctxSize,
-                Math.floor(
-                  currentConfig.ctxSize /
-                    (currentConfig.parallel === "auto"
-                      ? 4
-                      : currentConfig.parallel),
-                ),
-              ),
-            }
-          : preparedRequest;
+      const preparedRequest = prepareChatCompletionRequest(
+        stripNoopToolFields(parsed.data),
+      );
       const preparationStartedAt = performance.now();
       const structuredOutput = prepareStructuredOutput(
         parsed.data.response_format,
@@ -3404,6 +3412,39 @@ export async function runServe(
       if (selected.kind === "insufficient-memory") {
         return resourceUnavailable(selected.error);
       }
+      const admittedSupervisor = selected.value.admission.supervisor;
+      const supervisorProfile = admittedSupervisor.llmProfile?.();
+      const configuredContext =
+        supervisorProfile?.ctxSizeOverride ??
+        supervisorProfile?.configCtxSize ??
+        selected.value.admission.snapshot.config.ctxSize;
+      const configuredSlots =
+        supervisorProfile?.parallel === "auto"
+          ? 4
+          : Number(
+              supervisorProfile?.parallel ??
+                selected.value.admission.snapshot.config.parallel,
+            );
+      const effectiveContextLength = Math.min(
+        admittedSupervisor.resolvedContextLength?.() ??
+          Math.floor(configuredContext / configuredSlots),
+        requestedModel?.contextWindowTokens ?? Number.POSITIVE_INFINITY,
+        selected.value.admission.snapshot.config.ctxSize,
+      );
+      const backendRequest =
+        parsed.data.max_tokens === undefined &&
+        parsed.data.max_completion_tokens === undefined
+          ? {
+              ...preparedRequest,
+              // llama.cpp exposes tokenization only after applying its chat
+              // template; this gateway has no cheap template-aware tokenizer.
+              // Keep the default within the resolved per-slot context budget.
+              max_tokens: Math.min(
+                ctx.defaultMaxTokens,
+                effectiveContextLength,
+              ),
+            }
+          : preparedRequest;
       const streaming = parsed.data.stream === true;
       const inference = beginInference("llm", selected.value, {
         streaming,

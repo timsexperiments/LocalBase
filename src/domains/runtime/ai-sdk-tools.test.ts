@@ -21,7 +21,7 @@ import {
 
 registerGatewayFixtureCleanup();
 
-const MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+const MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
 
 function upstreamBodies(
   gateway: GatewayFixture,
@@ -46,7 +46,7 @@ describe("Vercel AI SDK tools and structured output conformance", () => {
 
   beforeAll(
     async () => {
-      gateway = await startGatewayFixture();
+      gateway = await startGatewayFixture({ llmModel: MODEL });
     },
     { timeout: 30_000 },
   );
@@ -58,7 +58,7 @@ describe("Vercel AI SDK tools and structured output conformance", () => {
     { timeout: 10_000 },
   );
 
-  test("normalizes a named tool choice and leaves string choices unchanged", async () => {
+  test("normalizes tool choices and strips the no-op none choice", async () => {
     const localbase = createLocalBaseAiSdkProvider(gateway);
     const tools = {
       weather: tool({
@@ -77,7 +77,7 @@ describe("Vercel AI SDK tools and structured output conformance", () => {
     };
     const choices = [
       { choice: "auto" as const, expected: "auto" },
-      { choice: "none" as const, expected: "none" },
+      { choice: "none" as const, expected: undefined },
       { choice: "required" as const, expected: "required" },
       {
         choice: { type: "tool" as const, toolName: "weather" as const },

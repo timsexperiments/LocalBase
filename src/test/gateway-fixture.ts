@@ -268,6 +268,8 @@ export type GatewayFixtureOptions = {
   videoEnabled?: boolean;
   parallel?: LocalBaseConfig["parallel"];
   ctxSize?: number;
+  ctxSizeOverride?: number;
+  llmModel?: string;
 };
 
 async function readProcessOutput(
@@ -281,7 +283,7 @@ function reservePort(): number {
   for (let attempt = 0; attempt < 20; attempt++) {
     const random = new Uint32Array(1);
     crypto.getRandomValues(random);
-    const port = 20_000 + (random[0] % 40_000);
+    const port = 24_000 + (random[0] % 6_000);
     try {
       const reservation = Bun.serve({
         hostname: "127.0.0.1",
@@ -1790,8 +1792,9 @@ export async function startGatewayFixture(
     }
     config.port = llmPort;
     config.sttPort = sttPort;
-    config.activeLlmModel = LLM_MODEL;
-    config.selectedLlmModels = [LLM_MODEL];
+    const llmModel = options.llmModel ?? LLM_MODEL;
+    config.activeLlmModel = llmModel;
+    config.selectedLlmModels = [llmModel];
     config.activeSttModel = STT_MODEL;
     config.selectedSttModels = options.sttEnabled === false ? [] : [STT_MODEL];
     if (options.sttEnabled === false) config.activeSttModel = "";
@@ -1825,7 +1828,7 @@ export async function startGatewayFixture(
     // Settle every step before failing so no sibling recreates the root after
     // cleanup deletes it.
     const setup = await Promise.allSettled([
-      writeCompleteCatalogArtifact(config.llmModelsDir, LLM_MODEL),
+      writeCompleteCatalogArtifact(config.llmModelsDir, llmModel),
       ...(options.ttsEnabled || options.ttsInstalled
         ? [
             writeCompleteCatalogArtifacts(config.ttsModelsDir, TTS_MODEL),
@@ -1928,6 +1931,9 @@ export async function startGatewayFixture(
         String(sttPort),
         "--image-port",
         String(imagePort),
+        ...(options.ctxSizeOverride === undefined
+          ? []
+          : ["--ctx-size", String(options.ctxSizeOverride)]),
         ...(options.auth
           ? ["--auth-mode", options.auth.mode ?? "bearer"]
           : ["--no-auth"]),
