@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   generateReleaseNotices,
+  nativeNoticeManifest,
   productionDependencyClosure,
 } from "./release-notices";
 
@@ -11,6 +12,17 @@ function temp() {
   const directory = mkdtempSync("/tmp/localbase-release-notices-");
   temporaryDirectories.push(directory);
   return directory;
+}
+
+async function writeNativeFiles(directory: string, contents = "license") {
+  mkdirSync(join(directory, "scripts", "release-notices", "native"), {
+    recursive: true,
+  });
+  for (const filename of new Set(Object.values(nativeNoticeManifest).flat()))
+    await Bun.write(
+      join(directory, "scripts/release-notices/native", filename),
+      contents,
+    );
 }
 
 afterEach(() =>
@@ -84,9 +96,7 @@ test("generation fails when a production package has no license text", async () 
 
 test("generation rejects an empty pinned Bun notice", async () => {
   const directory = temp();
-  mkdirSync(join(directory, "scripts", "release-notices", "native"), {
-    recursive: true,
-  });
+  await writeNativeFiles(directory);
   mkdirSync(join(directory, "src", "manager"), { recursive: true });
   await Bun.write(
     join(directory, "package.json"),
@@ -101,7 +111,7 @@ test("generation rejects an empty pinned Bun notice", async () => {
     " \n ",
   );
   await Bun.write(
-    join(directory, "scripts", "release-notices", "native", "MIT.txt"),
+    join(directory, "scripts", "release-notices", "native", "Bun-MIT.txt"),
     "MIT text",
   );
   await Bun.write(
@@ -115,9 +125,7 @@ test("generation rejects an empty pinned Bun notice", async () => {
 
 test("generation rejects a missing or empty vendored native license", async () => {
   const directory = temp();
-  mkdirSync(join(directory, "scripts", "release-notices", "native"), {
-    recursive: true,
-  });
+  await writeNativeFiles(directory);
   mkdirSync(join(directory, "src", "manager"), { recursive: true });
   await Bun.write(
     join(directory, "package.json"),
@@ -132,7 +140,7 @@ test("generation rejects a missing or empty vendored native license", async () =
     "Bun notice",
   );
   await Bun.write(
-    join(directory, "scripts", "release-notices", "native", "MIT.txt"),
+    join(directory, "scripts", "release-notices", "native", "boringssl.txt"),
     " \n ",
   );
   await Bun.write(
@@ -140,7 +148,32 @@ test("generation rejects a missing or empty vendored native license", async () =
     JSON.stringify({ targets: [] }),
   );
   await expect(generateReleaseNotices(directory)).rejects.toThrow(
-    "Vendored native license file MIT.txt is empty",
+    "Vendored native license file boringssl.txt is empty",
+  );
+});
+
+test("generation rejects a missing required native license while others remain", async () => {
+  const directory = temp();
+  await writeNativeFiles(directory);
+  await Bun.write(
+    join(directory, "package.json"),
+    JSON.stringify({ packageManager: "bun@1.3.14" }),
+  );
+  await Bun.write(
+    join(directory, "bun.lock"),
+    JSON.stringify({ workspaces: { "": { dependencies: {} } }, packages: {} }),
+  );
+  await Bun.write(
+    join(directory, "scripts/release-notices/bun-1.3.14.txt"),
+    "Bun notice",
+  );
+  await Bun.write(
+    join(directory, "src/manager/managed-runtime-manifest.json"),
+    JSON.stringify({ targets: [] }),
+  );
+  rmSync(join(directory, "scripts/release-notices/native/boringssl.txt"));
+  await expect(generateReleaseNotices(directory)).rejects.toThrow(
+    "Missing required native license file boringssl.txt",
   );
 });
 

@@ -97,6 +97,33 @@ const qualificationReceiptSchema = z
 export const ARTIFACT_MANIFEST_FILENAME = "release-artifact-manifest.json";
 export const QUALIFICATION_RECEIPT_FILENAME =
   "release-artifact-qualification.json";
+export const RELEASE_BUILD_INFO_FILENAME = "release-build-info.json";
+
+export function assertPinnedBunVersion(actual: string, pinned: string): void {
+  if (actual !== pinned)
+    throw new Error(
+      `Cannot use Bun ${actual}; package.json pins bun@${pinned}. Run this command with the pinned Bun version.`,
+    );
+}
+
+export function assertBuildBunVersion(
+  builtWith: string | undefined,
+  pinned: string,
+): void {
+  if (builtWith !== pinned)
+    throw new Error(
+      `Cannot package build made with Bun ${builtWith ?? "unknown"}; notices require Bun ${pinned}. Rebuild with the pinned Bun version.`,
+    );
+}
+
+async function pinnedBunVersion(): Promise<string> {
+  const packageManager = JSON.parse(await Bun.file("package.json").text())
+    .packageManager as string;
+  const pinned = /^bun@(.+)$/.exec(packageManager)?.[1];
+  if (!pinned)
+    throw new Error(`Unsupported packageManager value: ${packageManager}.`);
+  return pinned;
+}
 
 export function releaseArtifactFilenames(target: ReleaseTarget): string[] {
   return [cliFilename(target)];
@@ -257,6 +284,8 @@ export async function buildReleaseArtifacts(
   target: ReleaseTarget,
   directory: string,
 ): Promise<void> {
+  const pinnedVersion = await pinnedBunVersion();
+  assertPinnedBunVersion(Bun.version, pinnedVersion);
   const { buildUi } = await import("./build-ui");
   await buildUi();
   await mkdir(directory, { recursive: true });
@@ -283,6 +312,11 @@ export async function buildReleaseArtifacts(
       throw new Error(`bun build failed for ${filename}.`);
   };
   await build("src/cli.ts", cliFilename(target));
+  await Bun.write(
+    artifactPath(directory, RELEASE_BUILD_INFO_FILENAME),
+    `${JSON.stringify({ bunVersion: Bun.version }, null, 2)}\n`,
+  );
+  console.log(`Built ${cliFilename(target)} with Bun ${Bun.version}`);
 }
 
 async function run(command: string, args: string[]) {
@@ -298,15 +332,21 @@ export async function packageReleaseArtifact(
   target: ReleaseTarget,
   directory: string,
 ) {
-  const packageManager = JSON.parse(await Bun.file("package.json").text())
-    .packageManager as string;
-  const pinnedVersion = /^bun@(.+)$/.exec(packageManager)?.[1];
-  if (!pinnedVersion)
-    throw new Error(`Unsupported packageManager value: ${packageManager}.`);
-  if (Bun.version !== pinnedVersion)
-    throw new Error(
-      `Cannot package with Bun ${Bun.version}; package.json pins bun@${pinnedVersion}. Run packaging with the pinned Bun version.`,
+  const pinnedVersion = await pinnedBunVersion();
+  assertPinnedBunVersion(Bun.version, pinnedVersion);
+  let buildInfo: { bunVersion?: string };
+  try {
+    buildInfo = JSON.parse(
+      await Bun.file(
+        artifactPath(directory, RELEASE_BUILD_INFO_FILENAME),
+      ).text(),
     );
+  } catch (error) {
+    throw new Error("Missing or invalid release build version record.", {
+      cause: error,
+    });
+  }
+  assertBuildBunVersion(buildInfo.bunVersion, pinnedVersion);
   const output = resolve(directory);
   const cli = artifactPath(output, cliFilename(target));
   const license = resolve("LICENSE");

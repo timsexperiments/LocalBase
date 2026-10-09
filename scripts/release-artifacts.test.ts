@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   qualifyArtifactDirectory,
-  packageReleaseArtifact,
+  assertBuildBunVersion,
+  assertPinnedBunVersion,
   releaseArtifactFilenames,
   releasePackageFilename,
   releaseTargetSchema,
@@ -78,9 +79,18 @@ test("supports only the four non-Windows release targets", () => {
   expect(() => releaseTargetSchema.parse("windows-x64")).toThrow();
 });
 
-test("packaging rejects a Bun version that differs from packageManager", async () => {
-  await expect(packageReleaseArtifact("macos-arm64", temp())).rejects.toThrow(
-    `Cannot package with Bun ${Bun.version}; package.json pins bun@1.3.14`,
+test("Bun version checks accept matches and reject mismatches independent of runtime", () => {
+  expect(() => assertPinnedBunVersion("1.3.14", "1.3.14")).not.toThrow();
+  expect(() => assertPinnedBunVersion("1.4.2", "1.4.2")).not.toThrow();
+  expect(() => assertPinnedBunVersion("1.4.2", "1.3.14")).toThrow(
+    "Cannot use Bun 1.4.2",
+  );
+  expect(() => assertPinnedBunVersion("1.3.14", "1.4.2")).toThrow(
+    "Cannot use Bun 1.3.14",
+  );
+  expect(() => assertBuildBunVersion("1.3.14", "1.3.14")).not.toThrow();
+  expect(() => assertBuildBunVersion("1.4.2", "1.3.14")).toThrow(
+    "Cannot package build made with Bun 1.4.2",
   );
 });
 

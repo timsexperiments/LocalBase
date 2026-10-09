@@ -1,26 +1,66 @@
-## Bun's pinned component inventory
+## Bun 1.3.14 notice sources
 
-`Bun-LICENSE.txt` is the complete `LICENSE.md` from oven-sh/bun tag `bun-v1.3.14`: https://github.com/oven-sh/bun/blob/bun-v1.3.14/LICENSE.md. It contains Bun's full linked-library and embedded-polyfill inventory, license identifiers, upstream license URLs, and the copyright notices included by that source. The source archive is https://github.com/oven-sh/bun/archive/refs/tags/bun-v1.3.14.tar.gz.
+Upstream `LICENSE.md` at Bun commit `0d9b296af33f2b851fcbf4df3e9ec89751734ba4`: https://github.com/oven-sh/bun/blob/0d9b296af33f2b851fcbf4df3e9ec89751734ba4/LICENSE.md. It is an attribution inventory, not a license authority, and is not copied into the notices. The root file identifies Bun's license as MIT. The pinned tree has no Bun-specific copyright line in its root license or checked license-bearing files (`packages/@types/bun/LICENSE`, `packages/bun-usockets/LICENSE`, `packages/bun-uws/LICENSE`, `packages/bun-vscode/LICENSE`, `src/clap/LICENSE`, and `src/unicode/uucode_lib/LICENSE.md`); `Bun-MIT.txt` therefore reproduces the standard MIT permission terms without inventing an owner.
 
-`ICU-72.txt` is from unicode-org/icu release tag `release-72-1`: https://github.com/unicode-org/icu/blob/release-72-1/icu4c/LICENSE.
+## Native component sources
 
-The following license files are copied from the pinned source revisions listed in Bun's build scripts at `bun-v1.3.14` (links go directly to the source license file):
+All files below are copied from the pinned upstream URLs. For source files whose license is in a leading source header, only the complete leading notice header is retained.
+
+- picohttpparser (`picohttpparser.txt`): https://github.com/h2o/picohttpparser/blob/066d2b1e9ab820703db0837a7255d92d30f0c9f5/picohttpparser.c
+- libwebp (`libwebp.txt`): https://api.github.com/repos/webmproject/libwebp/contents/COPYING?ref=b7e29b9d75bd31422b00c2a446d49d7af06c328d (retrieved through GitHub contents API because raw returned 404)
+- uucode (`uucode.txt`): https://github.com/oven-sh/bun/blob/0d9b296af33f2b851fcbf4df3e9ec89751734ba4/src/unicode/uucode_lib/LICENSE.md
+- simdutf (`simdutf.txt`): https://github.com/oven-sh/WebKit/blob/5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b/Source/WTF/wtf/simdutf/LICENSE-simdutf.txt
+- lsquic (`lsquic.txt`, `lsquic-chrome.txt`): https://github.com/litespeedtech/lsquic/blob/3181911301b1aa4f54c1ed690901abc674ee08fb/LICENSE and https://github.com/litespeedtech/lsquic/blob/3181911301b1aa4f54c1ed690901abc674ee08fb/LICENSE.chrome
+- libc++abi (`libcxxabi.txt`, including LLVM exception): https://github.com/llvm/llvm-project/blob/llvmorg-19.1.0/libcxxabi/LICENSE.TXT
+- libarchive (`libarchive.txt` and source header files): https://github.com/libarchive/libarchive/tree/ded82291ab41d5e355831b96b0e1ff49e24d8939
+- libjpeg-turbo (`libjpeg-turbo.txt`): https://github.com/libjpeg-turbo/libjpeg-turbo/blob/e352b02f794f701407b39af08576035ba3360d60/LICENSE.md
+- libjpeg-turbo / IJG (`libjpeg-turbo-ijg.txt`): https://github.com/libjpeg-turbo/libjpeg-turbo/blob/e352b02f794f701407b39af08576035ba3360d60/README.ijg
+- ICU: https://github.com/unicode-org/icu/blob/release-72-1/icu4c/LICENSE
 - BoringSSL: https://github.com/google/boringssl/blob/0c5fce43b7ed5eb6001487ee48ac65766f5ddcd1/LICENSE
 - Brotli: https://github.com/google/brotli/blob/v1.1.0/LICENSE
 - c-ares: https://github.com/c-ares/c-ares/blob/3ac47ee46edd8ea40370222f91613fc16c434853/LICENSE.md
 - highway: https://github.com/google/highway/blob/2607d3b5b0113992fe84d3848859eae13b3b52c1/LICENSE
-- libarchive: https://github.com/libarchive/libarchive/blob/ded82291ab41d5e355831b96b0e1ff49e24d8939/COPYING
 - libdeflate: https://github.com/ebiggers/libdeflate/blob/c8c56a20f8f621e6a966b716b31f1dedab6a41e3/COPYING
-- libjpeg-turbo: https://github.com/libjpeg-turbo/libjpeg-turbo/blob/e352b02f794f701407b39af08576035ba3360d60/LICENSE.md
 - libspng: https://github.com/randy408/libspng/blob/fb768002d4288590083a476af628e51c3f1d47cd/LICENSE
 - libuv: https://github.com/oven-sh/libuv/blob/4dcfac4780d394e0dc2d3fb30335ca01b553eb46/LICENSE
 - lol-html: https://github.com/cloudflare/lol-html/blob/77127cd2b8545998756e8d64e36ee2313c4bb312/LICENSE
 - ls-hpack: https://github.com/litespeedtech/ls-hpack/blob/8905c024b6d052f083a3d11d0a169b3c2735c8a1/LICENSE
 - ls-qpack: https://github.com/litespeedtech/ls-qpack/blob/1e9c5b8e59f8161c54f168a570c8bfdc59ded0c3/LICENSE
-- lsquic: https://github.com/litespeedtech/lsquic/blob/3181911301b1aa4f54c1ed690901abc674ee08fb/LICENSE
 - mimalloc: https://github.com/microsoft/mimalloc/blob/f15aecb94fc8096008bf87b90c53ed682026914a/LICENSE
 - tinycc: https://github.com/TinyCC/tinycc/blob/12882eee073cfe5c7621bcfadf679e1372d4537b/COPYING
 - zlib-ng: https://github.com/zlib-ng/zlib-ng/blob/12731092979c6d07f42da27da673a9f6c7b13586/LICENSE.md
 - zstd: https://github.com/facebook/zstd/blob/f8745da6ff1ad1e7bab384bd1f9d742439278e99/LICENSE
+- WebKit/JavaScriptCore LGPL source: https://github.com/oven-sh/WebKit/tree/5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b
+- Bun's uWebSockets/uSockets Apache-2.0 license files at the Bun pin: https://github.com/oven-sh/bun/blob/0d9b296af33f2b851fcbf4df3e9ec89751734ba4/packages/bun-uws/LICENSE and https://github.com/oven-sh/bun/blob/0d9b296af33f2b851fcbf4df3e9ec89751734ba4/packages/bun-usockets/LICENSE
 
-The common SPDX texts in this directory are full license terms where a component license is shared. The Bun source table above identifies components using each license. WebKit/JavaScriptCore is pinned to oven-sh/WebKit commit `5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b`; Bun's fork of uWebSockets and uSockets are covered by the Apache-2.0 text and are identified in Bun's pinned `LICENSE.md`. The LGPL-2.1-only text is complete and applies to JavaScriptCore/WebKit.
+## Bun node-fallback polyfill sources
+
+Each `polyfill-*.txt` file is the complete license/attribution file from the exact version-pinned URL. `domain-browser@4.23.0` is Artistic-2.0, as its upstream `LICENSE.md` states. The https-browserify license was retrieved from the package/LICENSE member of the exact npm tarball; its repository at the listed gitHead is unavailable.
+
+- assert@2.1.0 https://github.com/browserify/commonjs-assert/blob/fc65923fdbbc3ae72de1ddb15ee54088d201b4f9/LICENSE
+- browserify-zlib@0.2.0 https://github.com/devongovett/browserify-zlib/blob/6257713c1dc3b69d781a43c10e58a6d75875eef8/LICENSE
+- buffer@6.0.3 https://github.com/feross/buffer/blob/f52dffd9df0445b93c0c9065c2f8f0f46b2c729a/LICENSE
+- constants-browserify@1.0.0 https://github.com/juliangruber/constants-browserify/blob/e0ee990c75f3a0b3275e6bb2e3ff4d5d169d1b9d/README.md
+- crypto-browserify@3.12.1 https://github.com/browserify/crypto-browserify/blob/55476aca92a99c81fcc438519a4d55817fb455fc/LICENSE
+- domain-browser@4.23.0 https://github.com/bevry/domain-browser/blob/e40ec3d274ff42bb1dc7762b0698a1a21a12e17e/LICENSE.md
+- events@3.3.0 https://github.com/Gozala/events/blob/aed9f91fee236bdedab8d593f7aa418ae6ed2718/LICENSE
+- https-browserify@1.0.0 https://registry.npmjs.org/https-browserify/-/https-browserify-1.0.0.tgz (package/LICENSE; lock-integrity pinned)
+- os-browserify@0.3.0 https://github.com/CoderPuppy/os-browserify/blob/9e931aec1131f02a582f715b23c8f6d157622554/LICENSE
+- path-browserify@1.0.1 https://github.com/browserify/path-browserify/blob/872fec31a8bac7b9b43be0e54ef3037e0202c5fb/LICENSE
+- process@0.11.10 https://github.com/defunctzombie/node-process/blob/557aa46f283caccce603dbb9c376b3d81067c510/LICENSE
+- punycode@2.3.1 https://github.com/mathiasbynens/punycode.js/blob/9e1b2cda98d215d3a73fcbfe93c62e021f4ba768/LICENSE-MIT.txt
+- querystring-es3@1.0.0-0 https://github.com/SpainTrain/querystring-es3/blob/76baa10afbbc7a46461c06748e8c1b183802d105/License.md
+- readable-stream@4.7.0 https://github.com/nodejs/readable-stream/blob/88df21041dc26c210fab3e074ab6bb681a604b8e/LICENSE
+- stream-http@3.2.0 https://github.com/jhiesey/stream-http/blob/cd697901d132cc20ea698079ac400b7cc11a7999/LICENSE
+- string_decoder@1.3.0 https://github.com/nodejs/string_decoder/blob/60db81e031c126112039157ba9437484b1329dff/LICENSE
+- timers-browserify@2.0.12 https://github.com/jryans/timers-browserify/blob/dd631db8b93df460e668d03406d35a53525253e6/LICENSE.md
+- tty-browserify@0.0.1 https://github.com/browserify/tty-browserify/blob/7e46e4796eeb123b05b9637b5a3e68e96252632b/LICENSE
+- url@0.11.4 https://github.com/defunctzombie/node-url/blob/455a3e2106bf254498615efc50a8dd5527be4132/LICENSE
+- util@0.12.5 https://github.com/browserify/node-util/blob/ef984721db7150f651800e051de4314c9517d42c/LICENSE
+- vm-browserify@1.1.2 https://github.com/substack/vm-browserify/blob/a8fe8f62f418c3ff529632ef0a3398b5f4ad9258/LICENSE
+
+## Provenance unverified
+
+- Hoehrmann/Unicode uucode notices: the pinned Bun subtree includes only Jacob Sandlund's `src/unicode/uucode_lib/LICENSE.md`; the referenced `utf8.zig` points to Hoehrmann/Unicode notices that are absent from this pinned subtree. Checked the full recursive Bun tree at `0d9b296af33f2b851fcbf4df3e9ec89751734ba4` for `LICENSE_Bjoern_Hoehrmann` and `LICENSE_unicode`; neither exists. Status: inventory-listed, provenance unverified.
+- libbase64: listed in Bun's inventory, but Bun's pinned build scripts do not establish a libbase64 revision or vendored source path. Checked the pinned source tree and build scripts; no verifiable pinned license location found. Status: inventory-listed, provenance unverified.
+- stream-browserify: listed in Bun's inventory, but Bun's pinned node-fallback lock resolves `readable-stream@4.7.0` rather than stream-browserify. Checked the pinned fallback lock and source tree; no compiled provenance for stream-browserify found. Status: inventory-listed, provenance unverified.

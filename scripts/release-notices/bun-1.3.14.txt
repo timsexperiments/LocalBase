@@ -1,9 +1,32 @@
 ## Bun 1.3.14
 
-Bun is MIT-licensed. The complete upstream Bun license and its list of statically linked libraries and embedded polyfills are in the vendored native notices. Source: https://github.com/oven-sh/bun/blob/bun-v1.3.14/LICENSE.md (tag `bun-v1.3.14`).
+Bun is MIT-licensed. Its upstream `LICENSE.md` at commit `0d9b296af33f2b851fcbf4df3e9ec89751734ba4` provides the linked-library and embedded-polyfill inventory; component license texts are included in the accompanying notices. Bun's MIT terms are reproduced in `Bun-MIT.txt`. No Bun-specific copyright line was present in the checked license-bearing files in the pinned tree; see `SOURCES.txt`.
 
 ### LGPL-2.1 §6 source offer and relinking information
 
-The corresponding source for the Bun runtime is available at the pinned Bun source archive: https://github.com/oven-sh/bun/archive/refs/tags/bun-v1.3.14.tar.gz. The corresponding modified WebKit/JavaScriptCore source is available at https://github.com/oven-sh/WebKit/archive/5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b.tar.gz. The WebKit revision is pinned by `scripts/build/deps/webkit.ts` in the Bun tag. Copyright holder for this written offer: Tim Daltemus. For at least three years from distribution of this release, Tim Daltemus will provide the corresponding source on request through https://github.com/timsexperiments/LocalBase/issues.
+The corresponding source and build material for the combined LocalBase executable, including Bun, its modified WebKit/JavaScriptCore, and LocalBase, can be obtained as follows. Bun is pinned to commit `0d9b296af33f2b851fcbf4df3e9ec89751734ba4` (tag `bun-v1.3.14`); WebKit is pinned to `5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b`, the `WEBKIT_VERSION` in Bun's `scripts/build/deps/webkit.ts` at that commit.
 
-To rebuild and relink, build Bun from source at `bun-v1.3.14` against the modified WebKit source, following the documented process in Bun's `LICENSE.md` at that tag (`git submodule update --init --recursive`, `make jsc`, then `zig build`). Then rebuild LocalBase from its AGPL source using that custom Bun binary with the repository's documented `bun run build` command, which invokes `bun build --compile`. These are the documented steps; LocalBase maintainers have not executed them as part of each release.
+```sh
+git clone https://github.com/oven-sh/bun.git
+cd bun
+git checkout 0d9b296af33f2b851fcbf4df3e9ec89751734ba4
+git clone https://github.com/oven-sh/WebKit.git vendor/WebKit
+git -C vendor/WebKit checkout 5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b
+```
+
+Install the prerequisites listed in the pinned Bun `CONTRIBUTING.md`: on macOS, automake, ccache, cmake, coreutils, gnu-sed, go, icu4c, libiconv, libtool, ninja, pkg-config, rust, and ruby; LLVM/Clang 21.1.8 is required. The build scripts install Zig automatically. A release Bun is also needed to run its build scripts. Follow the pinned contributing guide for platform-specific prerequisites.
+
+```sh
+bun run build:local
+# Produces build/debug-local/bun-debug
+```
+
+To rebuild LocalBase's compiled executable with this custom Bun, from a LocalBase source checkout run:
+
+```sh
+/path/to/bun/build/debug-local/bun-debug build src/cli.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --outfile=local-base
+```
+
+These steps are documented-but-untested by LocalBase maintainers.
+
+Copyright holder for this written offer: Tim Daltemus. For at least three years from distribution of this release, Tim Daltemus will provide the corresponding source and build material needed to relink the combined LocalBase executable on request through https://github.com/timsexperiments/LocalBase/issues.

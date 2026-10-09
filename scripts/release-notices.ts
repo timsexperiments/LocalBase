@@ -14,6 +14,67 @@ type Lockfile = {
   packages: Record<string, LockPackage>;
 };
 
+export const nativeNoticeManifest: Record<string, string[]> = {
+  Bun: ["Bun-MIT.txt"],
+  "uWebSockets and uSockets": ["Apache-2.0.txt"],
+  "WebKit/JavaScriptCore": ["LGPL-2.1-only.txt"],
+  BoringSSL: ["boringssl.txt"],
+  Brotli: ["brotli.txt"],
+  "c-ares": ["cares.txt"],
+  highway: ["highway.txt"],
+  libarchive: [
+    "libarchive.txt",
+    "libarchive-read-compress.c.txt",
+    "libarchive-write-compress.c.txt",
+  ],
+  libdeflate: ["libdeflate.txt"],
+  "libjpeg-turbo": ["libjpeg-turbo.txt", "libjpeg-turbo-ijg.txt"],
+  libspng: ["libspng.txt"],
+  libuv: ["libuv.txt"],
+  "lol-html": ["lol-html.txt"],
+  "ls-hpack": ["ls-hpack.txt"],
+  "ls-qpack": ["ls-qpack.txt"],
+  lsquic: ["lsquic.txt", "lsquic-chrome.txt"],
+  mimalloc: ["mimalloc.txt"],
+  picohttpparser: ["picohttpparser.txt"],
+  libwebp: ["libwebp.txt"],
+  uucode: ["uucode.txt"],
+  simdutf: ["simdutf.txt"],
+  libcxxabi: ["libcxxabi.txt"],
+  tinycc: ["tinycc.txt"],
+  zlib: ["Zlib.txt"],
+  zstd: ["zstd.txt"],
+  "zlib-ng": ["zlib-ng.txt"],
+  ICU: ["ICU-72.txt"],
+  "polyfill assert@2.1.0": ["polyfill-assert-2.1.0.txt"],
+  "polyfill browserify-zlib@0.2.0": ["polyfill-browserify-zlib-0.2.0.txt"],
+  "polyfill buffer@6.0.3": ["polyfill-buffer-6.0.3.txt"],
+  "polyfill constants-browserify@1.0.0": [
+    "polyfill-constants-browserify-1.0.0.txt",
+  ],
+  "polyfill crypto-browserify@3.12.1": [
+    "polyfill-crypto-browserify-3.12.1.txt",
+  ],
+  "polyfill domain-browser@4.23.0": ["polyfill-domain-browser-4.23.0.txt"],
+  "polyfill events@3.3.0": ["polyfill-events-3.3.0.txt"],
+  "polyfill https-browserify@1.0.0": ["polyfill-https-browserify-1.0.0.txt"],
+  "polyfill os-browserify@0.3.0": ["polyfill-os-browserify-0.3.0.txt"],
+  "polyfill path-browserify@1.0.1": ["polyfill-path-browserify-1.0.1.txt"],
+  "polyfill process@0.11.10": ["polyfill-process-0.11.10.txt"],
+  "polyfill punycode@2.3.1": ["polyfill-punycode-2.3.1.txt"],
+  "polyfill querystring-es3@1.0.0-0": ["polyfill-querystring-es3-1.0.0-0.txt"],
+  "polyfill readable-stream@4.7.0": ["polyfill-readable-stream-4.7.0.txt"],
+  "polyfill stream-http@3.2.0": ["polyfill-stream-http-3.2.0.txt"],
+  "polyfill string_decoder@1.3.0": ["polyfill-string_decoder-1.3.0.txt"],
+  "polyfill timers-browserify@2.0.12": [
+    "polyfill-timers-browserify-2.0.12.txt",
+  ],
+  "polyfill tty-browserify@0.0.1": ["polyfill-tty-browserify-0.0.1.txt"],
+  "polyfill url@0.11.4": ["polyfill-url-0.11.4.txt"],
+  "polyfill util@0.12.5": ["polyfill-util-0.12.5.txt"],
+  "polyfill vm-browserify@1.1.2": ["polyfill-vm-browserify-1.1.2.txt"],
+};
+
 function packageRecord(lock: Lockfile, name: string): LockPackage | undefined {
   return Object.values(lock.packages).find((value) =>
     value[0].startsWith(`${name}@`),
@@ -140,15 +201,19 @@ export async function generateReleaseNotices(
   } catch {
     throw new Error("No vendored native license texts found.");
   }
-  const nativeLicenseNames = nativeFiles.filter((filename) =>
-    /\.(txt|md)$/i.test(filename),
-  );
+  const nativeLicenseNames = [
+    ...new Set(Object.values(nativeNoticeManifest).flat()),
+  ];
   if (!nativeLicenseNames.length)
     throw new Error("No vendored native license texts found.");
   for (const filename of nativeLicenseNames) {
-    if (
-      !(await readFile(join(nativeLicenseDirectory, filename), "utf8")).trim()
-    )
+    let text: string;
+    try {
+      text = await readFile(join(nativeLicenseDirectory, filename), "utf8");
+    } catch {
+      throw new Error("Missing required native license file " + filename + ".");
+    }
+    if (!text.trim())
       throw new Error(`Vendored native license file ${filename} is empty.`);
   }
 
