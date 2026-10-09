@@ -326,10 +326,7 @@ export async function commandHelpText(
     .join("\n\n");
   if (options.json || !shouldUseColor(options.stream ?? process.stdout))
     return stripAnsiCodes(text);
-  return text.replace(
-    /^(USAGE|OPTIONS|COMMANDS|EXAMPLES)\b/gm,
-    "\x1b[1;36m$1\x1b[0m",
-  );
+  return `\x1b[36m${stripAnsiCodes(text)}\x1b[0m`;
 }
 
 export async function printCommandHelp(

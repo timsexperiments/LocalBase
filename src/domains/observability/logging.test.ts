@@ -71,7 +71,7 @@ test("validates one redacted event contract before console or file sinks", () =>
     component: "gateway",
     runtime: "gateway",
     message:
-      "\x1b[31mcolored\x1b[0m text \x1b]8;;https://example.test\x07linked\x1b]8;;\x1b\\ text \u009b31mC1 CSI",
+      "\x1b[31mcolored\x1b[0m text \x1b]8;;https://example.test\x07linked\x1b]8;;\x1b\\ text \u009b31mC1 CSI é € こんにちは 🧪\u0080\u0081\u0082\u0083\u0084\u0085\u0086\u0087\u0088\u0089\u008a\u008b\u008c\u008d\u008e\u008f\u0090\u0091\u0092\u0093\u0094\u0095\u0096\u0097\u0098\u0099\u009a\u009b\u009c\u009d\u009e\u009f",
     requestId: "request-42",
     error: { type: "Error", message: "token=private-token" },
     attributes: {
@@ -85,10 +85,13 @@ test("validates one redacted event contract before console or file sinks", () =>
   const serialized = JSON.stringify(logged);
   expect(serialized).not.toContain("private-token");
   expect(serialized).not.toContain("never persist this");
-  expect(logged.message).toBe("colored text linked text C1 CSI");
+  expect(logged.message).toBe(
+    "colored text linked text C1 CSI é € こんにちは 🧪",
+  );
   expect(logged.error?.message).toBe("token=[REDACTED]");
   expect(logged.attributes?.safevalue).toBe("Bearer [REDACTED]");
   expect(serialized).not.toMatch(/[\x1b\u009b\u009d]/);
+  expect(serialized).not.toMatch(/[\u0080-\u009f]/);
   expect(logged.attributes).toEqual({
     authorization: "[REDACTED]",
     prompt: "[REDACTED]",
@@ -104,6 +107,19 @@ test("validates one redacted event contract before console or file sinks", () =>
     message: "\x1b[31m\x1b[0m",
   });
   expect(ansiOnly.message).toBe("Unknown error");
+
+  const normalizedIdentifiers = createLogEvent({
+    severity: "error",
+    eventName: "\x1b[32mgateway.test\x1b[0m",
+    category: "gateway",
+    component: "\x1b[32mgateway\x1b[0m",
+    runtime: "gateway",
+    message: "identifier test",
+    error: { type: "Error", message: "failed", code: "\x1b[31m\x1b[0m" },
+  });
+  expect(normalizedIdentifiers.eventName).toBe("gateway.test");
+  expect(normalizedIdentifiers.component).toBe("gateway");
+  expect(normalizedIdentifiers.error?.code).toBeUndefined();
 
   const bypasses = createLogEvent({
     severity: "error",

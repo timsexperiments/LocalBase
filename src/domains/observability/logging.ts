@@ -314,7 +314,7 @@ export function redactLogEventForDiagnostics(
 }
 
 function normalizedComponent(value: string): string {
-  const normalized = value
+  const normalized = stripAnsiCodes(value)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -325,7 +325,7 @@ function normalizedComponent(value: string): string {
 }
 
 function normalizedEventName(value: string): string {
-  const normalized = value
+  const normalized = stripAnsiCodes(value)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
@@ -407,15 +407,17 @@ export function createLogEvent(
   input: LogEventInput,
   ambientTrace?: LogTraceCorrelation,
 ): LogEvent {
+  const errorCode =
+    typeof input.error?.code === "string" && input.error.code
+      ? boundedText(input.error.code, 128)
+      : undefined;
   const error = input.error
     ? {
         type: boundedText(input.error.type || "Error", 128) || "Error",
         message:
           boundedText(input.error.message || "Unknown error") ||
           "Unknown error",
-        ...(typeof input.error.code === "string" && input.error.code
-          ? { code: boundedText(input.error.code, 128) }
-          : {}),
+        ...(errorCode ? { code: errorCode } : {}),
       }
     : undefined;
   const parsedHttp = input.http

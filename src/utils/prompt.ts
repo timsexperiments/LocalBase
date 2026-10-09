@@ -1,7 +1,7 @@
 import { checkbox, confirm, input, number, select } from "@inquirer/prompts";
 import { shouldUseColor } from "./color";
 
-const plainTheme = {
+export const plainTheme = {
   prefix: { idle: "?", done: "✓" },
   spinner: { frames: ["*"], interval: 80 },
   style: {
@@ -12,7 +12,15 @@ const plainTheme = {
     help: (text: string) => text,
     highlight: (text: string) => text,
     key: (text: string) => `<${text}>`,
+    disabled: (text: string) => text,
+    disabledChoice: (text: string) => text,
+    description: (text: string) => text,
+    renderSelectedChoices: (choices: ReadonlyArray<{ name: string }>) =>
+      choices.map(({ name }) => name).join(", "),
+    keysHelpTip: (keys: [string, string][]) =>
+      keys.map(([key, action]) => `<${key}> ${action}`).join(" · "),
   },
+  icon: { checked: "[x]", unchecked: "[ ]", cursor: ">" },
 };
 
 function promptTheme() {
@@ -80,18 +88,7 @@ export async function multiSelectPrompt<T extends string>(
   return checkbox({
     message,
     choices: options,
-    theme: promptTheme()
-      ? {
-          ...plainTheme,
-          style: {
-            ...plainTheme.style,
-            disabledChoice: (text: string) => text,
-            description: (text: string) => text,
-            keysHelpTip: (keys: [string, string][]) =>
-              keys.map(([key, action]) => `<${key}> ${action}`).join(" · "),
-          },
-        }
-      : undefined,
+    theme: promptTheme(),
     validate: (values) =>
       !requireSelection || values.length > 0
         ? true
