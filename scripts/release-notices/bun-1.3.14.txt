@@ -24,9 +24,10 @@ bun run build:local
 To rebuild LocalBase's compiled executable with this custom Bun, from a LocalBase source checkout run:
 
 ```sh
+bun install --frozen-lockfile
 /path/to/bun/build/debug-local/bun-debug build src/cli.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --outfile=local-base
 ```
 
-These steps are documented-but-untested by LocalBase maintainers.
+The install step also generates the UI bundle and migration assets required by the compile. These relink steps are documented but have not been tested end to end with a custom JavaScriptCore build.
 
 Copyright holder for this written offer: Tim Daltemus. For at least three years from distribution of this release, Tim Daltemus will provide the corresponding source and build material needed to relink the combined LocalBase executable on request through https://github.com/timsexperiments/LocalBase/issues.

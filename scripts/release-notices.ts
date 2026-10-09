@@ -27,6 +27,7 @@ export const nativeNoticeManifest: Record<string, string[]> = {
     "libarchive.txt",
     "libarchive-read-compress.c.txt",
     "libarchive-write-compress.c.txt",
+    "libarchive-compiled-headers.txt",
   ],
   libdeflate: ["libdeflate.txt"],
   "libjpeg-turbo": ["libjpeg-turbo.txt", "libjpeg-turbo-ijg.txt"],
@@ -74,6 +75,8 @@ export const nativeNoticeManifest: Record<string, string[]> = {
   "polyfill url@0.11.4": ["polyfill-url-0.11.4.txt"],
   "polyfill util@0.12.5": ["polyfill-util-0.12.5.txt"],
   "polyfill vm-browserify@1.1.2": ["polyfill-vm-browserify-1.1.2.txt"],
+  "Bun node-fallback transitive closure": ["polyfill-fallback-closure.txt"],
+  "Hoehrmann UTF-8 DFA": ["hoehrmann-utf8-dfa.txt"],
 };
 
 function packageRecord(lock: Lockfile, name: string): LockPackage | undefined {

@@ -58,6 +58,14 @@ test("notices contain full production package license texts and the pinned Bun n
   expect(notices).toContain("Permission is hereby granted, free of charge");
   expect(notices).toContain("## Bun 1.3.14");
   expect(notices).toContain("5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b");
+  expect(notices).toContain("base64-js@1.5.1");
+  expect(notices).toContain("pako@1.0.11");
+  expect(notices).toContain("elliptic@6.6.1");
+  expect(notices).toContain("Copyright (c) 2003-2010 Tim Kientzle");
+  expect(notices).toContain("Copyright (c) 2008-2009 Bjoern Hoehrmann");
+  expect(notices).toContain(
+    "Hoehrmann's available decoder license has been recovered",
+  );
   expect(await generateReleaseNotices()).toBe(notices);
 });
 
