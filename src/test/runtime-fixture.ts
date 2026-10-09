@@ -148,6 +148,24 @@ async function runRuntimeFixture(): Promise<void> {
         if (path === "/health") return new Response(null, { status: 200 });
         if (path !== "/v1/chat/completions")
           return new Response(null, { status: 404 });
+        const body = (await request.json().catch(() => ({}))) as {
+          stream?: unknown;
+        };
+        if (body.stream !== true) {
+          return Response.json({
+            id: "fixture",
+            object: "chat.completion",
+            created: 0,
+            model: "fixture",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "ok" },
+                finish_reason: "stop",
+              },
+            ],
+          });
+        }
         const stream = new ReadableStream<Uint8Array>({
           async start(controller) {
             if (typeof __LOCALBASE_TEST_FIRST_EVENT_REPORT_URL__ === "string") {
