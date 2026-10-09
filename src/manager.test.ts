@@ -43,6 +43,7 @@ import {
   computeSha256,
   parseChecksumFile,
   readChecksumStore,
+  type ChecksumStore,
   verifyAuthoritativeFile,
   withChecksumStoreLock,
   writeChecksumStore,
@@ -1176,6 +1177,35 @@ describe.serial("checksum inputs and continuity cache", () => {
     expect(readdirSync(root).filter((name) => name.endsWith(".tmp"))).toEqual(
       [],
     );
+  });
+
+  test("reads a whole checksum store while a writer replaces it", async () => {
+    const root = createInstallConfig().root;
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await writeChecksumStore(root, { version: 1, entries: {} });
+      let writing = true;
+      const writer = (async () => {
+        for (let n = 0; writing; n++) {
+          const entries: Record<string, ChecksumStore["entries"][string]> = {};
+          for (let i = 0; i <= n % 40; i++) {
+            entries[`model-${i}.bin`] = {
+              authoritativeSha256: "a".repeat(64),
+              expectedSizeBytes: 1,
+              file: { size: 1, mtimeMs: 1, ctimeMs: 1, dev: 1, ino: i },
+            };
+          }
+          await writeChecksumStore(root, { version: 1, entries });
+        }
+      })();
+      const deadline = Date.now() + 500;
+      while (Date.now() < deadline) await readChecksumStore(root);
+      writing = false;
+      await writer;
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test("merges verifications from separate processes without losing entries", async () => {

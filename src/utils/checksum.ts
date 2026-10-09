@@ -7,7 +7,7 @@ import {
   existsSync,
   statSync,
 } from "node:fs";
-import { readdir, rename, rm, stat } from "node:fs/promises";
+import { readFile, readdir, rename, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setImmediate, setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
@@ -259,8 +259,16 @@ async function removeOrphanedTempFiles(dir: string): Promise<void> {
 /** This cache records prior verification; its digest never replaces upstream authority. */
 export async function readChecksumStore(dir: string): Promise<ChecksumStore> {
   const filePath = storeFilePath(dir);
-  const file = Bun.file(filePath);
-  if (!(await file.exists())) return emptyChecksumStore();
+  // Bun.file can read with a stale size while another process renames a new store into place.
+  let text: string;
+  try {
+    text = await readFile(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return emptyChecksumStore();
+    }
+    throw error;
+  }
 
   const reject = (reason: string) => {
     console.warn(
@@ -273,7 +281,7 @@ export async function readChecksumStore(dir: string): Promise<ChecksumStore> {
 
   let value: unknown;
   try {
-    value = JSON.parse(await file.text());
+    value = JSON.parse(text);
   } catch {
     return reject("malformed JSON");
   }
