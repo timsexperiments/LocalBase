@@ -40,7 +40,10 @@ import {
   recommendedSttForVram,
 } from "./catalog";
 import { assertModelDiskSpace } from "./domains/runtime/startup-preflight";
-import { modelConfigurationSchema } from "./domains/models/model-selection";
+import { createModelConfigurationSchema } from "./domains/models/model-selection";
+import { assertModelEligible } from "./domains/models/model-eligibility";
+import { videoTargetFromTopology } from "./domains/models/model-eligibility";
+import { createHostMemoryProvider } from "./domains/runtime/memory/host-memory-provider";
 import {
   parseParallelSlots,
   type ParallelSlots,
@@ -95,6 +98,7 @@ export type LocalBaseConfig = {
   selectedTtsModels: string[];
   selectedImageModels: string[];
   selectedVideoModels: string[];
+  allowExperimental: boolean;
   activeLlmModel: string;
   activeSttModel: string;
   activeTtsModel: string;
@@ -140,6 +144,7 @@ const configRowSchema = z
     selectedTtsModels: z.string(),
     selectedImageModels: z.string(),
     selectedVideoModels: z.string(),
+    allowExperimental: z.boolean(),
     activeLlmModel: z.string().min(1),
     activeSttModel: z.string(),
     activeTtsModel: z.string(),
@@ -233,6 +238,7 @@ function toConfigRow(config: LocalBaseConfig) {
     selectedTtsModels: JSON.stringify(config.selectedTtsModels),
     selectedImageModels: JSON.stringify(config.selectedImageModels),
     selectedVideoModels: JSON.stringify(config.selectedVideoModels),
+    allowExperimental: config.allowExperimental,
     activeLlmModel: config.activeLlmModel,
     activeSttModel: config.activeSttModel,
     activeTtsModel: config.activeTtsModel,
@@ -286,6 +292,13 @@ export function modelDirectories(
   };
 }
 
+export function detectHostVideoTarget() {
+  const provider = createHostMemoryProvider();
+  const target = videoTargetFromTopology(provider.topology);
+  void provider.close();
+  return target;
+}
+
 function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
   const parsed = configRowSchema.safeParse(row);
   if (!parsed.success) {
@@ -323,7 +336,8 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     "selectedTtsModels",
     openedRoot,
   );
-  const models = modelConfigurationSchema.safeParse({
+  const models = createModelConfigurationSchema(null, false).safeParse({
+    allowExperimental: data.allowExperimental,
     selectedLlmModels,
     selectedSttModels,
     selectedTtsModels,
@@ -422,6 +436,7 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     selectedTtsModels: [],
     selectedImageModels: ["stable-diffusion-v1-5"],
     selectedVideoModels: [],
+    allowExperimental: false,
     activeLlmModel: llm,
     activeSttModel: stt,
     activeTtsModel: "",
@@ -456,8 +471,42 @@ export function saveConfig(
     ...modelDirectories(config.root),
   };
   const row = toConfigRow(canonicalConfig);
-  fromConfigRow(row, canonicalConfig.root);
   ensureLocalBaseRootMarker(canonicalConfig.root);
+  const previousRow = withDatabase(database, canonicalConfig.root, (db) =>
+    db.select().from(configTable).where(eq(configTable.id, "default")).get(),
+  );
+  const previouslySelectedVideoModels = previousRow
+    ? fromConfigRow(previousRow, canonicalConfig.root).selectedVideoModels
+    : [];
+  const newlySelectedVideoModels = canonicalConfig.selectedVideoModels.filter(
+    (modelId) => !previouslySelectedVideoModels.includes(modelId),
+  );
+  const eligibility = createModelConfigurationSchema(
+    detectHostVideoTarget(),
+  ).safeParse({
+    allowExperimental: canonicalConfig.allowExperimental,
+    selectedLlmModels: canonicalConfig.selectedLlmModels,
+    selectedSttModels: canonicalConfig.selectedSttModels,
+    selectedTtsModels: canonicalConfig.selectedTtsModels,
+    selectedImageModels: canonicalConfig.selectedImageModels,
+    selectedVideoModels: newlySelectedVideoModels,
+    activeLlmModel: canonicalConfig.activeLlmModel,
+    activeSttModel: canonicalConfig.activeSttModel,
+    activeTtsModel: canonicalConfig.activeTtsModel,
+    activeImageModel: canonicalConfig.activeImageModel,
+    activeVideoModel: newlySelectedVideoModels.includes(
+      canonicalConfig.activeVideoModel,
+    )
+      ? canonicalConfig.activeVideoModel
+      : "",
+  });
+  if (!eligibility.success) {
+    throw invalidConfiguration(
+      canonicalConfig.root,
+      issueSummary(eligibility.error),
+    );
+  }
+  fromConfigRow(row, canonicalConfig.root);
   ensureDirs(canonicalConfig);
   withDatabase(database, canonicalConfig.root, (db) => {
     db.insert(configTable)
@@ -675,6 +724,23 @@ export async function installModel(
     const spec = byId(modelId);
     if (!spec) {
       throw new Error(`Unknown model id: ${modelId}`);
+    }
+    if (spec.videoRuntime) {
+      const provider = createHostMemoryProvider();
+      try {
+        assertModelEligible(spec, {
+          allowExperimental: config.allowExperimental,
+          target: videoTargetFromTopology(provider.topology),
+        });
+      } finally {
+        await provider.close();
+      }
+    } else {
+      assertModelEligible(spec, {
+        allowExperimental: config.allowExperimental,
+        platform: process.platform,
+        architecture: process.arch,
+      });
     }
 
     const targetDir = kindDir(config, spec.kind);

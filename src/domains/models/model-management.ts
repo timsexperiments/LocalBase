@@ -1,6 +1,13 @@
 import { lstatSync, realpathSync, statfsSync, unlinkSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { CATALOG, byId, type ModelKind, type ModelSpec } from "../../catalog";
+import {
+  CATALOG,
+  byId,
+  type ModelKind,
+  type ModelSpec,
+  type VideoRuntimeTarget,
+} from "../../catalog";
+import { modelEligibilityReason } from "./model-eligibility";
 import { installModel, type LocalBaseConfig } from "../../manager";
 import type { RuntimeConfigController } from "../runtime/config-snapshot";
 import type { RuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
@@ -175,10 +182,12 @@ export function createModelManagement({
   runtimeConfig,
   lifecycle,
   protectedModelIds = () => new Set<string>(),
+  videoTarget,
 }: {
   runtimeConfig: RuntimeConfigController;
   lifecycle: () => Readonly<Record<RuntimeModality, RuntimeLifecycleSnapshot>>;
   protectedModelIds?: () => ReadonlySet<string>;
+  videoTarget?: () => VideoRuntimeTarget | null;
 }) {
   const operations = new Map<string, ModelManagementOperation>();
   let installing: string | null = null;
@@ -194,7 +203,11 @@ export function createModelManagement({
     ]);
     return {
       storage,
-      models: CATALOG.map((model) => {
+      models: CATALOG.filter(
+        (model) =>
+          model.qualificationState !== "experimental" ||
+          config.allowExperimental,
+      ).map((model) => {
         let facts;
         let installUnavailableReason: string | null = null;
         try {
@@ -217,8 +230,22 @@ export function createModelManagement({
         const available = storageAt(
           config[fields[model.kind].directory],
         ).availableBytes;
+        const eligibility = modelEligibilityReason(
+          model,
+          model.videoRuntime && videoTarget
+            ? {
+                allowExperimental: config.allowExperimental,
+                target: videoTarget(),
+              }
+            : {
+                allowExperimental: config.allowExperimental,
+                platform: process.platform,
+                architecture: process.arch,
+              },
+        );
         const conflict = installConflict(config, model, referenced);
-        if (installing !== null)
+        if (eligibility !== null) installUnavailableReason = eligibility;
+        else if (installing !== null)
           installUnavailableReason =
             "Wait for the current installation to finish.";
         else if (conflict !== null) installUnavailableReason = conflict;
@@ -263,6 +290,22 @@ export function createModelManagement({
     runtimeConfig.refreshSync();
     const config = runtimeConfig.copy();
     const field = fields[model.kind];
+    if (action === "install" || action === "enable" || action === "activate") {
+      const reason = modelEligibilityReason(
+        model,
+        model.videoRuntime && videoTarget
+          ? {
+              allowExperimental: config.allowExperimental,
+              target: videoTarget(),
+            }
+          : {
+              allowExperimental: config.allowExperimental,
+              platform: process.platform,
+              architecture: process.arch,
+            },
+      );
+      if (reason) throw new ModelManagementError("invalid_request", reason);
+    }
     const operation: ModelManagementOperation = {
       action,
       state: "complete",

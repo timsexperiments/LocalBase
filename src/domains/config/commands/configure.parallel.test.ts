@@ -7,7 +7,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AppContext } from "../../../context";
 import { defaultConfig, loadConfig } from "../../../manager";
+import * as manager from "../../../manager";
 import { runConfigure } from "./configure";
+import { runConfigShow } from "./config";
 import { DatabaseSession } from "../../../db/client";
 import { migrationsFolder } from "../../../db/migration-assets";
 import * as schema from "../../../db/schema";
@@ -197,6 +199,46 @@ test("configure validates TOML parallel overrides and warns on low VRAM", async 
   });
 });
 
+test("configure allows unrelated writes with an unsupported persisted video selection", async () => {
+  await withTempRoot(async (root) => {
+    const context = makeContext(root);
+    const existing = defaultConfig(root);
+    existing.allowExperimental = true;
+    existing.selectedVideoModels = ["wan2.2-s2v-14b-fp8"];
+    existing.activeVideoModel = "wan2.2-s2v-14b-fp8";
+    const target = spyOn(manager, "detectHostVideoTarget").mockReturnValue({
+      platform: "linux",
+      architecture: "x64",
+      accelerator: "nvidia",
+    });
+    try {
+      manager.saveConfig(context.database, existing);
+    } finally {
+      target.mockRestore();
+    }
+
+    try {
+      const shown = await runConfigShow({}, context, nonInteractiveExecution);
+      expect(shown.data.document).toContain('"wan2.2-s2v-14b-fp8"');
+      await runConfigure(
+        { all: false, defaults: true, parallel: 2, createKey: false },
+        context,
+        nonInteractiveExecution,
+      );
+    } finally {
+      context.database.close();
+    }
+
+    const database = new DatabaseSession();
+    expect(loadConfig(database, root)).toMatchObject({
+      allowExperimental: true,
+      selectedVideoModels: ["wan2.2-s2v-14b-fp8"],
+      parallel: 2,
+    });
+    database.close();
+  });
+});
+
 test("configure merges partial TOML memory reserves with persisted defaults", async () => {
   await withTempRoot(async (root) => {
     const configPath = join(root, "local-base.toml");
@@ -322,6 +364,62 @@ test("configure persists and disables the canonical TTS selection", async () => 
   });
 });
 
+test("configure validates video selections against the detected target", async () => {
+  await withTempRoot(async (root) => {
+    const context = makeContext(root);
+    const target = spyOn(manager, "detectHostVideoTarget").mockReturnValue({
+      platform: "linux",
+      architecture: "x64",
+      accelerator: "nvidia",
+    });
+    const modelId = "wan2.1-t2v-1.3b-q8_0";
+    try {
+      await runConfigure(
+        {
+          all: false,
+          defaults: true,
+          videoModels: [modelId],
+          activeVideo: modelId,
+          createKey: false,
+        },
+        context,
+        nonInteractiveExecution,
+      );
+      expect(loadConfig(context.database, root)).toMatchObject({
+        selectedVideoModels: [modelId],
+        activeVideoModel: modelId,
+      });
+
+      target.mockReturnValue(null);
+      await runConfigure(
+        {
+          all: false,
+          defaults: true,
+          videoModels: [],
+          createKey: false,
+        },
+        context,
+        nonInteractiveExecution,
+      );
+      await expect(
+        runConfigure(
+          {
+            all: false,
+            defaults: true,
+            videoModels: [modelId],
+            createKey: false,
+          },
+          context,
+          nonInteractiveExecution,
+        ),
+      ).rejects.toThrow("single NVIDIA GPU");
+    } finally {
+      target.mockRestore();
+      context.database.close();
+    }
+  });
+});
+
 test("configure rejects invalid composed model selections before persistence", async () => {
   await withTempRoot(async (root) => {
     const context = makeContext(root);
@@ -329,6 +427,11 @@ test("configure rejects invalid composed model selections before persistence", a
     const db = drizzle({ client: sqlite, schema });
     migrate(db, { migrationsFolder: migrationsFolder() });
     const getDatabase = spyOn(context.database, "get").mockReturnValue(db);
+    const target = spyOn(manager, "detectHostVideoTarget").mockReturnValue({
+      platform: "linux",
+      architecture: "x64",
+      accelerator: "nvidia",
+    });
     try {
       const video = "wan2.1-t2v-1.3b-q8_0";
       const catalogOnlyVideo = "wan2.2-ti2v-5b-q6_k";
@@ -372,6 +475,7 @@ test("configure rejects invalid composed model selections before persistence", a
       }
     } finally {
       getDatabase.mockRestore();
+      target.mockRestore();
       sqlite.close();
       context.database.close();
     }

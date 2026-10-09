@@ -31,7 +31,13 @@ const configOverridesSchema = z
     selectedSttModels: selectedModelsSchema("stt", false).optional(),
     selectedTtsModels: selectedModelsSchema("tts", false).optional(),
     selectedImageModels: selectedModelsSchema("image", false).optional(),
-    selectedVideoModels: selectedModelsSchema("video", false).optional(),
+    selectedVideoModels: selectedModelsSchema(
+      "video",
+      false,
+      false,
+      null,
+      false,
+    ).optional(),
     activeLlmModel: modelIdSchema("llm").optional(),
     activeSttModel: z.union([z.literal(""), modelIdSchema("stt")]).optional(),
     activeTtsModel: z.union([z.literal(""), modelIdSchema("tts")]).optional(),
@@ -39,7 +45,7 @@ const configOverridesSchema = z
       .union([z.literal(""), modelIdSchema("image")])
       .optional(),
     activeVideoModel: z
-      .union([z.literal(""), modelIdSchema("video")])
+      .union([z.literal(""), modelIdSchema("video", false, null, false)])
       .optional(),
     hfToken: z.string().optional(),
     otelEndpoint: z.union([z.literal(""), otelEndpointSchema]).optional(),

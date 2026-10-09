@@ -12,6 +12,7 @@ import { DatabaseSession } from "../../../db/client";
 import { RuntimeMemoryAdmissionError } from "../memory-controller";
 import { ModelInstallConsentError } from "../startup-preflight";
 import { admitModelWithIdleRecovery } from "../commands/serve";
+import { ModelManagementError } from "../../models/model-management-contract";
 import {
   handleVideoGatewayRequest,
   type VideoGatewayHandlerDependencies,
@@ -599,6 +600,71 @@ test("reports permanent video preflight rejection as insufficient_memory on the 
       error: { code: "insufficient_memory" },
     });
     expect({ preflights, evictions }).toEqual({ preflights: 1, evictions: 1 });
+  } finally {
+    credentials.database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("reports revoked experimental opt-in on the failed video job", async () => {
+  const root = mkdtempSync(
+    join(tmpdir(), "localbase-video-experimental-opt-in-"),
+  );
+  const credentials = createCredentials(root);
+  const terminal = deferred<void>();
+  const jobs = new VideoJobManager({
+    backend: {
+      async submitVideo() {
+        throw new Error("backend must not start");
+      },
+      async getJob() {
+        throw new Error("backend must not start");
+      },
+    },
+    temporaryDirectory: root,
+    onContainmentFailure: () => {},
+  });
+  const admissionProvider: VideoModelAdmissionProvider = {
+    async admit() {
+      throw new ModelManagementError(
+        "invalid_request",
+        "Experimental models require models.allowExperimental = true.",
+      );
+    },
+  };
+
+  try {
+    const created = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: createRequest("Generate with a revoked experimental model."),
+        pathname: "/v1/videos",
+        route: "videoCreate",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+        onTerminal: () => terminal.resolve(),
+      }),
+    );
+    expect(created.status).toBe(202);
+    const job = (await created.json()) as { id: string };
+    await terminal.promise;
+    const status = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: new Request(`http://local.test/v1/videos/${job.id}`),
+        pathname: `/v1/videos/${job.id}`,
+        route: "videoStatus",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+      }),
+    );
+    await expect(status.json()).resolves.toMatchObject({
+      status: "failed",
+      error: {
+        code: "experimental_model_not_allowed",
+        message: "Experimental models require models.allowExperimental = true.",
+      },
+    });
   } finally {
     credentials.database.close();
     rmSync(root, { recursive: true, force: true });

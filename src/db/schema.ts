@@ -22,6 +22,9 @@ export const configTable = sqliteTable("config", {
   selectedTtsModels: text("selected_tts_models").notNull(),
   selectedImageModels: text("selected_image_models").notNull(),
   selectedVideoModels: text("selected_video_models").notNull(),
+  allowExperimental: integer("allow_experimental", { mode: "boolean" })
+    .default(false)
+    .notNull(),
   activeLlmModel: text("active_llm_model").notNull(),
   activeSttModel: text("active_stt_model").notNull(),
   activeTtsModel: text("active_tts_model").notNull(),

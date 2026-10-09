@@ -32,6 +32,7 @@ export const configFieldOwnership = {
   selectedTtsModels: "modality-selection-request-scoped",
   selectedImageModels: "modality-selection-request-scoped",
   selectedVideoModels: "modality-selection-request-scoped",
+  allowExperimental: "modality-selection-request-scoped",
   activeLlmModel: "llm-launch",
   activeSttModel: "stt-launch",
   activeTtsModel: "tts-launch",

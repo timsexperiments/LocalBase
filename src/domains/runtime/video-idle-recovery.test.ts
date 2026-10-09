@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { CATALOG } from "../../catalog";
 import { DatabaseSession } from "../../db/client";
 import { defaultConfig, saveConfig } from "../../manager";
+import { useSupportedVideoHost } from "../../test/video-host";
 import { createLogger } from "../observability/logging";
 import { createOtelRuntime, OtelRuntimeHolder } from "../observability/otel";
 import { admitModelWithIdleRecovery } from "./commands/serve";
@@ -19,6 +20,8 @@ import {
   SupervisorRegistry,
   type RuntimeSupervisor,
 } from "./supervisor-registry";
+
+useSupportedVideoHost();
 
 function insufficientMemory(): RuntimeMemoryAdmissionError {
   return new RuntimeMemoryAdmissionError({
@@ -204,7 +207,13 @@ test("video switch projection credits the old video generation and admits after 
   const root = mkdtempSync("/tmp/localbase-video-switch-recovery-");
   const database = new DatabaseSession();
   const config = defaultConfig(root, 48);
-  const videoModels = CATALOG.filter((model) => model.kind === "video");
+  const videoModels = CATALOG.filter(
+    (model) =>
+      model.kind === "video" &&
+      model.videoRuntime?.supportedTargets.some(
+        (target) => target.accelerator === "apple-unified",
+      ),
+  );
   const previousVideoModel = videoModels[0]?.modelId;
   const targetVideoModel = videoModels[1]?.modelId;
   if (!previousVideoModel || !targetVideoModel)
