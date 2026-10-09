@@ -1098,14 +1098,15 @@ test("cancels response leases on cancellation and releases them on completion", 
   let failedReleases = 0;
   let failedCancels = 0;
   const failedTerminals: InferenceTerminal[] = [];
+  const failedUpstream = new Response(
+    new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error("upstream read failed"));
+      },
+    }),
+  );
   const failed = withResponseLease(
-    new Response(
-      new ReadableStream<Uint8Array>({
-        pull(controller) {
-          controller.error(new Error("upstream read failed"));
-        },
-      }),
-    ),
+    failedUpstream,
     () => {
       failedReleases += 1;
     },
@@ -1116,7 +1117,7 @@ test("cancels response leases on cancellation and releases them on completion", 
     (terminal) => failedTerminals.push(terminal),
   );
   await expect(failed.arrayBuffer()).rejects.toThrow("upstream read failed");
-  expect(failed.body!.locked).toBe(false);
+  expect(failedUpstream.body!.locked).toBe(false);
   expect({ failedReleases, failedCancels, failedTerminals }).toEqual({
     failedReleases: 0,
     failedCancels: 1,
