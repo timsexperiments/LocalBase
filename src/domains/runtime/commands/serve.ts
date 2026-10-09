@@ -361,12 +361,12 @@ function notConfigured(feature: string): Response {
   );
 }
 
-function badRequest(message: string): Response {
+function badRequest(message: string, param: string | null = null): Response {
   return openAIErrorResponse(
     {
       message,
       type: "invalid_request_error",
-      param: null,
+      param,
       code: "validation_failed",
     },
     400,
@@ -425,16 +425,24 @@ function payloadTooLarge(): Response {
   );
 }
 
+function upstreamError(message: string): OpenAIError {
+  return openAIErrorResponseSchema.shape.error.parse({
+    message,
+    type: "server_error",
+    param: null,
+    code: "upstream_error",
+  });
+}
+
 function upstreamFailure(message: string): Response {
-  return openAIErrorResponse(
-    {
-      message,
-      type: "server_error",
-      param: null,
-      code: "upstream_error",
-    },
-    502,
-  );
+  return openAIErrorResponse(upstreamError(message), 502);
+}
+
+function upstreamErrorEvent(message: string): Uint8Array {
+  const error = openAIErrorResponseSchema.parse({
+    error: upstreamError(message),
+  });
+  return new TextEncoder().encode(`data: ${JSON.stringify(error)}\n\n`);
 }
 
 /** Whisper reports failures as JSON bodies; successful text formats are never JSON-typed. */
@@ -534,7 +542,12 @@ function validationFailure(error: z.ZodError): Response {
   const issues = error.issues
     .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
     .join(", ");
-  return badRequest(`Validation failed: ${issues}`);
+  const param = error.issues.some(
+    (issue) => issue.path[0] === "response_format",
+  )
+    ? "response_format"
+    : null;
+  return badRequest(`Validation failed: ${issues}`, param);
 }
 
 const chatToolCallSchema = z
@@ -808,9 +821,11 @@ const speechGenerationRequestSchema = z
         `input must not exceed ${SPEECH_MAX_INPUT_CHARACTERS} characters`,
       ),
     voice: speechVoiceSchema,
-    response_format: z.literal("wav", {
-      error: "response_format must be explicitly set to 'wav'",
-    }),
+    response_format: z
+      .enum(["wav"], {
+        error: "response_format supports only 'wav'",
+      })
+      .default("wav"),
     speed: z.literal(1, { error: "speed must be 1" }).optional(),
     instructions: z
       .never({ error: "instructions are not supported" })
@@ -1303,7 +1318,7 @@ function validateEventStream(
       param: null,
       code: "upstream_error",
     },
-  })}\n\ndata: [DONE]\n\n`;
+  })}\n\n`;
 
   const fail = (
     controller: TransformStreamDefaultController<Uint8Array>,
@@ -1400,9 +1415,11 @@ function validateEventStream(
       },
       flush(controller) {
         buffered += decoder.decode();
-        if (buffered && !flushEvent(controller, buffered, false, false)) return;
+        // An SSE event is only complete after its blank-line delimiter.
+        const hasUnframedEvent = buffered.length > 0;
+        buffered = "";
         if (failed) return;
-        if (!doneEvent) {
+        if (hasUnframedEvent || !doneEvent) {
           fail(controller, false);
           return;
         }
@@ -1410,6 +1427,71 @@ function validateEventStream(
       },
     }),
   );
+}
+
+export function recoverEventStreamReadErrors(
+  body: ReadableStream<Uint8Array>,
+  onError?: () => void,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffered = "";
+  let failed = false;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    reader.releaseLock();
+  };
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (failed) return;
+      try {
+        while (true) {
+          const result = await reader.read();
+          if (result.done) {
+            buffered += decoder.decode();
+            if (buffered) {
+              buffered = "";
+              onError?.();
+              controller.enqueue(
+                upstreamErrorEvent("The upstream stream ended mid-event."),
+              );
+            }
+            controller.close();
+            release();
+            return;
+          }
+          buffered += decoder.decode(result.value, { stream: true });
+          const boundaries = [
+            ...buffered.matchAll(/(?:\r\n|\r|\n)(?:\r\n|\r|\n)/g),
+          ];
+          const last = boundaries.at(-1);
+          if (last?.index !== undefined) {
+            const end = last.index + last[0].length;
+            controller.enqueue(encoder.encode(buffered.slice(0, end)));
+            buffered = buffered.slice(end);
+            return;
+          }
+        }
+      } catch {
+        failed = true;
+        onError?.();
+        buffered = "";
+        controller.enqueue(upstreamErrorEvent("The upstream stream failed."));
+        controller.close();
+        release();
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        release();
+      }
+    },
+  });
 }
 
 function inferenceMetadata(
@@ -1528,7 +1610,9 @@ async function proxyRequest(
     headers.delete("content-length");
     return new Response(
       validateEventStream(
-        upstream.body,
+        recoverEventStreamReadErrors(upstream.body, () =>
+          onInvalidEvent?.(502),
+        ),
         eventStreamSchema,
         (value) => onValidatedEvent?.(value, upstream.status),
         () => onInvalidEvent?.(upstream.status),
@@ -1671,6 +1755,7 @@ export function withResponseLease(
   }
 
   let completed = false;
+  let readerReleased = false;
   let removeAbortListener = () => {};
   const settleOnce = (terminal: InferenceTerminal) => {
     if (completed) return;
@@ -1681,13 +1766,25 @@ export function withResponseLease(
     onSettled?.(terminal);
   };
   const reader = response.body.getReader();
+  const releaseReader = () => {
+    if (readerReleased) return;
+    readerReleased = true;
+    reader.releaseLock();
+  };
+  const cancelReader = async (reason?: unknown) => {
+    try {
+      await reader.cancel(reason);
+    } finally {
+      releaseReader();
+    }
+  };
   const cancelForRequestAbort = () => {
     settleOnce({
       outcome: "cancelled",
       httpStatus: response.status,
       source: "request_aborted",
     });
-    void reader.cancel(requestSignal.reason);
+    void cancelReader(requestSignal.reason);
   };
   requestSignal.addEventListener("abort", cancelForRequestAbort, {
     once: true,
@@ -1701,6 +1798,7 @@ export function withResponseLease(
         const { done, value } = await reader.read();
         if (done) {
           settleOnce({ outcome: "completed", httpStatus: response.status });
+          releaseReader();
           controller.close();
           return;
         }
@@ -1711,6 +1809,7 @@ export function withResponseLease(
           httpStatus: response.status,
           source: "response_stream_error",
         });
+        releaseReader();
         controller.error(error);
       }
     },
@@ -1720,7 +1819,7 @@ export function withResponseLease(
         httpStatus: response.status,
         source: "response_cancelled",
       });
-      await reader.cancel(reason);
+      await cancelReader(reason);
     },
   });
 
@@ -2032,27 +2131,30 @@ export async function applyElevatedMemoryPressure(
   }
 }
 
-export async function admitVideoWithIdleRecovery(
+export async function admitModelWithIdleRecovery(
   reconciler: Pick<
     RuntimeReconciler,
     "admitModel" | "recoverWithIdleEviction" | "waitForAdmissionAfterEviction"
   >,
+  modality: RuntimeModality,
   modelId: string,
   signal: AbortSignal,
 ): Promise<Awaited<ReturnType<RuntimeReconciler["admitModel"]>>> {
-  const first = await reconciler.admitModel("video", modelId, signal);
+  const first = await reconciler.admitModel(modality, modelId, signal);
   if (
     first.kind === "insufficient-memory" &&
     first.error.capacity === undefined
   ) {
     signal.throwIfAborted();
-    if (!(await reconciler.recoverWithIdleEviction("video", modelId, signal))) {
+    if (
+      !(await reconciler.recoverWithIdleEviction(modality, modelId, signal))
+    ) {
       return first;
     }
     signal.throwIfAborted();
     if (
       !(await reconciler.waitForAdmissionAfterEviction(
-        "video",
+        modality,
         modelId,
         signal,
       ))
@@ -2060,7 +2162,7 @@ export async function admitVideoWithIdleRecovery(
       return first;
     }
     signal.throwIfAborted();
-    const retry = await reconciler.admitModel("video", modelId, signal);
+    const retry = await reconciler.admitModel(modality, modelId, signal);
     return retry.kind === "admitted" ? retry : first;
   }
   if (first.kind !== "admitted") return first;
@@ -2072,13 +2174,15 @@ export async function admitVideoWithIdleRecovery(
     await current.admission.supervisor.kill();
     signal.throwIfAborted();
     if (error.capacity !== undefined) throw error;
-    if (!(await reconciler.recoverWithIdleEviction("video", modelId, signal))) {
+    if (
+      !(await reconciler.recoverWithIdleEviction(modality, modelId, signal))
+    ) {
       throw error;
     }
     signal.throwIfAborted();
     if (
       !(await reconciler.waitForAdmissionAfterEviction(
-        "video",
+        modality,
         modelId,
         signal,
       ))
@@ -2086,7 +2190,7 @@ export async function admitVideoWithIdleRecovery(
       throw error;
     }
     signal.throwIfAborted();
-    const retry = await reconciler.admitModel("video", modelId, signal);
+    const retry = await reconciler.admitModel(modality, modelId, signal);
     if (retry.kind !== "admitted") throw error;
     current = retry.value;
     try {
@@ -2120,6 +2224,37 @@ export async function admitVideoWithIdleRecovery(
       },
     },
   };
+}
+
+export async function generateSpeechWithIdleRecovery<T>(
+  reconciler: Pick<
+    RuntimeReconciler,
+    "recoverWithIdleEviction" | "waitForAdmissionAfterEviction"
+  >,
+  modelId: string,
+  signal: AbortSignal,
+  generate: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await generate();
+  } catch (error) {
+    if (
+      !(error instanceof RuntimeMemoryAdmissionError) ||
+      error.capacity !== undefined ||
+      signal.aborted ||
+      !(await reconciler.recoverWithIdleEviction("tts", modelId, signal))
+    ) {
+      throw error;
+    }
+    signal.throwIfAborted();
+    if (
+      !(await reconciler.waitForAdmissionAfterEviction("tts", modelId, signal))
+    ) {
+      throw error;
+    }
+    signal.throwIfAborted();
+    return await generate();
+  }
 }
 
 export function reportMemoryPressureTransition(
@@ -3103,8 +3238,9 @@ export async function runServe(
         },
         admissionProvider: {
           admit: async (modelId, signal) => {
-            const selection = await admitVideoWithIdleRecovery(
+            const selection = await admitModelWithIdleRecovery(
               reconciler,
+              "video",
               modelId,
               signal,
             );
@@ -3149,7 +3285,8 @@ export async function runServe(
       let admission: RuntimeAdmission | undefined;
       let inference: InferenceTelemetry | undefined;
       try {
-        const selected = await reconciler.admitModel(
+        const selected = await admitModelWithIdleRecovery(
+          reconciler,
           "tts",
           parsed.data.model,
           request.signal,
@@ -3170,13 +3307,21 @@ export async function runServe(
           inference.finish({ outcome: "error", httpStatus: response.status });
           return response;
         }
+        const speechSupervisor = admission.supervisor;
 
         await waitForRequestAbort(admission.ready, request.signal);
-        const wav = await admission.supervisor.generateSpeech({
-          text: parsed.data.input,
-          voice: parsed.data.voice,
-          signal: request.signal,
-        });
+        const generate = () =>
+          speechSupervisor.generateSpeech({
+            text: parsed.data.input,
+            voice: parsed.data.voice,
+            signal: request.signal,
+          });
+        const wav = await generateSpeechWithIdleRecovery(
+          reconciler,
+          parsed.data.model,
+          request.signal,
+          generate,
+        );
         admission.markResponseStarted();
         admission.release();
         admission = undefined;
@@ -3268,9 +3413,10 @@ export async function runServe(
         if (!parsed.success) {
           return validationFailure(parsed.error);
         }
-        const selected = await reconciler.admitModel(
+        const selected = await admitModelWithIdleRecovery(
+          reconciler,
           "stt",
-          parsed.data.model,
+          parsed.data.model ?? currentConfig.activeSttModel,
           request.signal,
         );
         if (selected.kind === "not-configured") return notConfigured("STT");
@@ -3360,9 +3506,10 @@ export async function runServe(
       if (!parsed.success) return parsed.response;
       let selected;
       try {
-        selected = await reconciler.admitModel(
+        selected = await admitModelWithIdleRecovery(
+          reconciler,
           "image",
-          parsed.data.model,
+          parsed.data.model ?? currentConfig.activeImageModel,
           request.signal,
         );
       } catch (error) {
