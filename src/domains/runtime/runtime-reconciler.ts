@@ -78,7 +78,8 @@ type PreparedModelAdmissionResult =
 export type ModelAdmissionResult =
   Readonly<{ kind: "admitted"; value: ModelAdmission }> | ModelAdmissionFailure;
 
-const MEMORY_SETTLE_TIMEOUT_MS = 3_000;
+// macOS can take several seconds to return reclaimed pages after a backend exits.
+const MEMORY_SETTLE_TIMEOUT_MS = 10_000;
 const MEMORY_SETTLE_POLL_INTERVAL_MS = 100;
 
 type ConfiguredModalities = Record<RuntimeModality, boolean>;
@@ -716,6 +717,17 @@ export class RuntimeReconciler {
       }
       this.throwIfAborted(signal);
       dispatchLease?.throwIfCancelled();
+      // The active model can still have a stopped backend. In that case the
+      // model-switch preflight was skipped, but starting video still needs it.
+      if (modality === "video") {
+        const supervisor = this.supervisors.get(modality);
+        if (supervisor && supervisor.state() !== "running") {
+          const candidate = this.factory.create(modality, admissionSnapshot);
+          const rejection = await candidate.preflight?.([], signal);
+          if (rejection)
+            return { kind: "insufficient-memory", error: rejection };
+        }
+      }
       const admission = this.acquire(modality, admissionSnapshot);
       if (!admission) return { kind: "unavailable" };
       dispatchLease?.throwIfCancelled();

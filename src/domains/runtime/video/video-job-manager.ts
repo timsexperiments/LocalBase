@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { RuntimeAdmission } from "../runtime-reconciler";
 import type { VideoGenerationInput } from "./video-input";
+import { RuntimeMemoryAdmissionError } from "../memory-controller";
 
 const DEFAULT_MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
 const DEFAULT_MAX_ARTIFACT_BYTES_TOTAL = 256 * 1024 * 1024;
@@ -321,6 +322,19 @@ export class VideoJobManager {
   async cancelActive(): Promise<void> {
     this.prune();
     if (this.active) await this.terminate(this.active, "cancelled");
+  }
+
+  async failActiveForMemoryPressure(): Promise<void> {
+    this.prune();
+    if (!this.active) return;
+    await this.containFailure(
+      this.active,
+      new RuntimeMemoryAdmissionError({
+        kind: "rejected",
+        reason: "memory-pressure",
+        poolId: "system",
+      }),
+    );
   }
 
   private createJob(

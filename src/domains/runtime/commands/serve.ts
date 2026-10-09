@@ -2668,8 +2668,10 @@ export async function runServe(
   const memoryPressureMonitor = new MemoryPressureMonitor({
     controller: memorySafety,
     onElevatedPressure: async (transition) => {
-      await videoJobs.cancelActive();
       await applyElevatedMemoryPressure(reconciler, transition);
+      const afterEviction = await memorySafety.poll();
+      if (afterEviction.current.state !== "healthy")
+        await videoJobs.failActiveForMemoryPressure();
     },
     onTransition: (transition) =>
       reportMemoryPressureTransition(ctx.logger, transition),
