@@ -668,6 +668,7 @@ const chatCompletionRequestSchema = z
       .nullable()
       .optional(),
     max_tokens: z.number().positive().optional(),
+    max_completion_tokens: z.number().positive().optional(),
     presence_penalty: z.number().min(-2).max(2).optional(),
     frequency_penalty: z.number().min(-2).max(2).optional(),
     logit_bias: z.record(z.string(), z.number()).nullable().optional(),
@@ -3284,12 +3285,44 @@ export async function runServe(
       );
       if (!parsed.success) return parsed.response;
       const requestedModel = byId(parsed.data.model);
+      const hasToolRequest =
+        (parsed.data.tools?.length ?? 0) > 0 ||
+        (Array.isArray(parsed.data.functions) &&
+          parsed.data.functions.length > 0) ||
+        (parsed.data.tool_choice !== undefined &&
+          parsed.data.tool_choice !== "none");
+      if (
+        hasToolRequest &&
+        requestedModel &&
+        !requestedModel.features.includes("tool-calling")
+      ) {
+        return openAIErrorResponse(
+          {
+            message: `Model '${requestedModel.modelId}' does not support tool calling. Choose a tool-capable model from GET /v1/models.`,
+            type: "invalid_request_error",
+            param: "tools",
+            code: "unsupported_model_capability",
+          },
+          400,
+        );
+      }
       if (requestedModel?.llmRuntime) {
         return badRequest(
           `Model '${requestedModel.modelId}' supports embeddings only.`,
         );
       }
-      const backendRequest = prepareChatCompletionRequest(parsed.data);
+      const preparedRequest = prepareChatCompletionRequest(parsed.data);
+      const backendRequest =
+        parsed.data.max_tokens === undefined &&
+        parsed.data.max_completion_tokens === undefined
+          ? {
+              ...preparedRequest,
+              max_tokens: Math.min(
+                ctx.defaultMaxTokens,
+                requestedModel?.contextWindowTokens ?? ctx.config.ctxSize,
+              ),
+            }
+          : preparedRequest;
       const preparationStartedAt = performance.now();
       const structuredOutput = prepareStructuredOutput(
         parsed.data.response_format,

@@ -33,6 +33,7 @@ test("validates environment overrides without mutating process state", () => {
       LOCALBASE_STT_HOST: "localhost",
       LOCALBASE_STT_PORT: "8080",
       LOCALBASE_CTX_SIZE: "8192",
+      LOCALBASE_DEFAULT_MAX_TOKENS: "2048",
     }),
   ).toEqual({
     host: "127.0.0.1",
@@ -40,6 +41,7 @@ test("validates environment overrides without mutating process state", () => {
     sttHost: "localhost",
     sttPort: 8080,
     ctxSize: 8192,
+    defaultMaxTokens: 2048,
   });
 });
 

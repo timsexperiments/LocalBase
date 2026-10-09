@@ -2071,6 +2071,7 @@ describe("API gateway integration", () => {
     expect(upstream?.headers.get("x-test-header")).toBe("retained");
     expect(JSON.parse(upstream?.body ?? "{}")).toMatchObject({
       model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+      max_tokens: 4096,
       provider_option: "preserved",
       messages: [
         { role: "developer", content: "hello" },
@@ -2104,6 +2105,63 @@ describe("API gateway integration", () => {
       await (await request("/health")).json(),
     );
     expect(health.modalities.llm.state).toBe("running");
+  });
+
+  test("rejects tool requests for models without catalog tool support", async () => {
+    const requestOffset = gateway.upstreamRequests.length;
+    for (const toolFields of [
+      {
+        tools: [
+          {
+            type: "function",
+            function: { name: "weather", parameters: { type: "object" } },
+          },
+        ],
+        tool_choice: "required",
+      },
+      { tool_choice: "auto" },
+      { functions: [{ name: "weather", parameters: { type: "object" } }] },
+    ]) {
+      const response = await request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+          ...toolFields,
+        }),
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: {
+          type: "invalid_request_error",
+          param: "tools",
+          message: expect.stringContaining(
+            "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          ),
+        },
+      });
+    }
+    expect(gateway.upstreamRequests.slice(requestOffset)).toHaveLength(0);
+  });
+
+  test("preserves explicit generation limits and supplies the default only when omitted", async () => {
+    for (const limit of [{ max_tokens: 73 }, { max_completion_tokens: 91 }]) {
+      const response = await request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+          ...limit,
+        }),
+      });
+      expect(response.status).toBe(200);
+      await response.text();
+      expect(
+        JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}"),
+      ).toMatchObject(limit);
+    }
   });
 
   test("forwards user-only chat requests without injected instructions", async () => {

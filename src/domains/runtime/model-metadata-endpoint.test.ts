@@ -153,6 +153,7 @@ describe("authenticated model metadata endpoints", () => {
     expect(llm).toMatchObject({
       catalog: {
         capabilities: null,
+        features: ["code-generation", "code-editing"],
         inputModalities: ["text"],
         outputModalities: ["text"],
         contextWindowTokens: 32_768,
@@ -174,6 +175,7 @@ describe("authenticated model metadata endpoints", () => {
         },
       },
     });
+    expect(unknownContext.catalog.features).toContain("tool-calling");
     expect(unknownContext.catalog.contextWindowTokens).toBeNull();
     expect(unknownContext.catalog.maxOutputTokens).toBeNull();
     expect(speech.catalog).toMatchObject({

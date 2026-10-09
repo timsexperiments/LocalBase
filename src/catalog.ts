@@ -1059,7 +1059,7 @@ const CATALOG_SOURCE = [
     contextWindowTokens: 32768,
     features: ["code-generation", "code-editing"],
     commercialStatus: "open",
-    catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
+    catch: "Apache-2.0.",
     notes:
       "Autocomplete and tab completion model. Protocol tool calling is unsupported for this artifact.",
   },
@@ -1089,8 +1089,8 @@ const CATALOG_SOURCE = [
     inputModalities: ["text"],
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
-    commercialStatus: "open",
-    catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
+    commercialStatus: "conditional",
+    catch: "Qwen Research License; non-commercial use only.",
     notes: "Fast coding baseline for low-VRAM GPUs.",
   },
   {
@@ -1120,7 +1120,7 @@ const CATALOG_SOURCE = [
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
-    catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
+    catch: "Apache-2.0.",
     notes: "Great coding quality per watt; ideal default for a 12GB GPU.",
   },
   {
@@ -1149,7 +1149,7 @@ const CATALOG_SOURCE = [
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
-    catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
+    catch: "Apache-2.0.",
     notes:
       "Top-end coding option that still fits on 12GB with careful context settings.",
   },
@@ -1180,7 +1180,7 @@ const CATALOG_SOURCE = [
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
-    catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
+    catch: "Apache-2.0.",
     notes:
       "State-of-the-art local coding model. Perfect for unified memory setups.",
   },
@@ -1899,7 +1899,7 @@ const CATALOG_SOURCE = [
     outputModalities: ["text"],
     features: ["tool-calling", "code-generation", "code-editing"],
     commercialStatus: "open",
-    catch: "Alibaba-specific license, generally permissive like Apache 2.0.",
+    catch: "License is not specified in the pinned GGUF repository.",
     notes:
       "Top-tier 72B reasoning and coding model. Superb logic, math, and code generation.",
   },
