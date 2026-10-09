@@ -1,6 +1,7 @@
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ServiceInput } from "../../app/commands/inputs";
+import { saveConfig } from "../../../manager";
 import { serviceLifecycleResultSchema } from "../../app/commands/results";
 import {
   getServiceInspection,
@@ -39,6 +40,7 @@ async function runManagedStart(
   ctx: AppContext,
   execution: CommandExecution,
 ) {
+  persistInstallConsent(input, ctx);
   const inspection =
     action === "start"
       ? await startService(ctx.config.root, input.installMissing)
@@ -56,6 +58,15 @@ async function runManagedStart(
   );
   printStatus(execution, inspection);
   return serviceLifecycleResultSchema.parse(inspection);
+}
+
+export function persistInstallConsent(
+  input: ServiceInput,
+  ctx: AppContext,
+): void {
+  if (!input.installMissing || ctx.config.installMissingModels) return;
+  ctx.config.installMissingModels = true;
+  saveConfig(ctx.database, ctx.config);
 }
 
 export async function runStart(

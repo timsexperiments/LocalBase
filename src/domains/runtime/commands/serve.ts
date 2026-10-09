@@ -115,6 +115,8 @@ import { videoCreateRequestSchema } from "../video/gateway-contract";
 import {
   acquireGatewayLease,
   acquireGatewayLeaseForServe,
+  getGatewayInstanceStateAtRoot,
+  RootOwnershipError,
 } from "../../service/ownership";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ServeInput } from "../../app/commands/inputs";
@@ -464,21 +466,27 @@ function speechTimeout(): Response {
   );
 }
 
+function modelInstallConsentResponse(
+  error: ModelInstallConsentError,
+): Response {
+  return openAIErrorResponse(
+    {
+      message: error.message,
+      type: "invalid_request_error",
+      param: "model",
+      code: "model_install_consent_required",
+    },
+    409,
+  );
+}
+
 export function speechGenerationFailure(error: unknown): Readonly<{
   response: Response;
   source?: InferenceTerminalSource;
 }> {
   if (error instanceof ModelInstallConsentError) {
     return {
-      response: openAIErrorResponse(
-        {
-          message: error.message,
-          type: "invalid_request_error",
-          param: "model",
-          code: "model_install_consent_required",
-        },
-        409,
-      ),
+      response: modelInstallConsentResponse(error),
     };
   }
   if (error instanceof RuntimeMemoryAdmissionError) {
@@ -2144,6 +2152,17 @@ export async function runServe(
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
   const enabled = serveModalityState(config, input);
+  const owner = await getGatewayInstanceStateAtRoot(config.root);
+  if (owner.state === "active") {
+    throw new RootOwnershipError(
+      `A LocalBase gateway already owns ${config.root}. Stop the existing gateway before starting another one.`,
+    );
+  }
+  if (owner.state === "unknown") {
+    throw new RootOwnershipError(
+      `Cannot prove whether a LocalBase gateway owns ${config.root} (${owner.detail}). Stop the existing gateway before starting another one.`,
+    );
+  }
   await assertServePortsAvailable(config, {
     ...input,
     ...enabled,
@@ -2551,7 +2570,7 @@ export async function runServe(
       config,
       spec,
       config.activeLlmModel,
-      input.installMissing,
+      input.installMissing || config.installMissingModels,
       () => {
         console.log(
           `Installing missing LLM model "${config.activeLlmModel}"...`,
@@ -2562,7 +2581,7 @@ export async function runServe(
           "llm",
           config.activeLlmModel,
           "incomplete",
-          input.installMissing,
+          input.installMissing || config.installMissingModels,
         );
       },
     );
@@ -2576,7 +2595,7 @@ export async function runServe(
       config,
       spec,
       config.activeSttModel,
-      input.installMissing,
+      input.installMissing || config.installMissingModels,
       () => {
         console.log(
           `Installing missing STT model "${config.activeSttModel}"...`,
@@ -2587,7 +2606,7 @@ export async function runServe(
           "stt",
           config.activeSttModel,
           "missing",
-          input.installMissing,
+          input.installMissing || config.installMissingModels,
         );
       },
     );
@@ -2601,7 +2620,7 @@ export async function runServe(
       config,
       spec,
       config.activeImageModel,
-      input.installMissing,
+      input.installMissing || config.installMissingModels,
       () => {
         console.log(
           `Installing missing image model "${config.activeImageModel}"...`,
@@ -2612,7 +2631,7 @@ export async function runServe(
           "image",
           config.activeImageModel,
           "missing",
-          input.installMissing,
+          input.installMissing || config.installMissingModels,
         );
       },
     );
@@ -2714,7 +2733,7 @@ export async function runServe(
   );
   const factory = createRuntimeSupervisorFactory(ctx, launchOverrides, {
     memorySafety,
-    installMissing: input.installMissing,
+    installMissing: input.installMissing || config.installMissingModels,
   });
   const initialSnapshot = ctx.runtimeConfig.read();
   const supervisors = new SupervisorRegistry({
@@ -3751,32 +3770,36 @@ export async function runServe(
             ),
         );
       } catch (err) {
-        const error =
-          err instanceof Error ? err : new Error("Unknown request failure");
-        const parsedMethod =
-          logHttpMetadataSchema.shape.method.safeParse(method);
-        ctx.logger.event({
-          severity: "error",
-          eventName: "http.handler-failed",
-          category: "http",
-          component: "gateway",
-          runtime: "gateway",
-          message: "Gateway request handler failed.",
-          requestId,
-          trace: spanCorrelation(span),
-          ...(parsedMethod.success
-            ? {
-                http: {
-                  method: parsedMethod.data,
-                  path: pathname,
-                  status: 500,
-                  durationMs: performance.now() - start,
-                },
-              }
-            : {}),
-          error: { type: error.name, message: error.message },
-        });
-        response = internalGatewayFailure();
+        if (err instanceof ModelInstallConsentError) {
+          response = modelInstallConsentResponse(err);
+        } else {
+          const error =
+            err instanceof Error ? err : new Error("Unknown request failure");
+          const parsedMethod =
+            logHttpMetadataSchema.shape.method.safeParse(method);
+          ctx.logger.event({
+            severity: "error",
+            eventName: "http.handler-failed",
+            category: "http",
+            component: "gateway",
+            runtime: "gateway",
+            message: "Gateway request handler failed.",
+            requestId,
+            trace: spanCorrelation(span),
+            ...(parsedMethod.success
+              ? {
+                  http: {
+                    method: parsedMethod.data,
+                    path: pathname,
+                    status: 500,
+                    durationMs: performance.now() - start,
+                  },
+                }
+              : {}),
+            error: { type: error.name, message: error.message },
+          });
+          response = internalGatewayFailure();
+        }
       }
 
       const headers = new Headers(response.headers);
