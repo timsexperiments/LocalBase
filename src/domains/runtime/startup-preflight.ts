@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import type { ModelSpec } from "../../catalog";
 import type { LocalBaseConfig } from "../../manager";
 import { backendBindHost } from "./launch-plan";
+import { lookup } from "node:dns/promises";
 
 export class ModelInstallConsentError extends Error {
   constructor(modelId: string) {
@@ -55,6 +56,17 @@ export function assertModelDiskSpace(
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
+    // The installer renames a truncated final artifact to .partial and resumes it.
+    try {
+      const finalSize = statSync(join(directory, artifact.filename)).size;
+      if (finalSize < (artifact.expectedSizeBytes ?? 0))
+        remaining = Math.min(
+          remaining,
+          (artifact.expectedSizeBytes ?? 0) - finalSize,
+        );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
     return total + remaining;
   }, 0);
   if (available < requiredBytes) {
@@ -70,9 +82,10 @@ export async function installMissingModel(
   modelId: string,
   consent: boolean,
   install: () => Promise<string>,
+  availableBytes?: number,
 ): Promise<string> {
   assertModelInstallConsent(modelId, consent);
-  if (model) assertModelDiskSpace(config, model);
+  if (model) assertModelDiskSpace(config, model, availableBytes);
   return await install();
 }
 
@@ -95,7 +108,7 @@ export function assertPortAvailable(host: string, port: number): void {
   probe.stop(true);
 }
 
-export function assertServePortsAvailable(
+export async function assertServePortsAvailable(
   config: LocalBaseConfig,
   input: {
     host?: string;
@@ -112,51 +125,74 @@ export function assertServePortsAvailable(
     stt?: boolean;
     image?: boolean;
     video?: boolean;
+    backendPortPreflight?: boolean;
   },
-): void {
+): Promise<void> {
   const bindings = [
     {
       name: "gateway",
-      host: backendBindHost(input.host ?? config.gatewayHost),
+      host: input.host ?? config.gatewayHost,
       port: input.port ?? config.gatewayPort,
     },
   ];
-  if (input.llm !== false)
+  if (input.backendPortPreflight !== false && input.llm !== false)
     bindings.push({
       name: "LLM",
       host: backendBindHost(input.llmHost ?? config.host),
       port: input.llmPort ?? config.port,
     });
-  if (input.stt !== false)
+  if (input.backendPortPreflight !== false && input.stt !== false)
     bindings.push({
       name: "STT",
       host: backendBindHost(input.sttHost ?? config.sttHost),
       port: input.sttPort ?? config.sttPort,
     });
-  if (input.image !== false)
+  if (input.backendPortPreflight !== false && input.image !== false)
     bindings.push({
       name: "image",
       host: backendBindHost(input.imageHost ?? "127.0.0.1"),
       port: input.imagePort ?? 8090,
     });
-  if (input.video !== false)
+  if (input.backendPortPreflight !== false && input.video !== false)
     bindings.push({
       name: "video",
       host: backendBindHost(input.videoHost ?? "127.0.0.1"),
       port: input.videoPort ?? 8091,
     });
-  for (let i = 0; i < bindings.length; i++)
-    for (let j = i + 1; j < bindings.length; j++) {
-      const left = bindings[i]!;
-      const right = bindings[j]!;
-      if (
-        left.port === right.port &&
-        (left.host === right.host ||
-          left.host === "0.0.0.0" ||
-          right.host === "0.0.0.0" ||
-          left.host === "::" ||
-          right.host === "::")
-      )
+  const resolved = await Promise.all(
+    bindings.map(async (binding) => {
+      const host = binding.host.replace(/^\[|\]$/g, "");
+      try {
+        return {
+          ...binding,
+          addresses: (await lookup(host, { all: true })).map(
+            (item) => item.address,
+          ),
+        };
+      } catch {
+        return {
+          ...binding,
+          addresses: [host.toLowerCase().replace(/\.$/, "")],
+        };
+      }
+    }),
+  );
+  for (let i = 0; i < resolved.length; i++)
+    for (let j = i + 1; j < resolved.length; j++) {
+      const left = resolved[i]!;
+      const right = resolved[j]!;
+      const family = (address: string) => (address.includes(":") ? 6 : 4);
+      const overlap = left.addresses.some((a) =>
+        right.addresses.some(
+          (b) =>
+            a === b ||
+            (a === "0.0.0.0" && family(b) === 4) ||
+            (a === "::" && family(b) === 6) ||
+            (b === "0.0.0.0" && family(a) === 4) ||
+            (b === "::" && family(a) === 6),
+        ),
+      );
+      if (left.port === right.port && overlap)
         throw new Error(
           `Planned ${left.name} and ${right.name} bindings overlap on port ${left.port}. Choose distinct ports.`,
         );

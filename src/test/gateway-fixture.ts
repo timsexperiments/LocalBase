@@ -1956,6 +1956,7 @@ export async function startGatewayFixture(
         env: {
           ...process.env,
           LOCALBASE_API_KEY: options.environmentApiKey,
+          LOCALBASE_TEST_SKIP_BACKEND_PORT_PREFLIGHT: "1",
           PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
           ...(options.llmRuntimeHttpBackend
             ? { LOCALBASE_TEST_PID_PATH: llmRuntimePidPath }

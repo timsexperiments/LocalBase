@@ -2144,9 +2144,11 @@ export async function runServe(
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
   const enabled = serveModalityState(config, input);
-  assertServePortsAvailable(config, {
+  await assertServePortsAvailable(config, {
     ...input,
     ...enabled,
+    backendPortPreflight:
+      process.env.LOCALBASE_TEST_SKIP_BACKEND_PORT_PREFLIGHT !== "1",
   });
   const browserAccess = await loadUiAccessConfig(config.root);
   const magicLinkRegistration =
