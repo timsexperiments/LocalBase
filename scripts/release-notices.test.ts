@@ -6,6 +6,9 @@ import {
   nativeNoticeManifest,
   productionDependencyClosure,
 } from "./release-notices";
+import { packageClosure, type Lock } from "./bun-lock-closure";
+import { readmeLicenseSection } from "./package-readme-license";
+import { leadingLegalCommentBlocks } from "./leading-legal-comment-blocks";
 
 const temporaryDirectories: string[] = [];
 function temp() {
@@ -41,7 +44,7 @@ test("production closure follows only root production dependencies and their dep
       nested: ["nested@1", "", {}],
       devOnly: ["devOnly@1", "", {}],
     },
-  } as const;
+  } satisfies Lock;
   expect(productionDependencyClosure(lock)).toEqual(["app", "nested"]);
   expect(() =>
     productionDependencyClosure({
@@ -49,6 +52,67 @@ test("production closure follows only root production dependencies and their dep
       packages: {},
     }),
   ).toThrow("no production package record for absent");
+});
+
+test("fallback closure follows nested versions and their distinct dependencies", () => {
+  const lock = {
+    workspaces: {
+      "": { dependencies: { stream: "*", "readable-stream": "^4" } },
+    },
+    packages: {
+      stream: [
+        "stream@1.0.0",
+        "",
+        { dependencies: { "readable-stream": "^2" } },
+        "root-integrity",
+      ],
+      "readable-stream": [
+        "readable-stream@4.7.0",
+        "",
+        { dependencies: { "safe-buffer": "^5" } },
+        "v4-integrity",
+      ],
+      "stream/readable-stream": [
+        "readable-stream@2.3.8",
+        "",
+        { dependencies: { "process-nextick-args": "^2" } },
+        "v2-integrity",
+      ],
+      "safe-buffer": ["safe-buffer@5.2.1", "", {}, "safe-integrity"],
+      "stream/readable-stream/process-nextick-args": [
+        "process-nextick-args@2.0.1",
+        "",
+        {},
+        "nested-integrity",
+      ],
+    },
+  } satisfies Lock;
+  expect(packageClosure(lock).map((record) => record[0])).toEqual([
+    "process-nextick-args@2.0.1",
+    "readable-stream@2.3.8",
+    "readable-stream@4.7.0",
+    "safe-buffer@5.2.1",
+    "stream@1.0.0",
+  ]);
+});
+
+test("README license extraction retains the complete license section verbatim", () => {
+  const license =
+    "#### LICENSE\n\nCopyright Fedor Indutny, 2014.\n\nMIT permission text.\n\n";
+  expect(readmeLicenseSection(`Intro\n\n${license}## References\nlink\n`)).toBe(
+    license,
+  );
+  expect(readmeLicenseSection("No license section here.")).toBeUndefined();
+});
+
+test("leading legal comment collection continues after revision identifiers", () => {
+  expect(
+    leadingLegalCommentBlocks(
+      "/* $NetBSD: pack_dev.c,v 1.12 $ */\n\n/* Copyright (c) 1998 The NetBSD Foundation. Redistribution is permitted. */\n\n#include <stdio.h>",
+    ),
+  ).toEqual([
+    "/* Copyright (c) 1998 The NetBSD Foundation. Redistribution is permitted. */",
+  ]);
 });
 
 test("notices contain full production package license texts and the pinned Bun notice", async () => {
@@ -60,9 +124,27 @@ test("notices contain full production package license texts and the pinned Bun n
   expect(notices).toContain("5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b");
   expect(notices).toContain("base64-js@1.5.1");
   expect(notices).toContain("pako@1.0.11");
-  expect(notices).toContain("elliptic@6.6.1");
+  for (const packageName of [
+    "asn1.js@4.10.1",
+    "brorand@1.1.0",
+    "des.js@1.1.0",
+    "elliptic@6.6.1",
+    "hash.js@1.1.7",
+    "hmac-drbg@1.0.1",
+    "miller-rabin@4.0.1",
+    "minimalistic-crypto-utils@1.0.1",
+  ]) {
+    expect(notices).toContain(`===== ${packageName} `);
+    expect(notices).toContain("Copyright Fedor Indutny,");
+  }
   expect(notices).toContain("Copyright (c) 2003-2010 Tim Kientzle");
   expect(notices).toContain("Copyright (c) 2008-2009 Bjoern Hoehrmann");
+  expect(notices).toContain(
+    "Copyright (c) 1998, 2001 The NetBSD Foundation, Inc.",
+  );
+  expect(notices).toContain("by Charles M. Hannum.");
+  expect(notices).toContain("UNICODE LICENSE V3");
+  expect(notices).toContain("Copyright © 2024 Unicode, Inc.");
   expect(notices).toContain(
     "Hoehrmann's available decoder license has been recovered",
   );

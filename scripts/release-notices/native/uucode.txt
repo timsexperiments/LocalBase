@@ -51,9 +51,8 @@ SOFTWARE.
 
 ## Unicode data provenance
 
-The pinned uucode subtree refers to `LICENSE_unicode`, but that file is absent
-from the pinned Bun tree. The checked-in uucode license supplies only Jacob
-Sandlund's 2025 MIT notice. The separately shipped ICU-72 notice is for ICU's
-Unicode 15.0 data and does not establish the revision or terms of uucode's
-Unicode tables. The table-data notice and revision therefore remain
-unreconciled; no Unicode data copyright holder or revision is inferred here.
+Bun 1.3.14's pinned uucode subtree includes Unicode 16.0.0 UCD and Emoji 16.0
+data, Copyright © 2024 Unicode, Inc. These inputs generate
+`src/string/immutable/grapheme_tables.zig`. The applicable Unicode License v3
+text is included in `Unicode-License-v3.txt`; ICU's separate notice remains
+included for ICU.

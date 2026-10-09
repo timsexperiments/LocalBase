@@ -40,7 +40,7 @@ export const nativeNoticeManifest: Record<string, string[]> = {
   mimalloc: ["mimalloc.txt"],
   picohttpparser: ["picohttpparser.txt"],
   libwebp: ["libwebp.txt"],
-  uucode: ["uucode.txt"],
+  uucode: ["uucode.txt", "Unicode-License-v3.txt"],
   simdutf: ["simdutf.txt"],
   libcxxabi: ["libcxxabi.txt"],
   tinycc: ["tinycc.txt"],

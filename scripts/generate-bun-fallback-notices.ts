@@ -2,50 +2,22 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-type LockPackage = [
-  string,
-  string,
-  {
-    dependencies?: Record<string, string>;
-    optionalDependencies?: Record<string, string>;
-  }?,
-  string?,
-];
-type Lock = {
-  workspaces: Record<string, { dependencies?: Record<string, string> }>;
-  packages: Record<string, LockPackage>;
-};
+import { packageClosure, type Lock } from "./bun-lock-closure";
+import { readmeLicenseSection } from "./package-readme-license";
 
 const bunCommit = "0d9b296af33f2b851fcbf4df3e9ec89751734ba4";
 const lockUrl = `https://raw.githubusercontent.com/oven-sh/bun/${bunCommit}/src/node-fallbacks/bun.lock`;
-const lockText = await (await fetch(lockUrl)).text();
-const lock = Bun.JSONC.parse(lockText) as Lock;
-const packageRecord = (name: string) =>
-  Object.values(lock.packages).find((record) =>
-    record[0].startsWith(`${name}@`),
-  );
-const pending = Object.keys(lock.workspaces[""]?.dependencies ?? {}).filter(
-  (name) => name !== "esbuild" && name !== "react-refresh",
-);
-const included = new Set<string>();
-while (pending.length) {
-  const name = pending.pop()!;
-  if (included.has(name)) continue;
-  const record = packageRecord(name);
-  if (!record) throw new Error(`Missing package record for ${name}.`);
-  included.add(name);
-  pending.push(
-    ...Object.keys(record[2]?.dependencies ?? {}),
-    ...Object.keys(record[2]?.optionalDependencies ?? {}),
-  );
-}
 
 const directory = await mkdtemp(join(tmpdir(), "bun-fallback-notices-"));
 const sections: string[] = [];
 try {
-  for (const name of [...included].sort()) {
-    const record = packageRecord(name)!;
+  const lockResponse = await fetch(lockUrl);
+  if (!lockResponse.ok)
+    throw new Error(`Could not fetch Bun lock: ${lockResponse.status}.`);
+  const lock = Bun.JSONC.parse(await lockResponse.text()) as Lock;
+  const records = packageClosure(lock);
+  for (const record of records) {
+    const name = record[0].slice(0, record[0].lastIndexOf("@"));
     const version = record[0].slice(name.length + 1);
     const integrity = record[3];
     if (!integrity?.startsWith("sha512-"))
@@ -77,6 +49,12 @@ try {
       )
       .filter((path) => !path.endsWith("/"))
       .sort();
+    const readmeFiles = listing.stdout
+      .toString()
+      .split("\n")
+      .filter((path) => /^package\/(README|Readme)(\.[^/]*)?$/i.test(path))
+      .filter((path) => !path.endsWith("/"))
+      .sort();
     let text = `\n\n===== ${name}@${version} (npm integrity ${integrity}) =====\n`;
     for (const path of licenseFiles) {
       const extracted = Bun.spawnSync(["tar", "-xzOf", filename, path]);
@@ -85,6 +63,21 @@ try {
       text += `\n--- ${path.slice("package/".length)} ---\n${extracted.stdout.toString()}`;
     }
     if (!licenseFiles.length) {
+      let readmeSection: string | undefined;
+      for (const path of readmeFiles) {
+        const extracted = Bun.spawnSync(["tar", "-xzOf", filename, path]);
+        if (extracted.exitCode !== 0)
+          throw new Error(`Could not extract ${path} from ${name}@${version}.`);
+        readmeSection = readmeLicenseSection(extracted.stdout.toString());
+        if (readmeSection) {
+          text += `\nLicense section from ${path} in the verified package tarball follows verbatim.\n\n${readmeSection}\n`;
+          break;
+        }
+      }
+      if (readmeSection) {
+        sections.push(text);
+        continue;
+      }
       const metadataResponse = await fetch(
         `https://registry.npmjs.org/${name.replace("/", "%2f")}/${version}`,
       );
