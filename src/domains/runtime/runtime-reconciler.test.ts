@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +6,7 @@ import { DatabaseSession } from "../../db/client";
 import { CATALOG } from "../../catalog";
 import { createModelManagement } from "../models/model-management";
 import type { LogEventInput } from "../observability/logging";
+import * as manager from "../../manager";
 import { defaultConfig, readConfig, saveConfig } from "../../manager";
 import { RuntimeConfigController } from "./config-snapshot";
 import { RuntimeMemoryAdmissionError } from "./memory-controller";
@@ -1588,6 +1589,68 @@ test.each([
       });
     }
   } finally {
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("revoking experimental opt-in rejects admission through a running video supervisor", async () => {
+  const root = mkdtempSync(
+    join(tmpdir(), "localbase-video-experimental-revoke-"),
+  );
+  const database = new DatabaseSession();
+  const target = spyOn(manager, "detectHostVideoTarget").mockReturnValue({
+    platform: "linux",
+    architecture: "x64",
+    accelerator: "nvidia",
+  });
+  const config = defaultConfig(root, 16);
+  const modelId = "wan2.2-s2v-14b-fp8";
+  config.allowExperimental = true;
+  config.selectedVideoModels = [modelId];
+  config.activeVideoModel = modelId;
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let starts = 0;
+  const running: RuntimeSupervisor = {
+    kind: "server",
+    runtimeId: () => `video:${modelId}`,
+    state: () => "running",
+    async ensureRunning() {
+      starts += 1;
+    },
+    async kill() {},
+    async shutdown() {},
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ video: running }),
+    { baseUrl: () => "http://127.0.0.1:1", create: () => running },
+    { event() {} },
+  );
+
+  try {
+    const first = await reconciler.admitModel("video", modelId);
+    expect(first.kind).toBe("admitted");
+    if (first.kind === "admitted") first.value.admission.release();
+
+    const revoked = controller.copy();
+    revoked.allowExperimental = false;
+    saveConfig(database, revoked);
+    await controller.refresh();
+
+    await expect(reconciler.admitModel("video", modelId)).rejects.toThrow(
+      "Experimental models require models.allowExperimental = true.",
+    );
+    expect(starts).toBe(1);
+    expect(reconciler.lifecycleSnapshot().video.admission).toMatchObject({
+      kind: "known",
+      activeCount: 0,
+    });
+  } finally {
+    reconciler.closeQueues();
+    target.mockRestore();
     database.close();
     rmSync(root, { recursive: true, force: true });
   }
