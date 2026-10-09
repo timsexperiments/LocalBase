@@ -1,10 +1,33 @@
 import { checkbox, confirm, input, number, select } from "@inquirer/prompts";
+import { shouldUseColor } from "./color";
+
+const plainTheme = {
+  prefix: { idle: "?", done: "✓" },
+  spinner: { frames: ["*"], interval: 80 },
+  style: {
+    answer: (text: string) => text,
+    message: (text: string) => text,
+    error: (text: string) => `> ${text}`,
+    defaultAnswer: (text: string) => `(${text})`,
+    help: (text: string) => text,
+    highlight: (text: string) => text,
+    key: (text: string) => `<${text}>`,
+  },
+};
+
+function promptTheme() {
+  return shouldUseColor(process.stdout) ? undefined : plainTheme;
+}
 
 export async function textPrompt(
   message: string,
   defaultValue: string,
 ): Promise<string> {
-  const value = await input({ message, default: defaultValue });
+  const value = await input({
+    message,
+    default: defaultValue,
+    theme: promptTheme(),
+  });
   return value.trim() || defaultValue;
 }
 
@@ -15,6 +38,7 @@ export async function numberPrompt(
   const value = await number({
     message,
     default: defaultValue,
+    theme: promptTheme(),
     validate: (candidate) =>
       typeof candidate === "number" && Number.isFinite(candidate)
         ? true
@@ -27,7 +51,7 @@ export async function confirmPrompt(
   message: string,
   defaultValue: boolean,
 ): Promise<boolean> {
-  return confirm({ message, default: defaultValue });
+  return confirm({ message, default: defaultValue, theme: promptTheme() });
 }
 
 export async function singleSelectPrompt<T extends string>(
@@ -39,6 +63,7 @@ export async function singleSelectPrompt<T extends string>(
     message,
     choices: options,
     default: defaultValue,
+    theme: promptTheme(),
   });
 }
 
@@ -55,6 +80,18 @@ export async function multiSelectPrompt<T extends string>(
   return checkbox({
     message,
     choices: options,
+    theme: promptTheme()
+      ? {
+          ...plainTheme,
+          style: {
+            ...plainTheme.style,
+            disabledChoice: (text: string) => text,
+            description: (text: string) => text,
+            keysHelpTip: (keys: [string, string][]) =>
+              keys.map(([key, action]) => `<${key}> ${action}`).join(" · "),
+          },
+        }
+      : undefined,
     validate: (values) =>
       !requireSelection || values.length > 0
         ? true

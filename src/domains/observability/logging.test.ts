@@ -71,7 +71,7 @@ test("validates one redacted event contract before console or file sinks", () =>
     component: "gateway",
     runtime: "gateway",
     message:
-      '\x1b[31mcolored\x1b[0m Authorization: Bearer secret-value hf_abcdefghijklmnop {"messages":["never persist this"]}',
+      "\x1b[31mcolored\x1b[0m text \x1b]8;;https://example.test\x07linked\x1b]8;;\x1b\\ text \u009b31mC1 CSI",
     requestId: "request-42",
     error: { type: "Error", message: "token=private-token" },
     attributes: {
@@ -85,12 +85,25 @@ test("validates one redacted event contract before console or file sinks", () =>
   const serialized = JSON.stringify(logged);
   expect(serialized).not.toContain("private-token");
   expect(serialized).not.toContain("never persist this");
-  expect(serialized).not.toContain("\x1b[");
+  expect(logged.message).toBe("colored text linked text C1 CSI");
+  expect(logged.error?.message).toBe("token=[REDACTED]");
+  expect(logged.attributes?.safevalue).toBe("Bearer [REDACTED]");
+  expect(serialized).not.toMatch(/[\x1b\u009b\u009d]/);
   expect(logged.attributes).toEqual({
     authorization: "[REDACTED]",
     prompt: "[REDACTED]",
     safevalue: "Bearer [REDACTED]",
   });
+
+  const ansiOnly = createLogEvent({
+    severity: "info",
+    eventName: "gateway.test",
+    category: "gateway",
+    component: "gateway",
+    runtime: "gateway",
+    message: "\x1b[31m\x1b[0m",
+  });
+  expect(ansiOnly.message).toBe("Unknown error");
 
   const bypasses = createLogEvent({
     severity: "error",
@@ -152,6 +165,38 @@ test("validates one redacted event contract before console or file sinks", () =>
       }).requestId,
     ).toBeUndefined();
   }
+});
+
+test("quiet test logs suppress routine output but keep warnings and errors", () => {
+  const originalQuiet = process.env.LOCALBASE_QUIET_TEST_LOGS;
+  const originalOverride = process.env.LOCALBASE_TEST_LOGS;
+  const writes = { log: 0, warn: 0, error: 0 };
+  const originalConsole = {
+    log: console.log,
+    warn: console.warn,
+    error: console.error,
+  };
+  process.env.LOCALBASE_QUIET_TEST_LOGS = "1";
+  delete process.env.LOCALBASE_TEST_LOGS;
+  console.log = () => writes.log++;
+  console.warn = () => writes.warn++;
+  console.error = () => writes.error++;
+  try {
+    const logger = new LocalBaseLogger();
+    logger.info("runtime", "routine");
+    logger.warn("runtime", "warning");
+    logger.error("runtime", "failure");
+  } finally {
+    console.log = originalConsole.log;
+    console.warn = originalConsole.warn;
+    console.error = originalConsole.error;
+    if (originalQuiet === undefined)
+      delete process.env.LOCALBASE_QUIET_TEST_LOGS;
+    else process.env.LOCALBASE_QUIET_TEST_LOGS = originalQuiet;
+    if (originalOverride === undefined) delete process.env.LOCALBASE_TEST_LOGS;
+    else process.env.LOCALBASE_TEST_LOGS = originalOverride;
+  }
+  expect(writes).toEqual({ log: 0, warn: 1, error: 1 });
 });
 
 test("persists a complete inference event without truncating attributes", async () => {

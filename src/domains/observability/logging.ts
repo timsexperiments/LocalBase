@@ -26,7 +26,7 @@ import {
   syncOwnedPrivateDirectory,
 } from "./secure-log-files";
 import type { OtelRuntime } from "./otel";
-import { shouldUseColor } from "../../utils/color";
+import { shouldUseColor, stripAnsiCodes } from "../../utils/color";
 import { shouldShowOperationalOutput } from "../../utils/operational-output";
 
 export const LOG_SCHEMA_VERSION = 2 as const;
@@ -244,7 +244,9 @@ function boundedText(
   value: unknown,
   maximum = MAX_EVENT_MESSAGE_LENGTH,
 ): string {
-  const text = typeof value === "string" ? value : String(value ?? "");
+  const text = stripAnsiCodes(
+    typeof value === "string" ? value : String(value ?? ""),
+  );
   if (embeddedContentPattern.test(text)) {
     return "[REDACTED REQUEST OR MODEL CONTENT]";
   }
@@ -407,8 +409,10 @@ export function createLogEvent(
 ): LogEvent {
   const error = input.error
     ? {
-        type: boundedText(input.error.type || "Error", 128),
-        message: boundedText(input.error.message || "Unknown error"),
+        type: boundedText(input.error.type || "Error", 128) || "Error",
+        message:
+          boundedText(input.error.message || "Unknown error") ||
+          "Unknown error",
         ...(typeof input.error.code === "string" && input.error.code
           ? { code: boundedText(input.error.code, 128) }
           : {}),
@@ -434,26 +438,14 @@ export function createLogEvent(
     category: input.category,
     component: normalizedComponent(input.component),
     runtime: input.runtime,
-    message: boundedText(input.message),
+    message: boundedText(input.message) || "Unknown error",
     ...(requestId ? { requestId } : {}),
     ...(parsedTrace.success ? { trace: parsedTrace.data } : {}),
     ...(parsedHttp?.success ? { http: parsedHttp.data } : {}),
     ...(error ? { error } : {}),
     ...(attributes ? { attributes } : {}),
   });
-  return stripAnsiStrings(event);
-}
-
-function stripAnsiStrings<T>(value: T): T {
-  if (typeof value === "string")
-    return value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "") as T;
-  if (Array.isArray(value)) return value.map(stripAnsiStrings) as T;
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, stripAnsiStrings(item)]),
-    ) as T;
-  }
-  return value;
+  return event;
 }
 
 function runtimeForComponent(component: string): LogRuntime {
@@ -468,7 +460,11 @@ function runtimeForComponent(component: string): LogRuntime {
 }
 
 function consoleWrite(event: LogEvent, format: "human" | "json"): void {
-  if (!shouldShowOperationalOutput()) return;
+  if (
+    !shouldShowOperationalOutput() &&
+    (event.severity === "info" || event.severity === "debug")
+  )
+    return;
   if (format === "json") {
     console.log(JSON.stringify(event));
     return;

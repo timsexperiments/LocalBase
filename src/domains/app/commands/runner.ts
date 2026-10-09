@@ -40,7 +40,13 @@ async function reportError(
   message = redactExternalLogText(message, 2_048);
   if (json) writeJsonError("invalid_input", message);
   console.error(`Error: ${message}`);
-  if (command) console.error(await commandHelpText(command, parent));
+  if (command)
+    console.error(
+      await commandHelpText(command, parent, {
+        stream: process.stderr,
+        json,
+      }),
+    );
   return exitCode;
 }
 
@@ -86,7 +92,9 @@ export async function runCli(
   if (resolution.kind === "help") {
     if (resolution.global.json) {
       writeJsonSuccess({
-        help: await commandHelpText(resolution.command, resolution.parent),
+        help: await commandHelpText(resolution.command, resolution.parent, {
+          json: true,
+        }),
       });
     } else {
       await printCommandHelp(resolution.command, resolution.parent);
