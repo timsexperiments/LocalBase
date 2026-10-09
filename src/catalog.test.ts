@@ -943,6 +943,9 @@ describe("catalog artifact validation", () => {
       repositoryRevision: "c4f60d30c55a624e35427060fdd217579a6c1d77",
       inputModalities: ["text", "image", "audio"],
       outputModalities: ["video"],
+      features: ["speech-to-video", "avi-output", "experimental"],
+      catch:
+        "Apache-2.0 licenses for the pinned artifacts. Output audio is the supplied driving track, not generated speech.",
       videoRuntime: {
         mode: "s2v",
         artifacts: {
