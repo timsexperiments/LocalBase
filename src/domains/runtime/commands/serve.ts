@@ -814,9 +814,11 @@ const speechGenerationRequestSchema = z
         `input must not exceed ${SPEECH_MAX_INPUT_CHARACTERS} characters`,
       ),
     voice: speechVoiceSchema,
-    response_format: z.literal("wav", {
-      error: "response_format must be explicitly set to 'wav'",
-    }),
+    response_format: z
+      .enum(["wav"], {
+        error: "response_format supports only 'wav'",
+      })
+      .default("wav"),
     speed: z.literal(1, { error: "speed must be 1" }).optional(),
     instructions: z
       .never({ error: "instructions are not supported" })
