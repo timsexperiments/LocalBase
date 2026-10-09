@@ -2245,7 +2245,12 @@ describe("API gateway integration", () => {
   ])(
     "caps default generation for $name",
     async ({ ctxSize, parallel, expected }) => {
-      const boundedGateway = await startGatewayFixture({ ctxSize, parallel });
+      // Override the launch context so host memory cannot shrink it.
+      const boundedGateway = await startGatewayFixture({
+        ctxSize,
+        parallel,
+        ctxSizeOverride: ctxSize,
+      });
       try {
         const response = await fetch(
           `${boundedGateway.baseUrl}/v1/chat/completions`,
