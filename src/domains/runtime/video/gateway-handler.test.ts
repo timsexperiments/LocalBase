@@ -11,7 +11,7 @@ import {
 import { DatabaseSession } from "../../../db/client";
 import { RuntimeMemoryAdmissionError } from "../memory-controller";
 import { ModelInstallConsentError } from "../startup-preflight";
-import { admitVideoWithIdleRecovery } from "../commands/serve";
+import { admitModelWithIdleRecovery } from "../commands/serve";
 import {
   handleVideoGatewayRequest,
   type VideoGatewayHandlerDependencies,
@@ -539,7 +539,7 @@ test("reports permanent video preflight rejection as insufficient_memory on the 
   let evictions = 0;
   const admissionProvider: VideoModelAdmissionProvider = {
     async admit(modelId, signal) {
-      const selection = await admitVideoWithIdleRecovery(
+      const selection = await admitModelWithIdleRecovery(
         {
           async admitModel(modality, requestedModel, requestSignal) {
             expect([modality, requestedModel, requestSignal]).toEqual([
@@ -558,6 +558,7 @@ test("reports permanent video preflight rejection as insufficient_memory on the 
             return true;
           },
         },
+        "video",
         modelId,
         signal,
       );

@@ -248,6 +248,7 @@ test("configure gives the CLI root precedence over a configured root", async () 
 test("configure clears the active STT model when selection is intentionally empty", async () => {
   await withTempRoot(async (root) => {
     const context = makeContext(root);
+    const output: string[] = [];
     try {
       await runConfigure(
         {
@@ -257,7 +258,13 @@ test("configure clears the active STT model when selection is intentionally empt
           createKey: false,
         },
         context,
-        nonInteractiveExecution,
+        {
+          ...nonInteractiveExecution,
+          output: {
+            ...nonInteractiveExecution.output,
+            info: (line) => output.push(line),
+          },
+        },
       );
     } finally {
       context.database.close();
@@ -268,6 +275,9 @@ test("configure clears the active STT model when selection is intentionally empt
     database.close();
     expect(config.selectedSttModels).toEqual([]);
     expect(config.activeSttModel).toBe("");
+    expect(output.some((line) => line.startsWith("Selected STT models:"))).toBe(
+      false,
+    );
   });
 });
 

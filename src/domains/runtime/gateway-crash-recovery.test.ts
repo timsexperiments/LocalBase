@@ -22,12 +22,22 @@ const request = (baseUrl: string, model: string, content: string) =>
 async function expectStreamTerminated(
   reader: ReadableStreamDefaultReader<Uint8Array>,
 ) {
-  const terminal = await reader.read().then(
-    (result) => ({ kind: "closed" as const, result }),
-    (error: unknown) => ({ kind: "errored" as const, error }),
-  );
-  if (terminal.kind === "closed") expect(terminal.result.done).toBe(true);
-  else expect(terminal.error).toBeInstanceOf(Error);
+  // The gateway may emit an upstream_error SSE event before ending the stream.
+  const decoder = new TextDecoder();
+  let trailing = "";
+  for (;;) {
+    const terminal = await reader.read().then(
+      (result) => ({ kind: "read" as const, result }),
+      (error: unknown) => ({ kind: "errored" as const, error }),
+    );
+    if (terminal.kind === "errored") {
+      expect(terminal.error).toBeInstanceOf(Error);
+      break;
+    }
+    if (terminal.result.done) break;
+    trailing += decoder.decode(terminal.result.value, { stream: true });
+  }
+  if (trailing) expect(trailing).toContain('"code":"upstream_error"');
 }
 
 test("compiled gateway releases a crashed backend stream and recovers", async () => {

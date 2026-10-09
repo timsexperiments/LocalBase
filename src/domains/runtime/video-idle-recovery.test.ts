@@ -5,7 +5,7 @@ import { DatabaseSession } from "../../db/client";
 import { defaultConfig, saveConfig } from "../../manager";
 import { createLogger } from "../observability/logging";
 import { createOtelRuntime, OtelRuntimeHolder } from "../observability/otel";
-import { admitVideoWithIdleRecovery } from "./commands/serve";
+import { admitModelWithIdleRecovery } from "./commands/serve";
 import { defaultMemorySafetyConfig, gibibyte } from "./memory-safety";
 import {
   MemorySafetyController,
@@ -178,8 +178,9 @@ test("video recovery preserves idle peers when releasing them cannot admit the r
       );
       expect(afterIdleRelease?.decision.reason).toBe("system-memory");
       expect(afterIdleRelease?.capacity).toBeUndefined();
-      const result = await admitVideoWithIdleRecovery(
+      const result = await admitModelWithIdleRecovery(
         reconciler,
+        "video",
         config.selectedVideoModels[1]!,
         new AbortController().signal,
       );
@@ -288,8 +289,9 @@ test("video switch projection credits the old video generation and admits after 
       persisted.activeVideoModel = targetVideoModel;
     });
     await reconciler.refresh();
-    const result = await admitVideoWithIdleRecovery(
+    const result = await admitModelWithIdleRecovery(
       reconciler,
+      "video",
       targetVideoModel,
       new AbortController().signal,
     );

@@ -963,18 +963,32 @@ test("evicts only running runtimes without admitted requests", async () => {
   const config = defaultConfig(root, 16);
   config.selectedSttModels = [];
   config.activeSttModel = "";
-  config.selectedImageModels = [];
-  config.activeImageModel = "";
+  config.selectedImageModels = [config.activeImageModel];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
   let kills = 0;
+  let imageKills = 0;
+  let llmRunning = true;
+  let imageRunning = true;
   const service: RuntimeSupervisor = {
     kind: "server",
     runtimeId: () => "llm:test:1",
-    state: () => "running",
+    state: () => (llmRunning ? "running" : "idle"),
     async ensureRunning() {},
     async kill() {
       kills += 1;
+      llmRunning = false;
+    },
+    async shutdown() {},
+  };
+  const imageService: RuntimeSupervisor = {
+    kind: "server",
+    runtimeId: () => "image:test:1",
+    state: () => (imageRunning ? "running" : "idle"),
+    async ensureRunning() {},
+    async kill() {
+      imageKills += 1;
+      imageRunning = false;
     },
     async shutdown() {},
   };
@@ -985,7 +999,7 @@ test("evicts only running runtimes without admitted requests", async () => {
   const reconciler = new RuntimeReconciler(
     controller,
     {},
-    new SupervisorRegistry({ llm: service }),
+    new SupervisorRegistry({ llm: service, image: imageService }),
     factory,
     { event() {} },
   );
@@ -993,8 +1007,16 @@ test("evicts only running runtimes without admitted requests", async () => {
   try {
     const active = await reconciler.admitModel("llm", config.activeLlmModel);
     if (active.kind !== "admitted") throw new Error("Expected admission.");
+    const image = await reconciler.admitModel("image", config.activeImageModel);
+    if (image.kind !== "admitted") throw new Error("Expected image admission.");
 
     expect(await reconciler.evictIdleRuntimes()).toBe(0);
+    expect(kills).toBe(0);
+    expect(imageKills).toBe(0);
+
+    image.value.admission.release();
+    expect(await reconciler.evictIdleRuntimes()).toBe(1);
+    expect(imageKills).toBe(1);
     expect(kills).toBe(0);
 
     active.value.admission.release();

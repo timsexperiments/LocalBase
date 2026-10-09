@@ -64,8 +64,7 @@ describe("OpenAI speech endpoint", () => {
       "content-type": "application/json",
     };
     for (const [overrides, expected] of [
-      [{ response_format: undefined }, "response_format"],
-      [{ response_format: "mp3" }, "explicitly set to 'wav'"],
+      [{ response_format: "mp3" }, "supports only 'wav'"],
       [{ voice: "alloy" }, "Invalid option"],
       [{ voice: "../../private/reference.wav" }, "Invalid option"],
       [{ speed: 1.25 }, "speed must be 1"],
@@ -78,7 +77,11 @@ describe("OpenAI speech endpoint", () => {
         body: JSON.stringify(speechBody(overrides)),
       });
       expect(response.status).toBe(400);
-      expect(JSON.stringify(await response.json())).toContain(expected);
+      const body = await response.json();
+      expect(JSON.stringify(body)).toContain(expected);
+      if (overrides.response_format === "mp3") {
+        expect(body).toMatchObject({ error: { param: "response_format" } });
+      }
     }
     expect(await gateway.readTtsRuntimeEvents()).toHaveLength(before);
     expect(
@@ -293,3 +296,22 @@ test(
   },
   { timeout: 30_000 },
 );
+
+test("defaults an omitted TTS response_format to WAV", async () => {
+  const gateway = await startGatewayFixture({ ttsEnabled: true });
+  try {
+    const response = await fetch(`${gateway.baseUrl}/v1/audio/speech`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(speechBody({ response_format: undefined })),
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("audio/wav");
+    expect(
+      validateSpeechWav(new Uint8Array(await response.arrayBuffer()))
+        .sampleCount,
+    ).toBe(3_840);
+  } finally {
+    await gateway.stop();
+  }
+});
