@@ -3412,39 +3412,42 @@ export async function runServe(
       if (selected.kind === "insufficient-memory") {
         return resourceUnavailable(selected.error);
       }
-      const admittedSupervisor = selected.value.admission.supervisor;
-      const supervisorProfile = admittedSupervisor.llmProfile?.();
-      const configuredContext =
-        supervisorProfile?.ctxSizeOverride ??
-        supervisorProfile?.configCtxSize ??
-        selected.value.admission.snapshot.config.ctxSize;
-      const configuredSlots =
-        supervisorProfile?.parallel === "auto"
-          ? 4
-          : Number(
-              supervisorProfile?.parallel ??
-                selected.value.admission.snapshot.config.parallel,
-            );
-      const effectiveContextLength = Math.min(
-        admittedSupervisor.resolvedContextLength?.() ??
-          Math.floor(configuredContext / configuredSlots),
-        requestedModel?.contextWindowTokens ?? Number.POSITIVE_INFINITY,
-        selected.value.admission.snapshot.config.ctxSize,
-      );
-      const backendRequest =
-        parsed.data.max_tokens === undefined &&
-        parsed.data.max_completion_tokens === undefined
-          ? {
-              ...preparedRequest,
-              // llama.cpp exposes tokenization only after applying its chat
-              // template; this gateway has no cheap template-aware tokenizer.
-              // Keep the default within the resolved per-slot context budget.
-              max_tokens: Math.min(
-                ctx.defaultMaxTokens,
-                effectiveContextLength,
-              ),
-            }
-          : preparedRequest;
+      // Resolve the per-slot context only after admission is ready: the
+      // supervisor learns the runtime's real context length once it starts.
+      const resolveBackendRequest = () => {
+        if (
+          parsed.data.max_tokens !== undefined ||
+          parsed.data.max_completion_tokens !== undefined
+        ) {
+          return preparedRequest;
+        }
+        const admittedSupervisor = selected.value.admission.supervisor;
+        const supervisorProfile = admittedSupervisor.llmProfile?.();
+        const configuredContext =
+          supervisorProfile?.ctxSizeOverride ??
+          supervisorProfile?.configCtxSize ??
+          selected.value.admission.snapshot.config.ctxSize;
+        const configuredSlots =
+          supervisorProfile?.parallel === "auto"
+            ? 4
+            : Number(
+                supervisorProfile?.parallel ??
+                  selected.value.admission.snapshot.config.parallel,
+              );
+        const effectiveContextLength = Math.min(
+          admittedSupervisor.resolvedContextLength?.() ??
+            Math.floor(configuredContext / configuredSlots),
+          requestedModel?.contextWindowTokens ?? Number.POSITIVE_INFINITY,
+          selected.value.admission.snapshot.config.ctxSize,
+        );
+        return {
+          ...preparedRequest,
+          // llama.cpp exposes tokenization only after applying its chat
+          // template; this gateway has no cheap template-aware tokenizer.
+          // Keep the default within the resolved per-slot context budget.
+          max_tokens: Math.min(ctx.defaultMaxTokens, effectiveContextLength),
+        };
+      };
       const streaming = parsed.data.stream === true;
       const inference = beginInference("llm", selected.value, {
         streaming,
@@ -3463,7 +3466,7 @@ export async function runServe(
         request.signal,
         async () =>
           await proxyRequest(
-            requestWithJsonBody(request, backendRequest),
+            requestWithJsonBody(request, resolveBackendRequest()),
             factory.baseUrl("llm", selected.value.admission.snapshot),
             undefined,
             chatCompletionResponseSchema,

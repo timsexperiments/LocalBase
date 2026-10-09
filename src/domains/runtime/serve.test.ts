@@ -1,7 +1,7 @@
 import { restartPending } from "../config/activation";
 import { persistConfiguration } from "../config/declarative";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, rmSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { byId, primaryArtifact } from "../../catalog";
@@ -2298,6 +2298,75 @@ describe("API gateway integration", () => {
       await boundedGateway.stop();
     }
   });
+
+  test.each([false, true])(
+    "caps cold-start default generation by the runtime training context (stream=%p)",
+    async (stream) => {
+      const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+      const boundedGateway = await startGatewayFixture({
+        ctxSize: 8192,
+        parallel: 1,
+      });
+      try {
+        const modelPath = join(
+          boundedGateway.readConfig().llmModelsDir,
+          primaryArtifact(byId(modelId)!).filename,
+        );
+        const u32 = (value: number) => {
+          const buffer = Buffer.alloc(4);
+          buffer.writeUInt32LE(value);
+          return buffer;
+        };
+        const u64 = (value: number) => {
+          const buffer = Buffer.alloc(8);
+          buffer.writeBigUInt64LE(BigInt(value));
+          return buffer;
+        };
+        const ggufString = (value: string) => {
+          const bytes = Buffer.from(value);
+          return Buffer.concat([u64(bytes.length), bytes]);
+        };
+        const header = Buffer.concat([
+          u32(0x46554747),
+          u32(3),
+          u64(0),
+          u64(2),
+          ggufString("general.architecture"),
+          u32(8),
+          ggufString("llama"),
+          ggufString("llama.context_length"),
+          u32(4),
+          u32(1024),
+        ]);
+        const fd = openSync(modelPath, "r+");
+        try {
+          writeSync(fd, header);
+        } finally {
+          closeSync(fd);
+        }
+        const response = await fetch(
+          `${boundedGateway.baseUrl}/v1/chat/completions`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: modelId,
+              messages: [{ role: "user", content: "hello" }],
+              stream,
+            }),
+          },
+        );
+        expect(response.status).toBe(200);
+        await response.text();
+        expect(
+          JSON.parse(boundedGateway.upstreamRequests.at(-1)?.body ?? "{}")
+            .max_tokens,
+        ).toBe(1024);
+      } finally {
+        await boundedGateway.stop();
+      }
+    },
+  );
 
   test("caps default generation on streaming requests", async () => {
     const response = await request("/v1/chat/completions", {
