@@ -235,6 +235,26 @@ test("quiet test logs suppress routine output but keep warnings and errors", () 
   expect(writes).toEqual({ stdout: 0, stderr: 2 });
 });
 
+test("JSON logger writes only JSON lines to stdout", () => {
+  const writes: string[] = [];
+  const originalWrite = process.stdout.write;
+  const originalTestLogs = process.env.LOCALBASE_TEST_LOGS;
+  process.env.LOCALBASE_TEST_LOGS = "1";
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    writes.push(String(chunk));
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    new LocalBaseLogger("json").info("runtime", "started");
+  } finally {
+    process.stdout.write = originalWrite;
+    if (originalTestLogs === undefined) delete process.env.LOCALBASE_TEST_LOGS;
+    else process.env.LOCALBASE_TEST_LOGS = originalTestLogs;
+  }
+  expect(writes).toHaveLength(1);
+  expect(JSON.parse(writes[0])).toMatchObject({ message: "started" });
+});
+
 test("persists a complete inference event without truncating attributes", async () => {
   const root = createRoot();
   const writer = new RotatingLogWriter(root);

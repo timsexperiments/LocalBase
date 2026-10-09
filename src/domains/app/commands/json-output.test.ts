@@ -987,6 +987,33 @@ test(
       ]);
       expect(humanList.exitCode).toBe(0);
       expect(humanList.stdout).toContain("scopes=");
+      const carriageKey = await runCli(executable, [
+        "--root",
+        root,
+        "keys",
+        "create",
+        "--name",
+        "visible\rhidden",
+      ]);
+      expect(carriageKey.exitCode).toBe(0);
+      const carriageList = await runCli(executable, [
+        "--root",
+        root,
+        "keys",
+        "list",
+      ]);
+      expect(carriageList.stdout).not.toContain("\r");
+      const carriageMissing = await runCli(executable, [
+        "--root",
+        root,
+        "keys",
+        "scopes",
+        "missing\r-key",
+        "--scopes",
+        "models:read",
+      ]);
+      expect(carriageMissing.exitCode).toBe(1);
+      expect(carriageMissing.stderr).not.toContain("\r");
       for (const result of [revoked, cleared, listed, humanList]) {
         expect(result.stdout + result.stderr).not.toContain(initial.secret);
         expect(result.stdout + result.stderr).not.toContain(rotation.secret);

@@ -23,3 +23,9 @@ test("strips ANSI sequences and every C1 control without changing Unicode", () =
   ).join("");
   expect(stripAnsiCodes(`é € こんにちは 🧪${c1}`)).toBe("é € こんにちは 🧪");
 });
+
+test("strips carriage returns and other C0 controls while preserving line layout", () => {
+  expect(stripAnsiCodes("key\rname\nnext\tcolumn\u0001")).toBe(
+    "keyname\nnext\tcolumn",
+  );
+});

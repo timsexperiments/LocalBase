@@ -27,6 +27,7 @@ import { Readable } from "node:stream";
 import { unzipSync } from "fflate";
 import { extract as createTarExtractor, type Headers } from "tar-stream";
 import { z } from "zod";
+import { stripAnsiCodes } from "../utils/color";
 import {
   computeSha256,
   safeFilenameSchema,
@@ -881,7 +882,7 @@ export async function ensureBinary(
     if (userManagedBinary && resolve(userManagedBinary) !== resolve(localBin)) {
       if (shouldShowOperationalOutput())
         console.log(
-          `ℹ️  Using user-managed ${name} at ${userManagedBinary}; LocalBase does not verify user-managed binaries.`,
+          `ℹ️  Using user-managed ${name} at ${stripAnsiCodes(userManagedBinary)}; LocalBase does not verify user-managed binaries.`,
         );
       return userManagedBinary;
     }
@@ -891,7 +892,7 @@ export async function ensureBinary(
   if (userManagedBinary) {
     if (shouldShowOperationalOutput())
       console.log(
-        `ℹ️  Using user-managed ${name} at ${userManagedBinary}; LocalBase does not verify user-managed binaries.`,
+        `ℹ️  Using user-managed ${name} at ${stripAnsiCodes(userManagedBinary)}; LocalBase does not verify user-managed binaries.`,
       );
     return userManagedBinary;
   }

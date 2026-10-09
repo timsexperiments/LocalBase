@@ -9,6 +9,7 @@ import {
   rootCommandDefinition,
 } from "./framework";
 import { runCli } from "./runner";
+import { LocalBaseLogger } from "../../observability/logging";
 
 test("resolves nested commands and global options before context creation", async () => {
   const catalog = await resolveCli([
@@ -211,6 +212,44 @@ test("closes a command-scoped database session exactly once", async () => {
 
   expect(databaseInitialized).toBe(false);
   expect(closes).toBe(1);
+});
+
+test("JSON commands keep logger output on the JSON line stream", async () => {
+  const stdout: string[] = [];
+  const originalWrite = process.stdout.write;
+  const originalTestLogs = process.env.LOCALBASE_TEST_LOGS;
+  process.env.LOCALBASE_TEST_LOGS = "1";
+  process.stdout.write = ((value: string | Uint8Array) => {
+    stdout.push(String(value));
+    return true;
+  }) as typeof process.stdout.write;
+  const context = {
+    config: defaultConfig("/tmp/local-base-runner-json-test"),
+    database: new DatabaseSession(),
+    specs: { gpuVramGb: 0 },
+    logger: {},
+  } as AppContext;
+  try {
+    await runCli(["--json", "reset"], async () => {
+      context.logger = new LocalBaseLogger();
+      context.logger.info("runtime", "logger marker");
+      return context;
+    });
+  } finally {
+    process.stdout.write = originalWrite;
+    if (originalTestLogs === undefined) delete process.env.LOCALBASE_TEST_LOGS;
+    else process.env.LOCALBASE_TEST_LOGS = originalTestLogs;
+    context.database.close();
+  }
+  expect(stdout.length).toBeGreaterThan(0);
+  for (const line of stdout) {
+    try {
+      JSON.parse(line);
+    } catch {
+      throw new Error(`Non-JSON stdout write: ${JSON.stringify(line)}`);
+    }
+  }
+  expect(stdout.join("")).toContain('"message":"logger marker"');
 });
 
 test("reports environment input failures as concise syntax errors", async () => {

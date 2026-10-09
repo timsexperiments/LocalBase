@@ -58,6 +58,8 @@ async function withJsonStdoutGuard<T>(
 ): Promise<T> {
   if (!enabled) return await work();
   const originalLog = console.log;
+  const originalLogFormat = process.env.LOG_FORMAT;
+  process.env.LOG_FORMAT = "json";
   console.log = (...values: unknown[]) => {
     const line = values
       .map((value) =>
@@ -72,6 +74,8 @@ async function withJsonStdoutGuard<T>(
     return await work();
   } finally {
     console.log = originalLog;
+    if (originalLogFormat === undefined) delete process.env.LOG_FORMAT;
+    else process.env.LOG_FORMAT = originalLogFormat;
   }
 }
 
