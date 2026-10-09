@@ -50,7 +50,7 @@ Install the latest release with POSIX `sh` (or set `LOCALBASE_VERSION`, for exam
 curl -fsSL https://raw.githubusercontent.com/timsexperiments/LocalBase/main/scripts/install.sh | sh
 ```
 
-The installer verifies the archive against `checksums.txt` and puts `local-base` in `~/.local/bin` by default. Add that directory to `PATH` if needed, then run `local-base init`.
+The installer verifies the archive against `checksums.txt`, puts `local-base` in `~/.local/bin`, and installs `LICENSE` plus `THIRD_PARTY_NOTICES.txt` in `~/.local/share/local-base/licenses` by default. Set `LOCALBASE_INSTALL_DIR` or `LOCALBASE_LICENSE_DIR` to choose different destinations. Run `sh scripts/install.sh --help` for installer options. Add the CLI directory to `PATH` if needed, then run `local-base init`.
 
 For a manual install, download the archive for the host from an immutable tag on [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases), along with `checksums.txt`.
 
