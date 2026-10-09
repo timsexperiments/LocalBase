@@ -38,6 +38,7 @@ export const configFieldOwnership = {
   activeImageModel: "image-launch",
   activeVideoModel: "video-launch",
   hfToken: "modality-selection-request-scoped",
+  installMissingModels: "restart-required",
   parallel: "llm-launch",
   otelEndpoint: "observability",
   otelHeaders: "observability",

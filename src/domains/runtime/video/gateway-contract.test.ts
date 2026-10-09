@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { ModelInstallConsentError } from "../startup-preflight";
 import { byId } from "../../../catalog";
 import { RuntimeMemoryAdmissionError } from "../memory-controller";
 import {
@@ -214,4 +215,15 @@ test("projects memory failures as insufficient_memory", () => {
   expect(
     projectVideoJob({ ...base, failure: new VideoBackendJobFailureError() }),
   ).toMatchObject({ error: { code: "video_generation_failed" } });
+  expect(
+    projectVideoJob({
+      ...base,
+      failure: new ModelInstallConsentError("missing-video-model"),
+    }),
+  ).toMatchObject({
+    error: {
+      code: "model_install_consent_required",
+      message: expect.stringContaining("--install-missing"),
+    },
+  });
 });

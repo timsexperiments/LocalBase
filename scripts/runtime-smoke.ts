@@ -154,7 +154,14 @@ export function buildServeArgs(
     String(gatewayPort),
     ...(isManagedTarget(target) ? ["--no-llm"] : []),
     ...(isManagedTarget(target)
-      ? ["--stt", "--stt-host", "127.0.0.1", "--stt-port", String(sttPort)]
+      ? [
+          "--stt",
+          "--stt-host",
+          "127.0.0.1",
+          "--stt-port",
+          String(sttPort),
+          "--install-missing",
+        ]
       : ["--no-stt", "--llm-model-file", CLI_ONLY_LLM_MODEL_FILE]),
     "--no-image",
     "--no-auth",

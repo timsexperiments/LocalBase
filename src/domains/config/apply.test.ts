@@ -406,6 +406,7 @@ test("apply migrates the prior database under the operation lock and preserves p
     old.exec("DROP TABLE config_activation");
     old.exec("ALTER TABLE config DROP COLUMN gateway_host");
     old.exec("ALTER TABLE config DROP COLUMN gateway_port");
+    old.exec("ALTER TABLE config DROP COLUMN install_missing_models");
     old.exec(
       "DELETE FROM __drizzle_migrations WHERE created_at NOT IN (SELECT created_at FROM __drizzle_migrations ORDER BY created_at ASC LIMIT 3)",
     );
