@@ -171,9 +171,9 @@ async function runRuntimeFixture(): Promise<void> {
         });
       },
     });
-    const stopped = new Promise<void>((resolve) =>
-      process.once("SIGTERM", resolve),
-    );
+    const stopped = new Promise<void>((resolve) => {
+      if (!ignoreSigterm) process.once("SIGTERM", resolve);
+    });
     if (argsPath) await Bun.write(argsPath, `${args.join("\n")}\n`);
     await stopped;
     server.stop(true);

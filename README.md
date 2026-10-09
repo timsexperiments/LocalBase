@@ -81,6 +81,8 @@ local-base models install qwen2.5-coder-1.5b-instruct-q4_k_m
 local-base start
 ```
 
+Fresh configuration defaults to the small Qwen2.5 Coder 1.5B quickstart model. `serve` never downloads model weights without consent: install them with `local-base models install <id>`, or pass `local-base serve --install-missing` to approve missing selected models. Backend runtime binaries remain managed automatically.
+
 Store the displayed API key, then verify inference:
 
 ```bash

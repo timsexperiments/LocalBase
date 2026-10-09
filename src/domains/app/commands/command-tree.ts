@@ -500,6 +500,10 @@ const serveCommand = command<ServeInput>({
   path: ["serve"],
   description: "Start the unified LocalBase API gateway",
   args: {
+    "install-missing": {
+      type: "boolean",
+      description: "Download selected models that are missing",
+    },
     host: { type: "string", valueHint: "host", description: "Gateway host" },
     port: { type: "string", valueHint: "port", description: "Gateway port" },
     llm: noPromptBoolean("Enable the LLM service", "Disable the LLM service"),
