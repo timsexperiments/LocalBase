@@ -1555,6 +1555,10 @@ function App() {
           </div>
         </footer>
       </div>
+      <footer className="license-notice">
+        AGPL-3.0-or-later ·{" "}
+        <a href="https://github.com/timsexperiments/LocalBase">Source</a>
+      </footer>
       {visibleDrawer && (
         <Drawer
           fullPage={visibleDrawer === "catalog" || visibleDrawer === "admin"}

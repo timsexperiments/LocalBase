@@ -356,4 +356,8 @@ Database changes use Drizzle. Run `bun run db:generate` to create SQL migrations
 
 ## Contributing
 
-Keep documentation and behavior aligned, use Bun for project commands, and verify changes with the checks above before opening a pull request. Report bugs and requests through [GitHub Issues](https://github.com/timsexperiments/LocalBase/issues).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and contribution guidance, and [SECURITY.md](SECURITY.md) to report vulnerabilities.
+
+## License
+
+LocalBase is licensed under [AGPL-3.0-or-later](LICENSE).

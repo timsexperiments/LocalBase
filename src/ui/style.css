@@ -1329,3 +1329,9 @@ dialog.management-page {
     scroll-behavior: auto !important;
   }
 }
+.license-notice {
+  padding: 0.35rem 0.75rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: center;
+}

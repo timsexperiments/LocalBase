@@ -3,7 +3,11 @@ import { defaultConfig } from "../../../manager";
 import type { AppContext } from "../../../context";
 import { parseEnvironmentOverrides } from "../../../context";
 import { DatabaseSession } from "../../../db/client";
-import { resolveCli } from "./framework";
+import {
+  commandHelpText,
+  resolveCli,
+  rootCommandDefinition,
+} from "./framework";
 import { runCli } from "./runner";
 
 test("resolves nested commands and global options before context creation", async () => {
@@ -85,6 +89,12 @@ test("resolves nested commands and global options before context creation", asyn
     kind: "command",
     input: { sttModels: [] },
   });
+});
+
+test("CLI help includes the license and source notice", async () => {
+  const help = await commandHelpText(rootCommandDefinition());
+  expect(help).toContain("AGPL-3.0-or-later");
+  expect(help).toContain("https://github.com/timsexperiments/LocalBase");
 });
 
 test("rejects invalid CLI structure and contradictory interaction options", async () => {
