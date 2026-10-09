@@ -52,6 +52,10 @@ test("notices contain full production package license texts and the pinned Bun n
 test("generation fails when a production package has no license text", async () => {
   const directory = temp();
   mkdirSync(join(directory, "node_modules", "no-license"), { recursive: true });
+  await Bun.write(
+    join(directory, "node_modules", "no-license", "NOTICE"),
+    "notice only",
+  );
   mkdirSync(join(directory, "scripts", "release-notices"), { recursive: true });
   mkdirSync(join(directory, "src", "manager"), { recursive: true });
   await Bun.write(
@@ -75,6 +79,93 @@ test("generation fails when a production package has no license text", async () 
   );
   await expect(generateReleaseNotices(directory)).rejects.toThrow(
     "No license text found for bundled dependency no-license",
+  );
+});
+
+test("generation rejects an empty pinned Bun notice", async () => {
+  const directory = temp();
+  mkdirSync(join(directory, "scripts", "release-notices", "native"), {
+    recursive: true,
+  });
+  mkdirSync(join(directory, "src", "manager"), { recursive: true });
+  await Bun.write(
+    join(directory, "package.json"),
+    JSON.stringify({ packageManager: "bun@1.3.14" }),
+  );
+  await Bun.write(
+    join(directory, "bun.lock"),
+    JSON.stringify({ workspaces: { "": { dependencies: {} } }, packages: {} }),
+  );
+  await Bun.write(
+    join(directory, "scripts", "release-notices", "bun-1.3.14.txt"),
+    " \n ",
+  );
+  await Bun.write(
+    join(directory, "scripts", "release-notices", "native", "MIT.txt"),
+    "MIT text",
+  );
+  await Bun.write(
+    join(directory, "src", "manager", "managed-runtime-manifest.json"),
+    JSON.stringify({ targets: [] }),
+  );
+  await expect(generateReleaseNotices(directory)).rejects.toThrow(
+    "Bun notices for pinned Bun 1.3.14 are empty",
+  );
+});
+
+test("generation rejects a missing or empty vendored native license", async () => {
+  const directory = temp();
+  mkdirSync(join(directory, "scripts", "release-notices", "native"), {
+    recursive: true,
+  });
+  mkdirSync(join(directory, "src", "manager"), { recursive: true });
+  await Bun.write(
+    join(directory, "package.json"),
+    JSON.stringify({ packageManager: "bun@1.3.14" }),
+  );
+  await Bun.write(
+    join(directory, "bun.lock"),
+    JSON.stringify({ workspaces: { "": { dependencies: {} } }, packages: {} }),
+  );
+  await Bun.write(
+    join(directory, "scripts", "release-notices", "bun-1.3.14.txt"),
+    "Bun notice",
+  );
+  await Bun.write(
+    join(directory, "scripts", "release-notices", "native", "MIT.txt"),
+    " \n ",
+  );
+  await Bun.write(
+    join(directory, "src", "manager", "managed-runtime-manifest.json"),
+    JSON.stringify({ targets: [] }),
+  );
+  await expect(generateReleaseNotices(directory)).rejects.toThrow(
+    "Vendored native license file MIT.txt is empty",
+  );
+});
+
+test("generation rejects a missing vendored native license directory", async () => {
+  const directory = temp();
+  mkdirSync(join(directory, "scripts", "release-notices"), { recursive: true });
+  mkdirSync(join(directory, "src", "manager"), { recursive: true });
+  await Bun.write(
+    join(directory, "package.json"),
+    JSON.stringify({ packageManager: "bun@1.3.14" }),
+  );
+  await Bun.write(
+    join(directory, "bun.lock"),
+    JSON.stringify({ workspaces: { "": { dependencies: {} } }, packages: {} }),
+  );
+  await Bun.write(
+    join(directory, "scripts", "release-notices", "bun-1.3.14.txt"),
+    "Bun notice",
+  );
+  await Bun.write(
+    join(directory, "src", "manager", "managed-runtime-manifest.json"),
+    JSON.stringify({ targets: [] }),
+  );
+  await expect(generateReleaseNotices(directory)).rejects.toThrow(
+    "No vendored native license texts found",
   );
 });
 

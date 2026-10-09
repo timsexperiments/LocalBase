@@ -1,0 +1,26 @@
+## Bun's pinned component inventory
+
+`Bun-LICENSE.txt` is the complete `LICENSE.md` from oven-sh/bun tag `bun-v1.3.14`: https://github.com/oven-sh/bun/blob/bun-v1.3.14/LICENSE.md. It contains Bun's full linked-library and embedded-polyfill inventory, license identifiers, upstream license URLs, and the copyright notices included by that source. The source archive is https://github.com/oven-sh/bun/archive/refs/tags/bun-v1.3.14.tar.gz.
+
+`ICU-72.txt` is from unicode-org/icu release tag `release-72-1`: https://github.com/unicode-org/icu/blob/release-72-1/icu4c/LICENSE.
+
+The following license files are copied from the pinned source revisions listed in Bun's build scripts at `bun-v1.3.14` (links go directly to the source license file):
+- BoringSSL: https://github.com/google/boringssl/blob/0c5fce43b7ed5eb6001487ee48ac65766f5ddcd1/LICENSE
+- Brotli: https://github.com/google/brotli/blob/v1.1.0/LICENSE
+- c-ares: https://github.com/c-ares/c-ares/blob/3ac47ee46edd8ea40370222f91613fc16c434853/LICENSE.md
+- highway: https://github.com/google/highway/blob/2607d3b5b0113992fe84d3848859eae13b3b52c1/LICENSE
+- libarchive: https://github.com/libarchive/libarchive/blob/ded82291ab41d5e355831b96b0e1ff49e24d8939/COPYING
+- libdeflate: https://github.com/ebiggers/libdeflate/blob/c8c56a20f8f621e6a966b716b31f1dedab6a41e3/COPYING
+- libjpeg-turbo: https://github.com/libjpeg-turbo/libjpeg-turbo/blob/e352b02f794f701407b39af08576035ba3360d60/LICENSE.md
+- libspng: https://github.com/randy408/libspng/blob/fb768002d4288590083a476af628e51c3f1d47cd/LICENSE
+- libuv: https://github.com/oven-sh/libuv/blob/4dcfac4780d394e0dc2d3fb30335ca01b553eb46/LICENSE
+- lol-html: https://github.com/cloudflare/lol-html/blob/77127cd2b8545998756e8d64e36ee2313c4bb312/LICENSE
+- ls-hpack: https://github.com/litespeedtech/ls-hpack/blob/8905c024b6d052f083a3d11d0a169b3c2735c8a1/LICENSE
+- ls-qpack: https://github.com/litespeedtech/ls-qpack/blob/1e9c5b8e59f8161c54f168a570c8bfdc59ded0c3/LICENSE
+- lsquic: https://github.com/litespeedtech/lsquic/blob/3181911301b1aa4f54c1ed690901abc674ee08fb/LICENSE
+- mimalloc: https://github.com/microsoft/mimalloc/blob/f15aecb94fc8096008bf87b90c53ed682026914a/LICENSE
+- tinycc: https://github.com/TinyCC/tinycc/blob/12882eee073cfe5c7621bcfadf679e1372d4537b/COPYING
+- zlib-ng: https://github.com/zlib-ng/zlib-ng/blob/12731092979c6d07f42da27da673a9f6c7b13586/LICENSE.md
+- zstd: https://github.com/facebook/zstd/blob/f8745da6ff1ad1e7bab384bd1f9d742439278e99/LICENSE
+
+The common SPDX texts in this directory are full license terms where a component license is shared. The Bun source table above identifies components using each license. WebKit/JavaScriptCore is pinned to oven-sh/WebKit commit `5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b`; Bun's fork of uWebSockets and uSockets are covered by the Apache-2.0 text and are identified in Bun's pinned `LICENSE.md`. The LGPL-2.1-only text is complete and applies to JavaScriptCore/WebKit.

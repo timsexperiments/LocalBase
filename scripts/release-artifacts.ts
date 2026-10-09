@@ -298,6 +298,15 @@ export async function packageReleaseArtifact(
   target: ReleaseTarget,
   directory: string,
 ) {
+  const packageManager = JSON.parse(await Bun.file("package.json").text())
+    .packageManager as string;
+  const pinnedVersion = /^bun@(.+)$/.exec(packageManager)?.[1];
+  if (!pinnedVersion)
+    throw new Error(`Unsupported packageManager value: ${packageManager}.`);
+  if (Bun.version !== pinnedVersion)
+    throw new Error(
+      `Cannot package with Bun ${Bun.version}; package.json pins bun@${pinnedVersion}. Run packaging with the pinned Bun version.`,
+    );
   const output = resolve(directory);
   const cli = artifactPath(output, cliFilename(target));
   const license = resolve("LICENSE");

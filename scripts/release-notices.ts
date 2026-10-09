@@ -47,9 +47,10 @@ async function packageLicenseText(
 ): Promise<string> {
   const packageDirectory = join(rootDirectory, "node_modules", packageName);
   const filenames = (await readdir(packageDirectory))
-    .filter((filename) =>
-      /^(LICENSE|LICENCE|COPYING|NOTICE)([-._]|$)/i.test(filename),
-    )
+    .filter((filename) => /^(LICENSE|LICENCE|COPYING)([-._]|$)/i.test(filename))
+    .sort();
+  const notices = (await readdir(packageDirectory))
+    .filter((filename) => /^NOTICE([-._]|$)/i.test(filename))
     .sort();
   const texts = await Promise.all(
     filenames.map(async (filename) => {
@@ -60,7 +61,17 @@ async function packageLicenseText(
     }),
   );
   const found = texts.filter(Boolean);
-  if (found.length) return found.join("\n\n");
+  if (found.length) {
+    const supplemental = await Promise.all(
+      notices.map(async (filename) => {
+        const text = (
+          await readFile(join(packageDirectory, filename), "utf8")
+        ).trim();
+        return text ? `${filename}\n${text}` : "";
+      }),
+    );
+    return [...found, ...supplemental.filter(Boolean)].join("\n\n");
+  }
   const fallbackName = packageName.replaceAll("/", "__");
   const fallbackPath = join(
     rootDirectory,
@@ -115,6 +126,31 @@ export async function generateReleaseNotices(
     );
   }
   const bunNotices = (await bunNoticesFile.text()).trim();
+  if (!bunNotices)
+    throw new Error(`Bun notices for pinned Bun ${bunVersion} are empty.`);
+  const nativeLicenseDirectory = join(
+    rootDirectory,
+    "scripts",
+    "release-notices",
+    "native",
+  );
+  let nativeFiles: string[];
+  try {
+    nativeFiles = await readdir(nativeLicenseDirectory);
+  } catch {
+    throw new Error("No vendored native license texts found.");
+  }
+  const nativeLicenseNames = nativeFiles.filter((filename) =>
+    /\.(txt|md)$/i.test(filename),
+  );
+  if (!nativeLicenseNames.length)
+    throw new Error("No vendored native license texts found.");
+  for (const filename of nativeLicenseNames) {
+    if (
+      !(await readFile(join(nativeLicenseDirectory, filename), "utf8")).trim()
+    )
+      throw new Error(`Vendored native license file ${filename} is empty.`);
+  }
 
   const runtimes = (await Bun.file(
     join(rootDirectory, "src/manager/managed-runtime-manifest.json"),
@@ -142,6 +178,16 @@ export async function generateReleaseNotices(
     ...sections,
     "",
     bunNotices,
+    "",
+    "Vendored native component license texts:",
+    ...(await Promise.all(
+      nativeLicenseNames
+        .sort()
+        .map(
+          async (filename) =>
+            `\n### ${filename}\n\n${(await readFile(join(nativeLicenseDirectory, filename), "utf8")).trim()}`,
+        ),
+    )),
     "",
     "Managed runtime downloads are separately licensed by their upstream projects. Runtime versions and source URLs:",
     ...runtimeLines.map((item) => `- ${item}`),

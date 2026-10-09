@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   qualifyArtifactDirectory,
+  packageReleaseArtifact,
   releaseArtifactFilenames,
   releasePackageFilename,
   releaseTargetSchema,
@@ -75,6 +76,12 @@ test("supports only the four non-Windows release targets", () => {
     "linux-arm64",
   ]);
   expect(() => releaseTargetSchema.parse("windows-x64")).toThrow();
+});
+
+test("packaging rejects a Bun version that differs from packageManager", async () => {
+  await expect(packageReleaseArtifact("macos-arm64", temp())).rejects.toThrow(
+    `Cannot package with Bun ${Bun.version}; package.json pins bun@1.3.14`,
+  );
 });
 
 test("rejects a package whose extracted CLI differs from the manifest", async () => {

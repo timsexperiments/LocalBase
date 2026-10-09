@@ -1,71 +1,9 @@
 ## Bun 1.3.14
 
-Bun is MIT-licensed. The complete Bun license is included here:
+Bun is MIT-licensed. The complete upstream Bun license and its list of statically linked libraries and embedded polyfills are in the vendored native notices. Source: https://github.com/oven-sh/bun/blob/bun-v1.3.14/LICENSE.md (tag `bun-v1.3.14`).
 
-MIT License
+### LGPL-2.1 §6 source offer and relinking information
 
-Copyright (c) 2021-present Jarred Sumner
+The corresponding source for the Bun runtime is available at the pinned Bun source archive: https://github.com/oven-sh/bun/archive/refs/tags/bun-v1.3.14.tar.gz. The corresponding modified WebKit/JavaScriptCore source is available at https://github.com/oven-sh/WebKit/archive/5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b.tar.gz. The WebKit revision is pinned by `scripts/build/deps/webkit.ts` in the Bun tag. Copyright holder for this written offer: Tim Daltemus. For at least three years from distribution of this release, Tim Daltemus will provide the corresponding source on request through https://github.com/timsexperiments/LocalBase/issues.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-### Bundled native and embedded components
-
-Bun's upstream LICENSE.md for tag bun-v1.3.14 identifies these bundled
-components and their licenses:
-
-- JavaScriptCore and WebCore from WebKit: LGPL-2. The WebKit source revision
-  pinned by Bun 1.3.14 is `5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b`, as
-  declared by `scripts/build/deps/webkit.ts` at that tag.
-- BoringSSL: multiple licenses; see its upstream LICENSE.
-- Brotli, ls-hpack, ls-qpack, mimalloc, c-ares, libdeflate, uucode: MIT.
-- libarchive: multiple licenses; see upstream COPYING.
-- lol-html: BSD 3-Clause.
-- lsquic: MIT, with Chromium proto-quic-derived portions under BSD 3-Clause.
-- picohttp: Perl License or MIT.
-- zstd: BSD or GPL-2.0.
-- simdutf and uSockets: Apache-2.0.
-- zlib-ng: zlib license.
-- libicu: ICU license.
-- libbase64 and libspng: BSD 2-Clause.
-- libjpeg-turbo: BSD 3-Clause, IJG, and zlib licenses.
-- libwebp: BSD 3-Clause.
-- highway: Apache-2.0.
-- tinycc: LGPL-2.1.
-- libuv (Windows): MIT.
-- Parts of Tigerbeetle's Windows IO code: Apache-2.0.
-- The `__cxa_thread_atexit` fallback from LLVM libc++abi: Apache-2.0 with
-  LLVM exception.
-- Bun's embedded Node compatibility polyfills (assert, browserify-zlib,
-  buffer, constants-browserify, crypto-browserify, domain-browser, events,
-  https-browserify, os-browserify, path-browserify, process, punycode,
-  querystring-es3, stream-browserify, stream-http, string_decoder,
-  timers-browserify, tty-browserify, url, util, vm-browserify): MIT.
-
-References: Bun `LICENSE.md` at
-https://github.com/oven-sh/bun/blob/bun-v1.3.14/LICENSE.md and the pinned
-WebKit revision at https://github.com/oven-sh/bun/blob/bun-v1.3.14/scripts/build/deps/webkit.ts.
-
-### LGPL relinking
-
-LocalBase is compiled with Bun and statically includes JavaScriptCore. Under
-the LGPL-2 relinking terms described by Bun, the complete corresponding
-LocalBase source is available in the LocalBase repository under AGPL-3.0-or-later.
-Users can modify JavaScriptCore and rebuild/relink the application using that
-source. Bun's LGPL information and rebuild instructions are at
-https://github.com/oven-sh/bun/blob/bun-v1.3.14/LICENSE.md.
+To rebuild and relink, build Bun from source at `bun-v1.3.14` against the modified WebKit source, following the documented process in Bun's `LICENSE.md` at that tag (`git submodule update --init --recursive`, `make jsc`, then `zig build`). Then rebuild LocalBase from its AGPL source using that custom Bun binary with the repository's documented `bun run build` command, which invokes `bun build --compile`. These are the documented steps; LocalBase maintainers have not executed them as part of each release.
