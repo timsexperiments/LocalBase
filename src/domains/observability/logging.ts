@@ -468,7 +468,7 @@ function consoleWrite(event: LogEvent, format: "human" | "json"): void {
   )
     return;
   if (format === "json") {
-    console.log(JSON.stringify(event));
+    process.stdout.write(`${JSON.stringify(event)}\n`);
     return;
   }
   const color =
@@ -486,9 +486,9 @@ function consoleWrite(event: LogEvent, format: "human" | "json"): void {
   const line = shouldUseColor(stream)
     ? `[${event.timestamp}] ${color}[${event.severity.toUpperCase()}]\x1b[0m [\x1b[36m${event.component}\x1b[0m] ${event.message}`
     : `[${event.timestamp}] [${event.severity.toUpperCase()}] [${event.component}] ${event.message}`;
-  if (event.severity === "error") console.error(line);
-  else if (event.severity === "warn") console.warn(line);
-  else console.log(line);
+  if (event.severity === "error" || event.severity === "warn")
+    process.stderr.write(`${line}\n`);
+  else process.stdout.write(`${line}\n`);
 }
 
 export function logDirectory(root: string): string {

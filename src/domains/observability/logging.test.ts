@@ -183,36 +183,56 @@ test("validates one redacted event contract before console or file sinks", () =>
   }
 });
 
+test("removes C0 controls and lone ESC from messages, errors, and attributes", () => {
+  const controls = "\x00\x01\x08\x0b\x0c\x0e\x1f\x7f\x1b";
+  const logged = createLogEvent({
+    severity: "error",
+    eventName: "gateway.test",
+    category: "gateway",
+    component: "gateway",
+    runtime: "gateway",
+    message: `before${controls}\t\n after é🧪`,
+    error: { type: "Error", message: `failure${controls}é` },
+    attributes: { detail: `value${controls}é` },
+  });
+  expect(logged.message).toBe("before\t\n after é🧪");
+  expect(logged.error?.message).toBe("failureé");
+  expect(logged.attributes?.detail).toBe("valueé");
+});
+
 test("quiet test logs suppress routine output but keep warnings and errors", () => {
   const originalQuiet = process.env.LOCALBASE_QUIET_TEST_LOGS;
   const originalOverride = process.env.LOCALBASE_TEST_LOGS;
-  const writes = { log: 0, warn: 0, error: 0 };
-  const originalConsole = {
-    log: console.log,
-    warn: console.warn,
-    error: console.error,
+  const writes = { stdout: 0, stderr: 0 };
+  const originalWrites = {
+    stdout: process.stdout.write,
+    stderr: process.stderr.write,
   };
   process.env.LOCALBASE_QUIET_TEST_LOGS = "1";
   delete process.env.LOCALBASE_TEST_LOGS;
-  console.log = () => writes.log++;
-  console.warn = () => writes.warn++;
-  console.error = () => writes.error++;
+  process.stdout.write = (() => {
+    writes.stdout++;
+    return true;
+  }) as typeof process.stdout.write;
+  process.stderr.write = (() => {
+    writes.stderr++;
+    return true;
+  }) as typeof process.stderr.write;
   try {
     const logger = new LocalBaseLogger();
     logger.info("runtime", "routine");
     logger.warn("runtime", "warning");
     logger.error("runtime", "failure");
   } finally {
-    console.log = originalConsole.log;
-    console.warn = originalConsole.warn;
-    console.error = originalConsole.error;
+    process.stdout.write = originalWrites.stdout;
+    process.stderr.write = originalWrites.stderr;
     if (originalQuiet === undefined)
       delete process.env.LOCALBASE_QUIET_TEST_LOGS;
     else process.env.LOCALBASE_QUIET_TEST_LOGS = originalQuiet;
     if (originalOverride === undefined) delete process.env.LOCALBASE_TEST_LOGS;
     else process.env.LOCALBASE_TEST_LOGS = originalOverride;
   }
-  expect(writes).toEqual({ log: 0, warn: 1, error: 1 });
+  expect(writes).toEqual({ stdout: 0, stderr: 2 });
 });
 
 test("persists a complete inference event without truncating attributes", async () => {

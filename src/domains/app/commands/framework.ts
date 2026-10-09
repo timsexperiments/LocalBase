@@ -333,8 +333,8 @@ export async function printCommandHelp(
   command: CittyCommand,
   parent?: CittyCommand,
 ): Promise<void> {
-  console.log(
-    await commandHelpText(command, parent, { stream: process.stdout }),
+  process.stdout.write(
+    `${await commandHelpText(command, parent, { stream: process.stdout })}\n`,
   );
 }
 

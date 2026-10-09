@@ -196,8 +196,8 @@ test("closes a command-scoped database session exactly once", async () => {
     specs: { gpuVramGb: 0 },
     logger: {},
   } as AppContext;
-  const originalError = console.error;
-  console.error = () => {};
+  const originalWrite = process.stderr.write;
+  process.stderr.write = (() => true) as typeof process.stderr.write;
   try {
     await expect(
       runCli(["reset"], async (_options, initializeDatabase) => {
@@ -206,7 +206,7 @@ test("closes a command-scoped database session exactly once", async () => {
       }),
     ).resolves.toBe(2);
   } finally {
-    console.error = originalError;
+    process.stderr.write = originalWrite;
   }
 
   expect(databaseInitialized).toBe(false);
@@ -215,8 +215,11 @@ test("closes a command-scoped database session exactly once", async () => {
 
 test("reports environment input failures as concise syntax errors", async () => {
   const errors: string[] = [];
-  const originalError = console.error;
-  console.error = (...values: unknown[]) => errors.push(values.join(" "));
+  const originalWrite = process.stderr.write;
+  process.stderr.write = ((value: string | Uint8Array) => {
+    errors.push(String(value).trimEnd());
+    return true;
+  }) as typeof process.stderr.write;
 
   try {
     await expect(
@@ -226,7 +229,7 @@ test("reports environment input failures as concise syntax errors", async () => 
       }),
     ).resolves.toBe(2);
   } finally {
-    console.error = originalError;
+    process.stderr.write = originalWrite;
   }
 
   expect(errors[0]).toBe(
