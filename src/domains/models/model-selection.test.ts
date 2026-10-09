@@ -32,6 +32,12 @@ test("experimental S2V selection requires a persisted opt-in", () => {
   };
   expect(modelConfigurationSchema.safeParse(selection).success).toBe(false);
   expect(
+    modelConfigurationSchema.safeParse({
+      ...selection,
+      allowExperimental: true,
+    }).success,
+  ).toBe(false);
+  expect(
     modelEligibilityReason(byId(id)!, {
       allowExperimental: true,
       target: linuxNvidia,

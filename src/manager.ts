@@ -42,6 +42,8 @@ import {
 import { assertModelDiskSpace } from "./domains/runtime/startup-preflight";
 import { modelConfigurationSchema } from "./domains/models/model-selection";
 import { assertModelEligible } from "./domains/models/model-eligibility";
+import { videoTargetFromTopology } from "./domains/models/model-eligibility";
+import { createHostMemoryProvider } from "./domains/runtime/memory/host-memory-provider";
 import {
   parseParallelSlots,
   type ParallelSlots,
@@ -682,11 +684,23 @@ export async function installModel(
     if (!spec) {
       throw new Error(`Unknown model id: ${modelId}`);
     }
-    assertModelEligible(spec, {
-      allowExperimental: config.allowExperimental,
-      platform: process.platform,
-      architecture: process.arch,
-    });
+    if (spec.videoRuntime) {
+      const provider = createHostMemoryProvider();
+      try {
+        assertModelEligible(spec, {
+          allowExperimental: config.allowExperimental,
+          target: videoTargetFromTopology(provider.topology),
+        });
+      } finally {
+        await provider.close();
+      }
+    } else {
+      assertModelEligible(spec, {
+        allowExperimental: config.allowExperimental,
+        platform: process.platform,
+        architecture: process.arch,
+      });
+    }
 
     const targetDir = kindDir(config, spec.kind);
     assertModelDiskSpace(config, spec);

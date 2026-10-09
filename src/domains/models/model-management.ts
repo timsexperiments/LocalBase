@@ -1,6 +1,12 @@
 import { lstatSync, realpathSync, statfsSync, unlinkSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { CATALOG, byId, type ModelKind, type ModelSpec } from "../../catalog";
+import {
+  CATALOG,
+  byId,
+  type ModelKind,
+  type ModelSpec,
+  type VideoRuntimeTarget,
+} from "../../catalog";
 import { modelEligibilityReason } from "./model-eligibility";
 import { installModel, type LocalBaseConfig } from "../../manager";
 import type { RuntimeConfigController } from "../runtime/config-snapshot";
@@ -176,10 +182,12 @@ export function createModelManagement({
   runtimeConfig,
   lifecycle,
   protectedModelIds = () => new Set<string>(),
+  videoTarget,
 }: {
   runtimeConfig: RuntimeConfigController;
   lifecycle: () => Readonly<Record<RuntimeModality, RuntimeLifecycleSnapshot>>;
   protectedModelIds?: () => ReadonlySet<string>;
+  videoTarget?: () => VideoRuntimeTarget | null;
 }) {
   const operations = new Map<string, ModelManagementOperation>();
   let installing: string | null = null;
@@ -222,11 +230,19 @@ export function createModelManagement({
         const available = storageAt(
           config[fields[model.kind].directory],
         ).availableBytes;
-        const eligibility = modelEligibilityReason(model, {
-          allowExperimental: config.allowExperimental,
-          platform: process.platform,
-          architecture: process.arch,
-        });
+        const eligibility = modelEligibilityReason(
+          model,
+          model.videoRuntime && videoTarget
+            ? {
+                allowExperimental: config.allowExperimental,
+                target: videoTarget(),
+              }
+            : {
+                allowExperimental: config.allowExperimental,
+                platform: process.platform,
+                architecture: process.arch,
+              },
+        );
         const conflict = installConflict(config, model, referenced);
         if (eligibility !== null) installUnavailableReason = eligibility;
         else if (installing !== null)
@@ -275,11 +291,19 @@ export function createModelManagement({
     const config = runtimeConfig.copy();
     const field = fields[model.kind];
     if (action !== "uninstall") {
-      const reason = modelEligibilityReason(model, {
-        allowExperimental: config.allowExperimental,
-        platform: process.platform,
-        architecture: process.arch,
-      });
+      const reason = modelEligibilityReason(
+        model,
+        model.videoRuntime && videoTarget
+          ? {
+              allowExperimental: config.allowExperimental,
+              target: videoTarget(),
+            }
+          : {
+              allowExperimental: config.allowExperimental,
+              platform: process.platform,
+              architecture: process.arch,
+            },
+      );
       if (reason) throw new ModelManagementError("invalid_request", reason);
     }
     const operation: ModelManagementOperation = {

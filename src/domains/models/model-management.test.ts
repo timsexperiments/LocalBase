@@ -181,6 +181,30 @@ test("experimental models stay hidden and cannot install or activate without opt
   expect(f.runtimeConfig.copy().activeSttModel).toBe(model.modelId);
 });
 
+test("S2V management disables installation when no supported GPU target is present", async () => {
+  const f = fixture();
+  await f.runtimeConfig.update((config) => {
+    config.allowExperimental = true;
+  });
+  const management = createModelManagement({
+    runtimeConfig: f.runtimeConfig,
+    lifecycle: () => f.runtimes,
+    videoTarget: () => null,
+  });
+  const s2v = CATALOG.find((model) => model.modelId === "wan2.2-s2v-14b-fp8");
+  if (!s2v) throw new Error("Expected the Wan S2V profile");
+  const entry = (await management.read()).models.find(
+    (model) => model.id === s2v.modelId,
+  );
+  expect(entry).toMatchObject({
+    canInstall: false,
+    installUnavailableReason: "Requires Linux x64 with a single NVIDIA GPU.",
+  });
+  await expect(management.run(s2v.modelId, "install")).rejects.toThrow(
+    "Requires Linux x64 with a single NVIDIA GPU",
+  );
+});
+
 test("enable and activate require installation; changes use fresh config and preserve unrelated settings", async () => {
   const f = fixture();
   await expect(

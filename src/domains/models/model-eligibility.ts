@@ -5,11 +5,41 @@ export const experimentalModelOptInRequired =
 export const unsupportedModelTargetReason =
   "Requires Linux x64 with a single NVIDIA GPU.";
 
+export function videoTargetFromTopology(
+  topology:
+    | { kind: "unified" }
+    | { kind: "discrete"; accelerators: readonly { id: string }[] },
+  host: Readonly<{
+    platform: NodeJS.Platform;
+    arch: NodeJS.Architecture;
+  }> = process,
+): VideoRuntimeTarget | null {
+  if (
+    host.platform === "linux" &&
+    host.arch === "x64" &&
+    topology.kind === "discrete" &&
+    topology.accelerators.length === 1 &&
+    topology.accelerators[0]?.id.startsWith("nvidia:")
+  )
+    return { platform: "linux", architecture: "x64", accelerator: "nvidia" };
+  if (
+    host.platform === "darwin" &&
+    host.arch === "arm64" &&
+    topology.kind === "unified"
+  )
+    return {
+      platform: "darwin",
+      architecture: "arm64",
+      accelerator: "apple-unified",
+    };
+  return null;
+}
+
 export function modelEligibilityReason(
   model: ModelSpec,
   options: {
     allowExperimental?: boolean;
-    target?: VideoRuntimeTarget;
+    target?: VideoRuntimeTarget | null;
     platform?: NodeJS.Platform;
     architecture?: NodeJS.Architecture;
   } = {},
@@ -22,8 +52,11 @@ export function modelEligibilityReason(
 
   const profile = model.videoRuntime;
   if (!profile) return null;
-  if (options.target) {
-    const { platform, architecture, accelerator } = options.target;
+  if (Object.hasOwn(options, "target")) {
+    if (options.target === null) return unsupportedModelTargetReason;
+    const target = options.target;
+    if (!target) return unsupportedModelTargetReason;
+    const { platform, architecture, accelerator } = target;
     return profile.supportedTargets.some(
       (candidate) =>
         candidate.platform === platform &&
