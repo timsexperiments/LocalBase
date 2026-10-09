@@ -360,4 +360,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development and contribution guidance
 
 ## License
 
-LocalBase is licensed under [AGPL-3.0-or-later](LICENSE).
+Copyright (C) 2026 Tim Daltemus. LocalBase is licensed under [AGPL-3.0-or-later](LICENSE).
