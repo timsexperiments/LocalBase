@@ -503,6 +503,21 @@ function startMockUpstream(
           { status: 429, headers: { "x-upstream-secret": "do-not-forward" } },
         );
       }
+      if (mode === "llama-context-error") {
+        return Response.json(
+          {
+            error: {
+              code: 400,
+              message:
+                "request (40012 tokens) exceeds the available context size (8192 tokens), try increasing it",
+              type: "exceed_context_size_error",
+              n_prompt_tokens: 40012,
+              n_ctx: 8192,
+            },
+          },
+          { status: 400, headers: { "x-upstream-secret": "do-not-forward" } },
+        );
+      }
       if (mode === "malformed-error") {
         return Response.json(
           { error: { message: "/private/fixture/model.gguf" } },

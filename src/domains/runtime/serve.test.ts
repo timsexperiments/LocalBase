@@ -2127,6 +2127,32 @@ describe("API gateway integration", () => {
     });
   });
 
+  test("preserves llama-server errors that omit param or add diagnostics", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "llama-context-error",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("x-upstream-secret")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        message:
+          "request (40012 tokens) exceeds the available context size (8192 tokens), try increasing it",
+        type: "exceed_context_size_error",
+        param: null,
+        code: 400,
+      },
+    });
+  });
+
   test("normalizes malformed upstream error responses", async () => {
     for (const mode of ["malformed-error", "non-json-error"]) {
       const response = await request("/v1/chat/completions", {
