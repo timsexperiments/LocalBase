@@ -3,7 +3,6 @@ import { dirname, join } from "node:path";
 import type { ModelSpec } from "../../catalog";
 import type { LocalBaseConfig } from "../../manager";
 import { backendBindHost } from "./launch-plan";
-import { lookup } from "node:dns/promises";
 
 export class ModelInstallConsentError extends Error {
   constructor(modelId: string) {
@@ -159,44 +158,30 @@ export async function assertServePortsAvailable(
       host: backendBindHost(input.videoHost ?? "127.0.0.1"),
       port: input.videoPort ?? 8091,
     });
-  const resolved = await Promise.all(
-    bindings.map(async (binding) => {
-      const host = binding.host.replace(/^\[|\]$/g, "");
+  const probes: ReturnType<typeof Bun.serve>[] = [];
+  try {
+    for (const binding of bindings) {
+      let probe: ReturnType<typeof Bun.serve>;
       try {
-        return {
-          ...binding,
-          addresses: (await lookup(host, { all: true })).map(
-            (item) => item.address,
-          ),
-        };
-      } catch {
-        return {
-          ...binding,
-          addresses: [host.toLowerCase().replace(/\.$/, "")],
-        };
+        probe = Bun.serve({
+          hostname: binding.host,
+          port: binding.port,
+          fetch: () => new Response(),
+        });
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          error.code === "EADDRINUSE"
+        )
+          throw new Error(
+            `Port ${binding.port} is already in use on ${binding.host}. Choose another port with --port (gateway) or the matching --llm-port, --stt-port, --image-port, or --video-port option.`,
+          );
+        throw error;
       }
-    }),
-  );
-  for (let i = 0; i < resolved.length; i++)
-    for (let j = i + 1; j < resolved.length; j++) {
-      const left = resolved[i]!;
-      const right = resolved[j]!;
-      const family = (address: string) => (address.includes(":") ? 6 : 4);
-      const overlap = left.addresses.some((a) =>
-        right.addresses.some(
-          (b) =>
-            a === b ||
-            (a === "0.0.0.0" && family(b) === 4) ||
-            (a === "::" && family(b) === 6) ||
-            (b === "0.0.0.0" && family(a) === 4) ||
-            (b === "::" && family(a) === 6),
-        ),
-      );
-      if (left.port === right.port && overlap)
-        throw new Error(
-          `Planned ${left.name} and ${right.name} bindings overlap on port ${left.port}. Choose distinct ports.`,
-        );
+      probes.push(probe);
     }
-  for (const binding of bindings)
-    assertPortAvailable(binding.host, binding.port);
+  } finally {
+    for (const probe of probes) probe.stop(true);
+  }
 }

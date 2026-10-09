@@ -132,6 +132,7 @@ import {
 import { gatewayIdentitySchema } from "../health";
 import {
   assertServePortsAvailable,
+  assertModelInstallConsent,
   installMissingModel,
   ModelInstallConsentError,
 } from "../startup-preflight";
@@ -3087,6 +3088,19 @@ export async function runServe(
             : LOCAL_VIDEO_OWNER_ID,
         jobs: videoJobs,
         createEnabled: currentConfig.selectedVideoModels.length > 0,
+        assertInstallConsent: async (modelId) => {
+          const spec = byId(modelId);
+          if (!spec || spec.kind !== "video") return;
+          const installation = await resolveCatalogInstallation(
+            spec,
+            currentConfig.videoModelsDir,
+          );
+          if (!installation.complete)
+            assertModelInstallConsent(
+              modelId,
+              input.installMissing || currentConfig.installMissingModels,
+            );
+        },
         admissionProvider: {
           admit: async (modelId, signal) => {
             const selection = await admitVideoWithIdleRecovery(

@@ -10,6 +10,7 @@ import {
 } from "../../../manager";
 import { DatabaseSession } from "../../../db/client";
 import { RuntimeMemoryAdmissionError } from "../memory-controller";
+import { ModelInstallConsentError } from "../startup-preflight";
 import { admitVideoWithIdleRecovery } from "../commands/serve";
 import {
   handleVideoGatewayRequest,
@@ -106,6 +107,7 @@ function endpointDependencies(options: {
   jobs: VideoJobManager;
   createEnabled?: boolean;
   admissionProvider: VideoModelAdmissionProvider;
+  assertInstallConsent?: VideoGatewayHandlerDependencies["assertInstallConsent"];
   onTerminal?: VideoGatewayHandlerDependencies["onTerminal"];
 }): VideoGatewayHandlerDependencies {
   return {
@@ -132,6 +134,58 @@ function endpointDependencies(options: {
     onTerminal: options.onTerminal ?? (() => {}),
   };
 }
+
+test("video creation returns a synchronous consent error before creating a job", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-video-consent-http-"));
+  const credentials = createCredentials(root);
+  let admissions = 0;
+  const jobs = new VideoJobManager({
+    backend: {
+      async submitVideo() {
+        throw new Error("must not submit");
+      },
+      async getJob() {
+        throw new Error("must not poll");
+      },
+    },
+    temporaryDirectory: root,
+    onContainmentFailure: () => {},
+  });
+  const admissionProvider = {
+    admit: async () => {
+      admissions++;
+      throw new Error("must not admit without consent");
+    },
+  } satisfies VideoModelAdmissionProvider;
+  try {
+    const response = await handleVideoGatewayRequest(
+      endpointDependencies({
+        request: createRequest("A red house."),
+        pathname: "/v1/videos",
+        route: "videoCreate",
+        ownerId: credentials.firstOwnerId,
+        jobs,
+        admissionProvider,
+        assertInstallConsent: async (modelId) => {
+          throw new ModelInstallConsentError(modelId);
+        },
+      }),
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: {
+        type: "invalid_request_error",
+        param: "model",
+        code: "model_install_consent_required",
+      },
+    });
+    expect(admissions).toBe(0);
+    expect(await Bun.file(join(root, "video-jobs")).exists()).toBe(false);
+  } finally {
+    credentials.database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function createRequest(ownerPrompt: string, signal?: AbortSignal): Request {
   return new Request("http://local.test/v1/videos", {

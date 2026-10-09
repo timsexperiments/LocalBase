@@ -1,7 +1,7 @@
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ServiceInput } from "../../app/commands/inputs";
-import { saveConfig } from "../../../manager";
+import { loadConfig, saveConfig } from "../../../manager";
 import { serviceLifecycleResultSchema } from "../../app/commands/results";
 import {
   getServiceInspection,
@@ -66,7 +66,8 @@ export function persistInstallConsent(
 ): void {
   if (!input.installMissing || ctx.config.installMissingModels) return;
   ctx.config.installMissingModels = true;
-  saveConfig(ctx.database, ctx.config);
+  const persistedConfig = loadConfig(ctx.database, ctx.config.root);
+  saveConfig(ctx.database, { ...persistedConfig, installMissingModels: true });
 }
 
 export async function runStart(

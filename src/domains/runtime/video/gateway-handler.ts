@@ -1,6 +1,7 @@
 import type { RuntimeAdmission } from "../runtime-reconciler";
 import { byId } from "../../../catalog";
 import { openAIErrorResponseSchema } from "../openai-error";
+import { ModelInstallConsentError } from "../startup-preflight";
 import { videoJobIdFromPath } from "../route-dispatch";
 import {
   projectVideoJob,
@@ -45,6 +46,7 @@ export type VideoGatewayHandlerDependencies = Readonly<{
   ownerId: string;
   jobs: VideoJobs;
   createEnabled: boolean;
+  assertInstallConsent?: (modelId: string) => Promise<void>;
   admissionProvider: VideoModelAdmissionProvider;
   parseCreateRequest: () => Promise<ParsedCreateRequest>;
   notConfigured: () => Response;
@@ -119,6 +121,24 @@ export async function handleVideoGatewayRequest(
     );
   }
 
+  try {
+    await dependencies.assertInstallConsent?.(parsed.data.model);
+  } catch (error) {
+    if (error instanceof ModelInstallConsentError) {
+      return Response.json(
+        openAIErrorResponseSchema.parse({
+          error: {
+            message: error.message,
+            type: "invalid_request_error",
+            param: "model",
+            code: "model_install_consent_required",
+          },
+        }),
+        { status: 409 },
+      );
+    }
+    throw error;
+  }
   let admission: VideoAdmission | undefined;
   const started = await jobs.start({
     ownerId: dependencies.ownerId,

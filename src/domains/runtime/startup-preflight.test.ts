@@ -135,7 +135,7 @@ test("lazy model installation refuses without consent", async () => {
   expect(downloads).toBe(0);
 });
 
-test("port preflight rejects duplicate planned bindings", async () => {
+test("port preflight rejects duplicate planned bindings by attempting each bind", async () => {
   const config = defaultConfig("/tmp/localbase-port-overlap-test");
   await expect(
     assertServePortsAvailable(config, {
@@ -145,22 +145,44 @@ test("port preflight rejects duplicate planned bindings", async () => {
       image: false,
       video: false,
     }),
-  ).rejects.toThrow(/bindings overlap/);
+  ).rejects.toThrow(/already in use/);
 });
 
-test("port preflight normalizes localhost aliases", async () => {
+test("port preflight follows actual localhost and IPv4 bindings", async () => {
   const config = defaultConfig("/tmp/localbase-port-alias-test");
-  await expect(
-    assertServePortsAvailable(config, {
-      host: "localhost",
-      port: 24102,
-      llmHost: "127.0.0.1",
-      llmPort: 24102,
-      stt: false,
-      image: false,
-      video: false,
-    }),
-  ).rejects.toThrow(/bindings overlap/);
+  await assertServePortsAvailable(config, {
+    host: "localhost",
+    port: 24102,
+    llmHost: "127.0.0.1",
+    llmPort: 24102,
+    stt: false,
+    image: false,
+    video: false,
+  });
+});
+
+test("port preflight accepts separate IPv4 and IPv6 loopback binds", async () => {
+  const config = defaultConfig("/tmp/localbase-port-family-test");
+  let accepted = false;
+  for (let port = 24_000; port <= 29_999; port++) {
+    try {
+      await assertServePortsAvailable(config, {
+        host: "::1",
+        port,
+        llmHost: "localhost",
+        llmPort: port,
+        stt: false,
+        image: false,
+        video: false,
+      });
+      accepted = true;
+      break;
+    } catch (error) {
+      if (!(error instanceof Error) || !/already in use/.test(error.message))
+        throw error;
+    }
+  }
+  expect(accepted).toBe(true);
 });
 
 test("port preflight checks the gateway's requested interface address", async () => {

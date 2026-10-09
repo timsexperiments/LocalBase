@@ -376,7 +376,8 @@ test(
         .trim()
         .split("\n")
         .filter(Boolean)
-        .map((line) => JSON.parse(line) as { event: string });
+        .map((line) => JSON.parse(line) as { event?: string })
+        .filter(({ event }) => event === "started" || event === "stopped");
       expect(events).toEqual([
         expect.objectContaining({
           event: "started",
@@ -426,6 +427,7 @@ test(
     try {
       const config = defaultConfig(root, 16);
       config.port = backendPort;
+      config.installMissingModels = true;
       config.activeLlmModel = modelId;
       config.selectedLlmModels = [modelId];
       config.activeSttModel = "";
@@ -433,6 +435,7 @@ test(
       config.activeImageModel = "";
       config.selectedImageModels = [];
       saveTestConfig(config);
+      expect(loadTestConfig(root).installMissingModels).toBe(true);
 
       mkdirSync(join(root, "bin"), { recursive: true });
       mkdirSync(runtimeDir, { recursive: true });
@@ -495,7 +498,6 @@ test(
         "--no-image",
         "--no-auth",
         "--bypass-memory-check",
-        "--install-missing",
       ];
       gateway = Bun.spawn([process.execPath, "--eval", serveRunnerSource()], {
         cwd: PROJECT_ROOT,

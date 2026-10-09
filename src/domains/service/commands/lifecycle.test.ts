@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSession } from "../../../db/client";
-import { defaultConfig, loadConfig } from "../../../manager";
+import { defaultConfig, loadConfig, saveConfig } from "../../../manager";
 import { installMissingModel } from "../../runtime/startup-preflight";
 import { persistInstallConsent } from "./lifecycle";
 
@@ -40,6 +40,36 @@ test("service install consent persists and is available to a later serve", async
       ),
     ).resolves.toBe("/fixture/model");
     expect(installations).toBe(1);
+  } finally {
+    database.close();
+  }
+});
+
+test("service install consent preserves the persisted configuration", () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-service-consent-merge-"));
+  roots.push(root);
+  const database = new DatabaseSession();
+  try {
+    const persisted = defaultConfig(root);
+    persisted.gatewayPort = 24567;
+    persisted.activeLlmModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    persisted.selectedLlmModels = [persisted.activeLlmModel];
+    persisted.activeSttModel = "";
+    persisted.selectedSttModels = [];
+    saveConfig(database, persisted);
+
+    const staleDefaults = defaultConfig(root);
+    const ctx = { config: staleDefaults, database } as Parameters<
+      typeof persistInstallConsent
+    >[1];
+    persistInstallConsent({ installMissing: true }, ctx);
+
+    expect(loadConfig(database, root)).toMatchObject({
+      gatewayPort: 24567,
+      activeLlmModel: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+      selectedSttModels: [],
+      installMissingModels: true,
+    });
   } finally {
     database.close();
   }
