@@ -129,7 +129,11 @@ import {
 } from "../../observability/otel";
 import { gatewayIdentitySchema } from "../health";
 import { createAuthManagement } from "../../auth/management-http";
-import { openAIErrorResponseSchema, type OpenAIError } from "../openai-error";
+import {
+  openAIErrorResponseSchema,
+  upstreamOpenAIErrorResponseSchema,
+  type OpenAIError,
+} from "../openai-error";
 import {
   chatResponseFormatSchema,
   jsonSchemaValueSchema,
@@ -1563,7 +1567,9 @@ async function proxyRequest(
 
   if (upstream.status >= 400 && upstream.status <= 599) {
     try {
-      const parsed = openAIErrorResponseSchema.safeParse(await upstream.json());
+      const parsed = upstreamOpenAIErrorResponseSchema.safeParse(
+        await upstream.json(),
+      );
       if (parsed.success) {
         return openAIErrorResponse(parsed.data.error, upstream.status);
       }
