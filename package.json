@@ -7,7 +7,7 @@
   "homepage": "https://github.com/timsexperiments/LocalBase#readme",
   "bugs": "https://github.com/timsexperiments/LocalBase/issues",
   "author": {
-    "name": "Tim Daltemus",
+    "name": "TimsExperiments",
     "url": "https://github.com/timsexperiments"
   },
   "packageManager": "bun@1.3.14",
