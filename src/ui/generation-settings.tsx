@@ -222,7 +222,7 @@ export function GenerationSettingsFields({
               seed are fixed by the qualified profile.
             </p>
           )}
-          {cap?.kind === "video" && cap.mode === "t2v" && (
+          {cap?.kind === "video" && cap.mode !== "s2v" && (
             <div>
               <Field label="Negative prompt">
                 <textarea

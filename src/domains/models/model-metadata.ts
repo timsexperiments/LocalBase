@@ -23,7 +23,7 @@ const nullableByteCountSchema = z.number().int().nonnegative().nullable();
 const videoCapabilitiesSchema = z
   .object({
     kind: z.literal("video"),
-    mode: z.enum(["t2v", "s2v"]),
+    mode: z.enum(["t2v", "s2v", "ti2v"]),
     width: z.number().int().positive(),
     height: z.number().int().positive(),
     frames: z.number().int().positive(),

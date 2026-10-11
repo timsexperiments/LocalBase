@@ -1606,6 +1606,12 @@ function startMockUpstream(
           })),
         });
       }
+      if (path === "/v1/images/edits") {
+        return Response.json({
+          created: 0,
+          data: [{ b64_json: tinyPngBase64 }],
+        });
+      }
       if (
         path === "/inference" &&
         formData?.get("prompt") === "backend-error"

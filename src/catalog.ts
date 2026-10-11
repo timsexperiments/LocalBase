@@ -253,6 +253,12 @@ const videoRuntimeProfileSchema = z.discriminatedUnion("mode", [
     .strict(),
   videoRuntimeProfileBaseSchema
     .extend({
+      mode: z.literal("ti2v"),
+      artifacts: t2vArtifactMappingSchema,
+    })
+    .strict(),
+  videoRuntimeProfileBaseSchema
+    .extend({
       mode: z.literal("s2v"),
       artifacts: s2vArtifactMappingSchema,
     })
@@ -2992,8 +2998,8 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "wan2.2-s2v-14b-fp8",
-    qualificationState: "experimental",
     kind: "video",
+    qualificationState: "experimental",
     provider: "Wan/Comfy-Org",
     family: "Wan2.2-S2V",
     version: "2.2",
@@ -3141,7 +3147,7 @@ const CATALOG_SOURCE = [
       },
     ],
     videoRuntime: {
-      mode: "t2v",
+      mode: "ti2v",
       artifacts: {
         diffusionModel: "FastWan2.2-TI2V-5B-q6_k.gguf",
         textEncoder: "umt5-xxl-encoder-Q8_0.gguf",
@@ -3181,13 +3187,13 @@ const CATALOG_SOURCE = [
         { platform: "linux", architecture: "x64", accelerator: "nvidia" },
       ],
     },
-    inputModalities: ["text"],
+    inputModalities: ["text", "image"],
     outputModalities: ["video"],
-    features: ["text-to-video", "avi-output", "experimental"],
+    features: ["text-to-video", "image-to-video", "avi-output", "experimental"],
     commercialStatus: "open",
     catch: "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
     notes:
-      "Experimental text-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 480x832, 81 frames, and 16 fps. Image-to-video and audio generation are unsupported.",
+      "Experimental and unqualified text-to-video and image-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 480x832, 81 frames, and 16 fps.",
   },
   {
     modelId: "wan2.2-ti2v-5b-q6_k",

@@ -71,6 +71,7 @@ function allowedUiRoute(method: string, pathname: string): boolean {
       "/v1/chat/completions",
       "/v1/embeddings",
       "/v1/images/generations",
+      "/v1/images/edits",
       "/v1/audio/speech",
       "/v1/audio/transcriptions",
       "/v1/videos",

@@ -49,6 +49,7 @@ export function gatewayAuthorizationRequirement({
         ? { kind: "permission", permission: "inference:speech" }
         : { kind: "public" };
     case "imageGeneration":
+    case "imageEdit":
       return authRequired
         ? { kind: "permission", permission: "inference:image" }
         : { kind: "public" };

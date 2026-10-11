@@ -19,6 +19,16 @@ import { buildSdImageServerArgs } from "./domains/runtime/launcher";
 
 const checksum = "a".repeat(64);
 
+test("image-to-video feature matches image-conditioned runtime modes", () => {
+  for (const entry of CATALOG.filter(
+    (model) => model.kind === "video" && model.videoRuntime,
+  )) {
+    const supportsImages = ["ti2v", "i2v"].includes(entry.videoRuntime!.mode);
+    expect(entry.features.includes("image-to-video")).toBe(supportsImages);
+    if (supportsImages) expect(entry.inputModalities).toContain("image");
+  }
+});
+
 const verifiedContextWindows = new Map<string, number>([
   ["qwen2.5-coder-1.5b-instruct-q4_k_m", 32_768],
   ["qwen3-embedding-0.6b-q8_0", 32_768],
@@ -1025,7 +1035,7 @@ describe("catalog artifact validation", () => {
     expect(fastWan).toMatchObject({
       repositoryRevision: "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
       videoRuntime: {
-        mode: "t2v",
+        mode: "ti2v",
         artifacts: {
           decoder: { kind: "tae", artifactFilename: "taew2_2.safetensors" },
         },
@@ -1064,6 +1074,7 @@ describe("catalog artifact validation", () => {
         ],
       },
     });
+    expect(fastWan?.features).toContain("image-to-video");
     expect(
       fastWan?.artifacts.find(({ role }) => role === "primary"),
     ).toMatchObject({

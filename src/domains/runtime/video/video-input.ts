@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { unzlibSync } from "fflate";
+import { validatePngImage } from "../image-validation";
 
 export const MAX_VIDEO_WAV_BYTES = 8 * 1024 * 1024;
 export const MAX_VIDEO_PNG_BYTES = 4 * 1024 * 1024;
@@ -53,6 +54,7 @@ export const videoConditioningInputSchema = z.discriminatedUnion("kind", [
       audio: inlineWavSchema,
     })
     .strict(),
+  z.object({ kind: z.literal("image"), image: inlinePngSchema }).strict(),
 ]);
 
 const textVideoInputSchema = z
@@ -77,6 +79,42 @@ const speechVideoInputSchema = z
     );
   });
 
+const imageVideoInputSchema = z
+  .object({
+    kind: z.literal("image"),
+    ...commonInputShape,
+    width: commonInputShape.width.unwrap(),
+    height: commonInputShape.height.unwrap(),
+    videoFrames: commonInputShape.videoFrames.unwrap(),
+    fps: commonInputShape.fps.unwrap(),
+    image: inlinePngSchema,
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    const png = decodeCanonicalBase64(input.image.data);
+    if (!png || png.byteLength > MAX_VIDEO_PNG_BYTES) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Input image must be canonical base64 within the 4 MiB limit.",
+        path: ["image", "data"],
+      });
+      return;
+    }
+    const dimensions = validatePng(png);
+    if (
+      !dimensions ||
+      dimensions.width !== input.width ||
+      dimensions.height !== input.height
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Input image PNG dimensions must match the qualified video canvas.",
+        path: ["image"],
+      });
+    }
+  });
+
 /**
  * Native video input after catalog qualification. Speech conditioning accepts
  * only canonical inline PCM16/float32 WAV and non-interlaced 8-bit RGB/RGBA PNG.
@@ -84,6 +122,7 @@ const speechVideoInputSchema = z
 export const videoGenerationInputSchema = z.discriminatedUnion("kind", [
   textVideoInputSchema,
   speechVideoInputSchema,
+  imageVideoInputSchema,
 ]);
 
 export type VideoGenerationInput = z.infer<typeof videoGenerationInputSchema>;
@@ -155,6 +194,9 @@ function decodeCanonicalBase64(value: string): Uint8Array | undefined {
 function validatePng(
   bytes: Uint8Array,
 ): Readonly<{ width: number; height: number }> | undefined {
+  // Share the hard decompression bound with image edits before applying this
+  // endpoint's stricter CRC, color-type, and bit-depth policy.
+  if (!validatePngImage(bytes)) return undefined;
   if (bytes.byteLength < 33) return undefined;
   if (!PNG_SIGNATURE.every((byte, index) => bytes[index] === byte)) {
     return undefined;

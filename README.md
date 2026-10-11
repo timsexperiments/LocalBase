@@ -9,6 +9,8 @@ LocalBase is a Bun/TypeScript unified, OpenAI-compatible gateway for local AI ru
 - **STT** audio transcriptions and translations.
 - **TTS** through `/v1/audio/speech` with the bounded Qwen3 TTS base model.
 - **Image generation** through the OpenAI-compatible `/v1/images/generations` endpoint.
+- **Image editing** through multipart `POST /v1/images/edits` for catalog image-to-image models.
+- **Image-to-video** through `POST /v1/videos` with a PNG `input_reference` on TI2V profiles.
 - Lazy preparation of LLM, STT, TTS, and image runtimes on first use.
 - Self-healing process supervision with bounded restart backoff.
 - Zod request and response validation.
@@ -26,6 +28,12 @@ TTS is disabled by default. The first supported model is `qwen3-tts-1.7b-base-q4
 Use [`local-base config`](docs/declarative-config.md) to validate, plan, apply, and export versioned TOML configuration without prompts.
 
 Public `GET` and `HEAD /health/ready` report whether at least one configured modality can admit a request, including bounded queue waiting. `/health` remains process liveness.
+
+### Image and video inputs
+
+`POST /v1/images/edits` accepts multipart fields `model` (optional; defaults to the active image model), `prompt`, `image` or repeated `image[]` (1–4 PNG or JPEG files), optional nonempty PNG/JPEG `mask`, `n` (1–10), `size` (`256x256`, `512x512`, or `1024x1024`), `response_format` (`url` or `b64_json`), `output_format` (`png` or `jpeg`), and optional `strength` (0–1). Each input image and mask is structurally validated before model admission and limited to 2048 pixels per side and 4.2 megapixels. PNG decompression is bounded to its declared scanline size. WebP is not accepted because the pinned image backend uses stb_image, which does not decode WebP. Requests are limited to 20 MiB total and 8 MiB per file. Responses contain base64 image data for either response format.
+
+`POST /v1/videos` retains its JSON request contract. For TI2V profiles, add top-level `input_reference` containing canonical PNG base64 or a `data:image/png;base64,...` URL; dimensions must match that profile's fixed canvas. Multipart requests may instead supply `input_reference` as a PNG file, with the remaining video fields as form values. Text-only TI2V requests remain supported. Image-to-video is experimental and unqualified; see [video qualification](docs/video-qualification.md).
 
 ## Supported platforms
 

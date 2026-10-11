@@ -8,6 +8,8 @@ Before 1.0, minor `0.x` releases may include breaking changes. No migration guar
 
 ### Added
 
+- OpenAI-compatible image edits and experimental TI2V image-to-video inputs.
+- Image edits structurally validate PNG and JPEG inputs, bound PNG decompression, and limit dimensions to 2048 pixels per side and 4.2 megapixels. WebP inputs are not accepted because the pinned backend decoder does not support them. Output sizes are limited to 256, 512, or 1024 square.
 - Open source governance, security, and contribution documentation.
 
 ## [0.1.0] - Unreleased

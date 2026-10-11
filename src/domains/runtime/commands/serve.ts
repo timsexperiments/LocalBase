@@ -2,6 +2,7 @@ import { acknowledgeStaticConfiguration } from "../../config/activation";
 import { z } from "zod";
 import { SpanStatusCode, context, trace } from "@opentelemetry/api";
 import { join, basename } from "node:path";
+import { validateJpegImage, validatePngImage } from "../image-validation";
 import { resolveApiKey, type LocalBaseConfig } from "../../../manager";
 import {
   authorize,
@@ -226,6 +227,8 @@ function printUnifiedNextSteps(
     output.info(
       `OpenAI-compatible Image endpoint: ${baseUrl}/v1/images/generations`,
     );
+  if (enabled.image)
+    output.info(`Image edits endpoint: ${baseUrl}/v1/images/edits`);
   if (enabled.tts) {
     output.info("\nExample TTS request (Bearer):");
     output.info(
@@ -414,10 +417,10 @@ function modelNotFound(model: string): Response {
   );
 }
 
-function payloadTooLarge(): Response {
+function payloadTooLarge(limit = MAX_REQUEST_BYTES): Response {
   return openAIErrorResponse(
     {
-      message: `Request body exceeds the ${MAX_REQUEST_BYTES / (1024 * 1024)} MiB limit.`,
+      message: `Request body exceeds the ${limit / (1024 * 1024)} MiB limit.`,
       type: "invalid_request_error",
       param: null,
       code: "payload_too_large",
@@ -1149,6 +1152,30 @@ function requestExceedsSizeLimit(
   if (!contentLength) return false;
   const size = Number(contentLength);
   return !Number.isSafeInteger(size) || size < 0 || size > limit;
+}
+
+function imageMimeFromMagic(bytes: Uint8Array): string | undefined {
+  if (
+    bytes.length >= 8 &&
+    [137, 80, 78, 71, 13, 10, 26, 10].every(
+      (value, index) => bytes[index] === value,
+    )
+  )
+    return "image/png";
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  )
+    return "image/jpeg";
+  return undefined;
+}
+
+function requestBodyBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
 }
 
 async function readBoundedRequestBody(
@@ -3257,8 +3284,87 @@ export async function runServe(
             };
           },
         },
-        parseCreateRequest: async () =>
-          await parseJsonRequest(request, videoCreateRequestSchema),
+        parseCreateRequest: async () => {
+          if (
+            request.headers
+              .get("content-type")
+              ?.toLowerCase()
+              .startsWith("multipart/form-data;")
+          ) {
+            try {
+              const bytes = await readBoundedRequestBody(
+                request,
+                9 * 1024 * 1024,
+              );
+              const form = await new Request(request.url, {
+                method: "POST",
+                headers: {
+                  "content-type": request.headers.get("content-type") ?? "",
+                },
+                body: requestBodyBuffer(bytes),
+              }).formData();
+              const reference = form.get("input_reference");
+              let input_reference: string | undefined;
+              if (reference instanceof File) {
+                const media = new Uint8Array(await reference.arrayBuffer());
+                if (
+                  media.byteLength > 4 * 1024 * 1024 ||
+                  imageMimeFromMagic(media) !== "image/png"
+                ) {
+                  return {
+                    success: false,
+                    response: badRequest(
+                      "input_reference must be a PNG file no larger than 4 MiB.",
+                      "input_reference",
+                    ),
+                  };
+                }
+                input_reference = `data:image/png;base64,${media.toBase64()}`;
+              } else if (typeof reference === "string") {
+                input_reference = reference;
+              }
+              const inputField = form.get("input");
+              let input: unknown = { kind: "text" };
+              if (typeof inputField === "string") {
+                try {
+                  input = JSON.parse(inputField);
+                } catch {
+                  return {
+                    success: false,
+                    response: badRequest("input must be valid JSON.", "input"),
+                  };
+                }
+              }
+              const payload = {
+                model: form.get("model"),
+                prompt: form.get("prompt"),
+                negative_prompt: form.get("negative_prompt") ?? undefined,
+                width: Number(form.get("width")),
+                height: Number(form.get("height")),
+                frames: Number(form.get("frames")),
+                fps: Number(form.get("fps")),
+                input,
+                ...(input_reference === undefined ? {} : { input_reference }),
+              };
+              const parsed = videoCreateRequestSchema.safeParse(payload);
+              return parsed.success
+                ? { success: true, data: parsed.data }
+                : {
+                    success: false,
+                    response: badRequest("Invalid video request."),
+                  };
+            } catch (error) {
+              return {
+                success: false,
+                response:
+                  error instanceof PayloadTooLargeError
+                    ? payloadTooLarge(9 * 1024 * 1024)
+                    : badRequest("Invalid multipart video request."),
+              };
+            }
+          }
+          return await parseJsonRequest(request, videoCreateRequestSchema);
+        },
         notConfigured: () => notConfigured("Video"),
         modelNotFound,
         badRequest,
@@ -3537,6 +3643,215 @@ export async function runServe(
         async () =>
           await proxyRequest(
             requestWithJsonBody(request, parsed.data),
+            factory.baseUrl("image", selected.value.admission.snapshot),
+            undefined,
+            imageGenerationResponseSchema,
+            undefined,
+            ctx.otel,
+            undefined,
+            (status) =>
+              inference.finish({
+                outcome: "error",
+                httpStatus: status,
+                source: "response_validation",
+              }),
+            undefined,
+            selected.value.modelId,
+            (status) => inference.observeUpstreamStatus(status),
+            inference.context(),
+          ),
+        (terminal) => inference.finish(terminal),
+      );
+      return withServerTiming(response, inference.serverTiming());
+    }
+
+    if (route === "imageEdit") {
+      if (request.method !== "POST") return methodNotAllowed("POST");
+      const limit = 20 * 1024 * 1024;
+      if (requestExceedsSizeLimit(request, limit))
+        return payloadTooLarge(limit);
+      let form: FormData;
+      try {
+        const bytes = await readBoundedRequestBody(request, limit);
+        const contentType = request.headers.get("content-type");
+        if (!contentType?.toLowerCase().startsWith("multipart/form-data;")) {
+          return badRequest("Expected multipart/form-data.", "content-type");
+        }
+        form = await new Request(request.url, {
+          method: "POST",
+          headers: { "content-type": contentType },
+          body: requestBodyBuffer(bytes),
+        }).formData();
+      } catch (error) {
+        return error instanceof PayloadTooLargeError
+          ? payloadTooLarge(limit)
+          : badRequest("Invalid multipart image edit request.");
+      }
+      const promptValue = form.get("prompt");
+      const prompt = typeof promptValue === "string" ? promptValue.trim() : "";
+      if (!prompt || prompt.length > 16_384)
+        return badRequest(
+          "prompt is required and must not exceed 16384 characters.",
+          "prompt",
+        );
+      if (prompt.toLowerCase().includes("sd_cpp_extra_args"))
+        return badRequest(
+          "prompt must not contain sd_cpp_extra_args.",
+          "prompt",
+        );
+      const modelValue = form.get("model");
+      const modelId =
+        typeof modelValue === "string" && modelValue
+          ? modelValue
+          : currentConfig.activeImageModel;
+      if (!modelId) return notConfigured("Image");
+      const spec = byId(modelId);
+      if (!spec || spec.kind !== "image") return modelNotFound(modelId);
+      if (!spec.features.includes("image-to-image"))
+        return badRequest(
+          `Model '${modelId}' does not support image-to-image edits.`,
+          "model",
+        );
+      const images = [
+        ...form.getAll("image[]"),
+        ...form.getAll("image"),
+      ].filter((value): value is File => value instanceof File);
+      const maskValue = form.get("mask");
+      const mask =
+        maskValue === null
+          ? undefined
+          : maskValue instanceof File && maskValue.size > 0
+            ? maskValue
+            : undefined;
+      if (maskValue !== null && !mask)
+        return badRequest("mask must be a nonempty image file.", "mask");
+      if (images.length < 1 || images.length > 4)
+        return badRequest(
+          "Provide between 1 and 4 image files using image or image[].",
+          "image",
+        );
+      const nValue = form.get("n");
+      const n = nValue === null ? 1 : Number(nValue);
+      if (!Number.isInteger(n) || n < 1 || n > 10)
+        return badRequest("n must be an integer from 1 to 10.", "n");
+      const sizeValue = form.get("size");
+      const size =
+        typeof sizeValue === "string" && sizeValue ? sizeValue : undefined;
+      if (size && !["256x256", "512x512", "1024x1024"].includes(size))
+        return badRequest(
+          "size must be 256x256, 512x512, or 1024x1024.",
+          "size",
+        );
+      const responseFormat = form.get("response_format");
+      if (
+        responseFormat !== null &&
+        responseFormat !== "url" &&
+        responseFormat !== "b64_json"
+      )
+        return badRequest(
+          "response_format must be url or b64_json.",
+          "response_format",
+        );
+      const strengthValue = form.get("strength");
+      const strength =
+        strengthValue === null ? undefined : Number(strengthValue);
+      if (
+        strength !== undefined &&
+        (!Number.isFinite(strength) || strength < 0 || strength > 1)
+      )
+        return badRequest("strength must be between 0 and 1.", "strength");
+      const outputFormatValue = form.get("output_format");
+      const outputFormat =
+        outputFormatValue === null ? "png" : outputFormatValue;
+      if (outputFormat !== "png" && outputFormat !== "jpeg")
+        return badRequest(
+          "output_format must be png or jpeg.",
+          "output_format",
+        );
+      for (const file of [...images, ...(mask ? [mask] : [])]) {
+        const param = file === mask ? "mask" : "image";
+        if (!file.size || file.size > 8 * 1024 * 1024)
+          return badRequest(
+            "Each image file must be between 1 byte and 8 MiB.",
+            param,
+          );
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const mime = imageMimeFromMagic(bytes);
+        if (!mime)
+          return badRequest(
+            "Images must be PNG or JPEG by file signature.",
+            param,
+          );
+        if (file.type && file.type !== mime)
+          return badRequest(
+            "Image content type does not match its file signature.",
+            param,
+          );
+        const dimensions =
+          mime === "image/png"
+            ? validatePngImage(bytes)
+            : validateJpegImage(bytes);
+        if (
+          !dimensions ||
+          dimensions.width < 1 ||
+          dimensions.height < 1 ||
+          dimensions.width > 2048 ||
+          dimensions.height > 2048 ||
+          dimensions.width * dimensions.height > 4_194_304
+        )
+          return badRequest(
+            "Images must have valid dimensions no larger than 2048x2048 (4.2 megapixels).",
+            param,
+          );
+      }
+      let selected;
+      try {
+        selected = await admitModelWithIdleRecovery(
+          reconciler,
+          "image",
+          modelId,
+          request.signal,
+        );
+      } catch (error) {
+        if (error instanceof RuntimeRequestAbortedError)
+          return requestAborted();
+        const queueError = queueFailure(error, "image");
+        if (queueError) return queueError;
+        throw error;
+      }
+      if (selected.kind === "not-configured") return notConfigured("Image");
+      if (selected.kind === "model-not-found") return modelNotFound(modelId);
+      if (selected.kind === "unavailable") return serviceUnavailable("Image");
+      if (selected.kind === "insufficient-memory")
+        return resourceUnavailable(selected.error);
+      const backendForm = new FormData();
+      backendForm.set(
+        "prompt",
+        strength === undefined
+          ? prompt
+          : `${prompt} <sd_cpp_extra_args>{"strength":${strength}}</sd_cpp_extra_args>`,
+      );
+      backendForm.set("n", String(n));
+      backendForm.set("output_format", outputFormat);
+      if (size) backendForm.set("size", size);
+      for (const image of images)
+        backendForm.append("image[]", image, image.name || "image.png");
+      if (mask) backendForm.set("mask", mask, mask.name || "mask.png");
+      const inference = beginInference("image", selected.value);
+      const response = await proxyWithAdmission(
+        selected.value.admission,
+        "Image",
+        request.signal,
+        async () =>
+          await proxyRequest(
+            new Request(request.url, {
+              method: "POST",
+              headers: {
+                authorization: request.headers.get("authorization") ?? "",
+              },
+              body: backendForm,
+              signal: request.signal,
+            }),
             factory.baseUrl("image", selected.value.admission.snapshot),
             undefined,
             imageGenerationResponseSchema,
@@ -3992,7 +4307,8 @@ export async function runServe(
           selectedRoute === "embeddings" ||
           selectedRoute === "transcription" ||
           selectedRoute === "speechGeneration" ||
-          selectedRoute === "imageGeneration"
+          selectedRoute === "imageGeneration" ||
+          selectedRoute === "imageEdit"
             ? headers.get("server-timing")
             : undefined;
         headers.set(

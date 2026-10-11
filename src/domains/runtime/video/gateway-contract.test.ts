@@ -89,6 +89,29 @@ test("does not construct an unqualified native video request", () => {
   ).toBeUndefined();
 });
 
+test("qualifies a PNG input_reference only for TI2V", () => {
+  const spec = byId("fastwan2.2-ti2v-5b-q6_k");
+  if (!spec) throw new Error("Expected TI2V catalog model.");
+  const request = {
+    model: spec.modelId,
+    prompt: "A boat crosses a lake.",
+    width: 480,
+    height: 832,
+    frames: 81,
+    fps: 16,
+    input: { kind: "text" as const },
+    input_reference: `data:image/png;base64,${testPng({ width: 480, height: 832 })}`,
+  };
+  expect(qualifiedVideoInput(request, spec)).toMatchObject({
+    kind: "image",
+    image: { format: "png" },
+  });
+  expect(
+    qualifiedVideoInput({ ...request, input_reference: "not-base64" }, spec),
+  ).toBeUndefined();
+  expect(qualifiedVideoInput(request, model)).toBeUndefined();
+});
+
 test("projects speech media only for a qualified S2V profile", () => {
   const portrait = testPng({ width: 320, height: 320 });
   const audio = testPcm16Wav({ sampleRate: 8_000, frames: 8_000 });
@@ -177,6 +200,26 @@ test("names the accepted profile in the mismatch message", () => {
   expect(message).toContain("accepts exactly 480x832 (width x height)");
   expect(message).toContain("81 frames at 16 fps");
   expect(message).toContain("got 512x512, 49 frames at 24 fps.");
+});
+
+test("reports decoded input_reference dimensions in profile errors", () => {
+  const spec = byId("fastwan2.2-ti2v-5b-q6_k");
+  if (!spec) throw new Error("Expected catalog model.");
+  const image = testPng({ width: 12, height: 34 });
+  const message = videoProfileMismatchMessage(
+    {
+      model: spec.modelId,
+      prompt: "x",
+      width: 480,
+      height: 832,
+      frames: 81,
+      fps: 16,
+      input: { kind: "text" },
+      input_reference: `data:image/png;base64,${image}`,
+    },
+    spec,
+  );
+  expect(message).toContain("got image 12x34, 81 frames at 16 fps.");
 });
 
 test("projects memory failures as insufficient_memory", () => {

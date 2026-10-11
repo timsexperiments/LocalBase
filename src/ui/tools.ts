@@ -54,7 +54,7 @@ export function toolModels(models: Model[], name: ToolName) {
     (model) =>
       name !== "generate_video" ||
       (model.catalog.capabilities?.kind === "video" &&
-        model.catalog.capabilities.mode === "t2v"),
+        model.catalog.capabilities.mode !== "s2v"),
   );
 }
 const toolPermissions = {
@@ -141,7 +141,7 @@ export async function generateVideo({
   format: Extract<Media, { kind: "video" }>["format"];
 }> {
   const cap = model.catalog.capabilities;
-  if (cap?.kind !== "video" || cap.mode !== "t2v")
+  if (cap?.kind !== "video" || cap.mode === "s2v")
     throw new Error(
       "Speech-to-video needs portrait and audio inputs, which Model Lab does not support yet.",
     );

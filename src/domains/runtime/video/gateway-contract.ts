@@ -24,8 +24,21 @@ export const videoCreateRequestSchema = z
     frames: z.number().int().positive(),
     fps: z.number().int().positive(),
     input: videoConditioningInputSchema,
+    input_reference: z.string().max(6_000_000).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((request, ctx) => {
+    if (
+      request.input_reference !== undefined &&
+      request.input.kind !== "text"
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "input_reference can only be combined with input.kind=text.",
+        path: ["input_reference"],
+      });
+    }
+  });
 
 export type VideoCreateRequest = z.infer<typeof videoCreateRequestSchema>;
 
@@ -94,13 +107,18 @@ export function qualifiedVideoInput(
     return undefined;
   }
   if (
+    (request.input_reference !== undefined &&
+      model.videoRuntime.mode !== "ti2v") ||
     (model.videoRuntime.mode === "t2v" && request.input.kind !== "text") ||
-    (model.videoRuntime.mode === "s2v" && request.input.kind !== "speech")
+    (model.videoRuntime.mode === "s2v" && request.input.kind !== "speech") ||
+    (model.videoRuntime.mode === "ti2v" &&
+      request.input.kind !== "text" &&
+      request.input.kind !== "image")
   ) {
     return undefined;
   }
   const candidate = {
-    kind: request.input.kind,
+    kind: request.input_reference !== undefined ? "image" : request.input.kind,
     prompt: request.prompt,
     ...(request.negative_prompt === undefined
       ? {}
@@ -118,12 +136,22 @@ export function qualifiedVideoInput(
       cfgScale: qualification.generation.cfgScale,
       flowShift: qualification.generation.flowShift,
     },
-    ...(request.input.kind === "speech"
-      ? { portrait: request.input.portrait, audio: request.input.audio }
-      : {}),
+    ...(request.input_reference !== undefined
+      ? { image: parseImageReference(request.input_reference) }
+      : request.input.kind === "speech"
+        ? { portrait: request.input.portrait, audio: request.input.audio }
+        : request.input.kind === "image"
+          ? { image: request.input.image }
+          : {}),
   };
   const parsed = videoGenerationInputSchema.safeParse(candidate);
   return parsed.success ? parsed.data : undefined;
+}
+
+function parseImageReference(value: string) {
+  const match = /^data:image\/png;base64,([A-Za-z0-9+/]+=*)$/.exec(value);
+  const data = match?.[1] ?? value;
+  return { format: "png" as const, data };
 }
 
 function unixSeconds(milliseconds: number): number {
@@ -239,14 +267,37 @@ export function videoProfileMismatchMessage(
     return "This model does not support video generation.";
   }
   const { qualification, mode } = model.videoRuntime;
-  const inputKind =
-    mode === "s2v" ? "speech" : mode === "t2v" ? "text" : undefined;
+  const inputKind = mode === "s2v" ? "speech" : "text";
   const wrongInput =
-    inputKind !== undefined && request.input.kind !== inputKind;
+    mode === "ti2v"
+      ? request.input.kind !== "text" && request.input.kind !== "image"
+      : request.input.kind !== inputKind;
+  const reference = request.input_reference;
+  const decodedReferenceDimensions = (() => {
+    if (!reference) return undefined;
+    const encoded = reference.startsWith("data:image/png;base64,")
+      ? reference.slice("data:image/png;base64,".length)
+      : reference;
+    try {
+      const png = Uint8Array.fromBase64(encoded);
+      if (png.length < 24) return undefined;
+      const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+      return { width: view.getUint32(16), height: view.getUint32(20) };
+    } catch {
+      return undefined;
+    }
+  })();
+  const gotDimensions = decodedReferenceDimensions
+    ? `image ${decodedReferenceDimensions.width}x${decodedReferenceDimensions.height}`
+    : `${request.width}x${request.height}`;
   return (
     `This local video model accepts exactly ${qualification.maxWidth}x${qualification.maxHeight} (width x height), ` +
     `${qualification.maxFrames} frames at ${qualification.fps} fps; ` +
-    `got ${request.width}x${request.height}, ${request.frames} frames at ${request.fps} fps.` +
-    (wrongInput ? ` It also requires input.kind "${inputKind}".` : "")
+    `got ${gotDimensions}, ${request.frames} frames at ${request.fps} fps.` +
+    (wrongInput
+      ? mode === "ti2v"
+        ? " It accepts text input or a PNG input_reference."
+        : ` It also requires input.kind "${inputKind}".`
+      : "")
   );
 }
