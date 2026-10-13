@@ -592,7 +592,12 @@ function App() {
         setHostMemory(null);
         if (e instanceof SessionRequiredError)
           setSession({ kind: "error", message: e.message });
-        else
+        else if (e instanceof z.ZodError) {
+          console.error("Unexpected gateway response", e.issues);
+          setConnection(
+            "This page could not read the gateway's model list. Reload to pick up the latest version.",
+          );
+        } else
           setConnection(e instanceof Error ? e.message : "Unable to connect");
       }
     }

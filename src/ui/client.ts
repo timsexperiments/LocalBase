@@ -24,6 +24,17 @@ type MetadataCapabilities = NonNullable<
   ModelMetadata["catalog"]["capabilities"]
 >;
 type SpeechCapabilities = Extract<MetadataCapabilities, { kind: "speech" }>;
+type VideoMode = Extract<MetadataCapabilities, { kind: "video" }>["mode"];
+// Rejecting a mode the gateway serves hides the whole catalog, so list every one.
+const videoModes = [
+  "t2v",
+  "s2v",
+  "ti2v",
+] as const satisfies readonly VideoMode[];
+const everyVideoMode: [VideoMode] extends [(typeof videoModes)[number]]
+  ? true
+  : never = true;
+void everyVideoMode;
 type ClientCapabilities =
   | Extract<MetadataCapabilities, { kind: "embedding" }>
   | Extract<MetadataCapabilities, { kind: "video" }>
@@ -37,7 +48,7 @@ type ClientCapabilities =
 const capabilitiesSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("video"),
-    mode: z.enum(["t2v", "s2v"]),
+    mode: z.enum(videoModes),
     width: z.number().int().positive(),
     height: z.number().int().positive(),
     frames: z.number().int().positive(),
