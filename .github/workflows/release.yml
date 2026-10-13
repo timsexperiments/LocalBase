@@ -45,12 +45,14 @@ jobs:
             host-architecture: arm64
             platform: macos
             smoke: native
+          # Rosetta on macOS 14 runners kills Bun x64 binaries with SIGILL,
+          # so qualify the Intel build on real Intel hardware.
           - target: macos-x64
-            runner: macos-14
-            host-architecture: arm64
+            runner: macos-15-intel
+            host-architecture: x86_64
             platform: macos
             managed: false
-            smoke: rosetta
+            smoke: native
           - target: linux-x64
             runner: ubuntu-24.04
             host-architecture: x86_64
@@ -186,10 +188,6 @@ jobs:
 
       - name: Make CLI executable
         run: chmod +x extracted/${{ matrix.target }}/local-base-${{ matrix.target }}
-
-      - name: Verify Rosetta translation
-        if: matrix.smoke == 'rosetta'
-        run: /usr/bin/arch -x86_64 /usr/bin/true
 
       - name: Run CLI runtime smoke test
         if: matrix.smoke != 'qemu'

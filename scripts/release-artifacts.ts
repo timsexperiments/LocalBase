@@ -18,11 +18,7 @@ export type ReleaseTarget = z.infer<typeof releaseTargetSchema>;
 type ReleaseTargetSpec = { bunTarget: string; architecture: "arm64" | "x64" };
 const releaseTargets: Record<ReleaseTarget, ReleaseTargetSpec> = {
   "macos-arm64": { bunTarget: "bun-darwin-arm64", architecture: "arm64" },
-  "macos-x64": {
-    // Baseline avoids AVX2, which Rosetta and older Intel Macs lack.
-    bunTarget: "bun-darwin-x64-baseline",
-    architecture: "x64",
-  },
+  "macos-x64": { bunTarget: "bun-darwin-x64", architecture: "x64" },
   "linux-x64": { bunTarget: "bun-linux-x64", architecture: "x64" },
   "linux-arm64": { bunTarget: "bun-linux-arm64", architecture: "arm64" },
 };
