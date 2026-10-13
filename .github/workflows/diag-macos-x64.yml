@@ -1,0 +1,42 @@
+name: diag-macos-x64
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  diag:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Host info
+        run: |
+          sw_vers; uname -m
+          /usr/bin/arch -x86_64 /usr/sbin/sysctl -n machdep.cpu.brand_string machdep.cpu.features machdep.cpu.leaf7_features 2>&1 || true
+      - name: Build variants
+        run: |
+          mkdir -p out
+          bun build --compile --target=bun-darwin-x64-baseline src/cli.ts --outfile out/baseline
+          bun build --compile --target=bun-darwin-x64 src/cli.ts --outfile out/default
+          printf '%s\n' 'console.log("hello")' > out/hello.ts
+          bun build --compile --target=bun-darwin-x64-baseline out/hello.ts --outfile out/hello-baseline
+          for f in baseline default hello-baseline; do cp out/$f out/$f-hr; codesign --force --options runtime --sign - out/$f-hr; done
+      - name: Run variants
+        run: |
+          for f in hello-baseline hello-baseline-hr baseline baseline-hr default default-hr; do
+            /usr/bin/arch -x86_64 out/$f --help > /tmp/o 2>&1; rc=$?
+            echo "== $f exit=$rc"; head -c 400 /tmp/o; echo
+          done
+      - name: Crash reports
+        if: always()
+        run: |
+          for r in ~/Library/Logs/DiagnosticReports/*.ips /Library/Logs/DiagnosticReports/*.ips; do
+            [ -f "$r" ] || continue
+            echo "=== $r"; grep -E '"exception"|"type"|"signal"|"codes"|"subtype"|"procName"|"symbol"' "$r" | head -40
+          done
