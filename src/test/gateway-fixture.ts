@@ -27,6 +27,7 @@ import {
   type SpeechFixtureControl,
 } from "./speech-runtime-fixture";
 import { tinyPngBase64 } from "./media-fixtures";
+import { reservePort } from "./ports";
 
 const LLM_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const STT_MODEL = "whisper-large-v3-turbo";
@@ -178,6 +179,7 @@ export type GatewayFixture = {
   baseUrl: string;
   cliPath: string;
   root: string;
+  runtimePorts: { llm: number; stt: number; image: number };
   apiKey?: string;
   upstreamRequests: UpstreamRequest[];
   readConfig: () => LocalBaseConfig;
@@ -277,37 +279,6 @@ async function readProcessOutput(
 ): Promise<string> {
   if (!stream || typeof stream === "number") return "";
   return await new Response(stream).text();
-}
-
-function reservePort(): number {
-  const minPort = Number(process.env.LOCALBASE_TEST_PORT_MIN ?? 24_000);
-  const maxPort = Number(process.env.LOCALBASE_TEST_PORT_MAX ?? 29_999);
-  if (
-    !Number.isInteger(minPort) ||
-    !Number.isInteger(maxPort) ||
-    minPort < 1 ||
-    maxPort > 65_535 ||
-    minPort > maxPort
-  ) {
-    throw new Error("Invalid LOCALBASE_TEST_PORT_MIN/MAX range.");
-  }
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const random = new Uint32Array(1);
-    crypto.getRandomValues(random);
-    const port = minPort + (random[0] % (maxPort - minPort + 1));
-    try {
-      const reservation = Bun.serve({
-        hostname: "127.0.0.1",
-        port,
-        fetch: () => new Response("reserved"),
-      });
-      reservation.stop(true);
-      return port;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
-    }
-  }
-  throw new Error("Could not reserve a test port.");
 }
 
 function startSpeechEventReceiver(): {
@@ -2142,6 +2113,7 @@ export async function startGatewayFixture(
     baseUrl,
     cliPath,
     root,
+    runtimePorts: { llm: llmPort, stt: sttPort, image: imagePort },
     apiKey,
     upstreamRequests,
     readConfig() {

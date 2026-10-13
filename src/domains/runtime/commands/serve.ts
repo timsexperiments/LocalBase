@@ -426,6 +426,8 @@ function payloadTooLarge(limit = MAX_REQUEST_BYTES): Response {
       code: "payload_too_large",
     },
     413,
+    // The rest of the body may still be in flight, so do not reuse this connection.
+    { connection: "close" },
   );
 }
 
@@ -3069,7 +3071,9 @@ export async function runServe(
             code: "validation_failed",
           },
           error instanceof PayloadTooLargeError ? 413 : 400,
-          headers,
+          error instanceof PayloadTooLargeError
+            ? { ...headers, connection: "close" }
+            : headers,
         );
       }
       if (!input.success)

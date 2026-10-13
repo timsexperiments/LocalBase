@@ -38,6 +38,7 @@ import {
   keysListResultSchema,
 } from "./results";
 import { defaultBrowserPermissions } from "../../auth/browser-access";
+import { reservePort } from "../../../test/ports";
 
 const projectRoot = join(import.meta.dirname, "../../../..");
 
@@ -1147,6 +1148,8 @@ test("JSON mode rejects interactive and destructive commands without consent", a
       root,
       "serve",
       "--json",
+      "--port",
+      String(reservePort()),
       "--no-llm",
       "--no-stt",
       "--no-image",
