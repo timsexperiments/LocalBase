@@ -1,5 +1,11 @@
 import type { ILogger } from "../observability/logging";
 import type { LocalBaseConfig } from "../../manager";
+import { byId } from "../../catalog";
+import {
+  experimentalModelOptInRequired,
+  modelEligibilityReason,
+} from "../models/model-eligibility";
+import { ModelManagementError } from "../models/model-management-contract";
 import {
   type RuntimeConfigController,
   type RuntimeConfigSnapshot,
@@ -515,8 +521,6 @@ export class RuntimeReconciler {
         ...source,
         config: { ...source.config, [activeModelField(modality)]: modelId },
       });
-      if (!candidate.preflight) return false;
-
       const releasingRuntimeIds = [
         ...(claimedRuntimeIds ??
           runtimeModalities.flatMap((peerModality) => {
@@ -542,6 +546,11 @@ export class RuntimeReconciler {
         const currentVideo = this.supervisors.get("video");
         if (currentVideo) releasingRuntimeIds.push(currentVideo.runtimeId());
       }
+
+      // Some runtimes, including speech, discover memory pressure only when
+      // generation starts. Their bounded recovery still reclaims idle peers;
+      // admission after eviction decides whether the retry can proceed.
+      if (!candidate.preflight) return true;
 
       const rejection = await this.waitForAbort(
         candidate.preflight(releasingRuntimeIds, signal),
@@ -709,6 +718,16 @@ export class RuntimeReconciler {
         desiredSnapshot,
       );
       if (!modelId) return { kind: "model-not-found" };
+      if (modality === "video") {
+        const model = byId(modelId);
+        const reason = model
+          ? modelEligibilityReason(model, {
+              allowExperimental: desiredSnapshot.config.allowExperimental,
+            })
+          : null;
+        if (reason === experimentalModelOptInRequired)
+          throw new ModelManagementError("invalid_request", reason);
+      }
       let admissionSnapshot = this.appliedSnapshots[modality];
       if (
         modelId !== activeModel(modality, admissionSnapshot.config) &&

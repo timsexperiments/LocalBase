@@ -5,6 +5,7 @@ import {
   discardLegacyFragmentCredential,
   logoutSession,
   readSession,
+  redirectToSignIn,
   sessionConnection,
   SessionRequiredError,
   availableModels,
@@ -503,6 +504,7 @@ describe("playground client boundaries", () => {
         name: "Test",
         kind: "llm",
         quantization: "Q4",
+        qualificationState: "qualified",
         memory: { minimumVramEstimateGb: 1, storageEstimateGb: 1 },
         inputModalities: ["text"],
         outputModalities: ["text"],
@@ -650,4 +652,40 @@ describe("playground client boundaries", () => {
       ).toBe(false);
     }
   });
+});
+
+test("redirects an expired session to sign-in without looping", () => {
+  const assigned: string[] = [];
+  const storage = new Map<string, string>();
+  const original = {
+    location: globalThis.location,
+    sessionStorage: globalThis.sessionStorage,
+  };
+  const install = (search: string) => {
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: { search, assign: (url: string) => assigned.push(url) },
+    });
+  };
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    },
+  });
+  try {
+    install("");
+    expect(redirectToSignIn()).toBe(true);
+    expect(redirectToSignIn()).toBe(false);
+    expect(assigned).toEqual(["/app/login"]);
+
+    storage.clear();
+    install("?signin=failed");
+    expect(redirectToSignIn()).toBe(false);
+    expect(assigned).toEqual(["/app/login"]);
+  } finally {
+    for (const [key, value] of Object.entries(original))
+      Object.defineProperty(globalThis, key, { configurable: true, value });
+  }
 });

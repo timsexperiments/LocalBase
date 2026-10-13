@@ -54,7 +54,7 @@ export function toolModels(models: Model[], name: ToolName) {
     (model) =>
       name !== "generate_video" ||
       (model.catalog.capabilities?.kind === "video" &&
-        model.catalog.capabilities.mode === "t2v"),
+        model.catalog.capabilities.mode !== "s2v"),
   );
 }
 const toolPermissions = {
@@ -105,6 +105,9 @@ const jobSchema = z.object({
   id: z.string().uuid(),
   status: z.enum(["queued", "in_progress", "completed", "failed", "cancelled"]),
   cancellation_reason: z.string().optional(),
+  error: z
+    .object({ code: z.string(), message: z.string().optional() })
+    .nullish(),
 });
 function pause(signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
@@ -135,13 +138,18 @@ export async function generateVideo({
   progress,
   warning,
   prompt,
+  image,
   settings = defaultGenerationSettings(),
-}: MediaOptions & { prompt: string }): Promise<{
+}: MediaOptions & {
+  prompt: string;
+  /** Base64 PNG first frame at exactly the profile width and height. */
+  image?: string;
+}): Promise<{
   blob: Blob;
   format: Extract<Media, { kind: "video" }>["format"];
 }> {
   const cap = model.catalog.capabilities;
-  if (cap?.kind !== "video" || cap.mode !== "t2v")
+  if (cap?.kind !== "video" || cap.mode === "s2v")
     throw new Error(
       "Speech-to-video needs portrait and audio inputs, which Model Lab does not support yet.",
     );
@@ -161,7 +169,9 @@ export async function generateVideo({
             height: cap.height,
             frames: cap.frames,
             fps: cap.fps,
-            input: { kind: "text" },
+            input: image
+              ? { kind: "image", image: { format: "png", data: image } }
+              : { kind: "text" },
           },
           AbortSignal.timeout(30000),
         ),
@@ -194,7 +204,7 @@ export async function generateVideo({
       }
       if (job.status === "failed" || job.status === "cancelled")
         throw new Error(
-          `Video ${job.status}${job.cancellation_reason ? `: ${job.cancellation_reason}` : ". Check gateway diagnostics."}`,
+          `Video ${job.status}: ${job.error?.message ?? job.cancellation_reason ?? job.error?.code ?? "check gateway diagnostics"}`,
         );
       await pause(workSignal);
       job = jobSchema.parse(

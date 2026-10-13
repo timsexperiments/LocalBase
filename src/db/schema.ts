@@ -22,12 +22,18 @@ export const configTable = sqliteTable("config", {
   selectedTtsModels: text("selected_tts_models").notNull(),
   selectedImageModels: text("selected_image_models").notNull(),
   selectedVideoModels: text("selected_video_models").notNull(),
+  allowExperimental: integer("allow_experimental", { mode: "boolean" })
+    .default(false)
+    .notNull(),
   activeLlmModel: text("active_llm_model").notNull(),
   activeSttModel: text("active_stt_model").notNull(),
   activeTtsModel: text("active_tts_model").notNull(),
   activeImageModel: text("active_image_model").notNull(),
   activeVideoModel: text("active_video_model").notNull(),
   hfToken: text("hf_token").notNull(),
+  installMissingModels: integer("install_missing_models", { mode: "boolean" })
+    .default(false)
+    .notNull(),
   parallel: text("parallel").default("auto").notNull(),
   otelEndpoint: text("otel_endpoint").default("").notNull(),
   otelHeaders: text("otel_headers").default("").notNull(),
@@ -210,4 +216,16 @@ export const authSettingsTable = sqliteTable("auth_settings", {
     onDelete: "set null",
   }),
   updatedAt: text("updated_at").notNull(),
+});
+
+export const authBrowserSessionsTable = sqliteTable("auth_browser_sessions", {
+  tokenHash: text("token_hash").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  issuer: text("issuer").notNull(),
+  subject: text("subject").notNull(),
+  verifiedEmail: text("verified_email"),
+  createdAt: integer("created_at").notNull(),
+  lastSeenAt: integer("last_seen_at").notNull(),
+  idleExpiresAt: integer("idle_expires_at").notNull(),
+  absoluteExpiresAt: integer("absolute_expires_at").notNull(),
 });

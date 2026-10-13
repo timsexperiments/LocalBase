@@ -44,6 +44,7 @@ export interface AppContext {
   logger: ILogger;
   specs: HostSpecs;
   config: LocalBaseConfig;
+  defaultMaxTokens: number;
   database: DatabaseSession;
   initializationOperation?: OperationLease;
   otel: OtelRuntimeHolder;
@@ -108,6 +109,12 @@ const environmentOverridesSchema = z
       .transform(Number)
       .pipe(z.number().int().min(1))
       .optional(),
+    defaultMaxTokens: z
+      .string()
+      .regex(/^\d+$/, "LOCALBASE_DEFAULT_MAX_TOKENS must be an integer")
+      .transform(Number)
+      .pipe(z.number().int().positive())
+      .optional(),
   })
   .strict();
 
@@ -118,6 +125,7 @@ const environmentVariableNames: Record<string, string> = {
   sttHost: "LOCALBASE_STT_HOST",
   sttPort: "LOCALBASE_STT_PORT",
   ctxSize: "LOCALBASE_CTX_SIZE",
+  defaultMaxTokens: "LOCALBASE_DEFAULT_MAX_TOKENS",
 };
 
 export type EnvironmentOverrides = z.infer<typeof environmentOverridesSchema>;
@@ -132,6 +140,7 @@ export function parseEnvironmentOverrides(
     sttHost: environment.LOCALBASE_STT_HOST,
     sttPort: environment.LOCALBASE_STT_PORT,
     ctxSize: environment.LOCALBASE_CTX_SIZE,
+    defaultMaxTokens: environment.LOCALBASE_DEFAULT_MAX_TOKENS,
   });
   if (result.success) return result.data;
   throw new CliInputError(
@@ -252,6 +261,7 @@ export async function createAppContext(
       logger,
       specs,
       config,
+      defaultMaxTokens: overrides.defaultMaxTokens ?? 4096,
       database,
       otel,
       runtimeConfig,

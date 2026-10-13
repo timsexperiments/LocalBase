@@ -32,6 +32,7 @@ function makeContext(): AppContext {
     otelConfiguration,
     database,
     config,
+    defaultMaxTokens: 4096,
     runtimeConfig: new RuntimeConfigController(database, config.root, config),
     specs: {
       osName: "Test OS",

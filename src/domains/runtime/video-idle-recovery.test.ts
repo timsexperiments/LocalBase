@@ -3,9 +3,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { CATALOG } from "../../catalog";
 import { DatabaseSession } from "../../db/client";
 import { defaultConfig, saveConfig } from "../../manager";
+import { useSupportedVideoHost } from "../../test/video-host";
 import { createLogger } from "../observability/logging";
 import { createOtelRuntime, OtelRuntimeHolder } from "../observability/otel";
-import { admitVideoWithIdleRecovery } from "./commands/serve";
+import { admitModelWithIdleRecovery } from "./commands/serve";
 import { defaultMemorySafetyConfig, gibibyte } from "./memory-safety";
 import {
   MemorySafetyController,
@@ -19,6 +20,8 @@ import {
   SupervisorRegistry,
   type RuntimeSupervisor,
 } from "./supervisor-registry";
+
+useSupportedVideoHost();
 
 function insufficientMemory(): RuntimeMemoryAdmissionError {
   return new RuntimeMemoryAdmissionError({
@@ -128,7 +131,7 @@ test("video recovery preserves idle peers when releasing them cannot admit the r
     config.activeVideoModel = config.selectedVideoModels[0]!;
     saveConfig(database, config);
     const controller = new RuntimeConfigController(database, root, config);
-    const releaseLlm = await resident("llm:busy", 20);
+    const releaseLlm = await resident("llm:busy", 32);
     const releaseStt = await resident("stt:idle", 1);
     let sttKills = 0;
     const llm: RuntimeSupervisor = {
@@ -178,8 +181,9 @@ test("video recovery preserves idle peers when releasing them cannot admit the r
       );
       expect(afterIdleRelease?.decision.reason).toBe("system-memory");
       expect(afterIdleRelease?.capacity).toBeUndefined();
-      const result = await admitVideoWithIdleRecovery(
+      const result = await admitModelWithIdleRecovery(
         reconciler,
+        "video",
         config.selectedVideoModels[1]!,
         new AbortController().signal,
       );
@@ -203,7 +207,13 @@ test("video switch projection credits the old video generation and admits after 
   const root = mkdtempSync("/tmp/localbase-video-switch-recovery-");
   const database = new DatabaseSession();
   const config = defaultConfig(root, 48);
-  const videoModels = CATALOG.filter((model) => model.kind === "video");
+  const videoModels = CATALOG.filter(
+    (model) =>
+      model.kind === "video" &&
+      model.videoRuntime?.supportedTargets.some(
+        (target) => target.accelerator === "apple-unified",
+      ),
+  );
   const previousVideoModel = videoModels[0]?.modelId;
   const targetVideoModel = videoModels[1]?.modelId;
   if (!previousVideoModel || !targetVideoModel)
@@ -288,8 +298,9 @@ test("video switch projection credits the old video generation and admits after 
       persisted.activeVideoModel = targetVideoModel;
     });
     await reconciler.refresh();
-    const result = await admitVideoWithIdleRecovery(
+    const result = await admitModelWithIdleRecovery(
       reconciler,
+      "video",
       targetVideoModel,
       new AbortController().signal,
     );

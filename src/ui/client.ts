@@ -24,6 +24,17 @@ type MetadataCapabilities = NonNullable<
   ModelMetadata["catalog"]["capabilities"]
 >;
 type SpeechCapabilities = Extract<MetadataCapabilities, { kind: "speech" }>;
+type VideoMode = Extract<MetadataCapabilities, { kind: "video" }>["mode"];
+// Rejecting a mode the gateway serves hides the whole catalog, so list every one.
+const videoModes = [
+  "t2v",
+  "s2v",
+  "ti2v",
+] as const satisfies readonly VideoMode[];
+const everyVideoMode: [VideoMode] extends [(typeof videoModes)[number]]
+  ? true
+  : never = true;
+void everyVideoMode;
 type ClientCapabilities =
   | Extract<MetadataCapabilities, { kind: "embedding" }>
   | Extract<MetadataCapabilities, { kind: "video" }>
@@ -37,7 +48,7 @@ type ClientCapabilities =
 const capabilitiesSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("video"),
-    mode: z.enum(["t2v", "s2v"]),
+    mode: z.enum(videoModes),
     width: z.number().int().positive(),
     height: z.number().int().positive(),
     frames: z.number().int().positive(),
@@ -66,6 +77,7 @@ const modelSchema = z.object({
   catalog: z.object({
     name: z.string(),
     kind: z.enum(["llm", "image", "tts", "stt", "video"]),
+    qualificationState: z.enum(["qualified", "experimental"]),
     quantization: z.string(),
     memory: z.object({
       minimumVramEstimateGb: z.number().nonnegative(),
@@ -199,6 +211,8 @@ export type Message = {
   attachmentsMissing?: boolean;
   media?: Media;
   artifacts?: Artifact[];
+  /** Studio-only data URL of the image a result was based on, for comparison. */
+  source?: string;
   protocol?: ChatMessage[];
 };
 export type Conversation = {
@@ -292,9 +306,7 @@ export type Session = Connection & {
 export type SessionState =
   Session | { kind: "checking" } | { kind: "error"; message: string };
 export class SessionRequiredError extends Error {
-  constructor(
-    message = "Your sign-in is missing or expired. Sign in again, then refresh.",
-  ) {
+  constructor(message = "Your sign-in has expired.") {
     super(message);
   }
 }
@@ -335,6 +347,26 @@ export async function readSession(signal?: AbortSignal): Promise<Session> {
       : {}),
     ...(parsed.data.logoutUrl ? { logoutUrl: parsed.data.logoutUrl } : {}),
   };
+}
+const signInRedirectKey = "localbase.signInRedirectAt";
+const signInRedirectCooldownMs = 60_000;
+// Sends an expired session straight to sign-in. Returns false instead when a
+// sign-in just failed or was attempted moments ago, so a provider that cannot
+// complete sign-in shows a message rather than redirecting in a loop.
+export function redirectToSignIn(): boolean {
+  if (new URLSearchParams(location.search).has("signin")) return false;
+  try {
+    const last = Number(sessionStorage.getItem(signInRedirectKey));
+    if (Date.now() - last < signInRedirectCooldownMs) return false;
+    sessionStorage.setItem(signInRedirectKey, String(Date.now()));
+  } catch {
+    return false;
+  }
+  location.assign("/app/login");
+  return true;
+}
+export function signInFailed(): boolean {
+  return new URLSearchParams(location.search).get("signin") === "failed";
 }
 export async function logoutSession(): Promise<void> {
   const response = await fetch("/app/logout", {

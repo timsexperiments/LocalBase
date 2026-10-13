@@ -7,6 +7,7 @@ export type GatewayRoute =
   | "transcription"
   | "speechGeneration"
   | "imageGeneration"
+  | "imageEdit"
   | "videoCreate"
   | "videoStatus"
   | "videoContent"
@@ -33,6 +34,7 @@ export const gatewayHttpRoutes = [
   "/v1/audio/translations",
   "/v1/audio/speech",
   "/v1/images/generations",
+  "/v1/images/edits",
   "/v1/videos",
   "/v1/videos/{job_id}",
   "/v1/videos/{job_id}/content",
@@ -90,6 +92,8 @@ export function selectGatewayRoute(pathname: string): GatewayRoute {
       return "speechGeneration";
     case "/v1/images/generations":
       return "imageGeneration";
+    case "/v1/images/edits":
+      return "imageEdit";
     case "/v1/videos":
       return "videoCreate";
     case "/v1/chat/completions":
@@ -136,6 +140,8 @@ export function canonicalGatewayHttpRoute(value: string): GatewayHttpRoute {
       return "/v1/audio/speech";
     case "imageGeneration":
       return "/v1/images/generations";
+    case "imageEdit":
+      return "/v1/images/edits";
     case "videoCreate":
       return "/v1/videos";
     case "videoStatus":

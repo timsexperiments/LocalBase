@@ -294,6 +294,41 @@ test("sends the exact bounded speech-to-video inline payload", async () => {
   });
 });
 
+test("sends a qualified TI2V image as the backend init_image", async () => {
+  const image = testPng({ width: 2, height: 1 });
+  let body: unknown;
+  const request = Object.assign(
+    async (
+      _input: URL | RequestInfo,
+      init?: BunFetchRequestInit | RequestInit,
+    ) => {
+      body = JSON.parse(String(init?.body));
+      return Response.json(acceptedJob(), { status: 202 });
+    },
+    { preconnect() {} },
+  );
+  const client = createStableDiffusionVideoClient({
+    baseUrl: "http://127.0.0.1:2273",
+    fetch: request,
+  });
+  await client.submitVideo({
+    input: {
+      kind: "image",
+      prompt: "A boat crosses a lake.",
+      width: 2,
+      height: 1,
+      videoFrames: 16,
+      fps: 16,
+      outputFormat: "avi",
+      image: { format: "png", data: image },
+    },
+  });
+  expect(body).toMatchObject({
+    prompt: "A boat crosses a lake.",
+    init_image: image,
+  });
+});
+
 test("rejects malformed backend responses and responses over the configured limit", async () => {
   const backend = startBackend((request) => {
     const path = new URL(request.url).pathname;

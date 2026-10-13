@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import {
@@ -97,6 +97,33 @@ const qualificationReceiptSchema = z
 export const ARTIFACT_MANIFEST_FILENAME = "release-artifact-manifest.json";
 export const QUALIFICATION_RECEIPT_FILENAME =
   "release-artifact-qualification.json";
+export const RELEASE_BUILD_INFO_FILENAME = "release-build-info.json";
+
+export function assertPinnedBunVersion(actual: string, pinned: string): void {
+  if (actual !== pinned)
+    throw new Error(
+      `Cannot use Bun ${actual}; package.json pins bun@${pinned}. Run this command with the pinned Bun version.`,
+    );
+}
+
+export function assertBuildBunVersion(
+  builtWith: string | undefined,
+  pinned: string,
+): void {
+  if (builtWith !== pinned)
+    throw new Error(
+      `Cannot package build made with Bun ${builtWith ?? "unknown"}; notices require Bun ${pinned}. Rebuild with the pinned Bun version.`,
+    );
+}
+
+async function pinnedBunVersion(): Promise<string> {
+  const packageManager = JSON.parse(await Bun.file("package.json").text())
+    .packageManager as string;
+  const pinned = /^bun@(.+)$/.exec(packageManager)?.[1];
+  if (!pinned)
+    throw new Error(`Unsupported packageManager value: ${packageManager}.`);
+  return pinned;
+}
 
 export function releaseArtifactFilenames(target: ReleaseTarget): string[] {
   return [cliFilename(target)];
@@ -257,6 +284,8 @@ export async function buildReleaseArtifacts(
   target: ReleaseTarget,
   directory: string,
 ): Promise<void> {
+  const pinnedVersion = await pinnedBunVersion();
+  assertPinnedBunVersion(Bun.version, pinnedVersion);
   const { buildUi } = await import("./build-ui");
   await buildUi();
   await mkdir(directory, { recursive: true });
@@ -283,6 +312,96 @@ export async function buildReleaseArtifacts(
       throw new Error(`bun build failed for ${filename}.`);
   };
   await build("src/cli.ts", cliFilename(target));
+  await Bun.write(
+    artifactPath(directory, RELEASE_BUILD_INFO_FILENAME),
+    `${JSON.stringify({ bunVersion: Bun.version }, null, 2)}\n`,
+  );
+  console.log(`Built ${cliFilename(target)} with Bun ${Bun.version}`);
+}
+
+async function run(command: string, args: string[]) {
+  const child = Bun.spawn([command, ...args], {
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  if ((await child.exited) !== 0)
+    throw new Error(`${command} failed while packaging release artifacts.`);
+}
+
+export async function packageReleaseArtifact(
+  target: ReleaseTarget,
+  directory: string,
+) {
+  const pinnedVersion = await pinnedBunVersion();
+  assertPinnedBunVersion(Bun.version, pinnedVersion);
+  let buildInfo: { bunVersion?: string };
+  try {
+    buildInfo = JSON.parse(
+      await Bun.file(
+        artifactPath(directory, RELEASE_BUILD_INFO_FILENAME),
+      ).text(),
+    );
+  } catch (error) {
+    throw new Error("Missing or invalid release build version record.", {
+      cause: error,
+    });
+  }
+  assertBuildBunVersion(buildInfo.bunVersion, pinnedVersion);
+  const output = resolve(directory);
+  const cli = artifactPath(output, cliFilename(target));
+  const license = resolve("LICENSE");
+  if (!(await Bun.file(license).exists()))
+    throw new Error("Missing root LICENSE file (expected AGPL-3.0 license).");
+  const noticesPath = join(output, "THIRD_PARTY_NOTICES.txt");
+  const notices = await import("./release-notices");
+  await Bun.write(noticesPath, await notices.generateReleaseNotices());
+  await cp(license, join(output, "LICENSE"));
+  const archive = artifactPath(output, releasePackageFilename(target));
+  await rm(archive, { force: true });
+  if (target.startsWith("macos-")) {
+    await run("zip", [
+      "-j",
+      archive,
+      cli,
+      join(output, "LICENSE"),
+      noticesPath,
+    ]);
+  } else {
+    await run("tar", [
+      "-czf",
+      archive,
+      "-C",
+      output,
+      cliFilename(target),
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.txt",
+    ]);
+  }
+  console.log(
+    `Packaged ${releasePackageFilename(target)} with ${cliFilename(target)}, LICENSE, THIRD_PARTY_NOTICES.txt`,
+  );
+}
+
+async function dryRun() {
+  const platform =
+    process.platform === "darwin"
+      ? "macos"
+      : process.platform === "linux"
+        ? "linux"
+        : "unsupported";
+  const arch =
+    process.arch === "arm64"
+      ? "arm64"
+      : process.arch === "x64"
+        ? "x64"
+        : "unsupported";
+  const target = releaseTargetSchema.parse(`${platform}-${arch}`);
+  const output = `release-artifacts/dry-run/${target}`;
+  await buildReleaseArtifacts(target, output);
+  await packageReleaseArtifact(target, output);
+  console.log(
+    `Dry run file list (${target}):\n${[cliFilename(target), "LICENSE", "THIRD_PARTY_NOTICES.txt", releasePackageFilename(target)].map((name) => `- ${name}`).join("\n")}`,
+  );
 }
 
 export async function qualifyArtifactDirectory(
@@ -385,6 +504,7 @@ const commandSchema = z.enum([
   "verify-package",
   "qualify",
   "stage",
+  "package",
 ]);
 function options(args: string[]) {
   const result: Record<string, string | string[]> = {};
@@ -401,6 +521,7 @@ function options(args: string[]) {
 }
 
 async function main() {
+  if (Bun.argv[2] === "--dry-run") return dryRun();
   const command = commandSchema.parse(Bun.argv[2]);
   const raw = options(Bun.argv.slice(3));
   if (command === "stage") {
@@ -415,6 +536,7 @@ async function main() {
   const target = releaseTargetSchema.parse(raw.target);
   const output = z.string().min(1).parse(raw.output);
   if (command === "build") await buildReleaseArtifacts(target, output);
+  else if (command === "package") await packageReleaseArtifact(target, output);
   else if (command === "manifest") await writeArtifactManifest(target, output);
   else if (command === "verify") await verifyArtifactDirectory(target, output);
   else {

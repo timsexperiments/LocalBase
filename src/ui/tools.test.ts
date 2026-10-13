@@ -44,6 +44,7 @@ function fixture(
           name: id,
           kind,
           quantization: "test",
+          qualificationState: "qualified",
           memory: { minimumVramEstimateGb: 1, storageEstimateGb: 1 },
           features: ["tool-calling"],
           inputModalities: ["text"],

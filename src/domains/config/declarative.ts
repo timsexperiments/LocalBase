@@ -1,8 +1,13 @@
 import { z } from "zod";
-import { type DatabaseSession } from "../../db/client";
-import { type LocalBaseConfig, saveConfig } from "../../manager";
+import { existsSync } from "node:fs";
+import { databasePath, type DatabaseSession } from "../../db/client";
+import {
+  detectHostVideoTarget,
+  type LocalBaseConfig,
+  saveConfig,
+} from "../../manager";
 import { CliInputError, formatZodError } from "../app/commands/errors";
-import { modelConfigurationSchema } from "../models/model-selection";
+import { createModelConfigurationSchema } from "../models/model-selection";
 import { memorySafetyConfigSchema } from "../runtime/memory-safety";
 import { configFieldOwnership } from "../runtime/reconciliation-plan";
 import { parallelSlotsSchema } from "./parallel";
@@ -12,26 +17,42 @@ import {
   savedStaticConfiguration,
   staticConfigurationChanged,
 } from "./activation";
+import { byId } from "../../catalog";
+import { modelEligibilityReason } from "../models/model-eligibility";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 
-export const desiredConfigurationSchema = z
-  .object({
-    version: z.literal(1),
-    gateway: z.object({ host: hostSchema, port: portSchema }).strict(),
-    runtime: z
-      .object({
-        host: hostSchema,
-        port: portSchema,
-        ctxSize: z.number().int().min(2048).max(2_147_483_647),
-        parallel: parallelSlotsSchema,
-        sttHost: hostSchema,
-        sttPort: portSchema,
-      })
-      .strict(),
-    models: modelConfigurationSchema,
-    memory: memorySafetyConfigSchema,
-  })
-  .strict();
+export function createDesiredConfigurationSchema(
+  videoTarget = detectHostVideoTarget(),
+  checkVideoEligibility = true,
+) {
+  return z
+    .object({
+      version: z.literal(1),
+      gateway: z.object({ host: hostSchema, port: portSchema }).strict(),
+      runtime: z
+        .object({
+          host: hostSchema,
+          port: portSchema,
+          ctxSize: z.number().int().min(2048).max(2_147_483_647),
+          parallel: parallelSlotsSchema,
+          sttHost: hostSchema,
+          sttPort: portSchema,
+        })
+        .strict(),
+      models: createModelConfigurationSchema(
+        videoTarget,
+        true,
+        checkVideoEligibility,
+      ),
+      memory: memorySafetyConfigSchema,
+    })
+    .strict();
+}
+
+export const desiredConfigurationSchema = createDesiredConfigurationSchema(
+  undefined,
+  false,
+);
 
 export type DesiredConfiguration = z.infer<typeof desiredConfigurationSchema>;
 
@@ -76,7 +97,9 @@ export function parseConfiguration(text: string): DesiredConfiguration {
     // Parser diagnostics can contain source text, including accidentally pasted secrets.
     throw new CliInputError("Invalid TOML configuration.");
   }
-  const parsed = desiredConfigurationSchema.safeParse(value);
+  const parsed = createDesiredConfigurationSchema(undefined, false).safeParse(
+    value,
+  );
   if (!parsed.success) throw new CliInputError(formatZodError(parsed.error));
   return normalize(parsed.data);
 }
@@ -85,7 +108,7 @@ export function configurationDocument(
   config: LocalBaseConfig,
 ): DesiredConfiguration {
   return normalize(
-    desiredConfigurationSchema.parse({
+    createDesiredConfigurationSchema(undefined, false).parse({
       version: 1,
       gateway: { host: config.gatewayHost, port: config.gatewayPort },
       runtime: {
@@ -97,6 +120,7 @@ export function configurationDocument(
         sttPort: config.sttPort,
       },
       models: {
+        allowExperimental: config.allowExperimental,
         selectedLlmModels: config.selectedLlmModels,
         selectedSttModels: config.selectedSttModels,
         selectedTtsModels: config.selectedTtsModels,
@@ -140,6 +164,17 @@ export function planConfiguration(
   desired: DesiredConfiguration,
   pendingRestart = false,
 ): ConfigurationPlan {
+  const previousVideoModels = new Set(current?.selectedVideoModels ?? []);
+  for (const modelId of desired.models.selectedVideoModels) {
+    if (previousVideoModels.has(modelId)) continue;
+    const model = byId(modelId);
+    if (!model) continue;
+    const reason = modelEligibilityReason(model, {
+      allowExperimental: desired.models.allowExperimental,
+      target: detectHostVideoTarget(),
+    });
+    if (reason) throw new CliInputError(`${modelId}: ${reason}`);
+  }
   const before = current ? configurationDocument(current) : undefined;
   const after = normalize(desired);
   const changes: ConfigurationPlan["changes"] = [];
@@ -203,6 +238,25 @@ export function persistConfiguration(
   config: LocalBaseConfig,
 ): void {
   configurationDocument(config);
+  if (!existsSync(databasePath(config.root))) {
+    const eligibility = createModelConfigurationSchema(
+      detectHostVideoTarget(),
+    ).safeParse({
+      allowExperimental: config.allowExperimental,
+      selectedLlmModels: config.selectedLlmModels,
+      selectedSttModels: config.selectedSttModels,
+      selectedTtsModels: config.selectedTtsModels,
+      selectedImageModels: config.selectedImageModels,
+      selectedVideoModels: config.selectedVideoModels,
+      activeLlmModel: config.activeLlmModel,
+      activeSttModel: config.activeSttModel,
+      activeTtsModel: config.activeTtsModel,
+      activeImageModel: config.activeImageModel,
+      activeVideoModel: config.activeVideoModel,
+    });
+    if (!eligibility.success)
+      throw new CliInputError(formatZodError(eligibility.error));
+  }
   ensureLocalBaseRootMarker(config.root);
   const db = database.get(config.root);
   db.transaction(

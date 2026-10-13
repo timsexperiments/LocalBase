@@ -43,6 +43,7 @@ import {
   computeSha256,
   parseChecksumFile,
   readChecksumStore,
+  type ChecksumStore,
   verifyAuthoritativeFile,
   withChecksumStoreLock,
   writeChecksumStore,
@@ -52,6 +53,7 @@ import {
   readLogSnapshot,
 } from "./domains/observability/logging";
 import { installSelectedModel } from "./domains/runtime/supervisor-factory";
+import * as managerModule from "./manager";
 
 const testRoots: string[] = [];
 const testModelIds: string[] = [];
@@ -127,7 +129,9 @@ async function createArtifactServer(
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
+    const port =
+      24_000 + (crypto.getRandomValues(new Uint16Array(1))[0]! % 6_000);
+    server.listen(port, "127.0.0.1", resolve);
   });
   testServerClosers.push(
     () =>
@@ -194,6 +198,24 @@ function createInstallConfig(): LocalBaseConfig {
   return defaultConfig(root);
 }
 
+test("fresh configuration defaults to the tool-capable Qwen 7B model", () => {
+  expect(defaultConfig("/tmp/local-base-default-model").activeLlmModel).toBe(
+    "qwen2.5-coder-7b-instruct-q4_k_m",
+  );
+});
+
+test("lazy supervisor installation refuses without serve consent", async () => {
+  await expect(
+    installSelectedModel(
+      {} as Parameters<typeof installSelectedModel>[0],
+      createInstallConfig(),
+      "llm",
+      "lazy-test-model",
+      "missing",
+    ),
+  ).rejects.toThrow(/models install lazy-test-model.*--install-missing/);
+});
+
 function artifactPath(
   source: string,
   sourcePath: string,
@@ -254,6 +276,68 @@ afterEach(async () => {
 });
 
 describe.serial("transactional model artifact installation", () => {
+  test("persisted ineligible video selections can be reduced or edited", () => {
+    const root = mkdtempSync(join(tmpdir(), "localbase-ineligible-config-"));
+    testRoots.push(root);
+    const database = new DatabaseSession();
+    const config = defaultConfig(root);
+    saveConfig(database, config);
+    const detection = spyOn(managerModule, "detectHostVideoTarget");
+    const linuxNvidia = {
+      platform: "linux",
+      architecture: "x64",
+      accelerator: "nvidia",
+    } as const;
+    try {
+      detection.mockReturnValue(linuxNvidia);
+      config.allowExperimental = true;
+      config.selectedVideoModels = [
+        "wan2.2-s2v-14b-fp8",
+        "wan2.1-t2v-1.3b-q8_0",
+      ];
+      config.activeVideoModel = config.selectedVideoModels[0]!;
+      saveConfig(database, config);
+
+      detection.mockReturnValue(null);
+      config.selectedVideoModels = ["wan2.1-t2v-1.3b-q8_0"];
+      config.activeVideoModel = config.selectedVideoModels[0]!;
+      expect(() => saveConfig(database, config)).not.toThrow();
+
+      config.gatewayPort += 1;
+      expect(() => saveConfig(database, config)).not.toThrow();
+
+      config.selectedVideoModels = [
+        "wan2.1-t2v-1.3b-q8_0",
+        "wan2.2-s2v-14b-fp8",
+      ];
+      config.activeVideoModel = "wan2.2-s2v-14b-fp8";
+      expect(() => saveConfig(database, config)).toThrow(
+        "Requires Linux x64 with a single NVIDIA GPU",
+      );
+    } finally {
+      detection.mockRestore();
+      database.close();
+    }
+  });
+
+  test("refuses the experimental S2V profile before creating directories or downloading", async () => {
+    const config = createInstallConfig();
+    const fetchSpy = spyOn(globalThis, "fetch");
+    try {
+      await expect(installModel(config, "wan2.2-s2v-14b-fp8")).rejects.toThrow(
+        "models.allowExperimental = true",
+      );
+      config.allowExperimental = true;
+      await expect(installModel(config, "wan2.2-s2v-14b-fp8")).rejects.toThrow(
+        "Requires Linux x64 with a single NVIDIA GPU",
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(existsSync(config.videoModelsDir)).toBe(false);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   test.each([
     { source: "https://huggingface.co/test/model", authenticated: true },
     { source: "http://huggingface.co/test/model", authenticated: false },
@@ -695,6 +779,7 @@ describe.serial("transactional model artifact installation", () => {
           "llm",
           hashModel,
           "incomplete",
+          true,
         ),
       ).rejects.toThrow("Checksum mismatch");
     } finally {
@@ -1123,6 +1208,23 @@ describe.serial("checksum inputs and continuity cache", () => {
     }
   });
 
+  test("sanitizes terminal controls in invalid checksum cache warnings", async () => {
+    const root = mkdtempSync(
+      join(tmpdir(), "local-base-checksum-\x1b[31mred\x1b[0m\rhidden-"),
+    );
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await Bun.write(join(root, ".checksums.json"), "{not json");
+      await readChecksumStore(root);
+      const message = String(warn.mock.calls[0]?.[0]);
+      expect(message).toContain("redhidden");
+      expect(message).not.toMatch(/[\x1b\r]/);
+    } finally {
+      warn.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("merges concurrent verifications in the same directory", async () => {
     const root = createInstallConfig().root;
     const contents = { "a.bin": "first model", "b.bin": "second model" };
@@ -1159,6 +1261,35 @@ describe.serial("checksum inputs and continuity cache", () => {
     expect(readdirSync(root).filter((name) => name.endsWith(".tmp"))).toEqual(
       [],
     );
+  });
+
+  test("reads a whole checksum store while a writer replaces it", async () => {
+    const root = createInstallConfig().root;
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await writeChecksumStore(root, { version: 1, entries: {} });
+      let writing = true;
+      const writer = (async () => {
+        for (let n = 0; writing; n++) {
+          const entries: Record<string, ChecksumStore["entries"][string]> = {};
+          for (let i = 0; i <= n % 40; i++) {
+            entries[`model-${i}.bin`] = {
+              authoritativeSha256: "a".repeat(64),
+              expectedSizeBytes: 1,
+              file: { size: 1, mtimeMs: 1, ctimeMs: 1, dev: 1, ino: i },
+            };
+          }
+          await writeChecksumStore(root, { version: 1, entries });
+        }
+      })();
+      const deadline = Date.now() + 500;
+      while (Date.now() < deadline) await readChecksumStore(root);
+      writing = false;
+      await writer;
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test("merges verifications from separate processes without losing entries", async () => {

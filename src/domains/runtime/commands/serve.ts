@@ -2,6 +2,7 @@ import { acknowledgeStaticConfiguration } from "../../config/activation";
 import { z } from "zod";
 import { SpanStatusCode, context, trace } from "@opentelemetry/api";
 import { join, basename } from "node:path";
+import { validateJpegImage, validatePngImage } from "../image-validation";
 import { resolveApiKey, type LocalBaseConfig } from "../../../manager";
 import {
   authorize,
@@ -12,6 +13,7 @@ import {
   type Principal,
 } from "../../auth/authorization";
 import { resolveAccessControl } from "../../auth/access-control";
+import { createDatabaseBrowserSessionStore } from "../../auth/browser-sessions";
 import {
   clearMagicLinks,
   createMagicLinkService,
@@ -94,6 +96,7 @@ import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
 import { playgroundResponse } from "../../../ui/static";
 import { createModelManagement } from "../../models/model-management";
+import { videoTargetFromTopology } from "../../models/model-eligibility";
 import {
   ModelManagementError,
   modelManagementRequestSchema,
@@ -115,6 +118,8 @@ import { videoCreateRequestSchema } from "../video/gateway-contract";
 import {
   acquireGatewayLease,
   acquireGatewayLeaseForServe,
+  getGatewayInstanceStateAtRoot,
+  RootOwnershipError,
 } from "../../service/ownership";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ServeInput } from "../../app/commands/inputs";
@@ -128,6 +133,12 @@ import {
   type OtelRuntime,
 } from "../../observability/otel";
 import { gatewayIdentitySchema } from "../health";
+import {
+  assertServePortsAvailable,
+  assertModelInstallConsent,
+  installMissingModel,
+  ModelInstallConsentError,
+} from "../startup-preflight";
 import { createAuthManagement } from "../../auth/management-http";
 import {
   openAIErrorResponseSchema,
@@ -147,6 +158,18 @@ import {
 type AuthMode = "bearer" | "x-api-key" | "either";
 
 type ModalityState = Record<RuntimeModality, boolean>;
+function serveModalityState(
+  config: LocalBaseConfig,
+  input: ServeInput,
+): ModalityState {
+  return {
+    llm: input.llm ?? true,
+    stt: input.stt ?? config.selectedSttModels.length > 0,
+    tts: input.tts ?? config.selectedTtsModels.length > 0,
+    image: input.image ?? config.selectedImageModels.length > 0,
+    video: input.video ?? config.selectedVideoModels.length > 0,
+  };
+}
 type AdmittedModel = Extract<
   ModelAdmissionResult,
   { kind: "admitted" }
@@ -205,6 +228,8 @@ function printUnifiedNextSteps(
     output.info(
       `OpenAI-compatible Image endpoint: ${baseUrl}/v1/images/generations`,
     );
+  if (enabled.image)
+    output.info(`Image edits endpoint: ${baseUrl}/v1/images/edits`);
   if (enabled.tts) {
     output.info("\nExample TTS request (Bearer):");
     output.info(
@@ -341,12 +366,12 @@ function notConfigured(feature: string): Response {
   );
 }
 
-function badRequest(message: string): Response {
+function badRequest(message: string, param: string | null = null): Response {
   return openAIErrorResponse(
     {
       message,
       type: "invalid_request_error",
-      param: null,
+      param,
       code: "validation_failed",
     },
     400,
@@ -393,28 +418,38 @@ function modelNotFound(model: string): Response {
   );
 }
 
-function payloadTooLarge(): Response {
+function payloadTooLarge(limit = MAX_REQUEST_BYTES): Response {
   return openAIErrorResponse(
     {
-      message: `Request body exceeds the ${MAX_REQUEST_BYTES / (1024 * 1024)} MiB limit.`,
+      message: `Request body exceeds the ${limit / (1024 * 1024)} MiB limit.`,
       type: "invalid_request_error",
       param: null,
       code: "payload_too_large",
     },
     413,
+    // The rest of the body may still be in flight, so do not reuse this connection.
+    { connection: "close" },
   );
 }
 
+function upstreamError(message: string): OpenAIError {
+  return openAIErrorResponseSchema.shape.error.parse({
+    message,
+    type: "server_error",
+    param: null,
+    code: "upstream_error",
+  });
+}
+
 function upstreamFailure(message: string): Response {
-  return openAIErrorResponse(
-    {
-      message,
-      type: "server_error",
-      param: null,
-      code: "upstream_error",
-    },
-    502,
-  );
+  return openAIErrorResponse(upstreamError(message), 502);
+}
+
+function upstreamErrorEvent(message: string): Uint8Array {
+  const error = openAIErrorResponseSchema.parse({
+    error: upstreamError(message),
+  });
+  return new TextEncoder().encode(`data: ${JSON.stringify(error)}\n\n`);
 }
 
 /** Whisper reports failures as JSON bodies; successful text formats are never JSON-typed. */
@@ -447,10 +482,29 @@ function speechTimeout(): Response {
   );
 }
 
+function modelInstallConsentResponse(
+  error: ModelInstallConsentError,
+): Response {
+  return openAIErrorResponse(
+    {
+      message: error.message,
+      type: "invalid_request_error",
+      param: "model",
+      code: "model_install_consent_required",
+    },
+    409,
+  );
+}
+
 export function speechGenerationFailure(error: unknown): Readonly<{
   response: Response;
   source?: InferenceTerminalSource;
 }> {
+  if (error instanceof ModelInstallConsentError) {
+    return {
+      response: modelInstallConsentResponse(error),
+    };
+  }
   if (error instanceof RuntimeMemoryAdmissionError) {
     return {
       response: resourceUnavailable(error),
@@ -495,7 +549,12 @@ function validationFailure(error: z.ZodError): Response {
   const issues = error.issues
     .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
     .join(", ");
-  return badRequest(`Validation failed: ${issues}`);
+  const param = error.issues.some(
+    (issue) => issue.path[0] === "response_format",
+  )
+    ? "response_format"
+    : null;
+  return badRequest(`Validation failed: ${issues}`, param);
 }
 
 const chatToolCallSchema = z
@@ -668,6 +727,7 @@ const chatCompletionRequestSchema = z
       .nullable()
       .optional(),
     max_tokens: z.number().positive().optional(),
+    max_completion_tokens: z.number().positive().optional(),
     presence_penalty: z.number().min(-2).max(2).optional(),
     frequency_penalty: z.number().min(-2).max(2).optional(),
     logit_bias: z.record(z.string(), z.number()).nullable().optional(),
@@ -697,6 +757,32 @@ const chatCompletionRequestSchema = z
 
 type ChatCompletionRequest = z.output<typeof chatCompletionRequestSchema>;
 
+function stripNoopToolFields(
+  request: ChatCompletionRequest,
+): ChatCompletionRequest {
+  const { tools, functions, tool_choice, function_call, messages, ...rest } =
+    request;
+  return {
+    ...rest,
+    ...(tools?.length ? { tools } : {}),
+    ...(functions !== undefined &&
+    !(Array.isArray(functions) && functions.length === 0)
+      ? { functions }
+      : {}),
+    ...(tool_choice && tool_choice !== "none" ? { tool_choice } : {}),
+    ...(function_call !== undefined && function_call !== "none"
+      ? { function_call }
+      : {}),
+    messages: messages.map((message) => {
+      if (message.role !== "assistant" || message.tool_calls?.length) {
+        return message;
+      }
+      const { tool_calls: _emptyToolCalls, ...assistantMessage } = message;
+      return assistantMessage;
+    }),
+  } as ChatCompletionRequest;
+}
+
 function prepareChatCompletionRequest(
   request: ChatCompletionRequest,
 ): ChatCompletionRequest {
@@ -715,14 +801,62 @@ function prepareChatCompletionRequest(
   };
 }
 
-const imageGenerationRequestSchema = z
-  .object({
-    prompt: z.string(),
+export const IMAGE_SIZES = [
+  "256x256",
+  "512x512",
+  "1024x1024",
+  "512x768",
+  "768x512",
+  "768x1024",
+  "1024x768",
+] as const;
+
+// Tuning fields stable-diffusion.cpp reads from an inline sd_cpp_extra_args block.
+const imageTuningSchema = z.object({
+  negative_prompt: z
+    .string()
+    .max(16_384)
+    .refine(
+      (value) => !value.toLowerCase().includes("sd_cpp_extra_args"),
+      "negative_prompt must not contain sd_cpp_extra_args.",
+    )
+    .optional(),
+  seed: z.number().int().min(0).max(2_147_483_647).optional(),
+  steps: z.number().int().min(1).max(150).optional(),
+  cfg_scale: z.number().min(0).max(30).optional(),
+  strength: z.number().min(0).max(1).optional(),
+});
+type ImageTuning = z.infer<typeof imageTuningSchema>;
+
+export function promptWithImageTuning(prompt: string, tuning: ImageTuning) {
+  const extra: Record<string, unknown> = {};
+  if (tuning.negative_prompt) extra.negative_prompt = tuning.negative_prompt;
+  if (tuning.seed !== undefined) extra.seed = tuning.seed;
+  if (tuning.strength !== undefined) extra.strength = tuning.strength;
+  const sample: Record<string, unknown> = {};
+  if (tuning.steps !== undefined) sample.sample_steps = tuning.steps;
+  if (tuning.cfg_scale !== undefined)
+    sample.guidance = { txt_cfg: tuning.cfg_scale };
+  if (Object.keys(sample).length) extra.sample_params = sample;
+  return Object.keys(extra).length
+    ? `${prompt} <sd_cpp_extra_args>${JSON.stringify(extra)}</sd_cpp_extra_args>`
+    : prompt;
+}
+
+const imageGenerationRequestSchema = imageTuningSchema
+  .omit({ strength: true })
+  .extend({
+    prompt: z
+      .string()
+      .refine(
+        (value) => !value.toLowerCase().includes("sd_cpp_extra_args"),
+        "prompt must not contain sd_cpp_extra_args.",
+      ),
     model: modelIdSchema.optional(),
     n: z.number().min(1).max(10).optional(),
     quality: z.enum(["standard", "hd"]).optional(),
     response_format: z.enum(["url", "b64_json"]).optional(),
-    size: z.enum(["256x256", "512x512", "1024x1024"]).optional(),
+    size: z.enum(IMAGE_SIZES).optional(),
     style: z.enum(["vivid", "natural"]).optional(),
     user: z.string().optional(),
   })
@@ -742,9 +876,11 @@ const speechGenerationRequestSchema = z
         `input must not exceed ${SPEECH_MAX_INPUT_CHARACTERS} characters`,
       ),
     voice: speechVoiceSchema,
-    response_format: z.literal("wav", {
-      error: "response_format must be explicitly set to 'wav'",
-    }),
+    response_format: z
+      .enum(["wav"], {
+        error: "response_format supports only 'wav'",
+      })
+      .default("wav"),
     speed: z.literal(1, { error: "speed must be 1" }).optional(),
     instructions: z
       .never({ error: "instructions are not supported" })
@@ -1069,6 +1205,30 @@ function requestExceedsSizeLimit(
   return !Number.isSafeInteger(size) || size < 0 || size > limit;
 }
 
+function imageMimeFromMagic(bytes: Uint8Array): string | undefined {
+  if (
+    bytes.length >= 8 &&
+    [137, 80, 78, 71, 13, 10, 26, 10].every(
+      (value, index) => bytes[index] === value,
+    )
+  )
+    return "image/png";
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  )
+    return "image/jpeg";
+  return undefined;
+}
+
+function requestBodyBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
 async function readBoundedRequestBody(
   request: Request,
   limit = MAX_REQUEST_BYTES,
@@ -1237,7 +1397,7 @@ function validateEventStream(
       param: null,
       code: "upstream_error",
     },
-  })}\n\ndata: [DONE]\n\n`;
+  })}\n\n`;
 
   const fail = (
     controller: TransformStreamDefaultController<Uint8Array>,
@@ -1334,9 +1494,11 @@ function validateEventStream(
       },
       flush(controller) {
         buffered += decoder.decode();
-        if (buffered && !flushEvent(controller, buffered, false, false)) return;
+        // An SSE event is only complete after its blank-line delimiter.
+        const hasUnframedEvent = buffered.length > 0;
+        buffered = "";
         if (failed) return;
-        if (!doneEvent) {
+        if (hasUnframedEvent || !doneEvent) {
           fail(controller, false);
           return;
         }
@@ -1344,6 +1506,71 @@ function validateEventStream(
       },
     }),
   );
+}
+
+export function recoverEventStreamReadErrors(
+  body: ReadableStream<Uint8Array>,
+  onError?: () => void,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffered = "";
+  let failed = false;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    reader.releaseLock();
+  };
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (failed) return;
+      try {
+        while (true) {
+          const result = await reader.read();
+          if (result.done) {
+            buffered += decoder.decode();
+            if (buffered) {
+              buffered = "";
+              onError?.();
+              controller.enqueue(
+                upstreamErrorEvent("The upstream stream ended mid-event."),
+              );
+            }
+            controller.close();
+            release();
+            return;
+          }
+          buffered += decoder.decode(result.value, { stream: true });
+          const boundaries = [
+            ...buffered.matchAll(/(?:\r\n|\r|\n)(?:\r\n|\r|\n)/g),
+          ];
+          const last = boundaries.at(-1);
+          if (last?.index !== undefined) {
+            const end = last.index + last[0].length;
+            controller.enqueue(encoder.encode(buffered.slice(0, end)));
+            buffered = buffered.slice(end);
+            return;
+          }
+        }
+      } catch {
+        failed = true;
+        onError?.();
+        buffered = "";
+        controller.enqueue(upstreamErrorEvent("The upstream stream failed."));
+        controller.close();
+        release();
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        release();
+      }
+    },
+  });
 }
 
 function inferenceMetadata(
@@ -1462,7 +1689,9 @@ async function proxyRequest(
     headers.delete("content-length");
     return new Response(
       validateEventStream(
-        upstream.body,
+        recoverEventStreamReadErrors(upstream.body, () =>
+          onInvalidEvent?.(502),
+        ),
         eventStreamSchema,
         (value) => onValidatedEvent?.(value, upstream.status),
         () => onInvalidEvent?.(upstream.status),
@@ -1605,6 +1834,7 @@ export function withResponseLease(
   }
 
   let completed = false;
+  let readerReleased = false;
   let removeAbortListener = () => {};
   const settleOnce = (terminal: InferenceTerminal) => {
     if (completed) return;
@@ -1615,13 +1845,25 @@ export function withResponseLease(
     onSettled?.(terminal);
   };
   const reader = response.body.getReader();
+  const releaseReader = () => {
+    if (readerReleased) return;
+    readerReleased = true;
+    reader.releaseLock();
+  };
+  const cancelReader = async (reason?: unknown) => {
+    try {
+      await reader.cancel(reason);
+    } finally {
+      releaseReader();
+    }
+  };
   const cancelForRequestAbort = () => {
     settleOnce({
       outcome: "cancelled",
       httpStatus: response.status,
       source: "request_aborted",
     });
-    void reader.cancel(requestSignal.reason);
+    void cancelReader(requestSignal.reason);
   };
   requestSignal.addEventListener("abort", cancelForRequestAbort, {
     once: true,
@@ -1635,6 +1877,7 @@ export function withResponseLease(
         const { done, value } = await reader.read();
         if (done) {
           settleOnce({ outcome: "completed", httpStatus: response.status });
+          releaseReader();
           controller.close();
           return;
         }
@@ -1645,6 +1888,7 @@ export function withResponseLease(
           httpStatus: response.status,
           source: "response_stream_error",
         });
+        releaseReader();
         controller.error(error);
       }
     },
@@ -1654,7 +1898,7 @@ export function withResponseLease(
         httpStatus: response.status,
         source: "response_cancelled",
       });
-      await reader.cancel(reason);
+      await cancelReader(reason);
     },
   });
 
@@ -1882,6 +2126,19 @@ export async function proxyWithAdmission(
       });
       return response;
     }
+    if (error instanceof ModelInstallConsentError) {
+      const response = openAIErrorResponse(
+        {
+          message: error.message,
+          type: "invalid_request_error",
+          param: "model",
+          code: "model_install_consent_required",
+        },
+        409,
+      );
+      onSettled?.({ outcome: "error", httpStatus: response.status });
+      return response;
+    }
     const response = serviceUnavailable(serviceName);
     onSettled?.({ outcome: "error", httpStatus: response.status });
     return response;
@@ -1953,27 +2210,30 @@ export async function applyElevatedMemoryPressure(
   }
 }
 
-export async function admitVideoWithIdleRecovery(
+export async function admitModelWithIdleRecovery(
   reconciler: Pick<
     RuntimeReconciler,
     "admitModel" | "recoverWithIdleEviction" | "waitForAdmissionAfterEviction"
   >,
+  modality: RuntimeModality,
   modelId: string,
   signal: AbortSignal,
 ): Promise<Awaited<ReturnType<RuntimeReconciler["admitModel"]>>> {
-  const first = await reconciler.admitModel("video", modelId, signal);
+  const first = await reconciler.admitModel(modality, modelId, signal);
   if (
     first.kind === "insufficient-memory" &&
     first.error.capacity === undefined
   ) {
     signal.throwIfAborted();
-    if (!(await reconciler.recoverWithIdleEviction("video", modelId, signal))) {
+    if (
+      !(await reconciler.recoverWithIdleEviction(modality, modelId, signal))
+    ) {
       return first;
     }
     signal.throwIfAborted();
     if (
       !(await reconciler.waitForAdmissionAfterEviction(
-        "video",
+        modality,
         modelId,
         signal,
       ))
@@ -1981,7 +2241,7 @@ export async function admitVideoWithIdleRecovery(
       return first;
     }
     signal.throwIfAborted();
-    const retry = await reconciler.admitModel("video", modelId, signal);
+    const retry = await reconciler.admitModel(modality, modelId, signal);
     return retry.kind === "admitted" ? retry : first;
   }
   if (first.kind !== "admitted") return first;
@@ -1993,13 +2253,15 @@ export async function admitVideoWithIdleRecovery(
     await current.admission.supervisor.kill();
     signal.throwIfAborted();
     if (error.capacity !== undefined) throw error;
-    if (!(await reconciler.recoverWithIdleEviction("video", modelId, signal))) {
+    if (
+      !(await reconciler.recoverWithIdleEviction(modality, modelId, signal))
+    ) {
       throw error;
     }
     signal.throwIfAborted();
     if (
       !(await reconciler.waitForAdmissionAfterEviction(
-        "video",
+        modality,
         modelId,
         signal,
       ))
@@ -2007,7 +2269,7 @@ export async function admitVideoWithIdleRecovery(
       throw error;
     }
     signal.throwIfAborted();
-    const retry = await reconciler.admitModel("video", modelId, signal);
+    const retry = await reconciler.admitModel(modality, modelId, signal);
     if (retry.kind !== "admitted") throw error;
     current = retry.value;
     try {
@@ -2043,6 +2305,37 @@ export async function admitVideoWithIdleRecovery(
   };
 }
 
+export async function generateSpeechWithIdleRecovery<T>(
+  reconciler: Pick<
+    RuntimeReconciler,
+    "recoverWithIdleEviction" | "waitForAdmissionAfterEviction"
+  >,
+  modelId: string,
+  signal: AbortSignal,
+  generate: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await generate();
+  } catch (error) {
+    if (
+      !(error instanceof RuntimeMemoryAdmissionError) ||
+      error.capacity !== undefined ||
+      signal.aborted ||
+      !(await reconciler.recoverWithIdleEviction("tts", modelId, signal))
+    ) {
+      throw error;
+    }
+    signal.throwIfAborted();
+    if (
+      !(await reconciler.waitForAdmissionAfterEviction("tts", modelId, signal))
+    ) {
+      throw error;
+    }
+    signal.throwIfAborted();
+    return await generate();
+  }
+}
+
 export function reportMemoryPressureTransition(
   logger: Pick<ILogger, "event">,
   transition: MemorySafetyTransition,
@@ -2073,6 +2366,24 @@ export async function runServe(
   execution: CommandExecution,
 ): Promise<{ data: { exitCode: number }; exitCode: number }> {
   const config = ctx.config;
+  const enabled = serveModalityState(config, input);
+  const owner = await getGatewayInstanceStateAtRoot(config.root);
+  if (owner.state === "active") {
+    throw new RootOwnershipError(
+      `A LocalBase gateway already owns ${config.root}. Stop the existing gateway before starting another one.`,
+    );
+  }
+  if (owner.state === "unknown") {
+    throw new RootOwnershipError(
+      `Cannot prove whether a LocalBase gateway owns ${config.root} (${owner.detail}). Stop the existing gateway before starting another one.`,
+    );
+  }
+  await assertServePortsAvailable(config, {
+    ...input,
+    ...enabled,
+    backendPortPreflight:
+      process.env.LOCALBASE_TEST_SKIP_BACKEND_PORT_PREFLIGHT !== "1",
+  });
   const browserAccess = await loadUiAccessConfig(config.root);
   const magicLinkRegistration =
     browserAccess?.provider.kind === "direct"
@@ -2091,6 +2402,7 @@ export async function runServe(
   if (!magicLinkRegistration) clearMagicLinks(database);
   const uiAccess = createUiAccess({
     config: browserAccess,
+    sessionStore: createDatabaseBrowserSessionStore(database),
     authorizeIdentity: (identity) =>
       resolveAccessControl(database, identity, {
         claimManagedUser: true,
@@ -2145,22 +2457,6 @@ export async function runServe(
     port: processSettings.gateway.port,
     ...(serviceId || serviceToken ? { serviceId, serviceToken } : {}),
   };
-  const gatewayLease = ctx.initializationOperation
-    ? await acquireGatewayLease(processSettings.root, endpoint)
-    : await acquireGatewayLeaseForServe(processSettings.root, endpoint);
-  await ctx.logger.enableFileLogging(processSettings.root);
-  await ctx.initializationOperation?.release();
-  ctx.initializationOperation = undefined;
-  await activateContextOtel(ctx);
-  ctx.logger.event({
-    severity: "info",
-    eventName: "gateway.starting",
-    category: "gateway",
-    component: "gateway",
-    runtime: "gateway",
-    message: "Starting LocalBase gateway.",
-  });
-
   let ctxSize = input.ctxSize ?? 0;
   if (!ctxSize) {
     const spec = byId(config.activeLlmModel);
@@ -2341,14 +2637,6 @@ export async function runServe(
     join(config.imageModelsDir, imageModelFile),
   ).exists();
 
-  const enabled: ModalityState = {
-    llm: input.llm ?? true,
-    stt: input.stt ?? config.selectedSttModels.length > 0,
-    tts: input.tts ?? config.selectedTtsModels.length > 0,
-    image: input.image ?? config.selectedImageModels.length > 0,
-    video: input.video ?? config.selectedVideoModels.length > 0,
-  };
-
   if (enabled.stt && !config.activeSttModel) {
     throw new Error(
       "STT modality is enabled but no active STT model is configured. Run `local-base configure` first.",
@@ -2491,47 +2779,77 @@ export async function runServe(
     }
   }
 
-  // Automatically download models if they pass memory checks and are missing.
+  // Model weights require explicit consent; managed runtime binaries remain automatic.
   if (enabled.llm && !llmModelExists) {
-    console.log(
-      `LLM model is incomplete. Automatically installing "${config.activeLlmModel}"...`,
-    );
-    const installedPath = await installSelectedModel(
-      ctx,
+    const spec = byId(config.activeLlmModel);
+    const installedPath = await installMissingModel(
       config,
-      "llm",
+      spec,
       config.activeLlmModel,
-      "incomplete",
+      input.installMissing || config.installMissingModels,
+      () => {
+        console.log(
+          `Installing missing LLM model "${config.activeLlmModel}"...`,
+        );
+        return installSelectedModel(
+          ctx,
+          config,
+          "llm",
+          config.activeLlmModel,
+          "incomplete",
+          input.installMissing || config.installMissingModels,
+        );
+      },
     );
     llmModelFile = basename(installedPath);
     llmModelExists = true;
   }
 
   if (enabled.stt && !sttModelExists) {
-    console.log(
-      `STT model file is missing. Automatically installing "${config.activeSttModel}"...`,
-    );
-    const installedPath = await installSelectedModel(
-      ctx,
+    const spec = byId(config.activeSttModel);
+    const installedPath = await installMissingModel(
       config,
-      "stt",
+      spec,
       config.activeSttModel,
-      "missing",
+      input.installMissing || config.installMissingModels,
+      () => {
+        console.log(
+          `Installing missing STT model "${config.activeSttModel}"...`,
+        );
+        return installSelectedModel(
+          ctx,
+          config,
+          "stt",
+          config.activeSttModel,
+          "missing",
+          input.installMissing || config.installMissingModels,
+        );
+      },
     );
     sttModelFile = basename(installedPath);
     sttModelExists = true;
   }
 
   if (enabled.image && !imageModelExists) {
-    console.log(
-      `Image model file is missing. Automatically installing "${config.activeImageModel}"...`,
-    );
-    const installedPath = await installSelectedModel(
-      ctx,
+    const spec = byId(config.activeImageModel);
+    const installedPath = await installMissingModel(
       config,
-      "image",
+      spec,
       config.activeImageModel,
-      "missing",
+      input.installMissing || config.installMissingModels,
+      () => {
+        console.log(
+          `Installing missing image model "${config.activeImageModel}"...`,
+        );
+        return installSelectedModel(
+          ctx,
+          config,
+          "image",
+          config.activeImageModel,
+          "missing",
+          input.installMissing || config.installMissingModels,
+        );
+      },
     );
     imageModelFile = basename(installedPath);
     imageModelExists = true;
@@ -2561,6 +2879,22 @@ export async function runServe(
   if (!enabled.image && input.image === undefined) {
     console.log("Image route auto-disabled (no local Image model file found).");
   }
+
+  const gatewayLease = ctx.initializationOperation
+    ? await acquireGatewayLease(processSettings.root, endpoint)
+    : await acquireGatewayLeaseForServe(processSettings.root, endpoint);
+  await ctx.logger.enableFileLogging(processSettings.root);
+  await ctx.initializationOperation?.release();
+  ctx.initializationOperation = undefined;
+  await activateContextOtel(ctx);
+  ctx.logger.event({
+    severity: "info",
+    eventName: "gateway.starting",
+    category: "gateway",
+    component: "gateway",
+    runtime: "gateway",
+    message: "Starting LocalBase gateway.",
+  });
 
   const configuredOverrides: RuntimeOverrideOwnership = {
     configFields: [
@@ -2615,6 +2949,7 @@ export async function runServe(
   );
   const factory = createRuntimeSupervisorFactory(ctx, launchOverrides, {
     memorySafety,
+    installMissing: input.installMissing || config.installMissingModels,
   });
   const initialSnapshot = ctx.runtimeConfig.read();
   const supervisors = new SupervisorRegistry({
@@ -2672,6 +3007,7 @@ export async function runServe(
     runtimeConfig: ctx.runtimeConfig,
     lifecycle: () => reconciler.lifecycleSnapshot(),
     protectedModelIds: () => reconciler.protectedModelIds(),
+    videoTarget: () => videoTargetFromTopology(memoryProvider.topology),
   });
   const authManagement = createAuthManagement({
     root: config.root,
@@ -2785,7 +3121,9 @@ export async function runServe(
             code: "validation_failed",
           },
           error instanceof PayloadTooLargeError ? 413 : 400,
-          headers,
+          error instanceof PayloadTooLargeError
+            ? { ...headers, connection: "close" }
+            : headers,
         );
       }
       if (!input.success)
@@ -2968,10 +3306,24 @@ export async function runServe(
             : LOCAL_VIDEO_OWNER_ID,
         jobs: videoJobs,
         createEnabled: currentConfig.selectedVideoModels.length > 0,
+        assertInstallConsent: async (modelId) => {
+          const spec = byId(modelId);
+          if (!spec || spec.kind !== "video") return;
+          const installation = await resolveCatalogInstallation(
+            spec,
+            currentConfig.videoModelsDir,
+          );
+          if (!installation.complete)
+            assertModelInstallConsent(
+              modelId,
+              input.installMissing || currentConfig.installMissingModels,
+            );
+        },
         admissionProvider: {
           admit: async (modelId, signal) => {
-            const selection = await admitVideoWithIdleRecovery(
+            const selection = await admitModelWithIdleRecovery(
               reconciler,
+              "video",
               modelId,
               signal,
             );
@@ -2986,8 +3338,87 @@ export async function runServe(
             };
           },
         },
-        parseCreateRequest: async () =>
-          await parseJsonRequest(request, videoCreateRequestSchema),
+        parseCreateRequest: async () => {
+          if (
+            request.headers
+              .get("content-type")
+              ?.toLowerCase()
+              .startsWith("multipart/form-data;")
+          ) {
+            try {
+              const bytes = await readBoundedRequestBody(
+                request,
+                9 * 1024 * 1024,
+              );
+              const form = await new Request(request.url, {
+                method: "POST",
+                headers: {
+                  "content-type": request.headers.get("content-type") ?? "",
+                },
+                body: requestBodyBuffer(bytes),
+              }).formData();
+              const reference = form.get("input_reference");
+              let input_reference: string | undefined;
+              if (reference instanceof File) {
+                const media = new Uint8Array(await reference.arrayBuffer());
+                if (
+                  media.byteLength > 4 * 1024 * 1024 ||
+                  imageMimeFromMagic(media) !== "image/png"
+                ) {
+                  return {
+                    success: false,
+                    response: badRequest(
+                      "input_reference must be a PNG file no larger than 4 MiB.",
+                      "input_reference",
+                    ),
+                  };
+                }
+                input_reference = `data:image/png;base64,${media.toBase64()}`;
+              } else if (typeof reference === "string") {
+                input_reference = reference;
+              }
+              const inputField = form.get("input");
+              let input: unknown = { kind: "text" };
+              if (typeof inputField === "string") {
+                try {
+                  input = JSON.parse(inputField);
+                } catch {
+                  return {
+                    success: false,
+                    response: badRequest("input must be valid JSON.", "input"),
+                  };
+                }
+              }
+              const payload = {
+                model: form.get("model"),
+                prompt: form.get("prompt"),
+                negative_prompt: form.get("negative_prompt") ?? undefined,
+                width: Number(form.get("width")),
+                height: Number(form.get("height")),
+                frames: Number(form.get("frames")),
+                fps: Number(form.get("fps")),
+                input,
+                ...(input_reference === undefined ? {} : { input_reference }),
+              };
+              const parsed = videoCreateRequestSchema.safeParse(payload);
+              return parsed.success
+                ? { success: true, data: parsed.data }
+                : {
+                    success: false,
+                    response: badRequest("Invalid video request."),
+                  };
+            } catch (error) {
+              return {
+                success: false,
+                response:
+                  error instanceof PayloadTooLargeError
+                    ? payloadTooLarge(9 * 1024 * 1024)
+                    : badRequest("Invalid multipart video request."),
+              };
+            }
+          }
+          return await parseJsonRequest(request, videoCreateRequestSchema);
+        },
         notConfigured: () => notConfigured("Video"),
         modelNotFound,
         badRequest,
@@ -3016,7 +3447,8 @@ export async function runServe(
       let admission: RuntimeAdmission | undefined;
       let inference: InferenceTelemetry | undefined;
       try {
-        const selected = await reconciler.admitModel(
+        const selected = await admitModelWithIdleRecovery(
+          reconciler,
           "tts",
           parsed.data.model,
           request.signal,
@@ -3037,13 +3469,21 @@ export async function runServe(
           inference.finish({ outcome: "error", httpStatus: response.status });
           return response;
         }
+        const speechSupervisor = admission.supervisor;
 
         await waitForRequestAbort(admission.ready, request.signal);
-        const wav = await admission.supervisor.generateSpeech({
-          text: parsed.data.input,
-          voice: parsed.data.voice,
-          signal: request.signal,
-        });
+        const generate = () =>
+          speechSupervisor.generateSpeech({
+            text: parsed.data.input,
+            voice: parsed.data.voice,
+            signal: request.signal,
+          });
+        const wav = await generateSpeechWithIdleRecovery(
+          reconciler,
+          parsed.data.model,
+          request.signal,
+          generate,
+        );
         admission.markResponseStarted();
         admission.release();
         admission = undefined;
@@ -3135,9 +3575,10 @@ export async function runServe(
         if (!parsed.success) {
           return validationFailure(parsed.error);
         }
-        const selected = await reconciler.admitModel(
+        const selected = await admitModelWithIdleRecovery(
+          reconciler,
           "stt",
-          parsed.data.model,
+          parsed.data.model ?? currentConfig.activeSttModel,
           request.signal,
         );
         if (selected.kind === "not-configured") return notConfigured("STT");
@@ -3225,11 +3666,23 @@ export async function runServe(
         imageGenerationRequestSchema,
       );
       if (!parsed.success) return parsed.response;
+      const { negative_prompt, seed, steps, cfg_scale, ...generation } =
+        parsed.data;
+      const backendBody = {
+        ...generation,
+        prompt: promptWithImageTuning(generation.prompt, {
+          negative_prompt,
+          seed,
+          steps,
+          cfg_scale,
+        }),
+      };
       let selected;
       try {
-        selected = await reconciler.admitModel(
+        selected = await admitModelWithIdleRecovery(
+          reconciler,
           "image",
-          parsed.data.model,
+          parsed.data.model ?? currentConfig.activeImageModel,
           request.signal,
         );
       } catch (error) {
@@ -3254,7 +3707,229 @@ export async function runServe(
         request.signal,
         async () =>
           await proxyRequest(
-            requestWithJsonBody(request, parsed.data),
+            requestWithJsonBody(request, backendBody),
+            factory.baseUrl("image", selected.value.admission.snapshot),
+            undefined,
+            imageGenerationResponseSchema,
+            undefined,
+            ctx.otel,
+            undefined,
+            (status) =>
+              inference.finish({
+                outcome: "error",
+                httpStatus: status,
+                source: "response_validation",
+              }),
+            undefined,
+            selected.value.modelId,
+            (status) => inference.observeUpstreamStatus(status),
+            inference.context(),
+          ),
+        (terminal) => inference.finish(terminal),
+      );
+      return withServerTiming(response, inference.serverTiming());
+    }
+
+    if (route === "imageEdit") {
+      if (request.method !== "POST") return methodNotAllowed("POST");
+      const limit = 20 * 1024 * 1024;
+      if (requestExceedsSizeLimit(request, limit))
+        return payloadTooLarge(limit);
+      let form: FormData;
+      try {
+        const bytes = await readBoundedRequestBody(request, limit);
+        const contentType = request.headers.get("content-type");
+        if (!contentType?.toLowerCase().startsWith("multipart/form-data;")) {
+          return badRequest("Expected multipart/form-data.", "content-type");
+        }
+        form = await new Request(request.url, {
+          method: "POST",
+          headers: { "content-type": contentType },
+          body: requestBodyBuffer(bytes),
+        }).formData();
+      } catch (error) {
+        return error instanceof PayloadTooLargeError
+          ? payloadTooLarge(limit)
+          : badRequest("Invalid multipart image edit request.");
+      }
+      const promptValue = form.get("prompt");
+      const prompt = typeof promptValue === "string" ? promptValue.trim() : "";
+      if (!prompt || prompt.length > 16_384)
+        return badRequest(
+          "prompt is required and must not exceed 16384 characters.",
+          "prompt",
+        );
+      if (prompt.toLowerCase().includes("sd_cpp_extra_args"))
+        return badRequest(
+          "prompt must not contain sd_cpp_extra_args.",
+          "prompt",
+        );
+      const modelValue = form.get("model");
+      const modelId =
+        typeof modelValue === "string" && modelValue
+          ? modelValue
+          : currentConfig.activeImageModel;
+      if (!modelId) return notConfigured("Image");
+      const spec = byId(modelId);
+      if (!spec || spec.kind !== "image") return modelNotFound(modelId);
+      if (!spec.features.includes("image-to-image"))
+        return badRequest(
+          `Model '${modelId}' does not support image-to-image edits.`,
+          "model",
+        );
+      const images = [
+        ...form.getAll("image[]"),
+        ...form.getAll("image"),
+      ].filter((value): value is File => value instanceof File);
+      const maskValue = form.get("mask");
+      const mask =
+        maskValue === null
+          ? undefined
+          : maskValue instanceof File && maskValue.size > 0
+            ? maskValue
+            : undefined;
+      if (maskValue !== null && !mask)
+        return badRequest("mask must be a nonempty image file.", "mask");
+      if (images.length < 1 || images.length > 4)
+        return badRequest(
+          "Provide between 1 and 4 image files using image or image[].",
+          "image",
+        );
+      const nValue = form.get("n");
+      const n = nValue === null ? 1 : Number(nValue);
+      if (!Number.isInteger(n) || n < 1 || n > 10)
+        return badRequest("n must be an integer from 1 to 10.", "n");
+      const sizeValue = form.get("size");
+      const size =
+        typeof sizeValue === "string" && sizeValue ? sizeValue : undefined;
+      if (size && !IMAGE_SIZES.some((option) => option === size))
+        return badRequest(
+          `size must be one of ${IMAGE_SIZES.join(", ")}.`,
+          "size",
+        );
+      const responseFormat = form.get("response_format");
+      if (
+        responseFormat !== null &&
+        responseFormat !== "url" &&
+        responseFormat !== "b64_json"
+      )
+        return badRequest(
+          "response_format must be url or b64_json.",
+          "response_format",
+        );
+      const formNumber = (name: string) => {
+        const value = form.get(name);
+        return typeof value === "string" && value.trim()
+          ? Number(value)
+          : undefined;
+      };
+      const negativePrompt = form.get("negative_prompt");
+      const tuning = imageTuningSchema.safeParse({
+        negative_prompt:
+          typeof negativePrompt === "string" && negativePrompt.trim()
+            ? negativePrompt
+            : undefined,
+        seed: formNumber("seed"),
+        steps: formNumber("steps"),
+        cfg_scale: formNumber("cfg_scale"),
+        strength: formNumber("strength"),
+      });
+      if (!tuning.success) {
+        const param = String(tuning.error.issues[0]?.path[0] ?? "prompt");
+        return badRequest(
+          param === "strength"
+            ? "strength must be between 0 and 1."
+            : `${param} is invalid: ${tuning.error.issues[0]?.message ?? "unexpected value"}.`,
+          param,
+        );
+      }
+      const outputFormatValue = form.get("output_format");
+      const outputFormat =
+        outputFormatValue === null ? "png" : outputFormatValue;
+      if (outputFormat !== "png" && outputFormat !== "jpeg")
+        return badRequest(
+          "output_format must be png or jpeg.",
+          "output_format",
+        );
+      for (const file of [...images, ...(mask ? [mask] : [])]) {
+        const param = file === mask ? "mask" : "image";
+        if (!file.size || file.size > 8 * 1024 * 1024)
+          return badRequest(
+            "Each image file must be between 1 byte and 8 MiB.",
+            param,
+          );
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const mime = imageMimeFromMagic(bytes);
+        if (!mime)
+          return badRequest(
+            "Images must be PNG or JPEG by file signature.",
+            param,
+          );
+        if (file.type && file.type !== mime)
+          return badRequest(
+            "Image content type does not match its file signature.",
+            param,
+          );
+        const dimensions =
+          mime === "image/png"
+            ? validatePngImage(bytes)
+            : validateJpegImage(bytes);
+        if (
+          !dimensions ||
+          dimensions.width < 1 ||
+          dimensions.height < 1 ||
+          dimensions.width > 2048 ||
+          dimensions.height > 2048 ||
+          dimensions.width * dimensions.height > 4_194_304
+        )
+          return badRequest(
+            "Images must have valid dimensions no larger than 2048x2048 (4.2 megapixels).",
+            param,
+          );
+      }
+      let selected;
+      try {
+        selected = await admitModelWithIdleRecovery(
+          reconciler,
+          "image",
+          modelId,
+          request.signal,
+        );
+      } catch (error) {
+        if (error instanceof RuntimeRequestAbortedError)
+          return requestAborted();
+        const queueError = queueFailure(error, "image");
+        if (queueError) return queueError;
+        throw error;
+      }
+      if (selected.kind === "not-configured") return notConfigured("Image");
+      if (selected.kind === "model-not-found") return modelNotFound(modelId);
+      if (selected.kind === "unavailable") return serviceUnavailable("Image");
+      if (selected.kind === "insufficient-memory")
+        return resourceUnavailable(selected.error);
+      const backendForm = new FormData();
+      backendForm.set("prompt", promptWithImageTuning(prompt, tuning.data));
+      backendForm.set("n", String(n));
+      backendForm.set("output_format", outputFormat);
+      if (size) backendForm.set("size", size);
+      for (const image of images)
+        backendForm.append("image[]", image, image.name || "image.png");
+      if (mask) backendForm.set("mask", mask, mask.name || "mask.png");
+      const inference = beginInference("image", selected.value);
+      const response = await proxyWithAdmission(
+        selected.value.admission,
+        "Image",
+        request.signal,
+        async () =>
+          await proxyRequest(
+            new Request(request.url, {
+              method: "POST",
+              headers: {
+                authorization: request.headers.get("authorization") ?? "",
+              },
+              body: backendForm,
+              signal: request.signal,
+            }),
             factory.baseUrl("image", selected.value.admission.snapshot),
             undefined,
             imageGenerationResponseSchema,
@@ -3284,12 +3959,59 @@ export async function runServe(
       );
       if (!parsed.success) return parsed.response;
       const requestedModel = byId(parsed.data.model);
+      const unsupportedToolParam = (() => {
+        if ((parsed.data.tools?.length ?? 0) > 0) return "tools";
+        if (
+          parsed.data.tool_choice !== undefined &&
+          parsed.data.tool_choice !== "none"
+        )
+          return "tool_choice";
+        if (
+          Array.isArray(parsed.data.functions) &&
+          parsed.data.functions.length > 0
+        )
+          return "functions";
+        if (
+          parsed.data.function_call !== undefined &&
+          parsed.data.function_call !== "none"
+        )
+          return "function_call";
+        const messageIndex = parsed.data.messages.findIndex(
+          (message) =>
+            message.role === "tool" ||
+            (message.role === "assistant" &&
+              (message.tool_calls?.length ?? 0) > 0),
+        );
+        if (messageIndex < 0) return undefined;
+        const message = parsed.data.messages[messageIndex];
+        return message.role === "assistant"
+          ? `messages[${messageIndex}].tool_calls`
+          : `messages[${messageIndex}]`;
+      })();
+      const hasToolRequest = unsupportedToolParam !== undefined;
+      if (
+        hasToolRequest &&
+        requestedModel &&
+        !requestedModel.features.includes("tool-calling")
+      ) {
+        return openAIErrorResponse(
+          {
+            message: `Model '${requestedModel.modelId}' does not support tool calling. Choose a tool-capable model from GET /v1/models.`,
+            type: "invalid_request_error",
+            param: unsupportedToolParam,
+            code: "unsupported_model_capability",
+          },
+          400,
+        );
+      }
       if (requestedModel?.llmRuntime) {
         return badRequest(
           `Model '${requestedModel.modelId}' supports embeddings only.`,
         );
       }
-      const backendRequest = prepareChatCompletionRequest(parsed.data);
+      const preparedRequest = prepareChatCompletionRequest(
+        stripNoopToolFields(parsed.data),
+      );
       const preparationStartedAt = performance.now();
       const structuredOutput = prepareStructuredOutput(
         parsed.data.response_format,
@@ -3338,6 +4060,42 @@ export async function runServe(
       if (selected.kind === "insufficient-memory") {
         return resourceUnavailable(selected.error);
       }
+      // Resolve the per-slot context only after admission is ready: the
+      // supervisor learns the runtime's real context length once it starts.
+      const resolveBackendRequest = () => {
+        if (
+          parsed.data.max_tokens !== undefined ||
+          parsed.data.max_completion_tokens !== undefined
+        ) {
+          return preparedRequest;
+        }
+        const admittedSupervisor = selected.value.admission.supervisor;
+        const supervisorProfile = admittedSupervisor.llmProfile?.();
+        const configuredContext =
+          supervisorProfile?.ctxSizeOverride ??
+          supervisorProfile?.configCtxSize ??
+          selected.value.admission.snapshot.config.ctxSize;
+        const configuredSlots =
+          supervisorProfile?.parallel === "auto"
+            ? 4
+            : Number(
+                supervisorProfile?.parallel ??
+                  selected.value.admission.snapshot.config.parallel,
+              );
+        const effectiveContextLength = Math.min(
+          admittedSupervisor.resolvedContextLength?.() ??
+            Math.floor(configuredContext / configuredSlots),
+          requestedModel?.contextWindowTokens ?? Number.POSITIVE_INFINITY,
+          selected.value.admission.snapshot.config.ctxSize,
+        );
+        return {
+          ...preparedRequest,
+          // llama.cpp exposes tokenization only after applying its chat
+          // template; this gateway has no cheap template-aware tokenizer.
+          // Keep the default within the resolved per-slot context budget.
+          max_tokens: Math.min(ctx.defaultMaxTokens, effectiveContextLength),
+        };
+      };
       const streaming = parsed.data.stream === true;
       const inference = beginInference("llm", selected.value, {
         streaming,
@@ -3356,7 +4114,7 @@ export async function runServe(
         request.signal,
         async () =>
           await proxyRequest(
-            requestWithJsonBody(request, backendRequest),
+            requestWithJsonBody(request, resolveBackendRequest()),
             factory.baseUrl("llm", selected.value.admission.snapshot),
             undefined,
             chatCompletionResponseSchema,
@@ -3568,32 +4326,36 @@ export async function runServe(
             ),
         );
       } catch (err) {
-        const error =
-          err instanceof Error ? err : new Error("Unknown request failure");
-        const parsedMethod =
-          logHttpMetadataSchema.shape.method.safeParse(method);
-        ctx.logger.event({
-          severity: "error",
-          eventName: "http.handler-failed",
-          category: "http",
-          component: "gateway",
-          runtime: "gateway",
-          message: "Gateway request handler failed.",
-          requestId,
-          trace: spanCorrelation(span),
-          ...(parsedMethod.success
-            ? {
-                http: {
-                  method: parsedMethod.data,
-                  path: pathname,
-                  status: 500,
-                  durationMs: performance.now() - start,
-                },
-              }
-            : {}),
-          error: { type: error.name, message: error.message },
-        });
-        response = internalGatewayFailure();
+        if (err instanceof ModelInstallConsentError) {
+          response = modelInstallConsentResponse(err);
+        } else {
+          const error =
+            err instanceof Error ? err : new Error("Unknown request failure");
+          const parsedMethod =
+            logHttpMetadataSchema.shape.method.safeParse(method);
+          ctx.logger.event({
+            severity: "error",
+            eventName: "http.handler-failed",
+            category: "http",
+            component: "gateway",
+            runtime: "gateway",
+            message: "Gateway request handler failed.",
+            requestId,
+            trace: spanCorrelation(span),
+            ...(parsedMethod.success
+              ? {
+                  http: {
+                    method: parsedMethod.data,
+                    path: pathname,
+                    status: 500,
+                    durationMs: performance.now() - start,
+                  },
+                }
+              : {}),
+            error: { type: error.name, message: error.message },
+          });
+          response = internalGatewayFailure();
+        }
       }
 
       const headers = new Headers(response.headers);
@@ -3623,7 +4385,8 @@ export async function runServe(
           selectedRoute === "embeddings" ||
           selectedRoute === "transcription" ||
           selectedRoute === "speechGeneration" ||
-          selectedRoute === "imageGeneration"
+          selectedRoute === "imageGeneration" ||
+          selectedRoute === "imageEdit"
             ? headers.get("server-timing")
             : undefined;
         headers.set(

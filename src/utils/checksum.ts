@@ -7,11 +7,13 @@ import {
   existsSync,
   statSync,
 } from "node:fs";
-import { readdir, rename, rm, stat } from "node:fs/promises";
+import { readFile, readdir, rename, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setImmediate, setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 import { processIsAbsent } from "./root";
+import { shouldShowOperationalOutput } from "./operational-output";
+import { stripAnsiCodes } from "./color";
 
 export const sha256Schema = z.string().regex(/^[a-fA-F0-9]{64}$/);
 export const safeFilenameSchema = z
@@ -110,7 +112,8 @@ export async function verifyChecksum(
   label: string,
 ): Promise<void> {
   const digest = sha256Schema.parse(expected).toLowerCase();
-  console.log(`🔍 Verifying checksum for ${label}...`);
+  if (shouldShowOperationalOutput())
+    console.log(`🔍 Verifying checksum for ${label}...`);
   const actual = await computeSha256(filePath);
   if (actual !== digest) {
     throw new Error(
@@ -120,7 +123,8 @@ export async function verifyChecksum(
         `  File may be corrupted or tampered with. Delete it and retry.`,
     );
   }
-  console.log(`✅ Checksum verified for ${label}`);
+  if (shouldShowOperationalOutput())
+    console.log(`✅ Checksum verified for ${label}`);
 }
 
 /** Parses a complete sha256sum response and rejects ambiguous or unsafe rows. */
@@ -255,19 +259,29 @@ async function removeOrphanedTempFiles(dir: string): Promise<void> {
 /** This cache records prior verification; its digest never replaces upstream authority. */
 export async function readChecksumStore(dir: string): Promise<ChecksumStore> {
   const filePath = storeFilePath(dir);
-  const file = Bun.file(filePath);
-  if (!(await file.exists())) return emptyChecksumStore();
+  // Bun.file can read with a stale size while another process renames a new store into place.
+  let text: string;
+  try {
+    text = await readFile(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return emptyChecksumStore();
+    }
+    throw error;
+  }
 
   const reject = (reason: string) => {
     console.warn(
-      `⚠️ Ignoring invalid continuity checksum cache at ${filePath}: ${reason}. Files will be re-verified.`,
+      stripAnsiCodes(
+        `⚠️ Ignoring invalid continuity checksum cache at ${filePath}: ${reason}. Files will be re-verified.`,
+      ),
     );
     return emptyChecksumStore();
   };
 
   let value: unknown;
   try {
-    value = JSON.parse(await file.text());
+    value = JSON.parse(text);
   } catch {
     return reject("malformed JSON");
   }

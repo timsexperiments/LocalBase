@@ -74,6 +74,7 @@ test("builds runtime smoke invocations for the current CLI contract", () => {
     "127.0.0.1",
     "--stt-port",
     "22732",
+    "--install-missing",
     "--no-image",
     "--no-auth",
     "--bypass-memory-check",

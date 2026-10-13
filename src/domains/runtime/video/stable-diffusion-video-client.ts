@@ -341,6 +341,7 @@ function toBackendVideoInput(input: VideoGenerationInput) {
           audio: { format: "wav", data: input.audio.data },
         }
       : {}),
+    ...(input.kind === "image" ? { init_image: input.image.data } : {}),
   };
 }
 

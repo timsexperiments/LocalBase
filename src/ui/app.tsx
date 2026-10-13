@@ -25,6 +25,7 @@ import {
 } from "./dictation";
 import { z } from "zod";
 import { generationTools, generateVideo, runChat, toolModels } from "./tools";
+import { Studio, canEditImages, type StudioRequest } from "./studio";
 import {
   GenerationSettingsFields,
   modelGenerationSettings,
@@ -53,8 +54,10 @@ import {
   readHistory,
   readinessSchema,
   readSession,
+  redirectToSignIn,
   sessionConnection,
   SessionRequiredError,
+  signInFailed,
   type SessionState,
   type Session,
   transcriptionSchema,
@@ -513,6 +516,7 @@ function App() {
     active?.mode === "video" &&
     capabilities?.kind === "video" &&
     capabilities.mode === "s2v";
+  const studio = active?.mode === "image" || active?.mode === "video";
   const update = (id: string, change: (c: Conversation) => Conversation) =>
     setConversations((items) =>
       items.map((c) => (c.id === id ? change(c) : c)),
@@ -527,23 +531,36 @@ function App() {
       "push",
     );
   }
+  function sessionExpired(message: string) {
+    setModels([]);
+    setHostMemory(null);
+    setSession({
+      kind: "error",
+      message: redirectToSignIn()
+        ? "Your sign-in has expired. Taking you to sign in…"
+        : signInFailed()
+          ? "Sign-in didn't complete. Try signing in again."
+          : message,
+    });
+  }
   async function checkSession(signal?: AbortSignal) {
     try {
       const verified = await readSession(signal);
       signal?.throwIfAborted();
       setSession(verified);
     } catch (e) {
-      if (!signal?.aborted) {
-        setModels([]);
-        setHostMemory(null);
-        setSession({
-          kind: "error",
-          message:
-            e instanceof SessionRequiredError
-              ? e.message
-              : "Sign-in could not be verified. Reload this page to sign in, or refresh to try again.",
-        });
+      if (signal?.aborted) return;
+      if (e instanceof SessionRequiredError) {
+        sessionExpired(e.message);
+        return;
       }
+      setModels([]);
+      setHostMemory(null);
+      setSession({
+        kind: "error",
+        message:
+          "Sign-in could not be verified. Check your connection and try again.",
+      });
     }
   }
   async function signOut() {
@@ -590,9 +607,13 @@ function App() {
       if (!signal?.aborted) {
         setModels([]);
         setHostMemory(null);
-        if (e instanceof SessionRequiredError)
-          setSession({ kind: "error", message: e.message });
-        else
+        if (e instanceof SessionRequiredError) sessionExpired(e.message);
+        else if (e instanceof z.ZodError) {
+          console.error("Unexpected gateway response", e.issues);
+          setConnection(
+            "This page could not read the gateway's model list. Reload to pick up the latest version.",
+          );
+        } else
           setConnection(e instanceof Error ? e.message : "Unable to connect");
       }
     }
@@ -749,7 +770,7 @@ function App() {
     writeNavigation(conversationNavigation(c, panel), "push");
     nearBottom.current = true;
   }
-  async function send(retry = false) {
+  async function send(retry = false, request?: StudioRequest) {
     if (
       !active ||
       !canUseMode(permissions, active.mode) ||
@@ -806,7 +827,7 @@ function App() {
     setBusy(true);
     setWarnings([]);
     setError("");
-    if (!retry) {
+    if (!retry && !studio) {
       setDraft("");
       invalidateAttachmentRead();
       setAttachments([]);
@@ -868,6 +889,7 @@ function App() {
             connection: credential,
             signal: abort.signal,
             prompt: text,
+            image: request?.firstFrame,
             warning: (detail) => setWarnings((items) => [...items, detail]),
             progress: (detail) =>
               patch((m) => ({
@@ -881,6 +903,7 @@ function App() {
           patch((m) => ({
             ...m,
             text: "Generated video",
+            source: request?.sourceUrl,
             artifacts: [
               {
                 id,
@@ -920,31 +943,55 @@ function App() {
           break;
         }
         case "image": {
+          const n = generationSettings.image.n ?? 1;
+          const tuning = imageParameters(generationSettings.image);
+          let init: RequestInit;
+          let path = "/v1/images/generations";
+          if (request?.source && canEditImages(model)) {
+            path = "/v1/images/edits";
+            const body = new FormData();
+            body.set("image", request.source, "source.png");
+            if (request.mask) body.set("mask", request.mask, "mask.png");
+            body.set("model", model.id);
+            body.set("prompt", text);
+            body.set("n", String(n));
+            body.set("response_format", "b64_json");
+            for (const [name, value] of Object.entries({
+              ...tuning,
+              size: request.size ?? tuning.size,
+              strength: generationSettings.image.strength ?? 0.75,
+            }))
+              if (value !== undefined) body.set(name, String(value));
+            init = { method: "POST", signal: abort.signal, body };
+          } else
+            init = json({
+              model: model.id,
+              prompt: text,
+              n,
+              ...tuning,
+              response_format: "b64_json",
+            });
           const result = imageResponseSchema.parse(
-            await (
-              await api(
-                "/v1/images/generations",
-                credential,
-                json({
-                  model: model.id,
-                  prompt: text,
-                  n: 1,
-                  ...imageParameters(generationSettings.image),
-                  response_format: "b64_json",
-                }),
-              )
-            ).json(),
+            await (await api(path, credential, init)).json(),
           );
-          const image = result.data[0];
-          if (image)
-            patch((m) => ({
-              ...m,
-              text: "Generated image",
+          abort.signal.throwIfAborted();
+          patch((m) => ({
+            ...m,
+            text:
+              result.data.length > 1
+                ? `Generated ${result.data.length} images`
+                : "Generated image",
+            source: path.endsWith("edits") ? request?.sourceUrl : undefined,
+            artifacts: result.data.map((image, index) => ({
+              id: crypto.randomUUID(),
+              label: result.data.length > 1 ? `Image ${index + 1}` : "Image",
+              state: "complete",
               media: {
                 kind: "image",
                 url: `data:image/png;base64,${image.b64_json}`,
               },
-            }));
+            })),
+          }));
           break;
         }
         case "tts": {
@@ -993,9 +1040,7 @@ function App() {
     } catch (e) {
       if (e instanceof SessionRequiredError) {
         authenticationFailed = true;
-        setModels([]);
-        setHostMemory(null);
-        setSession({ kind: "error", message: e.message });
+        sessionExpired(e.message);
       }
       patch((m) => ({
         ...m,
@@ -1032,6 +1077,88 @@ function App() {
     }
   }
   if (!active) return null;
+  const notices = (
+    <>
+      {session.kind === "error" && (
+        <div className="error session-notice" role="alert">
+          <span>{session.message}</span>
+          <a className="download" href="/app/login">
+            Sign in
+          </a>
+        </div>
+      )}
+      {warnings.length > 0 && (
+        <div className="error" role="alert">
+          <span>{warnings.join(" ")}</span>
+          <button
+            aria-label="Dismiss cleanup warnings"
+            onClick={() => setWarnings([])}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {unsupportedVideo && (
+        <p className="notice" role="status">
+          Choose a text-to-video model. Portrait and audio inputs are not
+          supported here yet.
+        </p>
+      )}
+      {error && (
+        <div className="error" role="alert">
+          <span>{error}</span>
+          {active.messages.length > 0 && active.mode !== "stt" && !studio && (
+            <button
+              disabled={
+                busy ||
+                !credential ||
+                !model ||
+                unsupportedVideo ||
+                readingAttachments ||
+                !!attachmentProblem
+              }
+              onClick={() => void send(true)}
+            >
+              Retry
+            </button>
+          )}
+          <button aria-label="Dismiss error" onClick={() => setError("")}>
+            ✕
+          </button>
+        </div>
+      )}
+      {attachmentReadError && (
+        <div className="error" role="alert">
+          <span>{attachmentReadError}</span>
+          <button
+            type="button"
+            aria-label="Dismiss attachment error"
+            onClick={() => setAttachmentReadError("")}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {attachmentProblem && (
+        <p className="error" role="alert">
+          {attachmentProblem}
+        </p>
+      )}
+      {readingAttachments && (
+        <p className="notice" role="status">
+          Reading files. Wait before sending.
+        </p>
+      )}
+      {!model && session.kind !== "error" && (
+        <p className="notice" role="status">
+          {models.length
+            ? `No selected, installed ${labels[active.mode].toLowerCase()} model. Configure one with the LocalBase CLI.`
+            : connectionLabel}{" "}
+          <button onClick={() => setDrawer("settings")}>Connect</button>
+        </p>
+      )}
+    </>
+  );
   const view = (
     <div className="app" ref={app}>
       <header className="topbar">
@@ -1045,6 +1172,7 @@ function App() {
         <button
           type="button"
           className="brand"
+          aria-label="LocalBase"
           disabled={busy || !allowedModes.length}
           onClick={() => {
             const mode = canUseMode(permissions, "llm")
@@ -1053,31 +1181,43 @@ function App() {
             if (mode) newChat(mode, mode === "llm" ? "chat" : "lab");
           }}
         >
-          <span className="brand-mark">L</span>LocalBase
+          <span className="brand-mark" aria-hidden="true">
+            L
+          </span>
+          <span className="brand-name">LocalBase</span>
         </button>
         {allowedModes.length > 0 && (
           <>
-            <select
-              className="workspace-picker"
-              aria-label="Workspace"
-              value={page === "chat" ? "chat" : active.mode}
-              disabled={busy}
-              onChange={(event) => {
-                const mode = modes.find((mode) => mode === event.target.value);
-                newChat(mode ?? "llm", mode ? "lab" : "chat");
-              }}
-            >
-              {canUseMode(permissions, "llm") && (
-                <option value="chat">Chat</option>
-              )}
-              <optgroup label="Model Lab">
-                {allowedModes.map((mode) => (
-                  <option value={mode} key={mode}>
-                    {labels[mode]} lab
-                  </option>
-                ))}
-              </optgroup>
-            </select>
+            <label className="workspace-picker">
+              {/* The native select stays on top for the platform picker; this
+                  span only sizes the control to the current workspace. */}
+              <span aria-hidden="true">
+                {page === "chat" ? "Chat" : `${labels[active.mode]} lab`}
+              </span>
+              <span aria-hidden="true">⌄</span>
+              <select
+                aria-label="Workspace"
+                value={page === "chat" ? "chat" : active.mode}
+                disabled={busy}
+                onChange={(event) => {
+                  const mode = modes.find(
+                    (mode) => mode === event.target.value,
+                  );
+                  newChat(mode ?? "llm", mode ? "lab" : "chat");
+                }}
+              >
+                {canUseMode(permissions, "llm") && (
+                  <option value="chat">Chat</option>
+                )}
+                <optgroup label="Model Lab">
+                  {allowedModes.map((mode) => (
+                    <option value={mode} key={mode}>
+                      {labels[mode]} lab
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </label>
             <button
               disabled={busy}
               onClick={() => newChat()}
@@ -1113,8 +1253,44 @@ function App() {
             </section>
           </main>
         )}
+        {studio && activeModeAllowed && (
+          <Studio
+            key={active.id}
+            mode={active.mode === "video" ? "video" : "image"}
+            model={model}
+            messages={active.messages}
+            busy={busy}
+            progress={
+              busy
+                ? (active.messages
+                    .at(-1)
+                    ?.artifacts?.flatMap((artifact) =>
+                      artifact.state === "working" ? [artifact.detail] : [],
+                    )
+                    .at(-1) ?? "")
+                : ""
+            }
+            prompt={draft}
+            setPrompt={setDraft}
+            settings={generationSettings}
+            onSettings={(settings) =>
+              model && setModelSettings(model.id, settings)
+            }
+            canDictate={canDictate}
+            canGenerate={
+              !!credential &&
+              !!model &&
+              !unsupportedVideo &&
+              !readingAttachments
+            }
+            notices={notices}
+            onGenerate={(request) => void send(false, request)}
+            onStop={() => controller.current?.abort()}
+            onChooseModel={() => setDrawer("models")}
+          />
+        )}
         <main
-          hidden={!activeModeAllowed}
+          hidden={!activeModeAllowed || studio}
           ref={transcript}
           aria-label="Conversation"
           onScroll={(e) => {
@@ -1253,7 +1429,7 @@ function App() {
             ))}
           </div>
         </main>
-        <footer className="composer-area" hidden={!activeModeAllowed}>
+        <footer className="composer-area" hidden={!activeModeAllowed || studio}>
           {showLatest && (
             <button
               className="jump-latest"
@@ -1264,87 +1440,7 @@ function App() {
             </button>
           )}
           <div className="composer-content">
-            {session.kind === "error" && (
-              <div className="error session-notice" role="alert">
-                <span>{session.message}</span>
-                <a className="download" href="/app/login">
-                  Sign in again
-                </a>
-                <button disabled={busy} onClick={() => void checkSession()}>
-                  Refresh sign-in
-                </button>
-              </div>
-            )}
-            {warnings.length > 0 && (
-              <div className="error" role="alert">
-                <span>{warnings.join(" ")}</span>
-                <button
-                  aria-label="Dismiss cleanup warnings"
-                  onClick={() => setWarnings([])}
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-            {unsupportedVideo && (
-              <p className="notice" role="status">
-                Choose a text-to-video model. Portrait and audio inputs are not
-                supported here yet.
-              </p>
-            )}
-            {error && (
-              <div className="error" role="alert">
-                <span>{error}</span>
-                {active.messages.length > 0 && active.mode !== "stt" && (
-                  <button
-                    disabled={
-                      busy ||
-                      !credential ||
-                      !model ||
-                      unsupportedVideo ||
-                      readingAttachments ||
-                      !!attachmentProblem
-                    }
-                    onClick={() => void send(true)}
-                  >
-                    Retry
-                  </button>
-                )}
-                <button aria-label="Dismiss error" onClick={() => setError("")}>
-                  ✕
-                </button>
-              </div>
-            )}
-            {attachmentReadError && (
-              <div className="error" role="alert">
-                <span>{attachmentReadError}</span>
-                <button
-                  type="button"
-                  aria-label="Dismiss attachment error"
-                  onClick={() => setAttachmentReadError("")}
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-            {attachmentProblem && (
-              <p className="error" role="alert">
-                {attachmentProblem}
-              </p>
-            )}
-            {readingAttachments && (
-              <p className="notice" role="status">
-                Reading files. Wait before sending.
-              </p>
-            )}
-            {!model && session.kind !== "error" && (
-              <p className="notice" role="status">
-                {models.length
-                  ? `No selected, installed ${labels[active.mode].toLowerCase()} model. Configure one with the LocalBase CLI.`
-                  : connectionLabel}{" "}
-                <button onClick={() => setDrawer("settings")}>Connect</button>
-              </p>
-            )}
+            {notices}
             <form
               className="composer"
               onSubmit={(e) => {
@@ -1555,6 +1651,10 @@ function App() {
           </div>
         </footer>
       </div>
+      <footer className="license-notice">
+        AGPL-3.0-or-later ·{" "}
+        <a href="https://github.com/timsexperiments/LocalBase">Source</a>
+      </footer>
       {visibleDrawer && (
         <Drawer
           fullPage={visibleDrawer === "catalog" || visibleDrawer === "admin"}
@@ -1664,7 +1764,7 @@ function App() {
               </button>
               {session.kind === "error" && (
                 <a className="download" href="/app/login">
-                  Sign in again
+                  Sign in
                 </a>
               )}
               <hr />

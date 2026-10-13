@@ -7,6 +7,7 @@ import {
 } from "../domains/auth/browser-access";
 import type { Permission } from "../domains/auth/authorization";
 import type { BrowserIdentity } from "../domains/auth/browser-identity";
+import type { BrowserSessionStore } from "../domains/auth/browser-sessions";
 import type { MagicLinkSessionAdapter } from "../domains/auth/magic-links";
 import { videoJobIdFromPath } from "../domains/runtime/route-dispatch";
 import {
@@ -71,6 +72,7 @@ function allowedUiRoute(method: string, pathname: string): boolean {
       "/v1/chat/completions",
       "/v1/embeddings",
       "/v1/images/generations",
+      "/v1/images/edits",
       "/v1/audio/speech",
       "/v1/audio/transcriptions",
       "/v1/videos",
@@ -124,6 +126,7 @@ export function createUiAccess({
   defer,
   authorizeIdentity,
   magicLinks,
+  sessionStore,
 }: {
   config: BrowserAccessConfig | null;
   keyResolver?: JWTVerifyGetKey;
@@ -135,6 +138,7 @@ export function createUiAccess({
     permissions: readonly Permission[];
   }> | null;
   magicLinks?: MagicLinkSessionAdapter;
+  sessionStore?: BrowserSessionStore;
 }) {
   const credentials = new WeakMap<
     Request,
@@ -166,6 +170,7 @@ export function createUiAccess({
           ...(now ? { now } : {}),
           ...(defer ? { defer } : {}),
           ...(magicLinks ? { magicLinks } : {}),
+          ...(sessionStore ? { sessionStore } : {}),
         })
       : null;
 

@@ -15,6 +15,7 @@ import {
   writeJsonSuccess,
 } from "./output";
 import { redactExternalLogText } from "../../observability/logging";
+import { shouldUseColor } from "../../../utils/color";
 
 type CreateContext = (
   options: GlobalOptions,
@@ -39,8 +40,14 @@ async function reportError(
 ): Promise<number> {
   message = redactExternalLogText(message, 2_048);
   if (json) writeJsonError("invalid_input", message);
-  console.error(`Error: ${message}`);
-  if (command) console.error(await commandHelpText(command, parent));
+  process.stderr.write(`Error: ${message}\n`);
+  if (command)
+    process.stderr.write(
+      `${await commandHelpText(command, parent, {
+        stream: process.stderr,
+        json,
+      })}\n`,
+    );
   return exitCode;
 }
 
@@ -51,11 +58,24 @@ async function withJsonStdoutGuard<T>(
 ): Promise<T> {
   if (!enabled) return await work();
   const originalLog = console.log;
-  console.log = (...values: unknown[]) => console.error(...values);
+  const originalLogFormat = process.env.LOG_FORMAT;
+  process.env.LOG_FORMAT = "json";
+  console.log = (...values: unknown[]) => {
+    const line = values
+      .map((value) =>
+        typeof value === "string"
+          ? value
+          : Bun.inspect(value, { colors: shouldUseColor(process.stderr) }),
+      )
+      .join(" ");
+    process.stderr.write(`${line}\n`);
+  };
   try {
     return await work();
   } finally {
     console.log = originalLog;
+    if (originalLogFormat === undefined) delete process.env.LOG_FORMAT;
+    else process.env.LOG_FORMAT = originalLogFormat;
   }
 }
 
@@ -80,13 +100,15 @@ export async function runCli(
     const resolvedMeta = await (typeof meta === "function" ? meta() : meta);
     const version = resolvedMeta?.version ?? "0.1.0";
     if (resolution.global.json) writeJsonSuccess({ version });
-    else console.log(version);
+    else process.stdout.write(`${version}\n`);
     return 0;
   }
   if (resolution.kind === "help") {
     if (resolution.global.json) {
       writeJsonSuccess({
-        help: await commandHelpText(resolution.command, resolution.parent),
+        help: await commandHelpText(resolution.command, resolution.parent, {
+          json: true,
+        }),
       });
     } else {
       await printCommandHelp(resolution.command, resolution.parent);
@@ -157,7 +179,7 @@ export async function runCli(
       );
     }
     if (global.json) writeJsonError("operational_error", message);
-    console.error(`Error: ${message}`);
+    process.stderr.write(`Error: ${message}\n`);
     return 1;
   } finally {
     if (context && "database" in context) {

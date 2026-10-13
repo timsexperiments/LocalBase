@@ -31,6 +31,7 @@ function model(inputModalities = ["text"]) {
           name: "Chat",
           kind: "llm",
           quantization: "Q4",
+          qualificationState: "qualified",
           memory: { minimumVramEstimateGb: 1, storageEstimateGb: 1 },
           inputModalities,
           outputModalities: ["text"],

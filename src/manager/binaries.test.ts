@@ -9,6 +9,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
@@ -94,6 +95,31 @@ test("maps helpers to the existing pinned runtime artifact families", () => {
 
   expect(llamaTts).toEqual({ ...llamaServer, name: "llama-tts" });
   expect(sdCli).toEqual({ ...sdServer, name: "sd-cli" });
+});
+
+test("sanitizes user-managed executable paths in notices", async () => {
+  const root = createRoot();
+  const directory = join(root, "path-\u001b[31mred\u001b[0m");
+  mkdirSync(directory);
+  const executable = join(directory, "whisper-server");
+  writeFileSync(executable, "fixture");
+  chmodSync(executable, 0o755);
+  process.env.PATH = directory;
+  const originalTestLogs = process.env.LOCALBASE_TEST_LOGS;
+  process.env.LOCALBASE_TEST_LOGS = "1";
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...values: unknown[]) => lines.push(values.join(" "));
+  try {
+    expect(await ensureBinary({ root }, "whisper-server")).toBe(executable);
+  } finally {
+    console.log = originalLog;
+    if (originalTestLogs === undefined) delete process.env.LOCALBASE_TEST_LOGS;
+    else process.env.LOCALBASE_TEST_LOGS = originalTestLogs;
+  }
+  expect(lines).toHaveLength(1);
+  expect(lines[0]).toContain(join(root, "path-red", "whisper-server"));
+  expect(lines[0]).not.toMatch(/[\u001b\u009b]/);
 });
 
 async function tarGz(

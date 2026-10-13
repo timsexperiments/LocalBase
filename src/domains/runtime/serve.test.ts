@@ -1,7 +1,7 @@
 import { restartPending } from "../config/activation";
 import { persistConfiguration } from "../config/declarative";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, rmSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { byId, primaryArtifact } from "../../catalog";
@@ -22,13 +22,15 @@ import type { InferenceTerminal } from "../observability/inference";
 import { gatewayHealthSchema } from "./health";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
-  admitVideoWithIdleRecovery,
+  admitModelWithIdleRecovery,
   applyElevatedMemoryPressure,
   finalizeGatewayShutdown,
+  generateSpeechWithIdleRecovery,
   httpBaseUrl,
   internalGatewayFailure,
   inferenceQueueError,
   proxyWithAdmission,
+  recoverEventStreamReadErrors,
   reportMemoryPressureTransition,
   resourceUnavailable,
   speechGenerationFailure,
@@ -64,7 +66,7 @@ const STREAM_VALIDATION_FAILURE = `data: ${JSON.stringify({
     param: null,
     code: "upstream_error",
   },
-})}\n\ndata: [DONE]\n\n`;
+})}\n\n`;
 
 function modelArtifactFile(modelId: string): string {
   const model = byId(modelId);
@@ -76,6 +78,55 @@ test("formats IPv4, hostnames, and IPv6 literals as HTTP base URLs", () => {
   expect(httpBaseUrl("127.0.0.1", 2273)).toBe("http://127.0.0.1:2273");
   expect(httpBaseUrl("localhost", 2273)).toBe("http://localhost:2273");
   expect(httpBaseUrl("::1", 2273)).toBe("http://[::1]:2273");
+});
+
+test("releases upstream stream readers after completion, failure, and cancellation", async () => {
+  const encoder = new TextEncoder();
+  const completed = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode("data: ok\n\n"));
+      controller.close();
+    },
+  });
+  await new Response(recoverEventStreamReadErrors(completed)).arrayBuffer();
+  expect(completed.locked).toBe(false);
+
+  const failed = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.error(new Error("read failure"));
+    },
+  });
+  const failedResult = await new Response(
+    recoverEventStreamReadErrors(failed),
+  ).text();
+  expect(failedResult).toContain('"code":"upstream_error"');
+  expect(failed.locked).toBe(false);
+
+  let cancelObserved = false;
+  const cancelled = new ReadableStream<Uint8Array>({
+    cancel() {
+      cancelObserved = true;
+    },
+  });
+  const response = new Response(recoverEventStreamReadErrors(cancelled));
+  const clientReader = response.body!.getReader();
+  const pendingRead = clientReader.read();
+  await clientReader.cancel("client aborted");
+  await pendingRead;
+  expect(cancelObserved).toBe(true);
+  expect(cancelled.locked).toBe(false);
+
+  const unfinished = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"id":"cut'));
+      controller.close();
+    },
+  });
+  const unfinishedResult = await new Response(
+    recoverEventStreamReadErrors(unfinished),
+  ).text();
+  expect(unfinishedResult).not.toContain('"id":"cut');
+  expect(unfinishedResult.match(/"code":"upstream_error"/g)).toHaveLength(1);
 });
 
 async function expectGatewayListenerHost(
@@ -320,87 +371,129 @@ test("formats memory admission rejection as a retryable OpenAI error", async () 
   });
 });
 
-test("video admission evicts idle peers and retries once after memory rejection", async () => {
-  const failure = new RuntimeMemoryAdmissionError({
+test.each(["image", "video", "stt"] as const)(
+  "%s admission evicts idle peers and retries once after memory rejection",
+  async (modality) => {
+    const failure = new RuntimeMemoryAdmissionError({
+      kind: "rejected",
+      reason: "system-memory",
+      poolId: "system",
+    });
+    let attempts = 0;
+    let cancellations = 0;
+    let evictions = 0;
+    let releases = 0;
+    let stops = 0;
+    const admission = (ready: Promise<void>): RuntimeAdmission => ({
+      modality,
+      snapshot: {} as RuntimeAdmission["snapshot"],
+      supervisor: {
+        kill: async () => {
+          stops += 1;
+        },
+      } as RuntimeAdmission["supervisor"],
+      ready,
+      onPendingDetach: () => {},
+      onIdleCancellation: () => {},
+      markResponseStarted: () => {},
+      cancel: () => {
+        cancellations += 1;
+      },
+      release: () => {
+        releases += 1;
+      },
+    });
+    const admitted = (value: RuntimeAdmission): ModelAdmissionResult => ({
+      kind: "admitted",
+      value: {
+        modelId: "video-model",
+        admission: value,
+        queueWaitMs: 0,
+        admissionSnapshot: { active: 1, slots: 1, waiting: 0 },
+      },
+    });
+    const recovered = admitted(admission(Promise.resolve()));
+    const reconciler = {
+      async admitModel(
+        requestedModality: string,
+        modelId: string | undefined,
+        signal?: AbortSignal,
+      ) {
+        expect([requestedModality, modelId, signal?.aborted]).toEqual([
+          modality,
+          "video-model",
+          false,
+        ]);
+        attempts += 1;
+        if (attempts === 2) return recovered;
+        return admitted(admission(Promise.reject(failure)));
+      },
+      async recoverWithIdleEviction() {
+        evictions += 1;
+        return true;
+      },
+      async waitForAdmissionAfterEviction() {
+        return true;
+      },
+    };
+
+    const result = await admitModelWithIdleRecovery(
+      reconciler,
+      modality,
+      "video-model",
+      new AbortController().signal,
+    );
+
+    expect(result.kind).toBe("admitted");
+    if (result.kind !== "admitted") throw new Error("Expected admission.");
+    await result.value.admission.ready;
+    result.value.admission.release();
+    await result.value.admission.supervisor.kill();
+    expect({ attempts, cancellations, evictions, releases, stops }).toEqual({
+      attempts: 2,
+      cancellations: 1,
+      evictions: 1,
+      releases: 1,
+      stops: 2,
+    });
+  },
+);
+
+test("TTS generation memory rejection recovers once while retaining its admission", async () => {
+  const rejection = new RuntimeMemoryAdmissionError({
     kind: "rejected",
     reason: "system-memory",
     poolId: "system",
   });
   let attempts = 0;
-  let cancellations = 0;
   let evictions = 0;
-  let releases = 0;
-  let stops = 0;
-  const admission = (ready: Promise<void>): RuntimeAdmission => ({
-    modality: "video",
-    snapshot: {} as RuntimeAdmission["snapshot"],
-    supervisor: {
-      kill: async () => {
-        stops += 1;
-      },
-    } as RuntimeAdmission["supervisor"],
-    ready,
-    onPendingDetach: () => {},
-    onIdleCancellation: () => {},
-    markResponseStarted: () => {},
-    cancel: () => {
-      cancellations += 1;
-    },
-    release: () => {
-      releases += 1;
-    },
-  });
-  const admitted = (value: RuntimeAdmission): ModelAdmissionResult => ({
-    kind: "admitted",
-    value: {
-      modelId: "video-model",
-      admission: value,
-      queueWaitMs: 0,
-      admissionSnapshot: { active: 1, slots: 1, waiting: 0 },
-    },
-  });
-  const recovered = admitted(admission(Promise.resolve()));
+  let waits = 0;
   const reconciler = {
-    async admitModel(
-      modality: string,
-      modelId: string | undefined,
-      signal?: AbortSignal,
-    ) {
-      expect([modality, modelId, signal?.aborted]).toEqual([
-        "video",
-        "video-model",
-        false,
-      ]);
-      attempts += 1;
-      if (attempts === 2) return recovered;
-      return admitted(admission(Promise.reject(failure)));
-    },
-    async recoverWithIdleEviction() {
+    async recoverWithIdleEviction(modality: string, modelId: string) {
+      expect([modality, modelId]).toEqual(["tts", "speech-model"]);
       evictions += 1;
       return true;
     },
     async waitForAdmissionAfterEviction() {
+      waits += 1;
       return true;
     },
   };
-
-  const result = await admitVideoWithIdleRecovery(
+  const result = await generateSpeechWithIdleRecovery(
     reconciler,
-    "video-model",
+    "speech-model",
     new AbortController().signal,
+    async () => {
+      attempts += 1;
+      if (attempts === 1) throw rejection;
+      return new Uint8Array([1, 2, 3]);
+    },
   );
-
-  expect(result.kind).toBe("admitted");
-  if (result.kind !== "admitted") throw new Error("Expected admission.");
-  await result.value.admission.ready;
-  result.value.admission.release();
-  await result.value.admission.supervisor.kill();
-  expect({ attempts, cancellations, evictions, releases, stops }).toEqual({
+  expect([...result]).toEqual([1, 2, 3]);
+  expect({ attempts, evictions, waits }).toEqual({
     attempts: 2,
-    cancellations: 1,
     evictions: 1,
-    releases: 1,
-    stops: 2,
+    waits: 1,
   });
 });
 
@@ -450,8 +543,9 @@ test("video admission does not evict or retry unrelated startup failures", async
     },
   };
 
-  const result = await admitVideoWithIdleRecovery(
+  const result = await admitModelWithIdleRecovery(
     reconciler,
+    "video",
     "video-model",
     new AbortController().signal,
   );
@@ -510,8 +604,9 @@ test("video model switch retries transient preflight rejection after idle evicti
     },
   };
 
-  const result = await admitVideoWithIdleRecovery(
+  const result = await admitModelWithIdleRecovery(
     reconciler,
+    "video",
     "video-model",
     new AbortController().signal,
   );
@@ -580,8 +675,9 @@ test("video admission waits for a lagging post-eviction memory sample", async ()
     },
   };
 
-  const result = await admitVideoWithIdleRecovery(
+  const result = await admitModelWithIdleRecovery(
     reconciler,
+    "video",
     "video-model",
     new AbortController().signal,
   );
@@ -651,8 +747,9 @@ test("video startup capacity rejection skips idle eviction and retry", async () 
     },
   };
 
-  const result = await admitVideoWithIdleRecovery(
+  const result = await admitModelWithIdleRecovery(
     reconciler,
+    "video",
     "video-model",
     new AbortController().signal,
   );
@@ -712,8 +809,9 @@ test("video ready rejection preserves idle peers when recovery cannot fit", asyn
     },
   };
 
-  const result = await admitVideoWithIdleRecovery(
+  const result = await admitModelWithIdleRecovery(
     reconciler,
+    "video",
     "video-model",
     new AbortController().signal,
   );
@@ -935,6 +1033,7 @@ test("cancels response leases on cancellation and releases them on completion", 
     (terminal) => streamTerminals.push(terminal),
   );
   const streamReader = leasedStream.body!.getReader();
+  expect(streamCancellation.response.body!.locked).toBe(true);
   await streamReader.read();
   await streamReader.cancel();
   await streamCancellation.cancelled;
@@ -948,6 +1047,7 @@ test("cancels response leases on cancellation and releases them on completion", 
       source: "response_cancelled",
     },
   ]);
+  expect(streamCancellation.response.body!.locked).toBe(false);
 
   const requestCancellation = createLeasedResponse();
   const requestAbort = new AbortController();
@@ -979,8 +1079,9 @@ test("cancels response leases on cancellation and releases them on completion", 
 
   let completedReleases = 0;
   let completedCancels = 0;
+  const completedUpstream = new Response(new Uint8Array([1]));
   const completed = withResponseLease(
-    new Response(new Uint8Array([1])),
+    completedUpstream,
     () => {
       completedReleases += 1;
     },
@@ -990,20 +1091,22 @@ test("cancels response leases on cancellation and releases them on completion", 
     new AbortController().signal,
   );
   await completed.arrayBuffer();
+  expect(completedUpstream.body!.locked).toBe(false);
   expect(completedReleases).toBe(1);
   expect(completedCancels).toBe(0);
 
   let failedReleases = 0;
   let failedCancels = 0;
   const failedTerminals: InferenceTerminal[] = [];
+  const failedUpstream = new Response(
+    new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error("upstream read failed"));
+      },
+    }),
+  );
   const failed = withResponseLease(
-    new Response(
-      new ReadableStream<Uint8Array>({
-        pull(controller) {
-          controller.error(new Error("upstream read failed"));
-        },
-      }),
-    ),
+    failedUpstream,
     () => {
       failedReleases += 1;
     },
@@ -1014,6 +1117,7 @@ test("cancels response leases on cancellation and releases them on completion", 
     (terminal) => failedTerminals.push(terminal),
   );
   await expect(failed.arrayBuffer()).rejects.toThrow("upstream read failed");
+  expect(failedUpstream.body!.locked).toBe(false);
   expect({ failedReleases, failedCancels, failedTerminals }).toEqual({
     failedReleases: 0,
     failedCancels: 1,
@@ -2071,6 +2175,7 @@ describe("API gateway integration", () => {
     expect(upstream?.headers.get("x-test-header")).toBe("retained");
     expect(JSON.parse(upstream?.body ?? "{}")).toMatchObject({
       model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+      max_tokens: 4096,
       provider_option: "preserved",
       messages: [
         { role: "developer", content: "hello" },
@@ -2104,6 +2209,289 @@ describe("API gateway integration", () => {
       await (await request("/health")).json(),
     );
     expect(health.modalities.llm.state).toBe("running");
+  });
+
+  test("rejects tool requests and tool history for models without catalog tool support", async () => {
+    const requestOffset = gateway.upstreamRequests.length;
+    for (const toolCase of [
+      {
+        tools: [
+          {
+            type: "function",
+            function: { name: "weather", parameters: { type: "object" } },
+          },
+        ],
+        tool_choice: "required",
+      },
+      { tool_choice: "auto", param: "tool_choice" },
+      {
+        functions: [{ name: "weather", parameters: { type: "object" } }],
+        param: "functions",
+      },
+      { function_call: "auto", param: "function_call" },
+      {
+        messages: [
+          { role: "user", content: "hello" },
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: { name: "weather", arguments: "{}" },
+              },
+            ],
+          },
+        ],
+        param: "messages[1].tool_calls",
+      },
+      {
+        messages: [
+          { role: "user", content: "hello" },
+          { role: "tool", tool_call_id: "call_1", content: "sunny" },
+        ],
+        param: "messages[1]",
+      },
+    ]) {
+      const { param, ...toolFields } = toolCase as Record<string, unknown>;
+      for (const stream of [false, true]) {
+        const response = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+            messages: [{ role: "user", content: "hello" }],
+            stream,
+            ...toolFields,
+          }),
+        });
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          error: {
+            type: "invalid_request_error",
+            param: param ?? "tools",
+            code: "unsupported_model_capability",
+            message: expect.stringContaining(
+              "qwen2.5-coder-1.5b-instruct-q4_k_m",
+            ),
+          },
+        });
+      }
+    }
+    expect(gateway.upstreamRequests.slice(requestOffset)).toHaveLength(0);
+  });
+
+  test("strips no-op tool fields for models without catalog tool support", async () => {
+    for (const noOpFields of [
+      { tools: [] },
+      { functions: [] },
+      { tool_choice: "none" },
+      { function_call: "none" },
+      { messages: [{ role: "assistant", content: "hello", tool_calls: [] }] },
+      {
+        tools: [],
+        functions: [],
+        tool_choice: "none",
+        function_call: "none",
+        messages: [{ role: "assistant", content: "hello", tool_calls: [] }],
+      },
+    ]) {
+      for (const stream of [false, true]) {
+        const response = await request("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+            messages: [{ role: "user", content: "hello" }],
+            stream,
+            ...noOpFields,
+          }),
+        });
+        expect(response.status).toBe(200);
+        await response.text();
+        const forwarded = JSON.parse(
+          gateway.upstreamRequests.at(-1)?.body ?? "{}",
+        );
+        expect(forwarded).not.toHaveProperty("tools");
+        expect(forwarded).not.toHaveProperty("functions");
+        expect(forwarded).not.toHaveProperty("tool_choice");
+        expect(forwarded).not.toHaveProperty("function_call");
+        expect(forwarded.messages).not.toContainEqual(
+          expect.objectContaining({ tool_calls: [] }),
+        );
+      }
+    }
+  });
+
+  test("preserves explicit generation limits and supplies the default only when omitted", async () => {
+    for (const limit of [{ max_tokens: 73 }, { max_completion_tokens: 91 }]) {
+      const response = await request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          messages: [{ role: "user", content: "hello" }],
+          ...limit,
+        }),
+      });
+      expect(response.status).toBe(200);
+      await response.text();
+      expect(
+        JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}"),
+      ).toMatchObject(limit);
+    }
+  });
+
+  test.each([
+    { name: "small context", ctxSize: 2048, parallel: 1, expected: 2048 },
+    { name: "parallel slots", ctxSize: 8192, parallel: 2, expected: 4096 },
+  ])(
+    "caps default generation for $name",
+    async ({ ctxSize, parallel, expected }) => {
+      // Override the launch context so host memory cannot shrink it.
+      const boundedGateway = await startGatewayFixture({
+        ctxSize,
+        parallel,
+        ctxSizeOverride: ctxSize,
+      });
+      try {
+        const response = await fetch(
+          `${boundedGateway.baseUrl}/v1/chat/completions`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+              messages: [{ role: "user", content: "hello" }],
+            }),
+          },
+        );
+        expect(response.status).toBe(200);
+        await response.text();
+        expect(
+          JSON.parse(boundedGateway.upstreamRequests.at(-1)?.body ?? "{}")
+            .max_tokens,
+        ).toBe(expected);
+      } finally {
+        await boundedGateway.stop();
+      }
+    },
+  );
+
+  test("caps default generation using the effective launch context override", async () => {
+    const boundedGateway = await startGatewayFixture({
+      ctxSize: 8192,
+      parallel: 1,
+      ctxSizeOverride: 2048,
+    });
+    try {
+      const response = await fetch(
+        `${boundedGateway.baseUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+            messages: [{ role: "user", content: "hello" }],
+          }),
+        },
+      );
+      expect(response.status).toBe(200);
+      await response.text();
+      expect(
+        JSON.parse(boundedGateway.upstreamRequests.at(-1)?.body ?? "{}")
+          .max_tokens,
+      ).toBe(2048);
+    } finally {
+      await boundedGateway.stop();
+    }
+  });
+
+  test.each([false, true])(
+    "caps cold-start default generation by the runtime training context (stream=%p)",
+    async (stream) => {
+      const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+      const boundedGateway = await startGatewayFixture({
+        ctxSize: 8192,
+        parallel: 1,
+      });
+      try {
+        const modelPath = join(
+          boundedGateway.readConfig().llmModelsDir,
+          primaryArtifact(byId(modelId)!).filename,
+        );
+        const u32 = (value: number) => {
+          const buffer = Buffer.alloc(4);
+          buffer.writeUInt32LE(value);
+          return buffer;
+        };
+        const u64 = (value: number) => {
+          const buffer = Buffer.alloc(8);
+          buffer.writeBigUInt64LE(BigInt(value));
+          return buffer;
+        };
+        const ggufString = (value: string) => {
+          const bytes = Buffer.from(value);
+          return Buffer.concat([u64(bytes.length), bytes]);
+        };
+        const header = Buffer.concat([
+          u32(0x46554747),
+          u32(3),
+          u64(0),
+          u64(2),
+          ggufString("general.architecture"),
+          u32(8),
+          ggufString("llama"),
+          ggufString("llama.context_length"),
+          u32(4),
+          u32(1024),
+        ]);
+        const fd = openSync(modelPath, "r+");
+        try {
+          writeSync(fd, header);
+        } finally {
+          closeSync(fd);
+        }
+        const response = await fetch(
+          `${boundedGateway.baseUrl}/v1/chat/completions`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: modelId,
+              messages: [{ role: "user", content: "hello" }],
+              stream,
+            }),
+          },
+        );
+        expect(response.status).toBe(200);
+        await response.text();
+        expect(
+          JSON.parse(boundedGateway.upstreamRequests.at(-1)?.body ?? "{}")
+            .max_tokens,
+        ).toBe(1024);
+      } finally {
+        await boundedGateway.stop();
+      }
+    },
+  );
+
+  test("caps default generation on streaming requests", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        messages: [{ role: "user", content: "hello" }],
+        stream: true,
+      }),
+    });
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(
+      JSON.parse(gateway.upstreamRequests.at(-1)?.body ?? "{}").max_tokens,
+    ).toBe(4096);
   });
 
   test("forwards user-only chat requests without injected instructions", async () => {
@@ -2549,7 +2937,28 @@ describe("API gateway integration", () => {
     expect(response.status).toBe(200);
     const stream = await response.text();
     expect(stream).toContain('"finish_reason":"stop"');
-    expect(stream.endsWith(STREAM_VALIDATION_FAILURE)).toBe(true);
+    expect(stream.match(/"code":"upstream_error"/g)).toHaveLength(1);
+    expect(stream).not.toContain("[DONE]");
+  });
+
+  test("discards an unframed final chat event and emits one terminal error", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "unframed-stream-eof",
+      },
+      body: JSON.stringify({
+        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).not.toContain("UNFRAMED_MUST_NOT_LEAK");
+    expect(stream.match(/"code":"upstream_error"/g)).toHaveLength(1);
+    expect(stream).not.toContain("[DONE]");
   });
 
   test("requires every observed choice to finish before done", async () => {
@@ -2831,6 +3240,29 @@ describe("API gateway integration", () => {
     const completeB = await within(switchToB, "switch after EOF");
     expect(completeB.status).toBe(200);
     await completeB.text();
+  });
+
+  test("normalizes upstream read failures as terminal OpenAI SSE errors", async () => {
+    const response = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "error-mid-event",
+      },
+      body: JSON.stringify({
+        model: loadGatewayConfig().activeLlmModel,
+        stream: true,
+        messages: [{ role: "user", content: "fail after headers" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const stream = await response.text();
+    expect(stream).not.toContain('"id":"cut');
+    expect(stream).toContain('"type":"server_error"');
+    expect(stream).toContain('"param":null');
+    expect(stream).toContain('"code":"upstream_error"');
+    expect(stream).not.toContain("[DONE]");
+    expect(stream.match(/"code":"upstream_error"/g)).toHaveLength(1);
   });
 
   test("serves STT while an LLM configuration replacement drains", async () => {

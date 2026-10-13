@@ -1,12 +1,15 @@
 import { expect, test } from "bun:test";
 import { byId } from "../../../catalog";
 import { RuntimeMemoryAdmissionError } from "../memory-controller";
+import { ModelInstallConsentError } from "../startup-preflight";
 import {
   projectVideoJob,
   qualifiedVideoInput,
   videoProfileMismatchMessage,
 } from "./gateway-contract";
 import { VideoBackendJobFailureError } from "./video-job-manager";
+import { assertModelEligible } from "../../models/model-eligibility";
+import { ModelManagementError } from "../../models/model-management-contract";
 import { testPcm16Wav, testPng } from "./video-input.fixtures";
 
 const model = byId("wan2.1-t2v-1.3b-q8_0");
@@ -84,6 +87,29 @@ test("does not construct an unqualified native video request", () => {
       model,
     ),
   ).toBeUndefined();
+});
+
+test("qualifies a PNG input_reference only for TI2V", () => {
+  const spec = byId("fastwan2.2-ti2v-5b-q6_k");
+  if (!spec) throw new Error("Expected TI2V catalog model.");
+  const request = {
+    model: spec.modelId,
+    prompt: "A boat crosses a lake.",
+    width: 480,
+    height: 832,
+    frames: 81,
+    fps: 16,
+    input: { kind: "text" as const },
+    input_reference: `data:image/png;base64,${testPng({ width: 480, height: 832 })}`,
+  };
+  expect(qualifiedVideoInput(request, spec)).toMatchObject({
+    kind: "image",
+    image: { format: "png" },
+  });
+  expect(
+    qualifiedVideoInput({ ...request, input_reference: "not-base64" }, spec),
+  ).toBeUndefined();
+  expect(qualifiedVideoInput(request, model)).toBeUndefined();
 });
 
 test("projects speech media only for a qualified S2V profile", () => {
@@ -176,6 +202,26 @@ test("names the accepted profile in the mismatch message", () => {
   expect(message).toContain("got 512x512, 49 frames at 24 fps.");
 });
 
+test("reports decoded input_reference dimensions in profile errors", () => {
+  const spec = byId("fastwan2.2-ti2v-5b-q6_k");
+  if (!spec) throw new Error("Expected catalog model.");
+  const image = testPng({ width: 12, height: 34 });
+  const message = videoProfileMismatchMessage(
+    {
+      model: spec.modelId,
+      prompt: "x",
+      width: 480,
+      height: 832,
+      frames: 81,
+      fps: 16,
+      input: { kind: "text" },
+      input_reference: `data:image/png;base64,${image}`,
+    },
+    spec,
+  );
+  expect(message).toContain("got image 12x34, 81 frames at 16 fps.");
+});
+
 test("projects memory failures as insufficient_memory", () => {
   const base = {
     id: "00000000-0000-4000-8000-000000000000",
@@ -214,4 +260,57 @@ test("projects memory failures as insufficient_memory", () => {
   expect(
     projectVideoJob({ ...base, failure: new VideoBackendJobFailureError() }),
   ).toMatchObject({ error: { code: "video_generation_failed" } });
+  expect(
+    projectVideoJob({
+      ...base,
+      failure: new ModelInstallConsentError("missing-video-model"),
+    }),
+  ).toMatchObject({
+    error: {
+      code: "model_install_consent_required",
+      message: expect.stringContaining("--install-missing"),
+    },
+  });
+  expect(
+    projectVideoJob({
+      ...base,
+      failure: new ModelManagementError(
+        "invalid_request",
+        "Experimental models require models.allowExperimental = true.",
+      ),
+    }),
+  ).toMatchObject({
+    error: {
+      code: "experimental_model_not_allowed",
+      message: "Experimental models require models.allowExperimental = true.",
+    },
+  });
+  expect(
+    projectVideoJob({
+      ...base,
+      failure: new ModelManagementError("invalid_request", "internal detail"),
+    }),
+  ).toMatchObject({ error: { code: "video_generation_failed" } });
+  expect(
+    projectVideoJob({
+      ...base,
+      failure: (() => {
+        try {
+          assertModelEligible(byId("wan2.2-s2v-14b-fp8")!, {
+            allowExperimental: true,
+            target: null,
+          });
+        } catch (error) {
+          return error as Error;
+        }
+        throw new Error("Expected the S2V model to be hardware-ineligible.");
+      })(),
+    }),
+  ).toMatchObject({
+    error: {
+      code: "model_hardware_ineligible",
+      message:
+        "wan2.2-s2v-14b-fp8: Requires Linux x64 with a single NVIDIA GPU.",
+    },
+  });
 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { stripAnsiCodes } from "../../../utils/color";
 
 const jsonValueSchema = z.json();
 
@@ -76,11 +77,11 @@ export function writeJsonError(code: string, message: string): void {
 export function createCommandOutput(json = false): CommandOutput {
   return {
     info(message) {
-      if (json) console.error(message);
-      else console.log(message);
+      if (json) process.stderr.write(`${stripAnsiCodes(message)}\n`);
+      else process.stdout.write(`${stripAnsiCodes(message)}\n`);
     },
     error(message) {
-      console.error(message);
+      process.stderr.write(`${stripAnsiCodes(message)}\n`);
     },
     lifecycle(event) {
       if (json) writeStdout(serveLifecycleEventSchema.parse(event));

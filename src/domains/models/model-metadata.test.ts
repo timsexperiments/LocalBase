@@ -12,6 +12,7 @@ import {
   projectModelMetadata,
   projectModelMetadataList,
 } from "./model-metadata";
+import { modelsSchema } from "../../ui/client";
 
 const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const multipartModelId = "qwen3-coder-next-q4_k_m";
@@ -363,4 +364,19 @@ test("uses the strict response schemas for lists and entries", () => {
       }).success,
     ).toBe(false);
   }
+});
+
+test("the browser accepts metadata for every catalog model", () => {
+  const list = projectModelMetadataList(
+    {
+      catalog: CATALOG,
+      config: defaultConfig("/tmp/localbase-model-metadata-browser"),
+      installations: new Map(),
+      runtimes: runtimeSnapshots(),
+    },
+    hostMemory(),
+  );
+
+  const parsed = modelsSchema.safeParse(list);
+  expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
 });

@@ -1,6 +1,7 @@
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ServiceInput } from "../../app/commands/inputs";
+import { loadConfig, saveConfig } from "../../../manager";
 import { serviceLifecycleResultSchema } from "../../app/commands/results";
 import {
   getServiceInspection,
@@ -35,13 +36,15 @@ function printStatus(
 
 async function runManagedStart(
   action: "start" | "restart",
+  input: ServiceInput,
   ctx: AppContext,
   execution: CommandExecution,
 ) {
+  persistInstallConsent(input, ctx);
   const inspection =
     action === "start"
-      ? await startService(ctx.config.root)
-      : await restartService(ctx.config.root);
+      ? await startService(ctx.config.root, input.installMissing)
+      : await restartService(ctx.config.root, input.installMissing);
   if (
     inspection.service.state !== "running" &&
     inspection.service.state !== "starting"
@@ -57,20 +60,30 @@ async function runManagedStart(
   return serviceLifecycleResultSchema.parse(inspection);
 }
 
+export function persistInstallConsent(
+  input: ServiceInput,
+  ctx: AppContext,
+): void {
+  if (!input.installMissing || ctx.config.installMissingModels) return;
+  ctx.config.installMissingModels = true;
+  const persistedConfig = loadConfig(ctx.database, ctx.config.root);
+  saveConfig(ctx.database, { ...persistedConfig, installMissingModels: true });
+}
+
 export async function runStart(
-  _input: ServiceInput,
+  input: ServiceInput,
   ctx: AppContext,
   execution: CommandExecution,
 ) {
-  return { data: await runManagedStart("start", ctx, execution) };
+  return { data: await runManagedStart("start", input, ctx, execution) };
 }
 
 export async function runRestart(
-  _input: ServiceInput,
+  input: ServiceInput,
   ctx: AppContext,
   execution: CommandExecution,
 ) {
-  return { data: await runManagedStart("restart", ctx, execution) };
+  return { data: await runManagedStart("restart", input, ctx, execution) };
 }
 
 export async function runStop(

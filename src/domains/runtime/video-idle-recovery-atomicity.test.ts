@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { CATALOG } from "../../catalog";
 import { DatabaseSession } from "../../db/client";
 import { defaultConfig, saveConfig } from "../../manager";
+import { useSupportedVideoHost } from "../../test/video-host";
 import { RuntimeConfigController } from "./config-snapshot";
 import { RuntimeReconciler } from "./runtime-reconciler";
 import type { RuntimeSupervisorFactory } from "./supervisor-factory";
@@ -13,6 +14,8 @@ import {
   type RuntimeSupervisor,
 } from "./supervisor-registry";
 import type { RuntimeModality } from "./modality";
+
+useSupportedVideoHost();
 
 function setup() {
   const root = mkdtempSync(join(tmpdir(), "localbase-video-atomicity-"));

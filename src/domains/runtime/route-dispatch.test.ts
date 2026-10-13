@@ -20,6 +20,10 @@ test("selects each supported gateway route by its exact path", () => {
   expect(selectGatewayRoute("/v1/audio/translations")).toBe("transcription");
   expect(selectGatewayRoute("/v1/audio/speech")).toBe("speechGeneration");
   expect(selectGatewayRoute("/v1/images/generations")).toBe("imageGeneration");
+  expect(selectGatewayRoute("/v1/images/edits")).toBe("imageEdit");
+  expect(canonicalGatewayHttpRoute("/v1/images/edits?x=1")).toBe(
+    "/v1/images/edits",
+  );
   expect(selectGatewayRoute("/v1/videos")).toBe("videoCreate");
   expect(
     selectGatewayRoute("/v1/videos/00000000-0000-4000-8000-000000000000"),

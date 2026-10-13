@@ -83,6 +83,12 @@ const protectedRoutes: {
     alwaysRequired: false,
   },
   {
+    path: "/v1/images/edits",
+    method: "POST",
+    permission: "inference:image",
+    alwaysRequired: false,
+  },
+  {
     path: "/v1/videos",
     method: "POST",
     permission: "inference:video",

@@ -41,6 +41,12 @@ test("authorized management HTTP validates bounded JSON and persists config muta
         "127.0.0.1",
         "--port",
         new URL(gateway.baseUrl).port,
+        "--llm-port",
+        String(gateway.runtimePorts.llm),
+        "--stt-port",
+        String(gateway.runtimePorts.stt),
+        "--image-port",
+        String(gateway.runtimePorts.image),
         "--auth-mode",
         "bearer",
         "--bypass-memory-check",
@@ -99,6 +105,7 @@ test("authorized management HTTP validates bounded JSON and persists config muta
     }
     const oversized = await post(" ".repeat(1025));
     expect(oversized.status).toBe(413);
+    expect(oversized.headers.get("connection")).toBe("close");
     await oversized.body?.cancel();
     const streamed = await post(
       new ReadableStream<Uint8Array>({
@@ -110,6 +117,7 @@ test("authorized management HTTP validates bounded JSON and persists config muta
       }),
     );
     expect(streamed.status).toBe(413);
+    expect(streamed.headers.get("connection")).toBe("close");
     await streamed.body?.cancel();
     expect(gateway.readConfig().selectedSttModels).toEqual(
       before.selectedSttModels,
@@ -117,11 +125,16 @@ test("authorized management HTTP validates bounded JSON and persists config muta
     const conflict = await post(
       JSON.stringify({ modelId: before.activeLlmModel, action: "disable" }),
     );
-    expect(conflict.status).toBe(409);
-    expect(await conflict.json()).toMatchObject({
-      error: {
-        code: "conflict",
-        message: "Activate another LLM before disabling the default.",
+    expect({
+      status: conflict.status,
+      body: await conflict.json(),
+    }).toMatchObject({
+      status: 409,
+      body: {
+        error: {
+          code: "conflict",
+          message: "Activate another LLM before disabling the default.",
+        },
       },
     });
     const changed = await post(JSON.stringify({ modelId, action: "disable" }));

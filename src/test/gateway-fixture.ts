@@ -27,6 +27,7 @@ import {
   type SpeechFixtureControl,
 } from "./speech-runtime-fixture";
 import { tinyPngBase64 } from "./media-fixtures";
+import { reservePort } from "./ports";
 
 const LLM_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 const STT_MODEL = "whisper-large-v3-turbo";
@@ -178,6 +179,7 @@ export type GatewayFixture = {
   baseUrl: string;
   cliPath: string;
   root: string;
+  runtimePorts: { llm: number; stt: number; image: number };
   apiKey?: string;
   upstreamRequests: UpstreamRequest[];
   readConfig: () => LocalBaseConfig;
@@ -267,6 +269,9 @@ export type GatewayFixtureOptions = {
   imageEnabled?: boolean;
   videoEnabled?: boolean;
   parallel?: LocalBaseConfig["parallel"];
+  ctxSize?: number;
+  ctxSizeOverride?: number;
+  llmModel?: string;
 };
 
 async function readProcessOutput(
@@ -274,26 +279,6 @@ async function readProcessOutput(
 ): Promise<string> {
   if (!stream || typeof stream === "number") return "";
   return await new Response(stream).text();
-}
-
-function reservePort(): number {
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const random = new Uint32Array(1);
-    crypto.getRandomValues(random);
-    const port = 20_000 + (random[0] % 40_000);
-    try {
-      const reservation = Bun.serve({
-        hostname: "127.0.0.1",
-        port,
-        fetch: () => new Response("reserved"),
-      });
-      reservation.stop(true);
-      return port;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
-    }
-  }
-  throw new Error("Could not reserve a test port.");
 }
 
 function startSpeechEventReceiver(): {
@@ -1021,6 +1006,24 @@ function startMockUpstream(
           ],
         });
       }
+      if (mode === "unframed-stream-eof") {
+        return new Response(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-unframed-eof",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: LLM_MODEL,
+            choices: [
+              {
+                index: 0,
+                delta: { content: "UNFRAMED_MUST_NOT_LEAK" },
+                finish_reason: null,
+              },
+            ],
+          })}`,
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
       if (mode === "stream") {
         return new Response(
           `data: ${JSON.stringify({
@@ -1070,6 +1073,55 @@ function startMockUpstream(
               new TextEncoder().encode(invalidEvent.slice(splitAt)),
             );
             controller.close();
+          },
+        });
+        return new Response(body, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      if (mode === "error-mid-stream") {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  id: "chatcmpl-mid-stream-error",
+                  object: "chat.completion.chunk",
+                  created: 0,
+                  model: LLM_MODEL,
+                  choices: [
+                    {
+                      index: 0,
+                      delta: { content: "partial" },
+                      finish_reason: null,
+                    },
+                  ],
+                  usage: null,
+                })}\n\n`,
+              ),
+            );
+            setTimeout(
+              () =>
+                controller.error(new Error("fixture upstream stream failure")),
+              20,
+            );
+          },
+        });
+        return new Response(body, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      if (mode === "error-mid-event") {
+        let emitted = false;
+        const body = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            if (emitted) {
+              await new Promise((resolve) => setTimeout(resolve, 20));
+              controller.error("fixture partial event failure");
+              return;
+            }
+            emitted = true;
+            controller.enqueue(new TextEncoder().encode('data: {"id":"cut'));
           },
         });
         return new Response(body, {
@@ -1525,6 +1577,12 @@ function startMockUpstream(
           })),
         });
       }
+      if (path === "/v1/images/edits") {
+        return Response.json({
+          created: 0,
+          data: [{ b64_json: tinyPngBase64 }],
+        });
+      }
       if (
         path === "/inference" &&
         formData?.get("prompt") === "backend-error"
@@ -1789,8 +1847,9 @@ export async function startGatewayFixture(
     }
     config.port = llmPort;
     config.sttPort = sttPort;
-    config.activeLlmModel = LLM_MODEL;
-    config.selectedLlmModels = [LLM_MODEL];
+    const llmModel = options.llmModel ?? LLM_MODEL;
+    config.activeLlmModel = llmModel;
+    config.selectedLlmModels = [llmModel];
     config.activeSttModel = STT_MODEL;
     config.selectedSttModels = options.sttEnabled === false ? [] : [STT_MODEL];
     if (options.sttEnabled === false) config.activeSttModel = "";
@@ -1805,6 +1864,7 @@ export async function startGatewayFixture(
     config.otelEndpoint = options.otelEndpoint ?? "";
     config.otelSampleRatio = 100;
     config.parallel = options.parallel ?? config.parallel;
+    config.ctxSize = options.ctxSize ?? config.ctxSize;
     const database = new DatabaseSession();
     if (options.pendingRestart) persistConfiguration(database, config);
     else saveConfig(database, config);
@@ -1823,7 +1883,7 @@ export async function startGatewayFixture(
     // Settle every step before failing so no sibling recreates the root after
     // cleanup deletes it.
     const setup = await Promise.allSettled([
-      writeCompleteCatalogArtifact(config.llmModelsDir, LLM_MODEL),
+      writeCompleteCatalogArtifact(config.llmModelsDir, llmModel),
       ...(options.ttsEnabled || options.ttsInstalled
         ? [
             writeCompleteCatalogArtifacts(config.ttsModelsDir, TTS_MODEL),
@@ -1926,6 +1986,9 @@ export async function startGatewayFixture(
         String(sttPort),
         "--image-port",
         String(imagePort),
+        ...(options.ctxSizeOverride === undefined
+          ? []
+          : ["--ctx-size", String(options.ctxSizeOverride)]),
         ...(options.auth
           ? ["--auth-mode", options.auth.mode ?? "bearer"]
           : ["--no-auth"]),
@@ -1948,6 +2011,7 @@ export async function startGatewayFixture(
         env: {
           ...process.env,
           LOCALBASE_API_KEY: options.environmentApiKey,
+          LOCALBASE_TEST_SKIP_BACKEND_PORT_PREFLIGHT: "1",
           PATH: `${runtimeDir}:${process.env.PATH ?? ""}`,
           ...(options.llmRuntimeHttpBackend
             ? { LOCALBASE_TEST_PID_PATH: llmRuntimePidPath }
@@ -2049,6 +2113,7 @@ export async function startGatewayFixture(
     baseUrl,
     cliPath,
     root,
+    runtimePorts: { llm: llmPort, stt: sttPort, image: imagePort },
     apiKey,
     upstreamRequests,
     readConfig() {

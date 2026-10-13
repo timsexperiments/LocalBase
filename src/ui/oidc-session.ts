@@ -9,14 +9,23 @@ import type {
   OidcAccessRegistration,
 } from "../domains/auth/browser-access";
 import type { BrowserIdentity } from "../domains/auth/browser-identity";
-import type { MagicLinkSessionAdapter } from "../domains/auth/magic-links";
+import {
+  browserSessionAbsoluteTtlMs,
+  browserSessionIdleTtlMs,
+  createMemoryBrowserSessionStore,
+  type BrowserSessionStore,
+} from "../domains/auth/browser-sessions";
+import {
+  magicLinkIssuer,
+  type MagicLinkSessionAdapter,
+} from "../domains/auth/magic-links";
 
 const loginStateCookie = "__Host-localbase-login-state";
 const sessionCookie = "__Host-localbase-session";
 const loginStateTtlMs = 10 * 60 * 1_000;
-const sessionTtlMs = 12 * 60 * 60 * 1_000;
+// Rolling idle expiry is written back at most this often per session.
+const sessionTouchIntervalMs = 60 * 60 * 1_000;
 const maximumLoginStates = 128;
-const maximumSessions = 1_024;
 const maximumResponseBytes = 64 * 1_024;
 export const oidcCallbackPath = "/oidc/callback";
 export const githubCallbackPath = "/github/callback";
@@ -111,7 +120,6 @@ type LoginState =
 type BrowserSession = Readonly<{
   ownerId: string;
   identity: BrowserIdentity;
-  expiresAt: number;
 }>;
 function redirect(location: string, cookies: readonly string[] = []): Response {
   const headers = new Headers({
@@ -357,6 +365,7 @@ export function createDirectSessionManager({
   now = Date.now,
   defer = (task) => setTimeout(task, 0),
   magicLinks,
+  sessionStore = createMemoryBrowserSessionStore(),
 }: {
   provider: DirectAccessProvider;
   origin: string;
@@ -365,9 +374,21 @@ export function createDirectSessionManager({
   now?: () => number;
   defer?: (task: () => void) => void;
   magicLinks?: MagicLinkSessionAdapter;
+  sessionStore?: BrowserSessionStore;
 }) {
   const loginStates = new Map<string, LoginState>();
-  const sessions = new Map<string, BrowserSession>();
+  // Saved sessions only stay valid while their sign-in method is configured.
+  const sessionIssuers = new Set(
+    provider.registrations.map((registration) =>
+      registration.kind === "oidc"
+        ? registration.issuer
+        : registration.kind === "github-oauth"
+          ? githubIssuer
+          : magicLinkIssuer(origin),
+    ),
+  );
+  const sessionHash = (token: string) =>
+    new Bun.CryptoHasher("sha256").update(token).digest("hex");
   const runtimes = new Map(
     provider.registrations
       .filter((registration) => registration.kind === "oidc")
@@ -513,7 +534,6 @@ export function createDirectSessionManager({
         subject: identity.sub,
         ...(verifiedEmail ? { verifiedEmail } : {}),
       },
-      expiresAt: Math.min(identity.exp * 1_000, now() + sessionTtlMs),
     };
   };
 
@@ -575,22 +595,29 @@ export function createDirectSessionManager({
         subject: String(user.id),
         ...(verifiedEmail ? { verifiedEmail } : {}),
       },
-      expiresAt: now() + sessionTtlMs,
     };
   };
 
+  // Sessions outlive the identity provider's token: access is re-resolved
+  // from the database on every request, so a revoked role or user takes
+  // effect immediately without waiting for the session to expire.
   const establishSession = (identity: BrowserSession): Response => {
-    if (identity.expiresAt <= now())
-      return redirect(`${origin}/app?signin=failed`);
-    prune(sessions, now(), maximumSessions);
+    const current = now();
+    sessionStore.prune(current);
     const session = randomToken();
-    sessions.set(session, identity);
+    sessionStore.create(sessionHash(session), {
+      ...identity,
+      createdAt: current,
+      lastSeenAt: current,
+      idleExpiresAt: current + browserSessionIdleTtlMs,
+      absoluteExpiresAt: current + browserSessionAbsoluteTtlMs,
+    });
     return redirect(`${origin}/app`, [
       clearCookie(loginStateCookie),
       secureCookie(
         sessionCookie,
         session,
-        Math.max(1, Math.floor((identity.expiresAt - now()) / 1_000)),
+        Math.floor(browserSessionAbsoluteTtlMs / 1_000),
       ),
     ]);
   };
@@ -806,7 +833,6 @@ export function createDirectSessionManager({
             )
             .digest("hex")}`,
           identity,
-          expiresAt: now() + sessionTtlMs,
         });
       } catch {
         return redirect(`${origin}/app?signin=failed`);
@@ -815,17 +841,27 @@ export function createDirectSessionManager({
 
     authenticate(request: Request): BrowserSession | null {
       const token = cookieValue(request, sessionCookie);
-      const session = token ? sessions.get(token) : null;
-      if (!token || !session || session.expiresAt <= now()) {
-        if (token) sessions.delete(token);
+      if (!token) return null;
+      const hash = sessionHash(token);
+      const session = sessionStore.find(hash);
+      const current = now();
+      if (
+        !session ||
+        !sessionIssuers.has(session.identity.issuer) ||
+        session.idleExpiresAt <= current ||
+        session.absoluteExpiresAt <= current
+      ) {
+        if (session) sessionStore.delete(hash);
         return null;
       }
-      return session;
+      if (current - session.lastSeenAt >= sessionTouchIntervalMs)
+        sessionStore.touch(hash, current, current + browserSessionIdleTtlMs);
+      return { ownerId: session.ownerId, identity: session.identity };
     },
 
     logout(request: Request): Response {
       const token = cookieValue(request, sessionCookie);
-      if (token) sessions.delete(token);
+      if (token) sessionStore.delete(sessionHash(token));
       return new Response(null, {
         status: 204,
         headers: { "set-cookie": clearCookie(sessionCookie) },

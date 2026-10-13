@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,7 +6,9 @@ import { DatabaseSession } from "../../db/client";
 import { CATALOG } from "../../catalog";
 import { createModelManagement } from "../models/model-management";
 import type { LogEventInput } from "../observability/logging";
+import * as manager from "../../manager";
 import { defaultConfig, readConfig, saveConfig } from "../../manager";
+import { useSupportedVideoHost } from "../../test/video-host";
 import { RuntimeConfigController } from "./config-snapshot";
 import { RuntimeMemoryAdmissionError } from "./memory-controller";
 import { resourceUnavailable } from "./commands/serve";
@@ -24,6 +26,8 @@ import {
   VideoJobManager,
   type VideoJobBackend,
 } from "./video/video-job-manager";
+
+useSupportedVideoHost();
 
 type ServiceRecord = {
   modality: RuntimeModality;
@@ -442,7 +446,7 @@ test("keeps queued admissions paired with the applied model generation", async (
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  const modelB = "gpt-oss-20b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   config.selectedSttModels = [config.activeSttModel];
   saveConfig(database, config);
@@ -509,7 +513,7 @@ test("restores admission when a requested model is removed during activation", a
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  const modelB = "gpt-oss-20b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -575,7 +579,7 @@ test("rebases queued replacement work after a model activation", async () => {
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  const modelB = "gpt-oss-20b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   config.selectedSttModels = [config.activeSttModel];
   saveConfig(database, config);
@@ -637,7 +641,7 @@ test("releases transition ownership before waiting for backend readiness", async
   const root = mkdtempSync(join(tmpdir(), "localbase-runtime-admission-"));
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
-  const switchedModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+  const switchedModel = "gpt-oss-20b-q4_k_m";
   config.selectedLlmModels = [config.activeLlmModel, switchedModel];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -731,7 +735,7 @@ test("does not stop a ready runtime while a model switch drains admission", asyn
   const root = mkdtempSync(join(tmpdir(), "localbase-runtime-ready-drain-"));
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
-  const switchedModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+  const switchedModel = "gpt-oss-20b-q4_k_m";
   config.selectedLlmModels = [config.activeLlmModel, switchedModel];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -963,18 +967,32 @@ test("evicts only running runtimes without admitted requests", async () => {
   const config = defaultConfig(root, 16);
   config.selectedSttModels = [];
   config.activeSttModel = "";
-  config.selectedImageModels = [];
-  config.activeImageModel = "";
+  config.selectedImageModels = [config.activeImageModel];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
   let kills = 0;
+  let imageKills = 0;
+  let llmRunning = true;
+  let imageRunning = true;
   const service: RuntimeSupervisor = {
     kind: "server",
     runtimeId: () => "llm:test:1",
-    state: () => "running",
+    state: () => (llmRunning ? "running" : "idle"),
     async ensureRunning() {},
     async kill() {
       kills += 1;
+      llmRunning = false;
+    },
+    async shutdown() {},
+  };
+  const imageService: RuntimeSupervisor = {
+    kind: "server",
+    runtimeId: () => "image:test:1",
+    state: () => (imageRunning ? "running" : "idle"),
+    async ensureRunning() {},
+    async kill() {
+      imageKills += 1;
+      imageRunning = false;
     },
     async shutdown() {},
   };
@@ -985,7 +1003,7 @@ test("evicts only running runtimes without admitted requests", async () => {
   const reconciler = new RuntimeReconciler(
     controller,
     {},
-    new SupervisorRegistry({ llm: service }),
+    new SupervisorRegistry({ llm: service, image: imageService }),
     factory,
     { event() {} },
   );
@@ -993,8 +1011,16 @@ test("evicts only running runtimes without admitted requests", async () => {
   try {
     const active = await reconciler.admitModel("llm", config.activeLlmModel);
     if (active.kind !== "admitted") throw new Error("Expected admission.");
+    const image = await reconciler.admitModel("image", config.activeImageModel);
+    if (image.kind !== "admitted") throw new Error("Expected image admission.");
 
     expect(await reconciler.evictIdleRuntimes()).toBe(0);
+    expect(kills).toBe(0);
+    expect(imageKills).toBe(0);
+
+    image.value.admission.release();
+    expect(await reconciler.evictIdleRuntimes()).toBe(1);
+    expect(imageKills).toBe(1);
     expect(kills).toBe(0);
 
     active.value.admission.release();
@@ -1103,7 +1129,7 @@ test("cancels queued model activation during emergency eviction and recovers", a
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  const modelB = "gpt-oss-20b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   config.selectedSttModels = [];
   config.activeSttModel = "";
@@ -1206,7 +1232,7 @@ test("emergency eviction cancels a blocked switch preflight", async () => {
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  const modelB = "gpt-oss-20b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -1571,6 +1597,68 @@ test.each([
   }
 });
 
+test("revoking experimental opt-in rejects admission through a running video supervisor", async () => {
+  const root = mkdtempSync(
+    join(tmpdir(), "localbase-video-experimental-revoke-"),
+  );
+  const database = new DatabaseSession();
+  const target = spyOn(manager, "detectHostVideoTarget").mockReturnValue({
+    platform: "linux",
+    architecture: "x64",
+    accelerator: "nvidia",
+  });
+  const config = defaultConfig(root, 16);
+  const modelId = "wan2.2-s2v-14b-fp8";
+  config.allowExperimental = true;
+  config.selectedVideoModels = [modelId];
+  config.activeVideoModel = modelId;
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let starts = 0;
+  const running: RuntimeSupervisor = {
+    kind: "server",
+    runtimeId: () => `video:${modelId}`,
+    state: () => "running",
+    async ensureRunning() {
+      starts += 1;
+    },
+    async kill() {},
+    async shutdown() {},
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ video: running }),
+    { baseUrl: () => "http://127.0.0.1:1", create: () => running },
+    { event() {} },
+  );
+
+  try {
+    const first = await reconciler.admitModel("video", modelId);
+    expect(first.kind).toBe("admitted");
+    if (first.kind === "admitted") first.value.admission.release();
+
+    const revoked = controller.copy();
+    revoked.allowExperimental = false;
+    saveConfig(database, revoked);
+    await controller.refresh();
+
+    await expect(reconciler.admitModel("video", modelId)).rejects.toThrow(
+      "Experimental models require models.allowExperimental = true.",
+    );
+    expect(starts).toBe(1);
+    expect(reconciler.lifecycleSnapshot().video.admission).toMatchObject({
+      kind: "known",
+      activeCount: 0,
+    });
+  } finally {
+    reconciler.closeQueues();
+    target.mockRestore();
+    database.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test.each([
   ["fits after eviction", false],
   ["cannot fit even after eviction", true],
@@ -1579,7 +1667,7 @@ test.each([
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  const modelB = "gpt-oss-20b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -1660,7 +1748,7 @@ test("configuration model replacement preflights before draining the current run
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  const modelB = "gpt-oss-20b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -1808,7 +1896,7 @@ test("keeps the selected switch when actual admission fails after preflight", as
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "qwen2.5-coder-7b-instruct-q4_k_m";
+  const modelB = "gpt-oss-20b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);

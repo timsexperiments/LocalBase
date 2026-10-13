@@ -13,6 +13,7 @@ import {
   verifyAuthoritativeFile,
   type AuthoritativeVerification,
 } from "./utils/checksum";
+import { shouldShowOperationalOutput } from "./utils/operational-output";
 import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -36,10 +37,13 @@ import {
   type ModelArtifact,
   type ModelSpec,
   type ModelKind,
-  recommendedForVram,
   recommendedSttForVram,
 } from "./catalog";
-import { modelConfigurationSchema } from "./domains/models/model-selection";
+import { assertModelDiskSpace } from "./domains/runtime/startup-preflight";
+import { createModelConfigurationSchema } from "./domains/models/model-selection";
+import { assertModelEligible } from "./domains/models/model-eligibility";
+import { videoTargetFromTopology } from "./domains/models/model-eligibility";
+import { createHostMemoryProvider } from "./domains/runtime/memory/host-memory-provider";
 import {
   parseParallelSlots,
   type ParallelSlots,
@@ -94,12 +98,14 @@ export type LocalBaseConfig = {
   selectedTtsModels: string[];
   selectedImageModels: string[];
   selectedVideoModels: string[];
+  allowExperimental: boolean;
   activeLlmModel: string;
   activeSttModel: string;
   activeTtsModel: string;
   activeImageModel: string;
   activeVideoModel: string;
   hfToken: string;
+  installMissingModels: boolean;
   parallel: ParallelSlots;
   otelEndpoint: string;
   otelHeaders: string;
@@ -138,12 +144,14 @@ const configRowSchema = z
     selectedTtsModels: z.string(),
     selectedImageModels: z.string(),
     selectedVideoModels: z.string(),
+    allowExperimental: z.boolean(),
     activeLlmModel: z.string().min(1),
     activeSttModel: z.string(),
     activeTtsModel: z.string(),
     activeImageModel: z.string(),
     activeVideoModel: z.string(),
     hfToken: z.string(),
+    installMissingModels: z.boolean(),
     parallel: z.enum(["auto", "1", "2", "3", "4"]),
     otelEndpoint: z.union([z.literal(""), otelEndpointSchema]),
     otelHeaders: otelHeadersTextSchema,
@@ -230,12 +238,14 @@ function toConfigRow(config: LocalBaseConfig) {
     selectedTtsModels: JSON.stringify(config.selectedTtsModels),
     selectedImageModels: JSON.stringify(config.selectedImageModels),
     selectedVideoModels: JSON.stringify(config.selectedVideoModels),
+    allowExperimental: config.allowExperimental,
     activeLlmModel: config.activeLlmModel,
     activeSttModel: config.activeSttModel,
     activeTtsModel: config.activeTtsModel,
     activeImageModel: config.activeImageModel,
     activeVideoModel: config.activeVideoModel,
     hfToken: config.hfToken || "",
+    installMissingModels: config.installMissingModels,
     parallel: String(parseParallelSlots(config.parallel)),
     otelEndpoint: config.otelEndpoint,
     otelHeaders: config.otelHeaders,
@@ -282,6 +292,13 @@ export function modelDirectories(
   };
 }
 
+export function detectHostVideoTarget() {
+  const provider = createHostMemoryProvider();
+  const target = videoTargetFromTopology(provider.topology);
+  void provider.close();
+  return target;
+}
+
 function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
   const parsed = configRowSchema.safeParse(row);
   if (!parsed.success) {
@@ -319,7 +336,8 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     "selectedTtsModels",
     openedRoot,
   );
-  const models = modelConfigurationSchema.safeParse({
+  const models = createModelConfigurationSchema(null, false).safeParse({
+    allowExperimental: data.allowExperimental,
     selectedLlmModels,
     selectedSttModels,
     selectedTtsModels,
@@ -347,6 +365,7 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     sttPort: data.sttPort,
     ...models.data,
     hfToken: data.hfToken,
+    installMissingModels: data.installMissingModels,
     parallel: parseParallelSlots(data.parallel),
     otelEndpoint: data.otelEndpoint,
     otelHeaders: data.otelHeaders,
@@ -396,9 +415,7 @@ export function defaultRoot(): string {
 
 export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
   root = canonicalLocalBaseRoot(root);
-  const llm =
-    recommendedForVram(vramGb)[0]?.modelId ??
-    "qwen2.5-coder-7b-instruct-q4_k_m";
+  const llm = "qwen2.5-coder-7b-instruct-q4_k_m";
   const stt =
     recommendedSttForVram(vramGb)[2]?.modelId ??
     recommendedSttForVram(vramGb)[0]?.modelId ??
@@ -419,12 +436,14 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     selectedTtsModels: [],
     selectedImageModels: ["stable-diffusion-v1-5"],
     selectedVideoModels: [],
+    allowExperimental: false,
     activeLlmModel: llm,
     activeSttModel: stt,
     activeTtsModel: "",
     activeImageModel: "stable-diffusion-v1-5",
     activeVideoModel: "",
     hfToken: "",
+    installMissingModels: false,
     parallel: "auto",
     otelEndpoint: "",
     otelHeaders: "",
@@ -452,8 +471,42 @@ export function saveConfig(
     ...modelDirectories(config.root),
   };
   const row = toConfigRow(canonicalConfig);
-  fromConfigRow(row, canonicalConfig.root);
   ensureLocalBaseRootMarker(canonicalConfig.root);
+  const previousRow = withDatabase(database, canonicalConfig.root, (db) =>
+    db.select().from(configTable).where(eq(configTable.id, "default")).get(),
+  );
+  const previouslySelectedVideoModels = previousRow
+    ? fromConfigRow(previousRow, canonicalConfig.root).selectedVideoModels
+    : [];
+  const newlySelectedVideoModels = canonicalConfig.selectedVideoModels.filter(
+    (modelId) => !previouslySelectedVideoModels.includes(modelId),
+  );
+  const eligibility = createModelConfigurationSchema(
+    detectHostVideoTarget(),
+  ).safeParse({
+    allowExperimental: canonicalConfig.allowExperimental,
+    selectedLlmModels: canonicalConfig.selectedLlmModels,
+    selectedSttModels: canonicalConfig.selectedSttModels,
+    selectedTtsModels: canonicalConfig.selectedTtsModels,
+    selectedImageModels: canonicalConfig.selectedImageModels,
+    selectedVideoModels: newlySelectedVideoModels,
+    activeLlmModel: canonicalConfig.activeLlmModel,
+    activeSttModel: canonicalConfig.activeSttModel,
+    activeTtsModel: canonicalConfig.activeTtsModel,
+    activeImageModel: canonicalConfig.activeImageModel,
+    activeVideoModel: newlySelectedVideoModels.includes(
+      canonicalConfig.activeVideoModel,
+    )
+      ? canonicalConfig.activeVideoModel
+      : "",
+  });
+  if (!eligibility.success) {
+    throw invalidConfiguration(
+      canonicalConfig.root,
+      issueSummary(eligibility.error),
+    );
+  }
+  fromConfigRow(row, canonicalConfig.root);
   ensureDirs(canonicalConfig);
   withDatabase(database, canonicalConfig.root, (db) => {
     db.insert(configTable)
@@ -672,8 +725,26 @@ export async function installModel(
     if (!spec) {
       throw new Error(`Unknown model id: ${modelId}`);
     }
+    if (spec.videoRuntime) {
+      const provider = createHostMemoryProvider();
+      try {
+        assertModelEligible(spec, {
+          allowExperimental: config.allowExperimental,
+          target: videoTargetFromTopology(provider.topology),
+        });
+      } finally {
+        await provider.close();
+      }
+    } else {
+      assertModelEligible(spec, {
+        allowExperimental: config.allowExperimental,
+        platform: process.platform,
+        architecture: process.arch,
+      });
+    }
 
     const targetDir = kindDir(config, spec.kind);
+    assertModelDiskSpace(config, spec);
     ensureDirs(config);
     mkdirSync(targetDir, { recursive: true });
 
@@ -912,7 +983,8 @@ function createDownloadProgress(
   initialSize: number,
   report: (downloadedSize: number, percent: number) => void,
 ) {
-  const enabled = process.stderr.isTTY === true;
+  const enabled =
+    process.stderr.isTTY === true && shouldShowOperationalOutput();
   let lastPercent = Math.floor((initialSize / totalSize) * 100);
   let lastReportedPercent = -1;
   const reportPercent = (downloadedSize: number): void => {
@@ -1036,7 +1108,8 @@ async function installArtifact(
 
   const url = artifactDownloadUrl(spec, artifact);
   setFailurePhase("downloading");
-  console.log(`⬇️  Downloading model "${spec.modelId}" from ${url}...`);
+  if (shouldShowOperationalOutput())
+    console.log(`⬇️  Downloading model "${spec.modelId}" from ${url}...`);
   const token = config.hfToken || process.env.HF_TOKEN || "";
   const partialSize = (await Bun.file(partial).exists())
     ? (await Bun.file(partial).stat()).size

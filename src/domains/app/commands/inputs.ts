@@ -153,6 +153,7 @@ export const installInputSchema = z
 export type InstallInput = z.infer<typeof installInputSchema>;
 
 export const serveInputSchema = z.object({
+  installMissing: z.boolean().default(false),
   host: hostSchema.optional(),
   port: portInputSchema.optional(),
   llm: z.boolean().optional(),
@@ -185,7 +186,9 @@ export type ServeInput = z.infer<typeof serveInputSchema>;
 export const doctorInputSchema = z.object({});
 export type DoctorInput = z.infer<typeof doctorInputSchema>;
 
-export const serviceInputSchema = z.object({});
+export const serviceInputSchema = z.object({
+  installMissing: z.boolean().default(false),
+});
 export type ServiceInput = z.infer<typeof serviceInputSchema>;
 
 export const logsInputSchema = z.object({

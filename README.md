@@ -9,6 +9,8 @@ LocalBase is a Bun/TypeScript unified, OpenAI-compatible gateway for local AI ru
 - **STT** audio transcriptions and translations.
 - **TTS** through `/v1/audio/speech` with the bounded Qwen3 TTS base model.
 - **Image generation** through the OpenAI-compatible `/v1/images/generations` endpoint.
+- **Image editing** through multipart `POST /v1/images/edits` for catalog image-to-image models.
+- **Image-to-video** through `POST /v1/videos` with a PNG `input_reference` on TI2V profiles.
 - Lazy preparation of LLM, STT, TTS, and image runtimes on first use.
 - Self-healing process supervision with bounded restart backoff.
 - Zod request and response validation.
@@ -21,11 +23,17 @@ The runtime keeps one active model per service. Memory pressure can evict idle r
 
 Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` return catalog identity, every declared artifact checksum and size, catalog memory estimates, and local selection, installation, and runtime state. `selected` reports configured selection. `runtime` reports the observed applied supervisor, so a replacement may be selected while the previous model drains. The gateway captures both before file inspection. Runtime metadata separates resolved native slots, active admissions, arithmetic availability, immediate dispatch eligibility, and bounded waiting-room capacity. Reads do not start runtimes or hash model files. Capability fields remain `null` without an authoritative value; the TTS model reports its WAV, catalog-voice, and cold-request contract.
 
-TTS is disabled by default. The first supported model is `qwen3-tts-1.7b-base-q4_k_m`. Requests must explicitly set `voice` to `default`, `harbor`, or `willow`, and `response_format: "wav"`; `default` uses no reference file. Harbor and Willow are fixed, checksum-pinned CC0 references from Kyutai's verified Unmute voice donations ([provenance](https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations)); clients cannot supply audio paths, URLs, or uploads. Omitted formats do not fall back from OpenAI's MP3 default. Speed is fixed at `1`, instructions are unsupported, and input is limited to 256 characters. Each request runs a cold, bounded native generation and returns PCM16 mono WAV at 24 kHz. Human voice quality has not been assessed.
+TTS is disabled by default. The first supported model is `qwen3-tts-1.7b-base-q4_k_m`. Requests must set `voice` to `default`, `harbor`, or `willow`; omitted `response_format` defaults to WAV, unlike OpenAI's MP3 default, so clients that omit the format receive WAV bytes. The only supported explicit format is `wav`. `default` uses no reference file. Harbor and Willow are fixed, checksum-pinned CC0 references from Kyutai's verified Unmute voice donations ([provenance](https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations)); clients cannot supply audio paths, URLs, or uploads. Speed is fixed at `1`, instructions are unsupported, and input is limited to 256 characters. Each request runs a cold, bounded native generation and returns PCM16 mono WAV at 24 kHz. Human voice quality has not been assessed.
 
 Use [`local-base config`](docs/declarative-config.md) to validate, plan, apply, and export versioned TOML configuration without prompts.
 
 Public `GET` and `HEAD /health/ready` report whether at least one configured modality can admit a request, including bounded queue waiting. `/health` remains process liveness.
+
+### Image and video inputs
+
+`POST /v1/images/edits` accepts multipart fields `model` (optional; defaults to the active image model), `prompt`, `image` or repeated `image[]` (1–4 PNG or JPEG files), optional nonempty PNG/JPEG `mask`, `n` (1–10), `size` (`256x256`, `512x512`, or `1024x1024`), `response_format` (`url` or `b64_json`), `output_format` (`png` or `jpeg`), and optional `strength` (0–1). Each input image and mask is structurally validated before model admission and limited to 2048 pixels per side and 4.2 megapixels. PNG decompression is bounded to its declared scanline size. WebP is not accepted because the pinned image backend uses stb_image, which does not decode WebP. Requests are limited to 20 MiB total and 8 MiB per file. Responses contain base64 image data for either response format.
+
+`POST /v1/videos` retains its JSON request contract. For TI2V profiles, add top-level `input_reference` containing canonical PNG base64 or a `data:image/png;base64,...` URL; dimensions must match that profile's fixed canvas. Multipart requests may instead supply `input_reference` as a PNG file, with the remaining video fields as form values. Text-only TI2V requests remain supported. Image-to-video is experimental and unqualified; see [video qualification](docs/video-qualification.md).
 
 ## Supported platforms
 
@@ -44,7 +52,15 @@ Managed runtime versions are pinned independently from LocalBase CLI releases.
 
 ## Getting started
 
-Download the archive for the host from an immutable tag on [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases), along with `checksums.txt`.
+Install the latest release with POSIX `sh` (or set `LOCALBASE_VERSION`, for example `v0.1.0`, to pin a release):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/timsexperiments/LocalBase/main/scripts/install.sh | sh
+```
+
+The installer verifies the archive against `checksums.txt`, puts `local-base` in `~/.local/bin`, and installs `LICENSE` plus `THIRD_PARTY_NOTICES.txt` in `~/.local/share/local-base/licenses` by default. Set `LOCALBASE_INSTALL_DIR` or `LOCALBASE_LICENSE_DIR` to choose different destinations. Run `sh scripts/install.sh --help` for installer options. Add the CLI directory to `PATH` if needed, then run `local-base init`.
+
+For a manual install, download the archive for the host from an immutable tag on [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases), along with `checksums.txt`.
 
 ```bash
 ARCHIVE=local-base-macos-arm64.zip
@@ -53,7 +69,7 @@ shasum -a 256 -c "$ARCHIVE.sha256" # macOS
 sha256sum -c "$ARCHIVE.sha256"     # Linux
 ```
 
-Extract and install the CLI:
+Each archive contains the CLI, `LICENSE`, and `THIRD_PARTY_NOTICES.txt`. Extract and install the CLI:
 
 ```bash
 unzip "$ARCHIVE"                    # macOS
@@ -70,16 +86,18 @@ Configure a small LLM and create an API key:
 ```bash
 local-base init
 local-base --non-interactive configure --defaults \
-  --llm-models qwen2.5-coder-1.5b-instruct-q4_k_m \
-  --active-llm qwen2.5-coder-1.5b-instruct-q4_k_m \
+  --llm-models qwen2.5-coder-7b-instruct-q4_k_m \
+  --active-llm qwen2.5-coder-7b-instruct-q4_k_m \
   --stt-models '' \
   --tts-models '' \
   --image-models '' \
   --parallel auto \
   --create-key
-local-base models install qwen2.5-coder-1.5b-instruct-q4_k_m
+local-base models install qwen2.5-coder-7b-instruct-q4_k_m
 local-base start
 ```
+
+Fresh configuration defaults to Qwen2.5 Coder 7B Instruct Q4_K_M (Apache-2.0, tool-capable, about 4.68 GB). `serve` never downloads model weights without consent: install them with `local-base models install <id>`, or pass `local-base serve --install-missing` to approve missing selected models. Backend runtime binaries remain managed automatically.
 
 Store the displayed API key, then verify inference:
 
@@ -88,7 +106,7 @@ export LOCALBASE_API_KEY='lb_...'
 curl http://127.0.0.1:2273/v1/chat/completions \
   -H "Authorization: Bearer $LOCALBASE_API_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"qwen2.5-coder-1.5b-instruct-q4_k_m","messages":[{"role":"user","content":"Say hello in two words."}]}'
+  -d '{"model":"qwen2.5-coder-7b-instruct-q4_k_m","messages":[{"role":"user","content":"Say hello in two words."}]}'
 ```
 
 Use `local-base status` to inspect the service and `local-base logs --follow` to stream logs.
@@ -259,6 +277,8 @@ Models sharing files with an installation must be disabled and released by their
 
 Chat completions accept OpenAI-compatible `response_format.type: "json_schema"` requests. LocalBase compiles the schema before starting a model and forwards the response format unchanged to the managed llama runtime. Schemas must use a root object, require every declared property, set `additionalProperties: false`, and fit within 10 nesting levels, 5,000 total properties, 1,000 local references, and 256 KiB. LocalBase also limits each object to 1,000 properties as a synchronous compilation resource bound; this is distinct from OpenAI's overall property limit.
 
+Chat completions default to a maximum of 4096 generated tokens when neither `max_tokens` nor `max_completion_tokens` is provided. Set the environment-only `LOCALBASE_DEFAULT_MAX_TOKENS` variable to change this server default; it is capped at the selected model's effective per-slot context. Explicit client limits are passed through. Tool requests are accepted only for catalog models with the `tool-calling` feature.
+
 The supported contract includes primitive and nullable types, strict object properties, object-valued array items, array bounds and string maximum lengths up to 10,000, safe integral integer bounds, scalar `enum` and `const` values matching their declared type, `anyOf`, and direct `#/$defs/name` or `#/definitions/name` references with ASCII identifier names. LocalBase rejects string minimum lengths, formats, remote or deeper references, other dialects, and keywords or combinations that the managed runtime would ignore.
 
 For non-streaming responses, LocalBase validates ordinary assistant content when `finish_reason` is `stop`. A mismatch returns HTTP 502 with code `structured_output_validation_failed`. Refusals, tool calls, and truncated choices retain their original response semantics. Streaming remains incremental and relies on the runtime grammar rather than whole-response buffering.
@@ -356,4 +376,8 @@ Database changes use Drizzle. Run `bun run db:generate` to create SQL migrations
 
 ## Contributing
 
-Keep documentation and behavior aligned, use Bun for project commands, and verify changes with the checks above before opening a pull request. Report bugs and requests through [GitHub Issues](https://github.com/timsexperiments/LocalBase/issues).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and contribution guidance, and [SECURITY.md](SECURITY.md) to report vulnerabilities.
+
+## License
+
+Copyright (C) 2026 TimsExperiments. LocalBase is licensed under [AGPL-3.0-or-later](LICENSE).

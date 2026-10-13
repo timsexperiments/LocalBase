@@ -650,6 +650,7 @@ export async function createServiceDefinition(
 
 export async function resolveServiceInvocation(
   root: string,
+  installMissing = false,
 ): Promise<ServiceInvocation> {
   const canonical = await canonicalRoot(root);
   const program = servicePathSchema.parse(await realpath(process.execPath));
@@ -669,7 +670,13 @@ export async function resolveServiceInvocation(
 
   return serviceInvocationSchema.parse({
     program,
-    arguments: [...entrypoint, "--root", canonical, "serve"],
+    arguments: [
+      ...entrypoint,
+      "--root",
+      canonical,
+      "serve",
+      ...(installMissing ? ["--install-missing"] : []),
+    ],
   });
 }
 

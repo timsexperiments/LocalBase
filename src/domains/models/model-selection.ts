@@ -5,6 +5,8 @@ import {
   type ModelSpec,
 } from "../../catalog";
 import { z } from "zod";
+import { modelEligibilityReason } from "./model-eligibility";
+import type { VideoRuntimeTarget } from "../../catalog";
 
 const expectedModalities = {
   llm: { input: "text", output: "text" },
@@ -28,7 +30,12 @@ function modelHasExpectedModalities(
   );
 }
 
-export function modelIdSchema(kind: ModelKind) {
+export function modelIdSchema(
+  kind: ModelKind,
+  allowExperimental = false,
+  videoTarget: VideoRuntimeTarget | null = null,
+  checkEligibility = true,
+) {
   return z
     .string()
     .min(1)
@@ -48,11 +55,40 @@ export function modelIdSchema(kind: ModelKind) {
     .refine((id) => !byId(id)?.videoCatalogOnly, {
       message:
         "catalog-only models cannot be selected or active because LocalBase inference is unavailable",
-    });
+    })
+    .refine(
+      (id) => {
+        if (!checkEligibility) return true;
+        const model = byId(id);
+        return (
+          !model ||
+          !modelEligibilityReason(model, {
+            allowExperimental,
+            ...(model.videoRuntime
+              ? { target: videoTarget }
+              : { platform: process.platform, architecture: process.arch }),
+          })
+        );
+      },
+      {
+        message: "model is experimental or unsupported on this platform",
+      },
+    );
 }
 
-export function selectedModelsSchema(kind: ModelKind, requireOne: boolean) {
-  const schema = modelIdSchema(kind)
+export function selectedModelsSchema(
+  kind: ModelKind,
+  requireOne: boolean,
+  allowExperimental = false,
+  videoTarget: VideoRuntimeTarget | null = null,
+  checkEligibility = true,
+) {
+  const schema = modelIdSchema(
+    kind,
+    allowExperimental,
+    videoTarget,
+    checkEligibility,
+  )
     .array()
     .refine(
       (ids) => new Set(ids).size === ids.length,
@@ -61,43 +97,126 @@ export function selectedModelsSchema(kind: ModelKind, requireOne: boolean) {
   return requireOne ? schema.min(1) : schema;
 }
 
-export const modelConfigurationSchema = z
-  .object({
-    selectedLlmModels: selectedModelsSchema("llm", true),
-    selectedSttModels: selectedModelsSchema("stt", false),
-    selectedTtsModels: selectedModelsSchema("tts", false),
-    selectedImageModels: selectedModelsSchema("image", false),
-    selectedVideoModels: selectedModelsSchema("video", false),
-    activeLlmModel: modelIdSchema("llm"),
-    activeSttModel: z.union([z.literal(""), modelIdSchema("stt")]),
-    activeTtsModel: z.union([z.literal(""), modelIdSchema("tts")]),
-    activeImageModel: z.union([z.literal(""), modelIdSchema("image")]),
-    activeVideoModel: z.union([z.literal(""), modelIdSchema("video")]),
-  })
-  .strict()
-  .superRefine((config, ctx) => {
-    const activeModels = [
-      ["activeLlmModel", config.activeLlmModel, config.selectedLlmModels],
-      ["activeSttModel", config.activeSttModel, config.selectedSttModels],
-      ["activeTtsModel", config.activeTtsModel, config.selectedTtsModels],
-      ["activeImageModel", config.activeImageModel, config.selectedImageModels],
-      ["activeVideoModel", config.activeVideoModel, config.selectedVideoModels],
-    ] as const;
-    for (const [field, id, selected] of activeModels) {
-      if (id && !selected.includes(id)) {
-        ctx.addIssue({
-          code: "custom",
-          path: [field],
-          message: "must also be present in its selected model list",
-        });
+export function createModelConfigurationSchema(
+  videoTarget: VideoRuntimeTarget | null,
+  checkEligibility = true,
+  checkVideoEligibility = checkEligibility,
+) {
+  return z
+    .object({
+      allowExperimental: z.boolean().default(false),
+      selectedLlmModels: z.array(z.string().min(1)),
+      selectedSttModels: z.array(z.string().min(1)),
+      selectedTtsModels: z.array(z.string().min(1)),
+      selectedImageModels: z.array(z.string().min(1)),
+      selectedVideoModels: z.array(z.string().min(1)),
+      activeLlmModel: z.string().min(1),
+      activeSttModel: z.string(),
+      activeTtsModel: z.string(),
+      activeImageModel: z.string(),
+      activeVideoModel: z.string(),
+    })
+    .strict()
+    .superRefine((config, ctx) => {
+      const allowExperimental = !checkEligibility || config.allowExperimental;
+      const selections = [
+        ["selectedLlmModels", config.selectedLlmModels, "llm", true],
+        ["selectedSttModels", config.selectedSttModels, "stt", false],
+        ["selectedTtsModels", config.selectedTtsModels, "tts", false],
+        ["selectedImageModels", config.selectedImageModels, "image", false],
+        ["selectedVideoModels", config.selectedVideoModels, "video", false],
+      ] as const;
+      for (const [field, ids, kind, required] of selections) {
+        const parsed = selectedModelsSchema(
+          kind,
+          required,
+          allowExperimental,
+          videoTarget,
+          kind === "video" ? checkVideoEligibility : checkEligibility,
+        ).safeParse(ids);
+        if (!parsed.success) {
+          for (const issue of parsed.error.issues)
+            ctx.addIssue({ ...issue, path: [field, ...issue.path] });
+        }
+        for (const [index, id] of ids.entries()) {
+          const model = byId(id);
+          const reason =
+            (kind === "video" ? checkVideoEligibility : checkEligibility) &&
+            model &&
+            modelEligibilityReason(model, {
+              allowExperimental,
+              ...(model.videoRuntime
+                ? { target: videoTarget }
+                : { platform: process.platform, architecture: process.arch }),
+            });
+          if (reason)
+            ctx.addIssue({
+              code: "custom",
+              path: [field, index],
+              message: reason,
+            });
+        }
       }
-    }
-  });
+      const activeFields = [
+        ["activeLlmModel", config.activeLlmModel, "llm"],
+        ["activeSttModel", config.activeSttModel, "stt"],
+        ["activeTtsModel", config.activeTtsModel, "tts"],
+        ["activeImageModel", config.activeImageModel, "image"],
+        ["activeVideoModel", config.activeVideoModel, "video"],
+      ] as const;
+      for (const [field, id, kind] of activeFields) {
+        if (!id) continue;
+        const parsed = modelIdSchema(
+          kind,
+          allowExperimental,
+          videoTarget,
+          kind === "video" ? checkVideoEligibility : checkEligibility,
+        ).safeParse(id);
+        if (!parsed.success)
+          for (const issue of parsed.error.issues)
+            ctx.addIssue({ ...issue, path: [field, ...issue.path] });
+      }
+      const activeModels = [
+        ["activeLlmModel", config.activeLlmModel, config.selectedLlmModels],
+        ["activeSttModel", config.activeSttModel, config.selectedSttModels],
+        ["activeTtsModel", config.activeTtsModel, config.selectedTtsModels],
+        [
+          "activeImageModel",
+          config.activeImageModel,
+          config.selectedImageModels,
+        ],
+        [
+          "activeVideoModel",
+          config.activeVideoModel,
+          config.selectedVideoModels,
+        ],
+      ] as const;
+      for (const [field, id, selected] of activeModels) {
+        if (id && !selected.includes(id)) {
+          ctx.addIssue({
+            code: "custom",
+            path: [field],
+            message: "must also be present in its selected model list",
+          });
+        }
+      }
+    });
+}
+
+export const modelConfigurationSchema = createModelConfigurationSchema(null);
 
 export function validateModelList(
   ids: string[] | undefined,
   kind: ModelKind,
+  videoTarget: VideoRuntimeTarget | null,
+  checkEligibility = true,
 ): string[] | undefined {
   if (!ids) return undefined;
-  return selectedModelsSchema(kind, kind === "llm").parse(ids);
+  return selectedModelsSchema(
+    kind,
+    kind === "llm",
+    false,
+    videoTarget,
+    checkEligibility,
+  ).parse(ids);
 }

@@ -1,4 +1,13 @@
 import { beforeAll, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSession } from "../db/client";
+import { authBrowserSessionsTable } from "../db/schema";
+import {
+  createDatabaseBrowserSessionStore,
+  createMemoryBrowserSessionStore,
+} from "../domains/auth/browser-sessions";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { defaultBrowserPermissions } from "../domains/auth/browser-access";
 import { createUiAccess, isUiAccessPath, uiAccessConfigSchema } from "./access";
@@ -633,5 +642,123 @@ test("rejects ID tokens outside the exact OIDC transaction", async () => {
       directRequest("/app/session", { marker: true }),
     );
     expect(session.status).toBe(401);
+  }
+});
+
+test("keeps OIDC sessions in the database beyond the ID token with rolling expiry", async () => {
+  const root = await mkdtemp(join(tmpdir(), "localbase-browser-sessions-"));
+  let database = new DatabaseSession();
+  const day = 24 * 60 * 60 * 1_000;
+  let currentTime = Date.now();
+  const accessFor = (
+    accessConfig = config,
+    store = createDatabaseBrowserSessionStore(database.get(root)),
+  ) => {
+    let nonce = "";
+    const access = createUiAccess({
+      config: accessConfig,
+      keyResolver: resolver,
+      now: () => currentTime,
+      sessionStore: store,
+      authorizeIdentity: () => ({ matchedRoles: ["admin"], permissions: [] }),
+      fetcher: async (input) => {
+        if (String(input).includes(".well-known"))
+          return Response.json(discovery());
+        return Response.json({
+          id_token: await new SignJWT({
+            iss: issuer,
+            aud: clientId,
+            exp: Math.floor(currentTime / 1_000) + 60,
+            sub: "person-three",
+            nonce,
+          })
+            .setProtectedHeader({ alg: "RS256", kid: "oidc" })
+            .setIssuedAt()
+            .sign(keys.privateKey),
+        });
+      },
+    });
+    const signIn = async () => {
+      const login = await responseFor(access, directRequest("/app/login"));
+      const authorization = new URL(login.headers.get("location") ?? "");
+      nonce = authorization.searchParams.get("nonce") ?? "";
+      const callback = await responseFor(
+        access,
+        directRequest(
+          `/oidc/callback?code=code&state=${authorization.searchParams.get("state")}`,
+          { cookie: cookieFrom(login, "__Host-localbase-login-state") },
+        ),
+      );
+      expect(callback.headers.getSetCookie().join("\n")).toContain(
+        `Max-Age=${(30 * day) / 1_000}`,
+      );
+      return cookieFrom(callback, "__Host-localbase-session");
+    };
+    const status = async (cookie: string) =>
+      (
+        await responseFor(
+          access,
+          directRequest("/app/session", { cookie, marker: true }),
+        )
+      ).status;
+    return { access, signIn, status };
+  };
+  const rows = () =>
+    database.get(root).select().from(authBrowserSessionsTable).all();
+  try {
+    const first = accessFor();
+    const cookie = await first.signIn();
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]?.tokenHash).not.toBe(cookie.split("=", 2)[1]);
+
+    currentTime += 2 * 60 * 60 * 1_000;
+    expect(await first.status(cookie)).toBe(200);
+
+    database.close();
+    database = new DatabaseSession();
+    const restarted = accessFor();
+    expect(await restarted.status(cookie)).toBe(200);
+    expect(
+      await accessFor(config, createMemoryBrowserSessionStore()).status(cookie),
+    ).toBe(401);
+
+    for (let elapsed = 0; elapsed < 4; elapsed += 1) {
+      currentTime += 6 * day;
+      expect(await restarted.status(cookie)).toBe(200);
+    }
+    currentTime += 6 * day;
+    expect(await restarted.status(cookie)).toBe(401);
+    expect(rows()).toHaveLength(0);
+
+    const idle = await restarted.signIn();
+    currentTime += 7 * day + 1;
+    expect(await restarted.status(idle)).toBe(401);
+
+    const removed = await restarted.signIn();
+    const otherIssuer = uiAccessConfigSchema.parse({
+      ...config,
+      provider: {
+        kind: "direct",
+        registrations: [
+          { ...registration, issuer: "https://other.example.com" },
+        ],
+      },
+    });
+    expect(await accessFor(otherIssuer).status(removed)).toBe(401);
+
+    const loggedOut = await restarted.signIn();
+    const logout = await restarted.access.handle(
+      directRequest("/app/logout", {
+        method: "POST",
+        cookie: loggedOut,
+        marker: true,
+      }),
+    );
+    if (logout.kind !== "response") throw new Error("Expected a response.");
+    expect(await restarted.status(loggedOut)).toBe(401);
+    expect(rows().map((row) => row.subject)).toEqual([]);
+  } finally {
+    database.close();
+    await rm(root, { recursive: true, force: true });
   }
 });
