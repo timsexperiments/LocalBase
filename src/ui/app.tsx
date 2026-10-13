@@ -1062,6 +1062,7 @@ function App() {
         <button
           type="button"
           className="brand"
+          aria-label="LocalBase"
           disabled={busy || !allowedModes.length}
           onClick={() => {
             const mode = canUseMode(permissions, "llm")
@@ -1070,31 +1071,43 @@ function App() {
             if (mode) newChat(mode, mode === "llm" ? "chat" : "lab");
           }}
         >
-          <span className="brand-mark">L</span>LocalBase
+          <span className="brand-mark" aria-hidden="true">
+            L
+          </span>
+          <span className="brand-name">LocalBase</span>
         </button>
         {allowedModes.length > 0 && (
           <>
-            <select
-              className="workspace-picker"
-              aria-label="Workspace"
-              value={page === "chat" ? "chat" : active.mode}
-              disabled={busy}
-              onChange={(event) => {
-                const mode = modes.find((mode) => mode === event.target.value);
-                newChat(mode ?? "llm", mode ? "lab" : "chat");
-              }}
-            >
-              {canUseMode(permissions, "llm") && (
-                <option value="chat">Chat</option>
-              )}
-              <optgroup label="Model Lab">
-                {allowedModes.map((mode) => (
-                  <option value={mode} key={mode}>
-                    {labels[mode]} lab
-                  </option>
-                ))}
-              </optgroup>
-            </select>
+            <label className="workspace-picker">
+              {/* The native select stays on top for the platform picker; this
+                  span only sizes the control to the current workspace. */}
+              <span aria-hidden="true">
+                {page === "chat" ? "Chat" : `${labels[active.mode]} lab`}
+              </span>
+              <span aria-hidden="true">⌄</span>
+              <select
+                aria-label="Workspace"
+                value={page === "chat" ? "chat" : active.mode}
+                disabled={busy}
+                onChange={(event) => {
+                  const mode = modes.find(
+                    (mode) => mode === event.target.value,
+                  );
+                  newChat(mode ?? "llm", mode ? "lab" : "chat");
+                }}
+              >
+                {canUseMode(permissions, "llm") && (
+                  <option value="chat">Chat</option>
+                )}
+                <optgroup label="Model Lab">
+                  {allowedModes.map((mode) => (
+                    <option value={mode} key={mode}>
+                      {labels[mode]} lab
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </label>
             <button
               disabled={busy}
               onClick={() => newChat()}
