@@ -178,7 +178,11 @@ jobs:
           fi
           test "$(lipo -archs "$cli")" = "$expected_architecture"
           codesign --verify --strict --verbose=2 "$cli"
-          spctl --assess --type execute "$cli"
+          # Bare Mach-O CLIs are not app bundles, so assess them in the open
+          # context, which still requires a notarized Developer ID signature.
+          assessment="$(spctl --assess -vv --type open --context context:primary-signature "$cli" 2>&1 || true)"
+          printf "%s\n" "$assessment"
+          printf "%s\n" "$assessment" | grep -q "^source=Notarized Developer ID$"
 
       - name: Make CLI executable
         run: chmod +x extracted/${{ matrix.target }}/local-base-${{ matrix.target }}
@@ -196,6 +200,12 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP"
           bun test --timeout 120000 scripts/runtime-smoke.test.ts
+
+      - name: Set up QEMU for Linux ARM64 smoke
+        if: matrix.smoke == 'qemu'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
 
       - name: Build Linux ARM64 runtime smoke image (Docker/QEMU)
         if: matrix.smoke == 'qemu'
