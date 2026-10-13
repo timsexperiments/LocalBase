@@ -107,7 +107,11 @@ jobs:
       - name: Sign macOS CLI
         if: matrix.platform == 'macos'
         run: |
-          codesign --force --options runtime --timestamp --sign "Developer ID Application:" \
+          # Bun's JavaScriptCore JIT needs these entitlements under the hardened
+          # runtime; without them newer macOS kills the CLI at startup.
+          codesign --force --options runtime --timestamp \
+            --entitlements scripts/macos-entitlements.plist \
+            --sign "Developer ID Application:" \
             release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}
 
       - name: Package CLI, license, and notices
@@ -180,6 +184,10 @@ jobs:
           fi
           test "$(lipo -archs "$cli")" = "$expected_architecture"
           codesign --verify --strict --verbose=2 "$cli"
+          entitlements="$(codesign --display --entitlements - --xml "$cli" 2>/dev/null)"
+          for entitlement in com.apple.security.cs.allow-jit com.apple.security.cs.allow-unsigned-executable-memory; do
+            printf "%s" "$entitlements" | grep -q "<key>$entitlement</key>"
+          done
           # Bare Mach-O CLIs are not app bundles, so assess them in the open
           # context, which still requires a notarized Developer ID signature.
           assessment="$(spctl --assess -vv --type open --context context:primary-signature "$cli" 2>&1 || true)"
