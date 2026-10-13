@@ -126,6 +126,7 @@ test("projects catalog facts separately from observed device state", () => {
     id: modelId,
     catalog: {
       name: "Qwen2.5-Coder",
+      displayName: "Qwen2.5 Coder 1.5B Instruct",
       quantization: "Q4_K_M",
       capabilities: null,
       inputModalities: ["text"],
@@ -379,4 +380,9 @@ test("the browser accepts metadata for every catalog model", () => {
 
   const parsed = modelsSchema.safeParse(list);
   expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
+  expect(
+    list.data.filter(
+      (model) => model.catalog.displayName === model.catalog.name,
+    ),
+  ).toEqual([]);
 });

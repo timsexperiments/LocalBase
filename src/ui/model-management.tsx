@@ -8,6 +8,7 @@ import {
 import {
   api,
   catalogModels,
+  modelName,
   modes,
   type Connection,
   type Model,
@@ -127,7 +128,7 @@ export function ModelManagement({
         state?.models.some((entry) => entry.id === model.id),
     )
     .filter((model) =>
-      `${model.id} ${model.catalog.name} ${model.catalog.quantization}`
+      `${model.id} ${modelName(model)} ${model.catalog.name} ${model.catalog.quantization}`
         .toLowerCase()
         .includes(search.toLowerCase()),
     )
@@ -241,7 +242,7 @@ export function ModelManagement({
               return (
                 <article className="catalog-card" key={model.id}>
                   <header>
-                    <h3>{model.catalog.name}</h3>
+                    <h3>{modelName(model)}</h3>
                     {model.catalog.qualificationState === "experimental" && (
                       <span className="model-badge">Experimental</span>
                     )}
@@ -291,7 +292,7 @@ export function ModelManagement({
                       <span>{operation.detail}</span>
                       {operation.state === "running" && (
                         <progress
-                          aria-label={`Progress for ${model.catalog.name}`}
+                          aria-label={`Progress for ${modelName(model)}`}
                           max={operation.totalBytes ?? undefined}
                           value={
                             operation.totalBytes &&
@@ -427,7 +428,7 @@ export function ModelManagement({
                       ) : (
                         <>
                           <p>
-                            Remove {model.catalog.name}'s downloaded files from
+                            Remove {modelName(model)}'s downloaded files from
                             this computer? Shared files will be kept.
                             Reinstalling requires another download.
                           </p>

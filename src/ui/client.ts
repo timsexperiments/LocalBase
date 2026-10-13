@@ -76,6 +76,7 @@ const modelSchema = z.object({
   id: z.string(),
   catalog: z.object({
     name: z.string(),
+    displayName: z.string().optional(),
     kind: z.enum(["llm", "image", "tts", "stt", "video"]),
     qualificationState: z.enum(["qualified", "experimental"]),
     quantization: z.string(),
@@ -98,6 +99,21 @@ const modelSchema = z.object({
   }),
 });
 export type Model = z.infer<typeof modelSchema>;
+
+/** Input and output modalities, counting image editing as an image input. */
+export function modelModalities(model: Pick<Model, "catalog">) {
+  const input = [...model.catalog.inputModalities];
+  if (
+    model.catalog.features.includes("image-to-image") &&
+    !input.includes("image")
+  )
+    input.push("image");
+  return `${input.join(", ")} → ${model.catalog.outputModalities.join(", ")}`;
+}
+/** The catalog display name, falling back to the family for older servers. */
+export function modelName(model: Pick<Model, "catalog">): string {
+  return model.catalog.displayName ?? model.catalog.name;
+}
 type MetadataIdentity = Pick<ModelMetadata, "id">;
 type HostMemory = ModelMetadataList["host"]["memory"];
 const memoryPoolSchema = z.object({
@@ -214,6 +230,8 @@ export type Message = {
   /** Studio-only data URL of the image a result was based on, for comparison. */
   source?: string;
   protocol?: ChatMessage[];
+  /** Session-only embedding vector; history keeps just the text summary. */
+  embedding?: { model: string; name: string; values: number[] };
 };
 export type Conversation = {
   id: string;
@@ -556,3 +574,40 @@ export const imageResponseSchema = z.object({
   data: z.array(z.object({ b64_json: z.string().min(1) })).min(1),
 });
 export const transcriptionSchema = z.object({ text: z.string() });
+
+export type EmbeddingSummary = {
+  dimensions: number;
+  preview: number[];
+  norm: number;
+};
+/** Dimensions, the first few values, and the L2 norm of an embedding. */
+export function embeddingSummary(
+  values: readonly number[],
+  previewLength = 8,
+): EmbeddingSummary {
+  return {
+    dimensions: values.length,
+    preview: values.slice(0, previewLength),
+    norm: Math.sqrt(values.reduce((sum, value) => sum + value * value, 0)),
+  };
+}
+/** One-line text kept in history for an embedding result. */
+export function embeddingSummaryText(model: string, values: readonly number[]) {
+  const { dimensions, norm } = embeddingSummary(values);
+  return `Embedding from ${model}: ${dimensions} dimensions, norm ${norm.toFixed(4)}.`;
+}
+
+/** The fenced code block language from a `language-*` class, if any. */
+export function codeLanguage(className: string | undefined) {
+  const language = className
+    ?.split(/\s+/)
+    .find((name) => name.startsWith("language-"))
+    ?.slice("language-".length);
+  return language || undefined;
+}
+
+/** How many voices a speech model accepts; 0 for other models. */
+export function speechVoiceCount(model: Pick<Model, "catalog"> | undefined) {
+  const cap = model?.catalog.capabilities;
+  return cap?.kind === "speech" ? cap.voice.requestValues.length : 0;
+}

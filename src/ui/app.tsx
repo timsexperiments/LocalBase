@@ -1,4 +1,5 @@
 import {
+  isValidElement,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -25,7 +26,13 @@ import {
 } from "./dictation";
 import { z } from "zod";
 import { generationTools, generateVideo, runChat, toolModels } from "./tools";
-import { Studio, canEditImages, type StudioRequest } from "./studio";
+import {
+  Studio,
+  imageRequestMode,
+  imageResultLabel,
+  imageResultText,
+  type StudioRequest,
+} from "./studio";
 import {
   GenerationSettingsFields,
   modelGenerationSettings,
@@ -47,6 +54,12 @@ import {
   imageResponseSchema,
   logoutSession,
   modelMemorySummary,
+  codeLanguage,
+  speechVoiceCount,
+  modelModalities,
+  modelName,
+  embeddingSummary,
+  embeddingSummaryText,
   modelsSchema,
   modes,
   permittedModes,
@@ -76,6 +89,7 @@ import {
   navigationUrl,
   readNavigation,
   resolveNavigation,
+  startConversation,
   writeNavigation,
   type Navigation,
 } from "./navigation";
@@ -87,6 +101,22 @@ const labels: Record<Mode, string> = {
   stt: "Transcribe",
   video: "Video",
   embedding: "Embeddings",
+};
+const composerLabels: Record<Mode, string> = {
+  llm: "Message",
+  image: "Describe an image",
+  video: "Describe the video",
+  tts: "Text to read aloud",
+  stt: "Message",
+  embedding: "Text to embed",
+};
+const composerPlaceholders: Record<Mode, string> = {
+  llm: "Message LocalBase…",
+  image: "Describe an image…",
+  video: "Describe the video…",
+  tts: "Write something to read aloud…",
+  stt: "Message LocalBase…",
+  embedding: "Enter text to embed…",
 };
 const navigationAbortReason = Symbol("navigation");
 function fresh(
@@ -102,10 +132,17 @@ function fresh(
     messages: [],
   };
 }
-function Copy({ text }: { text: string | (() => string) }) {
-  const [status, setStatus] = useState("Copy");
+function Copy({
+  text,
+  label = "Copy",
+}: {
+  text: string | (() => string);
+  label?: string;
+}) {
+  const [status, setStatus] = useState(label);
   return (
     <button
+      type="button"
       className="copy"
       onClick={() => {
         if (!navigator.clipboard) {
@@ -126,9 +163,17 @@ function Copy({ text }: { text: string | (() => string) }) {
 }
 function CodeBlock({ children }: { children?: ReactNode }) {
   const ref = useRef<HTMLPreElement>(null);
+  const language = codeLanguage(
+    isValidElement<{ className?: string }>(children)
+      ? children.props.className
+      : undefined,
+  );
   return (
     <div className="code-block">
-      <Copy text={() => ref.current?.textContent ?? ""} />
+      <div className="code-block-header">
+        <span className="code-language">{language ?? "code"}</span>
+        <Copy label="Copy code" text={() => ref.current?.textContent ?? ""} />
+      </div>
       <pre ref={ref}>{children}</pre>
     </div>
   );
@@ -172,6 +217,70 @@ function MediaCard({ media }: { media: Media }) {
         Download {media.kind}
       </a>
     </div>
+  );
+}
+function EmbeddingCard({
+  embedding,
+}: {
+  embedding: NonNullable<Message["embedding"]>;
+}) {
+  const { dimensions, preview, norm } = embeddingSummary(embedding.values);
+  const [download, setDownload] = useState<string | null>(null);
+  useEffect(() => {
+    const url = URL.createObjectURL(
+      new Blob(
+        [
+          JSON.stringify({
+            model: embedding.model,
+            dimensions,
+            embedding: embedding.values,
+          }),
+        ],
+        { type: "application/json" },
+      ),
+    );
+    setDownload(url);
+    return () => URL.revokeObjectURL(url);
+  }, [embedding]);
+  return (
+    <section className="embedding-card" aria-label="Embedding">
+      <dl>
+        <div>
+          <dt>Model</dt>
+          <dd>{embedding.name}</dd>
+        </div>
+        <div>
+          <dt>Dimensions</dt>
+          <dd>{dimensions.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>L2 norm</dt>
+          <dd>{norm.toFixed(4)}</dd>
+        </div>
+      </dl>
+      <p className="embedding-preview">
+        <span>First {preview.length} values</span>
+        <code>
+          [{preview.map((value) => value.toFixed(4)).join(", ")}
+          {dimensions > preview.length ? ", …" : ""}]
+        </code>
+      </p>
+      <div className="message-actions">
+        <Copy
+          label="Copy vector"
+          text={() => JSON.stringify(embedding.values)}
+        />
+        {download && (
+          <a
+            className="copy"
+            href={download}
+            download={`localbase-embedding-${dimensions}d.json`}
+          >
+            Download (.json)
+          </a>
+        )}
+      </div>
+    </section>
   );
 }
 function AttachmentChips({
@@ -640,8 +749,13 @@ function App() {
       return;
     const fallback = allowedModes[0];
     if (!fallback) return;
-    const conversation = fresh(fallback, fallback === "llm" ? "chat" : "lab");
-    setConversations((items) => [conversation, ...items].slice(0, 30));
+    const { conversation, conversations: next } = startConversation({
+      conversations,
+      mode: fallback,
+      workspace: fallback === "llm" ? "chat" : "lab",
+      fresh,
+    });
+    setConversations(next);
     setActiveId(conversation.id);
     setPanel(null);
     clearAttachments();
@@ -758,8 +872,13 @@ function App() {
     panel: Navigation["panel"] = null,
   ) {
     if (busy || !allowedModes.includes(mode)) return;
-    const c = fresh(mode, workspace);
-    setConversations((items) => [c, ...items].slice(0, 30));
+    const { conversation: c, conversations: next } = startConversation({
+      conversations,
+      mode,
+      workspace,
+      fresh,
+    });
+    setConversations(next);
     setActiveId(c.id);
     clearAttachments();
     setDraft("");
@@ -936,9 +1055,11 @@ function App() {
                 )
               ).json(),
             );
+          const values = result.data[0]?.embedding ?? [];
           patch((m) => ({
             ...m,
-            text: `\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``,
+            text: embeddingSummaryText(modelName(model), values),
+            embedding: { model: model.id, name: modelName(model), values },
           }));
           break;
         }
@@ -946,8 +1067,9 @@ function App() {
           const n = generationSettings.image.n ?? 1;
           const tuning = imageParameters(generationSettings.image);
           let init: RequestInit;
+          const imageMode = imageRequestMode(request, model);
           let path = "/v1/images/generations";
-          if (request?.source && canEditImages(model)) {
+          if (request?.source && imageMode !== "text-to-image") {
             path = "/v1/images/edits";
             const body = new FormData();
             body.set("image", request.source, "source.png");
@@ -977,14 +1099,11 @@ function App() {
           abort.signal.throwIfAborted();
           patch((m) => ({
             ...m,
-            text:
-              result.data.length > 1
-                ? `Generated ${result.data.length} images`
-                : "Generated image",
+            text: imageResultText(imageMode, result.data.length),
             source: path.endsWith("edits") ? request?.sourceUrl : undefined,
             artifacts: result.data.map((image, index) => ({
               id: crypto.randomUUID(),
-              label: result.data.length > 1 ? `Image ${index + 1}` : "Image",
+              label: imageResultLabel(imageMode, index, result.data.length),
               state: "complete",
               media: {
                 kind: "image",
@@ -1152,9 +1271,15 @@ function App() {
       {!model && session.kind !== "error" && (
         <p className="notice" role="status">
           {models.length
-            ? `No selected, installed ${labels[active.mode].toLowerCase()} model. Configure one with the LocalBase CLI.`
+            ? `No ${labels[active.mode].toLowerCase()} model is installed and enabled.`
             : connectionLabel}{" "}
-          <button onClick={() => setDrawer("settings")}>Connect</button>
+          {!models.length ? (
+            <button onClick={() => setDrawer("settings")}>Connect</button>
+          ) : canManageModels ? (
+            <button onClick={() => setDrawer("catalog")}>Manage models</button>
+          ) : (
+            "Ask an administrator to install one."
+          )}
         </p>
       )}
     </>
@@ -1326,11 +1451,13 @@ function App() {
                     : active.mode === "video"
                       ? "Generate a clip using the model’s qualified video profile."
                       : active.mode === "embedding"
-                        ? "Enter text to view its embedding vector."
+                        ? "Enter text to see its vector size, a preview of its values, and its norm. Copy or download the full vector."
                         : active.mode === "image"
                           ? "Write a prompt to generate an image."
                           : active.mode === "tts"
-                            ? "Choose a voice and enter the words to read aloud."
+                            ? speechVoiceCount(model) > 1
+                              ? "Enter the words to read aloud. Pick a voice in generation controls."
+                              : "Enter the words to read aloud."
                             : "Choose an audio file to transcribe."}
                 </p>
               </section>
@@ -1341,7 +1468,9 @@ function App() {
                   {message.role === "user" ? "You" : "LocalBase"}
                 </div>
                 <div className="message-body">
-                  {message.text ? (
+                  {message.embedding ? (
+                    <EmbeddingCard embedding={message.embedding} />
+                  ) : message.text ? (
                     <Markdown
                       skipHtml
                       components={{
@@ -1405,7 +1534,18 @@ function App() {
                 </div>
                 {message.role === "assistant" && (
                   <div className="message-actions">
-                    {message.text && <Copy text={message.text} />}
+                    {message.text && !message.embedding && (
+                      <Copy
+                        label={
+                          active.mode === "stt"
+                            ? "Copy transcript"
+                            : active.mode === "llm"
+                              ? "Copy response"
+                              : "Copy text"
+                        }
+                        text={message.text}
+                      />
+                    )}
                     {!busy &&
                       active.mode !== "stt" &&
                       message.id === active.messages.at(-1)?.id && (
@@ -1460,31 +1600,30 @@ function App() {
                 }
               />
               {active.mode === "stt" ? (
-                <label className="upload">
-                  Audio file
+                <label className={`upload ${busy ? "disabled" : ""}`}>
                   <input
+                    key={file ? "chosen" : "empty"}
                     type="file"
+                    aria-label="Audio file"
                     accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac"
                     disabled={busy}
                     onChange={(e) =>
                       setFile(e.currentTarget.files?.[0] ?? null)
                     }
                   />
+                  <strong>{file ? file.name : "Choose audio file"}</strong>
+                  <span>
+                    {file
+                      ? `${(file.size / 1024 / 1024).toFixed(1)} MiB · choose another`
+                      : "WAV, MP3, M4A, OGG or FLAC"}
+                  </span>
                 </label>
               ) : (
                 <textarea
                   ref={input}
                   rows={1}
-                  aria-label={
-                    active.mode === "image" ? "Describe an image" : "Message"
-                  }
-                  placeholder={
-                    active.mode === "image"
-                      ? "Describe an image…"
-                      : active.mode === "tts"
-                        ? "Write something to read aloud…"
-                        : "Message LocalBase…"
-                  }
+                  aria-label={composerLabels[active.mode]}
+                  placeholder={composerPlaceholders[active.mode]}
                   value={draft}
                   maxLength={active.mode === "tts" ? 256 : undefined}
                   onChange={(e) => setDraft(e.target.value)}
@@ -1551,15 +1690,15 @@ function App() {
                       type="button"
                       className="model-picker"
                       disabled={busy}
-                      aria-label={`Choose model: ${model?.catalog.name ?? "none selected"}`}
+                      aria-label={`Choose model: ${model ? modelName(model) : "none selected"}`}
                       onClick={() => setDrawer("models")}
-                      title={model?.catalog.name ?? "Choose a model"}
+                      title={model ? modelName(model) : "Choose a model"}
                     >
                       <span
                         className={`status-dot ${connectionLabel === "Gateway ready" ? "ready" : ""}`}
                         aria-hidden="true"
                       />
-                      <span>{model?.catalog.name ?? "Choose model"}</span>
+                      <span>{model ? modelName(model) : "Choose model"}</span>
                       <span aria-hidden="true">⌄</span>
                     </button>
                     <button
@@ -1588,7 +1727,7 @@ function App() {
                 )}
                 {canDictate && active.mode !== "stt" && (
                   <DictationButton
-                    label="message"
+                    label={active.mode === "llm" ? "message" : "prompt"}
                     disabled={busy}
                     onText={(text) =>
                       setDraft((value) => appendDictation(value, text))
@@ -1702,12 +1841,13 @@ function App() {
                 </p>
               )}
               <p className="generation-settings-hint">
-                Saved per model for this session, shared by chat and Model Lab.
-                Blank values use model defaults.
+                These apply to the model wherever it runs: chat, its tools,
+                Model Lab and the studios. They are not saved and reset when the
+                page reloads. Blank fields use model defaults.
               </p>
               {model ? (
                 <div>
-                  <h3>{model.catalog.name}</h3>
+                  <h3>{modelName(model)}</h3>
                   <GenerationSettingsFields
                     mode={active.mode}
                     model={model}
@@ -1737,7 +1877,7 @@ function App() {
                     return toolModels(models, name).map((target) => (
                       <details className="tool-settings" key={target.id}>
                         <summary>
-                          {target.catalog.name} · {labels[mode]}
+                          {modelName(target)} · {labels[mode]}
                         </summary>
                         <GenerationSettingsFields
                           mode={mode}
@@ -1919,7 +2059,7 @@ function App() {
               {pickerModels.length ? (
                 pickerModels
                   .filter((candidate) =>
-                    `${candidate.catalog.name} ${candidate.id} ${candidate.catalog.quantization}`
+                    `${modelName(candidate)} ${candidate.catalog.name} ${candidate.id} ${candidate.catalog.quantization}`
                       .toLowerCase()
                       .includes(modelSearch.toLowerCase()),
                   )
@@ -1940,7 +2080,7 @@ function App() {
                         );
                       }}
                     >
-                      <strong>{m.catalog.name}</strong>
+                      <strong>{modelName(m)}</strong>
                       <span>
                         {m.catalog.quantization} ·{" "}
                         {m.device.installed
@@ -1951,8 +2091,7 @@ function App() {
                       </span>
                       <small className="model-id">{m.id}</small>
                       <small>
-                        {m.catalog.inputModalities.join(", ")} →{" "}
-                        {m.catalog.outputModalities.join(", ")}
+                        {modelModalities(m)}
                         {m.catalog.contextWindowTokens
                           ? ` · ${m.catalog.contextWindowTokens.toLocaleString()} context`
                           : ""}
@@ -1967,7 +2106,7 @@ function App() {
               )}
               {pickerModels.length > 0 &&
                 !pickerModels.some((candidate) =>
-                  `${candidate.catalog.name} ${candidate.id} ${candidate.catalog.quantization}`
+                  `${modelName(candidate)} ${candidate.catalog.name} ${candidate.id} ${candidate.catalog.quantization}`
                     .toLowerCase()
                     .includes(modelSearch.toLowerCase()),
                 ) && <p className="hint">No models match your search.</p>}
