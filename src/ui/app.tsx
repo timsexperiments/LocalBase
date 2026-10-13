@@ -53,8 +53,10 @@ import {
   readHistory,
   readinessSchema,
   readSession,
+  redirectToSignIn,
   sessionConnection,
   SessionRequiredError,
+  signInFailed,
   type SessionState,
   type Session,
   transcriptionSchema,
@@ -527,23 +529,36 @@ function App() {
       "push",
     );
   }
+  function sessionExpired(message: string) {
+    setModels([]);
+    setHostMemory(null);
+    setSession({
+      kind: "error",
+      message: redirectToSignIn()
+        ? "Your sign-in has expired. Taking you to sign in…"
+        : signInFailed()
+          ? "Sign-in didn't complete. Try signing in again."
+          : message,
+    });
+  }
   async function checkSession(signal?: AbortSignal) {
     try {
       const verified = await readSession(signal);
       signal?.throwIfAborted();
       setSession(verified);
     } catch (e) {
-      if (!signal?.aborted) {
-        setModels([]);
-        setHostMemory(null);
-        setSession({
-          kind: "error",
-          message:
-            e instanceof SessionRequiredError
-              ? e.message
-              : "Sign-in could not be verified. Reload this page to sign in, or refresh to try again.",
-        });
+      if (signal?.aborted) return;
+      if (e instanceof SessionRequiredError) {
+        sessionExpired(e.message);
+        return;
       }
+      setModels([]);
+      setHostMemory(null);
+      setSession({
+        kind: "error",
+        message:
+          "Sign-in could not be verified. Check your connection and try again.",
+      });
     }
   }
   async function signOut() {
@@ -590,8 +605,7 @@ function App() {
       if (!signal?.aborted) {
         setModels([]);
         setHostMemory(null);
-        if (e instanceof SessionRequiredError)
-          setSession({ kind: "error", message: e.message });
+        if (e instanceof SessionRequiredError) sessionExpired(e.message);
         else if (e instanceof z.ZodError) {
           console.error("Unexpected gateway response", e.issues);
           setConnection(
@@ -998,9 +1012,7 @@ function App() {
     } catch (e) {
       if (e instanceof SessionRequiredError) {
         authenticationFailed = true;
-        setModels([]);
-        setHostMemory(null);
-        setSession({ kind: "error", message: e.message });
+        sessionExpired(e.message);
       }
       patch((m) => ({
         ...m,
@@ -1273,11 +1285,8 @@ function App() {
               <div className="error session-notice" role="alert">
                 <span>{session.message}</span>
                 <a className="download" href="/app/login">
-                  Sign in again
+                  Sign in
                 </a>
-                <button disabled={busy} onClick={() => void checkSession()}>
-                  Refresh sign-in
-                </button>
               </div>
             )}
             {warnings.length > 0 && (
@@ -1673,7 +1682,7 @@ function App() {
               </button>
               {session.kind === "error" && (
                 <a className="download" href="/app/login">
-                  Sign in again
+                  Sign in
                 </a>
               )}
               <hr />

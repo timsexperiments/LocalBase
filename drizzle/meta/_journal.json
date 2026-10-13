@@ -71,6 +71,13 @@
       "when": 1791579311933,
       "tag": "0009_third_whizzer",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791897689720,
+      "tag": "0010_wooden_gamma_corps",
+      "breakpoints": true
     }
   ]
 }

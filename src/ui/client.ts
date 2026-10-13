@@ -304,9 +304,7 @@ export type Session = Connection & {
 export type SessionState =
   Session | { kind: "checking" } | { kind: "error"; message: string };
 export class SessionRequiredError extends Error {
-  constructor(
-    message = "Your sign-in is missing or expired. Sign in again, then refresh.",
-  ) {
+  constructor(message = "Your sign-in has expired.") {
     super(message);
   }
 }
@@ -347,6 +345,26 @@ export async function readSession(signal?: AbortSignal): Promise<Session> {
       : {}),
     ...(parsed.data.logoutUrl ? { logoutUrl: parsed.data.logoutUrl } : {}),
   };
+}
+const signInRedirectKey = "localbase.signInRedirectAt";
+const signInRedirectCooldownMs = 60_000;
+// Sends an expired session straight to sign-in. Returns false instead when a
+// sign-in just failed or was attempted moments ago, so a provider that cannot
+// complete sign-in shows a message rather than redirecting in a loop.
+export function redirectToSignIn(): boolean {
+  if (new URLSearchParams(location.search).has("signin")) return false;
+  try {
+    const last = Number(sessionStorage.getItem(signInRedirectKey));
+    if (Date.now() - last < signInRedirectCooldownMs) return false;
+    sessionStorage.setItem(signInRedirectKey, String(Date.now()));
+  } catch {
+    return false;
+  }
+  location.assign("/app/login");
+  return true;
+}
+export function signInFailed(): boolean {
+  return new URLSearchParams(location.search).get("signin") === "failed";
 }
 export async function logoutSession(): Promise<void> {
   const response = await fetch("/app/logout", {

@@ -13,6 +13,7 @@ import {
   type Principal,
 } from "../../auth/authorization";
 import { resolveAccessControl } from "../../auth/access-control";
+import { createDatabaseBrowserSessionStore } from "../../auth/browser-sessions";
 import {
   clearMagicLinks,
   createMagicLinkService,
@@ -2353,6 +2354,7 @@ export async function runServe(
   if (!magicLinkRegistration) clearMagicLinks(database);
   const uiAccess = createUiAccess({
     config: browserAccess,
+    sessionStore: createDatabaseBrowserSessionStore(database),
     authorizeIdentity: (identity) =>
       resolveAccessControl(database, identity, {
         claimManagedUser: true,
