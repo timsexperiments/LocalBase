@@ -211,6 +211,8 @@ export type Message = {
   attachmentsMissing?: boolean;
   media?: Media;
   artifacts?: Artifact[];
+  /** Studio-only data URL of the image a result was based on, for comparison. */
+  source?: string;
   protocol?: ChatMessage[];
 };
 export type Conversation = {

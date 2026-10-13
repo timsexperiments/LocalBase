@@ -3,10 +3,40 @@ import { z } from "zod";
 import type { Model, Mode } from "./client";
 import { DictationButton, appendDictation } from "./dictation";
 
-const imageSizeSchema = z.enum(["256x256", "512x512", "1024x1024"]);
+export const imageSizes = [
+  { value: "512x512", label: "Square · 512 × 512" },
+  { value: "512x768", label: "Portrait 2:3 · 512 × 768" },
+  { value: "768x512", label: "Landscape 3:2 · 768 × 512" },
+  { value: "768x1024", label: "Portrait 3:4 · 768 × 1024" },
+  { value: "1024x768", label: "Landscape 4:3 · 1024 × 768" },
+  { value: "1024x1024", label: "Square · 1024 × 1024" },
+  { value: "256x256", label: "Square · 256 × 256" },
+] as const;
+const imageSizeSchema = z.enum([
+  "256x256",
+  "512x512",
+  "1024x1024",
+  "512x768",
+  "768x512",
+  "768x1024",
+  "1024x768",
+]);
+export type ImageSize = z.infer<typeof imageSizeSchema>;
+const imageTuningSchema = z.object({
+  size: imageSizeSchema.optional(),
+  negative_prompt: z.string().max(16384).optional(),
+  seed: z.number().int().min(0).max(2147483647).optional(),
+  steps: z.number().int().min(1).max(150).optional(),
+  cfg_scale: z.number().min(0).max(30).optional(),
+});
 export type GenerationSettings = {
   llm: { temperature?: number; max_tokens?: number };
-  image: { size?: z.infer<typeof imageSizeSchema> };
+  image: z.infer<typeof imageTuningSchema> & {
+    /** Studio-only: how far an edit may move away from its source image. */
+    strength?: number;
+    /** Studio-only: images per request. */
+    n?: number;
+  };
   video: { negative_prompt?: string };
   tts: { voice?: string };
   stt: { language?: string; prompt?: string };
@@ -34,7 +64,8 @@ export function chatParameters(settings: GenerationSettings["llm"]) {
     .parse(settings);
 }
 export function imageParameters(settings: GenerationSettings["image"]) {
-  return z.object({ size: imageSizeSchema.optional() }).parse(settings);
+  // Object parsing strips the studio-only fields.
+  return imageTuningSchema.parse(settings);
 }
 export function videoParameters(settings: GenerationSettings["video"]) {
   return z
@@ -191,27 +222,99 @@ export function GenerationSettingsFields({
         </>
       )}
       {mode === "image" && (
-        <Field label="Image size">
-          <select
-            className="generation-settings-control"
-            value={settings.image.size ?? ""}
-            onChange={(event) =>
-              onChange({
-                ...settings,
-                image: {
-                  size: event.target.value
-                    ? imageSizeSchema.parse(event.target.value)
-                    : undefined,
-                },
-              })
+        <>
+          <Field label="Image size">
+            <select
+              className="generation-settings-control"
+              value={settings.image.size ?? ""}
+              onChange={(event) =>
+                onChange({
+                  ...settings,
+                  image: {
+                    ...settings.image,
+                    size: event.target.value
+                      ? imageSizeSchema.parse(event.target.value)
+                      : undefined,
+                  },
+                })
+              }
+            >
+              <option value="">Model default</option>
+              {imageSizes.map((size) => (
+                <option key={size.value} value={size.value}>
+                  {size.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div>
+            <Field label="Negative prompt">
+              <textarea
+                className="generation-settings-control"
+                maxLength={16384}
+                value={settings.image.negative_prompt ?? ""}
+                placeholder="What to avoid, e.g. blurry, extra fingers"
+                onChange={(event) =>
+                  onChange({
+                    ...settings,
+                    image: {
+                      ...settings.image,
+                      negative_prompt: event.target.value || undefined,
+                    },
+                  })
+                }
+              />
+            </Field>
+            {canDictate && (
+              <DictationButton
+                label="negative prompt"
+                onText={(text) =>
+                  onChange({
+                    ...settings,
+                    image: {
+                      ...settings.image,
+                      negative_prompt: appendDictation(
+                        settings.image.negative_prompt ?? "",
+                        text,
+                      ),
+                    },
+                  })
+                }
+              />
+            )}
+          </div>
+          <NumberField
+            label="Steps"
+            value={settings.image.steps}
+            min={1}
+            max={150}
+            onChange={(steps) =>
+              onChange({ ...settings, image: { ...settings.image, steps } })
             }
-          >
-            <option value="">Model default</option>
-            {imageSizeSchema.options.map((size) => (
-              <option key={size}>{size}</option>
-            ))}
-          </select>
-        </Field>
+          />
+          <NumberField
+            label="CFG scale"
+            value={settings.image.cfg_scale}
+            min={0}
+            max={30}
+            step={0.5}
+            onChange={(cfg_scale) =>
+              onChange({ ...settings, image: { ...settings.image, cfg_scale } })
+            }
+          />
+          <NumberField
+            label="Seed"
+            value={settings.image.seed}
+            min={0}
+            max={2147483647}
+            onChange={(seed) =>
+              onChange({ ...settings, image: { ...settings.image, seed } })
+            }
+          />
+          <p className="generation-settings-hint">
+            Blank fields use the model defaults; a blank seed is random.
+          </p>
+        </>
       )}
       {mode === "video" && (
         <>
