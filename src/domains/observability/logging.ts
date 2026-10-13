@@ -21,6 +21,7 @@ import {
   assertOwnedPrivateDirectory,
   ensureOwnedPrivateDirectory,
   fileIdentity,
+  isLogRotationRace,
   openOwnedRegularFile,
   readExact,
   syncOwnedPrivateDirectory,
@@ -1290,7 +1291,7 @@ async function openLogGeneration(root: string): Promise<OpenLogFile[]> {
           handle: opened.handle,
         });
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        if (!isLogRotationRace(error)) {
           await closeLogFiles(files);
           throw error;
         }
@@ -1546,7 +1547,7 @@ export async function followLogEvents(
             });
           }
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          if (!isLogRotationRace(error)) throw error;
         }
       }
       const drainOrder = [
