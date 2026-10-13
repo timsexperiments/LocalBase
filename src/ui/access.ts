@@ -7,6 +7,7 @@ import {
 } from "../domains/auth/browser-access";
 import type { Permission } from "../domains/auth/authorization";
 import type { BrowserIdentity } from "../domains/auth/browser-identity";
+import type { BrowserSessionStore } from "../domains/auth/browser-sessions";
 import type { MagicLinkSessionAdapter } from "../domains/auth/magic-links";
 import { videoJobIdFromPath } from "../domains/runtime/route-dispatch";
 import {
@@ -125,6 +126,7 @@ export function createUiAccess({
   defer,
   authorizeIdentity,
   magicLinks,
+  sessionStore,
 }: {
   config: BrowserAccessConfig | null;
   keyResolver?: JWTVerifyGetKey;
@@ -136,6 +138,7 @@ export function createUiAccess({
     permissions: readonly Permission[];
   }> | null;
   magicLinks?: MagicLinkSessionAdapter;
+  sessionStore?: BrowserSessionStore;
 }) {
   const credentials = new WeakMap<
     Request,
@@ -167,6 +170,7 @@ export function createUiAccess({
           ...(now ? { now } : {}),
           ...(defer ? { defer } : {}),
           ...(magicLinks ? { magicLinks } : {}),
+          ...(sessionStore ? { sessionStore } : {}),
         })
       : null;
 

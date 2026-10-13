@@ -217,3 +217,15 @@ export const authSettingsTable = sqliteTable("auth_settings", {
   }),
   updatedAt: text("updated_at").notNull(),
 });
+
+export const authBrowserSessionsTable = sqliteTable("auth_browser_sessions", {
+  tokenHash: text("token_hash").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  issuer: text("issuer").notNull(),
+  subject: text("subject").notNull(),
+  verifiedEmail: text("verified_email"),
+  createdAt: integer("created_at").notNull(),
+  lastSeenAt: integer("last_seen_at").notNull(),
+  idleExpiresAt: integer("idle_expires_at").notNull(),
+  absoluteExpiresAt: integer("absolute_expires_at").notNull(),
+});
