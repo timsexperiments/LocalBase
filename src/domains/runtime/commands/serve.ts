@@ -801,14 +801,62 @@ function prepareChatCompletionRequest(
   };
 }
 
-const imageGenerationRequestSchema = z
-  .object({
-    prompt: z.string(),
+export const IMAGE_SIZES = [
+  "256x256",
+  "512x512",
+  "1024x1024",
+  "512x768",
+  "768x512",
+  "768x1024",
+  "1024x768",
+] as const;
+
+// Tuning fields stable-diffusion.cpp reads from an inline sd_cpp_extra_args block.
+const imageTuningSchema = z.object({
+  negative_prompt: z
+    .string()
+    .max(16_384)
+    .refine(
+      (value) => !value.toLowerCase().includes("sd_cpp_extra_args"),
+      "negative_prompt must not contain sd_cpp_extra_args.",
+    )
+    .optional(),
+  seed: z.number().int().min(0).max(2_147_483_647).optional(),
+  steps: z.number().int().min(1).max(150).optional(),
+  cfg_scale: z.number().min(0).max(30).optional(),
+  strength: z.number().min(0).max(1).optional(),
+});
+type ImageTuning = z.infer<typeof imageTuningSchema>;
+
+export function promptWithImageTuning(prompt: string, tuning: ImageTuning) {
+  const extra: Record<string, unknown> = {};
+  if (tuning.negative_prompt) extra.negative_prompt = tuning.negative_prompt;
+  if (tuning.seed !== undefined) extra.seed = tuning.seed;
+  if (tuning.strength !== undefined) extra.strength = tuning.strength;
+  const sample: Record<string, unknown> = {};
+  if (tuning.steps !== undefined) sample.sample_steps = tuning.steps;
+  if (tuning.cfg_scale !== undefined)
+    sample.guidance = { txt_cfg: tuning.cfg_scale };
+  if (Object.keys(sample).length) extra.sample_params = sample;
+  return Object.keys(extra).length
+    ? `${prompt} <sd_cpp_extra_args>${JSON.stringify(extra)}</sd_cpp_extra_args>`
+    : prompt;
+}
+
+const imageGenerationRequestSchema = imageTuningSchema
+  .omit({ strength: true })
+  .extend({
+    prompt: z
+      .string()
+      .refine(
+        (value) => !value.toLowerCase().includes("sd_cpp_extra_args"),
+        "prompt must not contain sd_cpp_extra_args.",
+      ),
     model: modelIdSchema.optional(),
     n: z.number().min(1).max(10).optional(),
     quality: z.enum(["standard", "hd"]).optional(),
     response_format: z.enum(["url", "b64_json"]).optional(),
-    size: z.enum(["256x256", "512x512", "1024x1024"]).optional(),
+    size: z.enum(IMAGE_SIZES).optional(),
     style: z.enum(["vivid", "natural"]).optional(),
     user: z.string().optional(),
   })
@@ -3618,6 +3666,17 @@ export async function runServe(
         imageGenerationRequestSchema,
       );
       if (!parsed.success) return parsed.response;
+      const { negative_prompt, seed, steps, cfg_scale, ...generation } =
+        parsed.data;
+      const backendBody = {
+        ...generation,
+        prompt: promptWithImageTuning(generation.prompt, {
+          negative_prompt,
+          seed,
+          steps,
+          cfg_scale,
+        }),
+      };
       let selected;
       try {
         selected = await admitModelWithIdleRecovery(
@@ -3648,7 +3707,7 @@ export async function runServe(
         request.signal,
         async () =>
           await proxyRequest(
-            requestWithJsonBody(request, parsed.data),
+            requestWithJsonBody(request, backendBody),
             factory.baseUrl("image", selected.value.admission.snapshot),
             undefined,
             imageGenerationResponseSchema,
@@ -3743,9 +3802,9 @@ export async function runServe(
       const sizeValue = form.get("size");
       const size =
         typeof sizeValue === "string" && sizeValue ? sizeValue : undefined;
-      if (size && !["256x256", "512x512", "1024x1024"].includes(size))
+      if (size && !IMAGE_SIZES.some((option) => option === size))
         return badRequest(
-          "size must be 256x256, 512x512, or 1024x1024.",
+          `size must be one of ${IMAGE_SIZES.join(", ")}.`,
           "size",
         );
       const responseFormat = form.get("response_format");
@@ -3758,14 +3817,32 @@ export async function runServe(
           "response_format must be url or b64_json.",
           "response_format",
         );
-      const strengthValue = form.get("strength");
-      const strength =
-        strengthValue === null ? undefined : Number(strengthValue);
-      if (
-        strength !== undefined &&
-        (!Number.isFinite(strength) || strength < 0 || strength > 1)
-      )
-        return badRequest("strength must be between 0 and 1.", "strength");
+      const formNumber = (name: string) => {
+        const value = form.get(name);
+        return typeof value === "string" && value.trim()
+          ? Number(value)
+          : undefined;
+      };
+      const negativePrompt = form.get("negative_prompt");
+      const tuning = imageTuningSchema.safeParse({
+        negative_prompt:
+          typeof negativePrompt === "string" && negativePrompt.trim()
+            ? negativePrompt
+            : undefined,
+        seed: formNumber("seed"),
+        steps: formNumber("steps"),
+        cfg_scale: formNumber("cfg_scale"),
+        strength: formNumber("strength"),
+      });
+      if (!tuning.success) {
+        const param = String(tuning.error.issues[0]?.path[0] ?? "prompt");
+        return badRequest(
+          param === "strength"
+            ? "strength must be between 0 and 1."
+            : `${param} is invalid: ${tuning.error.issues[0]?.message ?? "unexpected value"}.`,
+          param,
+        );
+      }
       const outputFormatValue = form.get("output_format");
       const outputFormat =
         outputFormatValue === null ? "png" : outputFormatValue;
@@ -3831,12 +3908,7 @@ export async function runServe(
       if (selected.kind === "insufficient-memory")
         return resourceUnavailable(selected.error);
       const backendForm = new FormData();
-      backendForm.set(
-        "prompt",
-        strength === undefined
-          ? prompt
-          : `${prompt} <sd_cpp_extra_args>{"strength":${strength}}</sd_cpp_extra_args>`,
-      );
+      backendForm.set("prompt", promptWithImageTuning(prompt, tuning.data));
       backendForm.set("n", String(n));
       backendForm.set("output_format", outputFormat);
       if (size) backendForm.set("size", size);

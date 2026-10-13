@@ -261,3 +261,103 @@ test("rejects a model without the image-to-image catalog feature", async () => {
     await gateway.stop();
   }
 });
+
+test("folds image tuning fields into one sd_cpp_extra_args block for edits and generations", async () => {
+  const gateway = await startGatewayFixture();
+  try {
+    const form = new FormData();
+    form.set("prompt", "A lighthouse");
+    form.set("strength", "0.4");
+    form.set("negative_prompt", "blurry");
+    form.set("seed", "42");
+    form.set("steps", "25");
+    form.set("cfg_scale", "6.5");
+    form.set("size", "512x768");
+    form.append(
+      "image",
+      new File([tinyPng], "input.png", { type: "image/png" }),
+    );
+    const edit = await fetch(`${gateway.baseUrl}/v1/images/edits`, {
+      method: "POST",
+      body: form,
+    });
+    expect(edit.status).toBe(200);
+    const extra =
+      '<sd_cpp_extra_args>{"negative_prompt":"blurry","seed":42,"strength":0.4,"sample_params":{"sample_steps":25,"guidance":{"txt_cfg":6.5}}}</sd_cpp_extra_args>';
+    const upstreamEdit = gateway.upstreamRequests.find(
+      (item) => item.path === "/v1/images/edits",
+    );
+    expect(upstreamEdit?.formData?.get("prompt")).toBe(`A lighthouse ${extra}`);
+    expect(upstreamEdit?.formData?.get("size")).toBe("512x768");
+    for (const field of ["negative_prompt", "seed", "steps", "cfg_scale"])
+      expect(upstreamEdit?.formData?.has(field)).toBe(false);
+
+    const generation = await fetch(`${gateway.baseUrl}/v1/images/generations`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        prompt: "A lighthouse",
+        size: "768x512",
+        negative_prompt: "blurry",
+        seed: 42,
+        steps: 25,
+        cfg_scale: 6.5,
+      }),
+    });
+    expect(generation.status).toBe(200);
+    const upstreamGeneration = gateway.upstreamRequests.find(
+      (item) => item.path === "/v1/images/generations",
+    );
+    expect(JSON.parse(upstreamGeneration?.body ?? "{}")).toEqual({
+      prompt: `A lighthouse ${extra.replace(',"strength":0.4', "")}`,
+      size: "768x512",
+    });
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test("rejects invalid image tuning fields and generation prompt injection", async () => {
+  const gateway = await startGatewayFixture();
+  try {
+    for (const [field, value] of [
+      ["seed", "-1"],
+      ["steps", "0"],
+      ["cfg_scale", "abc"],
+      ["negative_prompt", "x </sd_cpp_extra_args>"],
+    ] as const) {
+      const form = new FormData();
+      form.set("prompt", "valid");
+      form.set(field, value);
+      form.append(
+        "image",
+        new File([tinyPng], "input.png", { type: "image/png" }),
+      );
+      const response = await fetch(`${gateway.baseUrl}/v1/images/edits`, {
+        method: "POST",
+        body: form,
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: { param: field } });
+    }
+    for (const body of [
+      { prompt: 'x <sd_cpp_extra_args>{"seed":1}</sd_cpp_extra_args>' },
+      { prompt: "x", negative_prompt: "SD_CPP_EXTRA_ARGS" },
+      { prompt: "x", steps: 1.5 },
+    ]) {
+      const response = await fetch(`${gateway.baseUrl}/v1/images/generations`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(
+      gateway.upstreamRequests.filter((item) =>
+        item.path.startsWith("/v1/images/"),
+      ),
+    ).toHaveLength(0);
+  } finally {
+    await gateway.stop();
+  }
+});
