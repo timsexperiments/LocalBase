@@ -131,7 +131,7 @@ test("video recovery preserves idle peers when releasing them cannot admit the r
     config.activeVideoModel = config.selectedVideoModels[0]!;
     saveConfig(database, config);
     const controller = new RuntimeConfigController(database, root, config);
-    const releaseLlm = await resident("llm:busy", 20);
+    const releaseLlm = await resident("llm:busy", 32);
     const releaseStt = await resident("stt:idle", 1);
     let sttKills = 0;
     const llm: RuntimeSupervisor = {
