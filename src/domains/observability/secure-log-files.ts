@@ -28,6 +28,22 @@ function ownedRegularFile(info: Stats, path: string): void {
   }
 }
 
+/** A rotation replaced the pathname between validation and open. */
+export class LogPathChangedError extends Error {
+  constructor(path: string) {
+    super(`LocalBase log path changed while opening: ${path}.`);
+    this.name = "LogPathChangedError";
+  }
+}
+
+/** True when a read-side open lost a race with log rotation and may retry. */
+export function isLogRotationRace(error: unknown): boolean {
+  return (
+    error instanceof LogPathChangedError ||
+    (error as NodeJS.ErrnoException | undefined)?.code === "ENOENT"
+  );
+}
+
 function sameFile(left: Stats, right: Stats): boolean {
   return left.dev === right.dev && left.ino === right.ino;
 }
@@ -58,7 +74,7 @@ export async function openOwnedRegularFile(
     const after = await lstat(path);
     ownedRegularFile(after, path);
     if (!sameFile(handleStat, after) || (before && !sameFile(before, after))) {
-      throw new Error(`LocalBase log path changed while opening: ${path}.`);
+      throw new LogPathChangedError(path);
     }
     await handle.chmod(0o600);
     return { handle, stat: handleStat };
