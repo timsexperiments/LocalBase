@@ -20,6 +20,13 @@ import {
   readHistory,
   writeHistory,
   type Conversation,
+  codeLanguage,
+  embeddingSummary,
+  embeddingSummaryText,
+  modelModalities,
+  modelName,
+  speechVoiceCount,
+  type Model,
 } from "./client";
 
 function streaming(parts: Uint8Array[]) {
@@ -688,4 +695,82 @@ test("redirects an expired session to sign-in without looping", () => {
     for (const [key, value] of Object.entries(original))
       Object.defineProperty(globalThis, key, { configurable: true, value });
   }
+});
+
+describe("display helpers", () => {
+  const card = (catalog: Record<string, unknown>) =>
+    modelsSchema.parse({
+      host: {
+        memory: {
+          kind: "unified",
+          system: { capacityBytes: 1024, availableBytes: 512 },
+          accelerators: [],
+        },
+      },
+      data: [
+        {
+          id: "image:flux/q4",
+          catalog: {
+            name: "flux",
+            kind: "image",
+            quantization: "Q4",
+            qualificationState: "qualified",
+            memory: { minimumVramEstimateGb: 1, storageEstimateGb: 1 },
+            inputModalities: ["text"],
+            outputModalities: ["image"],
+            contextWindowTokens: null,
+            capabilities: null,
+            ...catalog,
+          },
+          device: { selected: true, installed: true, runtime: null },
+        },
+      ],
+    }).data[0]!;
+
+  test("names models by their display name, falling back to the family", () => {
+    expect(modelName(card({ displayName: "FLUX.1 Schnell" }))).toBe(
+      "FLUX.1 Schnell",
+    );
+    expect(modelName(card({}))).toBe("flux");
+  });
+
+  test("lists image input for image-to-image models", () => {
+    expect(modelModalities(card({}))).toBe("text → image");
+    expect(modelModalities(card({ features: ["image-to-image"] }))).toBe(
+      "text, image → image",
+    );
+  });
+
+  test("summarises an embedding vector", () => {
+    const summary = embeddingSummary([3, 4, 0, 0, 0, 0, 0, 0, 0, 1], 3);
+    expect(summary.dimensions).toBe(10);
+    expect(summary.preview).toEqual([3, 4, 0]);
+    expect(summary.norm).toBeCloseTo(Math.sqrt(26));
+    expect(embeddingSummaryText("embed", [3, 4])).toBe(
+      "Embedding from embed: 2 dimensions, norm 5.0000.",
+    );
+    expect(embeddingSummary([])).toEqual({
+      dimensions: 0,
+      preview: [],
+      norm: 0,
+    });
+  });
+
+  test("reads the code block language from its class", () => {
+    expect(codeLanguage("language-ts")).toBe("ts");
+    expect(codeLanguage("hljs language-python")).toBe("python");
+    expect(codeLanguage("language-")).toBeUndefined();
+    expect(codeLanguage(undefined)).toBeUndefined();
+  });
+
+  test("counts selectable speech voices", () => {
+    const speech = (requestValues: string[]) =>
+      ({
+        catalog: { capabilities: { kind: "speech", voice: { requestValues } } },
+      }) as unknown as Pick<Model, "catalog">;
+    expect(speechVoiceCount(speech(["default", "harbor"]))).toBe(2);
+    expect(speechVoiceCount(speech(["default"]))).toBe(1);
+    expect(speechVoiceCount(card({}))).toBe(0);
+    expect(speechVoiceCount(undefined)).toBe(0);
+  });
 });

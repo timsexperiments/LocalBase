@@ -88,16 +88,32 @@ export function resolveNavigation({
   const saved = conversations.find(
     (item) => item.id === navigation.conversation,
   );
-  const conversation = saved
-    ? { ...saved, model: navigation.model || saved.model }
-    : { ...fresh(navigation.mode, navigation.view), model: navigation.model };
+  if (!saved) {
+    // Reuse an empty conversation rather than adding another on each visit.
+    const started = startConversation({
+      conversations,
+      mode: navigation.mode,
+      workspace: navigation.view,
+      fresh,
+    });
+    const conversation = {
+      ...started.conversation,
+      model: navigation.model || started.conversation.model,
+    };
+    return {
+      conversation,
+      conversations: started.conversations.map((item) =>
+        item.id === conversation.id ? conversation : item,
+      ),
+      navigation: conversationNavigation(conversation, navigation.panel),
+    };
+  }
+  const conversation = { ...saved, model: navigation.model || saved.model };
   return {
     conversation,
-    conversations: saved
-      ? conversations.map((item) =>
-          item.id === saved.id ? conversation : item,
-        )
-      : [conversation, ...conversations].slice(0, 30),
+    conversations: conversations.map((item) =>
+      item.id === saved.id ? conversation : item,
+    ),
     navigation: conversationNavigation(conversation, navigation.panel),
   };
 }
@@ -138,4 +154,39 @@ export function writeNavigation(
     "",
     url,
   );
+}
+
+/**
+ * Opens a blank conversation for a mode and workspace. An existing empty
+ * conversation for the same mode and workspace is reused, and other empty
+ * conversations are dropped, so switching workspaces never piles up blank
+ * "New conversation" entries in history.
+ */
+export function startConversation({
+  conversations,
+  mode,
+  workspace,
+  fresh,
+}: {
+  conversations: Conversation[];
+  mode: Mode;
+  workspace: Conversation["workspace"];
+  fresh: (mode: Mode, workspace: Conversation["workspace"]) => Conversation;
+}) {
+  const conversation =
+    conversations.find(
+      (item) =>
+        item.messages.length === 0 &&
+        item.mode === mode &&
+        item.workspace === workspace,
+    ) ?? fresh(mode, workspace);
+  return {
+    conversation,
+    conversations: [
+      conversation,
+      ...conversations.filter(
+        (item) => item.id !== conversation.id && item.messages.length > 0,
+      ),
+    ].slice(0, 30),
+  };
 }

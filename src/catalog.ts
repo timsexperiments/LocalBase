@@ -283,6 +283,8 @@ export const modelSpecSchema = z
     qualificationState: modelQualificationStateSchema.default("qualified"),
     kind: modelKindSchema,
     provider: z.string().min(1),
+    /** Human-facing model name; `family` alone is ambiguous for fine-tunes. */
+    displayName: z.string().min(1).optional(),
     family: z.string().min(1),
     version: z.string().min(1),
     size: z.string().min(1),
@@ -516,6 +518,7 @@ export function validateCatalog(catalog: unknown): ModelSpec[] {
 const CATALOG_SOURCE = [
   {
     modelId: "qwen3.5-0.8b-q4_k_m",
+    displayName: "Qwen3.5 0.8B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3.5",
@@ -547,6 +550,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3.5-0.8b-q8_0",
+    displayName: "Qwen3.5 0.8B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3.5",
@@ -578,6 +582,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3.5-2b-q4_k_m",
+    displayName: "Qwen3.5 2B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3.5",
@@ -609,6 +614,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3.5-2b-q8_0",
+    displayName: "Qwen3.5 2B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3.5",
@@ -640,6 +646,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3.5-4b-q4_k_m",
+    displayName: "Qwen3.5 4B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3.5",
@@ -671,6 +678,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3.5-9b-q4_k_m",
+    displayName: "Qwen3.5 9B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3.5",
@@ -702,6 +710,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3-embedding-4b-q4_k_m",
+    displayName: "Qwen3 Embedding 4B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3-Embedding",
@@ -742,6 +751,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3-embedding-4b-q8_0",
+    displayName: "Qwen3 Embedding 4B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3-Embedding",
@@ -782,6 +792,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3-embedding-8b-q4_k_m",
+    displayName: "Qwen3 Embedding 8B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3-Embedding",
@@ -822,6 +833,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3-embedding-8b-q8_0",
+    displayName: "Qwen3 Embedding 8B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3-Embedding",
@@ -862,6 +874,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "whisper-tiny-q8_0",
+    displayName: "Whisper Tiny",
     kind: "stt",
     provider: "OpenAI/ggml",
     family: "Whisper",
@@ -892,6 +905,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "whisper-base-en-q8_0",
+    displayName: "Whisper Base (English)",
     kind: "stt",
     provider: "OpenAI/ggml",
     family: "Whisper",
@@ -922,6 +936,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "whisper-small-q8_0",
+    displayName: "Whisper Small",
     kind: "stt",
     provider: "OpenAI/ggml",
     family: "Whisper",
@@ -952,6 +967,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "whisper-medium-q8_0",
+    displayName: "Whisper Medium",
     kind: "stt",
     provider: "OpenAI/ggml",
     family: "Whisper",
@@ -982,6 +998,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "realvis-xl-v5.0",
+    displayName: "RealVisXL V5.0",
     kind: "image",
     provider: "SG161222",
     family: "Stable-Diffusion-XL",
@@ -1012,6 +1029,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3-embedding-0.6b-q8_0",
+    displayName: "Qwen3 Embedding 0.6B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3-Embedding",
@@ -1049,6 +1067,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+    displayName: "Qwen2.5 Coder 1.5B Instruct",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen2.5-Coder",
@@ -1081,6 +1100,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen2.5-coder-3b-instruct-q4_k_m",
+    displayName: "Qwen2.5 Coder 3B Instruct",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen2.5-Coder",
@@ -1111,6 +1131,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen2.5-coder-7b-instruct-q4_k_m",
+    displayName: "Qwen2.5 Coder 7B Instruct",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen2.5-Coder",
@@ -1141,6 +1162,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen2.5-coder-14b-instruct-q4_k_m",
+    displayName: "Qwen2.5 Coder 14B Instruct",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen2.5-Coder",
@@ -1171,6 +1193,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen2.5-coder-32b-instruct-q4_k_m",
+    displayName: "Qwen2.5 Coder 32B Instruct",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen2.5-Coder",
@@ -1202,6 +1225,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3-coder-next-q4_k_m",
+    displayName: "Qwen3 Coder Next",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3-Coder",
@@ -1266,6 +1290,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "llama-3.2-1b-instruct-q4_k_m",
+    displayName: "Llama 3.2 1B Instruct",
     kind: "llm",
     provider: "Meta",
     family: "Llama",
@@ -1297,6 +1322,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "llama-3.2-3b-instruct-q4_k_m",
+    displayName: "Llama 3.2 3B Instruct",
     kind: "llm",
     provider: "Meta",
     family: "Llama",
@@ -1328,6 +1354,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "llama-3.1-8b-instruct-q4_k_m",
+    displayName: "Llama 3.1 8B Instruct",
     kind: "llm",
     provider: "Meta",
     family: "Llama",
@@ -1360,6 +1387,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "llama-3.3-70b-instruct-q4_k_m",
+    displayName: "Llama 3.3 70B Instruct",
     kind: "llm",
     provider: "Meta",
     family: "Llama",
@@ -1391,6 +1419,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "deepseek-r1-distill-qwen-14b-q4_k_m",
+    displayName: "DeepSeek R1 Distill Qwen 14B",
     kind: "llm",
     provider: "DeepSeek",
     family: "DeepSeek-R1",
@@ -1423,6 +1452,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "deepseek-coder-6.7b-instruct-q4_k_m",
+    displayName: "DeepSeek Coder 6.7B Instruct",
     kind: "llm",
     provider: "DeepSeek",
     family: "DeepSeek-Coder",
@@ -1454,6 +1484,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "deepseek-coder-v2-lite-instruct-q4_k_m",
+    displayName: "DeepSeek Coder V2 Lite Instruct",
     kind: "llm",
     provider: "DeepSeek",
     family: "DeepSeek-Coder-V2",
@@ -1486,6 +1517,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "deepseek-coder-33b-instruct-q4_k_m",
+    displayName: "DeepSeek Coder 33B Instruct",
     kind: "llm",
     provider: "DeepSeek",
     family: "DeepSeek-Coder",
@@ -1517,6 +1549,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "gemma-3-1b-it-q4_k_m",
+    displayName: "Gemma 3 1B IT",
     kind: "llm",
     provider: "Google",
     family: "Gemma",
@@ -1548,6 +1581,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "gemma-3-4b-it-q4_k_m",
+    displayName: "Gemma 3 4B IT",
     kind: "llm",
     provider: "Google",
     family: "Gemma",
@@ -1579,6 +1613,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "gemma-3-12b-it-q4_k_m",
+    displayName: "Gemma 3 12B IT",
     kind: "llm",
     provider: "Google",
     family: "Gemma",
@@ -1611,6 +1646,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "gemma-3-27b-it-q4_k_m",
+    displayName: "Gemma 3 27B IT",
     kind: "llm",
     provider: "Google",
     family: "Gemma",
@@ -1642,6 +1678,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "phi-4-q4_k_m",
+    displayName: "Phi-4",
     kind: "llm",
     provider: "Microsoft",
     family: "Phi",
@@ -1672,6 +1709,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "phi-3.5-mini-instruct-q4_k_m",
+    displayName: "Phi-3.5 Mini Instruct",
     kind: "llm",
     provider: "Microsoft",
     family: "Phi",
@@ -1702,6 +1740,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "phi-3.5-moe-instruct-q4_k_m",
+    displayName: "Phi-3.5 MoE Instruct",
     kind: "llm",
     provider: "Microsoft",
     family: "Phi",
@@ -1733,6 +1772,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "gpt-oss-20b-q4_k_m",
+    displayName: "gpt-oss 20B",
     kind: "llm",
     provider: "OpenAI",
     family: "GPT-OSS",
@@ -1764,6 +1804,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "falcon-2-11b-instruct-q4_k_m",
+    displayName: "Falcon 2 11B Instruct",
     kind: "llm",
     provider: "TII",
     family: "Falcon",
@@ -1794,6 +1835,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "deepseek-r1-distill-qwen-32b-q4_k_m",
+    displayName: "DeepSeek R1 Distill Qwen 32B",
     kind: "llm",
     provider: "DeepSeek",
     family: "DeepSeek-R1-Distill",
@@ -1826,6 +1868,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "deepseek-r1-distill-llama-8b-q4_k_m",
+    displayName: "DeepSeek R1 Distill Llama 8B",
     kind: "llm",
     provider: "DeepSeek",
     family: "DeepSeek-R1-Distill",
@@ -1858,6 +1901,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "deepseek-r1-distill-llama-70b-q4_k_m",
+    displayName: "DeepSeek R1 Distill Llama 70B",
     kind: "llm",
     provider: "DeepSeek",
     family: "DeepSeek-R1-Distill",
@@ -1890,6 +1934,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen2.5-72b-instruct-q4_k_m",
+    displayName: "Qwen2.5 72B Instruct",
     kind: "llm",
     provider: "Alibaba",
     family: "Qwen",
@@ -1922,6 +1967,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "codestral-22b-instruct-q4_k_m",
+    displayName: "Codestral 22B",
     kind: "llm",
     provider: "Mistral",
     family: "Codestral",
@@ -1952,6 +1998,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "mistral-nemo-12b-instruct-q4_k_m",
+    displayName: "Mistral Nemo 12B Instruct",
     kind: "llm",
     provider: "Mistral/NVIDIA",
     family: "Mistral",
@@ -1982,6 +2029,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3.8-27b-q4_k_m",
+    displayName: "Qwen3.8 27B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3.8",
@@ -2011,6 +2059,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "devstral-small-2-24b-instruct-q4_k_m",
+    displayName: "Devstral Small 2 24B",
     kind: "llm",
     provider: "Mistral",
     family: "Devstral Small",
@@ -2042,6 +2091,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "ministral-3-14b-instruct-q4_k_m",
+    displayName: "Ministral 3 14B Instruct",
     kind: "llm",
     provider: "Mistral",
     family: "Ministral",
@@ -2072,6 +2122,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3.5-27b-q4_k_m",
+    displayName: "Qwen3.5 27B",
     kind: "llm",
     provider: "Qwen",
     family: "Qwen3.5",
@@ -2103,6 +2154,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "mistral-small-3.2-24b-instruct-q4_k_m",
+    displayName: "Mistral Small 3.2 24B Instruct",
     kind: "llm",
     provider: "Mistral",
     family: "Mistral Small",
@@ -2135,6 +2187,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "whisper-large-v3-turbo",
+    displayName: "Whisper Large V3 Turbo",
     kind: "stt",
     provider: "OpenAI/ggml",
     family: "Whisper",
@@ -2164,6 +2217,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "whisper-tiny-en-q8_0",
+    displayName: "Whisper Tiny (English)",
     kind: "stt",
     provider: "OpenAI/ggml",
     family: "Whisper",
@@ -2193,6 +2247,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "whisper-base-q8_0",
+    displayName: "Whisper Base",
     kind: "stt",
     provider: "OpenAI/ggml",
     family: "Whisper",
@@ -2222,6 +2277,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "qwen3-tts-1.7b-base-q4_k_m",
+    displayName: "Qwen3 TTS 1.7B Base",
     kind: "tts",
     provider: "Qwen/ggml",
     family: "Qwen3-TTS",
@@ -2309,6 +2365,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "flux1-schnell-q4_0",
+    displayName: "FLUX.1 Schnell",
     kind: "image",
     provider: "Black Forest Labs",
     family: "FLUX.1",
@@ -2394,6 +2451,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "flux2-klein-4b-q4_0",
+    displayName: "FLUX.2 Klein 4B",
     kind: "image",
     provider: "Black Forest Labs",
     family: "FLUX.2-klein",
@@ -2458,6 +2516,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "flux2-klein-4b-q8_0",
+    displayName: "FLUX.2 Klein 4B",
     kind: "image",
     provider: "Black Forest Labs",
     family: "FLUX.2-klein",
@@ -2522,6 +2581,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "flux2-klein-9b-q4_0",
+    displayName: "FLUX.2 Klein 9B",
     kind: "image",
     provider: "Black Forest Labs",
     family: "FLUX.2-klein",
@@ -2586,6 +2646,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "z-image-turbo-q4_0",
+    displayName: "Z-Image Turbo",
     kind: "image",
     provider: "Tongyi",
     family: "Z-Image",
@@ -2651,6 +2712,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "stable-diffusion-v1-5",
+    displayName: "Stable Diffusion 1.5",
     kind: "image",
     provider: "RunwayML",
     family: "Stable-Diffusion",
@@ -2682,6 +2744,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "dreamshaper-8-lcm",
+    displayName: "DreamShaper 8 LCM",
     kind: "image",
     provider: "Lykon",
     family: "Stable-Diffusion",
@@ -2722,6 +2785,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "dreamshaper-v8",
+    displayName: "DreamShaper 8",
     kind: "image",
     provider: "Lykon",
     family: "Stable-Diffusion",
@@ -2752,6 +2816,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "sdxl-turbo",
+    displayName: "SDXL Turbo",
     kind: "image",
     provider: "StabilityAI",
     family: "Stable-Diffusion-XL",
@@ -2782,6 +2847,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "sdxl-base-1.0",
+    displayName: "SDXL Base 1.0",
     kind: "image",
     provider: "StabilityAI",
     family: "Stable-Diffusion-XL",
@@ -2812,6 +2878,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "juggernaut-xl-v9",
+    displayName: "Juggernaut XL v9",
     kind: "image",
     provider: "RunDiffusion",
     family: "Stable-Diffusion-XL",
@@ -2842,6 +2909,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "animagine-xl-3.1",
+    displayName: "Animagine XL 3.1",
     kind: "image",
     provider: "CagliostroLab",
     family: "Stable-Diffusion-XL",
@@ -2872,6 +2940,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "realvis-xl-v4.0",
+    displayName: "RealVisXL V4.0",
     kind: "image",
     provider: "SG161222",
     family: "Stable-Diffusion-XL",
@@ -2902,6 +2971,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "wan2.1-t2v-1.3b-q8_0",
+    displayName: "Wan2.1 T2V 1.3B",
     kind: "video",
     provider: "Wan/ggml",
     family: "Wan2.1-T2V",
@@ -2998,6 +3068,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "wan2.2-s2v-14b-fp8",
+    displayName: "Wan2.2 S2V 14B",
     kind: "video",
     qualificationState: "experimental",
     provider: "Wan/Comfy-Org",
@@ -3102,6 +3173,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "fastwan2.2-ti2v-5b-q6_k",
+    displayName: "FastWan2.2 TI2V 5B",
     kind: "video",
     provider: "FastVideo/ggml",
     family: "FastWan2.2-TI2V",
@@ -3197,6 +3269,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "wan2.2-ti2v-5b-q6_k",
+    displayName: "Wan2.2 TI2V 5B",
     kind: "video",
     provider: "Wan/QuantStack",
     family: "Wan2.2-TI2V",
@@ -3228,6 +3301,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "wan2.2-t2v-a14b-q4_k_m",
+    displayName: "Wan2.2 T2V A14B",
     kind: "video",
     provider: "Wan/bullerwins",
     family: "Wan2.2-T2V",
@@ -3267,6 +3341,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "ltx-2.3-22b-distilled-1.1-q4_k_m",
+    displayName: "LTX-2.3 22B Distilled 1.1",
     kind: "video",
     provider: "Lightricks/Unsloth",
     family: "LTX",
@@ -3299,6 +3374,7 @@ const CATALOG_SOURCE = [
   },
   {
     modelId: "hunyuanvideo-1.5-t2v-480p-q4_k_m",
+    displayName: "HunyuanVideo 1.5 T2V 480p",
     kind: "video",
     provider: "Tencent/jayn7",
     family: "HunyuanVideo",
