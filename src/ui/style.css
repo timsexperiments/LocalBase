@@ -638,17 +638,51 @@ input::placeholder {
   border-left: 3px solid var(--border);
   color: var(--muted);
 }
-.message-body table {
-  display: block;
+.table-scroll {
   max-width: 100%;
+  margin: 14px 0;
   overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overscroll-behavior-x: contain;
+  scrollbar-color: var(--border) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.message-body table {
+  min-width: 100%;
   border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.5;
 }
 .message-body th,
 .message-body td {
-  border: 1px solid var(--border);
   padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
   text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+}
+.message-body th + th,
+.message-body td + td {
+  border-left: 1px solid var(--border);
+}
+.message-body tbody tr:last-child td {
+  border-bottom: 0;
+}
+.message-body th {
+  background: var(--surface-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.message-body td {
+  min-width: 8em;
+}
+.message-body .contains-task-list {
+  padding-left: 1.2em;
+  list-style: none;
+}
+.message-body .task-list-item input {
+  margin: 0 0.4em 0 0;
 }
 .code-block {
   background: var(--surface-muted);
