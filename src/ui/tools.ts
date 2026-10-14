@@ -317,6 +317,8 @@ export async function runChat(options: {
   toolsEnabled: boolean;
   permissions: readonly Permission[];
   append: (text: string) => void;
+  /** Streamed reasoning; shown to the user, never added to `messages`. */
+  reasoning?: (text: string) => void;
   artifact: (artifact: Artifact) => void;
   register: (url: string) => void;
   warning: (detail: string) => void;
@@ -376,6 +378,7 @@ export async function runChat(options: {
         content += text;
         append(text);
       },
+      options.reasoning,
     );
     signal.throwIfAborted();
     // Nine alphanumeric characters work with strict chat templates; the UI owns both sides of each tool call.

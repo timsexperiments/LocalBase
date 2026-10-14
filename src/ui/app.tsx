@@ -1,5 +1,7 @@
 import {
   isValidElement,
+  Fragment,
+  memo,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -16,7 +18,6 @@ import {
   chatRequestError,
   conversationAttachmentError,
   readAttachments,
-  messageToChat,
   type Attachment,
 } from "./attachments";
 import {
@@ -33,6 +34,26 @@ import {
   imageResultText,
   type StudioRequest,
 } from "./studio";
+import {
+  chatContext,
+  compact,
+  contextWindow,
+  learnContext,
+  overflowContext,
+  planCompaction,
+  promptBudget,
+  toolOverhead,
+  visibleMessages,
+} from "./compaction";
+import {
+  canSteer,
+  deltaBuffer,
+  interruptReply,
+  steerAbortReason,
+  streamingHistoryIntervalMs,
+  type Phase,
+} from "./steering";
+import { CompactionDivider, ReasoningBlock, WorkingStatus } from "./chat-parts";
 import {
   GenerationSettingsFields,
   modelGenerationSettings,
@@ -178,6 +199,30 @@ function CodeBlock({ children }: { children?: ReactNode }) {
     </div>
   );
 }
+const markdownComponents = {
+  pre: CodeBlock,
+  img: () => null,
+  a: ({ children, href }: { children?: ReactNode; href?: string }) => (
+    <a href={href} target="_blank" rel="noreferrer noopener">
+      {children}
+    </a>
+  ),
+};
+/**
+ * Message Markdown, memoized so a streaming reply re-renders only itself
+ * rather than re-parsing every earlier (possibly very long) message per delta.
+ */
+const MessageMarkdown = memo(function MessageMarkdown({
+  text,
+}: {
+  text: string;
+}) {
+  return (
+    <Markdown skipHtml components={markdownComponents}>
+      {text}
+    </Markdown>
+  );
+});
 function MediaCard({ media }: { media: Media }) {
   const [playbackFailed, setPlaybackFailed] = useState(false);
   return (
@@ -490,6 +535,11 @@ function App() {
   const [historySearch, setHistorySearch] = useState("");
   const [showLatest, setShowLatest] = useState(false);
   const controller = useRef<AbortController | null>(null);
+  const running = useRef<{ conversation: string; reply: string } | null>(null);
+  const [compactingNow, setCompactingNow] = useState(false);
+  const [phase, setPhase] = useState<{ phase: Phase; since: number } | null>(
+    null,
+  );
   const mediaUrls = useRef<string[]>([]);
   const app = useRef<HTMLDivElement>(null);
   const transcript = useRef<HTMLElement>(null);
@@ -823,8 +873,11 @@ function App() {
       "replace",
     );
   }, [active?.id, active?.model, model?.id, drawer]);
+  const historySaved = useRef(0);
   useEffect(() => {
-    if (persistent)
+    if (!persistent) return;
+    const save = () => {
+      historySaved.current = Date.now();
       try {
         writeHistory(conversations);
       } catch {
@@ -832,7 +885,17 @@ function App() {
           "Device storage is full or unavailable. History could not be saved.",
         );
       }
-  }, [conversations, persistent]);
+    };
+    // Serializing all history per streamed delta can starve the stream on
+    // slower devices; while busy, save at most once per interval. The final
+    // state is saved as soon as busy clears.
+    const wait = busy
+      ? historySaved.current + streamingHistoryIntervalMs - Date.now()
+      : 0;
+    if (wait <= 0) return save();
+    const timer = setTimeout(save, wait);
+    return () => clearTimeout(timer);
+  }, [conversations, persistent, busy]);
   function scrollToLatest() {
     const element = transcript.current;
     if (element) element.scrollTop = element.scrollHeight;
@@ -890,12 +953,24 @@ function App() {
     nearBottom.current = true;
   }
   async function send(retry = false, request?: StudioRequest) {
+    // Sending while a chat reply streams steers: the reply is interrupted
+    // (its partial text kept) and a new turn starts right away.
+    const steering =
+      !!active &&
+      canSteer({
+        busy,
+        mode: active.mode,
+        draft,
+        retry,
+        studio: !!request,
+      }) &&
+      running.current?.conversation === active.id;
     if (
       !active ||
       !canUseMode(permissions, active.mode) ||
       !credential ||
       !model ||
-      busy ||
+      (busy && !steering) ||
       readingAttachments ||
       attachmentRead.current !== null ||
       unsupportedVideo ||
@@ -914,10 +989,13 @@ function App() {
       (last, m, index) => (m.role === "user" ? index : last),
       -1,
     );
+    const interrupted = steering ? running.current?.reply : undefined;
+    const interrupt = (m: Message) =>
+      m.id === interrupted ? interruptReply(m, "Interrupted") : m;
     const base =
       retry && previousUser >= 0
         ? active.messages.slice(0, previousUser)
-        : active.messages;
+        : active.messages.map(interrupt);
     const text =
       retry && previousUser >= 0
         ? (active.messages[previousUser]?.text ?? "")
@@ -941,8 +1019,11 @@ function App() {
       role: "assistant",
       text: "",
     };
+    if (steering) controller.current?.abort(steerAbortReason);
     const abort = new AbortController();
     controller.current = abort;
+    running.current = { conversation: active.id, reply: reply.id };
+    setPhase({ phase: "waiting", since: Date.now() });
     setBusy(true);
     setWarnings([]);
     setError("");
@@ -956,13 +1037,23 @@ function App() {
       ...c,
       model: model.id,
       title: base.length ? c.title : (user.text || "Attachments").slice(0, 60),
-      messages: [...base, user, reply],
+      // When steering, keep the interrupted reply's latest streamed text.
+      messages: steering
+        ? [...c.messages.map(interrupt), user, reply]
+        : [...base, user, reply],
     }));
     const patch = (change: (m: Message) => Message) =>
       update(active.id, (c) => ({
         ...c,
         messages: c.messages.map((m) => (m.id === reply.id ? change(m) : m)),
       }));
+    const stream = deltaBuffer(({ text, reasoning }) =>
+      patch((m) => ({
+        ...m,
+        text: m.text + text,
+        ...(reasoning ? { reasoning: (m.reasoning ?? "") + reasoning } : {}),
+      })),
+    );
     const json = (body: unknown): RequestInit => ({
       method: "POST",
       signal: abort.signal,
@@ -973,30 +1064,94 @@ function App() {
     try {
       switch (active.mode) {
         case "llm": {
-          const messages = [...base, user].flatMap(messageToChat);
-          const protocol = await runChat({
-            preferences: generationPreferences,
-            model,
-            models,
-            connection: credential,
-            signal: abort.signal,
-            messages,
-            toolsEnabled: page === "chat",
-            permissions: permissions ?? [],
-            append: (text) => patch((m) => ({ ...m, text: m.text + text })),
-            artifact: (artifact) =>
-              patch((m) => ({
-                ...m,
-                artifacts: [
-                  ...(m.artifacts ?? []).filter(
-                    (item) => item.id !== artifact.id,
-                  ),
-                  artifact,
-                ],
-              })),
-            register: (url) => mediaUrls.current.push(url),
-            warning: (detail) => setWarnings((items) => [...items, detail]),
-          });
+          const history = [...base, user];
+          const conversation = active.id;
+          let compaction = active.compaction;
+          const compactHistory = async (context: number, force: boolean) => {
+            const plan = planCompaction({
+              messages: history,
+              compaction,
+              budget: promptBudget(context, generationSettings.llm.max_tokens),
+              overhead: page === "chat" ? toolOverhead : 0,
+              force,
+            });
+            if (!plan) return false;
+            setPhase({ phase: "compacting", since: Date.now() });
+            const result = await compact({
+              connection: credential,
+              model,
+              messages: history,
+              compaction,
+              ...plan,
+              context,
+              signal: abort.signal,
+            });
+            compaction = result.compaction;
+            update(conversation, (c) => ({ ...c, compaction }));
+            if (result.error)
+              setWarnings((items) => [
+                ...items,
+                `Couldn't summarize earlier messages (${result.error}); they were dropped from the model's context.`,
+              ]);
+            setPhase({ phase: "waiting", since: Date.now() });
+            return true;
+          };
+          await compactHistory(contextWindow(model), false);
+          let streamed = false;
+          const chat = () =>
+            runChat({
+              preferences: generationPreferences,
+              model,
+              models,
+              connection: credential,
+              signal: abort.signal,
+              messages: chatContext(history, compaction),
+              toolsEnabled: page === "chat",
+              permissions: permissions ?? [],
+              append: (text) => {
+                streamed = true;
+                stream.text(text);
+              },
+              reasoning: (text) => {
+                streamed = true;
+                setPhase((current) =>
+                  current?.phase === "thinking"
+                    ? current
+                    : { phase: "thinking", since: Date.now() },
+                );
+                stream.reasoning(text);
+              },
+              artifact: (artifact) => {
+                stream.flush();
+                patch((m) => ({
+                  ...m,
+                  artifacts: [
+                    ...(m.artifacts ?? []).filter(
+                      (item) => item.id !== artifact.id,
+                    ),
+                    artifact,
+                  ],
+                }));
+              },
+              register: (url) => mediaUrls.current.push(url),
+              warning: (detail) => setWarnings((items) => [...items, detail]),
+            });
+          let protocol;
+          try {
+            protocol = await chat();
+          } catch (e) {
+            // An overflow reports the real runtime context: learn it, compact
+            // to fit, and retry once if nothing was streamed yet.
+            const size =
+              e instanceof Error && !streamed && !abort.signal.aborted
+                ? overflowContext(e.message)
+                : null;
+            if (!size) throw e;
+            learnContext(model.id, size);
+            if (!(await compactHistory(size, true))) throw e;
+            protocol = await chat();
+          }
+          stream.flush();
           patch((m) => ({ ...m, protocol }));
           break;
         }
@@ -1157,29 +1312,36 @@ function App() {
         }
       }
     } catch (e) {
+      stream.flush();
       if (e instanceof SessionRequiredError) {
         authenticationFailed = true;
         sessionExpired(e.message);
       }
-      patch((m) => ({
-        ...m,
-        protocol: [],
-        artifacts: m.artifacts?.map((artifact) =>
-          artifact.state === "working"
-            ? {
-                id: artifact.id,
-                label: artifact.label,
-                state: "error",
-                detail: abort.signal.aborted
-                  ? "Stopped"
-                  : e instanceof Error
-                    ? e.message
-                    : "Request failed",
-              }
-            : artifact,
-        ),
-      }));
-      if (abort.signal.reason !== navigationAbortReason)
+      const steered = abort.signal.reason === steerAbortReason;
+      patch((m) =>
+        abort.signal.aborted && active.mode === "llm"
+          ? // Keep the partial reply (not its tool protocol) as context.
+            interruptReply(m, steered ? "Interrupted" : "Stopped")
+          : {
+              ...m,
+              protocol: [],
+              artifacts: m.artifacts?.map((artifact) =>
+                artifact.state === "working"
+                  ? {
+                      id: artifact.id,
+                      label: artifact.label,
+                      state: "error",
+                      detail: abort.signal.aborted
+                        ? "Stopped"
+                        : e instanceof Error
+                          ? e.message
+                          : "Request failed",
+                    }
+                  : artifact,
+              ),
+            },
+      );
+      if (abort.signal.reason !== navigationAbortReason && !steered)
         setError(
           e instanceof SessionRequiredError
             ? ""
@@ -1190,9 +1352,64 @@ function App() {
                 : "Request failed. Try again.",
         );
     } finally {
-      setBusy(false);
-      controller.current = null;
-      if (!authenticationFailed) void refresh();
+      stream.flush();
+      // A steering send already owns the controller and busy state.
+      if (controller.current === abort) {
+        setBusy(false);
+        setPhase(null);
+        controller.current = null;
+        running.current = null;
+        if (!authenticationFailed) void refresh();
+      }
+    }
+  }
+  async function compactNow() {
+    if (!active || active.mode !== "llm" || busy || !credential || !model)
+      return;
+    const conversation = active.id;
+    const context = contextWindow(model);
+    const plan = planCompaction({
+      messages: active.messages,
+      compaction: active.compaction,
+      budget: promptBudget(context, generationSettings.llm.max_tokens),
+      overhead: page === "chat" ? toolOverhead : 0,
+      force: true,
+    });
+    if (!plan) return;
+    const abort = new AbortController();
+    controller.current = abort;
+    running.current = null;
+    setBusy(true);
+    setCompactingNow(true);
+    setPhase({ phase: "compacting", since: Date.now() });
+    setWarnings([]);
+    setError("");
+    try {
+      const result = await compact({
+        connection: credential,
+        model,
+        messages: active.messages,
+        compaction: active.compaction,
+        ...plan,
+        context,
+        signal: abort.signal,
+      });
+      update(conversation, (c) => ({ ...c, compaction: result.compaction }));
+      if (result.error)
+        setWarnings([
+          `Couldn't summarize earlier messages (${result.error}); they were dropped from the model's context.`,
+        ]);
+    } catch (e) {
+      if (e instanceof SessionRequiredError) sessionExpired(e.message);
+      else if (!abort.signal.aborted)
+        setError(e instanceof Error ? e.message : "Compaction failed.");
+    } finally {
+      if (controller.current === abort) {
+        setBusy(false);
+        setPhase(null);
+        controller.current = null;
+      }
+      setCompactingNow(false);
     }
   }
   if (!active) return null;
@@ -1462,111 +1679,141 @@ function App() {
                 </p>
               </section>
             )}
-            {active.messages.map((message) => (
-              <article className={`message ${message.role}`} key={message.id}>
-                <div className="message-label">
-                  {message.role === "user" ? "You" : "LocalBase"}
-                </div>
-                <div className="message-body">
-                  {message.embedding ? (
-                    <EmbeddingCard embedding={message.embedding} />
-                  ) : message.text ? (
-                    <Markdown
-                      skipHtml
-                      components={{
-                        pre: CodeBlock,
-                        img: () => null,
-                        a: ({ children, href }) => (
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                          >
-                            {children}
-                          </a>
-                        ),
-                      }}
-                    >
-                      {message.text}
-                    </Markdown>
-                  ) : message.artifacts?.length ||
-                    (message.role === "user" && message.attachmentsMissing) ||
-                    message.attachments?.length ? null : busy &&
-                    message.id === active.messages.at(-1)?.id ? (
-                    <p className="thinking" role="status">
-                      Working<span>…</span>
-                    </p>
-                  ) : (
-                    <p className="muted">No response received.</p>
-                  )}
-                  {message.role === "user" && (
-                    <>
-                      <AttachmentChips
-                        attachments={message.attachments ?? []}
-                      />
-                      {message.attachmentsMissing && (
-                        <p className="muted">
-                          Attachments from the earlier session are no longer
-                          available.
-                        </p>
+            {active.messages.map((message) => {
+              const live = busy && message.id === active.messages.at(-1)?.id;
+              return (
+                <Fragment key={message.id}>
+                  <article className={`message ${message.role}`}>
+                    <div className="message-label">
+                      {message.role === "user" ? "You" : "LocalBase"}
+                    </div>
+                    <div className="message-body">
+                      {message.role === "assistant" && message.reasoning && (
+                        <ReasoningBlock
+                          text={message.reasoning}
+                          live={live}
+                          answering={!!message.text}
+                        />
                       )}
-                    </>
-                  )}
-                  {message.media && <MediaCard media={message.media} />}
-                  {message.artifacts?.map((artifact) => (
-                    <section
-                      className="artifact"
-                      key={artifact.id}
-                      aria-live="polite"
-                    >
-                      <strong>{artifact.label.replaceAll("_", " ")}</strong>
-                      {artifact.state === "complete" ? (
-                        <MediaCard media={artifact.media} />
+                      {message.embedding ? (
+                        <EmbeddingCard embedding={message.embedding} />
+                      ) : message.text ? (
+                        <MessageMarkdown text={message.text} />
+                      ) : message.artifacts?.length ||
+                        (message.role === "user" &&
+                          message.attachmentsMissing) ||
+                        message.attachments?.length ? null : live ? (
+                        message.reasoning ? null : (
+                          <WorkingStatus
+                            phase={phase?.phase ?? "waiting"}
+                            since={phase?.since ?? Date.now()}
+                          />
+                        )
+                      ) : message.interrupted ? (
+                        <p className="muted">Interrupted before a response.</p>
                       ) : (
-                        <p
-                          role={artifact.state === "error" ? "alert" : "status"}
-                        >
-                          {artifact.detail}
-                        </p>
+                        <p className="muted">No response received.</p>
                       )}
-                    </section>
-                  ))}
-                </div>
-                {message.role === "assistant" && (
-                  <div className="message-actions">
-                    {message.text && !message.embedding && (
-                      <Copy
-                        label={
-                          active.mode === "stt"
-                            ? "Copy transcript"
-                            : active.mode === "llm"
-                              ? "Copy response"
-                              : "Copy text"
-                        }
-                        text={message.text}
-                      />
+                      {message.role === "user" && (
+                        <>
+                          <AttachmentChips
+                            attachments={message.attachments ?? []}
+                          />
+                          {message.attachmentsMissing && (
+                            <p className="muted">
+                              Attachments from the earlier session are no longer
+                              available.
+                            </p>
+                          )}
+                        </>
+                      )}
+                      {message.media && <MediaCard media={message.media} />}
+                      {message.artifacts?.map((artifact) => (
+                        <section
+                          className="artifact"
+                          key={artifact.id}
+                          aria-live="polite"
+                        >
+                          <strong>{artifact.label.replaceAll("_", " ")}</strong>
+                          {artifact.state === "complete" ? (
+                            <MediaCard media={artifact.media} />
+                          ) : (
+                            <p
+                              role={
+                                artifact.state === "error" ? "alert" : "status"
+                              }
+                            >
+                              {artifact.detail}
+                            </p>
+                          )}
+                        </section>
+                      ))}
+                    </div>
+                    {message.role === "assistant" && (
+                      <div className="message-actions">
+                        {message.interrupted && message.text && (
+                          <span className="interrupted-tag">Interrupted</span>
+                        )}
+                        {message.text && !message.embedding && (
+                          <Copy
+                            label={
+                              active.mode === "stt"
+                                ? "Copy transcript"
+                                : active.mode === "llm"
+                                  ? "Copy response"
+                                  : "Copy text"
+                            }
+                            text={message.text}
+                          />
+                        )}
+                        {!busy &&
+                          active.mode !== "stt" &&
+                          message.id === active.messages.at(-1)?.id && (
+                            <button
+                              className="copy"
+                              disabled={
+                                !credential ||
+                                !model ||
+                                unsupportedVideo ||
+                                readingAttachments ||
+                                !!attachmentProblem
+                              }
+                              onClick={() => void send(true)}
+                            >
+                              Try again
+                            </button>
+                          )}
+                        {!busy &&
+                          active.mode === "llm" &&
+                          message.id === active.messages.at(-1)?.id &&
+                          visibleMessages(
+                            active.messages,
+                            active.compaction,
+                          ).filter(({ role }) => role === "user").length >=
+                            2 && (
+                            <button
+                              className="copy"
+                              disabled={!credential || !model}
+                              onClick={() => void compactNow()}
+                            >
+                              Compact now
+                            </button>
+                          )}
+                      </div>
                     )}
-                    {!busy &&
-                      active.mode !== "stt" &&
-                      message.id === active.messages.at(-1)?.id && (
-                        <button
-                          className="copy"
-                          disabled={
-                            !credential ||
-                            !model ||
-                            unsupportedVideo ||
-                            readingAttachments ||
-                            !!attachmentProblem
-                          }
-                          onClick={() => void send(true)}
-                        >
-                          Try again
-                        </button>
-                      )}
-                  </div>
-                )}
-              </article>
-            ))}
+                  </article>
+                  {active.compaction?.through === message.id && (
+                    <CompactionDivider compaction={active.compaction} />
+                  )}
+                </Fragment>
+              );
+            })}
+            {compactingNow && (
+              <WorkingStatus
+                phase="compacting"
+                since={phase?.since ?? Date.now()}
+              />
+            )}
           </div>
         </main>
         <footer className="composer-area" hidden={!activeModeAllowed || studio}>
@@ -1734,15 +1981,34 @@ function App() {
                     }
                   />
                 )}
-                {busy ? (
+                {busy && (
                   <button
                     type="button"
-                    className="send"
+                    className={`send${draft.trim() ? " stop" : ""}`}
                     aria-label="Stop generation"
                     onClick={() => controller.current?.abort()}
                   >
                     ■
                   </button>
+                )}
+                {busy ? (
+                  canSteer({ busy, mode: active.mode, draft }) &&
+                  !compactingNow && (
+                    <button
+                      className="send"
+                      type="submit"
+                      disabled={
+                        !model ||
+                        !credential ||
+                        readingAttachments ||
+                        !!attachmentProblem
+                      }
+                      aria-label="Send now (interrupts reply)"
+                      title="Send now (interrupts reply)"
+                    >
+                      ↑
+                    </button>
+                  )
                 ) : (
                   <button
                     className="send"
