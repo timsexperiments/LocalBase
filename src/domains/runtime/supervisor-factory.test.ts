@@ -208,6 +208,7 @@ test("recovers a real speech generation rejection by evicting an idle peer", asy
     memorySafety,
     async prepare() {
       return {
+        kind: "llama-tts" as const,
         binaryPath: "/unused",
         modelPath: "/unused",
         projectorPath: "/unused",

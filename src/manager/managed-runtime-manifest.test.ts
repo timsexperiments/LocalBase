@@ -50,3 +50,78 @@ test("requires explicit extraction metadata for every managed runtime", () => {
     "stripComponents",
   );
 });
+
+type MutableManifest = {
+  targets: Array<{
+    platform: string;
+    architecture: string;
+    runtimes: Record<string, Record<string, unknown>>;
+  }>;
+};
+
+function macRuntimes(): [
+  MutableManifest,
+  MutableManifest["targets"][number]["runtimes"],
+] {
+  const manifest = structuredClone(rawManifest) as MutableManifest;
+  const target = manifest.targets.find(
+    (candidate) =>
+      candidate.platform === "darwin" && candidate.architecture === "arm64",
+  );
+  if (!target) throw new Error("Expected a macOS arm64 manifest target.");
+  return [manifest, target.runtimes];
+}
+
+test("placeholder digests and pendingPublication must be declared together", () => {
+  const [unmarked, unmarkedRuntimes] = macRuntimes();
+  delete unmarkedRuntimes["kokoro-tts"]!.pendingPublication;
+  expect(() => parseManagedRuntimeManifest(unmarked)).toThrow(
+    "pendingPublication must be declared together",
+  );
+
+  const [marked, markedRuntimes] = macRuntimes();
+  markedRuntimes["kokoro-tts"]!.sha256 = "a".repeat(64);
+  markedRuntimes["kokoro-tts"]!.inventorySha256 = "b".repeat(64);
+  expect(() => parseManagedRuntimeManifest(marked)).toThrow(
+    "pendingPublication must be declared together",
+  );
+
+  const [published, publishedRuntimes] = macRuntimes();
+  publishedRuntimes["kokoro-tts"] = {
+    ...publishedRuntimes["kokoro-tts"],
+    sha256: "a".repeat(64),
+    inventorySha256: "b".repeat(64),
+    expectedSizeBytes: 123,
+  };
+  delete publishedRuntimes["kokoro-tts"].pendingPublication;
+  expect(() => parseManagedRuntimeManifest(published)).not.toThrow();
+
+  const [native, nativeRuntimes] = macRuntimes();
+  nativeRuntimes["llama-server"]!.pendingPublication = true;
+  nativeRuntimes["llama-server"]!.sha256 = "0".repeat(64);
+  expect(() => parseManagedRuntimeManifest(native)).toThrow(
+    "only packaged runtimes may await publication",
+  );
+});
+
+test("the packaged Kokoro runtime must pin an inventory digest and ship as tar.gz", () => {
+  const [missing, missingRuntimes] = macRuntimes();
+  delete missingRuntimes["kokoro-tts"]!.inventorySha256;
+  missingRuntimes["kokoro-tts"]!.sha256 = "a".repeat(64);
+  delete missingRuntimes["kokoro-tts"]!.pendingPublication;
+  expect(() => parseManagedRuntimeManifest(missing)).toThrow(
+    "packaged runtimes must pin their inventory digest",
+  );
+
+  const [zip, zipRuntimes] = macRuntimes();
+  zipRuntimes["kokoro-tts"]!.format = "zip";
+  expect(() => parseManagedRuntimeManifest(zip)).toThrow(
+    "packaged runtimes must ship as tar.gz archives",
+  );
+
+  const [native, nativeRuntimes] = macRuntimes();
+  nativeRuntimes["llama-server"]!.inventorySha256 = "b".repeat(64);
+  expect(() => parseManagedRuntimeManifest(native)).toThrow(
+    "only packaged runtimes may pin an inventory digest",
+  );
+});

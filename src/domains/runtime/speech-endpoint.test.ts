@@ -67,6 +67,7 @@ describe("OpenAI speech endpoint", () => {
       [{ response_format: "mp3" }, "supports only 'wav'"],
       [{ voice: "alloy" }, "Invalid option"],
       [{ voice: "../../private/reference.wav" }, "Invalid option"],
+      [{ voice: "af_heart" }, "not supported by model"],
       [{ speed: 1.25 }, "speed must be 1"],
       [{ instructions: "Whisper" }, "instructions are not supported"],
       [{ input: "x".repeat(257) }, "256 characters"],

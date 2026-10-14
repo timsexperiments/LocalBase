@@ -330,7 +330,9 @@ describe("measured demand", () => {
       expect(record.date).toBe(MEASUREMENT_DATE);
       expect(record.hardware).toContain("64 GiB");
       expect(record.method.length).toBeGreaterThan(0);
-      expect(record.backendAcceleratorBytes).toBeGreaterThan(0);
+      // Only CPU-only runtimes (Kokoro) record no accelerator buffers.
+      if (model.ttsRuntime?.kind !== "kokoro-onnx")
+        expect(record.backendAcceleratorBytes).toBeGreaterThan(0);
       expect(record.peakRssBytes).toBeGreaterThan(0);
     }
   });
@@ -365,6 +367,7 @@ describe("measured demand", () => {
       "qwen3.5-9b-q4_k_m",
       "whisper-large-v3-turbo",
       "qwen3-tts-1.7b-base-q4_k_m",
+      "kokoro-82m-v1.0-q8",
       "flux2-klein-4b-q4_0",
       "fastwan2.2-ti2v-5b-q6_k",
     ]) {
@@ -424,6 +427,23 @@ describe("measured demand", () => {
     expect(estimate.acceleratorBytes).toBeGreaterThanOrEqual(
       measured.backendAcceleratorBytes * 0.9,
     );
+  });
+
+  test("Kokoro is CPU-only in both the estimate and the measurement", () => {
+    const model = catalogModel("kokoro-82m-v1.0-q8");
+    const estimate = estimateTtsMemory(model).demand;
+    const record = MEMORY_MEASUREMENTS.find(
+      (candidate) => candidate.modelId === model.modelId,
+    )!;
+    expect(record.kind === "tts" && record.shape.ctxTokens).toBe(512);
+    expect(estimate.acceleratorBytes).toBe(0);
+    // The allowance covers the measured worst-case runtime RSS.
+    expect(estimate.hostBytes).toBeGreaterThanOrEqual(record.peakRssBytes);
+
+    const measured = measuredModelDemand(model)!;
+    expect(measured.acceleratorBytes).toBe(0);
+    expect(measured.hostBytes).toBe(record.peakRssBytes);
+    expect(measured.unifiedBytes).toBe(record.peakRssBytes);
   });
 
   test("the image VAE estimate covers the measured decode buffer", () => {

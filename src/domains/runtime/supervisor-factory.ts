@@ -14,6 +14,11 @@ import {
   type ModelInstallEvent,
   type ModelInstallReporter,
 } from "../../manager";
+import {
+  ensureKokoroRuntime,
+  kokoroRuntimeCommand,
+  kokoroRuntimeRelease,
+} from "../../manager/kokoro-runtime";
 import type { ServeInput } from "../app/commands/inputs";
 import type { RuntimeConfigSnapshot } from "./config-snapshot";
 import {
@@ -666,6 +671,12 @@ export function createRuntimeSupervisorFactory(
           if (!spec || spec.kind !== "tts") {
             throw new Error(`Unknown TTS model "${modelId}".`);
           }
+          const profile = spec.ttsRuntime;
+          if (!profile) {
+            throw new Error(`TTS model "${modelId}" has no runtime profile.`);
+          }
+          // Refuse unpublished runtime pins before downloading model weights.
+          if (profile.kind === "kokoro-onnx") kokoroRuntimeRelease();
 
           let installation = await resolveCatalogInstallation(
             spec,
@@ -690,9 +701,24 @@ export function createRuntimeSupervisorFactory(
               `TTS model "${modelId}" is incomplete after installation.`,
             );
           }
+          if (profile.kind === "kokoro-onnx") {
+            const runtime = await ensureKokoroRuntime(config);
+            const modelFile = (filename: string) =>
+              join(config.ttsModelsDir, filename);
+            return Object.freeze({
+              kind: "kokoro-onnx" as const,
+              command: kokoroRuntimeCommand(runtime),
+              modelFiles: Object.freeze({
+                model: modelFile(profile.artifacts.model),
+                config: modelFile(profile.artifacts.config),
+                tokenizer: modelFile(profile.artifacts.tokenizer),
+                tokenizerConfig: modelFile(profile.artifacts.tokenizerConfig),
+              }),
+              inventorySha256: runtime.inventorySha256,
+            });
+          }
           const projector = spec.artifacts.find(
-            ({ filename }) =>
-              filename === spec.ttsRuntime?.projectorArtifactFilename,
+            ({ filename }) => filename === profile.projectorArtifactFilename,
           );
           if (!projector) {
             throw new Error(
@@ -707,6 +733,7 @@ export function createRuntimeSupervisorFactory(
           }
           const references = ttsReferenceArtifacts(spec);
           return Object.freeze({
+            kind: "llama-tts" as const,
             binaryPath: await ensureBinary(config, "llama-tts"),
             modelPath,
             projectorPath: join(config.ttsModelsDir, projector.filename),

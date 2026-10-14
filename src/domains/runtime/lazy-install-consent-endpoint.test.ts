@@ -13,7 +13,10 @@ registerGatewayFixtureCleanup();
 
 function anotherModel(kind: ModelSpec["kind"], excluded: string): ModelSpec {
   const model = CATALOG.find(
-    (candidate) => candidate.kind === kind && candidate.modelId !== excluded,
+    (candidate) =>
+      candidate.kind === kind &&
+      candidate.modelId !== excluded &&
+      candidate.qualificationState !== "experimental",
   );
   return model ?? CATALOG.find((candidate) => candidate.kind === kind)!;
 }

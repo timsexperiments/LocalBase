@@ -27,6 +27,7 @@ import {
   primaryArtifact,
   resolveCatalogInstallation,
   speechVoiceSchema,
+  ttsVoiceAllowed,
 } from "../../../catalog";
 import {
   inspectCatalogInstallations,
@@ -3502,6 +3503,15 @@ export async function runServe(
         speechGenerationRequestSchema,
       );
       if (!parsed.success) return parsed.response;
+      const speechModel = byId(parsed.data.model);
+      if (
+        speechModel?.kind === "tts" &&
+        !ttsVoiceAllowed(speechModel, parsed.data.voice)
+      ) {
+        return badRequest(
+          `Voice "${parsed.data.voice}" is not supported by model "${parsed.data.model}".`,
+        );
+      }
 
       let admission: RuntimeAdmission | undefined;
       let inference: InferenceTelemetry | undefined;

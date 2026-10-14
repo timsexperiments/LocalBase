@@ -169,6 +169,23 @@ export const MEMORY_MEASUREMENTS: readonly MemoryMeasurement[] = Object.freeze([
       "2x projector + codec buffers; RSS sampled every 250 ms",
   },
   {
+    kind: "tts",
+    modelId: "kokoro-82m-v1.0-q8",
+    variant: "model_quantized (q8)",
+    // One request is at most 256 characters, well under the 510-token window.
+    shape: { ctxTokens: 512 },
+    // ONNX Runtime CPU session inside the packaged Bun runtime: no GPU buffers.
+    backendAcceleratorBytes: 0,
+    hostBufferBytes: 0,
+    peakRssBytes: 1_027_719_168,
+    date: MEASUREMENT_DATE,
+    hardware: MEASUREMENT_HARDWARE,
+    method:
+      "kokoro-tts v0.0.1 CI package through the gateway (cold per request); " +
+      "af_heart and af_bella, 56 and 239 characters (17.2 s of audio); " +
+      "RSS of the runtime process sampled every 250 ms",
+  },
+  {
     kind: "image",
     modelId: "dreamshaper-v8",
     variant: "safetensors F16",

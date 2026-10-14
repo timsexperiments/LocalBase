@@ -8,11 +8,20 @@ export type ModelKind = z.infer<typeof modelKindSchema>;
 export const modelModalitySchema = z.enum(["text", "audio", "image", "video"]);
 export type ModelModality = z.infer<typeof modelModalitySchema>;
 
-export const speechVoiceSchema = z.enum(["default", "harbor", "willow"]);
+export const speechVoiceSchema = z.enum([
+  "default",
+  "harbor",
+  "willow",
+  "af_heart",
+  "af_bella",
+]);
 export type SpeechVoice = z.infer<typeof speechVoiceSchema>;
 
 export const referenceSpeechVoiceSchema = z.enum(["harbor", "willow"]);
 export type ReferenceSpeechVoice = z.infer<typeof referenceSpeechVoiceSchema>;
+
+export const kokoroSpeechVoiceSchema = z.enum(["af_heart", "af_bella"]);
+export type KokoroSpeechVoice = z.infer<typeof kokoroSpeechVoiceSchema>;
 
 export const commercialStatusSchema = z.enum([
   "open",
@@ -58,12 +67,38 @@ const ttsReferenceVoiceSchema = z
   })
   .strict();
 
-const ttsRuntimeProfileSchema = z
+const llamaTtsRuntimeProfileSchema = z
   .object({
+    kind: z.literal("llama-tts"),
     projectorArtifactFilename: safeFilenameSchema,
     referenceVoices: z.array(ttsReferenceVoiceSchema),
   })
   .strict();
+
+const kokoroTtsRuntimeProfileSchema = z
+  .object({
+    kind: z.literal("kokoro-onnx"),
+    artifacts: z
+      .object({
+        model: safeFilenameSchema,
+        config: safeFilenameSchema,
+        tokenizer: safeFilenameSchema,
+        tokenizerConfig: safeFilenameSchema,
+      })
+      .strict(),
+    // Voice embeddings ship inside the qualified runtime package.
+    voices: z
+      .array(z.object({ name: kokoroSpeechVoiceSchema }).strict())
+      .min(1),
+    defaultVoice: kokoroSpeechVoiceSchema,
+  })
+  .strict();
+
+const ttsRuntimeProfileSchema = z.discriminatedUnion("kind", [
+  llamaTtsRuntimeProfileSchema,
+  kokoroTtsRuntimeProfileSchema,
+]);
+export type TtsRuntimeProfile = z.infer<typeof ttsRuntimeProfileSchema>;
 
 const embeddingLlmRuntimeProfileSchema = z
   .object({
@@ -340,7 +375,7 @@ export const modelSpecSchema = z
       });
     }
     const ttsRuntime = model.ttsRuntime;
-    if (ttsRuntime) {
+    if (ttsRuntime?.kind === "llama-tts") {
       const projector = model.artifacts.find(
         ({ filename }) => filename === ttsRuntime.projectorArtifactFilename,
       );
@@ -353,8 +388,9 @@ export const modelSpecSchema = z
       }
     }
     const referenceNames = new Set<string>();
-    for (const [index, voice] of (
-      ttsRuntime?.referenceVoices ?? []
+    for (const [index, voice] of (ttsRuntime?.kind === "llama-tts"
+      ? ttsRuntime.referenceVoices
+      : []
     ).entries()) {
       if (referenceNames.has(voice.name)) {
         ctx.addIssue({
@@ -376,7 +412,7 @@ export const modelSpecSchema = z
       }
     }
     if (
-      ttsRuntime &&
+      ttsRuntime?.kind === "llama-tts" &&
       (!referenceNames.has("harbor") || !referenceNames.has("willow"))
     ) {
       ctx.addIssue({
@@ -384,6 +420,48 @@ export const modelSpecSchema = z
         message: "TTS runtime must declare Harbor and Willow reference voices",
         path: ["ttsRuntime", "referenceVoices"],
       });
+    }
+    if (ttsRuntime?.kind === "kokoro-onnx") {
+      const mappedArtifacts = Object.entries(ttsRuntime.artifacts);
+      const mappedNames = new Set(
+        mappedArtifacts.map(([, filename]) => filename),
+      );
+      if (mappedNames.size !== mappedArtifacts.length) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Kokoro runtime artifacts must be distinct",
+          path: ["ttsRuntime", "artifacts"],
+        });
+      }
+      for (const [name, filename] of mappedArtifacts) {
+        if (
+          !model.artifacts.some((artifact) => artifact.filename === filename)
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Kokoro runtime artifacts must name declared artifacts",
+            path: ["ttsRuntime", "artifacts", name],
+          });
+        }
+      }
+      const voices = new Set<KokoroSpeechVoice>();
+      for (const [index, voice] of ttsRuntime.voices.entries()) {
+        if (voices.has(voice.name)) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Kokoro voice names must be unique",
+            path: ["ttsRuntime", "voices", index, "name"],
+          });
+        }
+        voices.add(voice.name);
+      }
+      if (!voices.has(ttsRuntime.defaultVoice)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Kokoro default voice must be declared",
+          path: ["ttsRuntime", "defaultVoice"],
+        });
+      }
     }
 
     if (model.kind !== "llm" && model.llmRuntime) {
@@ -2319,6 +2397,7 @@ const CATALOG_SOURCE = [
       },
     ],
     ttsRuntime: {
+      kind: "llama-tts",
       projectorArtifactFilename: "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
       referenceVoices: [
         {
@@ -2350,6 +2429,79 @@ const CATALOG_SOURCE = [
       "The converted repository omits license metadata; the upstream Qwen model is Apache-2.0.",
     notes:
       "Default remains native runtime voice. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed.",
+  },
+  {
+    modelId: "kokoro-82m-v1.0-q8",
+    displayName: "Kokoro 82M v1.0",
+    kind: "tts",
+    qualificationState: "experimental",
+    provider: "hexgrad/onnx-community",
+    family: "Kokoro",
+    version: "v1.0",
+    size: "82M",
+    quant: "Q8",
+    minVramGb: 1,
+    storageGb: 0.09,
+    source: "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
+    repositoryRevision: "1939ad2a8e416c0acfeecc08a694d14ef25f2231",
+    artifacts: [
+      {
+        sourcePath: "onnx/model_quantized.onnx",
+        filename: "kokoro-82m-v1.0-model_quantized.onnx",
+        expectedSizeBytes: 92361116,
+        sha256:
+          "fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478",
+        role: "primary",
+      },
+      {
+        sourcePath: "config.json",
+        filename: "kokoro-82m-v1.0-config.json",
+        expectedSizeBytes: 44,
+        sha256:
+          "df34b4f930b23447cd4dc410fabfb42eb3f24e803e6c3f97d618fb359380a36f",
+        role: "supplementary",
+      },
+      {
+        sourcePath: "tokenizer.json",
+        filename: "kokoro-82m-v1.0-tokenizer.json",
+        expectedSizeBytes: 3497,
+        sha256:
+          "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34",
+        role: "supplementary",
+      },
+      {
+        sourcePath: "tokenizer_config.json",
+        filename: "kokoro-82m-v1.0-tokenizer_config.json",
+        expectedSizeBytes: 113,
+        sha256:
+          "be1cb066d6ef6b074b3f15e6a6dd21ac88ff3cdaedf325f0aaed686c70f75d20",
+        role: "supplementary",
+      },
+    ],
+    ttsRuntime: {
+      kind: "kokoro-onnx",
+      artifacts: {
+        model: "kokoro-82m-v1.0-model_quantized.onnx",
+        config: "kokoro-82m-v1.0-config.json",
+        tokenizer: "kokoro-82m-v1.0-tokenizer.json",
+        tokenizerConfig: "kokoro-82m-v1.0-tokenizer_config.json",
+      },
+      voices: [{ name: "af_heart" }, { name: "af_bella" }],
+      defaultVoice: "af_heart",
+    },
+    inputModalities: ["text"],
+    outputModalities: ["audio"],
+    features: [
+      "text-to-speech",
+      "wav-output",
+      "cold-per-request",
+      "bundled-native-voices",
+    ],
+    commercialStatus: "open",
+    catch:
+      "Apache-2.0 weights. Requires the kokoro-v0.0.1 LocalBase runtime package, which is not yet published; its manifest pin is a placeholder until the release sync fills it.",
+    notes:
+      "CPU ONNX runtime with bundled af_heart and af_bella voices. English only. Human voice quality has not been assessed.",
   },
   {
     modelId: "flux1-schnell-q4_0",
@@ -3393,10 +3545,10 @@ export function primaryArtifact(model: ModelSpec): ModelArtifact {
 export function ttsReferenceArtifacts(
   model: ModelSpec,
 ): Readonly<Record<ReferenceSpeechVoice, ModelArtifact>> {
-  if (model.kind !== "tts") {
-    throw new Error(`Model "${model.modelId}" is not a TTS model.`);
+  if (model.kind !== "tts" || model.ttsRuntime?.kind !== "llama-tts") {
+    throw new Error(`Model "${model.modelId}" is not a llama-tts model.`);
   }
-  const references = model.ttsRuntime?.referenceVoices;
+  const references = model.ttsRuntime.referenceVoices;
   const harbor = references?.find(({ name }) => name === "harbor");
   const willow = references?.find(({ name }) => name === "willow");
   if (!harbor || !willow) {
@@ -3415,6 +3567,17 @@ export function ttsReferenceArtifacts(
     );
   }
   return Object.freeze({ harbor: harborArtifact, willow: willowArtifact });
+}
+
+export function ttsVoiceAllowed(model: ModelSpec, voice: SpeechVoice): boolean {
+  if (model.kind !== "tts" || !model.ttsRuntime) return false;
+  if (model.ttsRuntime.kind === "llama-tts") {
+    return (
+      voice === "default" ||
+      model.ttsRuntime.referenceVoices.some(({ name }) => name === voice)
+    );
+  }
+  return model.ttsRuntime.voices.some(({ name }) => name === voice);
 }
 
 /**

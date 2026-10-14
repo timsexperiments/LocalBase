@@ -197,7 +197,11 @@ test("reports only the supported cold speech contract", () => {
   const config = defaultConfig("/tmp/localbase-model-metadata-speech");
   config.selectedTtsModels = [speechModelId];
   config.activeTtsModel = speechModelId;
-  expect(model.ttsRuntime?.referenceVoices).toEqual([
+  expect(
+    model.ttsRuntime?.kind === "llama-tts"
+      ? model.ttsRuntime.referenceVoices
+      : undefined,
+  ).toEqual([
     {
       name: "harbor",
       artifactFilename: "qwen3-tts-harbor.wav",

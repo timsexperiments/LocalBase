@@ -1,6 +1,17 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
-import type { ReferenceSpeechVoice, SpeechVoice } from "../../catalog";
+import type {
+  KokoroSpeechVoice,
+  ReferenceSpeechVoice,
+  SpeechVoice,
+} from "../../catalog";
 import type { ILogger } from "../observability/logging";
 import { guardianProcessCommand } from "./backend-guardian";
 import type { ModalityLifecycleState } from "./health";
@@ -49,12 +60,25 @@ export type SpeechGenerationInput = Readonly<{
   signal?: AbortSignal;
 }>;
 
-export type SpeechPreparation = Readonly<{
-  binaryPath: string;
-  modelPath: string;
-  projectorPath: string;
-  speakerFiles: Readonly<Record<ReferenceSpeechVoice, string>>;
-}>;
+export type SpeechPreparation =
+  | Readonly<{
+      kind: "llama-tts";
+      binaryPath: string;
+      modelPath: string;
+      projectorPath: string;
+      speakerFiles: Readonly<Record<ReferenceSpeechVoice, string>>;
+    }>
+  | Readonly<{
+      kind: "kokoro-onnx";
+      command: readonly string[];
+      modelFiles: Readonly<{
+        model: string;
+        config: string;
+        tokenizer: string;
+        tokenizerConfig: string;
+      }>;
+      inventorySha256: string;
+    }>;
 
 export class SpeechGenerationAbortedError extends Error {
   constructor() {
@@ -101,7 +125,11 @@ type SpeechSupervisorOptions = Readonly<{
   prepare: () => Promise<SpeechPreparation>;
   /** Per-generation reservation; defaults to a conservative 8 GiB allowance. */
   memoryDemand?: RuntimeMemoryDemand;
-  spawn?: (command: string[], cwd: string) => Bun.Subprocess;
+  spawn?: (
+    command: string[],
+    cwd: string,
+    env?: Readonly<Record<string, string>>,
+  ) => Bun.Subprocess;
   spawnGuardian?: (command: string[]) => Bun.Subprocess | undefined;
   writePrivateFile?: (path: string, contents: string) => Promise<void>;
   removeTemporaryDirectory?: (path: string) => Promise<void>;
@@ -191,10 +219,10 @@ export function validateSpeechWav(bytes: Uint8Array): ValidatedWav {
 }
 
 export function speechNativeArguments(
-  preparation: SpeechPreparation,
+  preparation: Extract<SpeechPreparation, { kind: "llama-tts" }>,
   promptPath: string,
   outputPath: string,
-  voice: SpeechVoice = "default",
+  voice: ReferenceSpeechVoice | "default" = "default",
 ): string[] {
   const speakerFile =
     voice === "default" ? undefined : preparation.speakerFiles[voice];
@@ -221,6 +249,66 @@ export function speechNativeArguments(
     "-o",
     outputPath,
   ];
+}
+
+export function kokoroNativeArguments(
+  preparation: Extract<SpeechPreparation, { kind: "kokoro-onnx" }>,
+  modelDirectory: string,
+  promptPath: string,
+  outputPath: string,
+  voice: KokoroSpeechVoice,
+): string[] {
+  return [
+    ...preparation.command,
+    "generate",
+    "--model",
+    modelDirectory,
+    "--prompt",
+    promptPath,
+    "--output",
+    outputPath,
+    "--voice",
+    voice,
+    "--inventory-sha256",
+    preparation.inventorySha256,
+  ];
+}
+
+async function createKokoroModelLayout(
+  privateDirectory: string,
+  files: Extract<SpeechPreparation, { kind: "kokoro-onnx" }>["modelFiles"],
+): Promise<string> {
+  const modelDirectory = join(privateDirectory, "model");
+  const onnxDirectory = join(modelDirectory, "onnx");
+  await mkdir(onnxDirectory, { recursive: true, mode: 0o700 });
+  await Promise.all([
+    symlink(files.config, join(modelDirectory, "config.json")),
+    symlink(files.tokenizer, join(modelDirectory, "tokenizer.json")),
+    symlink(
+      files.tokenizerConfig,
+      join(modelDirectory, "tokenizer_config.json"),
+    ),
+    symlink(files.model, join(onnxDirectory, "model_quantized.onnx")),
+  ]);
+  return modelDirectory;
+}
+
+/**
+ * Kokoro runs with no inherited hooks, module paths, loader overrides or host
+ * tools, matching the packaged runtime's invocation contract.
+ */
+export async function kokoroEnvironment(
+  privateDirectory: string,
+): Promise<Readonly<Record<string, string>>> {
+  const emptyPath = join(privateDirectory, "empty-path");
+  await mkdir(emptyPath, { mode: 0o700 });
+  return Object.freeze({
+    PATH: emptyPath,
+    HOME: privateDirectory,
+    TMPDIR: privateDirectory,
+    LANG: "C",
+    LC_ALL: "C",
+  });
 }
 
 async function readBoundedDiagnostics(
@@ -276,6 +364,34 @@ function generatedFrameCount(stderr: string): number {
     );
   }
   return frames;
+}
+
+function generatedKokoroSampleCount(stderr: string): number {
+  const matches = [
+    ...stderr.matchAll(/Kokoro speech completed: (\d+) samples\./g),
+  ];
+  const value = matches.at(-1)?.[1];
+  if (!value) {
+    throw new SpeechOutputError("Kokoro did not report completed samples.");
+  }
+  const samples = Number(value);
+  if (!Number.isSafeInteger(samples) || samples < 1) {
+    throw new SpeechOutputError("Kokoro reported invalid samples.");
+  }
+  return samples;
+}
+
+function llamaVoice(
+  voice: SpeechVoice | undefined,
+): ReferenceSpeechVoice | "default" {
+  if (voice === undefined || voice === "default") return "default";
+  if (voice === "harbor" || voice === "willow") return voice;
+  throw new SpeechOutputError("Voice is not supported by llama-tts.");
+}
+
+function kokoroVoice(voice: SpeechVoice | undefined): KokoroSpeechVoice {
+  if (voice === "af_heart" || voice === "af_bella") return voice;
+  throw new SpeechOutputError("Voice is not supported by kokoro-onnx.");
 }
 
 function operation(): ActiveGeneration {
@@ -492,18 +608,34 @@ export class SpeechSupervisor {
       const outputPath = join(temporaryDirectory, "output.wav");
       const writePrivate = this.options.writePrivateFile ?? writePrivateFile;
       await writePrivate(promptPath, input.text);
-      await writePrivate(outputPath, "");
-
-      const command = speechNativeArguments(
-        preparation,
-        promptPath,
-        outputPath,
-        input.voice ?? "default",
-      );
+      if (preparation.kind === "llama-tts") {
+        await writePrivate(outputPath, "");
+      }
+      const command =
+        preparation.kind === "llama-tts"
+          ? speechNativeArguments(
+              preparation,
+              promptPath,
+              outputPath,
+              llamaVoice(input.voice),
+            )
+          : kokoroNativeArguments(
+              preparation,
+              await createKokoroModelLayout(
+                temporaryDirectory,
+                preparation.modelFiles,
+              ),
+              promptPath,
+              outputPath,
+              kokoroVoice(input.voice),
+            );
       if (aborted()) throw new SpeechGenerationAbortedError();
       const process = (this.options.spawn ?? defaultSpawn)(
         command,
         temporaryDirectory,
+        preparation.kind === "kokoro-onnx"
+          ? await kokoroEnvironment(temporaryDirectory)
+          : undefined,
       );
       active.process = process;
       const exitOutcome = waitForExit(process, signals);
@@ -549,16 +681,24 @@ export class SpeechSupervisor {
         throw new SpeechOutputError("Native speech generation failed.");
       }
 
-      const frames = generatedFrameCount(diagnosticOutcome.value);
       const file = Bun.file(outputPath);
       const stat = await file.stat();
       if (stat.size > SPEECH_MAX_OUTPUT_BYTES) {
         throw new SpeechOutputError("Speech output exceeds the 1 MiB limit.");
       }
       const wav = validateSpeechWav(await file.bytes());
-      if (wav.sampleCount !== frames * SPEECH_SAMPLES_PER_FRAME) {
+      if (preparation.kind === "llama-tts") {
+        const frames = generatedFrameCount(diagnosticOutcome.value);
+        if (wav.sampleCount !== frames * SPEECH_SAMPLES_PER_FRAME) {
+          throw new SpeechOutputError(
+            "Speech WAV sample count does not match the native frame count.",
+          );
+        }
+      } else if (
+        wav.sampleCount !== generatedKokoroSampleCount(diagnosticOutcome.value)
+      ) {
         throw new SpeechOutputError(
-          "Speech WAV sample count does not match the native frame count.",
+          "Speech WAV sample count does not match Kokoro output.",
         );
       }
       output = wav.bytes;
@@ -664,9 +804,14 @@ export class SpeechSupervisor {
   }
 }
 
-function defaultSpawn(command: string[], cwd: string): Bun.Subprocess {
+function defaultSpawn(
+  command: string[],
+  cwd: string,
+  env?: Readonly<Record<string, string>>,
+): Bun.Subprocess {
   return Bun.spawn(command, {
     cwd,
+    ...(env ? { env: { ...env } } : {}),
     stdin: "ignore",
     stdout: "ignore",
     stderr: "pipe",

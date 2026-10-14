@@ -891,7 +891,35 @@ function talkerShape(spec: ModelSpec, weightsBytes: number): ResolvedLlmShape {
     : resolveLlmShape({ size: spec.size, quant: spec.quant, weightsBytes });
 }
 
+/**
+ * ONNX Runtime CPU session working set for Kokoro: the dequantized q8 graph,
+ * initializer copies and the arena for one 510-token synthesis. Allowance.
+ */
+const KOKORO_SESSION_BYTES = 512 * mebibyte;
+
+/**
+ * Kokoro runs on the CPU inside the packaged Bun runtime, so it holds no
+ * accelerator memory: the weights, the ONNX session and the runtime overhead
+ * are all host-resident (and so also count against unified memory).
+ */
+function estimateKokoroMemory(spec: ModelSpec): MemoryEstimate {
+  const terms = {
+    weights: totalArtifactBytes(spec),
+    session: KOKORO_SESSION_BYTES,
+    overhead: RUNTIME_HOST_OVERHEAD_BYTES,
+  };
+  const total = Object.values(terms).reduce((sum, value) => sum + value, 0);
+  return freezeEstimate(
+    { acceleratorBytes: 0, hostBytes: total, unifiedBytes: total },
+    "estimated",
+    terms,
+  );
+}
+
 export function estimateTtsMemory(spec: ModelSpec): MemoryEstimate {
+  if (spec.ttsRuntime?.kind === "kokoro-onnx") {
+    return estimateKokoroMemory(spec);
+  }
   const sizes = artifactBytesByName(spec);
   const projector = spec.ttsRuntime
     ? (sizes.get(spec.ttsRuntime.projectorArtifactFilename) ?? 0)
@@ -1274,7 +1302,12 @@ export function measuredModelDemand(
     case "tts":
     case "image": {
       const record = findModelMeasurement(spec.kind, spec.modelId);
-      return record ? measuredDemand(record, { artifactBytes }) : undefined;
+      // Kokoro runs on the CPU, so it carries no accelerator context.
+      const acceleratorOverheadBytes =
+        spec.ttsRuntime?.kind === "kokoro-onnx" ? 0 : undefined;
+      return record
+        ? measuredDemand(record, { artifactBytes, acceleratorOverheadBytes })
+        : undefined;
     }
     case "video": {
       const qualification = spec.videoRuntime?.qualification;
