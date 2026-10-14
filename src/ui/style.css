@@ -398,6 +398,9 @@ h1 {
 }
 .composer-content {
   min-height: 0;
+  /* Room for the composer's focus ring, which this scroller would clip. */
+  margin: -4px;
+  padding: 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
