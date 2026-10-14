@@ -117,9 +117,14 @@ async function main() {
     }
   }
 
-  const patches = ["inline-wav-audio.patch", "require-gpu-pci.patch"].map(
-    (name) => ({ name, path: join(workspace, "scripts/sd-patches", name) }),
-  );
+  const patches = [
+    "inline-wav-audio.patch",
+    "require-gpu-pci.patch",
+    "precompiled-metal-library.patch",
+  ].map((name) => ({
+    name,
+    path: join(workspace, "scripts/sd-patches", name),
+  }));
   await $`git -C ${sourcePath} init --quiet`;
   for (const patch of patches) {
     await $`git -C ${sourcePath} apply --check ${patch.path}`;
@@ -145,7 +150,12 @@ async function main() {
   const platformFlags =
     process.platform === "linux"
       ? ["-DSD_VULKAN=ON", "-DGGML_NATIVE=OFF"]
-      : ["-DSD_METAL=ON", "-DGGML_NATIVE=OFF"];
+      : [
+          "-DSD_METAL=ON",
+          "-DGGML_NATIVE=OFF",
+          "-DGGML_METAL_EMBED_PRECOMPILED=ON",
+          "-DGGML_METAL_MACOSX_VERSION_MIN=14.0",
+        ];
   await $`cmake -S ${sourcePath} -B ${buildPath} -DCMAKE_BUILD_TYPE=Release -DSD_BUILD_EXAMPLES=ON -DSD_SERVER_BUILD_FRONTEND=OFF -DSD_BUILD_SHARED_LIBS=OFF -DSD_BUILD_SHARED_GGML_LIB=OFF -DSD_WEBP=ON -DSD_WEBM=ON ${platformFlags}`;
   await $`cmake --build ${buildPath} --config Release --target sd-server --parallel`;
 

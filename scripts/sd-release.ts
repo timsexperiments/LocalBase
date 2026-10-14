@@ -81,6 +81,10 @@ const sourceProvenanceSchema = z
         name: z.literal("require-gpu-pci.patch"),
         sha256: z.string().regex(/^[a-f0-9]{64}$/),
       }),
+      z.object({
+        name: z.literal("precompiled-metal-library.patch"),
+        sha256: z.string().regex(/^[a-f0-9]{64}$/),
+      }),
     ]),
     runtimeRequirements: z
       .object({

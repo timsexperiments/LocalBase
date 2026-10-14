@@ -27,6 +27,10 @@ export const sourceIdentitySchema = z
         name: z.literal("require-gpu-pci.patch"),
         sha256: sha256Schema,
       }),
+      z.object({
+        name: z.literal("precompiled-metal-library.patch"),
+        sha256: sha256Schema,
+      }),
     ]),
   })
   .strict();
