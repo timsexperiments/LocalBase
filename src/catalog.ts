@@ -2272,7 +2272,7 @@ const CATALOG_SOURCE = [
     version: "12Hz-1.7B-Base",
     size: "1.7B",
     quant: "Q4_K_M",
-    minVramGb: 12,
+    minVramGb: 6,
     storageGb: 1.49,
     source: "https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
     repositoryRevision: "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
