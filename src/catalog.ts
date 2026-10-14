@@ -2647,7 +2647,7 @@ const CATALOG_SOURCE = [
     catch:
       "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
     notes:
-      "Distilled four-step profile with separate FLUX2 VAE and Qwen3 encoder. Memory requirement is estimated; native inference qualification is pending.",
+      "Distilled four-step profile with separate FLUX2 VAE and Qwen3 encoder. Peak memory was measured on Apple Silicon (2026-10-13); broader native inference qualification is pending.",
   },
   {
     modelId: "flux2-klein-4b-q8_0",
@@ -2712,7 +2712,7 @@ const CATALOG_SOURCE = [
     catch:
       "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
     notes:
-      "Less-compressed Q8 diffusion weights with the same Q4 Qwen3 encoder as the compact 4B profile. Image quality relative to Q4 has not been assessed locally. Memory requirement is estimated; native inference qualification is pending.",
+      "Less-compressed Q8 diffusion weights with the same Q4 Qwen3 encoder as the compact 4B profile. Image quality relative to Q4 has not been assessed locally. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending.",
   },
   {
     modelId: "flux2-klein-9b-q4_0",
@@ -2777,7 +2777,7 @@ const CATALOG_SOURCE = [
     catch:
       "FLUX Non-Commercial License; commercial deployment requires a separate Black Forest Labs license. Qwen3 encoder is Apache-2.0.",
     notes:
-      "Larger distilled four-step model with a Qwen3 8B encoder. Photorealism relative to the 4B model has not been assessed locally. Memory requirement is estimated; native inference qualification is pending.",
+      "Larger distilled four-step model with a Qwen3 8B encoder. Photorealism relative to the 4B model has not been assessed locally. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending.",
   },
   {
     modelId: "z-image-turbo-q4_0",
@@ -2843,7 +2843,7 @@ const CATALOG_SOURCE = [
     catch:
       "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
     notes:
-      "Distilled eight-step profile with separate VAE and Qwen3 Instruct encoder. Memory requirement is estimated; native inference qualification is pending.",
+      "Distilled eight-step profile with separate VAE and Qwen3 Instruct encoder. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending.",
   },
   {
     modelId: "stable-diffusion-v1-5",
@@ -2854,7 +2854,7 @@ const CATALOG_SOURCE = [
     version: "1.5",
     size: "4.3GB",
     quant: "F16",
-    minVramGb: 8,
+    minVramGb: 6,
     storageGb: 4.27,
     source:
       "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
@@ -2947,7 +2947,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "CreativeML Open RAIL-M license.",
     notes:
-      "Highly optimized community model for digital art, anime, and portraiture. Extremely fast and lightweight. Requires 4GB+ VRAM.",
+      "Highly optimized community model for digital art, anime, and portraiture. Extremely fast and lightweight.",
   },
   {
     modelId: "sdxl-turbo",
@@ -2956,10 +2956,10 @@ const CATALOG_SOURCE = [
     provider: "StabilityAI",
     family: "Stable-Diffusion-XL",
     version: "Turbo-1.0",
-    size: "13.9GB",
+    size: "6.9GB",
     quant: "F16",
     minVramGb: 16,
-    storageGb: 13.9,
+    storageGb: 6.94,
     source: "https://huggingface.co/stabilityai/sdxl-turbo",
     repositoryRevision: "71153311d3dbb46851df1931d3ca6e939de83304",
     artifacts: [
@@ -2978,7 +2978,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Stability AI Community License.",
     notes:
-      "High-speed 1-step real-time generation model. Excellent for fast interactive feedback cycles. Requires 8GB+ VRAM.",
+      "High-speed 1-step real-time generation model. Excellent for fast interactive feedback cycles.",
   },
   {
     modelId: "sdxl-base-1.0",
@@ -3009,7 +3009,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Stability AI Community License.",
     notes:
-      "Standard high-resolution (1024x1024) image generator. Recommended for standard workstation GPUs with 12GB+ VRAM.",
+      "Standard high-resolution (1024x1024) image generator. Recommended for standard workstation GPUs.",
   },
   {
     modelId: "juggernaut-xl-v9",
@@ -3040,7 +3040,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Stability AI Community License.",
     notes:
-      "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism. Requires 12GB+ VRAM.",
+      "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism.",
   },
   {
     modelId: "animagine-xl-3.1",
@@ -3071,7 +3071,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Stability AI Community License.",
     notes:
-      "The premier open-source model for high-fidelity anime, manga, and Japanese illustration styles. Requires 12GB+ VRAM.",
+      "The premier open-source model for high-fidelity anime, manga, and Japanese illustration styles.",
   },
   {
     modelId: "realvis-xl-v4.0",
@@ -3102,7 +3102,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "CreativeML Open RAIL-M license.",
     notes:
-      "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures. Requires 12GB+ VRAM.",
+      "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures.",
   },
   {
     modelId: "wan2.1-t2v-1.3b-q8_0",
@@ -3396,7 +3396,7 @@ const CATALOG_SOURCE = [
     version: "2.2",
     size: "5B",
     quant: "Q6_K",
-    minVramGb: 24,
+    minVramGb: 32,
     storageGb: 4.21,
     source: "https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF",
     repositoryRevision: "57437632ddd08bdcbd1508c866aa22e126ed51d2",
@@ -3501,7 +3501,7 @@ const CATALOG_SOURCE = [
     version: "1.5",
     size: "8.3B",
     quant: "Q4_K_M",
-    minVramGb: 24,
+    minVramGb: 32,
     storageGb: 5.09,
     source: "https://huggingface.co/jayn7/HunyuanVideo-1.5_T2V_480p-GGUF",
     repositoryRevision: "6aac325460d2f2cfe49ad8fb71f5ed2e4f1c5e24",

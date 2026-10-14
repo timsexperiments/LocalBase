@@ -76,10 +76,10 @@ test.each([
     // Every component resident plus the derived activation, VAE decode and
     // accelerator-overhead terms at the family default resolution.
     memoryDemand: {
-      unifiedBytes: 14032149220,
-      hostBytes: 6515956452 + 0.5 * gibibyte,
-      acceleratorBytes: 14032149220,
-      confidence: "derived",
+      unifiedBytes: 13859679109,
+      hostBytes: 7061504000,
+      acceleratorBytes: 13859679109,
+      confidence: "measured",
     },
   },
 ])(
@@ -189,10 +189,10 @@ test.each([
   {
     modelId: "dreamshaper-8-lcm",
     expectedMemoryDemand: {
-      unifiedBytes: 4415506368,
-      hostBytes: 2133804992 + 0.5 * gibibyte,
-      acceleratorBytes: 4415506368,
-      confidence: "derived",
+      unifiedBytes: 4415616451,
+      hostBytes: 3012804608,
+      acceleratorBytes: 4415616451,
+      confidence: "measured",
     },
     expectedModelArgs: [
       "-m",

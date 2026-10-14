@@ -25,6 +25,7 @@ import {
 } from "./memory-estimate";
 import { gibibyte } from "./memory-safety";
 import {
+  IMAGE_VIDEO_MEASUREMENT_DATE,
   MEASUREMENT_DATE,
   MEMORY_MEASUREMENTS,
   findLlmMeasurement,
@@ -309,7 +310,9 @@ describe("estimateVideoMemory", () => {
       },
     } as ModelSpec);
     const vae = estimateVideoMemory(wan);
-    expect(tae.terms.vaeDecode! / vae.terms.vaeDecode!).toBeCloseTo(64 / 96);
+    expect(tae.terms.vaeDecode! / vae.terms.vaeDecode!).toBeCloseTo(
+      (64 * 15) / (96 * 23),
+    );
   });
 
   test("catalog-only models are estimated with a text-encoder allowance", () => {
@@ -327,7 +330,9 @@ describe("measured demand", () => {
     for (const record of MEMORY_MEASUREMENTS) {
       const model = catalogModel(record.modelId);
       expect(model.kind).toBe(record.kind);
-      expect(record.date).toBe(MEASUREMENT_DATE);
+      expect([MEASUREMENT_DATE, IMAGE_VIDEO_MEASUREMENT_DATE]).toContain(
+        record.date,
+      );
       expect(record.hardware).toContain("64 GiB");
       expect(record.method.length).toBeGreaterThan(0);
       // Only CPU-only runtimes (Kokoro) record no accelerator buffers.
@@ -370,12 +375,14 @@ describe("measured demand", () => {
       "kokoro-82m-v1.0-q8",
       "flux2-klein-4b-q4_0",
       "fastwan2.2-ti2v-5b-q6_k",
+      "flux2-klein-4b-q8_0",
+      "wan2.1-t2v-1.3b-q8_0",
     ]) {
       expect(catalogModelDemand(catalogModel(modelId)).confidence).toBe(
         "measured",
       );
     }
-    const unmeasured = catalogModel("flux2-klein-4b-q8_0");
+    const unmeasured = catalogModel("flux1-schnell-q4_0");
     expect(catalogModelDemand(unmeasured)).toEqual(
       estimateCatalogModelMemory(unmeasured).demand,
     );
