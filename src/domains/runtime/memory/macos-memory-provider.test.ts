@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import {
+  appleGpuWorkingSetHeuristic,
   createMacOsHostMemoryProvider,
+  GPU_WORKING_SET_ENV,
+  resolveGpuWorkingSetBytes,
   parseMachAvailableBytes,
   type MachMemoryReader,
 } from "./macos-memory-provider";
@@ -48,11 +51,14 @@ test("uses unified topology on Apple Silicon", async () => {
     memoryReader: reader,
     totalMemoryBytes: 32 * 1024 ** 3,
     appleSilicon: true,
+    env: {},
+    metalWorkingSetProbe: () => 21 * 1024 ** 3,
   });
 
   expect(provider.topology).toEqual({
     kind: "unified",
     system: { id: "system", capacityBytes: 32 * 1024 ** 3 },
+    gpuWorkingSetBytes: 21 * 1024 ** 3,
   });
   expect((await provider.snapshot()).pools).toEqual([
     {
@@ -113,4 +119,61 @@ test("reads fresh Mach counters and fails closed instead of reusing a prior samp
     { poolId: "system", availability: "unavailable", pressure: "unknown" },
   ]);
   expect(readCount).toBe(3);
+});
+
+const GIB = 1024 ** 3;
+
+test("GPU working-set heuristic uses 2/3 up to 36 GiB and 3/4 above", () => {
+  expect(appleGpuWorkingSetHeuristic(24 * GIB)).toBe(16 * GIB);
+  expect(appleGpuWorkingSetHeuristic(36 * GIB)).toBe(24 * GIB);
+  expect(appleGpuWorkingSetHeuristic(64 * GIB)).toBe(48 * GIB);
+  expect(appleGpuWorkingSetHeuristic(0)).toBe(0);
+});
+
+test("GPU working-set resolution prefers option, then env, then probe, then heuristic", () => {
+  const probe = () => 40 * GIB;
+  const total = 64 * GIB;
+  expect(
+    resolveGpuWorkingSetBytes(
+      {
+        gpuWorkingSetBytes: 10 * GIB,
+        env: { [GPU_WORKING_SET_ENV]: "20" },
+        metalWorkingSetProbe: probe,
+      },
+      total,
+    ),
+  ).toBe(10 * GIB);
+  expect(
+    resolveGpuWorkingSetBytes(
+      { env: { [GPU_WORKING_SET_ENV]: "20" }, metalWorkingSetProbe: probe },
+      total,
+    ),
+  ).toBe(20 * GIB);
+  expect(
+    resolveGpuWorkingSetBytes(
+      { env: { [GPU_WORKING_SET_ENV]: "nope" }, metalWorkingSetProbe: probe },
+      total,
+    ),
+  ).toBe(40 * GIB);
+  expect(
+    resolveGpuWorkingSetBytes(
+      { env: {}, metalWorkingSetProbe: () => null },
+      total,
+    ),
+  ).toBe(48 * GIB);
+});
+
+test("Intel macOS never applies a GPU working-set cap", () => {
+  let probed = false;
+  const provider = createMacOsHostMemoryProvider({
+    memoryReader: { read: () => undefined, close() {} },
+    totalMemoryBytes: 16 * GIB,
+    appleSilicon: false,
+    metalWorkingSetProbe: () => {
+      probed = true;
+      return 8 * GIB;
+    },
+  });
+  expect(provider.topology.kind).toBe("discrete");
+  expect(probed).toBe(false);
 });

@@ -2,8 +2,6 @@ import { isIP } from "node:net";
 import { join } from "node:path";
 import {
   allocateParallelSlots,
-  CONTEXT_MEMORY_GB_PER_8K_TOKENS,
-  PARALLEL_SLOT_OVERHEAD_GB,
   type ParallelAllocation,
   type ParallelSlots,
 } from "../config/parallel";
@@ -22,6 +20,16 @@ import {
 } from "./gguf-metadata";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
+import {
+  estimateImageMemory,
+  estimateLlmMemory,
+  estimateSttMemory,
+  estimateVideoMemory,
+  genericArtifactDemand,
+  llmKvCacheType,
+  resolveLlmShape,
+  totalArtifactBytes,
+} from "./memory-estimate";
 
 const LOOPBACK_HOST = "127.0.0.1";
 
@@ -53,8 +61,6 @@ function urlHost(host: string): string {
   const bound = backendBindHost(host);
   return bound.includes(":") && !bound.startsWith("[") ? `[${bound}]` : bound;
 }
-
-const RUNTIME_HOST_OVERHEAD_BYTES = 512 * 1024 * 1024;
 
 /** KV cache type for chat models; the estimate and llama-server argv share it. */
 export const DEFAULT_LLM_KV_CACHE_TYPE: KvCacheType = "q8_0";
@@ -106,7 +112,7 @@ export function resolveConfiguredLlmLaunchPlan(input: {
     modelFile: input.modelFile,
     host: input.host,
     port: input.port,
-    modelRequirementGb: input.model?.minVramGb,
+    model: input.model,
     ctxSize: configuredLlmContextSize(
       input.model,
       input.configCtxSize,
@@ -144,7 +150,6 @@ export type LlmLaunchPlan = LaunchPlanBase<"llm", "llama-server"> & {
   readonly ctxSize: number;
   readonly trainingContextLength?: number | null;
   readonly parallel: ParallelAllocation;
-  readonly modelRequirementGb: number | undefined;
   readonly hardware: Readonly<RuntimeHardware>;
   readonly embedding: EmbeddingLlmRuntimeProfile | null;
   readonly kvCache: Readonly<{ typeK: KvCacheType; typeV: KvCacheType }>;
@@ -224,56 +229,53 @@ export type VideoLaunchPlan = VideoLaunchPlanBase &
 export type RuntimeLaunchPlan =
   LlmLaunchPlan | SttLaunchPlan | ImageLaunchPlan | VideoLaunchPlan;
 
-function modelBytes(
+/**
+ * Demand for a catalog-backed runtime, never below the bytes actually on disk
+ * (a local file may be larger than the catalog's expected size).
+ */
+function catalogDemand(
+  model: ModelSpec,
+  estimate: RuntimeMemoryDemand,
   artifactBytes: number,
-  modelRequirementGb: number | undefined,
-): number {
-  return Math.max(
-    artifactBytes,
-    Math.ceil((modelRequirementGb ?? 0) * gibibyte),
-  );
+): RuntimeMemoryDemand {
+  const extra = Math.max(0, artifactBytes - totalArtifactBytes(model));
+  if (extra === 0) return estimate;
+  return Object.freeze({
+    unifiedBytes: estimate.unifiedBytes + extra,
+    hostBytes: estimate.hostBytes + extra,
+    acceleratorBytes: estimate.acceleratorBytes + extra,
+    confidence: estimate.confidence,
+  });
 }
 
-function runtimeMemoryDemand(input: {
+function sttMemoryDemand(input: {
+  model?: ModelSpec;
   artifactBytes: number;
-  modelRequirementGb: number | undefined;
 }): RuntimeMemoryDemand {
-  const requirementBytes = modelBytes(
-    input.artifactBytes,
-    input.modelRequirementGb,
-  );
-  return Object.freeze({
-    unifiedBytes: requirementBytes + RUNTIME_HOST_OVERHEAD_BYTES,
-    hostBytes: input.artifactBytes + RUNTIME_HOST_OVERHEAD_BYTES,
-    acceleratorBytes: requirementBytes,
-    confidence: "estimated",
-  });
-}
-
-function videoMemoryDemand(input: {
-  estimatedDemand: VideoRuntimeProfile["estimatedMemoryDemand"];
-}): RuntimeMemoryDemand {
-  return Object.freeze({
-    ...input.estimatedDemand,
-    confidence: "estimated",
-  });
+  return input.model?.kind === "stt"
+    ? catalogDemand(
+        input.model,
+        estimateSttMemory(input.model).demand,
+        input.artifactBytes,
+      )
+    : genericArtifactDemand(input.artifactBytes).demand;
 }
 
 function imageMemoryDemand(input: {
-  imageRuntime?: ImageRuntimeProfile;
+  model?: ModelSpec;
   artifactBytes: number;
-  modelRequirementGb: number | undefined;
 }): RuntimeMemoryDemand {
-  if (input.imageRuntime?.kind !== "diffusion-flux1") {
-    return runtimeMemoryDemand(input);
-  }
-  return Object.freeze({
-    ...input.imageRuntime.estimatedMemoryDemand,
-    confidence: "estimated",
-  });
+  return input.model?.kind === "image"
+    ? catalogDemand(
+        input.model,
+        estimateImageMemory(input.model).demand,
+        input.artifactBytes,
+      )
+    : genericArtifactDemand(input.artifactBytes).demand;
 }
 
 function llmMemoryDemand(input: {
+  model?: ModelSpec;
   artifactBytes: number;
   ctxSize: number;
   parallel: ParallelAllocation;
@@ -281,39 +283,22 @@ function llmMemoryDemand(input: {
   kvGeometry: LlmKvGeometry | null;
   promptCacheRamMib: number;
 }): RuntimeMemoryDemand {
-  const contextBytes = input.kvGeometry
-    ? kvCacheBytes(input.kvGeometry, {
-        ctxTokens: input.ctxSize,
-        slots: input.parallel.slots,
-        cacheTypeK: input.kvCache.typeK,
-        cacheTypeV: input.kvCache.typeV,
-      })
-    : Math.ceil(
-        (input.ctxSize / 8192) * CONTEXT_MEMORY_GB_PER_8K_TOKENS * gibibyte,
-      );
-  const slotBytes = Math.ceil(
-    input.parallel.slots * PARALLEL_SLOT_OVERHEAD_GB * gibibyte,
-  );
-  const promptCacheBytes = input.promptCacheRamMib * 1024 * 1024;
-  // Catalog minVramGb describes a whole-machine hardware class. It is not
-  // the resident weight size and must not be stacked with computed runtime
-  // allocations when comparing demand with currently available memory.
-  const weightBytes = input.artifactBytes;
-  return Object.freeze({
-    unifiedBytes:
-      weightBytes +
-      contextBytes +
-      slotBytes +
-      promptCacheBytes +
-      RUNTIME_HOST_OVERHEAD_BYTES,
-    hostBytes:
-      input.artifactBytes +
-      RUNTIME_HOST_OVERHEAD_BYTES +
-      contextBytes +
-      promptCacheBytes,
-    acceleratorBytes: weightBytes + contextBytes + slotBytes,
-    confidence: "estimated",
+  const shape = resolveLlmShape({
+    modelId: input.model?.modelId,
+    size: input.model?.size,
+    quant: input.model?.quant,
+    weightsBytes: input.artifactBytes,
+    geometry: input.kvGeometry,
   });
+  return estimateLlmMemory({
+    weightsBytes: input.artifactBytes,
+    shape,
+    ctxTokens: input.ctxSize,
+    slots: input.parallel.slots,
+    cacheTypeK: input.kvCache.typeK,
+    cacheTypeV: input.kvCache.typeV,
+    promptCacheBytes: input.promptCacheRamMib * 1024 * 1024,
+  }).demand;
 }
 
 export function resolveLlmLaunchPlan(input: {
@@ -327,7 +312,8 @@ export function resolveLlmLaunchPlan(input: {
   ctxSize: number;
   contextWindowTokens?: number | null;
   parallel: ParallelSlots;
-  modelRequirementGb: number | undefined;
+  /** Catalog entry, when known; supplies the published model shape. */
+  model?: ModelSpec;
   artifactBytes: number;
   hardware: RuntimeHardware;
   embedding?: EmbeddingLlmRuntimeProfile | null;
@@ -342,7 +328,7 @@ export function resolveLlmLaunchPlan(input: {
   // q8_0 needs every head dim to be a multiple of 32; unknown geometry or a
   // misfit falls back to f16 so llama.cpp does not refuse to start.
   const kvType =
-    input.embedding || !kvGeometry?.q8Compatible
+    llmKvCacheType(Boolean(input.embedding), kvGeometry) === "f16"
       ? "f16"
       : DEFAULT_LLM_KV_CACHE_TYPE;
   const kvCache = Object.freeze({ typeK: kvType, typeV: kvType });
@@ -377,7 +363,6 @@ export function resolveLlmLaunchPlan(input: {
     healthUrl: `http://${urlHost(input.host)}:${input.port}/health`,
     ctxSize,
     parallel: Object.freeze({ ...parallel }),
-    modelRequirementGb: input.modelRequirementGb,
     hardware: Object.freeze({ ...input.hardware }),
     embedding: input.embedding ? Object.freeze({ ...input.embedding }) : null,
     kvCache,
@@ -387,6 +372,7 @@ export function resolveLlmLaunchPlan(input: {
       : {}),
     promptCacheRamMib,
     memoryDemand: llmMemoryDemand({
+      model: input.model,
       artifactBytes: input.artifactBytes,
       ctxSize,
       parallel,
@@ -405,7 +391,7 @@ export function resolveSttLaunchPlan(input: {
   modelFile: string;
   host: string;
   port: number;
-  modelRequirementGb: number | undefined;
+  model?: ModelSpec;
   artifactBytes: number;
 }): SttLaunchPlan {
   return Object.freeze({
@@ -419,7 +405,7 @@ export function resolveSttLaunchPlan(input: {
     host: backendBindHost(input.host),
     port: input.port,
     healthUrl: `http://${urlHost(input.host)}:${input.port}/health`,
-    memoryDemand: runtimeMemoryDemand(input),
+    memoryDemand: sttMemoryDemand(input),
   });
 }
 
@@ -431,7 +417,7 @@ export function resolveImageLaunchPlan(input: {
   modelFile: string;
   host: string;
   port: number;
-  modelRequirementGb: number | undefined;
+  model?: ModelSpec;
   artifactBytes: number;
   imageRuntime?: ImageRuntimeProfile;
 }): ImageLaunchPlan {
@@ -507,6 +493,8 @@ export function resolveVideoLaunchPlan(input: {
   port: number;
   videoRuntime: VideoRuntimeProfile;
   target: VideoRuntimeTarget;
+  /** Catalog entry; the derived demand reads its artifact sizes. */
+  model: ModelSpec;
 }): VideoLaunchPlan {
   if (
     !input.videoRuntime.supportedTargets.some(
@@ -519,9 +507,10 @@ export function resolveVideoLaunchPlan(input: {
     throw new Error("Video model does not support this runtime target.");
   }
   const { qualification } = input.videoRuntime;
-  const memoryDemand = videoMemoryDemand({
-    estimatedDemand: input.videoRuntime.estimatedMemoryDemand,
-  });
+  const memoryDemand = estimateVideoMemory({
+    ...input.model,
+    videoRuntime: input.videoRuntime,
+  }).demand;
   const common = {
     runtimeId: input.runtimeId,
     modality: "video",

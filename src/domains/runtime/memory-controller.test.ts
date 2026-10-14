@@ -9,6 +9,7 @@ import {
   defaultMemorySafetyConfig,
   effectiveMemoryReserveBytes,
   gibibyte,
+  GPU_WORKING_SET_POOL_ID,
   type HostMemorySnapshot,
   type MemoryTopology,
 } from "./memory-safety";
@@ -157,7 +158,7 @@ describe("memory controller", () => {
       port: 1,
       ctxSize: 8192,
       parallel: "auto",
-      modelRequirementGb: model.minVramGb,
+      model: model,
       artifactBytes: model.artifacts.reduce(
         (total, artifact) => total + (artifact.expectedSizeBytes ?? 0),
         0,
@@ -185,7 +186,6 @@ describe("memory controller", () => {
       port: 1,
       ctxSize: 8192,
       parallel: 1,
-      modelRequirementGb: 64,
       artifactBytes: 60 * gibibyte,
       hardware: { memoryGb: 64 },
     });
@@ -247,7 +247,7 @@ describe("memory controller", () => {
       port: 1,
       ctxSize: 8192,
       parallel: 1,
-      modelRequirementGb: model.minVramGb,
+      model: model,
       artifactBytes: artifact.expectedSizeBytes,
       hardware: { memoryGb: 64 },
     });
@@ -725,5 +725,44 @@ describe("memory controller", () => {
         }),
       ).rejects.toMatchObject({ capacity: { requiredBytes: 40 * gibibyte } });
     });
+  });
+});
+
+describe("unified GPU working-set cap", () => {
+  test("reports a permanent capacity shortfall against the cap", async () => {
+    const capped: MemoryTopology = {
+      ...topology,
+      gpuWorkingSetBytes: 6 * gibibyte,
+    };
+    const controller = new MemorySafetyController(
+      { ...provider(), topology: capped },
+      defaultMemorySafetyConfig(),
+    );
+    const error = await controller
+      .reserve({
+        runtimeId: "llm:capped",
+        demand: { ...demand, acceleratorBytes: 8 * gibibyte },
+      })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(RuntimeMemoryAdmissionError);
+    const admission = error as RuntimeMemoryAdmissionError;
+    expect(admission.decision).toEqual({
+      kind: "rejected",
+      reason: "accelerator-memory",
+      poolId: GPU_WORKING_SET_POOL_ID,
+    });
+    expect(admission.capacity).toEqual({
+      poolId: GPU_WORKING_SET_POOL_ID,
+      requiredBytes: 8 * gibibyte,
+      usableBytes: 6 * gibibyte,
+      capacityBytes: 6 * gibibyte,
+    });
+    expect(admission.diagnostics?.requested_bytes).toBe(8 * gibibyte);
+
+    const ok = await controller.reserve({
+      runtimeId: "llm:fits",
+      demand: { ...demand, acceleratorBytes: 4 * gibibyte },
+    });
+    ok.release();
   });
 });

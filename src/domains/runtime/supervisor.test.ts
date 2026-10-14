@@ -25,7 +25,6 @@ function testLaunchPlan(runtimeId: string): RuntimeLaunchPlan {
     healthUrl: "http://127.0.0.1:1/health",
     ctxSize: 8192,
     parallel: { slots: 1, isAuto: false, contextPerSlot: 8192 },
-    modelRequirementGb: 1,
     hardware: { memoryGb: 1 },
     embedding: null,
     kvCache: { typeK: "q8_0", typeV: "q8_0" },
