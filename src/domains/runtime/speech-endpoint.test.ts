@@ -147,10 +147,11 @@ describe("OpenAI speech endpoint", () => {
     expect(response.status).toBe(200);
     await response.arrayBuffer();
     const started = await gateway.waitForTtsRuntimeEvent("started");
+    expect(started.voice).toBe("harbor");
     expect(started.args).toEqual(
       expect.arrayContaining([
-        "--tts-speaker-file",
-        expect.stringMatching(/qwen3-tts-harbor\.wav$/),
+        "--voice",
+        expect.stringMatching(/^harbor=.*qwen3-tts-harbor\.wav$/),
       ]),
     );
     expect(started.args?.join(" ")).not.toContain("../../");
@@ -365,7 +366,7 @@ test(
 );
 
 test(
-  "gateway shutdown kills an active TTS child and removes private files",
+  "gateway shutdown stops an active TTS server and leaves no private files",
   async () => {
     const gateway = await startGatewayFixture({ ttsEnabled: true });
     const releasePath = join(gateway.root, "hold-speech");
@@ -381,7 +382,10 @@ test(
       await gateway.stop({ preserveRoot: true });
       stopped = true;
       await speech;
-      expect(await readdir(join(gateway.root, "tmp"))).toEqual([]);
+      await gateway.waitForTtsRuntimeEvent("stopped");
+      expect(await readdir(join(gateway.root, "tmp")).catch(() => [])).toEqual(
+        [],
+      );
     } finally {
       if (!stopped) await gateway.stop({ preserveRoot: true });
       await rm(gateway.root, { recursive: true, force: true });

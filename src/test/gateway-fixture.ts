@@ -173,6 +173,7 @@ export type SpeechRuntimeFixtureEvent = Readonly<{
   pid: number;
   args?: string[];
   promptLength?: number;
+  voice?: string;
 }>;
 
 export type GatewayFixture = {
@@ -1836,6 +1837,7 @@ export async function startGatewayFixture(
     : llmUpstreamPort;
   const sttPort = boundPort(sttUpstream.server);
   const imagePort = boundPort(imageUpstream.server);
+  const ttsPort = reservePort();
 
   let config: LocalBaseConfig;
   let apiKey: string | undefined;
@@ -1892,7 +1894,7 @@ export async function startGatewayFixture(
               JSON.stringify(options.ttsControl ?? { mode: "success" }),
             ),
             compileSpeechRuntimeFixture(
-              join(runtimeDir, "llama-tts"),
+              join(runtimeDir, "tts-server"),
               ttsControlPath,
               ttsEventsPath,
               `http://127.0.0.1:${speechEvents.server.port}/event`,
@@ -1986,6 +1988,8 @@ export async function startGatewayFixture(
         String(sttPort),
         "--image-port",
         String(imagePort),
+        "--tts-port",
+        String(ttsPort),
         ...(options.ctxSizeOverride === undefined
           ? []
           : ["--ctx-size", String(options.ctxSizeOverride)]),
