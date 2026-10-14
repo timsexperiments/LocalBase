@@ -11,13 +11,16 @@ if (args[0] === "--localbase-capabilities") {
       : __SD_CAPABILITY__,
   );
 } else {
-  await Bun.write(__SD_ARGS_PATH__, `${args.join("\n")}\n`);
-  if (__SD_ENVIRONMENT_PATH__) {
-    await Bun.write(__SD_ENVIRONMENT_PATH__, process.env.LD_LIBRARY_PATH ?? "");
-  }
+  // Tests stop the fixture as soon as they observe its files, so the handler
+  // must exist before either file is written or SIGTERM kills it (exit 143).
   const keepAlive = setInterval(() => {}, 60_000);
   process.on("SIGTERM", () => {
     clearInterval(keepAlive);
     process.exit(0);
   });
+  if (__SD_ENVIRONMENT_PATH__) {
+    await Bun.write(__SD_ENVIRONMENT_PATH__, process.env.LD_LIBRARY_PATH ?? "");
+  }
+  // The arguments file is the readiness signal, so it is written last.
+  await Bun.write(__SD_ARGS_PATH__, `${args.join("\n")}\n`);
 }
