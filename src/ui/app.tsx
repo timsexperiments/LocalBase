@@ -1,7 +1,5 @@
 import {
-  isValidElement,
   Fragment,
-  memo,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -9,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { createRoot } from "react-dom/client";
-import Markdown from "react-markdown";
+import { Copy, MessageMarkdown } from "./message-markdown";
 import { ModelManagement } from "./model-management";
 import { AuthManagement } from "./auth-management";
 import {
@@ -75,7 +73,6 @@ import {
   imageResponseSchema,
   logoutSession,
   modelMemorySummary,
-  codeLanguage,
   speechVoiceCount,
   modelModalities,
   modelName,
@@ -153,76 +150,6 @@ function fresh(
     messages: [],
   };
 }
-function Copy({
-  text,
-  label = "Copy",
-}: {
-  text: string | (() => string);
-  label?: string;
-}) {
-  const [status, setStatus] = useState(label);
-  return (
-    <button
-      type="button"
-      className="copy"
-      onClick={() => {
-        if (!navigator.clipboard) {
-          setStatus("Copy unavailable");
-          return;
-        }
-        void navigator.clipboard
-          .writeText(typeof text === "function" ? text() : text)
-          .then(
-            () => setStatus("Copied"),
-            () => setStatus("Copy unavailable"),
-          );
-      }}
-    >
-      {status}
-    </button>
-  );
-}
-function CodeBlock({ children }: { children?: ReactNode }) {
-  const ref = useRef<HTMLPreElement>(null);
-  const language = codeLanguage(
-    isValidElement<{ className?: string }>(children)
-      ? children.props.className
-      : undefined,
-  );
-  return (
-    <div className="code-block">
-      <div className="code-block-header">
-        <span className="code-language">{language ?? "code"}</span>
-        <Copy label="Copy code" text={() => ref.current?.textContent ?? ""} />
-      </div>
-      <pre ref={ref}>{children}</pre>
-    </div>
-  );
-}
-const markdownComponents = {
-  pre: CodeBlock,
-  img: () => null,
-  a: ({ children, href }: { children?: ReactNode; href?: string }) => (
-    <a href={href} target="_blank" rel="noreferrer noopener">
-      {children}
-    </a>
-  ),
-};
-/**
- * Message Markdown, memoized so a streaming reply re-renders only itself
- * rather than re-parsing every earlier (possibly very long) message per delta.
- */
-const MessageMarkdown = memo(function MessageMarkdown({
-  text,
-}: {
-  text: string;
-}) {
-  return (
-    <Markdown skipHtml components={markdownComponents}>
-      {text}
-    </Markdown>
-  );
-});
 function MediaCard({ media }: { media: Media }) {
   const [playbackFailed, setPlaybackFailed] = useState(false);
   return (
