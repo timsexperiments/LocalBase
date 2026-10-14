@@ -37,12 +37,11 @@
           "tag": "kokoro-v0.0.1",
           "assetName": "kokoro-tts-macos-arm64.tar.gz",
           "url": "https://github.com/timsexperiments/LocalBase/releases/download/kokoro-v0.0.1/kokoro-tts-macos-arm64.tar.gz",
-          "expectedSizeBytes": 1,
-          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "expectedSizeBytes": 171717822,
+          "sha256": "11bb81c41c37e163e7b0e348ed9297557c64df81c2e6c2e63dab5a4c0bd94859",
           "format": "tar.gz",
           "stripComponents": 0,
-          "inventorySha256": "0000000000000000000000000000000000000000000000000000000000000000",
-          "pendingPublication": true
+          "inventorySha256": "47054b40107cf4b5ad0fae3e00f78db93ef2eaca242eb3d0449b800761899c53"
         }
       }
     },
@@ -88,12 +87,11 @@
           "tag": "kokoro-v0.0.1",
           "assetName": "kokoro-tts-linux-x64.tar.gz",
           "url": "https://github.com/timsexperiments/LocalBase/releases/download/kokoro-v0.0.1/kokoro-tts-linux-x64.tar.gz",
-          "expectedSizeBytes": 1,
-          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "expectedSizeBytes": 191440199,
+          "sha256": "434583541dcd9586d295af9557d0bcb2dbfb117a48f6a4fbc9573dd5319ca126",
           "format": "tar.gz",
           "stripComponents": 0,
-          "inventorySha256": "0000000000000000000000000000000000000000000000000000000000000000",
-          "pendingPublication": true
+          "inventorySha256": "3eec23ace06a100806ea203591fae434ab969e248a0d8161449b37e7940d3734"
         }
       }
     },

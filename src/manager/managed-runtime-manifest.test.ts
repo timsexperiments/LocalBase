@@ -74,6 +74,8 @@ function macRuntimes(): [
 
 test("placeholder digests and pendingPublication must be declared together", () => {
   const [unmarked, unmarkedRuntimes] = macRuntimes();
+  unmarkedRuntimes["kokoro-tts"]!.sha256 = "0".repeat(64);
+  unmarkedRuntimes["kokoro-tts"]!.inventorySha256 = "0".repeat(64);
   delete unmarkedRuntimes["kokoro-tts"]!.pendingPublication;
   expect(() => parseManagedRuntimeManifest(unmarked)).toThrow(
     "pendingPublication must be declared together",
@@ -82,6 +84,7 @@ test("placeholder digests and pendingPublication must be declared together", () 
   const [marked, markedRuntimes] = macRuntimes();
   markedRuntimes["kokoro-tts"]!.sha256 = "a".repeat(64);
   markedRuntimes["kokoro-tts"]!.inventorySha256 = "b".repeat(64);
+  markedRuntimes["kokoro-tts"]!.pendingPublication = true;
   expect(() => parseManagedRuntimeManifest(marked)).toThrow(
     "pendingPublication must be declared together",
   );
