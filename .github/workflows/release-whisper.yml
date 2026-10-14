@@ -132,6 +132,12 @@ jobs:
           security list-keychains -d user -s $KEYCHAIN_PATH
       - name: Build pinned verified Whisper source
         run: bun run scripts/build-whisper.ts
+      - name: Verify precompiled Metal library
+        run: |
+          set -euo pipefail
+          grep -Fxq 'GGML_METAL_EMBED_PRECOMPILED:BOOL=ON' build-whisper/build/CMakeCache.txt
+          otool -l build-whisper/whisper-server | grep -F '__ggml_metalbin' >/dev/null
+          strings build-whisper/whisper-server | grep -F 'using precompiled embedded metal library' >/dev/null
       - name: Sign hardened macOS runtime
         run: codesign --force --options runtime --timestamp --sign "Developer ID Application:" build-whisper/whisper-server
       - name: Create canonical macOS archive

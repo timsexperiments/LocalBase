@@ -58,21 +58,31 @@ async function main() {
   console.log("Extracting verified whisper.cpp source...");
   await $`tar --extract --gzip --file ${archivePath} --directory ${root}`;
 
-  if (process.platform === "linux") {
-    const patch = join(
-      workspace,
-      "scripts/whisper-patches/require-gpu-pci.patch",
-    );
+  // require-gpu-pci only matters for Vulkan; precompiled-metal-library embeds a
+  // build-time metallib so macOS cold starts skip the runtime shader compile.
+  const patchNames =
+    process.platform === "linux"
+      ? ["require-gpu-pci.patch"]
+      : process.platform === "darwin"
+        ? ["precompiled-metal-library.patch"]
+        : [];
+  for (const patchName of patchNames) {
+    const patch = join(workspace, "scripts/whisper-patches", patchName);
     await $`git -C ${sourcePath} apply --check ${patch}`;
     await $`git -C ${sourcePath} apply ${patch}`;
   }
 
   console.log("Configuring whisper-server...");
-  const linuxVulkanFlags =
+  const platformFlags =
     process.platform === "linux"
       ? ["-DGGML_NATIVE=OFF", "-DGGML_VULKAN=ON"]
-      : [];
-  await $`cmake -S ${sourcePath} -B ${buildPath} -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF ${linuxVulkanFlags}`;
+      : process.platform === "darwin"
+        ? [
+            "-DGGML_METAL_EMBED_PRECOMPILED=ON",
+            "-DGGML_METAL_MACOSX_VERSION_MIN=14.0",
+          ]
+        : [];
+  await $`cmake -S ${sourcePath} -B ${buildPath} -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF ${platformFlags}`;
 
   console.log("Building whisper-server...");
   await $`cmake --build ${buildPath} --config Release --target whisper-server --parallel`;

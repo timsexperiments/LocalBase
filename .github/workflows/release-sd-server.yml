@@ -126,6 +126,9 @@ jobs:
           test "$(uname -m)" = arm64
           grep -Fxq 'GGML_NATIVE:BOOL=OFF' build-sd-server/build/CMakeCache.txt
           grep -Fxq 'SD_METAL:BOOL=ON' build-sd-server/build/CMakeCache.txt
+          grep -Fxq 'GGML_METAL_EMBED_PRECOMPILED:BOOL=ON' build-sd-server/build/CMakeCache.txt
+          otool -l build-sd-server/sd-server | grep -F '__ggml_metalbin' >/dev/null
+          strings build-sd-server/sd-server | grep -F 'using precompiled embedded metal library' >/dev/null
           ! otool -L build-sd-server/sd-server | grep -Eq 'libwebp|libwebm|libggml'
           build-sd-server/sd-server --help >/dev/null
           strings build-sd-server/sd-server | grep -Fxq 'inline_wav_audio'
