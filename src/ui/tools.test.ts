@@ -1,4 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
+import { deltaBuffer, steerAbortReason } from "./steering";
 import {
   generationTools,
   generateMedia,
@@ -678,5 +679,118 @@ test("speech tool uses the user's advertised voice and defaults require no model
   } finally {
     mock.mockRestore();
     urls.forEach((url) => URL.revokeObjectURL(url));
+  }
+});
+/** A live SSE response that emits `events` one per tick and honors abort. */
+function liveStream(
+  events: unknown[],
+  options: {
+    signal?: AbortSignal | null;
+    done: boolean;
+    onCancel?: () => void;
+  },
+) {
+  const encoder = new TextEncoder();
+  let index = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        options.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          controller.error(options.signal?.reason);
+        });
+        const next = () => {
+          if (options.signal?.aborted) return;
+          if (index < events.length) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(events[index++])}\n\n`),
+            );
+            timer = setTimeout(next, 1);
+          } else if (options.done)
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          // Otherwise hold the connection open, like a proxy holding the tail.
+        };
+        next();
+      },
+      cancel: options.onCancel,
+    }),
+  );
+}
+test("a steered reply stops and the next reasoning reply completes even without [DONE]", async () => {
+  const thinking = Array.from({ length: 40 }, (_, i) => ({
+    choices: [{ index: 0, delta: { reasoning_content: `step ${i}. ` } }],
+  }));
+  const words = (prefix: string, count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      choices: [{ index: 0, delta: { content: `${prefix}${i} ` } }],
+    }));
+  const second = [
+    ...thinking,
+    ...words("bullet", 60),
+    { choices: [{ index: 0, delta: { content: "DONE-MARKER" } }] },
+    // A finish chunk without a delta, then a usage-only chunk.
+    { choices: [{ index: 0, finish_reason: "stop" }] },
+    { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } },
+  ];
+  let requests = 0;
+  let cancelled = 0;
+  const mock = mockFetch(async (_input, init) =>
+    ++requests === 1
+      ? liveStream([...thinking, ...words("essay", 10_000)], {
+          signal: init?.signal,
+          done: true,
+        })
+      : liveStream(second, {
+          signal: init?.signal,
+          done: false,
+          onCancel: () => cancelled++,
+        }),
+  );
+  const replies = new Map<number, { text: string; reasoning: string }>();
+  const run = (turn: number, signal: AbortSignal) => {
+    const reply = { text: "", reasoning: "" };
+    replies.set(turn, reply);
+    const buffer = deltaBuffer((delta) => {
+      reply.text += delta.text;
+      reply.reasoning += delta.reasoning;
+    });
+    return runChat({
+      model: chat,
+      models: [],
+      connection: { kind: "session" },
+      signal,
+      messages: [{ role: "user", content: `turn ${turn}` }],
+      toolsEnabled: false,
+      permissions: [],
+      append: buffer.text,
+      reasoning: buffer.reasoning,
+      artifact: () => {},
+      register: () => {},
+      warning: () => {},
+    }).finally(buffer.flush);
+  };
+  try {
+    const first = new AbortController();
+    const interrupted = run(1, first.signal);
+    // Steer once the first reply is answering.
+    while (!replies.get(1)?.text.includes("essay3 "))
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    first.abort(steerAbortReason);
+    const steered = run(2, new AbortController().signal);
+    await expect(interrupted).rejects.toBe(steerAbortReason);
+    const started = Date.now();
+    await steered;
+    expect(Date.now() - started).toBeLessThan(5000);
+    const reply = replies.get(2)!;
+    expect(reply.reasoning).toContain("step 39.");
+    expect(reply.text).toStartWith("bullet0 ");
+    expect(reply.text).toEndWith("bullet59 DONE-MARKER");
+    expect(requests).toBe(2);
+    // The held stream is released once the reply is complete.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(cancelled).toBe(1);
+  } finally {
+    mock.mockRestore();
   }
 });

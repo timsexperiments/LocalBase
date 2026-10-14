@@ -1,6 +1,7 @@
 import {
   isValidElement,
   Fragment,
+  memo,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -46,8 +47,10 @@ import {
 } from "./compaction";
 import {
   canSteer,
+  deltaBuffer,
   interruptReply,
   steerAbortReason,
+  streamingHistoryIntervalMs,
   type Phase,
 } from "./steering";
 import { CompactionDivider, ReasoningBlock, WorkingStatus } from "./chat-parts";
@@ -196,6 +199,30 @@ function CodeBlock({ children }: { children?: ReactNode }) {
     </div>
   );
 }
+const markdownComponents = {
+  pre: CodeBlock,
+  img: () => null,
+  a: ({ children, href }: { children?: ReactNode; href?: string }) => (
+    <a href={href} target="_blank" rel="noreferrer noopener">
+      {children}
+    </a>
+  ),
+};
+/**
+ * Message Markdown, memoized so a streaming reply re-renders only itself
+ * rather than re-parsing every earlier (possibly very long) message per delta.
+ */
+const MessageMarkdown = memo(function MessageMarkdown({
+  text,
+}: {
+  text: string;
+}) {
+  return (
+    <Markdown skipHtml components={markdownComponents}>
+      {text}
+    </Markdown>
+  );
+});
 function MediaCard({ media }: { media: Media }) {
   const [playbackFailed, setPlaybackFailed] = useState(false);
   return (
@@ -846,8 +873,11 @@ function App() {
       "replace",
     );
   }, [active?.id, active?.model, model?.id, drawer]);
+  const historySaved = useRef(0);
   useEffect(() => {
-    if (persistent)
+    if (!persistent) return;
+    const save = () => {
+      historySaved.current = Date.now();
       try {
         writeHistory(conversations);
       } catch {
@@ -855,7 +885,17 @@ function App() {
           "Device storage is full or unavailable. History could not be saved.",
         );
       }
-  }, [conversations, persistent]);
+    };
+    // Serializing all history per streamed delta can starve the stream on
+    // slower devices; while busy, save at most once per interval. The final
+    // state is saved as soon as busy clears.
+    const wait = busy
+      ? historySaved.current + streamingHistoryIntervalMs - Date.now()
+      : 0;
+    if (wait <= 0) return save();
+    const timer = setTimeout(save, wait);
+    return () => clearTimeout(timer);
+  }, [conversations, persistent, busy]);
   function scrollToLatest() {
     const element = transcript.current;
     if (element) element.scrollTop = element.scrollHeight;
@@ -1007,6 +1047,13 @@ function App() {
         ...c,
         messages: c.messages.map((m) => (m.id === reply.id ? change(m) : m)),
       }));
+    const stream = deltaBuffer(({ text, reasoning }) =>
+      patch((m) => ({
+        ...m,
+        text: m.text + text,
+        ...(reasoning ? { reasoning: (m.reasoning ?? "") + reasoning } : {}),
+      })),
+    );
     const json = (body: unknown): RequestInit => ({
       method: "POST",
       signal: abort.signal,
@@ -1063,7 +1110,7 @@ function App() {
               permissions: permissions ?? [],
               append: (text) => {
                 streamed = true;
-                patch((m) => ({ ...m, text: m.text + text }));
+                stream.text(text);
               },
               reasoning: (text) => {
                 streamed = true;
@@ -1072,12 +1119,10 @@ function App() {
                     ? current
                     : { phase: "thinking", since: Date.now() },
                 );
-                patch((m) => ({
-                  ...m,
-                  reasoning: (m.reasoning ?? "") + text,
-                }));
+                stream.reasoning(text);
               },
-              artifact: (artifact) =>
+              artifact: (artifact) => {
+                stream.flush();
                 patch((m) => ({
                   ...m,
                   artifacts: [
@@ -1086,7 +1131,8 @@ function App() {
                     ),
                     artifact,
                   ],
-                })),
+                }));
+              },
               register: (url) => mediaUrls.current.push(url),
               warning: (detail) => setWarnings((items) => [...items, detail]),
             });
@@ -1105,6 +1151,7 @@ function App() {
             if (!(await compactHistory(size, true))) throw e;
             protocol = await chat();
           }
+          stream.flush();
           patch((m) => ({ ...m, protocol }));
           break;
         }
@@ -1265,6 +1312,7 @@ function App() {
         }
       }
     } catch (e) {
+      stream.flush();
       if (e instanceof SessionRequiredError) {
         authenticationFailed = true;
         sessionExpired(e.message);
@@ -1304,6 +1352,7 @@ function App() {
                 : "Request failed. Try again.",
         );
     } finally {
+      stream.flush();
       // A steering send already owns the controller and busy state.
       if (controller.current === abort) {
         setBusy(false);
@@ -1649,24 +1698,7 @@ function App() {
                       {message.embedding ? (
                         <EmbeddingCard embedding={message.embedding} />
                       ) : message.text ? (
-                        <Markdown
-                          skipHtml
-                          components={{
-                            pre: CodeBlock,
-                            img: () => null,
-                            a: ({ children, href }) => (
-                              <a
-                                href={href}
-                                target="_blank"
-                                rel="noreferrer noopener"
-                              >
-                                {children}
-                              </a>
-                            ),
-                          }}
-                        >
-                          {message.text}
-                        </Markdown>
+                        <MessageMarkdown text={message.text} />
                       ) : message.artifacts?.length ||
                         (message.role === "user" &&
                           message.attachmentsMissing) ||
@@ -1681,12 +1713,6 @@ function App() {
                         <p className="muted">Interrupted before a response.</p>
                       ) : (
                         <p className="muted">No response received.</p>
-                      )}
-                      {live && message.reasoning && !message.text && (
-                        <WorkingStatus
-                          phase={phase?.phase ?? "thinking"}
-                          since={phase?.since ?? Date.now()}
-                        />
                       )}
                       {message.role === "user" && (
                         <>

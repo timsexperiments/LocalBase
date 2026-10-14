@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Message } from "./client";
-import { canSteer, interruptReply, phaseLabel } from "./steering";
+import { canSteer, deltaBuffer, interruptReply, phaseLabel } from "./steering";
 
 describe("steering", () => {
   test("canSteer only while a chat reply runs and the draft has text", () => {
@@ -46,5 +46,26 @@ describe("steering", () => {
     expect(phaseLabel("waiting", 0.4)).toBe("Waiting for the model…");
     expect(phaseLabel("thinking", 12.9)).toBe("Thinking… 12s");
     expect(phaseLabel("compacting", 3)).toBe("Compacting earlier messages… 3s");
+  });
+});
+
+describe("deltaBuffer", () => {
+  test("batches deltas into one update and flushes on demand", async () => {
+    const updates: { text: string; reasoning: string }[] = [];
+    const buffer = deltaBuffer((delta) => updates.push(delta), 10);
+    buffer.reasoning("Think");
+    buffer.reasoning("ing");
+    buffer.text("Hel");
+    buffer.text("lo");
+    expect(updates).toEqual([]);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(updates).toEqual([{ text: "Hello", reasoning: "Thinking" }]);
+    buffer.text(" world");
+    buffer.flush();
+    buffer.flush();
+    expect(updates.at(-1)).toEqual({ text: " world", reasoning: "" });
+    expect(updates).toHaveLength(2);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(updates).toHaveLength(2);
   });
 });

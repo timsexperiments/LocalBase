@@ -57,3 +57,43 @@ export function interruptReply(message: Message, detail: string): Message {
     ),
   };
 }
+
+/**
+ * Batches streamed text and reasoning deltas so a fast stream re-renders
+ * (and persists) the transcript a few times per second instead of once per
+ * token. Call `flush` before any other change to the same reply.
+ */
+export function deltaBuffer(
+  apply: (delta: { text: string; reasoning: string }) => void,
+  delayMs = 50,
+) {
+  let text = "";
+  let reasoning = "";
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  function flush() {
+    clearTimeout(timer);
+    timer = undefined;
+    if (!text && !reasoning) return;
+    const delta = { text, reasoning };
+    text = "";
+    reasoning = "";
+    apply(delta);
+  }
+  function schedule() {
+    timer ??= setTimeout(flush, delayMs);
+  }
+  return {
+    text(delta: string) {
+      text += delta;
+      schedule();
+    },
+    reasoning(delta: string) {
+      reasoning += delta;
+      schedule();
+    },
+    flush,
+  };
+}
+
+/** Minimum time between device-history writes while a reply streams. */
+export const streamingHistoryIntervalMs = 1000;

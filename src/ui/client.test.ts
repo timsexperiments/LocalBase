@@ -16,6 +16,7 @@ import {
   modelsSchema,
   permittedModes,
   permittedUiModes,
+  streamFinishGraceMs,
   streamText,
   readHistory,
   writeHistory,
@@ -369,6 +370,58 @@ describe("playground client boundaries", () => {
       },
     );
     expect(text).toBe("Hello 🌱");
+  });
+  test("completes a finished reply whose stream tail never arrives", async () => {
+    const encoder = new TextEncoder();
+    let cancelled = false;
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              [
+                { choices: [{ delta: { reasoning_content: "Plan." } }] },
+                { choices: [{ delta: { content: "- one\n- two" } }] },
+                { choices: [{ delta: {}, finish_reason: "stop" }] },
+                { choices: [], usage: { completion_tokens: 3 } },
+              ]
+                .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+                .join(""),
+            ),
+          );
+          // No [DONE] and no close: the connection stays open.
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+    );
+    let text = "";
+    let thought = "";
+    const started = Date.now();
+    await streamText(
+      response,
+      (chunk) => (text += chunk),
+      (chunk) => (thought += chunk),
+    );
+    expect(Date.now() - started).toBeGreaterThanOrEqual(
+      streamFinishGraceMs - 50,
+    );
+    expect(text).toBe("- one\n- two");
+    expect(thought).toBe("Plan.");
+    expect(cancelled).toBe(true);
+  });
+  test("accepts finish chunks without a delta and chunks without choices", async () => {
+    let text = "";
+    await streamText(
+      streaming([
+        new TextEncoder().encode(
+          'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: {"choices":[{"index":0,"finish_reason":"stop"}]}\n\ndata: {"usage":{"total_tokens":2}}\n\ndata: [DONE]\n\n',
+        ),
+      ]),
+      (chunk) => (text += chunk),
+    );
+    expect(text).toBe("ok");
   });
   test("reports stream errors and interrupted responses", async () => {
     const encode = (text: string) =>

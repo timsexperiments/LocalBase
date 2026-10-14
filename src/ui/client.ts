@@ -505,32 +505,44 @@ export async function api(
   return response;
 }
 const chunkSchema = z.object({
-  choices: z.array(
-    z.object({
-      index: z.number().int().optional(),
-      delta: z.object({
-        content: z.string().nullable().optional(),
-        reasoning: z.string().nullable().optional(),
-        reasoning_content: z.string().nullable().optional(),
-        tool_calls: z
-          .array(
-            z.object({
-              index: z.number().int().min(0).max(3),
-              id: z.string().optional(),
-              type: z.literal("function").optional(),
-              function: z
-                .object({
-                  name: z.string().optional(),
-                  arguments: z.string().optional(),
-                })
-                .optional(),
-            }),
-          )
+  // Usage-only and keep-alive chunks may omit choices or a choice's delta.
+  choices: z
+    .array(
+      z.object({
+        index: z.number().int().optional(),
+        finish_reason: z.string().nullable().optional(),
+        delta: z
+          .object({
+            content: z.string().nullable().optional(),
+            reasoning: z.string().nullable().optional(),
+            reasoning_content: z.string().nullable().optional(),
+            tool_calls: z
+              .array(
+                z.object({
+                  index: z.number().int().min(0).max(3),
+                  id: z.string().optional(),
+                  type: z.literal("function").optional(),
+                  function: z
+                    .object({
+                      name: z.string().optional(),
+                      arguments: z.string().optional(),
+                    })
+                    .optional(),
+                }),
+              )
+              .optional(),
+          })
           .optional(),
       }),
-    }),
-  ),
+    )
+    .default([]),
 });
+/**
+ * How long to wait for `[DONE]` (or the connection closing) after the model
+ * reported a finish reason. A proxy that holds the stream tail must not leave
+ * a finished reply spinning forever.
+ */
+export const streamFinishGraceMs = 2000;
 export async function streamText(
   response: Response,
   append: (text: string) => void,
@@ -542,6 +554,7 @@ export async function streamText(
   const decoder = new TextDecoder();
   let buffer = "";
   let done = false;
+  let finished = false;
   const calls = new Map<number, ToolCall>();
   const splitter = thinkSplitter();
   function emit(part: { content: string; reasoning: string }) {
@@ -567,6 +580,8 @@ export async function streamText(
     const chunk = chunkSchema.parse(value);
     for (const choice of chunk.choices) {
       if (choice.index !== undefined && choice.index !== 0) continue;
+      if (choice.finish_reason) finished = true;
+      if (!choice.delta) continue;
       const thought = deltaReasoning(choice.delta);
       if (thought) reasoning?.(thought);
       if (choice.delta.content) emit(splitter.push(choice.delta.content));
@@ -591,7 +606,22 @@ export async function streamText(
   }
   try {
     while (!done) {
-      const part = await reader.read();
+      const read = reader.read();
+      let grace: ReturnType<typeof setTimeout> | undefined;
+      const part = finished
+        ? await Promise.race([
+            read,
+            new Promise<null>((resolve) => {
+              grace = setTimeout(() => resolve(null), streamFinishGraceMs);
+            }),
+          ]).finally(() => clearTimeout(grace))
+        : await read;
+      if (part === null) {
+        // Finished, but the stream tail never arrived: treat it as complete.
+        read.catch(() => {});
+        done = true;
+        break;
+      }
       buffer += decoder.decode(part.value, { stream: !part.done });
       buffer = buffer.replace(/\r\n/g, "\n");
       let boundary: number;
@@ -621,8 +651,11 @@ export async function streamText(
       );
     return result;
   } finally {
-    await reader.cancel().catch(() => {});
-    reader.releaseLock();
+    // Never let cleanup of a finished (or aborted) stream block the caller.
+    void reader.cancel().catch(() => {});
+    try {
+      reader.releaseLock();
+    } catch {}
   }
 }
 export const imageResponseSchema = z.object({
