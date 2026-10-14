@@ -1672,6 +1672,7 @@ test.each([
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
   const events: string[] = [];
+  const logged: LogEventInput[] = [];
   const preflights: Array<{ modelId: string; releasing: readonly string[] }> =
     [];
   const factory: RuntimeSupervisorFactory = {
@@ -1707,7 +1708,7 @@ test.each([
     {},
     new SupervisorRegistry({ llm: factory.create("llm", controller.read()) }),
     factory,
-    { event() {} },
+    { event: (event) => void logged.push(event) },
   );
   try {
     const result = await reconciler.admitModel("llm", modelB);
@@ -1718,6 +1719,19 @@ test.each([
     if (rejects) {
       expect(result.kind).toBe("insufficient-memory");
       expect(events).toEqual([]);
+      expect(logged).toContainEqual(
+        expect.objectContaining({
+          eventName: "runtime.memory-admission-rejected",
+          runtime: "llm",
+          attributes: {
+            reason: "system-memory",
+            pool: "system",
+            stage: "switch-preflight",
+            from_model: modelA,
+            to_model: modelB,
+          },
+        }),
+      );
       expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
         modelId: modelA,
         runtimeId: `llm:${modelA}`,
@@ -1811,6 +1825,16 @@ test("configuration model replacement preflights before draining the current run
       expect.objectContaining({
         eventName: "model.switch-preflight-rejected",
         error: expect.objectContaining({ message: failure.message }),
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        eventName: "runtime.memory-admission-rejected",
+        attributes: expect.objectContaining({
+          reason: "system-memory",
+          stage: "switch-preflight",
+          to_model: modelB,
+        }),
       }),
     );
   } finally {
@@ -1965,6 +1989,142 @@ test("keeps the selected switch when actual admission fails after preflight", as
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test.each([
+  ["reloads a running", "running" as const],
+  ["keeps an idle", "idle" as const],
+])(
+  "%s previous model when memory does not settle after the switch stops it",
+  async (_name, initialState) => {
+    const root = mkdtempSync(join(tmpdir(), "localbase-switch-rollback-"));
+    const database = new DatabaseSession();
+    const config = defaultConfig(root, 16);
+    const modelA = config.activeLlmModel;
+    const modelB = "gpt-oss-20b-q4_k_m";
+    config.selectedLlmModels = [modelA, modelB];
+    saveConfig(database, config);
+    const controller = new RuntimeConfigController(database, root, config);
+    const calls: string[] = [];
+    const events: LogEventInput[] = [];
+    const GiB = 1024 ** 3;
+    const unsettled = new RuntimeMemoryAdmissionError(
+      { kind: "rejected", reason: "system-memory", poolId: "system" },
+      {
+        measured_available_bytes: 9 * GiB,
+        reserve_bytes: 2 * GiB,
+        pending_bytes: 0,
+        requested_bytes: 15 * GiB,
+        effective_available_bytes: 7 * GiB,
+        sample_captured_at_ms: 1,
+        sample_age_ms: 0,
+        measured_pressure: "normal",
+        safety_state: "healthy",
+        recovery_samples: 0,
+        demand_confidence: "estimated",
+      },
+    );
+    const reloaded = Promise.withResolvers<void>();
+    const factory: RuntimeSupervisorFactory = {
+      baseUrl: () => "http://127.0.0.1:1",
+      create(modality, snapshot) {
+        const modelId = activeModel(modality, snapshot.config);
+        let state: "idle" | "running" = "idle";
+        return {
+          kind: "server",
+          runtimeId: () => `${modality}:${modelId}`,
+          state: () => state,
+          async ensureRunning() {
+            calls.push(`start:${modelId}`);
+            state = "running";
+            reloaded.resolve();
+          },
+          async kill() {},
+          async shutdown() {
+            calls.push(`shutdown:${modelId}`);
+            state = "idle";
+          },
+          async preflight(releasing) {
+            calls.push(`preflight:${modelId}:${releasing.join(",")}`);
+            // Projected credit admits the switch; the uncredited post-stop
+            // sample never does because the OS has not returned the pages.
+            return modelId === modelB && releasing.length === 0
+              ? unsettled
+              : undefined;
+          },
+        };
+      },
+    };
+    const initial = factory.create("llm", controller.read());
+    if (initialState === "running") await initial.ensureRunning();
+    calls.length = 0;
+    let clock = 0;
+    const reconciler = new RuntimeReconciler(
+      controller,
+      {},
+      new SupervisorRegistry({ llm: initial }),
+      factory,
+      { event: (event) => void events.push(event) },
+      {},
+      { now: () => (clock += 4_000) },
+    );
+    try {
+      const result = await reconciler.admitModel("llm", modelB);
+      expect(result.kind).toBe("insufficient-memory");
+      if (result.kind === "insufficient-memory")
+        expect(result.error).toBe(unsettled);
+      expect(controller.read().config.activeLlmModel).toBe(modelA);
+      expect(reconciler.lifecycleSnapshot().llm).toMatchObject({
+        modelId: modelA,
+        runtimeId: `llm:${modelA}`,
+      });
+      if (initialState === "running") {
+        await reloaded.promise;
+        expect(reconciler.lifecycleSnapshot().llm.state).toBe("running");
+      }
+      expect(calls[0]).toBe(`preflight:${modelB}:llm:${modelA}`);
+      expect(calls[1]).toBe(`shutdown:${modelA}`);
+      expect(calls.filter((call) => call.startsWith("start:"))).toEqual(
+        initialState === "running" ? [`start:${modelA}`] : [],
+      );
+      expect(events.map((event) => event.eventName)).not.toContain(
+        "model.switched",
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          eventName: "runtime.memory-admission-rejected",
+          severity: "warn",
+          runtime: "llm",
+          attributes: expect.objectContaining({
+            reason: "system-memory",
+            pool: "system",
+            measured_available_bytes: 9 * GiB,
+            requested_bytes: 15 * GiB,
+            stage: "post-stop",
+            from_model: modelA,
+            to_model: modelB,
+          }),
+        }),
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          eventName: "model.switch-rolled-back",
+          attributes: {
+            from_model: modelA,
+            to_model: modelB,
+            reload: initialState === "running",
+          },
+        }),
+      );
+      // The restored model still serves requests.
+      const still = await reconciler.admitModel("llm", modelA);
+      expect(still.kind).toBe("admitted");
+      if (still.kind === "admitted") still.value.admission.release();
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 function cancellationHarness(options: {
   modality: "llm" | "image";

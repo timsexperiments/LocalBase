@@ -11,7 +11,10 @@ import {
   type RuntimeConfigSnapshot,
 } from "./config-snapshot";
 import { ModalityAdmissionBarrier } from "./modality-admission";
-import type { RuntimeMemoryAdmissionError } from "./memory-controller";
+import {
+  memoryAdmissionRejectedAttributes,
+  type RuntimeMemoryAdmissionError,
+} from "./memory-controller";
 import type { RuntimeLifecycleSnapshot } from "./lifecycle-snapshot";
 import {
   InferenceQueue,
@@ -70,7 +73,10 @@ type ModelAdmissionFailure =
       error: RuntimeMemoryAdmissionError;
     }>;
 
-/** Raised before any state changes when the requested model cannot fit. */
+/**
+ * Raised when the requested model cannot fit: before any state changes, or
+ * after the previous model was restored because memory did not settle.
+ */
 class ModelSwitchRejectedError extends Error {
   constructor(readonly cause: RuntimeMemoryAdmissionError) {
     super(cause.message);
@@ -87,6 +93,15 @@ export type ModelAdmissionResult =
 // macOS can take several seconds to return reclaimed pages after a backend exits.
 const MEMORY_SETTLE_TIMEOUT_MS = 10_000;
 const MEMORY_SETTLE_POLL_INTERVAL_MS = 100;
+
+/**
+ * Outcome of waiting for host memory after runtimes stopped: admitted, still
+ * rejected by the memory controller, or the probe itself could not run.
+ */
+type MemorySettleResult =
+  | Readonly<{ kind: "admitted" }>
+  | Readonly<{ kind: "rejected"; error: RuntimeMemoryAdmissionError }>
+  | Readonly<{ kind: "unavailable" }>;
 
 type ConfiguredModalities = Record<RuntimeModality, boolean>;
 type ModalityTransitions = Record<RuntimeModality, Promise<void>>;
@@ -475,13 +490,28 @@ export class RuntimeReconciler {
     signal?: AbortSignal,
     source: RuntimeConfigSnapshot = this.snapshot,
   ): Promise<boolean> {
+    const settled = await this.settleAdmissionAfterEviction(
+      modality,
+      modelId,
+      signal,
+      source,
+    );
+    return settled.kind === "admitted";
+  }
+
+  private async settleAdmissionAfterEviction(
+    modality: RuntimeModality,
+    modelId: string,
+    signal?: AbortSignal,
+    source: RuntimeConfigSnapshot = this.snapshot,
+  ): Promise<MemorySettleResult> {
     if (!configuredRuntimeModality(modality, source.config, this.ownership))
-      return false;
+      return { kind: "unavailable" };
     const candidate = this.factory.create(modality, {
       ...source,
       config: { ...source.config, [activeModelField(modality)]: modelId },
     });
-    if (!candidate.preflight) return true;
+    if (!candidate.preflight) return { kind: "admitted" };
     const stillToBeStopped =
       modality === "video" &&
       modelId !== activeModel(modality, this.appliedSnapshots[modality].config)
@@ -490,24 +520,26 @@ export class RuntimeReconciler {
           )
         : [];
 
-    const deadline = Date.now() + MEMORY_SETTLE_TIMEOUT_MS;
+    const now = () => this.hooks.now?.() ?? Date.now();
+    const deadline = now() + MEMORY_SETTLE_TIMEOUT_MS;
     while (true) {
       this.throwIfAborted(signal);
+      let rejection: RuntimeMemoryAdmissionError | undefined;
       try {
-        const rejection = await this.waitForAbort(
+        rejection = await this.waitForAbort(
           candidate.preflight(stillToBeStopped, signal),
           signal,
         );
-        if (!rejection) return true;
-        if (rejection.capacity) return false;
       } catch (error) {
         if (signal?.aborted || error instanceof RuntimeRequestAbortedError)
           throw new RuntimeRequestAbortedError();
-        return false;
+        return { kind: "unavailable" };
       }
+      if (!rejection) return { kind: "admitted" };
+      if (rejection.capacity) return { kind: "rejected", error: rejection };
 
-      const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) return false;
+      const remainingMs = deadline - now();
+      if (remainingMs <= 0) return { kind: "rejected", error: rejection };
       await this.waitForAbort(
         new Promise<void>((resolve) =>
           setTimeout(
@@ -784,8 +816,13 @@ export class RuntimeReconciler {
             );
             this.throwIfAborted(signal);
             dispatchLease?.throwIfCancelled();
-            if (rejection)
+            if (rejection) {
+              this.logMemoryAdmissionRejected(modality, rejection, {
+                stage: "start-preflight",
+                model: modelId,
+              });
               return { kind: "insufficient-memory", error: rejection };
+            }
           } finally {
             if (this.switchPreflights.get(modality) === preflightController)
               this.switchPreflights.delete(modality);
@@ -1113,7 +1150,17 @@ export class RuntimeReconciler {
         ),
         preflightSignal,
       );
-      if (rejection) throw new ModelSwitchRejectedError(rejection);
+      if (rejection) {
+        this.logMemoryAdmissionRejected(modality, rejection, {
+          stage: "switch-preflight",
+          from_model: activeModel(
+            modality,
+            this.appliedSnapshots[modality].config,
+          ),
+          to_model: modelId,
+        });
+        throw new ModelSwitchRejectedError(rejection);
+      }
     } catch (error) {
       if (error instanceof ModelSwitchRejectedError) throw error;
       if (error instanceof RuntimeRequestAbortedError) throw error;
@@ -1136,6 +1183,120 @@ export class RuntimeReconciler {
     }
   }
 
+  /**
+   * Emits the same diagnostic the supervisor logs for start-time rejections, so
+   * rejections made before any runtime starts are equally visible.
+   */
+  private logMemoryAdmissionRejected(
+    modality: RuntimeModality,
+    error: RuntimeMemoryAdmissionError,
+    context: Record<string, unknown>,
+  ): void {
+    this.logger.event({
+      severity: "warn",
+      eventName: "runtime.memory-admission-rejected",
+      category: "runtime",
+      component: modalityComponents[modality],
+      runtime: modality,
+      message: error.message,
+      attributes: { ...memoryAdmissionRejectedAttributes(error), ...context },
+    });
+  }
+
+  /**
+   * Reinstates the model that was stopped for a switch whose post-stop
+   * admission never succeeded. Returns false when the configuration moved on
+   * meanwhile (another model was activated or the previous one deselected), in
+   * which case the caller keeps the requested model as before.
+   */
+  private async rollBackRejectedSwitch(
+    modality: RuntimeModality,
+    requestedModel: string,
+    previousModel: string,
+    previousWasRunning: boolean,
+    rejection: RuntimeMemoryAdmissionError,
+  ): Promise<boolean> {
+    const field = activeModelField(modality);
+    const reverted = await this.exclusive(async () => {
+      let restored = false;
+      const next = await this.controller.update((config) => {
+        if (config[field] !== requestedModel) return;
+        if (!selectedModels(modality, config).includes(previousModel)) return;
+        config[field] = previousModel;
+        restored = true;
+      });
+      if (!restored) return undefined;
+      this.snapshot = next;
+      this.configured = configuredModalities(next, this.ownership);
+      return next;
+    });
+    if (!reverted) return false;
+    const supervisor = this.factory.create(modality, reverted);
+    this.supervisors.add(modality, supervisor);
+    this.appliedSnapshots[modality] = reverted;
+    this.attachBarrier(modality);
+    this.logMemoryAdmissionRejected(modality, rejection, {
+      stage: "post-stop",
+      from_model: previousModel,
+      to_model: requestedModel,
+    });
+    this.logger.event({
+      severity: "warn",
+      eventName: "model.switch-rolled-back",
+      category: "runtime",
+      component: modalityComponents[modality],
+      runtime: modality,
+      message:
+        "Memory did not settle after stopping the previous model; restored it.",
+      attributes: {
+        from_model: previousModel,
+        to_model: requestedModel,
+        reload: previousWasRunning,
+      },
+    });
+    if (previousWasRunning)
+      void this.reloadRestoredModel(modality, supervisor, previousModel);
+    return true;
+  }
+
+  /** Reloads a rolled-back model once memory admits it again. */
+  private async reloadRestoredModel(
+    modality: RuntimeModality,
+    supervisor: RuntimeSupervisor,
+    modelId: string,
+  ): Promise<void> {
+    try {
+      const settled = await this.settleAdmissionAfterEviction(
+        modality,
+        modelId,
+        undefined,
+        this.appliedSnapshots[modality],
+      );
+      if (settled.kind === "rejected") throw settled.error;
+      if (
+        this.supervisors.get(modality) !== supervisor ||
+        supervisor.state() !== "idle"
+      )
+        return;
+      await supervisor.ensureRunning();
+    } catch (error) {
+      this.logger.event({
+        severity: "warn",
+        eventName: "model.switch-restore-failed",
+        category: "runtime",
+        component: modalityComponents[modality],
+        runtime: modality,
+        message:
+          "Restored model could not be reloaded; it will start on demand.",
+        error: {
+          type: error instanceof Error ? error.name : "Error",
+          message: error instanceof Error ? error.message : String(error),
+        },
+        attributes: { model: modelId },
+      });
+    }
+  }
+
   private async activateModel(
     modality: RuntimeModality,
     modelId: string,
@@ -1145,11 +1306,11 @@ export class RuntimeReconciler {
   ): Promise<RuntimeConfigSnapshot> {
     const field = activeModelField(modality);
     const previousModel = activeModel(modality, source.config);
-    const pending = new Set([
-      previousModel,
-      modelId,
-      activeModel(modality, this.appliedSnapshots[modality].config),
-    ]);
+    const restoreModel = activeModel(
+      modality,
+      this.appliedSnapshots[modality].config,
+    );
+    const pending = new Set([previousModel, modelId, restoreModel]);
     this.pendingModelReferences.add(pending);
     try {
       await this.assertSwitchFits(modality, modelId, source, signal);
@@ -1196,14 +1357,31 @@ export class RuntimeReconciler {
         throw error;
       }
       const previous = this.supervisors.take(modality);
+      const previousWasRunning = previous?.state() === "running";
       await previous?.shutdown();
       dispatchLease?.throwIfCancelled();
-      await this.waitForAdmissionAfterEviction(
+      // The up-front check credits the stopped runtime's projected demand, but
+      // the OS can return reclaimed pages more slowly than the settle window.
+      // Rather than leave nothing loaded, reinstate the previous model.
+      const settled = await this.settleAdmissionAfterEviction(
         modality,
         modelId,
         signal,
         source,
       );
+      if (
+        settled.kind === "rejected" &&
+        previous !== undefined &&
+        restoreModel !== modelId &&
+        (await this.rollBackRejectedSwitch(
+          modality,
+          modelId,
+          restoreModel,
+          previousWasRunning,
+          settled.error,
+        ))
+      )
+        throw new ModelSwitchRejectedError(settled.error);
       dispatchLease?.throwIfCancelled();
       this.supervisors.add(modality, this.factory.create(modality, target));
       this.appliedSnapshots[modality] = target;
