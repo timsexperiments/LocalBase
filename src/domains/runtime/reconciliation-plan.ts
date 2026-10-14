@@ -25,6 +25,7 @@ export const configFieldOwnership = {
   host: "llm-launch",
   port: "llm-launch",
   ctxSize: "llm-launch",
+  ctxMode: "llm-launch",
   sttHost: "stt-launch",
   sttPort: "stt-launch",
   selectedLlmModels: "modality-selection-request-scoped",
@@ -149,7 +150,7 @@ const rootDerivedDirectoryFields = [
 ] as const;
 
 const modalityLaunchFields = {
-  llm: ["host", "port", "ctxSize", "activeLlmModel", "parallel"],
+  llm: ["host", "port", "ctxSize", "ctxMode", "activeLlmModel", "parallel"],
   stt: ["sttHost", "sttPort", "activeSttModel"],
   tts: ["activeTtsModel"],
   image: ["activeImageModel"],

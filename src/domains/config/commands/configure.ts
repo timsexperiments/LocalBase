@@ -243,6 +243,7 @@ async function interactiveConfigureSelective(
     !locked.has("host") &&
     !locked.has("port") &&
     !locked.has("ctxSize") &&
+    !locked.has("ctxMode") &&
     !locked.has("sttHost") &&
     !locked.has("sttPort") &&
     !locked.has("selectedLlmModels") &&
@@ -315,6 +316,23 @@ async function interactiveConfigureSelective(
     config.ctxSize = await numberPrompt(
       `LLM maximum context limit (ceiling for dynamic sizing; recommended for ${config.activeLlmModel}: ${recommendedCtx})`,
       suggestCtx,
+    );
+  }
+
+  if (!locked.has("ctxMode")) {
+    config.ctxMode = await singleSelectPrompt(
+      "LLM context mode",
+      [
+        {
+          name: "auto - clamp the ceiling to the memory-safe recommendation",
+          value: "auto" as const,
+        },
+        {
+          name: "explicit - always launch at the configured ceiling",
+          value: "explicit" as const,
+        },
+      ],
+      config.ctxMode,
     );
   }
 
@@ -580,6 +598,7 @@ export async function runConfigure(
   maybeLock("host", flags.host ?? rawToml.host);
   maybeLock("port", flags.port ?? rawToml.port);
   maybeLock("ctxSize", flags.ctxSize ?? rawToml.ctxSize);
+  maybeLock("ctxMode", flags.ctxMode ?? rawToml.ctxMode);
   maybeLock("parallel", parallelInput);
   maybeLock("sttHost", flags.sttHost ?? rawToml.sttHost);
   maybeLock("sttPort", flags.sttPort ?? rawToml.sttPort);
@@ -619,6 +638,7 @@ export async function runConfigure(
     host: flags.host ?? rawToml.host ?? config.host,
     port: flags.port ?? rawToml.port ?? config.port,
     ctxSize: flags.ctxSize ?? rawToml.ctxSize ?? config.ctxSize,
+    ctxMode: flags.ctxMode ?? rawToml.ctxMode ?? config.ctxMode,
     parallel,
     sttHost: flags.sttHost ?? rawToml.sttHost ?? config.sttHost,
     sttPort: flags.sttPort ?? rawToml.sttPort ?? config.sttPort,

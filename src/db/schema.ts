@@ -15,6 +15,7 @@ export const configTable = sqliteTable("config", {
   host: text("host").notNull(),
   port: integer("port").notNull(),
   ctxSize: integer("ctx_size").notNull(),
+  ctxMode: text("ctx_mode").default("auto").notNull(),
   sttHost: text("stt_host").notNull(),
   sttPort: integer("stt_port").notNull(),
   selectedLlmModels: text("selected_llm_models").notNull(),

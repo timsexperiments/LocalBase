@@ -11,7 +11,7 @@ import { createModelConfigurationSchema } from "../models/model-selection";
 import { memorySafetyConfigSchema } from "../runtime/memory-safety";
 import { configFieldOwnership } from "../runtime/reconciliation-plan";
 import { parallelSlotsSchema } from "./parallel";
-import { hostSchema, portSchema } from "./schema";
+import { hostSchema, llmContextModeSchema, portSchema } from "./schema";
 import {
   markRestartPending,
   savedStaticConfiguration,
@@ -34,6 +34,7 @@ export function createDesiredConfigurationSchema(
           host: hostSchema,
           port: portSchema,
           ctxSize: z.number().int().min(2048).max(2_147_483_647),
+          ctxMode: llmContextModeSchema,
           parallel: parallelSlotsSchema,
           sttHost: hostSchema,
           sttPort: portSchema,
@@ -115,6 +116,7 @@ export function configurationDocument(
         host: config.host,
         port: config.port,
         ctxSize: config.ctxSize,
+        ctxMode: config.ctxMode,
         parallel: config.parallel,
         sttHost: config.sttHost,
         sttPort: config.sttPort,
@@ -208,6 +210,7 @@ export function planConfiguration(
     "host",
     "port",
     "ctxSize",
+    "ctxMode",
     "parallel",
     "sttHost",
     "sttPort",

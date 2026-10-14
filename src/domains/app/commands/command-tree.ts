@@ -289,6 +289,12 @@ export const configureCommand = command<ConfigureInput>({
       valueHint: "tokens",
       description: "LLM context limit ceiling",
     },
+    "ctx-mode": {
+      type: "string",
+      valueHint: "auto|explicit",
+      description:
+        "auto clamps ctx-size to the memory-safe recommendation; explicit launches at ctx-size",
+    },
     parallel: {
       type: "string",
       valueHint: "auto|1-4",

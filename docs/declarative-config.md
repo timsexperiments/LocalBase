@@ -28,6 +28,7 @@ port = 2273
 host = "127.0.0.1"
 port = 18000
 ctxSize = 131072
+ctxMode = "auto"
 parallel = "auto"
 sttHost = "127.0.0.1"
 sttPort = 18080
@@ -53,24 +54,24 @@ percent = 10
 minimumGb = 2
 ```
 
-`gateway` controls the public listener. Explicit `serve --host` and `serve --port` flags override its persisted defaults for that process. `runtime.host` and `runtime.port` control the LLM backend; the STT fields control the STT backend. Backends have no authentication of their own, so wildcard hosts (`0.0.0.0`, `::`) are treated as `127.0.0.1`; only the gateway is meant to be exposed. `parallel` accepts `"auto"` or integers 1 through 4. `ctxSize` accepts integers from 2048 through 2147483647. Memory percentages range from 0 through 100; minimum reserves are nonnegative GiB values.
+`gateway` controls the public listener. Explicit `serve --host` and `serve --port` flags override its persisted defaults for that process. `runtime.host` and `runtime.port` control the LLM backend; the STT fields control the STT backend. Backends have no authentication of their own, so wildcard hosts (`0.0.0.0`, `::`) are treated as `127.0.0.1`; only the gateway is meant to be exposed. `parallel` accepts `"auto"` or integers 1 through 4. `ctxSize` accepts integers from 2048 through 2147483647 and is the context ceiling. `ctxMode` is `"auto"` (default) or `"explicit"`: `auto` lowers the ceiling to the memory-safe recommendation for the active model, while `explicit` launches llama-server at the ceiling regardless of the recommendation. Both persist across managed service restarts, unlike `serve --ctx-size` and `LOCALBASE_CTX_SIZE`, which apply to one process only. `local-base configure --ctx-size <n> --ctx-mode explicit` sets the same fields imperatively. `/v1/models` reports the per-request limit as `context_length` and includes a `context_budget` object with the configured ceiling, recommended maximum, launch context, parallel slots, effective context, and a human-readable reason for every reduction. Memory percentages range from 0 through 100; minimum reserves are nonnegative GiB values.
 
 `show` emits canonical TOML with selected model lists sorted. Secrets, API keys, telemetry configuration, root paths, and process-only flags are omitted. Applying the export preserves those existing values. There are no secret placeholders that could overwrite credentials. `show --json` returns the TOML string as `data.document` and activation status as `data.pendingRestart` inside the usual `{ "ok": true, "data": ... }` envelope. Human output reports pending activation on stderr so redirected TOML remains re-applicable.
 
 Plans compare semantic values with persisted state, ignoring TOML formatting, table order, and selected-model ordering. Changes are sorted by field path and include `before`, `after`, and `activation`. For a new installation, `before` is `null`. Plan exits 0 on success unless `--detailed-exit-code` is set; with that flag it exits 0 for no changes and no pending restart, and 2 for configuration changes or pending activation. Config command errors exit 1 and use the standard JSON error envelope when requested.
 
-| Settings | Activation |
-| --- | --- |
+| Settings                                    | Activation                                   |
+| ------------------------------------------- | -------------------------------------------- |
 | Runtime launch settings and model selection | Hot, through existing runtime reconciliation |
-| Gateway listener and memory policy | Gateway restart required |
+| Gateway listener and memory policy          | Gateway restart required                     |
 
 Apply validates before mutation, reads the current state under the root operation lock, and commits the configuration row in one SQLite transaction. A repeated apply skips the settings write when semantic values match. It does not install model artifacts; use `models install` separately. A hot change may drain and replace an affected runtime. A pending static change blocks runtime reconciliation until the gateway restarts.
 
-| Restart policy | Behavior |
-| --- | --- |
+| Restart policy      | Behavior                                                                                                                                                                                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `auto`, the default | Start or restart the managed service when static configuration changes or a durable pending record require it, including unchanged re-applies. Refuse automatic restarts when ownership is foreground, unknown, or stopping, or when the service manager is unavailable. |
-| `always` | Start or restart through the service manager, including when configuration is unchanged. Refuse unsafe ownership or an unavailable manager. |
-| `never` | Save settings without restarting. Report `restart-required` when static settings changed. |
+| `always`            | Start or restart through the service manager, including when configuration is unchanged. Refuse unsafe ownership or an unavailable manager.                                                                                                                              |
+| `never`             | Save settings without restarting. Report `restart-required` when static settings changed.                                                                                                                                                                                |
 
 `--wait` checks gateway identity, health, and public `/health/ready` admission readiness for up to 30 seconds. It requires a running gateway with no restart changes in this apply, or a restart that this apply performs. For pending activation, it also waits for the managed gateway to acknowledge the saved static settings. Readiness does not mean every model is loaded or every inference request will succeed. Process overrides continue to take precedence.
 

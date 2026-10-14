@@ -8,7 +8,7 @@ import {
   type RuntimeMemoryReservation,
 } from "./memory-controller";
 import type { RuntimeComponent, RuntimeModality } from "./modality";
-import type { RuntimeLaunchPlan } from "./launch-plan";
+import type { LlmLaunchPlan, RuntimeLaunchPlan } from "./launch-plan";
 import type { RuntimeMemoryDemand } from "./memory-safety";
 import { llamaContextPerSequence } from "../config/parallel";
 import { stopNativeProcess } from "./native-process";
@@ -160,6 +160,11 @@ export class ManagedService {
   resolvedSlots(): number | undefined {
     const plan = this.resolvedPlan;
     return plan?.modality === "llm" ? plan.parallel.slots : undefined;
+  }
+
+  resolvedLlmLaunchPlan(): LlmLaunchPlan | undefined {
+    const plan = this.resolvedPlan;
+    return plan?.modality === "llm" ? plan : undefined;
   }
 
   resolvedContextLength(): number | undefined {

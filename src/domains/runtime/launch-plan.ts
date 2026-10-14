@@ -2,6 +2,7 @@ import { isIP } from "node:net";
 import { join } from "node:path";
 import {
   allocateParallelSlots,
+  llamaContextPerSequence,
   type ParallelAllocation,
   type ParallelSlots,
 } from "../config/parallel";
@@ -13,6 +14,7 @@ import type {
   VideoRuntimeTarget,
 } from "../../catalog";
 import { calculateMaxSafeContextSize } from "../../catalog";
+import type { LlmContextMode } from "../config/schema";
 import {
   kvCacheBytes,
   type KvCacheType,
@@ -70,20 +72,122 @@ export const LLAMA_PROMPT_CACHE_RAM_MIB = 2048;
 
 export type RuntimeHardware = { memoryGb: number };
 
+export type { LlmContextMode } from "../config/schema";
+
+/** Memory-safe context recommendation for a model on this hardware. */
+export function recommendedLlmContextSize(
+  model: ModelSpec | undefined,
+  memoryGb: number,
+): number {
+  return model
+    ? calculateMaxSafeContextSize(model, memoryGb)
+    : memoryGb >= 32
+      ? 32768
+      : 8192;
+}
+
 /** Context budget used by both runtime startup and the served-model listing. */
 export function configuredLlmContextSize(
   model: ModelSpec | undefined,
   configCtxSize: number,
   memoryGb: number,
   override?: number,
+  mode: LlmContextMode = "auto",
 ): number {
   if (override !== undefined) return override;
-  const recommended = model
-    ? calculateMaxSafeContextSize(model, memoryGb)
-    : memoryGb >= 32
-      ? 32768
-      : 8192;
-  return Math.min(recommended, configCtxSize);
+  if (mode === "explicit") return configCtxSize;
+  return Math.min(recommendedLlmContextSize(model, memoryGb), configCtxSize);
+}
+
+/**
+ * Explains how the configured context ceiling became the per-request limit so
+ * operators can see every reduction instead of guessing from `/v1/models`.
+ */
+export type LlmContextBudget = Readonly<{
+  mode: LlmContextMode;
+  /** `ctxSize` from configuration (the ceiling). */
+  configured_ceiling: number;
+  /** Memory-safe recommendation for this model on this hardware. */
+  recommended_max: number;
+  /** `serve --ctx-size` / `LOCALBASE_CTX_SIZE` for this process, when set. */
+  process_override: number | null;
+  /** Catalog-advertised context window, when known. */
+  model_context_window: number | null;
+  /** Training context read from the model file, when known. */
+  training_context: number | null;
+  /** Total context llama-server is launched with (`-c`). */
+  launch_context: number;
+  parallel_slots: number;
+  /** Context available to a single request (`launch_context / parallel_slots`). */
+  effective_context: number;
+  /** Human-readable explanation of every reduction below the ceiling. */
+  reasons: readonly string[];
+}>;
+
+export function describeLlmContextBudget(input: {
+  model: ModelSpec | undefined;
+  configCtxSize: number;
+  ctxMode?: LlmContextMode;
+  ctxSizeOverride?: number;
+  memoryGb: number;
+  plan: Pick<LlmLaunchPlan, "ctxSize" | "parallel" | "trainingContextLength">;
+}): LlmContextBudget {
+  const mode = input.ctxMode ?? "auto";
+  const ceiling = input.configCtxSize;
+  const recommended = recommendedLlmContextSize(input.model, input.memoryGb);
+  const override = input.ctxSizeOverride ?? null;
+  const modelWindow = input.model?.contextWindowTokens ?? null;
+  const training = input.plan.trainingContextLength ?? null;
+  const launch = input.plan.ctxSize;
+  const slots = input.plan.parallel.slots;
+  const perSlot = llamaContextPerSequence(launch, slots);
+  const effective = training === null ? perSlot : Math.min(perSlot, training);
+  const reasons: string[] = [];
+  const fmt = (n: number) => n.toLocaleString("en-US");
+
+  if (override !== null) {
+    reasons.push(
+      `Process override (--ctx-size/LOCALBASE_CTX_SIZE) set the launch context to ${fmt(override)}; it does not persist across managed service restarts.`,
+    );
+  } else if (mode === "auto" && recommended < ceiling) {
+    reasons.push(
+      `Context mode "auto" reduced the ${fmt(ceiling)} ceiling to the memory-safe recommendation of ${fmt(recommended)}; run "local-base configure --ctx-mode explicit" to launch at the ceiling.`,
+    );
+  } else if (mode === "explicit" && ceiling > recommended) {
+    reasons.push(
+      `Context mode "explicit" launches at ${fmt(ceiling)}, above the memory-safe recommendation of ${fmt(recommended)}.`,
+    );
+  }
+  const preWindow =
+    override ??
+    (mode === "explicit" ? ceiling : Math.min(recommended, ceiling));
+  if (modelWindow !== null && modelWindow < preWindow) {
+    reasons.push(
+      `The model's advertised context window caps the launch context at ${fmt(modelWindow)}.`,
+    );
+  }
+  if (slots > 1) {
+    reasons.push(
+      `${slots} parallel slots${input.plan.parallel.isAuto ? " (parallel = auto)" : ""} divide the ${fmt(launch)} launch context into ${fmt(perSlot)} tokens per request; set parallel = 1 to give a single request the full context.`,
+    );
+  }
+  if (training !== null && training < perSlot) {
+    reasons.push(
+      `The model file's training context limits each request to ${fmt(training)} tokens.`,
+    );
+  }
+  return Object.freeze({
+    mode,
+    configured_ceiling: ceiling,
+    recommended_max: recommended,
+    process_override: override,
+    model_context_window: modelWindow,
+    training_context: training,
+    launch_context: launch,
+    parallel_slots: slots,
+    effective_context: effective,
+    reasons: Object.freeze(reasons),
+  });
 }
 
 /** Build a model launch plan from the same config and model inputs in every caller. */
@@ -97,6 +201,7 @@ export function resolveConfiguredLlmLaunchPlan(input: {
   port: number;
   model: ModelSpec | undefined;
   configCtxSize: number;
+  ctxMode?: LlmContextMode;
   ctxSizeOverride?: number;
   parallel: ParallelSlots;
   artifactBytes: number;
@@ -118,6 +223,7 @@ export function resolveConfiguredLlmLaunchPlan(input: {
       input.configCtxSize,
       input.memoryGb,
       input.ctxSizeOverride,
+      input.ctxMode,
     ),
     contextWindowTokens: input.model?.contextWindowTokens,
     parallel: input.parallel,

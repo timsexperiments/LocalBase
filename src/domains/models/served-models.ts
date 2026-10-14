@@ -7,7 +7,12 @@ import {
 } from "../../catalog";
 import type { LocalBaseConfig } from "../../manager";
 import type { Permission } from "../auth/authorization";
-import { resolveConfiguredLlmLaunchPlan } from "../runtime/launch-plan";
+import {
+  describeLlmContextBudget,
+  resolveConfiguredLlmLaunchPlan,
+  type LlmContextBudget,
+  type LlmLaunchPlan,
+} from "../runtime/launch-plan";
 import {
   llamaContextPerSequence,
   type ParallelSlots,
@@ -28,6 +33,7 @@ type ServedModelConfig = Pick<
   | "activeVideoModel"
   | "selectedVideoModels"
   | "ctxSize"
+  | "ctxMode"
   | "parallel"
   | "root"
   | "llmModelsDir"
@@ -40,6 +46,8 @@ export type OpenAiModel = Readonly<{
   owned_by: "local-base";
   name?: string;
   context_length?: number;
+  /** How the configured context ceiling became `context_length` (LLMs only). */
+  context_budget?: LlmContextBudget;
   architecture: Readonly<{
     input_modalities: readonly string[];
     output_modalities: readonly string[];
@@ -142,6 +150,8 @@ export async function listServedModels(
     ctxSizeOverride?: number;
     parallel?: ParallelSlots;
     pinnedContextLength?: number;
+    /** Launch plan of the running LLM, used to explain the pinned context. */
+    pinnedLaunchPlan?: LlmLaunchPlan;
     memoryGb?: number;
     llmModelFile?: string;
     kvGeometryForModel?: (id: string) => Promise<LlmKvGeometry | null>;
@@ -184,6 +194,25 @@ export async function listServedModels(
               trainingContextLength ?? Number.POSITIVE_INFINITY,
             ),
           };
+          if (options.pinnedLaunchPlan) {
+            model = {
+              ...model,
+              context_budget: describeLlmContextBudget({
+                model: byId(options.pinnedLaunchPlan.modelId),
+                configCtxSize: profile?.configCtxSize ?? config.ctxSize,
+                ctxMode: profile?.ctxMode ?? config.ctxMode,
+                ctxSizeOverride: profile
+                  ? profile.ctxSizeOverride
+                  : options.ctxSizeOverride,
+                memoryGb: options.memoryGb ?? 0,
+                plan: {
+                  ctxSize: options.pinnedLaunchPlan.ctxSize,
+                  parallel: options.pinnedLaunchPlan.parallel,
+                  trainingContextLength: trainingContextLength ?? null,
+                },
+              }),
+            };
+          }
         } else {
           const launchModelId =
             profile?.modelId ??
@@ -219,6 +248,7 @@ export async function listServedModels(
               port: 1,
               model: launchSpec,
               configCtxSize: profile?.configCtxSize ?? config.ctxSize,
+              ctxMode: profile?.ctxMode ?? config.ctxMode,
               ctxSizeOverride: profile
                 ? profile.ctxSizeOverride
                 : options.ctxSizeOverride,
@@ -247,6 +277,23 @@ export async function listServedModels(
                 ),
               };
             }
+            model = {
+              ...model,
+              context_budget: describeLlmContextBudget({
+                model: launchSpec,
+                configCtxSize: profile?.configCtxSize ?? config.ctxSize,
+                ctxMode: profile?.ctxMode ?? config.ctxMode,
+                ctxSizeOverride: profile
+                  ? profile.ctxSizeOverride
+                  : options.ctxSizeOverride,
+                memoryGb: options.memoryGb ?? 0,
+                plan: {
+                  ctxSize: launch.ctxSize,
+                  parallel: launch.parallel,
+                  trainingContextLength: trainingContextLength ?? null,
+                },
+              }),
+            };
           } catch {
             model = omitContextLength(model);
           }

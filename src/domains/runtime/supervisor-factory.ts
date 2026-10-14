@@ -28,6 +28,7 @@ import {
 import {
   backendBindHost,
   configuredLlmContextSize,
+  describeLlmContextBudget,
   resolveImageLaunchPlan,
   resolveConfiguredLlmLaunchPlan,
   resolveSttLaunchPlan,
@@ -425,6 +426,7 @@ export function createRuntimeSupervisorFactory(
             ? { modelFile: overrides.llmModelFile }
             : {}),
           configCtxSize: config.ctxSize,
+          ctxMode: config.ctxMode,
           ...(overrides.ctxSize !== undefined
             ? { ctxSizeOverride: overrides.ctxSize }
             : {}),
@@ -463,6 +465,7 @@ export function createRuntimeSupervisorFactory(
             port: llmPort(snapshot.config, overrides),
             model: byId(modelId),
             configCtxSize: config.ctxSize,
+            ctxMode: config.ctxMode,
             ctxSizeOverride: overrides.ctxSize,
             parallel: config.parallel,
             artifactBytes: await llmArtifactBytes(
@@ -527,13 +530,14 @@ export function createRuntimeSupervisorFactory(
             config.ctxSize,
             ctx.specs.gpuVramGb,
             overrides.ctxSize,
+            config.ctxMode,
           );
           ctx.logger.info(
             "llama-server",
             `Spawning model "${modelId}" (file: ${modelFile}, context: ${ctxSize} tokens)`,
           );
           const modelPath = join(config.llmModelsDir, modelFile);
-          return resolveConfiguredLlmLaunchPlan({
+          const plan = resolveConfiguredLlmLaunchPlan({
             runtimeId,
             root: config.root,
             modelsDirectory: config.llmModelsDir,
@@ -543,6 +547,7 @@ export function createRuntimeSupervisorFactory(
             port: llmPort(snapshot.config, overrides),
             model: spec,
             configCtxSize: config.ctxSize,
+            ctxMode: config.ctxMode,
             ctxSizeOverride: overrides.ctxSize,
             parallel: config.parallel,
             artifactBytes: await llmArtifactBytes(
@@ -555,6 +560,22 @@ export function createRuntimeSupervisorFactory(
             trainingContextLength:
               await readLlmTrainingContextLength(modelPath),
           });
+          const budget = describeLlmContextBudget({
+            model: spec,
+            configCtxSize: config.ctxSize,
+            ctxMode: config.ctxMode,
+            ctxSizeOverride: overrides.ctxSize,
+            memoryGb: ctx.specs.gpuVramGb,
+            plan,
+          });
+          ctx.logger.info(
+            "llama-server",
+            `Context budget: mode=${budget.mode} ceiling=${budget.configured_ceiling} recommended=${budget.recommended_max} launch=${budget.launch_context} slots=${budget.parallel_slots} effective=${budget.effective_context}`,
+          );
+          for (const reason of budget.reasons) {
+            ctx.logger.info("llama-server", reason);
+          }
+          return plan;
         },
         start: async (plan) => {
           if (plan.component !== "llama-server") {

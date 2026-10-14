@@ -736,7 +736,7 @@ const CATALOG_SOURCE = [
     inputModalities: ["text"],
     outputModalities: ["text"],
     contextWindowTokens: 262144,
-    features: ["text-generation"],
+    features: ["text-generation", "tool-calling"],
     commercialStatus: "open",
     catch: "Apache-2.0. Text only; no vision projector or image/video input.",
     notes:
@@ -768,7 +768,7 @@ const CATALOG_SOURCE = [
     inputModalities: ["text"],
     outputModalities: ["text"],
     contextWindowTokens: 262144,
-    features: ["text-generation"],
+    features: ["text-generation", "tool-calling"],
     commercialStatus: "open",
     catch: "Apache-2.0. Text only; no vision projector or image/video input.",
     notes:

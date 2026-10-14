@@ -8,6 +8,9 @@ import {
 import { describe, expect, test } from "bun:test";
 import {
   backendBindHost,
+  configuredLlmContextSize,
+  describeLlmContextBudget,
+  recommendedLlmContextSize,
   resolveImageLaunchPlan,
   resolveLlmLaunchPlan,
   resolveSttLaunchPlan,
@@ -739,4 +742,108 @@ describe("backend bind host", () => {
       }
     },
   );
+});
+
+describe("LLM context budget", () => {
+  const model = byId("qwen2.5-coder-1.5b-instruct-q4_k_m");
+  if (!model) throw new Error("Missing Qwen2.5 Coder 1.5B fixture model.");
+  const memoryGb = 4;
+  const recommended = recommendedLlmContextSize(model, memoryGb);
+
+  test("explicit mode launches at the configured ceiling", () => {
+    const ceiling = recommended * 2;
+    expect(configuredLlmContextSize(model, ceiling, memoryGb)).toBe(
+      recommended,
+    );
+    expect(
+      configuredLlmContextSize(model, ceiling, memoryGb, undefined, "explicit"),
+    ).toBe(ceiling);
+    expect(
+      configuredLlmContextSize(model, ceiling, memoryGb, 4096, "explicit"),
+    ).toBe(4096);
+  });
+
+  test("auto mode explains the clamp below the ceiling", () => {
+    const ceiling = recommended * 2;
+    const budget = describeLlmContextBudget({
+      model,
+      configCtxSize: ceiling,
+      memoryGb,
+      plan: {
+        ctxSize: recommended,
+        parallel: { slots: 1, isAuto: false, contextPerSlot: recommended },
+      },
+    });
+    expect(budget.mode).toBe("auto");
+    expect(budget.configured_ceiling).toBe(ceiling);
+    expect(budget.recommended_max).toBe(recommended);
+    expect(budget.launch_context).toBe(recommended);
+    expect(budget.effective_context).toBe(recommended);
+    expect(budget.reasons).toHaveLength(1);
+    expect(budget.reasons[0]).toContain("--ctx-mode explicit");
+  });
+
+  test("explicit mode above the recommendation keeps the ceiling and warns", () => {
+    const ceiling = Math.min(
+      recommended * 2,
+      model.contextWindowTokens ?? Infinity,
+    );
+    const budget = describeLlmContextBudget({
+      model,
+      configCtxSize: ceiling,
+      ctxMode: "explicit",
+      memoryGb,
+      plan: {
+        ctxSize: ceiling,
+        parallel: { slots: 1, isAuto: false, contextPerSlot: ceiling },
+      },
+    });
+    expect(budget.mode).toBe("explicit");
+    expect(budget.launch_context).toBe(ceiling);
+    expect(budget.effective_context).toBe(ceiling);
+    expect(budget.reasons).toHaveLength(1);
+    expect(budget.reasons[0]).toContain("above the memory-safe recommendation");
+  });
+
+  test("process overrides and parallel slots are reported as reductions", () => {
+    const budget = describeLlmContextBudget({
+      model,
+      configCtxSize: 16384,
+      ctxSizeOverride: 8192,
+      memoryGb,
+      plan: {
+        ctxSize: 8192,
+        parallel: { slots: 2, isAuto: true, contextPerSlot: 4096 },
+        trainingContextLength: 2048,
+      },
+    });
+    expect(budget.process_override).toBe(8192);
+    expect(budget.launch_context).toBe(8192);
+    expect(budget.parallel_slots).toBe(2);
+    expect(budget.training_context).toBe(2048);
+    expect(budget.effective_context).toBe(2048);
+    expect(budget.reasons.some((r) => r.includes("does not persist"))).toBe(
+      true,
+    );
+    expect(budget.reasons.some((r) => r.includes("parallel = auto"))).toBe(
+      true,
+    );
+    expect(budget.reasons.some((r) => r.includes("training context"))).toBe(
+      true,
+    );
+  });
+
+  test("reports no reasons when the ceiling is served unchanged", () => {
+    const budget = describeLlmContextBudget({
+      model,
+      configCtxSize: 4096,
+      memoryGb,
+      plan: {
+        ctxSize: 4096,
+        parallel: { slots: 1, isAuto: false, contextPerSlot: 4096 },
+      },
+    });
+    expect(budget.effective_context).toBe(4096);
+    expect(budget.reasons).toEqual([]);
+  });
 });

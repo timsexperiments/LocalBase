@@ -66,6 +66,7 @@ const hardwareSchema = z
 const configurationSchema = z
   .object({
     contextSize: z.number().int().positive(),
+    contextMode: z.enum(["auto", "explicit"]),
     parallel: z.union([z.literal("auto"), z.number().int().min(1).max(4)]),
     selectedModels: z
       .object({
@@ -188,6 +189,7 @@ function hardwareData(specs: HostSpecs) {
 function configurationData(config: LocalBaseConfig) {
   return configurationSchema.parse({
     contextSize: config.ctxSize,
+    contextMode: config.ctxMode,
     parallel: config.parallel,
     selectedModels: {
       llm: config.selectedLlmModels,

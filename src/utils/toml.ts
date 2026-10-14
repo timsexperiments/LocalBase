@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { parallelSlotsSchema } from "../domains/config/parallel";
-import { hostSchema, portSchema } from "../domains/config/schema";
+import {
+  hostSchema,
+  llmContextModeSchema,
+  portSchema,
+} from "../domains/config/schema";
 import {
   modelIdSchema,
   selectedModelsSchema,
@@ -24,6 +28,7 @@ const configOverridesSchema = z
     host: hostSchema.optional(),
     port: portSchema.optional(),
     ctxSize: z.number().int().positive().optional(),
+    ctxMode: llmContextModeSchema.optional(),
     parallel: parallelSlotsSchema.optional(),
     sttHost: hostSchema.optional(),
     sttPort: portSchema.optional(),
