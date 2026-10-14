@@ -33,9 +33,11 @@ export function statusFlash(
 export function Copy({
   text,
   label = "Copy",
+  className = "copy",
 }: {
   text: string | (() => string);
   label?: string;
+  className?: string;
 }) {
   const [status, setStatus] = useState(label);
   const [flash] = useState(() => statusFlash(setStatus, label));
@@ -43,7 +45,7 @@ export function Copy({
   return (
     <button
       type="button"
-      className="copy"
+      className={className || undefined}
       onClick={() => {
         if (!navigator.clipboard) {
           flash.show("Copy unavailable");
