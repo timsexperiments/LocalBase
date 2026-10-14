@@ -66,6 +66,10 @@ async function main() {
       : process.platform === "darwin"
         ? ["precompiled-metal-library.patch"]
         : [];
+  // The source lives inside the checkout, so without its own repository
+  // `git apply` resolves paths against the outer worktree and silently skips
+  // every hunk of a git-format patch.
+  await $`git -C ${sourcePath} init --quiet`;
   for (const patchName of patchNames) {
     const patch = join(workspace, "scripts/whisper-patches", patchName);
     await $`git -C ${sourcePath} apply --check ${patch}`;
