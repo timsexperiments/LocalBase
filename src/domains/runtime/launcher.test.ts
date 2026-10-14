@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, relative } from "node:path";
-import { byId } from "../../catalog";
+import { byId, type ModelSpec } from "../../catalog";
 import { defaultConfig, type LocalBaseConfig } from "../../manager";
 import { compileRuntimeFixture } from "../../test/runtime-fixture";
 import {
@@ -24,12 +24,57 @@ import {
   startWhisperServerProcess,
 } from "./launcher";
 
+function catalogModel(modelId: string): ModelSpec {
+  const model = byId(modelId);
+  if (!model) throw new Error(`Missing ${modelId} fixture model.`);
+  return model;
+}
+
+// Catalog video models with their artifacts renamed to the fixture filenames,
+// so the derived demand is computed from the real pinned artifact sizes.
+function withFixtureFilenames(
+  model: ModelSpec,
+  filenames: Readonly<Record<string, string>>,
+): ModelSpec {
+  return {
+    ...model,
+    artifacts: model.artifacts.map((artifact) => ({
+      ...artifact,
+      filename: filenames[artifact.filename] ?? artifact.filename,
+    })),
+  };
+}
+
+const wanT2v = withFixtureFilenames(catalogModel("wan2.1-t2v-1.3b-q8_0"), {
+  "Wan2.1-T2V-1.3B-Q8_0.gguf": "diffusion.gguf",
+  "umt5-xxl-encoder-Q8_0.gguf": "encoder.gguf",
+  "wan_2.1_vae.safetensors": "decoder.safetensors",
+});
+const wanS2v = withFixtureFilenames(catalogModel("wan2.2-s2v-14b-fp8"), {
+  "wan2.2_s2v_14B_fp8_scaled.safetensors": "diffusion.safetensors",
+  "umt5-xxl-encoder-Q8_0.gguf": "encoder.safetensors",
+  "wan_2.1_vae.safetensors": "vae.safetensors",
+  "wav2vec2_large_english_fp16.safetensors": "wav2vec2.safetensors",
+});
+
 test.each([
-  { modelId: "flux2-klein-4b-q4_0", steps: 4, bytes: 5293871164 },
-  { modelId: "z-image-turbo-q4_0", steps: 8, bytes: 6515956452 },
+  // deviceBytes: every component resident plus the derived activation, VAE
+  // decode and accelerator-overhead terms at the family default resolution.
+  {
+    modelId: "flux2-klein-4b-q4_0",
+    steps: 4,
+    bytes: 5293871164,
+    deviceBytes: 8548651068,
+  },
+  {
+    modelId: "z-image-turbo-q4_0",
+    steps: 8,
+    bytes: 6515956452,
+    deviceBytes: 10450213604,
+  },
 ])(
   "resolves $modelId artifacts, sampling, and aggregate memory",
-  ({ modelId, steps, bytes }) => {
+  ({ modelId, steps, bytes, deviceBytes }) => {
     const spec = byId(modelId);
     if (spec?.imageRuntime?.kind !== "diffusion-qwen3") {
       throw new Error("Missing Qwen image fixture");
@@ -43,7 +88,7 @@ test.each([
       modelFile: spec.imageRuntime.artifacts.diffusionModel,
       host: "127.0.0.1",
       port: 8083,
-      modelRequirementGb: spec.minVramGb,
+      model: spec,
       artifactBytes: spec.artifacts.reduce(
         (sum, artifact) => sum + (artifact.expectedSizeBytes ?? 0),
         0,
@@ -69,10 +114,10 @@ test.each([
       "8083",
     ]);
     expect(plan.memoryDemand).toEqual({
-      unifiedBytes: 12.5 * gibibyte,
+      unifiedBytes: deviceBytes,
       hostBytes: bytes + 0.5 * gibibyte,
-      acceleratorBytes: 12 * gibibyte,
-      confidence: "estimated",
+      acceleratorBytes: deviceBytes,
+      confidence: "derived",
     });
   },
 );
@@ -92,7 +137,6 @@ test("rejects a missing image encoder before resolving or spawning a runtime", a
       modelFile: spec.imageRuntime.artifacts.diffusionModel,
       host: "127.0.0.1",
       port: 8083,
-      modelRequirementGb: 12,
       artifactBytes: 1,
       imageRuntime: spec.imageRuntime,
     });
@@ -112,11 +156,12 @@ test("rejects a missing image encoder before resolving or spawning a runtime", a
 test.each([
   {
     modelId: "flux1-schnell-q4_0",
+    // --clip-on-cpu keeps CLIP-L and T5-XXL off the accelerator.
     expectedMemoryDemand: {
-      unifiedBytes: 17790767356,
+      unifiedBytes: 20475121916,
       hostBytes: 17790767356,
-      acceleratorBytes: 8 * gibibyte,
-      confidence: "estimated",
+      acceleratorBytes: 10441136740,
+      confidence: "derived",
     },
     expectedModelArgs: [
       "--diffusion-model",
@@ -139,10 +184,10 @@ test.each([
   {
     modelId: "dreamshaper-8-lcm",
     expectedMemoryDemand: {
-      unifiedBytes: 4.5 * gibibyte,
+      unifiedBytes: 3341764544,
       hostBytes: 2133804992 + 0.5 * gibibyte,
-      acceleratorBytes: 4 * gibibyte,
-      confidence: "estimated",
+      acceleratorBytes: 3341764544,
+      confidence: "derived",
     },
     expectedModelArgs: [
       "-m",
@@ -171,7 +216,7 @@ test.each([
       modelFile: spec.imageRuntime.artifacts.diffusionModel,
       host: "127.0.0.1",
       port: 8083,
-      modelRequirementGb: spec.minVramGb,
+      model: spec,
       artifactBytes: spec.artifacts.reduce(
         (sum, artifact) => sum + (artifact.expectedSizeBytes ?? 0),
         0,
@@ -247,6 +292,7 @@ test.each(["vae", "tae"] as const)(
       textEncoderFile: "encoder.gguf",
       host: "127.0.0.1",
       port: 8091,
+      model: wanT2v,
       videoRuntime: {
         mode: "t2v",
         artifacts: {
@@ -274,11 +320,6 @@ test.each(["vae", "tae"] as const)(
             vaeConvDirect: kind === "tae",
           },
         },
-        estimatedMemoryDemand: {
-          unifiedBytes: 1,
-          hostBytes: 1,
-          acceleratorBytes: (kind === "vae" ? 6 : 6.5) * gibibyte,
-        },
         supportedTargets: [
           { platform: "linux", architecture: "x64", accelerator: "nvidia" },
         ],
@@ -305,7 +346,8 @@ test.each(["vae", "tae"] as const)(
     expect(buildSdVideoServerArgs(plan, discreteTopology)).toEqual([
       ...unifiedArgs,
       "--max-vram",
-      kind === "vae" ? "6" : "6.5",
+      // The text-encoder stage dominates with CPU offload for both decoders.
+      "6.5",
     ]);
   },
 );
@@ -320,6 +362,7 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
     textEncoderFile: "encoder.safetensors",
     host: "127.0.0.1",
     port: 8091,
+    model: wanS2v,
     videoRuntime: {
       mode: "s2v",
       artifacts: {
@@ -347,11 +390,6 @@ test("adds the wav2vec2 path only to an S2V launch", () => {
           diffusionFlashAttention: true,
           vaeConvDirect: false,
         },
-      },
-      estimatedMemoryDemand: {
-        unifiedBytes: 1,
-        hostBytes: 1,
-        acceleratorBytes: 1,
       },
       supportedTargets: [
         { platform: "linux", architecture: "x64", accelerator: "nvidia" },
@@ -391,6 +429,7 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
     textEncoderFile: "encoder.safetensors",
     host: "127.0.0.1",
     port: 8091,
+    model: wanS2v,
     videoRuntime: {
       mode: "s2v",
       artifacts: {
@@ -418,11 +457,6 @@ test("rejects an S2V launch with a missing audio encoder before spawning", async
           diffusionFlashAttention: true,
           vaeConvDirect: false,
         },
-      },
-      estimatedMemoryDemand: {
-        unifiedBytes: 1,
-        hostBytes: 1,
-        acceleratorBytes: 1,
       },
       supportedTargets: [
         { platform: "linux", architecture: "x64", accelerator: "nvidia" },
@@ -487,7 +521,6 @@ describe.serial("Whisper GPU launch contract", () => {
         root,
         modelsDirectory: config.sttModelsDir,
         modelId: "whisper-tiny",
-        modelRequirementGb: undefined,
         modelFile: "model.bin",
         host: "127.0.0.1",
         port: 18001,
@@ -582,6 +615,7 @@ describe.serial("sd-server GPU launch contract", () => {
         textEncoderFile: "encoder.gguf",
         host: "127.0.0.1",
         port: 18003,
+        model: wanT2v,
         videoRuntime: {
           mode: "t2v",
           artifacts: {
@@ -608,11 +642,6 @@ describe.serial("sd-server GPU launch contract", () => {
               diffusionFlashAttention: true,
               vaeConvDirect: false,
             },
-          },
-          estimatedMemoryDemand: {
-            unifiedBytes: 1,
-            hostBytes: 1,
-            acceleratorBytes: 6 * gibibyte,
           },
           supportedTargets: [
             { platform: "linux", architecture: "x64", accelerator: "nvidia" },
@@ -641,7 +670,7 @@ describe.serial("sd-server GPU launch contract", () => {
         "--listen-port",
         "18003",
         "--max-vram",
-        "6",
+        "6.5",
         ...(process.platform === "linux"
           ? ["--require-gpu-pci", "0000:ab:1f.7"]
           : []),
@@ -795,7 +824,7 @@ describe.serial("llama runtime launch", () => {
           port: 18000,
           ctxSize: 8192,
           parallel: fixture.config.parallel,
-          modelRequirementGb: byId(fixture.config.activeLlmModel)?.minVramGb,
+          model: byId(fixture.config.activeLlmModel),
           artifactBytes: 4 * 1024 ** 3,
           hardware: { memoryGb: 9.5 },
         }),
@@ -846,7 +875,6 @@ describe.serial("llama runtime launch", () => {
           port: 18000,
           ctxSize: 8192,
           parallel: 2,
-          modelRequirementGb: 1,
           artifactBytes: 1024 ** 3,
           hardware: { memoryGb: 64 },
           kvGeometry: geometry(compatible),
@@ -875,7 +903,6 @@ describe.serial("llama runtime launch", () => {
         port: 18000,
         ctxSize: 8192,
         parallel: 1,
-        modelRequirementGb: 1.5,
         artifactBytes: 639150592,
         hardware: { memoryGb: 9.5 },
         embedding: {
@@ -930,7 +957,6 @@ describe.serial("image runtime launch", () => {
         modelFile,
         host: "127.0.0.1",
         port: 18002,
-        modelRequirementGb: 4,
         artifactBytes: 2 * 1024 ** 3,
       }),
       nvidiaTopology,

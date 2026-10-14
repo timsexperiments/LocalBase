@@ -1,5 +1,10 @@
-import { byId, primaryArtifact } from "../../catalog";
+import { byId, primaryArtifact, type ModelSpec } from "../../catalog";
 import { kvCacheBytes } from "./gguf-metadata";
+import {
+  estimateLlmMemory,
+  resolveLlmShape,
+  type MemoryEstimate,
+} from "./memory-estimate";
 import { describe, expect, test } from "bun:test";
 import {
   backendBindHost,
@@ -11,6 +16,39 @@ import {
 import { buildLlamaServerArgs } from "./launcher";
 import { runtimeEndpoint } from "./supervisor-factory";
 import { SupervisorRegistry } from "./supervisor-registry";
+
+function catalogModel(modelId: string): ModelSpec {
+  const model = byId(modelId);
+  if (!model) throw new Error(`Missing ${modelId} fixture model.`);
+  return model;
+}
+
+// Catalog video models with their artifacts renamed to the fixture filenames,
+// so the derived demand is computed from the real pinned artifact sizes.
+function withFixtureFilenames(
+  model: ModelSpec,
+  filenames: Readonly<Record<string, string>>,
+): ModelSpec {
+  return {
+    ...model,
+    artifacts: model.artifacts.map((artifact) => ({
+      ...artifact,
+      filename: filenames[artifact.filename] ?? artifact.filename,
+    })),
+  };
+}
+
+const wanT2v = withFixtureFilenames(catalogModel("wan2.1-t2v-1.3b-q8_0"), {
+  "Wan2.1-T2V-1.3B-Q8_0.gguf": "diffusion.gguf",
+  "umt5-xxl-encoder-Q8_0.gguf": "encoder.gguf",
+  "wan_2.1_vae.safetensors": "vae.safetensors",
+});
+const wanS2v = withFixtureFilenames(catalogModel("wan2.2-s2v-14b-fp8"), {
+  "wan2.2_s2v_14B_fp8_scaled.safetensors": "diffusion.safetensors",
+  "umt5-xxl-encoder-Q8_0.gguf": "encoder.safetensors",
+  "wan_2.1_vae.safetensors": "vae.safetensors",
+  "wav2vec2_large_english_fp16.safetensors": "wav2vec2.safetensors",
+});
 
 const root = "/tmp/local-base";
 
@@ -33,14 +71,14 @@ describe("runtime launch plans", () => {
       ctxSize: 8192,
       contextWindowTokens: model.contextWindowTokens,
       parallel: "auto",
-      modelRequirementGb: model.minVramGb,
+      model: model,
       artifactBytes,
       hardware: { memoryGb: 64 },
     });
 
     expect(model.minVramGb).toBe(64);
     expect(artifactBytes).toBeGreaterThan(48 * 10 ** 9);
-    expect(plan.memoryDemand.unifiedBytes / 1024 ** 3).toBeCloseTo(50.1, 1);
+    expect(plan.memoryDemand.unifiedBytes / 1024 ** 3).toBeCloseTo(48.4, 1);
     expect(plan.parallel.slots).toBe(4);
     expect(plan.memoryDemand.unifiedBytes).toBeLessThan(54.4 * 1024 ** 3);
   });
@@ -59,7 +97,6 @@ describe("runtime launch plans", () => {
           port: 8080,
           ctxSize: 8192,
           parallel: "auto",
-          modelRequirementGb: 4,
           artifactBytes: 4 * 1024 ** 3,
           hardware: { memoryGb: 16 },
         }),
@@ -68,10 +105,11 @@ describe("runtime launch plans", () => {
         component: "llama-server",
         modelPath: `${root}/models/llm/model.gguf`,
         healthUrl: "http://127.0.0.1:8080/health",
+        // No catalog shape: the size-based fallback keeps "estimated".
         memoryDemand: {
-          unifiedBytes: 9 * 1024 ** 3,
-          hostBytes: 7 * 1024 ** 3,
-          acceleratorBytes: 6.5 * 1024 ** 3,
+          unifiedBytes: 8575500288,
+          hostBytes: 8230567936,
+          acceleratorBytes: 6351175680,
           confidence: "estimated",
         },
       },
@@ -87,7 +125,6 @@ describe("runtime launch plans", () => {
           modelFile: "model.bin",
           host: "127.0.0.1",
           port: 8081,
-          modelRequirementGb: 1,
           artifactBytes: 1024 ** 3,
         }),
       expected: {
@@ -114,7 +151,6 @@ describe("runtime launch plans", () => {
           modelFile: "model.safetensors",
           host: "127.0.0.1",
           port: 8082,
-          modelRequirementGb: 2,
           artifactBytes: 2 * 1024 ** 3,
         }),
       expected: {
@@ -142,6 +178,7 @@ describe("runtime launch plans", () => {
           textEncoderFile: "encoder.gguf",
           host: "127.0.0.1",
           port: 8091,
+          model: wanT2v,
           videoRuntime: {
             mode: "t2v",
             artifacts: {
@@ -168,11 +205,6 @@ describe("runtime launch plans", () => {
                 diffusionFlashAttention: true,
                 vaeConvDirect: false,
               },
-            },
-            estimatedMemoryDemand: {
-              unifiedBytes: 16 * 1024 ** 3,
-              hostBytes: 8 * 1024 ** 3,
-              acceleratorBytes: 5 * 1024 ** 3,
             },
             supportedTargets: [
               {
@@ -210,11 +242,14 @@ describe("runtime launch plans", () => {
           vaeConvDirect: false,
         },
         healthUrl: "http://127.0.0.1:8091/",
+        // Derived from the pinned Wan 2.1 1.3B Q8 bundle (7832652374 bytes
+        // of weights) at 320x320x33 with CPU offload: the largest stage
+        // (text encoder) rounded up to 0.5 GiB on the accelerator.
         memoryDemand: {
-          unifiedBytes: 16 * 1024 ** 3,
-          hostBytes: 8 * 1024 ** 3,
-          acceleratorBytes: 5 * 1024 ** 3,
-          confidence: "estimated",
+          unifiedBytes: 9155955286,
+          hostBytes: 7832652374 + 0.5 * 1024 ** 3,
+          acceleratorBytes: 6.5 * 1024 ** 3,
+          confidence: "derived",
         },
       },
     },
@@ -232,6 +267,7 @@ describe("runtime launch plans", () => {
       textEncoderFile: "encoder.safetensors",
       host: "127.0.0.1",
       port: 8091,
+      model: wanS2v,
       videoRuntime: {
         mode: "s2v",
         artifacts: {
@@ -260,11 +296,6 @@ describe("runtime launch plans", () => {
             vaeConvDirect: false,
           },
         },
-        estimatedMemoryDemand: {
-          unifiedBytes: 30,
-          hostBytes: 20,
-          acceleratorBytes: 10,
-        },
         supportedTargets: [
           { platform: "linux", architecture: "x64", accelerator: "nvidia" },
         ],
@@ -279,7 +310,7 @@ describe("runtime launch plans", () => {
     expect(plan).toMatchObject({
       mode: "s2v",
       audioEncoderPath: `${root}/models/video/wav2vec2.safetensors`,
-      memoryDemand: { confidence: "estimated" },
+      memoryDemand: { confidence: "derived" },
     });
   });
 
@@ -295,7 +326,6 @@ describe("runtime launch plans", () => {
       port: 8080,
       ctxSize: 8192,
       parallel: "auto",
-      modelRequirementGb: 4,
       artifactBytes: 4 * 1024 ** 3,
       hardware,
     });
@@ -324,7 +354,6 @@ describe("runtime launch plans", () => {
       ctxSize: 131_072,
       contextWindowTokens: 32_768,
       parallel: 1,
-      modelRequirementGb: 1.5,
       artifactBytes: 639150592,
       hardware: { memoryGb: 64 },
     });
@@ -358,20 +387,33 @@ describe("runtime launch plans", () => {
       port: 8080,
       ctxSize: 32768,
       parallel: 1 as const,
-      modelRequirementGb: 14,
       artifactBytes: 14 * 1024 ** 3,
       hardware: { memoryGb: 64 },
     };
+    // Non-KV terms for an unlisted model of the given weight size: the
+    // llama.cpp compute buffer and per-slot sampler state.
+    const llmTerms = (weightsBytes: number): MemoryEstimate["terms"] =>
+      estimateLlmMemory({
+        weightsBytes,
+        shape: resolveLlmShape({ weightsBytes }),
+        ctxTokens: 32768,
+        slots: 1,
+        cacheTypeK: "f16",
+        cacheTypeV: "f16",
+        promptCacheBytes: 0,
+      }).terms;
+    const compute = llmTerms(14 * 1024 ** 3).compute!;
+    const slotState = llmTerms(14 * 1024 ** 3).slotState!;
 
     test("uses geometry with q8_0 cache for chat models", () => {
       const plan = resolveLlmLaunchPlan({ ...input, kvGeometry: mistral });
       const kv = (5 * 1024 ** 3 * 34) / 64;
       expect(plan.kvCache).toEqual({ typeK: "q8_0", typeV: "q8_0" });
       expect(plan.memoryDemand.acceleratorBytes).toBe(
-        14 * 1024 ** 3 + kv + 0.5 * 1024 ** 3,
+        14 * 1024 ** 3 + kv + compute + 0.5 * 1024 ** 3,
       );
       expect(plan.memoryDemand.hostBytes).toBe(
-        14 * 1024 ** 3 + 0.5 * 1024 ** 3 + kv + 2048 * 1024 ** 2,
+        14 * 1024 ** 3 + 0.5 * 1024 ** 3 + kv + 2048 * 1024 ** 2 + slotState,
       );
     });
 
@@ -386,7 +428,7 @@ describe("runtime launch plans", () => {
         cacheTypeV: "f16",
       });
       expect(plan.memoryDemand.acceleratorBytes).toBe(
-        14 * 1024 ** 3 + kv + 0.5 * 1024 ** 3,
+        14 * 1024 ** 3 + kv + compute + 0.5 * 1024 ** 3,
       );
     });
 
@@ -397,11 +439,16 @@ describe("runtime launch plans", () => {
       });
     });
 
-    test("falls back to the flat estimate without geometry", () => {
+    test("falls back to the size-based shape without geometry", () => {
       const plan = resolveLlmLaunchPlan(input);
-      expect(plan.memoryDemand.acceleratorBytes).toBe(
-        14 * 1024 ** 3 + 2 * 1024 ** 3 + 0.5 * 1024 ** 3,
+      const kv = kvCacheBytes(
+        resolveLlmShape({ weightsBytes: 14 * 1024 ** 3 }).shape.geometry,
+        { ctxTokens: 32768, slots: 1, cacheTypeK: "f16", cacheTypeV: "f16" },
       );
+      expect(plan.memoryDemand).toMatchObject({
+        acceleratorBytes: 14 * 1024 ** 3 + kv + compute + 0.5 * 1024 ** 3,
+        confidence: "estimated",
+      });
     });
 
     test("keeps embedding models on f16 without prompt-cache RAM", () => {
@@ -417,7 +464,7 @@ describe("runtime launch plans", () => {
       expect(plan.kvCache).toEqual({ typeK: "f16", typeV: "f16" });
       expect(plan.promptCacheRamMib).toBe(0);
       expect(plan.memoryDemand.hostBytes).toBe(
-        14 * 1024 ** 3 + 0.5 * 1024 ** 3 + 5 * 1024 ** 3,
+        14 * 1024 ** 3 + 0.5 * 1024 ** 3 + 5 * 1024 ** 3 + slotState,
       );
     });
 
@@ -438,7 +485,6 @@ describe("runtime launch plans", () => {
       };
       const gemmaInput = {
         ...input,
-        modelRequirementGb: 7.5,
         artifactBytes: 7.5 * 1024 ** 3,
         hardware: { memoryGb: 24 },
       };
@@ -451,7 +497,10 @@ describe("runtime launch plans", () => {
       });
       expect(kv).toBeLessThan(1.4 * 1024 ** 3);
       expect(plan.memoryDemand.acceleratorBytes).toBe(
-        7.5 * 1024 ** 3 + kv + 0.5 * 1024 ** 3,
+        7.5 * 1024 ** 3 +
+          kv +
+          llmTerms(7.5 * 1024 ** 3).compute! +
+          0.5 * 1024 ** 3,
       );
     });
 
@@ -459,7 +508,6 @@ describe("runtime launch plans", () => {
       const tight = {
         ...input,
         parallel: "auto" as const,
-        modelRequirementGb: 14,
         hardware: { memoryGb: 20 },
       };
       expect(resolveLlmLaunchPlan(tight).parallel.slots).toBe(4);
@@ -480,6 +528,7 @@ describe("runtime launch plans", () => {
         textEncoderFile: "encoder.gguf",
         host: "127.0.0.1",
         port: 8091,
+        model: wanT2v,
         target: {
           platform: "darwin",
           architecture: "arm64",
@@ -511,11 +560,6 @@ describe("runtime launch plans", () => {
               diffusionFlashAttention: true,
               vaeConvDirect: false,
             },
-          },
-          estimatedMemoryDemand: {
-            unifiedBytes: 16 * 1024 ** 3,
-            hostBytes: 8 * 1024 ** 3,
-            acceleratorBytes: 5 * 1024 ** 3,
           },
           supportedTargets: [
             {
@@ -594,7 +638,6 @@ describe("backend bind host", () => {
       root,
       modelId: "model",
       host,
-      modelRequirementGb: 1,
       artifactBytes: 1024 ** 3,
       runtimeId: "llm:1",
       modelsDirectory: `${root}/models/llm`,
@@ -630,7 +673,6 @@ describe("backend bind host", () => {
       root,
       modelId: "model",
       host,
-      modelRequirementGb: 1,
       artifactBytes: 1024 ** 3,
       runtimeId: "llm:1",
       modelsDirectory: `${root}/models/llm`,
@@ -660,7 +702,6 @@ describe("backend bind host", () => {
         root,
         modelId: "model",
         host,
-        modelRequirementGb: 1,
         artifactBytes: 1024 ** 3,
       };
       const expected = "127.0.0.1";

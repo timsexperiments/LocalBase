@@ -11,6 +11,13 @@ import {
   recommendedForVram,
   resolveCatalogInstallation,
 } from "./catalog";
+import {
+  LLM_FALLBACK_SHAPE_MODELS,
+  derivedMinVramGb,
+  estimateCatalogModelMemory,
+  hasPublishedLlmShape,
+  totalArtifactBytes,
+} from "./domains/runtime/memory-estimate";
 
 import { qualifiedVideoInput } from "./domains/runtime/video/gateway-contract";
 
@@ -312,11 +319,6 @@ describe("catalog artifact validation", () => {
             vaeConvDirect: false,
           },
         },
-        estimatedMemoryDemand: {
-          unifiedBytes: 20,
-          hostBytes: 20,
-          acceleratorBytes: 10,
-        },
         supportedTargets: [
           { platform: "linux", architecture: "x64", accelerator: "nvidia" },
         ],
@@ -441,11 +443,6 @@ describe("catalog artifact validation", () => {
             diffusionFlashAttention: true,
             vaeConvDirect: false,
           },
-        },
-        estimatedMemoryDemand: {
-          unifiedBytes: 30,
-          hostBytes: 20,
-          acceleratorBytes: 10,
         },
         supportedTargets: [
           { platform: "linux", architecture: "x64", accelerator: "nvidia" },
@@ -853,7 +850,7 @@ describe("catalog artifact validation", () => {
   test("pins the experimental Wan Q8 video bundle and bounded launch profile", () => {
     expect(byId("wan2.1-t2v-1.3b-q8_0")).toMatchObject({
       kind: "video",
-      minVramGb: 12,
+      minVramGb: 8,
       repositoryRevision: "5a512b15fc35d1b67a074cfe55a591be9e9ef9b5",
       artifacts: [
         {
@@ -896,11 +893,6 @@ describe("catalog artifact validation", () => {
             diffusionFlashAttention: true,
             vaeConvDirect: false,
           },
-        },
-        estimatedMemoryDemand: {
-          unifiedBytes: 24 * 1024 ** 3,
-          hostBytes: 16 * 1024 ** 3,
-          acceleratorBytes: 9 * 1024 ** 3,
         },
         supportedTargets: [
           {
@@ -983,11 +975,6 @@ describe("catalog artifact validation", () => {
             vaeConvDirect: false,
           },
         },
-        estimatedMemoryDemand: {
-          unifiedBytes: 41 * 1024 ** 3,
-          hostBytes: 32 * 1024 ** 3,
-          acceleratorBytes: 9 * 1024 ** 3,
-        },
         supportedTargets: [
           { platform: "linux", architecture: "x64", accelerator: "nvidia" },
         ],
@@ -1058,11 +1045,6 @@ describe("catalog artifact validation", () => {
             diffusionFlashAttention: true,
             vaeConvDirect: true,
           },
-        },
-        estimatedMemoryDemand: {
-          unifiedBytes: 16 * 1024 ** 3,
-          hostBytes: 16 * 1024 ** 3,
-          acceleratorBytes: 8 * 1024 ** 3,
         },
         supportedTargets: [
           {
@@ -1239,20 +1221,20 @@ describe("FLUX Klein image additions", () => {
     {
       id: "flux2-klein-4b-q8_0",
       bytes: 7134122044,
-      memoryGb: 14,
+      deviceBytes: 10388901948,
       encoder: "Qwen3-4B-Q4_K_M.gguf",
       commercialStatus: "open",
     },
     {
       id: "flux2-klein-9b-q4_0",
       bytes: 10980203836,
-      memoryGb: 20,
+      deviceBytes: 15140953404,
       encoder: "Qwen3-8B-Q4_K_M.gguf",
       commercialStatus: "conditional",
     },
   ])(
     "resolves $id into a complete image launch plan",
-    ({ id, bytes, memoryGb, encoder, commercialStatus }) => {
+    ({ id, bytes, deviceBytes, encoder, commercialStatus }) => {
       const entry = byId(id);
       if (!entry?.imageRuntime) throw new Error(`Missing image profile: ${id}`);
       const artifactBytes = entry.artifacts.reduce(
@@ -1270,7 +1252,7 @@ describe("FLUX Klein image additions", () => {
         modelFile: entry.imageRuntime.artifacts.diffusionModel,
         host: "127.0.0.1",
         port: 8083,
-        modelRequirementGb: entry.minVramGb,
+        model: entry,
         artifactBytes,
         imageRuntime: entry.imageRuntime,
       });
@@ -1293,10 +1275,10 @@ describe("FLUX Klein image additions", () => {
         "8083",
       ]);
       expect(plan.memoryDemand).toEqual({
-        unifiedBytes: (memoryGb + 0.5) * 1024 ** 3,
+        unifiedBytes: deviceBytes,
         hostBytes: bytes + 0.5 * 1024 ** 3,
-        acceleratorBytes: memoryGb * 1024 ** 3,
-        confidence: "estimated",
+        acceleratorBytes: deviceBytes,
+        confidence: "derived",
       });
     },
   );
@@ -1332,4 +1314,56 @@ describe("Cloudflare open-weight image additions", () => {
       expect(entry?.features).toEqual(["text-to-image"]);
     },
   );
+});
+
+describe("derived memory estimates", () => {
+  test.each(CATALOG.map((model) => [model.modelId, model] as const))(
+    "%s estimate covers its artifacts",
+    (_id, model) => {
+      const { demand } = estimateCatalogModelMemory(model);
+      const artifacts = totalArtifactBytes(model);
+      expect(demand.unifiedBytes).toBeGreaterThanOrEqual(artifacts);
+      expect(demand.hostBytes).toBeGreaterThanOrEqual(artifacts);
+
+      const hostOnly = new Set<string>(
+        model.imageRuntime?.kind === "diffusion-flux1"
+          ? [
+              model.imageRuntime.artifacts.clipL,
+              model.imageRuntime.artifacts.t5xxl,
+            ]
+          : [],
+      );
+      const resident = model.artifacts.filter(
+        (artifact) => !hostOnly.has(artifact.filename),
+      );
+      const offload =
+        model.videoRuntime?.qualification.launchOptions.cpuOffload ?? false;
+      const required = offload
+        ? Math.max(
+            ...resident.map((artifact) => artifact.expectedSizeBytes ?? 0),
+          )
+        : resident.reduce(
+            (sum, artifact) => sum + (artifact.expectedSizeBytes ?? 0),
+            0,
+          );
+      expect(demand.acceleratorBytes).toBeGreaterThanOrEqual(required);
+    },
+  );
+
+  test.each(CATALOG.map((model) => [model.modelId, model] as const))(
+    "%s minVramGb equals its derived tier",
+    (_id, model) => {
+      expect(model.minVramGb).toBe(derivedMinVramGb(model));
+    },
+  );
+
+  test("every LLM has a published shape or is a known fallback", () => {
+    const unknown = CATALOG.filter(
+      (model) =>
+        model.kind === "llm" &&
+        !hasPublishedLlmShape(model.modelId) &&
+        !LLM_FALLBACK_SHAPE_MODELS.has(model.modelId),
+    ).map((model) => model.modelId);
+    expect(unknown).toEqual([]);
+  });
 });

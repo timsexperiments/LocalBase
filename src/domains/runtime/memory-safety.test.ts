@@ -4,6 +4,7 @@ import {
   effectiveMemoryReserveBytes,
   evaluateMemoryAdmission,
   gibibyte,
+  GPU_WORKING_SET_POOL_ID,
   memorySafetyConfigSchema,
   observeMemoryPressure,
   projectRuntimeMemoryDemand,
@@ -399,5 +400,47 @@ describe("runtime memory safety", () => {
         "unknown",
       ),
     ).toMatchObject({ action: "allow" });
+  });
+});
+
+describe("unified GPU working-set cap", () => {
+  const capped: MemoryTopology = {
+    kind: "unified",
+    system: { id: "system", capacityBytes: 96 * gibibyte },
+    gpuWorkingSetBytes: 10 * gibibyte,
+  };
+  const plenty = snapshot([
+    {
+      poolId: "system",
+      availability: "available",
+      availableBytes: 90 * gibibyte,
+      pressure: "normal",
+    },
+  ]);
+
+  test("rejects accelerator demand above the cap even with free RAM", () => {
+    expect(
+      evaluateMemoryAdmission({
+        topology: capped,
+        config: defaultMemorySafetyConfig(),
+        demand,
+        snapshot: plenty,
+      }),
+    ).toEqual({
+      kind: "rejected",
+      reason: "accelerator-memory",
+      poolId: GPU_WORKING_SET_POOL_ID,
+    });
+  });
+
+  test("admits accelerator demand at or below the cap", () => {
+    expect(
+      evaluateMemoryAdmission({
+        topology: { ...capped, gpuWorkingSetBytes: 12 * gibibyte },
+        config: defaultMemorySafetyConfig(),
+        demand,
+        snapshot: plenty,
+      }).kind,
+    ).toBe("admitted");
   });
 });

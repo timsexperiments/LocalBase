@@ -35,12 +35,39 @@ export type MemoryTopology =
   | Readonly<{
       kind: "unified";
       system: MemoryPool;
+      /**
+       * Largest GPU-resident working set the accelerator should be asked to
+       * hold (Metal `recommendedMaxWorkingSetSize` on Apple Silicon). Unified
+       * memory beyond it is not reliably GPU-addressable, so a runtime whose
+       * accelerator demand exceeds it is rejected even if RAM is free.
+       */
+      gpuWorkingSetBytes?: number;
     }>
   | Readonly<{
       kind: "discrete";
       system: MemoryPool;
       accelerators: readonly (MemoryPool & { pciBusId?: string })[];
     }>;
+
+/** Pool id reported when a demand exceeds the unified GPU working-set cap. */
+export const GPU_WORKING_SET_POOL_ID = "gpu-working-set";
+
+/**
+ * Whether one runtime's accelerator demand exceeds the unified GPU
+ * working-set cap. The cap is per runtime: concurrent runtimes are not summed
+ * against it (their total is still bounded by system memory).
+ */
+export function exceedsGpuWorkingSet(
+  topology: MemoryTopology,
+  demand: RuntimeMemoryDemand,
+): boolean {
+  return (
+    topology.kind === "unified" &&
+    topology.gpuWorkingSetBytes !== undefined &&
+    topology.gpuWorkingSetBytes > 0 &&
+    demand.acceleratorBytes > topology.gpuWorkingSetBytes
+  );
+}
 
 export type MemoryPressure = "normal" | "constrained" | "critical" | "unknown";
 
@@ -71,7 +98,12 @@ export type RuntimeMemoryDemand = Readonly<{
   unifiedBytes: number;
   hostBytes: number;
   acceleratorBytes: number;
-  confidence: "authoritative" | "estimated";
+  /**
+   * authoritative: exact accounting; derived: computed from known model
+   * geometry; estimated: size-based fallback or allowance; measured: observed
+   * peak from a real run (see memory-estimate.ts preferMeasured).
+   */
+  confidence: "authoritative" | "derived" | "estimated" | "measured";
 }>;
 
 export type ProjectedMemoryDemand = Readonly<{
@@ -268,6 +300,13 @@ export function evaluateMemoryAdmission(input: {
   demand: RuntimeMemoryDemand;
   acceleratorPoolId?: string;
 }): MemoryAdmissionDecision {
+  if (exceedsGpuWorkingSet(input.topology, input.demand)) {
+    return {
+      kind: "rejected",
+      reason: "accelerator-memory",
+      poolId: GPU_WORKING_SET_POOL_ID,
+    };
+  }
   const projectedDemand = projectRuntimeMemoryDemand(input);
   const snapshots = new Map(
     input.snapshot.pools.map((pool) => [pool.poolId, pool]),

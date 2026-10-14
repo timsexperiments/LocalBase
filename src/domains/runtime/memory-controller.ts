@@ -2,6 +2,8 @@ import type { HostMemoryProvider } from "./memory/host-memory-provider";
 import {
   evaluateMemoryAdmission,
   effectiveMemoryReserveBytes,
+  exceedsGpuWorkingSet,
+  GPU_WORKING_SET_POOL_ID,
   observeMemoryPressure,
   type HostMemorySnapshot,
   type MemoryAdmissionDecision,
@@ -314,6 +316,18 @@ export class MemorySafetyController {
     request: RuntimeMemoryReservationRequest,
   ): RuntimeMemoryCapacityShortfall | undefined {
     const topology = this.provider.topology;
+    if (
+      topology.kind === "unified" &&
+      exceedsGpuWorkingSet(topology, request.demand)
+    ) {
+      const cap = topology.gpuWorkingSetBytes!;
+      return {
+        poolId: GPU_WORKING_SET_POOL_ID,
+        requiredBytes: request.demand.acceleratorBytes,
+        usableBytes: cap,
+        capacityBytes: cap,
+      };
+    }
     const requiresAccelerator =
       topology.kind === "discrete" && request.demand.acceleratorBytes > 0;
     if (requiresAccelerator && topology.accelerators.length !== 1) {
@@ -396,14 +410,16 @@ export class MemorySafetyController {
           : "unavailable",
         pending_bytes: pendingBytes,
         requested_bytes:
-          topology.kind === "unified"
-            ? request.demand.unifiedBytes
-            : isSystem
-              ? request.demand.hostBytes
-              : request.demand.acceleratorBytes === 0 ||
-                  topology.accelerators.length === 1
-                ? request.demand.acceleratorBytes
-                : "unavailable",
+          decision.poolId === GPU_WORKING_SET_POOL_ID
+            ? request.demand.acceleratorBytes
+            : topology.kind === "unified"
+              ? request.demand.unifiedBytes
+              : isSystem
+                ? request.demand.hostBytes
+                : request.demand.acceleratorBytes === 0 ||
+                    topology.accelerators.length === 1
+                  ? request.demand.acceleratorBytes
+                  : "unavailable",
         effective_available_bytes:
           typeof measuredBytes === "number" && typeof pendingBytes === "number"
             ? Math.max(0, measuredBytes - pendingBytes)

@@ -45,6 +45,7 @@ import {
 } from "../models/model-eligibility";
 import type { MemorySafetyController } from "./memory-controller";
 import type { MemoryTopology } from "./memory-safety";
+import { estimateTtsMemory, estimateVideoMemory } from "./memory-estimate";
 import { SpeechSupervisor, type SpeechPreparation } from "./speech-supervisor";
 import { ManagedService } from "./supervisor";
 import type { RuntimeSupervisor } from "./supervisor-registry";
@@ -584,7 +585,7 @@ export function createRuntimeSupervisorFactory(
             modelFile: preflightModelFile,
             host: sttHost(snapshot.config, overrides),
             port: sttPort(snapshot.config, overrides),
-            modelRequirementGb: spec?.minVramGb,
+            model: spec,
             artifactBytes: await artifactBytes(
               modelId,
               config.sttModelsDir,
@@ -623,7 +624,7 @@ export function createRuntimeSupervisorFactory(
             modelFile,
             host: sttHost(snapshot.config, overrides),
             port: sttPort(snapshot.config, overrides),
-            modelRequirementGb: spec?.minVramGb,
+            model: spec,
             artifactBytes: await artifactBytes(
               modelId,
               config.sttModelsDir,
@@ -647,12 +648,16 @@ export function createRuntimeSupervisorFactory(
     }
 
     if (modality === "tts") {
+      const ttsSpec = byId(modelId);
       return new SpeechSupervisor({
         runtimeId,
         root: config.root,
         modelId,
         logger: ctx.logger,
         memorySafety: dependencies.memorySafety,
+        ...(ttsSpec?.kind === "tts"
+          ? { memoryDemand: estimateTtsMemory(ttsSpec).demand }
+          : {}),
         prepare: async (): Promise<SpeechPreparation> => {
           const spec = byId(modelId);
           if (!spec || spec.kind !== "tts") {
@@ -740,10 +745,7 @@ export function createRuntimeSupervisorFactory(
           if (!installation.complete) {
             return signal?.aborted
               ? undefined
-              : {
-                  ...spec.videoRuntime.estimatedMemoryDemand,
-                  confidence: "estimated" as const,
-                };
+              : estimateVideoMemory(spec).demand;
           }
           const plan = resolveVideoLaunchPlan({
             runtimeId,
@@ -756,6 +758,7 @@ export function createRuntimeSupervisorFactory(
             port: videoPort(overrides),
             videoRuntime: spec.videoRuntime,
             target,
+            model: spec,
           });
           return signal?.aborted ? undefined : plan.memoryDemand;
         },
@@ -787,6 +790,7 @@ export function createRuntimeSupervisorFactory(
             port: videoPort(overrides),
             videoRuntime: spec.videoRuntime,
             target,
+            model: spec,
           });
           let installation = await resolveCatalogInstallation(
             spec,
@@ -890,7 +894,7 @@ export function createRuntimeSupervisorFactory(
           modelFile,
           host: imageHost(overrides),
           port: imagePort(overrides),
-          modelRequirementGb: spec?.minVramGb,
+          model: spec,
           imageRuntime: spec?.imageRuntime,
           artifactBytes: spec?.imageRuntime
             ? spec.artifacts.reduce(
@@ -960,7 +964,7 @@ export function createRuntimeSupervisorFactory(
           modelFile,
           host: imageHost(overrides),
           port: imagePort(overrides),
-          modelRequirementGb: spec?.minVramGb,
+          model: spec,
           imageRuntime: spec?.imageRuntime,
           artifactBytes: spec?.imageRuntime
             ? spec.artifacts.reduce(

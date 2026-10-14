@@ -25,7 +25,98 @@ export type MacOsHostMemoryProviderOptions = Readonly<{
   memoryReader?: MachMemoryReader;
   totalMemoryBytes?: number;
   appleSilicon?: boolean;
+  /**
+   * Explicit unified GPU working-set cap in bytes. Takes precedence over the
+   * `LOCALBASE_GPU_WORKING_SET_GB` environment variable, the Metal probe and
+   * the heuristic. Only consulted on Apple Silicon.
+   */
+  gpuWorkingSetBytes?: number;
+  /** Replaces the Metal probe (tests); return null when unavailable. */
+  metalWorkingSetProbe?: () => number | null;
+  /** Environment used for the override variable (defaults to process.env). */
+  env?: Readonly<Record<string, string | undefined>>;
 }>;
+
+const GIB = 1024 ** 3;
+export const GPU_WORKING_SET_ENV = "LOCALBASE_GPU_WORKING_SET_GB";
+
+/**
+ * Conservative fallback for Metal's `recommendedMaxWorkingSetSize` when the
+ * probe is unavailable: the commonly cited default GPU wired limit is about two
+ * thirds of unified memory on machines with at most 36 GiB and about three
+ * quarters above that (tunable via `sysctl iogpu.wired_limit_mb`). Real
+ * devices may report more (a 64 GiB M-series reports ~0.81x), so the probe wins
+ * whenever it is available.
+ */
+export function appleGpuWorkingSetHeuristic(totalBytes: number): number {
+  if (!Number.isFinite(totalBytes) || totalBytes <= 0) return 0;
+  return Math.floor(
+    totalBytes <= 36 * GIB ? (totalBytes * 2) / 3 : (totalBytes * 3) / 4,
+  );
+}
+
+let cachedMetalProbe: number | null | undefined;
+
+/**
+ * Reads `MTLDevice.recommendedMaxWorkingSetSize` for the default Metal device
+ * once per process via Bun FFI. Returns null when Metal or FFI is unavailable.
+ */
+export function probeMetalRecommendedWorkingSet(): number | null {
+  if (cachedMetalProbe !== undefined) return cachedMetalProbe;
+  cachedMetalProbe = null;
+  try {
+    const { dlopen } = require("bun:ffi") as typeof import("bun:ffi");
+    const metal = dlopen("/System/Library/Frameworks/Metal.framework/Metal", {
+      MTLCreateSystemDefaultDevice: { args: [], returns: "ptr" },
+    });
+    const objc = dlopen("/usr/lib/libobjc.A.dylib", {
+      sel_registerName: { args: ["cstring"], returns: "ptr" },
+      objc_msgSend: { args: ["ptr", "ptr"], returns: "u64" },
+    });
+    const device = metal.symbols.MTLCreateSystemDefaultDevice();
+    if (device) {
+      const selector = objc.symbols.sel_registerName(
+        cstring("recommendedMaxWorkingSetSize"),
+      );
+      if (selector) {
+        const value = Number(objc.symbols.objc_msgSend(device, selector));
+        if (Number.isSafeInteger(value) && value > 0) cachedMetalProbe = value;
+      }
+    }
+  } catch {
+    cachedMetalProbe = null;
+  }
+  return cachedMetalProbe;
+}
+
+function positiveBytes(value: number | null | undefined): number | undefined {
+  return value !== null &&
+    value !== undefined &&
+    Number.isFinite(value) &&
+    value > 0
+    ? Math.floor(value)
+    : undefined;
+}
+
+/** Resolution order: option, env override (GiB), Metal probe, heuristic. */
+export function resolveGpuWorkingSetBytes(
+  options: MacOsHostMemoryProviderOptions,
+  totalBytes: number,
+): number | undefined {
+  const explicit = positiveBytes(options.gpuWorkingSetBytes);
+  if (explicit !== undefined) return explicit;
+  const raw = (options.env ?? process.env)[GPU_WORKING_SET_ENV]?.trim();
+  if (raw) {
+    const gb = Number(raw);
+    const fromEnv = positiveBytes(Number.isFinite(gb) ? gb * GIB : undefined);
+    if (fromEnv !== undefined) return fromEnv;
+  }
+  const probed = positiveBytes(
+    (options.metalWorkingSetProbe ?? probeMetalRecommendedWorkingSet)(),
+  );
+  if (probed !== undefined) return probed;
+  return positiveBytes(appleGpuWorkingSetHeuristic(totalBytes));
+}
 
 export function parseMachAvailableBytes(
   buffer: Uint8Array,
@@ -164,8 +255,15 @@ export function createMacOsHostMemoryProvider(
   const appleSilicon = options.appleSilicon ?? detectAppleSilicon();
   const capacityBytes = options.totalMemoryBytes ?? totalMemory();
   const system: MemoryPool = { id: "system", capacityBytes };
+  const gpuWorkingSetBytes = appleSilicon
+    ? resolveGpuWorkingSetBytes(options, capacityBytes)
+    : undefined;
   const topology: MemoryTopology = appleSilicon
-    ? { kind: "unified", system }
+    ? {
+        kind: "unified",
+        system,
+        ...(gpuWorkingSetBytes !== undefined ? { gpuWorkingSetBytes } : {}),
+      }
     : { kind: "discrete", system, accelerators: [] };
   const reader = options.memoryReader ?? createMachMemoryReader();
 

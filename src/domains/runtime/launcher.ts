@@ -47,7 +47,6 @@ export function buildLlamaServerArgs(
     | "port"
     | "ctxSize"
     | "parallel"
-    | "modelRequirementGb"
     | "hardware"
     | "embedding"
     | "kvCache"

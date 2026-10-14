@@ -22,6 +22,7 @@ export const SPEECH_TIMEOUT_MS = 120_000;
 
 const CHILD_STOP_GRACE_MS = 500;
 const MAX_NATIVE_DIAGNOSTIC_BYTES = 64 * 1024;
+/** Fallback when the caller has no catalog-derived TTS estimate. */
 const SPEECH_MEMORY_DEMAND: RuntimeMemoryDemand = Object.freeze({
   unifiedBytes: 8 * gibibyte,
   hostBytes: 8 * gibibyte,
@@ -85,6 +86,8 @@ type SpeechSupervisorOptions = Readonly<{
   logger: ILogger;
   memorySafety: MemorySafetyController;
   prepare: () => Promise<SpeechPreparation>;
+  /** Per-generation reservation; defaults to a conservative 8 GiB allowance. */
+  memoryDemand?: RuntimeMemoryDemand;
   spawn?: (command: string[], cwd: string) => Bun.Subprocess;
   spawnGuardian?: (command: string[]) => Bun.Subprocess | undefined;
   writePrivateFile?: (path: string, contents: string) => Promise<void>;
@@ -461,7 +464,7 @@ export class SpeechSupervisor {
       if (aborted()) throw new SpeechGenerationAbortedError();
       reservation = await this.options.memorySafety.reserve({
         runtimeId: `${this.options.runtimeId}:generation:${++this.generation}`,
-        demand: SPEECH_MEMORY_DEMAND,
+        demand: this.options.memoryDemand ?? SPEECH_MEMORY_DEMAND,
       });
       if (aborted()) throw new SpeechGenerationAbortedError();
 
