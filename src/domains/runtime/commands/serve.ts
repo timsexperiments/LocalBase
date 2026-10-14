@@ -2115,10 +2115,18 @@ export function resourceUnavailable(error?: unknown): Response {
       422,
     );
   }
+  const gpuWorkingSet =
+    error instanceof RuntimeMemoryAdmissionError
+      ? error.gpuWorkingSet
+      : undefined;
   return openAIErrorResponse(
     {
-      message:
-        "Insufficient available memory to start the requested runtime. Please try again shortly.",
+      message: gpuWorkingSet
+        ? `This model needs about ${gibibytes(gpuWorkingSet.requiredBytes)} of GPU memory, ` +
+          `but models already loaded use ${gibibytes(gpuWorkingSet.residentBytes)} ` +
+          `of the ${gibibytes(gpuWorkingSet.capBytes)} GPU working-set limit on this host. ` +
+          "Retry once another model is idle or unloaded."
+        : "Insufficient available memory to start the requested runtime. Please try again shortly.",
       type: "api_error",
       param: null,
       code: "insufficient_memory",

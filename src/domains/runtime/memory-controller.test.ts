@@ -766,3 +766,171 @@ describe("unified GPU working-set cap", () => {
     ok.release();
   });
 });
+
+describe("unified GPU working-set cap across resident runtimes", () => {
+  const cappedTopology: MemoryTopology = {
+    ...topology,
+    gpuWorkingSetBytes: 10 * gibibyte,
+  };
+  const gpuDemand = {
+    unifiedBytes: 2 * gibibyte,
+    hostBytes: 0,
+    acceleratorBytes: 6 * gibibyte,
+    confidence: "measured" as const,
+  };
+  const cappedController = () =>
+    new MemorySafetyController(
+      { ...provider(), topology: cappedTopology },
+      defaultMemorySafetyConfig(),
+    );
+
+  test("rejects a runtime that fits alone but not beside a resident runtime", async () => {
+    const controller = cappedController();
+    const first = await controller.reserve({
+      runtimeId: "llm:a:1",
+      demand: gpuDemand,
+    });
+    first.materialize();
+
+    const error = await controller
+      .reserve({ runtimeId: "image:b:2", demand: gpuDemand })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(RuntimeMemoryAdmissionError);
+    const admission = error as RuntimeMemoryAdmissionError;
+    expect(admission.decision).toEqual({
+      kind: "rejected",
+      reason: "accelerator-memory",
+      poolId: GPU_WORKING_SET_POOL_ID,
+    });
+    // Transient: stopping the resident runtime can make room.
+    expect(admission.capacity).toBeUndefined();
+    expect(admission.gpuWorkingSet).toEqual({
+      requiredBytes: 6 * gibibyte,
+      residentBytes: 6 * gibibyte,
+      capBytes: 10 * gibibyte,
+    });
+    expect(admission.message).toContain("GPU working set");
+
+    first.release();
+    const second = await controller.reserve({
+      runtimeId: "image:b:2",
+      demand: gpuDemand,
+    });
+    second.release();
+  });
+
+  test("counts runtimes that are still starting", async () => {
+    const controller = cappedController();
+    const starting = await controller.reserve({
+      runtimeId: "llm:a:1",
+      demand: gpuDemand,
+    });
+    await expect(
+      controller.reserve({ runtimeId: "image:b:2", demand: gpuDemand }),
+    ).rejects.toMatchObject({
+      gpuWorkingSet: { residentBytes: 6 * gibibyte },
+    });
+    starting.release();
+  });
+
+  test("admits demand that sums to exactly the cap", async () => {
+    const controller = cappedController();
+    const first = await controller.reserve({
+      runtimeId: "llm:a:1",
+      demand: { ...gpuDemand, acceleratorBytes: 4 * gibibyte },
+    });
+    first.materialize();
+    const second = await controller.reserve({
+      runtimeId: "image:b:2",
+      demand: gpuDemand,
+    });
+    second.release();
+    first.release();
+  });
+
+  test("does not count a runtime that is being replaced", async () => {
+    const controller = cappedController();
+    const current = await controller.reserve({
+      runtimeId: "llm:a:1",
+      demand: gpuDemand,
+    });
+    current.materialize();
+    const other = await controller.reserve({
+      runtimeId: "stt:c:3",
+      demand: { ...gpuDemand, acceleratorBytes: 1 * gibibyte },
+    });
+    other.materialize();
+
+    expect(
+      await controller.checkAdmission({ demand: gpuDemand }),
+    ).toMatchObject({ gpuWorkingSet: { residentBytes: 7 * gibibyte } });
+    expect(
+      await controller.checkAdmission(
+        { demand: gpuDemand },
+        { releasingRuntimeIds: ["llm:a:1"] },
+      ),
+    ).toBeUndefined();
+    // Still rejected when the remaining runtimes alone leave too little room.
+    expect(
+      await controller.checkAdmission(
+        { demand: { ...gpuDemand, acceleratorBytes: 9.5 * gibibyte } },
+        { releasingRuntimeIds: ["llm:a:1"] },
+      ),
+    ).toMatchObject({ gpuWorkingSet: { residentBytes: 1 * gibibyte } });
+    other.release();
+    current.release();
+  });
+
+  test("releasing a runtime also releases its per-generation reservations", async () => {
+    const controller = cappedController();
+    const generation = await controller.reserve({
+      runtimeId: "tts:voice:4:generation:1",
+      demand: gpuDemand,
+    });
+    expect(
+      await controller.checkAdmission(
+        { demand: gpuDemand },
+        { releasingRuntimeIds: ["tts:voice:4"] },
+      ),
+    ).toBeUndefined();
+    // A runtime id that merely shares a prefix is not released.
+    expect(
+      await controller.checkAdmission(
+        { demand: gpuDemand },
+        { releasingRuntimeIds: ["tts:voi"] },
+      ),
+    ).toBeInstanceOf(RuntimeMemoryAdmissionError);
+    generation.release();
+  });
+
+  test("ignores runtimes without accelerator demand and topologies without a cap", async () => {
+    const controller = cappedController();
+    const cpuOnly = await controller.reserve({
+      runtimeId: "stt:cpu:1",
+      demand: { ...gpuDemand, acceleratorBytes: 0 },
+    });
+    cpuOnly.materialize();
+    const gpu = await controller.reserve({
+      runtimeId: "llm:a:2",
+      demand: { ...gpuDemand, acceleratorBytes: 10 * gibibyte },
+    });
+    gpu.release();
+    cpuOnly.release();
+
+    const uncapped = new MemorySafetyController(
+      provider(),
+      defaultMemorySafetyConfig(),
+    );
+    const a = await uncapped.reserve({
+      runtimeId: "llm:a:1",
+      demand: gpuDemand,
+    });
+    a.materialize();
+    const b = await uncapped.reserve({
+      runtimeId: "image:b:2",
+      demand: gpuDemand,
+    });
+    b.release();
+    a.release();
+  });
+});

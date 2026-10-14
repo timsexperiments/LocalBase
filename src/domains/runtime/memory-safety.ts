@@ -54,8 +54,9 @@ export const GPU_WORKING_SET_POOL_ID = "gpu-working-set";
 
 /**
  * Whether one runtime's accelerator demand exceeds the unified GPU
- * working-set cap. The cap is per runtime: concurrent runtimes are not summed
- * against it (their total is still bounded by system memory).
+ * working-set cap on its own. A runtime that exceeds it can never be admitted.
+ * The sum across concurrent runtimes is checked separately by the memory
+ * controller, which can recover by stopping idle runtimes.
  */
 export function exceedsGpuWorkingSet(
   topology: MemoryTopology,

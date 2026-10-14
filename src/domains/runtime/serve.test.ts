@@ -4057,3 +4057,29 @@ test("memory admission failures distinguish transient pressure from models that 
   expect(body.error.message).toContain("smaller quantization");
   expect(body.error.message).not.toContain("try again");
 });
+
+test("GPU working-set oversubscription by loaded models is retryable and explains the shared limit", async () => {
+  const gib = 1024 ** 3;
+  const response = resourceUnavailable(
+    new RuntimeMemoryAdmissionError(
+      {
+        kind: "rejected",
+        reason: "accelerator-memory",
+        poolId: "gpu-working-set",
+      },
+      undefined,
+      undefined,
+      { requiredBytes: 6 * gib, residentBytes: 7 * gib, capBytes: 10 * gib },
+    ),
+  );
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).toBe("5");
+  const body = (await response.json()) as {
+    error: { message: string; code: string };
+  };
+  expect(body.error.code).toBe("insufficient_memory");
+  expect(body.error.message).toContain("6.0 GiB");
+  expect(body.error.message).toContain("7.0 GiB");
+  expect(body.error.message).toContain("10.0 GiB");
+  expect(body.error.message).toContain("already loaded");
+});
