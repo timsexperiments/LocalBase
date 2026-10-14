@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { gzipSync } from "fflate";
 import { pack } from "tar-stream";
-import { verifyRegistryPackage } from "./kokoro-release";
+import { verifyPublished, verifyRegistryPackage } from "./kokoro-release";
 import { validateSpeechWav } from "../src/domains/runtime/speech-supervisor";
 import { parseArguments } from "../runtimes/kokoro/cli";
 import {
@@ -291,4 +291,117 @@ test("immutable release manifest binds each canonical archive to its target and 
       runtimes: { ...manifest.runtimes, "linux-x64": artifact("macos-arm64") },
     }).success,
   ).toBe(false);
+});
+
+function publishedReleaseFixture() {
+  const repository = "timsexperiments/LocalBase";
+  const tag = "kokoro-v0.0.1";
+  const sha = (bytes: Uint8Array) =>
+    createHash("sha256").update(bytes).digest("hex");
+  const archives = {
+    "macos-arm64": new TextEncoder().encode("mac archive"),
+    "linux-x64": new TextEncoder().encode("linux archive"),
+  } as const;
+  const runtimes = Object.fromEntries(
+    (["macos-arm64", "linux-x64"] as const).map((target) => [
+      target,
+      {
+        target,
+        assetName: archiveName(target),
+        expectedSizeBytes: archives[target].length,
+        sha256: sha(archives[target]),
+        inventorySha256: "b".repeat(64),
+        format: "tar.gz",
+        stripComponents: 0,
+      },
+    ]),
+  );
+  const files = new Map<string, Uint8Array>([
+    [archiveName("macos-arm64"), archives["macos-arm64"]],
+    [archiveName("linux-x64"), archives["linux-x64"]],
+    [
+      "kokoro-runtime-manifest.json",
+      new TextEncoder().encode(JSON.stringify({ version: 1, tag, runtimes })),
+    ],
+    [
+      "checksums.txt",
+      new TextEncoder().encode(
+        (["macos-arm64", "linux-x64"] as const)
+          .map((target) => `${sha(archives[target])}  ${archiveName(target)}`)
+          .join("\n") + "\n",
+      ),
+    ],
+  ]);
+  const url = (name: string) =>
+    `https://github.com/${repository}/releases/download/${tag}/${name}`;
+  const release = {
+    id: 42,
+    tag_name: tag,
+    draft: false,
+    prerelease: false,
+    assets: [...files].map(([name, bytes]) => ({
+      name,
+      size: bytes.length,
+      digest: `sha256:${sha(bytes)}`,
+      browser_download_url: url(name),
+    })),
+  };
+  const fetcher = async (input: string) => {
+    if (input.endsWith(`/releases/tags/${tag}`)) return Response.json(release);
+    const name = input.split("/").at(-1)!;
+    const bytes = files.get(name);
+    return bytes
+      ? new Response(new Uint8Array(bytes))
+      : new Response("", { status: 404 });
+  };
+  return { repository, tag, files, release, fetcher };
+}
+
+test("published release verification pins both canonical archives into a receipt", async () => {
+  const fixture = publishedReleaseFixture();
+  const receipt = await verifyPublished(
+    fixture.repository,
+    fixture.tag,
+    fixture.fetcher,
+  );
+  expect(receipt.releaseId).toBe(42);
+  expect(receipt.runtimes["linux-x64"].url).toBe(
+    `https://github.com/${fixture.repository}/releases/download/kokoro-v0.0.1/kokoro-tts-linux-x64.tar.gz`,
+  );
+  expect(receipt.runtimes["macos-arm64"].artifact.expectedSizeBytes).toBe(
+    fixture.files.get(archiveName("macos-arm64"))!.length,
+  );
+});
+
+test("published release verification rejects tampered assets, extra assets, and noncanonical URLs", async () => {
+  const tampered = publishedReleaseFixture();
+  tampered.files.set(
+    archiveName("linux-x64"),
+    new TextEncoder().encode("evil archive!"),
+  );
+  await expect(
+    verifyPublished(tampered.repository, tampered.tag, tampered.fetcher),
+  ).rejects.toThrow("integrity");
+
+  const extra = publishedReleaseFixture();
+  extra.release.assets.push({
+    ...extra.release.assets[0]!,
+    name: "extra.bin",
+  });
+  await expect(
+    verifyPublished(extra.repository, extra.tag, extra.fetcher),
+  ).rejects.toThrow("asset set");
+
+  const moved = publishedReleaseFixture();
+  moved.release.assets[0]!.browser_download_url =
+    "https://example.com/kokoro-tts-macos-arm64.tar.gz";
+  await expect(
+    verifyPublished(moved.repository, moved.tag, moved.fetcher),
+  ).rejects.toThrow("Noncanonical");
+
+  const draft = publishedReleaseFixture();
+  draft.release.draft = true;
+  await expect(
+    verifyPublished(draft.repository, draft.tag, draft.fetcher),
+  ).rejects.toThrow();
 });

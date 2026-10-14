@@ -24,7 +24,11 @@ import {
 } from "../runtimes/kokoro/inventory";
 import sources from "../runtimes/kokoro/sources.json";
 import { readSdArchiveEntries } from "./sd-release/archive-reader";
-import { repositorySchema } from "./whisper-release/contracts";
+import { parseChecksumFile } from "../src/utils/checksum";
+import {
+  expectedDownloadUrl,
+  repositorySchema,
+} from "./whisper-release/contracts";
 import {
   archiveName,
   kokoroArtifactSchema,
@@ -624,6 +628,136 @@ export async function assertUnpublished(
   }
 }
 
+type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
+
+const receiptEntrySchema = z
+  .object({ url: z.string().url(), artifact: kokoroArtifactSchema })
+  .strict();
+
+export const kokoroReleaseReceiptSchema = z
+  .object({
+    version: z.literal(1),
+    repository: repositorySchema,
+    tag: kokoroTagSchema,
+    releaseId: z.number().int().positive(),
+    runtimes: z
+      .object({
+        "macos-arm64": receiptEntrySchema,
+        "linux-x64": receiptEntrySchema,
+      })
+      .strict(),
+  })
+  .strict();
+export type KokoroReleaseReceipt = z.infer<typeof kokoroReleaseReceiptSchema>;
+
+const publishedAssetNames = [
+  "checksums.txt",
+  "kokoro-runtime-manifest.json",
+  ...kokoroTargetSchema.options.map(archiveName),
+].sort();
+
+/**
+ * Verifies a published immutable Kokoro release end to end: canonical asset
+ * set and URLs, GitHub digests, checksums.txt and the release manifest all
+ * agree, then returns a receipt that pins both archives.
+ */
+export async function verifyPublished(
+  repositoryInput: unknown,
+  tagInput: unknown,
+  fetcher: Fetcher = fetch,
+): Promise<KokoroReleaseReceipt> {
+  const repository = repositorySchema.parse(repositoryInput);
+  const tag = kokoroTagSchema.parse(tagInput);
+  const response = await fetcher(
+    `https://api.github.com/repos/${repository}/releases/tags/${tag}`,
+    { headers: githubHeaders() },
+  );
+  if (!response.ok)
+    throw new Error(`Published release lookup failed: ${response.status}`);
+  const release = z
+    .object({
+      id: z.number().int().positive(),
+      tag_name: z.literal(tag),
+      draft: z.literal(false),
+      prerelease: z.literal(false),
+      assets: z.array(
+        z
+          .object({
+            name: z.string(),
+            size: z.number().int().positive(),
+            digest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+            browser_download_url: z.string().url(),
+          })
+          .passthrough(),
+      ),
+    })
+    .passthrough()
+    .parse(await response.json());
+  const names = release.assets.map((asset) => asset.name).sort();
+  if (
+    names.length !== publishedAssetNames.length ||
+    names.some((name, index) => name !== publishedAssetNames[index])
+  )
+    throw new Error("Unexpected published Kokoro asset set.");
+  const assets = new Map<string, Uint8Array>();
+  const urls = new Map<string, string>();
+  for (const asset of release.assets) {
+    if (
+      asset.browser_download_url !==
+      expectedDownloadUrl(repository, tag, asset.name)
+    )
+      throw new Error("Noncanonical published asset URL.");
+    const download = await fetcher(asset.browser_download_url, {
+      headers: githubHeaders(),
+    });
+    if (!download.ok)
+      throw new Error(`Published asset download failed: ${asset.name}`);
+    const content = new Uint8Array(await download.arrayBuffer());
+    if (
+      content.length !== asset.size ||
+      `sha256:${createHash("sha256").update(content).digest("hex")}` !==
+        asset.digest
+    ) {
+      throw new Error(`Published asset integrity failed: ${asset.name}`);
+    }
+    assets.set(asset.name, content);
+    urls.set(asset.name, asset.browser_download_url);
+  }
+  const manifest = kokoroReleaseManifestSchema.parse(
+    JSON.parse(
+      new TextDecoder().decode(assets.get("kokoro-runtime-manifest.json")),
+    ),
+  );
+  if (manifest.tag !== tag) throw new Error("Published manifest tag mismatch.");
+  const checksums = parseChecksumFile(
+    new TextDecoder().decode(assets.get("checksums.txt")),
+  );
+  if (checksums.size !== kokoroTargetSchema.options.length)
+    throw new Error("Noncanonical published checksums.");
+  const runtimes: Record<string, { url: string; artifact: KokoroArtifact }> =
+    {};
+  for (const target of kokoroTargetSchema.options) {
+    const pin = manifest.runtimes[target];
+    const content = assets.get(pin.assetName);
+    if (
+      !content ||
+      content.length !== pin.expectedSizeBytes ||
+      createHash("sha256").update(content).digest("hex") !== pin.sha256 ||
+      checksums.get(pin.assetName) !== pin.sha256
+    ) {
+      throw new Error("Published archive does not match immutable manifest.");
+    }
+    runtimes[target] = { url: urls.get(pin.assetName)!, artifact: pin };
+  }
+  return kokoroReleaseReceiptSchema.parse({
+    version: 1,
+    repository,
+    tag,
+    releaseId: release.id,
+    runtimes,
+  });
+}
+
 async function main(): Promise<void> {
   const [operation, ...args] = Bun.argv.slice(2);
   const options = new Map<string, string>();
@@ -640,6 +774,17 @@ async function main(): Promise<void> {
   }
   if (operation === "assert-unpublished") {
     await assertUnpublished(options.get("--repository"), options.get("--tag"));
+    return;
+  }
+  if (operation === "verify-published") {
+    const receipt = await verifyPublished(
+      options.get("--repository"),
+      options.get("--tag"),
+    );
+    await writeFile(
+      z.string().min(1).parse(options.get("--output")),
+      `${JSON.stringify(receipt, null, 2)}\n`,
+    );
     return;
   }
   const directory = z.string().min(1).parse(options.get("--directory"));
