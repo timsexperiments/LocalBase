@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   canonicalGatewayHttpRoute,
   gatewayRequestDisablesIdleTimeout,
+  gatewayRouteServesBufferedJson,
   selectGatewayRoute,
   videoJobIdFromPath,
 } from "./route-dispatch";
@@ -141,3 +142,34 @@ test("a silent long-running request survives the listener idle timeout", async (
     listener.stop(true);
   }
 }, 15_000);
+
+test("labels browser shell, asset, sign-in, and UI API routes", () => {
+  expect(canonicalGatewayHttpRoute("/")).toBe("/");
+  expect(canonicalGatewayHttpRoute("/app/")).toBe("/app");
+  expect(canonicalGatewayHttpRoute("/app/assets/app-kdmkc2h9.js")).toBe(
+    "/app/assets/{asset}",
+  );
+  expect(canonicalGatewayHttpRoute("/app/session?next=1")).toBe("/app/session");
+  expect(canonicalGatewayHttpRoute("/oidc/callback")).toBe("/oidc/callback");
+  expect(canonicalGatewayHttpRoute("/app/api/_localbase/models")).toBe(
+    "/app/api/_localbase/models",
+  );
+  expect(canonicalGatewayHttpRoute("/app/api/_localbase/models/a%2Fb")).toBe(
+    "/app/api/_localbase/models/{model_id}",
+  );
+  expect(canonicalGatewayHttpRoute("/_localbase/model-management")).toBe(
+    "/_localbase/model-management",
+  );
+  expect(canonicalGatewayHttpRoute("/app/api/private")).toBe("unmatched-route");
+  expect(canonicalGatewayHttpRoute("/app/other")).toBe("unmatched-route");
+});
+
+test("compresses only in-memory metadata JSON routes", () => {
+  expect(gatewayRouteServesBufferedJson("/v1/models")).toBe(true);
+  expect(gatewayRouteServesBufferedJson("/app/api/_localbase/models")).toBe(
+    true,
+  );
+  expect(gatewayRouteServesBufferedJson("/_localbase/models/a")).toBe(true);
+  expect(gatewayRouteServesBufferedJson("/v1/chat/completions")).toBe(false);
+  expect(gatewayRouteServesBufferedJson("/app/api/v1/videos")).toBe(false);
+});

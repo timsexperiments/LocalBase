@@ -19,12 +19,13 @@ export type GatewayRoute =
   | "modelMetadataDetail"
   | "notFound";
 
-export const gatewayHttpRoutes = [
+const apiHttpRoutes = [
   "/health",
   "/health/ready",
   "/_localbase/instance",
   "/_localbase/access-management",
   "/_localbase/api-keys",
+  "/_localbase/model-management",
   "/_localbase/models",
   "/_localbase/models/{model_id}",
   "/v1/models",
@@ -39,11 +40,38 @@ export const gatewayHttpRoutes = [
   "/v1/videos/{job_id}",
   "/v1/videos/{job_id}/content",
   "/v1/videos/{job_id}/cancel",
-  "unmatched-route",
 ] as const;
 
-export type GatewayHttpRoute = (typeof gatewayHttpRoutes)[number];
+type ApiHttpRoute = (typeof apiHttpRoutes)[number];
 
+/** Browser shell, static asset, and sign-in routes served outside the API. */
+const uiHttpRoutes = [
+  "/",
+  "/app",
+  "/app/assets/{asset}",
+  "/app/login",
+  "/app/login/magic",
+  "/app/logout",
+  "/app/session",
+  "/oidc/callback",
+  "/github/callback",
+  "/magic-link/callback",
+] as const;
+
+type UiHttpRoute = (typeof uiHttpRoutes)[number];
+type UiApiHttpRoute = `/app/api${ApiHttpRoute}`;
+
+export type GatewayHttpRoute =
+  ApiHttpRoute | UiHttpRoute | UiApiHttpRoute | "unmatched-route";
+
+export const gatewayHttpRoutes = [
+  ...apiHttpRoutes,
+  ...uiHttpRoutes,
+  ...apiHttpRoutes.map((route): UiApiHttpRoute => `/app/api${route}`),
+  "unmatched-route",
+] as [GatewayHttpRoute, ...GatewayHttpRoute[]];
+
+const uiApiPrefix = "/app/api";
 const modelMetadataPrefix = "/_localbase/models/";
 const videoPrefix = "/v1/videos/";
 
@@ -114,9 +142,7 @@ export function selectGatewayRoute(pathname: string): GatewayRoute {
   }
 }
 
-/** Returns a bounded route template suitable for logs, traces, and metrics. */
-export function canonicalGatewayHttpRoute(value: string): GatewayHttpRoute {
-  const pathname = value.split("?", 1)[0];
+function apiHttpRoute(pathname: string): ApiHttpRoute | undefined {
   switch (selectGatewayRoute(pathname)) {
     case "health":
       return "/health";
@@ -157,8 +183,29 @@ export function canonicalGatewayHttpRoute(value: string): GatewayHttpRoute {
     case "models":
       return "/v1/models";
     case "notFound":
-      return "unmatched-route";
+      return pathname === "/_localbase/model-management"
+        ? "/_localbase/model-management"
+        : undefined;
   }
+}
+
+function isUiHttpRoute(pathname: string): pathname is UiHttpRoute {
+  return uiHttpRoutes.some((route) => route === pathname);
+}
+
+/** Returns a bounded route template suitable for logs, traces, and metrics. */
+export function canonicalGatewayHttpRoute(value: string): GatewayHttpRoute {
+  const pathname = value.split("?", 1)[0];
+  const apiRoute = apiHttpRoute(pathname);
+  if (apiRoute) return apiRoute;
+  if (isUiHttpRoute(pathname)) return pathname;
+  if (pathname === "/app/") return "/app";
+  if (pathname.startsWith("/app/assets/")) return "/app/assets/{asset}";
+  if (pathname.startsWith(`${uiApiPrefix}/`)) {
+    const uiApiRoute = apiHttpRoute(pathname.slice(uiApiPrefix.length));
+    if (uiApiRoute) return `${uiApiPrefix}${uiApiRoute}`;
+  }
+  return "unmatched-route";
 }
 
 /**
@@ -180,12 +227,28 @@ const unboundedIdleRoutes: ReadonlySet<GatewayRoute> = new Set<GatewayRoute>([
   "embeddings",
 ]);
 
-const uiApiPrefix = "/app/api";
-
 /** Whether a gateway request should disable the per-connection idle timeout. */
 export function gatewayRequestDisablesIdleTimeout(pathname: string): boolean {
   const apiPath = pathname.startsWith(`${uiApiPrefix}/`)
     ? pathname.slice(uiApiPrefix.length)
     : pathname;
   return unboundedIdleRoutes.has(selectGatewayRoute(apiPath));
+}
+
+/**
+ * Metadata routes whose handlers build their whole JSON body in memory, so
+ * the gateway can buffer and compress them without delaying a stream.
+ */
+const bufferedJsonRoutes: ReadonlySet<GatewayRoute> = new Set<GatewayRoute>([
+  "models",
+  "modelMetadataList",
+  "modelMetadataDetail",
+]);
+
+/** Whether a gateway response is a compressible in-memory JSON document. */
+export function gatewayRouteServesBufferedJson(pathname: string): boolean {
+  const apiPath = pathname.startsWith(`${uiApiPrefix}/`)
+    ? pathname.slice(uiApiPrefix.length)
+    : pathname;
+  return bufferedJsonRoutes.has(selectGatewayRoute(apiPath));
 }

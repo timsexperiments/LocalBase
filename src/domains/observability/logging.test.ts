@@ -23,6 +23,7 @@ import {
   createLogEvent,
   followLogEvents,
   formatHumanLogEvent,
+  httpRequestSeverity,
   logEventSchema,
   logDirectory,
   matchesLogFilters,
@@ -979,3 +980,11 @@ test("reverse snapshots preserve UTF-8 boundaries and discard oversized partial 
 function activeLogPathForTest(root: string): string {
   return join(logDirectory(root), ACTIVE_LOG_FILENAME);
 }
+
+test("keeps a signed-out session probe at INFO while other failures escalate", () => {
+  expect(httpRequestSeverity("/app/session", 401)).toBe("info");
+  expect(httpRequestSeverity("/app/session", 403)).toBe("warn");
+  expect(httpRequestSeverity("/v1/models", 401)).toBe("warn");
+  expect(httpRequestSeverity("/app/assets/{asset}", 200)).toBe("info");
+  expect(httpRequestSeverity("/app/session", 500)).toBe("error");
+});
