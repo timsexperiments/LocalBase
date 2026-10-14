@@ -16,6 +16,7 @@ import {
   keyManagementReadResponseSchema,
 } from "../domains/auth/management-contract";
 import { api, hasPermission, type Connection } from "./client";
+import { Copy } from "./message-markdown";
 import {
   administrationSections,
   type AdministrationSection,
@@ -952,20 +953,7 @@ export function AuthManagement({
           <p>It will not be shown again.</p>
           <code>{secret}</code>
           <div className="admin-actions">
-            <button
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(secret)
-                  .then(() => setNotice("Secret copied."))
-                  .catch(() =>
-                    setKeysError(
-                      "Could not copy the secret. Select it and copy it manually.",
-                    ),
-                  )
-              }
-            >
-              Copy secret
-            </button>
+            <Copy label="Copy secret" className="" text={secret} />
             <button onClick={() => setSecret("")}>Done</button>
           </div>
         </section>
@@ -1898,16 +1886,7 @@ function PeopleAndRoles({
                 <div className="secret-once">
                   <strong>Invitation link</strong>
                   <code>{inviteUrl}</code>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void navigator.clipboard
-                        .writeText(inviteUrl)
-                        .catch(() => undefined)
-                    }
-                  >
-                    Copy link
-                  </button>
+                  <Copy label="Copy link" className="" text={inviteUrl} />
                 </div>
               )}
             </form>
