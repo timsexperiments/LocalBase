@@ -268,6 +268,24 @@ describe("estimateImageMemory", () => {
       totalArtifactBytes(model),
     );
   });
+
+  test("diffusion flash attention drops the T^2 x heads scores only", () => {
+    const sd15 = catalogModel("dreamshaper-v8");
+    const fa = estimateImageMemory({
+      ...sd15,
+      imageLaunchOptions: { diffusionFlashAttention: true },
+    });
+    const noFa = estimateImageMemory({
+      ...sd15,
+      imageLaunchOptions: { diffusionFlashAttention: false },
+    });
+    expect(noFa.terms.activation! - fa.terms.activation!).toBe(
+      4096 ** 2 * 8 * 4,
+    );
+    // The untiled VAE decode, not attention, sets the image peak.
+    expect(fa.terms.vaeDecode).toBe(noFa.terms.vaeDecode);
+    expect(fa.demand).toEqual(noFa.demand);
+  });
 });
 
 describe("estimateVideoMemory", () => {
@@ -405,6 +423,25 @@ describe("measured demand", () => {
     expect(
       measuredLlmDemand({ ...launch, modelId: undefined }),
     ).toBeUndefined();
+  });
+
+  test("image measurements only apply with the measured --diffusion-fa setting", () => {
+    const sd15 = catalogModel("dreamshaper-v8");
+    const launched = sd15.imageLaunchOptions!.diffusionFlashAttention;
+    expect(measuredModelDemand(sd15)).toBeDefined();
+    expect(
+      measuredModelDemand({
+        ...sd15,
+        imageLaunchOptions: { diffusionFlashAttention: !launched },
+      }),
+    ).toBeUndefined();
+    for (const record of MEMORY_MEASUREMENTS) {
+      if (record.kind !== "image") continue;
+      expect(record.shape.diffusionFlashAttention).toBe(
+        catalogModel(record.modelId).imageLaunchOptions!
+          .diffusionFlashAttention,
+      );
+    }
   });
 
   test("video measurements only apply at the measured bounds and options", () => {

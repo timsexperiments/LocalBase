@@ -28,7 +28,8 @@ A record applies only when the launch shape matches exactly:
 
 - LLM: ctx, slots and both KV types.
 - Video: width, height, frames, CPU offload and diffusion flash attention.
-- STT, TTS and image: each launches one fixed shape per model.
+- Image: the catalog `imageLaunchOptions.diffusionFlashAttention` flag (`--diffusion-fa`). Each model otherwise launches one fixed shape.
+- STT and TTS: each launches one fixed shape per model.
 
 Any other shape uses the estimate. `measuredDemand` turns a record into a planning demand:
 
@@ -79,6 +80,34 @@ The remaining runnable image profiles at their catalog defaults, and Wan2.1 T2V 
 
 Every image run had a system-wide free-memory drop below its RSS, so host demand is peak RSS. SD1.5 is overestimated by the formula because its F32 checkpoint loads as F16 weights. Wan2.1 runs with CPU offload: the T5 stage (5757 MiB of weights and 297 MiB of compute) is the largest on the accelerator, all 7464 MiB of weights stay in host buffers, and its unified demand is 13.70 GiB. The system-wide free-memory drop was 8.22 GB.
 
+## Image diffusion flash attention (2026-10-14)
+
+Image profiles declare `imageLaunchOptions.diffusionFlashAttention` in the catalog, and the launcher passes `--diffusion-fa` when it is set. Every image family the managed sd-server (release sd-server-v0.0.1) can run on Metal was compared with the flag off and on: same prompt, seed 42, catalog defaults. The images matched visually in every pair. The image records above were superseded by FA-on records at the same date.
+
+FA shrinks only the diffusion compute buffer. The peak stage is still the VAE decode, so the accelerator planning value and every `minVramGb` tier are unchanged. RSS moved by less than 2% and the records keep the FA-on peak. Sampling time is sd-server's `sampling completed` line; single runs unless a mean is given.
+
+| Model                 | Diffusion compute (MiB) | Sampling off (s) | Sampling on (s) | Accelerator | Peak RSS |
+| --------------------- | ----------------------: | ---------------: | --------------: | ----------: | -------: |
+| dreamshaper-v8        |         559.90 → 127.68 |      37.46–41.02 |     10.73–12.07 |        4.11 |     2.78 |
+| stable-diffusion-v1-5 |         559.90 → 127.68 |            37.46 |           11.25 |        4.84 |     4.65 |
+| dreamshaper-8-lcm     |         559.90 → 127.68 |        3.73–4.82 |       1.08–2.40 |        4.11 |     2.80 |
+| sdxl-turbo            |         830.86 → 491.99 |   65.7 (mean, 4) |  64.0 (mean, 4) |       14.47 |     7.51 |
+| realvis-xl-v5.0       |         830.86 → 491.99 |            60.33 |           61.24 |       14.47 |     7.27 |
+| juggernaut-xl-v9      |         830.86 → 491.99 |            71.38 |           61.47 |       14.47 |     7.25 |
+| z-image-turbo-q4_0    |        2379.55 → 690.15 |   92.7 (mean, 3) |  89.3 (mean, 3) |       12.91 |     6.60 |
+| flux2-klein-4b-q4_0   |       2739.50 → 1078.44 |      30.83–36.46 |     29.16–29.51 |       11.77 |     5.57 |
+| flux2-klein-4b-q8_0   |       2739.50 → 1078.44 |            30.76 |           29.54 |       13.48 |     7.83 |
+
+Through the gateway (scratch `serve`, dreamshaper-v8, 512x512, 20 steps, four sequential requests, first one cold), a generation took 38.4–39.9 s with FA off and 13.3–13.6 s with FA on.
+
+SD1.5 gains about 3.3x. Flux2 Klein and z-image gain a few percent, and SDXL is within run-to-run noise. FA is on for all of these, since it also frees 0.3–1.7 GiB of compute without slowing generation. It is on for the unmeasured SDXL entries (sdxl-base-1.0, animagine-xl-3.1, realvis-xl-v4.0) and flux2-klein-9b-q4_0 by family.
+
+flux2-klein-9b-q4_0 has no FA-on record, because its artifacts exceed the 8 GB download cap for this pass. Its FA-off record (16.59 GiB accelerator, 10.73 GiB RSS) was removed, and the derived estimate (17.23 GiB accelerator and unified, 10.73 GiB host) now applies. That is at or above the FA-off peak, and the tier stays 24.
+
+flux1-schnell-q4_0 keeps FA off: it could not be validated (see Not measured).
+
+The repository `bin/sd-server` build is older than the managed binary and reports larger buffers, for example 3555 MiB for the z-image text encoder. Measure with the managed runtime under `bin/runtimes/sd-server/<hash>/`.
+
 ## Calibrated constants
 
 The measurements also corrected estimate inputs, so unmeasured models of the same family are sized consistently:
@@ -95,7 +124,8 @@ The 2026-10-14 pass lowered stable-diffusion-v1-5 from 8 to 6 GiB. The Wan VAE r
 
 Models without a measured record keep estimate confidence:
 
-- flux1-schnell-q4_0: its `ae.safetensors` comes from the gated black-forest-labs/FLUX.1-schnell repository, which returns HTTP 401 without a Hugging Face token.
+- flux1-schnell-q4_0: its `ae.safetensors` comes from the gated black-forest-labs/FLUX.1-schnell repository, which returns HTTP 401 without a Hugging Face token. It also launches without `--diffusion-fa` until it can be validated.
+- flux2-klein-9b-q4_0 with `--diffusion-fa`: it uses the derived estimate (see above).
 - wan2.2-s2v-14b-fp8: it targets only Linux x64 with NVIDIA GPUs.
 - The catalog-only video profiles, the q8_0 LLM variants and other speech models.
 - qwen3.8-27b-q4_k_m: skipped in the first pass because its download was paused.

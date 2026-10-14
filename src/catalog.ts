@@ -184,6 +184,17 @@ const imageRuntimeProfileSchema = z.discriminatedUnion("kind", [
 
 export type ImageRuntimeProfile = z.infer<typeof imageRuntimeProfileSchema>;
 
+/**
+ * sd-server launch options for image models. `diffusionFlashAttention`
+ * passes `--diffusion-fa`; enable it only for families validated on the
+ * pinned sd-server (docs/memory-calibration.md).
+ */
+const imageLaunchOptionsSchema = z
+  .object({ diffusionFlashAttention: z.boolean() })
+  .strict();
+
+export type ImageLaunchOptions = z.infer<typeof imageLaunchOptionsSchema>;
+
 const videoDecoderSchema = z.discriminatedUnion("kind", [
   vaeDecoderSchema,
   z
@@ -321,6 +332,7 @@ export const modelSpecSchema = z
     llmRuntime: embeddingLlmRuntimeProfileSchema.optional(),
     ttsRuntime: ttsRuntimeProfileSchema.optional(),
     imageRuntime: imageRuntimeProfileSchema.optional(),
+    imageLaunchOptions: imageLaunchOptionsSchema.optional(),
     videoRuntime: videoRuntimeProfileSchema.optional(),
     videoCatalogOnly: z.literal(true).optional(),
     inputModalities: z.array(modelModalitySchema).min(1),
@@ -477,6 +489,15 @@ export const modelSpecSchema = z
         code: "custom",
         message: "models must have exactly one primary artifact",
         path: ["artifacts"],
+      });
+    }
+
+    if ((model.kind === "image") !== (model.imageLaunchOptions !== undefined)) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "image models must declare image launch options, and only image models may",
+        path: ["imageLaunchOptions"],
       });
     }
 
@@ -1087,6 +1108,7 @@ const CATALOG_SOURCE = [
     ],
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image"],
     commercialStatus: "conditional",
     catch: "CreativeML Open RAIL++-M use restrictions apply.",
@@ -2577,6 +2599,9 @@ const CATALOG_SOURCE = [
     },
     inputModalities: ["text"],
     outputModalities: ["image"],
+    // Not validated with --diffusion-fa: the FLUX.1 ae is gated and the
+    // full set is ~17 GB, above the 8 GB qualification download cap.
+    imageLaunchOptions: { diffusionFlashAttention: false },
     features: ["text-to-image"],
     commercialStatus: "open",
     catch:
@@ -2642,6 +2667,7 @@ const CATALOG_SOURCE = [
     },
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image"],
     commercialStatus: "open",
     catch:
@@ -2707,6 +2733,7 @@ const CATALOG_SOURCE = [
     },
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image"],
     commercialStatus: "open",
     catch:
@@ -2772,6 +2799,7 @@ const CATALOG_SOURCE = [
     },
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image"],
     commercialStatus: "conditional",
     catch:
@@ -2838,6 +2866,7 @@ const CATALOG_SOURCE = [
     },
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image"],
     commercialStatus: "open",
     catch:
@@ -2871,6 +2900,7 @@ const CATALOG_SOURCE = [
     ],
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "CreativeML Open RAIL-M license.",
@@ -2912,6 +2942,7 @@ const CATALOG_SOURCE = [
     },
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image"],
     commercialStatus: "open",
     catch: "CreativeML Open RAIL-M license.",
@@ -2943,6 +2974,7 @@ const CATALOG_SOURCE = [
     ],
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "CreativeML Open RAIL-M license.",
@@ -2974,6 +3006,7 @@ const CATALOG_SOURCE = [
     ],
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "Stability AI Community License.",
@@ -3005,6 +3038,7 @@ const CATALOG_SOURCE = [
     ],
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "Stability AI Community License.",
@@ -3036,6 +3070,7 @@ const CATALOG_SOURCE = [
     ],
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "Stability AI Community License.",
@@ -3067,6 +3102,7 @@ const CATALOG_SOURCE = [
     ],
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "Stability AI Community License.",
@@ -3098,6 +3134,7 @@ const CATALOG_SOURCE = [
     ],
     inputModalities: ["text"],
     outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image", "image-to-image"],
     commercialStatus: "open",
     catch: "CreativeML Open RAIL-M license.",

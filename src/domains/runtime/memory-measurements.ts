@@ -44,6 +44,7 @@ export type ImageMeasurementShape = Readonly<{
   width: number;
   height: number;
   steps: number;
+  diffusionFlashAttention: boolean;
 }>;
 
 export type VideoMeasurementShape = Readonly<{
@@ -87,6 +88,9 @@ const LLM_METHOD =
   "llama-server with gateway flags (ctx 8192, 1 slot, q8_0 KV, flash " +
   "attention, cache-ram 2048); two chats of ~1750 prompt + <=256 output " +
   "tokens; MTL0 model + context + compute buffers; RSS sampled every 250 ms";
+const IMAGE_METHOD =
+  "sd-server via the gateway, catalog defaults with --diffusion-fa; params " +
+  "+ largest stage compute buffer (VAE decode); RSS sampled every 250 ms";
 
 function llm(
   modelId: string,
@@ -191,141 +195,149 @@ export const MEMORY_MEASUREMENTS: readonly MemoryMeasurement[] = Object.freeze([
     kind: "image",
     modelId: "dreamshaper-v8",
     variant: "safetensors F16",
-    shape: { width: 512, height: 512, steps: 20 },
+    shape: {
+      width: 512,
+      height: 512,
+      steps: 20,
+      diffusionFlashAttention: true,
+    },
     backendAcceleratorBytes: mib(2035 + 1664.06),
     hostBufferBytes: 0,
-    peakRssBytes: 2_924_511_232,
-    date: MEASUREMENT_DATE,
+    peakRssBytes: 2_988_212_224,
+    date: IMAGE_VIDEO_MEASUREMENT_DATE,
     hardware: MEASUREMENT_HARDWARE,
-    method:
-      "sd-server via the gateway, catalog defaults; params + largest " +
-      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+    method: IMAGE_METHOD,
   },
   {
     kind: "image",
     modelId: "flux2-klein-4b-q4_0",
     variant: "Q4_0",
-    shape: { width: 1024, height: 1024, steps: 4 },
+    shape: {
+      width: 1024,
+      height: 1024,
+      steps: 4,
+      diffusionFlashAttention: true,
+    },
     backendAcceleratorBytes: mib(4882.75 + 6658),
     hostBufferBytes: 0,
-    peakRssBytes: 5_941_821_440,
-    date: MEASUREMENT_DATE,
+    peakRssBytes: 5_983_240_192,
+    date: IMAGE_VIDEO_MEASUREMENT_DATE,
     hardware: MEASUREMENT_HARDWARE,
-    method:
-      "sd-server via the gateway, catalog defaults; params + largest " +
-      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+    method: IMAGE_METHOD,
   },
   {
     kind: "image",
     modelId: "dreamshaper-8-lcm",
     variant: "safetensors F16 (LCM)",
-    shape: { width: 512, height: 512, steps: 4 },
+    shape: { width: 512, height: 512, steps: 4, diffusionFlashAttention: true },
     backendAcceleratorBytes: mib(2035 + 1664.06),
     hostBufferBytes: 0,
-    peakRssBytes: 3_012_804_608,
+    peakRssBytes: 3_006_021_632,
     date: IMAGE_VIDEO_MEASUREMENT_DATE,
     hardware: MEASUREMENT_HARDWARE,
-    method:
-      "sd-server via the gateway, catalog defaults; params + largest " +
-      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+    method: IMAGE_METHOD,
   },
   {
     kind: "image",
     modelId: "stable-diffusion-v1-5",
     variant: "safetensors F16",
-    shape: { width: 512, height: 512, steps: 20 },
+    shape: {
+      width: 512,
+      height: 512,
+      steps: 20,
+      diffusionFlashAttention: true,
+    },
     backendAcceleratorBytes: mib(2784.45 + 1664.06),
     hostBufferBytes: 0,
-    peakRssBytes: 4_929_093_632,
+    peakRssBytes: 4_996_431_872,
     date: IMAGE_VIDEO_MEASUREMENT_DATE,
     hardware: MEASUREMENT_HARDWARE,
-    method:
-      "sd-server via the gateway, catalog defaults; params + largest " +
-      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+    method: IMAGE_METHOD,
   },
   {
     kind: "image",
     modelId: "z-image-turbo-q4_0",
     variant: "Q4_0 + Qwen3-4B-Instruct Q4_K_M",
-    shape: { width: 1024, height: 1024, steps: 8 },
+    shape: {
+      width: 1024,
+      height: 1024,
+      steps: 8,
+      diffusionFlashAttention: true,
+    },
     backendAcceleratorBytes: mib(6048.62 + 6657),
     hostBufferBytes: 0,
-    peakRssBytes: 7_061_504_000,
+    peakRssBytes: 7_087_439_872,
     date: IMAGE_VIDEO_MEASUREMENT_DATE,
     hardware: MEASUREMENT_HARDWARE,
-    method:
-      "sd-server via the gateway, catalog defaults; params + largest " +
-      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+    method: IMAGE_METHOD,
   },
   {
     kind: "image",
     modelId: "flux2-klein-4b-q8_0",
     variant: "Q8_0 + Qwen3-4B Q4_K_M",
-    shape: { width: 1024, height: 1024, steps: 4 },
+    shape: {
+      width: 1024,
+      height: 1024,
+      steps: 4,
+      diffusionFlashAttention: true,
+    },
     backendAcceleratorBytes: mib(6637.75 + 6658),
     hostBufferBytes: 0,
-    peakRssBytes: 8_413_741_056,
+    peakRssBytes: 8_412_053_504,
     date: IMAGE_VIDEO_MEASUREMENT_DATE,
     hardware: MEASUREMENT_HARDWARE,
-    method:
-      "sd-server via the gateway, catalog defaults; params + largest " +
-      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+    method: IMAGE_METHOD,
   },
   {
     kind: "image",
     modelId: "realvis-xl-v5.0",
     variant: "safetensors F16",
-    shape: { width: 1024, height: 1024, steps: 20 },
+    shape: {
+      width: 1024,
+      height: 1024,
+      steps: 20,
+      diffusionFlashAttention: true,
+    },
     backendAcceleratorBytes: mib(6624.11 + 7680.25),
     hostBufferBytes: 0,
-    peakRssBytes: 7_915_061_248,
+    peakRssBytes: 7_805_108_224,
     date: IMAGE_VIDEO_MEASUREMENT_DATE,
     hardware: MEASUREMENT_HARDWARE,
-    method:
-      "sd-server via the gateway, catalog defaults; params + largest " +
-      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+    method: IMAGE_METHOD,
   },
   {
     kind: "image",
     modelId: "sdxl-turbo",
     variant: "safetensors F16",
-    shape: { width: 1024, height: 1024, steps: 20 },
+    shape: {
+      width: 1024,
+      height: 1024,
+      steps: 20,
+      diffusionFlashAttention: true,
+    },
     backendAcceleratorBytes: mib(6624.11 + 7680.25),
     hostBufferBytes: 0,
-    peakRssBytes: 7_920_566_272,
+    peakRssBytes: 8_064_352_256,
     date: IMAGE_VIDEO_MEASUREMENT_DATE,
     hardware: MEASUREMENT_HARDWARE,
-    method:
-      "sd-server via the gateway, catalog defaults; params + largest " +
-      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+    method: IMAGE_METHOD,
   },
   {
     kind: "image",
     modelId: "juggernaut-xl-v9",
     variant: "safetensors F16",
-    shape: { width: 1024, height: 1024, steps: 20 },
+    shape: {
+      width: 1024,
+      height: 1024,
+      steps: 20,
+      diffusionFlashAttention: true,
+    },
     backendAcceleratorBytes: mib(6624.11 + 7680.25),
     hostBufferBytes: 0,
-    peakRssBytes: 7_915_388_928,
+    peakRssBytes: 7_788_806_144,
     date: IMAGE_VIDEO_MEASUREMENT_DATE,
     hardware: MEASUREMENT_HARDWARE,
-    method:
-      "sd-server via the gateway, catalog defaults; params + largest " +
-      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
-  },
-  {
-    kind: "image",
-    modelId: "flux2-klein-9b-q4_0",
-    variant: "Q4_0 + Qwen3-8B Q4_K_M",
-    shape: { width: 1024, height: 1024, steps: 4 },
-    backendAcceleratorBytes: mib(9818.8 + 6658),
-    hostBufferBytes: 0,
-    peakRssBytes: 11_518_853_120,
-    date: IMAGE_VIDEO_MEASUREMENT_DATE,
-    hardware: MEASUREMENT_HARDWARE,
-    method:
-      "sd-server via the gateway, catalog defaults; params + largest " +
-      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+    method: IMAGE_METHOD,
   },
   {
     kind: "video",
@@ -400,12 +412,29 @@ export function findLlmMeasurement(
     : undefined;
 }
 
-/** STT, TTS and image runtimes launch one fixed shape per model. */
+/** STT and TTS runtimes launch one fixed shape per model. */
 export function findModelMeasurement(
-  kind: "stt" | "tts" | "image",
+  kind: "stt" | "tts",
   modelId: string | undefined,
 ): MemoryMeasurement | undefined {
   return modelId ? byModel(kind, modelId) : undefined;
+}
+
+/**
+ * The image record for this model, only when it was measured with the same
+ * `--diffusion-fa` setting the catalog launches (it changes the diffusion
+ * compute buffer and timings).
+ */
+export function findImageMeasurement(
+  modelId: string | undefined,
+  diffusionFlashAttention: boolean,
+): MemoryMeasurement | undefined {
+  if (!modelId) return undefined;
+  const record = byModel("image", modelId);
+  return record?.kind === "image" &&
+    record.shape.diffusionFlashAttention === diffusionFlashAttention
+    ? record
+    : undefined;
 }
 
 /** The video record for this model at exactly these bounds and options. */
