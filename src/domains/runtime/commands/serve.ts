@@ -167,6 +167,7 @@ import {
   type StructuredOutputValidator,
 } from "../structured-output";
 import { anchorJsonSchemaPatterns } from "../tool-schema";
+import { withLifecycleSignal } from "../lifecycle-request";
 import { compressJsonResponse } from "../../../utils/http-compression";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
@@ -4445,9 +4446,7 @@ export async function runServe(
         request.signal,
         responseAbortController.signal,
       ]);
-      const lifecycleRequest = new Request(request, {
-        signal: lifecycleSignal,
-      });
+      const lifecycleRequest = withLifecycleSignal(request, lifecycleSignal);
       let response: Response;
       try {
         response = await context.with(
