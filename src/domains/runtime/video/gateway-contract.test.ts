@@ -314,3 +314,27 @@ test("projects memory failures as insufficient_memory", () => {
     },
   });
 });
+
+test("explains GPU working-set contention with other loaded models", () => {
+  const gib = 1024 ** 3;
+  const projected = projectVideoJob({
+    id: "00000000-0000-4000-8000-000000000001",
+    state: "failed",
+    createdAtMs: 1000,
+    terminalAtMs: 2000,
+    failure: new RuntimeMemoryAdmissionError(
+      {
+        kind: "rejected",
+        reason: "accelerator-memory",
+        poolId: "gpu-working-set",
+      },
+      undefined,
+      undefined,
+      { requiredBytes: 12 * gib, residentBytes: 9 * gib, capBytes: 18 * gib },
+    ),
+  });
+  const message = (projected as { error: { message?: string } }).error.message;
+  expect(message).toContain("needs 12.0 GiB");
+  expect(message).toContain("other loaded models use 9.0 GiB");
+  expect(message).toContain("limit is 18.0 GiB");
+});

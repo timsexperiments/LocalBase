@@ -248,6 +248,10 @@ function memoryAdmissionMessage(failure: RuntimeMemoryAdmissionError): string {
   if (reason === "measurement-unavailable") {
     return `Available memory could not be measured reliably, so the video runtime was not started. Retry shortly.`;
   }
+  if (failure.gpuWorkingSet) {
+    const { requiredBytes, residentBytes, capBytes } = failure.gpuWorkingSet;
+    return `Not enough GPU working set to start the video runtime alongside the models already loaded: it needs ${formatBytes(requiredBytes)}, other loaded models use ${formatBytes(residentBytes)}, and the GPU working-set limit is ${formatBytes(capBytes)}. Unload other models and retry.`;
+  }
   const requested = diagnostics?.requested_bytes;
   const available = diagnostics?.effective_available_bytes;
   const reserve = diagnostics?.reserve_bytes;

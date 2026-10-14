@@ -31,6 +31,8 @@ export type RuntimeMemoryReservation = Readonly<{
 type ReservationEntry = {
   token: symbol;
   projectedDemand: readonly ProjectedMemoryDemand[];
+  /** Accelerator demand counted against the unified GPU working-set cap. */
+  acceleratorBytes: number;
   state: "pending" | "resident";
 };
 
@@ -93,6 +95,18 @@ export type RuntimeMemoryCapacityShortfall = Readonly<{
   capacityBytes: number;
 }>;
 
+/**
+ * Set when a runtime fits the unified GPU working-set cap on its own, but not
+ * alongside the runtimes that are already resident or starting. Stopping one
+ * of those runtimes can make it admissible, so this is never permanent.
+ */
+export type GpuWorkingSetOversubscription = Readonly<{
+  requiredBytes: number;
+  /** Accelerator demand of the other resident or starting runtimes. */
+  residentBytes: number;
+  capBytes: number;
+}>;
+
 /** Rejects backend starts that would violate the current host-memory policy. */
 export class RuntimeMemoryAdmissionError extends Error {
   constructor(
@@ -100,10 +114,30 @@ export class RuntimeMemoryAdmissionError extends Error {
     readonly diagnostics?: MemoryAdmissionDiagnostics,
     /** Present only for permanent failures; absent means retrying may help. */
     readonly capacity?: RuntimeMemoryCapacityShortfall,
+    readonly gpuWorkingSet?: GpuWorkingSetOversubscription,
   ) {
-    super("Insufficient memory to start the requested runtime.");
+    super(
+      gpuWorkingSet
+        ? "Insufficient GPU working set to start the requested runtime alongside the runtimes already loaded."
+        : "Insufficient memory to start the requested runtime.",
+    );
     this.name = "RuntimeMemoryAdmissionError";
   }
+}
+
+/**
+ * Whether a reservation belongs to a runtime being released. Per-generation
+ * reservations (e.g. `speech:model:1:generation:3`) belong to their runtime.
+ */
+function isReleasing(
+  reservationId: string,
+  releasing: ReadonlySet<string>,
+): boolean {
+  if (releasing.has(reservationId)) return true;
+  for (const runtimeId of releasing) {
+    if (reservationId.startsWith(`${runtimeId}:`)) return true;
+  }
+  return false;
 }
 
 /** Owns in-process reservations for managed backend process generations. */
@@ -153,6 +187,7 @@ export class MemorySafetyController {
       this.reservations.set(request.runtimeId, {
         token,
         projectedDemand,
+        acceleratorBytes: request.demand.acceleratorBytes,
         state: "pending",
       });
       return Object.freeze({
@@ -208,7 +243,7 @@ export class MemorySafetyController {
   ): readonly ProjectedMemoryDemand[] {
     const topology = this.provider.topology;
     const remaining = [...this.reservations].filter(
-      ([id]) => !releasing.has(id),
+      ([id]) => !isReleasing(id, releasing),
     );
     const pending = pendingDemandByPool(remaining.map(([, entry]) => entry));
     const snapshot = this.addReleasedMemory(rawSnapshot, releasing);
@@ -227,6 +262,24 @@ export class MemorySafetyController {
           poolId: capacity.poolId,
         },
         capacity,
+      );
+    }
+    const oversubscription = this.gpuWorkingSetOversubscription(
+      request,
+      remaining.map(([, entry]) => entry),
+    );
+    if (oversubscription) {
+      this.reject(
+        request,
+        snapshot,
+        pending,
+        {
+          kind: "rejected",
+          reason: "accelerator-memory",
+          poolId: GPU_WORKING_SET_POOL_ID,
+        },
+        undefined,
+        oversubscription,
       );
     }
     // Only poll() advances hysteresis; reserve() must not count as a sample.
@@ -286,10 +339,10 @@ export class MemorySafetyController {
   ): HostMemorySnapshot {
     if (releasing.size === 0) return snapshot;
     const freed = new Map<string, number>();
-    for (const id of releasing) {
-      const entry = this.reservations.get(id);
+    for (const [id, entry] of this.reservations) {
+      if (!isReleasing(id, releasing)) continue;
       // Pending reservations are not part of the measured sample.
-      if (entry?.state !== "resident") continue;
+      if (entry.state !== "resident") continue;
       for (const demand of entry.projectedDemand) {
         freed.set(
           demand.poolId,
@@ -308,6 +361,41 @@ export class MemorySafetyController {
                 pool.availableBytes + (freed.get(pool.poolId) ?? 0),
             },
       ),
+    };
+  }
+
+  /**
+   * Sums the accelerator demand of every other resident or starting runtime
+   * (excluding those being released) with the request, and reports when the
+   * total would exceed the unified GPU working-set cap.
+   */
+  private gpuWorkingSetOversubscription(
+    request: RuntimeMemoryReservationRequest,
+    others: readonly ReservationEntry[],
+  ): GpuWorkingSetOversubscription | undefined {
+    const topology = this.provider.topology;
+    if (
+      topology.kind !== "unified" ||
+      topology.gpuWorkingSetBytes === undefined ||
+      topology.gpuWorkingSetBytes <= 0 ||
+      request.demand.acceleratorBytes <= 0
+    ) {
+      return undefined;
+    }
+    const residentBytes = others.reduce(
+      (total, entry) => total + entry.acceleratorBytes,
+      0,
+    );
+    if (
+      residentBytes + request.demand.acceleratorBytes <=
+      topology.gpuWorkingSetBytes
+    ) {
+      return undefined;
+    }
+    return {
+      requiredBytes: request.demand.acceleratorBytes,
+      residentBytes,
+      capBytes: topology.gpuWorkingSetBytes,
     };
   }
 
@@ -379,6 +467,7 @@ export class MemorySafetyController {
     pending: ReadonlyMap<string, number>,
     decision: Extract<MemoryAdmissionDecision, { kind: "rejected" }>,
     capacity?: RuntimeMemoryCapacityShortfall,
+    gpuWorkingSet?: GpuWorkingSetOversubscription,
   ): never {
     const topology = this.provider.topology;
     const isSystem = decision.poolId === topology.system.id;
@@ -432,6 +521,7 @@ export class MemorySafetyController {
         demand_confidence: request.demand.confidence,
       },
       capacity,
+      gpuWorkingSet,
     );
   }
 
