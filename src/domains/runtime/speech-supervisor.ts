@@ -15,6 +15,19 @@ export { NativeProcessStopError as SpeechChildStopError } from "./native-process
 
 export const SPEECH_MAX_INPUT_CHARACTERS = 256;
 export const SPEECH_MAX_FRAMES = 256;
+/**
+ * Talker context passed to llama-tts as `-c`. Without it the talker allocates
+ * its full 32K trained context (3.5 GiB f16 KV). The text prompt fills the
+ * context first, then each generated 12 Hz codec frame takes one cell. The
+ * tokenizer is byte-level BPE, so the prompt is at most 4 UTF-8 bytes per
+ * code point plus the template. With a reference voice, 256 four-byte
+ * private-use code points measured ~1050 cells and 256 characters of
+ * English ~60. Worst case ~1050 + SPEECH_MAX_FRAMES = ~1310
+ * cells. The prompt must also fit one batch, and llama.cpp caps n_batch at
+ * n_ctx, so 1024 would reject the worst-case prompt.
+ */
+export const SPEECH_CONTEXT_TOKENS = 2048;
+
 export const SPEECH_SAMPLES_PER_FRAME = 1_920;
 export const SPEECH_SAMPLE_RATE_HZ = 24_000;
 export const SPEECH_MAX_OUTPUT_BYTES = 1024 * 1024;
@@ -22,6 +35,7 @@ export const SPEECH_TIMEOUT_MS = 120_000;
 
 const CHILD_STOP_GRACE_MS = 500;
 const MAX_NATIVE_DIAGNOSTIC_BYTES = 64 * 1024;
+/** Fallback when the caller has no catalog-derived TTS estimate. */
 const SPEECH_MEMORY_DEMAND: RuntimeMemoryDemand = Object.freeze({
   unifiedBytes: 8 * gibibyte,
   hostBytes: 8 * gibibyte,
@@ -85,6 +99,8 @@ type SpeechSupervisorOptions = Readonly<{
   logger: ILogger;
   memorySafety: MemorySafetyController;
   prepare: () => Promise<SpeechPreparation>;
+  /** Per-generation reservation; defaults to a conservative 8 GiB allowance. */
+  memoryDemand?: RuntimeMemoryDemand;
   spawn?: (command: string[], cwd: string) => Bun.Subprocess;
   spawnGuardian?: (command: string[]) => Bun.Subprocess | undefined;
   writePrivateFile?: (path: string, contents: string) => Promise<void>;
@@ -191,6 +207,8 @@ export function speechNativeArguments(
     preparation.projectorPath,
     "-f",
     promptPath,
+    "-c",
+    String(SPEECH_CONTEXT_TOKENS),
     "-n",
     String(SPEECH_MAX_FRAMES),
     "-t",
@@ -461,7 +479,7 @@ export class SpeechSupervisor {
       if (aborted()) throw new SpeechGenerationAbortedError();
       reservation = await this.options.memorySafety.reserve({
         runtimeId: `${this.options.runtimeId}:generation:${++this.generation}`,
-        demand: SPEECH_MEMORY_DEMAND,
+        demand: this.options.memoryDemand ?? SPEECH_MEMORY_DEMAND,
       });
       if (aborted()) throw new SpeechGenerationAbortedError();
 

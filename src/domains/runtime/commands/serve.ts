@@ -106,7 +106,11 @@ import {
   isUiAccessPath,
   loadUiAccessConfig,
 } from "../../../ui/access";
-import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
+import {
+  gatewayRequestDisablesIdleTimeout,
+  modelMetadataIdFromPath,
+  selectGatewayRoute,
+} from "../route-dispatch";
 import { gatewayAuthorizationRequirement } from "../route-authorization";
 import { VideoJobManager } from "../video/video-job-manager";
 import { createVideoArtifactPreparer } from "../video/video-converter";
@@ -186,6 +190,12 @@ export function httpBaseUrl(host: string, port: number): string {
 }
 
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
+// Oversized bodies up to this many bytes past the limit are read and discarded before
+// the 413 is sent. Bun 1.3 ignores a handler's `connection: close`, and its fetch client
+// can return a socket to the keep-alive pool after abandoning an unfinished request body;
+// the next request on that socket is then parsed as the leftover body and rejected with a
+// bare 400. Draining keeps the HTTP/1.1 stream at a request boundary.
+const MAX_DISCARDED_REQUEST_BYTES = 1024 * 1024;
 // Job owner when gateway auth is disabled and requests carry no principal.
 const LOCAL_VIDEO_OWNER_ID = "anonymous:local";
 
@@ -1229,11 +1239,46 @@ function requestBodyBuffer(bytes: Uint8Array): ArrayBuffer {
   return buffer;
 }
 
+// Drains a body whose content-length is over `limit` when the excess is small enough.
+async function discardDeclaredOversizedBody(
+  request: Request,
+  limit: number,
+): Promise<void> {
+  const declared = Number(request.headers.get("content-length"));
+  if (!Number.isSafeInteger(declared)) return;
+  if (declared > limit + MAX_DISCARDED_REQUEST_BYTES) return;
+  // Read the original stream: the request is rejected, so nothing else consumes it.
+  const reader = request.body?.getReader();
+  if (reader) await discardRemainingBody(reader, declared);
+}
+
+// Reads and drops up to `budget` more body bytes so an oversized request finishes
+// arriving before its 413 is sent; gives up (cancelling the stream) past the budget.
+async function discardRemainingBody(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  budget: number,
+): Promise<void> {
+  let discarded = 0;
+  try {
+    while (discarded <= budget) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      discarded += value.byteLength;
+    }
+    await reader.cancel();
+  } catch {
+    // The client went away or the stream failed; the 413 is still the right answer.
+  }
+}
+
 async function readBoundedRequestBody(
   request: Request,
   limit = MAX_REQUEST_BYTES,
 ): Promise<Uint8Array> {
-  if (requestExceedsSizeLimit(request, limit)) throw new PayloadTooLargeError();
+  if (requestExceedsSizeLimit(request, limit)) {
+    await discardDeclaredOversizedBody(request, limit);
+    throw new PayloadTooLargeError();
+  }
   const body = request.clone().body;
   if (!body) return new Uint8Array();
 
@@ -1245,7 +1290,10 @@ async function readBoundedRequestBody(
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > limit) throw new PayloadTooLargeError();
+      if (size > limit) {
+        await discardRemainingBody(reader, MAX_DISCARDED_REQUEST_BYTES);
+        throw new PayloadTooLargeError();
+      }
       chunks.push(value);
     }
   } finally {
@@ -2067,10 +2115,18 @@ export function resourceUnavailable(error?: unknown): Response {
       422,
     );
   }
+  const gpuWorkingSet =
+    error instanceof RuntimeMemoryAdmissionError
+      ? error.gpuWorkingSet
+      : undefined;
   return openAIErrorResponse(
     {
-      message:
-        "Insufficient available memory to start the requested runtime. Please try again shortly.",
+      message: gpuWorkingSet
+        ? `This model needs about ${gibibytes(gpuWorkingSet.requiredBytes)} of GPU memory, ` +
+          `but models already loaded use ${gibibytes(gpuWorkingSet.residentBytes)} ` +
+          `of the ${gibibytes(gpuWorkingSet.capBytes)} GPU working-set limit on this host. ` +
+          "Retry once another model is idle or unloaded."
+        : "Insufficient available memory to start the requested runtime. Please try again shortly.",
       type: "api_error",
       param: null,
       code: "insufficient_memory",
@@ -3286,7 +3342,10 @@ export async function runServe(
       );
     }
 
-    if (requestExceedsSizeLimit(request)) return payloadTooLarge();
+    if (requestExceedsSizeLimit(request)) {
+      await discardDeclaredOversizedBody(request, MAX_REQUEST_BYTES);
+      return payloadTooLarge();
+    }
 
     if (
       (authorization.kind === "authorized" ||
@@ -3733,8 +3792,10 @@ export async function runServe(
     if (route === "imageEdit") {
       if (request.method !== "POST") return methodNotAllowed("POST");
       const limit = 20 * 1024 * 1024;
-      if (requestExceedsSizeLimit(request, limit))
+      if (requestExceedsSizeLimit(request, limit)) {
+        await discardDeclaredOversizedBody(request, limit);
         return payloadTooLarge(limit);
+      }
       let form: FormData;
       try {
         const bytes = await readBoundedRequestBody(request, limit);
@@ -4277,9 +4338,13 @@ export async function runServe(
   const server = Bun.serve({
     hostname: wrapperHost,
     port: wrapperPort,
-    fetch: async (request) => {
+    fetch: async (request, listener) => {
       const start = performance.now();
       const { pathname } = new URL(request.url);
+      // Bun resets sockets idle for 10 s by default; cold loads, queue waits,
+      // and LLM prefill can be silent far longer before the first byte.
+      if (gatewayRequestDisablesIdleTimeout(pathname))
+        listener.timeout(request, 0);
       const method = request.method;
       const requestId = `lbreq_${crypto.randomUUID()}`;
       const requestAuth = gatewayRequestAuth(request);

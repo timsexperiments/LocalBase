@@ -3,6 +3,9 @@ import { modelsSchema, type Message } from "./client";
 import {
   acceptsFirstFrame,
   canEditImages,
+  imageRequestMode,
+  imageResultLabel,
+  imageResultText,
   sizeForAspect,
   studioResults,
 } from "./studio";
@@ -115,4 +118,18 @@ test("results come from complete artifacts with their prompt and source", () => 
       source: "data:image/png;base64,src",
     },
   ]);
+});
+
+test("image results are labelled by the mode that produced them", () => {
+  const editor = model({ features: ["image-to-image"] });
+  const source = new Blob(["png"]);
+  expect(imageRequestMode(undefined, editor)).toBe("text-to-image");
+  expect(imageRequestMode({ source }, editor)).toBe("image-to-image");
+  expect(imageRequestMode({ source, mask: source }, editor)).toBe("inpaint");
+  expect(imageRequestMode({ source }, model({}))).toBe("text-to-image");
+  expect(imageResultText("text-to-image", 1)).toBe("Generated image");
+  expect(imageResultText("image-to-image", 1)).toBe("Transformed image");
+  expect(imageResultText("inpaint", 2)).toBe("Inpainted 2 images");
+  expect(imageResultLabel("inpaint", 0, 1)).toBe("Inpaint");
+  expect(imageResultLabel("image-to-image", 1, 3)).toBe("Image to image 2");
 });

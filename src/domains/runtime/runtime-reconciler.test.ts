@@ -1965,3 +1965,184 @@ test("keeps the selected switch when actual admission fails after preflight", as
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+function cancellationHarness(options: {
+  modality: "llm" | "image";
+  startup?: Promise<void>;
+  processing?: () => number | undefined;
+}) {
+  const root = mkdtempSync(join(tmpdir(), "localbase-runtime-cancel-keep-"));
+  const database = new DatabaseSession();
+  const config = defaultConfig(root, 16);
+  config.selectedImageModels = [config.activeImageModel];
+  saveConfig(database, config);
+  const controller = new RuntimeConfigController(database, root, config);
+  let state: "idle" | "starting" | "running" = "idle";
+  let kills = 0;
+  let slotProbes = 0;
+  const events: LogEventInput[] = [];
+  const supervisor: RuntimeSupervisor = {
+    kind: "server",
+    runtimeId: () => `${options.modality}:test:1`,
+    resolvedSlots: () => 2,
+    state: () => state,
+    async processingSlots() {
+      slotProbes += 1;
+      return options.processing?.() ?? 0;
+    },
+    async ensureRunning() {
+      state = "starting";
+      await options.startup;
+      if (state === "starting") state = "running";
+    },
+    async kill() {
+      kills += 1;
+      state = "idle";
+    },
+    async shutdown() {},
+  };
+  const reconciler = new RuntimeReconciler(
+    controller,
+    {},
+    new SupervisorRegistry({ [options.modality]: supervisor }),
+    { baseUrl: () => "http://127.0.0.1:1", create: () => supervisor },
+    { event: (event: LogEventInput) => void events.push(event) },
+    {},
+    { cancellationGraceMs: 5 },
+  );
+  const model =
+    options.modality === "llm"
+      ? config.activeLlmModel
+      : config.activeImageModel;
+  return {
+    reconciler,
+    events,
+    kills: () => kills,
+    slotProbes: () => slotProbes,
+    state: () => state,
+    admit: async () => {
+      const result = await reconciler.admitModel(options.modality, model);
+      if (result.kind !== "admitted") throw new Error("Expected admission.");
+      return result.value.admission;
+    },
+    cleanup: () => {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
+}
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (condition()) return;
+    await Bun.sleep(2);
+  }
+}
+
+test("keeps a running llama-server when a started LLM response is cancelled", async () => {
+  const harness = cancellationHarness({ modality: "llm" });
+  try {
+    const admission = await harness.admit();
+    await admission.ready;
+    admission.markResponseStarted();
+    admission.cancel();
+    await waitFor(() => harness.slotProbes() > 0);
+    await Bun.sleep(20);
+
+    expect(harness.slotProbes()).toBeGreaterThan(0);
+    expect(harness.kills()).toBe(0);
+    expect(harness.state()).toBe("running");
+    const next = await harness.admit();
+    await next.ready;
+    next.release();
+    expect(harness.kills()).toBe(0);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("stops llama-server when a cancelled generation keeps its slot busy", async () => {
+  let processing = 1;
+  const harness = cancellationHarness({
+    modality: "llm",
+    processing: () => processing,
+  });
+  try {
+    const admission = await harness.admit();
+    await admission.ready;
+    admission.markResponseStarted();
+    admission.cancel();
+    expect(harness.kills()).toBe(0);
+    await waitFor(() => harness.kills() > 0);
+
+    expect(harness.kills()).toBe(1);
+    expect(harness.events.map((event) => event.eventName)).toContain(
+      "runtime.cancellation-orphaned-generation",
+    );
+    processing = 0;
+    const next = await harness.admit();
+    await next.ready;
+    next.release();
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("waits for peer admissions before stopping an orphaned generation", async () => {
+  const harness = cancellationHarness({
+    modality: "llm",
+    processing: () => 2,
+  });
+  try {
+    const cancelled = await harness.admit();
+    const peer = await harness.admit();
+    await cancelled.ready;
+    await peer.ready;
+    cancelled.markResponseStarted();
+    cancelled.cancel();
+    await waitFor(() => harness.slotProbes() > 1);
+    expect(harness.kills()).toBe(0);
+
+    peer.release();
+    await waitFor(() => harness.kills() > 0);
+    expect(harness.kills()).toBe(1);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("still stops llama-server when an LLM request is cancelled during startup", async () => {
+  let finishStartup!: () => void;
+  const startup = new Promise<void>((resolve) => {
+    finishStartup = resolve;
+  });
+  const harness = cancellationHarness({ modality: "llm", startup });
+  try {
+    const admission = await harness.admit();
+    expect(harness.state()).toBe("starting");
+    admission.cancel();
+    await waitFor(() => harness.kills() > 0);
+    finishStartup();
+
+    expect(harness.kills()).toBe(1);
+    expect(harness.slotProbes()).toBe(0);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("still stops non-LLM runtimes when a started response is cancelled", async () => {
+  const harness = cancellationHarness({ modality: "image" });
+  try {
+    const admission = await harness.admit();
+    await admission.ready;
+    admission.markResponseStarted();
+    admission.cancel();
+    await waitFor(() => harness.kills() > 0);
+
+    expect(harness.kills()).toBe(1);
+    expect(harness.slotProbes()).toBe(0);
+  } finally {
+    harness.cleanup();
+  }
+});

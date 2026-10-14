@@ -42,6 +42,8 @@ export type ManagedServiceOptions = {
   modality: RuntimeModality;
   component: RuntimeComponent;
   healthUrl: string;
+  /** llama-server slot inspection endpoint used to confirm cancelled work stopped. */
+  slotsUrl?: string;
   logger: ILogger;
   launch: () => Promise<RuntimeLaunchPlan>;
   preflightDemand?: (
@@ -128,6 +130,31 @@ export class ManagedService {
       { demand },
       { releasingRuntimeIds },
     );
+  }
+
+  /**
+   * Counts backend slots that are still processing a task, or returns
+   * undefined when the backend does not expose slot state.
+   */
+  async processingSlots(): Promise<number | undefined> {
+    const url = this.options.slotsUrl;
+    if (!url || this.state() !== "running") return undefined;
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
+      });
+      if (!response.ok) return undefined;
+      const slots: unknown = await response.json();
+      if (!Array.isArray(slots)) return undefined;
+      return slots.filter(
+        (slot) =>
+          typeof slot === "object" &&
+          slot !== null &&
+          (slot as { is_processing?: unknown }).is_processing === true,
+      ).length;
+    } catch {
+      return undefined;
+    }
   }
 
   resolvedSlots(): number | undefined {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Media, Message, Model } from "./client";
+import { modelName, type Media, type Message, type Model } from "./client";
 import { DictationButton, appendDictation } from "./dictation";
 import {
   GenerationSettingsFields,
@@ -32,6 +32,41 @@ const maxFirstFrameBytes = 4 * 1024 * 1024;
 
 export function canEditImages(model: Model | undefined) {
   return model?.catalog.features.includes("image-to-image") ?? false;
+}
+export type ImageMode = "text-to-image" | "image-to-image" | "inpaint";
+/** Which image endpoint and mode a studio request uses with this model. */
+export function imageRequestMode(
+  request: Pick<StudioRequest, "source" | "mask"> | undefined,
+  model: Model | undefined,
+): ImageMode {
+  if (!request?.source || !canEditImages(model)) return "text-to-image";
+  return request.mask ? "inpaint" : "image-to-image";
+}
+const imageNouns: Record<ImageMode, string> = {
+  "text-to-image": "Generated",
+  "image-to-image": "Transformed",
+  inpaint: "Inpainted",
+};
+/** Summary text for an image result, e.g. "Inpainted 2 images". */
+export function imageResultText(mode: ImageMode, count: number) {
+  return count > 1
+    ? `${imageNouns[mode]} ${count} images`
+    : `${imageNouns[mode]} image`;
+}
+export const imageModeLabels: Record<ImageMode, string> = {
+  "text-to-image": "Text to image",
+  "image-to-image": "Image to image",
+  inpaint: "Inpaint",
+};
+/** Label for one image result card, naming the mode that produced it. */
+export function imageResultLabel(
+  mode: ImageMode,
+  index: number,
+  count: number,
+) {
+  return count > 1
+    ? `${imageModeLabels[mode]} ${index + 1}`
+    : imageModeLabels[mode];
 }
 export function acceptsFirstFrame(model: Model | undefined) {
   const cap = model?.catalog.capabilities;
@@ -444,7 +479,7 @@ export function Studio({
               <div className="studio-layer">
                 <img
                   src={selected.media.url}
-                  alt={`Generated: ${selected.prompt}`}
+                  alt={`${selected.label}: ${selected.prompt}`}
                 />
                 {comparing && selected.source && (
                   <>
@@ -562,6 +597,7 @@ export function Studio({
           </>
         ) : selected && !showingSource ? (
           <>
+            <span className="studio-result-mode">{selected.label}</span>
             {selected.media.kind === "image" && sourceSupported && (
               <button
                 type="button"
@@ -635,17 +671,21 @@ export function Studio({
                 <button
                   type="button"
                   aria-pressed={!showingSource && result.id === selected?.id}
-                  title={result.prompt}
+                  title={`${result.label}: ${result.prompt}`}
                   onClick={() => {
                     setSelectedId(result.id);
                     setView("result");
                   }}
                 >
                   {result.media.kind === "image" ? (
-                    <img src={result.media.url} alt={result.prompt} />
+                    <img
+                      src={result.media.url}
+                      alt={`${result.label}: ${result.prompt}`}
+                    />
                   ) : (
                     <video src={result.media.url} muted preload="metadata" />
                   )}
+                  <span className="studio-result-label">{result.label}</span>
                 </button>
               </li>
             ))}
@@ -659,10 +699,10 @@ export function Studio({
           className="model-picker studio-model"
           disabled={busy}
           onClick={onChooseModel}
-          aria-label={`Choose model: ${model?.catalog.name ?? "none selected"}`}
+          aria-label={`Choose model: ${model ? modelName(model) : "none selected"}`}
         >
           <span className="status-dot ready" aria-hidden="true" />
-          <span>{model?.catalog.name ?? "Choose model"}</span>
+          <span>{model ? modelName(model) : "Choose model"}</span>
           <span aria-hidden="true">⌄</span>
         </button>
         <div className="studio-group studio-prompt-group">
@@ -677,7 +717,9 @@ export function Studio({
                   ? usesSource
                     ? "Describe the edit, e.g. make it a watercolor painting"
                     : "A lighthouse on a cliff at sunset, oil painting"
-                  : "A paper boat drifting down a rainy street"
+                  : usesSource
+                    ? "Describe the motion, e.g. waves rolling in slowly"
+                    : "Describe the video, e.g. a paper boat on a rainy street"
               }
               onChange={(event) => setPrompt(event.target.value)}
               onKeyDown={(event) => {

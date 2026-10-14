@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { deltaReasoning, thinkSplitter } from "./reasoning";
 import {
   permissionsSchema,
   type Permission,
@@ -76,6 +77,7 @@ const modelSchema = z.object({
   id: z.string(),
   catalog: z.object({
     name: z.string(),
+    displayName: z.string().optional(),
     kind: z.enum(["llm", "image", "tts", "stt", "video"]),
     qualificationState: z.enum(["qualified", "experimental"]),
     quantization: z.string(),
@@ -98,6 +100,21 @@ const modelSchema = z.object({
   }),
 });
 export type Model = z.infer<typeof modelSchema>;
+
+/** Input and output modalities, counting image editing as an image input. */
+export function modelModalities(model: Pick<Model, "catalog">) {
+  const input = [...model.catalog.inputModalities];
+  if (
+    model.catalog.features.includes("image-to-image") &&
+    !input.includes("image")
+  )
+    input.push("image");
+  return `${input.join(", ")} → ${model.catalog.outputModalities.join(", ")}`;
+}
+/** The catalog display name, falling back to the family for older servers. */
+export function modelName(model: Pick<Model, "catalog">): string {
+  return model.catalog.displayName ?? model.catalog.name;
+}
 type MetadataIdentity = Pick<ModelMetadata, "id">;
 type HostMemory = ModelMetadataList["host"]["memory"];
 const memoryPoolSchema = z.object({
@@ -214,6 +231,20 @@ export type Message = {
   /** Studio-only data URL of the image a result was based on, for comparison. */
   source?: string;
   protocol?: ChatMessage[];
+  /** Session-only embedding vector; history keeps just the text summary. */
+  embedding?: { model: string; name: string; values: number[] };
+  /** The reply was cut short by Stop or by a steering message. */
+  interrupted?: boolean;
+  /** Model reasoning shown to the user; never sent back to the model. */
+  reasoning?: string;
+};
+/** Older messages folded into a summary; the originals stay in `messages`. */
+export type Compaction = {
+  /** Id of the last message covered by the summary. */
+  through: string;
+  summary: string;
+  method: "summary" | "dropped";
+  count: number;
 };
 export type Conversation = {
   id: string;
@@ -222,6 +253,7 @@ export type Conversation = {
   mode: Mode;
   model: MetadataIdentity["id"];
   messages: Message[];
+  compaction?: Compaction;
 };
 const historySchema = z
   .array(
@@ -237,8 +269,18 @@ const historySchema = z
           role: z.enum(["user", "assistant"]),
           text: z.string(),
           attachmentsMissing: z.boolean().optional(),
+          interrupted: z.boolean().optional(),
+          reasoning: z.string().max(200000).optional(),
         }),
       ),
+      compaction: z
+        .object({
+          through: z.string(),
+          summary: z.string(),
+          method: z.enum(["summary", "dropped"]),
+          count: z.number().int().min(0),
+        })
+        .optional(),
     }),
   )
   .max(30);
@@ -247,6 +289,8 @@ export function readHistory(): Conversation[] | null {
   const raw = localStorage.getItem(historyKey);
   return raw === null ? null : historySchema.parse(JSON.parse(raw));
 }
+// Keeps device-local history well under the localStorage quota.
+const storedReasoningLimit = 20_000;
 export function writeHistory(conversations: Conversation[]) {
   // Media and credentials are deliberately excluded from device-local history.
   localStorage.setItem(
@@ -259,15 +303,33 @@ export function writeHistory(conversations: Conversation[]) {
         mode: c.mode,
         model: c.model,
         messages: c.messages.map(
-          ({ id, role, text, attachments, attachmentsMissing }) => ({
+          ({
+            id,
+            role,
+            text,
+            attachments,
+            attachmentsMissing,
+            interrupted,
+            reasoning,
+          }) => ({
             id,
             role,
             text,
             ...(attachments?.length || attachmentsMissing
               ? { attachmentsMissing: true }
               : {}),
+            ...(interrupted ? { interrupted } : {}),
+            ...(reasoning
+              ? {
+                  reasoning:
+                    reasoning.length > storedReasoningLimit
+                      ? `${reasoning.slice(0, storedReasoningLimit)}…`
+                      : reasoning,
+                }
+              : {}),
           }),
         ),
+        ...(c.compaction ? { compaction: c.compaction } : {}),
       })),
     ),
   );
@@ -443,33 +505,48 @@ export async function api(
   return response;
 }
 const chunkSchema = z.object({
-  choices: z.array(
-    z.object({
-      index: z.number().int().optional(),
-      delta: z.object({
-        content: z.string().nullable().optional(),
-        tool_calls: z
-          .array(
-            z.object({
-              index: z.number().int().min(0).max(3),
-              id: z.string().optional(),
-              type: z.literal("function").optional(),
-              function: z
-                .object({
-                  name: z.string().optional(),
-                  arguments: z.string().optional(),
-                })
-                .optional(),
-            }),
-          )
+  // Usage-only and keep-alive chunks may omit choices or a choice's delta.
+  choices: z
+    .array(
+      z.object({
+        index: z.number().int().optional(),
+        finish_reason: z.string().nullable().optional(),
+        delta: z
+          .object({
+            content: z.string().nullable().optional(),
+            reasoning: z.string().nullable().optional(),
+            reasoning_content: z.string().nullable().optional(),
+            tool_calls: z
+              .array(
+                z.object({
+                  index: z.number().int().min(0).max(3),
+                  id: z.string().optional(),
+                  type: z.literal("function").optional(),
+                  function: z
+                    .object({
+                      name: z.string().optional(),
+                      arguments: z.string().optional(),
+                    })
+                    .optional(),
+                }),
+              )
+              .optional(),
+          })
           .optional(),
       }),
-    }),
-  ),
+    )
+    .default([]),
 });
+/**
+ * How long to wait for `[DONE]` (or the connection closing) after the model
+ * reported a finish reason. A proxy that holds the stream tail must not leave
+ * a finished reply spinning forever.
+ */
+export const streamFinishGraceMs = 2000;
 export async function streamText(
   response: Response,
   append: (text: string) => void,
+  reasoning?: (text: string) => void,
 ) {
   if (!response.body)
     throw new Error("The gateway returned an empty response.");
@@ -477,7 +554,13 @@ export async function streamText(
   const decoder = new TextDecoder();
   let buffer = "";
   let done = false;
+  let finished = false;
   const calls = new Map<number, ToolCall>();
+  const splitter = thinkSplitter();
+  function emit(part: { content: string; reasoning: string }) {
+    if (part.reasoning) reasoning?.(part.reasoning);
+    if (part.content) append(part.content);
+  }
   function event(raw: string) {
     const data = raw
       .split("\n")
@@ -497,7 +580,11 @@ export async function streamText(
     const chunk = chunkSchema.parse(value);
     for (const choice of chunk.choices) {
       if (choice.index !== undefined && choice.index !== 0) continue;
-      if (choice.delta.content) append(choice.delta.content);
+      if (choice.finish_reason) finished = true;
+      if (!choice.delta) continue;
+      const thought = deltaReasoning(choice.delta);
+      if (thought) reasoning?.(thought);
+      if (choice.delta.content) emit(splitter.push(choice.delta.content));
       for (const delta of choice.delta.tool_calls ?? []) {
         const call = calls.get(delta.index) ?? {
           id: "",
@@ -519,7 +606,22 @@ export async function streamText(
   }
   try {
     while (!done) {
-      const part = await reader.read();
+      const read = reader.read();
+      let grace: ReturnType<typeof setTimeout> | undefined;
+      const part = finished
+        ? await Promise.race([
+            read,
+            new Promise<null>((resolve) => {
+              grace = setTimeout(() => resolve(null), streamFinishGraceMs);
+            }),
+          ]).finally(() => clearTimeout(grace))
+        : await read;
+      if (part === null) {
+        // Finished, but the stream tail never arrived: treat it as complete.
+        read.catch(() => {});
+        done = true;
+        break;
+      }
       buffer += decoder.decode(part.value, { stream: !part.done });
       buffer = buffer.replace(/\r\n/g, "\n");
       let boundary: number;
@@ -532,6 +634,7 @@ export async function streamText(
         break;
       }
     }
+    emit(splitter.flush());
     if (!done)
       throw new Error(
         "Connection ended before the response finished. You can retry.",
@@ -548,11 +651,51 @@ export async function streamText(
       );
     return result;
   } finally {
-    await reader.cancel().catch(() => {});
-    reader.releaseLock();
+    // Never let cleanup of a finished (or aborted) stream block the caller.
+    void reader.cancel().catch(() => {});
+    try {
+      reader.releaseLock();
+    } catch {}
   }
 }
 export const imageResponseSchema = z.object({
   data: z.array(z.object({ b64_json: z.string().min(1) })).min(1),
 });
 export const transcriptionSchema = z.object({ text: z.string() });
+
+export type EmbeddingSummary = {
+  dimensions: number;
+  preview: number[];
+  norm: number;
+};
+/** Dimensions, the first few values, and the L2 norm of an embedding. */
+export function embeddingSummary(
+  values: readonly number[],
+  previewLength = 8,
+): EmbeddingSummary {
+  return {
+    dimensions: values.length,
+    preview: values.slice(0, previewLength),
+    norm: Math.sqrt(values.reduce((sum, value) => sum + value * value, 0)),
+  };
+}
+/** One-line text kept in history for an embedding result. */
+export function embeddingSummaryText(model: string, values: readonly number[]) {
+  const { dimensions, norm } = embeddingSummary(values);
+  return `Embedding from ${model}: ${dimensions} dimensions, norm ${norm.toFixed(4)}.`;
+}
+
+/** The fenced code block language from a `language-*` class, if any. */
+export function codeLanguage(className: string | undefined) {
+  const language = className
+    ?.split(/\s+/)
+    .find((name) => name.startsWith("language-"))
+    ?.slice("language-".length);
+  return language || undefined;
+}
+
+/** How many voices a speech model accepts; 0 for other models. */
+export function speechVoiceCount(model: Pick<Model, "catalog"> | undefined) {
+  const cap = model?.catalog.capabilities;
+  return cap?.kind === "speech" ? cap.voice.requestValues.length : 0;
+}

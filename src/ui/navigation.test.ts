@@ -11,6 +11,7 @@ import {
   navigationUrl,
   readNavigation,
   resolveNavigation,
+  startConversation,
   writeNavigation,
   type Navigation,
 } from "./navigation";
@@ -248,4 +249,93 @@ describe("History API navigation", () => {
     expect(pushes).toBe(2);
     expect(entries).toHaveLength(3);
   });
+});
+
+describe("startConversation", () => {
+  let next = 0;
+  const fresh = (mode: Mode, workspace: Conversation["workspace"]) => ({
+    id: `new-${++next}`,
+    title: "New conversation",
+    workspace,
+    mode,
+    model: "m",
+    messages: [],
+  });
+  const used = (id: string): Conversation => ({
+    ...fresh("llm", "chat"),
+    id,
+    title: id,
+    messages: [{ id: `${id}-m`, role: "user", text: "hi" }],
+  });
+
+  test("repeated workspace switches do not accumulate empty conversations", () => {
+    let conversations = [used("a")];
+    for (const [mode, workspace] of [
+      ["llm", "chat"],
+      ["embedding", "lab"],
+      ["llm", "chat"],
+      ["embedding", "lab"],
+      ["llm", "chat"],
+    ] as const) {
+      conversations = startConversation({
+        conversations,
+        mode,
+        workspace,
+        fresh,
+      }).conversations;
+    }
+    expect(conversations.filter((item) => !item.messages.length)).toHaveLength(
+      1,
+    );
+    expect(conversations.map((item) => item.id)).toContain("a");
+    expect(conversations[0]?.mode).toBe("llm");
+  });
+
+  test("reuses an empty conversation with the same mode and workspace", () => {
+    const empty = { ...fresh("llm", "chat"), id: "empty" };
+    const result = startConversation({
+      conversations: [used("a"), empty],
+      mode: "llm",
+      workspace: "chat",
+      fresh,
+    });
+    expect(result.conversation.id).toBe("empty");
+    expect(result.conversations.map((item) => item.id)).toEqual(["empty", "a"]);
+  });
+
+  test("drops other empty conversations when starting a new one", () => {
+    const result = startConversation({
+      conversations: [{ ...fresh("tts", "lab"), id: "stale" }, used("a")],
+      mode: "llm",
+      workspace: "chat",
+      fresh,
+    });
+    expect(result.conversation.id).not.toBe("stale");
+    expect(result.conversations.map((item) => item.id)).toEqual([
+      result.conversation.id,
+      "a",
+    ]);
+  });
+});
+
+test("loading a URL without saved history reuses the empty conversation", () => {
+  const empty: Conversation = {
+    id: "empty",
+    workspace: "chat",
+    mode: "llm",
+    model: "",
+    title: "New conversation",
+    messages: [],
+  };
+  const restored = resolveNavigation({
+    navigation: readNavigation("?view=chat&mode=llm&model=llm%3Aqwen"),
+    conversations: [empty, saved],
+    fresh,
+  });
+  expect(restored.conversation.id).toBe("empty");
+  expect(restored.conversation.model).toBe("llm:qwen");
+  expect(restored.conversations.map((item) => item.id)).toEqual([
+    "empty",
+    saved.id,
+  ]);
 });

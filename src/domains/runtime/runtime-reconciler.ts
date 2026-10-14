@@ -94,7 +94,16 @@ type ModalityTransitions = Record<RuntimeModality, Promise<void>>;
 export type RuntimeReconciliationHooks = Readonly<{
   beforeModalityDrain?: (modality: RuntimeModality) => Promise<void>;
   now?: () => number;
+  /**
+   * Delay between a preserved LLM cancellation and each check that the backend
+   * stopped the abandoned generation.
+   */
+  cancellationGraceMs?: number;
 }>;
+
+const DEFAULT_CANCELLATION_GRACE_MS = 10_000;
+/** Busy-peer rechecks before an orphaned-generation safeguard gives up. */
+const MAX_CANCELLATION_SAFEGUARD_CHECKS = 6;
 
 type CoordinatedSnapshot = Readonly<{
   snapshot: RuntimeConfigSnapshot;
@@ -158,6 +167,10 @@ function selectedModels(
 /** Applies persisted runtime changes while preserving the gateway listener. */
 export class RuntimeReconciler {
   private readonly barriers: Record<RuntimeModality, ModalityAdmissionBarrier>;
+  private readonly cancellationSafeguards = new Map<
+    RuntimeModality,
+    ReturnType<typeof setTimeout>
+  >();
   private readonly ownedFields: ReadonlySet<keyof LocalBaseConfig>;
   private configured: ConfiguredModalities;
   /** Latest persisted configuration observed by short coordination. */
@@ -888,6 +901,83 @@ export class RuntimeReconciler {
     };
   }
 
+  /**
+   * Kills a preserved backend only when it keeps processing more slots than
+   * there are admitted requests after the cancellation grace period.
+   */
+  private scheduleCancellationSafeguard(
+    modality: RuntimeModality,
+    supervisor: RuntimeSupervisor,
+    check = 1,
+  ): void {
+    const previous = this.cancellationSafeguards.get(modality);
+    if (previous) clearTimeout(previous);
+    const timer = setTimeout(() => {
+      if (this.cancellationSafeguards.get(modality) === timer) {
+        this.cancellationSafeguards.delete(modality);
+      }
+      void this.exclusiveModality(modality, async () => {
+        if (
+          this.supervisors.get(modality) !== supervisor ||
+          supervisor.state() !== "running"
+        ) {
+          return "settled" as const;
+        }
+        const processing = await supervisor.processingSlots?.();
+        if (processing === undefined) return "settled" as const;
+        const barrier = this.barriers[modality];
+        const admission = barrier.snapshot();
+        const active = admission.kind === "known" ? admission.activeCount : 0;
+        if (processing <= active) return "settled" as const;
+        if (!barrier.detachIfIdle()) return "busy" as const;
+        this.logger.event({
+          severity: "warn",
+          eventName: "runtime.cancellation-orphaned-generation",
+          category: "runtime",
+          component: modalityComponents[modality],
+          runtime: modality,
+          message:
+            "Backend kept processing a cancelled request; stopping runtime.",
+          attributes: { processingSlots: processing },
+        });
+        try {
+          await supervisor.kill();
+        } finally {
+          if (
+            this.configured[modality] &&
+            this.supervisors.get(modality) === supervisor
+          ) {
+            this.attachBarrier(modality);
+          }
+        }
+        return "settled" as const;
+      }).then(
+        (result) => {
+          if (result !== "busy") return;
+          if (check < MAX_CANCELLATION_SAFEGUARD_CHECKS) {
+            this.scheduleCancellationSafeguard(modality, supervisor, check + 1);
+          }
+        },
+        (error: unknown) => {
+          this.logger.event({
+            severity: "error",
+            eventName: "runtime.cancellation-failed",
+            category: "runtime",
+            component: modalityComponents[modality],
+            runtime: modality,
+            message: "Runtime cancellation safeguard failed.",
+            error: {
+              type: error instanceof Error ? error.name : "Error",
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        },
+      );
+    }, this.hooks.cancellationGraceMs ?? DEFAULT_CANCELLATION_GRACE_MS);
+    timer.unref?.();
+    this.cancellationSafeguards.set(modality, timer);
+  }
+
   private prepare(admission: RuntimeLease): RuntimeAdmission {
     let startupPending = true;
     let stopRequested = false;
@@ -947,7 +1037,38 @@ export class RuntimeReconciler {
         startupPending = false;
       },
     );
-    return Object.freeze({ ...admission, ready });
+    // llama-server stops a task when its client connection closes, and the
+    // gateway aborts the upstream fetch on disconnect. Killing a healthy LLM
+    // backend would only discard its prompt cache, so a cancellation after
+    // startup releases the lease and verifies the slot went idle instead.
+    const preserveOnCancel = () =>
+      admission.modality === "llm" &&
+      admission.supervisor.kind === "server" &&
+      admission.supervisor.processingSlots !== undefined &&
+      !startupPending &&
+      !stopRequested &&
+      admission.supervisor.state() === "running" &&
+      this.supervisors.get(admission.modality) === admission.supervisor;
+    let settled = false;
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      if (!preserveOnCancel()) {
+        admission.cancel();
+        return;
+      }
+      admission.release();
+      this.scheduleCancellationSafeguard(
+        admission.modality,
+        admission.supervisor,
+      );
+    };
+    const release = () => {
+      if (settled) return;
+      settled = true;
+      admission.release();
+    };
+    return Object.freeze({ ...admission, ready, cancel, release });
   }
 
   private resolveRequestedModel(

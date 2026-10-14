@@ -76,6 +76,7 @@ export const modelMetadataSchema = z
     catalog: z
       .object({
         name: z.string().min(1),
+        displayName: z.string().min(1),
         revision: z.string().min(1),
         kind: z.enum(["llm", "stt", "tts", "image", "video"]),
         qualificationState: z.enum(["qualified", "experimental"]),
@@ -232,6 +233,7 @@ export function projectModelMetadata(
     id: model.modelId,
     catalog: {
       name: model.family,
+      displayName: model.displayName ?? model.family,
       revision: model.repositoryRevision,
       kind: model.kind,
       qualificationState: model.qualificationState ?? "qualified",
