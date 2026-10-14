@@ -25,11 +25,11 @@
           "stripComponents": 0
         },
         "sd-server": {
-          "tag": "sd-server-v0.0.1",
+          "tag": "sd-server-v0.0.2",
           "assetName": "sd-server-macos-arm64.zip",
-          "url": "https://github.com/timsexperiments/LocalBase/releases/download/sd-server-v0.0.1/sd-server-macos-arm64.zip",
-          "expectedSizeBytes": 16126705,
-          "sha256": "c9f49097af48c7ab4c82da7b560f56c786c460448135d30ad481eb7d28b415f3",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/sd-server-v0.0.2/sd-server-macos-arm64.zip",
+          "expectedSizeBytes": 18260204,
+          "sha256": "cd3b0aa50e7c4018b457425f47a2f4ce3923e74f702fc7b4e5a328094e5a5b6a",
           "format": "zip",
           "stripComponents": 0
         },
@@ -75,11 +75,11 @@
           "stripComponents": 0
         },
         "sd-server": {
-          "tag": "sd-server-v0.0.1",
+          "tag": "sd-server-v0.0.2",
           "assetName": "sd-server-linux-x64.tar.gz",
-          "url": "https://github.com/timsexperiments/LocalBase/releases/download/sd-server-v0.0.1/sd-server-linux-x64.tar.gz",
-          "expectedSizeBytes": 29819184,
-          "sha256": "f631b4787d35f533f7d7f80ef464f0115e1ca6f12dd53e1ef6dfba600589b127",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/sd-server-v0.0.2/sd-server-linux-x64.tar.gz",
+          "expectedSizeBytes": 29819305,
+          "sha256": "8969a2369927af26d34a0bd13716431b5bbeeb06919cef774a47dde8190a5a4e",
           "format": "tar.gz",
           "stripComponents": 0
         },
