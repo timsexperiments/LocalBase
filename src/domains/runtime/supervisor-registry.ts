@@ -22,6 +22,8 @@ type CommonRuntimeSupervisor = {
   runtimeId(): string;
   state(): ModalityLifecycleState;
   resolvedSlots?(): number | undefined;
+  /** Number of backend slots still processing work; undefined when unknown. */
+  processingSlots?(): Promise<number | undefined>;
   /** Side-effect-free memory admission probe used before model switches. */
   preflight?(
     releasingRuntimeIds: readonly string[],
