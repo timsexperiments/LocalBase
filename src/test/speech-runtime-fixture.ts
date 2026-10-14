@@ -167,4 +167,97 @@ async function runSpeechFixture(): Promise<void> {
   );
 }
 
-if (import.meta.main) await runSpeechFixture();
+const SAMPLES_PER_FRAME = 1_920;
+
+function pcm(sampleCount: number): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(sampleCount * 2);
+}
+
+function pcmResponse(bytes: Uint8Array<ArrayBuffer>): Response {
+  return new Response(bytes, {
+    headers: {
+      "content-type": "application/octet-stream",
+      "x-audio-format": "s16le",
+      "x-sample-rate": "24000",
+    },
+  });
+}
+
+/** Fakes the warm tts-server: /health, /slots and streaming /v1/generate. */
+async function runSpeechServerFixture(args: string[]): Promise<void> {
+  const host = argumentValue(args, "--host");
+  const port = Number(argumentValue(args, "--port"));
+  let processing = 0;
+  let stopping = false;
+  let control: SpeechFixtureControl | undefined;
+  process.on("SIGTERM", () => {
+    if (stopping) return;
+    stopping = true;
+    void (async () => {
+      await record({ event: "stopping", pid: process.pid });
+      if (control?.exitReleasePath) await waitForPath(control.exitReleasePath);
+      await record({ event: "stopped", pid: process.pid });
+      process.exit(0);
+    })();
+  });
+  Bun.serve({
+    hostname: host,
+    port,
+    async fetch(request) {
+      const { pathname } = new URL(request.url);
+      if (pathname === "/health") return Response.json({ status: "ok" });
+      if (pathname === "/slots") {
+        return Response.json([{ id: 0, is_processing: processing > 0 }]);
+      }
+      if (pathname !== "/v1/generate" || request.method !== "POST") {
+        return new Response("not found", { status: 404 });
+      }
+      if (processing > 0) return new Response("busy", { status: 503 });
+      processing++;
+      try {
+        const body = (await request.json()) as {
+          input: string;
+          voice: string;
+        };
+        control = JSON.parse(
+          await Bun.file(__LOCALBASE_TEST_SPEECH_CONTROL_PATH__).text(),
+        ) as SpeechFixtureControl;
+        await record({
+          event: "started",
+          pid: process.pid,
+          args,
+          promptLength: Array.from(body.input).length,
+          voice: body.voice,
+        });
+        if (control.mode === "hold") {
+          if (!control.releasePath)
+            throw new Error("Hold mode requires releasePath.");
+          await waitForPath(control.releasePath);
+        }
+        if (control.mode === "failure") {
+          return new Response("generation failed", { status: 500 });
+        }
+        if (control.mode === "malformed")
+          return pcmResponse(pcm(1).subarray(1));
+        if (control.mode === "oversized") {
+          return pcmResponse(pcm(256 * SAMPLES_PER_FRAME + 1));
+        }
+        if (control.mode === "truncated") {
+          return pcmResponse(pcm(256 * SAMPLES_PER_FRAME));
+        }
+        if (control.mode === "sample-mismatch") {
+          return pcmResponse(pcm(SAMPLES_PER_FRAME + 1));
+        }
+        return pcmResponse(pcm(2 * SAMPLES_PER_FRAME));
+      } finally {
+        processing--;
+      }
+    },
+  });
+}
+
+if (import.meta.main) {
+  const args = Bun.argv.slice(2);
+  if (args.includes("--port")) await runSpeechServerFixture(args);
+  else await runSpeechFixture();
+}
