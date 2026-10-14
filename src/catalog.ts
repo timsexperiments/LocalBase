@@ -2947,7 +2947,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "CreativeML Open RAIL-M license.",
     notes:
-      "Highly optimized community model for digital art, anime, and portraiture. Extremely fast and lightweight. Requires 4GB+ VRAM.",
+      "Highly optimized community model for digital art, anime, and portraiture. Extremely fast and lightweight.",
   },
   {
     modelId: "sdxl-turbo",
@@ -2956,10 +2956,10 @@ const CATALOG_SOURCE = [
     provider: "StabilityAI",
     family: "Stable-Diffusion-XL",
     version: "Turbo-1.0",
-    size: "13.9GB",
+    size: "6.9GB",
     quant: "F16",
     minVramGb: 16,
-    storageGb: 13.9,
+    storageGb: 6.94,
     source: "https://huggingface.co/stabilityai/sdxl-turbo",
     repositoryRevision: "71153311d3dbb46851df1931d3ca6e939de83304",
     artifacts: [
@@ -2978,7 +2978,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Stability AI Community License.",
     notes:
-      "High-speed 1-step real-time generation model. Excellent for fast interactive feedback cycles. Requires 8GB+ VRAM.",
+      "High-speed 1-step real-time generation model. Excellent for fast interactive feedback cycles.",
   },
   {
     modelId: "sdxl-base-1.0",
@@ -3009,7 +3009,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Stability AI Community License.",
     notes:
-      "Standard high-resolution (1024x1024) image generator. Recommended for standard workstation GPUs with 12GB+ VRAM.",
+      "Standard high-resolution (1024x1024) image generator. Recommended for standard workstation GPUs.",
   },
   {
     modelId: "juggernaut-xl-v9",
@@ -3040,7 +3040,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Stability AI Community License.",
     notes:
-      "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism. Requires 12GB+ VRAM.",
+      "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism.",
   },
   {
     modelId: "animagine-xl-3.1",
@@ -3071,7 +3071,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "Stability AI Community License.",
     notes:
-      "The premier open-source model for high-fidelity anime, manga, and Japanese illustration styles. Requires 12GB+ VRAM.",
+      "The premier open-source model for high-fidelity anime, manga, and Japanese illustration styles.",
   },
   {
     modelId: "realvis-xl-v4.0",
@@ -3102,7 +3102,7 @@ const CATALOG_SOURCE = [
     commercialStatus: "open",
     catch: "CreativeML Open RAIL-M license.",
     notes:
-      "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures. Requires 12GB+ VRAM.",
+      "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures.",
   },
   {
     modelId: "wan2.1-t2v-1.3b-q8_0",
