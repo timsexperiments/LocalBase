@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { parallelSlotsSchema } from "../../config/parallel";
-import { hostSchema, portSchema } from "../../config/schema";
+import {
+  hostSchema,
+  llmContextModeSchema,
+  portSchema,
+} from "../../config/schema";
 import { localBaseRootInputSchema } from "../../../utils/root";
 import {
   otelEndpointSchema,
@@ -77,6 +81,7 @@ export const configureInputSchema = z.object({
   host: hostSchema.optional(),
   port: portInputSchema.optional(),
   ctxSize: positiveInteger().optional(),
+  ctxMode: llmContextModeSchema.optional(),
   parallel: z
     .union([
       z.literal("auto"),

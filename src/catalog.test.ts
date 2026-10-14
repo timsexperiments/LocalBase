@@ -231,6 +231,10 @@ describe("catalog artifact validation", () => {
       "whisper-medium-q8_0",
       "realvis-xl-v5.0",
     ];
+    const toolCallingVerified = new Set([
+      "qwen3.5-4b-q4_k_m",
+      "qwen3.5-9b-q4_k_m",
+    ]);
     for (const id of ids) {
       const entry = byId(id);
       if (!entry) throw new Error(`Missing catalog entry: ${id}`);
@@ -246,6 +250,10 @@ describe("catalog artifact validation", () => {
         "image-to-image",
         "translation",
       ]) {
+        if (capability === "tool-calling" && toolCallingVerified.has(id)) {
+          expect(entry.features).toContain(capability);
+          continue;
+        }
         expect(entry.features).not.toContain(capability);
       }
       expect(entry.inputModalities).toEqual(

@@ -9,11 +9,14 @@ import { runtimeModalities, type RuntimeModality } from "./modality";
 import type { InferenceQueueSnapshot } from "./inference-queue";
 import type { SpeechGenerationInput } from "./speech-supervisor";
 import type { ParallelSlots } from "../config/parallel";
+import type { LlmContextMode } from "../config/schema";
+import type { LlmLaunchPlan } from "./launch-plan";
 
 export type LlmSupervisorProfile = Readonly<{
   modelId: string;
   modelFile?: string;
   configCtxSize: number;
+  ctxMode: LlmContextMode;
   ctxSizeOverride?: number;
   parallel: ParallelSlots;
 }>;
@@ -30,6 +33,8 @@ type CommonRuntimeSupervisor = {
     signal?: AbortSignal,
   ): Promise<RuntimeMemoryAdmissionError | undefined>;
   resolvedContextLength?(): number | undefined;
+  /** The launch plan of the running/last-started LLM, when known. */
+  resolvedLlmLaunchPlan?(): LlmLaunchPlan | undefined;
   llmProfile?(): LlmSupervisorProfile | undefined;
   ensureRunning(): Promise<void>;
   kill(): Promise<void>;

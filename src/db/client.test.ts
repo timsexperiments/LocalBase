@@ -28,13 +28,22 @@ test("adds the default-off experimental opt-in without replacing the config row"
     >;
     source.close();
     delete row.allow_experimental;
+    delete row.ctx_mode;
     const history = readMigrationFiles({
       migrationsFolder: migrationsFolder(),
     });
+    const experimentalMigration = history.findIndex((migration) =>
+      migration.sql.some((statement) =>
+        statement.includes("allow_experimental"),
+      ),
+    );
+    if (experimentalMigration < 0) {
+      throw new Error("Missing allow_experimental migration");
+    }
     sqlite.exec(
       "CREATE TABLE __drizzle_migrations (id INTEGER PRIMARY KEY, hash TEXT NOT NULL, created_at INTEGER)",
     );
-    for (const migration of history.slice(0, -1)) {
+    for (const migration of history.slice(0, experimentalMigration)) {
       for (const statement of migration.sql) sqlite.exec(statement);
       sqlite
         .prepare(
@@ -54,6 +63,7 @@ test("adds the default-off experimental opt-in without replacing the config row"
     expect(sqlite.query("SELECT * FROM config").get()).toEqual({
       ...row,
       allow_experimental: 0,
+      ctx_mode: "auto",
     });
     const config = loadConfig(session, root);
     config.allowExperimental = true;

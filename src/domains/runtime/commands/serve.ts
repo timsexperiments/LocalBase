@@ -41,6 +41,10 @@ import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
 import {
+  configuredLlmContextSize,
+  recommendedLlmContextSize,
+} from "../launch-plan";
+import {
   logHttpMetadataSchema,
   redactLogAttributes,
   type HttpRequestLogInput,
@@ -159,6 +163,7 @@ import {
   type StructuredOutputErrorCode,
   type StructuredOutputValidator,
 } from "../structured-output";
+import { anchorJsonSchemaPatterns } from "../tool-schema";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
@@ -794,19 +799,42 @@ function stripNoopToolFields(
   } as ChatCompletionRequest;
 }
 
+function anchorToolSchemas(
+  request: ChatCompletionRequest,
+): ChatCompletionRequest {
+  if (!request.tools?.length) return request;
+  return {
+    ...request,
+    tools: request.tools.map((tool) =>
+      tool.function.parameters
+        ? {
+            ...tool,
+            function: {
+              ...tool.function,
+              parameters: anchorJsonSchemaPatterns(
+                tool.function.parameters,
+              ) as NonNullable<typeof tool.function.parameters>,
+            },
+          }
+        : tool,
+    ),
+  };
+}
+
 function prepareChatCompletionRequest(
   request: ChatCompletionRequest,
 ): ChatCompletionRequest {
-  const toolChoice = request.tool_choice;
-  if (!toolChoice || typeof toolChoice !== "object") return request;
+  const anchored = anchorToolSchemas(request);
+  const toolChoice = anchored.tool_choice;
+  if (!toolChoice || typeof toolChoice !== "object") return anchored;
 
   const selectedTools =
-    request.tools?.filter(
+    anchored.tools?.filter(
       (tool) => tool.function.name === toolChoice.function.name,
     ) ?? [];
 
   return {
-    ...request,
+    ...anchored,
     tools: selectedTools,
     tool_choice: "required",
   };
@@ -2514,24 +2542,48 @@ export async function runServe(
     port: processSettings.gateway.port,
     ...(serviceId || serviceToken ? { serviceId, serviceToken } : {}),
   };
-  let ctxSize = input.ctxSize ?? 0;
-  if (!ctxSize) {
-    const spec = byId(config.activeLlmModel);
-    const recommendedCtx = spec
-      ? calculateMaxSafeContextSize(spec, ctx.specs.gpuVramGb)
-      : ctx.specs.gpuVramGb >= 32
-        ? 32768
-        : 8192;
-    ctxSize = Math.min(recommendedCtx, config.ctxSize);
+  const startupLlmSpec = byId(config.activeLlmModel);
+  const recommendedCtx = recommendedLlmContextSize(
+    startupLlmSpec,
+    ctx.specs.gpuVramGb,
+  );
+  const ctxSize = configuredLlmContextSize(
+    startupLlmSpec,
+    config.ctxSize,
+    ctx.specs.gpuVramGb,
+    input.ctxSize,
+    config.ctxMode,
+  );
+  if (input.ctxSize) {
+    console.log(
+      `\n💡 Context Size: Using process override --ctx-size ${ctxSize} tokens (configured ceiling: ${config.ctxSize}, mode: ${config.ctxMode}).`,
+    );
+    console.log(
+      `   This override does not persist across managed service restarts; use 'local-base configure --ctx-size ${ctxSize} --ctx-mode explicit' to make it permanent.`,
+    );
+  } else if (config.ctxMode === "explicit") {
+    console.log(
+      `\n💡 Context Size: Launching at the configured ceiling of ${ctxSize} tokens (mode: explicit).`,
+    );
+    if (recommendedCtx < ctxSize) {
+      console.warn(
+        `   The memory-safe recommendation for "${config.activeLlmModel}" on ${ctx.specs.gpuVramGb} GB hardware is ${recommendedCtx} tokens.`,
+      );
+    }
+  } else {
     console.log(`\n💡 Dynamic Context Size: Initialized to ${ctxSize} tokens.`);
     console.log(
-      `   (Calculated best for "${config.activeLlmModel}" on ${ctx.specs.gpuVramGb} GB hardware: ${recommendedCtx} tokens, limited by max context setting: ${config.ctxSize} tokens)`,
+      `   (mode: auto; configured ceiling: ${config.ctxSize} tokens; memory-safe recommendation for "${config.activeLlmModel}" on ${ctx.specs.gpuVramGb} GB hardware: ${recommendedCtx} tokens)`,
     );
-  } else {
-    console.log(
-      `\n💡 Context Size: Using explicit override --ctx-size ${ctxSize} tokens.`,
-    );
+    if (recommendedCtx < config.ctxSize) {
+      console.log(
+        `   Run 'local-base configure --ctx-mode explicit' to launch at the full ${config.ctxSize}-token ceiling instead.`,
+      );
+    }
   }
+  console.log(
+    `   Parallel slots divide the launch context per request; the resolved budget is reported under "context_budget" in /v1/models.`,
+  );
 
   const sttPath = input.sttPath ?? "/inference";
   const authRequired = input.auth ?? true;
@@ -2768,7 +2820,7 @@ export async function runServe(
           `\n💡 Tip: Your system supports a larger context size of up to ${maxSafeCtx} tokens for "${llmSpec.modelId}".`,
         );
         console.log(
-          `   You can configure this by running 'local-base configure' or starting with '--ctx-size ${maxSafeCtx}'.`,
+          `   Persist it with 'local-base configure --ctx-size ${maxSafeCtx}' (add '--ctx-mode explicit' to bypass the memory-safe clamp), or start once with '--ctx-size ${maxSafeCtx}'.`,
         );
       }
     }
@@ -4142,10 +4194,14 @@ export async function runServe(
         }
         const admittedSupervisor = selected.value.admission.supervisor;
         const supervisorProfile = admittedSupervisor.llmProfile?.();
-        const configuredContext =
-          supervisorProfile?.ctxSizeOverride ??
-          supervisorProfile?.configCtxSize ??
-          selected.value.admission.snapshot.config.ctxSize;
+        const admittedConfig = selected.value.admission.snapshot.config;
+        const configuredContext = configuredLlmContextSize(
+          requestedModel,
+          supervisorProfile?.configCtxSize ?? admittedConfig.ctxSize,
+          ctx.specs.gpuVramGb,
+          supervisorProfile?.ctxSizeOverride,
+          supervisorProfile?.ctxMode ?? admittedConfig.ctxMode,
+        );
         const configuredSlots =
           supervisorProfile?.parallel === "auto"
             ? 4
@@ -4157,7 +4213,7 @@ export async function runServe(
           admittedSupervisor.resolvedContextLength?.() ??
             Math.floor(configuredContext / configuredSlots),
           requestedModel?.contextWindowTokens ?? Number.POSITIVE_INFINITY,
-          selected.value.admission.snapshot.config.ctxSize,
+          supervisorProfile?.ctxSizeOverride ?? admittedConfig.ctxSize,
         );
         return {
           ...preparedRequest,
@@ -4314,6 +4370,7 @@ export async function runServe(
           pinnedContextLength: supervisors
             .get("llm")
             ?.resolvedContextLength?.(),
+          pinnedLaunchPlan: supervisors.get("llm")?.resolvedLlmLaunchPlan?.(),
           llmProfile: supervisors.get("llm")?.llmProfile?.(),
           parallel: currentConfig.parallel,
           memoryGb: ctx.specs.gpuVramGb,

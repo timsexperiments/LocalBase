@@ -48,7 +48,12 @@ import {
   parseParallelSlots,
   type ParallelSlots,
 } from "./domains/config/parallel";
-import { hostSchema, portSchema } from "./domains/config/schema";
+import {
+  hostSchema,
+  llmContextModeSchema,
+  portSchema,
+  type LlmContextMode,
+} from "./domains/config/schema";
 import {
   assertDestructiveLocalBaseRoot,
   canonicalLocalBaseRoot,
@@ -91,6 +96,7 @@ export type LocalBaseConfig = {
   host: string;
   port: number;
   ctxSize: number;
+  ctxMode: LlmContextMode;
   sttHost: string;
   sttPort: number;
   selectedLlmModels: string[];
@@ -137,6 +143,7 @@ const configRowSchema = z
     host: hostSchema,
     port: portSchema,
     ctxSize: z.number().int().min(2048).max(2_147_483_647),
+    ctxMode: llmContextModeSchema,
     sttHost: hostSchema,
     sttPort: portSchema,
     selectedLlmModels: z.string(),
@@ -231,6 +238,7 @@ function toConfigRow(config: LocalBaseConfig) {
     host: config.host,
     port: config.port,
     ctxSize: config.ctxSize,
+    ctxMode: config.ctxMode,
     sttHost: config.sttHost,
     sttPort: config.sttPort,
     selectedLlmModels: JSON.stringify(config.selectedLlmModels),
@@ -361,6 +369,7 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     host: data.host,
     port: data.port,
     ctxSize: data.ctxSize,
+    ctxMode: data.ctxMode,
     sttHost: data.sttHost,
     sttPort: data.sttPort,
     ...models.data,
@@ -429,6 +438,7 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     host: "127.0.0.1",
     port: 18000,
     ctxSize: defaultCtxSize,
+    ctxMode: "auto",
     sttHost: "127.0.0.1",
     sttPort: 18080,
     selectedLlmModels: [llm],

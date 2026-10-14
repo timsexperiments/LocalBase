@@ -17,6 +17,7 @@ const config = {
   activeVideoModel: "wan2.1-t2v-1.3b-q8_0",
   selectedVideoModels: ["wan2.1-t2v-1.3b-q8_0"],
   ctxSize: 16384,
+  ctxMode: "auto" as const,
   parallel: 1 as const,
   root: ".",
   llmModelsDir: ".",
@@ -334,6 +335,7 @@ describe("listServedModels", () => {
           modelId: pinnedModel,
           modelFile: `${pinnedModel}.gguf`,
           configCtxSize: 32768,
+          ctxMode: "auto" as const,
           parallel: 2,
         },
       },
@@ -360,6 +362,7 @@ describe("listServedModels", () => {
         llmProfile: {
           modelId: activeModel,
           configCtxSize: 32768,
+          ctxMode: "auto" as const,
           parallel: 2,
         },
       },
@@ -396,6 +399,50 @@ describe("listServedModels", () => {
     expect(
       byId(data, "qwen2.5-coder-1.5b-instruct-q4_k_m")?.context_length,
     ).toBe(8192);
+  });
+
+  test("exposes the context budget behind context_length", async () => {
+    const data = await listServedModels(
+      { ...config, ctxSize: 4096, parallel: 2 },
+      undefined,
+      { memoryGb: 16 },
+    );
+    const llm = byId(data, "qwen2.5-coder-1.5b-instruct-q4_k_m");
+    expect(llm?.context_length).toBe(2048);
+    expect(llm?.context_budget).toMatchObject({
+      mode: "auto",
+      configured_ceiling: 4096,
+      process_override: null,
+      model_context_window: 32768,
+      launch_context: 4096,
+      parallel_slots: 2,
+      effective_context: 2048,
+    });
+    expect(llm?.context_budget?.reasons).toHaveLength(1);
+    expect(llm?.context_budget?.reasons[0]).toContain("2 parallel slots");
+  });
+
+  test("explicit context mode serves the configured ceiling", async () => {
+    const auto = await listServedModels(
+      { ...config, ctxSize: 32768 },
+      undefined,
+      { memoryGb: 4 },
+    );
+    const explicit = await listServedModels(
+      { ...config, ctxSize: 32768, ctxMode: "explicit" },
+      undefined,
+      { memoryGb: 4 },
+    );
+    const autoLlm = byId(auto, "qwen2.5-coder-1.5b-instruct-q4_k_m");
+    const explicitLlm = byId(explicit, "qwen2.5-coder-1.5b-instruct-q4_k_m");
+    expect(autoLlm?.context_length).toBeLessThan(32768);
+    expect(autoLlm?.context_budget?.mode).toBe("auto");
+    expect(autoLlm?.context_budget?.reasons[0]).toContain(
+      "--ctx-mode explicit",
+    );
+    expect(explicitLlm?.context_length).toBe(32768);
+    expect(explicitLlm?.context_budget?.mode).toBe("explicit");
+    expect(explicitLlm?.context_budget?.launch_context).toBe(32768);
   });
 
   test("lists a modality configured after gateway startup", async () => {

@@ -58,6 +58,41 @@ describe("Vercel AI SDK tools and structured output conformance", () => {
     { timeout: 10_000 },
   );
 
+  test("anchors unanchored tool schema patterns before llama-server sees them", async () => {
+    const localbase = createLocalBaseAiSdkProvider(gateway);
+    const tools = {
+      lookup: tool({
+        description: "Looks up a record by identifier.",
+        inputSchema: z.object({
+          id: z.string().regex(/[a-z]+-[0-9]+/),
+          kind: z.string().regex(/^(user|org)$/),
+          tags: z.array(z.string().regex(/alpha|beta/)),
+        }),
+        strict: true,
+      }),
+    };
+    const offset = gateway.upstreamRequests.length;
+    await generateText({
+      model: localbase.chatModel(MODEL),
+      prompt: "Look up a record.",
+      tools,
+    });
+    const [request] = upstreamBodies(gateway, offset);
+    const parameters = (
+      request?.tools as Array<{
+        function: { parameters: Record<string, unknown> };
+      }>
+    )[0]?.function.parameters as {
+      properties: Record<
+        string,
+        { pattern?: string; items?: { pattern?: string } }
+      >;
+    };
+    expect(parameters.properties.id?.pattern).toBe("^[a-z]+-[0-9]+$");
+    expect(parameters.properties.kind?.pattern).toBe("^(user|org)$");
+    expect(parameters.properties.tags?.items?.pattern).toBe("^(?:alpha|beta)$");
+  });
+
   test("normalizes tool choices and strips the no-op none choice", async () => {
     const localbase = createLocalBaseAiSdkProvider(gateway);
     const tools = {
