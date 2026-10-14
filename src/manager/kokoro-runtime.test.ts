@@ -87,14 +87,15 @@ function release(
   };
 }
 
-test("the repository pins refuse to install until the Kokoro package is published", () => {
+test("the repository pins the published Kokoro packages", () => {
   for (const target of [
     { os: "darwin", cpu: "arm64" },
     { os: "linux", cpu: "x64" },
-  ]) {
-    expect(() => kokoroRuntimeRelease(target)).toThrow(
-      "has not been published yet",
-    );
+  ] as const) {
+    const pinned = kokoroRuntimeRelease(target);
+    expect(pinned.pendingPublication).toBeUndefined();
+    expect(pinned.sha256).not.toBe("0".repeat(64));
+    expect(pinned.tag).toBe("kokoro-v0.0.1");
   }
   expect(() => kokoroRuntimeRelease({ os: "darwin", cpu: "x64" })).toThrow(
     "no managed runtime package",
