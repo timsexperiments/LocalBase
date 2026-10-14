@@ -31,3 +31,42 @@ export function llmStartupTimeoutMsForWeights(weightBytes: number): number {
 export function llmStartupTimeoutMs(spec: ModelSpec | undefined): number {
   return llmStartupTimeoutMsForWeights(spec ? totalArtifactBytes(spec) : 0);
 }
+
+/** sd-server image startup budget for models with modest weights. */
+export const IMAGE_DEFAULT_STARTUP_TIMEOUT_MS = 30_000;
+/** sd-server image startup budget once reading the weights dominates. */
+export const IMAGE_LARGE_STARTUP_TIMEOUT_MS = 180_000;
+/**
+ * Weight bytes, summed over every component (diffusion model, VAE, text
+ * encoders), at which sd-server image runtimes get the long startup budget.
+ * Every catalog image model up to flux2-klein-4b-q8_0 (~6.6 GiB) keeps the
+ * 30 s budget it has always had; flux2-klein-9b-q4_0 (~10.2 GiB) and
+ * flux1-schnell-q4_0 (~16.1 GiB, mostly the fp16 T5-XXL encoder) do not fit
+ * in it. The threshold matches the llama-server one so both runtimes treat
+ * the same amount of weight the same way.
+ */
+export const IMAGE_LARGE_STARTUP_WEIGHT_BYTES = 10 * gibibyte;
+
+/** Startup timeout for sd-server loading `weightBytes` of image weights. */
+export function imageStartupTimeoutMsForWeights(weightBytes: number): number {
+  return weightBytes >= IMAGE_LARGE_STARTUP_WEIGHT_BYTES
+    ? IMAGE_LARGE_STARTUP_TIMEOUT_MS
+    : IMAGE_DEFAULT_STARTUP_TIMEOUT_MS;
+}
+
+/**
+ * Startup timeout for an sd-server image model, from the catalog's weight
+ * bytes across all of its component files. Models without a catalog entry
+ * keep the default budget.
+ */
+export function imageStartupTimeoutMs(spec: ModelSpec | undefined): number {
+  return imageStartupTimeoutMsForWeights(spec ? totalArtifactBytes(spec) : 0);
+}
+
+/**
+ * sd-server video startup budget. It is already the long budget, and every
+ * catalog video model's weights (at most ~21.7 GiB, wan2.2-s2v-14b-fp8) are
+ * well below the largest llama-server models (up to ~45 GiB) that start inside the
+ * same 180 s, so weight bytes do not justify a different value.
+ */
+export const VIDEO_STARTUP_TIMEOUT_MS = 180_000;
