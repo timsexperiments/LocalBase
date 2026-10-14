@@ -4,6 +4,12 @@ import { byId, type ModelSpec } from "../../catalog";
 import type { LlmKvGeometry } from "./gguf-metadata";
 import {
   ACCELERATOR_OVERHEAD_BYTES,
+  catalogModelDemand,
+  estimateCatalogModelMemory,
+  estimateTtsMemory,
+  measuredDemand,
+  measuredLlmDemand,
+  measuredModelDemand,
   LLAMA_UBATCH_TOKENS,
   MIN_VRAM_TIERS_GB,
   RUNTIME_HOST_OVERHEAD_BYTES,
@@ -18,6 +24,11 @@ import {
   totalArtifactBytes,
 } from "./memory-estimate";
 import { gibibyte } from "./memory-safety";
+import {
+  MEASUREMENT_DATE,
+  MEMORY_MEASUREMENTS,
+  findLlmMeasurement,
+} from "./memory-measurements";
 
 const mebibyte = 1024 * 1024;
 
@@ -307,5 +318,119 @@ describe("estimateVideoMemory", () => {
     expect(estimate.demand.confidence).toBe("estimated");
     expect(estimate.terms.textEncoderWeights).toBeGreaterThan(0);
     expect(estimateVideoMemory(wan).demand.confidence).toBe("derived");
+  });
+});
+
+describe("measured demand", () => {
+  test("every record names a catalog model, the date, hardware and method", () => {
+    for (const record of MEMORY_MEASUREMENTS) {
+      const model = catalogModel(record.modelId);
+      expect(model.kind).toBe(record.kind);
+      expect(record.date).toBe(MEASUREMENT_DATE);
+      expect(record.hardware).toContain("64 GiB");
+      expect(record.method.length).toBeGreaterThan(0);
+      expect(record.backendAcceleratorBytes).toBeGreaterThan(0);
+      expect(record.peakRssBytes).toBeGreaterThan(0);
+    }
+  });
+
+  test("measuredDemand adds the accelerator allowance and floors host at the weights", () => {
+    const record = findLlmMeasurement("gpt-oss-20b-q4_k_m", {
+      ctxTokens: 8192,
+      slots: 1,
+      cacheTypeK: "q8_0",
+      cacheTypeV: "q8_0",
+    })!;
+    const artifactBytes = totalArtifactBytes(
+      catalogModel("gpt-oss-20b-q4_k_m"),
+    );
+    const demand = measuredDemand(record, {
+      artifactBytes,
+      promptCacheBytes: gibibyte,
+    });
+    expect(demand.acceleratorBytes).toBe(
+      record.backendAcceleratorBytes + ACCELERATOR_OVERHEAD_BYTES,
+    );
+    // The mmapped weights exceed the sampled RSS (untouched pages).
+    expect(artifactBytes).toBeGreaterThan(record.peakRssBytes);
+    expect(demand.hostBytes).toBe(artifactBytes + gibibyte);
+    expect(demand.unifiedBytes).toBeGreaterThanOrEqual(
+      demand.acceleratorBytes + gibibyte,
+    );
+  });
+
+  test("measured catalog models report confidence measured", () => {
+    for (const modelId of [
+      "qwen3.5-9b-q4_k_m",
+      "whisper-large-v3-turbo",
+      "qwen3-tts-1.7b-base-q4_k_m",
+      "flux2-klein-4b-q4_0",
+      "fastwan2.2-ti2v-5b-q6_k",
+    ]) {
+      expect(catalogModelDemand(catalogModel(modelId)).confidence).toBe(
+        "measured",
+      );
+    }
+    const unmeasured = catalogModel("flux2-klein-4b-q8_0");
+    expect(catalogModelDemand(unmeasured)).toEqual(
+      estimateCatalogModelMemory(unmeasured).demand,
+    );
+  });
+
+  test("a different LLM launch shape falls back to the estimate", () => {
+    const launch = {
+      modelId: "qwen3.5-9b-q4_k_m",
+      artifactBytes: totalArtifactBytes(catalogModel("qwen3.5-9b-q4_k_m")),
+      ctxTokens: 8192,
+      slots: 1,
+      cacheTypeK: "q8_0",
+      cacheTypeV: "q8_0",
+      promptCacheBytes: 0,
+    };
+    expect(measuredLlmDemand(launch)).toBeDefined();
+    expect(measuredLlmDemand({ ...launch, ctxTokens: 4096 })).toBeUndefined();
+    expect(measuredLlmDemand({ ...launch, slots: 2 })).toBeUndefined();
+    expect(measuredLlmDemand({ ...launch, cacheTypeK: "f16" })).toBeUndefined();
+    expect(
+      measuredLlmDemand({ ...launch, modelId: undefined }),
+    ).toBeUndefined();
+  });
+
+  test("video measurements only apply at the measured bounds and options", () => {
+    const fastwan = catalogModel("fastwan2.2-ti2v-5b-q6_k");
+    expect(measuredModelDemand(fastwan)).toBeDefined();
+    expect(
+      measuredModelDemand(
+        withLaunchOptions(fastwan, { diffusionFlashAttention: false }),
+      ),
+    ).toBeUndefined();
+    // Offload keeps one stage resident; the accelerator is rounded like the
+    // video estimate and the host holds the offloaded weights.
+    const demand = measuredModelDemand(fastwan)!;
+    expect(demand.acceleratorBytes % (256 * mebibyte)).toBe(0);
+    expect(demand.hostBytes).toBeGreaterThan(demand.acceleratorBytes);
+  });
+
+  test("TTS estimates the talker's full 32K f16 context", () => {
+    const model = catalogModel("qwen3-tts-1.7b-base-q4_k_m");
+    const estimate = estimateTtsMemory(model).demand;
+    const measured = MEMORY_MEASUREMENTS.find(
+      (record) => record.modelId === model.modelId,
+    )!;
+    expect(estimate.acceleratorBytes).toBeGreaterThanOrEqual(
+      measured.backendAcceleratorBytes * 0.9,
+    );
+  });
+
+  test("the image VAE estimate covers the measured decode buffer", () => {
+    for (const modelId of ["dreamshaper-v8", "flux2-klein-4b-q4_0"]) {
+      const model = catalogModel(modelId);
+      const measured = MEMORY_MEASUREMENTS.find(
+        (record) => record.modelId === modelId,
+      )!;
+      expect(
+        estimateImageMemory(model).demand.acceleratorBytes,
+      ).toBeGreaterThanOrEqual(measured.backendAcceleratorBytes * 0.9);
+    }
   });
 });

@@ -45,7 +45,7 @@ import {
 } from "../models/model-eligibility";
 import type { MemorySafetyController } from "./memory-controller";
 import type { MemoryTopology } from "./memory-safety";
-import { estimateTtsMemory, estimateVideoMemory } from "./memory-estimate";
+import { catalogModelDemand } from "./memory-estimate";
 import { SpeechSupervisor, type SpeechPreparation } from "./speech-supervisor";
 import { ManagedService } from "./supervisor";
 import type { RuntimeSupervisor } from "./supervisor-registry";
@@ -657,7 +657,7 @@ export function createRuntimeSupervisorFactory(
         logger: ctx.logger,
         memorySafety: dependencies.memorySafety,
         ...(ttsSpec?.kind === "tts"
-          ? { memoryDemand: estimateTtsMemory(ttsSpec).demand }
+          ? { memoryDemand: catalogModelDemand(ttsSpec) }
           : {}),
         prepare: async (): Promise<SpeechPreparation> => {
           const spec = byId(modelId);
@@ -744,9 +744,7 @@ export function createRuntimeSupervisorFactory(
             config.videoModelsDir,
           );
           if (!installation.complete) {
-            return signal?.aborted
-              ? undefined
-              : estimateVideoMemory(spec).demand;
+            return signal?.aborted ? undefined : catalogModelDemand(spec);
           }
           const plan = resolveVideoLaunchPlan({
             runtimeId,

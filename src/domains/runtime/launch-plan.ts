@@ -21,12 +21,12 @@ import {
 import type { RuntimeComponent, RuntimeModality } from "./modality";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
 import {
-  estimateImageMemory,
+  catalogModelDemand,
   estimateLlmMemory,
-  estimateSttMemory,
-  estimateVideoMemory,
   genericArtifactDemand,
   llmKvCacheType,
+  measuredLlmDemand,
+  preferMeasured,
   resolveLlmShape,
   totalArtifactBytes,
 } from "./memory-estimate";
@@ -255,7 +255,7 @@ function sttMemoryDemand(input: {
   return input.model?.kind === "stt"
     ? catalogDemand(
         input.model,
-        estimateSttMemory(input.model).demand,
+        catalogModelDemand(input.model),
         input.artifactBytes,
       )
     : genericArtifactDemand(input.artifactBytes).demand;
@@ -268,7 +268,7 @@ function imageMemoryDemand(input: {
   return input.model?.kind === "image"
     ? catalogDemand(
         input.model,
-        estimateImageMemory(input.model).demand,
+        catalogModelDemand(input.model),
         input.artifactBytes,
       )
     : genericArtifactDemand(input.artifactBytes).demand;
@@ -290,15 +290,33 @@ function llmMemoryDemand(input: {
     weightsBytes: input.artifactBytes,
     geometry: input.kvGeometry,
   });
-  return estimateLlmMemory({
-    weightsBytes: input.artifactBytes,
-    shape,
+  const launch = {
     ctxTokens: input.ctxSize,
     slots: input.parallel.slots,
     cacheTypeK: input.kvCache.typeK,
     cacheTypeV: input.kvCache.typeV,
     promptCacheBytes: input.promptCacheRamMib * 1024 * 1024,
-  }).demand;
+  };
+  const estimate = estimateLlmMemory({
+    ...launch,
+    weightsBytes: input.artifactBytes,
+    shape,
+  });
+  if (input.model?.kind !== "llm") return estimate.demand;
+  // A measurement was taken with the catalog weights; a larger local file
+  // still adds its extra bytes.
+  const measured = measuredLlmDemand({
+    ...launch,
+    modelId: input.model.modelId,
+    artifactBytes: input.artifactBytes,
+  });
+  return measured
+    ? catalogDemand(
+        input.model,
+        preferMeasured(estimate, measured),
+        input.artifactBytes,
+      )
+    : estimate.demand;
 }
 
 export function resolveLlmLaunchPlan(input: {
@@ -507,10 +525,10 @@ export function resolveVideoLaunchPlan(input: {
     throw new Error("Video model does not support this runtime target.");
   }
   const { qualification } = input.videoRuntime;
-  const memoryDemand = estimateVideoMemory({
+  const memoryDemand = catalogModelDemand({
     ...input.model,
     videoRuntime: input.videoRuntime,
-  }).demand;
+  });
   const common = {
     runtimeId: input.runtimeId,
     modality: "video",

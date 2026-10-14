@@ -30,8 +30,8 @@
  * named as such. Confidence is "derived" when the model geometry is known
  * (GGUF header or the shape table below) and "estimated" when it falls back
  * to a size-based shape or allowance. A "measured" demand recorded from a
- * real run can replace any estimate through `preferMeasured`; calibration is
- * not implemented yet.
+ * real run (memory-measurements.ts) replaces the estimate through
+ * `preferMeasured` when the launch shape matches the measured one.
  */
 import type {
   ImageRuntimeProfile,
@@ -44,6 +44,12 @@ import {
   type LlmKvGeometry,
 } from "./gguf-metadata";
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
+import {
+  findLlmMeasurement,
+  findModelMeasurement,
+  findVideoMeasurement,
+  type MemoryMeasurement,
+} from "./memory-measurements";
 
 const mebibyte = 1024 * 1024;
 
@@ -55,7 +61,7 @@ export type MemoryEstimate = Readonly<{
 
 /**
  * Peak demand observed from a real run of the same model and launch shape.
- * Typed hook only: nothing records these yet.
+ * Built from memory-measurements.ts records by `measuredDemand`.
  */
 export type MeasuredMemoryDemand = Readonly<{
   unifiedBytes: number;
@@ -70,6 +76,48 @@ export function preferMeasured(
 ): RuntimeMemoryDemand {
   if (!measured) return estimate.demand;
   return Object.freeze({ ...measured, confidence: "measured" });
+}
+
+/**
+ * Planning demand from a measured record.
+ * - accelerator = backend GPU buffers + allowance for what the backend does
+ *   not report (Metal context, pipeline cache, allocator slack), optionally
+ *   rounded like the estimate it replaces
+ * - host = peak RSS, at least the backend host buffers and the on-disk
+ *   weights (mmapped pages the run never touched still count)
+ * - unified = the larger of accelerator + host buffers, peak RSS and the
+ *   system-wide free-memory drop, plus any prompt cache configured for the launch
+ */
+export function measuredDemand(
+  record: MemoryMeasurement,
+  options: {
+    artifactBytes: number;
+    acceleratorOverheadBytes?: number;
+    acceleratorRoundingBytes?: number;
+    promptCacheBytes?: number;
+  },
+): MeasuredMemoryDemand {
+  const overhead =
+    options.acceleratorOverheadBytes ?? ACCELERATOR_OVERHEAD_BYTES;
+  const promptCache = options.promptCacheBytes ?? 0;
+  const accelerator = record.backendAcceleratorBytes + overhead;
+  const host = Math.max(
+    record.peakRssBytes,
+    record.hostBufferBytes,
+    options.artifactBytes,
+  );
+  return Object.freeze({
+    acceleratorBytes: options.acceleratorRoundingBytes
+      ? roundUp(accelerator, options.acceleratorRoundingBytes)
+      : accelerator,
+    hostBytes: host + promptCache,
+    unifiedBytes:
+      Math.max(
+        accelerator + record.hostBufferBytes,
+        host,
+        record.systemDeltaBytes ?? 0,
+      ) + promptCache,
+  });
 }
 
 /**
@@ -245,6 +293,18 @@ const QWEN3_0_6B = dense({
   kvHeads: 8,
   headDim: 128,
   embd: 1024,
+  vocab: 151669,
+});
+/**
+ * Qwen3-TTS 1.7B talker (28 layers x 8 KV heads x 128; the measured f16 32K
+ * KV buffer is exactly 3584 MiB). Used by the TTS estimate, not the LLM table.
+ */
+const QWEN3_TTS_1_7B_TALKER = dense({
+  layers: 28,
+  queryHeads: 16,
+  kvHeads: 8,
+  headDim: 128,
+  embd: 2048,
   vocab: 151669,
 });
 const QWEN3_4B = dense({
@@ -805,16 +865,34 @@ export function estimateSttMemory(spec: ModelSpec): MemoryEstimate {
 // TTS
 // ---------------------------------------------------------------------------
 
-const TTS_CONTEXT_TOKENS = 4096;
+/**
+ * llama-tts runs without `-c`, so the talker allocates its full trained
+ * context (measured n_ctx 32768 for Qwen3-TTS 1.7B).
+ */
+const TTS_CONTEXT_TOKENS = 32768;
 /** Audio codec/vocoder decode working set. Allowance. */
 const TTS_CODEC_BYTES = 1 * gibibyte;
+/** llama-tts loads the projector twice (measured 2 x 426 MiB Metal buffers). */
+const TTS_PROJECTOR_COPIES = 2;
+/** Talker shapes by model; other TTS models use the size-based fallback. */
+const TTS_TALKER_SHAPES: Readonly<Record<string, LlmShape>> = {
+  "qwen3-tts-1.7b-base-q4_k_m": QWEN3_TTS_1_7B_TALKER,
+};
 
 /**
  * Qwen3-TTS runs a llama.cpp talker LLM plus the multimodal projector and the
- * audio codec. The talker uses the fallback LLM shape at its parameter count
- * with an f16 4K context; every term is held in one process, so all pools
+ * audio codec. The talker uses its published shape (else the fallback LLM
+ * shape at its parameter count) with an f16 32K context, and the projector is
+ * loaded twice; every term is held in one process, so all pools
  * carry the full sum.
  */
+function talkerShape(spec: ModelSpec, weightsBytes: number): ResolvedLlmShape {
+  const published = TTS_TALKER_SHAPES[spec.modelId];
+  return published
+    ? Object.freeze({ shape: published, source: "table" })
+    : resolveLlmShape({ size: spec.size, quant: spec.quant, weightsBytes });
+}
+
 export function estimateTtsMemory(spec: ModelSpec): MemoryEstimate {
   const sizes = artifactBytesByName(spec);
   const projector = spec.ttsRuntime
@@ -823,11 +901,7 @@ export function estimateTtsMemory(spec: ModelSpec): MemoryEstimate {
   const weights = totalArtifactBytes(spec) - projector;
   const talker = estimateLlmMemory({
     weightsBytes: weights,
-    shape: resolveLlmShape({
-      size: spec.size,
-      quant: spec.quant,
-      weightsBytes: weights,
-    }),
+    shape: talkerShape(spec, weights),
     ctxTokens: TTS_CONTEXT_TOKENS,
     slots: 1,
     cacheTypeK: "f16",
@@ -836,7 +910,7 @@ export function estimateTtsMemory(spec: ModelSpec): MemoryEstimate {
   });
   const terms = {
     weights,
-    projector,
+    projector: projector * TTS_PROJECTOR_COPIES,
     kvCache: talker.terms.kvCache ?? 0,
     compute: talker.terms.compute ?? 0,
     codec: TTS_CODEC_BYTES,
@@ -859,8 +933,12 @@ export function estimateTtsMemory(spec: ModelSpec): MemoryEstimate {
  * attention output, residual and the 4x MLP hidden ~ 12 tensors x D x 4 B.
  */
 const DIFFUSION_ACTIVATION_BYTES_PER_TOKEN_DIM = 48;
-/** Live F32 feature maps at the VAE decoder's full-resolution stage. */
-const VAE_LIVE_FEATURE_MAPS = 5;
+/**
+ * Live F32 feature maps at the VAE decoder's full-resolution stage. Measured
+ * 2026-10-13: the sd.cpp VAE compute buffer is 13.0 maps of 128 channels both for
+ * SD1.5 at 512^2 (1664 MiB) and for Flux.2 at 1024^2 (6658 MiB).
+ */
+const VAE_LIVE_FEATURE_MAPS = 13;
 /** Channel width of the SD/SDXL/Flux VAE decoder's last stage. */
 const IMAGE_VAE_CHANNELS = 128;
 /** Text encoder (CLIP/T5/Qwen3) compute working set. Allowance. */
@@ -928,7 +1006,7 @@ function imageHostOnlyArtifacts(runtime: ImageRuntimeProfile | undefined) {
 /**
  * sd-server image demand (no `--diffusion-fa`, untiled VAE):
  * - activation = T^2 x heads x 4 + T x D x 48
- * - VAE decode = pixels x 128 ch x 4 B x 5 live maps
+ * - VAE decode = pixels x 128 ch x 4 B x 13 live maps
  * - accelerator = GPU-resident weights + max(stage compute) + overhead
  * - host        = all weights + host overhead
  * - unified     = all weights + max(stage compute) + host overhead
@@ -979,6 +1057,12 @@ const VIDEO_VAE_CHUNK_FRAMES = 4;
 /** Last-stage decoder widths: Wan VAE 96 channels, TAEHV/taew 64. */
 const WAN_VAE_CHANNELS = 96;
 const TAE_CHANNELS = 64;
+/**
+ * Live F32 maps per 4-frame chunk during video decode. Measured 2026-10-13:
+ * the TAEHV decode of 81 frames at 832x480 took 14.45 maps of 64 channels;
+ * the Wan VAE is assumed to need the same per channel (unmeasured).
+ */
+const VIDEO_VAE_LIVE_FEATURE_MAPS = 15;
 /** sd-server `--max-vram` and the GPU budget round to this granularity. */
 const VIDEO_ACCELERATOR_ROUNDING_BYTES = 256 * mebibyte;
 /** Reference workload for catalog-only video models (Wan/LTX 480p, 81 frames). */
@@ -1045,7 +1129,7 @@ function roundUp(bytes: number, granularity: number): number {
  * sd-server video demand at the profile's qualification bounds.
  *
  * - activation = T x D x 48 with `--diffusion-fa`, plus T^2 x heads x 4 without
- * - VAE decode = W x H x 4 frames x channels x 4 B x 5 live maps
+ * - VAE decode = W x H x 4 frames x channels x 4 B x 15 live maps
  * - with `--offload-to-cpu` each stage (text encoder, DiT, decoder, audio
  *   encoder) is resident on the GPU only while it runs, so the accelerator
  *   needs the largest stage (weights + its compute); otherwise every
@@ -1084,7 +1168,7 @@ export function estimateVideoMemory(spec: ModelSpec): MemoryEstimate {
     VIDEO_VAE_CHUNK_FRAMES *
     decoderChannels *
     4 *
-    VAE_LIVE_FEATURE_MAPS;
+    VIDEO_VAE_LIVE_FEATURE_MAPS;
 
   let diffusionWeights: number;
   let textEncoderWeights: number;
@@ -1149,8 +1233,101 @@ export function estimateVideoMemory(spec: ModelSpec): MemoryEstimate {
 }
 
 // ---------------------------------------------------------------------------
+// Measured demand lookups
+// ---------------------------------------------------------------------------
+
+/** The measured LLM demand when this exact launch shape was measured. */
+export function measuredLlmDemand(input: {
+  modelId?: string;
+  artifactBytes: number;
+  ctxTokens: number;
+  slots: number;
+  cacheTypeK: string;
+  cacheTypeV: string;
+  promptCacheBytes: number;
+}): MeasuredMemoryDemand | undefined {
+  const record = findLlmMeasurement(input.modelId, input);
+  return record
+    ? measuredDemand(record, {
+        artifactBytes: input.artifactBytes,
+        promptCacheBytes: input.promptCacheBytes,
+      })
+    : undefined;
+}
+
+/**
+ * The measured demand of an STT, TTS, image or video catalog model at the
+ * launch shape the spec carries (video: its qualification bounds/options).
+ */
+export function measuredModelDemand(
+  spec: ModelSpec,
+  artifactBytes: number = totalArtifactBytes(spec),
+): MeasuredMemoryDemand | undefined {
+  switch (spec.kind) {
+    case "stt": {
+      const record = findModelMeasurement("stt", spec.modelId);
+      return record
+        ? measuredDemand(record, {
+            artifactBytes,
+            acceleratorOverheadBytes: WHISPER_ACCELERATOR_OVERHEAD_BYTES,
+          })
+        : undefined;
+    }
+    case "tts":
+    case "image": {
+      const record = findModelMeasurement(spec.kind, spec.modelId);
+      return record ? measuredDemand(record, { artifactBytes }) : undefined;
+    }
+    case "video": {
+      const qualification = spec.videoRuntime?.qualification;
+      if (!qualification) return undefined;
+      const record = findVideoMeasurement(spec.modelId, {
+        width: qualification.maxWidth,
+        height: qualification.maxHeight,
+        frames: qualification.maxFrames,
+        cpuOffload: qualification.launchOptions.cpuOffload,
+        diffusionFlashAttention:
+          qualification.launchOptions.diffusionFlashAttention,
+      });
+      return record
+        ? measuredDemand(record, {
+            artifactBytes,
+            acceleratorRoundingBytes: VIDEO_ACCELERATOR_ROUNDING_BYTES,
+          })
+        : undefined;
+    }
+    case "llm":
+      return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Catalog entry point
 // ---------------------------------------------------------------------------
+
+/** LLM reference launch: 8K context, one slot, launcher KV type, no cache. */
+function catalogLlmReference(spec: ModelSpec) {
+  const weightsBytes = totalArtifactBytes(spec);
+  const shape = resolveLlmShape({
+    modelId: spec.modelId,
+    size: spec.size,
+    quant: spec.quant,
+    weightsBytes,
+  });
+  const kvType = llmKvCacheType(Boolean(spec.llmRuntime), shape.shape.geometry);
+  return {
+    weightsBytes,
+    shape,
+    ctxTokens: Math.min(
+      MIN_VRAM_LLM_CONTEXT_TOKENS,
+      spec.contextWindowTokens ?? MIN_VRAM_LLM_CONTEXT_TOKENS,
+    ),
+    slots: 1,
+    cacheTypeK: kvType,
+    cacheTypeV: kvType,
+    promptCacheBytes: 0,
+  };
+}
 
 /**
  * Estimate for a catalog model at its reference shape: LLMs at 8K context,
@@ -1159,31 +1336,8 @@ export function estimateVideoMemory(spec: ModelSpec): MemoryEstimate {
  */
 export function estimateCatalogModelMemory(spec: ModelSpec): MemoryEstimate {
   switch (spec.kind) {
-    case "llm": {
-      const weightsBytes = totalArtifactBytes(spec);
-      const shape = resolveLlmShape({
-        modelId: spec.modelId,
-        size: spec.size,
-        quant: spec.quant,
-        weightsBytes,
-      });
-      const kvType = llmKvCacheType(
-        Boolean(spec.llmRuntime),
-        shape.shape.geometry,
-      );
-      return estimateLlmMemory({
-        weightsBytes,
-        shape,
-        ctxTokens: Math.min(
-          MIN_VRAM_LLM_CONTEXT_TOKENS,
-          spec.contextWindowTokens ?? MIN_VRAM_LLM_CONTEXT_TOKENS,
-        ),
-        slots: 1,
-        cacheTypeK: kvType,
-        cacheTypeV: kvType,
-        promptCacheBytes: 0,
-      });
-    }
+    case "llm":
+      return estimateLlmMemory(catalogLlmReference(spec));
     case "stt":
       return estimateSttMemory(spec);
     case "tts":
@@ -1195,9 +1349,28 @@ export function estimateCatalogModelMemory(spec: ModelSpec): MemoryEstimate {
   }
 }
 
+/** The measured demand at the catalog reference shape, when one exists. */
+export function measuredCatalogModelMemory(
+  spec: ModelSpec,
+): MeasuredMemoryDemand | undefined {
+  if (spec.kind !== "llm") return measuredModelDemand(spec);
+  const reference = catalogLlmReference(spec);
+  return measuredLlmDemand({
+    ...reference,
+    modelId: spec.modelId,
+    artifactBytes: reference.weightsBytes,
+  });
+}
+
+/** Catalog reference demand: the measurement when present, else the estimate. */
+export function catalogModelDemand(spec: ModelSpec): RuntimeMemoryDemand {
+  return preferMeasured(
+    estimateCatalogModelMemory(spec),
+    measuredCatalogModelMemory(spec),
+  );
+}
+
 /** The minVramGb a catalog entry must declare: its accelerator demand's tier. */
 export function derivedMinVramGb(spec: ModelSpec): number {
-  return minVramTierGb(
-    estimateCatalogModelMemory(spec).demand.acceleratorBytes,
-  );
+  return minVramTierGb(catalogModelDemand(spec).acceleratorBytes);
 }

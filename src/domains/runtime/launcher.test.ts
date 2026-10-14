@@ -58,23 +58,33 @@ const wanS2v = withFixtureFilenames(catalogModel("wan2.2-s2v-14b-fp8"), {
 });
 
 test.each([
-  // deviceBytes: every component resident plus the derived activation, VAE
-  // decode and accelerator-overhead terms at the family default resolution.
   {
     modelId: "flux2-klein-4b-q4_0",
     steps: 4,
-    bytes: 5293871164,
-    deviceBytes: 8548651068,
+    // Measured (memory-measurements.ts): sd.cpp params + VAE-decode compute
+    // buffer + accelerator overhead; host is the measured peak RSS.
+    memoryDemand: {
+      unifiedBytes: 12638224384,
+      hostBytes: 5941821440,
+      acceleratorBytes: 12638224384,
+      confidence: "measured",
+    },
   },
   {
     modelId: "z-image-turbo-q4_0",
     steps: 8,
-    bytes: 6515956452,
-    deviceBytes: 10450213604,
+    // Every component resident plus the derived activation, VAE decode and
+    // accelerator-overhead terms at the family default resolution.
+    memoryDemand: {
+      unifiedBytes: 14032149220,
+      hostBytes: 6515956452 + 0.5 * gibibyte,
+      acceleratorBytes: 14032149220,
+      confidence: "derived",
+    },
   },
 ])(
   "resolves $modelId artifacts, sampling, and aggregate memory",
-  ({ modelId, steps, bytes, deviceBytes }) => {
+  ({ modelId, steps, memoryDemand }) => {
     const spec = byId(modelId);
     if (spec?.imageRuntime?.kind !== "diffusion-qwen3") {
       throw new Error("Missing Qwen image fixture");
@@ -113,12 +123,7 @@ test.each([
       "--listen-port",
       "8083",
     ]);
-    expect(plan.memoryDemand).toEqual({
-      unifiedBytes: deviceBytes,
-      hostBytes: bytes + 0.5 * gibibyte,
-      acceleratorBytes: deviceBytes,
-      confidence: "derived",
-    });
+    expect(plan.memoryDemand).toEqual(memoryDemand);
   },
 );
 
@@ -158,9 +163,9 @@ test.each([
     modelId: "flux1-schnell-q4_0",
     // --clip-on-cpu keeps CLIP-L and T5-XXL off the accelerator.
     expectedMemoryDemand: {
-      unifiedBytes: 20475121916,
+      unifiedBytes: 24770089212,
       hostBytes: 17790767356,
-      acceleratorBytes: 10441136740,
+      acceleratorBytes: 14736104036,
       confidence: "derived",
     },
     expectedModelArgs: [
@@ -184,9 +189,9 @@ test.each([
   {
     modelId: "dreamshaper-8-lcm",
     expectedMemoryDemand: {
-      unifiedBytes: 3341764544,
+      unifiedBytes: 4415506368,
       hostBytes: 2133804992 + 0.5 * gibibyte,
-      acceleratorBytes: 3341764544,
+      acceleratorBytes: 4415506368,
       confidence: "derived",
     },
     expectedModelArgs: [

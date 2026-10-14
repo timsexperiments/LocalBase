@@ -13,6 +13,7 @@ import {
 } from "./catalog";
 import {
   LLM_FALLBACK_SHAPE_MODELS,
+  catalogModelDemand,
   derivedMinVramGb,
   estimateCatalogModelMemory,
   hasPublishedLlmShape,
@@ -1221,14 +1222,14 @@ describe("FLUX Klein image additions", () => {
     {
       id: "flux2-klein-4b-q8_0",
       bytes: 7134122044,
-      deviceBytes: 10388901948,
+      deviceBytes: 14650314812,
       encoder: "Qwen3-4B-Q4_K_M.gguf",
       commercialStatus: "open",
     },
     {
       id: "flux2-klein-9b-q4_0",
       bytes: 10980203836,
-      deviceBytes: 15140953404,
+      deviceBytes: 18496396604,
       encoder: "Qwen3-8B-Q4_K_M.gguf",
       commercialStatus: "conditional",
     },
@@ -1318,12 +1319,13 @@ describe("Cloudflare open-weight image additions", () => {
 
 describe("derived memory estimates", () => {
   test.each(CATALOG.map((model) => [model.modelId, model] as const))(
-    "%s estimate covers its artifacts",
+    "%s estimate and measured demand cover its artifacts",
     (_id, model) => {
-      const { demand } = estimateCatalogModelMemory(model);
+      const demands = [
+        estimateCatalogModelMemory(model).demand,
+        catalogModelDemand(model),
+      ];
       const artifacts = totalArtifactBytes(model);
-      expect(demand.unifiedBytes).toBeGreaterThanOrEqual(artifacts);
-      expect(demand.hostBytes).toBeGreaterThanOrEqual(artifacts);
 
       const hostOnly = new Set<string>(
         model.imageRuntime?.kind === "diffusion-flux1"
@@ -1346,7 +1348,11 @@ describe("derived memory estimates", () => {
             (sum, artifact) => sum + (artifact.expectedSizeBytes ?? 0),
             0,
           );
-      expect(demand.acceleratorBytes).toBeGreaterThanOrEqual(required);
+      for (const demand of demands) {
+        expect(demand.unifiedBytes).toBeGreaterThanOrEqual(artifacts);
+        expect(demand.hostBytes).toBeGreaterThanOrEqual(artifacts);
+        expect(demand.acceleratorBytes).toBeGreaterThanOrEqual(required);
+      }
     },
   );
 
