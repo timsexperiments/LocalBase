@@ -3544,6 +3544,93 @@ describe("API gateway integration", () => {
     await switched.text();
   });
 
+  test("keeps llama-server running when a client aborts a started chat stream", async () => {
+    const model = loadGatewayConfig().activeLlmModel;
+    const warm = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: "warm" }],
+      }),
+    });
+    expect(warm.status).toBe(200);
+    await warm.text();
+
+    const seenEventIds = new Set(
+      (await readLogSnapshot(gateway.root)).map((event) => event.id),
+    );
+    const newEvents = async () =>
+      (await readLogSnapshot(gateway.root)).filter(
+        (event) => !seenEventIds.has(event.id),
+      );
+    const streamId = "llm-client-interrupt";
+    const controller = new AbortController();
+    const interrupted = await request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-test-upstream": "controlled-stream",
+        "x-test-stream-id": streamId,
+      },
+      body: JSON.stringify({
+        model,
+        stream: true,
+        messages: [{ role: "user", content: "interrupt me" }],
+      }),
+      signal: controller.signal,
+    });
+    expect(interrupted.status).toBe(200);
+    const reader = interrupted.body!.getReader();
+    expect((await reader.read()).done).toBe(false);
+
+    controller.abort();
+    await reader.cancel().catch(() => undefined);
+    await within(
+      gateway.waitForControlledStreamAbort(streamId),
+      "upstream abort after client interrupt",
+    );
+
+    let cancelledEvents: string[] = [];
+    const deadline = Date.now() + 2_000;
+    while (Date.now() < deadline) {
+      const events = await newEvents();
+      if (
+        events.some(
+          (event) =>
+            event.eventName === "inference.completed" &&
+            event.attributes?.outcome === "cancelled",
+        )
+      ) {
+        await Bun.sleep(200);
+        cancelledEvents = (await newEvents()).map((event) => event.eventName);
+        break;
+      }
+      await Bun.sleep(10);
+    }
+    expect(cancelledEvents).toContain("inference.completed");
+    expect(cancelledEvents).not.toContain("backend.stopping");
+    expect(cancelledEvents).not.toContain("backend.stopped");
+
+    const next = await within(
+      request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: "continue after interrupt" }],
+        }),
+      }),
+      "request after client interrupt",
+    );
+    expect(next.status).toBe(200);
+    await next.text();
+    const lifecycle = (await newEvents())
+      .map((event) => event.eventName)
+      .filter((name) => name.startsWith("backend."));
+    expect(lifecycle).toEqual([]);
+  });
+
   const jsonValidationCases: ValidationCase[] = [
     {
       name: "chat completions require messages",

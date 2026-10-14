@@ -420,6 +420,7 @@ export function createRuntimeSupervisorFactory(
           parallel: config.parallel,
         },
         healthUrl: `${base}/health`,
+        slotsUrl: `${base}/slots`,
         logger: ctx.logger,
         preflightDemand: async (signal) => {
           if (signal?.aborted) return undefined;
