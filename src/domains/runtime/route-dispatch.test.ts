@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   canonicalGatewayHttpRoute,
+  gatewayRequestDisablesIdleTimeout,
   selectGatewayRoute,
   videoJobIdFromPath,
 } from "./route-dispatch";
@@ -76,3 +77,67 @@ test("classifies unexposed and near-match paths as not found", () => {
     videoJobIdFromPath("/v1/videos/00000000-0000-4000-8000-000000000000/other"),
   ).toBeUndefined();
 });
+
+test("disables the idle timeout only for long-running inference routes", () => {
+  const videoId = "00000000-0000-4000-8000-000000000000";
+  for (const pathname of [
+    "/v1/chat/completions",
+    "/v1/embeddings",
+    "/v1/audio/transcriptions",
+    "/v1/audio/translations",
+    "/v1/audio/speech",
+    "/v1/images/generations",
+    "/v1/images/edits",
+    "/v1/videos",
+    `/v1/videos/${videoId}/content`,
+    "/app/api/v1/chat/completions",
+    "/app/api/v1/images/generations",
+  ])
+    expect(gatewayRequestDisablesIdleTimeout(pathname)).toBe(true);
+  for (const pathname of [
+    "/health",
+    "/health/ready",
+    "/v1/models",
+    "/_localbase/models",
+    "/_localbase/api-keys",
+    `/v1/videos/${videoId}`,
+    `/v1/videos/${videoId}/cancel`,
+    "/app/session",
+    "/app/login",
+    "/app/apiv1/chat/completions",
+    "/nope",
+  ])
+    expect(gatewayRequestDisablesIdleTimeout(pathname)).toBe(false);
+});
+
+test("a silent long-running request survives the listener idle timeout", async () => {
+  // Bun checks idle sockets on a coarse (~4 s) timer, so idleTimeout: 1
+  // resets silent connections after roughly 4 s.
+  const silenceMs = 5_500;
+  const listener = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 26541,
+    idleTimeout: 1,
+    fetch: async (request, server) => {
+      const { pathname } = new URL(request.url);
+      if (gatewayRequestDisablesIdleTimeout(pathname))
+        server.timeout(request, 0);
+      await Bun.sleep(silenceMs);
+      return new Response("done");
+    },
+  });
+  try {
+    const base = `http://127.0.0.1:${listener.port}`;
+    const [inference, control] = await Promise.allSettled([
+      fetch(`${base}/v1/chat/completions`, { method: "POST" }).then((r) =>
+        r.text(),
+      ),
+      fetch(`${base}/v1/models`).then((r) => r.text()),
+    ]);
+    expect(inference).toEqual({ status: "fulfilled", value: "done" });
+    // The control proves the short idle timeout would otherwise reset it.
+    expect(control.status).toBe("rejected");
+  } finally {
+    listener.stop(true);
+  }
+}, 15_000);
