@@ -3,6 +3,7 @@ import { internalSpanOptions, type OtelRuntime } from "../observability/otel";
 import { guardianProcessCommand } from "./backend-guardian";
 import type { ModalityLifecycleState } from "./health";
 import {
+  memoryAdmissionRejectedAttributes,
   RuntimeMemoryAdmissionError,
   type MemorySafetyController,
   type RuntimeMemoryReservation,
@@ -377,11 +378,7 @@ export class ManagedService {
             component: this.name,
             runtime: this.options.modality,
             message: err.message,
-            attributes: {
-              reason: err.decision.reason,
-              pool: err.decision.poolId,
-              ...err.diagnostics,
-            },
+            attributes: memoryAdmissionRejectedAttributes(err),
           });
           throw err;
         }

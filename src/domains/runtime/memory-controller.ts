@@ -126,6 +126,20 @@ export class RuntimeMemoryAdmissionError extends Error {
 }
 
 /**
+ * Structured attributes for the `runtime.memory-admission-rejected` event, shared
+ * by start-time admission and up-front switch preflights.
+ */
+export function memoryAdmissionRejectedAttributes(
+  error: RuntimeMemoryAdmissionError,
+): Record<string, unknown> {
+  return {
+    reason: error.decision.reason,
+    pool: error.decision.poolId,
+    ...error.diagnostics,
+  };
+}
+
+/**
  * Whether a reservation belongs to a runtime being released. Per-generation
  * reservations (e.g. `speech:model:1:generation:3`) belong to their runtime.
  */
