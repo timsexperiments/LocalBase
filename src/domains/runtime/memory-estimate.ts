@@ -1302,7 +1302,12 @@ export function measuredModelDemand(
     case "tts":
     case "image": {
       const record = findModelMeasurement(spec.kind, spec.modelId);
-      return record ? measuredDemand(record, { artifactBytes }) : undefined;
+      // Kokoro runs on the CPU, so it carries no accelerator context.
+      const acceleratorOverheadBytes =
+        spec.ttsRuntime?.kind === "kokoro-onnx" ? 0 : undefined;
+      return record
+        ? measuredDemand(record, { artifactBytes, acceleratorOverheadBytes })
+        : undefined;
     }
     case "video": {
       const qualification = spec.videoRuntime?.qualification;

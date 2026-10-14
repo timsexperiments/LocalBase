@@ -45,6 +45,23 @@ function runtimeFor(packageDir: string, inventorySha256: string) {
   } satisfies KokoroRuntime;
 }
 
+/**
+ * The argv that runs the packaged CLI. The bunfig must be passed joined
+ * (`--config=<path>`): with a separate argument the compiled Bun runtime
+ * silently runs nothing and exits 0.
+ */
+export function kokoroRuntimeCommand(
+  runtime: KokoroRuntime,
+): readonly string[] {
+  return Object.freeze([
+    runtime.executable,
+    "--no-install",
+    "--no-env-file",
+    `--config=${runtime.bunfig}`,
+    runtime.entrypoint,
+  ]);
+}
+
 async function exists(path: string): Promise<boolean> {
   try {
     await lstat(path);

@@ -16,6 +16,7 @@ import {
 } from "../../manager";
 import {
   ensureKokoroRuntime,
+  kokoroRuntimeCommand,
   kokoroRuntimeRelease,
 } from "../../manager/kokoro-runtime";
 import type { ServeInput } from "../app/commands/inputs";
@@ -706,14 +707,7 @@ export function createRuntimeSupervisorFactory(
               join(config.ttsModelsDir, filename);
             return Object.freeze({
               kind: "kokoro-onnx" as const,
-              command: Object.freeze([
-                runtime.executable,
-                "--no-install",
-                "--no-env-file",
-                "--config",
-                runtime.bunfig,
-                runtime.entrypoint,
-              ]),
+              command: kokoroRuntimeCommand(runtime),
               modelFiles: Object.freeze({
                 model: modelFile(profile.artifacts.model),
                 config: modelFile(profile.artifacts.config),

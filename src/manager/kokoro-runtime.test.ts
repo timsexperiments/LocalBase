@@ -4,7 +4,11 @@ import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { gzipSync } from "fflate";
 import { pack } from "tar-stream";
-import { ensureKokoroRuntime, kokoroRuntimeRelease } from "./kokoro-runtime";
+import {
+  ensureKokoroRuntime,
+  kokoroRuntimeCommand,
+  kokoroRuntimeRelease,
+} from "./kokoro-runtime";
 import type { ManagedRuntimeRelease } from "./managed-runtime-manifest";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -179,4 +183,24 @@ test("rejects pending pins, archive digest mismatches, and inventory mismatches"
       new Bun.Glob("*").scan({ cwd: family, onlyFiles: false, dot: true }),
     ),
   ).toEqual([]);
+});
+
+test("the runtime command passes the bunfig as one joined flag", () => {
+  const command = kokoroRuntimeCommand({
+    packageDir: "/runtime",
+    executable: "/runtime/kokoro-tts",
+    bunfig: "/runtime/bunfig.toml",
+    entrypoint: "/runtime/cli.js",
+    inventorySha256: "c".repeat(64),
+  });
+  // A separate "--config" argument makes the compiled runtime exit 0 without
+  // running the entrypoint.
+  expect(command).toEqual([
+    "/runtime/kokoro-tts",
+    "--no-install",
+    "--no-env-file",
+    "--config=/runtime/bunfig.toml",
+    "/runtime/cli.js",
+  ]);
+  expect(command).not.toContain("--config");
 });
