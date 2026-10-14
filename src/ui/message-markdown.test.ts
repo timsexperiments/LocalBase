@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MessageMarkdown } from "./message-markdown";
+import { MessageMarkdown, statusFlash } from "./message-markdown";
 
 const render = (text: string) =>
   renderToStaticMarkup(createElement(MessageMarkdown, { text }));
@@ -43,4 +43,22 @@ test("renders other GFM syntax and keeps raw HTML and images suppressed", () => 
   expect(markup).toContain('type="checkbox"');
   expect(markup).not.toContain("<b>");
   expect(markup).not.toContain("<img");
+});
+
+test("copy status returns to the label after a short delay", async () => {
+  const seen: string[] = [];
+  const flash = statusFlash((status) => seen.push(status), "Copy", 20);
+  flash.show("Copied");
+  await Bun.sleep(10);
+  // A second copy restarts the timer instead of being cut short.
+  flash.show("Copied");
+  await Bun.sleep(15);
+  expect(seen).toEqual(["Copied", "Copied"]);
+  await Bun.sleep(15);
+  expect(seen).toEqual(["Copied", "Copied", "Copy"]);
+
+  flash.show("Copy unavailable");
+  flash.dispose();
+  await Bun.sleep(30);
+  expect(seen.at(-1)).toBe("Copy unavailable");
 });
