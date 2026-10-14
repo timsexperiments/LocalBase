@@ -3545,6 +3545,20 @@ describe("API gateway integration", () => {
   });
 
   test("keeps llama-server running when a client aborts a started chat stream", async () => {
+    // The gateway appends log events through an asynchronous FIFO writer, so
+    // a lifecycle event from an earlier test can reach the file after this
+    // test starts. Each wait below observes a request's own settled event;
+    // FIFO ordering guarantees everything logged before it is on disk too.
+    const waitForSettled = (requestId: string | null, outcome: string) => {
+      expect(requestId).toBeTruthy();
+      return waitForLogEvent(
+        gateway,
+        (event) =>
+          event.eventName === "inference.completed" &&
+          event.requestId === requestId &&
+          event.attributes?.outcome === outcome,
+      );
+    };
     const model = loadGatewayConfig().activeLlmModel;
     const warm = await request("/v1/chat/completions", {
       method: "POST",
@@ -3556,6 +3570,10 @@ describe("API gateway integration", () => {
     });
     expect(warm.status).toBe(200);
     await warm.text();
+    await waitForSettled(
+      warm.headers.get("x-localbase-request-id"),
+      "completed",
+    );
 
     const seenEventIds = new Set(
       (await readLogSnapshot(gateway.root)).map((event) => event.id),
@@ -3581,6 +3599,9 @@ describe("API gateway integration", () => {
       signal: controller.signal,
     });
     expect(interrupted.status).toBe(200);
+    const interruptedRequestId = interrupted.headers.get(
+      "x-localbase-request-id",
+    );
     const reader = interrupted.body!.getReader();
     expect((await reader.read()).done).toBe(false);
 
@@ -3590,27 +3611,7 @@ describe("API gateway integration", () => {
       gateway.waitForControlledStreamAbort(streamId),
       "upstream abort after client interrupt",
     );
-
-    let cancelledEvents: string[] = [];
-    const deadline = Date.now() + 2_000;
-    while (Date.now() < deadline) {
-      const events = await newEvents();
-      if (
-        events.some(
-          (event) =>
-            event.eventName === "inference.completed" &&
-            event.attributes?.outcome === "cancelled",
-        )
-      ) {
-        await Bun.sleep(200);
-        cancelledEvents = (await newEvents()).map((event) => event.eventName);
-        break;
-      }
-      await Bun.sleep(10);
-    }
-    expect(cancelledEvents).toContain("inference.completed");
-    expect(cancelledEvents).not.toContain("backend.stopping");
-    expect(cancelledEvents).not.toContain("backend.stopped");
+    await waitForSettled(interruptedRequestId, "cancelled");
 
     const next = await within(
       request("/v1/chat/completions", {
@@ -3625,6 +3626,12 @@ describe("API gateway integration", () => {
     );
     expect(next.status).toBe(200);
     await next.text();
+    // Any stop or restart caused by the abort would be logged before the next
+    // request settles, so this snapshot cannot miss it.
+    await waitForSettled(
+      next.headers.get("x-localbase-request-id"),
+      "completed",
+    );
     const lifecycle = (await newEvents())
       .map((event) => event.eventName)
       .filter((name) => name.startsWith("backend."));
