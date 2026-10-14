@@ -246,7 +246,7 @@ describe("runtime launch plans", () => {
         // of weights) at 320x320x33 with CPU offload: the largest stage
         // (text encoder) rounded up to 0.5 GiB on the accelerator.
         memoryDemand: {
-          unifiedBytes: 9155955286,
+          unifiedBytes: 10728819286,
           hostBytes: 7832652374 + 0.5 * 1024 ** 3,
           acceleratorBytes: 6.5 * 1024 ** 3,
           confidence: "derived",
