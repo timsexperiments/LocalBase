@@ -242,14 +242,15 @@ describe("runtime launch plans", () => {
           vaeConvDirect: false,
         },
         healthUrl: "http://127.0.0.1:8091/",
-        // Derived from the pinned Wan 2.1 1.3B Q8 bundle (7832652374 bytes
-        // of weights) at 320x320x33 with CPU offload: the largest stage
-        // (text encoder) rounded up to 0.5 GiB on the accelerator.
+        // Measured at 320x320x33 with CPU offload: the largest stage (text
+        // encoder) rounded up to 0.5 GiB on the accelerator, peak RSS on the
+        // host, and unified as the unrounded accelerator demand (6566.05 MiB)
+        // plus the 7463.53 MiB of host weight buffers.
         memoryDemand: {
-          unifiedBytes: 10728819286,
-          hostBytes: 7832652374 + 0.5 * 1024 ** 3,
+          unifiedBytes: 14711080878,
+          hostBytes: 12_147_949_568,
           acceleratorBytes: 6.5 * 1024 ** 3,
-          confidence: "derived",
+          confidence: "measured",
         },
       },
     },

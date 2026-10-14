@@ -61,19 +61,44 @@ Accelerator is the planning value (backend plus allowance), in GiB. The previous
 
 FastWan runs with CPU offload: its host demand is 12.80 GiB and its unified demand is about 17.2 GB, from a system-wide free-memory drop of 15.06 GB.
 
+## Measurements (2026-10-14)
+
+The remaining runnable image profiles at their catalog defaults, and Wan2.1 T2V at its qualification bounds (320x320, 33 frames, 20 steps, CPU offload, diffusion flash attention). Columns are the same as above. Image profiles that set no step count run the sd-server default of 20 steps. The previous estimate is the formula value before this pass.
+
+| Model                 | Accelerator | Peak RSS | Previous estimate | minVramGb |
+| --------------------- | ----------: | -------: | ----------------: | --------- |
+| dreamshaper-8-lcm     |        4.11 |     2.81 |              4.11 | 6         |
+| stable-diffusion-v1-5 |        4.84 |     4.59 |              6.10 | 8 → 6     |
+| z-image-turbo-q4_0    |       12.91 |     6.58 |             13.07 | 16        |
+| flux2-klein-4b-q8_0   |       13.48 |     7.84 |             13.64 | 16        |
+| realvis-xl-v5.0       |       14.47 |     7.37 |             13.46 | 16        |
+| sdxl-turbo            |       14.47 |     7.38 |             13.46 | 16        |
+| juggernaut-xl-v9      |       14.47 |     7.37 |             13.62 | 16        |
+| flux2-klein-9b-q4_0   |       16.59 |    10.73 |             17.23 | 24        |
+| wan2.1-t2v-1.3b-q8_0  |        6.50 |    11.31 |              6.50 | 8         |
+
+Every image run had a system-wide free-memory drop below its RSS, so host demand is peak RSS. SD1.5 is overestimated by the formula because its F32 checkpoint loads as F16 weights. Wan2.1 runs with CPU offload: the T5 stage (5757 MiB of weights and 297 MiB of compute) is the largest on the accelerator, all 7464 MiB of weights stay in host buffers, and its unified demand is 13.70 GiB. The system-wide free-memory drop was 8.22 GB.
+
 ## Calibrated constants
 
 The measurements also corrected estimate inputs, so unmeasured models of the same family are sized consistently:
 
-- **Image VAE decode**: 13 live full-resolution feature maps instead of 5. This matches the measured sd.cpp VAE compute buffers for SD1.5 and Flux2 Klein.
-- **Video VAE decode**: 15 live feature maps. This is an assumption extrapolated from the image measurement, because the measured FastWan run decodes with TAEHV.
+- **Image VAE decode**: 13 live full-resolution feature maps instead of 5. This matches the measured sd.cpp VAE compute buffers for SD1.5 and Flux2 Klein. The SDXL VAE takes 15 (`SDXL_VAE_LIVE_FEATURE_MAPS`): realvis-xl-v5.0, sdxl-turbo and juggernaut-xl-v9 each measured a 7680 MiB VAE compute buffer at 1024x1024, about 1 GiB above the 13-map value.
+- **Video VAE decode**: 15 live 64-channel maps per 4-frame chunk for TAEHV decoders, measured on FastWan (14.45 maps). 23 live 96-channel maps for the Wan VAE, measured on Wan2.1 at 320x320x33 (3435 MiB compute, 22.9 maps). The catalog-only video profiles use the Wan VAE value.
 - **TTS**: llama-tts now launches the talker with `-c 2048` (`SPEECH_CONTEXT_TOKENS`). Without it the talker allocated its full 32768-token trained context: 3584 MiB of f16 KV, 7.42 GiB accelerator and 6.56 GiB peak RSS, tier 12. The prompt fills the context first, then each 12 Hz codec frame takes one cell. The byte-level BPE prompt is at most 4 tokens per code point, so 256 four-byte private-use code points with a reference voice measured about 1050 cells, and 256 English characters about 60. The worst case is about 1310 cells including the 256-frame cap. The prompt is decoded in one batch and llama.cpp caps `n_batch` at `n_ctx`, so 1024 would reject it. The measured record is that worst case: 224 MiB of KV, 632 MiB talker compute and 3.87 GiB peak RSS. The estimate uses the launch context, the published Qwen3-TTS 1.7B talker shape, and two copies of the projector, which the runtime loads twice.
 
 These raised the derived tiers of unmeasured models: the SDXL family, flux1-schnell, z-image-turbo and flux2-klein-4b-q8_0 went from 12 to 16 GiB. SD1.5 went from 6 to 8, dreamshaper-8-lcm from 4 to 6, flux2-klein-9b from 16 to 24, wan2.2-ti2v-5b and hunyuanvideo-1.5 from 16 to 24, and ltx-2.3-22b from 32 to 48.
 
+The 2026-10-14 pass lowered stable-diffusion-v1-5 from 8 to 6 GiB. The Wan VAE recalibration raised the catalog-only wan2.2-ti2v-5b-q6_k and hunyuanvideo-1.5-t2v-480p-q4_k_m from 24 to 32 GiB. It also raised the Wan2.2 S2V unified demand to 32.33 GiB; its accelerator minimum stays 24. The SDXL VAE change pushed juggernaut-xl-v9's derived tier to 24, so it was measured as well. The measured demand keeps it at 16.
+
 ## Not measured
 
-Models that were not installed on the measurement machine keep estimate confidence. These include the q8_0 LLM variants, the remaining image and video profiles and other speech models. qwen3.8-27b-q4_k_m was skipped because its download was paused.
+Models without a measured record keep estimate confidence:
+
+- flux1-schnell-q4_0: its `ae.safetensors` comes from the gated black-forest-labs/FLUX.1-schnell repository, which returns HTTP 401 without a Hugging Face token.
+- wan2.2-s2v-14b-fp8: it targets only Linux x64 with NVIDIA GPUs.
+- The catalog-only video profiles, the q8_0 LLM variants and other speech models.
+- qwen3.8-27b-q4_k_m: skipped in the first pass because its download was paused.
 
 ## Adding a measurement
 

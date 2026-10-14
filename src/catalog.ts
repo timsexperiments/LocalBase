@@ -2647,7 +2647,7 @@ const CATALOG_SOURCE = [
     catch:
       "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
     notes:
-      "Distilled four-step profile with separate FLUX2 VAE and Qwen3 encoder. Memory requirement is estimated; native inference qualification is pending.",
+      "Distilled four-step profile with separate FLUX2 VAE and Qwen3 encoder. Peak memory was measured on Apple Silicon (2026-10-13); broader native inference qualification is pending.",
   },
   {
     modelId: "flux2-klein-4b-q8_0",
@@ -2712,7 +2712,7 @@ const CATALOG_SOURCE = [
     catch:
       "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
     notes:
-      "Less-compressed Q8 diffusion weights with the same Q4 Qwen3 encoder as the compact 4B profile. Image quality relative to Q4 has not been assessed locally. Memory requirement is estimated; native inference qualification is pending.",
+      "Less-compressed Q8 diffusion weights with the same Q4 Qwen3 encoder as the compact 4B profile. Image quality relative to Q4 has not been assessed locally. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending.",
   },
   {
     modelId: "flux2-klein-9b-q4_0",
@@ -2777,7 +2777,7 @@ const CATALOG_SOURCE = [
     catch:
       "FLUX Non-Commercial License; commercial deployment requires a separate Black Forest Labs license. Qwen3 encoder is Apache-2.0.",
     notes:
-      "Larger distilled four-step model with a Qwen3 8B encoder. Photorealism relative to the 4B model has not been assessed locally. Memory requirement is estimated; native inference qualification is pending.",
+      "Larger distilled four-step model with a Qwen3 8B encoder. Photorealism relative to the 4B model has not been assessed locally. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending.",
   },
   {
     modelId: "z-image-turbo-q4_0",
@@ -2843,7 +2843,7 @@ const CATALOG_SOURCE = [
     catch:
       "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
     notes:
-      "Distilled eight-step profile with separate VAE and Qwen3 Instruct encoder. Memory requirement is estimated; native inference qualification is pending.",
+      "Distilled eight-step profile with separate VAE and Qwen3 Instruct encoder. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending.",
   },
   {
     modelId: "stable-diffusion-v1-5",
@@ -2854,7 +2854,7 @@ const CATALOG_SOURCE = [
     version: "1.5",
     size: "4.3GB",
     quant: "F16",
-    minVramGb: 8,
+    minVramGb: 6,
     storageGb: 4.27,
     source:
       "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
@@ -3396,7 +3396,7 @@ const CATALOG_SOURCE = [
     version: "2.2",
     size: "5B",
     quant: "Q6_K",
-    minVramGb: 24,
+    minVramGb: 32,
     storageGb: 4.21,
     source: "https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF",
     repositoryRevision: "57437632ddd08bdcbd1508c866aa22e126ed51d2",
@@ -3501,7 +3501,7 @@ const CATALOG_SOURCE = [
     version: "1.5",
     size: "8.3B",
     quant: "Q4_K_M",
-    minVramGb: 24,
+    minVramGb: 32,
     storageGb: 5.09,
     source: "https://huggingface.co/jayn7/HunyuanVideo-1.5_T2V_480p-GGUF",
     repositoryRevision: "6aac325460d2f2cfe49ad8fb71f5ed2e4f1c5e24",

@@ -961,10 +961,14 @@ export function estimateTtsMemory(spec: ModelSpec): MemoryEstimate {
 const DIFFUSION_ACTIVATION_BYTES_PER_TOKEN_DIM = 48;
 /**
  * Live F32 feature maps at the VAE decoder's full-resolution stage. Measured
- * 2026-10-13: the sd.cpp VAE compute buffer is 13.0 maps of 128 channels both for
- * SD1.5 at 512^2 (1664 MiB) and for Flux.2 at 1024^2 (6658 MiB).
+ * 2026-10-13 and 2026-10-14: the sd.cpp VAE compute buffer is 13.0 maps of
+ * 128 channels for SD1.5 at 512^2 (1664 MiB) and for Flux.2 and Z-Image at
+ * 1024^2 (6657-6658 MiB). The SDXL decoder (sd.cpp applies its Conv2D scale
+ * to SDXL checkpoints without a separate VAE) holds 15.0 maps: 7680 MiB at
+ * 1024^2 for both RealVisXL and SDXL Turbo.
  */
 const VAE_LIVE_FEATURE_MAPS = 13;
+const SDXL_VAE_LIVE_FEATURE_MAPS = 15;
 /** Channel width of the SD/SDXL/Flux VAE decoder's last stage. */
 const IMAGE_VAE_CHANNELS = 128;
 /** Text encoder (CLIP/T5/Qwen3) compute working set. Allowance. */
@@ -999,11 +1003,19 @@ type ImageFamily = {
   tokens: number;
   heads: number;
   width: number;
+  /** Live VAE decoder maps; defaults to `VAE_LIVE_FEATURE_MAPS`. */
+  vaeMaps?: number;
 };
 
 const IMAGE_FAMILIES = {
   sd15: { pixels: 512 * 512, tokens: 4096, heads: 8, width: 320 },
-  sdxl: { pixels: 1024 * 1024, tokens: 4096, heads: 10, width: 640 },
+  sdxl: {
+    pixels: 1024 * 1024,
+    tokens: 4096,
+    heads: 10,
+    width: 640,
+    vaeMaps: SDXL_VAE_LIVE_FEATURE_MAPS,
+  },
   flux1: { pixels: 1024 * 1024, tokens: 4096 + 256, heads: 24, width: 3072 },
   klein4b: { pixels: 1024 * 1024, tokens: 4096 + 512, heads: 24, width: 3072 },
   klein9b: { pixels: 1024 * 1024, tokens: 4096 + 512, heads: 32, width: 4096 },
@@ -1032,7 +1044,7 @@ function imageHostOnlyArtifacts(runtime: ImageRuntimeProfile | undefined) {
 /**
  * sd-server image demand (no `--diffusion-fa`, untiled VAE):
  * - activation = T^2 x heads x 4 + T x D x 48
- * - VAE decode = pixels x 128 ch x 4 B x 13 live maps
+ * - VAE decode = pixels x 128 ch x 4 B x live maps (13; SDXL 15)
  * - accelerator = GPU-resident weights + max(stage compute) + overhead
  * - host        = all weights + host overhead
  * - unified     = all weights + max(stage compute) + host overhead
@@ -1052,7 +1064,10 @@ export function estimateImageMemory(spec: ModelSpec): MemoryEstimate {
     flashAttention: false,
   });
   const vaeDecode =
-    family.pixels * IMAGE_VAE_CHANNELS * 4 * VAE_LIVE_FEATURE_MAPS;
+    family.pixels *
+    IMAGE_VAE_CHANNELS *
+    4 *
+    (family.vaeMaps ?? VAE_LIVE_FEATURE_MAPS);
   const compute = Math.max(activation, vaeDecode, TEXT_ENCODER_COMPUTE_BYTES);
   return freezeEstimate(
     {
@@ -1085,10 +1100,13 @@ const WAN_VAE_CHANNELS = 96;
 const TAE_CHANNELS = 64;
 /**
  * Live F32 maps per 4-frame chunk during video decode. Measured 2026-10-13:
- * the TAEHV decode of 81 frames at 832x480 took 14.45 maps of 64 channels;
- * the Wan VAE is assumed to need the same per channel (unmeasured).
+ * the TAEHV decode of 81 frames at 832x480 took 14.45 maps of 64 channels.
+ * Measured 2026-10-14: the Wan2.1 VAE decode of 33 frames at 320x320 took
+ * 3435 MiB, 22.9 maps of 96 channels. Catalog-only profiles use the Wan VAE
+ * value.
  */
-const VIDEO_VAE_LIVE_FEATURE_MAPS = 15;
+const TAE_LIVE_FEATURE_MAPS = 15;
+const WAN_VAE_LIVE_FEATURE_MAPS = 23;
 /** sd-server `--max-vram` and the GPU budget round to this granularity. */
 const VIDEO_ACCELERATOR_ROUNDING_BYTES = 256 * mebibyte;
 /** Reference workload for catalog-only video models (Wan/LTX 480p, 81 frames). */
@@ -1186,15 +1204,15 @@ export function estimateVideoMemory(spec: ModelSpec): MemoryEstimate {
     width: family.width,
     flashAttention,
   });
-  const decoderChannels =
-    runtime?.artifacts.decoder.kind === "tae" ? TAE_CHANNELS : WAN_VAE_CHANNELS;
+  const tae = runtime?.artifacts.decoder.kind === "tae";
+  const decoderChannels = tae ? TAE_CHANNELS : WAN_VAE_CHANNELS;
   const vaeDecode =
     bounds.width *
     bounds.height *
     VIDEO_VAE_CHUNK_FRAMES *
     decoderChannels *
     4 *
-    VIDEO_VAE_LIVE_FEATURE_MAPS;
+    (tae ? TAE_LIVE_FEATURE_MAPS : WAN_VAE_LIVE_FEATURE_MAPS);
 
   let diffusionWeights: number;
   let textEncoderWeights: number;

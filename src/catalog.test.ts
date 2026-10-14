@@ -1278,20 +1278,22 @@ describe("FLUX Klein image additions", () => {
     {
       id: "flux2-klein-4b-q8_0",
       bytes: 7134122044,
-      deviceBytes: 14650314812,
+      deviceBytes: 14478475264,
+      hostBytes: 8413741056,
       encoder: "Qwen3-4B-Q4_K_M.gguf",
       commercialStatus: "open",
     },
     {
       id: "flux2-klein-9b-q4_0",
       bytes: 10980203836,
-      deviceBytes: 18496396604,
+      deviceBytes: 17814047949,
+      hostBytes: 11518853120,
       encoder: "Qwen3-8B-Q4_K_M.gguf",
       commercialStatus: "conditional",
     },
   ])(
     "resolves $id into a complete image launch plan",
-    ({ id, bytes, deviceBytes, encoder, commercialStatus }) => {
+    ({ id, bytes, deviceBytes, hostBytes, encoder, commercialStatus }) => {
       const entry = byId(id);
       if (!entry?.imageRuntime) throw new Error(`Missing image profile: ${id}`);
       const artifactBytes = entry.artifacts.reduce(
@@ -1333,9 +1335,9 @@ describe("FLUX Klein image additions", () => {
       ]);
       expect(plan.memoryDemand).toEqual({
         unifiedBytes: deviceBytes,
-        hostBytes: bytes + 0.5 * 1024 ** 3,
+        hostBytes,
         acceleratorBytes: deviceBytes,
-        confidence: "derived",
+        confidence: "measured",
       });
     },
   );

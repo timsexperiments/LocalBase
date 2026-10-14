@@ -29,6 +29,8 @@ const mib = (value: number): number => Math.round(value * mebibyte);
 const mb = (value: number): number => Math.round(value * 1e6);
 
 export const MEASUREMENT_DATE = "2026-10-13";
+/** Second pass: the remaining runnable image and video profiles. */
+export const IMAGE_VIDEO_MEASUREMENT_DATE = "2026-10-14";
 export const MEASUREMENT_HARDWARE = "Apple M-series 64 GiB, macOS 26";
 
 export type LlmMeasurementShape = Readonly<{
@@ -214,6 +216,118 @@ export const MEMORY_MEASUREMENTS: readonly MemoryMeasurement[] = Object.freeze([
       "stage compute buffer (VAE decode); RSS sampled every 250 ms",
   },
   {
+    kind: "image",
+    modelId: "dreamshaper-8-lcm",
+    variant: "safetensors F16 (LCM)",
+    shape: { width: 512, height: 512, steps: 4 },
+    backendAcceleratorBytes: mib(2035 + 1664.06),
+    hostBufferBytes: 0,
+    peakRssBytes: 3_012_804_608,
+    date: IMAGE_VIDEO_MEASUREMENT_DATE,
+    hardware: MEASUREMENT_HARDWARE,
+    method:
+      "sd-server via the gateway, catalog defaults; params + largest " +
+      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+  },
+  {
+    kind: "image",
+    modelId: "stable-diffusion-v1-5",
+    variant: "safetensors F16",
+    shape: { width: 512, height: 512, steps: 20 },
+    backendAcceleratorBytes: mib(2784.45 + 1664.06),
+    hostBufferBytes: 0,
+    peakRssBytes: 4_929_093_632,
+    date: IMAGE_VIDEO_MEASUREMENT_DATE,
+    hardware: MEASUREMENT_HARDWARE,
+    method:
+      "sd-server via the gateway, catalog defaults; params + largest " +
+      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+  },
+  {
+    kind: "image",
+    modelId: "z-image-turbo-q4_0",
+    variant: "Q4_0 + Qwen3-4B-Instruct Q4_K_M",
+    shape: { width: 1024, height: 1024, steps: 8 },
+    backendAcceleratorBytes: mib(6048.62 + 6657),
+    hostBufferBytes: 0,
+    peakRssBytes: 7_061_504_000,
+    date: IMAGE_VIDEO_MEASUREMENT_DATE,
+    hardware: MEASUREMENT_HARDWARE,
+    method:
+      "sd-server via the gateway, catalog defaults; params + largest " +
+      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+  },
+  {
+    kind: "image",
+    modelId: "flux2-klein-4b-q8_0",
+    variant: "Q8_0 + Qwen3-4B Q4_K_M",
+    shape: { width: 1024, height: 1024, steps: 4 },
+    backendAcceleratorBytes: mib(6637.75 + 6658),
+    hostBufferBytes: 0,
+    peakRssBytes: 8_413_741_056,
+    date: IMAGE_VIDEO_MEASUREMENT_DATE,
+    hardware: MEASUREMENT_HARDWARE,
+    method:
+      "sd-server via the gateway, catalog defaults; params + largest " +
+      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+  },
+  {
+    kind: "image",
+    modelId: "realvis-xl-v5.0",
+    variant: "safetensors F16",
+    shape: { width: 1024, height: 1024, steps: 20 },
+    backendAcceleratorBytes: mib(6624.11 + 7680.25),
+    hostBufferBytes: 0,
+    peakRssBytes: 7_915_061_248,
+    date: IMAGE_VIDEO_MEASUREMENT_DATE,
+    hardware: MEASUREMENT_HARDWARE,
+    method:
+      "sd-server via the gateway, catalog defaults; params + largest " +
+      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+  },
+  {
+    kind: "image",
+    modelId: "sdxl-turbo",
+    variant: "safetensors F16",
+    shape: { width: 1024, height: 1024, steps: 20 },
+    backendAcceleratorBytes: mib(6624.11 + 7680.25),
+    hostBufferBytes: 0,
+    peakRssBytes: 7_920_566_272,
+    date: IMAGE_VIDEO_MEASUREMENT_DATE,
+    hardware: MEASUREMENT_HARDWARE,
+    method:
+      "sd-server via the gateway, catalog defaults; params + largest " +
+      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+  },
+  {
+    kind: "image",
+    modelId: "juggernaut-xl-v9",
+    variant: "safetensors F16",
+    shape: { width: 1024, height: 1024, steps: 20 },
+    backendAcceleratorBytes: mib(6624.11 + 7680.25),
+    hostBufferBytes: 0,
+    peakRssBytes: 7_915_388_928,
+    date: IMAGE_VIDEO_MEASUREMENT_DATE,
+    hardware: MEASUREMENT_HARDWARE,
+    method:
+      "sd-server via the gateway, catalog defaults; params + largest " +
+      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+  },
+  {
+    kind: "image",
+    modelId: "flux2-klein-9b-q4_0",
+    variant: "Q4_0 + Qwen3-8B Q4_K_M",
+    shape: { width: 1024, height: 1024, steps: 4 },
+    backendAcceleratorBytes: mib(9818.8 + 6658),
+    hostBufferBytes: 0,
+    peakRssBytes: 11_518_853_120,
+    date: IMAGE_VIDEO_MEASUREMENT_DATE,
+    hardware: MEASUREMENT_HARDWARE,
+    method:
+      "sd-server via the gateway, catalog defaults; params + largest " +
+      "stage compute buffer (VAE decode); RSS sampled every 250 ms",
+  },
+  {
     kind: "video",
     modelId: "fastwan2.2-ti2v-5b-q6_k",
     variant: "Q6_K + umt5-xxl Q8_0 + TAEHV",
@@ -236,6 +350,30 @@ export const MEMORY_MEASUREMENTS: readonly MemoryMeasurement[] = Object.freeze([
       "diffusion-fa, vae-conv-direct, TAE), 832x480, 81 frames, 3 steps; " +
       "largest stage params + compute; RSS and free memory sampled every " +
       "250 ms",
+  },
+  {
+    kind: "video",
+    modelId: "wan2.1-t2v-1.3b-q8_0",
+    variant: "Q8_0 + umt5-xxl Q8_0 + Wan2.1 VAE",
+    shape: {
+      width: 320,
+      height: 320,
+      frames: 33,
+      cpuOffload: true,
+      diffusionFlashAttention: true,
+    },
+    // Offload streams one stage at a time; the T5 stage is the largest. The
+    // Wan VAE stage is 242.10 MiB of weights plus 3435.35 MiB of decode.
+    backendAcceleratorBytes: mib(5757.05 + 297),
+    hostBufferBytes: mib(7463.53),
+    peakRssBytes: 12_147_949_568,
+    systemDeltaBytes: 8_220_786_688,
+    date: IMAGE_VIDEO_MEASUREMENT_DATE,
+    hardware: MEASUREMENT_HARDWARE,
+    method:
+      "sd-server with the qualification launch options (offload, " +
+      "diffusion-fa), 320x320, 33 frames, 20 steps; largest stage params + " +
+      "compute; RSS and free memory sampled every 250 ms",
   },
 ]);
 
