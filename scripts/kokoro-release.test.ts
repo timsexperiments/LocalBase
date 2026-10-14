@@ -11,7 +11,13 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { gzipSync } from "fflate";
 import { pack } from "tar-stream";
-import { verifyPublished, verifyRegistryPackage } from "./kokoro-release";
+import {
+  kokoroManifestMatches,
+  updateKokoroManifest,
+  verifyPublished,
+  verifyRegistryPackage,
+} from "./kokoro-release";
+import repositoryManifest from "../src/manager/managed-runtime-manifest.json";
 import { validateSpeechWav } from "../src/domains/runtime/speech-supervisor";
 import { parseArguments } from "../runtimes/kokoro/cli";
 import {
@@ -403,4 +409,44 @@ test("published release verification rejects tampered assets, extra assets, and 
   await expect(
     verifyPublished(draft.repository, draft.tag, draft.fetcher),
   ).rejects.toThrow();
+});
+
+test("manifest sync replaces only the placeholder kokoro-tts pins with the verified receipt", async () => {
+  const fixture = publishedReleaseFixture();
+  const receipt = await verifyPublished(
+    fixture.repository,
+    fixture.tag,
+    fixture.fetcher,
+  );
+  expect(kokoroManifestMatches(repositoryManifest, receipt)).toBe(false);
+  const updated = updateKokoroManifest(repositoryManifest, receipt);
+  expect(kokoroManifestMatches(updated, receipt)).toBe(true);
+  for (const [index, target] of updated.targets.entries()) {
+    const original = repositoryManifest.targets[index]!;
+    if (target.tier !== "managed") {
+      expect(target).toEqual(original as typeof target);
+      continue;
+    }
+    const { "kokoro-tts": kokoro, ...others } = target.runtimes;
+    const { "kokoro-tts": _placeholder, ...originalOthers } = (
+      original as typeof target
+    ).runtimes;
+    expect(others).toEqual(originalOthers);
+    if (!kokoro) continue;
+    expect(kokoro.pendingPublication).toBeUndefined();
+    const pin =
+      receipt.runtimes[
+        target.platform === "darwin" ? "macos-arm64" : "linux-x64"
+      ];
+    expect(kokoro).toEqual({
+      tag: "kokoro-v0.0.1",
+      assetName: pin.artifact.assetName,
+      url: pin.url,
+      expectedSizeBytes: pin.artifact.expectedSizeBytes,
+      sha256: pin.artifact.sha256,
+      format: "tar.gz",
+      stripComponents: 0,
+      inventorySha256: pin.artifact.inventorySha256,
+    });
+  }
 });

@@ -6,12 +6,19 @@ export const runtimeNameSchema = z.enum([
   "llama-server",
   "whisper-server",
   "sd-server",
+  "kokoro-tts",
 ]);
 export type RuntimeName = z.infer<typeof runtimeNameSchema>;
 
 const platformSchema = z.enum(["darwin", "linux"]);
 const architectureSchema = z.enum(["arm64", "x64"]);
 const platformSupportTierSchema = z.enum(["managed", "cli-only"]);
+
+/**
+ * Digest a manifest entry carries until its release is published. Entries that
+ * use it must also set `pendingPublication`; LocalBase refuses to download them.
+ */
+export const PENDING_RUNTIME_SHA256 = "0".repeat(64);
 
 const managedRuntimeArtifactSchema = z
   .object({
@@ -22,9 +29,24 @@ const managedRuntimeArtifactSchema = z
     sha256: sha256Schema,
     format: z.enum(["binary", "tar.gz", "zip"]),
     stripComponents: z.number().int().nonnegative(),
+    /** SHA256 of a package's inventory.json; required for packaged runtimes. */
+    inventorySha256: sha256Schema.optional(),
+    /** Marks a placeholder pin whose release has not been published yet. */
+    pendingPublication: z.literal(true).optional(),
   })
   .strict()
   .superRefine((artifact, ctx) => {
+    const placeholderDigest =
+      artifact.sha256 === PENDING_RUNTIME_SHA256 ||
+      artifact.inventorySha256 === PENDING_RUNTIME_SHA256;
+    if (Boolean(artifact.pendingPublication) !== placeholderDigest) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "placeholder digests and pendingPublication must be declared together",
+        path: ["pendingPublication"],
+      });
+    }
     if (artifact.format === "binary" && artifact.stripComponents !== 0) {
       ctx.addIssue({
         code: "custom",
@@ -78,6 +100,33 @@ export const managedRuntimeManifestSchema = z
           message: "platform support tier does not match the supported target",
           path: ["targets", index, "tier"],
         });
+      }
+
+      for (const [name, artifact] of Object.entries(target.runtimes)) {
+        const packaged = name === "kokoro-tts";
+        if (packaged !== Boolean(artifact.inventorySha256)) {
+          ctx.addIssue({
+            code: "custom",
+            message: packaged
+              ? "packaged runtimes must pin their inventory digest"
+              : "only packaged runtimes may pin an inventory digest",
+            path: ["targets", index, "runtimes", name, "inventorySha256"],
+          });
+        }
+        if (packaged && artifact.format !== "tar.gz") {
+          ctx.addIssue({
+            code: "custom",
+            message: "packaged runtimes must ship as tar.gz archives",
+            path: ["targets", index, "runtimes", name, "format"],
+          });
+        }
+        if (!packaged && artifact.pendingPublication) {
+          ctx.addIssue({
+            code: "custom",
+            message: "only packaged runtimes may await publication",
+            path: ["targets", index, "runtimes", name, "pendingPublication"],
+          });
+        }
       }
 
       if (target.tier === "managed") {

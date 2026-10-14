@@ -14,6 +14,7 @@ import {
   SpeechGenerationAbortedError,
   SpeechOutputError,
   SpeechSupervisor,
+  kokoroNativeArguments,
   speechNativeArguments,
   validateSpeechWav,
 } from "./speech-supervisor";
@@ -136,6 +137,7 @@ describe("bounded speech supervisor", () => {
         : {}),
       childStopGraceMs: overrides.childStopGraceMs ?? 100,
       prepare: async () => ({
+        kind: "llama-tts",
         binaryPath,
         modelPath: join(root, "model.gguf"),
         projectorPath: join(root, "mmproj.gguf"),
@@ -474,6 +476,7 @@ describe("bounded speech supervisor", () => {
 
 test("rejects malformed WAV boundaries", () => {
   const preparation = {
+    kind: "llama-tts" as const,
     binaryPath: "/runtime/llama-tts",
     modelPath: "/models/model.gguf",
     projectorPath: "/models/mmproj.gguf",
@@ -509,6 +512,41 @@ test("rejects malformed WAV boundaries", () => {
   expect(() => validateSpeechWav(new TextEncoder().encode("not wav"))).toThrow(
     SpeechOutputError,
   );
+
+  expect(
+    kokoroNativeArguments(
+      {
+        kind: "kokoro-onnx",
+        command: ["/runtime/kokoro-tts", "--no-install", "/runtime/cli.js"],
+        modelFiles: {
+          model: "/models/model_quantized.onnx",
+          config: "/models/config.json",
+          tokenizer: "/models/tokenizer.json",
+          tokenizerConfig: "/models/tokenizer_config.json",
+        },
+        inventorySha256: "a".repeat(64),
+      },
+      "/private/model",
+      "/private/prompt.txt",
+      "/private/output.wav",
+      "af_heart",
+    ),
+  ).toEqual([
+    "/runtime/kokoro-tts",
+    "--no-install",
+    "/runtime/cli.js",
+    "generate",
+    "--model",
+    "/private/model",
+    "--prompt",
+    "/private/prompt.txt",
+    "--output",
+    "/private/output.wav",
+    "--voice",
+    "af_heart",
+    "--inventory-sha256",
+    "a".repeat(64),
+  ]);
 });
 
 test("the talker context covers the longest prompt plus every frame", () => {

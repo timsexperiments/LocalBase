@@ -25,6 +25,7 @@ import {
 import sources from "../runtimes/kokoro/sources.json";
 import { readSdArchiveEntries } from "./sd-release/archive-reader";
 import { parseChecksumFile } from "../src/utils/checksum";
+import { parseManagedRuntimeManifest } from "../src/manager/managed-runtime-manifest";
 import {
   expectedDownloadUrl,
   repositorySchema,
@@ -768,6 +769,75 @@ export async function verifyPublished(
   });
 }
 
+const manifestTargets = {
+  "macos-arm64": { platform: "darwin", architecture: "arm64" },
+  "linux-x64": { platform: "linux", architecture: "x64" },
+} as const satisfies Record<KokoroTarget, object>;
+
+type RuntimeManifest = ReturnType<typeof parseManagedRuntimeManifest>;
+
+function manifestRuntimes(manifest: RuntimeManifest, target: KokoroTarget) {
+  const expected = manifestTargets[target];
+  const entry = manifest.targets.find(
+    (candidate) =>
+      candidate.platform === expected.platform &&
+      candidate.architecture === expected.architecture,
+  );
+  if (!entry || entry.tier !== "managed")
+    throw new Error(`Managed manifest target ${target} is missing.`);
+  return entry.runtimes;
+}
+
+function kokoroManifestEntry(
+  receipt: KokoroReleaseReceipt,
+  target: KokoroTarget,
+) {
+  const { url, artifact } = receipt.runtimes[target];
+  return {
+    tag: receipt.tag,
+    assetName: artifact.assetName,
+    url,
+    expectedSizeBytes: artifact.expectedSizeBytes,
+    sha256: artifact.sha256,
+    format: artifact.format,
+    stripComponents: artifact.stripComponents,
+    inventorySha256: artifact.inventorySha256,
+  };
+}
+
+/** Replaces only the kokoro-tts pins, clearing the pending-publication marker. */
+export function updateKokoroManifest(
+  manifestInput: unknown,
+  receiptInput: unknown,
+): RuntimeManifest {
+  const updated = structuredClone(parseManagedRuntimeManifest(manifestInput));
+  const receipt = kokoroReleaseReceiptSchema.parse(receiptInput);
+  for (const target of kokoroTargetSchema.options) {
+    manifestRuntimes(updated, target)["kokoro-tts"] = kokoroManifestEntry(
+      receipt,
+      target,
+    );
+  }
+  return parseManagedRuntimeManifest(updated);
+}
+
+export function kokoroManifestMatches(
+  manifestInput: unknown,
+  receiptInput: unknown,
+): boolean {
+  const manifest = parseManagedRuntimeManifest(manifestInput);
+  const receipt = kokoroReleaseReceiptSchema.parse(receiptInput);
+  return kokoroTargetSchema.options.every(
+    (target) =>
+      JSON.stringify(manifestRuntimes(manifest, target)["kokoro-tts"]) ===
+      JSON.stringify(kokoroManifestEntry(receipt, target)),
+  );
+}
+
+async function readJsonFile(path: unknown): Promise<unknown> {
+  return JSON.parse(await readFile(z.string().min(1).parse(path), "utf8"));
+}
+
 async function main(): Promise<void> {
   const [operation, ...args] = Bun.argv.slice(2);
   const options = new Map<string, string>();
@@ -779,7 +849,33 @@ async function main(): Promise<void> {
     options.set(key, value);
   }
   if (operation === "validate-tag") {
-    kokoroTagSchema.parse(options.get("--tag"));
+    const tag = kokoroTagSchema.parse(options.get("--tag"));
+    const output = options.get("--github-output");
+    if (output)
+      await writeFile(output, `tag=${tag}\nbranch=tim/${tag}-manifest\n`, {
+        flag: "a",
+      });
+    return;
+  }
+  if (operation === "update-manifest") {
+    const path = z.string().min(1).parse(options.get("--manifest"));
+    const updated = updateKokoroManifest(
+      await readJsonFile(path),
+      await readJsonFile(options.get("--receipt")),
+    );
+    await writeFile(path, `${JSON.stringify(updated, null, 2)}\n`);
+    return;
+  }
+  if (operation === "verify-manifest") {
+    if (
+      !kokoroManifestMatches(
+        await readJsonFile(options.get("--manifest")),
+        await readJsonFile(options.get("--receipt")),
+      )
+    )
+      throw new Error(
+        "Managed kokoro-tts manifest entries do not match the release receipt.",
+      );
     return;
   }
   if (operation === "assert-unpublished") {

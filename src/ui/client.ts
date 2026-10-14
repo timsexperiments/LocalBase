@@ -66,10 +66,16 @@ const capabilitiesSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("speech"),
-    voice: z.object({
-      requestValues: z.array(z.enum(["default", "harbor", "willow"])).min(1),
-      defaultRequestValue: z.literal("default"),
-    }),
+    voice: z.union([
+      z.object({
+        requestValues: z.array(z.enum(["default", "harbor", "willow"])).min(1),
+        defaultRequestValue: z.literal("default"),
+      }),
+      z.object({
+        requestValues: z.array(z.enum(["af_heart", "af_bella"])).min(1),
+        defaultRequestValue: z.enum(["af_heart", "af_bella"]),
+      }),
+    ]),
   }),
 ]) satisfies z.ZodType<ClientCapabilities>;
 

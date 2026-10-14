@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  kokoroSpeechVoiceSchema,
   modelModalitySchema,
   referenceSpeechVoiceSchema,
   resolveCatalogInstallation,
@@ -49,22 +50,31 @@ const speechCapabilitiesSchema = z
   .object({
     kind: z.literal("speech"),
     outputFormats: z.tuple([z.literal("wav")]),
-    voice: z
-      .object({
-        selection: z.literal("catalog-reference"),
-        requestValues: z.array(speechVoiceSchema).min(1),
-        defaultRequestValue: z.literal("default"),
-        references: z.array(
-          z
-            .object({
-              name: referenceSpeechVoiceSchema,
-              license: z.literal("CC0-1.0"),
-              provenanceUrl: z.string().url(),
-            })
-            .strict(),
-        ),
-      })
-      .strict(),
+    voice: z.discriminatedUnion("selection", [
+      z
+        .object({
+          selection: z.literal("catalog-reference"),
+          requestValues: z.array(speechVoiceSchema).min(1),
+          defaultRequestValue: z.literal("default"),
+          references: z.array(
+            z
+              .object({
+                name: referenceSpeechVoiceSchema,
+                license: z.literal("CC0-1.0"),
+                provenanceUrl: z.string().url(),
+              })
+              .strict(),
+          ),
+        })
+        .strict(),
+      z
+        .object({
+          selection: z.literal("bundled-native"),
+          requestValues: z.array(kokoroSpeechVoiceSchema).min(1),
+          defaultRequestValue: kokoroSpeechVoiceSchema,
+        })
+        .strict(),
+    ]),
     residency: z.literal("cold-per-request"),
   })
   .strict();
@@ -253,7 +263,7 @@ export function projectModelMetadata(
             kind: "embedding",
             dimensions: model.llmRuntime.dimensions,
           }
-        : model.kind === "tts"
+        : model.kind === "tts" && model.ttsRuntime?.kind === "llama-tts"
           ? {
               kind: "speech",
               outputFormats: ["wav"],
@@ -261,12 +271,10 @@ export function projectModelMetadata(
                 selection: "catalog-reference",
                 requestValues: [
                   "default",
-                  ...(model.ttsRuntime?.referenceVoices ?? []).map(
-                    ({ name }) => name,
-                  ),
+                  ...model.ttsRuntime.referenceVoices.map(({ name }) => name),
                 ],
                 defaultRequestValue: "default",
-                references: (model.ttsRuntime?.referenceVoices ?? []).map(
+                references: model.ttsRuntime.referenceVoices.map(
                   ({ name, license, provenanceUrl }) => ({
                     name,
                     license,
@@ -276,18 +284,31 @@ export function projectModelMetadata(
               },
               residency: "cold-per-request",
             }
-          : model.videoRuntime
+          : model.kind === "tts" && model.ttsRuntime?.kind === "kokoro-onnx"
             ? {
-                kind: "video",
-                mode: model.videoRuntime.mode,
-                width: model.videoRuntime.qualification.maxWidth,
-                height: model.videoRuntime.qualification.maxHeight,
-                frames: model.videoRuntime.qualification.maxFrames,
-                fps: model.videoRuntime.qualification.fps,
-                jobDeadlineMs: model.videoRuntime.qualification.jobDeadlineMs,
-                outputFormats: ["mp4"],
+                kind: "speech",
+                outputFormats: ["wav"],
+                voice: {
+                  selection: "bundled-native",
+                  requestValues: model.ttsRuntime.voices.map(
+                    ({ name }) => name,
+                  ),
+                  defaultRequestValue: model.ttsRuntime.defaultVoice,
+                },
+                residency: "cold-per-request",
               }
-            : null,
+            : model.videoRuntime
+              ? {
+                  kind: "video",
+                  mode: model.videoRuntime.mode,
+                  width: model.videoRuntime.qualification.maxWidth,
+                  height: model.videoRuntime.qualification.maxHeight,
+                  frames: model.videoRuntime.qualification.maxFrames,
+                  fps: model.videoRuntime.qualification.fps,
+                  jobDeadlineMs: model.videoRuntime.qualification.jobDeadlineMs,
+                  outputFormats: ["mp4"],
+                }
+              : null,
       inputModalities: model.inputModalities,
       outputModalities: model.outputModalities,
       contextWindowTokens: model.contextWindowTokens,

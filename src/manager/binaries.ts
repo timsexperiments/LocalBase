@@ -54,6 +54,9 @@ export {
 
 export type RuntimeConfig = { root: string };
 
+/** Runtimes shipped as verified packages and installed by `ensureKokoroRuntime`. */
+type PackagedRuntimeName = "kokoro-tts";
+
 export const managedExecutableNameSchema = z.enum([
   "llama-server",
   "llama-tts",
@@ -79,7 +82,7 @@ const runtimeFamilyExecutables = {
   "sd-server": ["sd-server", "sd-cli"],
   ffmpeg: ["ffmpeg"],
 } as const satisfies Record<
-  RuntimeName | "ffmpeg",
+  Exclude<RuntimeName, PackagedRuntimeName> | "ffmpeg",
   readonly ManagedExecutableName[]
 >;
 
@@ -130,7 +133,7 @@ const receiptSchema = z
 
 type Receipt = z.infer<typeof receiptSchema>;
 
-function currentPlatformTarget(): PlatformTarget {
+export function currentPlatformTarget(): PlatformTarget {
   return { os: process.platform, cpu: process.arch };
 }
 
@@ -310,7 +313,7 @@ async function verifyManagedBinary(
   return true;
 }
 
-async function downloadRelease(
+export async function downloadRelease(
   url: string,
   dest: string,
   expectedSizeBytes: number,
@@ -414,7 +417,7 @@ function archiveLinkTarget(
   return normalized;
 }
 
-async function extractTarGz(
+export async function extractTarGz(
   archivePath: string,
   stagingDir: string,
   stripComponents: number,
@@ -672,7 +675,7 @@ function installMissingStagedAssets(
 
 const managedInstallTails = new Map<string, Promise<void>>();
 
-async function serializeManagedInstall<T>(
+export async function serializeManagedInstall<T>(
   root: string,
   operation: () => Promise<T>,
 ): Promise<T> {

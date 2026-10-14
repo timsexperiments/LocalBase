@@ -6,6 +6,7 @@ on:
       - .github/workflows/release-kokoro.yml
       - runtimes/kokoro/**
       - scripts/kokoro*
+      - .github/workflows/sync-kokoro-manifest.yml
   workflow_dispatch:
     inputs:
       runtime_tag:
@@ -166,3 +167,12 @@ jobs:
           bun run scripts/kokoro-release.ts verify-published
           --repository "$GITHUB_REPOSITORY" --tag "$RUNTIME_TAG"
           --output "$RUNNER_TEMP/kokoro-release-receipt.json"
+
+  sync-manifest:
+    name: Synchronize managed runtime manifest
+    needs: release
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/sync-kokoro-manifest.yml
+    with:
+      runtime_tag: ${{ inputs.runtime_tag }}
+    secrets: inherit

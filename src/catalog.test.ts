@@ -518,6 +518,7 @@ describe("catalog artifact validation", () => {
       inputModalities: ["text"],
       outputModalities: ["audio"],
       ttsRuntime: {
+        kind: "llama-tts",
         projectorArtifactFilename: "projector.gguf",
         referenceVoices: [
           {
@@ -563,6 +564,60 @@ describe("catalog artifact validation", () => {
               },
             ],
           },
+        },
+      ]).success,
+    ).toBe(false);
+  });
+
+  test("requires Kokoro voices and local artifacts to be declared", () => {
+    const kokoro = {
+      ...model([
+        {
+          sourcePath: "onnx/model_quantized.onnx",
+          filename: "model_quantized.onnx",
+          expectedSizeBytes: 10,
+          sha256: checksum,
+          role: "primary",
+        },
+        ...["config.json", "tokenizer.json", "tokenizer_config.json"].map(
+          (filename) => ({
+            sourcePath: filename,
+            filename,
+            expectedSizeBytes: 1,
+            sha256: "b".repeat(64),
+            role: "supplementary" as const,
+          }),
+        ),
+      ]),
+      kind: "tts",
+      inputModalities: ["text"],
+      outputModalities: ["audio"],
+      ttsRuntime: {
+        kind: "kokoro-onnx",
+        artifacts: {
+          model: "model_quantized.onnx",
+          config: "config.json",
+          tokenizer: "tokenizer.json",
+          tokenizerConfig: "tokenizer_config.json",
+        },
+        voices: [{ name: "af_heart" }, { name: "af_bella" }],
+        defaultVoice: "af_heart",
+      },
+    };
+    expect(catalogSchema.safeParse([kokoro]).success).toBe(true);
+    expect(
+      catalogSchema.safeParse([
+        {
+          ...kokoro,
+          ttsRuntime: { ...kokoro.ttsRuntime, defaultVoice: "af_bella" },
+        },
+      ]).success,
+    ).toBe(true);
+    expect(
+      catalogSchema.safeParse([
+        {
+          ...kokoro,
+          ttsRuntime: { ...kokoro.ttsRuntime, defaultVoice: "af_alloy" },
         },
       ]).success,
     ).toBe(false);
@@ -828,6 +883,7 @@ describe("catalog artifact validation", () => {
       },
     ]);
     expect(tts?.ttsRuntime).toEqual({
+      kind: "llama-tts",
       projectorArtifactFilename: "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
       referenceVoices: [
         {
@@ -1340,14 +1396,18 @@ describe("derived memory estimates", () => {
       );
       const offload =
         model.videoRuntime?.qualification.launchOptions.cpuOffload ?? false;
-      const required = offload
-        ? Math.max(
-            ...resident.map((artifact) => artifact.expectedSizeBytes ?? 0),
-          )
-        : resident.reduce(
-            (sum, artifact) => sum + (artifact.expectedSizeBytes ?? 0),
-            0,
-          );
+      // Kokoro runs on the CPU ONNX provider and holds no accelerator memory.
+      const cpuOnly = model.ttsRuntime?.kind === "kokoro-onnx";
+      const required = cpuOnly
+        ? 0
+        : offload
+          ? Math.max(
+              ...resident.map((artifact) => artifact.expectedSizeBytes ?? 0),
+            )
+          : resident.reduce(
+              (sum, artifact) => sum + (artifact.expectedSizeBytes ?? 0),
+              0,
+            );
       for (const demand of demands) {
         expect(demand.unifiedBytes).toBeGreaterThanOrEqual(artifacts);
         expect(demand.hostBytes).toBeGreaterThanOrEqual(artifacts);
