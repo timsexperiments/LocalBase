@@ -1,7 +1,34 @@
-import { isValidElement, memo, useRef, useState, type ReactNode } from "react";
+import {
+  isValidElement,
+  memo,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { codeLanguage } from "./client";
+
+export const COPY_STATUS_MS = 2000;
+
+// Shows a status briefly, then restores the label. A newer status restarts
+// the timer so a stale reset never cuts it short.
+export function statusFlash(
+  set: (status: string) => void,
+  label: string,
+  ms = COPY_STATUS_MS,
+) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return {
+    show(status: string) {
+      set(status);
+      clearTimeout(timer);
+      timer = setTimeout(() => set(label), ms);
+    },
+    dispose: () => clearTimeout(timer),
+  };
+}
 
 export function Copy({
   text,
@@ -11,20 +38,22 @@ export function Copy({
   label?: string;
 }) {
   const [status, setStatus] = useState(label);
+  const [flash] = useState(() => statusFlash(setStatus, label));
+  useEffect(() => flash.dispose, [flash]);
   return (
     <button
       type="button"
       className="copy"
       onClick={() => {
         if (!navigator.clipboard) {
-          setStatus("Copy unavailable");
+          flash.show("Copy unavailable");
           return;
         }
         void navigator.clipboard
           .writeText(typeof text === "function" ? text() : text)
           .then(
-            () => setStatus("Copied"),
-            () => setStatus("Copy unavailable"),
+            () => flash.show("Copied"),
+            () => flash.show("Copy unavailable"),
           );
       }}
     >
