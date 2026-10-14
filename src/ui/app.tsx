@@ -1,5 +1,6 @@
 import {
   Fragment,
+  startTransition,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -9,6 +10,7 @@ import {
 import { createRoot } from "react-dom/client";
 import { Copy, MessageMarkdown } from "./message-markdown";
 import { ModelManagement } from "./model-management";
+import { pollWhileVisible } from "./visibility";
 import { AuthManagement } from "./auth-management";
 import {
   attachmentAccept,
@@ -137,6 +139,9 @@ const composerPlaceholders: Record<Mode, string> = {
   embedding: "Enter text to embed…",
 };
 const navigationAbortReason = Symbol("navigation");
+/** Messages rendered when a conversation opens, then mounted per step. */
+const historyFirstMount = 12;
+const historyMountStep = 40;
 function fresh(
   mode: Mode = "llm",
   workspace: Conversation["workspace"] = "chat",
@@ -323,12 +328,12 @@ function Drawer({
       }}
     >
       <div className="drawer">
-        <header>
+        <div className="drawer-header">
           <h2 id="drawer-title">{title}</h2>
           <button aria-label="Close drawer" onClick={close}>
             ✕
           </button>
-        </header>
+        </div>
         {children}
       </div>
     </dialog>
@@ -474,6 +479,18 @@ function App() {
   const nearBottom = useRef(true);
   const active =
     conversations.find((c) => c.id === activeId) ?? conversations[0];
+  // Opening a long conversation mounts its latest messages first, then
+  // prepends older ones in small, interruptible steps so the open never
+  // blocks on rendering (and parsing Markdown for) the whole history.
+  const [mounted, setMounted] = useState<{ id?: string; from: number }>({
+    from: 0,
+  });
+  const mountedFrom = !active
+    ? 0
+    : mounted.id === active.id
+      ? Math.min(mounted.from, active.messages.length)
+      : Math.max(0, active.messages.length - historyFirstMount);
+  const mountAnchor = useRef<{ node: Element; top: number } | null>(null);
   const page = active?.workspace ?? "chat";
   const activeModeAllowed = active
     ? canReadModels && canUseMode(permissions, active.mode)
@@ -750,10 +767,11 @@ function App() {
     }
     const abort = new AbortController();
     void refresh(abort.signal);
-    const timer = setInterval(() => void refresh(abort.signal), 15000);
+    // Hidden tabs skip the poll; showing the tab again refreshes at once.
+    const stop = pollWhileVisible(() => void refresh(abort.signal), 15000);
     return () => {
       abort.abort();
-      clearInterval(timer);
+      stop();
     };
   }, [session]);
   useEffect(() => {
@@ -831,7 +849,48 @@ function App() {
   }
   useLayoutEffect(() => {
     if (nearBottom.current) scrollToLatest();
-  }, [active?.id, active?.messages]);
+  }, [active?.id, active?.messages, activeModeAllowed, studio]);
+  function rememberMountAnchor() {
+    const first = transcript.current?.querySelector(
+      ".conversation > article.message",
+    );
+    mountAnchor.current = first
+      ? { node: first, top: first.getBoundingClientRect().top }
+      : null;
+  }
+  useEffect(() => {
+    if (!active) return;
+    if (mounted.id !== active.id) {
+      setMounted({ id: active.id, from: mountedFrom });
+      return;
+    }
+    if (!mountedFrom) return;
+    const timer = setTimeout(() =>
+      startTransition(() =>
+        setMounted((current) =>
+          current.id === active.id
+            ? {
+                id: current.id,
+                from: Math.max(0, mountedFrom - historyMountStep),
+              }
+            : current,
+        ),
+      ),
+    );
+    return () => clearTimeout(timer);
+  }, [active?.id, mounted.id, mountedFrom]);
+  useLayoutEffect(() => {
+    // Keep the reader's place when older messages mount above it (Safari
+    // has no scroll anchoring), or stay pinned to the latest message.
+    const element = transcript.current;
+    const anchor = mountAnchor.current;
+    if (nearBottom.current) scrollToLatest();
+    else if (element && anchor?.node.isConnected) {
+      element.scrollTop += anchor.node.getBoundingClientRect().top - anchor.top;
+    }
+    if (mountedFrom) rememberMountAnchor();
+    else mountAnchor.current = null;
+  }, [mountedFrom]);
   useLayoutEffect(() => {
     const element = input.current;
     if (!element) return;
@@ -1567,6 +1626,7 @@ function App() {
             nearBottom.current =
               el.scrollHeight - el.scrollTop - el.clientHeight < 100;
             setShowLatest(!nearBottom.current);
+            if (mountedFrom) rememberMountAnchor();
           }}
         >
           <div className="conversation">
@@ -1606,7 +1666,7 @@ function App() {
                 </p>
               </section>
             )}
-            {active.messages.map((message) => {
+            {active.messages.slice(mountedFrom).map((message) => {
               const live = busy && message.id === active.messages.at(-1)?.id;
               return (
                 <Fragment key={message.id}>
@@ -1743,7 +1803,7 @@ function App() {
             )}
           </div>
         </main>
-        <footer className="composer-area" hidden={!activeModeAllowed || studio}>
+        <div className="composer-area" hidden={!activeModeAllowed || studio}>
           {showLatest && (
             <button
               className="jump-latest"
@@ -1981,7 +2041,7 @@ function App() {
               </p>
             )}
           </div>
-        </footer>
+        </div>
       </div>
       <footer className="license-notice">
         AGPL-3.0-or-later ·{" "}

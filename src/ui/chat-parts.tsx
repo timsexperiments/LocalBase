@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Compaction } from "./client";
 import { phaseLabel, type Phase } from "./steering";
+import { pollWhileVisible } from "./visibility";
 
 /** Live status while a reply has no text yet, with elapsed seconds. */
 export function WorkingStatus({
@@ -12,8 +13,7 @@ export function WorkingStatus({
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
+    return pollWhileVisible(() => setNow(Date.now()), 1000);
   }, []);
   return (
     <p className="thinking" role="status">

@@ -7,7 +7,7 @@ import {
 import {
   accessControlConfigSchema,
   accessControlRoleSchema,
-} from "../domains/auth/access-control";
+} from "../domains/auth/access-control-contract";
 import { defaultBrowserPermissions } from "../domains/auth/browser-access-contract";
 import {
   accessManagementMutationResponseSchema,

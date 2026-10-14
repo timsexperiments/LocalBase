@@ -12,7 +12,7 @@ import {
 import {
   accessControlConfigSchema,
   accessControlRoleSchema,
-} from "./access-control";
+} from "./access-control-contract";
 import { apiKeyMetadataSchema } from "./api-key-public";
 import {
   emailDeliveryConfigSchema,
@@ -23,7 +23,7 @@ import {
   managedUserEmailInputSchema,
   managedUserSchema,
   replaceManagedUserRolesInputSchema,
-} from "./users";
+} from "./users-contract";
 
 const identitySchema = z
   .object({

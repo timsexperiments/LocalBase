@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { DictationButton, appendDictation } from "./dictation";
+import { onVisible } from "./visibility";
 import {
   modelManagementSchema,
   type ModelManagementAction,
@@ -63,7 +64,11 @@ export function ModelManagement({
     if (!connection) return;
     const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let polling = false;
     const poll = async () => {
+      clearTimeout(timer);
+      timer = undefined;
+      polling = true;
       let running = false;
       try {
         const next = responseSchema.parse(
@@ -89,14 +94,20 @@ export function ModelManagement({
           );
         }
       } finally {
-        if (!abort.signal.aborted)
+        polling = false;
+        // A hidden tab stops polling until it is shown again.
+        if (!abort.signal.aborted && !document.hidden)
           timer = setTimeout(() => void poll(), running ? 1500 : 10000);
       }
     };
     void poll();
+    const stopResume = onVisible(() => {
+      if (!polling) void poll();
+    });
     return () => {
       abort.abort();
       clearTimeout(timer);
+      stopResume();
     };
   }, [connectionKind, revision]);
 

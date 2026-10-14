@@ -720,6 +720,10 @@ input::placeholder {
 .code-block-header .copy {
   flex-shrink: 0;
 }
+/* The code block clips its overflow, so the header ring sits inside. */
+.code-block-header :focus-visible {
+  outline-offset: -2px;
+}
 .message-body .code-block pre {
   padding: 14px 16px;
   line-height: 1.55;
@@ -876,6 +880,8 @@ dialog {
   width: 100%;
   max-width: 100%;
   overflow-y: auto;
+  /* Keyboard focus scrolled into view clears the sticky drawer header. */
+  scroll-padding-block: 80px 16px;
   overscroll-behavior: contain;
   background: var(--canvas);
   color: var(--text);
@@ -891,7 +897,8 @@ dialog::backdrop {
     max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
   overflow-wrap: anywhere;
 }
-.drawer header {
+.drawer header,
+.drawer-header {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -904,7 +911,8 @@ dialog::backdrop {
   background: var(--canvas);
   border-bottom: 1px solid var(--border);
 }
-.drawer header button {
+.drawer header button,
+.drawer-header button {
   flex-shrink: 0;
 }
 .drawer h2 {
@@ -1066,12 +1074,13 @@ dialog.management-page {
   padding-top: env(safe-area-inset-top);
   border: 0;
   border-radius: 0;
+  scroll-padding-top: calc(env(safe-area-inset-top) + 80px);
 }
 .management-page > .drawer {
   max-width: 1120px;
   margin: auto;
 }
-.management-page > .drawer > header {
+.management-page > .drawer > .drawer-header {
   top: env(safe-area-inset-top);
 }
 .storage-summary {
