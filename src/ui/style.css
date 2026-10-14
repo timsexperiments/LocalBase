@@ -98,7 +98,7 @@ input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 .composer:focus-within {
   border-color: var(--accent);
@@ -110,7 +110,11 @@ select:focus-visible {
 }
 summary:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline-offset: 2px;
+}
+/* The topbar has little or no vertical padding, so rings there sit inside. */
+.topbar :focus-visible {
+  outline-offset: -2px;
 }
 a {
   color: var(--accent);
