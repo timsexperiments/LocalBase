@@ -273,6 +273,27 @@ export const MEMORY_MEASUREMENTS: readonly MemoryMeasurement[] = Object.freeze([
   },
   {
     kind: "image",
+    modelId: "flux1-schnell-q4_0",
+    variant: "Q4_0 + CLIP-L + T5-XXL F16",
+    shape: {
+      width: 1024,
+      height: 1024,
+      steps: 4,
+      diffusionFlashAttention: true,
+    },
+    // --clip-on-cpu: CLIP-L and T5-XXL params plus their compute buffers
+    // (9318.83 + 68.25 + 1.42 MiB) stay in host memory.
+    backendAcceleratorBytes: mib(6725.62 + 6657),
+    hostBufferBytes: mib(9318.83 + 68.25 + 1.42),
+    peakRssBytes: 18_007_343_104,
+    // Largest warm-run drop; it exceeds params + host buffers.
+    systemDeltaBytes: 25_991_561_216,
+    date: IMAGE_VIDEO_MEASUREMENT_DATE,
+    hardware: MEASUREMENT_HARDWARE,
+    method: IMAGE_METHOD,
+  },
+  {
+    kind: "image",
     modelId: "flux2-klein-4b-q8_0",
     variant: "Q8_0 + Qwen3-4B Q4_K_M",
     shape: {

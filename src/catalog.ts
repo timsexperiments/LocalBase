@@ -2548,16 +2548,17 @@ const CATALOG_SOURCE = [
         role: "primary",
       },
       {
-        sourcePath: "ae.safetensors",
+        // Byte-identical to the ae.safetensors in the gated
+        // black-forest-labs/FLUX.1-schnell repository (Apache-2.0).
+        sourcePath: "split_files/vae/ae.safetensors",
         filename: "flux1-ae.safetensors",
         expectedSizeBytes: 335304388,
         sha256:
           "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
         role: "supplementary",
         source: {
-          repositoryUrl:
-            "https://huggingface.co/black-forest-labs/FLUX.1-schnell",
-          revision: "741f7c3ce8b383c54771c7003378a50191e9efe9",
+          repositoryUrl: "https://huggingface.co/Comfy-Org/z_image_turbo",
+          revision: "08d04455279082882deaabc8d0d09fc914c071e1",
         },
       },
       {
@@ -2599,15 +2600,13 @@ const CATALOG_SOURCE = [
     },
     inputModalities: ["text"],
     outputModalities: ["image"],
-    // Not validated with --diffusion-fa: the FLUX.1 ae is gated and the
-    // full set is ~17 GB, above the 8 GB qualification download cap.
-    imageLaunchOptions: { diffusionFlashAttention: false },
+    imageLaunchOptions: { diffusionFlashAttention: true },
     features: ["text-to-image"],
     commercialStatus: "open",
     catch:
       "Apache-2.0 model weights. The converted encoder repository omits license metadata; upstream CLIP and T5 license terms also apply.",
     notes:
-      "Cloudflare Workers AI model with a four-step native profile. The large T5 encoder runs on CPU; memory and performance qualification is pending.",
+      "Cloudflare Workers AI model with a four-step native profile. The large T5 encoder runs on CPU. Measured at 1024x1024 with --diffusion-fa: 13.6 GiB accelerator and 16.8 GiB peak RSS.",
   },
   {
     modelId: "flux2-klein-4b-q4_0",

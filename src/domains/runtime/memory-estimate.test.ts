@@ -395,12 +395,13 @@ describe("measured demand", () => {
       "fastwan2.2-ti2v-5b-q6_k",
       "flux2-klein-4b-q8_0",
       "wan2.1-t2v-1.3b-q8_0",
+      "flux1-schnell-q4_0",
     ]) {
       expect(catalogModelDemand(catalogModel(modelId)).confidence).toBe(
         "measured",
       );
     }
-    const unmeasured = catalogModel("flux1-schnell-q4_0");
+    const unmeasured = catalogModel("flux2-klein-9b-q4_0");
     expect(catalogModelDemand(unmeasured)).toEqual(
       estimateCatalogModelMemory(unmeasured).demand,
     );

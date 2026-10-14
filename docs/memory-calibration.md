@@ -76,9 +76,12 @@ The remaining runnable image profiles at their catalog defaults, and Wan2.1 T2V 
 | sdxl-turbo            |       14.47 |     7.38 |             13.46 | 16        |
 | juggernaut-xl-v9      |       14.47 |     7.37 |             13.62 | 16        |
 | flux2-klein-9b-q4_0   |       16.59 |    10.73 |             17.23 | 24        |
+| flux1-schnell-q4_0    |       13.57 |    16.77 |             13.72 | 16        |
 | wan2.1-t2v-1.3b-q8_0  |        6.50 |    11.31 |              6.50 | 8         |
 
-Every image run had a system-wide free-memory drop below its RSS, so host demand is peak RSS. SD1.5 is overestimated by the formula because its F32 checkpoint loads as F16 weights. Wan2.1 runs with CPU offload: the T5 stage (5757 MiB of weights and 297 MiB of compute) is the largest on the accelerator, all 7464 MiB of weights stay in host buffers, and its unified demand is 13.70 GiB. The system-wide free-memory drop was 8.22 GB.
+Every image run except flux1-schnell had a system-wide free-memory drop below its RSS, so host demand is peak RSS. SD1.5 is overestimated by the formula because its F32 checkpoint loads as F16 weights. Wan2.1 runs with CPU offload: the T5 stage (5757 MiB of weights and 297 MiB of compute) is the largest on the accelerator, all 7464 MiB of weights stay in host buffers, and its unified demand is 13.70 GiB. The system-wide free-memory drop was 8.22 GB.
+
+flux1-schnell-q4_0 was measured later the same day with the managed sd-server-v0.0.2, at 1024x1024 and 4 steps. `--clip-on-cpu` keeps CLIP-L and T5-XXL in host buffers (9388.50 MiB including their compute), so its host demand is 16.77 GiB peak RSS. Unlike the other image runs, the system-wide free-memory drop (24.9–26.0 GB on warm runs) exceeded params plus host buffers (22.74 GiB), so the record keeps the largest drop and its unified demand is 24.21 GiB. The accelerator holds 6725.62 MiB of diffusion and VAE params plus the 6657 MiB VAE decode. Its `ae.safetensors` now comes from the ungated Comfy-Org/z_image_turbo repository (Apache-2.0), byte-identical to the gated black-forest-labs/FLUX.1-schnell file (same sha256), so it installs without a Hugging Face token.
 
 ## Image diffusion flash attention (2026-10-14)
 
@@ -97,6 +100,7 @@ FA shrinks only the diffusion compute buffer. The peak stage is still the VAE de
 | z-image-turbo-q4_0    |        2379.55 → 690.15 |   92.7 (mean, 3) |  89.3 (mean, 3) |       12.91 |     6.60 |
 | flux2-klein-4b-q4_0   |       2739.50 → 1078.44 |      30.83–36.46 |     29.16–29.51 |       11.77 |     5.57 |
 | flux2-klein-4b-q8_0   |       2739.50 → 1078.44 |            30.76 |           29.54 |       13.48 |     7.83 |
+| flux1-schnell-q4_0    |        2361.25 → 793.19 |   77.6 (mean, 2) |  72.8 (mean, 3) |       13.57 |    16.77 |
 
 Through the gateway (scratch `serve`, dreamshaper-v8, 512x512, 20 steps, four sequential requests, first one cold), a generation took 38.4–39.9 s with FA off and 13.3–13.6 s with FA on.
 
@@ -104,7 +108,7 @@ SD1.5 gains about 3.3x. Flux2 Klein and z-image gain a few percent, and SDXL is 
 
 flux2-klein-9b-q4_0 has no FA-on record, because its artifacts exceed the 8 GB download cap for this pass. Its FA-off record (16.59 GiB accelerator, 10.73 GiB RSS) was removed, and the derived estimate (17.23 GiB accelerator and unified, 10.73 GiB host) now applies. That is at or above the FA-off peak, and the tier stays 24.
 
-flux1-schnell-q4_0 keeps FA off: it could not be validated (see Not measured).
+flux1-schnell-q4_0 was compared afterwards with sd-server-v0.0.2, using the same prompt and seed. FA cut sampling by about 6% and freed 1.53 GiB of diffusion compute. FA-off images were bit-identical across runs, and FA-on images were bit-identical to each other. Off versus on scored SSIM 0.9987 and PSNR 50.9 dB, with no visible difference. A cold first FA-off run took 96.73 s while paging in the weights and is left out of the mean. FA is on for flux1-schnell.
 
 The repository `bin/sd-server` build is older than the managed binary and reports larger buffers, for example 3555 MiB for the z-image text encoder. Measure with the managed runtime under `bin/runtimes/sd-server/<hash>/`.
 
@@ -124,7 +128,6 @@ The 2026-10-14 pass lowered stable-diffusion-v1-5 from 8 to 6 GiB. The Wan VAE r
 
 Models without a measured record keep estimate confidence:
 
-- flux1-schnell-q4_0: its `ae.safetensors` comes from the gated black-forest-labs/FLUX.1-schnell repository, which returns HTTP 401 without a Hugging Face token. It also launches without `--diffusion-fa` until it can be validated.
 - flux2-klein-9b-q4_0 with `--diffusion-fa`: it uses the derived estimate (see above).
 - wan2.2-s2v-14b-fp8: it targets only Linux x64 with NVIDIA GPUs.
 - The catalog-only video profiles, the q8_0 LLM variants and other speech models.
