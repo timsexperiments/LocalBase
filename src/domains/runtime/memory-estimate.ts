@@ -50,6 +50,7 @@ import {
   findVideoMeasurement,
   type MemoryMeasurement,
 } from "./memory-measurements";
+import { SPEECH_CONTEXT_TOKENS } from "./speech-supervisor";
 
 const mebibyte = 1024 * 1024;
 
@@ -865,11 +866,8 @@ export function estimateSttMemory(spec: ModelSpec): MemoryEstimate {
 // TTS
 // ---------------------------------------------------------------------------
 
-/**
- * llama-tts runs without `-c`, so the talker allocates its full trained
- * context (measured n_ctx 32768 for Qwen3-TTS 1.7B).
- */
-const TTS_CONTEXT_TOKENS = 32768;
+/** llama-tts launches the talker with this explicit `-c`. */
+const TTS_CONTEXT_TOKENS = SPEECH_CONTEXT_TOKENS;
 /** Audio codec/vocoder decode working set. Allowance. */
 const TTS_CODEC_BYTES = 1 * gibibyte;
 /** llama-tts loads the projector twice (measured 2 x 426 MiB Metal buffers). */
@@ -882,7 +880,7 @@ const TTS_TALKER_SHAPES: Readonly<Record<string, LlmShape>> = {
 /**
  * Qwen3-TTS runs a llama.cpp talker LLM plus the multimodal projector and the
  * audio codec. The talker uses its published shape (else the fallback LLM
- * shape at its parameter count) with an f16 32K context, and the projector is
+ * shape at its parameter count) with the f16 launch context, and the projector is
  * loaded twice; every term is held in one process, so all pools
  * carry the full sum.
  */

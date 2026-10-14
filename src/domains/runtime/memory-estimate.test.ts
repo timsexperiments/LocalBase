@@ -29,6 +29,7 @@ import {
   MEMORY_MEASUREMENTS,
   findLlmMeasurement,
 } from "./memory-measurements";
+import { SPEECH_CONTEXT_TOKENS } from "./speech-supervisor";
 
 const mebibyte = 1024 * 1024;
 
@@ -411,12 +412,15 @@ describe("measured demand", () => {
     expect(demand.hostBytes).toBeGreaterThan(demand.acceleratorBytes);
   });
 
-  test("TTS estimates the talker's full 32K f16 context", () => {
+  test("TTS estimates the talker at its launch context", () => {
     const model = catalogModel("qwen3-tts-1.7b-base-q4_k_m");
     const estimate = estimateTtsMemory(model).demand;
     const measured = MEMORY_MEASUREMENTS.find(
       (record) => record.modelId === model.modelId,
     )!;
+    expect(measured.kind === "tts" && measured.shape.ctxTokens).toBe(
+      SPEECH_CONTEXT_TOKENS,
+    );
     expect(estimate.acceleratorBytes).toBeGreaterThanOrEqual(
       measured.backendAcceleratorBytes * 0.9,
     );

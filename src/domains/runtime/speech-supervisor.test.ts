@@ -7,6 +7,9 @@ import {
   type SpeechFixtureControl,
 } from "../../test/speech-runtime-fixture";
 import {
+  SPEECH_CONTEXT_TOKENS,
+  SPEECH_MAX_FRAMES,
+  SPEECH_MAX_INPUT_CHARACTERS,
   SpeechChildStopError,
   SpeechGenerationAbortedError,
   SpeechOutputError,
@@ -485,6 +488,10 @@ test("rejects malformed WAV boundaries", () => {
     "/private/output.wav",
   );
   expect(args.join(" ")).not.toContain("secret prompt");
+  expect(args.slice(args.indexOf("-c"), args.indexOf("-c") + 2)).toEqual([
+    "-c",
+    String(SPEECH_CONTEXT_TOKENS),
+  ]);
   expect(args).not.toContain("--tts-speaker-file");
   for (const [voice, path] of [
     ["harbor", "/models/harbor.wav"],
@@ -502,4 +509,15 @@ test("rejects malformed WAV boundaries", () => {
   expect(() => validateSpeechWav(new TextEncoder().encode("not wav"))).toThrow(
     SpeechOutputError,
   );
+});
+
+test("the talker context covers the longest prompt plus every frame", () => {
+  // Byte-level BPE: at most one token per UTF-8 byte (4 per code point),
+  // plus the measured ~30-cell chat template and speaker overhead.
+  const worstPromptTokens = SPEECH_MAX_INPUT_CHARACTERS * 4 + 64;
+  expect(worstPromptTokens + SPEECH_MAX_FRAMES).toBeLessThanOrEqual(
+    SPEECH_CONTEXT_TOKENS,
+  );
+  // llama.cpp caps n_batch at n_ctx and decodes the prompt in one batch.
+  expect(worstPromptTokens).toBeLessThanOrEqual(SPEECH_CONTEXT_TOKENS);
 });

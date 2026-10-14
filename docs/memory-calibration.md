@@ -54,7 +54,7 @@ Accelerator is the planning value (backend plus allowance), in GiB. The previous
 | gpt-oss-20b-q4_k_m               |       11.86 |     9.59 |             11.89 | 16        |
 | whisper-tiny-en-q8_0             |        0.32 |     0.16 |              0.26 | 1         |
 | whisper-large-v3-turbo           |        1.93 |     1.77 |              1.95 | 4         |
-| qwen3-tts-1.7b-base-q4_k_m       |        7.42 |     6.56 |              3.50 | 6 → 12    |
+| qwen3-tts-1.7b-base-q4_k_m       |        4.11 |     3.87 |              3.50 | 6         |
 | dreamshaper-v8                   |        4.11 |     2.72 |              3.11 | 4 → 6     |
 | flux2-klein-4b-q4_0              |       11.77 |     5.53 |              7.96 | 12 → 16   |
 | fastwan2.2-ti2v-5b-q6_k          |        6.50 |    12.80 |              6.50 | 8         |
@@ -67,7 +67,7 @@ The measurements also corrected estimate inputs, so unmeasured models of the sam
 
 - **Image VAE decode**: 13 live full-resolution feature maps instead of 5. This matches the measured sd.cpp VAE compute buffers for SD1.5 and Flux2 Klein.
 - **Video VAE decode**: 15 live feature maps. This is an assumption extrapolated from the image measurement, because the measured FastWan run decodes with TAEHV.
-- **TTS**: llama-tts runs without `-c`, so the talker allocates its full 32768-token f16 KV cache, measured at exactly 3584 MiB. The estimate uses that context, the published Qwen3-TTS 1.7B talker shape, and two copies of the projector, which the runtime loads twice.
+- **TTS**: llama-tts now launches the talker with `-c 2048` (`SPEECH_CONTEXT_TOKENS`). Without it the talker allocated its full 32768-token trained context: 3584 MiB of f16 KV, 7.42 GiB accelerator and 6.56 GiB peak RSS, tier 12. The prompt fills the context first, then each 12 Hz codec frame takes one cell. The byte-level BPE prompt is at most 4 tokens per code point, so 256 four-byte private-use code points with a reference voice measured about 1050 cells, and 256 English characters about 60. The worst case is about 1310 cells including the 256-frame cap. The prompt is decoded in one batch and llama.cpp caps `n_batch` at `n_ctx`, so 1024 would reject it. The measured record is that worst case: 224 MiB of KV, 632 MiB talker compute and 3.87 GiB peak RSS. The estimate uses the launch context, the published Qwen3-TTS 1.7B talker shape, and two copies of the projector, which the runtime loads twice.
 
 These raised the derived tiers of unmeasured models: the SDXL family, flux1-schnell, z-image-turbo and flux2-klein-4b-q8_0 went from 12 to 16 GiB. SD1.5 went from 6 to 8, dreamshaper-8-lcm from 4 to 6, flux2-klein-9b from 16 to 24, wan2.2-ti2v-5b and hunyuanvideo-1.5 from 16 to 24, and ltx-2.3-22b from 32 to 48.
 

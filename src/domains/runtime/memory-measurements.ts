@@ -156,16 +156,17 @@ export const MEMORY_MEASUREMENTS: readonly MemoryMeasurement[] = Object.freeze([
     kind: "tts",
     modelId: "qwen3-tts-1.7b-base-q4_k_m",
     variant: "Q4_K_M",
-    // llama-tts runs without -c, so the talker allocates its full 32K f16 KV.
-    shape: { ctxTokens: 32768 },
-    backendAcceleratorBytes: mib(982 + 3584 + 658 + 2 * 426 + 141 + 868),
+    // llama-tts -c 2048: 224 MiB f16 KV (was 3584 MiB at the implicit 32K).
+    shape: { ctxTokens: 2048 },
+    backendAcceleratorBytes: mib(982 + 224 + 632 + 2 * 426 + 141 + 868),
     hostBufferBytes: 0,
-    peakRssBytes: 7_040_352_256,
+    peakRssBytes: 4_160_536_576,
     date: MEASUREMENT_DATE,
     hardware: MEASUREMENT_HARDWARE,
     method:
-      "speech runtime via the gateway; one synthesis; Metal talker + KV + " +
-      "compute + 2x projector + codec buffers; RSS sampled every 250 ms",
+      "llama-tts with the gateway argv (-c 2048, harbor voice); worst-case " +
+      "256 four-byte code points, 256 frames; Metal talker + KV + compute + " +
+      "2x projector + codec buffers; RSS sampled every 250 ms",
   },
   {
     kind: "image",
