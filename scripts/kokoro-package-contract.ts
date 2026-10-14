@@ -116,8 +116,9 @@ export async function kokoroInvocation(input: {
       join(root, "kokoro-tts"),
       "--no-install",
       "--no-env-file",
-      "--config",
-      join(root, "bunfig.toml"),
+      // Bun 1.3 silently runs nothing when this follows both --no-* flags as
+      // a separate argument; the joined form is parsed reliably.
+      `--config=${join(root, "bunfig.toml")}`,
       join(root, "cli.js"),
       ...input.arguments,
       "--inventory-sha256",

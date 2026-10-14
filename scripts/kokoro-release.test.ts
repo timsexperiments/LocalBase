@@ -119,12 +119,11 @@ test("package launch is explicit, clean-environment, and rooted in a trusted rel
       "/tmp/private/output",
     ],
   });
-  expect(invocation.command.slice(0, 7)).toEqual([
+  expect(invocation.command.slice(0, 6)).toEqual([
     join(root, "kokoro-tts"),
     "--no-install",
     "--no-env-file",
-    "--config",
-    join(root, "bunfig.toml"),
+    `--config=${join(root, "bunfig.toml")}`,
     join(root, "cli.js"),
     "generate",
   ]);
@@ -135,7 +134,7 @@ test("package launch is explicit, clean-environment, and rooted in a trusted rel
     LANG: "C",
     LC_ALL: "C",
   });
-  expect(parseArguments(invocation.command.slice(6))).toMatchObject({
+  expect(parseArguments(invocation.command.slice(5))).toMatchObject({
     kind: "generate",
     voice: "af_heart",
     inventorySha256: digest,

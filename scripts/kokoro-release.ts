@@ -550,11 +550,21 @@ export async function qualifyPackage(
               ([key, value]) => `${key}=${value}`,
             ),
           ];
-    await command(
-      [...offline, ...invocation.command],
-      invocation.cwd,
-      invocation.env,
-    );
+    const smoke = Bun.spawn([...offline, ...invocation.command], {
+      cwd: invocation.cwd,
+      env: invocation.env,
+      stdout: "inherit",
+      stderr: "pipe",
+    });
+    const diagnostics = await new Response(smoke.stderr).text();
+    process.stderr.write(diagnostics);
+    // Exit status alone cannot prove the entrypoint ran; require its marker.
+    if (
+      (await smoke.exited) !== 0 ||
+      !diagnostics.includes("Kokoro package smoke completed.")
+    ) {
+      throw new Error("Relocated Kokoro package smoke did not complete.");
+    }
     // Bind the successful relocated smoke to the archive later staged for release.
     await writeFile(
       join(resolve(directory), `${target}.qualified`),
