@@ -1,4 +1,5 @@
 import { $ } from "bun";
+import { availableParallelism } from "node:os";
 import { join } from "node:path";
 
 export const LLAMA_CPP_TAG = "b10419";
@@ -87,7 +88,8 @@ async function main() {
       ? ["-DGGML_VULKAN=ON", "-DGGML_OPENMP=OFF"]
       : ["-DGGML_METAL=ON", "-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0"];
   await $`cmake -S ${sourcePath} -B ${buildPath} -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_OPENSSL=OFF ${platformFlags}`;
-  await $`cmake --build ${buildPath} --config Release --target tts-server --parallel`;
+  // A bare --parallel gives Make an unlimited -j, which exhausts runner memory.
+  await $`cmake --build ${buildPath} --config Release --target tts-server --parallel ${availableParallelism()}`;
 
   const binary = join(buildPath, "bin", "tts-server");
   if (!(await Bun.file(binary).exists())) {
