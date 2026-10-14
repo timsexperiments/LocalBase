@@ -28,6 +28,7 @@ import {
   resolveSttLaunchPlan,
   resolveVideoLaunchPlan,
 } from "./launch-plan";
+import { llmStartupTimeoutMs } from "./startup-timeout";
 import { assertModelInstallConsent } from "./startup-preflight";
 import {
   startLlamaServerProcess,
@@ -554,10 +555,7 @@ export function createRuntimeSupervisorFactory(
         },
         memorySafety: dependencies.memorySafety,
         otel: ctx.otel,
-        startupTimeoutMs:
-          byId(modelId)?.minVramGb && byId(modelId)!.minVramGb >= 16
-            ? 180000
-            : 60000,
+        startupTimeoutMs: llmStartupTimeoutMs(byId(modelId)),
       });
     }
 
