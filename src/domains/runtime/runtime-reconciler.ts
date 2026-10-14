@@ -1078,9 +1078,18 @@ export class RuntimeReconciler {
     // gateway aborts the upstream fetch on disconnect. Killing a healthy LLM
     // backend would only discard its prompt cache, so a cancellation after
     // startup releases the lease and verifies the slot went idle instead.
+    // The warm tts-server likewise stops a generation when its client leaves.
+    const retainsOnCancel = (): boolean => {
+      const supervisor = admission.supervisor;
+      if (admission.modality === "llm") return supervisor.kind === "server";
+      return (
+        admission.modality === "tts" &&
+        supervisor.kind === "speech" &&
+        supervisor.retainsRuntimeOnCancel?.() === true
+      );
+    };
     const preserveOnCancel = () =>
-      admission.modality === "llm" &&
-      admission.supervisor.kind === "server" &&
+      retainsOnCancel() &&
       admission.supervisor.processingSlots !== undefined &&
       !startupPending &&
       !stopRequested &&

@@ -7,7 +7,10 @@ import {
 } from "./lifecycle-snapshot";
 import { runtimeModalities, type RuntimeModality } from "./modality";
 import type { InferenceQueueSnapshot } from "./inference-queue";
-import type { SpeechGenerationInput } from "./speech-supervisor";
+import type {
+  SpeechAudioStream,
+  SpeechGenerationInput,
+} from "./speech-supervisor";
 import type { ParallelSlots } from "../config/parallel";
 import type { LlmContextMode } from "../config/schema";
 import type { LlmLaunchPlan } from "./launch-plan";
@@ -48,6 +51,12 @@ export type ServerRuntimeSupervisor = CommonRuntimeSupervisor & {
 export type SpeechRuntimeSupervisor = CommonRuntimeSupervisor & {
   readonly kind: "speech";
   generateSpeech(input: SpeechGenerationInput): Promise<Uint8Array>;
+  /** Streams PCM16 audio as it is generated. */
+  generateSpeechStream?(
+    input: SpeechGenerationInput,
+  ): Promise<SpeechAudioStream>;
+  /** True when a cancelled generation can leave the warm runtime running. */
+  retainsRuntimeOnCancel?(): boolean;
 };
 
 export type RuntimeSupervisor =

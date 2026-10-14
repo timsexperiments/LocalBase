@@ -172,7 +172,10 @@ export const MEMORY_MEASUREMENTS: readonly MemoryMeasurement[] = Object.freeze([
     method:
       "llama-tts with the gateway argv (-c 2048, harbor voice); worst-case " +
       "256 four-byte code points, 256 frames; Metal talker + KV + compute + " +
-      "2x projector + codec buffers; RSS sampled every 250 ms",
+      "2x projector + codec buffers; RSS sampled every 250 ms. " +
+      "Rechecked 2026-10-14 against the persistent tts-server with the same " +
+      "argv and worst-case input: 4_148_838_400 B peak RSS, 3.26 GB peak " +
+      "footprint, so the warm runtime holds this demand while idle",
   },
   {
     kind: "tts",

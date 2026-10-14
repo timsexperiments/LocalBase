@@ -9,7 +9,7 @@ export const runtimeModalities = [
 export type RuntimeModality = (typeof runtimeModalities)[number];
 
 export type RuntimeComponent =
-  "llama-server" | "whisper-server" | "llama-tts" | "sd-server";
+  "llama-server" | "whisper-server" | "llama-tts" | "tts-server" | "sd-server";
 
 export const modalityComponents: Record<RuntimeModality, RuntimeComponent> = {
   llm: "llama-server",

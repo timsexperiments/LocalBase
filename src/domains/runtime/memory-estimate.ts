@@ -867,11 +867,11 @@ export function estimateSttMemory(spec: ModelSpec): MemoryEstimate {
 // TTS
 // ---------------------------------------------------------------------------
 
-/** llama-tts launches the talker with this explicit `-c`. */
+/** tts-server and llama-tts launch the talker with this explicit `-c`. */
 const TTS_CONTEXT_TOKENS = SPEECH_CONTEXT_TOKENS;
 /** Audio codec/vocoder decode working set. Allowance. */
 const TTS_CODEC_BYTES = 1 * gibibyte;
-/** llama-tts loads the projector twice (measured 2 x 426 MiB Metal buffers). */
+/** The Qwen3-TTS runtime loads the projector twice (measured 2 x 426 MiB Metal buffers). */
 const TTS_PROJECTOR_COPIES = 2;
 /** Talker shapes by model; other TTS models use the size-based fallback. */
 const TTS_TALKER_SHAPES: Readonly<Record<string, LlmShape>> = {

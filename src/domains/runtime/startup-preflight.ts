@@ -99,7 +99,7 @@ export function assertPortAvailable(host: string, port: number): void {
       error.code === "EADDRINUSE"
     ) {
       throw new Error(
-        `Port ${port} is already in use on ${host}. Choose another port with --port (gateway) or the matching --llm-port, --stt-port, --image-port, or --video-port option.`,
+        `Port ${port} is already in use on ${host}. Choose another port with --port (gateway) or the matching --llm-port, --stt-port, --image-port, --video-port, or --tts-port option.`,
       );
     }
     throw error;
@@ -120,10 +120,13 @@ export async function assertServePortsAvailable(
     imagePort?: number;
     videoHost?: string;
     videoPort?: number;
+    ttsHost?: string;
+    ttsPort?: number;
     llm?: boolean;
     stt?: boolean;
     image?: boolean;
     video?: boolean;
+    tts?: boolean;
     backendPortPreflight?: boolean;
   },
 ): Promise<void> {
@@ -158,6 +161,12 @@ export async function assertServePortsAvailable(
       host: backendBindHost(input.videoHost ?? "127.0.0.1"),
       port: input.videoPort ?? 8091,
     });
+  if (input.backendPortPreflight !== false && input.tts !== false)
+    bindings.push({
+      name: "TTS",
+      host: backendBindHost(input.ttsHost ?? "127.0.0.1"),
+      port: input.ttsPort ?? 8092,
+    });
   const probes: ReturnType<typeof Bun.serve>[] = [];
   try {
     for (const binding of bindings) {
@@ -175,7 +184,7 @@ export async function assertServePortsAvailable(
           error.code === "EADDRINUSE"
         )
           throw new Error(
-            `Port ${binding.port} is already in use on ${binding.host}. Choose another port with --port (gateway) or the matching --llm-port, --stt-port, --image-port, or --video-port option.`,
+            `Port ${binding.port} is already in use on ${binding.host}. Choose another port with --port (gateway) or the matching --llm-port, --stt-port, --image-port, --video-port, or --tts-port option.`,
           );
         throw error;
       }
