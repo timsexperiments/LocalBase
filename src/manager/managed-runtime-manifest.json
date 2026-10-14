@@ -16,11 +16,11 @@
           "stripComponents": 1
         },
         "whisper-server": {
-          "tag": "whisper-v0.0.1",
+          "tag": "whisper-v0.0.2",
           "assetName": "whisper-server-macos-arm64.zip",
-          "url": "https://github.com/timsexperiments/LocalBase/releases/download/whisper-v0.0.1/whisper-server-macos-arm64.zip",
-          "expectedSizeBytes": 1334520,
-          "sha256": "ef46924e82b4bf0e621c5edef7952508ae75813780c871132045531482ac6f5a",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/whisper-v0.0.2/whisper-server-macos-arm64.zip",
+          "expectedSizeBytes": 3396088,
+          "sha256": "4a2c0e0fb878a85c8be689184ad9c471bd309562977b8ba4dd9078f881b01cea",
           "format": "zip",
           "stripComponents": 0
         },
@@ -66,11 +66,11 @@
           "stripComponents": 1
         },
         "whisper-server": {
-          "tag": "whisper-v0.0.1",
+          "tag": "whisper-v0.0.2",
           "assetName": "whisper-server-linux-x64.tar.gz",
-          "url": "https://github.com/timsexperiments/LocalBase/releases/download/whisper-v0.0.1/whisper-server-linux-x64.tar.gz",
-          "expectedSizeBytes": 15162565,
-          "sha256": "79eaf39bb09f47f454ed3c90fa2a9f84918af4c7957a273bf4483f24bac2dd6e",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/whisper-v0.0.2/whisper-server-linux-x64.tar.gz",
+          "expectedSizeBytes": 15162622,
+          "sha256": "9733673053c1ef2c51c7fa1b911fadfc66a13f412503c0062c3d13839a0cd8f1",
           "format": "tar.gz",
           "stripComponents": 0
         },
