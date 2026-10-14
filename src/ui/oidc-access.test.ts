@@ -141,16 +141,18 @@ test("requests and consumes native magic links without disclosing users", async 
     directRequest("/app/login?provider=email"),
   );
   expect(form.status).toBe(200);
+  // Browsers send `Origin: null` on form POSTs from no-referrer pages.
+  expect(form.headers.get("referrer-policy")).toBe("same-origin");
   expect(await form.text()).toContain("Email sign-in");
 
-  const submit = (email = "person@example.com") =>
+  const submit = (email = "person@example.com", requestOrigin = origin) =>
     responseFor(
       access,
       new Request(`${origin}/app/login/magic?provider=email`, {
         method: "POST",
         headers: {
           "content-type": "application/x-www-form-urlencoded",
-          origin,
+          origin: requestOrigin,
           "sec-fetch-site": "same-origin",
         },
         body: new URLSearchParams({ email }),
@@ -162,13 +164,34 @@ test("requests and consumes native magic links without disclosing users", async 
   expect(await first.text()).toContain("If that address can sign in");
   expect(await second.text()).toContain("If that address can sign in");
   expect(requested).toEqual(["person@example.com", "person@example.com"]);
+  const opaque = await submit("person@example.com", "null");
+  expect(await opaque.text()).toContain("If that address can sign in");
+  expect(requested).toHaveLength(2);
 
   const landing = await responseFor(
     access,
     directRequest("/magic-link/callback"),
   );
   expect(landing.status).toBe(200);
+  expect(landing.headers.get("referrer-policy")).toBe("same-origin");
   expect(await landing.text()).toContain("Sign in to LocalBase");
+  const redeem = (requestOrigin: string) =>
+    responseFor(
+      access,
+      new Request(`${origin}/magic-link/callback`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          origin: requestOrigin,
+          "sec-fetch-site": "same-origin",
+        },
+        body: new URLSearchParams({ token: "valid-token" }),
+      }),
+    );
+  expect((await redeem("null")).headers.get("location")).toBe(
+    `${origin}/app?signin=failed`,
+  );
+  expect(consumed.size).toBe(0);
   const callback = await responseFor(
     access,
     new Request(`${origin}/magic-link/callback`, {

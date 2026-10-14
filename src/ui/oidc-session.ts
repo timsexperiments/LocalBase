@@ -167,6 +167,9 @@ function providerChoice(provider: DirectAccessProvider): Response {
   );
 }
 
+// Pages that submit forms use same-origin, not no-referrer: under no-referrer
+// browsers send `Origin: null` on form POSTs, which the exact Origin checks
+// below reject. same-origin still keeps URLs from leaking to other sites.
 function htmlResponse(body: string): Response {
   return new Response(
     `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in to LocalBase</title><style>body{font:16px system-ui;margin:0;background:#201e25;color:#eee9f1}main{max-width:28rem;margin:12vh auto;padding:1.5rem}h1{font-size:1.6rem}form{display:grid;gap:.75rem}input,button{font:inherit;border:1px solid #453b4c;border-radius:.75rem;padding:1rem;background:#2b2730;color:inherit}button{background:#a4d3bc;color:#14241d;border:0;font-weight:650}</style><main>${body}</main></html>`,
@@ -176,7 +179,7 @@ function htmlResponse(body: string): Response {
         "content-security-policy":
           "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
         "content-type": "text/html; charset=utf-8",
-        "referrer-policy": "no-referrer",
+        "referrer-policy": "same-origin",
         "x-content-type-options": "nosniff",
       },
     },
@@ -207,7 +210,7 @@ function magicLinkRedemption(): Response {
         "cache-control": "no-store",
         "content-security-policy": `default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-${scriptHash}'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`,
         "content-type": "text/html; charset=utf-8",
-        "referrer-policy": "no-referrer",
+        "referrer-policy": "same-origin",
         "x-content-type-options": "nosniff",
       },
     },
