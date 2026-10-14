@@ -33,6 +33,16 @@
           "format": "zip",
           "stripComponents": 0
         },
+        "tts-server": {
+          "tag": "tts-server-v0.0.1",
+          "assetName": "tts-server-macos-arm64.zip",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/tts-server-v0.0.1/tts-server-macos-arm64.zip",
+          "expectedSizeBytes": 1,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "format": "zip",
+          "stripComponents": 0,
+          "pendingPublication": true
+        },
         "kokoro-tts": {
           "tag": "kokoro-v0.0.1",
           "assetName": "kokoro-tts-macos-arm64.tar.gz",
@@ -82,6 +92,16 @@
           "sha256": "8969a2369927af26d34a0bd13716431b5bbeeb06919cef774a47dde8190a5a4e",
           "format": "tar.gz",
           "stripComponents": 0
+        },
+        "tts-server": {
+          "tag": "tts-server-v0.0.1",
+          "assetName": "tts-server-linux-x64.tar.gz",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/tts-server-v0.0.1/tts-server-linux-x64.tar.gz",
+          "expectedSizeBytes": 1,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "format": "tar.gz",
+          "stripComponents": 0,
+          "pendingPublication": true
         },
         "kokoro-tts": {
           "tag": "kokoro-v0.0.1",

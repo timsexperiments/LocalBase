@@ -6,6 +6,7 @@ export const runtimeNameSchema = z.enum([
   "llama-server",
   "whisper-server",
   "sd-server",
+  "tts-server",
   "kokoro-tts",
 ]);
 export type RuntimeName = z.infer<typeof runtimeNameSchema>;
@@ -19,6 +20,15 @@ const platformSupportTierSchema = z.enum(["managed", "cli-only"]);
  * use it must also set `pendingPublication`; LocalBase refuses to download them.
  */
 export const PENDING_RUNTIME_SHA256 = "0".repeat(64);
+
+/**
+ * Runtimes LocalBase publishes itself, so their pins may precede publication.
+ * Upstream runtimes such as llama-server are always pinned to existing releases.
+ */
+const pendingPublicationRuntimes = new Set<RuntimeName>([
+  "tts-server",
+  "kokoro-tts",
+]);
 
 const managedRuntimeArtifactSchema = z
   .object({
@@ -120,10 +130,13 @@ export const managedRuntimeManifestSchema = z
             path: ["targets", index, "runtimes", name, "format"],
           });
         }
-        if (!packaged && artifact.pendingPublication) {
+        if (
+          artifact.pendingPublication &&
+          !pendingPublicationRuntimes.has(name as RuntimeName)
+        ) {
           ctx.addIssue({
             code: "custom",
-            message: "only packaged runtimes may await publication",
+            message: "only unreleased LocalBase runtimes may await publication",
             path: ["targets", index, "runtimes", name, "pendingPublication"],
           });
         }

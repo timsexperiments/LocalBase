@@ -155,6 +155,98 @@ describe("OpenAI speech endpoint", () => {
     );
     expect(started.args?.join(" ")).not.toContain("../../");
   });
+
+  async function postSpeech(overrides: Record<string, unknown>) {
+    if (!gateway.apiKey) throw new Error("Expected fixture API key.");
+    return await fetch(`${gateway.baseUrl}/v1/audio/speech`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${gateway.apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(speechBody(overrides)),
+    });
+  }
+
+  test("returns bare PCM16 samples for response_format pcm", async () => {
+    const response = await postSpeech({ response_format: "pcm" });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "audio/pcm;rate=24000;channels=1;encoding=s16le",
+    );
+    const pcm = new Uint8Array(await response.arrayBuffer());
+    expect(pcm.byteLength).toBe(3_840 * 2);
+  });
+
+  test("streams WAV with an open-ended header for stream_format audio", async () => {
+    const response = await postSpeech({ stream_format: "audio" });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("audio/wav");
+    expect(response.headers.get("content-length")).toBeNull();
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const view = new DataView(bytes.buffer);
+    expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe("RIFF");
+    expect(view.getUint32(4, true)).toBe(0xffffffff);
+    expect(new TextDecoder().decode(bytes.subarray(36, 40))).toBe("data");
+    expect(view.getUint32(40, true)).toBe(0xffffffff);
+    expect(bytes.byteLength - 44).toBe(3_840 * 2);
+  });
+
+  test("streams bare PCM for stream_format audio with response_format pcm", async () => {
+    const response = await postSpeech({
+      stream_format: "audio",
+      response_format: "pcm",
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("audio/pcm");
+    expect((await response.arrayBuffer()).byteLength).toBe(3_840 * 2);
+  });
+
+  test("streams speech.audio.delta events for stream_format sse", async () => {
+    const response = await postSpeech({
+      stream_format: "sse",
+      response_format: "pcm",
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/event-stream");
+    const events = (await response.text())
+      .split("\n\n")
+      .filter((block) => block.startsWith("data: "))
+      .map(
+        (block) =>
+          JSON.parse(block.slice("data: ".length)) as {
+            type: string;
+            audio?: string;
+          },
+      );
+    expect(events.at(-1)).toEqual({ type: "speech.audio.done" });
+    const deltas = events.slice(0, -1);
+    expect(deltas.length).toBeGreaterThan(0);
+    expect(deltas.every(({ type }) => type === "speech.audio.delta")).toBe(
+      true,
+    );
+    const decoded = deltas.reduce(
+      (sum, { audio }) => sum + Buffer.from(audio ?? "", "base64").byteLength,
+      0,
+    );
+    expect(decoded).toBe(3_840 * 2);
+    const event = await waitForLogEvent(
+      gateway,
+      (candidate) =>
+        candidate.eventName === "inference.completed" &&
+        candidate.runtime === "tts" &&
+        candidate.attributes?.http_status === 200,
+    );
+    expect(event.attributes).toMatchObject({ outcome: "completed" });
+  });
+
+  test("rejects an unsupported stream_format", async () => {
+    const response = await postSpeech({ stream_format: "chunks" });
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(await response.json())).toContain(
+      "stream_format supports only 'audio' or 'sse'",
+    );
+  });
 });
 
 test(

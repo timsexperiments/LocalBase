@@ -8,8 +8,10 @@ import type {
   ImageLaunchPlan,
   LlmLaunchPlan,
   SttLaunchPlan,
+  TtsLaunchPlan,
   VideoLaunchPlan,
 } from "./launch-plan";
+import { SPEECH_CONTEXT_TOKENS, SPEECH_MAX_FRAMES } from "./speech-supervisor";
 
 export type LlamaServerArgs = {
   args: string[];
@@ -137,6 +139,53 @@ export async function startWhisperServerProcess(
       stdin: "inherit",
     },
   );
+}
+
+export function buildTtsServerArgs(plan: TtsLaunchPlan): string[] {
+  return [
+    "--host",
+    plan.host,
+    "--port",
+    String(plan.port),
+    "--offline",
+    "-m",
+    plan.modelPath,
+    "-mm",
+    plan.projectorPath,
+    "-c",
+    String(SPEECH_CONTEXT_TOKENS),
+    "-n",
+    String(SPEECH_MAX_FRAMES),
+    "-t",
+    "4",
+    "-tb",
+    "4",
+    "--tts-lang",
+    "en",
+    ...Object.entries(plan.speakerFiles)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .flatMap(([voice, path]) => ["--voice", `${voice}=${path}`]),
+  ];
+}
+
+export async function startTtsServerProcess(
+  plan: TtsLaunchPlan,
+): Promise<Bun.Subprocess> {
+  for (const path of [
+    plan.modelPath,
+    plan.projectorPath,
+    ...Object.values(plan.speakerFiles),
+  ]) {
+    if (!(await Bun.file(path).exists())) {
+      throw new Error(`TTS model file not found: ${path}`);
+    }
+  }
+  const binPath = await ensureBinary({ root: plan.root }, plan.component);
+  return Bun.spawn([binPath, ...buildTtsServerArgs(plan)], {
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "inherit",
+  });
 }
 
 export async function startSdServerProcess(

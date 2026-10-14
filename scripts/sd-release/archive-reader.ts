@@ -58,6 +58,6 @@ export async function readSdArchiveEntries(
       bytes: entry,
     }));
   } catch (error) {
-    throw new Error("Invalid macOS sd-server ZIP archive.", { cause: error });
+    throw new Error("Invalid macOS runtime ZIP archive.", { cause: error });
   }
 }

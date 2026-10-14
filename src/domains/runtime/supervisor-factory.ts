@@ -32,6 +32,7 @@ import {
   resolveImageLaunchPlan,
   resolveConfiguredLlmLaunchPlan,
   resolveSttLaunchPlan,
+  resolveTtsLaunchPlan,
   resolveVideoLaunchPlan,
 } from "./launch-plan";
 import {
@@ -44,6 +45,7 @@ import {
   startLlamaServerProcess,
   startSdServerProcess,
   startSdVideoServerProcess,
+  startTtsServerProcess,
   startWhisperServerProcess,
 } from "./launcher";
 import type { RuntimeModality } from "./modality";
@@ -57,7 +59,13 @@ import {
 import type { MemorySafetyController } from "./memory-controller";
 import type { MemoryTopology } from "./memory-safety";
 import { catalogModelDemand } from "./memory-estimate";
-import { SpeechSupervisor, type SpeechPreparation } from "./speech-supervisor";
+import {
+  SPEECH_MEMORY_DEMAND,
+  SpeechSupervisor,
+  type SpeechPreparation,
+  type TtsServerPreparation,
+  type WarmSpeechServer,
+} from "./speech-supervisor";
 import { ManagedService } from "./supervisor";
 import type { RuntimeSupervisor } from "./supervisor-registry";
 
@@ -72,6 +80,8 @@ export type RuntimeLaunchOverrides = Readonly<{
   imagePort?: number;
   videoHost?: string;
   videoPort?: number;
+  ttsHost?: string;
+  ttsPort?: number;
   ctxSize?: number;
   llmModelFile?: string;
   sttModelFile?: string;
@@ -148,6 +158,14 @@ function videoHost(overrides: RuntimeLaunchOverrides): string {
 
 function videoPort(overrides: RuntimeLaunchOverrides): number {
   return overrides.videoPort ?? 8091;
+}
+
+function ttsHost(overrides: RuntimeLaunchOverrides): string {
+  return backendBindHost(overrides.ttsHost ?? "127.0.0.1");
+}
+
+function ttsPort(overrides: RuntimeLaunchOverrides): number {
+  return overrides.ttsPort ?? 8092;
 }
 
 function videoRuntimeTarget(
@@ -371,6 +389,8 @@ export function runtimeLaunchOverrides(
     ...(input.imagePort ? { imagePort: input.imagePort } : {}),
     ...(input.videoHost ? { videoHost: input.videoHost } : {}),
     ...(input.videoPort ? { videoPort: input.videoPort } : {}),
+    ...(input.ttsHost ? { ttsHost: input.ttsHost } : {}),
+    ...(input.ttsPort ? { ttsPort: input.ttsPort } : {}),
     ...(input.ctxSize ? { ctxSize: input.ctxSize } : {}),
     ...(input.llmModelFile ? { llmModelFile: input.llmModelFile } : {}),
     ...(input.sttModelFile ? { sttModelFile: input.sttModelFile } : {}),
@@ -678,15 +698,57 @@ export function createRuntimeSupervisorFactory(
 
     if (modality === "tts") {
       const ttsSpec = byId(modelId);
+      const ttsDemand =
+        ttsSpec?.kind === "tts" ? catalogModelDemand(ttsSpec) : undefined;
+      const createWarmServer = (
+        preparation: TtsServerPreparation,
+      ): WarmSpeechServer => {
+        const plan = resolveTtsLaunchPlan({
+          runtimeId,
+          root: config.root,
+          modelId,
+          modelPath: preparation.modelPath,
+          projectorPath: preparation.projectorPath,
+          speakerFiles: preparation.speakerFiles,
+          host: ttsHost(overrides),
+          port: ttsPort(overrides),
+          memoryDemand: ttsDemand ?? SPEECH_MEMORY_DEMAND,
+        });
+        const service = new ManagedService({
+          runtimeId,
+          modality,
+          component: "tts-server",
+          healthUrl: plan.healthUrl,
+          slotsUrl: plan.slotsUrl,
+          logger: ctx.logger,
+          launch: async () => plan,
+          start: async (launchPlan) => {
+            if (launchPlan.component !== "tts-server") {
+              throw new Error("Expected tts-server launch plan.");
+            }
+            return await startTtsServerProcess(launchPlan);
+          },
+          memorySafety: dependencies.memorySafety,
+          otel: ctx.otel,
+          startupTimeoutMs: 120_000,
+        });
+        return Object.freeze({
+          generateUrl: plan.generateUrl,
+          ensureRunning: () => service.ensureRunning(),
+          state: () => service.state(),
+          processingSlots: () => service.processingSlots(),
+          kill: () => service.kill(),
+          shutdown: () => service.shutdown(),
+        });
+      };
       return new SpeechSupervisor({
         runtimeId,
         root: config.root,
         modelId,
         logger: ctx.logger,
         memorySafety: dependencies.memorySafety,
-        ...(ttsSpec?.kind === "tts"
-          ? { memoryDemand: catalogModelDemand(ttsSpec) }
-          : {}),
+        ...(ttsDemand ? { memoryDemand: ttsDemand } : {}),
+        createWarmServer,
         prepare: async (): Promise<SpeechPreparation> => {
           const spec = byId(modelId);
           if (!spec || spec.kind !== "tts") {
@@ -753,15 +815,41 @@ export function createRuntimeSupervisorFactory(
             throw new Error(`Configured TTS model file does not exist.`);
           }
           const references = ttsReferenceArtifacts(spec);
-          return Object.freeze({
-            kind: "llama-tts" as const,
-            binaryPath: await ensureBinary(config, "llama-tts"),
+          const assets = {
             modelPath,
             projectorPath: join(config.ttsModelsDir, projector.filename),
             speakerFiles: Object.freeze({
               harbor: join(config.ttsModelsDir, references.harbor.filename),
               willow: join(config.ttsModelsDir, references.willow.filename),
             }),
+          };
+          // Prefer the warm, streaming server; one-shot llama-tts remains the
+          // fallback until a tts-server release is available on this host.
+          try {
+            return Object.freeze({
+              kind: "tts-server" as const,
+              binaryPath: await ensureBinary(config, "tts-server"),
+              ...assets,
+            });
+          } catch (error) {
+            ctx.logger.event({
+              severity: "warn",
+              eventName: "runtime.tts-server-unavailable",
+              category: "runtime",
+              component: "tts-server",
+              runtime: "tts",
+              message:
+                "tts-server is unavailable; using one-shot llama-tts generation.",
+              error: {
+                type: error instanceof Error ? error.name : "Error",
+                message: error instanceof Error ? error.message : String(error),
+              },
+            });
+          }
+          return Object.freeze({
+            kind: "llama-tts" as const,
+            binaryPath: await ensureBinary(config, "llama-tts"),
+            ...assets,
           });
         },
       });

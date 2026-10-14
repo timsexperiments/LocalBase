@@ -98,6 +98,10 @@ import {
   SpeechGenerationAbortedError,
   SpeechGenerationTimeoutError,
   SpeechOutputError,
+  bufferedSpeechStream,
+  speechPcmFromWav,
+  speechWavFromPcm,
+  type SpeechAudioStream,
 } from "../speech-supervisor";
 import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
@@ -921,10 +925,15 @@ const speechGenerationRequestSchema = z
       ),
     voice: speechVoiceSchema,
     response_format: z
-      .enum(["wav"], {
-        error: "response_format supports only 'wav'",
+      .enum(["wav", "pcm"], {
+        error: "response_format supports only 'wav' or 'pcm'",
       })
       .default("wav"),
+    stream_format: z
+      .enum(["audio", "sse"], {
+        error: "stream_format supports only 'audio' or 'sse'",
+      })
+      .optional(),
     speed: z.literal(1, { error: "speed must be 1" }).optional(),
     instructions: z
       .never({ error: "instructions are not supported" })
@@ -1890,6 +1899,81 @@ async function proxyRequest(
   return upstreamFailure(
     "The upstream service returned an invalid error response.",
   );
+}
+
+/** RIFF size fields for a stream whose final length is not yet known. */
+const STREAMING_WAV_UNKNOWN_SIZE = 0xffffffff;
+const SPEECH_PCM_CONTENT_TYPE =
+  "audio/pcm;rate=24000;channels=1;encoding=s16le";
+
+function streamingWavHeader(): Uint8Array {
+  const header = speechWavFromPcm(new Uint8Array(0)).slice(0, 44);
+  const view = new DataView(header.buffer);
+  view.setUint32(4, STREAMING_WAV_UNKNOWN_SIZE, true);
+  view.setUint32(40, STREAMING_WAV_UNKNOWN_SIZE, true);
+  return header;
+}
+
+function base64Chunk(bytes: Uint8Array): string {
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString(
+    "base64",
+  );
+}
+
+/**
+ * Encodes streamed PCM16 speech as raw audio (WAV with an open-ended header,
+ * or bare PCM) or as OpenAI `speech.audio.delta` server-sent events.
+ */
+export function speechStreamResponse(
+  audio: SpeechAudioStream,
+  responseFormat: "wav" | "pcm",
+  streamFormat: "audio" | "sse",
+): Response {
+  const encoder = new TextEncoder();
+  const reader = audio.pcm.getReader();
+  let headerPending = responseFormat === "wav";
+  const encode = (bytes: Uint8Array): Uint8Array =>
+    streamFormat === "sse"
+      ? encoder.encode(
+          `data: ${JSON.stringify({ type: "speech.audio.delta", audio: base64Chunk(bytes) })}\n\n`,
+        )
+      : bytes;
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (headerPending) {
+        headerPending = false;
+        controller.enqueue(encode(streamingWavHeader()));
+        return;
+      }
+      const { done, value } = await reader.read();
+      if (done) {
+        if (streamFormat === "sse") {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "speech.audio.done" })}\n\n`,
+            ),
+          );
+        }
+        controller.close();
+        return;
+      }
+      controller.enqueue(encode(value));
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    },
+  });
+  const headers: Record<string, string> =
+    streamFormat === "sse"
+      ? {
+          "content-type": "text/event-stream",
+          "cache-control": "no-cache",
+        }
+      : {
+          "content-type":
+            responseFormat === "wav" ? "audio/wav" : SPEECH_PCM_CONTENT_TYPE,
+        };
+  return new Response(body, { headers });
 }
 
 /** Keeps an active-model lease until the client finishes or cancels the response. */
@@ -3600,6 +3684,42 @@ export async function runServe(
         const speechSupervisor = admission.supervisor;
 
         await waitForRequestAbort(admission.ready, request.signal);
+        const streamFormat = parsed.data.stream_format;
+        if (streamFormat) {
+          const speechInput = {
+            text: parsed.data.input,
+            voice: parsed.data.voice,
+            signal: request.signal,
+          };
+          const audio = await generateSpeechWithIdleRecovery(
+            reconciler,
+            parsed.data.model,
+            request.signal,
+            async () =>
+              speechSupervisor.generateSpeechStream
+                ? await speechSupervisor.generateSpeechStream(speechInput)
+                : bufferedSpeechStream(
+                    await speechSupervisor.generateSpeech(speechInput),
+                  ),
+          );
+          admission.markResponseStarted();
+          const lease = admission;
+          admission = undefined;
+          return withResponseLease(
+            withServerTiming(
+              speechStreamResponse(
+                audio,
+                parsed.data.response_format,
+                streamFormat,
+              ),
+              inference.serverTiming(),
+            ),
+            () => lease.release(),
+            () => lease.cancel(),
+            request.signal,
+            (terminal) => inference?.finish(terminal),
+          );
+        }
         const generate = () =>
           speechSupervisor.generateSpeech({
             text: parsed.data.input,
@@ -3615,13 +3735,15 @@ export async function runServe(
         admission.markResponseStarted();
         admission.release();
         admission = undefined;
-        const body = new ArrayBuffer(wav.byteLength);
-        new Uint8Array(body).set(wav);
+        const pcmOnly = parsed.data.response_format === "pcm";
+        const audioBytes = pcmOnly ? speechPcmFromWav(wav) : wav;
+        const body = new ArrayBuffer(audioBytes.byteLength);
+        new Uint8Array(body).set(audioBytes);
         const response = withServerTiming(
           new Response(body, {
             headers: {
-              "content-type": "audio/wav",
-              "content-length": String(wav.byteLength),
+              "content-type": pcmOnly ? SPEECH_PCM_CONTENT_TYPE : "audio/wav",
+              "content-length": String(audioBytes.byteLength),
             },
           }),
           inference.serverTiming(),

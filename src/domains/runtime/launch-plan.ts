@@ -334,8 +334,20 @@ export type VideoLaunchPlan = VideoLaunchPlanBase &
       }>
   );
 
+/** Warm Qwen3-TTS server: one generation at a time, PCM streamed per window. */
+export type TtsLaunchPlan = LaunchPlanBase<"tts", "tts-server"> & {
+  readonly projectorPath: string;
+  readonly speakerFiles: Readonly<Record<string, string>>;
+  readonly slotsUrl: string;
+  readonly generateUrl: string;
+};
+
 export type RuntimeLaunchPlan =
-  LlmLaunchPlan | SttLaunchPlan | ImageLaunchPlan | VideoLaunchPlan;
+  | LlmLaunchPlan
+  | SttLaunchPlan
+  | TtsLaunchPlan
+  | ImageLaunchPlan
+  | VideoLaunchPlan;
 
 /**
  * Demand for a catalog-backed runtime, never below the bytes actually on disk
@@ -532,6 +544,37 @@ export function resolveSttLaunchPlan(input: {
     port: input.port,
     healthUrl: `http://${urlHost(input.host)}:${input.port}/health`,
     memoryDemand: sttMemoryDemand(input),
+  });
+}
+
+export function resolveTtsLaunchPlan(input: {
+  runtimeId: string;
+  root: string;
+  modelId: string;
+  modelPath: string;
+  projectorPath: string;
+  speakerFiles: Readonly<Record<string, string>>;
+  host: string;
+  port: number;
+  memoryDemand: RuntimeMemoryDemand;
+}): TtsLaunchPlan {
+  const base = `http://${urlHost(input.host)}:${input.port}`;
+  return Object.freeze({
+    runtimeId: input.runtimeId,
+    modality: "tts",
+    component: "tts-server",
+    root: input.root,
+    modelId: input.modelId,
+    modelFile: input.modelPath.split("/").at(-1) ?? input.modelPath,
+    modelPath: input.modelPath,
+    projectorPath: input.projectorPath,
+    speakerFiles: Object.freeze({ ...input.speakerFiles }),
+    host: backendBindHost(input.host),
+    port: input.port,
+    healthUrl: `${base}/health`,
+    slotsUrl: `${base}/slots`,
+    generateUrl: `${base}/v1/generate`,
+    memoryDemand: input.memoryDemand,
   });
 }
 

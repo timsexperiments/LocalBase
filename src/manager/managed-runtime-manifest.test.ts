@@ -103,7 +103,28 @@ test("placeholder digests and pendingPublication must be declared together", () 
   nativeRuntimes["llama-server"]!.pendingPublication = true;
   nativeRuntimes["llama-server"]!.sha256 = "0".repeat(64);
   expect(() => parseManagedRuntimeManifest(native)).toThrow(
-    "only packaged runtimes may await publication",
+    "only unreleased LocalBase runtimes may await publication",
+  );
+});
+
+test("LocalBase-built tts-server may await publication with a placeholder digest", () => {
+  const [pending, pendingRuntimes] = macRuntimes();
+  pendingRuntimes["tts-server"] = {
+    tag: "tts-server-v0.0.1",
+    assetName: "tts-server-macos-arm64.zip",
+    url: "https://github.com/timsexperiments/LocalBase/releases/download/tts-server-v0.0.1/tts-server-macos-arm64.zip",
+    expectedSizeBytes: 1,
+    sha256: "0".repeat(64),
+    format: "zip",
+    stripComponents: 0,
+    pendingPublication: true,
+  };
+  expect(() => parseManagedRuntimeManifest(pending)).not.toThrow();
+
+  const [missing, missingRuntimes] = macRuntimes();
+  delete missingRuntimes["tts-server"];
+  expect(() => parseManagedRuntimeManifest(missing)).toThrow(
+    "managed targets must define every managed runtime",
   );
 });
 

@@ -174,6 +174,8 @@ export const serveInputSchema = z.object({
   imagePort: portInputSchema.optional(),
   videoHost: hostSchema.optional(),
   videoPort: portInputSchema.optional(),
+  ttsHost: hostSchema.optional(),
+  ttsPort: portInputSchema.optional(),
   ctxSize: positiveInteger().optional(),
   inferenceQueueCapacity: positiveInteger(10_000).optional(),
   inferenceQueueTimeoutMs: positiveInteger(600_000).optional(),

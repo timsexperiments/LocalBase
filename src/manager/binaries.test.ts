@@ -70,6 +70,7 @@ function familyName(name: ManagedExecutableName): string {
     return "llama-server";
   }
   if (name === "sd-server" || name === "sd-cli") return "sd-server";
+  if (name === "tts-server") return "tts-server";
   return "whisper-server";
 }
 
@@ -95,6 +96,56 @@ test("maps helpers to the existing pinned runtime artifact families", () => {
 
   expect(llamaTts).toEqual({ ...llamaServer, name: "llama-tts" });
   expect(sdCli).toEqual({ ...sdServer, name: "sd-cli" });
+});
+
+test("never offers an unpublished tts-server pin for download", async () => {
+  for (const target of [
+    { os: "darwin", cpu: "arm64" },
+    { os: "linux", cpu: "x64" },
+  ]) {
+    const pinned = managedRuntimeRelease("tts-server", target);
+    if (!pinned) throw new Error("Expected a tts-server manifest pin.");
+    const offered = managedExecutableRelease("tts-server", target);
+    if (pinned.pendingPublication) expect(offered).toBeUndefined();
+    else expect(offered).toEqual({ ...pinned, name: "tts-server" });
+  }
+
+  const root = createRoot();
+  await expect(
+    installManagedRuntime(
+      { root },
+      {
+        name: "tts-server",
+        tag: "tts-server-v0.0.1",
+        assetName: "tts-server-macos-arm64.zip",
+        url: "https://example.invalid/tts-server-macos-arm64.zip",
+        expectedSizeBytes: 1,
+        sha256: "0".repeat(64),
+        format: "zip",
+        stripComponents: 0,
+        pendingPublication: true,
+      },
+    ),
+  ).rejects.toThrow("has not been published yet");
+});
+
+test("uses a user-managed tts-server while the managed pin awaits publication", async () => {
+  const pinned = managedRuntimeRelease("tts-server", {
+    os: process.platform,
+    cpu: process.arch,
+  });
+  if (!pinned?.pendingPublication) return;
+  const root = createRoot();
+  const directory = join(root, "path");
+  mkdirSync(directory);
+  process.env.PATH = directory;
+  await expect(ensureBinary({ root }, "tts-server")).rejects.toThrow(
+    "has not been published yet",
+  );
+  const executable = join(directory, "tts-server");
+  writeFileSync(executable, "fixture");
+  chmodSync(executable, 0o755);
+  expect(await ensureBinary({ root }, "tts-server")).toBe(executable);
 });
 
 test("sanitizes user-managed executable paths in notices", async () => {

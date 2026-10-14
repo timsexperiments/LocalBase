@@ -567,6 +567,16 @@ const serveCommand = command<ServeInput>({
       valueHint: "port",
       description: "video sd-server port",
     },
+    "tts-host": {
+      type: "string",
+      valueHint: "host",
+      description: "tts-server host",
+    },
+    "tts-port": {
+      type: "string",
+      valueHint: "port",
+      description: "tts-server port",
+    },
     "ctx-size": {
       type: "string",
       valueHint: "tokens",

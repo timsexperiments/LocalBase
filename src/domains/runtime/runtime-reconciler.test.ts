@@ -2127,22 +2127,26 @@ test.each([
 );
 
 function cancellationHarness(options: {
-  modality: "llm" | "image";
+  modality: "llm" | "image" | "tts";
   startup?: Promise<void>;
   processing?: () => number | undefined;
+  retainsRuntimeOnCancel?: boolean;
 }) {
   const root = mkdtempSync(join(tmpdir(), "localbase-runtime-cancel-keep-"));
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   config.selectedImageModels = [config.activeImageModel];
+  if (options.modality === "tts") {
+    config.activeTtsModel = "qwen3-tts-1.7b-base-q4_k_m";
+    config.selectedTtsModels = [config.activeTtsModel];
+  }
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
   let state: "idle" | "starting" | "running" = "idle";
   let kills = 0;
   let slotProbes = 0;
   const events: LogEventInput[] = [];
-  const supervisor: RuntimeSupervisor = {
-    kind: "server",
+  const common = {
     runtimeId: () => `${options.modality}:test:1`,
     resolvedSlots: () => 2,
     state: () => state,
@@ -2161,6 +2165,15 @@ function cancellationHarness(options: {
     },
     async shutdown() {},
   };
+  const supervisor: RuntimeSupervisor =
+    options.modality === "tts"
+      ? {
+          ...common,
+          kind: "speech",
+          generateSpeech: async () => new Uint8Array(),
+          retainsRuntimeOnCancel: () => options.retainsRuntimeOnCancel ?? false,
+        }
+      : { ...common, kind: "server" };
   const reconciler = new RuntimeReconciler(
     controller,
     {},
@@ -2173,7 +2186,9 @@ function cancellationHarness(options: {
   const model =
     options.modality === "llm"
       ? config.activeLlmModel
-      : config.activeImageModel;
+      : options.modality === "tts"
+        ? config.activeTtsModel
+        : config.activeImageModel;
   return {
     reconciler,
     events,
@@ -2293,6 +2308,43 @@ test("still stops llama-server when an LLM request is cancelled during startup",
 
 test("still stops non-LLM runtimes when a started response is cancelled", async () => {
   const harness = cancellationHarness({ modality: "image" });
+  try {
+    const admission = await harness.admit();
+    await admission.ready;
+    admission.markResponseStarted();
+    admission.cancel();
+    await waitFor(() => harness.kills() > 0);
+
+    expect(harness.kills()).toBe(1);
+    expect(harness.slotProbes()).toBe(0);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("keeps a warm tts-server when a started speech response is cancelled", async () => {
+  const harness = cancellationHarness({
+    modality: "tts",
+    retainsRuntimeOnCancel: true,
+  });
+  try {
+    const admission = await harness.admit();
+    await admission.ready;
+    admission.markResponseStarted();
+    admission.cancel();
+    await waitFor(() => harness.slotProbes() > 0);
+    await Bun.sleep(20);
+
+    expect(harness.slotProbes()).toBeGreaterThan(0);
+    expect(harness.kills()).toBe(0);
+    expect(harness.state()).toBe("running");
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("stops one-shot speech runtimes when a started response is cancelled", async () => {
+  const harness = cancellationHarness({ modality: "tts" });
   try {
     const admission = await harness.admit();
     await admission.ready;

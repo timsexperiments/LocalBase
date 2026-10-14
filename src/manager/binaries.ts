@@ -63,6 +63,7 @@ export const managedExecutableNameSchema = z.enum([
   "whisper-server",
   "sd-server",
   "sd-cli",
+  "tts-server",
   "ffmpeg",
 ]);
 export type ManagedExecutableName = z.infer<typeof managedExecutableNameSchema>;
@@ -73,6 +74,7 @@ const executableRuntimeFamily = {
   "whisper-server": "whisper-server",
   "sd-server": "sd-server",
   "sd-cli": "sd-server",
+  "tts-server": "tts-server",
   ffmpeg: "ffmpeg",
 } as const satisfies Record<ManagedExecutableName, RuntimeName | "ffmpeg">;
 
@@ -80,6 +82,7 @@ const runtimeFamilyExecutables = {
   "llama-server": ["llama-server", "llama-tts"],
   "whisper-server": ["whisper-server"],
   "sd-server": ["sd-server", "sd-cli"],
+  "tts-server": ["tts-server"],
   ffmpeg: ["ffmpeg"],
 } as const satisfies Record<
   Exclude<RuntimeName, PackagedRuntimeName> | "ffmpeg",
@@ -194,6 +197,12 @@ export function managedRuntimeUnavailableError(
   binDir: string,
 ): Error {
   const label = platformLabel(target);
+  if (platformSupportTier(target) === "managed") {
+    return new Error(
+      `The managed ${name} runtime for ${label} has not been published yet. ` +
+        `Place a compatible ${name} executable on PATH outside ${binDir}; it will be treated as user-managed and unverified.`,
+    );
+  }
   if (platformSupportTier(target) === "cli-only") {
     return new Error(
       `LocalBase CLI-only compatibility on ${label} does not include a managed ${name} runtime. ` +
@@ -699,6 +708,11 @@ async function installManagedRuntimeNow(
   options: ManagedInstallOptions,
 ): Promise<string> {
   options.signal?.throwIfAborted();
+  if (release.pendingPublication) {
+    throw new Error(
+      `${release.name} ${release.tag} has not been published yet and cannot be installed.`,
+    );
+  }
   const supportFiles = options.supportFiles ?? [];
   for (const file of supportFiles) {
     safeFilenameSchema.parse(file.filename);
@@ -859,7 +873,10 @@ export function managedExecutableRelease(
 ): ManagedExecutableRelease | undefined {
   const runtime = executableRuntimeFamily[name];
   const release = managedRuntimeRelease(runtime, target);
-  return release ? { ...release, name } : undefined;
+  // A placeholder pin has no downloadable archive yet; treat it as unmanaged.
+  return release && !release.pendingPublication
+    ? { ...release, name }
+    : undefined;
 }
 
 export async function ensureBinary(
