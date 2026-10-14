@@ -177,6 +177,24 @@ describe("catalog artifact validation", () => {
     }
   });
 
+  test("image models alone declare strict sd-server launch options", () => {
+    const image = byId("dreamshaper-v8");
+    const llm = CATALOG.find((model) => model.kind === "llm");
+    if (!image || !llm) throw new Error("Missing catalog fixtures");
+    const { imageLaunchOptions: _omitted, ...withoutOptions } = image;
+    for (const invalid of [
+      withoutOptions,
+      { ...image, imageLaunchOptions: {} },
+      {
+        ...image,
+        imageLaunchOptions: { diffusionFlashAttention: true, extra: 1 },
+      },
+      { ...llm, imageLaunchOptions: { diffusionFlashAttention: false } },
+    ]) {
+      expect(catalogSchema.safeParse([invalid]).success).toBe(false);
+    }
+  });
+
   test("pins the embedding-only Qwen runtime contract", () => {
     expect(byId("qwen3-embedding-0.6b-q8_0")).toMatchObject({
       kind: "llm",
@@ -1287,21 +1305,33 @@ describe("FLUX Klein image additions", () => {
       id: "flux2-klein-4b-q8_0",
       bytes: 7134122044,
       deviceBytes: 14478475264,
-      hostBytes: 8413741056,
+      hostBytes: 8412053504,
+      confidence: "measured",
       encoder: "Qwen3-4B-Q4_K_M.gguf",
       commercialStatus: "open",
     },
     {
       id: "flux2-klein-9b-q4_0",
       bytes: 10980203836,
-      deviceBytes: 17814047949,
-      hostBytes: 11518853120,
+      deviceBytes: 18496396604,
+      // No FA-on measurement (artifacts exceed the 8 GB qualification cap), so
+      // the derived estimate applies; it stays above the FA-off peak.
+      hostBytes: 11517074748,
+      confidence: "derived",
       encoder: "Qwen3-8B-Q4_K_M.gguf",
       commercialStatus: "conditional",
     },
   ])(
     "resolves $id into a complete image launch plan",
-    ({ id, bytes, deviceBytes, hostBytes, encoder, commercialStatus }) => {
+    ({
+      id,
+      bytes,
+      deviceBytes,
+      hostBytes,
+      confidence,
+      encoder,
+      commercialStatus,
+    }) => {
       const entry = byId(id);
       if (!entry?.imageRuntime) throw new Error(`Missing image profile: ${id}`);
       const artifactBytes = entry.artifacts.reduce(
@@ -1336,6 +1366,7 @@ describe("FLUX Klein image additions", () => {
         "4",
         "--cfg-scale",
         "1",
+        "--diffusion-fa",
         "--listen-ip",
         "127.0.0.1",
         "--listen-port",
@@ -1345,7 +1376,7 @@ describe("FLUX Klein image additions", () => {
         unifiedBytes: deviceBytes,
         hostBytes,
         acceleratorBytes: deviceBytes,
-        confidence: "measured",
+        confidence,
       });
     },
   );

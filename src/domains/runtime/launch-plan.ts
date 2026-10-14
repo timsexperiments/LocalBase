@@ -8,6 +8,7 @@ import {
 } from "../config/parallel";
 import type {
   EmbeddingLlmRuntimeProfile,
+  ImageLaunchOptions,
   ImageRuntimeProfile,
   ModelSpec,
   VideoRuntimeProfile,
@@ -295,6 +296,7 @@ type ImageRuntimeLaunchProfile =
 
 export type ImageLaunchPlan = LaunchPlanBase<"image", "sd-server"> & {
   readonly imageRuntime?: ImageRuntimeLaunchProfile;
+  readonly launchOptions: Readonly<ImageLaunchOptions>;
 };
 
 type VideoLaunchPlanBase = Omit<
@@ -561,6 +563,10 @@ export function resolveImageLaunchPlan(input: {
     port: input.port,
     healthUrl: `http://${urlHost(input.host)}:${input.port}/`,
     memoryDemand: imageMemoryDemand(input),
+    launchOptions: Object.freeze({
+      diffusionFlashAttention:
+        input.model?.imageLaunchOptions?.diffusionFlashAttention ?? false,
+    }),
     ...(imageRuntime ? { imageRuntime } : {}),
   });
 }

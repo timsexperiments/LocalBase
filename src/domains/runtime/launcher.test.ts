@@ -65,7 +65,7 @@ test.each([
     // buffer + accelerator overhead; host is the measured peak RSS.
     memoryDemand: {
       unifiedBytes: 12638224384,
-      hostBytes: 5941821440,
+      hostBytes: 5983240192,
       acceleratorBytes: 12638224384,
       confidence: "measured",
     },
@@ -77,7 +77,7 @@ test.each([
     // accelerator-overhead terms at the family default resolution.
     memoryDemand: {
       unifiedBytes: 13859679109,
-      hostBytes: 7061504000,
+      hostBytes: 7087439872,
       acceleratorBytes: 13859679109,
       confidence: "measured",
     },
@@ -118,6 +118,7 @@ test.each([
       String(steps),
       "--cfg-scale",
       "1",
+      "--diffusion-fa",
       "--listen-ip",
       "127.0.0.1",
       "--listen-port",
@@ -190,7 +191,7 @@ test.each([
     modelId: "dreamshaper-8-lcm",
     expectedMemoryDemand: {
       unifiedBytes: 4415616451,
-      hostBytes: 3012804608,
+      hostBytes: 3006021632,
       acceleratorBytes: 4415616451,
       confidence: "measured",
     },
@@ -231,6 +232,9 @@ test.each([
 
     expect(buildSdImageServerArgs(plan)).toEqual([
       ...expectedModelArgs,
+      ...(spec.imageLaunchOptions?.diffusionFlashAttention
+        ? ["--diffusion-fa"]
+        : []),
       "--listen-ip",
       "127.0.0.1",
       "--listen-port",
@@ -239,6 +243,43 @@ test.each([
     expect(plan.memoryDemand).toEqual(expectedMemoryDemand);
   },
 );
+
+test.each([true, false])(
+  "passes --diffusion-fa only when the catalog enables it (%p)",
+  (diffusionFlashAttention) => {
+    const spec = byId("dreamshaper-v8");
+    if (!spec) throw new Error("Missing SD1.5 fixture");
+    const plan = resolveImageLaunchPlan({
+      runtimeId: "image:dreamshaper-v8",
+      root: "/localbase",
+      modelsDirectory: "/models/image",
+      modelId: spec.modelId,
+      modelFile: "DreamShaper_8_pruned.safetensors",
+      host: "127.0.0.1",
+      port: 8083,
+      model: { ...spec, imageLaunchOptions: { diffusionFlashAttention } },
+      artifactBytes: 1,
+    });
+    expect(plan.launchOptions).toEqual({ diffusionFlashAttention });
+    expect(buildSdImageServerArgs(plan).includes("--diffusion-fa")).toBe(
+      diffusionFlashAttention,
+    );
+  },
+);
+
+test("image plans without a catalog spec launch without --diffusion-fa", () => {
+  const plan = resolveImageLaunchPlan({
+    runtimeId: "image:custom",
+    root: "/localbase",
+    modelsDirectory: "/models/image",
+    modelId: "custom",
+    modelFile: "custom.safetensors",
+    host: "127.0.0.1",
+    port: 8083,
+    artifactBytes: 1,
+  });
+  expect(buildSdImageServerArgs(plan)).not.toContain("--diffusion-fa");
+});
 
 const roots: string[] = [];
 const originalPath = process.env.PATH;

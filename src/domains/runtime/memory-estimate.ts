@@ -46,6 +46,7 @@ import {
 import { gibibyte, type RuntimeMemoryDemand } from "./memory-safety";
 import {
   findLlmMeasurement,
+  findImageMeasurement,
   findModelMeasurement,
   findVideoMeasurement,
   type MemoryMeasurement,
@@ -1042,8 +1043,9 @@ function imageHostOnlyArtifacts(runtime: ImageRuntimeProfile | undefined) {
 }
 
 /**
- * sd-server image demand (no `--diffusion-fa`, untiled VAE):
- * - activation = T^2 x heads x 4 + T x D x 48
+ * sd-server image demand (untiled VAE):
+ * - activation = T x D x 48, plus T^2 x heads x 4 scores without
+ *   `--diffusion-fa` (catalog `imageLaunchOptions`)
  * - VAE decode = pixels x 128 ch x 4 B x live maps (13; SDXL 15)
  * - accelerator = GPU-resident weights + max(stage compute) + overhead
  * - host        = all weights + host overhead
@@ -1061,7 +1063,7 @@ export function estimateImageMemory(spec: ModelSpec): MemoryEstimate {
     tokens: family.tokens,
     heads: family.heads,
     width: family.width,
-    flashAttention: false,
+    flashAttention: spec.imageLaunchOptions?.diffusionFlashAttention ?? false,
   });
   const vaeDecode =
     family.pixels *
@@ -1317,9 +1319,15 @@ export function measuredModelDemand(
           })
         : undefined;
     }
-    case "tts":
     case "image": {
-      const record = findModelMeasurement(spec.kind, spec.modelId);
+      const record = findImageMeasurement(
+        spec.modelId,
+        spec.imageLaunchOptions?.diffusionFlashAttention ?? false,
+      );
+      return record ? measuredDemand(record, { artifactBytes }) : undefined;
+    }
+    case "tts": {
+      const record = findModelMeasurement("tts", spec.modelId);
       // Kokoro runs on the CPU, so it carries no accelerator context.
       const acceleratorOverheadBytes =
         spec.ttsRuntime?.kind === "kokoro-onnx" ? 0 : undefined;

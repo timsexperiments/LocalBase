@@ -167,6 +167,7 @@ export async function startSdServerProcess(
 export function buildSdImageServerArgs(plan: ImageLaunchPlan): string[] {
   return [
     ...imageModelArgs(plan),
+    ...(plan.launchOptions.diffusionFlashAttention ? ["--diffusion-fa"] : []),
     "--listen-ip",
     plan.host,
     "--listen-port",
