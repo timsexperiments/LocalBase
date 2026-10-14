@@ -164,10 +164,10 @@ test.each([
     modelId: "flux1-schnell-q4_0",
     // --clip-on-cpu keeps CLIP-L and T5-XXL off the accelerator.
     expectedMemoryDemand: {
-      unifiedBytes: 24770089212,
-      hostBytes: 17790767356,
-      acceleratorBytes: 14736104036,
-      confidence: "derived",
+      unifiedBytes: 25991561216,
+      hostBytes: 18007343104,
+      acceleratorBytes: 14569565061,
+      confidence: "measured",
     },
     expectedModelArgs: [
       "--diffusion-model",
