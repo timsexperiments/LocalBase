@@ -28,7 +28,11 @@ import {
   resolveSttLaunchPlan,
   resolveVideoLaunchPlan,
 } from "./launch-plan";
-import { llmStartupTimeoutMs } from "./startup-timeout";
+import {
+  imageStartupTimeoutMs,
+  llmStartupTimeoutMs,
+  VIDEO_STARTUP_TIMEOUT_MS,
+} from "./startup-timeout";
 import { assertModelInstallConsent } from "./startup-preflight";
 import {
   startLlamaServerProcess,
@@ -861,7 +865,7 @@ export function createRuntimeSupervisorFactory(
         },
         memorySafety: dependencies.memorySafety,
         otel: ctx.otel,
-        startupTimeoutMs: 180000,
+        startupTimeoutMs: VIDEO_STARTUP_TIMEOUT_MS,
       });
     }
     return new ManagedService({
@@ -982,7 +986,7 @@ export function createRuntimeSupervisorFactory(
       },
       memorySafety: dependencies.memorySafety,
       otel: ctx.otel,
-      startupTimeoutMs: 30000,
+      startupTimeoutMs: imageStartupTimeoutMs(byId(modelId)),
     });
   };
 
