@@ -35,8 +35,10 @@ import {
   projectModelMetadataList,
 } from "../../models/model-metadata";
 import { listServedModels } from "../../models/served-models";
-import { createLlmKvGeometryReader } from "../gguf-geometry-cache";
-import { readLlmTrainingContextLength } from "../gguf-metadata";
+import {
+  createLlmKvGeometryReader,
+  createLlmTrainingContextLengthReader,
+} from "../gguf-geometry-cache";
 import type { AppContext } from "../../../context";
 import { activateContextOtel } from "../../../context";
 import { runtimeProcessSettings } from "../config-snapshot";
@@ -113,6 +115,7 @@ import {
 } from "../../../ui/access";
 import {
   gatewayRequestDisablesIdleTimeout,
+  gatewayRouteServesBufferedJson,
   modelMetadataIdFromPath,
   selectGatewayRoute,
 } from "../route-dispatch";
@@ -164,6 +167,7 @@ import {
   type StructuredOutputValidator,
 } from "../structured-output";
 import { anchorJsonSchemaPatterns } from "../tool-schema";
+import { compressJsonResponse } from "../../../utils/http-compression";
 
 type AuthMode = "bearer" | "x-api-key" | "either";
 
@@ -3050,6 +3054,8 @@ export async function runServe(
       : { sttPort: config.sttPort }),
   });
   const readCachedLlmKvGeometry = createLlmKvGeometryReader();
+  const readCachedLlmTrainingContextLength =
+    createLlmTrainingContextLengthReader();
   const memoryProvider = createHostMemoryProvider();
   const memorySafety = new MemorySafetyController(
     memoryProvider,
@@ -4387,7 +4393,7 @@ export async function runServe(
             const modelFile =
               launchOverrides.llmModelFile ??
               (spec ? primaryArtifact(spec).filename : `${id}.gguf`);
-            return readLlmTrainingContextLength(
+            return readCachedLlmTrainingContextLength(
               join(currentConfig.llmModelsDir, modelFile),
             );
           },
@@ -4526,7 +4532,10 @@ export async function runServe(
           `${inferenceTiming ? `${inferenceTiming}, ` : ""}localbase;dur=${durationMs.toFixed(2)}`,
         );
       }
-      const corsResponse = new Response(response.body, {
+      const body = gatewayRouteServesBufferedJson(pathname)
+        ? await compressJsonResponse(request, response, headers)
+        : response.body;
+      const corsResponse = new Response(body, {
         status: response.status,
         statusText: response.statusText,
         headers,

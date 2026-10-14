@@ -362,6 +362,19 @@ function safeRequestId(value: string | undefined): string | undefined {
 
 const recognizedHttpRoute = canonicalGatewayHttpRoute;
 
+/**
+ * A signed-out browser probing its session is routine, so that 401 stays at
+ * INFO; every other client error remains a WARN.
+ */
+export function httpRequestSeverity(
+  route: GatewayHttpRoute,
+  status: number,
+): LogSeverity {
+  if (status >= 500) return "error";
+  if (status === 401 && route === "/app/session") return "info";
+  return status >= 400 ? "warn" : "info";
+}
+
 function isOperationalMetricAttributeKey(
   value: string,
 ): value is (typeof operationalMetricAttributeKeys)[number] {
@@ -1086,7 +1099,7 @@ export class LocalBaseLogger implements ILogger {
     if (status < 400 && (route === "/health" || route === "/health/ready"))
       return;
     this.event({
-      severity: status >= 500 ? "error" : status >= 400 ? "warn" : "info",
+      severity: httpRequestSeverity(route, status),
       eventName: "http.request",
       category: "http",
       component: "gateway",

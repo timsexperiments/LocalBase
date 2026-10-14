@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tmpdir } from "node:os";
+import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { CATALOG } from "../../catalog";
 import { DatabaseSession } from "../../db/client";
 import { createApiKey } from "../../manager";
@@ -71,7 +72,7 @@ describe("authenticated model metadata endpoints", () => {
     expect(shell.headers.get("content-security-policy")).toContain(
       "frame-ancestors 'none'",
     );
-    expect(shell.headers.get("cache-control")).toBe("no-store");
+    expect(shell.headers.get("cache-control")).toBe("no-cache");
     const requestId = shell.headers.get("x-localbase-request-id");
     expect(shell.headers.get("permissions-policy")).toBe(
       "camera=(), microphone=(self), geolocation=()",
@@ -88,8 +89,12 @@ describe("authenticated model metadata endpoints", () => {
     ].map((match) => match[1]);
     expect(paths.length).toBe(2);
     for (const path of ["/", "/app", "/app/", ...paths]) {
-      const get = await fetch(`${base}${path}`);
-      const head = await fetch(`${base}${path}`, { method: "HEAD" });
+      const identity = { "accept-encoding": "identity" };
+      const get = await fetch(`${base}${path}`, { headers: identity });
+      const head = await fetch(`${base}${path}`, {
+        method: "HEAD",
+        headers: identity,
+      });
       expect(get.status).toBe(200);
       expect(head.status).toBe(200);
       expect(Number(head.headers.get("content-length"))).toBe(
@@ -117,6 +122,78 @@ describe("authenticated model metadata endpoints", () => {
       (await fetch(`${base}/app/assets/missing.js`, { headers: authHeaders() }))
         .status,
     ).toBe(404);
+  });
+
+  test("caches hashed assets immutably and serves negotiated compression", async () => {
+    const base = activeGateway().baseUrl;
+    const shell = await fetch(`${base}/app`, {
+      headers: { "accept-encoding": "identity" },
+    });
+    const etag = shell.headers.get("etag");
+    expect(etag).toBeTruthy();
+    const html = await shell.text();
+    const revalidated = await fetch(`${base}/app`, {
+      headers: { "if-none-match": etag ?? "" },
+    });
+    expect(revalidated.status).toBe(304);
+    expect(revalidated.headers.get("cache-control")).toBe("no-cache");
+    expect(revalidated.headers.get("x-frame-options")).toBe("DENY");
+
+    const script = html.match(/src="(\/app\/assets\/[^"]+\.js)"/)?.[1];
+    if (!script) throw new Error("Expected a hashed script asset.");
+    const identity = await fetch(`${base}${script}`, {
+      headers: { "accept-encoding": "identity" },
+    });
+    const identityBytes = (await identity.arrayBuffer()).byteLength;
+    expect(identity.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    expect(identity.headers.get("content-encoding")).toBeNull();
+    expect(identity.headers.get("vary")).toBe("Accept-Encoding");
+    for (const encoding of ["br", "gzip"] as const) {
+      const response = await fetch(`${base}${script}`, {
+        headers: { "accept-encoding": encoding },
+        decompress: false,
+      });
+      expect(response.headers.get("content-encoding")).toBe(encoding);
+      expect(response.headers.get("vary")).toBe("Accept-Encoding");
+      expect(response.headers.get("content-security-policy")).toContain(
+        "default-src 'none'",
+      );
+      const compressed = new Uint8Array(await response.arrayBuffer());
+      const head = await fetch(`${base}${script}`, {
+        method: "HEAD",
+        headers: { "accept-encoding": encoding },
+        decompress: false,
+      });
+      expect(Number(head.headers.get("content-length"))).toBe(
+        compressed.byteLength,
+      );
+      expect(compressed.byteLength).toBeLessThan(identityBytes / 2);
+      const decoded =
+        encoding === "br"
+          ? brotliDecompressSync(compressed)
+          : gunzipSync(compressed);
+      expect(decoded.byteLength).toBe(identityBytes);
+    }
+
+    const models = await fetch(`${base}/_localbase/models`, {
+      headers: { ...authHeaders(), "accept-encoding": "gzip" },
+      decompress: false,
+    });
+    expect(models.status).toBe(200);
+    expect(models.headers.get("content-encoding")).toBe("gzip");
+    expect(models.headers.get("vary")).toContain("Accept-Encoding");
+    modelMetadataListSchema.parse(
+      JSON.parse(
+        gunzipSync(new Uint8Array(await models.arrayBuffer())).toString(),
+      ),
+    );
+    const unauthenticated = await fetch(`${base}/_localbase/models`, {
+      headers: { "accept-encoding": "gzip" },
+      decompress: false,
+    });
+    expect(unauthenticated.status).toBe(401);
   });
 
   test("returns strict catalog and device metadata without starting runtimes", async () => {
