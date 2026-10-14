@@ -160,3 +160,32 @@ export function canonicalGatewayHttpRoute(value: string): GatewayHttpRoute {
       return "unmatched-route";
   }
 }
+
+/**
+ * Routes whose responses can legitimately stay silent for longer than Bun's
+ * default 10 s socket idle timeout: queue admission, cold model loads, and
+ * LLM prefill or non-streaming generation all happen before the first byte.
+ * These requests are bounded by client disconnect (propagated upstream via
+ * `request.signal`), the inference queue wait deadline, and upstream failure,
+ * so the listener's idle timer must not reset the client connection.
+ */
+const unboundedIdleRoutes: ReadonlySet<GatewayRoute> = new Set<GatewayRoute>([
+  "transcription",
+  "speechGeneration",
+  "imageGeneration",
+  "imageEdit",
+  "videoCreate",
+  "videoContent",
+  "chatCompletion",
+  "embeddings",
+]);
+
+const uiApiPrefix = "/app/api";
+
+/** Whether a gateway request should disable the per-connection idle timeout. */
+export function gatewayRequestDisablesIdleTimeout(pathname: string): boolean {
+  const apiPath = pathname.startsWith(`${uiApiPrefix}/`)
+    ? pathname.slice(uiApiPrefix.length)
+    : pathname;
+  return unboundedIdleRoutes.has(selectGatewayRoute(apiPath));
+}

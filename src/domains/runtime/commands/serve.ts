@@ -106,7 +106,11 @@ import {
   isUiAccessPath,
   loadUiAccessConfig,
 } from "../../../ui/access";
-import { modelMetadataIdFromPath, selectGatewayRoute } from "../route-dispatch";
+import {
+  gatewayRequestDisablesIdleTimeout,
+  modelMetadataIdFromPath,
+  selectGatewayRoute,
+} from "../route-dispatch";
 import { gatewayAuthorizationRequirement } from "../route-authorization";
 import { VideoJobManager } from "../video/video-job-manager";
 import { createVideoArtifactPreparer } from "../video/video-converter";
@@ -4277,9 +4281,13 @@ export async function runServe(
   const server = Bun.serve({
     hostname: wrapperHost,
     port: wrapperPort,
-    fetch: async (request) => {
+    fetch: async (request, listener) => {
       const start = performance.now();
       const { pathname } = new URL(request.url);
+      // Bun resets sockets idle for 10 s by default; cold loads, queue waits,
+      // and LLM prefill can be silent far longer before the first byte.
+      if (gatewayRequestDisablesIdleTimeout(pathname))
+        listener.timeout(request, 0);
       const method = request.method;
       const requestId = `lbreq_${crypto.randomUUID()}`;
       const requestAuth = gatewayRequestAuth(request);
