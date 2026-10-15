@@ -7,7 +7,6 @@
   "version": "Turbo",
   "size": "6B",
   "quant": "Q4_0",
-  "minVramGb": 16,
   "storageGb": 6.6,
   "source": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
   "repositoryRevision": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",

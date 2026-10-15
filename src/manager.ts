@@ -37,8 +37,8 @@ import {
   type ModelArtifact,
   type ModelSpec,
   type ModelKind,
-  recommendedSttForVram,
 } from "./catalog";
+import { recommendedSttForVram } from "./domains/models/memory-fit";
 import { assertModelDiskSpace } from "./domains/runtime/startup-preflight";
 import { createModelConfigurationSchema } from "./domains/models/model-selection";
 import { assertModelEligible } from "./domains/models/model-eligibility";

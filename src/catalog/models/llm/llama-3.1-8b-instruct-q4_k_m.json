@@ -8,7 +8,6 @@
   "size": "8B",
   "quant": "Q4_K_M",
   "codingScore": 8,
-  "minVramGb": 8,
   "storageGb": 4.7,
   "source": "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
   "repositoryRevision": "bf5b95e96dac0462e2a09145ec66cae9a3f12067",

@@ -7,7 +7,6 @@
   "version": "2.2",
   "size": "5B",
   "quant": "Q6_K",
-  "minVramGb": 32,
   "storageGb": 4.21,
   "source": "https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF",
   "repositoryRevision": "57437632ddd08bdcbd1508c866aa22e126ed51d2",

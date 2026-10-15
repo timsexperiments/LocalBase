@@ -19,6 +19,12 @@ import {
 } from "../config/parallel";
 import type { LlmKvGeometry } from "../runtime/gguf-metadata";
 import type { LlmSupervisorProfile } from "../runtime/supervisor-registry";
+import {
+  evaluateModelFit,
+  type MemoryFitVerdict,
+  type MemorySource,
+  type ModelMemoryInputs,
+} from "./memory-fit";
 
 type ServedModelConfig = Pick<
   LocalBaseConfig,
@@ -48,10 +54,24 @@ export type OpenAiModel = Readonly<{
   context_length?: number;
   /** How the configured context ceiling became `context_length` (LLMs only). */
   context_budget?: LlmContextBudget;
+  /**
+   * LocalBase extension: this machine's memory figure for the model and the
+   * fit verdict. `source` is `observed`, `measured`, or `estimate`.
+   */
+  memory?: ServedModelMemory;
   architecture: Readonly<{
     input_modalities: readonly string[];
     output_modalities: readonly string[];
   }>;
+}>;
+
+export type ServedModelMemory = Readonly<{
+  min_vram_gb: number;
+  source: MemorySource;
+  launch_shape: string;
+  observed_peak_bytes: number | null;
+  fit: MemoryFitVerdict;
+  system_memory_gb: number;
 }>;
 
 const kindOrder: readonly ModelKind[] = ["llm", "stt", "tts", "image", "video"];
@@ -157,6 +177,8 @@ export async function listServedModels(
     kvGeometryForModel?: (id: string) => Promise<LlmKvGeometry | null>;
     trainingContextLengthForModel?: (id: string) => Promise<number | null>;
     llmProfile?: LlmSupervisorProfile;
+    /** Local memory facts for a catalog model; enables the `memory` field. */
+    memoryInputsForModel?: (spec: ModelSpec) => Promise<ModelMemoryInputs>;
   }> = {},
 ): Promise<OpenAiModel[]> {
   const seen = new Set<string>();
@@ -298,6 +320,24 @@ export async function listServedModels(
             model = omitContextLength(model);
           }
         }
+      }
+      if (spec && options.memoryInputsForModel) {
+        const fit = evaluateModelFit(
+          spec,
+          options.memoryGb ?? 0,
+          await options.memoryInputsForModel(spec).catch(() => ({})),
+        );
+        model = {
+          ...model,
+          memory: {
+            min_vram_gb: fit.minVramGb,
+            source: fit.source,
+            launch_shape: fit.figure.launchShape,
+            observed_peak_bytes: fit.figure.observed?.peakBytes ?? null,
+            fit: fit.verdict,
+            system_memory_gb: fit.systemVramGb,
+          },
+        };
       }
       data.push(model);
     }

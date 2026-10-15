@@ -8,7 +8,6 @@
   "size": "1B",
   "quant": "Q4_K_M",
   "codingScore": 5,
-  "minVramGb": 4,
   "storageGb": 1,
   "source": "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF",
   "repositoryRevision": "067b946cf014b7c697f3654f621d577a3e3afd1c",

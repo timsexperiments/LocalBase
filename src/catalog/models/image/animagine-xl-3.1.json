@@ -7,7 +7,6 @@
   "version": "3.1",
   "size": "6.5GB",
   "quant": "F16",
-  "minVramGb": 16,
   "storageGb": 6.46,
   "source": "https://huggingface.co/cagliostrolab/animagine-xl-3.1",
   "repositoryRevision": "483f0c322568ed13697ed01dd0be07204746d12b",

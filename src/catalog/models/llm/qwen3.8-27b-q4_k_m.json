@@ -7,7 +7,6 @@
   "version": "3.8",
   "size": "27B",
   "quant": "Q4_K_M",
-  "minVramGb": 24,
   "storageGb": 17.8,
   "source": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF",
   "repositoryRevision": "f0eec4a4bb4975114a030d048952d83c0a53c034",

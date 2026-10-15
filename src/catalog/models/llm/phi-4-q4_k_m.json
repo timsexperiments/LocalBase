@@ -8,7 +8,6 @@
   "size": "14B",
   "quant": "Q4_K_M",
   "codingScore": 8,
-  "minVramGb": 12,
   "storageGb": 9,
   "source": "https://huggingface.co/bartowski/phi-4-GGUF",
   "repositoryRevision": "19cd65f97c2f1712a81c506611d3f9c94b16a1e1",

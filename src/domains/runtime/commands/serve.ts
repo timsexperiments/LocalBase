@@ -22,7 +22,6 @@ import { loadEmailDeliveryConfig } from "../../auth/email-delivery";
 import {
   byId,
   CATALOG,
-  evaluateModelFit,
   calculateMaxSafeContextSize,
   primaryArtifact,
   resolveCatalogInstallation,
@@ -32,6 +31,18 @@ import {
 } from "../../../catalog";
 import type { Capability } from "../../../catalog/capabilities";
 import {
+  collectModelMemoryInputs,
+  evaluateModelFit,
+  type ModelMemoryInputs,
+} from "../../models/memory-fit";
+import {
+  createObservedMemoryStore,
+  observationTarget,
+  observePeakMemory,
+  platformMemorySampler,
+} from "../observed-memory";
+import {
+  directoryForModel,
   inspectCatalogInstallations,
   modelMetadataById,
   projectModelMetadataList,
@@ -2585,6 +2596,8 @@ export async function runServe(
     );
   const database = ctx.database.get(config.root);
   const runtimeCapabilities = createRuntimeCapabilityStore(database);
+  const observedMemory = createObservedMemoryStore(database);
+  const readCachedLlmKvGeometry = createLlmKvGeometryReader();
   const modelSupports = async (
     model: ModelSpec,
     capability: Capability,
@@ -2886,17 +2899,35 @@ export async function runServe(
   };
 
   const bypassCheck = input.bypassMemoryCheck;
+  const preflightMemoryInputs = async (
+    spec: ModelSpec,
+  ): Promise<ModelMemoryInputs> => {
+    const inputs = await collectModelMemoryInputs({
+      catalog: [spec],
+      installations: await inspectCatalogInstallations(config, [spec]),
+      directoryFor: (model) => directoryForModel(config, model.kind),
+      observed: observedMemory,
+      readGeometry: readCachedLlmKvGeometry,
+    });
+    return inputs.get(spec.modelId) ?? {};
+  };
 
   if (enabled.llm) {
     const llmModelId = getModelIdFromFile(llmModelFile);
     const llmSpec = byId(llmModelId);
     if (llmSpec) {
-      const fit = evaluateModelFit(llmSpec, specs.gpuVramGb);
+      const fit = evaluateModelFit(
+        llmSpec,
+        specs.gpuVramGb,
+        await preflightMemoryInputs(llmSpec),
+      );
       if (fit.status === "insufficient") {
         console.error(
           `\n❌ ERROR: Insufficient VRAM/Unified Memory to run LLM "${llmSpec.modelId}".`,
         );
-        console.error(`   Model minimum requirement: ${fit.minVramGb} GB`);
+        console.error(
+          `   Model minimum requirement: ${fit.minVramGb} GB (${fit.source})`,
+        );
         console.error(`   Detected host memory:      ${fit.systemVramGb} GB`);
         console.error(
           `   Running this model will likely crash the system or cause severe slowdowns.`,
@@ -2915,14 +2946,16 @@ export async function runServe(
         console.warn(
           `\n⚠️ WARNING: Tight memory fit for LLM "${llmSpec.modelId}".`,
         );
-        console.warn(`   Model minimum requirement: ${fit.minVramGb} GB`);
+        console.warn(
+          `   Model minimum requirement: ${fit.minVramGb} GB (${fit.source})`,
+        );
         console.warn(`   Detected host memory:      ${fit.systemVramGb} GB`);
         console.warn(
           `   Leaves only ${fit.headroomGb.toFixed(1)} GB headroom. Large context windows may cause slowdowns.`,
         );
       } else {
         console.log(
-          `\n✅ Memory check passed: LLM "${llmSpec.modelId}" fits comfortably in ${specs.gpuVramGb} GB.`,
+          `\n✅ Memory check passed: LLM "${llmSpec.modelId}" fits comfortably in ${specs.gpuVramGb} GB (${fit.source} minimum ${fit.minVramGb} GB).`,
         );
       }
 
@@ -2942,12 +2975,18 @@ export async function runServe(
     const sttModelId = getModelIdFromFile(sttModelFile);
     const sttSpec = byId(sttModelId);
     if (sttSpec) {
-      const fit = evaluateModelFit(sttSpec, specs.gpuVramGb);
+      const fit = evaluateModelFit(
+        sttSpec,
+        specs.gpuVramGb,
+        await preflightMemoryInputs(sttSpec),
+      );
       if (fit.status === "insufficient") {
         console.error(
           `\n❌ ERROR: Insufficient VRAM/Unified Memory to run STT "${sttSpec.modelId}".`,
         );
-        console.error(`   Model minimum requirement: ${fit.minVramGb} GB`);
+        console.error(
+          `   Model minimum requirement: ${fit.minVramGb} GB (${fit.source})`,
+        );
         console.error(`   Detected host memory:      ${fit.systemVramGb} GB`);
         if (!bypassCheck) {
           console.error(
@@ -2963,7 +3002,9 @@ export async function runServe(
         console.warn(
           `\n⚠️ WARNING: Tight memory fit for STT "${sttSpec.modelId}".`,
         );
-        console.warn(`   Model minimum requirement: ${fit.minVramGb} GB`);
+        console.warn(
+          `   Model minimum requirement: ${fit.minVramGb} GB (${fit.source})`,
+        );
         console.warn(`   Detected host memory:      ${fit.systemVramGb} GB`);
       }
     }
@@ -2973,12 +3014,18 @@ export async function runServe(
     const imageModelId = getModelIdFromFile(imageModelFile);
     const imageSpec = byId(imageModelId);
     if (imageSpec) {
-      const fit = evaluateModelFit(imageSpec, specs.gpuVramGb);
+      const fit = evaluateModelFit(
+        imageSpec,
+        specs.gpuVramGb,
+        await preflightMemoryInputs(imageSpec),
+      );
       if (fit.status === "insufficient") {
         console.error(
           `\n❌ ERROR: Insufficient VRAM/Unified Memory to run Image model "${imageSpec.modelId}".`,
         );
-        console.error(`   Model minimum requirement: ${fit.minVramGb} GB`);
+        console.error(
+          `   Model minimum requirement: ${fit.minVramGb} GB (${fit.source})`,
+        );
         console.error(`   Detected host memory:      ${fit.systemVramGb} GB`);
         if (!bypassCheck) {
           console.error(
@@ -2994,7 +3041,9 @@ export async function runServe(
         console.warn(
           `\n⚠️ WARNING: Tight memory fit for Image model "${imageSpec.modelId}".`,
         );
-        console.warn(`   Model minimum requirement: ${fit.minVramGb} GB`);
+        console.warn(
+          `   Model minimum requirement: ${fit.minVramGb} GB (${fit.source})`,
+        );
         console.warn(`   Detected host memory:      ${fit.systemVramGb} GB`);
       }
     }
@@ -3161,7 +3210,6 @@ export async function runServe(
       ? {}
       : { sttPort: config.sttPort }),
   });
-  const readCachedLlmKvGeometry = createLlmKvGeometryReader();
   const readCachedLlmTrainingContextLength =
     createLlmTrainingContextLengthReader();
   const memoryProvider = createHostMemoryProvider();
@@ -3170,9 +3218,29 @@ export async function runServe(
     ctx.config.memory,
     bypassCheck,
   );
+  // Aborted on shutdown so an in-flight memory sample never delays exit.
+  const observationStop = new AbortController();
   const factory = createRuntimeSupervisorFactory(ctx, launchOverrides, {
     memorySafety,
     installMissing: input.installMissing || config.installMissingModels,
+    onBackendReady: ({ modelId, ready }) => {
+      const target = observationTarget(byId(modelId), ready.plan);
+      const sampler = platformMemorySampler();
+      if (!target || !sampler) return;
+      void observePeakMemory({
+        signal: observationStop.signal,
+        pid: ready.pid,
+        target,
+        exited: ready.exited,
+        sampler,
+        store: observedMemory,
+        onError: (error) =>
+          ctx.logger.warn(
+            "memory",
+            `Could not record the memory peak of ${modelId}: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+      });
+    },
     onLlmReady: async ({ modelId, baseUrl, embedding }) => {
       const spec = byId(modelId);
       const artifactSha256 = spec ? runtimeCapabilityKey(spec) : null;
@@ -3475,6 +3543,15 @@ export async function runServe(
       if (request.method !== "GET") return methodNotAllowed("GET");
 
       const installations = inspectCatalogInstallations(currentConfig, CATALOG);
+      const memory = installations.then((resolved) =>
+        collectModelMemoryInputs({
+          catalog: CATALOG,
+          installations: resolved,
+          directoryFor: (model) => directoryForModel(currentConfig, model.kind),
+          observed: observedMemory,
+          readGeometry: readCachedLlmKvGeometry,
+        }),
+      );
       const capabilities = resolveCatalogCapabilities(
         CATALOG,
         currentConfig,
@@ -3485,10 +3562,12 @@ export async function runServe(
           resolvedInstallations,
           resolvedCapabilities,
           hostMemorySnapshot,
+          resolvedMemory,
         ] = await Promise.all([
           installations,
           capabilities,
           memoryProvider.snapshot(),
+          memory,
         ]);
         return Response.json(
           projectModelMetadataList(
@@ -3498,6 +3577,8 @@ export async function runServe(
               installations: resolvedInstallations,
               capabilities: resolvedCapabilities,
               runtimes,
+              memory: resolvedMemory,
+              systemMemoryGb: ctx.specs.gpuVramGb,
             },
             {
               topology: memoryProvider.topology,
@@ -3512,6 +3593,8 @@ export async function runServe(
         installations: await installations,
         capabilities: await capabilities,
         runtimes,
+        memory: await memory,
+        systemMemoryGb: ctx.specs.gpuVramGb,
       };
 
       const modelId = modelMetadataIdFromPath(pathname);
@@ -4555,6 +4638,19 @@ export async function runServe(
           llmProfile: supervisors.get("llm")?.llmProfile?.(),
           parallel: currentConfig.parallel,
           memoryGb: ctx.specs.gpuVramGb,
+          memoryInputsForModel: async (spec) => {
+            const inputs = await collectModelMemoryInputs({
+              catalog: [spec],
+              installations: await inspectCatalogInstallations(currentConfig, [
+                spec,
+              ]),
+              directoryFor: (model) =>
+                directoryForModel(currentConfig, model.kind),
+              observed: observedMemory,
+              readGeometry: readCachedLlmKvGeometry,
+            });
+            return inputs.get(spec.modelId) ?? {};
+          },
           kvGeometryForModel: async (id) => {
             const spec = byId(id);
             const modelFile =
@@ -4834,6 +4930,7 @@ export async function runServe(
         });
         ctx.logger.info("Manager", "Shutting down servers and subprocesses...");
         gatewayStopping = true;
+        observationStop.abort();
         reconciler.closeQueues();
         server.stop(true);
         try {

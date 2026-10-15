@@ -7,7 +7,6 @@
   "version": "9.0",
   "size": "6.6GB",
   "quant": "F16",
-  "minVramGb": 16,
   "storageGb": 6.61,
   "source": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
   "repositoryRevision": "cf419233522daa0b9ea36c3aff98fa2cab1fb0fb",

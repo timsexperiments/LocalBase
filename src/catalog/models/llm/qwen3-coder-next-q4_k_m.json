@@ -8,7 +8,6 @@
   "size": "80B-A3B",
   "quant": "Q4_K_M",
   "codingScore": 10,
-  "minVramGb": 64,
   "storageGb": 48.4,
   "source": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
   "repositoryRevision": "b82fb7382639d97b38fa7672e526c760c2fb358e",

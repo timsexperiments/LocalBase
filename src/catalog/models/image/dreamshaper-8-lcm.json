@@ -7,7 +7,6 @@
   "version": "DreamShaper 8 LCM",
   "size": "2.0GB",
   "quant": "F16",
-  "minVramGb": 6,
   "storageGb": 2.13,
   "source": "https://huggingface.co/Lykon/dreamshaper-8-lcm",
   "repositoryRevision": "4645d8bc6a8e6b106d21606d63e8460cdad4f1a6",

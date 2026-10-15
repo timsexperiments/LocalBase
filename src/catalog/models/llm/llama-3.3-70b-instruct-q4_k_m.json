@@ -8,7 +8,6 @@
   "size": "70B",
   "quant": "Q4_K_M",
   "codingScore": 8,
-  "minVramGb": 48,
   "storageGb": 42,
   "source": "https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF",
   "repositoryRevision": "b6c5c9f176f3279204034e1d16d393105e95cb88",

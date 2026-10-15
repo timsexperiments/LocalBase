@@ -7,7 +7,6 @@
   "version": "large-v3-turbo",
   "size": "large",
   "quant": "Q5_0",
-  "minVramGb": 4,
   "storageGb": 1.7,
   "source": "https://huggingface.co/ggerganov/whisper.cpp",
   "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",

@@ -8,7 +8,6 @@
   "size": "32B",
   "quant": "Q4_K_M",
   "codingScore": 9.5,
-  "minVramGb": 24,
   "storageGb": 20.3,
   "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
   "repositoryRevision": "1dc8cf9ffa5dd333057ea1b09ccf4772d8726dec",

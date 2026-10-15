@@ -55,15 +55,11 @@ describe("llmStartupTimeoutMs", () => {
     expect(llmStartupTimeoutMs(undefined)).toBe(LLM_DEFAULT_STARTUP_TIMEOUT_MS);
   });
 
-  test("keys off weight bytes, not the published minVramGb tier", () => {
+  test("keys off weight bytes", () => {
     const small = byId("qwen3.5-0.8b-q4_k_m")!;
-    expect(llmStartupTimeoutMs({ ...small, minVramGb: 64 })).toBe(
-      LLM_DEFAULT_STARTUP_TIMEOUT_MS,
-    );
+    expect(llmStartupTimeoutMs(small)).toBe(LLM_DEFAULT_STARTUP_TIMEOUT_MS);
     const large = byId("gpt-oss-20b-q4_k_m")!;
-    expect(llmStartupTimeoutMs({ ...large, minVramGb: 4 })).toBe(
-      LLM_LARGE_STARTUP_TIMEOUT_MS,
-    );
+    expect(llmStartupTimeoutMs(large)).toBe(LLM_LARGE_STARTUP_TIMEOUT_MS);
   });
 
   test("counts every shard and projector", () => {

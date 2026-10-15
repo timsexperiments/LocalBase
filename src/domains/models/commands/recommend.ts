@@ -1,15 +1,18 @@
-import {
-  recommendedForVram,
-  recommendedSttForVram,
-  recommendedTtsForVram,
-  recommendedImageForVram,
-  legacyFeatures,
-  withLegacyFeatures,
-} from "../../../catalog";
+import { legacyFeatures, withLegacyFeatures } from "../../../catalog";
 import type { ModelSpec, ModelSpecWithFeatures } from "../../../catalog";
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { RecommendInput } from "../../app/commands/inputs";
+import {
+  evaluateModelFit,
+  modelMemoryJson,
+  recommendedForVram,
+  recommendedImageForVram,
+  recommendedSttForVram,
+  recommendedTtsForVram,
+  type ModelMemoryJson,
+} from "../memory-fit";
+import { cliMemoryInputs } from "./memory-inputs";
 
 export function runRecommend(
   input: RecommendInput,
@@ -19,7 +22,7 @@ export function runRecommend(
   data: {
     kind: "llm" | "stt" | "tts" | "image" | "video";
     vramGb: number;
-    models: ModelSpecWithFeatures[];
+    models: (ModelSpecWithFeatures & ModelMemoryJson)[];
   };
 } {
   const kind = input.kind ?? "llm";
@@ -39,16 +42,25 @@ export function runRecommend(
   execution.output.info(
     `Recommended ${kind.toUpperCase()} models for <= ${vram}GB VRAM:`,
   );
-  for (const model of picks.slice(0, 6)) {
+  const shown = picks.slice(0, 6);
+  const memory = cliMemoryInputs(ctx, shown);
+  const fits = shown.map((model) =>
+    evaluateModelFit(model, vram, memory.get(model.modelId)),
+  );
+  shown.forEach((model, index) => {
+    const fit = fits[index]!;
     execution.output.info(
-      `- ${model.modelId} (${model.storageGb.toFixed(2)} GB, features=${legacyFeatures(model).join("/")})`,
+      `- ${model.modelId} (${model.storageGb.toFixed(2)} GB, min ${fit.minVramGb} GB ${fit.source}, features=${legacyFeatures(model).join("/")})`,
     );
-  }
+  });
   return {
     data: {
       kind,
       vramGb: vram,
-      models: picks.slice(0, 6).map(withLegacyFeatures),
+      models: shown.map((model, index) => ({
+        ...withLegacyFeatures(model),
+        ...modelMemoryJson(fits[index]!),
+      })),
     },
   };
 }

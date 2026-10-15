@@ -8,7 +8,6 @@
   "size": "8B",
   "quant": "Q4_K_M",
   "codingScore": 8,
-  "minVramGb": 8,
   "storageGb": 4.7,
   "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
   "repositoryRevision": "935d400c2ed1a29cc2a1045df25ec7998fb4dfe4",

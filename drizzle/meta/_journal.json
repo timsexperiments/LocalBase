@@ -92,6 +92,13 @@
       "when": 1792079149809,
       "tag": "0012_model_runtime_capabilities",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1792081954115,
+      "tag": "0013_model_observed_memory",
+      "breakpoints": true
     }
   ]
 }

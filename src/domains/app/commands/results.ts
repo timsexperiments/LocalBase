@@ -84,7 +84,17 @@ export const hardwareOutputSchema = z
 
 /** Catalog spec plus the legacy `features` list existing JSON clients read. */
 export const modelOutputSchema = modelSpecObjectSchema
-  .extend({ features: z.array(z.string().min(1)) })
+  .extend({
+    features: z.array(z.string().min(1)),
+    /** Computed minimum memory (GiB); see domains/models/memory-fit.ts. */
+    minVramGb: z.number().int().positive(),
+    minimumVramEstimateGb: z.number().int().positive(),
+    memorySource: z.enum(["estimate", "measured", "observed"]),
+    memoryLaunchShape: z.string().min(1),
+    observedPeakBytes: z.number().int().positive().nullable(),
+    fitVerdict: z.enum(["fits", "tight", "wont-fit"]),
+    systemMemoryGb: z.number().nonnegative(),
+  })
   .strict()
   .superRefine(refineModelSpec);
 

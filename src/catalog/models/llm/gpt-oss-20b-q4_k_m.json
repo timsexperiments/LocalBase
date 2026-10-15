@@ -8,7 +8,6 @@
   "size": "20B",
   "quant": "Q4_K_M",
   "codingScore": 9.5,
-  "minVramGb": 16,
   "storageGb": 14,
   "source": "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
   "repositoryRevision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",

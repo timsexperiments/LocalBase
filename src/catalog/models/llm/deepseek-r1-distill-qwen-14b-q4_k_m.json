@@ -8,7 +8,6 @@
   "size": "14B",
   "quant": "Q4_K_M",
   "codingScore": 9,
-  "minVramGb": 12,
   "storageGb": 9,
   "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
   "repositoryRevision": "9f5d77d401799416e0702290a691038b44012e0c",

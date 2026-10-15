@@ -7,7 +7,6 @@
   "version": "4B",
   "size": "4B",
   "quant": "Q4_K_M",
-  "minVramGb": 6,
   "storageGb": 2.5,
   "source": "https://huggingface.co/Qwen/Qwen3-Embedding-4B-GGUF",
   "repositoryRevision": "f4602530db1d980e16da9d7d3a70294cf5c190be",

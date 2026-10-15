@@ -7,7 +7,6 @@
   "version": "4.0",
   "size": "6.5GB",
   "quant": "F16",
-  "minVramGb": 16,
   "storageGb": 6.46,
   "source": "https://huggingface.co/SG161222/RealVisXL_V4.0",
   "repositoryRevision": "26dfe44930964cd70d0a817b6d1cc945c130e38d",

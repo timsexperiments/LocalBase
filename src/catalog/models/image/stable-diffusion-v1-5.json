@@ -7,7 +7,6 @@
   "version": "1.5",
   "size": "4.3GB",
   "quant": "F16",
-  "minVramGb": 6,
   "storageGb": 4.27,
   "source": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
   "repositoryRevision": "451f4fe16113bff5a5d2269ed5ad43b0592e9a14",

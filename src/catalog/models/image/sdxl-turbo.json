@@ -7,7 +7,6 @@
   "version": "Turbo-1.0",
   "size": "6.9GB",
   "quant": "F16",
-  "minVramGb": 16,
   "storageGb": 6.94,
   "source": "https://huggingface.co/stabilityai/sdxl-turbo",
   "repositoryRevision": "71153311d3dbb46851df1931d3ca6e939de83304",

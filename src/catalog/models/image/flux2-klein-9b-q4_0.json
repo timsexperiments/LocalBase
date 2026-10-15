@@ -7,7 +7,6 @@
   "version": "2",
   "size": "9B",
   "quant": "Q4_0",
-  "minVramGb": 24,
   "storageGb": 10.98,
   "source": "https://huggingface.co/leejet/FLUX.2-klein-9B-GGUF",
   "repositoryRevision": "cc588497a95ffc2937ebbd6b9b3916a11ada6e5b",
