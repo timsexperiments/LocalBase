@@ -228,3 +228,33 @@ test("follow-ups and retries retain attachments and assistant tool protocol", ()
     { role: "user", content: "Hello" },
   ]);
 });
+
+test("image attachments follow the effective input modalities", () => {
+  const declaredTextOnly = model();
+  if (!declaredTextOnly) throw new Error("Missing fixture");
+  const detectedVision = {
+    ...declaredTextOnly,
+    catalog: {
+      ...declaredTextOnly.catalog,
+      capabilityResolution: {
+        capabilities: [{ id: "vision", source: "detected" }],
+        inputModalities: { values: ["text", "image"] },
+      },
+    },
+  };
+  expect(attachmentAccept(detectedVision)).toContain("image/png");
+  const runtimeTextOnly = model(["text", "image"]);
+  if (!runtimeTextOnly) throw new Error("Missing fixture");
+  expect(
+    attachmentAccept({
+      ...runtimeTextOnly,
+      catalog: {
+        ...runtimeTextOnly.catalog,
+        capabilityResolution: {
+          capabilities: [],
+          inputModalities: { values: ["text"] },
+        },
+      },
+    }),
+  ).not.toContain("image/");
+});

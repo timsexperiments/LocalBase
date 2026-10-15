@@ -8,7 +8,9 @@ import {
   administrationSections,
   canOpenPanel,
   conversationNavigation,
+  detailsUrl,
   navigationUrl,
+  readDetails,
   readNavigation,
   resolveNavigation,
   startConversation,
@@ -169,6 +171,28 @@ describe("playground navigation boundary", () => {
     const closed = navigationUrl(href, conversationNavigation(saved, null));
     expect(closed).not.toContain("coder");
     expect(closed).not.toContain("capability");
+  });
+
+  test("keeps an open model details view linkable with the catalog", () => {
+    const href =
+      "https://local.test/app?panel=catalog&q=coder&details=qwen2.5-coder-1.5b-instruct-q4_k_m";
+    expect(readDetails(new URL(href).search)).toBe(
+      "qwen2.5-coder-1.5b-instruct-q4_k_m",
+    );
+    expect(readDetails("?details=")).toBeNull();
+    expect(readDetails("?details=..%2Fescape")).toBeNull();
+    expect(readDetails("?panel=catalog")).toBeNull();
+    const open = navigationUrl(href, conversationNavigation(saved, "catalog"));
+    expect(new URL(open, href).searchParams.get("details")).toBe(
+      "qwen2.5-coder-1.5b-instruct-q4_k_m",
+    );
+    expect(
+      navigationUrl(href, conversationNavigation(saved, null)),
+    ).not.toContain("details");
+    expect(
+      detailsUrl("https://local.test/app?panel=catalog", "whisper-base-q8_0"),
+    ).toBe("/app?panel=catalog&details=whisper-base-q8_0");
+    expect(detailsUrl(href, null)).toBe("/app?panel=catalog&q=coder");
   });
 
   test("restores requested model on Back even after the local conversation changed models", () => {

@@ -25,6 +25,7 @@ import type { RuntimeModality } from "../runtime/modality";
 import {
   evaluateModelFit,
   modelMemoryFigure,
+  referenceLaunchShape,
   type ModelMemoryInputs,
 } from "./memory-fit";
 import {
@@ -102,11 +103,17 @@ export const modelMetadataSchema = z
       .object({
         name: z.string().min(1),
         displayName: z.string().min(1),
+        /** Who publishes the weights, such as `Qwen`. */
+        provider: z.string().min(1),
+        /** Repository the artifacts download from. */
+        source: z.string().min(1),
         revision: z.string().min(1),
         kind: z.enum(["llm", "stt", "tts", "image", "video"]),
         qualificationState: z.enum(["qualified", "experimental"]),
         commercialStatus: z.enum(["open", "conditional", "prohibited"]),
         summary: z.string(),
+        /** Longer catalog notes. */
+        notes: z.string(),
         quantization: z.string().min(1),
         features: z.array(z.string()),
         artifacts: z
@@ -114,6 +121,15 @@ export const modelMetadataSchema = z
             z
               .object({
                 role: z.enum(["primary", "supplementary"]),
+                filename: z.string().min(1),
+                /** Repository and revision when it differs from the model source. */
+                source: z
+                  .object({
+                    repositoryUrl: z.string().min(1),
+                    revision: z.string().min(1),
+                  })
+                  .strict()
+                  .nullable(),
                 sha256: z.string().nullable(),
                 sizeBytes: nullableNumberSchema,
               })
@@ -131,8 +147,23 @@ export const modelMetadataSchema = z
               .object({
                 source: z.enum(["estimate", "measured"]),
                 bytes: z.number().int().nonnegative(),
+                /** The launch shape the estimate or measurement describes. */
+                launchShape: z.string().min(1),
               })
               .strict()
+              .optional(),
+            /** Every peak recorded for the installed files, newest first. */
+            observedPeaks: z
+              .array(
+                z
+                  .object({
+                    peakBytes: z.number().int().nonnegative(),
+                    launchShape: z.string().min(1),
+                    method: z.enum(["footprint", "vmhwm"]),
+                    observedAt: z.string().min(1),
+                  })
+                  .strict(),
+              )
               .optional(),
             observed: z
               .object({
@@ -266,7 +297,8 @@ export type ModelMetadataProjectionInput = Readonly<{
   installations: ReadonlyMap<string, boolean>;
   /** Resolved capabilities per model; declared-only when absent. */
   capabilities?: ReadonlyMap<string, ResolvedCapabilities>;
-  runtimes: Readonly<Record<RuntimeModality, RuntimeLifecycleSnapshot>>;
+  /** Live runtime snapshots; the runtime field is null when absent (CLI). */
+  runtimes?: Readonly<Record<RuntimeModality, RuntimeLifecycleSnapshot>>;
   /** Local geometry and observed peaks per model; catalog estimate when absent. */
   memory?: ReadonlyMap<string, ModelMemoryInputs>;
   /** This machine's memory in GiB; adds a fit verdict when present. */
@@ -297,8 +329,8 @@ function runtimeForModel(
   model: ModelSpec,
   runtimes: ModelMetadataProjectionInput["runtimes"],
 ): ModelMetadata["device"]["runtime"] {
-  const runtime = runtimes[model.kind];
-  if (runtime.modelId !== model.modelId) return null;
+  const runtime = runtimes?.[model.kind];
+  if (!runtime || runtime.modelId !== model.modelId) return null;
   const queue = runtime.queue;
   return {
     configured: runtime.configured,
@@ -324,15 +356,20 @@ export function projectModelMetadata(
     catalog: {
       name: model.family,
       displayName: model.displayName ?? model.family,
+      provider: model.provider,
+      source: model.source,
       revision: model.repositoryRevision,
       kind: model.kind,
       qualificationState: model.qualificationState ?? "qualified",
       commercialStatus: model.commercialStatus,
       summary: model.catch,
+      notes: model.notes,
       quantization: model.quant,
       features: legacyFeatures(model),
       artifacts: model.artifacts.map((artifact) => ({
         role: artifact.role,
+        filename: artifact.filename,
+        source: artifact.source ?? null,
         sha256: artifact.sha256 ?? null,
         sizeBytes: artifact.expectedSizeBytes ?? null,
       })),
@@ -523,7 +560,16 @@ function memoryProjection(
     reference: {
       source: figure.referenceSource,
       bytes: Math.round(figure.referenceBytes),
+      launchShape: referenceLaunchShape(model, inputs),
     },
+    observedPeaks: (inputs?.observed ?? []).map(
+      ({ peakBytes, launchShape, method, observedAt }) => ({
+        peakBytes,
+        launchShape,
+        method,
+        observedAt,
+      }),
+    ),
     observed: figure.observed
       ? {
           peakBytes: figure.observed.peakBytes,

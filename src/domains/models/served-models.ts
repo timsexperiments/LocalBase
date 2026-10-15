@@ -5,6 +5,7 @@ import {
   type ModelKind,
   type ModelSpec,
 } from "../../catalog";
+import type { Capability, CapabilitySource } from "../../catalog/capabilities";
 import type { LocalBaseConfig } from "../../manager";
 import type { Permission } from "../auth/authorization";
 import {
@@ -59,10 +60,21 @@ export type OpenAiModel = Readonly<{
    * fit verdict. `source` is `observed`, `measured`, or `estimate`.
    */
   memory?: ServedModelMemory;
+  /**
+   * LocalBase extension: effective capabilities, each with the source that
+   * decided it (`declared` in the catalog, `detected` from the files, or
+   * `runtime` from the running server).
+   */
+  capabilities?: readonly ServedModelCapability[];
   architecture: Readonly<{
     input_modalities: readonly string[];
     output_modalities: readonly string[];
   }>;
+}>;
+
+export type ServedModelCapability = Readonly<{
+  id: Capability;
+  source: CapabilitySource;
 }>;
 
 export type ServedModelMemory = Readonly<{
@@ -179,6 +191,10 @@ export async function listServedModels(
     llmProfile?: LlmSupervisorProfile;
     /** Local memory facts for a catalog model; enables the `memory` field. */
     memoryInputsForModel?: (spec: ModelSpec) => Promise<ModelMemoryInputs>;
+    /** Effective capabilities for a catalog model; enables `capabilities`. */
+    capabilitiesForModel?: (
+      spec: ModelSpec,
+    ) => Promise<readonly ServedModelCapability[]>;
   }> = {},
 ): Promise<OpenAiModel[]> {
   const seen = new Set<string>();
@@ -338,6 +354,19 @@ export async function listServedModels(
             system_memory_gb: fit.systemVramGb,
           },
         };
+      }
+      if (spec && options.capabilitiesForModel) {
+        const capabilities = await options
+          .capabilitiesForModel(spec)
+          .catch(() => null);
+        if (capabilities)
+          model = {
+            ...model,
+            capabilities: capabilities.map(({ id, source }) => ({
+              id,
+              source,
+            })),
+          };
       }
       data.push(model);
     }

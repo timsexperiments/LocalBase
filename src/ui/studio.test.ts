@@ -75,6 +75,17 @@ test("text-image-to-video models accept a first frame", () => {
   expect(acceptsFirstFrame(model({ features: ["image-to-image"] }))).toBe(
     false,
   );
+  expect(
+    acceptsFirstFrame(
+      model({
+        ...video("t2v").catalog,
+        capabilityResolution: {
+          capabilities: [],
+          inputModalities: { values: ["text", "image"] },
+        },
+      }),
+    ),
+  ).toBe(true);
 });
 
 test("sources map to the nearest supported aspect", () => {

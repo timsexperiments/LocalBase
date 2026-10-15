@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  modelAcceptsInput,
   modelHasCapability,
   modelName,
   type Media,
@@ -80,7 +81,7 @@ export function acceptsFirstFrame(model: Model | undefined) {
     cap?.kind === "video" &&
     (cap.mode === "ti2v" ||
       (cap.mode === "t2v" &&
-        (model?.catalog.inputModalities.includes("image") ?? false)))
+        (model ? modelAcceptsInput(model, "image") : false)))
   );
 }
 /** Picks the supported size whose aspect ratio is closest to the source. */

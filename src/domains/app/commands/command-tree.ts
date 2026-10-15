@@ -42,6 +42,7 @@ import {
   doctorInputSchema,
   initInputSchema,
   installedInputSchema,
+  showInputSchema,
   installInputSchema,
   keyIdInputSchema,
   keysCreateInputSchema,
@@ -86,6 +87,7 @@ import {
   type GlobalOptions,
   type InitInput,
   type InstalledInput,
+  type ShowInput,
   type InstallInput,
   type KeyIdInput,
   type KeysCreateInput,
@@ -127,6 +129,7 @@ import {
   doctorResultSchema,
   initResultSchema,
   installedResultSchema,
+  showResultSchema,
   installResultSchema,
   keyMetadataResultSchema,
   keySecretResultSchema,
@@ -547,6 +550,35 @@ const installCommand = command<InstallInput>({
   run: async (input, context, execution) => {
     const { runInstall } = await import("../../models/commands/install");
     return await runInstall(input, context, execution);
+  },
+});
+
+const showCommand = command<ShowInput>({
+  path: ["models", "show"],
+  description: "Show everything known about one model",
+  examples: [
+    "local-base models show qwen2.5-coder-7b-instruct-q4_k_m",
+    "local-base --json models show whisper-large-v3-turbo",
+  ],
+  requiresDatabase: false,
+  args: {
+    modelId: {
+      type: "positional",
+      required: true,
+      description: "Catalog model ID",
+    },
+  },
+  positionals: { maximum: 1 },
+  parse: (input) => showInputSchema.parse(input),
+  validate: (input) => {
+    if (!byId(input.modelId))
+      throw new CliInputError(`Unknown model id: ${input.modelId}`);
+    return input;
+  },
+  resultSchema: showResultSchema,
+  run: async (input, context, execution) => {
+    const { runShow } = await import("../../models/commands/show");
+    return await runShow(input, context, execution);
   },
 });
 
@@ -1602,6 +1634,7 @@ export const commands = [
   recommendCommand,
   listCommand,
   installCommand,
+  showCommand,
   serveCommand,
   startCommand,
   stopCommand,
@@ -1652,6 +1685,7 @@ export const modelsCommand = defineCommand({
     recommend: recommendCommand.citty,
     list: listCommand.citty,
     install: installCommand.citty,
+    show: showCommand.citty,
   },
 });
 

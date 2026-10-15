@@ -593,14 +593,21 @@ test.each(["video/mp4", "video/x-msvideo", ""])(
   },
 );
 
+const withFeatures = (model: Model, features: string[]): Model => ({
+  ...model,
+  catalog: { ...model.catalog, features },
+});
+const multilingualStt = withFeatures(fixture("whisper-small", "stt"), [
+  "speech-to-text",
+  "multilingual",
+]);
+
 test("generation defaults omit optional overrides and validate effective boundaries", () => {
   const defaults = defaultGenerationSettings();
   expect(chatParameters(defaults.llm)).toEqual({});
   expect(imageParameters(defaults.image)).toEqual({});
   expect(videoParameters(defaults.video)).toEqual({});
-  expect(
-    transcriptionParameters(fixture("whisper-small", "stt"), defaults.stt),
-  ).toEqual({});
+  expect(transcriptionParameters(multilingualStt, defaults.stt)).toEqual({});
   expect(() => chatParameters({ temperature: 2.1 })).toThrow();
   expect(() => chatParameters({ max_tokens: 1.5 })).toThrow();
   const embedding = fixture("embed", "llm", {
@@ -622,7 +629,7 @@ test("generation defaults omit optional overrides and validate effective boundar
     ),
   ).toEqual({});
   expect(
-    transcriptionParameters(fixture("whisper-small", "stt"), {
+    transcriptionParameters(multilingualStt, {
       language: " es ",
       prompt: "LocalBase",
     }),
@@ -633,6 +640,13 @@ test("generation defaults omit optional overrides and validate effective boundar
       prompt: "LocalBase",
     }),
   ).toEqual({ prompt: "LocalBase" });
+  // The language field follows the capability, not the model id.
+  expect(
+    transcriptionParameters(
+      withFeatures(fixture("custom-whisper", "stt"), ["speech-to-text"]),
+      { language: "es" },
+    ),
+  ).toEqual({});
 });
 
 test("speech tool uses the user's advertised voice and defaults require no model override", async () => {

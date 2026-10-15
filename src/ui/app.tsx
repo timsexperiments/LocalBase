@@ -82,6 +82,7 @@ import {
   embeddingSummaryText,
   modelsSchema,
   modes,
+  modelAcceptsInput,
   permittedModes,
   permittedUiModes,
   readHistory,
@@ -2026,7 +2027,8 @@ function App() {
                 <summary>Text/code files · Up to 4 · 128 KiB each</summary>
                 <p>
                   UTF-8 text/code: 256 KiB total.
-                  {model?.catalog.inputModalities.includes("image") &&
+                  {model &&
+                    modelAcceptsInput(model, "image") &&
                     " PNG, JPEG, WebP: 5 MiB each."}{" "}
                   No PDF or Office files. Attachments are session-only.
                 </p>

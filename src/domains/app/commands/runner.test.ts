@@ -35,6 +35,13 @@ test("resolves nested commands and global options before context creation", asyn
     kind: "command",
     command: { requiresDatabase: false },
   });
+  await expect(
+    resolveCli(["models", "show", "whisper-large-v3-turbo"]),
+  ).resolves.toMatchObject({
+    kind: "command",
+    command: { requiresDatabase: false },
+    input: { modelId: "whisper-large-v3-turbo" },
+  });
   await expect(resolveCli(["models", "recommend"])).resolves.toMatchObject({
     kind: "command",
     command: { requiresDatabase: false },
@@ -113,6 +120,12 @@ test("rejects invalid CLI structure and contradictory interaction options", asyn
   ).resolves.toMatchObject({
     kind: "error",
     message: "Unknown option: --unknown",
+  });
+  await expect(
+    resolveCli(["models", "show", "no-such-model"]),
+  ).resolves.toMatchObject({
+    kind: "error",
+    message: "Unknown model id: no-such-model",
   });
   await expect(
     resolveCli(["models", "catalog", "--kind", "vision"]),

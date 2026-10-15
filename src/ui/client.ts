@@ -92,14 +92,50 @@ const modelSchema = z.object({
     /** One-line description; absent on older servers. */
     summary: z.string().optional(),
     quantization: z.string(),
+    /** Provenance and files; absent on older servers. */
+    provider: z.string().optional(),
+    source: z.string().optional(),
+    revision: z.string().optional(),
+    notes: z.string().optional(),
+    artifacts: z
+      .array(
+        z.object({
+          role: z.string(),
+          filename: z.string(),
+          sizeBytes: z.number().nullable(),
+        }),
+      )
+      .optional(),
     memory: z.object({
       minimumVramEstimateGb: z.number().nonnegative(),
       storageEstimateGb: z.number().positive(),
       /** Where the minimum came from; absent on older servers. */
       source: z.enum(["estimate", "measured", "observed"]).optional(),
+      /** The catalog's own figure and its launch shape; absent on older servers. */
+      reference: z
+        .object({
+          source: z.enum(["estimate", "measured"]),
+          bytes: z.number(),
+          launchShape: z.string(),
+        })
+        .optional(),
+      /** Peaks seen on this machine, one per launch shape. */
+      observedPeaks: z
+        .array(
+          z.object({
+            launchShape: z.string(),
+            peakBytes: z.number(),
+            observedAt: z.string(),
+          }),
+        )
+        .optional(),
       /** This machine's fit verdict; absent on older servers. */
       fit: z
-        .object({ verdict: z.enum(["fits", "tight", "wont-fit"]) })
+        .object({
+          verdict: z.enum(["fits", "tight", "wont-fit"]),
+          systemMemoryGb: z.number().optional(),
+          headroomGb: z.number().optional(),
+        })
         .passthrough()
         .optional(),
     }),
@@ -111,7 +147,24 @@ const modelSchema = z.object({
     /** Effective capabilities with their source; absent on older servers. */
     capabilityResolution: z
       .object({
-        capabilities: z.array(z.object({ id: z.string(), source: z.string() })),
+        capabilities: z.array(
+          z.object({
+            id: z.string(),
+            source: z.string(),
+          }),
+        ),
+        /** Sources that disagree about a capability. */
+        mismatches: z
+          .array(
+            z.object({
+              id: z.string(),
+              declared: z.boolean(),
+              detected: z.boolean().optional(),
+              runtime: z.boolean().optional(),
+              effective: z.boolean(),
+            }),
+          )
+          .optional(),
         inputModalities: z.object({ values: z.array(z.string()) }).optional(),
       })
       .optional(),
@@ -141,12 +194,25 @@ export function modelHasCapability(
   return model.catalog.features.includes(capability);
 }
 
+/** Effective input modalities: detected or runtime values win over the declared list. */
+export function modelInputModalities(
+  model: Pick<Model, "catalog">,
+): readonly string[] {
+  return (
+    model.catalog.capabilityResolution?.inputModalities?.values ??
+    model.catalog.inputModalities
+  );
+}
+/** Whether the model accepts the given input, using effective modalities. */
+export function modelAcceptsInput(
+  model: Pick<Model, "catalog">,
+  modality: string,
+): boolean {
+  return modelInputModalities(model).includes(modality);
+}
 /** Input and output modalities, counting image editing as an image input. */
 export function modelModalities(model: Pick<Model, "catalog">) {
-  const input = [
-    ...(model.catalog.capabilityResolution?.inputModalities?.values ??
-      model.catalog.inputModalities),
-  ];
+  const input = [...modelInputModalities(model)];
   if (modelHasCapability(model, "image-to-image") && !input.includes("image"))
     input.push("image");
   return `${input.join(", ")} → ${model.catalog.outputModalities.join(", ")}`;

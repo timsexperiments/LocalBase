@@ -58,6 +58,8 @@ Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` rep
 
 `device.runtime.executionSlots` is the supervisor-resolved native slot count. `activeAdmissions` counts queue permits, including backend readiness waits and response ownership. `availableExecutionSlots` is the arithmetic difference and does not guarantee an immediate start or a warm backend. `immediateDispatchAvailable` reports whether a new request for the applied model can dispatch now and is `null` when ownership is unknown. `queuedRequests`, `waitingCapacity`, and `availableWaitingCapacity` describe the separate bounded waiting room. Queue values are `null` when no authoritative queue snapshot exists. Catalog capabilities, context windows, and output limits remain `null` when LocalBase has no authoritative value.
 
+`/v1/models` adds a typed `capabilities` array of `{ id, source }` entries. `source` is the strongest evidence for each capability: `declared` (the catalog), `detected` (inspected local files), or `runtime` (the running engine). When the sources disagree, `local-base models show <id>` and the browser details view explain the mismatch in plain words.
+
 ## Managed startup model installation
 
 When managed startup must install a selected model, service status remains `starting`. Run `local-base logs --follow` to see download progress, validation, checksum or cached-identity verification, completion, and terminal failure phases. Progress events report observed bytes and integer percentages, not an estimated completion time.

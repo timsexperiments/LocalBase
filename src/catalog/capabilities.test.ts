@@ -5,7 +5,13 @@ import {
   modelSpecSchema,
   type ModelSpec,
 } from "../catalog";
-import { capabilitySchema, hasCapability } from "./capabilities";
+import {
+  capabilityLabel,
+  capabilityLabels,
+  capabilitySchema,
+  describeCapabilityMismatch,
+  hasCapability,
+} from "./capabilities";
 
 function catalogEntry(modelId: string): ModelSpec {
   const model = byId(modelId);
@@ -91,4 +97,35 @@ test("legacy features keep the pre-capability tag lists", () => {
   expect(
     legacyFeatures(catalogEntry("hunyuanvideo-1.5-t2v-480p-q4_k_m")),
   ).toEqual(["catalog-only", "diffusion-weights-only"]);
+});
+
+test("every capability has a plain-language label", () => {
+  for (const id of capabilitySchema.options)
+    expect(capabilityLabels[id]).toBeTruthy();
+  expect(capabilityLabel("image-to-image")).toBe("Image editing");
+  expect(capabilityLabel("future-thing")).toBe("future-thing");
+});
+
+test("mismatches are explained in plain words", () => {
+  expect(
+    describeCapabilityMismatch({
+      id: "tool-calling",
+      declared: true,
+      detected: false,
+      effective: false,
+    }),
+  ).toBe(
+    "Tool calling: the catalog lists it, but the installed files don't support it. Treated as unavailable, going by the installed files.",
+  );
+  expect(
+    describeCapabilityMismatch({
+      id: "reasoning",
+      declared: false,
+      detected: false,
+      runtime: true,
+      effective: true,
+    }),
+  ).toBe(
+    "Reasoning: the catalog doesn't list it, the installed files don't support it, and the running engine reports it. Treated as available, going by the running engine.",
+  );
 });

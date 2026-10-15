@@ -4665,6 +4665,14 @@ export async function runServe(
             });
             return inputs.get(spec.modelId) ?? {};
           },
+          capabilitiesForModel: async (spec) =>
+            (
+              await resolveCapabilitiesForModel(
+                spec,
+                currentConfig,
+                runtimeCapabilities,
+              )
+            ).capabilities,
           kvGeometryForModel: async (id) => {
             const spec = byId(id);
             const modelFile =
