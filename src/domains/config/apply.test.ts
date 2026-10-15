@@ -437,6 +437,7 @@ test("apply migrates the prior database under the operation lock and preserves p
     old.exec("DROP TABLE auth_role_permissions");
     old.exec("DROP TABLE auth_users");
     old.exec("DROP TABLE auth_roles");
+    old.exec("DROP TABLE model_observed_memory");
     old.exec("DROP TABLE model_runtime_capabilities");
     old.exec("DROP TABLE config_activation");
     old.exec("ALTER TABLE config DROP COLUMN gateway_host");

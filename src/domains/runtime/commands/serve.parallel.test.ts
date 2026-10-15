@@ -453,7 +453,6 @@ test(
         version: "1",
         size: "1B",
         quant: "Q4_K_M",
-        minVramGb: 1,
         storageGb: 1,
         source: artifacts.source,
         repositoryRevision,

@@ -328,13 +328,6 @@ export const modelSpecObjectSchema = z
     size: z.string().min(1),
     quant: z.string().min(1),
     codingScore: z.number().optional(),
-    /**
-     * Accelerator memory tier the model needs at its reference shape (the
-     * measured demand when recorded, else the estimate). Derived from
-     * domains/runtime/memory-estimate.ts (derivedMinVramGb) and enforced
-     * by catalog.test.ts; do not hand-tune.
-     */
-    minVramGb: z.number().nonnegative(),
     storageGb: z.number().positive(),
     source: repositoryUrlSchema,
     repositoryRevision: z.string().regex(/^[a-fA-F0-9]{40}$/),
@@ -810,76 +803,6 @@ export function listModels(
       (!kind || model.kind === kind) &&
       (allowExperimental || model.qualificationState !== "experimental"),
   );
-}
-
-export function recommendedForVram(vramGb: number): ModelSpec[] {
-  return CATALOG.filter(
-    (model) =>
-      model.kind === "llm" && !model.llmRuntime && model.minVramGb <= vramGb,
-  ).sort(
-    (a, b) =>
-      (b.codingScore ?? 0) - (a.codingScore ?? 0) || b.minVramGb - a.minVramGb,
-  );
-}
-
-export function recommendedSttForVram(vramGb: number): ModelSpec[] {
-  return CATALOG.filter((m) => m.kind === "stt" && m.minVramGb <= vramGb).sort(
-    (a, b) => a.storageGb - b.storageGb,
-  );
-}
-
-export function recommendedTtsForVram(vramGb: number): ModelSpec[] {
-  return CATALOG.filter((m) => m.kind === "tts" && m.minVramGb <= vramGb).sort(
-    (a, b) => a.storageGb - b.storageGb,
-  );
-}
-
-export function recommendedImageForVram(vramGb: number): ModelSpec[] {
-  return CATALOG.filter(
-    (m) => m.kind === "image" && m.minVramGb <= vramGb,
-  ).sort((a, b) => a.storageGb - b.storageGb);
-}
-
-export type MemoryFitStatus = "perfect" | "tight" | "insufficient";
-
-export type MemoryFitEvaluation = {
-  status: MemoryFitStatus;
-  minVramGb: number;
-  systemVramGb: number;
-  headroomGb: number;
-  message: string;
-};
-
-export function evaluateModelFit(
-  model: ModelSpec,
-  systemVramGb: number,
-): MemoryFitEvaluation {
-  const minVramGb = model.minVramGb;
-  const headroomGb = systemVramGb - minVramGb;
-  let status: MemoryFitStatus = "perfect";
-  let message = "";
-
-  if (systemVramGb < minVramGb) {
-    status = "insufficient";
-    message = `Requires ${minVramGb}GB, you have ${systemVramGb}GB`;
-  } else if (
-    headroomGb < 4 ||
-    (systemVramGb > 0 && minVramGb / systemVramGb > 0.75)
-  ) {
-    status = "tight";
-    message = `Leaves ${headroomGb.toFixed(1)}GB headroom`;
-  } else {
-    status = "perfect";
-    message = `Leaves ${headroomGb.toFixed(1)}GB headroom`;
-  }
-
-  return {
-    status,
-    minVramGb,
-    systemVramGb,
-    headroomGb,
-    message,
-  };
 }
 
 export function calculateMaxSafeContextSize(

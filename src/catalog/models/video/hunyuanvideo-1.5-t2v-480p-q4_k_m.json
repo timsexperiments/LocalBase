@@ -7,7 +7,6 @@
   "version": "1.5",
   "size": "8.3B",
   "quant": "Q4_K_M",
-  "minVramGb": 32,
   "storageGb": 5.09,
   "source": "https://huggingface.co/jayn7/HunyuanVideo-1.5_T2V_480p-GGUF",
   "repositoryRevision": "6aac325460d2f2cfe49ad8fb71f5ed2e4f1c5e24",

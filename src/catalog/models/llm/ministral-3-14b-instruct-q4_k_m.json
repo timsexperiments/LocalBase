@@ -7,7 +7,6 @@
   "version": "3",
   "size": "14B",
   "quant": "Q4_K_M",
-  "minVramGb": 12,
   "storageGb": 8.3,
   "source": "https://huggingface.co/mistralai/Ministral-3-14B-Instruct-2512-GGUF",
   "repositoryRevision": "74fac473c43357d7fb2671713608183cc72496d0",

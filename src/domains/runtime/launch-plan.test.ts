@@ -8,6 +8,7 @@ import {
   type ModelSpec,
 } from "../../catalog";
 import { kvCacheBytes } from "./gguf-metadata";
+import { computedMinVramGb } from "../models/memory-fit";
 import {
   estimateLlmMemory,
   resolveLlmShape,
@@ -64,7 +65,7 @@ const wanS2v = withFixtureFilenames(catalogModel("wan2.2-s2v-14b-fp8"), {
 const root = "/tmp/local-base";
 
 describe("runtime launch plans", () => {
-  test("uses measured weights instead of catalog minVramGb for LLM demand", () => {
+  test("uses measured weights and the size fallback shape for LLM demand", () => {
     const model = byId("qwen3-coder-next-q4_k_m");
     if (!model) throw new Error("Missing Qwen3-Coder-Next fixture model.");
     const artifactBytes = model.artifacts.reduce(
@@ -87,9 +88,9 @@ describe("runtime launch plans", () => {
       hardware: { memoryGb: 64 },
     });
 
-    expect(model.minVramGb).toBe(64);
+    expect(computedMinVramGb(model)).toBeLessThanOrEqual(64);
     expect(artifactBytes).toBeGreaterThan(48 * 10 ** 9);
-    expect(plan.memoryDemand.unifiedBytes / 1024 ** 3).toBeCloseTo(48.4, 1);
+    expect(plan.memoryDemand.unifiedBytes / 1024 ** 3).toBeCloseTo(50.9, 1);
     expect(plan.parallel.slots).toBe(4);
     expect(plan.memoryDemand.unifiedBytes).toBeLessThan(54.4 * 1024 ** 3);
   });

@@ -7,7 +7,6 @@
   "version": "2.5",
   "size": "14B",
   "quant": "Q4_K_M",
-  "minVramGb": 12,
   "storageGb": 9.1,
   "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
   "repositoryRevision": "d0a692ef765eefbf2fabb130b3cb2e8917e3d225",

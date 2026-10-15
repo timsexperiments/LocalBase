@@ -37,7 +37,21 @@ Any other shape uses the estimate. `measuredDemand` turns a record into a planni
 - host = max(peak RSS, host buffers, on-disk artifact bytes) + prompt cache. Mmapped pages a run never touched still count.
 - unified = max(accelerator + host buffers, host, system delta) + prompt cache.
 
-For a locally installed LLM whose file is larger than the catalog artifact, the launch plan adds the difference. The catalog `minVramGb` tier derives from `catalogModelDemand` (measured when recorded, else the estimate) through `minVramTierGb`. `catalog.test.ts` enforces that the two agree.
+For a locally installed LLM whose file is larger than the catalog artifact, the launch plan adds the difference.
+
+## Minimum memory and fit
+
+The catalog no longer stores a hand-entered `minVramGb`. Each model's minimum is computed in `src/domains/models/memory-fit.ts`: the accelerator demand of its memory figure plus a margin of max(512 MiB, 10%), rounded up to whole GiB (`minimumMemoryGb`). The figure comes from, most trusted first:
+
+1. **observed**: the peak this machine recorded while serving the model (below).
+2. **measured**: a record in `MEMORY_MEASUREMENTS` at the reference shape.
+3. **estimate**: the formula estimate from artifact sizes. For an installed GGUF (LLM or TTS talker), the layer, KV-head and embedding geometry is read from the file. Otherwise the shape comes from a size heuristic (`fallbackLlmShape`): P billion parameters from the catalog size, else from the bytes at 4.89 bits per weight; layers = ceil(16 × P^0.4); embedding = sqrt(P × 10^9 / (12 × layers)); 8 KV heads of dimension 128; vocabulary 152064. It assumes full attention in every layer, so it overstates hybrid and sliding-window models until the file is installed.
+
+The API, CLI, diagnostics and UI report the source next to the minimum. `minVramGb` and `minimumVramEstimateGb` remain in the JSON outputs and hold the computed minimum. The verdict for this machine is `fits`, `tight` (under 4 GiB headroom, or the minimum is over 75% of memory) or `wont-fit`. Admission still uses the full launch-plan demand, not the minimum.
+
+## Observed peaks
+
+Once a backend is ready, the gateway samples its memory every 5 s until it exits and keeps the largest value in the `model_observed_memory` table, keyed by model id, artifact sha256 and launch shape (`ctx=N;slots=N;kv=K/V` for LLMs, `default` otherwise). Only launches of the pinned catalog artifact are recorded. On macOS the sample is the `footprint` TOTAL (dirty plus clean), which includes Metal allocations and is used for fit. On Linux it is `VmHWM`, which omits discrete GPU memory, so it is stored but not used. The figure prefers the peak at the reference shape, else the newest one. A peak reflects only what the workload touched, so a short session can observe less than the reference demand.
 
 ## Measurements (2026-10-13)
 
@@ -120,7 +134,7 @@ The measurements also corrected estimate inputs, so unmeasured models of the sam
 
 - **Image VAE decode**: 13 live full-resolution feature maps instead of 5. This matches the measured sd.cpp VAE compute buffers for SD1.5 and Flux2 Klein. The SDXL VAE takes 15 (`SDXL_VAE_LIVE_FEATURE_MAPS`): realvis-xl-v5.0, sdxl-turbo and juggernaut-xl-v9 each measured a 7680 MiB VAE compute buffer at 1024x1024, about 1 GiB above the 13-map value.
 - **Video VAE decode**: 15 live 64-channel maps per 4-frame chunk for TAEHV decoders, measured on FastWan (14.45 maps). 23 live 96-channel maps for the Wan VAE, measured on Wan2.1 at 320x320x33 (3435 MiB compute, 22.9 maps). The catalog-only video profiles use the Wan VAE value.
-- **TTS**: llama-tts now launches the talker with `-c 2048` (`SPEECH_CONTEXT_TOKENS`). Without it the talker allocated its full 32768-token trained context: 3584 MiB of f16 KV, 7.42 GiB accelerator and 6.56 GiB peak RSS, tier 12. The prompt fills the context first, then each 12 Hz codec frame takes one cell. The byte-level BPE prompt is at most 4 tokens per code point, so 256 four-byte private-use code points with a reference voice measured about 1050 cells, and 256 English characters about 60. The worst case is about 1310 cells including the 256-frame cap. The prompt is decoded in one batch and llama.cpp caps `n_batch` at `n_ctx`, so 1024 would reject it. The measured record is that worst case: 224 MiB of KV, 632 MiB talker compute and 3.87 GiB peak RSS. The estimate uses the launch context, the published Qwen3-TTS 1.7B talker shape, and two copies of the projector, which the runtime loads twice.
+- **TTS**: llama-tts now launches the talker with `-c 2048` (`SPEECH_CONTEXT_TOKENS`). Without it the talker allocated its full 32768-token trained context: 3584 MiB of f16 KV, 7.42 GiB accelerator and 6.56 GiB peak RSS, tier 12. The prompt fills the context first, then each 12 Hz codec frame takes one cell. The byte-level BPE prompt is at most 4 tokens per code point, so 256 four-byte private-use code points with a reference voice measured about 1050 cells, and 256 English characters about 60. The worst case is about 1310 cells including the 256-frame cap. The prompt is decoded in one batch and llama.cpp caps `n_batch` at `n_ctx`, so 1024 would reject it. The measured record is that worst case: 224 MiB of KV, 632 MiB talker compute and 3.87 GiB peak RSS. The estimate uses the launch context, the talker geometry (from the GGUF when installed, else the size heuristic), and two copies of the projector, which the runtime loads twice.
 - **Persistent TTS**: Qwen3-TTS now runs in the warm `tts-server` (same talker, projector, codec and `-c 2048`/`-n 256` argv as llama-tts), so the demand is held while the server idles rather than only during a request. A 2026-10-14 recheck with the worst-case input measured 4148838400 B peak RSS and 3.26 GB peak footprint, within the existing record (4160536576 B), so the record and tier are unchanged. llama-tts remains the fallback when no tts-server package is available and has the same demand.
 
 These raised the derived tiers of unmeasured models: the SDXL family, flux1-schnell, z-image-turbo and flux2-klein-4b-q8_0 went from 12 to 16 GiB. SD1.5 went from 6 to 8, dreamshaper-8-lcm from 4 to 6, flux2-klein-9b from 16 to 24, wan2.2-ti2v-5b and hunyuanvideo-1.5 from 16 to 24, and ltx-2.3-22b from 32 to 48.
@@ -141,4 +155,4 @@ Models without a measured record keep estimate confidence:
 1. Run the model through a scratch LocalBase root at the shape the gateway launches. For LLMs, that is the reference shape above.
 2. Record the backend's GPU and CPU buffer reports from its log. Sample the backend process RSS every 250 ms through a real workload. For offloaded video, also sample free plus inactive system memory.
 3. Add a record to `MEMORY_MEASUREMENTS` with the model id, variant, shape, bytes, date, hardware and method.
-4. Run `bun test ./src/catalog.test.ts`. If the derived tier changed, update the model's `minVramGb` in `src/catalog.ts`.
+4. Run `bun test ./src/catalog.test.ts`. The computed minimum follows the record.

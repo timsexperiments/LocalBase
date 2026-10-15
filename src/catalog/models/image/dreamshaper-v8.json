@@ -7,7 +7,6 @@
   "version": "8.0",
   "size": "2.0GB",
   "quant": "F16",
-  "minVramGb": 6,
   "storageGb": 1.98,
   "source": "https://huggingface.co/Lykon/DreamShaper",
   "repositoryRevision": "228d79cb20811466f5c5710aa91f05dabd0b8a14",

@@ -409,7 +409,6 @@ function llmMemoryDemand(input: {
   promptCacheRamMib: number;
 }): RuntimeMemoryDemand {
   const shape = resolveLlmShape({
-    modelId: input.model?.modelId,
     size: input.model?.size,
     quant: input.model?.quant,
     weightsBytes: input.artifactBytes,

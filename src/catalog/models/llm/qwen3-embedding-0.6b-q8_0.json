@@ -7,7 +7,6 @@
   "version": "0.6B",
   "size": "0.6B",
   "quant": "Q8_0",
-  "minVramGb": 4,
   "storageGb": 0.64,
   "source": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
   "repositoryRevision": "370f27d7550e0def9b39c1f16d3fbaa13aa67728",

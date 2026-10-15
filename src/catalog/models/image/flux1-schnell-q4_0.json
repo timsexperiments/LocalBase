@@ -7,7 +7,6 @@
   "version": "Schnell",
   "size": "12B",
   "quant": "Q4_0",
-  "minVramGb": 16,
   "storageGb": 17.25,
   "source": "https://huggingface.co/leejet/FLUX.1-schnell-gguf",
   "repositoryRevision": "c7f665ddaf9f197ff493f41fc211f5480f5f19ac",

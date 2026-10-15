@@ -8,7 +8,6 @@
   "size": "42B",
   "quant": "Q4_K_M",
   "codingScore": 8.5,
-  "minVramGb": 32,
   "storageGb": 23,
   "source": "https://huggingface.co/bartowski/Phi-3.5-MoE-instruct-GGUF",
   "repositoryRevision": "4b580329100cf44d7d041b6f63967b26869a6937",

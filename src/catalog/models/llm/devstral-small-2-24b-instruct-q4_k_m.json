@@ -8,7 +8,6 @@
   "size": "24B",
   "quant": "Q4_K_M",
   "codingScore": 10,
-  "minVramGb": 24,
   "storageGb": 14.4,
   "source": "https://huggingface.co/bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF",
   "repositoryRevision": "027695770ae1de77c2f6fb19f8e1ba9d65fcd15d",

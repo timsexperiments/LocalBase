@@ -249,3 +249,27 @@ export const modelRuntimeCapabilitiesTable = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.modelId, table.artifactSha256] })],
 );
+
+/**
+ * Highest process memory this machine saw while a model served, kept across
+ * restarts. Keyed by artifact digest and launch shape, so a new artifact or
+ * a different context, slot count or KV type starts over.
+ */
+export const modelObservedMemoryTable = sqliteTable(
+  "model_observed_memory",
+  {
+    modelId: text("model_id").notNull(),
+    artifactSha256: text("artifact_sha256").notNull(),
+    /** Launch shape key, e.g. `ctx=8192;slots=1;kv=q8_0/q8_0`. */
+    launchShape: text("launch_shape").notNull(),
+    peakBytes: integer("peak_bytes").notNull(),
+    /** How the peak was read: `footprint` (macOS) or `vmhwm` (Linux). */
+    method: text("method").notNull(),
+    observedAt: text("observed_at").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.modelId, table.artifactSha256, table.launchShape],
+    }),
+  ],
+);

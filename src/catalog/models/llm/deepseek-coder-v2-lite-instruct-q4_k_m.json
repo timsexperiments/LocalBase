@@ -8,7 +8,6 @@
   "size": "16B",
   "quant": "Q4_K_M",
   "codingScore": 9.5,
-  "minVramGb": 12,
   "storageGb": 11.2,
   "source": "https://huggingface.co/bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
   "repositoryRevision": "8f248fa2072348f77a8bc37754e470de1f61866e",

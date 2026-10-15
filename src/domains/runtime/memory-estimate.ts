@@ -28,7 +28,7 @@
  *
  * Constants that are allowances rather than exact backend allocations are
  * named as such. Confidence is "derived" when the model geometry is known
- * (GGUF header or the shape table below) and "estimated" when it falls back
+ * (GGUF header of the installed file) and "estimated" when it falls back
  * to a size-based shape or allowance. A "measured" demand recorded from a
  * real run (memory-measurements.ts) replaces the estimate through
  * `preferMeasured` when the launch shape matches the measured one.
@@ -134,30 +134,22 @@ export const RUNTIME_HOST_OVERHEAD_BYTES = 512 * mebibyte;
 export const ACCELERATOR_OVERHEAD_BYTES = 512 * mebibyte;
 
 // ---------------------------------------------------------------------------
-// minVramGb tiers
+// Minimum memory
 // ---------------------------------------------------------------------------
 
-/**
- * Hardware tiers minVramGb rounds up to. 8 GiB and above are common GPU and
- * unified-memory sizes; 1/2/4/6 extend the scale for small models so tiny
- * runtimes do not all claim an 8 GiB machine.
- */
-export const MIN_VRAM_TIERS_GB = [
-  1, 2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128,
-] as const;
-/** Safety margin over the estimate: max(512 MiB, 10%). */
-export const MIN_VRAM_MARGIN_BYTES = 512 * mebibyte;
-export const MIN_VRAM_MARGIN_RATIO = 0.1;
+/** Safety margin over a demand figure: max(512 MiB, 10%). */
+export const MINIMUM_MEMORY_MARGIN_BYTES = 512 * mebibyte;
+export const MINIMUM_MEMORY_MARGIN_RATIO = 0.1;
 
-/** Smallest hardware tier that holds `bytes` plus the safety margin. */
-export function minVramTierGb(bytes: number): number {
+/**
+ * Whole GiB that hold `bytes` plus the safety margin. This is the computed
+ * `minVramGb` the catalog no longer declares by hand.
+ */
+export function minimumMemoryGb(bytes: number): number {
   const required =
-    bytes + Math.max(MIN_VRAM_MARGIN_BYTES, bytes * MIN_VRAM_MARGIN_RATIO);
-  const requiredGb = required / gibibyte;
-  for (const tier of MIN_VRAM_TIERS_GB) {
-    if (requiredGb <= tier) return tier;
-  }
-  return Math.ceil(requiredGb / 64) * 64;
+    bytes +
+    Math.max(MINIMUM_MEMORY_MARGIN_BYTES, bytes * MINIMUM_MEMORY_MARGIN_RATIO);
+  return Math.max(1, Math.ceil(required / gibibyte));
 }
 
 // ---------------------------------------------------------------------------
@@ -233,8 +225,8 @@ const LLAMA_LIVE_EMBD_ACTIVATIONS = 4;
  */
 const LLAMA_SLOT_BYTES_PER_VOCAB = 16;
 const LLAMA_SLOT_FIXED_BYTES = 16 * mebibyte;
-/** Context used to size minVramGb: one slot, 8K tokens, no prompt cache. */
-export const MIN_VRAM_LLM_CONTEXT_TOKENS = 8192;
+/** Reference launch for catalog fit: one slot, 8K tokens, no prompt cache. */
+export const LLM_REFERENCE_CONTEXT_TOKENS = 8192;
 
 /** Model dimensions the KV cache and compute buffer depend on. */
 export type LlmShape = Readonly<{
@@ -284,346 +276,6 @@ function dense(shape: DenseShape): LlmShape {
   });
 }
 
-/*
- * Published config.json shapes (Hugging Face model cards; the GGUF headers of
- * the catalog files carry the same values). layers / q heads / kv heads /
- * head dim / hidden / vocab.
- */
-const QWEN3_0_6B = dense({
-  layers: 28,
-  queryHeads: 16,
-  kvHeads: 8,
-  headDim: 128,
-  embd: 1024,
-  vocab: 151669,
-});
-/**
- * Qwen3-TTS 1.7B talker (28 layers x 8 KV heads x 128; the measured f16 32K
- * KV buffer is exactly 3584 MiB). Used by the TTS estimate, not the LLM table.
- */
-const QWEN3_TTS_1_7B_TALKER = dense({
-  layers: 28,
-  queryHeads: 16,
-  kvHeads: 8,
-  headDim: 128,
-  embd: 2048,
-  vocab: 151669,
-});
-const QWEN3_4B = dense({
-  layers: 36,
-  queryHeads: 32,
-  kvHeads: 8,
-  headDim: 128,
-  embd: 2560,
-  vocab: 151669,
-});
-const QWEN3_8B = dense({
-  layers: 36,
-  queryHeads: 32,
-  kvHeads: 8,
-  headDim: 128,
-  embd: 4096,
-  vocab: 151669,
-});
-const QWEN25_1_5B = dense({
-  layers: 28,
-  queryHeads: 12,
-  kvHeads: 2,
-  headDim: 128,
-  embd: 1536,
-  vocab: 151936,
-});
-const QWEN25_3B = dense({
-  layers: 36,
-  queryHeads: 16,
-  kvHeads: 2,
-  headDim: 128,
-  embd: 2048,
-  vocab: 151936,
-});
-const QWEN25_7B = dense({
-  layers: 28,
-  queryHeads: 28,
-  kvHeads: 4,
-  headDim: 128,
-  embd: 3584,
-  vocab: 152064,
-});
-const QWEN25_14B = dense({
-  layers: 48,
-  queryHeads: 40,
-  kvHeads: 8,
-  headDim: 128,
-  embd: 5120,
-  vocab: 152064,
-});
-const QWEN25_32B = dense({
-  layers: 64,
-  queryHeads: 40,
-  kvHeads: 8,
-  headDim: 128,
-  embd: 5120,
-  vocab: 152064,
-});
-const QWEN25_72B = dense({
-  layers: 80,
-  queryHeads: 64,
-  kvHeads: 8,
-  headDim: 128,
-  embd: 8192,
-  vocab: 152064,
-});
-const LLAMA32_1B = dense({
-  layers: 16,
-  queryHeads: 32,
-  kvHeads: 8,
-  headDim: 64,
-  embd: 2048,
-  vocab: 128256,
-});
-const LLAMA32_3B = dense({
-  layers: 28,
-  queryHeads: 24,
-  kvHeads: 8,
-  headDim: 128,
-  embd: 3072,
-  vocab: 128256,
-});
-const LLAMA31_8B = dense({
-  layers: 32,
-  queryHeads: 32,
-  kvHeads: 8,
-  headDim: 128,
-  embd: 4096,
-  vocab: 128256,
-});
-const LLAMA_70B = dense({
-  layers: 80,
-  queryHeads: 64,
-  kvHeads: 8,
-  headDim: 128,
-  embd: 8192,
-  vocab: 128256,
-});
-const MISTRAL_40L_5120 = dense({
-  layers: 40,
-  queryHeads: 32,
-  kvHeads: 8,
-  headDim: 128,
-  embd: 5120,
-  vocab: 131072,
-});
-
-/**
- * Qwen3-Coder-Next ("qwen3next"): 48 layers, every 4th full attention
- * (12 layers x 2 KV heads x 256), the other 36 Gated DeltaNet layers hold F32
- * recurrent state per slot: ssm 128 x 128 x 32 heads plus conv
- * (kernel 4 - 1) x 8192 channels, x 4 bytes.
- */
-const QWEN3_NEXT_RECURRENT_BYTES_PER_SLOT =
-  36 * (128 * 128 * 32 * 4 + 3 * 8192 * 4);
-const QWEN3_CODER_NEXT: LlmShape = Object.freeze({
-  geometry: Object.freeze({
-    ...denseGeometry({
-      layers: 48,
-      queryHeads: 16,
-      kvHeads: 0,
-      headDim: 256,
-      embd: 2048,
-      vocab: 151936,
-      architecture: "qwen3next",
-    }),
-    fullKvHeads: 12 * 2,
-    recurrentBytesPerSlot: QWEN3_NEXT_RECURRENT_BYTES_PER_SLOT,
-  }),
-  queryHeads: 16,
-  embeddingLength: 2048,
-  vocabSize: 151936,
-});
-
-/**
- * DeepSeek-Coder-V2-Lite uses MLA: llama.cpp caches one compressed
- * latent per layer (kv_lora_rank 512 + rope dim 64 = 576), K only.
- */
-const DEEPSEEK_V2_LITE: LlmShape = Object.freeze({
-  geometry: Object.freeze({
-    architecture: "deepseek2",
-    blockCount: 27,
-    fullKvHeads: 27,
-    swaKvHeads: 0,
-    slidingWindow: null,
-    keyLength: 576,
-    valueLength: 0,
-    swaKeyLength: 0,
-    swaValueLength: 0,
-    q8Compatible: true,
-    recurrentBytesPerSlot: 0,
-    contextLength: null,
-  }),
-  queryHeads: 16,
-  embeddingLength: 2048,
-  vocabSize: 102400,
-});
-
-/**
- * Gemma 3 interleaves 5 sliding-window layers per full layer
- * (llama.cpp swa_period 6); gpt-oss alternates (period 2).
- */
-const LLM_SHAPES: Readonly<Record<string, LlmShape>> = {
-  "qwen3-embedding-0.6b-q8_0": QWEN3_0_6B,
-  "qwen3-embedding-4b-q4_k_m": QWEN3_4B,
-  "qwen3-embedding-4b-q8_0": QWEN3_4B,
-  "qwen3-embedding-8b-q4_k_m": QWEN3_8B,
-  "qwen3-embedding-8b-q8_0": QWEN3_8B,
-  "qwen2.5-coder-1.5b-instruct-q4_k_m": QWEN25_1_5B,
-  "qwen2.5-coder-3b-instruct-q4_k_m": QWEN25_3B,
-  "qwen2.5-coder-7b-instruct-q4_k_m": QWEN25_7B,
-  "qwen2.5-coder-14b-instruct-q4_k_m": QWEN25_14B,
-  "qwen2.5-coder-32b-instruct-q4_k_m": QWEN25_32B,
-  "deepseek-r1-distill-qwen-14b-q4_k_m": QWEN25_14B,
-  "deepseek-r1-distill-qwen-32b-q4_k_m": QWEN25_32B,
-  "qwen2.5-72b-instruct-q4_k_m": QWEN25_72B,
-  "qwen3-coder-next-q4_k_m": QWEN3_CODER_NEXT,
-  "llama-3.2-1b-instruct-q4_k_m": LLAMA32_1B,
-  "llama-3.2-3b-instruct-q4_k_m": LLAMA32_3B,
-  "llama-3.1-8b-instruct-q4_k_m": LLAMA31_8B,
-  "deepseek-r1-distill-llama-8b-q4_k_m": LLAMA31_8B,
-  "llama-3.3-70b-instruct-q4_k_m": LLAMA_70B,
-  "deepseek-r1-distill-llama-70b-q4_k_m": LLAMA_70B,
-  "deepseek-coder-6.7b-instruct-q4_k_m": dense({
-    layers: 32,
-    queryHeads: 32,
-    kvHeads: 32,
-    headDim: 128,
-    embd: 4096,
-    vocab: 32256,
-  }),
-  "deepseek-coder-v2-lite-instruct-q4_k_m": DEEPSEEK_V2_LITE,
-  "deepseek-coder-33b-instruct-q4_k_m": dense({
-    layers: 62,
-    queryHeads: 56,
-    kvHeads: 8,
-    headDim: 128,
-    embd: 7168,
-    vocab: 32256,
-  }),
-  "gemma-3-1b-it-q4_k_m": dense({
-    layers: 26,
-    queryHeads: 4,
-    kvHeads: 1,
-    headDim: 256,
-    embd: 1152,
-    vocab: 262144,
-    architecture: "gemma3",
-    swa: { layers: 22, window: 512 },
-  }),
-  "gemma-3-4b-it-q4_k_m": dense({
-    layers: 34,
-    queryHeads: 8,
-    kvHeads: 4,
-    headDim: 256,
-    embd: 2560,
-    vocab: 262208,
-    architecture: "gemma3",
-    swa: { layers: 29, window: 1024 },
-  }),
-  "gemma-3-12b-it-q4_k_m": dense({
-    layers: 48,
-    queryHeads: 16,
-    kvHeads: 8,
-    headDim: 256,
-    embd: 3840,
-    vocab: 262208,
-    architecture: "gemma3",
-    swa: { layers: 40, window: 1024 },
-  }),
-  "gemma-3-27b-it-q4_k_m": dense({
-    layers: 62,
-    queryHeads: 32,
-    kvHeads: 16,
-    headDim: 128,
-    embd: 5376,
-    vocab: 262208,
-    architecture: "gemma3",
-    swa: { layers: 52, window: 1024 },
-  }),
-  "phi-4-q4_k_m": dense({
-    layers: 40,
-    queryHeads: 40,
-    kvHeads: 10,
-    headDim: 128,
-    embd: 5120,
-    vocab: 100352,
-  }),
-  "phi-3.5-mini-instruct-q4_k_m": dense({
-    layers: 32,
-    queryHeads: 32,
-    kvHeads: 32,
-    headDim: 96,
-    embd: 3072,
-    vocab: 32064,
-  }),
-  "phi-3.5-moe-instruct-q4_k_m": dense({
-    layers: 32,
-    queryHeads: 32,
-    kvHeads: 8,
-    headDim: 128,
-    embd: 4096,
-    vocab: 32064,
-  }),
-  "gpt-oss-20b-q4_k_m": dense({
-    layers: 24,
-    queryHeads: 64,
-    kvHeads: 8,
-    headDim: 64,
-    embd: 2880,
-    vocab: 201088,
-    architecture: "gpt-oss",
-    swa: { layers: 12, window: 128 },
-  }),
-  // The catalog entry ships the Falcon3-10B-Instruct file.
-  "falcon-2-11b-instruct-q4_k_m": dense({
-    layers: 40,
-    queryHeads: 12,
-    kvHeads: 4,
-    headDim: 256,
-    embd: 3072,
-    vocab: 131072,
-  }),
-  "codestral-22b-instruct-q4_k_m": dense({
-    layers: 56,
-    queryHeads: 48,
-    kvHeads: 8,
-    headDim: 128,
-    embd: 6144,
-    vocab: 32768,
-  }),
-  "mistral-nemo-12b-instruct-q4_k_m": MISTRAL_40L_5120,
-  "devstral-small-2-24b-instruct-q4_k_m": MISTRAL_40L_5120,
-  "mistral-small-3.2-24b-instruct-q4_k_m": MISTRAL_40L_5120,
-};
-
-/**
- * Catalog LLMs without a published shape in the table (newer hybrid or
- * unreleased-config models). They use the size-based fallback shape and stay
- * "estimated" until a GGUF header supplies real geometry at launch.
- */
-export const LLM_FALLBACK_SHAPE_MODELS: ReadonlySet<string> = new Set([
-  "qwen3.5-0.8b-q4_k_m",
-  "qwen3.5-0.8b-q8_0",
-  "qwen3.5-2b-q4_k_m",
-  "qwen3.5-2b-q8_0",
-  "qwen3.5-4b-q4_k_m",
-  "qwen3.5-9b-q4_k_m",
-  "qwen3.5-27b-q4_k_m",
-  "qwen3.8-27b-q4_k_m",
-  "ministral-3-14b-instruct-q4_k_m",
-]);
-
-export function hasPublishedLlmShape(modelId: string): boolean {
-  return modelId in LLM_SHAPES;
-}
-
 /** Bits per weight of common GGUF quants (llama.cpp quantize --help). */
 const QUANT_BITS_PER_WEIGHT: Readonly<Record<string, number>> = {
   Q4_0: 4.55,
@@ -671,36 +323,31 @@ export function fallbackLlmShape(parametersB: number): LlmShape {
 
 export type ResolvedLlmShape = Readonly<{
   shape: LlmShape;
-  source: "gguf" | "table" | "fallback";
+  source: "gguf" | "fallback";
 }>;
 
 /**
  * Shape for a model: a GGUF header's KV geometry wins (it describes the exact
- * file), then the published table, then the size-based fallback.
+ * file); without one the size-based fallback stands in. The compute and slot
+ * terms always use the fallback's hidden size and vocabulary, which are
+ * allowances (152064 tokens is a large-vocab upper bound for most families).
  */
 export function resolveLlmShape(input: {
-  modelId?: string;
   size?: string;
   quant?: string;
   weightsBytes: number;
   geometry?: LlmKvGeometry | null;
 }): ResolvedLlmShape {
-  const table = input.modelId ? LLM_SHAPES[input.modelId] : undefined;
-  const base =
-    table ??
-    fallbackLlmShape(
-      parameterBillions(input.size, input.weightsBytes, input.quant),
-    );
+  const base = fallbackLlmShape(
+    parameterBillions(input.size, input.weightsBytes, input.quant),
+  );
   if (input.geometry) {
     return Object.freeze({
       shape: Object.freeze({ ...base, geometry: input.geometry }),
       source: "gguf",
     });
   }
-  return Object.freeze({
-    shape: base,
-    source: table ? "table" : "fallback",
-  });
+  return Object.freeze({ shape: base, source: "fallback" });
 }
 
 /**
@@ -873,24 +520,6 @@ const TTS_CONTEXT_TOKENS = SPEECH_CONTEXT_TOKENS;
 const TTS_CODEC_BYTES = 1 * gibibyte;
 /** The Qwen3-TTS runtime loads the projector twice (measured 2 x 426 MiB Metal buffers). */
 const TTS_PROJECTOR_COPIES = 2;
-/** Talker shapes by model; other TTS models use the size-based fallback. */
-const TTS_TALKER_SHAPES: Readonly<Record<string, LlmShape>> = {
-  "qwen3-tts-1.7b-base-q4_k_m": QWEN3_TTS_1_7B_TALKER,
-};
-
-/**
- * Qwen3-TTS runs a llama.cpp talker LLM plus the multimodal projector and the
- * audio codec. The talker uses its published shape (else the fallback LLM
- * shape at its parameter count) with the f16 launch context, and the projector is
- * loaded twice; every term is held in one process, so all pools
- * carry the full sum.
- */
-function talkerShape(spec: ModelSpec, weightsBytes: number): ResolvedLlmShape {
-  const published = TTS_TALKER_SHAPES[spec.modelId];
-  return published
-    ? Object.freeze({ shape: published, source: "table" })
-    : resolveLlmShape({ size: spec.size, quant: spec.quant, weightsBytes });
-}
 
 /**
  * ONNX Runtime CPU session working set for Kokoro: the dequantized q8 graph,
@@ -917,7 +546,17 @@ function estimateKokoroMemory(spec: ModelSpec): MemoryEstimate {
   );
 }
 
-export function estimateTtsMemory(spec: ModelSpec): MemoryEstimate {
+/**
+ * Qwen3-TTS runs a llama.cpp talker LLM plus the multimodal projector and the
+ * audio codec. The talker uses the GGUF geometry when the file is local, else
+ * the size-based fallback shape, with the f16 launch context; the projector is
+ * loaded twice. Every term is held in one process, so all pools carry the
+ * full sum.
+ */
+export function estimateTtsMemory(
+  spec: ModelSpec,
+  talkerGeometry?: LlmKvGeometry | null,
+): MemoryEstimate {
   if (spec.ttsRuntime?.kind === "kokoro-onnx") {
     return estimateKokoroMemory(spec);
   }
@@ -928,7 +567,12 @@ export function estimateTtsMemory(spec: ModelSpec): MemoryEstimate {
   const weights = totalArtifactBytes(spec) - projector;
   const talker = estimateLlmMemory({
     weightsBytes: weights,
-    shape: talkerShape(spec, weights),
+    shape: resolveLlmShape({
+      size: spec.size,
+      quant: spec.quant,
+      weightsBytes: weights,
+      geometry: talkerGeometry,
+    }),
     ctxTokens: TTS_CONTEXT_TOKENS,
     slots: 1,
     cacheTypeK: "f16",
@@ -1362,22 +1006,33 @@ export function measuredModelDemand(
 // Catalog entry point
 // ---------------------------------------------------------------------------
 
+/**
+ * Local facts that sharpen a catalog estimate: the GGUF KV geometry of the
+ * LLM (or TTS talker) file when it is installed.
+ */
+export type CatalogEstimateInputs = Readonly<{
+  geometry?: LlmKvGeometry | null;
+}>;
+
 /** LLM reference launch: 8K context, one slot, launcher KV type, no cache. */
-function catalogLlmReference(spec: ModelSpec) {
+export function catalogLlmReference(
+  spec: ModelSpec,
+  inputs: CatalogEstimateInputs = {},
+) {
   const weightsBytes = totalArtifactBytes(spec);
   const shape = resolveLlmShape({
-    modelId: spec.modelId,
     size: spec.size,
     quant: spec.quant,
     weightsBytes,
+    geometry: inputs.geometry,
   });
   const kvType = llmKvCacheType(Boolean(spec.llmRuntime), shape.shape.geometry);
   return {
     weightsBytes,
     shape,
     ctxTokens: Math.min(
-      MIN_VRAM_LLM_CONTEXT_TOKENS,
-      spec.contextWindowTokens ?? MIN_VRAM_LLM_CONTEXT_TOKENS,
+      LLM_REFERENCE_CONTEXT_TOKENS,
+      spec.contextWindowTokens ?? LLM_REFERENCE_CONTEXT_TOKENS,
     ),
     slots: 1,
     cacheTypeK: kvType,
@@ -1389,16 +1044,21 @@ function catalogLlmReference(spec: ModelSpec) {
 /**
  * Estimate for a catalog model at its reference shape: LLMs at 8K context,
  * one slot, launcher KV type and no prompt cache; diffusion at the family
- * default resolution; video at the qualification bounds.
+ * default resolution; video at the qualification bounds. Artifact sizes come
+ * from the catalog; the GGUF geometry, when given, replaces the size-based
+ * layout.
  */
-export function estimateCatalogModelMemory(spec: ModelSpec): MemoryEstimate {
+export function estimateCatalogModelMemory(
+  spec: ModelSpec,
+  inputs: CatalogEstimateInputs = {},
+): MemoryEstimate {
   switch (spec.kind) {
     case "llm":
-      return estimateLlmMemory(catalogLlmReference(spec));
+      return estimateLlmMemory(catalogLlmReference(spec, inputs));
     case "stt":
       return estimateSttMemory(spec);
     case "tts":
-      return estimateTtsMemory(spec);
+      return estimateTtsMemory(spec, inputs.geometry);
     case "image":
       return estimateImageMemory(spec);
     case "video":
@@ -1409,9 +1069,10 @@ export function estimateCatalogModelMemory(spec: ModelSpec): MemoryEstimate {
 /** The measured demand at the catalog reference shape, when one exists. */
 export function measuredCatalogModelMemory(
   spec: ModelSpec,
+  inputs: CatalogEstimateInputs = {},
 ): MeasuredMemoryDemand | undefined {
   if (spec.kind !== "llm") return measuredModelDemand(spec);
-  const reference = catalogLlmReference(spec);
+  const reference = catalogLlmReference(spec, inputs);
   return measuredLlmDemand({
     ...reference,
     modelId: spec.modelId,
@@ -1420,14 +1081,12 @@ export function measuredCatalogModelMemory(
 }
 
 /** Catalog reference demand: the measurement when present, else the estimate. */
-export function catalogModelDemand(spec: ModelSpec): RuntimeMemoryDemand {
+export function catalogModelDemand(
+  spec: ModelSpec,
+  inputs: CatalogEstimateInputs = {},
+): RuntimeMemoryDemand {
   return preferMeasured(
-    estimateCatalogModelMemory(spec),
-    measuredCatalogModelMemory(spec),
+    estimateCatalogModelMemory(spec, inputs),
+    measuredCatalogModelMemory(spec, inputs),
   );
-}
-
-/** The minVramGb a catalog entry must declare: its accelerator demand's tier. */
-export function derivedMinVramGb(spec: ModelSpec): number {
-  return minVramTierGb(catalogModelDemand(spec).acceleratorBytes);
 }

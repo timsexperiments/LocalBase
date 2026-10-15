@@ -8,7 +8,6 @@
   "size": "3B",
   "quant": "Q4_K_M",
   "codingScore": 8,
-  "minVramGb": 4,
   "storageGb": 2.2,
   "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
   "repositoryRevision": "f74adce6aa16316c625447af059dbebe4983757c",

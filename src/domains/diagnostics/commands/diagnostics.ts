@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   CATALOG,
   modelModalitySchema,
+  primaryArtifact,
   resolveCatalogInstallation,
   type ModelKind,
 } from "../../../catalog";
@@ -14,6 +15,11 @@ import {
 import { openReadOnlyDatabase } from "../../../db/client";
 import type { CapabilityMismatch } from "../../models/capability-detection";
 import { resolveCapabilitiesForModel } from "../../models/model-capabilities";
+import { evaluateModelFit } from "../../models/memory-fit";
+import {
+  createObservedMemoryStore,
+  type ObservedMemoryRecord,
+} from "../../runtime/observed-memory";
 import { directoryForModel } from "../../models/model-metadata";
 import { createRuntimeCapabilityStore } from "../../runtime/runtime-capabilities";
 import { detectSpecs, type HostSpecs } from "../../../system";
@@ -132,6 +138,16 @@ const modelSchema = z
       .strict(),
     capabilityEvidence: z.array(z.string().min(1)),
     runtimeBuild: z.string().min(1).nullable(),
+    memory: z
+      .object({
+        minimumGb: z.number().int().positive(),
+        source: z.enum(["estimate", "measured", "observed"]),
+        launchShape: z.string().min(1),
+        observedPeakBytes: z.number().int().positive().nullable(),
+        verdict: z.enum(["fits", "tight", "wont-fit"]),
+        systemMemoryGb: z.number().nonnegative(),
+      })
+      .strict(),
   })
   .strict();
 
@@ -242,7 +258,11 @@ function configurationData(config: LocalBaseConfig) {
   });
 }
 
-async function modelData(config: LocalBaseConfig, root: string) {
+async function modelData(
+  config: LocalBaseConfig,
+  root: string,
+  systemMemoryGb: number,
+) {
   const selected = new Set([
     ...config.selectedLlmModels,
     ...config.selectedSttModels,
@@ -273,6 +293,16 @@ async function modelData(config: LocalBaseConfig, root: string) {
         directoryForModel(config, model.kind),
       );
       if (!selected.has(model.modelId) && !installation.complete) continue;
+      const sha256 = primaryArtifact(model).sha256;
+      let observed: ObservedMemoryRecord[] = [];
+      if (runtimeStore && sha256) {
+        try {
+          observed = runtimeStore.observed.list(model.modelId, sha256);
+        } catch {
+          // A database from before migration 0013 has no observed peaks.
+        }
+      }
+      const fit = evaluateModelFit(model, systemMemoryGb, { observed });
       const report = await resolveCapabilitiesForModel(
         model,
         config,
@@ -295,6 +325,14 @@ async function modelData(config: LocalBaseConfig, root: string) {
           inputModalities: report.inputModalities,
           capabilityEvidence: report.evidence,
           runtimeBuild: report.runtimeBuild,
+          memory: {
+            minimumGb: fit.minVramGb,
+            source: fit.source,
+            launchShape: fit.figure.launchShape,
+            observedPeakBytes: fit.figure.observed?.peakBytes ?? null,
+            verdict: fit.verdict,
+            systemMemoryGb,
+          },
         }),
       );
     }
@@ -313,6 +351,7 @@ function openRuntimeCapabilityStore(root: string) {
     const database = openReadOnlyDatabase(root);
     return {
       store: createRuntimeCapabilityStore(database.db),
+      observed: createObservedMemoryStore(database.db),
       close: database.close,
     };
   } catch {
@@ -451,8 +490,12 @@ export async function runDiagnostics(
   const generatedAt = new Date().toISOString();
   const platform = { os: process.platform, arch: process.arch };
 
+  let hardwareMemoryGb = 0;
   const hardware = await detectSpecs()
-    .then((specs) => section(hardwareData(specs)))
+    .then((specs) => {
+      hardwareMemoryGb = specs.gpuVramGb;
+      return section(hardwareData(specs));
+    })
     .catch(() => unavailable("hardware_unavailable"));
 
   let config: LocalBaseConfig | undefined;
@@ -464,7 +507,7 @@ export async function runDiagnostics(
     .catch(() => unavailable("configuration_unavailable"));
 
   const models = config
-    ? await modelData(config, root)
+    ? await modelData(config, root, hardwareMemoryGb)
         .then((value) => section(value))
         .catch(() => unavailable("models_unavailable"))
     : unavailable("models_unavailable");
@@ -529,6 +572,9 @@ export async function runDiagnostics(
   execution.output.info(`Created diagnostics bundle: ${path}`);
   if (manifest.models.available) {
     for (const model of manifest.models.data.models) {
+      execution.output.info(
+        `Memory for ${model.id}: ${model.memory.minimumGb} GB (${model.memory.source}), ${model.memory.verdict}`,
+      );
       if (model.capabilityMismatches.length === 0) continue;
       execution.output.info(
         `Capability mismatch for ${model.id}: ${model.capabilityMismatches

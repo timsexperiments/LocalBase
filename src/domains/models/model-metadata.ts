@@ -23,11 +23,17 @@ import type {
 } from "../runtime/memory-safety";
 import type { RuntimeModality } from "../runtime/modality";
 import {
+  evaluateModelFit,
+  modelMemoryFigure,
+  type ModelMemoryInputs,
+} from "./memory-fit";
+import {
   resolveModelCapabilities,
   type ResolvedCapabilities,
 } from "./capability-detection";
 
 const nullableNumberSchema = z.number().nullable();
+const memorySourceSchema = z.enum(["estimate", "measured", "observed"]);
 const nullableByteCountSchema = z.number().int().nonnegative().nullable();
 
 const videoCapabilitiesSchema = z
@@ -116,6 +122,34 @@ export const modelMetadataSchema = z
           .object({
             minimumVramEstimateGb: z.number().nonnegative(),
             storageEstimateGb: z.number().positive(),
+            source: memorySourceSchema.optional(),
+            demandBytes: z.number().int().nonnegative().optional(),
+            launchShape: z.string().min(1).optional(),
+            reference: z
+              .object({
+                source: z.enum(["estimate", "measured"]),
+                bytes: z.number().int().nonnegative(),
+              })
+              .strict()
+              .optional(),
+            observed: z
+              .object({
+                peakBytes: z.number().int().nonnegative(),
+                launchShape: z.string().min(1),
+                method: z.enum(["footprint", "vmhwm"]),
+                observedAt: z.string().min(1),
+              })
+              .strict()
+              .nullable()
+              .optional(),
+            fit: z
+              .object({
+                verdict: z.enum(["fits", "tight", "wont-fit"]),
+                systemMemoryGb: z.number().nonnegative(),
+                headroomGb: z.number(),
+              })
+              .strict()
+              .optional(),
           })
           .strict(),
         capabilities: z
@@ -231,6 +265,10 @@ export type ModelMetadataProjectionInput = Readonly<{
   /** Resolved capabilities per model; declared-only when absent. */
   capabilities?: ReadonlyMap<string, ResolvedCapabilities>;
   runtimes: Readonly<Record<RuntimeModality, RuntimeLifecycleSnapshot>>;
+  /** Local geometry and observed peaks per model; catalog estimate when absent. */
+  memory?: ReadonlyMap<string, ModelMemoryInputs>;
+  /** This machine's memory in GiB; adds a fit verdict when present. */
+  systemMemoryGb?: number;
 }>;
 
 function selectedModelIds(
@@ -295,8 +333,8 @@ export function projectModelMetadata(
         sizeBytes: artifact.expectedSizeBytes ?? null,
       })),
       memory: {
-        minimumVramEstimateGb: model.minVramGb,
         storageEstimateGb: model.storageGb,
+        ...memoryProjection(model, input),
       },
       capabilities: model.llmRuntime
         ? {
@@ -459,5 +497,45 @@ function capabilityResolution(
       values: [...resolved.inputModalities.values],
       source: resolved.inputModalities.source,
     },
+  };
+}
+
+/** Computed minimum memory with its source, and the fit for this machine. */
+function memoryProjection(
+  model: ModelSpec,
+  input: ModelMetadataProjectionInput,
+) {
+  const inputs = input.memory?.get(model.modelId);
+  const figure = modelMemoryFigure(model, inputs);
+  const fit =
+    input.systemMemoryGb === undefined
+      ? undefined
+      : evaluateModelFit(model, input.systemMemoryGb, inputs);
+  return {
+    minimumVramEstimateGb: figure.minVramGb,
+    source: figure.source,
+    demandBytes: Math.round(figure.demandBytes),
+    launchShape: figure.launchShape,
+    reference: {
+      source: figure.referenceSource,
+      bytes: Math.round(figure.referenceBytes),
+    },
+    observed: figure.observed
+      ? {
+          peakBytes: figure.observed.peakBytes,
+          launchShape: figure.observed.launchShape,
+          method: figure.observed.method,
+          observedAt: figure.observed.observedAt,
+        }
+      : null,
+    ...(fit
+      ? {
+          fit: {
+            verdict: fit.verdict,
+            systemMemoryGb: fit.systemVramGb,
+            headroomGb: fit.headroomGb,
+          },
+        }
+      : {}),
   };
 }

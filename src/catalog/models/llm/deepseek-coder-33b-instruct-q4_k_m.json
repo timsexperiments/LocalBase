@@ -8,7 +8,6 @@
   "size": "33B",
   "quant": "Q4_K_M",
   "codingScore": 9,
-  "minVramGb": 24,
   "storageGb": 21,
   "source": "https://huggingface.co/TheBloke/deepseek-coder-33B-Instruct-GGUF",
   "repositoryRevision": "cd6a4d02d3502901ff7f980b6373387ab8b8e91a",

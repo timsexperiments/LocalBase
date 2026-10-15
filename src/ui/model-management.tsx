@@ -9,6 +9,8 @@ import {
 import {
   api,
   catalogModels,
+  modelFitLabel,
+  modelMemoryRequirement,
   modelName,
   modes,
   type Connection,
@@ -291,9 +293,15 @@ export function ModelManagement({
                       </dd>
                     </div>
                     <div>
-                      <dt>Est. VRAM</dt>
-                      <dd>{model.catalog.memory.minimumVramEstimateGb} GB</dd>
+                      <dt>Min. memory</dt>
+                      <dd>{modelMemoryRequirement(model)}</dd>
                     </div>
+                    {modelFitLabel(model) && (
+                      <div>
+                        <dt>This machine</dt>
+                        <dd>{modelFitLabel(model)}</dd>
+                      </div>
+                    )}
                   </dl>
                   {operation && (
                     <div

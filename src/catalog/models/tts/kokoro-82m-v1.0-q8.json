@@ -8,7 +8,6 @@
   "version": "v1.0",
   "size": "82M",
   "quant": "Q8",
-  "minVramGb": 1,
   "storageGb": 0.09,
   "source": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
   "repositoryRevision": "1939ad2a8e416c0acfeecc08a694d14ef25f2231",

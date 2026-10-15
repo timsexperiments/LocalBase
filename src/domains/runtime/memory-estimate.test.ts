@@ -11,14 +11,13 @@ import {
   measuredLlmDemand,
   measuredModelDemand,
   LLAMA_UBATCH_TOKENS,
-  MIN_VRAM_TIERS_GB,
   RUNTIME_HOST_OVERHEAD_BYTES,
   estimateImageMemory,
   estimateLlmMemory,
   estimateVideoMemory,
   fallbackLlmShape,
   genericArtifactDemand,
-  minVramTierGb,
+  minimumMemoryGb,
   preferMeasured,
   resolveLlmShape,
   totalArtifactBytes,
@@ -76,26 +75,21 @@ const geometry: LlmKvGeometry = {
   contextLength: 131072,
 };
 
-describe("minVramTierGb", () => {
-  test("adds max(512 MiB, 10%) before rounding up to a tier", () => {
+describe("minimumMemoryGb", () => {
+  test("adds max(512 MiB, 10%) and rounds up to whole GiB", () => {
     // 512 MiB + 512 MiB margin fits exactly in 1 GiB.
-    expect(minVramTierGb(512 * mebibyte)).toBe(1);
-    expect(minVramTierGb(512 * mebibyte + 1)).toBe(2);
-    // 7 GiB + 0.7 GiB = 7.7 GiB -> 8; 7.5 GiB + 0.75 GiB = 8.25 GiB -> 12.
-    expect(minVramTierGb(7 * gibibyte)).toBe(8);
-    expect(minVramTierGb(7.5 * gibibyte)).toBe(12);
-    // 10% dominates above 5 GiB: 40 GiB -> 44 GiB -> 48.
-    expect(minVramTierGb(40 * gibibyte)).toBe(48);
-    expect(minVramTierGb(44 * gibibyte)).toBe(64);
+    expect(minimumMemoryGb(512 * mebibyte)).toBe(1);
+    expect(minimumMemoryGb(512 * mebibyte + 1)).toBe(2);
+    // 7 GiB + 0.7 GiB = 7.7 GiB -> 8; 7.5 GiB + 0.75 GiB = 8.25 GiB -> 9.
+    expect(minimumMemoryGb(7 * gibibyte)).toBe(8);
+    expect(minimumMemoryGb(7.5 * gibibyte)).toBe(9);
+    // 10% dominates above 5 GiB: 40 GiB -> 44 GiB.
+    expect(minimumMemoryGb(40 * gibibyte)).toBe(44);
+    expect(minimumMemoryGb(120 * gibibyte)).toBe(132);
   });
 
-  test("returns a listed tier and rounds beyond the table to 64 GiB steps", () => {
-    for (const bytes of [0, gibibyte, 3 * gibibyte, 20 * gibibyte]) {
-      expect(MIN_VRAM_TIERS_GB as readonly number[]).toContain(
-        minVramTierGb(bytes),
-      );
-    }
-    expect(minVramTierGb(120 * gibibyte)).toBe(192);
+  test("never reports less than 1 GiB", () => {
+    expect(minimumMemoryGb(0)).toBe(1);
   });
 });
 
@@ -135,9 +129,9 @@ test("genericArtifactDemand puts weights on the accelerator plus host overhead",
 describe("resolveLlmShape", () => {
   const weightsBytes = 5 * gibibyte;
 
-  test("GGUF geometry wins over the table", () => {
+  test("GGUF geometry wins over the size fallback", () => {
     const resolved = resolveLlmShape({
-      modelId: "llama-3.1-8b-instruct-q4_k_m",
+      size: "8B",
       weightsBytes,
       geometry,
     });
@@ -145,16 +139,8 @@ describe("resolveLlmShape", () => {
     expect(resolved.shape.geometry).toBe(geometry);
   });
 
-  test("the published table beats the size fallback", () => {
-    expect(
-      resolveLlmShape({ modelId: "llama-3.1-8b-instruct-q4_k_m", weightsBytes })
-        .source,
-    ).toBe("table");
-  });
-
-  test("unknown models use the size-based fallback", () => {
+  test("without geometry the shape comes from the parameter count", () => {
     const resolved = resolveLlmShape({
-      modelId: "not-in-the-table",
       size: "8B",
       weightsBytes,
     });

@@ -8,7 +8,6 @@
   "size": "6.7B",
   "quant": "Q4_K_M",
   "codingScore": 8,
-  "minVramGb": 8,
   "storageGb": 4.8,
   "source": "https://huggingface.co/TheBloke/deepseek-coder-6.7B-Instruct-GGUF",
   "repositoryRevision": "9e221e6b41cb1bf1c5d8f9718e81e3dc781f7557",

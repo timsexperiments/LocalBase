@@ -7,7 +7,6 @@
   "version": "2.3-distilled-1.1",
   "size": "22B",
   "quant": "Q4_K_M",
-  "minVramGb": 48,
   "storageGb": 14.19,
   "source": "https://huggingface.co/unsloth/LTX-2.3-GGUF",
   "repositoryRevision": "96e8ed4925ead3db9ff4d0084f165ef6a74f28d0",

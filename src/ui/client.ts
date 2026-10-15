@@ -91,6 +91,13 @@ const modelSchema = z.object({
     memory: z.object({
       minimumVramEstimateGb: z.number().nonnegative(),
       storageEstimateGb: z.number().positive(),
+      /** Where the minimum came from; absent on older servers. */
+      source: z.enum(["estimate", "measured", "observed"]).optional(),
+      /** This machine's fit verdict; absent on older servers. */
+      fit: z
+        .object({ verdict: z.enum(["fits", "tight", "wont-fit"]) })
+        .passthrough()
+        .optional(),
     }),
     features: z.array(z.string()).default([]),
     inputModalities: z.array(z.string()),
@@ -176,7 +183,32 @@ export function modelMemorySummary(
     availableBytes == null
       ? "memory availability unknown"
       : `${Math.round((availableBytes / 1024 ** 3) * 10) / 10} GB available`;
-  return `Needs ~${model.catalog.memory.minimumVramEstimateGb} GB · ${available}`;
+  return `Needs ~${modelMemoryRequirement(model)} · ${available}`;
+}
+
+const memorySourceLabels = {
+  estimate: "estimate",
+  measured: "measured",
+  observed: "observed on this machine",
+} as const;
+
+const fitVerdictLabels = {
+  fits: "fits",
+  tight: "tight fit",
+  "wont-fit": "won't fit",
+} as const;
+
+/** The minimum memory with its source, such as `3 GB (observed on this machine)`. */
+export function modelMemoryRequirement(model: Model): string {
+  const memory = model.catalog.memory;
+  const source = memory.source ? ` (${memorySourceLabels[memory.source]})` : "";
+  return `${memory.minimumVramEstimateGb} GB${source}`;
+}
+
+/** This machine's fit verdict, when the server reports one. */
+export function modelFitLabel(model: Model): string | null {
+  const verdict = model.catalog.memory.fit?.verdict;
+  return verdict ? fitVerdictLabels[verdict] : null;
 }
 export const readinessSchema = z.object({
   status: z.enum(["ready", "unready"]),

@@ -8,7 +8,6 @@
   "size": "72B",
   "quant": "Q4_K_M",
   "codingScore": 10,
-  "minVramGb": 64,
   "storageGb": 47,
   "source": "https://huggingface.co/bartowski/Qwen2.5-72B-Instruct-GGUF",
   "repositoryRevision": "d43fd973131bce821f41e2df3c78c6fe15c5627a",

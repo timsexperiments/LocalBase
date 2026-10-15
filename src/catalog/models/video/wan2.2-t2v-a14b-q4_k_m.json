@@ -7,7 +7,6 @@
   "version": "2.2",
   "size": "A14B",
   "quant": "Q4_K_M",
-  "minVramGb": 48,
   "storageGb": 19.3,
   "source": "https://huggingface.co/bullerwins/Wan2.2-T2V-A14B-GGUF",
   "repositoryRevision": "f021e94acfde37bc70bf7b27295b0fa5c1f8e270",

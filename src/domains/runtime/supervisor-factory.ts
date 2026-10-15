@@ -69,7 +69,11 @@ import {
   type TtsServerPreparation,
   type WarmSpeechServer,
 } from "./speech-supervisor";
-import { ManagedService } from "./supervisor";
+import {
+  ManagedService,
+  type BackendReady,
+  type ManagedServiceOptions,
+} from "./supervisor";
 import type { RuntimeSupervisor } from "./supervisor-registry";
 
 type ServerRuntimeModality = Exclude<RuntimeModality, "tts">;
@@ -114,6 +118,17 @@ export type RuntimeSupervisorFactoryDependencies = Readonly<{
    */
   onLlmReady?: (
     event: Readonly<{ modelId: string; baseUrl: string; embedding: boolean }>,
+  ) => void | Promise<void>;
+  /**
+   * Called after any backend becomes healthy, with its process and plan, so
+   * the gateway can sample its memory while it serves.
+   */
+  onBackendReady?: (
+    event: Readonly<{
+      modality: RuntimeModality;
+      modelId: string;
+      ready: BackendReady;
+    }>,
   ) => void | Promise<void>;
 }>;
 
@@ -478,6 +493,23 @@ export function createRuntimeSupervisorFactory(
       : runtimeEndpoint(videoHost(overrides), videoPort(overrides));
   };
 
+  const readyHook = (
+    modality: RuntimeModality,
+    modelId: string,
+    extra?: () => void | Promise<void>,
+  ): Pick<ManagedServiceOptions, "onReady"> => {
+    const onBackendReady = dependencies.onBackendReady;
+    if (!onBackendReady && !extra) return {};
+    return {
+      onReady: async (ready) => {
+        await Promise.all([
+          onBackendReady?.({ modality, modelId, ready }),
+          extra?.(),
+        ]);
+      },
+    };
+  };
+
   const create = (
     modality: RuntimeModality,
     snapshot: RuntimeConfigSnapshot,
@@ -664,16 +696,18 @@ export function createRuntimeSupervisorFactory(
         memorySafety: dependencies.memorySafety,
         otel: ctx.otel,
         startupTimeoutMs: llmStartupTimeoutMs(byId(modelId)),
-        ...(dependencies.onLlmReady && llmReadyReportable(modelId, overrides)
-          ? {
-              onReady: () =>
+        ...readyHook(
+          modality,
+          modelId,
+          dependencies.onLlmReady && llmReadyReportable(modelId, overrides)
+            ? () =>
                 dependencies.onLlmReady?.({
                   modelId,
                   baseUrl: base,
                   embedding: Boolean(byId(modelId)?.llmRuntime),
-                }),
-            }
-          : {}),
+                })
+            : undefined,
+        ),
       });
     }
 
@@ -758,6 +792,7 @@ export function createRuntimeSupervisorFactory(
             dependencies.memorySafety.topology,
           );
         },
+        ...readyHook(modality, modelId),
         memorySafety: dependencies.memorySafety,
         otel: ctx.otel,
         startupTimeoutMs: 30000,
@@ -796,6 +831,7 @@ export function createRuntimeSupervisorFactory(
             }
             return await startTtsServerProcess(launchPlan);
           },
+          ...readyHook(modality, modelId),
           memorySafety: dependencies.memorySafety,
           otel: ctx.otel,
           startupTimeoutMs: 120_000,
@@ -1067,6 +1103,7 @@ export function createRuntimeSupervisorFactory(
             dependencies.memorySafety.topology,
           );
         },
+        ...readyHook(modality, modelId),
         memorySafety: dependencies.memorySafety,
         otel: ctx.otel,
         startupTimeoutMs: VIDEO_STARTUP_TIMEOUT_MS,
@@ -1188,6 +1225,7 @@ export function createRuntimeSupervisorFactory(
           dependencies.memorySafety.topology,
         );
       },
+      ...readyHook(modality, modelId),
       memorySafety: dependencies.memorySafety,
       otel: ctx.otel,
       startupTimeoutMs: imageStartupTimeoutMs(byId(modelId)),

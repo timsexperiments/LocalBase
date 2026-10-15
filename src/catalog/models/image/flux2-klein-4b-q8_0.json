@@ -7,7 +7,6 @@
   "version": "2",
   "size": "4B",
   "quant": "Q8_0",
-  "minVramGb": 16,
   "storageGb": 7.13,
   "source": "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
   "repositoryRevision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",

@@ -436,3 +436,42 @@ test("projects resolved capabilities with sources and mismatches", () => {
   // Legacy fields keep describing the catalog declaration.
   expect(metadata.catalog.features).toEqual(legacy);
 });
+
+test("projects the memory source, observed peak, and fit for this machine", () => {
+  const model = catalogModel();
+  const sha256 = model.artifacts[0]!.sha256!;
+  const peak = {
+    modelId,
+    artifactSha256: sha256,
+    launchShape: "ctx=8192;slots=1;kv=q8_0/q8_0",
+    peakBytes: 3 * gibibyte,
+    method: "footprint" as const,
+    observedAt: "2026-10-15T00:00:00.000Z",
+  };
+  const input = {
+    catalog: [model],
+    config: defaultConfig("/tmp/localbase-model-metadata-memory"),
+    installations: new Map([[modelId, true]]),
+    runtimes: runtimeSnapshots(),
+  };
+
+  const estimated = projectModelMetadata(model, input).catalog.memory;
+  expect(estimated.source).toBe("estimate");
+  expect(estimated.observed).toBeNull();
+  expect(estimated.fit).toBeUndefined();
+
+  const observed = projectModelMetadata(model, {
+    ...input,
+    memory: new Map([[modelId, { observed: [peak] }]]),
+    systemMemoryGb: 64,
+  }).catalog.memory;
+  expect(observed).toMatchObject({
+    minimumVramEstimateGb: 4,
+    source: "observed",
+    demandBytes: 3 * gibibyte,
+    launchShape: peak.launchShape,
+    reference: { source: "estimate" },
+    observed: { peakBytes: 3 * gibibyte, method: "footprint" },
+    fit: { verdict: "fits", systemMemoryGb: 64, headroomGb: 60 },
+  });
+});

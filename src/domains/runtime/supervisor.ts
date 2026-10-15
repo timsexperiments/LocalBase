@@ -38,6 +38,14 @@ type StartupAttempt = {
   cancelled: boolean;
 };
 
+/** The process that just became healthy and the plan it was launched with. */
+export type BackendReady = Readonly<{
+  pid: number;
+  plan: RuntimeLaunchPlan;
+  /** Settles when this process exits. */
+  exited: Promise<unknown>;
+}>;
+
 export type ManagedServiceOptions = {
   runtimeId: string;
   modality: RuntimeModality;
@@ -57,7 +65,7 @@ export type ManagedServiceOptions = {
   startupTimeoutMs?: number;
   onFatal?: () => Promise<void>;
   /** Runs after each successful start. Failures are logged, never fatal. */
-  onReady?: () => void | Promise<void>;
+  onReady?: (ready: BackendReady) => void | Promise<void>;
   llmProfile?: LlmSupervisorProfile;
 };
 
@@ -357,7 +365,11 @@ export class ManagedService {
         reservation.materialize();
         this.lifecycle("backend.ready", "info", { pid: startedProcess.pid });
         this.lifecycleState = "running";
-        this.notifyReady();
+        this.notifyReady({
+          pid: startedProcess.pid,
+          plan,
+          exited: startedProcess.exited,
+        });
       } catch (err) {
         this.resolvedPlan = undefined;
         if (err instanceof StartupCancelledError || attempt.cancelled) {
@@ -534,7 +546,7 @@ export class ManagedService {
     if (this.reservation === reservation) this.reservation = null;
   }
 
-  private notifyReady(): void {
+  private notifyReady(ready: BackendReady): void {
     const onReady = this.options.onReady;
     if (!onReady) return;
     const report = (error: unknown) =>
@@ -544,7 +556,7 @@ export class ManagedService {
         error as Error,
       );
     try {
-      void Promise.resolve(onReady()).catch(report);
+      void Promise.resolve(onReady(ready)).catch(report);
     } catch (error) {
       report(error);
     }

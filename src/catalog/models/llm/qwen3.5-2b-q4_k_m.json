@@ -7,7 +7,6 @@
   "version": "3.5",
   "size": "2B",
   "quant": "Q4_K_M",
-  "minVramGb": 4,
   "storageGb": 1.4,
   "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF",
   "repositoryRevision": "7d26695454df6de5fbcce2e58681e62dae06ce43",

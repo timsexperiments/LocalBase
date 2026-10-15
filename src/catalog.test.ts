@@ -10,18 +10,20 @@ import {
   catalogSchema,
   hasCapability,
   legacyFeatures,
-  recommendedForVram,
   resolveCatalogInstallation,
   type ModelSpec,
 } from "./catalog";
 import {
-  LLM_FALLBACK_SHAPE_MODELS,
   catalogModelDemand,
-  derivedMinVramGb,
   estimateCatalogModelMemory,
-  hasPublishedLlmShape,
+  minimumMemoryGb,
   totalArtifactBytes,
 } from "./domains/runtime/memory-estimate";
+import {
+  computedMinVramGb,
+  modelMemoryFigure,
+  recommendedForVram,
+} from "./domains/models/memory-fit";
 
 import { qualifiedVideoInput } from "./domains/runtime/video/gateway-contract";
 
@@ -72,7 +74,6 @@ function model(artifacts: unknown[]) {
     version: "1",
     size: "1B",
     quant: "Q4_K_M",
-    minVramGb: 1,
     storageGb: 1,
     source: "https://huggingface.co/test/model",
     repositoryRevision: "c".repeat(40),
@@ -942,7 +943,6 @@ describe("catalog artifact validation", () => {
   test("pins the experimental Wan Q8 video bundle and bounded launch profile", () => {
     expect(byId("wan2.1-t2v-1.3b-q8_0")).toMatchObject({
       kind: "video",
-      minVramGb: 8,
       repositoryRevision: "5a512b15fc35d1b67a074cfe55a591be9e9ef9b5",
       artifacts: [
         {
@@ -1474,19 +1474,15 @@ describe("derived memory estimates", () => {
   );
 
   test.each(CATALOG.map((model) => [model.modelId, model] as const))(
-    "%s minVramGb equals its derived tier",
+    "%s computed minimum covers its required artifacts",
     (_id, model) => {
-      expect(model.minVramGb).toBe(derivedMinVramGb(model));
+      const minimum = computedMinVramGb(model);
+      expect(Number.isInteger(minimum)).toBe(true);
+      expect(minimum).toBeGreaterThanOrEqual(1);
+      const figure = modelMemoryFigure(model);
+      expect(minimum).toBe(minimumMemoryGb(figure.demandBytes));
+      expect(minimum * 1024 ** 3).toBeGreaterThan(figure.demandBytes);
+      expect(figure.source).not.toBe("observed");
     },
   );
-
-  test("every LLM has a published shape or is a known fallback", () => {
-    const unknown = CATALOG.filter(
-      (model) =>
-        model.kind === "llm" &&
-        !hasPublishedLlmShape(model.modelId) &&
-        !LLM_FALLBACK_SHAPE_MODELS.has(model.modelId),
-    ).map((model) => model.modelId);
-    expect(unknown).toEqual([]);
-  });
 });

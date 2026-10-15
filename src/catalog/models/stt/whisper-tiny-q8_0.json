@@ -7,7 +7,6 @@
   "version": "tiny",
   "size": "tiny",
   "quant": "Q8_0",
-  "minVramGb": 1,
   "storageGb": 0.05,
   "source": "https://huggingface.co/ggerganov/whisper.cpp",
   "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
