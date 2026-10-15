@@ -51,8 +51,8 @@ SOFTWARE.
 
 ## Unicode data provenance
 
-Bun 1.3.14's pinned uucode subtree includes Unicode 16.0.0 UCD and Emoji 16.0
-data, Copyright © 2024 Unicode, Inc. These inputs generate
-`src/string/immutable/grapheme_tables.zig`. The applicable Unicode License v3
+Bun 1.4.2 generates `src/jsc/bindings/stringWidthTables.h` (including its
+uucode-derived grapheme-break classes) from the Unicode 17.0.0 Character
+Database, Copyright © 1991-2025 Unicode, Inc. The applicable Unicode License v3
 text is included in `Unicode-License-v3.txt`; ICU's separate notice remains
 included for ICU.

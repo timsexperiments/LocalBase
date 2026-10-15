@@ -120,8 +120,8 @@ test("notices contain full production package license texts and the pinned Bun n
   expect(notices).toContain("## react@19.3.0");
   expect(notices).toContain("## zod@4.4.3");
   expect(notices).toContain("Permission is hereby granted, free of charge");
-  expect(notices).toContain("## Bun 1.3.14");
-  expect(notices).toContain("5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b");
+  expect(notices).toContain("## Bun 1.4.2");
+  expect(notices).toContain("2e2aa2290fac856d6f451ceacb58f7f5b44dd057");
   expect(notices).toContain("base64-js@1.5.1");
   expect(notices).toContain("pako@1.0.11");
   for (const packageName of [
@@ -144,9 +144,12 @@ test("notices contain full production package license texts and the pinned Bun n
   );
   expect(notices).toContain("by Charles M. Hannum.");
   expect(notices).toContain("UNICODE LICENSE V3");
-  expect(notices).toContain("Copyright © 2024 Unicode, Inc.");
+  expect(notices).toContain("Copyright © 1991-2025 Unicode, Inc.");
+  expect(notices).toContain("No reference to it remains at the 1.4.2 pin");
+  expect(notices).toContain("===== selectors@0.33.0 ");
+  expect(notices).toContain("Written by Gil Tene, Michael Barker,");
   expect(notices).toContain(
-    "Hoehrmann's available decoder license has been recovered",
+    "rust-lang/rust 9f36de775bc636c8e88c31a173c2bcb6995956a0",
   );
   expect(await generateReleaseNotices()).toBe(notices);
 });

@@ -1,4 +1,4 @@
-Source: https://github.com/google/boringssl/blob/0c5fce43b7ed5eb6001487ee48ac65766f5ddcd1/LICENSE
+Source: https://github.com/oven-sh/boringssl/blob/41bf9b59c2ebf277a7aa427e1ecad5cc80dd4d4f/LICENSE
 
 
                                  Apache License

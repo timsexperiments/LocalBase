@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { packageClosure, type Lock } from "./bun-lock-closure";
 import { readmeLicenseSection } from "./package-readme-license";
 
-const bunCommit = "0d9b296af33f2b851fcbf4df3e9ec89751734ba4";
+const bunCommit = "744846f844374847c902b5e7fd59b4342a51ef99";
 const lockUrl = `https://raw.githubusercontent.com/oven-sh/bun/${bunCommit}/src/node-fallbacks/bun.lock`;
 
 const directory = await mkdtemp(join(tmpdir(), "bun-fallback-notices-"));

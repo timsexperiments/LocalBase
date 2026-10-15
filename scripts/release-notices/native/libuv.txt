@@ -1,4 +1,4 @@
-Source: https://github.com/oven-sh/libuv/blob/4dcfac4780d394e0dc2d3fb30335ca01b553eb46/LICENSE
+Source: https://github.com/oven-sh/libuv/blob/8023581113b276e7c1aee3f82da57ca0893faab1/LICENSE
 
 Copyright (c) 2015-present libuv project contributors.
 

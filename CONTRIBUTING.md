@@ -2,7 +2,7 @@
 
 ## Development
 
-Use Bun `1.3.14` (the version in `packageManager` and CI). Install with `bun install`.
+Use Bun `1.4.2` (the version in `packageManager` and CI). Install with `bun install`.
 
 Before opening a pull request, run:
 
