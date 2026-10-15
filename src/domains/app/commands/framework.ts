@@ -113,6 +113,26 @@ function validateOptionSyntax(rawArgs: string[], argsDef: ArgsDef): void {
   }
 }
 
+/**
+ * Every value given for a repeatable string option, in order. citty keeps
+ * only the last one.
+ */
+function repeatedValues(rawArgs: string[], name: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const token = rawArgs[index];
+    if (token === "--") break;
+    if (token === `--${name}`) {
+      const next = rawArgs[index + 1];
+      if (next !== undefined) values.push(next);
+      index += 1;
+    } else if (token.startsWith(`--${name}=`)) {
+      values.push(token.slice(name.length + 3));
+    }
+  }
+  return values;
+}
+
 function normalizeArgs(
   input: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -301,7 +321,14 @@ export function parseCommandInput(
   global: GlobalOptions,
 ): unknown {
   validateOptionSyntax(rawArgs, command.args ?? {});
-  const parsed = parseCittyArgs(rawArgs, command.args ?? {});
+  const parsed: Record<string, unknown> = parseCittyArgs(
+    rawArgs,
+    command.args ?? {},
+  );
+  for (const name of command.repeatable ?? []) {
+    const values = repeatedValues(rawArgs, name);
+    if (values.length) parsed[name] = values;
+  }
   const positionals = Array.isArray(parsed._) ? parsed._ : [];
   validatePositionals(command, positionals);
   const input = command.parse(normalizeArgs(parsed), positionals);

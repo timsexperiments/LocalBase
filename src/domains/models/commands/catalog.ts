@@ -2,8 +2,13 @@ import {
   legacyFeatures,
   listModels,
   withLegacyFeatures,
+  type ModelSpec,
   type ModelSpecWithFeatures,
 } from "../../../catalog";
+import {
+  queryCatalog,
+  type CatalogQuery,
+} from "../../../catalog/catalog-query";
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { CatalogInput } from "../../app/commands/inputs";
@@ -11,25 +16,87 @@ import {
   describeMemoryFigure,
   evaluateModelFit,
   modelMemoryJson,
+  type MemoryFitEvaluation,
   type ModelMemoryJson,
 } from "../memory-fit";
-import { cliMemoryInputs } from "./memory-inputs";
+import { inspectCatalogInstallations } from "../model-metadata";
+import { cliCapabilityReports, cliMemoryInputs } from "./memory-inputs";
 
-export function runCatalog(
+/** The shared catalog query a set of `models catalog` flags describes. */
+export function catalogQueryFromInput(input: CatalogInput): CatalogQuery {
+  return {
+    search: input.search,
+    capabilities: input.capability,
+    fits: input.fits ? ["fits", "tight"] : input.fit,
+    installed: input.installed,
+    licenses: input.license,
+    sort: input.sort,
+    reverse: input.reverse,
+  };
+}
+
+/** Text a catalog search matches besides the model id and name. */
+export function catalogSearchText(model: ModelSpec): string[] {
+  return [
+    model.family,
+    model.provider,
+    model.quant,
+    model.size,
+    model.catch,
+    model.notes,
+  ];
+}
+
+export async function runCatalog(
   input: CatalogInput,
   ctx: AppContext,
   execution: CommandExecution,
-): { data: { models: (ModelSpecWithFeatures & ModelMemoryJson)[] } } {
+): Promise<{ data: { models: (ModelSpecWithFeatures & ModelMemoryJson)[] } }> {
   const models = listModels(input.kind, ctx.config.allowExperimental);
   const memory = cliMemoryInputs(ctx, models);
-  const listed = models.map((model) => {
-    const fit = evaluateModelFit(
-      model,
-      ctx.specs.gpuVramGb,
-      memory.get(model.modelId),
-    );
+  const fits = new Map<string, MemoryFitEvaluation>(
+    models.map((model) => [
+      model.modelId,
+      evaluateModelFit(model, ctx.specs.gpuVramGb, memory.get(model.modelId)),
+    ]),
+  );
+  const query = catalogQueryFromInput(input);
+  // Resolving capabilities and installations reads model files, so only
+  // filters that need them pay for it.
+  const [capabilities, installations] = await Promise.all([
+    query.capabilities?.length ? cliCapabilityReports(ctx, models) : null,
+    query.installed === undefined
+      ? null
+      : inspectCatalogInstallations(ctx.config, models),
+  ]);
+  const selected = queryCatalog(
+    models,
+    (model) => {
+      const fit = fits.get(model.modelId)!;
+      return {
+        id: model.modelId,
+        name: model.displayName ?? model.family,
+        text: catalogSearchText(model),
+        kind: model.kind,
+        capabilities: (
+          capabilities?.get(model.modelId)?.capabilities ?? model.capabilities
+        ).map(({ id }) => id),
+        fit: fit.verdict,
+        installed: installations?.get(model.modelId) ?? false,
+        license: model.commercialStatus,
+        storageGb: model.storageGb,
+        memoryGb: fit.minVramGb,
+        contextTokens: model.contextWindowTokens,
+      };
+    },
+    query,
+  );
+  const listed = selected.map((model) => {
+    const fit = fits.get(model.modelId)!;
     const coding =
-      model.kind === "llm" ? ` | coding=${model.codingScore}/10` : "";
+      model.codingScore === undefined
+        ? ""
+        : ` | coding=${model.codingScore}/10`;
     execution.output.info(
       `${model.kind.padEnd(5)} | ${model.modelId.padEnd(38)} | size=${model.size.padEnd(10)} | min_vram=${String(fit.minVramGb).padStart(3)} GB ${fit.source.padEnd(8)} | fit=${fit.verdict.padEnd(8)} | storage=${model.storageGb.toFixed(2)} GB | status=${model.commercialStatus}${coding}`,
     );
@@ -47,5 +114,7 @@ export function runCatalog(
     execution.output.info(`      catch: ${model.catch}`);
     return { ...withLegacyFeatures(model), ...modelMemoryJson(fit) };
   });
+  if (!listed.length && models.length)
+    execution.output.info("No models match these filters.");
   return { data: { models: listed } };
 }

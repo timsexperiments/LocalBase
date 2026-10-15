@@ -1093,11 +1093,72 @@ dialog.management-page {
 }
 .catalog-filters {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+.catalog-filters > select,
+.catalog-sort > select {
+  width: 100%;
+  margin: 0;
 }
 .catalog-filters .catalog-search {
   grid-column: 1 / -1;
+}
+.catalog-sort {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+.catalog-sort > select {
+  flex: 1;
+}
+.catalog-reverse {
+  flex: none;
+  padding: 0;
+  border-color: var(--border);
+  background: var(--surface);
+  font-size: 18px;
+}
+.catalog-reverse[aria-pressed="true"] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+/* Chip rings sit inside the row so the drawer's edge never clips them. */
+.catalog-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.catalog-chip {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-color: var(--accent-border);
+  border-radius: 16px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+}
+.catalog-chip:focus-visible {
+  outline-offset: -2px;
+}
+.catalog-empty {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+}
+.catalog-empty p {
+  margin: 0;
+}
+.catalog-empty button {
+  border-color: var(--border);
+  background: var(--surface);
 }
 .catalog-count {
   font-size: 12px;
@@ -1148,6 +1209,37 @@ dialog.management-page {
 .model-badge.installed {
   background: var(--accent-soft);
   color: var(--accent);
+}
+.model-badge.fit-fits {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.model-badge.fit-tight {
+  border: 1px solid var(--border);
+  background: none;
+}
+.model-badge.fit-wont-fit {
+  background: var(--error-surface);
+  color: var(--error);
+}
+.model-summary {
+  font-size: 13px;
+  margin: 0 0 10px;
+}
+.capability-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+.model-badge.capability {
+  white-space: normal;
+}
+.model-badge.capability.detected,
+.model-badge.capability.runtime {
+  border: 1px solid var(--accent-border);
 }
 .model-storage {
   display: grid;
@@ -1388,10 +1480,7 @@ dialog.management-page {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .catalog-filters {
-    grid-template-columns: minmax(0, 1fr) 170px 170px;
-  }
-  .catalog-filters .catalog-search {
-    grid-column: auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .admin-stack {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1403,6 +1492,14 @@ dialog.management-page {
   .role-grid,
   .role-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1100px) {
+  .catalog-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .catalog-filters .catalog-search {
+    grid-column: span 2;
   }
 }
 .upload {

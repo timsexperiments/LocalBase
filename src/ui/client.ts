@@ -87,6 +87,10 @@ const modelSchema = z.object({
     displayName: z.string().optional(),
     kind: z.enum(["llm", "image", "tts", "stt", "video"]),
     qualificationState: z.enum(["qualified", "experimental"]),
+    /** Commercial-use classification; absent on older servers. */
+    commercialStatus: z.enum(["open", "conditional", "prohibited"]).optional(),
+    /** One-line description; absent on older servers. */
+    summary: z.string().optional(),
     quantization: z.string(),
     memory: z.object({
       minimumVramEstimateGb: z.number().nonnegative(),

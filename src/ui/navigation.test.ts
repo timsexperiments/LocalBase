@@ -154,6 +154,23 @@ describe("playground navigation boundary", () => {
     );
   });
 
+  test("keeps catalog filters only while the catalog panel is open", () => {
+    const href =
+      "https://local.test/app?panel=catalog&q=coder&capability=tool-calling&capability=reasoning&sort=size&enabled=true&token=secret";
+    const open = new URL(
+      navigationUrl(href, conversationNavigation(saved, "catalog")),
+      "https://local.test",
+    ).searchParams;
+    expect(open.get("q")).toBe("coder");
+    expect(open.getAll("capability")).toEqual(["tool-calling", "reasoning"]);
+    expect(open.get("sort")).toBe("size");
+    expect(open.get("enabled")).toBe("true");
+    expect(open.has("token")).toBe(false);
+    const closed = navigationUrl(href, conversationNavigation(saved, null));
+    expect(closed).not.toContain("coder");
+    expect(closed).not.toContain("capability");
+  });
+
   test("restores requested model on Back even after the local conversation changed models", () => {
     const before = conversationNavigation(saved, null);
     const changed = { ...saved, model: "image:other" };

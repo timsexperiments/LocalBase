@@ -120,6 +120,50 @@ test("rejects invalid CLI structure and contradictory interaction options", asyn
     kind: "error",
     message: expect.stringContaining("kind"),
   });
+  await expect(
+    resolveCli([
+      "models",
+      "catalog",
+      "--capability",
+      "tool-calling",
+      "--capability=reasoning,long-context",
+      "--fit",
+      "tight",
+      "--no-installed",
+      "--license=open",
+      "--search",
+      "qwen coder",
+      "--sort",
+      "memory",
+      "--reverse",
+    ]),
+  ).resolves.toMatchObject({
+    kind: "command",
+    input: {
+      capability: ["tool-calling", "reasoning", "long-context"],
+      fit: ["tight"],
+      installed: false,
+      license: ["open"],
+      search: "qwen coder",
+      sort: "memory",
+      reverse: true,
+    },
+  });
+  await expect(
+    resolveCli(["models", "catalog", "--fits", "--fit", "tight"]),
+  ).resolves.toMatchObject({
+    kind: "error",
+    message: "fit: Use either --fits or --fit, not both",
+  });
+  await expect(
+    resolveCli(["models", "catalog", "--sort", "rank"]),
+  ).resolves.toMatchObject({ kind: "error" });
+  await expect(
+    resolveCli(["models", "catalog", "--capability", "flying"]),
+  ).resolves.toMatchObject({
+    kind: "error",
+    message: expect.stringContaining("capability"),
+  });
   await expect(resolveCli(["catalog"])).resolves.toMatchObject({
     kind: "error",
     message: "Unknown command: catalog",

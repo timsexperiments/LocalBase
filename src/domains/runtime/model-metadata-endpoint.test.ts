@@ -294,6 +294,44 @@ describe("authenticated model metadata endpoints", () => {
     expect(await fixture.readImageRuntimeLaunches()).toEqual([]);
   });
 
+  test("filters and sorts the list with optional catalog query parameters", async () => {
+    const fixture = activeGateway();
+    const all = modelMetadataListSchema.parse(
+      await (
+        await fetch(`${fixture.baseUrl}/_localbase/models`, {
+          headers: authHeaders(),
+        })
+      ).json(),
+    );
+    const response = await fetch(
+      `${fixture.baseUrl}/_localbase/models?kind=image&capability=text-to-image&sort=size&reverse=true&fit=bogus`,
+      { headers: authHeaders() },
+    );
+    expect(response.status).toBe(200);
+    const body = modelMetadataListSchema.parse(await response.json());
+    expect(body.host).toEqual(all.host);
+    expect(body.data.length).toBeGreaterThan(0);
+    expect(body.data.length).toBeLessThan(all.data.length);
+    expect(body.data.every(({ catalog }) => catalog.kind === "image")).toBe(
+      true,
+    );
+    const sizes = body.data.map(
+      ({ catalog }) => catalog.memory.storageEstimateGb,
+    );
+    expect(sizes).toEqual([...sizes].sort((a, b) => b - a));
+
+    const installed = modelMetadataListSchema.parse(
+      await (
+        await fetch(`${fixture.baseUrl}/_localbase/models?installed=true`, {
+          headers: authHeaders(),
+        })
+      ).json(),
+    );
+    expect(installed.data.map(({ id }) => id)).toEqual(
+      all.data.filter(({ device }) => device.installed).map(({ id }) => id),
+    );
+  });
+
   test("returns one catalog model and rejects unknown IDs", async () => {
     const fixture = activeGateway();
     const detail = await fetch(
