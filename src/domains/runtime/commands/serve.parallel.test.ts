@@ -174,6 +174,8 @@ function serveRunnerSource(): string {
 import { CATALOG, validateCatalog } from ${JSON.stringify(catalogPath)};
 import { createAppContext } from ${JSON.stringify(contextPath)};
 import { runCli } from ${JSON.stringify(runnerPath)};
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { BACKEND_GUARDIAN_COMMAND, runBackendGuardian } from ${JSON.stringify(guardianPath)};
 
 const cliArgs = Bun.argv.slice(2);
@@ -187,6 +189,14 @@ const modelIndex = CATALOG.findIndex(({ modelId }) => modelId === testModel.mode
 if (modelIndex === -1) throw new Error("Test model is not in the production catalog: " + testModel.modelId);
 (CATALOG as any)[modelIndex] = testModel;
 const args = JSON.parse(process.env.LOCALBASE_TEST_ARGS!);
+// Commands reload the catalog tiers from the root, so the replacement must
+// also live in the user catalog to survive that reload.
+const testRoot = args[args.indexOf("--root") + 1];
+mkdirSync(join(testRoot, "catalog.d"), { recursive: true });
+writeFileSync(
+  join(testRoot, "catalog.d", testModel.modelId + ".json"),
+  process.env.LOCALBASE_TEST_MODEL!,
+);
 process.exit(await runCli(args, createAppContext));
 `;
 }

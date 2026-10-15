@@ -1,6 +1,9 @@
 import { join } from "node:path";
 import { z } from "zod";
-import { modelCapabilityInputSchema } from "./catalog/capabilities";
+import {
+  modelCapabilityInputSchema,
+  unsupportedCapabilitySchema,
+} from "./catalog/capabilities";
 import { CATALOG_DATA } from "./catalog/models";
 import { safeFilenameSchema } from "./utils/checksum";
 
@@ -9,6 +12,7 @@ export {
   hasCapability,
   type Capability,
   type ModelCapability,
+  type UnsupportedCapability,
 } from "./catalog/capabilities";
 
 export const modelKindSchema = z.enum(["llm", "stt", "tts", "image", "video"]);
@@ -343,6 +347,12 @@ export const modelSpecObjectSchema = z
     contextWindowTokens: z.number().int().positive().nullable().default(null),
     /** Declared capabilities, in catalog order. */
     capabilities: z.array(modelCapabilityInputSchema),
+    /**
+     * Capabilities checked and found missing. They stay unavailable even
+     * when template detection or engine flags claim them; only a verified
+     * runtime round-trip overrides one.
+     */
+    unsupportedCapabilities: z.array(unsupportedCapabilitySchema).optional(),
     /** Container the model's runtime writes; WAV speech or AVI video. */
     outputFormat: z.enum(["wav", "avi"]).optional(),
     /** Runtime support for this model is still experimental. */
@@ -362,6 +372,18 @@ export function refineModelSpec(
 ): void {
   const filenames = new Set<string>();
   let primaryCount = 0;
+
+  for (const [index, entry] of (
+    model.unsupportedCapabilities ?? []
+  ).entries()) {
+    if (model.capabilities.some(({ id }) => id === entry.id)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `"${entry.id}" cannot be both declared and verified unsupported`,
+        path: ["unsupportedCapabilities", index, "id"],
+      });
+    }
+  }
 
   for (const [index, artifact] of model.artifacts.entries()) {
     const repositoryUrl = artifact.source?.repositoryUrl ?? model.source;
@@ -655,7 +677,17 @@ export function validateCatalog(catalog: unknown): ModelSpec[] {
   return catalogSchema.parse(catalog);
 }
 
-export const CATALOG: readonly ModelSpec[] = validateCatalog(CATALOG_DATA);
+/** The catalog shipped in this binary, before any user or remote layer. */
+export const BUILT_IN_CATALOG: readonly ModelSpec[] = Object.freeze(
+  validateCatalog(CATALOG_DATA),
+);
+
+/**
+ * The effective catalog: built-in entries with the remote and user layers
+ * applied (see `src/catalog/sources.ts`). It is replaced in place when the
+ * layers load, so every lookup sees the same entries. Treat it as read-only.
+ */
+export const CATALOG: ModelSpec[] = [...BUILT_IN_CATALOG];
 
 /**
  * The pre-capability `features` list: capability ids followed by the tags

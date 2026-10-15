@@ -191,6 +191,28 @@ export const installInputSchema = z
   });
 export type InstallInput = z.infer<typeof installInputSchema>;
 
+export const addInputSchema = z.object({
+  reference: z.string().min(1),
+  install: z.boolean().default(false),
+  id: z
+    .string()
+    .regex(
+      /^[a-z0-9][a-z0-9._-]*$/,
+      "use lowercase letters, digits, '.', '_' and '-'",
+    )
+    .optional(),
+});
+export type AddInput = z.infer<typeof addInputSchema>;
+
+export const searchInputSchema = z.object({
+  query: z.string().default(""),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type SearchInput = z.infer<typeof searchInputSchema>;
+
+export const removeEntryInputSchema = z.object({ modelId: z.string().min(1) });
+export type RemoveEntryInput = z.infer<typeof removeEntryInputSchema>;
+
 export const serveInputSchema = z.object({
   installMissing: z.boolean().default(false),
   host: hostSchema.optional(),

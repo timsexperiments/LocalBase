@@ -26,6 +26,12 @@ export interface CapabilityEvidence {
   readonly capabilities: CapabilityOpinions;
   /** Input modalities this source vouches for; absent when it cannot tell. */
   readonly inputModalities?: readonly ModelModality[];
+  /**
+   * Opinions from a real round-trip that exercised the capability (for
+   * example a tool-call probe). Template flags never populate this; only
+   * these opinions override a verified-unsupported catalog entry.
+   */
+  readonly verified?: CapabilityOpinions;
 }
 
 export interface DetectedCapabilities extends CapabilityEvidence {
@@ -432,8 +438,13 @@ export function resolveModelCapabilities(
 ): ResolvedCapabilities {
   const detected = sources.detected?.capabilities ?? {};
   const runtime = sources.runtime?.capabilities ?? {};
+  const verified = sources.runtime?.verified ?? {};
+  const unsupported = new Map(
+    (model.unsupportedCapabilities ?? []).map((entry) => [entry.id, entry]),
+  );
   const ids = new Set<Capability>([
     ...model.capabilities.map(({ id }) => id),
+    ...unsupported.keys(),
     ...(Object.keys(detected) as Capability[]),
     ...(Object.keys(runtime) as Capability[]),
   ]);
@@ -443,22 +454,48 @@ export function resolveModelCapabilities(
     const declared = hasCapability(model, id);
     const detectedValue = detected[id];
     const runtimeValue = runtime[id];
+    const verifiedValue = verified[id];
+    const unsupportedEntry = unsupported.get(id);
+    if (unsupportedEntry) {
+      // Verified unsupported: template detection and engine flags cannot
+      // turn it back on; only a verified round-trip can.
+      const effective = verifiedValue === true;
+      if (effective) capabilities.push({ id, source: "runtime" });
+      if (effective || detectedValue || runtimeValue) {
+        mismatches.push({
+          id,
+          declared: false,
+          ...(detectedValue !== undefined ? { detected: detectedValue } : {}),
+          ...(runtimeValue !== undefined ? { runtime: runtimeValue } : {}),
+          ...(verifiedValue !== undefined ? { verified: verifiedValue } : {}),
+          effective,
+          unsupportedReason: unsupportedEntry.reason,
+        });
+      }
+      continue;
+    }
     const [effective, source]: [boolean, CapabilitySource] =
-      runtimeValue !== undefined
-        ? [runtimeValue, "runtime"]
-        : detectedValue !== undefined
-          ? [detectedValue, "detected"]
-          : [declared, "declared"];
+      verifiedValue !== undefined
+        ? [verifiedValue, "runtime"]
+        : runtimeValue !== undefined
+          ? [runtimeValue, "runtime"]
+          : detectedValue !== undefined
+            ? [detectedValue, "detected"]
+            : [declared, "declared"];
     if (effective) capabilities.push({ id, source });
-    const opinions = [declared, detectedValue, runtimeValue].filter(
-      (value): value is boolean => value !== undefined,
-    );
+    const opinions = [
+      declared,
+      detectedValue,
+      runtimeValue,
+      verifiedValue,
+    ].filter((value): value is boolean => value !== undefined);
     if (opinions.some((value) => value !== opinions[0])) {
       mismatches.push({
         id,
         declared,
         ...(detectedValue !== undefined ? { detected: detectedValue } : {}),
         ...(runtimeValue !== undefined ? { runtime: runtimeValue } : {}),
+        ...(verifiedValue !== undefined ? { verified: verifiedValue } : {}),
         effective,
       });
     }

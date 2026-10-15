@@ -1,3 +1,4 @@
+import { usesReferenceMeasurements } from "../../catalog/sources";
 import { isIP } from "node:net";
 import { join } from "node:path";
 import {
@@ -427,6 +428,8 @@ function llmMemoryDemand(input: {
     shape,
   });
   if (input.model?.kind !== "llm") return estimate.demand;
+  // Reference measurements describe the qualified files and launch shape.
+  if (!usesReferenceMeasurements(input.model)) return estimate.demand;
   // A measurement was taken with the catalog weights; a larger local file
   // still adds its extra bytes.
   const measured = measuredLlmDemand({

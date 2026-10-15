@@ -5,6 +5,8 @@ import {
   describeCapabilityMismatch,
 } from "../catalog/capabilities";
 import {
+  catalogTierLabels,
+  catalogTrustLabels,
   describeFit,
   describeLaunchShape,
   fitLabels,
@@ -126,6 +128,15 @@ export function ModelDetails({
             {catalog.qualificationState === "experimental" && (
               <li className="model-badge">Experimental</li>
             )}
+            {catalog.trust && catalog.trust !== "qualified" && (
+              <li className="model-badge">
+                {catalog.trust === "modified"
+                  ? "Modified"
+                  : catalog.trust === "user"
+                    ? "Added by you"
+                    : "Community"}
+              </li>
+            )}
             <li
               className={`model-badge ${model.device.installed ? "installed" : ""}`}
             >
@@ -205,6 +216,17 @@ export function ModelDetails({
               <dt>Quantization</dt>
               <dd>{catalog.quantization}</dd>
             </div>
+            {catalog.trust && (
+              <div>
+                <dt>Catalog</dt>
+                <dd>
+                  {catalogTrustLabels[catalog.trust]}
+                  {catalog.catalogTier
+                    ? ` · ${catalogTierLabels[catalog.catalogTier]}`
+                    : ""}
+                </dd>
+              </div>
+            )}
           </dl>
         </section>
 
@@ -223,6 +245,19 @@ export function ModelDetails({
             </ul>
           ) : (
             <p className="muted">No capabilities listed.</p>
+          )}
+          {(catalog.unsupportedCapabilities ?? []).length > 0 && (
+            <ul
+              className="model-details-list"
+              aria-label="Verified unsupported"
+            >
+              {(catalog.unsupportedCapabilities ?? []).map(({ id, reason }) => (
+                <li key={id}>
+                  <span>{capabilityLabel(id)}</span>
+                  <span className="muted">Verified unsupported: {reason}</span>
+                </li>
+              ))}
+            </ul>
           )}
           {mismatches.map((mismatch) => (
             <p className="model-details-note" key={mismatch.id}>
