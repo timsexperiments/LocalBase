@@ -98,6 +98,7 @@ function llm(
   metalMib: number,
   hostMib: number,
   peakRssBytes: number,
+  date: string = MEASUREMENT_DATE,
 ): MemoryMeasurement {
   return {
     kind: "llm",
@@ -107,7 +108,7 @@ function llm(
     backendAcceleratorBytes: mib(metalMib),
     hostBufferBytes: mib(hostMib),
     peakRssBytes,
-    date: MEASUREMENT_DATE,
+    date,
     hardware: MEASUREMENT_HARDWARE,
     method: LLM_METHOD,
   };
@@ -118,7 +119,15 @@ export const MEMORY_MEASUREMENTS: readonly MemoryMeasurement[] = Object.freeze([
   llm("qwen3.5-2b-q4_k_m", "Q4_K_M", 1259 + 70 + 493, 414, 1_593_032_704),
   llm("qwen3.5-4b-q4_k_m", "Q4_K_M", 2740 + 186 + 495, 515, 3_320_250_368),
   llm("qwen3.5-9b-q4_k_m", "Q4_K_M", 5626 + 186 + 501, 569, 6_390_480_896),
-  llm("qwen3.5-27b-q4_k_m", "Q4_K_M", 16710 + 421 + 513, 710, 18_096_013_312),
+  // Re-measured 2026-10-14: buffers unchanged, peak RSS 5% above the first pass.
+  llm(
+    "qwen3.5-27b-q4_k_m",
+    "Q4_K_M",
+    16710 + 421 + 513,
+    710,
+    19_027_968_000,
+    IMAGE_VIDEO_MEASUREMENT_DATE,
+  ),
   llm(
     "ministral-3-14b-instruct-q4_k_m",
     "Q4_K_M",
