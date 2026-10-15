@@ -76,7 +76,7 @@ function release(
 ): ManagedRuntimeRelease {
   return {
     name: "kokoro-tts",
-    tag: "kokoro-v0.0.1",
+    tag: "kokoro-v0.0.2",
     assetName: "kokoro-tts-macos-arm64.tar.gz",
     url,
     expectedSizeBytes: archive.length,
@@ -95,7 +95,7 @@ test("the repository pins the published Kokoro packages", () => {
     const pinned = kokoroRuntimeRelease(target);
     expect(pinned.pendingPublication).toBeUndefined();
     expect(pinned.sha256).not.toBe("0".repeat(64));
-    expect(pinned.tag).toBe("kokoro-v0.0.1");
+    expect(pinned.tag).toBe("kokoro-v0.0.2");
   }
   expect(() => kokoroRuntimeRelease({ os: "darwin", cpu: "x64" })).toThrow(
     "no managed runtime package",
