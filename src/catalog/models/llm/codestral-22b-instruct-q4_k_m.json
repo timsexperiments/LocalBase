@@ -1,0 +1,30 @@
+{
+  "modelId": "codestral-22b-instruct-q4_k_m",
+  "displayName": "Codestral 22B",
+  "kind": "llm",
+  "provider": "Mistral",
+  "family": "Codestral",
+  "version": "22B-v0.1",
+  "size": "22B",
+  "quant": "Q4_K_M",
+  "codingScore": 9,
+  "minVramGb": 16,
+  "storageGb": 14,
+  "source": "https://huggingface.co/bartowski/Codestral-22B-v0.1-GGUF",
+  "repositoryRevision": "0e6abe14d6aeaf2c99d5dc9973205e8e38692d90",
+  "artifacts": [
+    {
+      "sourcePath": "Codestral-22B-v0.1-Q4_K_M.gguf",
+      "filename": "Codestral-22B-v0.1-Q4_K_M.gguf",
+      "expectedSizeBytes": 13341237600,
+      "sha256": "003e48ed892850b80994fcddca2bd6b833b092a4ef2db2853c33a3144245e06c",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "capabilities": ["code-generation", "code-editing"],
+  "commercialStatus": "conditional",
+  "catch": "Mistral commercial terms apply for non-research use.",
+  "notes": "Mistral's dedicated coding model. Strong FIM capability."
+}

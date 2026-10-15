@@ -1,0 +1,31 @@
+{
+  "modelId": "hunyuanvideo-1.5-t2v-480p-q4_k_m",
+  "displayName": "HunyuanVideo 1.5 T2V 480p",
+  "kind": "video",
+  "provider": "Tencent/jayn7",
+  "family": "HunyuanVideo",
+  "version": "1.5",
+  "size": "8.3B",
+  "quant": "Q4_K_M",
+  "minVramGb": 32,
+  "storageGb": 5.09,
+  "source": "https://huggingface.co/jayn7/HunyuanVideo-1.5_T2V_480p-GGUF",
+  "repositoryRevision": "6aac325460d2f2cfe49ad8fb71f5ed2e4f1c5e24",
+  "artifacts": [
+    {
+      "sourcePath": "480p/hunyuanvideo1.5_480p_t2v-Q4_K_M.gguf",
+      "filename": "hunyuanvideo1.5_480p_t2v-Q4_K_M.gguf",
+      "expectedSizeBytes": 5090407648,
+      "sha256": "3b6c3a2703b07e14538993cadca08a5364822f93a303665204c055ffe254aea8",
+      "role": "primary"
+    }
+  ],
+  "videoCatalogOnly": true,
+  "inputModalities": ["text"],
+  "outputModalities": ["video"],
+  "capabilities": [],
+  "diffusionWeightsOnly": true,
+  "commercialStatus": "conditional",
+  "catch": "Catalog only; LocalBase inference is unavailable. Tencent Hunyuan Community License; territory, scale, and acceptable-use restrictions apply.",
+  "notes": "480p text-to-video diffusion weights. Requires the HunyuanVideo 1.5 VAE and text/vision conditioning components, runtime integration, and native qualification; these companion assets are not included. Downloads contain diffusion weights only, not a complete inference bundle. Memory is an unmeasured planning estimate; storage covers only the listed artifacts."
+}

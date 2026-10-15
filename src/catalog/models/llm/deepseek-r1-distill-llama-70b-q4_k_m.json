@@ -1,0 +1,30 @@
+{
+  "modelId": "deepseek-r1-distill-llama-70b-q4_k_m",
+  "displayName": "DeepSeek R1 Distill Llama 70B",
+  "kind": "llm",
+  "provider": "DeepSeek",
+  "family": "DeepSeek-R1-Distill",
+  "version": "Llama-70B",
+  "size": "70B",
+  "quant": "Q4_K_M",
+  "codingScore": 9.5,
+  "minVramGb": 48,
+  "storageGb": 42,
+  "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
+  "repositoryRevision": "1842c5f7280f933ead58adf8afd078672c9f6cd0",
+  "artifacts": [
+    {
+      "sourcePath": "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+      "filename": "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+      "expectedSizeBytes": 42520395936,
+      "sha256": "181a82a1d6d2fa24fe4db83a68eee030384986bdbdd4773ba76424e3a6eb9fd8",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "capabilities": ["reasoning", "tool-calling", "code-generation"],
+  "commercialStatus": "open",
+  "catch": "MIT License. No restrictions.",
+  "notes": "DeepSeek-R1 reasoning model distilled on Llama-3-70B. High reasoning quality."
+}

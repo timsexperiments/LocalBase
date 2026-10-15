@@ -1,0 +1,31 @@
+{
+  "modelId": "wan2.2-ti2v-5b-q6_k",
+  "displayName": "Wan2.2 TI2V 5B",
+  "kind": "video",
+  "provider": "Wan/QuantStack",
+  "family": "Wan2.2-TI2V",
+  "version": "2.2",
+  "size": "5B",
+  "quant": "Q6_K",
+  "minVramGb": 32,
+  "storageGb": 4.21,
+  "source": "https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF",
+  "repositoryRevision": "57437632ddd08bdcbd1508c866aa22e126ed51d2",
+  "artifacts": [
+    {
+      "sourcePath": "Wan2.2-TI2V-5B-Q6_K.gguf",
+      "filename": "Wan2.2-TI2V-5B-Q6_K.gguf",
+      "expectedSizeBytes": 4211683680,
+      "sha256": "355f6bee35c4c6cbd0f275112619fe8ac6f7b9b067b885723667b3bde29497c3",
+      "role": "primary"
+    }
+  ],
+  "videoCatalogOnly": true,
+  "inputModalities": ["text"],
+  "outputModalities": ["video"],
+  "capabilities": [],
+  "diffusionWeightsOnly": true,
+  "commercialStatus": "open",
+  "catch": "Catalog only; LocalBase inference is unavailable. Apache-2.0.",
+  "notes": "Original non-distilled TI2V diffusion weights. Upstream supports text-to-video and image-to-video. Requires a Wan2.2 VAE, UMT5 encoder, generation profile, and native qualification before LocalBase inference. Downloads contain diffusion weights only, not a complete inference bundle. Memory is an unmeasured planning estimate; storage covers only the listed artifacts."
+}

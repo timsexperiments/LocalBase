@@ -1,0 +1,32 @@
+{
+  "modelId": "sdxl-turbo",
+  "displayName": "SDXL Turbo",
+  "kind": "image",
+  "provider": "StabilityAI",
+  "family": "Stable-Diffusion-XL",
+  "version": "Turbo-1.0",
+  "size": "6.9GB",
+  "quant": "F16",
+  "minVramGb": 16,
+  "storageGb": 6.94,
+  "source": "https://huggingface.co/stabilityai/sdxl-turbo",
+  "repositoryRevision": "71153311d3dbb46851df1931d3ca6e939de83304",
+  "artifacts": [
+    {
+      "sourcePath": "sd_xl_turbo_1.0_fp16.safetensors",
+      "filename": "sd_xl_turbo_1.0_fp16.safetensors",
+      "expectedSizeBytes": 6938081905,
+      "sha256": "e869ac7d6942cb327d68d5ed83a40447aadf20e0c3358d98b2cc9e270db0da26",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["image"],
+  "imageLaunchOptions": {
+    "diffusionFlashAttention": true
+  },
+  "capabilities": ["text-to-image", "image-to-image"],
+  "commercialStatus": "open",
+  "catch": "Stability AI Community License.",
+  "notes": "High-speed 1-step real-time generation model. Excellent for fast interactive feedback cycles."
+}

@@ -1,0 +1,32 @@
+{
+  "modelId": "dreamshaper-v8",
+  "displayName": "DreamShaper 8",
+  "kind": "image",
+  "provider": "Lykon",
+  "family": "Stable-Diffusion",
+  "version": "8.0",
+  "size": "2.0GB",
+  "quant": "F16",
+  "minVramGb": 6,
+  "storageGb": 1.98,
+  "source": "https://huggingface.co/Lykon/DreamShaper",
+  "repositoryRevision": "228d79cb20811466f5c5710aa91f05dabd0b8a14",
+  "artifacts": [
+    {
+      "sourcePath": "DreamShaper_8_pruned.safetensors",
+      "filename": "DreamShaper_8_pruned.safetensors",
+      "expectedSizeBytes": 2132625894,
+      "sha256": "879db523c30d3b9017143d56705015e15a2cb5628762c11d086fed9538abd7fd",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["image"],
+  "imageLaunchOptions": {
+    "diffusionFlashAttention": true
+  },
+  "capabilities": ["text-to-image", "image-to-image"],
+  "commercialStatus": "open",
+  "catch": "CreativeML Open RAIL-M license.",
+  "notes": "Highly optimized community model for digital art, anime, and portraiture. Extremely fast and lightweight."
+}

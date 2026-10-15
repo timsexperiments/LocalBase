@@ -183,7 +183,7 @@ function installFixtureModel(
     inputModalities: ["text"],
     outputModalities: ["text"],
     contextWindowTokens: null,
-    features: ["test"],
+    capabilities: [{ id: "text-generation", source: "declared" }],
     commercialStatus: "open",
     catch: "Test only.",
     notes: "Test only.",

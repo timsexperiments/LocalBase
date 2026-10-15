@@ -479,7 +479,7 @@ test(
         ],
         inputModalities: ["text"],
         outputModalities: ["text"],
-        features: ["test"],
+        capabilities: ["text-generation"],
         commercialStatus: "open",
         catch: "Test only.",
         notes: "Test only.",

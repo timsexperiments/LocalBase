@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { deltaReasoning, thinkSplitter } from "./reasoning";
+import type { Capability } from "../catalog/capabilities";
 import {
   permissionsSchema,
   type Permission,
@@ -107,13 +108,18 @@ const modelSchema = z.object({
 });
 export type Model = z.infer<typeof modelSchema>;
 
+/** Whether the server's catalog declares this capability for the model. */
+export function modelHasCapability(
+  model: Pick<Model, "catalog">,
+  capability: Capability,
+): boolean {
+  return model.catalog.features.includes(capability);
+}
+
 /** Input and output modalities, counting image editing as an image input. */
 export function modelModalities(model: Pick<Model, "catalog">) {
   const input = [...model.catalog.inputModalities];
-  if (
-    model.catalog.features.includes("image-to-image") &&
-    !input.includes("image")
-  )
+  if (modelHasCapability(model, "image-to-image") && !input.includes("image"))
     input.push("image");
   return `${input.join(", ")} → ${model.catalog.outputModalities.join(", ")}`;
 }

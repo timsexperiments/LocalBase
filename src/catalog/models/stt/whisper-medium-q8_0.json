@@ -1,0 +1,29 @@
+{
+  "modelId": "whisper-medium-q8_0",
+  "displayName": "Whisper Medium",
+  "kind": "stt",
+  "provider": "OpenAI/ggml",
+  "family": "Whisper",
+  "version": "medium",
+  "size": "medium",
+  "quant": "Q8_0",
+  "minVramGb": 2,
+  "storageGb": 0.83,
+  "source": "https://huggingface.co/ggerganov/whisper.cpp",
+  "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+  "artifacts": [
+    {
+      "sourcePath": "ggml-medium-q8_0.bin",
+      "filename": "ggml-medium-q8_0.bin",
+      "expectedSizeBytes": 823369779,
+      "sha256": "42a1ffcbe4167d224232443396968db4d02d4e8e87e213d3ee2e03095dea6502",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["audio"],
+  "outputModalities": ["text"],
+  "capabilities": ["speech-to-text", "multilingual"],
+  "commercialStatus": "open",
+  "catch": "MIT License.",
+  "notes": "Multilingual transcription. Vocabulary and mel filters are bundled; no Core ML encoder required."
+}

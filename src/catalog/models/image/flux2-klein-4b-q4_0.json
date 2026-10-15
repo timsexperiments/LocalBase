@@ -1,0 +1,67 @@
+{
+  "modelId": "flux2-klein-4b-q4_0",
+  "displayName": "FLUX.2 Klein 4B",
+  "kind": "image",
+  "provider": "Black Forest Labs",
+  "family": "FLUX.2-klein",
+  "version": "2",
+  "size": "4B",
+  "quant": "Q4_0",
+  "minVramGb": 16,
+  "storageGb": 5.3,
+  "source": "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
+  "repositoryRevision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
+  "artifacts": [
+    {
+      "sourcePath": "flux-2-klein-4b-Q4_0.gguf",
+      "filename": "flux-2-klein-4b-Q4_0.gguf",
+      "expectedSizeBytes": 2460378560,
+      "sha256": "d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4",
+      "role": "primary"
+    },
+    {
+      "sourcePath": "split_files/vae/flux2-vae.safetensors",
+      "filename": "flux2-vae.safetensors",
+      "expectedSizeBytes": 336211292,
+      "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
+      "role": "supplementary",
+      "source": {
+        "repositoryUrl": "https://huggingface.co/Comfy-Org/flux2-klein-4B",
+        "revision": "5f526678002e43af5551dadb73ce2e8c91b43afe"
+      }
+    },
+    {
+      "sourcePath": "Qwen3-4B-Q4_K_M.gguf",
+      "filename": "Qwen3-4B-Q4_K_M.gguf",
+      "expectedSizeBytes": 2497281312,
+      "sha256": "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a",
+      "role": "supplementary",
+      "source": {
+        "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-GGUF",
+        "revision": "22c9fc8a8c7700b76a1789366280a6a5a1ad1120"
+      }
+    }
+  ],
+  "imageRuntime": {
+    "kind": "diffusion-qwen3",
+    "artifacts": {
+      "diffusionModel": "flux-2-klein-4b-Q4_0.gguf",
+      "vae": "flux2-vae.safetensors",
+      "textEncoder": "Qwen3-4B-Q4_K_M.gguf"
+    },
+    "generation": {
+      "sampler": "euler",
+      "steps": 4,
+      "cfgScale": 1
+    }
+  },
+  "inputModalities": ["text"],
+  "outputModalities": ["image"],
+  "imageLaunchOptions": {
+    "diffusionFlashAttention": true
+  },
+  "capabilities": ["text-to-image"],
+  "commercialStatus": "open",
+  "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
+  "notes": "Distilled four-step profile with separate FLUX2 VAE and Qwen3 encoder. Peak memory was measured on Apple Silicon (2026-10-13); broader native inference qualification is pending."
+}

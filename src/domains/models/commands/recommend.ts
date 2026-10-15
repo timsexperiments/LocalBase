@@ -3,8 +3,10 @@ import {
   recommendedSttForVram,
   recommendedTtsForVram,
   recommendedImageForVram,
+  legacyFeatures,
+  withLegacyFeatures,
 } from "../../../catalog";
-import type { ModelSpec } from "../../../catalog";
+import type { ModelSpec, ModelSpecWithFeatures } from "../../../catalog";
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { RecommendInput } from "../../app/commands/inputs";
@@ -17,7 +19,7 @@ export function runRecommend(
   data: {
     kind: "llm" | "stt" | "tts" | "image" | "video";
     vramGb: number;
-    models: ModelSpec[];
+    models: ModelSpecWithFeatures[];
   };
 } {
   const kind = input.kind ?? "llm";
@@ -39,8 +41,14 @@ export function runRecommend(
   );
   for (const model of picks.slice(0, 6)) {
     execution.output.info(
-      `- ${model.modelId} (${model.storageGb.toFixed(2)} GB, features=${model.features.join("/")})`,
+      `- ${model.modelId} (${model.storageGb.toFixed(2)} GB, features=${legacyFeatures(model).join("/")})`,
     );
   }
-  return { data: { kind, vramGb: vram, models: picks.slice(0, 6) } };
+  return {
+    data: {
+      kind,
+      vramGb: vram,
+      models: picks.slice(0, 6).map(withLegacyFeatures),
+    },
+  };
 }

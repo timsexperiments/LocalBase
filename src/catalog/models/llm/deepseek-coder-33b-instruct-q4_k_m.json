@@ -1,0 +1,30 @@
+{
+  "modelId": "deepseek-coder-33b-instruct-q4_k_m",
+  "displayName": "DeepSeek Coder 33B Instruct",
+  "kind": "llm",
+  "provider": "DeepSeek",
+  "family": "DeepSeek-Coder",
+  "version": "1",
+  "size": "33B",
+  "quant": "Q4_K_M",
+  "codingScore": 9,
+  "minVramGb": 24,
+  "storageGb": 21,
+  "source": "https://huggingface.co/TheBloke/deepseek-coder-33B-Instruct-GGUF",
+  "repositoryRevision": "cd6a4d02d3502901ff7f980b6373387ab8b8e91a",
+  "artifacts": [
+    {
+      "sourcePath": "deepseek-coder-33b-instruct.Q4_K_M.gguf",
+      "filename": "deepseek-coder-33b-instruct.Q4_K_M.gguf",
+      "expectedSizeBytes": 19940659200,
+      "sha256": "e76518575f9d367b0a04278cd027c51e53519506b4316b4d368e853a42bfe790",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "capabilities": ["tool-calling", "code-generation", "code-editing"],
+  "commercialStatus": "open",
+  "catch": "Permissive License (DeepSeek License), allows commercial use.",
+  "notes": "Top-tier 33B coding model, excellent balance between performance and footprint."
+}

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { LocalBaseConfig } from "../../../manager";
-import { modelSpecSchema } from "../../../catalog";
+import { modelSpecObjectSchema, refineModelSpec } from "../../../catalog";
 import {
   gatewayReadinessSchema,
   serviceStatusSchema,
@@ -82,7 +82,11 @@ export const hardwareOutputSchema = z
   })
   .strict();
 
-export const modelOutputSchema = modelSpecSchema.strict();
+/** Catalog spec plus the legacy `features` list existing JSON clients read. */
+export const modelOutputSchema = modelSpecObjectSchema
+  .extend({ features: z.array(z.string().min(1)) })
+  .strict()
+  .superRefine(refineModelSpec);
 
 export const apiKeyMetadataOutputSchema = apiKeyMetadataSchema;
 

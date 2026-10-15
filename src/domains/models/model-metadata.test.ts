@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { byId, CATALOG, type ModelSpec } from "../../catalog";
+import { byId, CATALOG, legacyFeatures, type ModelSpec } from "../../catalog";
 import { defaultConfig } from "../../manager";
 import { createRuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
 import {
@@ -260,7 +260,8 @@ test("projects qualified video limits and mode without exposing runtime internal
   const speechVideo = {
     ...video,
     modelId: "test-s2v",
-    features: ["speech-to-video", "avi-output"],
+    capabilities: [{ id: "speech-to-video", source: "declared" }],
+    outputFormat: "avi",
     inputModalities: ["text", "audio", "image"],
     videoRuntime: {
       ...video.videoRuntime,
@@ -304,7 +305,7 @@ test("projects qualified video limits and mode without exposing runtime internal
       jobDeadlineMs: qualification.jobDeadlineMs,
       outputFormats: ["mp4"],
     });
-    expect(list.data[index]?.catalog.features).toEqual(model.features);
+    expect(list.data[index]?.catalog.features).toEqual(legacyFeatures(model));
   }
 });
 
@@ -328,7 +329,7 @@ test("uses the strict response schemas for lists and entries", () => {
     accelerators: [],
   });
   for (const [index, model] of CATALOG.entries()) {
-    expect(list.data[index]?.catalog.features).toEqual(model.features);
+    expect(list.data[index]?.catalog.features).toEqual(legacyFeatures(model));
   }
   expect(
     modelMetadataSchema.safeParse({ ...list.data[0], extra: true }).success,
