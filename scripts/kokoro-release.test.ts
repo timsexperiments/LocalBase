@@ -18,6 +18,7 @@ import {
   verifyRegistryPackage,
 } from "./kokoro-release";
 import repositoryManifest from "../src/manager/managed-runtime-manifest.json";
+import sources from "../runtimes/kokoro/sources.json";
 import { validateSpeechWav } from "../src/domains/runtime/speech-supervisor";
 import { parseArguments } from "../runtimes/kokoro/cli";
 import {
@@ -32,7 +33,10 @@ import {
   kokoroArtifactSchema,
   kokoroInvocation,
   kokoroReleaseManifestSchema,
+  kokoroTagSchema,
+  requiredBunNotices,
   requiredKokoroLicenses,
+  verifyBunNotices,
   verifyDependencyLicenses,
   verifyKokoroLicenses,
 } from "./kokoro-package-contract";
@@ -61,6 +65,36 @@ test("release packaging requires every declared runtime license text", async () 
   await expect(verifyKokoroLicenses(root)).rejects.toThrow(
     requiredKokoroLicenses[1],
   );
+});
+
+test("Kokoro runtime tags are kokoro-vX.Y.Z release families", () => {
+  for (const tag of ["kokoro-v0.0.1", "kokoro-v0.0.2", "kokoro-v1.10.0"])
+    expect(kokoroTagSchema.parse(tag)).toBe(tag);
+  for (const tag of [
+    "kokoro-v0.0",
+    "v0.0.2",
+    "kokoro-v0.0.2-rc1",
+    "kokoro-v0.0.2/x",
+  ])
+    expect(() => kokoroTagSchema.parse(tag)).toThrow();
+});
+
+test("packaged Bun notices come from the release notices for the pinned Bun", async () => {
+  const root = await temp();
+  for (const notice of requiredBunNotices)
+    await writeFile(join(root, notice), "notice text");
+  await expect(verifyBunNotices(root)).resolves.toBeUndefined();
+  await rm(join(root, "rust-crates-closure.txt"));
+  await expect(verifyBunNotices(root)).rejects.toThrow(
+    "rust-crates-closure.txt",
+  );
+  const repository = join(import.meta.dir, "release-notices");
+  expect(
+    await Bun.file(join(repository, `bun-${sources.bunVersion}.txt`)).exists(),
+  ).toBe(true);
+  await expect(
+    verifyBunNotices(join(repository, "native")),
+  ).resolves.toBeUndefined();
 });
 
 test("dependency license inventory rejects absent declarations and texts", async () => {

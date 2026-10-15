@@ -4,7 +4,9 @@ import { z } from "zod";
 import { sha256Schema } from "../src/utils/checksum";
 import { verifyInventory } from "../runtimes/kokoro/inventory";
 
-export const kokoroTagSchema = z.literal("kokoro-v0.0.1");
+export const kokoroTagSchema = z
+  .string()
+  .regex(/^kokoro-v\d+\.\d+\.\d+$/, "Expected a kokoro-vX.Y.Z tag.");
 export const kokoroTargetSchema = z.enum(["macos-arm64", "linux-x64"]);
 export type KokoroTarget = z.infer<typeof kokoroTargetSchema>;
 export const archiveName = (target: KokoroTarget) =>
@@ -24,6 +26,24 @@ export const requiredKokoroLicenses = [
   "LICENSE.onnxruntime.txt",
   "ThirdPartyNotices.onnxruntime.txt",
 ] as const;
+
+// Notices for the components statically linked into the official prebuilt Bun.
+// They are shared with the LocalBase executable and packaged under licenses/bun.
+export const requiredBunNotices = [
+  "Bun-MIT.txt",
+  "LGPL-2.1-only.txt",
+  "SOURCES.txt",
+  "rust-crates-closure.txt",
+  "rust-std.txt",
+] as const;
+
+export async function verifyBunNotices(directory: string): Promise<void> {
+  for (const notice of requiredBunNotices) {
+    const info = await lstat(join(directory, notice)).catch(() => undefined);
+    if (!info?.isFile() || info.size === 0)
+      throw new Error(`Required Bun notice is missing: ${notice}`);
+  }
+}
 
 export async function verifyKokoroLicenses(directory: string): Promise<void> {
   for (const license of requiredKokoroLicenses) {

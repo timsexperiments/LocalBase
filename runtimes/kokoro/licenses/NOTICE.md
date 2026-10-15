@@ -4,4 +4,18 @@ The runtime includes `phonemizer` 1.2.1, whose exact source is [xenova/phonemize
 
 For three years from distribution, the LocalBase maintainers will provide corresponding source for covered components on request: [LocalBase maintainers](https://github.com/timsexperiments/LocalBase/issues).
 
-Bun 1.3.14 statically links WebKit/JavaScriptCore from commit [`5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b`](https://github.com/oven-sh/WebKit/tree/5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b). See [Bun's license notice](https://raw.githubusercontent.com/oven-sh/bun/0d9b296af33f2b851fcbf4df3e9ec89751734ba4/LICENSE.md) for its license details and relinking instructions. LocalBase/Kokoro source is public under AGPL-3.0-or-later, allowing users to relink by rebuilding with a modified Bun.
+## Bun
+
+The `kokoro-tts` executable is the unmodified official prebuilt Bun 1.4.2 (commit [`744846f844374847c902b5e7fd59b4342a51ef99`](https://github.com/oven-sh/bun/tree/744846f844374847c902b5e7fd59b4342a51ef99), tag `bun-v1.4.2`). Bun is MIT-licensed; see `LICENSE.bun.md`, its upstream `LICENSE.md` at that commit, for the linked-library and embedded-polyfill inventory. License texts for the native and Rust components statically linked into Bun, including the Rust crate closure and the Rust standard library, are in `bun/`; `bun/SOURCES.txt` records where each one came from.
+
+Bun 1.4.2 statically links WebKit/JavaScriptCore from commit [`2e2aa2290fac856d6f451ceacb58f7f5b44dd057`](https://github.com/oven-sh/WebKit/tree/2e2aa2290fac856d6f451ceacb58f7f5b44dd057), the `WEBKIT_VERSION` in Bun's `scripts/build/deps/webkit.ts` at the pinned commit. Under LGPL-2.1 §6, its corresponding source can be obtained with:
+
+```sh
+git clone https://github.com/oven-sh/bun.git
+cd bun
+git checkout 744846f844374847c902b5e7fd59b4342a51ef99
+git clone https://github.com/oven-sh/WebKit.git vendor/WebKit
+git -C vendor/WebKit checkout 2e2aa2290fac856d6f451ceacb58f7f5b44dd057
+```
+
+To relink, install the prerequisites in the pinned Bun `CONTRIBUTING.md` (Bun's Rust code uses the `nightly-2026-07-20` toolchain from its `rust-toolchain.toml`), build Bun with a modified WebKit/JavaScriptCore using `bun run build:local`, and replace `kokoro-tts` in this runtime with the resulting executable. `cli.js` and `node_modules` run unchanged on it. LocalBase/Kokoro source is public under AGPL-3.0-or-later.
