@@ -49,7 +49,7 @@ Accelerator is the planning value (backend plus allowance), in GiB. The previous
 | qwen3.5-2b-q4_k_m                |        2.28 |     1.48 |              2.48 | 4         |
 | qwen3.5-4b-q4_k_m                |        3.84 |     3.09 |              4.09 | 6         |
 | qwen3.5-9b-q4_k_m                |        6.67 |     5.95 |              7.22 | 8         |
-| qwen3.5-27b-q4_k_m               |       17.73 |    16.85 |             18.58 | 24        |
+| qwen3.5-27b-q4_k_m               |       17.73 |    17.72 |             18.58 | 24        |
 | ministral-3-14b-instruct-q4_k_m  |        9.09 |     7.29 |              9.27 | 12        |
 | mistral-nemo-12b-instruct-q4_k_m |        8.42 |     7.52 |              8.42 | 12        |
 | gpt-oss-20b-q4_k_m               |       11.86 |     9.59 |             11.89 | 16        |
@@ -61,6 +61,8 @@ Accelerator is the planning value (backend plus allowance), in GiB. The previous
 | fastwan2.2-ti2v-5b-q6_k          |        6.50 |    12.80 |              6.50 | 8         |
 
 FastWan runs with CPU offload: its host demand is 12.80 GiB and its unified demand is about 17.2 GB, from a system-wide free-memory drop of 15.06 GB.
+
+qwen3.5-27b-q4_k_m was re-measured on 2026-10-14 with the same shape and workload, both through a scratch gateway and with llama-server run directly at `-lv 4`. The MTL0 buffers (16710.81 MiB model, 272.00 MiB KV, 149.62 MiB recurrent state, 513.28 MiB compute) and 711.29 MiB of CPU buffers matched the first pass. Peak RSS was 17.31–17.72 GiB, above the first-pass 16.85 GiB, so the record keeps 17.72 GiB (19027968000 B). Its host demand rises to 19.72 GiB with the prompt cache. The tier stays 24.
 
 ## Measurements (2026-10-14)
 
