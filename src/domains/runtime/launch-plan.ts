@@ -209,6 +209,8 @@ export function resolveConfiguredLlmLaunchPlan(input: {
   memoryGb: number;
   kvGeometry?: LlmKvGeometry | null;
   trainingContextLength?: number | null;
+  /** Installed multimodal projector (mmproj); null launches text-only. */
+  projectorPath?: string | null;
 }): LlmLaunchPlan {
   return resolveLlmLaunchPlan({
     runtimeId: input.runtimeId,
@@ -233,6 +235,7 @@ export function resolveConfiguredLlmLaunchPlan(input: {
     embedding: input.model?.llmRuntime,
     kvGeometry: input.kvGeometry,
     trainingContextLength: input.trainingContextLength,
+    projectorPath: input.projectorPath,
   });
 }
 
@@ -262,6 +265,8 @@ export type LlmLaunchPlan = LaunchPlanBase<"llm", "llama-server"> & {
   readonly kvCache: Readonly<{ typeK: KvCacheType; typeV: KvCacheType }>;
   readonly kvGeometry: LlmKvGeometry | null;
   readonly promptCacheRamMib: number;
+  /** Passed to llama-server as --mmproj when the projector is installed. */
+  readonly projectorPath?: string | null;
 };
 
 export type SttLaunchPlan = LaunchPlanBase<"stt", "whisper-server">;
@@ -457,6 +462,8 @@ export function resolveLlmLaunchPlan(input: {
   embedding?: EmbeddingLlmRuntimeProfile | null;
   kvGeometry?: LlmKvGeometry | null;
   trainingContextLength?: number | null;
+  /** Installed multimodal projector (mmproj); null launches text-only. */
+  projectorPath?: string | null;
 }): LlmLaunchPlan {
   const ctxSize = Math.min(
     input.ctxSize,
@@ -509,6 +516,7 @@ export function resolveLlmLaunchPlan(input: {
       ? { trainingContextLength: input.trainingContextLength }
       : {}),
     promptCacheRamMib,
+    projectorPath: input.projectorPath ?? null,
     memoryDemand: llmMemoryDemand({
       model: input.model,
       artifactBytes: input.artifactBytes,

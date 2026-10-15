@@ -182,8 +182,31 @@ describe("image checkpoints", () => {
   });
 });
 
+function withProjector(): ModelSpec {
+  const base = catalogModel("qwen2.5-coder-7b-instruct-q4_k_m");
+  return {
+    ...base,
+    modelId: "vision-fixture",
+    artifacts: [
+      ...base.artifacts,
+      {
+        ...base.artifacts[0]!,
+        role: "supplementary",
+        filename: "mmproj-vision-fixture-f16.gguf",
+      },
+    ],
+  };
+}
+
 describe("engineCapabilities", () => {
-  test("LLMs only see text because no projector is launched", () => {
+  test("LLMs with a projector leave input modalities to the files", () => {
+    expect(engineCapabilities(withProjector())).toEqual({
+      capabilities: {},
+      evidence: [],
+    });
+  });
+
+  test("LLMs without a projector only see text", () => {
     expect(
       engineCapabilities(catalogModel("qwen2.5-coder-7b-instruct-q4_k_m")),
     ).toEqual({ capabilities: {}, inputModalities: ["text"], evidence: [] });
@@ -284,6 +307,27 @@ describe("detectModelCapabilities", () => {
     });
     expect(detected?.capabilities["tool-calling"]).toBe(false);
     expect(detected?.capabilities["long-context"]).toBe(false);
+    expect(detected?.inputModalities).toEqual(["text"]);
+  });
+
+  test("installed projectors add their encoders to input modalities", async () => {
+    const { model, directory } = installed(withProjector());
+    const detected = await detectModelCapabilities(model, directory, {
+      ggufHeader: async (path) =>
+        path.includes("mmproj")
+          ? header({ hasVisionEncoder: true, hasAudioEncoder: true })
+          : header({}),
+    });
+    expect(detected?.inputModalities).toEqual(["text", "image", "audio"]);
+    expect(detected?.evidence).toContain("projector: vision encoder");
+    expect(detected?.evidence).toContain("projector: audio encoder");
+  });
+
+  test("unreadable projectors fall back to text input", async () => {
+    const { model, directory } = installed(withProjector());
+    const detected = await detectModelCapabilities(model, directory, {
+      ggufHeader: async (path) => (path.includes("mmproj") ? null : header({})),
+    });
     expect(detected?.inputModalities).toEqual(["text"]);
   });
 

@@ -702,6 +702,17 @@ export function primaryArtifact(model: ModelSpec): ModelArtifact {
   return artifact;
 }
 
+/** The vision/audio projector (mmproj) shipped beside an LLM, if any. */
+export function llmProjectorArtifact(
+  model: ModelSpec,
+): ModelArtifact | undefined {
+  if (model.kind !== "llm") return undefined;
+  return model.artifacts.find(
+    ({ role, filename }) =>
+      role === "supplementary" && /mmproj/i.test(filename),
+  );
+}
+
 /** Resolves the closed, catalog-owned reference files for a TTS model. */
 export function ttsReferenceArtifacts(
   model: ModelSpec,
