@@ -2521,7 +2521,7 @@ const CATALOG_SOURCE = [
     ],
     commercialStatus: "open",
     catch:
-      "Apache-2.0 weights. Requires the kokoro-v0.0.1 LocalBase runtime package, which is not yet published; its manifest pin is a placeholder until the release sync fills it.",
+      "Apache-2.0 weights. Requires the kokoro-v0.0.2 LocalBase runtime package.",
     notes:
       "CPU ONNX runtime with bundled af_heart and af_bella voices. English only. Human voice quality has not been assessed.",
   },
