@@ -3,9 +3,19 @@ import { zipSync } from "fflate";
 import { z } from "zod";
 import {
   CATALOG,
+  modelModalitySchema,
   resolveCatalogInstallation,
   type ModelKind,
 } from "../../../catalog";
+import {
+  capabilitySchema,
+  capabilitySourceSchema,
+} from "../../../catalog/capabilities";
+import { openReadOnlyDatabase } from "../../../db/client";
+import type { CapabilityMismatch } from "../../models/capability-detection";
+import { resolveCapabilitiesForModel } from "../../models/model-capabilities";
+import { directoryForModel } from "../../models/model-metadata";
+import { createRuntimeCapabilityStore } from "../../runtime/runtime-capabilities";
 import { detectSpecs, type HostSpecs } from "../../../system";
 import { readConfig, type LocalBaseConfig } from "../../../manager";
 import type { MinimalAppContext } from "../../../context";
@@ -98,6 +108,30 @@ const modelSchema = z
     selected: z.boolean(),
     active: z.boolean(),
     complete: z.boolean(),
+    capabilities: z.array(
+      z
+        .object({ id: capabilitySchema, source: capabilitySourceSchema })
+        .strict(),
+    ),
+    capabilityMismatches: z.array(
+      z
+        .object({
+          id: capabilitySchema,
+          declared: z.boolean(),
+          detected: z.boolean().optional(),
+          runtime: z.boolean().optional(),
+          effective: z.boolean(),
+        })
+        .strict(),
+    ),
+    inputModalities: z
+      .object({
+        values: z.array(modelModalitySchema).min(1),
+        source: capabilitySourceSchema,
+      })
+      .strict(),
+    capabilityEvidence: z.array(z.string().min(1)),
+    runtimeBuild: z.string().min(1).nullable(),
   })
   .strict();
 
@@ -208,7 +242,7 @@ function configurationData(config: LocalBaseConfig) {
   });
 }
 
-async function modelData(config: LocalBaseConfig) {
+async function modelData(config: LocalBaseConfig, root: string) {
   const selected = new Set([
     ...config.selectedLlmModels,
     ...config.selectedSttModels,
@@ -231,32 +265,70 @@ async function modelData(config: LocalBaseConfig) {
     video: config.selectedVideoModels,
   };
   const models = [];
-  for (const model of CATALOG) {
-    const kindDirectory =
-      model.kind === "llm"
-        ? config.llmModelsDir
-        : model.kind === "stt"
-          ? config.sttModelsDir
-          : model.kind === "tts"
-            ? config.ttsModelsDir
-            : model.kind === "video"
-              ? config.videoModelsDir
-              : config.imageModelsDir;
-    const installation = await resolveCatalogInstallation(model, kindDirectory);
-    if (!selected.has(model.modelId) && !installation.complete) continue;
-    models.push(
-      modelSchema.parse({
-        id: model.modelId,
-        kind: model.kind,
-        size: model.size,
-        storageGb: model.storageGb,
-        selected: selectedByKind[model.kind].includes(model.modelId),
-        active: active.has(model.modelId),
-        complete: installation.complete,
-      }),
-    );
+  const runtimeStore = openRuntimeCapabilityStore(root);
+  try {
+    for (const model of CATALOG) {
+      const installation = await resolveCatalogInstallation(
+        model,
+        directoryForModel(config, model.kind),
+      );
+      if (!selected.has(model.modelId) && !installation.complete) continue;
+      const report = await resolveCapabilitiesForModel(
+        model,
+        config,
+        runtimeStore?.store ?? null,
+      );
+      models.push(
+        modelSchema.parse({
+          id: model.modelId,
+          kind: model.kind,
+          size: model.size,
+          storageGb: model.storageGb,
+          selected: selectedByKind[model.kind].includes(model.modelId),
+          active: active.has(model.modelId),
+          complete: installation.complete,
+          capabilities: report.capabilities.map(({ id, source }) => ({
+            id,
+            source,
+          })),
+          capabilityMismatches: report.mismatches,
+          inputModalities: report.inputModalities,
+          capabilityEvidence: report.evidence,
+          runtimeBuild: report.runtimeBuild,
+        }),
+      );
+    }
+  } finally {
+    runtimeStore?.close();
   }
   return { models };
+}
+
+/**
+ * Opens the runtime capability table read-only. Diagnostics must never create
+ * or migrate a database, so a missing or older database yields no store.
+ */
+function openRuntimeCapabilityStore(root: string) {
+  try {
+    const database = openReadOnlyDatabase(root);
+    return {
+      store: createRuntimeCapabilityStore(database.db),
+      close: database.close,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatMismatch(mismatch: CapabilityMismatch): string {
+  const sources = [
+    `declared ${mismatch.declared}`,
+    ...(mismatch.detected === undefined
+      ? []
+      : [`detected ${mismatch.detected}`]),
+    ...(mismatch.runtime === undefined ? [] : [`runtime ${mismatch.runtime}`]),
+  ];
+  return `${mismatch.id} (${sources.join(", ")}; using ${mismatch.effective})`;
 }
 
 function serviceData(inspection: ServiceInspection) {
@@ -392,7 +464,7 @@ export async function runDiagnostics(
     .catch(() => unavailable("configuration_unavailable"));
 
   const models = config
-    ? await modelData(config)
+    ? await modelData(config, root)
         .then((value) => section(value))
         .catch(() => unavailable("models_unavailable"))
     : unavailable("models_unavailable");
@@ -455,5 +527,15 @@ export async function runDiagnostics(
     archive: { path, entries: entries.length, bytes },
   });
   execution.output.info(`Created diagnostics bundle: ${path}`);
+  if (manifest.models.available) {
+    for (const model of manifest.models.data.models) {
+      if (model.capabilityMismatches.length === 0) continue;
+      execution.output.info(
+        `Capability mismatch for ${model.id}: ${model.capabilityMismatches
+          .map(formatMismatch)
+          .join("; ")}`,
+      );
+    }
+  }
   return { data: result };
 }

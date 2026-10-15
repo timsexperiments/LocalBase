@@ -190,9 +190,12 @@ class GgufReader {
     return Number(value);
   }
 
-  async string(keep: boolean): Promise<string | null> {
+  async string(
+    keep: boolean,
+    maxBytes = MAX_KEPT_STRING_BYTES,
+  ): Promise<string | null> {
     const length = await this.u64();
-    if (!keep || length > MAX_KEPT_STRING_BYTES) {
+    if (!keep || length > maxBytes) {
       this.skip(length);
       return null;
     }
@@ -232,8 +235,12 @@ class GgufReader {
     }
   }
 
-  async value(type: number, keep: boolean): Promise<GgufValue> {
-    if (type === 8) return await this.string(keep);
+  async value(
+    type: number,
+    keep: boolean,
+    maxStringBytes = MAX_KEPT_STRING_BYTES,
+  ): Promise<GgufValue> {
+    if (type === 8) return await this.string(keep, maxStringBytes);
     if (type !== 9) {
       return safeNumber(await this.scalar(type));
     }
@@ -312,9 +319,19 @@ export function ggufMetadataPath(path: string): string {
   return join(dirname(path), `${match[1]}-00001-of-${match[3]}.gguf`);
 }
 
+interface KeySelection {
+  /** Whether to keep a key's value. */
+  readonly keep: (key: string) => boolean;
+  /** Per-key string limit in bytes; longer strings are skipped. */
+  readonly maxStringBytes?: (key: string) => number;
+}
+
+const GEOMETRY_KEYS: KeySelection = { keep: keepKey };
+
 async function readKeyValues(
   path: string,
   maxWork?: number,
+  selection: KeySelection = GEOMETRY_KEYS,
 ): Promise<Map<string, GgufValue>> {
   const reader = new GgufReader(Bun.file(path), maxWork);
   if ((await reader.u32()) !== GGUF_MAGIC) throw new Error("Not a GGUF file.");
@@ -330,8 +347,12 @@ async function readKeyValues(
     reader.spend(1);
     const key = (await reader.string(true)) ?? "";
     const type = await reader.u32();
-    const keep = keepKey(key);
-    const value = await reader.value(type, keep);
+    const keep = selection.keep(key);
+    const value = await reader.value(
+      type,
+      keep,
+      selection.maxStringBytes?.(key),
+    );
     if (keep && value !== null) values.set(key, value);
   }
   return values;
@@ -645,6 +666,102 @@ export async function readLlmKvGeometry(
   try {
     return kvGeometryFromMetadata(
       await readKeyValues(ggufMetadataPath(path), options.maxParseWork),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Chat templates run a few KB; this bounds what a hostile header can make us keep. */
+const MAX_CHAT_TEMPLATE_BYTES = 256 * 1024;
+const CHAT_TEMPLATE_KEY = "tokenizer.chat_template";
+
+/** Header facts that say what a GGUF model or projector can do. */
+export interface GgufCapabilityHeader {
+  readonly architecture: string | null;
+  readonly contextLength: number | null;
+  /** llama.cpp pooling type id; embedding models carry one. */
+  readonly poolingType: number | null;
+  /** Routed experts per MoE layer; null for dense models. */
+  readonly expertCount: number | null;
+  /** The default template and any named variants (e.g. `.tool_use`), joined. */
+  readonly chatTemplate: string | null;
+  /** Projector (`clip`) encoder flags. */
+  readonly hasVisionEncoder: boolean;
+  readonly hasAudioEncoder: boolean;
+}
+
+function capabilityKey(key: string): boolean {
+  return (
+    key === "general.architecture" ||
+    key === CHAT_TEMPLATE_KEY ||
+    key.startsWith(`${CHAT_TEMPLATE_KEY}.`) ||
+    key.endsWith(".context_length") ||
+    key.endsWith(".pooling_type") ||
+    key.endsWith(".expert_count") ||
+    key === "clip.has_vision_encoder" ||
+    key === "clip.has_audio_encoder"
+  );
+}
+
+const CAPABILITY_KEYS: KeySelection = {
+  keep: capabilityKey,
+  maxStringBytes: (key) =>
+    key.startsWith(CHAT_TEMPLATE_KEY)
+      ? MAX_CHAT_TEMPLATE_BYTES
+      : MAX_KEPT_STRING_BYTES,
+};
+
+export function capabilityHeaderFromMetadata(
+  values: Map<string, GgufValue>,
+): GgufCapabilityHeader {
+  const architecture = values.get("general.architecture");
+  const arch =
+    typeof architecture === "string" && architecture ? architecture : null;
+  const pooling = arch ? values.get(`${arch}.pooling_type`) : undefined;
+  const experts = arch ? values.get(`${arch}.expert_count`) : undefined;
+  const templates = [...values.entries()]
+    .filter(
+      ([key, value]) =>
+        (key === CHAT_TEMPLATE_KEY ||
+          key.startsWith(`${CHAT_TEMPLATE_KEY}.`)) &&
+        typeof value === "string" &&
+        value.length > 0,
+    )
+    .map(([, value]) => value as string);
+  return {
+    architecture: arch,
+    contextLength: arch
+      ? bounded(values.get(`${arch}.context_length`), MAX_TOKENS)
+      : null,
+    poolingType:
+      typeof pooling === "number" && Number.isSafeInteger(pooling)
+        ? pooling
+        : null,
+    expertCount:
+      typeof experts === "number" &&
+      Number.isSafeInteger(experts) &&
+      experts > 0
+        ? experts
+        : null,
+    chatTemplate: templates.length > 0 ? templates.join("\n") : null,
+    hasVisionEncoder: values.get("clip.has_vision_encoder") === true,
+    hasAudioEncoder: values.get("clip.has_audio_encoder") === true,
+  };
+}
+
+/** Reads only the GGUF header; returns null on any failure. */
+export async function readGgufCapabilityHeader(
+  path: string,
+  options: { maxParseWork?: number } = {},
+): Promise<GgufCapabilityHeader | null> {
+  try {
+    return capabilityHeaderFromMetadata(
+      await readKeyValues(
+        ggufMetadataPath(path),
+        options.maxParseWork,
+        CAPABILITY_KEYS,
+      ),
     );
   } catch {
     return null;

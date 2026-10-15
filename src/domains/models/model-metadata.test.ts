@@ -12,6 +12,7 @@ import {
   projectModelMetadata,
   projectModelMetadataList,
 } from "./model-metadata";
+import { resolveModelCapabilities } from "./capability-detection";
 import { modelsSchema } from "../../ui/client";
 
 const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
@@ -390,4 +391,48 @@ test("the browser accepts metadata for every catalog model", () => {
       (model) => model.catalog.displayName === model.catalog.name,
     ),
   ).toEqual([]);
+});
+
+test("projects resolved capabilities with sources and mismatches", () => {
+  const config = defaultConfig("/tmp/localbase-model-metadata");
+  const model = catalogModel();
+  const input = {
+    catalog: [model],
+    config,
+    installations: new Map([[modelId, true]]),
+    runtimes: runtimeSnapshots(),
+  };
+  const declaredOnly = projectModelMetadata(model, input);
+  expect(declaredOnly.catalog.capabilityResolution.mismatches).toEqual([]);
+  expect(
+    declaredOnly.catalog.capabilityResolution.capabilities.every(
+      ({ source }) => source === "declared",
+    ),
+  ).toBe(true);
+  const legacy = declaredOnly.catalog.features;
+
+  const resolved = resolveModelCapabilities(model, {
+    detected: { capabilities: { "long-context": false } },
+    runtime: {
+      capabilities: { "tool-calling": true },
+      inputModalities: ["text"],
+    },
+  });
+  const metadata = projectModelMetadata(model, {
+    ...input,
+    capabilities: new Map([[modelId, resolved]]),
+  });
+  expect(modelMetadataSchema.parse(metadata)).toEqual(metadata);
+  expect(metadata.catalog.capabilityResolution).toEqual({
+    capabilities: resolved.capabilities.map(({ id, source }) => ({
+      id,
+      source,
+    })),
+    mismatches: [
+      { id: "tool-calling", declared: false, runtime: true, effective: true },
+    ],
+    inputModalities: { values: ["text"], source: "runtime" },
+  });
+  // Legacy fields keep describing the catalog declaration.
+  expect(metadata.catalog.features).toEqual(legacy);
 });

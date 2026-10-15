@@ -28,11 +28,16 @@ export const capabilitySchema = z.enum([
 export type Capability = z.infer<typeof capabilitySchema>;
 
 /**
- * Where a capability claim came from. Only catalog declarations exist today;
- * detected and runtime-reported sources will join later, with runtime
- * evidence taking precedence over every other source.
+ * Where a capability claim came from, lowest to highest precedence:
+ * `declared` by the catalog data file, `detected` from the installed model
+ * files and the engine that runs them, and `runtime` as reported by the
+ * running backend. Runtime evidence wins over every other source.
  */
-export const capabilitySourceSchema = z.enum(["declared"]);
+export const capabilitySourceSchema = z.enum([
+  "declared",
+  "detected",
+  "runtime",
+]);
 export type CapabilitySource = z.infer<typeof capabilitySourceSchema>;
 
 export const modelCapabilitySchema = z
@@ -43,13 +48,17 @@ export const modelCapabilitySchema = z
   .strict();
 export type ModelCapability = z.infer<typeof modelCapabilitySchema>;
 
-/** Data files list bare capability ids; those are catalog declarations. */
+/**
+ * Data files list bare capability ids; those are catalog declarations. Only
+ * the declared source may appear in data files: detection and runtime evidence
+ * are computed, never written into the catalog.
+ */
 export const modelCapabilityInputSchema = z.union([
   capabilitySchema.transform((id): ModelCapability => ({
     id,
     source: "declared",
   })),
-  modelCapabilitySchema,
+  z.object({ id: capabilitySchema, source: z.literal("declared") }).strict(),
 ]);
 
 export function hasCapability(

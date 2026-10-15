@@ -23,6 +23,10 @@ import {
   setSecureFilePublicationTestHooksForTests,
 } from "../../../utils/secure-file-publication";
 import { diagnosticsManifestSchema, runDiagnostics } from "./diagnostics";
+import { CATALOG } from "../../../catalog";
+import { hasCapability } from "../../../catalog/capabilities";
+import { runtimeCapabilityKey } from "../../models/model-capabilities";
+import { createRuntimeCapabilityStore } from "../../runtime/runtime-capabilities";
 
 function execution() {
   return {
@@ -352,6 +356,87 @@ test("allows only one concurrent publication of an output", async () => {
     expect([publish(), publish()].filter(Boolean)).toHaveLength(1);
   } finally {
     directory.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("reports effective capabilities, their sources, and runtime mismatches", async () => {
+  const root = await fixture();
+  const output = join(root, "report.zip");
+  const logger = createLogger();
+  try {
+    const config = await readConfig(root);
+    const spec = CATALOG.find(
+      (model) => model.modelId === config.activeLlmModel,
+    )!;
+    const sha256 = runtimeCapabilityKey(spec)!;
+    const declaredTools = hasCapability(spec, "tool-calling");
+    const database = new DatabaseSession();
+    createRuntimeCapabilityStore(database.get(root)).record({
+      modelId: spec.modelId,
+      artifactSha256: sha256,
+      capabilities: { "tool-calling": !declaredTools },
+      inputModalities: ["text"],
+      buildInfo: "b10419-test",
+      observedAt: "2026-10-15T00:00:00.000Z",
+    });
+    database.close();
+
+    const info: string[] = [];
+    const run = execution();
+    await runDiagnostics(
+      { output },
+      { logger, config: { root } },
+      { ...run, output: { ...run.output, info: (line) => info.push(line) } },
+    );
+    const manifest = diagnosticsManifestSchema.parse(
+      JSON.parse(
+        new TextDecoder().decode(
+          (await archiveEntries(output))["manifest.json"],
+        ),
+      ),
+    );
+    if (!manifest.models.available) throw new Error("models unavailable");
+    const entry = manifest.models.data.models.find(
+      (model) => model.id === spec.modelId,
+    )!;
+    expect(entry.runtimeBuild).toBe("b10419-test");
+    expect(entry.capabilityMismatches).toContainEqual({
+      id: "tool-calling",
+      declared: declaredTools,
+      runtime: !declaredTools,
+      effective: !declaredTools,
+    });
+    expect(
+      entry.capabilities.some(
+        (capability) =>
+          capability.id === "tool-calling" && capability.source === "runtime",
+      ),
+    ).toBe(!declaredTools);
+    expect(entry.inputModalities.values).toContain("text");
+    expect(
+      info.some(
+        (line) =>
+          line.startsWith(`Capability mismatch for ${spec.modelId}:`) &&
+          line.includes("tool-calling"),
+      ),
+    ).toBe(true);
+  } finally {
+    await logger.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("collects capabilities without creating a missing database", async () => {
+  const root = await fixture();
+  const output = join(root, "report.zip");
+  const logger = createLogger();
+  try {
+    rmSync(databasePath(root), { force: true });
+    await runDiagnostics({ output }, { logger, config: { root } }, execution());
+    expect(await Bun.file(databasePath(root)).exists()).toBe(false);
+  } finally {
+    await logger.close();
     rmSync(root, { recursive: true, force: true });
   }
 });

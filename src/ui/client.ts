@@ -97,6 +97,13 @@ const modelSchema = z.object({
     outputModalities: z.array(z.string()),
     contextWindowTokens: z.number().nullable(),
     capabilities: capabilitiesSchema.nullable(),
+    /** Effective capabilities with their source; absent on older servers. */
+    capabilityResolution: z
+      .object({
+        capabilities: z.array(z.object({ id: z.string(), source: z.string() })),
+        inputModalities: z.object({ values: z.array(z.string()) }).optional(),
+      })
+      .optional(),
   }),
   device: z.object({
     selected: z.boolean(),
@@ -108,17 +115,27 @@ const modelSchema = z.object({
 });
 export type Model = z.infer<typeof modelSchema>;
 
-/** Whether the server's catalog declares this capability for the model. */
+/**
+ * Whether the model supports this capability. Prefers the server's
+ * effective set (declared, detected, or runtime) and falls back to the
+ * declared features from older servers.
+ */
 export function modelHasCapability(
   model: Pick<Model, "catalog">,
   capability: Capability,
 ): boolean {
+  const resolution = model.catalog.capabilityResolution;
+  if (resolution)
+    return resolution.capabilities.some(({ id }) => id === capability);
   return model.catalog.features.includes(capability);
 }
 
 /** Input and output modalities, counting image editing as an image input. */
 export function modelModalities(model: Pick<Model, "catalog">) {
-  const input = [...model.catalog.inputModalities];
+  const input = [
+    ...(model.catalog.capabilityResolution?.inputModalities?.values ??
+      model.catalog.inputModalities),
+  ];
   if (modelHasCapability(model, "image-to-image") && !input.includes("image"))
     input.push("image");
   return `${input.join(", ")} → ${model.catalog.outputModalities.join(", ")}`;

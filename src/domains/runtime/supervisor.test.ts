@@ -153,7 +153,7 @@ function deferredBackend(): DeferredBackend {
 
 function controlledStopService(
   options: Partial<
-    Pick<ManagedServiceOptions, "launch" | "startGuardian">
+    Pick<ManagedServiceOptions, "launch" | "startGuardian" | "onReady">
   > = {},
 ): {
   service: ManagedService;
@@ -283,6 +283,39 @@ test("resolved context length is capped at GGUF training context", async () => {
     await service.shutdown();
     restoreFetch();
     await otel.shutdown();
+  }
+});
+
+test("ready hooks run once per start and their failures never fail startup", async () => {
+  for (const hook of [
+    () => {
+      throw new Error("sync hook failure");
+    },
+    async () => {
+      throw new Error("async hook failure");
+    },
+  ]) {
+    let calls = 0;
+    const { service, backends, restoreFetch, otel } = controlledStopService({
+      onReady: () => {
+        calls += 1;
+        return hook();
+      },
+    });
+    try {
+      await service.ensureRunning();
+      await service.ensureRunning();
+      await Bun.sleep(0);
+      expect(service.state()).toBe("running");
+      expect(calls).toBe(1);
+      const stopping = service.kill();
+      backends[0]?.exit();
+      await stopping;
+    } finally {
+      await service.shutdown();
+      restoreFetch();
+      await otel.shutdown();
+    }
   }
 });
 

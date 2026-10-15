@@ -6,6 +6,7 @@ import {
   ggufMetadataPath,
   kvCacheBytes,
   kvGeometryFromMetadata,
+  readGgufCapabilityHeader,
   readLlmKvGeometry,
   readLlmTrainingContextLength,
 } from "./gguf-metadata";
@@ -15,6 +16,7 @@ afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
 type Entry =
   | { key: string; type: "u32"; value: number }
+  | { key: string; type: "bool"; value: boolean }
   | { key: string; type: "string"; value: string }
   | { key: string; type: "u32[]"; value: number[] }
   | { key: string; type: "bool[]"; value: boolean[] }
@@ -42,6 +44,8 @@ function ggufFile(entries: Entry[], magic = 0x46554747): Buffer {
   for (const entry of entries) {
     parts.push(str(entry.key));
     if (entry.type === "u32") parts.push(u32(4), u32(entry.value));
+    else if (entry.type === "bool")
+      parts.push(u32(7), Buffer.from([entry.value ? 1 : 0]));
     else if (entry.type === "string") parts.push(u32(8), str(entry.value));
     else if (entry.type === "u32[]") {
       parts.push(
@@ -849,3 +853,58 @@ test.skipIf(!existsSync(realModel))(
     });
   },
 );
+
+describe("readGgufCapabilityHeader", () => {
+  test("reads architecture, context, experts, and every template variant", async () => {
+    const path = write("capability-moe.gguf", [
+      ...base("qwen3moe", [
+        { key: "qwen3moe.context_length", type: "u32", value: 262144 },
+        { key: "qwen3moe.expert_count", type: "u32", value: 128 },
+        {
+          key: "tokenizer.chat_template",
+          type: "string",
+          value: "{% if tools %}x{% endif %}",
+        },
+        {
+          key: "tokenizer.chat_template.tool_use",
+          type: "string",
+          value: "<think>",
+        },
+      ]),
+    ]);
+    const header = await readGgufCapabilityHeader(path);
+    expect(header).toEqual({
+      architecture: "qwen3moe",
+      contextLength: 262144,
+      poolingType: null,
+      expertCount: 128,
+      chatTemplate: "{% if tools %}x{% endif %}\n<think>",
+      hasVisionEncoder: false,
+      hasAudioEncoder: false,
+    });
+  });
+
+  test("reads pooling for embedders and encoder flags for projectors", async () => {
+    const embedder = write("capability-embed.gguf", [
+      ...base("qwen3", [{ key: "qwen3.pooling_type", type: "u32", value: 3 }]),
+    ]);
+    expect((await readGgufCapabilityHeader(embedder))?.poolingType).toBe(3);
+    const projector = write("capability-mmproj.gguf", [
+      { key: "general.architecture", type: "string", value: "clip" },
+      { key: "clip.has_vision_encoder", type: "bool", value: true },
+      { key: "clip.has_audio_encoder", type: "bool", value: false },
+    ]);
+    const header = await readGgufCapabilityHeader(projector);
+    expect(header?.hasVisionEncoder).toBe(true);
+    expect(header?.hasAudioEncoder).toBe(false);
+    expect(header?.expertCount).toBeNull();
+  });
+
+  test("returns null for files that are not GGUF", async () => {
+    const path = write("capability-bad.gguf", [], 0x12345678);
+    expect(await readGgufCapabilityHeader(path)).toBeNull();
+    expect(
+      await readGgufCapabilityHeader(join(directory, "missing.gguf")),
+    ).toBeNull();
+  });
+});

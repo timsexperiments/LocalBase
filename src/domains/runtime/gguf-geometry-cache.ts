@@ -1,7 +1,9 @@
 import {
   ggufMetadataPath,
+  readGgufCapabilityHeader,
   readLlmKvGeometry,
   readLlmTrainingContextLength,
+  type GgufCapabilityHeader,
   type LlmKvGeometry,
 } from "./gguf-metadata";
 
@@ -54,5 +56,12 @@ export function createLlmKvGeometryReader(
 export function createLlmTrainingContextLengthReader(
   read: HeaderRead<number> = readLlmTrainingContextLength,
 ): (path: string) => Promise<number | null> {
+  return createGgufHeaderCache(read);
+}
+
+/** Cache the capability-relevant header facts while the file is unchanged. */
+export function createGgufCapabilityHeaderReader(
+  read: HeaderRead<GgufCapabilityHeader> = readGgufCapabilityHeader,
+): (path: string) => Promise<GgufCapabilityHeader | null> {
   return createGgufHeaderCache(read);
 }

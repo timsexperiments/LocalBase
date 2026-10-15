@@ -105,6 +105,13 @@ export type RuntimeSupervisorFactoryDependencies = Readonly<{
   installMissing?: boolean;
   /** Host platform used to select the video runtime target; defaults to this process. */
   host?: Readonly<{ platform: NodeJS.Platform; arch: NodeJS.Architecture }>;
+  /**
+   * Called after llama-server for a catalog model becomes healthy, so the
+   * gateway can record what the backend reports about itself.
+   */
+  onLlmReady?: (
+    event: Readonly<{ modelId: string; baseUrl: string; embedding: boolean }>,
+  ) => void | Promise<void>;
 }>;
 
 export function runtimeEndpoint(host: string, port: number): string {
@@ -114,6 +121,25 @@ export function runtimeEndpoint(host: string, port: number): string {
       ? `[${safeHost}]`
       : safeHost;
   return `http://${urlHost}:${port}`;
+}
+
+/**
+ * Runtime reports are keyed to the catalog artifact, so a launch that loads
+ * some other file (a model-file override or an unpinned model) is not
+ * recorded.
+ */
+function llmReadyReportable(
+  modelId: string,
+  overrides: RuntimeLaunchOverrides,
+): boolean {
+  const spec = byId(modelId);
+  if (!spec || spec.kind !== "llm") return false;
+  const primary = primaryArtifact(spec);
+  if (!primary.sha256) return false;
+  return (
+    overrides.llmModelFile === undefined ||
+    overrides.llmModelFile === primary.filename
+  );
 }
 
 function llmHost(
@@ -606,6 +632,16 @@ export function createRuntimeSupervisorFactory(
         memorySafety: dependencies.memorySafety,
         otel: ctx.otel,
         startupTimeoutMs: llmStartupTimeoutMs(byId(modelId)),
+        ...(dependencies.onLlmReady && llmReadyReportable(modelId, overrides)
+          ? {
+              onReady: () =>
+                dependencies.onLlmReady?.({
+                  modelId,
+                  baseUrl: base,
+                  embedding: Boolean(byId(modelId)?.llmRuntime),
+                }),
+            }
+          : {}),
       });
     }
 
