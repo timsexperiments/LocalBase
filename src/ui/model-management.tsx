@@ -3,6 +3,17 @@ import { z } from "zod";
 import { DictationButton, appendDictation } from "./dictation";
 import { onVisible } from "./visibility";
 import {
+  catalogQueryFilters,
+  catalogQueryParams,
+  metadataCatalogRow,
+  parseCatalogQuery,
+  queryCatalog,
+  type CatalogQuery,
+  type CatalogSort,
+} from "../catalog/catalog-query";
+import { capabilitySchema, type Capability } from "../catalog/capabilities";
+import { catalogPanelKeys } from "./navigation";
+import {
   modelManagementSchema,
   type ModelManagementAction,
 } from "../domains/models/model-management-contract";
@@ -27,6 +38,137 @@ const modeNames = {
   video: "Video",
   embedding: "Embeddings",
 };
+const capabilityNames: Record<Capability, string> = {
+  "text-generation": "Text generation",
+  "tool-calling": "Tool calling",
+  reasoning: "Reasoning",
+  embeddings: "Embeddings",
+  "code-generation": "Code generation",
+  "code-editing": "Code editing",
+  "code-retrieval": "Code retrieval",
+  "agentic-coding": "Agentic coding",
+  "long-context": "Long context",
+  multilingual: "Multilingual",
+  translation: "Translation",
+  "speech-to-text": "Speech to text",
+  "text-to-speech": "Text to speech",
+  "text-to-image": "Text to image",
+  "image-to-image": "Image editing",
+  "text-to-video": "Text to video",
+  "image-to-video": "Image to video",
+  "speech-to-video": "Speech to video",
+  "mixture-of-experts": "Mixture of experts",
+};
+const capabilityName = (id: string) => capabilityNames[id as Capability] ?? id;
+const fitOptions = [
+  ["fits,tight", "Fits this machine"],
+  ["fits", "Fits comfortably"],
+  ["tight", "Tight fit"],
+  ["wont-fit", "Won't fit"],
+] as const;
+const licenseOptions = [
+  ["open", "Commercial use OK"],
+  ["conditional", "Commercial use with conditions"],
+  ["prohibited", "Non-commercial only"],
+] as const;
+const sortOptions: [CatalogSort, string][] = [
+  ["name", "Name"],
+  ["size", "Download size"],
+  ["memory", "Memory needed"],
+  ["fit", "Fit on this machine"],
+  ["context", "Context length"],
+];
+const fitBadges = {
+  fits: "Fits",
+  tight: "Tight fit",
+  "wont-fit": "Won't fit",
+} as const;
+
+/** The catalog filters: the shared query plus the UI-only enabled filter. */
+type Filters = { query: CatalogQuery; enabled: boolean };
+
+function readFilters(): Filters {
+  const params = new URLSearchParams(location.search);
+  return {
+    query: parseCatalogQuery(params, modes),
+    enabled: params.get("enabled") === "true",
+  };
+}
+
+/** Mirrors the filters into the URL without adding history entries. */
+function writeFilters({ query, enabled }: Filters) {
+  const url = new URL(location.href);
+  for (const key of catalogPanelKeys) url.searchParams.delete(key);
+  for (const [key, value] of catalogQueryParams(query))
+    url.searchParams.append(key, value);
+  if (enabled) url.searchParams.set("enabled", "true");
+  const next = url.pathname + url.search;
+  if (next !== location.pathname + location.search)
+    history.replaceState(history.state, "", next);
+}
+
+/** Embedding models are LLM-kind entries, listed under their own mode. */
+function modelMode(model: Model) {
+  return model.catalog.capabilities?.kind === "embedding"
+    ? "embedding"
+    : model.catalog.kind;
+}
+
+/** A select value for a list filter, or "" when it is unset. */
+const listValue = (values: readonly string[] | undefined) =>
+  values?.join(",") ?? "";
+/** Splits a select value back into a list filter, unset for "". */
+const listFilter = <T extends string>(value: string) =>
+  value ? (value.split(",") as T[]) : undefined;
+
+/** An extra option so a hand-edited URL's combination still shows. */
+function customOption(
+  value: string,
+  options: readonly (readonly [string, string])[],
+) {
+  return value && !options.some(([option]) => option === value) ? (
+    <option value={value}>{value.replaceAll(",", ", ")}</option>
+  ) : null;
+}
+
+const fitSources = {
+  estimate: "from the estimated minimum",
+  measured: "from the measured minimum",
+  observed: "from use on this machine",
+} as const;
+
+/** The fit verdict and what memory figure it was judged from. */
+function fitDetail(model: Model) {
+  const label = modelFitLabel(model);
+  const source = model.catalog.memory.source;
+  return source ? `${label}, ${fitSources[source]}` : label;
+}
+
+/** Effective capabilities; runtime and detected ones say so on hover. */
+function CapabilityBadges({ model }: { model: Model }) {
+  const capabilities =
+    model.catalog.capabilityResolution?.capabilities ??
+    model.catalog.features.map((id) => ({ id, source: "declared" }));
+  if (!capabilities.length) return null;
+  return (
+    <ul className="capability-badges" aria-label="Capabilities">
+      {capabilities.map(({ id, source }) => (
+        <li
+          key={id}
+          className={`model-badge capability ${source}`}
+          title={
+            source === "declared"
+              ? undefined
+              : `${capabilityName(id)} (${source})`
+          }
+        >
+          {capabilityName(id)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function bytes(value: number | null) {
   if (value === null) return "Unknown";
   if (value < 1024 ** 2) return `${(value / 1024).toFixed(0)} KiB`;
@@ -48,9 +190,7 @@ export function ModelManagement({
   canDictate: boolean;
 }) {
   const [state, setState] = useState<ManagementState | null>(null);
-  const [search, setSearch] = useState("");
-  const [mode, setMode] = useState("all");
-  const [installation, setInstallation] = useState("all");
+  const [filters, setFilters] = useState(readFilters);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [confirmation, setConfirmation] = useState<{
@@ -133,27 +273,56 @@ export function ModelManagement({
     }
   }
 
-  const selectedMode = modes.find((value) => value === mode);
-  const filtered = (selectedMode ? catalogModels(models, selectedMode) : models)
-    .filter(
-      (model) =>
-        model.catalog.qualificationState !== "experimental" ||
-        state?.models.some((entry) => entry.id === model.id),
-    )
-    .filter((model) =>
-      `${model.id} ${modelName(model)} ${model.catalog.name} ${model.catalog.quantization}`
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-    )
-    .filter(
-      (model) =>
-        installation === "all" ||
-        (installation === "installed"
-          ? model.device.installed
-          : installation === "enabled"
-            ? model.device.selected
-            : !model.device.installed),
-    );
+  useEffect(() => {
+    // Back and Forward can change the query while the catalog stays open.
+    const restore = () => setFilters(readFilters());
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
+  function updateFilters(change: Partial<Filters>) {
+    setFilters((current) => {
+      const next = { ...current, ...change };
+      writeFilters(next);
+      return next;
+    });
+  }
+  function updateQuery(change: Partial<CatalogQuery>) {
+    setFilters((current) => {
+      const query = { ...current.query, ...change };
+      for (const key of Object.keys(query) as (keyof CatalogQuery)[])
+        if (query[key] === undefined) delete query[key];
+      const next = { ...current, query };
+      writeFilters(next);
+      return next;
+    });
+  }
+  const { query, enabled } = filters;
+  const filtering = catalogQueryFilters(query) || enabled;
+  const onlyMode = query.kinds?.length === 1 ? query.kinds[0] : undefined;
+  const selectedMode = modes.find((value) => value === onlyMode);
+  // One mode keeps that mode's usual order: enabled, then installed, first.
+  const filtered = queryCatalog(
+    (selectedMode ? catalogModels(models, selectedMode) : models)
+      .filter(
+        (model) =>
+          model.catalog.qualificationState !== "experimental" ||
+          state?.models.some((entry) => entry.id === model.id),
+      )
+      .filter((model) => !enabled || model.device.selected),
+    (model) => ({ ...metadataCatalogRow(model), kind: modelMode(model) }),
+    query,
+  );
+  const installation = enabled
+    ? "enabled"
+    : query.installed === undefined
+      ? "all"
+      : query.installed
+        ? "installed"
+        : "uninstalled";
+  const kindValue = listValue(query.kinds);
+  const fitValue = listValue(query.fits);
+  const licenseValue = listValue(query.licenses);
+  const selectedCapabilities = query.capabilities ?? [];
   const running =
     state?.models.some((model) => model.operation?.state === "running") ??
     false;
@@ -191,47 +360,186 @@ export function ModelManagement({
               models.
             </p>
           )}
-          <div className="catalog-filters">
+          <div
+            className="catalog-filters"
+            role="search"
+            aria-label="Catalog filters"
+          >
             <div className="dictation-field catalog-search">
               <input
                 type="search"
                 aria-label="Search catalog"
-                placeholder="Search the full catalog…"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search names, ids, and descriptions…"
+                value={query.search ?? ""}
+                onChange={(event) =>
+                  updateQuery({ search: event.target.value || undefined })
+                }
               />
               {canDictate && (
                 <DictationButton
                   label="catalog search"
                   onText={(text) =>
-                    setSearch((value) => appendDictation(value, text))
+                    updateQuery({
+                      search: appendDictation(query.search ?? "", text),
+                    })
                   }
                 />
               )}
             </div>
             <select
               aria-label="Filter model mode"
-              value={mode}
-              onChange={(event) => setMode(event.target.value)}
+              value={kindValue}
+              onChange={(event) =>
+                updateQuery({ kinds: listFilter(event.target.value) })
+              }
             >
-              <option value="all">All modes</option>
+              <option value="">All modes</option>
               {modes.map((mode) => (
                 <option value={mode} key={mode}>
                   {modeNames[mode]}
                 </option>
               ))}
+              {customOption(
+                kindValue,
+                modes.map((mode) => [mode, modeNames[mode]] as const),
+              )}
             </select>
             <select
               aria-label="Filter installation"
               value={installation}
-              onChange={(event) => setInstallation(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                updateFilters({
+                  enabled: value === "enabled",
+                  query: {
+                    ...query,
+                    installed:
+                      value === "installed"
+                        ? true
+                        : value === "uninstalled"
+                          ? false
+                          : undefined,
+                  },
+                });
+              }}
             >
               <option value="all">All models</option>
               <option value="installed">Installed</option>
               <option value="uninstalled">Not installed</option>
               <option value="enabled">Enabled</option>
             </select>
+            <select
+              aria-label="Filter by fit on this machine"
+              value={fitValue}
+              onChange={(event) =>
+                updateQuery({ fits: listFilter(event.target.value) })
+              }
+            >
+              <option value="">Any fit</option>
+              {fitOptions.map(([value, label]) => (
+                <option value={value} key={value}>
+                  {label}
+                </option>
+              ))}
+              {customOption(fitValue, fitOptions)}
+            </select>
+            <select
+              aria-label="Filter by license"
+              value={licenseValue}
+              onChange={(event) =>
+                updateQuery({ licenses: listFilter(event.target.value) })
+              }
+            >
+              <option value="">Any license</option>
+              {licenseOptions.map(([value, label]) => (
+                <option value={value} key={value}>
+                  {label}
+                </option>
+              ))}
+              {customOption(licenseValue, licenseOptions)}
+            </select>
+            <select
+              aria-label="Add a capability filter"
+              value=""
+              onChange={(event) => {
+                const capability = capabilitySchema.safeParse(
+                  event.target.value,
+                );
+                if (capability.success)
+                  updateQuery({
+                    capabilities: [...selectedCapabilities, capability.data],
+                  });
+              }}
+            >
+              <option value="">
+                {selectedCapabilities.length
+                  ? "Add capability…"
+                  : "Any capability"}
+              </option>
+              {capabilitySchema.options
+                .filter((id) => !selectedCapabilities.includes(id))
+                .map((id) => (
+                  <option value={id} key={id}>
+                    {capabilityNames[id]}
+                  </option>
+                ))}
+            </select>
+            <div className="catalog-sort">
+              <select
+                aria-label="Sort models"
+                value={query.sort ?? ""}
+                onChange={(event) =>
+                  updateQuery({
+                    sort: (event.target.value || undefined) as
+                      CatalogSort | undefined,
+                  })
+                }
+              >
+                <option value="">Default order</option>
+                {sortOptions.map(([value, label]) => (
+                  <option value={value} key={value}>
+                    Sort: {label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="catalog-reverse"
+                aria-pressed={Boolean(query.reverse)}
+                aria-label="Reverse order"
+                title="Reverse order"
+                onClick={() =>
+                  updateQuery({ reverse: query.reverse ? undefined : true })
+                }
+              >
+                <span aria-hidden="true">⇅</span>
+              </button>
+            </div>
           </div>
+          {selectedCapabilities.length > 0 && (
+            <ul className="catalog-chips" aria-label="Required capabilities">
+              {selectedCapabilities.map((id) => (
+                <li key={id}>
+                  <button
+                    type="button"
+                    className="catalog-chip"
+                    aria-label={`Remove ${capabilityNames[id]} filter`}
+                    onClick={() =>
+                      updateQuery({
+                        capabilities: listFilter<Capability>(
+                          selectedCapabilities
+                            .filter((value) => value !== id)
+                            .join(","),
+                        ),
+                      })
+                    }
+                  >
+                    {capabilityNames[id]} <span aria-hidden="true">×</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           {error && (
             <div className="error" role="alert">
               <span>{error}</span>
@@ -246,7 +554,8 @@ export function ModelManagement({
             </div>
           )}
           <p className="catalog-count" role="status">
-            {filtered.length} models
+            {filtered.length === 1 ? "1 model" : `${filtered.length} models`}
+            {filtering ? (filtered.length === 1 ? " matches" : " match") : ""}
           </p>
           <div className="catalog-grid">
             {filtered.map((model) => {
@@ -264,6 +573,13 @@ export function ModelManagement({
                     >
                       {model.device.installed ? "Installed" : "Not installed"}
                     </span>
+                    {model.catalog.memory.fit && (
+                      <span
+                        className={`model-badge fit-${model.catalog.memory.fit.verdict}`}
+                      >
+                        {fitBadges[model.catalog.memory.fit.verdict]}
+                      </span>
+                    )}
                   </header>
                   <p className="model-id">{model.id}</p>
                   {model.catalog.qualificationState === "experimental" && (
@@ -277,6 +593,10 @@ export function ModelManagement({
                     {model.device.selected ? "Enabled" : "Disabled"}
                     {local?.active ? " · Default" : ""}
                   </p>
+                  {model.catalog.summary && (
+                    <p className="model-summary">{model.catalog.summary}</p>
+                  )}
+                  <CapabilityBadges model={model} />
                   <dl className="model-storage">
                     <div>
                       <dt>Model files</dt>
@@ -299,7 +619,7 @@ export function ModelManagement({
                     {modelFitLabel(model) && (
                       <div>
                         <dt>This machine</dt>
-                        <dd>{modelFitLabel(model)}</dd>
+                        <dd>{fitDetail(model)}</dd>
                       </div>
                     )}
                   </dl>
@@ -472,7 +792,25 @@ export function ModelManagement({
             })}
           </div>
           {!filtered.length && (
-            <p className="hint">No models match these filters.</p>
+            <div className="catalog-empty" role="status">
+              <p>No models match these filters.</p>
+              {filtering && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateFilters({
+                      enabled: false,
+                      query: {
+                        ...(query.sort ? { sort: query.sort } : {}),
+                        ...(query.reverse ? { reverse: true } : {}),
+                      },
+                    })
+                  }
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
           )}
           <p className="hint">
             File sizes can include artifacts shared by multiple models. Memory

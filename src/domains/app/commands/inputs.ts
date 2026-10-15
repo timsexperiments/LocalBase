@@ -11,6 +11,12 @@ import {
   otelHeadersTextSchema,
 } from "../../observability/otel-config";
 import { safeFilenameSchema } from "../../../utils/checksum";
+import { capabilitySchema } from "../../../catalog/capabilities";
+import {
+  catalogSortSchema,
+  fitVerdictSchema,
+  licenseSchema,
+} from "../../../catalog/catalog-query";
 import {
   defaultApiKeyScopes,
   permissionsSchema,
@@ -118,9 +124,34 @@ export type ConfigureInput = z.infer<typeof configureInputSchema>;
 export const initInputSchema = z.object({});
 export type InitInput = z.infer<typeof initInputSchema>;
 
-export const catalogInputSchema = z.object({
-  kind: modelKindSchema.optional(),
-});
+/** A flag given once, several times, or as a comma-separated list. */
+const repeatedListSchema = <T extends z.ZodType<string, string>>(item: T) =>
+  z
+    .union([z.string(), z.array(z.string())])
+    .transform((value) =>
+      (Array.isArray(value) ? value : [value])
+        .flatMap((entry) => entry.split(","))
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(item));
+
+export const catalogInputSchema = z
+  .object({
+    kind: modelKindSchema.optional(),
+    capability: repeatedListSchema(capabilitySchema).optional(),
+    fits: z.boolean().optional(),
+    fit: repeatedListSchema(fitVerdictSchema).optional(),
+    installed: z.boolean().optional(),
+    license: repeatedListSchema(licenseSchema).optional(),
+    search: z.string().optional(),
+    sort: catalogSortSchema.optional(),
+    reverse: z.boolean().optional(),
+  })
+  .refine((input) => !(input.fits && input.fit?.length), {
+    message: "Use either --fits or --fit, not both",
+    path: ["fit"],
+  });
 export type CatalogInput = z.infer<typeof catalogInputSchema>;
 
 export const recommendInputSchema = z.object({

@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 import type { AppContext, MinimalAppContext } from "../../../context";
 import { byId, type ModelKind } from "../../../catalog";
+import { catalogSortSchema } from "../../../catalog/catalog-query";
 import { LOCALBASE_VERSION } from "../../../version";
 import {
   accessCloudflareInputSchema,
@@ -172,6 +173,8 @@ type CommandBase<Input> = {
   description: string;
   examples?: readonly string[];
   args?: ArgsDef;
+  /** String options that may be given more than once; parsed as arrays. */
+  repeatable?: readonly string[];
   positionals?: Positionals;
   requiresDatabase?: boolean;
   inputErrorExitCode?: number;
@@ -431,8 +434,52 @@ const doctorCommand = command<DoctorInput>({
 const catalogCommand = command<CatalogInput>({
   path: ["models", "catalog"],
   description: "List all supported models",
+  examples: [
+    "local-base models catalog --capability tool-calling --fits",
+    "local-base models catalog --kind image --sort memory",
+    "local-base models catalog --installed --search qwen --sort context",
+  ],
   requiresDatabase: false,
-  args: { kind: modelKindArg },
+  args: {
+    kind: modelKindArg,
+    capability: {
+      type: "string",
+      valueHint: "id",
+      description:
+        "Only models with this effective capability (repeatable or comma-separated)",
+    },
+    fits: {
+      type: "boolean",
+      description: "Only models that fit this machine, including tight fits",
+    },
+    fit: {
+      type: "string",
+      valueHint: "fits|tight|wont-fit",
+      description: "Only models with this fit verdict (repeatable)",
+    },
+    installed: {
+      type: "boolean",
+      description: "Only installed models",
+      negativeDescription: "Only models that are not installed",
+    },
+    license: {
+      type: "string",
+      valueHint: "open|conditional|prohibited",
+      description: "Only models with this commercial-use status (repeatable)",
+    },
+    search: {
+      type: "string",
+      valueHint: "text",
+      description: "Match id, name, and description",
+    },
+    sort: {
+      type: "enum",
+      options: [...catalogSortSchema.options],
+      description: "Sort by name, size, memory, fit, or context length",
+    },
+    reverse: { type: "boolean", description: "Reverse the order" },
+  },
+  repeatable: ["capability", "fit", "license"],
   parse: (input) => catalogInputSchema.parse(input),
   resultSchema: catalogResultSchema,
   run: async (input, context, execution) => {

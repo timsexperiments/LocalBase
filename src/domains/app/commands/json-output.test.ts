@@ -865,6 +865,34 @@ test(
       expect(catalog.exitCode).toBe(0);
       expect(jsonDocument(catalog.stdout)).toMatchObject({ ok: true });
       expect(existsSync(catalogRoot)).toBe(false);
+      const filtered = await runCli(executable, [
+        "--root",
+        catalogRoot,
+        "--json",
+        "models",
+        "catalog",
+        "--capability",
+        "image-to-image",
+        "--capability=text-to-image",
+        "--no-installed",
+        "--sort",
+        "size",
+      ]);
+      expect(filtered.exitCode).toBe(0);
+      const filteredModels = (
+        jsonDocument(filtered.stdout).data as {
+          models: { kind: string; storageGb: number; capabilities: unknown }[];
+        }
+      ).models;
+      expect(filteredModels.length).toBeGreaterThan(0);
+      expect(filteredModels.length).toBeLessThan(
+        (jsonDocument(catalog.stdout).data as { models: unknown[] }).models
+          .length,
+      );
+      expect(filteredModels.every(({ kind }) => kind === "image")).toBe(true);
+      const sizes = filteredModels.map(({ storageGb }) => storageGb);
+      expect(sizes).toEqual([...sizes].sort((a, b) => a - b));
+      expect(existsSync(catalogRoot)).toBe(false);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

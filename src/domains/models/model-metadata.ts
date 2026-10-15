@@ -105,6 +105,8 @@ export const modelMetadataSchema = z
         revision: z.string().min(1),
         kind: z.enum(["llm", "stt", "tts", "image", "video"]),
         qualificationState: z.enum(["qualified", "experimental"]),
+        commercialStatus: z.enum(["open", "conditional", "prohibited"]),
+        summary: z.string(),
         quantization: z.string().min(1),
         features: z.array(z.string()),
         artifacts: z
@@ -325,6 +327,8 @@ export function projectModelMetadata(
       revision: model.repositoryRevision,
       kind: model.kind,
       qualificationState: model.qualificationState ?? "qualified",
+      commercialStatus: model.commercialStatus,
+      summary: model.catch,
       quantization: model.quant,
       features: legacyFeatures(model),
       artifacts: model.artifacts.map((artifact) => ({

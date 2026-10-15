@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Permission } from "../domains/auth/authorization";
+import { catalogQueryKeys } from "../catalog/catalog-query";
 import { hasPermission, modes, type Conversation, type Mode } from "./client";
 
 const identifier = z
@@ -118,6 +119,9 @@ export function resolveNavigation({
   };
 }
 
+/** Query parameters the catalog panel owns: its filters, sort, and `enabled`. */
+export const catalogPanelKeys = [...catalogQueryKeys, "enabled"] as const;
+
 export function navigationUrl(href: string, navigation: Navigation): string {
   const url = new URL(href);
   const search = new URLSearchParams();
@@ -131,6 +135,11 @@ export function navigationUrl(href: string, navigation: Navigation): string {
     const value = navigation[key];
     if (value) search.set(key, value);
   }
+  // The catalog keeps its filters while it stays open, and drops them on close.
+  if (navigation.panel === "catalog")
+    for (const key of catalogPanelKeys)
+      for (const value of url.searchParams.getAll(key))
+        search.append(key, value);
   // Fragment credentials are consumed before navigation is initialized.
   const query = search.toString();
   return url.pathname + (query ? `?${query}` : "");

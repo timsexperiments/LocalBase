@@ -27,8 +27,14 @@ import {
   resolveCatalogInstallation,
   speechVoiceSchema,
   ttsVoiceAllowed,
+  modelKindSchema,
   type ModelSpec,
 } from "../../../catalog";
+import {
+  metadataCatalogRow,
+  parseCatalogQuery,
+  queryCatalog,
+} from "../../../catalog/catalog-query";
 import type { Capability } from "../../../catalog/capabilities";
 import {
   collectModelMemoryInputs,
@@ -3569,23 +3575,31 @@ export async function runServe(
           memoryProvider.snapshot(),
           memory,
         ]);
-        return Response.json(
-          projectModelMetadataList(
-            {
-              catalog: CATALOG,
-              config: currentConfig,
-              installations: resolvedInstallations,
-              capabilities: resolvedCapabilities,
-              runtimes,
-              memory: resolvedMemory,
-              systemMemoryGb: ctx.specs.gpuVramGb,
-            },
-            {
-              topology: memoryProvider.topology,
-              snapshot: hostMemorySnapshot,
-            },
-          ),
+        const list = projectModelMetadataList(
+          {
+            catalog: CATALOG,
+            config: currentConfig,
+            installations: resolvedInstallations,
+            capabilities: resolvedCapabilities,
+            runtimes,
+            memory: resolvedMemory,
+            systemMemoryGb: ctx.specs.gpuVramGb,
+          },
+          {
+            topology: memoryProvider.topology,
+            snapshot: hostMemorySnapshot,
+          },
         );
+        // Optional catalog query parameters filter and sort the list; without
+        // them every model is returned in catalog order.
+        const query = parseCatalogQuery(
+          new URL(request.url).searchParams,
+          modelKindSchema.options,
+        );
+        return Response.json({
+          ...list,
+          data: queryCatalog(list.data, metadataCatalogRow, query),
+        });
       }
       const metadataInput = {
         catalog: CATALOG,
