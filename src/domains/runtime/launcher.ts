@@ -53,6 +53,7 @@ export function buildLlamaServerArgs(
     | "embedding"
     | "kvCache"
     | "promptCacheRamMib"
+    | "projectorPath"
   >,
 ): LlamaServerArgs {
   const args = [
@@ -68,6 +69,7 @@ export function buildLlamaServerArgs(
     String(plan.parallel.slots),
     "--no-kv-unified",
   ];
+  if (plan.projectorPath) args.push("--mmproj", plan.projectorPath);
 
   if (plan.embedding) {
     args.push("--embedding", "--pooling", plan.embedding.pooling);

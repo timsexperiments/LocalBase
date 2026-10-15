@@ -2,11 +2,14 @@ import { basename, join } from "node:path";
 import { verifyAuthoritativeFile } from "../../utils/checksum";
 import {
   byId,
+  llmProjectorArtifact,
   primaryArtifact,
   resolveCatalogInstallation,
   ttsReferenceArtifacts,
+  type ModelSpec,
 } from "../../catalog";
 import type { AppContext } from "../../context";
+import type { ILogger } from "../observability/logging";
 import {
   ensureBinary,
   installModel,
@@ -265,6 +268,29 @@ async function artifactBytes(
     : undefined;
   if (expectedSizeBytes !== undefined) return expectedSizeBytes;
   return (await Bun.file(join(directory, modelFile)).stat()).size;
+}
+
+/**
+ * Resolves the installed multimodal projector for a catalog LLM. A missing
+ * projector launches text-only with a warning rather than failing the model.
+ */
+export async function resolveLlmProjectorPath(
+  spec: ModelSpec | undefined,
+  modelsDirectory: string,
+  logger: Pick<ILogger, "info" | "warn">,
+): Promise<string | null> {
+  const projector = spec ? llmProjectorArtifact(spec) : undefined;
+  if (!spec || !projector) return null;
+  const path = join(modelsDirectory, projector.filename);
+  if (await Bun.file(path).exists()) {
+    logger.info("llama-server", `Loading projector ${projector.filename}`);
+    return path;
+  }
+  logger.warn(
+    "llama-server",
+    `Projector ${projector.filename} for "${spec.modelId}" is not installed; launching text-only`,
+  );
+  return null;
 }
 
 // Sharded GGUF weights list every shard after the first as a supplementary
@@ -578,6 +604,11 @@ export function createRuntimeSupervisorFactory(
             overrides.ctxSize,
             config.ctxMode,
           );
+          const projectorPath = await resolveLlmProjectorPath(
+            spec,
+            config.llmModelsDir,
+            ctx.logger,
+          );
           ctx.logger.info(
             "llama-server",
             `Spawning model "${modelId}" (file: ${modelFile}, context: ${ctxSize} tokens)`,
@@ -605,6 +636,7 @@ export function createRuntimeSupervisorFactory(
             kvGeometry: await readLlmKvGeometry(modelPath),
             trainingContextLength:
               await readLlmTrainingContextLength(modelPath),
+            projectorPath,
           });
           const budget = describeLlmContextBudget({
             model: spec,

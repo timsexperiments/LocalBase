@@ -1,4 +1,12 @@
-import { byId, primaryArtifact, type ModelSpec } from "../../catalog";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  byId,
+  llmProjectorArtifact,
+  primaryArtifact,
+  type ModelSpec,
+} from "../../catalog";
 import { kvCacheBytes } from "./gguf-metadata";
 import {
   estimateLlmMemory,
@@ -17,7 +25,7 @@ import {
   resolveVideoLaunchPlan,
 } from "./launch-plan";
 import { buildLlamaServerArgs } from "./launcher";
-import { runtimeEndpoint } from "./supervisor-factory";
+import { resolveLlmProjectorPath, runtimeEndpoint } from "./supervisor-factory";
 import { SupervisorRegistry } from "./supervisor-registry";
 
 function catalogModel(modelId: string): ModelSpec {
@@ -742,6 +750,83 @@ describe("backend bind host", () => {
       }
     },
   );
+});
+
+describe("LLM multimodal projector", () => {
+  const qwen = catalogModel("qwen2.5-coder-7b-instruct-q4_k_m");
+  const vision: ModelSpec = {
+    ...qwen,
+    modelId: "vision-fixture",
+    artifacts: [
+      ...qwen.artifacts,
+      {
+        ...primaryArtifact(qwen),
+        role: "supplementary",
+        filename: "mmproj-vision-fixture-f16.gguf",
+      },
+    ],
+  };
+  const planInput = {
+    root,
+    modelId: "vision-fixture",
+    host: "127.0.0.1",
+    artifactBytes: 1024 ** 3,
+    runtimeId: "llm:1",
+    modelsDirectory: `${root}/models/llm`,
+    modelFile: "model.gguf",
+    port: 8080,
+    ctxSize: 8192,
+    parallel: "auto" as const,
+    hardware: { memoryGb: 16 },
+  };
+
+  test("finds only supplementary mmproj artifacts on LLMs", () => {
+    expect(llmProjectorArtifact(qwen)).toBeUndefined();
+    expect(llmProjectorArtifact(vision)?.filename).toBe(
+      "mmproj-vision-fixture-f16.gguf",
+    );
+  });
+
+  test("passes --mmproj only when the plan carries a projector", () => {
+    const textOnly = resolveLlmLaunchPlan(planInput);
+    expect(textOnly.projectorPath).toBeNull();
+    expect(buildLlamaServerArgs(textOnly).args).not.toContain("--mmproj");
+
+    const projectorPath = `${root}/models/llm/mmproj-vision-fixture-f16.gguf`;
+    const multimodal = resolveLlmLaunchPlan({ ...planInput, projectorPath });
+    expect(multimodal.projectorPath).toBe(projectorPath);
+    const args = buildLlamaServerArgs(multimodal).args;
+    const flag = args.indexOf("--mmproj");
+    expect(args.slice(flag, flag + 2)).toEqual(["--mmproj", projectorPath]);
+    expect(args.filter((arg) => arg === "--mmproj")).toHaveLength(1);
+  });
+
+  test("resolves the installed projector and warns when it is missing", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "local-base-mmproj-"));
+    try {
+      const warnings: string[] = [];
+      const logger = {
+        info: () => {},
+        warn: (_component: string, message: string) => warnings.push(message),
+      };
+      expect(await resolveLlmProjectorPath(qwen, directory, logger)).toBeNull();
+      expect(
+        await resolveLlmProjectorPath(vision, directory, logger),
+      ).toBeNull();
+      expect(warnings).toEqual([
+        'Projector mmproj-vision-fixture-f16.gguf for "vision-fixture" is not installed; launching text-only',
+      ]);
+
+      const path = join(directory, "mmproj-vision-fixture-f16.gguf");
+      writeFileSync(path, "projector");
+      expect(await resolveLlmProjectorPath(vision, directory, logger)).toBe(
+        path,
+      );
+      expect(warnings).toHaveLength(1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("LLM context budget", () => {

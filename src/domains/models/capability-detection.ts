@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import {
+  llmProjectorArtifact,
   primaryArtifact,
   resolveCatalogInstallation,
   type ModelModality,
@@ -199,7 +200,9 @@ export function diffusersCapabilities(
  */
 export function engineCapabilities(model: ModelSpec): DetectedCapabilities {
   if (model.kind === "llm") {
-    // The launcher never passes --mmproj, so LLMs only see text.
+    // The launcher passes --mmproj only when the catalog ships a projector, so
+    // models without one only see text. With one, the projector file decides.
+    if (llmProjectorArtifact(model)) return { capabilities: {}, evidence: [] };
     return { capabilities: {}, inputModalities: ["text"], evidence: [] };
   }
   if (model.kind === "image" && model.imageRuntime) {
@@ -309,21 +312,23 @@ async function detectFromFiles(
       const header = await readers.ggufHeader(primaryPath);
       if (!header) return null;
       const detected = ggufCapabilities(model, header);
-      const projectors = await Promise.all(
-        model.artifacts
-          .filter(({ filename }) => /mmproj/i.test(filename))
-          .map(({ filename }) =>
-            readers.ggufHeader(join(kindDirectory, filename)),
-          ),
-      );
+      const projectorArtifact = llmProjectorArtifact(model);
+      const projector = projectorArtifact
+        ? await readers.ggufHeader(
+            join(kindDirectory, projectorArtifact.filename),
+          )
+        : null;
       const evidence = [...detected.evidence];
-      for (const projector of projectors) {
-        if (projector?.hasVisionEncoder)
-          evidence.push("projector: vision encoder (not launched)");
-        if (projector?.hasAudioEncoder)
-          evidence.push("projector: audio encoder (not launched)");
+      const inputModalities: ModelModality[] = ["text"];
+      if (projector?.hasVisionEncoder) {
+        inputModalities.push("image");
+        evidence.push("projector: vision encoder");
       }
-      return { ...detected, evidence };
+      if (projector?.hasAudioEncoder) {
+        inputModalities.push("audio");
+        evidence.push("projector: audio encoder");
+      }
+      return { ...detected, inputModalities, evidence };
     }
     case "stt":
       return cachedFileDetection(
