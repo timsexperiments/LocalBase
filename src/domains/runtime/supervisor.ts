@@ -56,6 +56,8 @@ export type ManagedServiceOptions = {
   otel: OtelRuntime;
   startupTimeoutMs?: number;
   onFatal?: () => Promise<void>;
+  /** Runs after each successful start. Failures are logged, never fatal. */
+  onReady?: () => void | Promise<void>;
   llmProfile?: LlmSupervisorProfile;
 };
 
@@ -355,6 +357,7 @@ export class ManagedService {
         reservation.materialize();
         this.lifecycle("backend.ready", "info", { pid: startedProcess.pid });
         this.lifecycleState = "running";
+        this.notifyReady();
       } catch (err) {
         this.resolvedPlan = undefined;
         if (err instanceof StartupCancelledError || attempt.cancelled) {
@@ -529,6 +532,22 @@ export class ManagedService {
     if (!reservation) return;
     reservation.release();
     if (this.reservation === reservation) this.reservation = null;
+  }
+
+  private notifyReady(): void {
+    const onReady = this.options.onReady;
+    if (!onReady) return;
+    const report = (error: unknown) =>
+      this.options.logger.error(
+        this.name,
+        "Backend ready hook failed",
+        error as Error,
+      );
+    try {
+      void Promise.resolve(onReady()).catch(report);
+    } catch (error) {
+      report(error);
+    }
   }
 
   private startGuardian(proc: Bun.Subprocess): void {

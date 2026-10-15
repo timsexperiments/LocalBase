@@ -9,6 +9,10 @@ import {
   type ModelKind,
   type ModelSpec,
 } from "../../catalog";
+import {
+  capabilitySchema,
+  capabilitySourceSchema,
+} from "../../catalog/capabilities";
 import type { LocalBaseConfig } from "../../manager";
 import { modalityLifecycleStateSchema } from "../runtime/health";
 import type { RuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
@@ -18,6 +22,10 @@ import type {
   MemoryTopology,
 } from "../runtime/memory-safety";
 import type { RuntimeModality } from "../runtime/modality";
+import {
+  resolveModelCapabilities,
+  type ResolvedCapabilities,
+} from "./capability-detection";
 
 const nullableNumberSchema = z.number().nullable();
 const nullableByteCountSchema = z.number().int().nonnegative().nullable();
@@ -121,6 +129,35 @@ export const modelMetadataSchema = z
         outputModalities: z.array(modelModalitySchema).min(1),
         contextWindowTokens: z.number().int().positive().nullable(),
         maxOutputTokens: z.null(),
+        capabilityResolution: z
+          .object({
+            capabilities: z.array(
+              z
+                .object({
+                  id: capabilitySchema,
+                  source: capabilitySourceSchema,
+                })
+                .strict(),
+            ),
+            mismatches: z.array(
+              z
+                .object({
+                  id: capabilitySchema,
+                  declared: z.boolean(),
+                  detected: z.boolean().optional(),
+                  runtime: z.boolean().optional(),
+                  effective: z.boolean(),
+                })
+                .strict(),
+            ),
+            inputModalities: z
+              .object({
+                values: z.array(modelModalitySchema).min(1),
+                source: capabilitySourceSchema,
+              })
+              .strict(),
+          })
+          .strict(),
       })
       .strict(),
     device: z
@@ -191,6 +228,8 @@ export type ModelMetadataProjectionInput = Readonly<{
     | "selectedVideoModels"
   >;
   installations: ReadonlyMap<string, boolean>;
+  /** Resolved capabilities per model; declared-only when absent. */
+  capabilities?: ReadonlyMap<string, ResolvedCapabilities>;
   runtimes: Readonly<Record<RuntimeModality, RuntimeLifecycleSnapshot>>;
 }>;
 
@@ -314,6 +353,10 @@ export function projectModelMetadata(
       outputModalities: model.outputModalities,
       contextWindowTokens: model.contextWindowTokens,
       maxOutputTokens: null,
+      capabilityResolution: capabilityResolution(
+        input.capabilities?.get(model.modelId) ??
+          resolveModelCapabilities(model, {}),
+      ),
     },
     device: {
       selected: selectedModelIds(input.config).has(model.modelId),
@@ -356,7 +399,17 @@ export function projectModelMetadataList(
   });
 }
 
-function directoryForModel(config: LocalBaseConfig, kind: ModelKind): string {
+export function directoryForModel(
+  config: Pick<
+    LocalBaseConfig,
+    | "llmModelsDir"
+    | "sttModelsDir"
+    | "ttsModelsDir"
+    | "imageModelsDir"
+    | "videoModelsDir"
+  >,
+  kind: ModelKind,
+): string {
   if (kind === "llm") return config.llmModelsDir;
   if (kind === "stt") return config.sttModelsDir;
   if (kind === "tts") return config.ttsModelsDir;
@@ -391,4 +444,20 @@ export function modelMetadataById(
     (candidate) => candidate.modelId === modelId,
   );
   return model ? projectModelMetadata(model, input) : undefined;
+}
+
+function capabilityResolution(
+  resolved: ResolvedCapabilities,
+): ModelMetadata["catalog"]["capabilityResolution"] {
+  return {
+    capabilities: resolved.capabilities.map(({ id, source }) => ({
+      id,
+      source,
+    })),
+    mismatches: resolved.mismatches.map((mismatch) => ({ ...mismatch })),
+    inputModalities: {
+      values: [...resolved.inputModalities.values],
+      source: resolved.inputModalities.source,
+    },
+  };
 }

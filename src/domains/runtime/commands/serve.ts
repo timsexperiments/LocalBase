@@ -21,7 +21,6 @@ import {
 import { loadEmailDeliveryConfig } from "../../auth/email-delivery";
 import {
   byId,
-  hasCapability,
   CATALOG,
   evaluateModelFit,
   calculateMaxSafeContextSize,
@@ -29,13 +28,24 @@ import {
   resolveCatalogInstallation,
   speechVoiceSchema,
   ttsVoiceAllowed,
+  type ModelSpec,
 } from "../../../catalog";
+import type { Capability } from "../../../catalog/capabilities";
 import {
   inspectCatalogInstallations,
   modelMetadataById,
   projectModelMetadataList,
 } from "../../models/model-metadata";
 import { listServedModels } from "../../models/served-models";
+import {
+  resolveCapabilitiesForModel,
+  resolveCatalogCapabilities,
+  runtimeCapabilityKey,
+} from "../../models/model-capabilities";
+import {
+  createRuntimeCapabilityStore,
+  probeLlamaServerCapabilities,
+} from "../runtime-capabilities";
 import {
   createLlmKvGeometryReader,
   createLlmTrainingContextLengthReader,
@@ -2574,6 +2584,18 @@ export async function runServe(
       "Magic-link authentication requires configured email delivery.",
     );
   const database = ctx.database.get(config.root);
+  const runtimeCapabilities = createRuntimeCapabilityStore(database);
+  const modelSupports = async (
+    model: ModelSpec,
+    capability: Capability,
+  ): Promise<boolean> =>
+    (
+      await resolveCapabilitiesForModel(
+        model,
+        ctx.runtimeConfig.copy(),
+        runtimeCapabilities,
+      )
+    ).capabilities.some(({ id }) => id === capability);
   if (!magicLinkRegistration) clearMagicLinks(database);
   const uiAccess = createUiAccess({
     config: browserAccess,
@@ -3151,6 +3173,23 @@ export async function runServe(
   const factory = createRuntimeSupervisorFactory(ctx, launchOverrides, {
     memorySafety,
     installMissing: input.installMissing || config.installMissingModels,
+    onLlmReady: async ({ modelId, baseUrl, embedding }) => {
+      const spec = byId(modelId);
+      const artifactSha256 = spec ? runtimeCapabilityKey(spec) : null;
+      if (!artifactSha256) return;
+      const record = await probeLlamaServerCapabilities({
+        baseUrl,
+        modelId,
+        artifactSha256,
+        embedding,
+        store: runtimeCapabilities,
+      });
+      if (record)
+        ctx.logger.info(
+          "llama-server",
+          `Recorded runtime capabilities for ${modelId} (${record.buildInfo}).`,
+        );
+    },
   });
   const initialSnapshot = ctx.runtimeConfig.read();
   const supervisors = new SupervisorRegistry({
@@ -3436,9 +3475,19 @@ export async function runServe(
       if (request.method !== "GET") return methodNotAllowed("GET");
 
       const installations = inspectCatalogInstallations(currentConfig, CATALOG);
+      const capabilities = resolveCatalogCapabilities(
+        CATALOG,
+        currentConfig,
+        runtimeCapabilities,
+      );
       if (route === "modelMetadataList") {
-        const [resolvedInstallations, hostMemorySnapshot] = await Promise.all([
+        const [
+          resolvedInstallations,
+          resolvedCapabilities,
+          hostMemorySnapshot,
+        ] = await Promise.all([
           installations,
+          capabilities,
           memoryProvider.snapshot(),
         ]);
         return Response.json(
@@ -3447,6 +3496,7 @@ export async function runServe(
               catalog: CATALOG,
               config: currentConfig,
               installations: resolvedInstallations,
+              capabilities: resolvedCapabilities,
               runtimes,
             },
             {
@@ -3460,6 +3510,7 @@ export async function runServe(
         catalog: CATALOG,
         config: currentConfig,
         installations: await installations,
+        capabilities: await capabilities,
         runtimes,
       };
 
@@ -4025,7 +4076,7 @@ export async function runServe(
       if (!modelId) return notConfigured("Image");
       const spec = byId(modelId);
       if (!spec || spec.kind !== "image") return modelNotFound(modelId);
-      if (!hasCapability(spec, "image-to-image"))
+      if (!(await modelSupports(spec, "image-to-image")))
         return badRequest(
           `Model '${modelId}' does not support image-to-image edits.`,
           "model",
@@ -4245,7 +4296,7 @@ export async function runServe(
       if (
         hasToolRequest &&
         requestedModel &&
-        !hasCapability(requestedModel, "tool-calling")
+        !(await modelSupports(requestedModel, "tool-calling"))
       ) {
         return openAIErrorResponse(
           {

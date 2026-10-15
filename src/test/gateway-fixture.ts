@@ -258,6 +258,8 @@ export type GatewayFixtureOptions = {
   managedIdentity?: boolean;
   otelEndpoint?: string;
   llmBackendHealthy?: boolean;
+  /** Body the fake LLM backend returns from GET /props. */
+  llmProps?: unknown;
   llmHealthControlled?: boolean;
   sttHealthControlled?: boolean;
   imageHealthControlled?: boolean;
@@ -412,6 +414,7 @@ function startMockUpstream(
   controlledHeaderWaits: Map<string, ControlledHeaderWait>,
   healthy = true,
   controlledHealth = false,
+  props: unknown = { build_info: "fixture" },
 ): {
   server: Bun.Server<undefined>;
   setHealthy: (healthy: boolean) => void;
@@ -446,6 +449,11 @@ function startMockUpstream(
         runtimeStreamStarted = true;
         runtimeStreamStartObservers.shift()?.();
         return new Response(null, { status: 204 });
+      }
+      if (path === "/props" && request.method === "GET") {
+        // The gateway probes /props once the backend is ready. Reporting no
+        // capabilities keeps declared and detected behavior under test.
+        return Response.json(props);
       }
       if (path === "/health" || path === "/") {
         if (healthProbe) return await healthProbe.respond(request.signal);
@@ -1815,6 +1823,7 @@ export async function startGatewayFixture(
     controlledHeaderWaits,
     options.llmBackendHealthy ?? true,
     options.llmHealthControlled,
+    options.llmProps,
   );
   const sttUpstream = startMockUpstream(
     upstreamRequests,

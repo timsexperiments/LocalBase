@@ -48,7 +48,9 @@ import type {
 } from "./runtime-reconciler";
 import { SpeechGenerationTimeoutError } from "./speech-supervisor";
 import { getGatewayInstanceState } from "../service/ownership";
-import { DatabaseSession } from "../../db/client";
+import { DatabaseSession, openReadOnlyDatabase } from "../../db/client";
+import { hasCapability } from "../../catalog/capabilities";
+import { createRuntimeCapabilityStore } from "./runtime-capabilities";
 
 registerGatewayFixtureCleanup();
 
@@ -4089,4 +4091,72 @@ test("GPU working-set oversubscription by loaded models is retryable and explain
   expect(body.error.message).toContain("7.0 GiB");
   expect(body.error.message).toContain("10.0 GiB");
   expect(body.error.message).toContain("already loaded");
+});
+
+test("records runtime capabilities from llama-server and lets them gate tools", async () => {
+  const modelId = "qwen2.5-coder-7b-instruct-q4_k_m";
+  const spec = byId(modelId)!;
+  expect(hasCapability(spec, "tool-calling")).toBe(true);
+  const gateway = await startGatewayFixture({
+    llmModel: modelId,
+    llmProps: {
+      build_info: "b-runtime-test",
+      chat_template: "{{ messages }}",
+      chat_template_caps: { supports_tool_calls: false },
+      modalities: { vision: false, audio: false },
+    },
+  });
+  try {
+    const warm = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+    expect(warm.status).toBe(200);
+    await warm.text();
+
+    let record = null;
+    for (let attempt = 0; attempt < 100 && !record; attempt += 1) {
+      const database = openReadOnlyDatabase(gateway.root);
+      try {
+        record = createRuntimeCapabilityStore(database.db).read(
+          modelId,
+          primaryArtifact(spec).sha256!,
+        );
+      } finally {
+        database.close();
+      }
+      if (!record) await Bun.sleep(50);
+    }
+    expect(record).toMatchObject({
+      modelId,
+      buildInfo: "b-runtime-test",
+      capabilities: { "tool-calling": false },
+      inputModalities: ["text"],
+    });
+
+    const rejected = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [{ role: "user", content: "hello" }],
+        tools: [
+          {
+            type: "function",
+            function: { name: "weather", parameters: { type: "object" } },
+          },
+        ],
+      }),
+    });
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toMatchObject({
+      error: { code: "unsupported_model_capability", param: "tools" },
+    });
+  } finally {
+    await gateway.stop();
+  }
 });

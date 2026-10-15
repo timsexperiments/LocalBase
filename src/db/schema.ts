@@ -230,3 +230,22 @@ export const authBrowserSessionsTable = sqliteTable("auth_browser_sessions", {
   idleExpiresAt: integer("idle_expires_at").notNull(),
   absoluteExpiresAt: integer("absolute_expires_at").notNull(),
 });
+
+/**
+ * Capabilities a runtime reported for a model (llama-server `/props`), kept
+ * across restarts. Keyed by artifact digest so a new artifact starts over.
+ */
+export const modelRuntimeCapabilitiesTable = sqliteTable(
+  "model_runtime_capabilities",
+  {
+    modelId: text("model_id").notNull(),
+    artifactSha256: text("artifact_sha256").notNull(),
+    /** JSON object of capability id to whether the runtime supports it. */
+    capabilities: text("capabilities").notNull(),
+    /** JSON array of input modalities the runtime accepts. */
+    inputModalities: text("input_modalities").notNull(),
+    buildInfo: text("build_info").notNull(),
+    observedAt: text("observed_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.modelId, table.artifactSha256] })],
+);
