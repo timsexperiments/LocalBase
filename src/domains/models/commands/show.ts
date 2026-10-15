@@ -5,6 +5,8 @@ import {
   describeCapabilityMismatch,
 } from "../../../catalog/capabilities";
 import {
+  catalogTierLabels,
+  catalogTrustLabels,
   describeFit,
   describeLaunchShape,
   formatFileSize,
@@ -14,6 +16,7 @@ import {
   memoryFigureLabels,
   modeLabels,
 } from "../../../catalog/model-details";
+import { catalogProvenance } from "../../../catalog/sources";
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { ShowInput } from "../../app/commands/inputs";
@@ -34,6 +37,8 @@ export type ModelStatus = Readonly<{
 export function modelDetailLines(
   model: ModelMetadata,
   status: ModelStatus,
+  /** The user or remote file the entry came from, when not built in. */
+  catalogPath?: string,
 ): string[] {
   const { catalog } = model;
   const memory = catalog.memory;
@@ -52,6 +57,7 @@ export function modelDetailLines(
       ...(status.default ? ["Default"] : []),
     ].join(" · ")}`,
     `  License:        ${licenseLabels[catalog.commercialStatus]}`,
+    `  Catalog:        ${catalogTrustLabels[catalog.trust]} · ${catalogTierLabels[catalog.catalogTier]}${catalogPath ? ` (${catalogPath})` : ""}`,
     `  Publisher:      ${catalog.provider}`,
     `  Source:         ${catalog.source} (revision ${catalog.revision})`,
     `  Context length: ${catalog.contextWindowTokens === null ? (catalog.kind === "llm" ? "Not listed in the catalog" : "Not applicable") : formatTokens(catalog.contextWindowTokens)}`,
@@ -72,6 +78,10 @@ export function modelDetailLines(
             `  ${capabilityLabel(id)} · ${capabilitySourceLabels[source]}`,
         )
       : ["  None listed"]),
+    ...catalog.unsupportedCapabilities.map(
+      ({ id, reason }) =>
+        `  ${capabilityLabel(id)} · Verified unsupported: ${reason}`,
+    ),
     ...resolution.mismatches.map(
       (mismatch) => `  Note: ${describeCapabilityMismatch(mismatch)}`,
     ),
@@ -122,7 +132,11 @@ export async function runShow(
       config.activeVideoModel,
     ].includes(model.id),
   };
-  for (const line of modelDetailLines(model, status))
+  for (const line of modelDetailLines(
+    model,
+    status,
+    catalogProvenance(model.id).path,
+  ))
     execution.output.info(line);
   return { data: { model, status } };
 }

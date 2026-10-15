@@ -10,9 +10,16 @@ import {
   type ModelSpec,
 } from "../../catalog";
 import {
+  capabilityMismatchSchema,
   capabilitySchema,
   capabilitySourceSchema,
+  unsupportedCapabilitySchema,
 } from "../../catalog/capabilities";
+import {
+  catalogProvenance,
+  catalogTierSchema,
+  catalogTrustSchema,
+} from "../../catalog/sources";
 import type { LocalBaseConfig } from "../../manager";
 import { modalityLifecycleStateSchema } from "../runtime/health";
 import type { RuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
@@ -110,6 +117,10 @@ export const modelMetadataSchema = z
         revision: z.string().min(1),
         kind: z.enum(["llm", "stt", "tts", "image", "video"]),
         qualificationState: z.enum(["qualified", "experimental"]),
+        /** How far LocalBase trusts this entry: qualified, community, user or modified. */
+        trust: catalogTrustSchema,
+        /** The highest catalog tier that contributed to the entry. */
+        catalogTier: catalogTierSchema,
         commercialStatus: z.enum(["open", "conditional", "prohibited"]),
         summary: z.string(),
         /** Longer catalog notes. */
@@ -196,6 +207,8 @@ export const modelMetadataSchema = z
         outputModalities: z.array(modelModalitySchema).min(1),
         contextWindowTokens: z.number().int().positive().nullable(),
         maxOutputTokens: z.null(),
+        /** Capabilities the catalog verified as unsupported, with the reason. */
+        unsupportedCapabilities: z.array(unsupportedCapabilitySchema),
         capabilityResolution: z
           .object({
             capabilities: z.array(
@@ -206,17 +219,7 @@ export const modelMetadataSchema = z
                 })
                 .strict(),
             ),
-            mismatches: z.array(
-              z
-                .object({
-                  id: capabilitySchema,
-                  declared: z.boolean(),
-                  detected: z.boolean().optional(),
-                  runtime: z.boolean().optional(),
-                  effective: z.boolean(),
-                })
-                .strict(),
-            ),
+            mismatches: z.array(capabilityMismatchSchema),
             inputModalities: z
               .object({
                 values: z.array(modelModalitySchema).min(1),
@@ -361,6 +364,8 @@ export function projectModelMetadata(
       revision: model.repositoryRevision,
       kind: model.kind,
       qualificationState: model.qualificationState ?? "qualified",
+      trust: catalogProvenance(model.modelId).trust,
+      catalogTier: catalogProvenance(model.modelId).tier,
       commercialStatus: model.commercialStatus,
       summary: model.catch,
       notes: model.notes,
@@ -432,6 +437,9 @@ export function projectModelMetadata(
       outputModalities: model.outputModalities,
       contextWindowTokens: model.contextWindowTokens,
       maxOutputTokens: null,
+      unsupportedCapabilities: (model.unsupportedCapabilities ?? []).map(
+        (entry) => ({ ...entry }),
+      ),
       capabilityResolution: capabilityResolution(
         input.capabilities?.get(model.modelId) ??
           resolveModelCapabilities(model, {}),

@@ -9,6 +9,7 @@ import {
   queryCatalog,
   type CatalogQuery,
 } from "../../../catalog/catalog-query";
+import { catalogProvenance } from "../../../catalog/sources";
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { CatalogInput } from "../../app/commands/inputs";
@@ -93,6 +94,7 @@ export async function runCatalog(
   );
   const listed = selected.map((model) => {
     const fit = fits.get(model.modelId)!;
+    const provenance = catalogProvenance(model.modelId);
     const coding =
       model.codingScore === undefined
         ? ""
@@ -101,8 +103,12 @@ export async function runCatalog(
       `${model.kind.padEnd(5)} | ${model.modelId.padEnd(38)} | size=${model.size.padEnd(10)} | min_vram=${String(fit.minVramGb).padStart(3)} GB ${fit.source.padEnd(8)} | fit=${fit.verdict.padEnd(8)} | storage=${model.storageGb.toFixed(2)} GB | status=${model.commercialStatus}${coding}`,
     );
     execution.output.info(
-      `      in=${model.inputModalities.join(",")} out=${model.outputModalities.join(",")} features=${legacyFeatures(model).join(",")}${model.qualificationState === "experimental" ? " qualification=experimental (unqualified)" : ""}`,
+      `      in=${model.inputModalities.join(",")} out=${model.outputModalities.join(",")} features=${legacyFeatures(model).join(",")}${model.qualificationState === "experimental" ? " qualification=experimental (unqualified)" : ""}${provenance.trust === "qualified" ? "" : ` trust=${provenance.trust} source=${provenance.tier}`}`,
     );
+    for (const unsupported of model.unsupportedCapabilities ?? [])
+      execution.output.info(
+        `      unsupported: ${unsupported.id} (verified: ${unsupported.reason})`,
+      );
     if (fit.source === "observed")
       execution.output.info(
         `      memory: ${describeMemoryFigure(fit.figure)}`,
@@ -112,7 +118,12 @@ export async function runCatalog(
         "      Requires Linux x64 with a single NVIDIA GPU.",
       );
     execution.output.info(`      catch: ${model.catch}`);
-    return { ...withLegacyFeatures(model), ...modelMemoryJson(fit) };
+    return {
+      ...withLegacyFeatures(model),
+      ...modelMemoryJson(fit),
+      trust: provenance.trust,
+      catalogTier: provenance.tier,
+    };
   });
   if (!listed.length && models.length)
     execution.output.info("No models match these filters.");

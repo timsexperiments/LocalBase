@@ -24,6 +24,15 @@
   "outputModalities": ["text"],
   "contextWindowTokens": 32768,
   "capabilities": ["code-generation", "code-editing"],
+  "unsupportedCapabilities": [
+    {
+      "id": "tool-calling",
+      "supported": false,
+      "source": "declared",
+      "verified": true,
+      "reason": "Protocol tool calling is unsupported for this artifact: it answers tool requests with plain text instead of tool calls."
+    }
+  ],
   "commercialStatus": "open",
   "catch": "Apache-2.0.",
   "notes": "Autocomplete and tab completion model. Protocol tool calling is unsupported for this artifact."

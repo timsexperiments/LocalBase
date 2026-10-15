@@ -61,6 +61,23 @@ export const modelCapabilityInputSchema = z.union([
   z.object({ id: capabilitySchema, source: z.literal("declared") }).strict(),
 ]);
 
+/**
+ * A capability the catalog has checked and found missing, even though the
+ * chat template or the engine's template flags may claim it. Only a verified
+ * runtime round-trip (a real request that exercised it) overrides this.
+ */
+export const unsupportedCapabilitySchema = z
+  .object({
+    id: capabilitySchema,
+    supported: z.literal(false),
+    source: z.literal("declared"),
+    verified: z.literal(true),
+    /** Why the capability is unsupported, in plain words. */
+    reason: z.string().min(1),
+  })
+  .strict();
+export type UnsupportedCapability = z.infer<typeof unsupportedCapabilitySchema>;
+
 export function hasCapability(
   model: Readonly<{ capabilities: readonly ModelCapability[] }>,
   capability: Capability,
@@ -104,12 +121,29 @@ export const capabilitySourceLabels: Readonly<
   runtime: "Reported by the running engine",
 };
 
+/** Wire shape of one capability mismatch, shared by metadata and diagnostics. */
+export const capabilityMismatchSchema = z
+  .object({
+    id: capabilitySchema,
+    declared: z.boolean(),
+    detected: z.boolean().optional(),
+    runtime: z.boolean().optional(),
+    verified: z.boolean().optional(),
+    effective: z.boolean(),
+    unsupportedReason: z.string().min(1).optional(),
+  })
+  .strict();
+
 export type CapabilityMismatch = Readonly<{
   id: Capability;
   declared: boolean;
   detected?: boolean;
   runtime?: boolean;
+  /** What a verified runtime round-trip observed, when one was recorded. */
+  verified?: boolean;
   effective: boolean;
+  /** Set when the catalog marks the capability verified unsupported. */
+  unsupportedReason?: string;
 }>;
 
 /**
@@ -140,11 +174,28 @@ export function describeCapabilityMismatch(
     facts.length === 2
       ? `${facts[0]}, but ${facts[1]}`
       : `${facts.slice(0, -1).join(", ")}, and ${facts.at(-1)}`;
+  const label = capabilityLabel(mismatch.id);
+  if (mismatch.unsupportedReason !== undefined) {
+    if (mismatch.effective) {
+      return `${label}: the catalog marks it verified unsupported (${mismatch.unsupportedReason}), but a runtime round-trip succeeded. Treated as available, going by the round-trip.`;
+    }
+    const claims = [
+      ...(mismatch.detected ? ["the installed files claim it"] : []),
+      ...(mismatch.runtime ? ["the engine's template flags claim it"] : []),
+    ];
+    const despite =
+      claims.length > 0
+        ? ` This holds even though ${claims.join(" and ")}.`
+        : "";
+    return `${label}: verified unsupported. ${mismatch.unsupportedReason}${/[.!?]$/.test(mismatch.unsupportedReason) ? "" : "."}${despite} Treated as unavailable until a runtime round-trip proves otherwise.`;
+  }
   const decider =
-    mismatch.runtime !== undefined
-      ? "the running engine"
-      : mismatch.detected !== undefined
-        ? "the installed files"
-        : "the catalog";
-  return `${capabilityLabel(mismatch.id)}: ${joined}. Treated as ${mismatch.effective ? "available" : "unavailable"}, going by ${decider}.`;
+    mismatch.verified !== undefined
+      ? "a runtime round-trip"
+      : mismatch.runtime !== undefined
+        ? "the running engine"
+        : mismatch.detected !== undefined
+          ? "the installed files"
+          : "the catalog";
+  return `${label}: ${joined}. Treated as ${mismatch.effective ? "available" : "unavailable"}, going by ${decider}.`;
 }

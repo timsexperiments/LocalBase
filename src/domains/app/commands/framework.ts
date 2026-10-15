@@ -19,6 +19,7 @@ import { createCommandOutput, type CommandOutput } from "./output";
 import type { CommandResult } from "./output";
 import { CliInputError, formatZodError, toCliInputError } from "./errors";
 import { shouldUseColor, stripAnsiCodes } from "../../../utils/color";
+import { loadCatalogForCommandLine } from "../../../catalog/user-catalog";
 
 export { CliInputError } from "./errors";
 export type { CommandExecution } from "./command-tree";
@@ -332,6 +333,8 @@ export function parseCommandInput(
   const positionals = Array.isArray(parsed._) ? parsed._ : [];
   validatePositionals(command, positionals);
   const input = command.parse(normalizeArgs(parsed), positionals);
+  // Validation looks model ids up, so user catalog entries must be loaded.
+  if (command.validate) loadCatalogForCommandLine(global.root);
   return command.validate?.(input, global) ?? input;
 }
 

@@ -19,6 +19,22 @@ export const licenseLabels = {
   prohibited: "Non-commercial only",
 } as const;
 
+/** How far LocalBase trusts a catalog entry. */
+export const catalogTrustLabels = {
+  qualified: "Qualified by LocalBase",
+  community: "Community catalog, not qualified",
+  user: "Added by you, not qualified",
+  modified:
+    "Qualified entry you changed; reference measurements no longer apply",
+} as const;
+
+/** Which catalog tier an entry came from. */
+export const catalogTierLabels = {
+  "built-in": "Built-in catalog",
+  remote: "Remote catalog",
+  user: "Your catalog",
+} as const;
+
 /** Where a memory figure came from. */
 export const memoryFigureLabels = {
   estimate: "Estimate",

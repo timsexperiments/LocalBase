@@ -16,6 +16,7 @@ import {
 import { shouldShowOperationalOutput } from "./utils/operational-output";
 import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
+import { catalogDiagnostics } from "./catalog/sources";
 import {
   databasePath as dbPath,
   openReadOnlyDatabase,
@@ -222,8 +223,14 @@ function invalidConfiguration(
   detail: string,
   cause?: unknown,
 ): Error {
+  const skipped = catalogDiagnostics().filter(({ modelId }) => modelId);
+  const catalogHint =
+    skipped.length > 0
+      ? `The user catalog skipped ${skipped.map(({ path, message }) => `${path} (${message})`).join("; ")}; fix or restore that file if a selected model came from it. `
+      : "";
   return new Error(
     `Invalid LocalBase configuration in ${dbPath(root)}: ${detail}. ` +
+      catalogHint +
       `Repair the invalid row or run "local-base reset --root ${root} --yes" to recreate the database.`,
     cause === undefined ? undefined : { cause },
   );

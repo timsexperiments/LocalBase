@@ -87,6 +87,13 @@ const modelSchema = z.object({
     displayName: z.string().optional(),
     kind: z.enum(["llm", "image", "tts", "stt", "video"]),
     qualificationState: z.enum(["qualified", "experimental"]),
+    /** Catalog trust and tier; absent on older servers. */
+    trust: z.enum(["qualified", "community", "user", "modified"]).optional(),
+    catalogTier: z.enum(["built-in", "remote", "user"]).optional(),
+    /** Capabilities verified unsupported; absent on older servers. */
+    unsupportedCapabilities: z
+      .array(z.object({ id: z.string(), reason: z.string() }))
+      .optional(),
     /** Commercial-use classification; absent on older servers. */
     commercialStatus: z.enum(["open", "conditional", "prohibited"]).optional(),
     /** One-line description; absent on older servers. */
@@ -161,7 +168,9 @@ const modelSchema = z.object({
               declared: z.boolean(),
               detected: z.boolean().optional(),
               runtime: z.boolean().optional(),
+              verified: z.boolean().optional(),
               effective: z.boolean(),
+              unsupportedReason: z.string().optional(),
             }),
           )
           .optional(),

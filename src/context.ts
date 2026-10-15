@@ -1,3 +1,4 @@
+import { loadCatalogSources } from "./catalog/user-catalog";
 import { detectSpecs, type HostSpecs } from "./system";
 import {
   defaultConfig,
@@ -169,6 +170,7 @@ export function createMinimalAppContext(
   const root = canonicalLocalBaseRoot(
     resolveEffectiveRoot(parsedOptions.root, environmentRoot),
   );
+  loadCatalogSources(root);
   return {
     logger: createLogger(process.env.LOG_FORMAT),
     config: { root },
@@ -193,6 +195,8 @@ export async function createAppContext(
   const root = canonicalLocalBaseRoot(
     resolveEffectiveRoot(parsedOptions.root, environmentRoot),
   );
+  // User catalog entries must exist before config validation looks them up.
+  loadCatalogSources(root);
   const database = new DatabaseSession();
   const logger = createLogger(environment.LOG_FORMAT);
   let initializationOperation: OperationLease | undefined;

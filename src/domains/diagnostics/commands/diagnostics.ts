@@ -9,9 +9,18 @@ import {
   type ModelKind,
 } from "../../../catalog";
 import {
+  capabilityLabel,
+  capabilityMismatchSchema,
   capabilitySchema,
   capabilitySourceSchema,
+  unsupportedCapabilitySchema,
 } from "../../../catalog/capabilities";
+import {
+  catalogDiagnostics,
+  catalogProvenance,
+  catalogTierSchema,
+  catalogTrustSchema,
+} from "../../../catalog/sources";
 import { openReadOnlyDatabase } from "../../../db/client";
 import type { CapabilityMismatch } from "../../models/capability-detection";
 import { resolveCapabilitiesForModel } from "../../models/model-capabilities";
@@ -111,6 +120,12 @@ const modelSchema = z
     kind: z.enum(["llm", "stt", "tts", "image", "video"]),
     size: z.string().min(1),
     storageGb: z.number().positive(),
+    /** How far LocalBase trusts the catalog entry, and which tier it came from. */
+    trust: catalogTrustSchema,
+    catalogTier: catalogTierSchema,
+    /** Top-level fields a higher catalog tier changed. */
+    patchedFields: z.array(z.string().min(1)),
+    unsupportedCapabilities: z.array(unsupportedCapabilitySchema),
     selected: z.boolean(),
     active: z.boolean(),
     complete: z.boolean(),
@@ -119,17 +134,7 @@ const modelSchema = z
         .object({ id: capabilitySchema, source: capabilitySourceSchema })
         .strict(),
     ),
-    capabilityMismatches: z.array(
-      z
-        .object({
-          id: capabilitySchema,
-          declared: z.boolean(),
-          detected: z.boolean().optional(),
-          runtime: z.boolean().optional(),
-          effective: z.boolean(),
-        })
-        .strict(),
-    ),
+    capabilityMismatches: z.array(capabilityMismatchSchema),
     inputModalities: z
       .object({
         values: z.array(modelModalitySchema).min(1),
@@ -209,7 +214,22 @@ export const diagnosticsManifestSchema = z
     hardware: availabilitySchema(hardwareSchema),
     configuration: availabilitySchema(configurationSchema),
     models: availabilitySchema(
-      z.object({ models: z.array(modelSchema) }).strict(),
+      z
+        .object({
+          models: z.array(modelSchema),
+          /** Catalog files that were skipped, by file name, with the reason. */
+          catalogIssues: z.array(
+            z
+              .object({
+                tier: catalogTierSchema,
+                file: z.string().min(1),
+                modelId: z.string().min(1).optional(),
+                message: z.string().min(1),
+              })
+              .strict(),
+          ),
+        })
+        .strict(),
     ),
     service: availabilitySchema(serviceSchema),
     observability: availabilitySchema(observabilitySchema),
@@ -308,12 +328,17 @@ async function modelData(
         config,
         runtimeStore?.store ?? null,
       );
+      const provenance = catalogProvenance(model.modelId);
       models.push(
         modelSchema.parse({
           id: model.modelId,
           kind: model.kind,
           size: model.size,
           storageGb: model.storageGb,
+          trust: provenance.trust,
+          catalogTier: provenance.tier,
+          patchedFields: [...provenance.patchedFields],
+          unsupportedCapabilities: model.unsupportedCapabilities ?? [],
           selected: selectedByKind[model.kind].includes(model.modelId),
           active: active.has(model.modelId),
           complete: installation.complete,
@@ -339,7 +364,13 @@ async function modelData(
   } finally {
     runtimeStore?.close();
   }
-  return { models };
+  const catalogIssues = catalogDiagnostics().map((issue) => ({
+    tier: issue.tier,
+    file: basename(issue.path),
+    ...(issue.modelId ? { modelId: issue.modelId } : {}),
+    message: issue.message.split(root).join("<root>"),
+  }));
+  return { models, catalogIssues };
 }
 
 /**
@@ -360,12 +391,18 @@ function openRuntimeCapabilityStore(root: string) {
 }
 
 function formatMismatch(mismatch: CapabilityMismatch): string {
+  if (mismatch.unsupportedReason !== undefined) {
+    return `${mismatch.id} (verified unsupported: ${mismatch.unsupportedReason}; using ${mismatch.effective})`;
+  }
   const sources = [
     `declared ${mismatch.declared}`,
     ...(mismatch.detected === undefined
       ? []
       : [`detected ${mismatch.detected}`]),
     ...(mismatch.runtime === undefined ? [] : [`runtime ${mismatch.runtime}`]),
+    ...(mismatch.verified === undefined
+      ? []
+      : [`round-trip ${mismatch.verified}`]),
   ];
   return `${mismatch.id} (${sources.join(", ")}; using ${mismatch.effective})`;
 }
@@ -571,10 +608,25 @@ export async function runDiagnostics(
   });
   execution.output.info(`Created diagnostics bundle: ${path}`);
   if (manifest.models.available) {
+    for (const issue of manifest.models.data.catalogIssues) {
+      execution.output.info(
+        `Catalog file skipped (${issue.tier}): ${issue.file}: ${issue.message}`,
+      );
+    }
     for (const model of manifest.models.data.models) {
       execution.output.info(
         `Memory for ${model.id}: ${model.memory.minimumGb} GB (${model.memory.source}), ${model.memory.verdict}`,
       );
+      if (model.trust !== "qualified") {
+        execution.output.info(
+          `Catalog trust for ${model.id}: ${model.trust} (${model.catalogTier} tier${model.patchedFields.length > 0 ? `; changed ${model.patchedFields.join(", ")}` : ""})`,
+        );
+      }
+      for (const unsupported of model.unsupportedCapabilities) {
+        execution.output.info(
+          `Verified unsupported for ${model.id}: ${capabilityLabel(unsupported.id)} (${unsupported.reason})`,
+        );
+      }
       if (model.capabilityMismatches.length === 0) continue;
       execution.output.info(
         `Capability mismatch for ${model.id}: ${model.capabilityMismatches

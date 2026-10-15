@@ -2,6 +2,10 @@ import { z } from "zod";
 import type { LocalBaseConfig } from "../../../manager";
 import { modelSpecObjectSchema, refineModelSpec } from "../../../catalog";
 import {
+  catalogTierSchema,
+  catalogTrustSchema,
+} from "../../../catalog/sources";
+import {
   gatewayReadinessSchema,
   serviceStatusSchema,
 } from "../../service/manager";
@@ -95,6 +99,9 @@ export const modelOutputSchema = modelSpecObjectSchema
     observedPeakBytes: z.number().int().positive().nullable(),
     fitVerdict: z.enum(["fits", "tight", "wont-fit"]),
     systemMemoryGb: z.number().nonnegative(),
+    /** Catalog trust and tier (`models catalog` only). */
+    trust: catalogTrustSchema.optional(),
+    catalogTier: catalogTierSchema.optional(),
   })
   .strict()
   .superRefine(refineModelSpec);
@@ -169,6 +176,54 @@ export const installResultSchema = z
     installed: z.array(
       z.object({ modelId: z.string(), path: z.string() }).strict(),
     ),
+  })
+  .strict();
+export const addResultSchema = z
+  .object({
+    modelId: z.string(),
+    path: z.string(),
+    repo: z.string(),
+    revision: z.string(),
+    license: z.string().nullable(),
+    pipelineTag: z.string().nullable(),
+    files: z.array(
+      z
+        .object({ path: z.string(), sizeBytes: z.number(), sha256: z.string() })
+        .strict(),
+    ),
+    projector: z.string().nullable(),
+    declaredCapabilities: z.array(z.string()),
+    detectedCapabilities: z.array(z.string()),
+    contextWindowTokens: z.number().nullable(),
+    replaced: z.boolean(),
+    installedPath: z.string().nullable(),
+  })
+  .strict();
+export const searchResultSchema = z
+  .object({
+    query: z.string(),
+    cached: z.boolean(),
+    results: z.array(
+      z
+        .object({
+          repo: z.string(),
+          downloads: z.number(),
+          likes: z.number().optional(),
+          license: z.string().nullable(),
+          pipelineTag: z.string().nullable(),
+          likelyKind: z.string(),
+          addable: z.boolean(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export const removeEntryResultSchema = z
+  .object({
+    modelId: z.string(),
+    path: z.string(),
+    restoredTier: z.enum(["built-in", "remote"]).nullable(),
+    selected: z.boolean(),
   })
   .strict();
 export const keysListResultSchema = z

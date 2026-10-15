@@ -44,6 +44,9 @@ import {
   installedInputSchema,
   showInputSchema,
   installInputSchema,
+  addInputSchema,
+  searchInputSchema,
+  removeEntryInputSchema,
   keyIdInputSchema,
   keysCreateInputSchema,
   keysListInputSchema,
@@ -89,6 +92,9 @@ import {
   type InstalledInput,
   type ShowInput,
   type InstallInput,
+  type AddInput,
+  type SearchInput,
+  type RemoveEntryInput,
   type KeyIdInput,
   type KeysCreateInput,
   type KeysListInput,
@@ -131,6 +137,9 @@ import {
   installedResultSchema,
   showResultSchema,
   installResultSchema,
+  addResultSchema,
+  searchResultSchema,
+  removeEntryResultSchema,
   keyMetadataResultSchema,
   keySecretResultSchema,
   keysListResultSchema,
@@ -550,6 +559,85 @@ const installCommand = command<InstallInput>({
   run: async (input, context, execution) => {
     const { runInstall } = await import("../../models/commands/install");
     return await runInstall(input, context, execution);
+  },
+});
+
+const addCommand = command<AddInput>({
+  path: ["models", "add"],
+  description: "Add a GGUF model from Hugging Face to the user catalog",
+  examples: [
+    "local-base models add hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:q4_k_m",
+    "local-base models add hf:ggml-org/gemma-3-4b-it-GGUF --install",
+  ],
+  args: {
+    reference: {
+      type: "positional",
+      required: true,
+      description: "hf:<org>/<repo>[:<file-or-quant>]",
+    },
+    install: {
+      type: "boolean",
+      description: "Download the model after adding it",
+    },
+    id: {
+      type: "string",
+      valueHint: "model-id",
+      description:
+        "Catalog id to use instead of one derived from the file name",
+    },
+  },
+  positionals: { maximum: 1 },
+  parse: (input) => addInputSchema.parse(input),
+  resultSchema: addResultSchema,
+  run: async (input, context, execution) => {
+    const { runAdd } = await import("../../models/commands/hf");
+    return await runAdd(input, context, execution);
+  },
+});
+
+const searchCommand = command<SearchInput>({
+  path: ["models", "search"],
+  description: "Search Hugging Face for GGUF models LocalBase can run",
+  examples: [
+    "local-base models search qwen coder",
+    "local-base --json models search gemma --limit 5",
+  ],
+  requiresDatabase: false,
+  readOnlyConfiguration: true,
+  args: {
+    limit: {
+      type: "string",
+      valueHint: "count",
+      description: "Number of results (default 20, at most 100)",
+    },
+  },
+  positionals: { maximum: 20 },
+  parse: (input, positionals) =>
+    searchInputSchema.parse({ ...input, query: positionals.join(" ") }),
+  resultSchema: searchResultSchema,
+  run: async (input, context, execution) => {
+    const { runSearch } = await import("../../models/commands/hf");
+    return await runSearch(input, context, execution);
+  },
+});
+
+const removeEntryCommand = command<RemoveEntryInput>({
+  path: ["models", "remove-entry"],
+  description: "Remove a model's user catalog file (downloaded files stay)",
+  examples: ["local-base models remove-entry qwen2.5-0.5b-instruct-q4_k_m"],
+  args: {
+    modelId: {
+      type: "positional",
+      required: true,
+      description: "Model ID of the user catalog entry",
+    },
+  },
+  positionals: { maximum: 1 },
+  parse: (input) => removeEntryInputSchema.parse(input),
+  resultSchema: removeEntryResultSchema,
+  run: async (input, context, execution) => {
+    const { runRemoveEntry } = await import("../../models/commands/hf");
+    return runRemoveEntry(input, context, execution);
   },
 });
 
@@ -1635,6 +1723,9 @@ export const commands = [
   listCommand,
   installCommand,
   showCommand,
+  addCommand,
+  searchCommand,
+  removeEntryCommand,
   serveCommand,
   startCommand,
   stopCommand,
@@ -1686,6 +1777,9 @@ export const modelsCommand = defineCommand({
     list: listCommand.citty,
     install: installCommand.citty,
     show: showCommand.citty,
+    add: addCommand.citty,
+    search: searchCommand.citty,
+    "remove-entry": removeEntryCommand.citty,
   },
 });
 

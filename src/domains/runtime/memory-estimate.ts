@@ -1,3 +1,4 @@
+import { usesReferenceMeasurements } from "../../catalog/sources";
 /**
  * First-principles memory estimates for every runtime LocalBase launches.
  *
@@ -953,6 +954,7 @@ export function measuredModelDemand(
   spec: ModelSpec,
   artifactBytes: number = totalArtifactBytes(spec),
 ): MeasuredMemoryDemand | undefined {
+  if (!usesReferenceMeasurements(spec)) return undefined;
   switch (spec.kind) {
     case "stt": {
       const record = findModelMeasurement("stt", spec.modelId);
@@ -1071,6 +1073,7 @@ export function measuredCatalogModelMemory(
   spec: ModelSpec,
   inputs: CatalogEstimateInputs = {},
 ): MeasuredMemoryDemand | undefined {
+  if (!usesReferenceMeasurements(spec)) return undefined;
   if (spec.kind !== "llm") return measuredModelDemand(spec);
   const reference = catalogLlmReference(spec, inputs);
   return measuredLlmDemand({

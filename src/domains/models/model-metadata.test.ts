@@ -395,7 +395,8 @@ test("the browser accepts metadata for every catalog model", () => {
 
 test("projects resolved capabilities with sources and mismatches", () => {
   const config = defaultConfig("/tmp/localbase-model-metadata");
-  const model = catalogModel();
+  // Without its verified-unsupported entry, runtime flags decide.
+  const { unsupportedCapabilities: _unsupported, ...model } = catalogModel();
   const input = {
     catalog: [model],
     config,
@@ -435,6 +436,59 @@ test("projects resolved capabilities with sources and mismatches", () => {
   });
   // Legacy fields keep describing the catalog declaration.
   expect(metadata.catalog.features).toEqual(legacy);
+});
+
+test("a verified-unsupported capability outranks template flags (#328)", () => {
+  const config = defaultConfig("/tmp/localbase-model-metadata");
+  const model = catalogModel();
+  const resolved = resolveModelCapabilities(model, {
+    detected: { capabilities: { "tool-calling": true } },
+    runtime: {
+      capabilities: { "tool-calling": true },
+      inputModalities: ["text"],
+    },
+  });
+  expect(resolved.capabilities.map(({ id }) => id)).not.toContain(
+    "tool-calling",
+  );
+  const metadata = projectModelMetadata(model, {
+    catalog: [model],
+    config,
+    installations: new Map([[modelId, true]]),
+    runtimes: runtimeSnapshots(),
+    capabilities: new Map([[modelId, resolved]]),
+  });
+  expect(modelMetadataSchema.parse(metadata)).toEqual(metadata);
+  expect(metadata.catalog.unsupportedCapabilities).toEqual([
+    expect.objectContaining({ id: "tool-calling", verified: true }),
+  ]);
+  expect(metadata.catalog.capabilityResolution.mismatches).toEqual([
+    expect.objectContaining({
+      id: "tool-calling",
+      declared: false,
+      detected: true,
+      runtime: true,
+      effective: false,
+    }),
+  ]);
+  expect(metadata.catalog.trust).toBe("qualified");
+  expect(metadata.catalog.catalogTier).toBe("built-in");
+
+  // Only a verified round-trip overrides it.
+  const verified = resolveModelCapabilities(model, {
+    runtime: {
+      capabilities: { "tool-calling": true },
+      verified: { "tool-calling": true },
+    },
+  });
+  expect(verified.capabilities).toContainEqual({
+    id: "tool-calling",
+    source: "runtime",
+  });
+  expect(verified.mismatches[0]).toMatchObject({
+    id: "tool-calling",
+    effective: true,
+  });
 });
 
 test("projects the memory source, observed peak, and fit for this machine", () => {
