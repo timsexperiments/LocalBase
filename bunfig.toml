@@ -1,2 +1,2 @@
 [test]
-preload = ["./src/test/quiet-logs.ts"]
+preload = ["./src/test/quiet-logs.ts", "./src/test/offline-catalog-feed.ts"]

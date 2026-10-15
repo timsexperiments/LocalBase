@@ -106,3 +106,27 @@ test("details explain a capability mismatch", () => {
   expect(markup).toContain("the installed files don&#x27;t support it");
   expect(markup).not.toContain(">Default<");
 });
+
+test("details name the feed a community entry came from", () => {
+  const community = {
+    ...model,
+    catalog: {
+      ...model.catalog,
+      trust: "community" as const,
+      catalogTier: "remote" as const,
+      catalogFeed: "https://feeds.example.com/catalog/feed.json",
+    },
+  };
+  const markup = renderToStaticMarkup(
+    createElement(ModelDetails, {
+      model: community,
+      status: undefined,
+      close: () => {},
+      actions: null,
+    }),
+  );
+  expect(markup).toContain("Community");
+  expect(markup).toContain("Remote catalog");
+  expect(markup).toContain("Catalog feed");
+  expect(markup).toContain("https://feeds.example.com/catalog/feed.json");
+});

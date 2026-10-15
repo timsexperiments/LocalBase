@@ -11,20 +11,66 @@ names. Each file uses the same schema as the built-in entries in
 `src/catalog/models/`.
 
 Files are read in name order whenever LocalBase starts or a command runs.
-Nothing is fetched over the network to read the catalog.
+Reading the catalog never touches the network; the remote feed below is
+downloaded in the background and read from its cache.
 
 ## Tiers and precedence
 
 The effective catalog is built from up to three tiers:
 
-| Tier     | Source                                 | Trust when added |
-| -------- | -------------------------------------- | ---------------- |
-| user     | `<root>/catalog.d/*.json`              | `user`           |
-| remote   | the shared community catalog (planned) | `community`      |
-| built-in | shipped with the binary                | `qualified`      |
+| Tier     | Source                                     | Trust when added |
+| -------- | ------------------------------------------ | ---------------- |
+| user     | `<root>/catalog.d/*.json`                  | `user`           |
+| remote   | the community feed, cached under `<root>` | `community`      |
+| built-in | shipped with the binary                    | `qualified`      |
 
 When more than one tier names the same `modelId`, user beats remote, and
 remote beats built-in.
+
+## Remote community feed
+
+New catalog models can arrive without a LocalBase release. The repository
+publishes its catalog as a versioned feed,
+[`catalog/feed.json`](../catalog/feed.json), and a running gateway downloads
+it about once a day: it checks hourly and downloads only when the cached
+copy is more than 24 hours old.
+
+- **Only new models.** The feed adds model ids this binary does not ship.
+  Entries for built-in ids are ignored, so the feed cannot change a
+  qualified entry, and your `catalog.d` files always win over it.
+- **Pinned and checked.** Every entry pins a repository revision and artifact
+  checksums, like any catalog entry. The feed document carries a
+  `schemaVersion` and the sha256 of its `models` array; a feed with a
+  mismatched checksum, an unknown schema version or more than 8 MiB is
+  rejected whole. A feed entry that is not a valid spec is skipped and
+  reported, and the rest still load.
+- **Offline fallback.** The last good download is kept in
+  `<root>/cache/catalog-feed/`. If a refresh fails, LocalBase keeps using
+  it; with no download at all, the built-in catalog is used.
+- **Community trust.** Feed models show as `community` from the remote tier.
+  `local-base models show <id>` prints the feed URL and entry, the model
+  details view names the feed, and `local-base diagnostics` reports the feed
+  state and any skipped entries.
+
+Manage the feed with `local-base models feed`:
+
+```sh
+local-base models feed status            # URL, last download, revision, counts
+local-base models feed refresh           # download now if stale
+local-base models feed refresh --force   # download now
+local-base models feed use https://example.com/my-feed.json
+local-base models feed use off           # built-in and user catalogs only
+local-base models feed use default       # back to the published feed
+```
+
+Feed URLs must use `https` (plain `http` is allowed only for `localhost`).
+`LOCALBASE_CATALOG_FEED_URL` overrides the saved choice; set it to `off` to
+turn the feed off. The CLI reads the cached feed but never downloads it
+except through `models feed refresh`.
+
+To publish your own feed, use the same document shape. Contributors
+regenerate the repository feed after editing `src/catalog/models/` with
+`bun run catalog:feed`; a test fails while it is out of date.
 
 ## Same-id semantics: add or patch
 

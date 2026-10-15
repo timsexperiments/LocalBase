@@ -226,7 +226,7 @@ function invalidConfiguration(
   const skipped = catalogDiagnostics().filter(({ modelId }) => modelId);
   const catalogHint =
     skipped.length > 0
-      ? `The user catalog skipped ${skipped.map(({ path, message }) => `${path} (${message})`).join("; ")}; fix or restore that file if a selected model came from it. `
+      ? `The catalog skipped ${skipped.map(({ path, message }) => `${path} (${message})`).join("; ")}; fix or restore that file if a selected model came from it. `
       : "";
   return new Error(
     `Invalid LocalBase configuration in ${dbPath(root)}: ${detail}. ` +

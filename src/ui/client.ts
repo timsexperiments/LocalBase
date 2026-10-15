@@ -90,6 +90,8 @@ const modelSchema = z.object({
     /** Catalog trust and tier; absent on older servers. */
     trust: z.enum(["qualified", "community", "user", "modified"]).optional(),
     catalogTier: z.enum(["built-in", "remote", "user"]).optional(),
+    /** The remote feed a community entry came from; absent on older servers. */
+    catalogFeed: z.string().nullable().optional(),
     /** Capabilities verified unsupported; absent on older servers. */
     unsupportedCapabilities: z
       .array(z.object({ id: z.string(), reason: z.string() }))

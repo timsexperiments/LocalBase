@@ -121,6 +121,8 @@ export const modelMetadataSchema = z
         trust: catalogTrustSchema,
         /** The highest catalog tier that contributed to the entry. */
         catalogTier: catalogTierSchema,
+        /** The remote feed a community entry came from (origin and path only); null otherwise. */
+        catalogFeed: z.string().min(1).nullable(),
         commercialStatus: z.enum(["open", "conditional", "prohibited"]),
         summary: z.string(),
         /** Longer catalog notes. */
@@ -349,6 +351,18 @@ function runtimeForModel(
 }
 
 /** Projects catalog facts and observed device state without initiating runtime work. */
+/** The feed URL behind a remote entry, without query, fragment or credentials. */
+function catalogFeedOf(modelId: string): string | null {
+  const provenance = catalogProvenance(modelId);
+  if (provenance.origin !== "remote" || !provenance.path) return null;
+  try {
+    const url = new URL(provenance.path);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
 export function projectModelMetadata(
   model: ModelSpec,
   input: ModelMetadataProjectionInput,
@@ -366,6 +380,7 @@ export function projectModelMetadata(
       qualificationState: model.qualificationState ?? "qualified",
       trust: catalogProvenance(model.modelId).trust,
       catalogTier: catalogProvenance(model.modelId).tier,
+      catalogFeed: catalogFeedOf(model.modelId),
       commercialStatus: model.commercialStatus,
       summary: model.catch,
       notes: model.notes,

@@ -47,6 +47,9 @@ import {
   addInputSchema,
   searchInputSchema,
   removeEntryInputSchema,
+  feedRefreshInputSchema,
+  feedStatusInputSchema,
+  feedUseInputSchema,
   keyIdInputSchema,
   keysCreateInputSchema,
   keysListInputSchema,
@@ -95,6 +98,9 @@ import {
   type AddInput,
   type SearchInput,
   type RemoveEntryInput,
+  type FeedRefreshInput,
+  type FeedStatusInput,
+  type FeedUseInput,
   type KeyIdInput,
   type KeysCreateInput,
   type KeysListInput,
@@ -140,6 +146,8 @@ import {
   addResultSchema,
   searchResultSchema,
   removeEntryResultSchema,
+  feedRefreshResultSchema,
+  feedStatusResultSchema,
   keyMetadataResultSchema,
   keySecretResultSchema,
   keysListResultSchema,
@@ -638,6 +646,70 @@ const removeEntryCommand = command<RemoveEntryInput>({
   run: async (input, context, execution) => {
     const { runRemoveEntry } = await import("../../models/commands/hf");
     return runRemoveEntry(input, context, execution);
+  },
+});
+
+const feedRefreshCommand = command<FeedRefreshInput>({
+  path: ["models", "feed", "refresh"],
+  description: "Download the remote catalog feed now if it is due",
+  examples: [
+    "local-base models feed refresh",
+    "local-base models feed refresh --force",
+  ],
+  requiresDatabase: false,
+  readOnlyConfiguration: true,
+  args: {
+    force: {
+      type: "boolean",
+      description: "Download even if the cached feed is less than a day old",
+    },
+  },
+  parse: (input) => feedRefreshInputSchema.parse(input),
+  resultSchema: feedRefreshResultSchema,
+  run: async (input, context, execution) => {
+    const { runFeedRefresh } = await import("../../models/commands/feed");
+    return await runFeedRefresh(input, context, execution);
+  },
+});
+
+const feedStatusCommand = command<FeedStatusInput>({
+  path: ["models", "feed", "status"],
+  description: "Show the remote catalog feed in use and when it was fetched",
+  examples: ["local-base models feed status"],
+  requiresDatabase: false,
+  readOnlyConfiguration: true,
+  args: {},
+  parse: (input) => feedStatusInputSchema.parse(input),
+  resultSchema: feedStatusResultSchema,
+  run: async (input, context, execution) => {
+    const { runFeedStatus } = await import("../../models/commands/feed");
+    return runFeedStatus(input, context, execution);
+  },
+});
+
+const feedUseCommand = command<FeedUseInput>({
+  path: ["models", "feed", "use"],
+  description: "Choose the remote catalog feed URL, or turn the feed off",
+  examples: [
+    "local-base models feed use https://example.com/catalog/feed.json",
+    "local-base models feed use off",
+    "local-base models feed use default",
+  ],
+  requiresDatabase: false,
+  readOnlyConfiguration: true,
+  args: {
+    feed: {
+      type: "positional",
+      required: true,
+      description: "An https:// feed URL, `default` or `off`",
+    },
+  },
+  positionals: { maximum: 1 },
+  parse: (input) => feedUseInputSchema.parse(input),
+  resultSchema: feedStatusResultSchema,
+  run: async (input, context, execution) => {
+    const { runFeedUse } = await import("../../models/commands/feed");
+    return runFeedUse(input, context, execution);
   },
 });
 
@@ -1726,6 +1798,9 @@ export const commands = [
   addCommand,
   searchCommand,
   removeEntryCommand,
+  feedRefreshCommand,
+  feedStatusCommand,
+  feedUseCommand,
   serveCommand,
   startCommand,
   stopCommand,
@@ -1768,6 +1843,19 @@ export const commands = [
   uninstallCommand,
 ] as const satisfies readonly Command[];
 
+const modelsFeedCommand = defineCommand({
+  meta: {
+    name: "local-base models feed",
+    description: "Manage the remote catalog feed",
+  },
+  args: globalArgs,
+  subCommands: {
+    refresh: feedRefreshCommand.citty,
+    status: feedStatusCommand.citty,
+    use: feedUseCommand.citty,
+  },
+});
+
 export const modelsCommand = defineCommand({
   meta: { name: "local-base models", description: "Browse and install models" },
   args: globalArgs,
@@ -1780,6 +1868,7 @@ export const modelsCommand = defineCommand({
     add: addCommand.citty,
     search: searchCommand.citty,
     "remove-entry": removeEntryCommand.citty,
+    feed: modelsFeedCommand,
   },
 });
 
@@ -1948,6 +2037,8 @@ export function groupForPath(path: string[]): CittyCommand | undefined {
     return accessEmailCommand;
   if (path.length === 2 && path[0] === "access" && path[1] === "users")
     return accessUsersCommand;
+  if (path.length === 2 && path[0] === "models" && path[1] === "feed")
+    return modelsFeedCommand;
   if (path.length !== 1) return undefined;
   if (path[0] === "models") return modelsCommand;
   if (path[0] === "keys") return keysCommand;
