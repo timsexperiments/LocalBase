@@ -30,6 +30,9 @@ export class DatabaseSession {
 
     mkdirSync(canonicalRoot, { recursive: true });
     const sqlite = new Database(path);
+    // Other processes (the gateway, the CLI, tests) share this file; wait
+    // briefly for their write locks instead of failing with SQLITE_BUSY.
+    sqlite.exec("PRAGMA busy_timeout = 5000");
     sqlite.exec("PRAGMA foreign_keys = ON");
     const db = drizzle({ client: sqlite, schema });
     try {
@@ -63,6 +66,7 @@ export function openReadOnlyDatabase(root: string): {
     readonly: true,
     create: false,
   });
+  sqlite.exec("PRAGMA busy_timeout = 5000");
   sqlite.exec("PRAGMA foreign_keys = ON");
   return {
     db: drizzle({ client: sqlite, schema }),
