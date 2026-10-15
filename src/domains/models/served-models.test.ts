@@ -67,6 +67,45 @@ describe("listServedModels", () => {
     expect(byId(data, "whisper-tiny-q8_0")?.name).toBeTruthy();
   });
 
+  test("adds this machine's memory figure and its source when asked", async () => {
+    const plain = await listServedModels(config);
+    expect(plain.every((model) => model.memory === undefined)).toBe(true);
+
+    const llmId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const sha = "c".repeat(64);
+    const data = await listServedModels(config, undefined, {
+      memoryGb: 64,
+      memoryInputsForModel: async (spec) =>
+        spec.modelId === llmId
+          ? {
+              observed: [
+                {
+                  modelId: llmId,
+                  artifactSha256: sha,
+                  launchShape: "ctx=8192;slots=4;kv=q8_0/q8_0",
+                  peakBytes: 1_504_706_560,
+                  method: "footprint",
+                  observedAt: "2026-10-15T00:00:00.000Z",
+                },
+              ],
+            }
+          : {},
+    });
+    expect(byId(data, llmId)?.memory).toEqual({
+      min_vram_gb: 2,
+      source: "observed",
+      launch_shape: "ctx=8192;slots=4;kv=q8_0/q8_0",
+      observed_peak_bytes: 1_504_706_560,
+      fit: "fits",
+      system_memory_gb: 64,
+    });
+    expect(byId(data, "whisper-tiny-q8_0")?.memory).toMatchObject({
+      source: expect.stringMatching(/^(estimate|measured)$/),
+      observed_peak_bytes: null,
+      fit: "fits",
+    });
+  });
+
   test("skips unconfigured modalities and empty ids", async () => {
     const data = await listServedModels({
       ...config,

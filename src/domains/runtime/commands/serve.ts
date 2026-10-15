@@ -4638,6 +4638,19 @@ export async function runServe(
           llmProfile: supervisors.get("llm")?.llmProfile?.(),
           parallel: currentConfig.parallel,
           memoryGb: ctx.specs.gpuVramGb,
+          memoryInputsForModel: async (spec) => {
+            const inputs = await collectModelMemoryInputs({
+              catalog: [spec],
+              installations: await inspectCatalogInstallations(currentConfig, [
+                spec,
+              ]),
+              directoryFor: (model) =>
+                directoryForModel(currentConfig, model.kind),
+              observed: observedMemory,
+              readGeometry: readCachedLlmKvGeometry,
+            });
+            return inputs.get(spec.modelId) ?? {};
+          },
           kvGeometryForModel: async (id) => {
             const spec = byId(id);
             const modelFile =
