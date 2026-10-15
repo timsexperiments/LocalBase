@@ -1,6 +1,6 @@
 import { leadingLegalCommentBlocks } from "./leading-legal-comment-blocks";
 
-const bunCommit = "0d9b296af33f2b851fcbf4df3e9ec89751734ba4";
+const bunCommit = "744846f844374847c902b5e7fd59b4342a51ef99";
 const libarchiveCommit = "ded82291ab41d5e355831b96b0e1ff49e24d8939";
 const buildUrl = `https://raw.githubusercontent.com/oven-sh/bun/${bunCommit}/scripts/build/deps/libarchive.ts`;
 const buildResponse = await fetch(buildUrl);

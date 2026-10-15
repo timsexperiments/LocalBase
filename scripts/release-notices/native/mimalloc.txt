@@ -1,4 +1,4 @@
-Source: https://github.com/microsoft/mimalloc/blob/f15aecb94fc8096008bf87b90c53ed682026914a/LICENSE
+Source: https://github.com/oven-sh/mimalloc/blob/6a64e1ba7f5b2130d4efccb67ec87fd0003f0f6a/LICENSE
 
 MIT License
 

@@ -206,10 +206,10 @@ export function httpBaseUrl(host: string, port: number): string {
 
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
 // Oversized bodies up to this many bytes past the limit are read and discarded before
-// the 413 is sent. Bun 1.3 ignores a handler's `connection: close`, and its fetch client
-// can return a socket to the keep-alive pool after abandoning an unfinished request body;
-// the next request on that socket is then parsed as the leftover body and rejected with a
-// bare 400. Draining keeps the HTTP/1.1 stream at a request boundary.
+// the 413 is sent, so a keep-alive client that is still writing reads the 413 at a request
+// boundary instead of hitting a reset. Bun 1.3 ignored a handler's `connection: close` and
+// could reuse the desynced socket (a bare 400 on the next request); Bun 1.4.2 closes it, but
+// the drain still protects clients that keep streaming.
 const MAX_DISCARDED_REQUEST_BYTES = 1024 * 1024;
 // Job owner when gateway auth is disabled and requests carry no principal.
 const LOCAL_VIDEO_OWNER_ID = "anonymous:local";

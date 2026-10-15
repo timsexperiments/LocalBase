@@ -1,4 +1,4 @@
-Source: https://github.com/tinycc/tinycc/blob/12882eee073cfe5c7621bcfadf679e1372d4537b/COPYING
+Source: https://github.com/oven-sh/tinycc/blob/05f0fafaa3be31e31d7b4b5c17dc60f62c991171/COPYING
 
 		  GNU LESSER GENERAL PUBLIC LICENSE
 		       Version 2.1, February 1999

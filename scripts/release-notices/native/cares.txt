@@ -1,4 +1,4 @@
-Source: https://github.com/c-ares/c-ares/blob/3ac47ee46edd8ea40370222f91613fc16c434853/LICENSE.md
+Source: https://github.com/c-ares/c-ares/blob/c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab/LICENSE.md
 
 MIT License
 

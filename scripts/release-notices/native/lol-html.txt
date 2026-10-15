@@ -1,4 +1,4 @@
-Source: https://github.com/cloudflare/lol-html/blob/77127cd2b8545998756e8d64e36ee2313c4bb312/LICENSE
+Source: https://github.com/oven-sh/lol-html/blob/725ce499aa9b71e38b7a2d0a9fbb6d7294a4079e/LICENSE
 
 Copyright (C) 2019, Cloudflare, Inc.
 All rights reserved.
