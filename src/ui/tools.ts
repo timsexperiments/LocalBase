@@ -22,7 +22,7 @@ import {
   type Connection,
   SessionRequiredError,
 } from "./client";
-import { hasPermission } from "./client";
+import { hasPermission, modelHasCapability } from "./client";
 
 const promptSchema = z
   .object({
@@ -68,7 +68,7 @@ export function generationTools(
   chatModel: Model,
   permissions: readonly Permission[],
 ) {
-  if (!chatModel.catalog.features.includes("tool-calling")) return [];
+  if (!modelHasCapability(chatModel, "tool-calling")) return [];
   return toolNames.flatMap((name) => {
     if (!hasPermission(permissions, toolPermissions[name])) return [];
     const candidates = toolModels(models, name);

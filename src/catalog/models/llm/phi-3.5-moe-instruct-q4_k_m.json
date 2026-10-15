@@ -1,0 +1,30 @@
+{
+  "modelId": "phi-3.5-moe-instruct-q4_k_m",
+  "displayName": "Phi-3.5 MoE Instruct",
+  "kind": "llm",
+  "provider": "Microsoft",
+  "family": "Phi",
+  "version": "3.5",
+  "size": "42B",
+  "quant": "Q4_K_M",
+  "codingScore": 8.5,
+  "minVramGb": 32,
+  "storageGb": 23,
+  "source": "https://huggingface.co/bartowski/Phi-3.5-MoE-instruct-GGUF",
+  "repositoryRevision": "4b580329100cf44d7d041b6f63967b26869a6937",
+  "artifacts": [
+    {
+      "sourcePath": "Phi-3.5-MoE-instruct-Q4_K_M.gguf",
+      "filename": "Phi-3.5-MoE-instruct-Q4_K_M.gguf",
+      "expectedSizeBytes": 25345994592,
+      "sha256": "43e91bb720869bd8a92d8eb86bc3c74a52c49cf61642ca709b3d7bb89644df36",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "capabilities": ["mixture-of-experts", "reasoning", "multilingual"],
+  "commercialStatus": "open",
+  "catch": "MIT License. No restrictions.",
+  "notes": "Microsoft MoE release; high performance with 6.6B active parameters."
+}

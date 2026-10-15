@@ -1,0 +1,32 @@
+{
+  "modelId": "juggernaut-xl-v9",
+  "displayName": "Juggernaut XL v9",
+  "kind": "image",
+  "provider": "RunDiffusion",
+  "family": "Stable-Diffusion-XL",
+  "version": "9.0",
+  "size": "6.6GB",
+  "quant": "F16",
+  "minVramGb": 16,
+  "storageGb": 6.61,
+  "source": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
+  "repositoryRevision": "cf419233522daa0b9ea36c3aff98fa2cab1fb0fb",
+  "artifacts": [
+    {
+      "sourcePath": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+      "filename": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+      "expectedSizeBytes": 7105348188,
+      "sha256": "c9e3e68f89b8e38689e1097d4be4573cf308de4e3fd044c64ca697bdb4aa8bca",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["image"],
+  "imageLaunchOptions": {
+    "diffusionFlashAttention": true
+  },
+  "capabilities": ["text-to-image", "image-to-image"],
+  "commercialStatus": "open",
+  "catch": "Stability AI Community License.",
+  "notes": "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism."
+}

@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { CATALOG } from "../../../catalog";
+import { CATALOG, withLegacyFeatures } from "../../../catalog";
 import { modelOutputSchema } from "./results";
 
 test("model command output validates complete catalog records strictly", () => {
-  const model = CATALOG[0];
+  const model = withLegacyFeatures(CATALOG[0]!);
   expect(modelOutputSchema.safeParse(model).success).toBe(true);
   expect(
     modelOutputSchema.safeParse({ ...model, unexpected: true }).success,

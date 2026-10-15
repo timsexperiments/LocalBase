@@ -1,0 +1,30 @@
+{
+  "modelId": "mistral-nemo-12b-instruct-q4_k_m",
+  "displayName": "Mistral Nemo 12B Instruct",
+  "kind": "llm",
+  "provider": "Mistral/NVIDIA",
+  "family": "Mistral",
+  "version": "Nemo",
+  "size": "12B",
+  "quant": "Q4_K_M",
+  "codingScore": 8,
+  "minVramGb": 12,
+  "storageGb": 7.5,
+  "source": "https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF",
+  "repositoryRevision": "a2dd64a0a76ea1bdb2bb6ab6fa5496b003c7c908",
+  "artifacts": [
+    {
+      "sourcePath": "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+      "filename": "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+      "expectedSizeBytes": 7477208192,
+      "sha256": "7c1a10d202d8788dbe5628dc962254d10654c853cae6aaeca0618f05490d4a46",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "capabilities": ["tool-calling", "multilingual"],
+  "commercialStatus": "open",
+  "catch": "Apache 2.0.",
+  "notes": "Excellent 12B model with large 128k context window."
+}

@@ -21,6 +21,7 @@ import {
 import { loadEmailDeliveryConfig } from "../../auth/email-delivery";
 import {
   byId,
+  hasCapability,
   CATALOG,
   evaluateModelFit,
   calculateMaxSafeContextSize,
@@ -4024,7 +4025,7 @@ export async function runServe(
       if (!modelId) return notConfigured("Image");
       const spec = byId(modelId);
       if (!spec || spec.kind !== "image") return modelNotFound(modelId);
-      if (!spec.features.includes("image-to-image"))
+      if (!hasCapability(spec, "image-to-image"))
         return badRequest(
           `Model '${modelId}' does not support image-to-image edits.`,
           "model",
@@ -4244,7 +4245,7 @@ export async function runServe(
       if (
         hasToolRequest &&
         requestedModel &&
-        !requestedModel.features.includes("tool-calling")
+        !hasCapability(requestedModel, "tool-calling")
       ) {
         return openAIErrorResponse(
           {

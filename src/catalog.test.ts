@@ -8,8 +8,11 @@ import {
   byId,
   calculateMaxSafeContextSize,
   catalogSchema,
+  hasCapability,
+  legacyFeatures,
   recommendedForVram,
   resolveCatalogInstallation,
+  type ModelSpec,
 } from "./catalog";
 import {
   LLM_FALLBACK_SHAPE_MODELS,
@@ -27,12 +30,16 @@ import { buildSdImageServerArgs } from "./domains/runtime/launcher";
 
 const checksum = "a".repeat(64);
 
+function capabilityIds(entry: ModelSpec | undefined): string[] {
+  return entry?.capabilities.map(({ id }) => id) ?? [];
+}
+
 test("image-to-video feature matches image-conditioned runtime modes", () => {
   for (const entry of CATALOG.filter(
     (model) => model.kind === "video" && model.videoRuntime,
   )) {
     const supportsImages = ["ti2v", "i2v"].includes(entry.videoRuntime!.mode);
-    expect(entry.features.includes("image-to-video")).toBe(supportsImages);
+    expect(hasCapability(entry, "image-to-video")).toBe(supportsImages);
     if (supportsImages) expect(entry.inputModalities).toContain("image");
   }
 });
@@ -72,7 +79,7 @@ function model(artifacts: unknown[]) {
     artifacts,
     inputModalities: ["text"],
     outputModalities: ["text"],
-    features: ["test"],
+    capabilities: ["text-generation"],
     commercialStatus: "open",
     catch: "Apache 2.0.",
     notes: "Test model.",
@@ -269,24 +276,26 @@ describe("catalog artifact validation", () => {
         "translation",
       ]) {
         if (capability === "tool-calling" && toolCallingVerified.has(id)) {
-          expect(entry.features).toContain(capability);
+          expect(capabilityIds(entry)).toContain(capability);
           continue;
         }
-        expect(entry.features).not.toContain(capability);
+        expect(capabilityIds(entry)).not.toContain(capability);
       }
       expect(entry.inputModalities).toEqual(
         entry.kind === "stt" ? ["audio"] : ["text"],
       );
     }
-    expect(byId("whisper-base-en-q8_0")?.features).not.toContain(
+    expect(capabilityIds(byId("whisper-base-en-q8_0"))).not.toContain(
       "multilingual",
     );
     for (const size of ["tiny", "small", "medium"]) {
-      expect(byId(`whisper-${size}-q8_0`)?.features).toContain("multilingual");
+      expect(capabilityIds(byId(`whisper-${size}-q8_0`))).toContain(
+        "multilingual",
+      );
     }
     expect(byId("realvis-xl-v5.0")).toMatchObject({
       commercialStatus: "conditional",
-      features: ["text-to-image"],
+      capabilities: [{ id: "text-to-image", source: "declared" }],
       outputModalities: ["image"],
     });
   });
@@ -838,7 +847,7 @@ describe("catalog artifact validation", () => {
       inputModalities: ["text"],
       outputModalities: ["text"],
     });
-    expect(gemma?.features).not.toContain("vision");
+    expect(capabilityIds(gemma)).not.toContain("vision");
     expect(gemma?.artifacts).toEqual([
       expect.objectContaining({ role: "primary" }),
     ]);
@@ -847,7 +856,7 @@ describe("catalog artifact validation", () => {
   test("does not advertise tool calling for the unqualified Qwen 1.5B artifact", () => {
     const qwen = byId("qwen2.5-coder-1.5b-instruct-q4_k_m");
 
-    expect(qwen?.features).not.toContain("tool-calling");
+    expect(capabilityIds(qwen)).not.toContain("tool-calling");
   });
 
   test("pins the complete Qwen3 TTS base artifact set", () => {
@@ -1029,7 +1038,9 @@ describe("catalog artifact validation", () => {
       repositoryRevision: "c4f60d30c55a624e35427060fdd217579a6c1d77",
       inputModalities: ["text", "image", "audio"],
       outputModalities: ["video"],
-      features: ["speech-to-video", "avi-output", "experimental"],
+      capabilities: [{ id: "speech-to-video", source: "declared" }],
+      outputFormat: "avi",
+      experimentalRuntime: true,
       catch:
         "Apache-2.0 licenses for the pinned artifacts. Output audio is the supplied driving track, not generated speech.",
       videoRuntime: {
@@ -1139,7 +1150,7 @@ describe("catalog artifact validation", () => {
         ],
       },
     });
-    expect(fastWan?.features).toContain("image-to-video");
+    expect(capabilityIds(fastWan)).toContain("image-to-video");
     expect(
       fastWan?.artifacts.find(({ role }) => role === "primary"),
     ).toMatchObject({
@@ -1237,7 +1248,12 @@ describe("catalog-only video candidates", () => {
     if (!entry) throw new Error(`Missing catalog candidate: ${id}`);
     expect(entry.videoCatalogOnly).toBe(true);
     expect(entry.videoRuntime).toBeUndefined();
-    expect(entry.features).toEqual(["catalog-only", "diffusion-weights-only"]);
+    expect(entry.capabilities).toEqual([]);
+    expect(entry.diffusionWeightsOnly).toBe(true);
+    expect(legacyFeatures(entry)).toEqual([
+      "catalog-only",
+      "diffusion-weights-only",
+    ]);
     expect(entry.storageGb).toBeCloseTo(
       entry.artifacts.reduce(
         (bytes, artifact) => bytes + (artifact.expectedSizeBytes ?? 0),
@@ -1340,7 +1356,7 @@ describe("FLUX Klein image additions", () => {
       );
       expect(artifactBytes).toBe(bytes);
       expect(entry.commercialStatus).toBe(commercialStatus);
-      expect(entry.features).toEqual(["text-to-image"]);
+      expect(capabilityIds(entry)).toEqual(["text-to-image"]);
       const plan = resolveImageLaunchPlan({
         runtimeId: `image:${id}`,
         root: "/localbase",
@@ -1409,7 +1425,7 @@ describe("Cloudflare open-weight image additions", () => {
       ).toBe(bytes);
       expect(entry?.imageRuntime?.kind).toBe(runtimeKind);
       expect(entry?.commercialStatus).toBe(commercialStatus);
-      expect(entry?.features).toEqual(["text-to-image"]);
+      expect(capabilityIds(entry)).toEqual(["text-to-image"]);
     },
   );
 });

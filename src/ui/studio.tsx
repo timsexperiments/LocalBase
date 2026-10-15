@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { modelName, type Media, type Message, type Model } from "./client";
+import {
+  modelHasCapability,
+  modelName,
+  type Media,
+  type Message,
+  type Model,
+} from "./client";
 import { DictationButton, appendDictation } from "./dictation";
 import {
   GenerationSettingsFields,
@@ -31,7 +37,7 @@ const maxSourceBytes = 25 * 1024 * 1024;
 const maxFirstFrameBytes = 4 * 1024 * 1024;
 
 export function canEditImages(model: Model | undefined) {
-  return model?.catalog.features.includes("image-to-image") ?? false;
+  return model ? modelHasCapability(model, "image-to-image") : false;
 }
 export type ImageMode = "text-to-image" | "image-to-image" | "inpaint";
 /** Which image endpoint and mode a studio request uses with this model. */

@@ -1,0 +1,29 @@
+{
+  "modelId": "whisper-large-v3-turbo",
+  "displayName": "Whisper Large V3 Turbo",
+  "kind": "stt",
+  "provider": "OpenAI/ggml",
+  "family": "Whisper",
+  "version": "large-v3-turbo",
+  "size": "large",
+  "quant": "Q5_0",
+  "minVramGb": 4,
+  "storageGb": 1.7,
+  "source": "https://huggingface.co/ggerganov/whisper.cpp",
+  "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+  "artifacts": [
+    {
+      "sourcePath": "ggml-large-v3-turbo.bin",
+      "filename": "ggml-large-v3-turbo.bin",
+      "expectedSizeBytes": 1624555275,
+      "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["audio"],
+  "outputModalities": ["text"],
+  "capabilities": ["speech-to-text", "translation"],
+  "commercialStatus": "open",
+  "catch": "MIT License.",
+  "notes": "Best quality Whisper family model for local deployment."
+}

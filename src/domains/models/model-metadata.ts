@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   kokoroSpeechVoiceSchema,
+  legacyFeatures,
   modelModalitySchema,
   referenceSpeechVoiceSchema,
   resolveCatalogInstallation,
@@ -248,7 +249,7 @@ export function projectModelMetadata(
       kind: model.kind,
       qualificationState: model.qualificationState ?? "qualified",
       quantization: model.quant,
-      features: model.features,
+      features: legacyFeatures(model),
       artifacts: model.artifacts.map((artifact) => ({
         role: artifact.role,
         sha256: artifact.sha256 ?? null,

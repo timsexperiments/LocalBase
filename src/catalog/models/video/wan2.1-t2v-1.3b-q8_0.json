@@ -1,0 +1,96 @@
+{
+  "modelId": "wan2.1-t2v-1.3b-q8_0",
+  "displayName": "Wan2.1 T2V 1.3B",
+  "kind": "video",
+  "provider": "Wan/ggml",
+  "family": "Wan2.1-T2V",
+  "version": "2.1",
+  "size": "1.3B",
+  "quant": "Q8_0",
+  "minVramGb": 8,
+  "storageGb": 7.83,
+  "source": "https://huggingface.co/samuelchristlie/Wan2.1-T2V-1.3B-GGUF",
+  "repositoryRevision": "5a512b15fc35d1b67a074cfe55a591be9e9ef9b5",
+  "artifacts": [
+    {
+      "sourcePath": "Wan2.1-T2V-1.3B-Q8_0.gguf",
+      "filename": "Wan2.1-T2V-1.3B-Q8_0.gguf",
+      "expectedSizeBytes": 1535768800,
+      "sha256": "30a44f695b4275a915810120360d6fd26152ec303c2226b5152ec33a93c380e4",
+      "role": "primary"
+    },
+    {
+      "sourcePath": "umt5-xxl-encoder-Q8_0.gguf",
+      "filename": "umt5-xxl-encoder-Q8_0.gguf",
+      "expectedSizeBytes": 6043068256,
+      "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+      "role": "supplementary",
+      "source": {
+        "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+        "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7"
+      }
+    },
+    {
+      "sourcePath": "split_files/vae/wan_2.1_vae.safetensors",
+      "filename": "wan_2.1_vae.safetensors",
+      "expectedSizeBytes": 253815318,
+      "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+      "role": "supplementary",
+      "source": {
+        "repositoryUrl": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+        "revision": "617a7633e636506f850e043bc4605f290a466a8e"
+      }
+    }
+  ],
+  "videoRuntime": {
+    "mode": "t2v",
+    "artifacts": {
+      "diffusionModel": "Wan2.1-T2V-1.3B-Q8_0.gguf",
+      "textEncoder": "umt5-xxl-encoder-Q8_0.gguf",
+      "decoder": {
+        "kind": "vae",
+        "artifactFilename": "wan_2.1_vae.safetensors"
+      }
+    },
+    "qualification": {
+      "jobDeadlineMs": 600000,
+      "maxWidth": 320,
+      "maxHeight": 320,
+      "maxFrames": 33,
+      "fps": 16,
+      "generation": {
+        "sampler": "euler",
+        "scheduler": "discrete",
+        "steps": 20,
+        "cfgScale": 6,
+        "flowShift": 3,
+        "seed": 42
+      },
+      "launchOptions": {
+        "cpuOffload": true,
+        "diffusionFlashAttention": true,
+        "vaeConvDirect": false
+      }
+    },
+    "supportedTargets": [
+      {
+        "platform": "darwin",
+        "architecture": "arm64",
+        "accelerator": "apple-unified"
+      },
+      {
+        "platform": "linux",
+        "architecture": "x64",
+        "accelerator": "nvidia"
+      }
+    ]
+  },
+  "inputModalities": ["text"],
+  "outputModalities": ["video"],
+  "capabilities": ["text-to-video"],
+  "outputFormat": "avi",
+  "experimentalRuntime": true,
+  "commercialStatus": "open",
+  "catch": "Apache-2.0 licenses for the pinned artifacts.",
+  "notes": "Experimental text-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 320x320, 33 frames, and 16 fps."
+}

@@ -1,0 +1,38 @@
+{
+  "modelId": "wan2.2-t2v-a14b-q4_k_m",
+  "displayName": "Wan2.2 T2V A14B",
+  "kind": "video",
+  "provider": "Wan/bullerwins",
+  "family": "Wan2.2-T2V",
+  "version": "2.2",
+  "size": "A14B",
+  "quant": "Q4_K_M",
+  "minVramGb": 48,
+  "storageGb": 19.3,
+  "source": "https://huggingface.co/bullerwins/Wan2.2-T2V-A14B-GGUF",
+  "repositoryRevision": "f021e94acfde37bc70bf7b27295b0fa5c1f8e270",
+  "artifacts": [
+    {
+      "sourcePath": "wan2.2_t2v_high_noise_14B_Q4_K_M.gguf",
+      "filename": "wan2.2_t2v_high_noise_14B_Q4_K_M.gguf",
+      "expectedSizeBytes": 9650090496,
+      "sha256": "a10801b563e89eb46241521c5ce5f4ca58ab70ac640d64b7b4aa782bf595d732",
+      "role": "primary"
+    },
+    {
+      "sourcePath": "wan2.2_t2v_low_noise_14B_Q4_K_M.gguf",
+      "filename": "wan2.2_t2v_low_noise_14B_Q4_K_M.gguf",
+      "expectedSizeBytes": 9650090496,
+      "sha256": "d7d6944e14fbd235c45fa88d9cb7b8aa8974a63d79f862e80d1126930f89e8ac",
+      "role": "supplementary"
+    }
+  ],
+  "videoCatalogOnly": true,
+  "inputModalities": ["text"],
+  "outputModalities": ["video"],
+  "capabilities": [],
+  "diffusionWeightsOnly": true,
+  "commercialStatus": "open",
+  "catch": "Catalog only; LocalBase inference is unavailable. Apache-2.0.",
+  "notes": "Both high-noise and low-noise diffusion experts are included. Requires dual-expert launch support, Wan2.1 VAE, UMT5 encoder, and native qualification before LocalBase inference. Downloads contain diffusion weights only, not a complete inference bundle. Memory is an unmeasured planning estimate; storage covers only the listed artifacts."
+}

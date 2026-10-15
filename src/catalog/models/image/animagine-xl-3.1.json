@@ -1,0 +1,32 @@
+{
+  "modelId": "animagine-xl-3.1",
+  "displayName": "Animagine XL 3.1",
+  "kind": "image",
+  "provider": "CagliostroLab",
+  "family": "Stable-Diffusion-XL",
+  "version": "3.1",
+  "size": "6.5GB",
+  "quant": "F16",
+  "minVramGb": 16,
+  "storageGb": 6.46,
+  "source": "https://huggingface.co/cagliostrolab/animagine-xl-3.1",
+  "repositoryRevision": "483f0c322568ed13697ed01dd0be07204746d12b",
+  "artifacts": [
+    {
+      "sourcePath": "animagine-xl-3.1.safetensors",
+      "filename": "animagine-xl-3.1.safetensors",
+      "expectedSizeBytes": 6938325776,
+      "sha256": "e3c47aedb06418c6c331443cd89f2b3b3b34b7ed2102a3d4c4408a8d35aad6b0",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["image"],
+  "imageLaunchOptions": {
+    "diffusionFlashAttention": true
+  },
+  "capabilities": ["text-to-image", "image-to-image"],
+  "commercialStatus": "open",
+  "catch": "Stability AI Community License.",
+  "notes": "The premier open-source model for high-fidelity anime, manga, and Japanese illustration styles."
+}
