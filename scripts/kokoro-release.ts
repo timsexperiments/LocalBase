@@ -37,6 +37,7 @@ import {
   kokoroReleaseManifestSchema,
   kokoroTagSchema,
   kokoroTargetSchema,
+  verifyBunNotices,
   verifyDependencyLicenses,
   verifyKokoroLicenses,
   type KokoroArtifact,
@@ -375,6 +376,19 @@ export async function verifyDependencies(
   }
 }
 
+// The prebuilt Bun is the same build that LocalBase compiles with, so reuse the
+// release notices for its statically linked native and Rust components.
+async function copyBunNotices(destination: string): Promise<void> {
+  const notices = resolve(import.meta.dir, "release-notices");
+  const versioned = join(notices, `bun-${sources.bunVersion}.txt`);
+  if (!(await lstat(versioned).catch(() => undefined))?.isFile())
+    throw new Error(
+      `Release notices do not cover the pinned Bun ${sources.bunVersion}.`,
+    );
+  await cp(join(notices, "native"), destination, { recursive: true });
+  await verifyBunNotices(destination);
+}
+
 export async function packageRuntime(
   target: KokoroTarget,
   directory: string,
@@ -406,6 +420,7 @@ export async function packageRuntime(
   await cp(join(runtimeSource, "licenses"), join(root, "licenses"), {
     recursive: true,
   });
+  await copyBunNotices(join(root, "licenses/bun"));
   await cp(join(runtimeSource, "sources.json"), join(root, "sources.json"));
   const packages = await installedPackages(root);
   await verifyDependencyLicenses(join(root, "licenses"), packages);
