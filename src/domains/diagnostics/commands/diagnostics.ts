@@ -21,6 +21,7 @@ import {
   catalogTierSchema,
   catalogTrustSchema,
 } from "../../../catalog/sources";
+import { catalogFeedStatus } from "../../../catalog/remote-feed";
 import { openReadOnlyDatabase } from "../../../db/client";
 import type { CapabilityMismatch } from "../../models/capability-detection";
 import { resolveCapabilitiesForModel } from "../../models/model-capabilities";
@@ -228,6 +229,25 @@ export const diagnosticsManifestSchema = z
               })
               .strict(),
           ),
+          /** The remote community catalog feed and its last download. */
+          catalogFeed: z
+            .object({
+              enabled: z.boolean(),
+              /** Without query string or fragment. */
+              url: z.string().min(1).nullable(),
+              source: z.enum(["default", "settings", "environment"]),
+              problem: z.string().min(1).nullable(),
+              fetchedAt: z.string().nullable(),
+              checkedAt: z.string().nullable(),
+              revision: z.string().nullable(),
+              stale: z.boolean(),
+              lastError: z.string().min(1).nullable(),
+              entries: z.number().int().nonnegative(),
+              builtIn: z.number().int().nonnegative(),
+              added: z.array(z.string().min(1)),
+              skipped: z.number().int().nonnegative(),
+            })
+            .strict(),
         })
         .strict(),
     ),
@@ -370,7 +390,31 @@ async function modelData(
     ...(issue.modelId ? { modelId: issue.modelId } : {}),
     message: issue.message.split(root).join("<root>"),
   }));
-  return { models, catalogIssues };
+  const redact = (text: string | null) =>
+    text === null ? null : text.split(root).join("<root>");
+  const feed = catalogFeedStatus(root);
+  const catalogFeed = {
+    ...feed,
+    url: feed.url ? feedUrlForDiagnostics(feed.url) : null,
+    problem: redact(feed.problem),
+    lastError: redact(feed.lastError),
+    added: [...feed.added],
+  };
+  return { models, catalogIssues, catalogFeed };
+}
+
+/** Drops credentials-bearing parts (query, fragment) from a feed URL. */
+function feedUrlForDiagnostics(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.search = "";
+    parsed.hash = "";
+    parsed.username = "";
+    parsed.password = "";
+    return parsed.toString();
+  } catch {
+    return "<invalid>";
+  }
 }
 
 /**
@@ -608,6 +652,12 @@ export async function runDiagnostics(
   });
   execution.output.info(`Created diagnostics bundle: ${path}`);
   if (manifest.models.available) {
+    const feed = manifest.models.data.catalogFeed;
+    execution.output.info(
+      feed.enabled
+        ? `Catalog feed: ${feed.url} (${feed.added.length} community model(s), ${feed.fetchedAt ? `fetched ${feed.fetchedAt}` : "never downloaded"}${feed.stale ? ", stale" : ""})${feed.lastError ? `; last error: ${feed.lastError}` : ""}`
+        : "Catalog feed: off",
+    );
     for (const issue of manifest.models.data.catalogIssues) {
       execution.output.info(
         `Catalog file skipped (${issue.tier}): ${issue.file}: ${issue.message}`,

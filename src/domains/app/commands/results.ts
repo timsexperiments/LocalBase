@@ -226,6 +226,33 @@ export const removeEntryResultSchema = z
     selected: z.boolean(),
   })
   .strict();
+const catalogFeedStatusResultSchema = z
+  .object({
+    enabled: z.boolean(),
+    url: z.string().nullable(),
+    source: z.enum(["default", "settings", "environment"]),
+    problem: z.string().nullable(),
+    fetchedAt: z.string().nullable(),
+    checkedAt: z.string().nullable(),
+    revision: z.string().nullable(),
+    stale: z.boolean(),
+    lastError: z.string().nullable(),
+    entries: z.number(),
+    builtIn: z.number(),
+    added: z.array(z.string()),
+    skipped: z.number(),
+  })
+  .strict();
+export const feedRefreshResultSchema = z
+  .object({
+    outcome: z.enum(["disabled", "fresh", "unchanged", "updated", "failed"]),
+    error: z.string().nullable(),
+    feed: catalogFeedStatusResultSchema,
+  })
+  .strict();
+export const feedStatusResultSchema = z
+  .object({ feed: catalogFeedStatusResultSchema })
+  .strict();
 export const keysListResultSchema = z
   .object({ keys: z.array(apiKeyMetadataOutputSchema) })
   .strict();

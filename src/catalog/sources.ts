@@ -4,7 +4,7 @@
  * The effective catalog is built from three tiers, lowest first:
  *
  * 1. built-in: the JSON files under `src/catalog/models/`, shipped in the binary
- * 2. remote: a downloaded community catalog (#320; no loader yet)
+ * 2. remote: the downloaded community feed (`./remote-feed.ts`)
  * 3. user: one JSON file per model under `<root>/catalog.d/`
  *
  * A higher tier wins. An entry whose `modelId` is new adds a model and must

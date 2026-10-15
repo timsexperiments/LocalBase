@@ -21,6 +21,7 @@
     "db:generate": "bunx drizzle-kit generate && bun run db:prepare",
     "db:check": "bunx drizzle-kit check && bun run scripts/check-migration-assets.ts",
     "typecheck": "bunx tsgo --noEmit",
+    "catalog:feed": "bun run scripts/build-catalog-feed.ts",
     "build": "bun run db:prepare && bun build src/cli.ts --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --asset-naming='[dir]/[name].[ext]' --outfile dist/local-base"
   },
   "devDependencies": {

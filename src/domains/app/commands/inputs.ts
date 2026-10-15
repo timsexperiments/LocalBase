@@ -12,6 +12,7 @@ import {
 } from "../../observability/otel-config";
 import { safeFilenameSchema } from "../../../utils/checksum";
 import { capabilitySchema } from "../../../catalog/capabilities";
+import { catalogFeedUrlSchema } from "../../../catalog/remote-feed";
 import {
   catalogSortSchema,
   fitVerdictSchema,
@@ -212,6 +213,19 @@ export type SearchInput = z.infer<typeof searchInputSchema>;
 
 export const removeEntryInputSchema = z.object({ modelId: z.string().min(1) });
 export type RemoveEntryInput = z.infer<typeof removeEntryInputSchema>;
+
+export const feedRefreshInputSchema = z.object({
+  force: z.boolean().default(false),
+});
+export type FeedRefreshInput = z.infer<typeof feedRefreshInputSchema>;
+
+export const feedStatusInputSchema = z.object({});
+export type FeedStatusInput = z.infer<typeof feedStatusInputSchema>;
+
+export const feedUseInputSchema = z.object({
+  feed: z.union([z.enum(["default", "off"]), catalogFeedUrlSchema]),
+});
+export type FeedUseInput = z.infer<typeof feedUseInputSchema>;
 
 export const serveInputSchema = z.object({
   installMissing: z.boolean().default(false),

@@ -11,6 +11,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { modelSpecSchema, type ModelSpec } from "../catalog";
 import { safeFilenameSchema } from "../utils/checksum";
+import { readRemoteCatalogLayer } from "./remote-feed";
 import { canonicalLocalBaseRoot } from "../utils/root";
 import {
   applyCatalogLayers,
@@ -90,15 +91,20 @@ export function readUserCatalogLayer(root: string): CatalogLayer {
 }
 
 /**
- * Loads every catalog tier for `root` into the effective catalog. The remote
- * tier (#320) passes its layer in; until then only the user tier loads.
+ * Loads every catalog tier for `root` into the effective catalog: the last
+ * good remote feed download (unless `remote` replaces it) and then the user
+ * tier. Never touches the network; `refreshCatalogFeed` downloads the feed.
  */
 export function loadCatalogSources(
   root: string,
-  options: Readonly<{ remote?: CatalogLayer }> = {},
+  options: Readonly<{ remote?: CatalogLayer | null }> = {},
 ): CatalogComposition {
+  const remote =
+    options.remote === undefined
+      ? readRemoteCatalogLayer(root)
+      : options.remote;
   return applyCatalogLayers([
-    ...(options.remote ? [options.remote] : []),
+    ...(remote ? [remote] : []),
     readUserCatalogLayer(root),
   ]);
 }

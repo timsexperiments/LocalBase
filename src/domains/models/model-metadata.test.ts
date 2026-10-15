@@ -529,3 +529,44 @@ test("projects the memory source, observed peak, and fit for this machine", () =
     fit: { verdict: "fits", systemMemoryGb: 64, headroomGb: 60 },
   });
 });
+
+test("names the feed behind a community entry without its query", async () => {
+  const { applyCatalogLayers } = await import("../../catalog/sources");
+  const base = catalogModel();
+  const communityId = "community-metadata-test";
+  try {
+    applyCatalogLayers([
+      {
+        tier: "remote",
+        entries: [
+          {
+            path: "https://feeds.example.com/feed.json?token=secret#models[0]",
+            data: { ...structuredClone(base), modelId: communityId },
+          },
+        ],
+      },
+    ]);
+    const model = catalogModel(communityId);
+    const metadata = projectModelMetadata(model, {
+      catalog: [model],
+      config: defaultConfig("/tmp/localbase-model-metadata-feed"),
+      installations: new Map([[communityId, false]]),
+      runtimes: runtimeSnapshots(),
+    });
+    expect(metadata.catalog.trust).toBe("community");
+    expect(metadata.catalog.catalogTier).toBe("remote");
+    expect(metadata.catalog.catalogFeed).toBe(
+      "https://feeds.example.com/feed.json",
+    );
+    expect(
+      projectModelMetadata(base, {
+        catalog: [base],
+        config: defaultConfig("/tmp/localbase-model-metadata-feed"),
+        installations: new Map([[base.modelId, false]]),
+        runtimes: runtimeSnapshots(),
+      }).catalog.catalogFeed,
+    ).toBeNull();
+  } finally {
+    applyCatalogLayers([]);
+  }
+});

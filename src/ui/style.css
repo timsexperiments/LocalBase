@@ -1419,6 +1419,12 @@ dialog.management-page {
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 12px;
 }
+.model-details-feed {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+}
 @media (min-width: 640px) {
   dialog.model-details-dialog {
     width: min(720px, calc(100% - 48px));

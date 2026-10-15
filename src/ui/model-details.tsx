@@ -227,6 +227,12 @@ export function ModelDetails({
                 </dd>
               </div>
             )}
+            {catalog.catalogFeed && (
+              <div>
+                <dt>Catalog feed</dt>
+                <dd className="model-details-feed">{catalog.catalogFeed}</dd>
+              </div>
+            )}
           </dl>
         </section>
 

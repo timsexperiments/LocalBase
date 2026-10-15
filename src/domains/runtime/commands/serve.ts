@@ -199,6 +199,7 @@ import {
   type StructuredOutputValidator,
 } from "../structured-output";
 import { anchorJsonSchemaPatterns } from "../tool-schema";
+import { startCatalogFeedScheduler } from "../../../catalog/feed-scheduler";
 import { withLifecycleSignal } from "../lifecycle-request";
 import { compressJsonResponse } from "../../../utils/http-compression";
 
@@ -4913,6 +4914,41 @@ export async function runServe(
     },
   });
   memoryPressureMonitor.start();
+  let lastCatalogFeedError: string | null = null;
+  const catalogFeed = startCatalogFeedScheduler(config.root, {
+    onResult: (result) => {
+      if (result.outcome === "updated") {
+        lastCatalogFeedError = null;
+        ctx.logger.event({
+          severity: "info",
+          eventName: "catalog_feed.updated",
+          category: "gateway",
+          component: "catalog-feed",
+          runtime: "gateway",
+          message: "Loaded a new remote catalog feed.",
+          attributes: { url: (result.url ?? "").slice(0, 512) },
+        });
+      } else if (result.outcome === "failed") {
+        if (result.error === lastCatalogFeedError) return;
+        lastCatalogFeedError = result.error;
+        ctx.logger.event({
+          severity: "warn",
+          eventName: "catalog_feed.refresh_failed",
+          category: "gateway",
+          component: "catalog-feed",
+          runtime: "gateway",
+          message:
+            "The remote catalog feed could not be refreshed; the last good copy stays in use.",
+          attributes: {
+            url: (result.url ?? "").slice(0, 512),
+            error: (result.error ?? "").slice(0, 512),
+          },
+        });
+      } else {
+        lastCatalogFeedError = null;
+      }
+    },
+  });
 
   printUnifiedNextSteps(
     wrapperHost,
@@ -4956,6 +4992,7 @@ export async function runServe(
         reconciler.closeQueues();
         server.stop(true);
         try {
+          await catalogFeed.stop();
           await memoryPressureMonitor.stop();
           await videoJobs.shutdown();
           await supervisors.shutdown();
