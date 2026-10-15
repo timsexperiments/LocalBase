@@ -21,7 +21,7 @@
   ],
   "inputModalities": ["audio"],
   "outputModalities": ["text"],
-  "capabilities": ["speech-to-text"],
+  "capabilities": ["speech-to-text", "multilingual"],
   "commercialStatus": "open",
   "catch": "MIT License.",
   "notes": "Good default STT latency/quality tradeoff."

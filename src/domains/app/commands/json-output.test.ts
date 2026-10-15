@@ -893,6 +893,47 @@ test(
       const sizes = filteredModels.map(({ storageGb }) => storageGb);
       expect(sizes).toEqual([...sizes].sort((a, b) => a - b));
       expect(existsSync(catalogRoot)).toBe(false);
+
+      const shown = await runCli(executable, [
+        "--root",
+        catalogRoot,
+        "--json",
+        "models",
+        "show",
+        "whisper-large-v3-turbo",
+      ]);
+      expect(shown.exitCode).toBe(0);
+      expect(jsonDocument(shown.stdout)).toMatchObject({
+        ok: true,
+        data: {
+          model: {
+            id: "whisper-large-v3-turbo",
+            catalog: {
+              kind: "stt",
+              capabilityResolution: {
+                capabilities: expect.arrayContaining([
+                  { id: "multilingual", source: "declared" },
+                ]),
+              },
+            },
+          },
+          status: { installed: false, enabled: false, default: false },
+        },
+      });
+      expect(existsSync(catalogRoot)).toBe(false);
+      const unknownModel = await runCli(executable, [
+        "--root",
+        catalogRoot,
+        "--json",
+        "models",
+        "show",
+        "no-such-model",
+      ]);
+      expect(unknownModel.exitCode).not.toBe(0);
+      expect(jsonDocument(unknownModel.stdout)).toMatchObject({
+        ok: false,
+        error: { code: "invalid_input" },
+      });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

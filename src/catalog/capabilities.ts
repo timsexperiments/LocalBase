@@ -67,3 +67,84 @@ export function hasCapability(
 ): boolean {
   return model.capabilities.some(({ id }) => id === capability);
 }
+
+/** Plain-language capability names shared by the UI and the CLI. */
+export const capabilityLabels: Readonly<Record<Capability, string>> = {
+  "text-generation": "Text generation",
+  "tool-calling": "Tool calling",
+  reasoning: "Reasoning",
+  embeddings: "Embeddings",
+  "code-generation": "Code generation",
+  "code-editing": "Code editing",
+  "code-retrieval": "Code retrieval",
+  "agentic-coding": "Agentic coding",
+  "long-context": "Long context",
+  multilingual: "Multilingual",
+  translation: "Translation",
+  "speech-to-text": "Speech to text",
+  "text-to-speech": "Text to speech",
+  "text-to-image": "Text to image",
+  "image-to-image": "Image editing",
+  "text-to-video": "Text to video",
+  "image-to-video": "Image to video",
+  "speech-to-video": "Speech to video",
+  "mixture-of-experts": "Mixture of experts",
+};
+
+export function capabilityLabel(id: string): string {
+  return capabilityLabels[id as Capability] ?? id;
+}
+
+/** Plain-language wording for where a capability claim came from. */
+export const capabilitySourceLabels: Readonly<
+  Record<CapabilitySource, string>
+> = {
+  declared: "Listed in the catalog",
+  detected: "Found in the installed files",
+  runtime: "Reported by the running engine",
+};
+
+export type CapabilityMismatch = Readonly<{
+  id: Capability;
+  declared: boolean;
+  detected?: boolean;
+  runtime?: boolean;
+  effective: boolean;
+}>;
+
+/**
+ * Explains, in plain words, how the evidence about one capability disagrees
+ * and which way LocalBase decided.
+ */
+export function describeCapabilityMismatch(
+  mismatch: Omit<CapabilityMismatch, "id"> & Readonly<{ id: string }>,
+): string {
+  const facts = [
+    mismatch.declared ? "the catalog lists it" : "the catalog doesn't list it",
+    ...(mismatch.detected === undefined
+      ? []
+      : [
+          mismatch.detected
+            ? "the installed files support it"
+            : "the installed files don't support it",
+        ]),
+    ...(mismatch.runtime === undefined
+      ? []
+      : [
+          mismatch.runtime
+            ? "the running engine reports it"
+            : "the running engine doesn't report it",
+        ]),
+  ];
+  const joined =
+    facts.length === 2
+      ? `${facts[0]}, but ${facts[1]}`
+      : `${facts.slice(0, -1).join(", ")}, and ${facts.at(-1)}`;
+  const decider =
+    mismatch.runtime !== undefined
+      ? "the running engine"
+      : mismatch.detected !== undefined
+        ? "the installed files"
+        : "the catalog";
+  return `${capabilityLabel(mismatch.id)}: ${joined}. Treated as ${mismatch.effective ? "available" : "unavailable"}, going by ${decider}.`;
+}

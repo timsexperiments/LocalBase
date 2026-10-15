@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { z } from "zod";
-import type { Model, Mode } from "./client";
+import { modelHasCapability, type Model, type Mode } from "./client";
 import { DictationButton, appendDictation } from "./dictation";
 
 export const imageSizes = [
@@ -111,8 +111,8 @@ export function transcriptionParameters(
   model: Model,
   settings: GenerationSettings["stt"],
 ) {
-  // Catalog IDs identify English-only Whisper variants; multilingual flags are not exhaustive.
-  const language = model.id.includes("-en-")
+  // English-only Whisper variants lack the multilingual capability.
+  const language = !modelHasCapability(model, "multilingual")
     ? undefined
     : settings.language?.trim();
   return {
@@ -408,7 +408,7 @@ export function GenerationSettingsFields({
       )}
       {mode === "stt" && (
         <>
-          {model?.id.includes("-en-") ? (
+          {model && !modelHasCapability(model, "multilingual") ? (
             <p className="generation-settings-hint">
               This model transcribes English only.
             </p>

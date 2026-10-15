@@ -9,6 +9,7 @@ import {
 import {
   hasCapability,
   type Capability,
+  type CapabilityMismatch,
   type CapabilitySource,
   type ModelCapability,
 } from "../../catalog/capabilities";
@@ -32,13 +33,7 @@ export interface DetectedCapabilities extends CapabilityEvidence {
   readonly evidence: readonly string[];
 }
 
-export interface CapabilityMismatch {
-  readonly id: Capability;
-  readonly declared: boolean;
-  readonly detected?: boolean;
-  readonly runtime?: boolean;
-  readonly effective: boolean;
-}
+export type { CapabilityMismatch };
 
 export interface ResolvedCapabilities {
   /** Effective capabilities with the source that decided each one. */

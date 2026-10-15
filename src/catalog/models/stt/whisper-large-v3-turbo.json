@@ -21,7 +21,7 @@
   ],
   "inputModalities": ["audio"],
   "outputModalities": ["text"],
-  "capabilities": ["speech-to-text", "translation"],
+  "capabilities": ["speech-to-text", "multilingual", "translation"],
   "commercialStatus": "open",
   "catch": "MIT License.",
   "notes": "Best quality Whisper family model for local deployment."

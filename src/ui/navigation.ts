@@ -119,8 +119,34 @@ export function resolveNavigation({
   };
 }
 
-/** Query parameters the catalog panel owns: its filters, sort, and `enabled`. */
-export const catalogPanelKeys = [...catalogQueryKeys, "enabled"] as const;
+/**
+ * Query parameters the catalog panel owns: its filters, sort, `enabled`, and
+ * `details`, the model whose details are open.
+ */
+export const catalogPanelKeys = [
+  ...catalogQueryKeys,
+  "enabled",
+  "details",
+] as const;
+
+/** The model whose details the URL opens, or null. */
+export function readDetails(search: string): string | null {
+  const value = new URLSearchParams(search).get("details");
+  // Catalog ids are short slugs; anything else is not a model to look up.
+  return value &&
+    /^[a-z0-9][a-z0-9._-]{0,127}$/i.test(value) &&
+    !value.includes("..")
+    ? value
+    : null;
+}
+
+/** The current URL with the details key set to a model, or removed. */
+export function detailsUrl(href: string, modelId: string | null): string {
+  const url = new URL(href);
+  if (modelId) url.searchParams.set("details", modelId);
+  else url.searchParams.delete("details");
+  return url.pathname + url.search;
+}
 
 export function navigationUrl(href: string, navigation: Navigation): string {
   const url = new URL(href);

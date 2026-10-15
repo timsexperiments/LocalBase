@@ -1,4 +1,5 @@
 import {
+  modelAcceptsInput,
   type ChatMessage,
   type Message,
   type Model,
@@ -77,7 +78,7 @@ function supports(model: Model | undefined, kind: "text" | "image") {
   return (
     model?.catalog.kind === "llm" &&
     model.catalog.capabilities?.kind !== "embedding" &&
-    model.catalog.inputModalities.includes(kind)
+    modelAcceptsInput(model, kind)
   );
 }
 

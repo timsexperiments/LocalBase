@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { byId as catalogModelById } from "../../catalog";
+import { resolveModelCapabilities } from "./capability-detection";
 import { listServedModels } from "./served-models";
 
 const config = {
@@ -104,6 +105,44 @@ describe("listServedModels", () => {
       observed_peak_bytes: null,
       fit: "fits",
     });
+  });
+
+  test("adds effective capabilities with their source when asked", async () => {
+    const plain = await listServedModels(config);
+    expect(plain.every((model) => model.capabilities === undefined)).toBe(true);
+
+    const data = await listServedModels(config, undefined, {
+      capabilitiesForModel: async (spec) =>
+        resolveModelCapabilities(spec, {
+          runtime:
+            spec.modelId === "whisper-tiny-q8_0"
+              ? { capabilities: { translation: true } }
+              : null,
+        }).capabilities,
+    });
+    expect(byId(data, "whisper-tiny-q8_0")?.capabilities).toEqual([
+      { id: "speech-to-text", source: "declared" },
+      { id: "multilingual", source: "declared" },
+      { id: "translation", source: "runtime" },
+    ]);
+    expect(
+      byId(data, "qwen2.5-coder-1.5b-instruct-q4_k_m")?.capabilities,
+    ).toContainEqual({ id: "code-generation", source: "declared" });
+    // Additive: the OpenAI fields stay as they were.
+    expect(byId(data, "whisper-tiny-q8_0")?.architecture).toEqual({
+      input_modalities: ["audio"],
+      output_modalities: ["text"],
+    });
+  });
+
+  test("drops capabilities for a model whose resolver fails", async () => {
+    const data = await listServedModels(config, undefined, {
+      capabilitiesForModel: async () => {
+        throw new Error("unreadable");
+      },
+    });
+    expect(data.length).toBeGreaterThan(0);
+    expect(data.every((model) => model.capabilities === undefined)).toBe(true);
   });
 
   test("skips unconfigured modalities and empty ids", async () => {

@@ -289,11 +289,17 @@ describe("catalog artifact validation", () => {
     expect(capabilityIds(byId("whisper-base-en-q8_0"))).not.toContain(
       "multilingual",
     );
-    for (const size of ["tiny", "small", "medium"]) {
+    for (const size of ["tiny", "base", "small", "medium"]) {
       expect(capabilityIds(byId(`whisper-${size}-q8_0`))).toContain(
         "multilingual",
       );
     }
+    expect(capabilityIds(byId("whisper-large-v3-turbo"))).toContain(
+      "multilingual",
+    );
+    expect(capabilityIds(byId("whisper-tiny-en-q8_0"))).not.toContain(
+      "multilingual",
+    );
     expect(byId("realvis-xl-v5.0")).toMatchObject({
       commercialStatus: "conditional",
       capabilities: [{ id: "text-to-image", source: "declared" }],

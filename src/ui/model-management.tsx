@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { DictationButton, appendDictation } from "./dictation";
 import { onVisible } from "./visibility";
@@ -11,8 +11,15 @@ import {
   type CatalogQuery,
   type CatalogSort,
 } from "../catalog/catalog-query";
-import { capabilitySchema, type Capability } from "../catalog/capabilities";
-import { catalogPanelKeys } from "./navigation";
+import {
+  capabilityLabel,
+  capabilityLabels,
+  capabilitySourceLabels,
+  capabilitySchema,
+  type Capability,
+} from "../catalog/capabilities";
+import { catalogPanelKeys, detailsUrl, readDetails } from "./navigation";
+import { ModelDetails } from "./model-details";
 import {
   modelManagementSchema,
   type ModelManagementAction,
@@ -30,6 +37,7 @@ import {
 
 const responseSchema = modelManagementSchema.extend({ canManage: z.boolean() });
 type ManagementState = z.infer<typeof responseSchema>;
+type LocalModel = ManagementState["models"][number];
 const modeNames = {
   llm: "Chat",
   image: "Image",
@@ -38,28 +46,6 @@ const modeNames = {
   video: "Video",
   embedding: "Embeddings",
 };
-const capabilityNames: Record<Capability, string> = {
-  "text-generation": "Text generation",
-  "tool-calling": "Tool calling",
-  reasoning: "Reasoning",
-  embeddings: "Embeddings",
-  "code-generation": "Code generation",
-  "code-editing": "Code editing",
-  "code-retrieval": "Code retrieval",
-  "agentic-coding": "Agentic coding",
-  "long-context": "Long context",
-  multilingual: "Multilingual",
-  translation: "Translation",
-  "speech-to-text": "Speech to text",
-  "text-to-speech": "Text to speech",
-  "text-to-image": "Text to image",
-  "image-to-image": "Image editing",
-  "text-to-video": "Text to video",
-  "image-to-video": "Image to video",
-  "speech-to-video": "Speech to video",
-  "mixture-of-experts": "Mixture of experts",
-};
-const capabilityName = (id: string) => capabilityNames[id as Capability] ?? id;
 const fitOptions = [
   ["fits,tight", "Fits this machine"],
   ["fits", "Fits comfortably"],
@@ -98,10 +84,13 @@ function readFilters(): Filters {
 /** Mirrors the filters into the URL without adding history entries. */
 function writeFilters({ query, enabled }: Filters) {
   const url = new URL(location.href);
+  const details = url.searchParams.get("details");
   for (const key of catalogPanelKeys) url.searchParams.delete(key);
   for (const [key, value] of catalogQueryParams(query))
     url.searchParams.append(key, value);
   if (enabled) url.searchParams.set("enabled", "true");
+  // An open details view survives filter changes made behind it.
+  if (details) url.searchParams.set("details", details);
   const next = url.pathname + url.search;
   if (next !== location.pathname + location.search)
     history.replaceState(history.state, "", next);
@@ -132,16 +121,21 @@ function customOption(
 }
 
 const fitSources = {
-  estimate: "from the estimated minimum",
-  measured: "from the measured minimum",
-  observed: "from use on this machine",
+  estimate: "Based on an estimate",
+  measured: "Based on a measurement",
+  observed: "Based on use here",
 } as const;
 
 /** The fit verdict and what memory figure it was judged from. */
 function fitDetail(model: Model) {
   const label = modelFitLabel(model);
   const source = model.catalog.memory.source;
-  return source ? `${label}, ${fitSources[source]}` : label;
+  return (
+    <>
+      {label}
+      {source && <span className="fit-source">{fitSources[source]}</span>}
+    </>
+  );
 }
 
 /** Effective capabilities; runtime and detected ones say so on hover. */
@@ -159,10 +153,10 @@ function CapabilityBadges({ model }: { model: Model }) {
           title={
             source === "declared"
               ? undefined
-              : `${capabilityName(id)} (${source})`
+              : `${capabilityLabel(id)}: ${capabilitySourceLabels[source as keyof typeof capabilitySourceLabels] ?? source}`
           }
         >
-          {capabilityName(id)}
+          {capabilityLabel(id)}
         </li>
       ))}
     </ul>
@@ -198,6 +192,9 @@ export function ModelManagement({
     action: "install" | "uninstall";
   } | null>(null);
   const [revision, setRevision] = useState(0);
+  const [details, setDetails] = useState(() => readDetails(location.search));
+  // True while the open details view is a history entry this page pushed.
+  const pushedDetails = useRef(false);
   const connectionKind = connection?.kind;
 
   useEffect(() => {
@@ -275,10 +272,28 @@ export function ModelManagement({
 
   useEffect(() => {
     // Back and Forward can change the query while the catalog stays open.
-    const restore = () => setFilters(readFilters());
+    const restore = () => {
+      setFilters(readFilters());
+      setDetails(readDetails(location.search));
+      pushedDetails.current = false;
+    };
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
   }, []);
+  function openDetails(modelId: string) {
+    history.pushState(history.state, "", detailsUrl(location.href, modelId));
+    pushedDetails.current = true;
+    setDetails(modelId);
+  }
+  function closeDetails() {
+    setDetails(null);
+    // Closing undoes the entry opening added, so Back does not reopen it.
+    if (pushedDetails.current) {
+      pushedDetails.current = false;
+      history.back();
+    } else
+      history.replaceState(history.state, "", detailsUrl(location.href, null));
+  }
   function updateFilters(change: Partial<Filters>) {
     setFilters((current) => {
       const next = { ...current, ...change };
@@ -327,7 +342,169 @@ export function ModelManagement({
     state?.models.some((model) => model.operation?.state === "running") ??
     false;
   const locked = pending || running || !state?.canManage;
+  const detailsModel = details
+    ? models.find((model) => model.id === details)
+    : undefined;
 
+  /** Progress, actions, and confirmations; a card and its details share them. */
+  function controls(model: Model, local: LocalModel | undefined) {
+    const operation = local?.operation;
+    return (
+      <>
+        {operation && (
+          <div className={`model-operation ${operation.state}`} role="status">
+            <span>{operation.detail}</span>
+            {operation.state === "running" && (
+              <progress
+                aria-label={`Progress for ${modelName(model)}`}
+                max={operation.totalBytes ?? undefined}
+                value={
+                  operation.totalBytes && operation.downloadedBytes !== null
+                    ? operation.downloadedBytes
+                    : undefined
+                }
+              />
+            )}
+          </div>
+        )}
+        <div className="catalog-actions">
+          {model.device.selected && !model.device.installed && (
+            <button
+              disabled={locked}
+              onClick={() => void run(model.id, "disable")}
+            >
+              Disable
+            </button>
+          )}
+          {!model.device.installed && (local?.installedBytes ?? 0) > 0 && (
+            <button
+              className="danger"
+              disabled={
+                locked ||
+                model.device.selected ||
+                Boolean(model.device.runtime?.configured)
+              }
+              onClick={() =>
+                setConfirmation({
+                  modelId: model.id,
+                  action: "uninstall",
+                })
+              }
+            >
+              Uninstall
+            </button>
+          )}
+          {model.device.installed ? (
+            <>
+              <button
+                disabled={locked}
+                onClick={() =>
+                  void run(
+                    model.id,
+                    model.device.selected ? "disable" : "enable",
+                  )
+                }
+              >
+                {model.device.selected ? "Disable" : "Enable"}
+              </button>
+              <button
+                disabled={locked || !model.device.selected || local?.active}
+                onClick={() => void run(model.id, "activate")}
+              >
+                {local?.active ? "Default model" : "Use by default"}
+              </button>
+              <button
+                className="danger"
+                disabled={
+                  locked ||
+                  model.device.selected ||
+                  Boolean(model.device.runtime?.configured)
+                }
+                onClick={() =>
+                  setConfirmation({
+                    modelId: model.id,
+                    action: "uninstall",
+                  })
+                }
+              >
+                Uninstall
+              </button>
+            </>
+          ) : (
+            <button
+              className="install-model"
+              disabled={locked || !local?.canInstall}
+              onClick={() =>
+                model.catalog.qualificationState === "experimental"
+                  ? setConfirmation({
+                      modelId: model.id,
+                      action: "install",
+                    })
+                  : void run(model.id, "install")
+              }
+            >
+              {operation?.state === "running" ? "Installing…" : "Install"}
+            </button>
+          )}
+        </div>
+        {!model.device.installed && local && !local.canInstall && (
+          <p className="hint">{local.installUnavailableReason}</p>
+        )}
+        {model.device.installed &&
+          (model.device.selected || model.device.runtime?.configured) && (
+            <p className="hint">
+              Disable this model and wait for its runtime to stop before
+              uninstalling.
+            </p>
+          )}
+        {confirmation?.modelId === model.id && (
+          <div
+            className="uninstall-confirmation"
+            role="group"
+            aria-label={
+              confirmation.action === "install"
+                ? `Confirm experimental install ${model.id}`
+                : `Confirm uninstall ${model.id}`
+            }
+          >
+            {confirmation.action === "install" ? (
+              <>
+                <p>
+                  This unqualified experimental model downloads about{" "}
+                  {model.catalog.memory.storageEstimateGb} GB. Its behavior and
+                  resource estimates have not been hardware qualified.
+                </p>
+                <button
+                  disabled={locked || !local?.canInstall}
+                  onClick={() => void run(model.id, "install")}
+                >
+                  Acknowledge and install
+                </button>
+              </>
+            ) : (
+              <>
+                <p>
+                  Remove {modelName(model)}'s downloaded files from this
+                  computer? Shared files will be kept. Reinstalling requires
+                  another download.
+                </p>
+                <button
+                  disabled={locked}
+                  className="danger"
+                  onClick={() => void run(model.id, "uninstall")}
+                >
+                  Confirm uninstall
+                </button>
+              </>
+            )}
+            <button onClick={() => setConfirmation(null)}>
+              {confirmation.action === "install" ? "Keep model" : "Cancel"}
+            </button>
+          </div>
+        )}
+      </>
+    );
+  }
   return (
     <div className="model-management">
       {!connection ? (
@@ -480,7 +657,7 @@ export function ModelManagement({
                 .filter((id) => !selectedCapabilities.includes(id))
                 .map((id) => (
                   <option value={id} key={id}>
-                    {capabilityNames[id]}
+                    {capabilityLabels[id]}
                   </option>
                 ))}
             </select>
@@ -495,10 +672,10 @@ export function ModelManagement({
                   })
                 }
               >
-                <option value="">Default order</option>
+                <option value="">Sort: default order</option>
                 {sortOptions.map(([value, label]) => (
                   <option value={value} key={value}>
-                    Sort: {label}
+                    {label}
                   </option>
                 ))}
               </select>
@@ -523,7 +700,7 @@ export function ModelManagement({
                   <button
                     type="button"
                     className="catalog-chip"
-                    aria-label={`Remove ${capabilityNames[id]} filter`}
+                    aria-label={`Remove ${capabilityLabels[id]} filter`}
                     onClick={() =>
                       updateQuery({
                         capabilities: listFilter<Capability>(
@@ -534,7 +711,7 @@ export function ModelManagement({
                       })
                     }
                   >
-                    {capabilityNames[id]} <span aria-hidden="true">×</span>
+                    {capabilityLabels[id]} <span aria-hidden="true">×</span>
                   </button>
                 </li>
               ))}
@@ -560,7 +737,6 @@ export function ModelManagement({
           <div className="catalog-grid">
             {filtered.map((model) => {
               const local = state?.models.find((item) => item.id === model.id);
-              const operation = local?.operation;
               return (
                 <article className="catalog-card" key={model.id}>
                   <header>
@@ -617,176 +793,21 @@ export function ModelManagement({
                       <dd>{modelMemoryRequirement(model)}</dd>
                     </div>
                     {modelFitLabel(model) && (
-                      <div>
+                      <div className="model-storage-fit">
                         <dt>This machine</dt>
                         <dd>{fitDetail(model)}</dd>
                       </div>
                     )}
                   </dl>
-                  {operation && (
-                    <div
-                      className={`model-operation ${operation.state}`}
-                      role="status"
-                    >
-                      <span>{operation.detail}</span>
-                      {operation.state === "running" && (
-                        <progress
-                          aria-label={`Progress for ${modelName(model)}`}
-                          max={operation.totalBytes ?? undefined}
-                          value={
-                            operation.totalBytes &&
-                            operation.downloadedBytes !== null
-                              ? operation.downloadedBytes
-                              : undefined
-                          }
-                        />
-                      )}
-                    </div>
-                  )}
-                  <div className="catalog-actions">
-                    {model.device.selected && !model.device.installed && (
-                      <button
-                        disabled={locked}
-                        onClick={() => void run(model.id, "disable")}
-                      >
-                        Disable
-                      </button>
-                    )}
-                    {!model.device.installed &&
-                      (local?.installedBytes ?? 0) > 0 && (
-                        <button
-                          className="danger"
-                          disabled={
-                            locked ||
-                            model.device.selected ||
-                            Boolean(model.device.runtime?.configured)
-                          }
-                          onClick={() =>
-                            setConfirmation({
-                              modelId: model.id,
-                              action: "uninstall",
-                            })
-                          }
-                        >
-                          Uninstall
-                        </button>
-                      )}
-                    {model.device.installed ? (
-                      <>
-                        <button
-                          disabled={locked}
-                          onClick={() =>
-                            void run(
-                              model.id,
-                              model.device.selected ? "disable" : "enable",
-                            )
-                          }
-                        >
-                          {model.device.selected ? "Disable" : "Enable"}
-                        </button>
-                        <button
-                          disabled={
-                            locked || !model.device.selected || local?.active
-                          }
-                          onClick={() => void run(model.id, "activate")}
-                        >
-                          {local?.active ? "Default model" : "Use by default"}
-                        </button>
-                        <button
-                          className="danger"
-                          disabled={
-                            locked ||
-                            model.device.selected ||
-                            Boolean(model.device.runtime?.configured)
-                          }
-                          onClick={() =>
-                            setConfirmation({
-                              modelId: model.id,
-                              action: "uninstall",
-                            })
-                          }
-                        >
-                          Uninstall
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        className="install-model"
-                        disabled={locked || !local?.canInstall}
-                        onClick={() =>
-                          model.catalog.qualificationState === "experimental"
-                            ? setConfirmation({
-                                modelId: model.id,
-                                action: "install",
-                              })
-                            : void run(model.id, "install")
-                        }
-                      >
-                        {operation?.state === "running"
-                          ? "Installing…"
-                          : "Install"}
-                      </button>
-                    )}
-                  </div>
-                  {!model.device.installed && local && !local.canInstall && (
-                    <p className="hint">{local.installUnavailableReason}</p>
-                  )}
-                  {model.device.installed &&
-                    (model.device.selected ||
-                      model.device.runtime?.configured) && (
-                      <p className="hint">
-                        Disable this model and wait for its runtime to stop
-                        before uninstalling.
-                      </p>
-                    )}
-                  {confirmation?.modelId === model.id && (
-                    <div
-                      className="uninstall-confirmation"
-                      role="group"
-                      aria-label={
-                        confirmation.action === "install"
-                          ? `Confirm experimental install ${model.id}`
-                          : `Confirm uninstall ${model.id}`
-                      }
-                    >
-                      {confirmation.action === "install" ? (
-                        <>
-                          <p>
-                            This unqualified experimental model downloads about{" "}
-                            {model.catalog.memory.storageEstimateGb} GB. Its
-                            behavior and resource estimates have not been
-                            hardware qualified.
-                          </p>
-                          <button
-                            disabled={locked || !local?.canInstall}
-                            onClick={() => void run(model.id, "install")}
-                          >
-                            Acknowledge and install
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <p>
-                            Remove {modelName(model)}'s downloaded files from
-                            this computer? Shared files will be kept.
-                            Reinstalling requires another download.
-                          </p>
-                          <button
-                            disabled={locked}
-                            className="danger"
-                            onClick={() => void run(model.id, "uninstall")}
-                          >
-                            Confirm uninstall
-                          </button>
-                        </>
-                      )}
-                      <button onClick={() => setConfirmation(null)}>
-                        {confirmation.action === "install"
-                          ? "Keep model"
-                          : "Cancel"}
-                      </button>
-                    </div>
-                  )}
+                  {controls(model, local)}
+                  <button
+                    type="button"
+                    className="catalog-details-button"
+                    aria-label={`Details for ${modelName(model)}`}
+                    onClick={() => openDetails(model.id)}
+                  >
+                    Details
+                  </button>
                 </article>
               );
             })}
@@ -811,6 +832,18 @@ export function ModelManagement({
                 </button>
               )}
             </div>
+          )}
+          {detailsModel && (
+            <ModelDetails
+              key={detailsModel.id}
+              model={detailsModel}
+              status={state?.models.find((item) => item.id === detailsModel.id)}
+              close={closeDetails}
+              actions={controls(
+                detailsModel,
+                state?.models.find((item) => item.id === detailsModel.id),
+              )}
+            />
           )}
           <p className="hint">
             File sizes can include artifacts shared by multiple models. Memory

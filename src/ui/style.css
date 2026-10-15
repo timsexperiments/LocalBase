@@ -1108,6 +1108,8 @@ dialog.management-page {
   display: flex;
   gap: 4px;
   min-width: 0;
+  /* Two columns cut the sort label short on phones; give it the row. */
+  grid-column: 1 / -1;
 }
 .catalog-sort > select {
   flex: 1;
@@ -1255,6 +1257,10 @@ dialog.management-page {
   font-size: 13px;
   margin: 0;
 }
+/* The fit verdict and its basis read as one sentence, so give them the row. */
+.model-storage-fit {
+  grid-column: 1 / -1;
+}
 .catalog-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1295,6 +1301,137 @@ dialog.management-page {
 }
 .uninstall-confirmation p {
   margin-bottom: 8px;
+}
+.fit-source {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+.catalog-details-button {
+  margin-top: 10px;
+  font-size: 12px;
+  border-color: var(--border);
+}
+/* Details open over the catalog: a sheet on phones, a panel elsewhere. */
+.model-details {
+  min-width: 0;
+  padding: 0 max(20px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  overflow-wrap: anywhere;
+}
+.drawer .model-details-header {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-block: 12px;
+  margin-bottom: 12px;
+  background: var(--canvas);
+  border-bottom: 1px solid var(--border);
+}
+.model-details-back {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.model-details h2 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  margin: 0 0 2px;
+}
+.model-details-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.model-details-notes,
+.model-details-note {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.model-details-note {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+.model-details-actions {
+  margin: 12px 0 4px;
+}
+.model-details-actions .hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+.model-details section {
+  margin-top: 20px;
+}
+.model-details h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.model-details-facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.model-details-facts > div {
+  display: grid;
+  grid-template-columns: minmax(0, 9em) minmax(0, 1fr);
+  gap: 12px;
+}
+.model-details-facts dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.model-details-facts dd {
+  font-size: 13px;
+  margin: 0;
+}
+.model-details-list {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+.model-details-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 12px;
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.model-details-list .muted {
+  font-size: 12px;
+}
+.model-details-filename {
+  min-width: 0;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+@media (min-width: 640px) {
+  dialog.model-details-dialog {
+    width: min(720px, calc(100% - 48px));
+  }
+  .model-details {
+    padding-inline: 24px;
+  }
+}
+@media (max-width: 380px) {
+  .model-details-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
 }
 .auth-management {
   display: grid;
@@ -1481,6 +1618,9 @@ dialog.management-page {
   }
   .catalog-filters {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .catalog-sort {
+    grid-column: auto;
   }
   .admin-stack {
     grid-template-columns: repeat(2, minmax(0, 1fr));

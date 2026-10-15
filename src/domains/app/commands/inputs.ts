@@ -165,6 +165,9 @@ export const installedInputSchema = z.object({
 });
 export type InstalledInput = z.infer<typeof installedInputSchema>;
 
+export const showInputSchema = z.object({ modelId: z.string().min(1) });
+export type ShowInput = z.infer<typeof showInputSchema>;
+
 export const installInputSchema = z
   .object({
     all: z.boolean().default(false),

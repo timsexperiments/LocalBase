@@ -10,6 +10,7 @@ import type { OtelConfiguration } from "../../observability/otel";
 import { sanitizedOtelEndpoint } from "../../observability/otel-config";
 import { memorySafetyConfigSchema } from "../../runtime/memory-safety";
 import { permissionsSchema } from "../../auth/authorization";
+import { modelMetadataSchema } from "../../models/model-metadata";
 import {
   browserAccessConfigSummarySchema,
   githubAccessRegistrationSummarySchema,
@@ -140,6 +141,18 @@ export const diagnosticsResultSchema = z
   .strict();
 export const catalogResultSchema = z
   .object({ models: z.array(modelOutputSchema) })
+  .strict();
+export const showResultSchema = z
+  .object({
+    model: modelMetadataSchema,
+    status: z
+      .object({
+        installed: z.boolean(),
+        enabled: z.boolean(),
+        default: z.boolean(),
+      })
+      .strict(),
+  })
   .strict();
 export const recommendResultSchema = z
   .object({
