@@ -31,6 +31,14 @@ const scopedRoutes: {
     allowedStatus: 200,
   },
   {
+    // A models:read-only key lists no invocable models, so it cannot
+    // retrieve one either.
+    path: "/v1/models/not-a-model",
+    method: "GET",
+    permission: "models:read",
+    allowedStatus: 404,
+  },
+  {
     path: "/_localbase/models",
     method: "GET",
     permission: "models:read",
@@ -358,6 +366,77 @@ test("video routes are public under --no-auth and still deny browser preflight",
     expect(unknown.status).toBe(404);
     await unknown.arrayBuffer();
     expect(await gateway.readImageRuntimeLaunches()).toEqual([]);
+  } finally {
+    database.close();
+    await gateway.stop();
+  }
+});
+
+test("GET /v1/models/{model} returns exactly what the key can list", async () => {
+  const gateway = await startGatewayFixture({ auth: {} });
+  const database = new DatabaseSession();
+  try {
+    const config = gateway.readConfig();
+    const chatKey = createApiKey(database, config, "chat-reader", undefined, [
+      "models:read",
+      "inference:chat",
+    ]).rawKey;
+    const get = (path: string, token: string | undefined, method = "GET") =>
+      fetch(`${gateway.baseUrl}${path}`, {
+        method,
+        headers: token ? { authorization: `Bearer ${token}` } : {},
+      });
+    const list = (await (await get("/v1/models", chatKey)).json()) as {
+      data: { id: string }[];
+    };
+    expect(list.data.map(({ id }) => id)).toContain(config.activeLlmModel);
+    for (const entry of list.data) {
+      const response = await get(
+        `/v1/models/${encodeURIComponent(entry.id)}`,
+        chatKey,
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(entry);
+    }
+
+    // The stored fixture key may invoke every modality; the chat key may not.
+    const everything = (await (
+      await get("/v1/models", gateway.apiKey)
+    ).json()) as {
+      data: { id: string }[];
+    };
+    const hiddenId = everything.data
+      .map(({ id }) => id)
+      .find((id) => !list.data.some((entry) => entry.id === id));
+    if (!hiddenId)
+      throw new Error("Expected a model the chat key cannot list.");
+    const hiddenPath = `/v1/models/${encodeURIComponent(hiddenId)}`;
+    const full = await get(hiddenPath, gateway.apiKey);
+    expect(full.status).toBe(200);
+    expect(await full.json()).toMatchObject({ id: hiddenId, object: "model" });
+    for (const path of [hiddenPath, "/v1/models/not%2Fa-model"]) {
+      const hidden = await get(path, chatKey);
+      expect(hidden.status).toBe(404);
+      expect(await hidden.json()).toMatchObject({
+        error: {
+          code: "model_not_found",
+          type: "invalid_request_error",
+          param: "model",
+        },
+      });
+    }
+    expect(
+      (await (await get("/v1/models/not%2Fa-model", chatKey)).json()).error
+        .message,
+    ).toContain("'not/a-model'");
+
+    const anonymous = await get(hiddenPath, undefined);
+    expect(anonymous.status).toBe(401);
+    await anonymous.arrayBuffer();
+    const post = await get(hiddenPath, gateway.apiKey, "POST");
+    expect(post.status).toBe(405);
+    expect(post.headers.get("allow")).toBe("GET");
+    await post.arrayBuffer();
   } finally {
     database.close();
     await gateway.stop();

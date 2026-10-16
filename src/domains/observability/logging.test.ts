@@ -1019,3 +1019,55 @@ test("keeps a signed-out session probe at INFO while other failures escalate", (
   expect(httpRequestSeverity("/app/assets/{asset}", 200)).toBe("info");
   expect(httpRequestSeverity("/app/session", 500)).toBe("error");
 });
+
+test("hints at the route family of an unmatched request without its segments", async () => {
+  const root = createRoot();
+  const logger = new LocalBaseLogger("json");
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await logger.enableFileLogging(root);
+    for (const path of [
+      "/v1/completions?api_key=sk-proj-abcdefghijklmnop",
+      "/private-tenant/sk-proj-abcdefghijklmnop/x",
+      "/v1/models/qwen2.5-coder-1.5b-instruct-q4_k_m",
+    ])
+      logger.request({
+        method: "GET",
+        path,
+        status: 404,
+        durationMs: 1,
+      });
+    await logger.close();
+  } finally {
+    console.log = originalLog;
+  }
+
+  const events = await readLogSnapshot(root);
+  const serialized = JSON.stringify(events);
+  for (const raw of ["completions", "private-tenant", "sk-proj-", "api_key"])
+    expect(serialized).not.toContain(raw);
+  expect(
+    events.map(({ message, http, attributes }) => ({
+      message,
+      path: http?.path,
+      attributes,
+    })),
+  ).toEqual([
+    {
+      message: "GET unmatched-route -> 404 (near /v1/*, 2 segments)",
+      path: "unmatched-route",
+      attributes: { route_family: "/v1/*", route_segments: 2 },
+    },
+    {
+      message: "GET unmatched-route -> 404 (near other, 3 segments)",
+      path: "unmatched-route",
+      attributes: { route_family: "other", route_segments: 3 },
+    },
+    {
+      message: "GET /v1/models/{model} -> 404",
+      path: "/v1/models/{model}",
+      attributes: undefined,
+    },
+  ]);
+});

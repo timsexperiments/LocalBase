@@ -37,6 +37,7 @@ export function gatewayAuthorizationRequirement({
         ? { kind: "permission", permission: "inference:video" }
         : { kind: "public" };
     case "models":
+    case "modelRetrieve":
       return authRequired
         ? { kind: "permission", permission: "models:read" }
         : { kind: "public" };

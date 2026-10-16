@@ -202,6 +202,8 @@ export async function listServedModels(
     capabilitiesForModel?: (
       spec: ModelSpec,
     ) => Promise<readonly ServedModelCapability[]>;
+    /** Restricts the projection to this ID, for `GET /v1/models/{model}`. */
+    modelId?: string;
   }> = {},
 ): Promise<OpenAiModel[]> {
   const seen = new Set<string>();
@@ -210,6 +212,7 @@ export async function listServedModels(
     if (options.enabled?.[kind] === false) continue;
     for (const id of configuredIds(kind, config, options.enabled?.[kind])) {
       if (!id || seen.has(id)) continue;
+      if (options.modelId !== undefined && id !== options.modelId) continue;
       const spec = byId(id);
       const permission = permissionFor(kind, spec);
       if (permissions && !permissions.includes(permission)) continue;
