@@ -15,7 +15,11 @@ import type {
   VideoRuntimeProfile,
   VideoRuntimeTarget,
 } from "../../catalog";
-import { calculateMaxSafeContextSize } from "../../catalog";
+import {
+  calculateMaxSafeContextSize,
+  embeddingRuntimeProfile,
+  isDecisionModel,
+} from "../../catalog";
 import type { LlmContextMode } from "../config/schema";
 import {
   kvCacheBytes,
@@ -233,7 +237,8 @@ export function resolveConfiguredLlmLaunchPlan(input: {
     parallel: input.parallel,
     artifactBytes: input.artifactBytes,
     hardware: { memoryGb: input.memoryGb },
-    embedding: input.model?.llmRuntime,
+    embedding: embeddingRuntimeProfile(input.model),
+    decision: isDecisionModel(input.model),
     kvGeometry: input.kvGeometry,
     trainingContextLength: input.trainingContextLength,
     projectorPath: input.projectorPath,
@@ -263,6 +268,8 @@ export type LlmLaunchPlan = LaunchPlanBase<"llm", "llama-server"> & {
   readonly parallel: ParallelAllocation;
   readonly hardware: Readonly<RuntimeHardware>;
   readonly embedding: EmbeddingLlmRuntimeProfile | null;
+  /** Decision model: no KV cache, one micro-batch per slot context. */
+  readonly decision: boolean;
   readonly kvCache: Readonly<{ typeK: KvCacheType; typeV: KvCacheType }>;
   readonly kvGeometry: LlmKvGeometry | null;
   readonly promptCacheRamMib: number;
@@ -408,6 +415,7 @@ function llmMemoryDemand(input: {
   kvCache: LlmLaunchPlan["kvCache"];
   kvGeometry: LlmKvGeometry | null;
   promptCacheRamMib: number;
+  decision: boolean;
 }): RuntimeMemoryDemand {
   const shape = resolveLlmShape({
     size: input.model?.size,
@@ -426,6 +434,7 @@ function llmMemoryDemand(input: {
     ...launch,
     weightsBytes: input.artifactBytes,
     shape,
+    decision: input.decision,
   });
   if (input.model?.kind !== "llm") return estimate.demand;
   // Reference measurements describe the qualified files and launch shape.
@@ -462,11 +471,14 @@ export function resolveLlmLaunchPlan(input: {
   artifactBytes: number;
   hardware: RuntimeHardware;
   embedding?: EmbeddingLlmRuntimeProfile | null;
+  /** Decision-only model (catalog llmRuntime capability decision-only). */
+  decision?: boolean;
   kvGeometry?: LlmKvGeometry | null;
   trainingContextLength?: number | null;
   /** Installed multimodal projector (mmproj); null launches text-only. */
   projectorPath?: string | null;
 }): LlmLaunchPlan {
+  const decision = input.decision === true;
   const ctxSize = Math.min(
     input.ctxSize,
     input.contextWindowTokens ?? input.ctxSize,
@@ -479,23 +491,28 @@ export function resolveLlmLaunchPlan(input: {
       ? "f16"
       : DEFAULT_LLM_KV_CACHE_TYPE;
   const kvCache = Object.freeze({ typeK: kvType, typeV: kvType });
-  const promptCacheRamMib = input.embedding ? 0 : LLAMA_PROMPT_CACHE_RAM_MIB;
+  // Embedding and decision servers never reuse prompts; llama.cpp rejects
+  // the prompt cache on a decision server.
+  const promptCacheRamMib =
+    input.embedding || decision ? 0 : LLAMA_PROMPT_CACHE_RAM_MIB;
   const parallel = allocateParallelSlots({
     parallel: input.parallel,
     memoryGb: input.hardware.memoryGb,
     modelRequirementGb: input.artifactBytes / gibibyte,
     ctxSize,
-    ...(kvGeometry
-      ? {
-          kvCacheGb: (slots: number) =>
-            kvCacheBytes(kvGeometry, {
-              ctxTokens: ctxSize,
-              slots,
-              cacheTypeK: kvCache.typeK,
-              cacheTypeV: kvCache.typeV,
-            }) / gibibyte,
-        }
-      : {}),
+    ...(decision
+      ? { kvCacheGb: () => 0 }
+      : kvGeometry
+        ? {
+            kvCacheGb: (slots: number) =>
+              kvCacheBytes(kvGeometry, {
+                ctxTokens: ctxSize,
+                slots,
+                cacheTypeK: kvCache.typeK,
+                cacheTypeV: kvCache.typeV,
+              }) / gibibyte,
+          }
+        : {}),
   });
   return Object.freeze({
     runtimeId: input.runtimeId,
@@ -512,6 +529,7 @@ export function resolveLlmLaunchPlan(input: {
     parallel: Object.freeze({ ...parallel }),
     hardware: Object.freeze({ ...input.hardware }),
     embedding: input.embedding ? Object.freeze({ ...input.embedding }) : null,
+    decision,
     kvCache,
     kvGeometry,
     ...(input.trainingContextLength !== undefined
@@ -527,6 +545,7 @@ export function resolveLlmLaunchPlan(input: {
       kvCache,
       kvGeometry,
       promptCacheRamMib,
+      decision,
     }),
   });
 }

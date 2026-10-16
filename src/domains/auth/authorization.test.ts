@@ -56,6 +56,7 @@ test("authentication alone does not grant permissions", () => {
       denied: [
         "inference:chat",
         "inference:embeddings",
+        "inference:decision",
         "inference:image",
         "inference:speech",
         "inference:transcription",

@@ -73,6 +73,13 @@ const embeddingCapabilitiesSchema = z
   })
   .strict();
 
+/** Decision models answer typed questions from POST /v1/systemone only. */
+const decisionCapabilitiesSchema = z
+  .object({
+    kind: z.literal("decision"),
+  })
+  .strict();
+
 const speechCapabilitiesSchema = z
   .object({
     kind: z.literal("speech"),
@@ -220,6 +227,7 @@ export const modelMetadataSchema = z
         capabilities: z
           .discriminatedUnion("kind", [
             embeddingCapabilitiesSchema,
+            decisionCapabilitiesSchema,
             speechCapabilitiesSchema,
             videoCapabilitiesSchema,
           ])
@@ -421,57 +429,63 @@ export function projectModelMetadata(
         storageEstimateGb: model.storageGb,
         ...memoryProjection(model, input),
       },
-      capabilities: model.llmRuntime
-        ? {
-            kind: "embedding",
-            dimensions: model.llmRuntime.dimensions,
-          }
-        : model.kind === "tts" && model.ttsRuntime?.kind === "llama-tts"
+      capabilities:
+        model.llmRuntime?.capability === "embedding-only"
           ? {
-              kind: "speech",
-              outputFormats: ["wav"],
-              voice: {
-                selection: "catalog-reference",
-                requestValues: [
-                  "default",
-                  ...model.ttsRuntime.referenceVoices.map(({ name }) => name),
-                ],
-                defaultRequestValue: "default",
-                references: model.ttsRuntime.referenceVoices.map(
-                  ({ name, license, provenanceUrl }) => ({
-                    name,
-                    license,
-                    provenanceUrl,
-                  }),
-                ),
-              },
-              residency: "cold-per-request",
+              kind: "embedding",
+              dimensions: model.llmRuntime.dimensions,
             }
-          : model.kind === "tts" && model.ttsRuntime?.kind === "kokoro-onnx"
-            ? {
-                kind: "speech",
-                outputFormats: ["wav"],
-                voice: {
-                  selection: "bundled-native",
-                  requestValues: model.ttsRuntime.voices.map(
-                    ({ name }) => name,
-                  ),
-                  defaultRequestValue: model.ttsRuntime.defaultVoice,
-                },
-                residency: "cold-per-request",
-              }
-            : model.videoRuntime
+          : model.llmRuntime?.capability === "decision-only"
+            ? { kind: "decision" }
+            : model.kind === "tts" && model.ttsRuntime?.kind === "llama-tts"
               ? {
-                  kind: "video",
-                  mode: model.videoRuntime.mode,
-                  width: model.videoRuntime.qualification.maxWidth,
-                  height: model.videoRuntime.qualification.maxHeight,
-                  frames: model.videoRuntime.qualification.maxFrames,
-                  fps: model.videoRuntime.qualification.fps,
-                  jobDeadlineMs: model.videoRuntime.qualification.jobDeadlineMs,
-                  outputFormats: ["mp4"],
+                  kind: "speech",
+                  outputFormats: ["wav"],
+                  voice: {
+                    selection: "catalog-reference",
+                    requestValues: [
+                      "default",
+                      ...model.ttsRuntime.referenceVoices.map(
+                        ({ name }) => name,
+                      ),
+                    ],
+                    defaultRequestValue: "default",
+                    references: model.ttsRuntime.referenceVoices.map(
+                      ({ name, license, provenanceUrl }) => ({
+                        name,
+                        license,
+                        provenanceUrl,
+                      }),
+                    ),
+                  },
+                  residency: "cold-per-request",
                 }
-              : null,
+              : model.kind === "tts" && model.ttsRuntime?.kind === "kokoro-onnx"
+                ? {
+                    kind: "speech",
+                    outputFormats: ["wav"],
+                    voice: {
+                      selection: "bundled-native",
+                      requestValues: model.ttsRuntime.voices.map(
+                        ({ name }) => name,
+                      ),
+                      defaultRequestValue: model.ttsRuntime.defaultVoice,
+                    },
+                    residency: "cold-per-request",
+                  }
+                : model.videoRuntime
+                  ? {
+                      kind: "video",
+                      mode: model.videoRuntime.mode,
+                      width: model.videoRuntime.qualification.maxWidth,
+                      height: model.videoRuntime.qualification.maxHeight,
+                      frames: model.videoRuntime.qualification.maxFrames,
+                      fps: model.videoRuntime.qualification.fps,
+                      jobDeadlineMs:
+                        model.videoRuntime.qualification.jobDeadlineMs,
+                      outputFormats: ["mp4"],
+                    }
+                  : null,
       inputModalities: model.inputModalities,
       outputModalities: model.outputModalities,
       contextWindowTokens: model.contextWindowTokens,

@@ -2,6 +2,8 @@ import { basename, join } from "node:path";
 import { verifyAuthoritativeFile } from "../../utils/checksum";
 import {
   byId,
+  embeddingRuntimeProfile,
+  isDecisionModel,
   llmProjectorArtifact,
   primaryArtifact,
   resolveCatalogInstallation,
@@ -117,7 +119,12 @@ export type RuntimeSupervisorFactoryDependencies = Readonly<{
    * gateway can record what the backend reports about itself.
    */
   onLlmReady?: (
-    event: Readonly<{ modelId: string; baseUrl: string; embedding: boolean }>,
+    event: Readonly<{
+      modelId: string;
+      baseUrl: string;
+      embedding: boolean;
+      decision: boolean;
+    }>,
   ) => void | Promise<void>;
   /**
    * Called after any backend becomes healthy, with its process and plan, so
@@ -704,7 +711,8 @@ export function createRuntimeSupervisorFactory(
                 dependencies.onLlmReady?.({
                   modelId,
                   baseUrl: base,
-                  embedding: Boolean(byId(modelId)?.llmRuntime),
+                  embedding: Boolean(embeddingRuntimeProfile(byId(modelId))),
+                  decision: isDecisionModel(byId(modelId)),
                 })
             : undefined,
         ),

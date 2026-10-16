@@ -27,6 +27,7 @@ function testLaunchPlan(runtimeId: string): RuntimeLaunchPlan {
     parallel: { slots: 1, isAuto: false, contextPerSlot: 8192 },
     hardware: { memoryGb: 1 },
     embedding: null,
+    decision: false,
     kvCache: { typeK: "q8_0", typeV: "q8_0" },
     kvGeometry: null,
     promptCacheRamMib: 2048,

@@ -10,7 +10,6 @@ import { readMigrationFiles } from "drizzle-orm/migrator";
 import { migrationsFolder } from "./migration-assets";
 import { validateMigrationJournal } from "./migration-integrity";
 import * as schema from "./schema";
-import { defaultApiKeyScopes } from "../domains/auth/authorization";
 import { defaultConfig, loadConfig, saveConfig } from "../manager";
 
 test("adds the default-off experimental opt-in without replacing the config row", () => {
@@ -123,7 +122,19 @@ test("migrates existing active, expired, and revoked keys without changing crede
         .from(schema.apiKeysTable)
         .all(),
     ).toEqual(
-      before.map(() => ({ scopes: JSON.stringify(defaultApiKeyScopes) })),
+      // Migration 0002 grants the default scopes of its release; later scopes
+      // such as inference:decision are opt-in for existing keys.
+      before.map(() => ({
+        scopes: JSON.stringify([
+          "inference:chat",
+          "inference:embeddings",
+          "inference:image",
+          "inference:video",
+          "inference:speech",
+          "inference:transcription",
+          "models:read",
+        ]),
+      })),
     );
     db.update(schema.apiKeysTable).set({ scopes: "[]" }).run();
     migrate(db, { migrationsFolder: migrationsFolder() });

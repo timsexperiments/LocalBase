@@ -39,6 +39,7 @@ const everyVideoMode: [VideoMode] extends [(typeof videoModes)[number]]
 void everyVideoMode;
 type ClientCapabilities =
   | Extract<MetadataCapabilities, { kind: "embedding" }>
+  | Extract<MetadataCapabilities, { kind: "decision" }>
   | Extract<MetadataCapabilities, { kind: "video" }>
   | (Pick<SpeechCapabilities, "kind"> & {
       voice: Pick<
@@ -48,6 +49,7 @@ type ClientCapabilities =
     });
 
 const capabilitiesSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("decision") }),
   z.object({
     kind: z.literal("video"),
     mode: z.enum(videoModes),
@@ -532,7 +534,8 @@ export function catalogModels(models: Model[], mode: Mode) {
       mode === "embedding"
         ? m.catalog.capabilities?.kind === "embedding"
         : m.catalog.kind === mode &&
-          m.catalog.capabilities?.kind !== "embedding",
+          m.catalog.capabilities?.kind !== "embedding" &&
+          m.catalog.capabilities?.kind !== "decision",
     )
     .sort(
       (a, b) =>

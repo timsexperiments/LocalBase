@@ -51,6 +51,7 @@ function header(
     poolingType: null,
     expertCount: null,
     chatTemplate: null,
+    decisionType: null,
     hasVisionEncoder: false,
     hasAudioEncoder: false,
     ...overrides,
@@ -426,5 +427,34 @@ describe("resolveModelCapabilities", () => {
       "reasoning",
     ]);
     expect(resolved.inputModalities.source).toBe("runtime");
+  });
+});
+
+describe("ggufCapabilities for decision models", () => {
+  const chat = catalogModel("qwen2.5-coder-7b-instruct-q4_k_m");
+  test("a decision type detects decisions and skips the template", () => {
+    const result = ggufCapabilities(
+      chat,
+      header({
+        architecture: "clef",
+        decisionType: "clef",
+        chatTemplate: "{{ tools }}<think>",
+      }),
+    );
+    expect(result.capabilities.decision).toBe(true);
+    expect(result.capabilities["tool-calling"]).toBeUndefined();
+    expect(result.capabilities.reasoning).toBeUndefined();
+    expect(result.evidence).toContain("gguf: decision type clef");
+  });
+
+  test("a declared decision model without decision heads is refuted", () => {
+    const declared: ModelSpec = {
+      ...chat,
+      llmRuntime: { capability: "decision-only" },
+    };
+    expect(
+      ggufCapabilities(declared, header({ chatTemplate: "{{ tools }}" }))
+        .capabilities.decision,
+    ).toBe(false);
   });
 });

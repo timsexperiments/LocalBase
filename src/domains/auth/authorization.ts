@@ -3,6 +3,7 @@ import { z } from "zod";
 export const permissionSchema = z.enum([
   "inference:chat",
   "inference:embeddings",
+  "inference:decision",
   "inference:image",
   "inference:video",
   "inference:speech",
@@ -35,6 +36,7 @@ export const permissionsSchema = z
 export const defaultApiKeyScopes = permissionsSchema.parse([
   "inference:chat",
   "inference:embeddings",
+  "inference:decision",
   "inference:image",
   "inference:video",
   "inference:speech",

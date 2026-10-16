@@ -1,4 +1,5 @@
 import { usesReferenceMeasurements } from "../../catalog/sources";
+import { llamaContextPerSequence } from "../config/parallel";
 /**
  * First-principles memory estimates for every runtime LocalBase launches.
  *
@@ -226,6 +227,13 @@ export const LLAMA_UBATCH_TOKENS = 512;
 /** F32 `n_ubatch x n_embd` activations live at the compute-buffer peak. */
 const LLAMA_LIVE_EMBD_ACTIVATIONS = 4;
 /**
+ * Decision models run the whole prompt as one micro-batch (`-ub` = context)
+ * and emit decision heads instead of vocabulary logits, so the compute buffer
+ * is activations only. Clef-flash (n_embd 4096) measured 1842.53 MiB at
+ * ub 8192 on Metal, about 14.4 live f32 rows per token; 16 is the allowance.
+ */
+const DECISION_LIVE_EMBD_ACTIVATIONS = 16;
+/**
  * Per-slot sampler state: llama_token_data (id, logit, p = 12 B) candidates
  * plus a logits copy per vocab entry (~16 B/token), and a fixed 16 MiB of
  * slot bookkeeping (prompt tokens, speculative/n-gram state). Allowance.
@@ -377,23 +385,39 @@ export function estimateLlmMemory(input: {
   promptCacheBytes: number;
   /** llama-server runs with flash attention on/auto; false adds the KQ matrix. */
   flashAttention?: boolean;
+  /**
+   * Decision models keep no KV cache and size the micro-batch to the context
+   * per slot, so compute grows with the context instead of the KV.
+   */
+  decision?: boolean;
 }): MemoryEstimate {
   const { shape } = input.shape;
   const slots = Math.max(1, input.slots);
-  const kv = kvCacheBytes(shape.geometry, {
-    ctxTokens: input.ctxTokens,
-    slots,
-    cacheTypeK: input.cacheTypeK,
-    cacheTypeV: input.cacheTypeV,
-  });
+  const kv = input.decision
+    ? 0
+    : kvCacheBytes(shape.geometry, {
+        ctxTokens: input.ctxTokens,
+        slots,
+        cacheTypeK: input.cacheTypeK,
+        cacheTypeV: input.cacheTypeV,
+      });
+  const ubatchTokens = input.decision
+    ? llamaContextPerSequence(input.ctxTokens, slots)
+    : LLAMA_UBATCH_TOKENS;
   const attentionScores =
     input.flashAttention === false
-      ? LLAMA_UBATCH_TOKENS * input.ctxTokens * shape.queryHeads * 4
+      ? ubatchTokens * input.ctxTokens * shape.queryHeads * 4
       : 0;
   const compute =
-    LLAMA_UBATCH_TOKENS *
-      4 *
-      (shape.vocabSize + LLAMA_LIVE_EMBD_ACTIVATIONS * shape.embeddingLength) +
+    (input.decision
+      ? ubatchTokens *
+        4 *
+        DECISION_LIVE_EMBD_ACTIVATIONS *
+        shape.embeddingLength
+      : LLAMA_UBATCH_TOKENS *
+        4 *
+        (shape.vocabSize +
+          LLAMA_LIVE_EMBD_ACTIVATIONS * shape.embeddingLength)) +
     attentionScores;
   const slotState =
     slots *
@@ -1051,7 +1075,10 @@ export function catalogLlmReference(
     weightsBytes,
     geometry: inputs.geometry,
   });
-  const kvType = llmKvCacheType(Boolean(spec.llmRuntime), shape.shape.geometry);
+  const kvType = llmKvCacheType(
+    spec.llmRuntime?.capability === "embedding-only",
+    shape.shape.geometry,
+  );
   return {
     weightsBytes,
     shape,
@@ -1063,6 +1090,7 @@ export function catalogLlmReference(
     cacheTypeK: kvType,
     cacheTypeV: kvType,
     promptCacheBytes: 0,
+    decision: spec.llmRuntime?.capability === "decision-only",
   };
 }
 

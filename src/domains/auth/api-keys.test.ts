@@ -48,6 +48,7 @@ test("default keys grant only inference and model reads; explicit scopes support
   expect(record.scopes).toEqual([
     "inference:chat",
     "inference:embeddings",
+    "inference:decision",
     "inference:image",
     "inference:video",
     "inference:speech",

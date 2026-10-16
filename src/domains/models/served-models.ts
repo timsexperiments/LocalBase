@@ -129,7 +129,11 @@ function configuredIds(
 function permissionFor(kind: ModelKind, spec: ModelSpec | undefined) {
   switch (kind) {
     case "llm":
-      return spec?.llmRuntime ? "inference:embeddings" : "inference:chat";
+      return spec?.llmRuntime?.capability === "embedding-only"
+        ? "inference:embeddings"
+        : spec?.llmRuntime?.capability === "decision-only"
+          ? "inference:decision"
+          : "inference:chat";
     case "stt":
       return "inference:transcription";
     case "tts":
@@ -143,9 +147,12 @@ function permissionFor(kind: ModelKind, spec: ModelSpec | undefined) {
 
 function project(kind: ModelKind, id: string, spec?: ModelSpec): OpenAiModel {
   const fallback = defaultModalities[kind];
-  const output = spec?.llmRuntime
-    ? ["embeddings"]
-    : (spec?.outputModalities ?? fallback.output);
+  const output =
+    spec?.llmRuntime?.capability === "embedding-only"
+      ? ["embeddings"]
+      : spec?.llmRuntime?.capability === "decision-only"
+        ? ["decisions"]
+        : (spec?.outputModalities ?? fallback.output);
   return {
     id,
     object: "model",

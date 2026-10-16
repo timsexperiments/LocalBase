@@ -24,6 +24,7 @@ import {
   likelyKind,
   entryChoices,
   isGated,
+  isDecisionRepository,
   modelIdFor,
   parseHfReference,
   quantOf,
@@ -1134,4 +1135,44 @@ test("image searches add launchable image-to-image and GGUF pipelines", async ()
   expect(quiet.hits.map(({ repo }) => repo)).toEqual([
     "stabilityai/sdxl-turbo",
   ]);
+});
+
+test("detects decision models from Hub tags and GGUF architecture", async () => {
+  expect(isDecisionRepository(["gguf", "SystemOne"])).toBe(true);
+  expect(isDecisionRepository(["decision-model"])).toBe(true);
+  expect(isDecisionRepository(["gguf"], "clef")).toBe(true);
+  expect(isDecisionRepository(["gguf"], "qwen35")).toBe(false);
+  expect(likelyKind("image-text-to-text", ["gguf", "decision-model"])).toEqual({
+    kind: "llm",
+    label: "decision",
+  });
+  expect(likelyKind("text-to-image", ["decision-model"]).label).not.toBe(
+    "decision",
+  );
+
+  const info = await parseInfo(
+    modelInfo({
+      id: "ggml-org/Clef-Flash-GGUF",
+      pipeline_tag: "image-text-to-text",
+      tags: ["gguf", "clef", "systemone", "decision-model"],
+      gguf: {
+        architecture: "clef",
+        context_length: 262144,
+        chat_template: "{% if tools %}{{ tools }}{% endif %}<think>",
+      },
+      siblings: [
+        lfs("Clef-Flash-Q4_K_M.gguf", 6_486_448_288, "a"),
+        lfs("mmproj-Clef-Flash-Q8_0.gguf", 624_229_728, "b"),
+      ],
+    }),
+  );
+  const entry = generateEntry(
+    info,
+    parseHfReference("hf:ggml-org/Clef-Flash-GGUF"),
+  );
+  expect(entry.detected).toEqual(["decision"]);
+  const spec = modelSpecSchema.parse(entry.spec);
+  expect(spec.llmRuntime).toEqual({ capability: "decision-only" });
+  expect(spec.capabilities.map(({ id }) => id)).toEqual(["decision"]);
+  expect(spec.inputModalities).toEqual(["text", "image"]);
 });
