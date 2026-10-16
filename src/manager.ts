@@ -1350,6 +1350,17 @@ export function revokeApiKey(
   });
 }
 
+/** Removes a key outright; reserved for credentials the CLI minted for itself. */
+export function deleteApiKey(
+  database: DatabaseSession,
+  config: LocalBaseConfig,
+  id: string,
+): void {
+  withDatabase(database, config.root, (db) => {
+    db.delete(apiKeysTable).where(eq(apiKeysTable.id, id)).run();
+  });
+}
+
 export function setApiKeyScopes(
   database: DatabaseSession,
   config: LocalBaseConfig,
