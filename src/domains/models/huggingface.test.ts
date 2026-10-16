@@ -21,6 +21,7 @@ import {
   generateEntry,
   checkHubToken,
   HubError,
+  imageLoraBaseFor,
   likelyKind,
   entryChoices,
   isGated,
@@ -982,6 +983,133 @@ test("generates multi-file pipeline entries from the measured profiles", async (
     }),
   );
   expect(() => entryChoices(missing)).toThrow(/no FLUX\.1 diffusion model/);
+});
+
+test("classifies image LoRAs by their declared base model", () => {
+  const kleinTags = [
+    "lora",
+    "base_model:black-forest-labs/FLUX.2-klein-4B",
+    "base_model:adapter:black-forest-labs/FLUX.2-klein-4B",
+  ];
+  expect(
+    likelyKind("text-to-image", kleinTags, { repo: "Org/pixel-art-lora" }),
+  ).toMatchObject({
+    kind: "image",
+    label: "image LoRA (FLUX.2 klein 4B)",
+    lora: "flux2-klein-4b",
+  });
+  // A LoRA repository often has no pipeline tag at all.
+  expect(
+    likelyKind(undefined, kleinTags, { repo: "Org/pixel-art-lora" }).lora,
+  ).toBe("flux2-klein-4b");
+  expect(
+    imageLoraBaseFor("Org/style", [
+      "base_model:adapter:stabilityai/stable-diffusion-xl-base-1.0",
+    ]),
+  ).toEqual({ base: "sdxl" });
+  expect(
+    imageLoraBaseFor("Org/style", [
+      "base_model:adapter:stable-diffusion-v1-5/stable-diffusion-v1-5",
+    ]),
+  ).toEqual({ base: "sd1.5" });
+  expect(imageLoraBaseFor("Org/z-image-turbo-ink-lora", [])).toEqual({
+    base: "z-image-turbo",
+  });
+  // Declared tags decide; the repository name is not consulted beside them.
+  expect(
+    imageLoraBaseFor("Org/sdxl-look-lora", ["base_model:Org/unknown-model"]),
+  ).toBeNull();
+  for (const [base, reason] of [
+    ["black-forest-labs/FLUX.1-dev", /FLUX\.1 dev/],
+    ["black-forest-labs/FLUX.2-klein-base-4B", /klein base/],
+    ["black-forest-labs/FLUX.2-dev", /FLUX\.2 dev/],
+    ["stabilityai/sdxl-turbo", /SDXL variant/],
+  ] as const) {
+    const likely = likelyKind("text-to-image", ["lora", `base_model:${base}`], {
+      repo: "Org/style-lora",
+    });
+    expect(likely.kind).toBeNull();
+    expect(likely.label).toMatch(reason);
+  }
+});
+
+test("pins an image LoRA beside every file of its base entry", async () => {
+  const info = await parseInfo(
+    imageInfo({
+      id: "Limbicnation/pixel-art-lora",
+      pipeline_tag: "text-to-image",
+      library_name: "diffusers",
+      tags: [
+        "diffusers",
+        "lora",
+        "base_model:black-forest-labs/FLUX.2-klein-4B",
+        "base_model:adapter:black-forest-labs/FLUX.2-klein-4B",
+        "license:apache-2.0",
+      ],
+      cardData: { license: "apache-2.0", instance_prompt: "pixel art sprite" },
+      siblings: [
+        { rfilename: "README.md", size: 10 },
+        lfs("pytorch_lora_weights.safetensors", 325_280_664, "a"),
+        lfs("pytorch_lora_weights.comfyui.safetensors", 325_000_000, "b"),
+        lfs("samples/sprite.png", 1_000_000, "c"),
+      ],
+    }),
+  );
+  const choices = entryChoices(info);
+  expect(choices.lora).toBe("flux2-klein-4b");
+  expect(choices.pipeline).toBeNull();
+  expect(choices.choices.map(({ path }) => path).sort()).toEqual([
+    "pytorch_lora_weights.comfyui.safetensors",
+    "pytorch_lora_weights.safetensors",
+  ]);
+  expect(choices.default?.path).toBe("pytorch_lora_weights.safetensors");
+
+  const entry = generateEntry(
+    info,
+    parseHfReference("hf:Limbicnation/pixel-art-lora"),
+  );
+  const spec = modelSpecSchema.parse(entry.spec);
+  const template = byId("flux2-klein-4b-q4_0")!;
+  expect(spec.modelId).toBe("pixel-art-lora");
+  expect(spec.imageRuntime).toEqual(template.imageRuntime);
+  expect(spec.imageLaunchOptions?.lora).toEqual({
+    artifactFilename: "pixel-art-lora-pytorch_lora_weights.safetensors",
+    defaultStrength: 1,
+    trigger: "pixel art sprite",
+  });
+  expect(spec.artifacts.map(({ filename }) => filename)).toEqual([
+    ...template.artifacts.map(({ filename }) => filename),
+    "pixel-art-lora-pytorch_lora_weights.safetensors",
+  ]);
+  expect(spec.artifacts.at(-1)).toMatchObject({
+    role: "supplementary",
+    sha256: "a".repeat(64),
+    sourcePath: "pytorch_lora_weights.safetensors",
+  });
+  // The base files keep the template's own pinned sources, so they are shared.
+  for (const artifact of spec.artifacts.slice(0, -1))
+    expect(artifact.source?.revision).toMatch(/^[a-f0-9]{40}$/);
+  expect(spec.storageGb).toBeGreaterThan(template.storageGb);
+
+  const explicit = generateEntry(
+    info,
+    parseHfReference(
+      "hf:Limbicnation/pixel-art-lora:pytorch_lora_weights.comfyui.safetensors",
+    ),
+  );
+  expect(
+    modelSpecSchema.parse(explicit.spec).imageLaunchOptions?.lora
+      ?.artifactFilename,
+  ).toBe("pixel-art-lora-pytorch_lora_weights.comfyui.safetensors");
+
+  const empty = await parseInfo(
+    imageInfo({
+      id: "Org/empty-lora",
+      tags: ["lora", "base_model:black-forest-labs/FLUX.2-klein-4B"],
+      siblings: [lfs("weights/lora.safetensors", 1_000, "a")],
+    }),
+  );
+  expect(() => entryChoices(empty)).toThrow(/no LoRA \.safetensors file/);
 });
 
 test("explains diffusers folder layouts sd.cpp cannot load", async () => {

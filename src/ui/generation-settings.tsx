@@ -29,9 +29,12 @@ const imageTuningSchema = z.object({
   steps: z.number().int().min(1).max(150).optional(),
   cfg_scale: z.number().min(0).max(30).optional(),
 });
+const loraStrengthSchema = z.number().min(0);
 export type GenerationSettings = {
   llm: { temperature?: number; max_tokens?: number };
   image: z.infer<typeof imageTuningSchema> & {
+    /** Sent only when the model advertises a usable LoRA. */
+    lora_strength?: number;
     /** Studio-only: how far an edit may move away from its source image. */
     strength?: number;
     /** Studio-only: images per request. */
@@ -63,9 +66,25 @@ export function chatParameters(settings: GenerationSettings["llm"]) {
     })
     .parse(settings);
 }
-export function imageParameters(settings: GenerationSettings["image"]) {
+export function imageParameters(
+  settings: GenerationSettings["image"],
+  model?: Model,
+) {
   // Object parsing strips the studio-only fields.
-  return imageTuningSchema.parse(settings);
+  const tuning = imageTuningSchema.parse(settings);
+  const lora = model ? imageLora(model) : undefined;
+  if (!lora || settings.lora_strength === undefined) return tuning;
+  return {
+    ...tuning,
+    lora_strength: loraStrengthSchema
+      .max(lora.maximum)
+      .parse(settings.lora_strength),
+  };
+}
+/** The LoRA a model applies, when its engine supports one. */
+export function imageLora(model: Model) {
+  const cap = model.catalog.capabilities;
+  return cap?.kind === "image" ? cap.lora : undefined;
 }
 export function videoParameters(settings: GenerationSettings["video"]) {
   return z
@@ -190,6 +209,7 @@ export function GenerationSettingsFields({
 }) {
   const cap = model.catalog.capabilities;
   const voices = cap?.kind === "speech" ? cap.voice.requestValues : [];
+  const lora = imageLora(model);
   return (
     <section className="generation-settings-section">
       {mode === "llm" && (
@@ -311,6 +331,32 @@ export function GenerationSettingsFields({
               onChange({ ...settings, image: { ...settings.image, seed } })
             }
           />
+          {lora && (
+            <>
+              <NumberField
+                label="LoRA strength"
+                value={settings.image.lora_strength}
+                min={lora.minimum}
+                max={lora.maximum}
+                step={0.05}
+                onChange={(lora_strength) =>
+                  onChange({
+                    ...settings,
+                    image: { ...settings.image, lora_strength },
+                  })
+                }
+              />
+              <p className="generation-settings-hint">
+                Blank uses {lora.defaultStrength}; 0 turns the LoRA off.
+                {lora.trigger && (
+                  <>
+                    {" "}
+                    Trigger words: <code>{lora.trigger}</code>
+                  </>
+                )}
+              </p>
+            </>
+          )}
           <p className="generation-settings-hint">
             Blank fields use the model defaults; a blank seed is random.
           </p>

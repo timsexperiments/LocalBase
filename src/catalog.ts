@@ -240,14 +240,30 @@ export type ImageRuntimeProfile = z.infer<typeof imageRuntimeProfileSchema>;
  * passes `--diffusion-fa`; enable it only for families validated on the
  * pinned sd-server (docs/memory-calibration.md). `prediction` passes
  * `--prediction` for checkpoints whose parameterization sd-server cannot
- * infer, such as SD 2.x 768-v and SDXL v-prediction finetunes.
+ * infer, such as SD 2.x 768-v and SDXL v-prediction finetunes. `lora`
+ * names a supplementary LoRA artifact sd-server applies per request at
+ * the strength the request asks for, `defaultStrength` when it asks for
+ * none; `trigger` is the phrase the LoRA was trained to respond to.
  */
+export const IMAGE_LORA_MAX_STRENGTH = 2;
+
+const imageLoraSchema = z
+  .object({
+    artifactFilename: safeFilenameSchema,
+    defaultStrength: z.number().min(0).max(IMAGE_LORA_MAX_STRENGTH),
+    trigger: z.string().trim().min(1).max(200).optional(),
+  })
+  .strict();
+
 const imageLaunchOptionsSchema = z
   .object({
     diffusionFlashAttention: z.boolean(),
     prediction: z.enum(["eps", "v"]).optional(),
+    lora: imageLoraSchema.optional(),
   })
   .strict();
+
+export type ImageLora = z.infer<typeof imageLoraSchema>;
 
 export type ImageLaunchOptions = z.infer<typeof imageLaunchOptionsSchema>;
 
@@ -577,6 +593,26 @@ export function refineModelSpec(
         "image models must declare image launch options, and only image models may",
       path: ["imageLaunchOptions"],
     });
+  }
+
+  const lora = model.imageLaunchOptions?.lora;
+  if (lora) {
+    const artifact = model.artifacts.find(
+      ({ filename }) => filename === lora.artifactFilename,
+    );
+    const mapped =
+      model.imageRuntime !== undefined &&
+      Object.values(model.imageRuntime.artifacts).includes(
+        lora.artifactFilename,
+      );
+    if (!artifact || artifact.role !== "supplementary" || mapped) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "an image LoRA must name a supplementary artifact the image runtime does not map",
+        path: ["imageLaunchOptions", "lora", "artifactFilename"],
+      });
+    }
   }
 
   if (model.imageRuntime) {

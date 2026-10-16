@@ -260,7 +260,7 @@ export async function generateMedia(
               model: model.id,
               prompt: args.prompt,
               n: 1,
-              ...imageParameters(settings.image),
+              ...imageParameters(settings.image, model),
               response_format: "b64_json",
             },
             signal,

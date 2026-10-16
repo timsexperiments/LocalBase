@@ -1207,7 +1207,7 @@ function App() {
         }
         case "image": {
           const n = generationSettings.image.n ?? 1;
-          const tuning = imageParameters(generationSettings.image);
+          const tuning = imageParameters(generationSettings.image, model);
           let init: RequestInit;
           const imageMode = imageRequestMode(request, model);
           let path = "/v1/images/generations";

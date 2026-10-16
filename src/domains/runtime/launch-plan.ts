@@ -309,7 +309,9 @@ type ImageRuntimeLaunchProfile =
 
 export type ImageLaunchPlan = LaunchPlanBase<"image", "sd-server"> & {
   readonly imageRuntime?: ImageRuntimeLaunchProfile;
-  readonly launchOptions: Readonly<ImageLaunchOptions>;
+  readonly launchOptions: Readonly<Omit<ImageLaunchOptions, "lora">>;
+  /** The LoRA file sd-server applies to requests that ask for it. */
+  readonly loraPath?: string;
 };
 
 type VideoLaunchPlanBase = Omit<
@@ -642,6 +644,14 @@ export function resolveImageLaunchPlan(input: {
         ? { prediction: input.model.imageLaunchOptions.prediction }
         : {}),
     }),
+    ...(input.model?.imageLaunchOptions?.lora
+      ? {
+          loraPath: join(
+            input.modelsDirectory,
+            input.model.imageLaunchOptions.lora.artifactFilename,
+          ),
+        }
+      : {}),
     ...(imageRuntime ? { imageRuntime } : {}),
   });
 }

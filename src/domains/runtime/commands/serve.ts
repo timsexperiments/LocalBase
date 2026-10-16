@@ -1,7 +1,7 @@
 import { acknowledgeStaticConfiguration } from "../../config/activation";
 import { z } from "zod";
 import { SpanStatusCode, context, trace } from "@opentelemetry/api";
-import { join, basename } from "node:path";
+import { join, basename, resolve } from "node:path";
 import { validateJpegImage, validatePngImage } from "../image-validation";
 import { resolveApiKey, type LocalBaseConfig } from "../../../manager";
 import {
@@ -21,6 +21,7 @@ import {
 import { loadEmailDeliveryConfig } from "../../auth/email-delivery";
 import {
   byId,
+  IMAGE_LORA_MAX_STRENGTH,
   CATALOG,
   calculateMaxSafeContextSize,
   isDecisionModel,
@@ -914,11 +915,62 @@ const imageTuningSchema = z.object({
   steps: z.number().int().min(1).max(150).optional(),
   cfg_scale: z.number().min(0).max(30).optional(),
   strength: z.number().min(0).max(1).optional(),
+  lora_strength: z.number().min(0).max(IMAGE_LORA_MAX_STRENGTH).optional(),
 });
 type ImageTuning = z.infer<typeof imageTuningSchema>;
 
-export function promptWithImageTuning(prompt: string, tuning: ImageTuning) {
+/** A LoRA file sd-server applies to one request, at an absolute path. */
+export type ImageLoraApplication = Readonly<{
+  path: string;
+  multiplier: number;
+}>;
+
+/**
+ * The LoRA a request applies to an image model: the requested strength or the
+ * catalog default, none at strength 0. sd-server's OpenAI routes accept LoRAs
+ * only as structured extra args and resolve paths against its own cwd, so the
+ * path is absolute.
+ */
+export function imageLoraFor(
+  spec: ModelSpec | undefined,
+  modelsDirectory: string,
+  strength: number | undefined,
+): ImageLoraApplication | undefined {
+  const lora = spec?.imageLaunchOptions?.lora;
+  if (!lora) return undefined;
+  const multiplier = strength ?? lora.defaultStrength;
+  return multiplier > 0
+    ? { path: resolve(modelsDirectory, lora.artifactFilename), multiplier }
+    : undefined;
+}
+
+/** The 400 for a lora_strength sent to a model without a LoRA, if any. */
+function unusableLoraStrength(
+  spec: ModelSpec | undefined,
+  strength: number | undefined,
+): Response | undefined {
+  if (
+    strength === undefined ||
+    spec?.kind !== "image" ||
+    spec.imageLaunchOptions?.lora
+  )
+    return undefined;
+  return badRequest(
+    `Model '${spec.modelId}' has no LoRA; lora_strength applies only to image models added with one.`,
+    "lora_strength",
+  );
+}
+
+export function promptWithImageTuning(
+  prompt: string,
+  tuning: Omit<ImageTuning, "lora_strength">,
+  lora?: ImageLoraApplication,
+) {
   const extra: Record<string, unknown> = {};
+  if (lora)
+    extra.lora = [
+      { path: lora.path, multiplier: lora.multiplier, is_high_noise: false },
+    ];
   if (tuning.negative_prompt) extra.negative_prompt = tuning.negative_prompt;
   if (tuning.seed !== undefined) extra.seed = tuning.seed;
   if (tuning.strength !== undefined) extra.strength = tuning.strength;
@@ -4231,17 +4283,19 @@ export async function runServe(
         imageGenerationRequestSchema,
       );
       if (!parsed.success) return parsed.response;
-      const { negative_prompt, seed, steps, cfg_scale, ...generation } =
-        parsed.data;
-      const backendBody = {
-        ...generation,
-        prompt: promptWithImageTuning(generation.prompt, {
-          negative_prompt,
-          seed,
-          steps,
-          cfg_scale,
-        }),
-      };
+      const {
+        negative_prompt,
+        seed,
+        steps,
+        cfg_scale,
+        lora_strength,
+        ...generation
+      } = parsed.data;
+      const loraError = unusableLoraStrength(
+        byId(parsed.data.model ?? currentConfig.activeImageModel ?? ""),
+        lora_strength,
+      );
+      if (loraError) return loraError;
       let selected;
       try {
         selected = await admitModelWithIdleRecovery(
@@ -4265,6 +4319,18 @@ export async function runServe(
       if (selected.kind === "insufficient-memory") {
         return resourceUnavailable(selected.error);
       }
+      const backendBody = {
+        ...generation,
+        prompt: promptWithImageTuning(
+          generation.prompt,
+          { negative_prompt, seed, steps, cfg_scale },
+          imageLoraFor(
+            byId(selected.value.modelId),
+            currentConfig.imageModelsDir,
+            lora_strength,
+          ),
+        ),
+      };
       const inference = beginInference("image", selected.value);
       const response = await proxyWithAdmission(
         selected.value.admission,
@@ -4400,6 +4466,7 @@ export async function runServe(
         steps: formNumber("steps"),
         cfg_scale: formNumber("cfg_scale"),
         strength: formNumber("strength"),
+        lora_strength: formNumber("lora_strength"),
       });
       if (!tuning.success) {
         const param = String(tuning.error.issues[0]?.path[0] ?? "prompt");
@@ -4410,6 +4477,8 @@ export async function runServe(
           param,
         );
       }
+      const loraError = unusableLoraStrength(spec, tuning.data.lora_strength);
+      if (loraError) return loraError;
       const outputFormatValue = form.get("output_format");
       const outputFormat =
         outputFormatValue === null ? "png" : outputFormatValue;
@@ -4475,7 +4544,15 @@ export async function runServe(
       if (selected.kind === "insufficient-memory")
         return resourceUnavailable(selected.error);
       const backendForm = new FormData();
-      backendForm.set("prompt", promptWithImageTuning(prompt, tuning.data));
+      const { lora_strength, ...editTuning } = tuning.data;
+      backendForm.set(
+        "prompt",
+        promptWithImageTuning(
+          prompt,
+          editTuning,
+          imageLoraFor(spec, currentConfig.imageModelsDir, lora_strength),
+        ),
+      );
       backendForm.set("n", String(n));
       backendForm.set("output_format", outputFormat);
       if (size) backendForm.set("size", size);

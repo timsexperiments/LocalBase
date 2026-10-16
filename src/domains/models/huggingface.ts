@@ -16,7 +16,7 @@ import {
 } from "node:fs";
 import { basename, join } from "node:path";
 import { z } from "zod";
-import { CATALOG } from "../../catalog";
+import { CATALOG, type ModelSpec } from "../../catalog";
 import { analyzeChatTemplate } from "./capability-detection";
 import type { Capability } from "../../catalog/capabilities";
 
@@ -337,6 +337,8 @@ export type LikelyKind = Readonly<{
    * text encoders and VAE the entry reuses.
    */
   pipeline?: ImagePipelineId;
+  /** For image LoRAs: the built-in image model the LoRA is applied to. */
+  lora?: ImageLoraBaseId;
 }>;
 
 /** Libraries whose speech weights whisper.cpp cannot load. */
@@ -484,6 +486,95 @@ export function imagePipelineFor(
   return null;
 }
 
+/**
+ * Built-in image models an image LoRA can be pinned onto. sd-server applies
+ * the LoRA to the base entry's own pinned weights, so a LoRA is only usable
+ * when it was trained on that exact base.
+ */
+export const IMAGE_LORA_BASES = {
+  "flux1-schnell": { label: "FLUX.1 schnell", template: "flux1-schnell-q4_0" },
+  "z-image-turbo": { label: "Z-Image-Turbo", template: "z-image-turbo-q4_0" },
+  "flux2-klein-4b": {
+    label: "FLUX.2 klein 4B",
+    template: "flux2-klein-4b-q4_0",
+  },
+  "flux2-klein-9b": {
+    label: "FLUX.2 klein 9B",
+    template: "flux2-klein-9b-q4_0",
+  },
+  sdxl: { label: "SDXL 1.0", template: "sdxl-base-1.0" },
+  "sd1.5": { label: "Stable Diffusion 1.5", template: "stable-diffusion-v1-5" },
+} as const;
+export type ImageLoraBaseId = keyof typeof IMAGE_LORA_BASES;
+
+type LoraBaseMatch =
+  Readonly<{ base: ImageLoraBaseId }> | Readonly<{ unsupported: string }>;
+
+/** LoRA base models in match order, with the reason for the ones LocalBase cannot apply. */
+const LORA_BASE_RULES: readonly (readonly [RegExp, LoraBaseMatch])[] = [
+  [
+    /flux[-_.]?1[^ ]*?(kontext|fill|redux|canny|depth)/i,
+    { unsupported: "a FLUX.1 editing pipeline LocalBase has no profile for" },
+  ],
+  [/flux[-_.]?1[-_.]?schnell/i, { base: "flux1-schnell" }],
+  [
+    /flux[-_.]?1/i,
+    {
+      unsupported:
+        "FLUX.1 dev (LocalBase's built-in FLUX.1 is schnell; dev LoRAs need the dev weights)",
+    },
+  ],
+  [
+    /flux[-_.]?2[-_.]?klein[^ ]*?base/i,
+    {
+      unsupported:
+        "FLUX.2 klein base (LocalBase's built-in klein models are the distilled ones)",
+    },
+  ],
+  [/flux[-_.]?2[-_.]?klein[-_.]?4b/i, { base: "flux2-klein-4b" }],
+  [/flux[-_.]?2[-_.]?klein[-_.]?9b/i, { base: "flux2-klein-9b" }],
+  [
+    /flux[-_.]?2/i,
+    { unsupported: "FLUX.2 dev, which LocalBase has no runtime profile for" },
+  ],
+  [/z[-_]?image[-_]?turbo/i, { base: "z-image-turbo" }],
+  [/z[-_]?image/i, { unsupported: "a Z-Image model other than Z-Image-Turbo" }],
+  [
+    /stable-diffusion-xl-refiner|sdxl[-_]?(turbo|lightning|refiner)/i,
+    { unsupported: "an SDXL variant other than SDXL Base 1.0" },
+  ],
+  [/stable-diffusion-xl-base-1\.0|sdxl/i, { base: "sdxl" }],
+  [/stable-diffusion-v1-5|(^|[^a-z0-9])sd[-_]?v?1[-_.]?5/i, { base: "sd1.5" }],
+];
+
+/**
+ * The built-in model an image LoRA belongs on. Declared `base_model` tags
+ * decide alone; the repository name is only a fallback without them, since it
+ * often only describes the style.
+ */
+export function imageLoraBaseFor(
+  repo: string,
+  tags: readonly string[],
+): LoraBaseMatch | null {
+  const bases = lineage("", tags).trim();
+  const text = bases || repo;
+  for (const [pattern, match] of LORA_BASE_RULES) {
+    if (pattern.test(text)) return match;
+  }
+  return null;
+}
+
+function isLoraRepository(
+  library: string | null,
+  tags: readonly string[],
+): boolean {
+  return (
+    library === "peft" ||
+    tags.includes("lora") ||
+    tags.some((tag) => tag.startsWith("base_model:adapter:"))
+  );
+}
+
 export type KindContext = Readonly<{
   repo?: string;
   library?: string | null;
@@ -556,8 +647,11 @@ export function likelyKind(
   // Untagged repositories count as images only when the library or a
   // known pipeline family says so; untagged GGUF is usually a language
   // model.
+  const lora = isLoraRepository(library, tags);
+  const loraBase = lora ? imageLoraBaseFor(repo, tags) : null;
   const imageLike =
     pipelineTag === "text-to-image" ||
+    (lora && !pipelineTag && loraBase !== null) ||
     (pipelineTag === "image-to-image" && pipeline !== null) ||
     (!pipelineTag &&
       (library === "diffusion-single-file" ||
@@ -567,12 +661,20 @@ export function likelyKind(
             library === "diffusers" ||
             library === "ggml"))));
   if (imageLike) {
-    if (
-      library === "peft" ||
-      tags.includes("lora") ||
-      tags.some((tag) => tag.startsWith("base_model:adapter:"))
-    )
-      return { kind: null, label: "image LoRA (not supported by models add)" };
+    if (lora) {
+      if (!loraBase)
+        return {
+          kind: null,
+          label: "image LoRA for a base model LocalBase has no profile for",
+        };
+      if ("unsupported" in loraBase)
+        return { kind: null, label: `image LoRA for ${loraBase.unsupported}` };
+      return {
+        kind: "image",
+        label: `image LoRA (${IMAGE_LORA_BASES[loraBase.base].label})`,
+        lora: loraBase.base,
+      };
+    }
     if (library === "mlx" || library === "onnx" || tags.includes("coreml"))
       return {
         kind: null,
@@ -894,7 +996,7 @@ const NO_FILES: Readonly<Record<AddableKind, string>> = {
   llm: 'has no GGUF weights LocalBase can download. LocalBase runs language models as GGUF files; look for a repository with "GGUF" in its name (try `local-base models search`).',
   stt: "has no whisper.cpp ggml-*.bin files. LocalBase runs speech recognition with whisper.cpp; try ggerganov/whisper.cpp or a repository with ggml files.",
   image:
-    "has no single-file Stable Diffusion checkpoint (.safetensors, .ckpt or .gguf at the repository root). LoRAs and multi-file pipelines outside FLUX.1, FLUX.2 klein and Z-Image-Turbo are not supported by models add.",
+    "has no single-file Stable Diffusion checkpoint (.safetensors, .ckpt or .gguf at the repository root). Multi-file pipelines outside FLUX.1, FLUX.2 klein and Z-Image-Turbo are not supported by models add.",
 };
 
 const NO_DIFFUSERS_FILES =
@@ -913,6 +1015,8 @@ export type EntryChoices = Readonly<{
   default: HubFile | null;
   /** The multi-file image pipeline the files belong to, if any. */
   pipeline: ImagePipelineId | null;
+  /** For an image LoRA: the built-in model it is pinned onto. */
+  lora: ImageLoraBaseId | null;
 }>;
 
 /**
@@ -926,13 +1030,15 @@ export function entryChoices(info: HubModelInfo): EntryChoices {
   });
   if (likely.kind === null) {
     throw new HubError(
-      `${info.id} looks like ${likely.label}. models add supports GGUF language models, whisper.cpp speech models, single-file Stable Diffusion checkpoints and FLUX.1, FLUX.2 klein and Z-Image-Turbo diffusion models.`,
+      `${info.id} looks like ${likely.label}. models add supports GGUF language models, whisper.cpp speech models, single-file Stable Diffusion checkpoints, FLUX.1, FLUX.2 klein and Z-Image-Turbo diffusion models, and image LoRAs for FLUX.1 schnell, FLUX.2 klein, Z-Image-Turbo, SDXL 1.0 and Stable Diffusion 1.5.`,
     );
   }
   const files = lfsFiles(info);
-  const pipeline = likely.pipeline ?? null;
-  const choices =
-    likely.kind === "llm"
+  const lora = likely.lora ?? null;
+  const pipeline = lora ? null : (likely.pipeline ?? null);
+  const choices = lora
+    ? loraChoices(files)
+    : likely.kind === "llm"
       ? llmChoices(files)
       : likely.kind === "stt"
         ? sttChoices(files)
@@ -945,22 +1051,46 @@ export function entryChoices(info: HubModelInfo): EntryChoices {
       info.siblings.some((file) => file.rfilename === "model_index.json");
     throw new HubError(
       `${info.id} ${
-        pipeline
-          ? `has no ${IMAGE_PIPELINES[pipeline].label} diffusion model file sd.cpp can load (GGUF or BF16/FP16/FP8 safetensors at the root or in diffusion_models/).`
-          : diffusers
-            ? NO_DIFFUSERS_FILES
-            : NO_FILES[likely.kind]
+        lora
+          ? "has no LoRA .safetensors file at the repository root."
+          : pipeline
+            ? `has no ${IMAGE_PIPELINES[pipeline].label} diffusion model file sd.cpp can load (GGUF or BF16/FP16/FP8 safetensors at the root or in diffusion_models/).`
+            : diffusers
+              ? NO_DIFFUSERS_FILES
+              : NO_FILES[likely.kind]
       }`,
     );
   }
   return {
     kind: likely.kind,
     choices,
-    default: pipeline
-      ? pipelineDefault(choices)
-      : defaultChoice(likely.kind, choices),
+    default: lora
+      ? loraDefault(choices)
+      : pipeline
+        ? pipelineDefault(choices)
+        : defaultChoice(likely.kind, choices),
     pipeline,
+    lora,
   };
+}
+
+/** LoRA weights: root-level safetensors files of any size. */
+function loraChoices(files: readonly HubFile[]): HubFile[] {
+  return files
+    .filter(
+      (file) => !file.path.includes("/") && /\.safetensors$/i.test(file.path),
+    )
+    .sort(bySize);
+}
+
+/**
+ * A LoRA's default: the only file, else the only one that is not a ComfyUI
+ * conversion; null when the repository holds several LoRAs to choose from.
+ */
+function loraDefault(choices: readonly HubFile[]): HubFile | null {
+  if (choices.length === 1) return choices[0]!;
+  const native = choices.filter((file) => !/comfy/i.test(basename(file.path)));
+  return native.length === 1 ? native[0]! : null;
 }
 
 /** A pipeline's default: the measured GGUF quant, else the smallest file. */
@@ -1123,7 +1253,9 @@ export function generateEntry(
   const files = lfsFiles(info);
   const first = selectFile(repo, available, reference.selector);
   const weights = kind === "llm" ? shardsOf(files, first) : [first];
-  const modelId = options.modelId ?? modelIdFor(first.path, kind);
+  const modelId =
+    options.modelId ??
+    (available.lora ? slug(repo.split("/")[1]!) : modelIdFor(first.path, kind));
   if (!/^[a-z0-9][a-z0-9._-]*$/.test(modelId)) {
     throw new HubError(
       `"${modelId}" is not a usable model id; choose one with --id (lowercase letters, digits, ".", "_" and "-").`,
@@ -1200,6 +1332,22 @@ export function generateEntry(
         outputModalities: ["text"],
         capabilities: ["speech-to-text", ...(english ? [] : ["multilingual"])],
       },
+    };
+  }
+
+  if (kind === "image" && available.lora) {
+    return {
+      ...result,
+      ...loraEntry(available.lora, {
+        common,
+        info,
+        first,
+        modelId,
+        repoName,
+        stem,
+        storageGb,
+        taken,
+      }),
     };
   }
 
@@ -1442,6 +1590,115 @@ export function vPrediction(info: HubModelInfo, stem = ""): string | null {
     return "scheduler_config.json sets prediction_type v_prediction";
   }
   return null;
+}
+
+const COMMERCIAL_ORDER = ["open", "conditional", "prohibited"] as const;
+
+/** The stricter of two commercial statuses. */
+function stricterStatus(
+  left: ModelSpec["commercialStatus"],
+  right: ModelSpec["commercialStatus"],
+): ModelSpec["commercialStatus"] {
+  return COMMERCIAL_ORDER.indexOf(left) >= COMMERCIAL_ORDER.indexOf(right)
+    ? left
+    : right;
+}
+
+/** The trigger phrase a LoRA's model card declares, if any. */
+function loraTrigger(info: HubModelInfo): string | undefined {
+  const value = info.cardData?.instance_prompt;
+  const trigger = typeof value === "string" ? value.trim() : "";
+  return trigger && trigger.length <= 200 ? trigger : undefined;
+}
+
+/**
+ * A catalog entry for an image LoRA: the base entry's pinned weights, VAE and
+ * encoders come along unchanged, and the LoRA file is pinned beside them for
+ * sd-server to apply per request.
+ */
+function loraEntry(
+  base: ImageLoraBaseId,
+  input: Readonly<{
+    common: Readonly<{
+      notes: string;
+      catch: string;
+      commercialStatus: ModelSpec["commercialStatus"];
+    }> &
+      Record<string, unknown>;
+    info: HubModelInfo;
+    first: HubFile;
+    modelId: string;
+    repoName: string;
+    stem: string;
+    storageGb: (bytes: number) => number;
+    taken: ReadonlyMap<string, string>;
+  }>,
+): Pick<GeneratedEntry, "spec" | "projector" | "detected" | "contextLength"> {
+  const profile = IMAGE_LORA_BASES[base];
+  const template = CATALOG.find(({ modelId }) => modelId === profile.template);
+  if (!template) {
+    throw new HubError(
+      `The ${profile.label} base model (${profile.template}) is missing from this LocalBase build.`,
+    );
+  }
+  const name = basename(input.first.path);
+  const owner = input.taken.get(name);
+  const filename =
+    name.includes(input.modelId) &&
+    (owner === undefined || owner === input.first.sha256)
+      ? name
+      : `${input.modelId}-${name}`;
+  const baseArtifacts = template.artifacts.map((artifact) => ({
+    ...artifact,
+    source: artifact.source ?? {
+      repositoryUrl: template.source,
+      revision: template.repositoryRevision,
+    },
+  }));
+  const lora = {
+    sourcePath: input.first.path,
+    filename,
+    expectedSizeBytes: input.first.size,
+    sha256: input.first.sha256,
+    role: "supplementary",
+  };
+  const trigger = loraTrigger(input.info);
+  const totalBytes =
+    input.first.size +
+    baseArtifacts.reduce((sum, file) => sum + (file.expectedSizeBytes ?? 0), 0);
+  return {
+    projector: null,
+    detected: [],
+    contextLength: null,
+    spec: {
+      ...input.common,
+      displayName: `${input.repoName} (${profile.label} LoRA)`,
+      kind: "image",
+      family: template.family,
+      size: template.size,
+      quant: template.quant,
+      storageGb: input.storageGb(totalBytes),
+      artifacts: [...baseArtifacts, lora],
+      ...(template.imageRuntime ? { imageRuntime: template.imageRuntime } : {}),
+      inputModalities: template.inputModalities,
+      outputModalities: template.outputModalities,
+      imageLaunchOptions: {
+        ...template.imageLaunchOptions,
+        lora: {
+          artifactFilename: filename,
+          defaultStrength: 1,
+          ...(trigger ? { trigger } : {}),
+        },
+      },
+      capabilities: template.capabilities.map(({ id }) => id),
+      commercialStatus: stricterStatus(
+        input.common.commercialStatus,
+        template.commercialStatus,
+      ),
+      catch: `${input.common.catch} Base model ${template.modelId}: ${template.catch}`,
+      notes: `${input.common.notes} LoRA for ${profile.label}: sd-server applies ${filename} to the weights, VAE and encoders pinned by the ${template.modelId} entry.${trigger ? ` The model card's trigger phrase is "${trigger}".` : ""}`,
+    },
+  };
 }
 
 /**

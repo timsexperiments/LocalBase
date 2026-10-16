@@ -220,10 +220,25 @@ local-base models add hf:Org/sd-checkpoint:model.safetensors      # an image che
   from the measured built-in entry for that pipeline, each with its own
   revision and sha256. Files with the same bytes as an installed model are
   shared, not downloaded again. FLUX.1 dev-style models get 20 steps.
+- **Image LoRAs:** a `peft` repository, or one tagged `lora` or
+  `base_model:adapter:...`, whose `base_model` tags (or, without any, its name)
+  point at FLUX.1 schnell, FLUX.2 klein 4B or 9B, Z-Image-Turbo, SDXL 1.0
+  base or SD 1.5. The entry pins the LoRA `.safetensors` file from the
+  repository root (with no selector, the only file, or the only one without
+  `comfy` in its name) plus every file of the matching built-in base entry,
+  which is shared rather than downloaded again.
+  It records `imageLaunchOptions.lora` with a default strength of 1 and the
+  card's `instance_prompt` as the trigger words. Requests to that entry apply
+  the LoRA through sd-server; `lora_strength` (0 to 2, 0 turns it off) on
+  `/v1/images/generations` and `/v1/images/edits` overrides the strength, and
+  the generation settings show a **LoRA strength** field only for entries that
+  have one. Other models reject `lora_strength`. LoRAs for FLUX.1 dev, the
+  undistilled klein or Z-Image bases, FLUX.2 dev, SDXL turbo or refiner, and
+  bases with no LocalBase profile are refused with the reason.
 - **Refused, with a reason:** diffusers folder layouts with no single-file
-  release, LoRAs, and pipelines sd-server cannot map from one repository
-  (Qwen-Image, SD3, FLUX.1 Kontext, FLUX.2 dev, Wan and other video models).
-  Search results show the reason instead of an **Add** button.
+  release, LoRAs for unsupported bases, and pipelines sd-server cannot map from
+  one repository (Qwen-Image, SD3, FLUX.1 Kontext, FLUX.2 dev, Wan and other
+  video models). Search results show the reason instead of an **Add** button.
 
 If the choice is ambiguous it lists the files and asks you to pick one. Ids
 that a built-in or remote entry already uses are refused; pick another with

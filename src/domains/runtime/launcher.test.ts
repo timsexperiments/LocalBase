@@ -1065,3 +1065,32 @@ describe.serial("image runtime launch", () => {
     }
   });
 });
+
+test("plans a LoRA file without adding it to the sd-server argv", () => {
+  const spec = byId("flux2-klein-4b-q4_0");
+  if (!spec?.imageRuntime || !spec.imageLaunchOptions)
+    throw new Error("Missing klein fixture");
+  const lora = {
+    artifactFilename: "style-lora.safetensors",
+    defaultStrength: 1,
+  };
+  const plan = resolveImageLaunchPlan({
+    runtimeId: "image:style-lora",
+    root: "/localbase",
+    modelsDirectory: "/models/image",
+    modelId: "style-lora",
+    modelFile: spec.imageRuntime.artifacts.diffusionModel,
+    host: "127.0.0.1",
+    port: 8083,
+    model: {
+      ...spec,
+      imageLaunchOptions: { ...spec.imageLaunchOptions, lora },
+    },
+    artifactBytes: 1,
+    imageRuntime: spec.imageRuntime,
+  });
+  expect(plan.loraPath).toBe("/models/image/style-lora.safetensors");
+  expect(plan.launchOptions).not.toHaveProperty("lora");
+  // sd-server takes the LoRA per request; launching never names it.
+  expect(buildSdImageServerArgs(plan).join(" ")).not.toContain("style-lora");
+});
