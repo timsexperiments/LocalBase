@@ -66,6 +66,7 @@ import {
   sanitizedOtelEndpoint,
   type OtelSamplerKind,
 } from "./otel-config";
+import { ExportFailureReporter, type OtelDiagnostic } from "./export-failures";
 
 export const OTEL_SERVICE_NAME = "local-base";
 export const OTEL_SERVICE_NAMESPACE = "localbase";
@@ -79,6 +80,7 @@ export const OTEL_CLOSE_DEADLINE_MS = 5_000;
 const OTEL_RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
 const OTEL_MAX_EXPORT_ATTEMPTS = 2;
 const OTEL_RETRY_BASE_DELAY_MS = 250;
+const OTEL_MAX_SDK_DIAGNOSTIC_CHANNELS = 32;
 
 export type OtelConfiguration = {
   enabled: boolean;
@@ -146,11 +148,7 @@ export function resolveOtelConfiguration(
   };
 }
 
-export type OtelDiagnostic = (
-  severity: "warn" | "error",
-  message: string,
-  attributes?: Record<string, unknown>,
-) => void;
+export type { OtelDiagnostic };
 
 /**
  * Bun's Node HTTP compatibility layer can retain a timed-out exporter socket.
@@ -185,22 +183,34 @@ class AbortableOtlpExporter<T> {
     }
     let operation!: Promise<void>;
     operation = this.send(body)
-      .then((success) =>
+      .then((failure) =>
+        callback(
+          failure === undefined
+            ? { code: ExportResultCode.SUCCESS }
+            : { code: ExportResultCode.FAILED, error: new Error(failure) },
+        ),
+      )
+      .catch(() =>
         callback({
-          code: success ? ExportResultCode.SUCCESS : ExportResultCode.FAILED,
+          code: ExportResultCode.FAILED,
+          error: new Error("unexpected exporter error"),
         }),
       )
-      .catch(() => callback({ code: ExportResultCode.FAILED }))
       .finally(() => this.active.delete(operation));
     this.active.add(operation);
   }
 
-  private async send(body: Uint8Array): Promise<boolean> {
+  /**
+   * Resolves to undefined on success or a short failure reason. Reasons never
+   * include the endpoint, headers, or response bodies.
+   */
+  private async send(body: Uint8Array): Promise<string | undefined> {
     const deadline = Date.now() + OTEL_EXPORT_TIMEOUT_MS;
+    let failure = "export deadline exceeded";
     for (let attempt = 1; attempt <= OTEL_MAX_EXPORT_ATTEMPTS; attempt++) {
-      if (this.closed) return false;
+      if (this.closed) return "exporter closed";
       const remaining = deadline - Date.now();
-      if (remaining <= 0) return false;
+      if (remaining <= 0) return failure;
       const controller = new AbortController();
       this.controllers.add(controller);
       const timeout = setTimeout(() => controller.abort(), remaining);
@@ -219,7 +229,8 @@ class AbortableOtlpExporter<T> {
         });
         const retryAfter = response.headers.get("retry-after");
         await response.body?.cancel();
-        if (response.ok) return true;
+        if (response.ok) return undefined;
+        failure = `collector responded with HTTP ${response.status}`;
         if (
           attempt < OTEL_MAX_EXPORT_ATTEMPTS &&
           OTEL_RETRYABLE_STATUS_CODES.has(response.status)
@@ -230,13 +241,17 @@ class AbortableOtlpExporter<T> {
             deadline,
             OTEL_RETRY_BASE_DELAY_MS * attempt,
           );
-          if (delay === undefined) return false;
+          if (delay === undefined) return failure;
           await this.retryDelay(delay);
           continue;
         }
-        return false;
-      } catch {
-        if (this.closed || controller.signal.aborted) return false;
+        return failure;
+      } catch (error) {
+        if (this.closed) return "exporter closed";
+        if (controller.signal.aborted) {
+          return `request timed out after ${OTEL_EXPORT_TIMEOUT_MS} ms`;
+        }
+        failure = transportFailure(error);
         if (attempt < OTEL_MAX_EXPORT_ATTEMPTS) {
           const delay = retryDelayMilliseconds(
             null,
@@ -244,17 +259,17 @@ class AbortableOtlpExporter<T> {
             deadline,
             OTEL_RETRY_BASE_DELAY_MS * attempt,
           );
-          if (delay === undefined) return false;
+          if (delay === undefined) return failure;
           await this.retryDelay(delay);
           continue;
         }
-        return false;
+        return failure;
       } finally {
         clearTimeout(timeout);
         this.controllers.delete(controller);
       }
     }
-    return false;
+    return failure;
   }
 
   private retryDelay(milliseconds: number): Promise<void> {
@@ -314,9 +329,37 @@ export function retryDelayMilliseconds(
   return delay;
 }
 
-class MonitoredExporter<T> {
-  private lastFailureAt = 0;
+function transportFailure(error: unknown): string {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? error.code
+      : undefined;
+  if (typeof code === "string" && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(code)) {
+    return `collector unreachable (${code})`;
+  }
+  return "collector unreachable";
+}
 
+const EXPORT_FAILURE_ECHO = /OTLP (logs|traces) export failed: /;
+
+/**
+ * Batch processors forward a failed export's error to the SDK diagnostic
+ * logger. Those echoes repeat a failure the exporter already counted.
+ */
+export function exportFailureEchoSignal(
+  detail: string,
+): "logs" | "traces" | undefined {
+  const match = EXPORT_FAILURE_ECHO.exec(detail);
+  return match ? (match[1] as "logs" | "traces") : undefined;
+}
+
+/**
+ * Reports each batch's final outcome after the transport's bounded retries.
+ * The SDK processors drop failed batches rather than retrying them, so every
+ * failure here is lost telemetry and is counted even while its event is
+ * throttled.
+ */
+export class MonitoredExporter<T> {
   constructor(
     private readonly delegate: {
       export(items: T[], callback: (result: ExportResult) => void): void;
@@ -324,31 +367,44 @@ class MonitoredExporter<T> {
       forceFlush?(): Promise<void>;
     },
     private readonly signal: "logs" | "traces",
-    private readonly diagnostic: OtelDiagnostic,
+    private readonly failures: ExportFailureReporter,
   ) {}
 
   export(items: T[], callback: (result: ExportResult) => void): void {
     try {
       this.delegate.export(items, (result) => {
-        if (result.code !== ExportResultCode.SUCCESS) {
-          const now = Date.now();
-          if (now - this.lastFailureAt >= 60_000) {
-            this.lastFailureAt = now;
-            this.diagnostic("warn", "OTLP export failed.", {
-              signal: this.signal,
-              batchSize: items.length,
-            });
-          }
+        if (result.code === ExportResultCode.SUCCESS) {
+          this.failures.recovered(this.signal);
+          callback(result);
+          return;
         }
-        callback(result);
+        const detail = result.error?.message || "export failed";
+        this.fail("OTLP export failed.", detail, items.length);
+        callback(this.failedResult(detail));
       });
     } catch {
-      this.diagnostic("warn", "OTLP exporter rejected a batch.", {
-        signal: this.signal,
-        batchSize: items.length,
-      });
-      callback({ code: ExportResultCode.FAILED });
+      const detail = "exporter rejected the batch";
+      this.fail("OTLP exporter rejected a batch.", detail, items.length);
+      callback(this.failedResult(detail));
     }
+  }
+
+  private fail(message: string, detail: string, batchSize: number): void {
+    this.failures.failure(this.signal, {
+      signal: this.signal,
+      severity: "warn",
+      message,
+      detail,
+      items: batchSize,
+      attributes: { batchSize },
+    });
+  }
+
+  private failedResult(detail: string): ExportResult {
+    return {
+      code: ExportResultCode.FAILED,
+      error: new Error(`OTLP ${this.signal} export failed: ${detail}`),
+    };
   }
 
   async forceFlush(): Promise<void> {
@@ -614,11 +670,19 @@ class ActiveOtelRuntime implements OtelRuntime {
   private readonly contextManager = new AsyncLocalStorageContextManager();
   private readonly exporters: Array<{ shutdown(): Promise<void> }> = [];
   private readonly diagnostic: OtelDiagnostic;
+  private readonly failures: ExportFailureReporter;
   private closed = false;
 
-  constructor(configuration: OtelConfiguration, diagnostic: OtelDiagnostic) {
+  constructor(
+    configuration: OtelConfiguration,
+    diagnostic: OtelDiagnostic,
+    now: () => number,
+  ) {
     this.diagnostic = diagnostic;
-    const diagnosticTimes = new Map<string, number>();
+    // One reporter per runtime, keyed per signal: logs and traces have separate endpoints and headers, so one can fail while the other recovers.
+    const failures = new ExportFailureReporter(diagnostic, now);
+    this.failures = failures;
+    const sdkChannels = new Set<string>();
     const reportSdkDiagnostic = (
       severity: "warn" | "error",
       values: unknown[],
@@ -629,12 +693,22 @@ class ActiveOtelRuntime implements OtelRuntime {
         )
         .join(" ")
         .slice(0, 1_024);
-      const key = severity;
-      const now = Date.now();
-      if (now - (diagnosticTimes.get(key) ?? 0) < 60_000) return;
-      diagnosticTimes.set(key, now);
-      diagnostic(severity, "OpenTelemetry SDK diagnostic.", {
+      const echoed = exportFailureEchoSignal(detail);
+      if (echoed && failures.failing(echoed)) return;
+      // Distinct SDK messages keep their own first event; a bounded key set stops unexpected variety from growing the reporter.
+      let channel = `sdk:${severity}:${detail.split("\n", 1)[0]!.slice(0, 160)}`;
+      if (!sdkChannels.has(channel)) {
+        if (sdkChannels.size < OTEL_MAX_SDK_DIAGNOSTIC_CHANNELS) {
+          sdkChannels.add(channel);
+        } else {
+          channel = `sdk:${severity}`;
+        }
+      }
+      failures.failure(channel, {
         signal: "sdk",
+        severity,
+        message: "OpenTelemetry SDK diagnostic.",
+        summaryMessage: "OpenTelemetry SDK diagnostic repeated.",
         detail,
       });
     };
@@ -664,7 +738,7 @@ class ActiveOtelRuntime implements OtelRuntime {
             ProtobufTraceSerializer,
           ),
           "traces",
-          diagnostic,
+          failures,
         )
       : undefined;
     if (traceExporter) this.exporters.push(traceExporter);
@@ -703,7 +777,7 @@ class ActiveOtelRuntime implements OtelRuntime {
             ProtobufLogsSerializer,
           ),
           "logs",
-          diagnostic,
+          failures,
         )
       : undefined;
     if (logExporter) {
@@ -839,6 +913,7 @@ class ActiveOtelRuntime implements OtelRuntime {
       );
       await gracefulClose;
     }
+    this.failures.flush();
     // Keep the registered context manager enabled: disabling it invalidates in-flight asynchronous work.
   }
 }
@@ -846,9 +921,10 @@ class ActiveOtelRuntime implements OtelRuntime {
 export function createOtelRuntime(
   configuration: OtelConfiguration,
   diagnostic: OtelDiagnostic = () => {},
+  now: () => number = Date.now,
 ): OtelRuntime {
   return configuration.enabled
-    ? new ActiveOtelRuntime(configuration, diagnostic)
+    ? new ActiveOtelRuntime(configuration, diagnostic, now)
     : new NoopOtelRuntime();
 }
 

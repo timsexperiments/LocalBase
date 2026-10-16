@@ -8,6 +8,7 @@ import {
 import { createLogEvent, logEventSchema } from "./logging";
 import {
   createOtelRuntime,
+  exportFailureEchoSignal,
   normalizedOtelRoute,
   OtelRuntimeHolder,
   resolveOtelConfiguration,
@@ -604,7 +605,10 @@ test("exports correlated OTLP logs and parented W3C spans to a collector", async
 });
 
 test("collector outage never rejects application work or shutdown", async () => {
-  const diagnostics: string[] = [];
+  const diagnostics: Array<{
+    message: string;
+    attributes?: Record<string, unknown>;
+  }> = [];
   const runtime = createOtelRuntime(
     {
       enabled: true,
@@ -618,7 +622,8 @@ test("collector outage never rejects application work or shutdown", async () => 
       source: "persistent",
       displayEndpoint: "http://127.0.0.1:1/",
     },
-    (_severity, message) => diagnostics.push(message),
+    (_severity, message, attributes) =>
+      diagnostics.push({ message, attributes }),
   );
   runtimes.push(runtime);
   await expect(
@@ -635,8 +640,33 @@ test("collector outage never rejects application work or shutdown", async () => 
     }),
   );
   await expect(runtime.shutdown()).resolves.toBeUndefined();
-  expect(diagnostics.length).toBeGreaterThan(0);
-  expect(diagnostics.length).toBeLessThanOrEqual(4);
+  // One event per failing signal; the SDK's echoes of those failures are folded in.
+  expect(
+    diagnostics
+      .filter(({ attributes }) => attributes?.signal !== "sdk")
+      .map(({ message, attributes }) => [
+        message,
+        attributes?.signal,
+        attributes?.detail,
+      ])
+      .sort(),
+  ).toEqual([
+    [
+      "OTLP export failed.",
+      "logs",
+      "collector unreachable (ConnectionRefused)",
+    ],
+    [
+      "OTLP export failed.",
+      "traces",
+      "collector unreachable (ConnectionRefused)",
+    ],
+  ]);
+  expect(
+    diagnostics.filter(({ attributes }) =>
+      exportFailureEchoSignal(String(attributes?.detail)),
+    ),
+  ).toEqual([]);
 });
 
 test("honors delta-seconds and HTTP-date Retry-After values", async () => {
