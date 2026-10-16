@@ -65,6 +65,7 @@ function allowedUiRoute(method: string, pathname: string): boolean {
     return method === "GET" || method === "POST";
   if (pathname === "/_localbase/model-management")
     return method === "GET" || method === "POST";
+  if (pathname === "/_localbase/model-discovery") return method === "POST";
   if (method === "GET" && pathname === "/_localbase/models") return true;
   if (
     method === "POST" &&

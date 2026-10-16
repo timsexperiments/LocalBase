@@ -16,7 +16,7 @@ import {
 } from "node:fs";
 import { basename, join } from "node:path";
 import { z } from "zod";
-import { CATALOG, type ModelKind } from "../../catalog";
+import { CATALOG } from "../../catalog";
 import { analyzeChatTemplate } from "./capability-detection";
 import type { Capability } from "../../catalog/capabilities";
 
@@ -69,6 +69,7 @@ const modelInfoSchema = z
     sha: z.string().regex(/^[a-fA-F0-9]{40}$/),
     pipeline_tag: z.string().optional(),
     tags: z.array(z.string()).default([]),
+    library_name: z.string().optional(),
     gated: z.union([z.boolean(), z.string()]).optional(),
     cardData: z
       .object({
@@ -95,7 +96,9 @@ const searchHitSchema = z
     downloads: z.number().int().nonnegative().default(0),
     likes: z.number().int().nonnegative().optional(),
     pipeline_tag: z.string().optional(),
+    library_name: z.string().optional(),
     tags: z.array(z.string()).default([]),
+    gated: z.union([z.boolean(), z.string()]).optional(),
   })
   .passthrough();
 
@@ -263,17 +266,53 @@ const VISION_PIPELINES = new Set([
   "visual-question-answering",
 ]);
 
+/** Kinds `models add` can write an entry for. */
+export const ADDABLE_KINDS = ["llm", "stt", "image"] as const;
+export type AddableKind = (typeof ADDABLE_KINDS)[number];
+
 export type LikelyKind = Readonly<{
   /** What LocalBase would run it as, or null when it cannot. */
-  kind: ModelKind | null;
+  kind: AddableKind | null;
   label: string;
 }>;
 
-/** Classifies a repository from its pipeline tag and tags. */
+/** Libraries whose speech weights whisper.cpp cannot load. */
+const NON_GGML_SPEECH_LIBRARIES = new Set([
+  "transformers",
+  "ctranslate2",
+  "whisperkit",
+  "nemo",
+  "mlx",
+  "onnx",
+  "coreml",
+  "pytorch",
+  "speechbrain",
+  "espnet",
+  "transformers.js",
+]);
+
+/**
+ * Image pipelines sd-server can only run with several separately mapped
+ * files (diffusion model, text encoders, VAE) or not at all. LocalBase's
+ * reference entries cover some of them; `models add` writes single-file
+ * checkpoints only.
+ */
+const MULTI_FILE_IMAGE =
+  /flux|sd-?3|stable-diffusion-3|qwen[-_]?image|(^|[^a-z])wan[-_]?\d|hunyuan|lumina|z[-_]?image|kolors|pixart|sana|hidream|cogview|auraflow|chroma|omnigen|krea|minimax|video/i;
+
+export type KindContext = Readonly<{
+  repo?: string;
+  library?: string | null;
+}>;
+
+/** Classifies a repository from its pipeline tag, tags and library. */
 export function likelyKind(
   pipelineTag: string | undefined,
   tags: readonly string[],
+  context: KindContext = {},
 ): LikelyKind {
+  const repo = context.repo ?? "";
+  const library = context.library?.toLowerCase() ?? null;
   if (pipelineTag && VISION_PIPELINES.has(pipelineTag))
     return { kind: "llm", label: "llm (vision)" };
   if (pipelineTag && TEXT_PIPELINES.has(pipelineTag))
@@ -283,18 +322,46 @@ export function likelyKind(
     pipelineTag === "sentence-similarity"
   )
     return { kind: null, label: "embeddings (not supported by models add)" };
-  if (pipelineTag === "automatic-speech-recognition")
-    return {
-      kind: null,
-      label: "speech to text (not supported by models add)",
-    };
+  if (pipelineTag === "automatic-speech-recognition") {
+    if (library && NON_GGML_SPEECH_LIBRARIES.has(library))
+      return {
+        kind: null,
+        label: `speech to text (${library} weights; whisper.cpp needs ggml files)`,
+      };
+    if (!/whisper/i.test(repo) && !tags.some((tag) => /whisper/i.test(tag)))
+      return {
+        kind: null,
+        label: "speech to text (only Whisper models run on whisper.cpp)",
+      };
+    return { kind: "stt", label: "speech to text" };
+  }
   if (pipelineTag === "text-to-speech")
     return {
       kind: null,
       label: "text to speech (not supported by models add)",
     };
-  if (pipelineTag === "text-to-image")
-    return { kind: null, label: "image (not supported by models add)" };
+  const imageLike =
+    pipelineTag === "text-to-image" ||
+    (!pipelineTag && library === "diffusion-single-file");
+  if (imageLike) {
+    if (
+      library === "peft" ||
+      tags.includes("lora") ||
+      tags.some((tag) => tag.startsWith("base_model:adapter:"))
+    )
+      return { kind: null, label: "image LoRA (not supported by models add)" };
+    if (library === "mlx" || library === "onnx" || tags.includes("coreml"))
+      return {
+        kind: null,
+        label: `image (${library ?? "coreml"} weights; sd.cpp needs a checkpoint file)`,
+      };
+    if (MULTI_FILE_IMAGE.test(repo))
+      return {
+        kind: null,
+        label: "image (multi-file pipeline; not supported by models add)",
+      };
+    return { kind: "image", label: "image" };
+  }
   if (!pipelineTag && tags.includes("gguf"))
     return { kind: "llm", label: "llm (no pipeline tag)" };
   return {
@@ -312,26 +379,49 @@ export type HubSearchHit = Readonly<{
   likes?: number;
   license: string | null;
   pipelineTag: string | null;
+  libraryName: string | null;
+  /** The repository asks users to accept terms before downloading. */
+  gated: boolean;
   likely: LikelyKind;
 }>;
 
+const SEARCH_FIELDS = [
+  "downloads",
+  "likes",
+  "pipeline_tag",
+  "tags",
+  "gated",
+  "library_name",
+] as const;
+
+/**
+ * Searches the Hub, most downloaded first. Language models are limited to
+ * GGUF repositories (the only files llama.cpp runs), speech to recognition
+ * repositories and images to text-to-image ones.
+ */
 export async function searchHub(
-  options: HubClientOptions & Readonly<{ limit?: number }>,
+  options: HubClientOptions & Readonly<{ limit?: number; kind?: AddableKind }>,
   query: string,
 ): Promise<Readonly<{ hits: HubSearchHit[]; cached: boolean }>> {
-  // Only GGUF files run on llama.cpp, so the search is limited to GGUF repos
-  // and the word "gguf" adds nothing to the query.
-  const text = query
-    .split(/\s+/)
-    .filter((word) => word && word.toLowerCase() !== "gguf")
-    .join(" ");
+  const kind = options.kind ?? "llm";
+  const words = query.split(/\s+/).filter(Boolean);
+  const text = (
+    kind === "llm"
+      ? words.filter((word) => word.toLowerCase() !== "gguf")
+      : words
+  ).join(" ");
   const params = new URLSearchParams({
-    filter: "gguf",
     sort: "downloads",
     direction: "-1",
     limit: String(options.limit ?? 20),
   });
-  if (text) params.set("search", text);
+  if (kind === "llm") params.set("filter", "gguf");
+  if (kind === "stt")
+    params.set("pipeline_tag", "automatic-speech-recognition");
+  if (kind === "image") params.set("pipeline_tag", "text-to-image");
+  const search = text || (kind === "stt" ? "whisper" : "");
+  if (search) params.set("search", search);
+  for (const field of SEARCH_FIELDS) params.append("expand[]", field);
   const url = `${HF_ENDPOINT}/api/models?${params}`;
   const { body, cached } = await hubJson(options, url, "search models");
   const parsed = z.array(searchHitSchema).safeParse(body);
@@ -348,9 +438,24 @@ export async function searchHub(
       ...(hit.likes === undefined ? {} : { likes: hit.likes }),
       license: hubLicense({ tags: hit.tags }),
       pipelineTag: hit.pipeline_tag ?? null,
-      likely: likelyKind(hit.pipeline_tag, hit.tags),
+      libraryName: hit.library_name ?? null,
+      gated: isGated(hit.gated),
+      likely: likelyKind(hit.pipeline_tag, hit.tags, {
+        repo: hit.id,
+        library: hit.library_name ?? null,
+      }),
     })),
   };
+}
+
+/** The Hub reports `false`, `"auto"` or `"manual"`. */
+export function isGated(value: boolean | string | undefined): boolean {
+  return value !== undefined && value !== false && value !== "false";
+}
+
+/** Where a user accepts a gated repository's terms. */
+export function hubRepoUrl(repo: string): string {
+  return `${HF_ENDPOINT}/${repoIdSchema.parse(repo)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -375,12 +480,16 @@ export function parseHfReference(value: string): HfReference {
   return { repo: repo.data, ...(match[2] ? { selector: match[2] } : {}) };
 }
 
-type HubFile = Readonly<{ path: string; size: number; sha256: string }>;
+export type HubFile = Readonly<{ path: string; size: number; sha256: string }>;
 
 const SHARD = /-(\d{5})-of-(\d{5})\.gguf$/i;
 const QUANT =
   /(?:^|[-_.])((?:IQ|Q)\d(?:_[A-Z0-9]+)*|BF16|F16|F32|MXFP4(?:_MOE)?)(?=[-_.]|$)/i;
 const PREFERRED_QUANTS = ["Q4_K_M", "Q4_K_S", "Q5_K_M", "Q8_0"];
+const PREFERRED_IMAGE_QUANTS = ["Q8_0", "Q5_0", "Q5_1", "Q4_K", "Q4_0"];
+const WEIGHT_EXTENSION = /\.(gguf|safetensors|ckpt|bin)$/i;
+/** Image checkpoints smaller than this are VAEs, embeddings or adapters. */
+const MIN_IMAGE_CHECKPOINT_BYTES = 500_000_000;
 
 function lfsFiles(info: HubModelInfo): HubFile[] {
   return info.siblings.flatMap((sibling) =>
@@ -398,13 +507,14 @@ function lfsFiles(info: HubModelInfo): HubFile[] {
 
 export function quantOf(path: string): string | null {
   return (
-    QUANT.exec(basename(path).replace(/\.gguf$/i, ""))?.[1]?.toUpperCase() ??
-    null
+    QUANT.exec(
+      basename(path).replace(WEIGHT_EXTENSION, ""),
+    )?.[1]?.toUpperCase() ?? null
   );
 }
 
 /** First shard or single-file GGUF weights, without projectors. */
-function weightChoices(files: readonly HubFile[]): HubFile[] {
+function llmChoices(files: readonly HubFile[]): HubFile[] {
   return files.filter(
     (file) =>
       /\.gguf$/i.test(file.path) &&
@@ -413,17 +523,128 @@ function weightChoices(files: readonly HubFile[]): HubFile[] {
   );
 }
 
-function selectWeights(
-  repo: string,
-  files: readonly HubFile[],
-  selector: string | undefined,
-): HubFile {
-  const choices = weightChoices(files);
-  if (choices.length === 0) {
-    throw new HubError(
-      `${repo} has no GGUF weights LocalBase can download. LocalBase runs language models as GGUF files; look for a repository with "GGUF" in its name (try \`local-base models search\`).`,
+/** whisper.cpp ggml model files; Core ML encoders and VAD models excluded. */
+function sttChoices(files: readonly HubFile[]): HubFile[] {
+  return files.filter((file) => {
+    const name = basename(file.path);
+    return (
+      /ggml.*\.bin$/i.test(name) && !/encoder|coreml|silero|vad/i.test(name)
+    );
+  });
+}
+
+/** Single-file checkpoints sd-server loads with `-m`, at the repo root. */
+function imageChoices(files: readonly HubFile[]): HubFile[] {
+  return files.filter((file) => {
+    const name = basename(file.path);
+    return (
+      !file.path.includes("/") &&
+      /\.(safetensors|ckpt|gguf)$/i.test(name) &&
+      file.size >= MIN_IMAGE_CHECKPOINT_BYTES &&
+      !/vae|lora|lycoris|controlnet|refiner|inpaint|text[-_]?encoder|clip|t5|unet|embedding|adapter|mmproj/i.test(
+        name,
+      )
+    );
+  });
+}
+
+const bySize = (a: HubFile, b: HubFile) =>
+  a.size - b.size || a.path.localeCompare(b.path);
+
+/** The file chosen when the reference names none, or null if ambiguous. */
+function defaultChoice(
+  kind: AddableKind,
+  choices: readonly HubFile[],
+): HubFile | null {
+  if (choices.length === 1) return choices[0]!;
+  if (kind === "llm") {
+    for (const quant of PREFERRED_QUANTS) {
+      const match = choices.filter((file) => quantOf(file.path) === quant);
+      if (match.length === 1) return match[0]!;
+    }
+    return null;
+  }
+  const sorted = [...choices].sort(bySize);
+  if (kind === "stt") {
+    return (
+      sorted.find(
+        (file) =>
+          /base/i.test(basename(file.path)) && quantOf(file.path) === "Q8_0",
+      ) ??
+      sorted.find((file) => quantOf(file.path) === "Q8_0") ??
+      sorted[0] ??
+      null
     );
   }
+  const safetensors = sorted.filter((file) =>
+    /\.safetensors$/i.test(file.path),
+  );
+  if (safetensors.length > 0) return safetensors[0]!;
+  for (const quant of PREFERRED_IMAGE_QUANTS) {
+    const match = sorted.find((file) => quantOf(file.path) === quant);
+    if (match) return match;
+  }
+  return sorted[0] ?? null;
+}
+
+const NO_FILES: Readonly<Record<AddableKind, string>> = {
+  llm: 'has no GGUF weights LocalBase can download. LocalBase runs language models as GGUF files; look for a repository with "GGUF" in its name (try `local-base models search`).',
+  stt: "has no whisper.cpp ggml-*.bin files. LocalBase runs speech recognition with whisper.cpp; try ggerganov/whisper.cpp or a repository with ggml files.",
+  image:
+    "has no single-file Stable Diffusion checkpoint (.safetensors, .ckpt or .gguf at the repository root). Diffusers folders, LoRAs and multi-file pipelines are not supported by models add.",
+};
+
+const NOUN: Readonly<Record<AddableKind, string>> = {
+  llm: "GGUF",
+  stt: "ggml",
+  image: "checkpoint",
+};
+
+export type EntryChoices = Readonly<{
+  kind: AddableKind;
+  choices: readonly HubFile[];
+  /** Picked when no file is named; null when the user must choose. */
+  default: HubFile | null;
+}>;
+
+/**
+ * The files `models add` could pin for a repository, after the kind check.
+ * Throws a HubError explaining why the repository cannot be added.
+ */
+export function entryChoices(info: HubModelInfo): EntryChoices {
+  const likely = likelyKind(info.pipeline_tag, info.tags, {
+    repo: info.id,
+    library: info.library_name ?? null,
+  });
+  if (likely.kind === null) {
+    throw new HubError(
+      `${info.id} looks like ${likely.label}. models add supports GGUF language models, whisper.cpp speech models and single-file Stable Diffusion checkpoints.`,
+    );
+  }
+  const files = lfsFiles(info);
+  const choices =
+    likely.kind === "llm"
+      ? llmChoices(files)
+      : likely.kind === "stt"
+        ? sttChoices(files)
+        : imageChoices(files);
+  if (choices.length === 0) {
+    throw new HubError(`${info.id} ${NO_FILES[likely.kind]}`);
+  }
+  return {
+    kind: likely.kind,
+    choices,
+    default: defaultChoice(likely.kind, choices),
+  };
+}
+
+function selectFile(
+  repo: string,
+  available: EntryChoices,
+  selector: string | undefined,
+): HubFile {
+  const { choices, kind } = available;
+  const noun = NOUN[kind];
   const list = () =>
     choices
       .map(
@@ -436,7 +657,10 @@ function selectWeights(
     const byPath = choices.find(
       (file) =>
         file.path.toLowerCase() === wanted ||
-        basename(file.path).toLowerCase() === wanted,
+        basename(file.path).toLowerCase() === wanted ||
+        basename(file.path).replace(WEIGHT_EXTENSION, "").toLowerCase() ===
+          wanted ||
+        modelIdFor(file.path, kind) === wanted,
     );
     if (byPath) return byPath;
     const byQuant = choices.filter(
@@ -446,16 +670,12 @@ function selectWeights(
     throw new HubError(
       byQuant.length > 1
         ? `More than one file in ${repo} is ${selector.toUpperCase()}; name the file instead:\n${list()}`
-        : `${repo} has no GGUF file or quant named "${selector}". Choose one of:\n${list()}`,
+        : `${repo} has no ${noun} file or quant named "${selector}". Choose one of:\n${list()}`,
     );
   }
-  if (choices.length === 1) return choices[0]!;
-  for (const quant of PREFERRED_QUANTS) {
-    const match = choices.filter((file) => quantOf(file.path) === quant);
-    if (match.length === 1) return match[0]!;
-  }
+  if (available.default) return available.default;
   throw new HubError(
-    `${repo} has ${choices.length} GGUF files; pick one with hf:${repo}:<file-or-quant>:\n${list()}`,
+    `${repo} has ${choices.length} ${noun} files; pick one with hf:${repo}:<file-or-quant>:\n${list()}`,
   );
 }
 
@@ -494,19 +714,29 @@ function selectProjector(files: readonly HubFile[]): HubFile | null {
   );
 }
 
-export function modelIdFor(path: string): string {
-  return basename(path)
-    .replace(SHARD, "")
-    .replace(/\.gguf$/i, "")
+function slug(value: string): string {
+  return value
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/^[-._]+|[-._]+$/g, "");
+}
+
+/** The catalog id derived from a weights file name. */
+export function modelIdFor(path: string, kind: AddableKind = "llm"): string {
+  const stem = basename(path).replace(SHARD, "").replace(WEIGHT_EXTENSION, "");
+  if (kind === "stt") {
+    const variant = slug(stem.replace(/^ggml[-_]?/i, ""));
+    return variant.includes("whisper") ? variant : `whisper-${variant}`;
+  }
+  return slug(stem);
 }
 
 function sizeOf(name: string): string {
   const match = /(?:^|[-_.])(\d+(?:\.\d+)?)([BM])(?=[-_.]|$)/i.exec(name);
   return match ? `${match[1]}${match[2]!.toUpperCase()}` : "unknown";
 }
+
+const WHISPER_SIZE = /(tiny|base|small|medium|large(?:-v\d)?(?:-turbo)?)/i;
 
 /** Filenames other catalog models already install, to avoid collisions. */
 function takenFilenames(modelId: string): Set<string> {
@@ -521,6 +751,7 @@ export type GeneratedEntry = Readonly<{
   /** The JSON written to `catalog.d`. */
   spec: Record<string, unknown>;
   modelId: string;
+  kind: AddableKind;
   repo: string;
   revision: string;
   license: string | null;
@@ -533,10 +764,12 @@ export type GeneratedEntry = Readonly<{
 }>;
 
 /**
- * Builds a user catalog entry for one GGUF file. Kind and declared
- * capabilities come from the pipeline tag and tags; capabilities read from
- * the GGUF chat template are reported as `detected` and confirmed again from
- * the installed file, never written into the catalog.
+ * Builds a user catalog entry for one weights file: a GGUF language model,
+ * a whisper.cpp ggml speech model or a single-file Stable Diffusion
+ * checkpoint. Kind and declared capabilities come from the pipeline tag,
+ * tags and file layout; capabilities read from a GGUF chat template are
+ * reported as `detected` and confirmed again from the installed file, never
+ * written into the catalog.
  */
 export function generateEntry(
   info: HubModelInfo,
@@ -544,37 +777,23 @@ export function generateEntry(
   options: Readonly<{ modelId?: string }> = {},
 ): GeneratedEntry {
   const repo = info.id;
-  const likely = likelyKind(info.pipeline_tag, info.tags);
-  if (likely.kind !== "llm") {
-    throw new HubError(
-      `${repo} looks like ${likely.label}. models add only supports GGUF language models for now.`,
-    );
-  }
+  const available = entryChoices(info);
+  const kind = available.kind;
   const files = lfsFiles(info);
-  const first = selectWeights(repo, files, reference.selector);
-  const weights = shardsOf(files, first);
-  const modelId = options.modelId ?? modelIdFor(first.path);
+  const first = selectFile(repo, available, reference.selector);
+  const weights = kind === "llm" ? shardsOf(files, first) : [first];
+  const modelId = options.modelId ?? modelIdFor(first.path, kind);
   if (!/^[a-z0-9][a-z0-9._-]*$/.test(modelId)) {
     throw new HubError(
       `"${modelId}" is not a usable model id; choose one with --id (lowercase letters, digits, ".", "_" and "-").`,
     );
   }
-  const projector = selectProjector(files);
   const taken = takenFilenames(modelId);
   const filenameFor = (file: HubFile, sharded: boolean) => {
     const name = basename(file.path);
     // Shard names must stay intact; llama.cpp finds the parts by name.
     return taken.has(name) && !sharded ? `${modelId}-${name}` : name;
   };
-  const projectorFilename = projector
-    ? (() => {
-        const name = basename(projector.path);
-        // Projectors share generic names across repositories.
-        return name.toLowerCase().includes(modelId)
-          ? name
-          : `${modelId}-${name}`;
-      })()
-    : null;
   for (const file of weights) {
     if (SHARD.test(file.path) && taken.has(basename(file.path))) {
       throw new HubError(
@@ -584,6 +803,108 @@ export function generateEntry(
   }
   const license = hubLicense(info);
   const repoName = repo.split("/")[1]!;
+  const stem = basename(first.path).replace(WEIGHT_EXTENSION, "");
+  const totalWeightBytes = weights.reduce((sum, file) => sum + file.size, 0);
+  const storageGb = (bytes: number) =>
+    Math.max(0.01, Math.round((bytes / 1e9) * 100) / 100);
+  const common = {
+    modelId,
+    provider: repo.split("/")[0],
+    version: info.sha.slice(0, 7),
+    source: `${HF_ENDPOINT}/${repo}`,
+    repositoryRevision: info.sha,
+    commercialStatus: commercialStatusForLicense(license),
+    catch: `License: ${license ?? "not stated"}. Added from Hugging Face; not qualified by LocalBase.`,
+    notes: `Added with local-base models add hf:${repo}:${basename(first.path)} at revision ${info.sha}${info.pipeline_tag ? ` (pipeline ${info.pipeline_tag})` : ""}.`,
+  };
+  const primary = {
+    sourcePath: first.path,
+    filename: filenameFor(first, false),
+    expectedSizeBytes: first.size,
+    sha256: first.sha256,
+    role: "primary",
+  };
+  const result = {
+    modelId,
+    kind,
+    repo,
+    revision: info.sha,
+    license,
+    pipelineTag: info.pipeline_tag ?? null,
+    weights,
+  };
+
+  if (kind === "stt") {
+    const variant = stem.replace(/^ggml[-_]?/i, "");
+    const english = /(^|[-_.])en($|[-_.])/i.test(variant);
+    return {
+      ...result,
+      projector: null,
+      detected: [],
+      contextLength: null,
+      spec: {
+        ...common,
+        displayName: `Whisper ${variant}`,
+        kind: "stt",
+        family: "Whisper",
+        size: WHISPER_SIZE.exec(variant)?.[1]?.toLowerCase() ?? "unknown",
+        quant: quantOf(first.path) ?? "F16",
+        storageGb: storageGb(first.size),
+        artifacts: [primary],
+        inputModalities: ["audio"],
+        outputModalities: ["text"],
+        capabilities: ["speech-to-text", ...(english ? [] : ["multilingual"])],
+      },
+    };
+  }
+
+  if (kind === "image") {
+    const quant =
+      quantOf(first.path) ??
+      (/(^|[-_.])fp16($|[-_.])/i.test(stem)
+        ? "F16"
+        : /(^|[-_.])fp32($|[-_.])/i.test(stem)
+          ? "F32"
+          : "unknown");
+    return {
+      ...result,
+      projector: null,
+      detected: [],
+      contextLength: null,
+      spec: {
+        ...common,
+        displayName:
+          available.choices.length > 1 ? `${repoName} (${stem})` : repoName,
+        kind: "image",
+        family: repoName,
+        size: `${(first.size / 1e9).toFixed(1)}GB`,
+        quant,
+        storageGb: storageGb(first.size),
+        artifacts: [primary],
+        inputModalities: ["text"],
+        outputModalities: ["image"],
+        // Off until LocalBase has measured the checkpoint; flash attention
+        // is not safe for every architecture sd-server loads with -m.
+        imageLaunchOptions: { diffusionFlashAttention: false },
+        capabilities: ["text-to-image", "image-to-image"],
+      },
+    };
+  }
+
+  const likely = likelyKind(info.pipeline_tag, info.tags, {
+    repo,
+    library: info.library_name ?? null,
+  });
+  const projector = selectProjector(files);
+  const projectorFilename = projector
+    ? (() => {
+        const name = basename(projector.path);
+        // Projectors share generic names across repositories.
+        return name.toLowerCase().includes(modelId)
+          ? name
+          : `${modelId}-${name}`;
+      })()
+    : null;
   const family = repoName.replace(/[-_]?GGUF$/i, "") || repoName;
   const quant = quantOf(first.path) ?? "unknown";
   const vision =
@@ -602,23 +923,17 @@ export function generateEntry(
     .filter(([, value]) => value)
     .map(([id]) => id);
   const contextLength = info.gguf?.context_length ?? null;
-  const totalBytes =
-    weights.reduce((sum, file) => sum + file.size, 0) +
-    (vision ? projector!.size : 0);
+  const totalBytes = totalWeightBytes + (vision ? projector!.size : 0);
   const sharded = weights.length > 1;
   const spec: Record<string, unknown> = {
-    modelId,
+    ...common,
     displayName: `${family} ${quant}`,
     kind: "llm",
-    provider: repo.split("/")[0],
     family,
-    version: info.sha.slice(0, 7),
     size:
       sizeOf(repoName) !== "unknown" ? sizeOf(repoName) : sizeOf(first.path),
     quant,
-    storageGb: Math.max(0.01, Math.round((totalBytes / 1e9) * 100) / 100),
-    source: `${HF_ENDPOINT}/${repo}`,
-    repositoryRevision: info.sha,
+    storageGb: storageGb(totalBytes),
     artifacts: [
       ...weights.map((file, index) => ({
         sourcePath: file.path,
@@ -643,18 +958,10 @@ export function generateEntry(
     outputModalities: ["text"],
     contextWindowTokens: contextLength,
     capabilities: ["text-generation", ...(coder ? ["code-generation"] : [])],
-    commercialStatus: commercialStatusForLicense(license),
-    catch: `License: ${license ?? "not stated"}. Added from Hugging Face; not qualified by LocalBase.`,
-    notes: `Added with local-base models add hf:${repo}:${basename(first.path)} at revision ${info.sha}${info.pipeline_tag ? ` (pipeline ${info.pipeline_tag})` : ""}.`,
   };
   return {
+    ...result,
     spec,
-    modelId,
-    repo,
-    revision: info.sha,
-    license,
-    pipelineTag: info.pipeline_tag ?? null,
-    weights,
     projector: vision ? projector : null,
     detected,
     contextLength,

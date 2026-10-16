@@ -208,6 +208,7 @@ export type AddInput = z.infer<typeof addInputSchema>;
 export const searchInputSchema = z.object({
   query: z.string().default(""),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  kind: z.enum(["llm", "stt", "image"]).optional(),
 });
 export type SearchInput = z.infer<typeof searchInputSchema>;
 

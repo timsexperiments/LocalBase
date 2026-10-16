@@ -21,6 +21,8 @@ import {
   generateEntry,
   HubError,
   likelyKind,
+  entryChoices,
+  isGated,
   modelIdFor,
   parseHfReference,
   quantOf,
@@ -263,7 +265,7 @@ test("refuses repositories LocalBase cannot run", async () => {
       embeddings,
       parseHfReference("hf:TinyOrg/Tiny-0.5B-Instruct-GGUF"),
     ),
-  ).toThrow(/only supports GGUF language models/);
+  ).toThrow(/looks like embeddings/);
   const safetensors = await parseInfo(
     modelInfo({ siblings: [lfs("model.safetensors", 10, "a")] }),
   );
@@ -358,13 +360,22 @@ test("searches GGUF repositories by downloads", async () => {
   );
   const url = new URL(calls[0]!.url);
   expect(url.pathname).toBe("/api/models");
-  expect(Object.fromEntries(url.searchParams)).toEqual({
+  const { "expand[]": _expand, ...rest } = Object.fromEntries(url.searchParams);
+  expect(rest).toEqual({
     filter: "gguf",
     sort: "downloads",
     direction: "-1",
     limit: "5",
     search: "qwen 0.5b",
   });
+  expect(url.searchParams.getAll("expand[]")).toEqual([
+    "downloads",
+    "likes",
+    "pipeline_tag",
+    "tags",
+    "gated",
+    "library_name",
+  ]);
   expect(cached).toBe(false);
   expect(hits[0]).toMatchObject({
     repo: "TinyOrg/Tiny-GGUF",
@@ -393,10 +404,10 @@ test("models search prints a table and the add hint", async () => {
     { fetch },
   );
   expect(lines[0]).toMatch(
-    /^MODEL\s+DOWNLOADS\s+LICENSE\s+PIPELINE\s+LIKELY KIND$/,
+    /^MODEL\s+DOWNLOADS\s+LICENSE\s+PIPELINE\s+GATED\s+LIKELY KIND$/,
   );
   expect(lines[1]).toMatch(
-    /^TinyOrg\/Tiny-GGUF\s+275\.2k\s+mit\s+text-generation\s+llm$/,
+    /^TinyOrg\/Tiny-GGUF\s+275\.2k\s+mit\s+text-generation\s+-\s+llm$/,
   );
   expect(lines.at(-1)).toContain("local-base models add hf:");
   expect(result.data.results[0]).toMatchObject({
@@ -485,4 +496,298 @@ test("models add refuses built-in ids and remove-entry refuses selected models",
     ),
   ).toThrow(/is selected. Deselect it first/);
   expect(byId("tiny-0.5b-instruct-q4_k_m")).toBeDefined();
+});
+
+function whisperInfo(overrides: Partial<Record<string, unknown>> = {}) {
+  return modelInfo({
+    id: "ggerganov/whisper.cpp",
+    pipeline_tag: "automatic-speech-recognition",
+    tags: ["license:mit"],
+    cardData: { license: "mit" },
+    gguf: undefined,
+    siblings: [
+      lfs("ggml-base.bin", 148_000_000, "a"),
+      lfs("ggml-base-q8_0.bin", 82_000_000, "b"),
+      lfs("ggml-base.en-q8_0.bin", 82_000_000, "c"),
+      lfs("ggml-small-q8_0.bin", 264_000_000, "d"),
+      lfs("ggml-base-encoder.mlmodelc.zip", 38_000_000, "e"),
+      lfs("ggml-silero-v5.1.2.bin", 900_000, "f"),
+    ],
+    ...overrides,
+  });
+}
+
+function imageInfo(overrides: Partial<Record<string, unknown>> = {}) {
+  return modelInfo({
+    id: "TinyArt/tiny-diffusion-v1",
+    pipeline_tag: "text-to-image",
+    library_name: "diffusers",
+    tags: ["diffusers", "license:creativeml-openrail-m"],
+    cardData: { license: "creativeml-openrail-m" },
+    gguf: undefined,
+    siblings: [
+      lfs("tiny-diffusion-v1.safetensors", 4_270_000_000, "a"),
+      lfs("tiny-diffusion-v1-fp16.safetensors", 2_130_000_000, "b"),
+      lfs("tiny-diffusion-v1.ckpt", 4_270_000_000, "c"),
+      lfs("vae/diffusion_pytorch_model.safetensors", 335_000_000, "d"),
+      lfs("unet/diffusion_pytorch_model.safetensors", 3_440_000_000, "e"),
+      lfs("tiny-vae-ft-mse.safetensors", 800_000_000, "f"),
+    ],
+    ...overrides,
+  });
+}
+
+test("classifies speech and image repositories", () => {
+  expect(
+    likelyKind("automatic-speech-recognition", [], {
+      repo: "ggerganov/whisper.cpp",
+    }).kind,
+  ).toBe("stt");
+  expect(
+    likelyKind("automatic-speech-recognition", [], {
+      repo: "openai/whisper-large-v3",
+      library: "transformers",
+    }),
+  ).toMatchObject({ kind: null, label: expect.stringMatching(/ggml/) });
+  expect(
+    likelyKind("automatic-speech-recognition", [], {
+      repo: "nvidia/parakeet-tdt",
+    }).kind,
+  ).toBeNull();
+  expect(
+    likelyKind("text-to-image", [], {
+      repo: "stable-diffusion-v1-5/stable-diffusion-v1-5",
+      library: "diffusers",
+    }).kind,
+  ).toBe("image");
+  expect(
+    likelyKind(undefined, [], {
+      repo: "Org/some-checkpoint",
+      library: "diffusion-single-file",
+    }).kind,
+  ).toBe("image");
+  for (const repo of [
+    "black-forest-labs/FLUX.1-dev",
+    "Qwen/Qwen-Image",
+    "stabilityai/stable-diffusion-3.5-large",
+    "Wan-AI/Wan2.1-T2V-1.3B",
+  ]) {
+    expect(likelyKind("text-to-image", [], { repo }).label).toMatch(
+      /multi-file/,
+    );
+  }
+  expect(
+    likelyKind("text-to-image", ["lora"], { repo: "Org/style-lora" }).kind,
+  ).toBeNull();
+  expect(likelyKind("text-to-speech", []).kind).toBeNull();
+  expect(isGated("auto")).toBe(true);
+  expect(isGated(false)).toBe(false);
+  expect(isGated(undefined)).toBe(false);
+  expect(modelIdFor("ggml-base.en-q8_0.bin", "stt")).toBe(
+    "whisper-base.en-q8_0",
+  );
+  expect(modelIdFor("sd_xl_base_1.0.safetensors", "image")).toBe(
+    "sd_xl_base_1.0",
+  );
+});
+
+test("generates whisper.cpp entries from ggml files", async () => {
+  const info = await parseInfo(whisperInfo());
+  const choices = entryChoices(info);
+  expect(choices.kind).toBe("stt");
+  expect(choices.choices.map(({ path }) => path)).toEqual([
+    "ggml-base.bin",
+    "ggml-base-q8_0.bin",
+    "ggml-base.en-q8_0.bin",
+    "ggml-small-q8_0.bin",
+  ]);
+  expect(choices.default?.path).toBe("ggml-base-q8_0.bin");
+
+  const entry = generateEntry(
+    info,
+    parseHfReference("hf:ggerganov/whisper.cpp:ggml-base.en-q8_0.bin"),
+  );
+  const spec = modelSpecSchema.parse(entry.spec);
+  expect(spec).toMatchObject({
+    modelId: "whisper-base.en-q8_0",
+    kind: "stt",
+    family: "Whisper",
+    size: "base",
+    quant: "Q8_0",
+    inputModalities: ["audio"],
+    outputModalities: ["text"],
+    repositoryRevision: SHA,
+    commercialStatus: "open",
+  });
+  expect(spec.capabilities.map(({ id }) => id)).toEqual(["speech-to-text"]);
+  expect(spec.artifacts[0]).toMatchObject({
+    sourcePath: "ggml-base.en-q8_0.bin",
+    sha256: "c".repeat(64),
+  });
+  const small = modelSpecSchema.parse(
+    generateEntry(
+      info,
+      parseHfReference("hf:ggerganov/whisper.cpp:whisper-small-q8_0"),
+    ).spec,
+  );
+  expect(small.capabilities.map(({ id }) => id)).toEqual([
+    "speech-to-text",
+    "multilingual",
+  ]);
+  expect(small.size).toBe("small");
+
+  const transformers = await parseInfo(
+    whisperInfo({ id: "openai/whisper-tiny", library_name: "transformers" }),
+  );
+  expect(() =>
+    generateEntry(transformers, parseHfReference("hf:openai/whisper-tiny")),
+  ).toThrow(/whisper.cpp needs ggml files/);
+  const empty = await parseInfo(
+    whisperInfo({ siblings: [lfs("model.safetensors", 10, "a")] }),
+  );
+  expect(() =>
+    generateEntry(empty, parseHfReference("hf:ggerganov/whisper.cpp")),
+  ).toThrow(/no whisper.cpp ggml/);
+});
+
+test("generates single-file Stable Diffusion entries", async () => {
+  const info = await parseInfo(imageInfo());
+  const choices = entryChoices(info);
+  expect(choices.kind).toBe("image");
+  // Diffusers folders, VAEs and anything below 500 MB are excluded.
+  expect(choices.choices.map(({ path }) => path).sort()).toEqual([
+    "tiny-diffusion-v1-fp16.safetensors",
+    "tiny-diffusion-v1.ckpt",
+    "tiny-diffusion-v1.safetensors",
+  ]);
+  expect(choices.default?.path).toBe("tiny-diffusion-v1-fp16.safetensors");
+
+  const entry = generateEntry(
+    info,
+    parseHfReference("hf:TinyArt/tiny-diffusion-v1"),
+  );
+  const spec = modelSpecSchema.parse(entry.spec);
+  expect(spec).toMatchObject({
+    modelId: "tiny-diffusion-v1-fp16",
+    kind: "image",
+    quant: "F16",
+    size: "2.1GB",
+    storageGb: 2.13,
+    inputModalities: ["text"],
+    outputModalities: ["image"],
+    imageLaunchOptions: { diffusionFlashAttention: false },
+    contextWindowTokens: null,
+  });
+  expect(spec.artifacts).toHaveLength(1);
+  expect(spec.capabilities.map(({ id }) => id)).toEqual([
+    "text-to-image",
+    "image-to-image",
+  ]);
+
+  const gguf = await parseInfo(
+    imageInfo({
+      siblings: [
+        lfs("tiny-diffusion-Q4_0.gguf", 1_100_000_000, "a"),
+        lfs("tiny-diffusion-Q8_0.gguf", 1_800_000_000, "b"),
+      ],
+    }),
+  );
+  expect(entryChoices(gguf).default?.path).toBe("tiny-diffusion-Q8_0.gguf");
+  const diffusersOnly = await parseInfo(
+    imageInfo({
+      siblings: [
+        lfs("unet/diffusion_pytorch_model.safetensors", 3_440_000_000, "e"),
+      ],
+    }),
+  );
+  expect(() =>
+    generateEntry(diffusersOnly, parseHfReference("hf:TinyArt/x")),
+  ).toThrow(/single-file Stable Diffusion checkpoint/);
+  const flux = await parseInfo(
+    imageInfo({ id: "black-forest-labs/FLUX.1-schnell" }),
+  );
+  expect(() =>
+    generateEntry(
+      flux,
+      parseHfReference("hf:black-forest-labs/FLUX.1-schnell"),
+    ),
+  ).toThrow(/multi-file pipeline/);
+});
+
+test("searches speech and image repositories with the token", async () => {
+  const { fetch, calls } = fakeFetch(() => ({
+    body: [
+      {
+        id: "ggerganov/whisper.cpp",
+        downloads: 100,
+        pipeline_tag: "automatic-speech-recognition",
+        tags: ["license:mit"],
+      },
+      {
+        id: "openai/whisper-large-v3",
+        downloads: 50,
+        pipeline_tag: "automatic-speech-recognition",
+        library_name: "transformers",
+        gated: "auto",
+        tags: [],
+      },
+    ],
+  }));
+  const root = scratchRoot();
+  const { hits } = await searchHub(
+    { root, fetch, kind: "stt", token: "hf_test_token" },
+    "",
+  );
+  const url = new URL(calls[0]!.url);
+  expect(url.searchParams.get("pipeline_tag")).toBe(
+    "automatic-speech-recognition",
+  );
+  expect(url.searchParams.get("search")).toBe("whisper");
+  expect(url.searchParams.get("filter")).toBeNull();
+  expect(
+    calls[0]!.headers.Authorization ?? calls[0]!.headers.authorization,
+  ).toBe("Bearer hf_test_token");
+  expect(hits.map((hit) => [hit.likely.kind, hit.gated])).toEqual([
+    ["stt", false],
+    [null, true],
+  ]);
+
+  await searchHub({ root, fetch, kind: "image" }, "anime gguf");
+  const image = new URL(calls[1]!.url);
+  expect(image.searchParams.get("pipeline_tag")).toBe("text-to-image");
+  // Only language-model searches drop the word "gguf".
+  expect(image.searchParams.get("search")).toBe("anime gguf");
+});
+
+test("models search passes the saved token and shows gated repositories", async () => {
+  const lines: string[] = [];
+  const { fetch, calls } = fakeFetch(() => ({
+    body: [
+      {
+        id: "TinyOrg/Gated-GGUF",
+        downloads: 10,
+        pipeline_tag: "text-generation",
+        gated: "manual",
+        tags: ["gguf"],
+      },
+    ],
+  }));
+  const ctx = context(scratchRoot());
+  (ctx.config as { hfToken: string }).hfToken = "hf_saved_token";
+  const result = await runSearch(
+    { query: "gated", limit: 5 },
+    ctx,
+    execution(lines),
+    { fetch },
+  );
+  expect(
+    calls[0]!.headers.Authorization ?? calls[0]!.headers.authorization,
+  ).toBe("Bearer hf_saved_token");
+  expect(lines[1]).toMatch(/\syes\s+llm$/);
+  expect(lines.join("\n")).toContain("Gated repositories need");
+  expect(lines.join("\n")).not.toContain("hf_saved_token");
+  expect(result.data).toMatchObject({
+    kind: "llm",
+    results: [{ gated: true, kind: "llm" }],
+  });
 });
