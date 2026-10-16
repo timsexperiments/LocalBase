@@ -147,7 +147,7 @@ const modelSchema = z
     memory: z
       .object({
         minimumGb: z.number().int().positive(),
-        source: z.enum(["estimate", "measured", "observed"]),
+        source: z.enum(["estimate", "feed", "measured", "observed"]),
         launchShape: z.string().min(1),
         observedPeakBytes: z.number().int().positive().nullable(),
         verdict: z.enum(["fits", "tight", "wont-fit"]),

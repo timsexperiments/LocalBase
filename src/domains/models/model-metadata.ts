@@ -45,7 +45,7 @@ import {
 } from "./capability-detection";
 
 const nullableNumberSchema = z.number().nullable();
-const memorySourceSchema = z.enum(["estimate", "measured", "observed"]);
+const memorySourceSchema = z.enum(["estimate", "feed", "measured", "observed"]);
 const nullableByteCountSchema = z.number().int().nonnegative().nullable();
 
 const videoCapabilitiesSchema = z
@@ -162,7 +162,7 @@ export const modelMetadataSchema = z
             launchShape: z.string().min(1).optional(),
             reference: z
               .object({
-                source: z.enum(["estimate", "measured"]),
+                source: z.enum(["estimate", "feed", "measured"]),
                 bytes: z.number().int().nonnegative(),
                 /** The launch shape the estimate or measurement describes. */
                 launchShape: z.string().min(1),
@@ -188,6 +188,21 @@ export const modelMetadataSchema = z
                 launchShape: z.string().min(1),
                 method: z.enum(["footprint", "vmhwm"]),
                 observedAt: z.string().min(1),
+              })
+              .strict()
+              .nullable()
+              .optional(),
+            /**
+             * The catalog-feed peak behind the reference figure: published for
+             * exactly this file and revision at the planned launch shape.
+             */
+            feedPeak: z
+              .object({
+                peakBytes: z.number().int().nonnegative(),
+                launchShape: z.string().min(1),
+                variant: z.string().min(1),
+                hardware: z.string().min(1),
+                measuredAt: z.string().min(1),
               })
               .strict()
               .nullable()
@@ -593,7 +608,8 @@ function memoryProjection(
     reference: {
       source: figure.referenceSource,
       bytes: Math.round(figure.referenceBytes),
-      launchShape: referenceLaunchShape(model, inputs),
+      launchShape:
+        figure.feedPeak?.launchShape ?? referenceLaunchShape(model, inputs),
     },
     observedPeaks: (inputs?.observed ?? []).map(
       ({ peakBytes, launchShape, method, observedAt }) => ({
@@ -609,6 +625,15 @@ function memoryProjection(
           launchShape: figure.observed.launchShape,
           method: figure.observed.method,
           observedAt: figure.observed.observedAt,
+        }
+      : null,
+    feedPeak: figure.feedPeak
+      ? {
+          peakBytes: figure.feedPeak.peakBytes,
+          launchShape: figure.feedPeak.launchShape,
+          variant: figure.feedPeak.variant,
+          hardware: figure.feedPeak.hardware,
+          measuredAt: figure.feedPeak.measuredAt,
         }
       : null,
     ...(fit

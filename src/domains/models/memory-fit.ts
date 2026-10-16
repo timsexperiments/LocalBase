@@ -1,11 +1,18 @@
 import { join } from "node:path";
 import { CATALOG, primaryArtifact, type ModelSpec } from "../../catalog";
+import {
+  feedAnnotationsGeneration,
+  plannableFeedPeaks,
+  type MemoryPeak,
+} from "../../catalog/annotations";
 import type { LlmKvGeometry } from "../runtime/gguf-metadata";
 import { gibibyte } from "../runtime/memory-safety";
 import {
   catalogLlmReference,
   estimateCatalogModelMemory,
   measuredCatalogModelMemory,
+  measuredDemand,
+  measurementDemandOptions,
   minimumMemoryGb,
   type CatalogEstimateInputs,
 } from "../runtime/memory-estimate";
@@ -21,10 +28,16 @@ import {
  * - `observed`: the peak this machine recorded while serving the model
  *   (model_observed_memory table, runtime/observed-memory.ts)
  * - `measured`: a calibration run checked into memory-measurements.ts
+ * - `feed`: a peak the catalog feed publishes for exactly this file at its
+ *   pinned revision, measured at the launch shape LocalBase plans
+ *   (catalog/annotations.ts)
  * - `estimate`: the first-principles estimate from artifact sizes, plus the
  *   GGUF geometry when the file is installed
+ *
+ * Runtime always wins: once this machine records a peak, it replaces the
+ * measured, feed and estimated figures.
  */
-export type MemorySource = "estimate" | "measured" | "observed";
+export type MemorySource = "estimate" | "feed" | "measured" | "observed";
 
 export type ModelMemoryInputs = CatalogEstimateInputs &
   Readonly<{
@@ -45,6 +58,8 @@ export type ModelMemoryFigure = Readonly<{
   launchShape: string;
   /** The observed peak used, when there is one. */
   observed?: ObservedMemoryRecord;
+  /** The feed peak behind the reference figure, when it came from the feed. */
+  feedPeak?: MemoryPeak;
 }>;
 
 /** Launch-shape key of the catalog reference launch for a model. */
@@ -80,28 +95,92 @@ export function selectObservedPeak(
 }
 
 const staticFigures = new Map<string, ModelMemoryFigure>();
+let staticGeneration = -1;
+
+const onOff = (value: boolean | undefined) => (value ? "on" : "off");
+
+/**
+ * Whether a feed peak describes the launch LocalBase plans for `spec`,
+ * mirroring how the checked-in measurements are matched: LLMs at the exact
+ * reference shape, image at the same `--diffusion-fa` setting, video at its
+ * qualification bounds and options, speech at its one fixed shape.
+ */
+export function feedPeakMatchesLaunch(
+  spec: ModelSpec,
+  launchShape: string,
+  inputs: CatalogEstimateInputs = {},
+): boolean {
+  switch (spec.kind) {
+    case "llm":
+      return launchShape === referenceLaunchShape(spec, inputs);
+    case "stt":
+      return launchShape === DEFAULT_LAUNCH_SHAPE;
+    case "tts":
+      return /^ctx=\d+$/.test(launchShape);
+    case "image":
+      return launchShape.endsWith(
+        `;diffusion-fa=${onOff(spec.imageLaunchOptions?.diffusionFlashAttention)}`,
+      );
+    case "video": {
+      const qualification = spec.videoRuntime?.qualification;
+      if (!qualification) return false;
+      const options = qualification.launchOptions;
+      return (
+        launchShape ===
+        `${qualification.maxWidth}x${qualification.maxHeight};frames=${qualification.maxFrames};cpu-offload=${onOff(options.cpuOffload)};diffusion-fa=${onOff(options.diffusionFlashAttention)}`
+      );
+    }
+  }
+}
+
+/**
+ * The feed peak memory planning uses for `spec`: the largest one published
+ * for its exact file and revision at the planned launch shape.
+ */
+export function selectFeedPeak(
+  spec: ModelSpec,
+  inputs: CatalogEstimateInputs = {},
+): MemoryPeak | undefined {
+  return plannableFeedPeaks(spec)
+    .filter((peak) => feedPeakMatchesLaunch(spec, peak.launchShape, inputs))
+    .reduce<MemoryPeak | undefined>(
+      (best, peak) => (!best || peak.peakBytes > best.peakBytes ? peak : best),
+      undefined,
+    );
+}
 
 /**
  * The memory figure for a model on this machine. Precedence:
- * observed > measured > estimate. The accelerator demand drives the minimum,
- * as the hand-entered `minVramGb` tiers did.
+ * observed > measured > feed > estimate. The accelerator demand drives the
+ * minimum, as the hand-entered `minVramGb` tiers did.
  */
 export function modelMemoryFigure(
   spec: ModelSpec,
   inputs: ModelMemoryInputs = {},
 ): ModelMemoryFigure {
   const cacheable = !inputs.geometry && !inputs.observed?.length;
+  if (staticGeneration !== feedAnnotationsGeneration()) {
+    staticFigures.clear();
+    staticGeneration = feedAnnotationsGeneration();
+  }
   if (cacheable) {
     const cached = staticFigures.get(spec.modelId);
     if (cached) return cached;
   }
   const estimate = estimateCatalogModelMemory(spec, inputs);
   const measured = measuredCatalogModelMemory(spec, inputs);
+  const feedPeak = measured ? undefined : selectFeedPeak(spec, inputs);
+  const feed = feedPeak
+    ? measuredDemand(feedPeak, measurementDemandOptions(spec))
+    : undefined;
   const referenceBytes =
-    measured?.acceleratorBytes ?? estimate.demand.acceleratorBytes;
-  const referenceSource = measured ? "measured" : "estimate";
+    measured?.acceleratorBytes ??
+    feed?.acceleratorBytes ??
+    estimate.demand.acceleratorBytes;
+  const referenceSource = measured ? "measured" : feed ? "feed" : "estimate";
   const launchShape = referenceLaunchShape(spec, inputs);
   const observed = selectObservedPeak(inputs.observed, launchShape);
+  const reference = feedPeak ? { feedPeak } : {};
   const figure: ModelMemoryFigure = Object.freeze(
     observed
       ? {
@@ -112,6 +191,7 @@ export function modelMemoryFigure(
           referenceSource,
           launchShape: observed.launchShape,
           observed,
+          ...reference,
         }
       : {
           source: referenceSource,
@@ -119,7 +199,8 @@ export function modelMemoryFigure(
           minVramGb: minimumMemoryGb(referenceBytes),
           referenceBytes,
           referenceSource,
-          launchShape,
+          launchShape: feedPeak?.launchShape ?? launchShape,
+          ...reference,
         },
   );
   if (cacheable) staticFigures.set(spec.modelId, figure);
@@ -140,7 +221,9 @@ export function describeMemoryFigure(figure: ModelMemoryFigure): string {
   const detail =
     figure.source === "observed"
       ? `observed peak ${formatMemoryGb(figure.demandBytes)} at ${figure.launchShape}; ${figure.referenceSource} ${formatMemoryGb(figure.referenceBytes)}`
-      : `${figure.source} ${formatMemoryGb(figure.demandBytes)}`;
+      : figure.source === "feed"
+        ? `feed-measured peak ${formatMemoryGb(figure.feedPeak?.peakBytes ?? figure.demandBytes)} at ${figure.launchShape}`
+        : `${figure.source} ${formatMemoryGb(figure.demandBytes)}`;
   return `${figure.minVramGb} GB (${detail})`;
 }
 

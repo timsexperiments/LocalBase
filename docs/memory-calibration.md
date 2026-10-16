@@ -53,6 +53,10 @@ The API, CLI, diagnostics and UI report the source next to the minimum. `minVram
 
 Once a backend is ready, the gateway samples its memory every 5 s until it exits and keeps the largest value in the `model_observed_memory` table, keyed by model id, artifact sha256 and launch shape (`ctx=N;slots=N;kv=K/V` for LLMs, `default` otherwise). Only launches of the pinned catalog artifact are recorded. On macOS the sample is the `footprint` TOTAL (dirty plus clean), which includes Metal allocations and is used for fit. On Linux it is `VmHWM`, which omits discrete GPU memory, so it is stored but not used. The figure prefers the peak at the reference shape, else the newest one. A peak reflects only what the workload touched, so a short session can observe less than the reference demand.
 
+## Feed peaks
+
+Entries without checked-in measurements (user and discovered entries) can use a measured peak published in the catalog feed. The figure source is `feed`. A feed peak is used only when the annotation is an exact revision match, the recipe's primary sha256 (if any) matches the pinned artifact, and its launch shape equals the planned one (the reference shape for LLMs, `default` for STT, `ctx=N` for TTS, the flash-attention setting for image, and the qualification shape for video). Precedence is observed, then checked-in measurement, then feed, then estimate. A runtime observation always wins.
+
 ## Measurements (2026-10-13)
 
 Accelerator is the planning value (backend plus allowance), in GiB. The previous estimate is the formula value before this calibration.

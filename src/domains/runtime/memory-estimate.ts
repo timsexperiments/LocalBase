@@ -92,7 +92,13 @@ export function preferMeasured(
  *   system-wide free-memory drop, plus any prompt cache configured for the launch
  */
 export function measuredDemand(
-  record: MemoryMeasurement,
+  record: Pick<
+    MemoryMeasurement,
+    | "backendAcceleratorBytes"
+    | "hostBufferBytes"
+    | "peakRssBytes"
+    | "systemDeltaBytes"
+  >,
   options: {
     artifactBytes: number;
     acceleratorOverheadBytes?: number;
@@ -947,6 +953,37 @@ export function measuredLlmDemand(input: {
 }
 
 /**
+ * How a measured record of this model's runtime becomes planning demand:
+ * Whisper carries a smaller accelerator context, Kokoro runs on the CPU and
+ * video rounds its accelerator figure like the estimate it replaces.
+ */
+export function measurementDemandOptions(
+  spec: ModelSpec,
+  artifactBytes: number = totalArtifactBytes(spec),
+): Parameters<typeof measuredDemand>[1] {
+  switch (spec.kind) {
+    case "stt":
+      return {
+        artifactBytes,
+        acceleratorOverheadBytes: WHISPER_ACCELERATOR_OVERHEAD_BYTES,
+      };
+    case "tts":
+      // Kokoro runs on the CPU, so it carries no accelerator context.
+      return spec.ttsRuntime?.kind === "kokoro-onnx"
+        ? { artifactBytes, acceleratorOverheadBytes: 0 }
+        : { artifactBytes };
+    case "video":
+      return {
+        artifactBytes,
+        acceleratorRoundingBytes: VIDEO_ACCELERATOR_ROUNDING_BYTES,
+      };
+    case "llm":
+    case "image":
+      return { artifactBytes };
+  }
+}
+
+/**
  * The measured demand of an STT, TTS, image or video catalog model at the
  * launch shape the spec carries (video: its qualification bounds/options).
  */
@@ -955,36 +992,28 @@ export function measuredModelDemand(
   artifactBytes: number = totalArtifactBytes(spec),
 ): MeasuredMemoryDemand | undefined {
   if (!usesReferenceMeasurements(spec)) return undefined;
+  const record = referenceMeasurementFor(spec);
+  return record
+    ? measuredDemand(record, measurementDemandOptions(spec, artifactBytes))
+    : undefined;
+}
+
+function referenceMeasurementFor(
+  spec: ModelSpec,
+): MemoryMeasurement | undefined {
   switch (spec.kind) {
-    case "stt": {
-      const record = findModelMeasurement("stt", spec.modelId);
-      return record
-        ? measuredDemand(record, {
-            artifactBytes,
-            acceleratorOverheadBytes: WHISPER_ACCELERATOR_OVERHEAD_BYTES,
-          })
-        : undefined;
-    }
-    case "image": {
-      const record = findImageMeasurement(
+    case "stt":
+    case "tts":
+      return findModelMeasurement(spec.kind, spec.modelId);
+    case "image":
+      return findImageMeasurement(
         spec.modelId,
         spec.imageLaunchOptions?.diffusionFlashAttention ?? false,
       );
-      return record ? measuredDemand(record, { artifactBytes }) : undefined;
-    }
-    case "tts": {
-      const record = findModelMeasurement("tts", spec.modelId);
-      // Kokoro runs on the CPU, so it carries no accelerator context.
-      const acceleratorOverheadBytes =
-        spec.ttsRuntime?.kind === "kokoro-onnx" ? 0 : undefined;
-      return record
-        ? measuredDemand(record, { artifactBytes, acceleratorOverheadBytes })
-        : undefined;
-    }
     case "video": {
       const qualification = spec.videoRuntime?.qualification;
       if (!qualification) return undefined;
-      const record = findVideoMeasurement(spec.modelId, {
+      return findVideoMeasurement(spec.modelId, {
         width: qualification.maxWidth,
         height: qualification.maxHeight,
         frames: qualification.maxFrames,
@@ -992,12 +1021,6 @@ export function measuredModelDemand(
         diffusionFlashAttention:
           qualification.launchOptions.diffusionFlashAttention,
       });
-      return record
-        ? measuredDemand(record, {
-            artifactBytes,
-            acceleratorRoundingBytes: VIDEO_ACCELERATOR_ROUNDING_BYTES,
-          })
-        : undefined;
     }
     case "llm":
       return undefined;

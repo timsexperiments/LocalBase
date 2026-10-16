@@ -286,6 +286,14 @@ export function ModelDetails({
                 <dd>
                   {formatGb(memory.reference.bytes)} with{" "}
                   {describeLaunchShape(memory.reference.launchShape)}
+                  {memory.reference.source === "feed" && memory.feedPeak && (
+                    <span className="muted">
+                      {" "}
+                      ({memory.feedPeak.variant} on {memory.feedPeak.hardware},{" "}
+                      {memory.feedPeak.measuredAt}; used until this machine
+                      records its own peak)
+                    </span>
+                  )}
                 </dd>
               </div>
             )}

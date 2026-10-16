@@ -88,8 +88,14 @@ Precedence, highest first:
 
 Not yet done: a recipe installs a catalog entry this binary or the feed
 already has; it cannot create a new multi-file entry from an arbitrary
-repository. Published memory peaks are shown for reference and do not feed
-LocalBase's memory planning, which uses its own measurements and estimates.
+repository.
+
+Published memory peaks also feed the memory fit, as a fallback. A peak is used
+only when the annotation matches the pinned revision (and, when the recipe
+names one, the primary file's sha256) and was taken at the launch shape
+LocalBase would plan. It ranks below this machine's own observed peak and the
+binary's checked-in measurements, and above the estimate. The fit and details
+show "Measured (catalog feed)" when it applies. Launch admission is unchanged.
 
 Manage the feed with `local-base models feed`:
 

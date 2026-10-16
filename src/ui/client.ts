@@ -157,11 +157,11 @@ const modelSchema = z.object({
       minimumVramEstimateGb: z.number().nonnegative(),
       storageEstimateGb: z.number().positive(),
       /** Where the minimum came from; absent on older servers. */
-      source: z.enum(["estimate", "measured", "observed"]).optional(),
+      source: z.enum(["estimate", "feed", "measured", "observed"]).optional(),
       /** The catalog's own figure and its launch shape; absent on older servers. */
       reference: z
         .object({
-          source: z.enum(["estimate", "measured"]),
+          source: z.enum(["estimate", "feed", "measured"]),
           bytes: z.number(),
           launchShape: z.string(),
         })
@@ -175,6 +175,17 @@ const modelSchema = z.object({
             observedAt: z.string(),
           }),
         )
+        .optional(),
+      /** The catalog-feed peak behind the figure; absent on older servers. */
+      feedPeak: z
+        .object({
+          peakBytes: z.number(),
+          launchShape: z.string(),
+          variant: z.string(),
+          hardware: z.string(),
+          measuredAt: z.string(),
+        })
+        .nullable()
         .optional(),
       /** This machine's fit verdict; absent on older servers. */
       fit: z
@@ -309,6 +320,7 @@ const memorySourceLabels = {
   estimate: "estimate",
   measured: "measured",
   observed: "observed on this machine",
+  feed: "published measurement",
 } as const;
 
 const fitVerdictLabels = {

@@ -126,7 +126,7 @@ export async function runCatalog(
             `      unsupported: ${mark.id} (feed, verified: ${mark.reason})`,
           );
     }
-    if (fit.source === "observed")
+    if (fit.source === "observed" || fit.source === "feed")
       execution.output.info(
         `      memory: ${describeMemoryFigure(fit.figure)}`,
       );

@@ -1,5 +1,12 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { byId, primaryArtifact } from "../../catalog";
+import {
+  huggingFaceRepoOf,
+  plannableFeedPeaks,
+  setFeedAnnotations,
+  type FeedAnnotation,
+  type MemoryPeak,
+} from "../../catalog/annotations";
 import { minimumMemoryGb } from "../runtime/memory-estimate";
 import type {
   ObservedMemoryRecord,
@@ -8,11 +15,13 @@ import type {
 import {
   collectModelMemoryInputs,
   evaluateModelFit,
+  feedPeakMatchesLaunch,
   fitStatus,
   modelMemoryFigure,
   modelMemoryJson,
   observedMemoryInputs,
   referenceLaunchShape,
+  selectFeedPeak,
   selectObservedPeak,
 } from "./memory-fit";
 
@@ -138,5 +147,142 @@ describe("memory inputs", () => {
     expect(reads).toEqual([`/models/${primaryArtifact(llm).filename}`]);
     expect(inputs.get(llm.modelId)?.observed).toEqual([peak()]);
     expect(inputs.get(measured.modelId)).toEqual({});
+  });
+});
+
+describe("feed peaks", () => {
+  const repo = huggingFaceRepoOf(llm.source)!;
+  const sha = primaryArtifact(llm).sha256!;
+
+  function feedPeak(overrides: Partial<MemoryPeak> = {}): MemoryPeak {
+    return {
+      variant: "Q4_K_M",
+      launchShape: referenceLaunchShape(llm),
+      peakBytes: 3 * gib,
+      backendAcceleratorBytes: 2 * gib,
+      hostBufferBytes: 256 * 1024 ** 2,
+      peakRssBytes: 3 * gib,
+      measuredAt: "2026-10-14",
+      hardware: "Feed machine",
+      ...overrides,
+    };
+  }
+
+  function publish(
+    peaks: MemoryPeak[],
+    overrides: Partial<FeedAnnotation> = {},
+  ): void {
+    setFeedAnnotations([
+      {
+        repo,
+        revision: llm.repositoryRevision,
+        file: primaryArtifact(llm).sourcePath,
+        modelId: llm.modelId,
+        memoryPeaks: peaks,
+        ...overrides,
+      },
+    ]);
+  }
+
+  afterEach(() => setFeedAnnotations([]));
+
+  test("an exact feed peak at the planned shape beats the estimate", () => {
+    publish([feedPeak()]);
+    const figure = modelMemoryFigure(llm);
+    expect(figure.source).toBe("feed");
+    expect(figure.referenceSource).toBe("feed");
+    expect(figure.feedPeak).toEqual(feedPeak());
+    expect(figure.launchShape).toBe(referenceLaunchShape(llm));
+    expect(figure.demandBytes).toBeGreaterThanOrEqual(2 * gib);
+  });
+
+  test("the cached figure follows the feed in force", () => {
+    expect(modelMemoryFigure(llm).source).toBe("estimate");
+    publish([feedPeak()]);
+    expect(modelMemoryFigure(llm).source).toBe("feed");
+    setFeedAnnotations([]);
+    expect(modelMemoryFigure(llm).source).toBe("estimate");
+  });
+
+  test("another revision, file sha or launch shape is never used", () => {
+    publish([feedPeak()], { revision: "0".repeat(40) });
+    expect(modelMemoryFigure(llm).source).toBe("estimate");
+    publish([feedPeak({ launchShape: "ctx=1024;slots=4;kv=f16/f16" })]);
+    expect(modelMemoryFigure(llm).source).toBe("estimate");
+    publish([feedPeak()], {
+      recipe: {
+        modelId: llm.modelId,
+        totalBytes: 1,
+        files: [
+          {
+            repositoryUrl: llm.source,
+            revision: llm.repositoryRevision,
+            path: primaryArtifact(llm).sourcePath,
+            sizeBytes: 1,
+            sha256: "f".repeat(64),
+            role: "primary",
+          },
+        ],
+      },
+    });
+    expect(plannableFeedPeaks(llm)).toEqual([]);
+    expect(modelMemoryFigure(llm).source).toBe("estimate");
+  });
+
+  test("a matching recipe sha keeps the peaks plannable", () => {
+    publish([feedPeak()], {
+      recipe: {
+        modelId: llm.modelId,
+        totalBytes: 1,
+        files: [
+          {
+            repositoryUrl: llm.source,
+            revision: llm.repositoryRevision,
+            path: primaryArtifact(llm).sourcePath,
+            sizeBytes: 1,
+            sha256: sha.toUpperCase(),
+            role: "primary",
+          },
+        ],
+      },
+    });
+    expect(plannableFeedPeaks(llm)).toHaveLength(1);
+  });
+
+  test("the largest matching peak is chosen", () => {
+    const small = feedPeak({ peakBytes: 2 * gib });
+    const large = feedPeak({ peakBytes: 5 * gib, hardware: "Other" });
+    publish([small, large]);
+    expect(selectFeedPeak(llm)).toEqual(large);
+  });
+
+  test("a runtime observation always wins over the feed", () => {
+    publish([feedPeak()]);
+    const figure = modelMemoryFigure(llm, { observed: [peak()] });
+    expect(figure.source).toBe("observed");
+    expect(figure.referenceSource).toBe("feed");
+    expect(figure.demandBytes).toBe(6 * gib);
+  });
+
+  test("checked-in measurements outrank the feed", () => {
+    const sttRepo = huggingFaceRepoOf(measured.source)!;
+    setFeedAnnotations([
+      {
+        repo: sttRepo,
+        revision: measured.repositoryRevision,
+        file: primaryArtifact(measured).sourcePath,
+        memoryPeaks: [feedPeak({ launchShape: "default" })],
+      },
+    ]);
+    const figure = modelMemoryFigure(measured);
+    expect(figure.source).toBe("measured");
+    expect(figure.feedPeak).toBeUndefined();
+  });
+
+  test("launch-shape matching per kind", () => {
+    expect(feedPeakMatchesLaunch(llm, referenceLaunchShape(llm))).toBe(true);
+    expect(feedPeakMatchesLaunch(llm, "ctx=1;slots=1;kv=f16/f16")).toBe(false);
+    expect(feedPeakMatchesLaunch(measured, "default")).toBe(true);
+    expect(feedPeakMatchesLaunch(measured, "ctx=1")).toBe(false);
   });
 });

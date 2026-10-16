@@ -570,3 +570,53 @@ test("names the feed behind a community entry without its query", async () => {
     applyCatalogLayers([]);
   }
 });
+
+test("projects a feed-measured peak and parses on the client", async () => {
+  const { setFeedAnnotations, huggingFaceRepoOf } =
+    await import("../../catalog/annotations");
+  const { referenceLaunchShape } = await import("./memory-fit");
+  const model = catalogModel();
+  const launchShape = referenceLaunchShape(model);
+  try {
+    setFeedAnnotations([
+      {
+        repo: huggingFaceRepoOf(model.source)!,
+        revision: model.repositoryRevision,
+        file: model.artifacts[0]!.sourcePath,
+        memoryPeaks: [
+          {
+            variant: "Q4_K_M",
+            launchShape,
+            peakBytes: 3 * gibibyte,
+            backendAcceleratorBytes: 2 * gibibyte,
+            hostBufferBytes: 1024,
+            peakRssBytes: 3 * gibibyte,
+            measuredAt: "2026-10-14",
+            hardware: "Feed machine",
+          },
+        ],
+      },
+    ]);
+    const metadata = projectModelMetadata(model, {
+      catalog: [model],
+      config: defaultConfig("/tmp/localbase-model-metadata-feed"),
+      installations: new Map([[modelId, true]]),
+      runtimes: runtimeSnapshots(),
+    });
+    expect(metadata.catalog.memory).toMatchObject({
+      source: "feed",
+      launchShape,
+      reference: { source: "feed", launchShape },
+      feedPeak: {
+        peakBytes: 3 * gibibyte,
+        launchShape,
+        variant: "Q4_K_M",
+        hardware: "Feed machine",
+        measuredAt: "2026-10-14",
+      },
+    });
+    expect(modelMetadataSchema.parse(metadata)).toBeTruthy();
+  } finally {
+    setFeedAnnotations([]);
+  }
+});
