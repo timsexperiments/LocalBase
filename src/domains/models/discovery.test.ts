@@ -541,3 +541,42 @@ test("install-recipe installs a catalog entry the feed has a recipe for", async 
   });
   expect(installs).toEqual([multiFile.modelId]);
 });
+
+test("pipeline previews count the shared encoders in the download size", async () => {
+  const fluxRepo = {
+    id: "city96/FLUX.1-dev-gguf",
+    sha: SHA,
+    pipeline_tag: "text-to-image",
+    library_name: "gguf",
+    tags: ["gguf", "base_model:quantized:black-forest-labs/FLUX.1-dev"],
+    cardData: { license: "other" },
+    siblings: [
+      lfs("flux1-dev-Q4_0.gguf", 6_790_000_000, "a"),
+      lfs("flux1-dev-Q8_0.gguf", 12_700_000_000, "b"),
+    ],
+  };
+  const fetch: HubFetch = async (url) => {
+    const path = new URL(url).pathname;
+    const found = path === `/api/models/${fluxRepo.id}`;
+    return {
+      ok: found,
+      status: found ? 200 : 404,
+      json: async () => (found ? fluxRepo : {}),
+    };
+  };
+  const preview = await previewRepository(
+    { root: scratchRoot(), fetch, systemVramGb: 64 },
+    fluxRepo.id,
+  );
+  expect(preview.kind).toBe("image");
+  expect(preview.defaultPath).toBe("flux1-dev-Q4_0.gguf");
+  const q4 = preview.choices.find(
+    (choice) => choice.path === "flux1-dev-Q4_0.gguf",
+  )!;
+  const template = byId("flux1-schnell-q4_0")!;
+  const encoders = template.artifacts
+    .filter((artifact) => artifact.role === "supplementary")
+    .reduce((sum, artifact) => sum + (artifact.expectedSizeBytes ?? 0), 0);
+  expect(encoders).toBeGreaterThan(0);
+  expect(q4.sizeBytes).toBe(6_790_000_000 + encoders);
+});

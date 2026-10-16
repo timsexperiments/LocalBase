@@ -200,10 +200,15 @@ export type ImageRuntimeProfile = z.infer<typeof imageRuntimeProfileSchema>;
 /**
  * sd-server launch options for image models. `diffusionFlashAttention`
  * passes `--diffusion-fa`; enable it only for families validated on the
- * pinned sd-server (docs/memory-calibration.md).
+ * pinned sd-server (docs/memory-calibration.md). `prediction` passes
+ * `--prediction` for checkpoints whose parameterization sd-server cannot
+ * infer, such as SD 2.x 768-v and SDXL v-prediction finetunes.
  */
 const imageLaunchOptionsSchema = z
-  .object({ diffusionFlashAttention: z.boolean() })
+  .object({
+    diffusionFlashAttention: z.boolean(),
+    prediction: z.enum(["eps", "v"]).optional(),
+  })
   .strict();
 
 export type ImageLaunchOptions = z.infer<typeof imageLaunchOptionsSchema>;

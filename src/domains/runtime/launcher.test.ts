@@ -267,6 +267,39 @@ test.each([true, false])(
   },
 );
 
+test("passes --prediction v for v-prediction checkpoints", () => {
+  const spec = byId("dreamshaper-v8");
+  if (!spec) throw new Error("Missing SD1.5 fixture");
+  const plan = resolveImageLaunchPlan({
+    runtimeId: "image:sd-two-one",
+    root: "/localbase",
+    modelsDirectory: "/models/image",
+    modelId: "sd-two-one",
+    modelFile: "v2-1_768-ema-pruned.safetensors",
+    host: "127.0.0.1",
+    port: 8083,
+    model: {
+      ...spec,
+      imageLaunchOptions: { diffusionFlashAttention: false, prediction: "v" },
+    },
+    artifactBytes: 1,
+  });
+  expect(plan.launchOptions).toEqual({
+    diffusionFlashAttention: false,
+    prediction: "v",
+  });
+  const args = buildSdImageServerArgs(plan);
+  expect(
+    args.slice(args.indexOf("--prediction"), args.indexOf("--prediction") + 2),
+  ).toEqual(["--prediction", "v"]);
+  expect(
+    buildSdImageServerArgs({
+      ...plan,
+      launchOptions: { diffusionFlashAttention: false },
+    }),
+  ).not.toContain("--prediction");
+});
+
 test("image plans without a catalog spec launch without --diffusion-fa", () => {
   const plan = resolveImageLaunchPlan({
     runtimeId: "image:custom",

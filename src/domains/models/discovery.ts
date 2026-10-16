@@ -222,7 +222,7 @@ function previewFor(
     }
     choices.push({
       path: file.path,
-      sizeBytes: entry.weights.reduce((sum, weight) => sum + weight.size, 0),
+      sizeBytes: downloadBytes(entry),
       quant: quantOf(file.path),
       modelId: entry.modelId,
       existing: catalogOwner(entry.modelId),
@@ -246,6 +246,19 @@ function previewFor(
     choices,
     defaultPath: picked?.path ?? null,
   };
+}
+
+/** Every file the entry downloads, including shared pipeline encoders. */
+function downloadBytes(entry: GeneratedEntry): number {
+  const weights = entry.weights.reduce((sum, weight) => sum + weight.size, 0);
+  const artifacts = (entry.spec.artifacts ?? []) as ReadonlyArray<{
+    expectedSizeBytes?: number;
+  }>;
+  const pinned = artifacts.reduce(
+    (sum, artifact) => sum + (artifact.expectedSizeBytes ?? 0),
+    0,
+  );
+  return Math.max(weights, pinned);
 }
 
 async function mapLimited<T, R>(

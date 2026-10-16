@@ -93,6 +93,8 @@ test("disables the idle timeout only for long-running inference routes", () => {
     `/v1/videos/${videoId}/content`,
     "/app/api/v1/chat/completions",
     "/app/api/v1/images/generations",
+    "/_localbase/model-discovery",
+    "/app/api/_localbase/model-discovery",
   ])
     expect(gatewayRequestDisablesIdleTimeout(pathname)).toBe(true);
   for (const pathname of [
@@ -101,6 +103,7 @@ test("disables the idle timeout only for long-running inference routes", () => {
     "/v1/models",
     "/_localbase/models",
     "/_localbase/api-keys",
+    "/_localbase/model-management",
     `/v1/videos/${videoId}`,
     `/v1/videos/${videoId}/cancel`,
     "/app/session",

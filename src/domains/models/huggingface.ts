@@ -95,6 +95,11 @@ const modelInfoSchema = z
       .passthrough()
       .optional(),
     siblings: z.array(siblingSchema).default([]),
+    /**
+     * Set by LocalBase, not the Hub: the `prediction_type` a diffusers
+     * repository declares in `scheduler/scheduler_config.json`.
+     */
+    schedulerPrediction: z.enum(["eps", "v"]).optional(),
   })
   .passthrough();
 export type HubModelInfo = z.infer<typeof modelInfoSchema>;
@@ -225,7 +230,42 @@ export async function fetchModelInfo(
       `Hugging Face returned model information for ${repoId} that LocalBase does not understand.`,
     );
   }
-  return parsed.data;
+  const info = parsed.data;
+  const prediction = await schedulerPrediction(options, info);
+  return prediction ? { ...info, schedulerPrediction: prediction } : info;
+}
+
+const SCHEDULER_CONFIG = "scheduler/scheduler_config.json";
+
+/**
+ * Reads the prediction type an image repository's diffusers scheduler
+ * declares, so a single-file checkpoint shipped beside it launches with
+ * the right parameterization. Best effort: a missing or unreadable
+ * config leaves the name and tag checks to decide.
+ */
+async function schedulerPrediction(
+  options: HubClientOptions,
+  info: HubModelInfo,
+): Promise<"eps" | "v" | null> {
+  if (!info.siblings.some((file) => file.rfilename === SCHEDULER_CONFIG))
+    return null;
+  const likely = likelyKind(info.pipeline_tag, info.tags, {
+    repo: info.id,
+    library: info.library_name ?? null,
+  });
+  if (likely.kind !== "image" || likely.pipeline) return null;
+  try {
+    const { body } = await hubJson(
+      options,
+      `${HF_ENDPOINT}/${info.id}/resolve/${info.sha}/${SCHEDULER_CONFIG}`,
+      `read the scheduler config of ${info.id}`,
+    );
+    const type = (body as { prediction_type?: unknown } | null)
+      ?.prediction_type;
+    return type === "v_prediction" ? "v" : type === "epsilon" ? "eps" : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +332,11 @@ export type LikelyKind = Readonly<{
   /** What LocalBase would run it as, or null when it cannot. */
   kind: AddableKind | null;
   label: string;
+  /**
+   * For multi-file image pipelines: the LocalBase runtime profile whose
+   * text encoders and VAE the entry reuses.
+   */
+  pipeline?: ImagePipelineId;
 }>;
 
 /** Libraries whose speech weights whisper.cpp cannot load. */
@@ -310,13 +355,134 @@ const NON_GGML_SPEECH_LIBRARIES = new Set([
 ]);
 
 /**
- * Image pipelines sd-server can only run with several separately mapped
- * files (diffusion model, text encoders, VAE) or not at all. LocalBase's
- * reference entries cover some of them; `models add` writes single-file
- * checkpoints only.
+ * Multi-file image pipelines LocalBase can run: sd-server loads the
+ * repository's diffusion model with the text encoders and VAE of the
+ * matching built-in entry, pinned at that entry's revisions.
  */
-const MULTI_FILE_IMAGE =
-  /flux|sd-?3|stable-diffusion-3|qwen[-_]?image|(^|[^a-z])wan[-_]?\d|hunyuan|lumina|z[-_]?image|kolors|pixart|sana|hidream|cogview|auraflow|chroma|omnigen|krea|minimax|video/i;
+export const IMAGE_PIPELINES = {
+  flux1: {
+    label: "FLUX.1",
+    template: "flux1-schnell-q4_0",
+    family: "FLUX.1",
+    size: "12B",
+  },
+  "z-image-turbo": {
+    label: "Z-Image-Turbo",
+    template: "z-image-turbo-q4_0",
+    family: "Z-Image",
+    size: "6B",
+  },
+  "flux2-klein-4b": {
+    label: "FLUX.2 klein 4B",
+    template: "flux2-klein-4b-q4_0",
+    family: "FLUX.2-klein",
+    size: "4B",
+  },
+  "flux2-klein-9b": {
+    label: "FLUX.2 klein 9B",
+    template: "flux2-klein-9b-q4_0",
+    family: "FLUX.2-klein",
+    size: "9B",
+  },
+} as const;
+export type ImagePipelineId = keyof typeof IMAGE_PIPELINES;
+
+type PipelineMatch =
+  Readonly<{ pipeline: ImagePipelineId }> | Readonly<{ unsupported: string }>;
+
+/**
+ * Image architectures sd-server needs separately mapped files for, in
+ * match order: the families LocalBase has a runtime profile for, then the
+ * ones it cannot launch yet with the reason.
+ */
+const PIPELINE_RULES: readonly (readonly [RegExp, PipelineMatch])[] = [
+  [
+    /flux[-_.]?1[^ ]*?(kontext|fill|redux|canny|depth)/i,
+    {
+      unsupported:
+        "FLUX.1 editing pipeline (Kontext, Fill, Redux, Canny and Depth need image conditioning LocalBase has no profile for)",
+    },
+  ],
+  [/flux[-_.]?1/i, { pipeline: "flux1" }],
+  [
+    /flux[-_.]?2[-_.]?klein[^ ]*?base/i,
+    {
+      unsupported:
+        "FLUX.2 klein base (undistilled; LocalBase profiles the distilled four-step klein models)",
+    },
+  ],
+  [/flux[-_.]?2[-_.]?klein[-_.]?4b/i, { pipeline: "flux2-klein-4b" }],
+  [/flux[-_.]?2[-_.]?klein[-_.]?9b/i, { pipeline: "flux2-klein-9b" }],
+  [
+    /flux[-_.]?2/i,
+    {
+      unsupported:
+        "FLUX.2 dev (needs a Mistral text encoder LocalBase has no runtime profile for)",
+    },
+  ],
+  [/z[-_]?image[-_]?turbo/i, { pipeline: "z-image-turbo" }],
+  [
+    /z[-_]?image/i,
+    {
+      unsupported:
+        "Z-Image base or edit model (LocalBase profiles Z-Image-Turbo only)",
+    },
+  ],
+  [
+    /(^|[^a-z])wan[-_]?\d|video|ltx|mochi|cogvideo|hunyuan[-_]?video/i,
+    {
+      unsupported:
+        "video model (LocalBase adds video models from its measured catalog only)",
+    },
+  ],
+  [
+    /sd-?3|stable-diffusion-3/i,
+    {
+      unsupported:
+        "Stable Diffusion 3 (needs CLIP-G, CLIP-L and T5 encoders; LocalBase has no SD3 runtime profile yet)",
+    },
+  ],
+  [
+    /qwen[-_]?image/i,
+    {
+      unsupported:
+        "Qwen-Image (needs a Qwen2.5-VL encoder; LocalBase has no Qwen-Image runtime profile yet)",
+    },
+  ],
+  [
+    /hunyuan|lumina|kolors|pixart|sana|hidream|cogview|auraflow|chroma|omnigen|minimax|ovis/i,
+    {
+      unsupported:
+        "multi-file image pipeline LocalBase has no runtime profile for",
+    },
+  ],
+];
+
+/** The repository name and the base models its tags name. */
+function lineage(repo: string, tags: readonly string[]): string {
+  return [
+    repo,
+    ...tags.flatMap((tag) => {
+      const match = /^base_model:(?:[a-z]+:)?(.+)$/i.exec(tag);
+      return match ? [match[1]!] : [];
+    }),
+  ].join(" ");
+}
+
+/** The multi-file pipeline a repository's name or base model belongs to. */
+export function imagePipelineFor(
+  repo: string,
+  tags: readonly string[],
+): PipelineMatch | null {
+  // The repository name wins over its base model: a FLUX.1 Kontext
+  // finetune of FLUX.1-dev is still an editing model.
+  for (const text of [repo, lineage(repo, tags)]) {
+    for (const [pattern, match] of PIPELINE_RULES) {
+      if (pattern.test(text)) return match;
+    }
+  }
+  return null;
+}
 
 export type KindContext = Readonly<{
   repo?: string;
@@ -358,9 +524,23 @@ export function likelyKind(
       kind: null,
       label: "text to speech (not supported by models add)",
     };
+  const imagePipelineTag =
+    pipelineTag === "text-to-image" || pipelineTag === "image-to-image";
+  const pipeline =
+    imagePipelineTag || !pipelineTag ? imagePipelineFor(repo, tags) : null;
+  // Untagged repositories count as images only when the library or a
+  // known pipeline family says so; untagged GGUF is usually a language
+  // model.
   const imageLike =
     pipelineTag === "text-to-image" ||
-    (!pipelineTag && library === "diffusion-single-file");
+    (pipelineTag === "image-to-image" && pipeline !== null) ||
+    (!pipelineTag &&
+      (library === "diffusion-single-file" ||
+        (pipeline !== null &&
+          (library === null ||
+            library === "gguf" ||
+            library === "diffusers" ||
+            library === "ggml"))));
   if (imageLike) {
     if (
       library === "peft" ||
@@ -373,10 +553,13 @@ export function likelyKind(
         kind: null,
         label: `image (${library ?? "coreml"} weights; sd.cpp needs a checkpoint file)`,
       };
-    if (MULTI_FILE_IMAGE.test(repo))
+    if (pipeline && "unsupported" in pipeline)
+      return { kind: null, label: `image: ${pipeline.unsupported}` };
+    if (pipeline)
       return {
-        kind: null,
-        label: "image (multi-file pipeline; not supported by models add)",
+        kind: "image",
+        label: `image (${IMAGE_PIPELINES[pipeline.pipeline].label} pipeline)`,
+        pipeline: pipeline.pipeline,
       };
     return { kind: "image", label: "image" };
   }
@@ -418,41 +601,88 @@ const SEARCH_FIELDS = [
 /**
  * Searches the Hub, most downloaded first. Language models are limited to
  * GGUF repositories (the only files llama.cpp runs), speech to recognition
- * repositories and images to text-to-image ones.
+ * repositories and images to text-to-image ones, plus image-to-image and
+ * GGUF repositories of a diffusion pipeline LocalBase can launch (FLUX.2
+ * klein GGUF releases are tagged image-to-image or not tagged at all).
  */
 export async function searchHub(
   options: HubClientOptions & Readonly<{ limit?: number; kind?: AddableKind }>,
   query: string,
 ): Promise<Readonly<{ hits: HubSearchHit[]; cached: boolean }>> {
   const kind = options.kind ?? "llm";
+  const limit = options.limit ?? 20;
   const words = query.split(/\s+/).filter(Boolean);
   const text = (
     kind === "llm"
       ? words.filter((word) => word.toLowerCase() !== "gguf")
       : words
   ).join(" ");
+  const search = text || (kind === "stt" ? "whisper" : "");
+  const filters: Record<string, string>[] =
+    kind === "llm"
+      ? [{ filter: "gguf" }]
+      : kind === "stt"
+        ? [{ pipeline_tag: "automatic-speech-recognition" }]
+        : [
+            { pipeline_tag: "text-to-image" },
+            { pipeline_tag: "image-to-image" },
+            ...(search ? [{ filter: "gguf" }] : []),
+          ];
+  const pages = await Promise.all(
+    filters.map((filter, index) =>
+      searchPage(options, { ...filter, limit, search }, index > 0),
+    ),
+  );
+  const seen = new Set<string>();
+  const hits = pages
+    .flatMap(({ hits: page }, index) =>
+      // Extra image searches only add repositories of a launchable pipeline.
+      index === 0 ? page : page.filter((hit) => hit.likely.pipeline),
+    )
+    .filter((hit) => !seen.has(hit.repo) && seen.add(hit.repo));
+  if (pages.length > 1) hits.sort((a, b) => b.downloads - a.downloads);
+  return {
+    cached: pages.every(({ cached }) => cached),
+    hits: hits.slice(0, limit),
+  };
+}
+
+async function searchPage(
+  options: HubClientOptions,
+  query: Readonly<{
+    limit: number;
+    search: string;
+    filter?: string;
+    pipeline_tag?: string;
+  }>,
+  optional: boolean,
+): Promise<Readonly<{ hits: HubSearchHit[]; cached: boolean }>> {
   const params = new URLSearchParams({
     sort: "downloads",
     direction: "-1",
-    limit: String(options.limit ?? 20),
+    limit: String(query.limit),
   });
-  if (kind === "llm") params.set("filter", "gguf");
-  if (kind === "stt")
-    params.set("pipeline_tag", "automatic-speech-recognition");
-  if (kind === "image") params.set("pipeline_tag", "text-to-image");
-  const search = text || (kind === "stt" ? "whisper" : "");
-  if (search) params.set("search", search);
+  if (query.filter) params.set("filter", query.filter);
+  if (query.pipeline_tag) params.set("pipeline_tag", query.pipeline_tag);
+  if (query.search) params.set("search", query.search);
   for (const field of SEARCH_FIELDS) params.append("expand[]", field);
   const url = `${HF_ENDPOINT}/api/models?${params}`;
-  const { body, cached } = await hubJson(options, url, "search models");
-  const parsed = z.array(searchHitSchema).safeParse(body);
+  let response: Awaited<ReturnType<typeof hubJson>>;
+  try {
+    response = await hubJson(options, url, "search models");
+  } catch (error) {
+    if (optional) return { hits: [], cached: true };
+    throw error;
+  }
+  const parsed = z.array(searchHitSchema).safeParse(response.body);
   if (!parsed.success) {
+    if (optional) return { hits: [], cached: true };
     throw new HubError(
       "Hugging Face returned search results LocalBase does not understand.",
     );
   }
   return {
-    cached,
+    cached: response.cached,
     hits: parsed.data.map((hit) => ({
       repo: hit.id,
       downloads: hit.downloads,
@@ -572,6 +802,30 @@ function imageChoices(files: readonly HubFile[]): HubFile[] {
   });
 }
 
+/**
+ * Diffusion-model files of a multi-file pipeline: GGUF or safetensors at
+ * the root or in a ComfyUI `diffusion_models` folder. Encoders and VAEs
+ * come from the LocalBase profile, and the FP4, INT8 and scaled-FP8
+ * formats some repositories ship are ones sd.cpp cannot read.
+ */
+function pipelineChoices(files: readonly HubFile[]): HubFile[] {
+  return files.filter((file) => {
+    const name = basename(file.path);
+    return (
+      (!file.path.includes("/") ||
+        /^(split_files\/)?diffusion_models\/[^/]+$/.test(file.path)) &&
+      /\.(safetensors|gguf)$/i.test(name) &&
+      file.size >= MIN_IMAGE_CHECKPOINT_BYTES &&
+      !/vae|(^|[-_.])ae[-_.]|lora|text[-_]?encoder|clip|t5|qwen|mmproj|nvfp4|mxfp4|fp4|int8|int4|convrot|scaled|svdq|nunchaku/i.test(
+        name,
+      )
+    );
+  });
+}
+
+/** Quantizations the measured pipeline profiles use, smallest first. */
+const PREFERRED_PIPELINE_QUANTS = ["Q4_0", "Q4_K", "Q4_K_S", "Q5_0", "Q8_0"];
+
 const bySize = (a: HubFile, b: HubFile) =>
   a.size - b.size || a.path.localeCompare(b.path);
 
@@ -615,8 +869,11 @@ const NO_FILES: Readonly<Record<AddableKind, string>> = {
   llm: 'has no GGUF weights LocalBase can download. LocalBase runs language models as GGUF files; look for a repository with "GGUF" in its name (try `local-base models search`).',
   stt: "has no whisper.cpp ggml-*.bin files. LocalBase runs speech recognition with whisper.cpp; try ggerganov/whisper.cpp or a repository with ggml files.",
   image:
-    "has no single-file Stable Diffusion checkpoint (.safetensors, .ckpt or .gguf at the repository root). Diffusers folders, LoRAs and multi-file pipelines are not supported by models add.",
+    "has no single-file Stable Diffusion checkpoint (.safetensors, .ckpt or .gguf at the repository root). LoRAs and multi-file pipelines outside FLUX.1, FLUX.2 klein and Z-Image-Turbo are not supported by models add.",
 };
+
+const NO_DIFFUSERS_FILES =
+  "is a diffusers folder layout (model_index.json with separate unet, text encoder and VAE folders), which sd.cpp cannot load. Look for a single-file .safetensors or GGUF release of the same model.";
 
 const NOUN: Readonly<Record<AddableKind, string>> = {
   llm: "GGUF",
@@ -629,6 +886,8 @@ export type EntryChoices = Readonly<{
   choices: readonly HubFile[];
   /** Picked when no file is named; null when the user must choose. */
   default: HubFile | null;
+  /** The multi-file image pipeline the files belong to, if any. */
+  pipeline: ImagePipelineId | null;
 }>;
 
 /**
@@ -642,24 +901,51 @@ export function entryChoices(info: HubModelInfo): EntryChoices {
   });
   if (likely.kind === null) {
     throw new HubError(
-      `${info.id} looks like ${likely.label}. models add supports GGUF language models, whisper.cpp speech models and single-file Stable Diffusion checkpoints.`,
+      `${info.id} looks like ${likely.label}. models add supports GGUF language models, whisper.cpp speech models, single-file Stable Diffusion checkpoints and FLUX.1, FLUX.2 klein and Z-Image-Turbo diffusion models.`,
     );
   }
   const files = lfsFiles(info);
+  const pipeline = likely.pipeline ?? null;
   const choices =
     likely.kind === "llm"
       ? llmChoices(files)
       : likely.kind === "stt"
         ? sttChoices(files)
-        : imageChoices(files);
+        : pipeline
+          ? pipelineChoices(files)
+          : imageChoices(files);
   if (choices.length === 0) {
-    throw new HubError(`${info.id} ${NO_FILES[likely.kind]}`);
+    const diffusers =
+      likely.kind === "image" &&
+      info.siblings.some((file) => file.rfilename === "model_index.json");
+    throw new HubError(
+      `${info.id} ${
+        pipeline
+          ? `has no ${IMAGE_PIPELINES[pipeline].label} diffusion model file sd.cpp can load (GGUF or BF16/FP16/FP8 safetensors at the root or in diffusion_models/).`
+          : diffusers
+            ? NO_DIFFUSERS_FILES
+            : NO_FILES[likely.kind]
+      }`,
+    );
   }
   return {
     kind: likely.kind,
     choices,
-    default: defaultChoice(likely.kind, choices),
+    default: pipeline
+      ? pipelineDefault(choices)
+      : defaultChoice(likely.kind, choices),
+    pipeline,
   };
+}
+
+/** A pipeline's default: the measured GGUF quant, else the smallest file. */
+function pipelineDefault(choices: readonly HubFile[]): HubFile | null {
+  const sorted = [...choices].sort(bySize);
+  for (const quant of PREFERRED_PIPELINE_QUANTS) {
+    const match = sorted.find((file) => quantOf(file.path) === quant);
+    if (match) return match;
+  }
+  return sorted[0] ?? null;
 }
 
 function selectFile(
@@ -762,11 +1048,17 @@ function sizeOf(name: string): string {
 
 const WHISPER_SIZE = /(tiny|base|small|medium|large(?:-v\d)?(?:-turbo)?)/i;
 
-/** Filenames other catalog models already install, to avoid collisions. */
-function takenFilenames(modelId: string): Set<string> {
-  return new Set(
+/**
+ * Filenames other catalog models already install, with their checksums, to
+ * avoid collisions. A file with the same name and checksum is the same bytes
+ * and is shared instead of downloaded twice.
+ */
+function takenFilenames(modelId: string): Map<string, string> {
+  return new Map(
     CATALOG.filter((model) => model.modelId !== modelId).flatMap((model) =>
-      model.artifacts.map(({ filename }) => filename),
+      model.artifacts.map(
+        ({ filename, sha256 }) => [filename, sha256 ?? ""] as const,
+      ),
     ),
   );
 }
@@ -816,10 +1108,14 @@ export function generateEntry(
   const filenameFor = (file: HubFile, sharded: boolean) => {
     const name = basename(file.path);
     // Shard names must stay intact; llama.cpp finds the parts by name.
-    return taken.has(name) && !sharded ? `${modelId}-${name}` : name;
+    const owner = taken.get(name);
+    return owner !== undefined && owner !== file.sha256 && !sharded
+      ? `${modelId}-${name}`
+      : name;
   };
   for (const file of weights) {
-    if (SHARD.test(file.path) && taken.has(basename(file.path))) {
+    const owner = taken.get(basename(file.path));
+    if (SHARD.test(file.path) && owner !== undefined && owner !== file.sha256) {
       throw new HubError(
         `${basename(file.path)} is already installed for another catalog model.`,
       );
@@ -882,14 +1178,23 @@ export function generateEntry(
     };
   }
 
+  if (kind === "image" && available.pipeline) {
+    return {
+      ...result,
+      ...pipelineEntry(available.pipeline, {
+        common,
+        primary,
+        first,
+        repoName,
+        stem,
+        storageGb,
+      }),
+    };
+  }
+
   if (kind === "image") {
-    const quant =
-      quantOf(first.path) ??
-      (/(^|[-_.])fp16($|[-_.])/i.test(stem)
-        ? "F16"
-        : /(^|[-_.])fp32($|[-_.])/i.test(stem)
-          ? "F32"
-          : "unknown");
+    const quant = imageQuant(first.path, stem);
+    const prediction = vPrediction(info, stem);
     return {
       ...result,
       projector: null,
@@ -909,8 +1214,16 @@ export function generateEntry(
         outputModalities: ["image"],
         // Off until LocalBase has measured the checkpoint; flash attention
         // is not safe for every architecture sd-server loads with -m.
-        imageLaunchOptions: { diffusionFlashAttention: false },
+        imageLaunchOptions: {
+          diffusionFlashAttention: false,
+          ...(prediction ? { prediction: "v" } : {}),
+        },
         capabilities: ["text-to-image", "image-to-image"],
+        ...(prediction
+          ? {
+              notes: `${common.notes} Launches with --prediction v because ${prediction}.`,
+            }
+          : {}),
       },
     };
   }
@@ -1050,5 +1363,114 @@ export async function checkHubToken(
     state: "valid",
     name: parsed.data.name ?? null,
     role: parsed.data.auth?.accessToken?.role ?? null,
+  };
+}
+
+function imageQuant(path: string, stem: string): string {
+  return (
+    quantOf(path) ??
+    (/(^|[-_.])bf16($|[-_.])/i.test(stem)
+      ? "BF16"
+      : /(^|[-_.])fp16($|[-_.])/i.test(stem)
+        ? "F16"
+        : /(^|[-_.])fp8/i.test(stem)
+          ? "FP8"
+          : /(^|[-_.])fp32($|[-_.])/i.test(stem)
+            ? "F32"
+            : "unknown")
+  );
+}
+
+const V_PRED_NAME = /v[-_]?pred|768[-_]v(?![a-z0-9])|v2[-_.]?1[-_]768/i;
+
+/**
+ * Why a single-file checkpoint needs `--prediction v`, or null for an
+ * ordinary epsilon model. Names and tags win over the scheduler config:
+ * several v-pred SDXL fine-tunes ship a stale epsilon scheduler_config.json.
+ */
+export function vPrediction(info: HubModelInfo, stem = ""): string | null {
+  if (V_PRED_NAME.test(info.id) || V_PRED_NAME.test(stem)) {
+    return "the name marks a v-prediction checkpoint";
+  }
+  if (info.tags.some((tag) => /^v[-_]?pred(iction)?$/i.test(tag))) {
+    return "the repository is tagged v-prediction";
+  }
+  if (info.schedulerPrediction === "v") {
+    return "scheduler_config.json sets prediction_type v_prediction";
+  }
+  return null;
+}
+
+/**
+ * A catalog entry for a FLUX.1, FLUX.2 klein or Z-Image-Turbo diffusion model
+ * file: the chosen file replaces the measured built-in's diffusion model and
+ * the built-in's pinned VAE and text encoders come along unchanged.
+ */
+function pipelineEntry(
+  pipeline: ImagePipelineId,
+  input: Readonly<{
+    common: Readonly<{ notes: string }> & Record<string, unknown>;
+    primary: Readonly<{ filename: string }> & Record<string, unknown>;
+    first: HubFile;
+    repoName: string;
+    stem: string;
+    storageGb: (bytes: number) => number;
+  }>,
+): Pick<GeneratedEntry, "spec" | "projector" | "detected" | "contextLength"> {
+  const profile = IMAGE_PIPELINES[pipeline];
+  const template = CATALOG.find(({ modelId }) => modelId === profile.template);
+  const runtime = template?.imageRuntime;
+  if (!template || !runtime || runtime.kind === "checkpoint") {
+    throw new HubError(
+      `The ${profile.label} pipeline profile (${profile.template}) is missing from this LocalBase build.`,
+    );
+  }
+  const supplementary = template.artifacts
+    .filter(({ role }) => role === "supplementary")
+    .map((artifact) => ({
+      ...artifact,
+      source: artifact.source ?? {
+        repositoryUrl: template.source,
+        revision: template.repositoryRevision,
+      },
+    }));
+  // FLUX.1 dev and other guidance-distilled FLUX.1 checkpoints need more
+  // than the four steps Schnell is distilled for.
+  const steps =
+    pipeline === "flux1" && !/schnell/i.test(`${input.repoName} ${input.stem}`)
+      ? 20
+      : runtime.generation.steps;
+  const totalBytes =
+    input.first.size +
+    supplementary.reduce((sum, file) => sum + (file.expectedSizeBytes ?? 0), 0);
+  return {
+    projector: null,
+    detected: [],
+    contextLength: null,
+    spec: {
+      ...input.common,
+      displayName: `${input.repoName} (${input.stem})`,
+      kind: "image",
+      family: profile.family,
+      size: profile.size,
+      quant: imageQuant(input.first.path, input.stem),
+      storageGb: input.storageGb(totalBytes),
+      artifacts: [input.primary, ...supplementary],
+      imageRuntime: {
+        ...runtime,
+        artifacts: {
+          ...runtime.artifacts,
+          diffusionModel: input.primary.filename,
+        },
+        generation: { ...runtime.generation, steps },
+      },
+      inputModalities: template.inputModalities,
+      outputModalities: template.outputModalities,
+      ...(template.imageLaunchOptions
+        ? { imageLaunchOptions: template.imageLaunchOptions }
+        : {}),
+      capabilities: template.capabilities.map(({ id }) => id),
+      notes: `${input.common.notes} ${profile.label} pipeline: the VAE and text encoders are the ones pinned by the ${template.modelId} profile.`,
+    },
   };
 }

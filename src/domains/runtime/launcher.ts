@@ -219,6 +219,9 @@ export function buildSdImageServerArgs(plan: ImageLaunchPlan): string[] {
   return [
     ...imageModelArgs(plan),
     ...(plan.launchOptions.diffusionFlashAttention ? ["--diffusion-fa"] : []),
+    ...(plan.launchOptions.prediction
+      ? ["--prediction", plan.launchOptions.prediction]
+      : []),
     "--listen-ip",
     plan.host,
     "--listen-port",

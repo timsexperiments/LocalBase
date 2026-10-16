@@ -231,12 +231,24 @@ const unboundedIdleRoutes: ReadonlySet<GatewayRoute> = new Set<GatewayRoute>([
   "embeddings",
 ]);
 
+/**
+ * Management paths without a typed route whose handlers wait on several
+ * sequential Hugging Face Hub requests (each bounded by its own timeout)
+ * before writing anything, so a slow Hub must not trip the idle reset.
+ */
+const unboundedIdlePaths: ReadonlySet<string> = new Set([
+  "/_localbase/model-discovery",
+]);
+
 /** Whether a gateway request should disable the per-connection idle timeout. */
 export function gatewayRequestDisablesIdleTimeout(pathname: string): boolean {
   const apiPath = pathname.startsWith(`${uiApiPrefix}/`)
     ? pathname.slice(uiApiPrefix.length)
     : pathname;
-  return unboundedIdleRoutes.has(selectGatewayRoute(apiPath));
+  return (
+    unboundedIdleRoutes.has(selectGatewayRoute(apiPath)) ||
+    unboundedIdlePaths.has(apiPath)
+  );
 }
 
 /**
