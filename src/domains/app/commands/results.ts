@@ -157,7 +157,7 @@ export const diagnosticsResultSchema = z
   .strict();
 export const smokeStepSchema = z
   .object({
-    name: z.enum(["health", "chat", "switch", "switch-back"]),
+    name: z.enum(["health", "chat", "decision", "switch", "switch-back"]),
     model: z.string().min(1).nullable(),
     ok: z.boolean(),
     durationMs: z.number().int().nonnegative(),
