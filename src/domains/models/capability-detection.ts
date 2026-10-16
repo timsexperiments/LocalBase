@@ -249,7 +249,15 @@ export function ggufCapabilities(
   if (header.expertCount !== null)
     evidence.push(`gguf: ${header.expertCount} experts`);
 
-  if (model.llmRuntime?.capability === "embedding-only") {
+  if (header.decisionType !== null) {
+    // Decision models answer typed questions; their `systemone` template is
+    // not a chat template.
+    capabilities.decision = true;
+    evidence.push(`gguf: decision type ${header.decisionType}`);
+  } else if (model.llmRuntime?.capability === "decision-only") {
+    // Declared decision-only but the header carries no decision heads.
+    capabilities.decision = false;
+  } else if (model.llmRuntime?.capability === "embedding-only") {
     // Embedding templates often copy the chat template; they never chat.
     if (header.poolingType !== null) {
       capabilities.embeddings = true;

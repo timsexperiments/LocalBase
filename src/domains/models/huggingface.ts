@@ -489,6 +489,24 @@ export type KindContext = Readonly<{
   library?: string | null;
 }>;
 
+/**
+ * Hub tags that mark a System One decision model (Cloudflare Clef and its
+ * GGUF conversions). llama.cpp b11671 serves them as `clef` architecture.
+ */
+const DECISION_TAGS = new Set(["decision-model", "systemone"]);
+const DECISION_ARCHITECTURES = new Set(["clef"]);
+
+/** True when Hub tags or GGUF metadata mark a decision model. */
+export function isDecisionRepository(
+  tags: readonly string[],
+  ggufArchitecture?: string | null,
+): boolean {
+  return (
+    tags.some((tag) => DECISION_TAGS.has(tag.toLowerCase())) ||
+    (ggufArchitecture != null && DECISION_ARCHITECTURES.has(ggufArchitecture))
+  );
+}
+
 /** Classifies a repository from its pipeline tag, tags and library. */
 export function likelyKind(
   pipelineTag: string | undefined,
@@ -497,6 +515,13 @@ export function likelyKind(
 ): LikelyKind {
   const repo = context.repo ?? "";
   const library = context.library?.toLowerCase() ?? null;
+  if (
+    isDecisionRepository(tags) &&
+    (!pipelineTag ||
+      VISION_PIPELINES.has(pipelineTag) ||
+      TEXT_PIPELINES.has(pipelineTag))
+  )
+    return { kind: "llm", label: "decision" };
   if (pipelineTag && VISION_PIPELINES.has(pipelineTag))
     return { kind: "llm", label: "llm (vision)" };
   if (pipelineTag && TEXT_PIPELINES.has(pipelineTag))
@@ -1244,9 +1269,14 @@ export function generateEntry(
     : null;
   const family = repoName.replace(/[-_]?GGUF$/i, "") || repoName;
   const quant = quantOf(first.path) ?? "unknown";
+  const decision = isDecisionRepository(
+    info.tags,
+    info.gguf?.architecture ?? null,
+  );
   const vision =
     projector !== null &&
     (likely.label === "llm (vision)" ||
+      (decision && info.pipeline_tag === "image-text-to-text") ||
       info.tags.some(
         (tag) =>
           tag === "vision" ||
@@ -1255,10 +1285,13 @@ export function generateEntry(
       ));
   const coder = /coder|code/i.test(repo) || info.tags.includes("code");
   const template = info.gguf?.chat_template;
-  const opinions = template ? analyzeChatTemplate(template) : {};
-  const detected = (Object.entries(opinions) as [Capability, boolean][])
-    .filter(([, value]) => value)
-    .map(([id]) => id);
+  // A decision model's template drives typed questions, not chat.
+  const opinions = template && !decision ? analyzeChatTemplate(template) : {};
+  const detected: Capability[] = decision
+    ? ["decision"]
+    : (Object.entries(opinions) as [Capability, boolean][])
+        .filter(([, value]) => value)
+        .map(([id]) => id);
   const contextLength = info.gguf?.context_length ?? null;
   const totalBytes = totalWeightBytes + (vision ? projector!.size : 0);
   const sharded = weights.length > 1;
@@ -1294,7 +1327,17 @@ export function generateEntry(
     inputModalities: vision ? ["text", "image"] : ["text"],
     outputModalities: ["text"],
     contextWindowTokens: contextLength,
-    capabilities: ["text-generation", ...(coder ? ["code-generation"] : [])],
+    ...(decision
+      ? {
+          llmRuntime: { capability: "decision-only" },
+          capabilities: ["decision"],
+        }
+      : {
+          capabilities: [
+            "text-generation",
+            ...(coder ? ["code-generation"] : []),
+          ],
+        }),
   };
   return {
     ...result,

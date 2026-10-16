@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DatabaseSession } from "../../db/client";
 import {
   createRuntimeCapabilityStore,
+  parseLlamaServerDecision,
   parseLlamaServerProps,
   probeLlamaServerCapabilities,
   type RuntimeCapabilityRecord,
@@ -139,5 +140,63 @@ describe("probeLlamaServerCapabilities", () => {
     });
     expect(result).toBeNull();
     expect(capabilities.read("qwen", "d".repeat(64))).toBeNull();
+  });
+});
+
+describe("decision models", () => {
+  test("parseLlamaServerDecision reads /v1/models output modalities", () => {
+    expect(
+      parseLlamaServerDecision({
+        data: [{ id: "m", architecture: { output_modalities: ["decisions"] } }],
+      }),
+    ).toBe(true);
+    expect(
+      parseLlamaServerDecision({
+        data: [{ id: "m", architecture: { output_modalities: ["text"] } }],
+      }),
+    ).toBe(false);
+    expect(parseLlamaServerDecision({ data: [{ id: "m" }] })).toBeNull();
+    expect(parseLlamaServerDecision("nope")).toBeNull();
+  });
+
+  test("decision props report no chat capabilities", () => {
+    expect(
+      parseLlamaServerProps(
+        {
+          chat_template: "<think>",
+          chat_template_caps: { supports_tool_calls: true },
+        },
+        { embedding: false, decision: true },
+      )?.capabilities,
+    ).toEqual({});
+  });
+
+  test("the probe records decisions from /v1/models", async () => {
+    const capabilities = store();
+    const urls: string[] = [];
+    const result = await probeLlamaServerCapabilities({
+      baseUrl: "http://127.0.0.1:24999",
+      modelId: "clef",
+      artifactSha256: "e".repeat(64),
+      embedding: false,
+      decision: true,
+      store: capabilities,
+      fetch: async (url) => {
+        urls.push(url);
+        return url.endsWith("/props")
+          ? Response.json({ build_info: "b11671" })
+          : Response.json({
+              data: [{ architecture: { output_modalities: ["decisions"] } }],
+            });
+      },
+    });
+    expect(urls).toEqual([
+      "http://127.0.0.1:24999/props",
+      "http://127.0.0.1:24999/v1/models",
+    ]);
+    expect(result?.capabilities).toEqual({ decision: true });
+    expect(capabilities.read("clef", "e".repeat(64))?.capabilities).toEqual({
+      decision: true,
+    });
   });
 });

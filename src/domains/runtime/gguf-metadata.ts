@@ -106,6 +106,12 @@ export type LlmKvGeometry = {
   /** FP32 conv/ssm state held per slot by hybrid recurrent layers. */
   readonly recurrentBytesPerSlot: number;
   readonly contextLength: number | null;
+  /**
+   * `{arch}.decision.type` of a decision model (llama.cpp b11671 `clef`).
+   * Decision servers allocate no KV cache or recurrent state, so the KV and
+   * recurrent counts are zero.
+   */
+  readonly decisionType?: string;
 };
 
 type GgufValue = number | bigint | boolean | string | number[] | null;
@@ -308,6 +314,7 @@ const KEPT_SUFFIXES = [
   ".ssm.inner_size",
   ".ssm.state_size",
   ".ssm.group_count",
+  ".decision.type",
 ];
 
 function keepKey(key: string): boolean {
@@ -623,6 +630,12 @@ export function kvGeometryFromMetadata(
   if (anySwa) dims.push(swaKeyLength, swaValueLength);
   if (mla) dims.push(keyLengthMla, valueLengthMla);
   const q8Compatible = dims.every((dim) => dim % Q8_0_BLOCK_SIZE === 0);
+  const decisionType = decisionTypeFromMetadata(values);
+  if (decisionType) {
+    fullKvHeads = 0;
+    swaKvHeads = 0;
+    recurrentBytesPerSlot = 0;
+  }
 
   return Object.freeze({
     architecture,
@@ -637,7 +650,20 @@ export function kvGeometryFromMetadata(
     q8Compatible,
     recurrentBytesPerSlot,
     contextLength: bounded(get("context_length"), MAX_TOKENS),
+    ...(decisionType ? { decisionType } : {}),
   });
+}
+
+/** The decision head type a decision GGUF declares, or null for other models. */
+export function decisionTypeFromMetadata(
+  values: Map<string, GgufValue>,
+): string | null {
+  const architecture = values.get("general.architecture");
+  if (typeof architecture !== "string" || !architecture) return null;
+  const value = values.get(`${architecture}.decision.type`);
+  return typeof value === "string" && /^[a-z0-9_-]{1,32}$/.test(value)
+    ? value
+    : null;
 }
 
 /** Reads the GGUF training context independently of whether KV geometry is known. */
@@ -691,6 +717,8 @@ export interface GgufCapabilityHeader {
   readonly expertCount: number | null;
   /** The default template and any named variants (e.g. `.tool_use`), joined. */
   readonly chatTemplate: string | null;
+  /** `{arch}.decision.type`; decision models answer typed questions only. */
+  readonly decisionType: string | null;
   /** Projector (`clip`) encoder flags. */
   readonly hasVisionEncoder: boolean;
   readonly hasAudioEncoder: boolean;
@@ -704,6 +732,7 @@ function capabilityKey(key: string): boolean {
     key.endsWith(".context_length") ||
     key.endsWith(".pooling_type") ||
     key.endsWith(".expert_count") ||
+    key.endsWith(".decision.type") ||
     key === "clip.has_vision_encoder" ||
     key === "clip.has_audio_encoder"
   );
@@ -750,6 +779,7 @@ export function capabilityHeaderFromMetadata(
         ? experts
         : null,
     chatTemplate: templates.length > 0 ? templates.join("\n") : null,
+    decisionType: decisionTypeFromMetadata(values),
     hasVisionEncoder: values.get("clip.has_vision_encoder") === true,
     hasAudioEncoder: values.get("clip.has_audio_encoder") === true,
   };

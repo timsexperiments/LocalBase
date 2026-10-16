@@ -489,3 +489,32 @@ describe("measured demand", () => {
     }
   });
 });
+
+describe("estimateLlmMemory for decision models", () => {
+  const weightsBytes = 6 * gibibyte;
+  const shape = resolveLlmShape({ weightsBytes, size: "9B", geometry });
+  const base = {
+    weightsBytes,
+    shape,
+    ctxTokens: 8192,
+    slots: 1,
+    cacheTypeK: "q8_0",
+    cacheTypeV: "q8_0",
+    promptCacheBytes: 0,
+  } as const;
+
+  test("no KV cache; compute scales with the context micro-batch", () => {
+    const decision = estimateLlmMemory({ ...base, decision: true });
+    expect(decision.terms.kvCache).toBe(0);
+    // 8192 tokens x f32 x 16 live rows x n_embd, no vocabulary logits.
+    expect(decision.terms.compute).toBe(
+      8192 * 4 * 16 * shape.shape.embeddingLength,
+    );
+    const halfContext = estimateLlmMemory({
+      ...base,
+      ctxTokens: 4096,
+      decision: true,
+    });
+    expect(halfContext.terms.compute).toBe(decision.terms.compute! / 2);
+  });
+});

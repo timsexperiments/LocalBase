@@ -134,6 +134,44 @@ export type EmbeddingLlmRuntimeProfile = z.infer<
   typeof embeddingLlmRuntimeProfileSchema
 >;
 
+/**
+ * Decision models (System One style, for example Cloudflare Clef) answer typed
+ * questions about a state in one forward pass. llama.cpp serves them from
+ * `/v1/systemone` only: no chat, no KV cache, and the whole prompt must fit in
+ * one micro-batch.
+ */
+const decisionLlmRuntimeProfileSchema = z
+  .object({
+    capability: z.literal("decision-only"),
+  })
+  .strict();
+
+export type DecisionLlmRuntimeProfile = z.infer<
+  typeof decisionLlmRuntimeProfileSchema
+>;
+
+const llmRuntimeProfileSchema = z.discriminatedUnion("capability", [
+  embeddingLlmRuntimeProfileSchema,
+  decisionLlmRuntimeProfileSchema,
+]);
+export type LlmRuntimeProfile = z.infer<typeof llmRuntimeProfileSchema>;
+
+/** The embedding profile when the model is embedding-only, else null. */
+export function embeddingRuntimeProfile(
+  model: Readonly<{ llmRuntime?: LlmRuntimeProfile }> | null | undefined,
+): EmbeddingLlmRuntimeProfile | null {
+  return model?.llmRuntime?.capability === "embedding-only"
+    ? model.llmRuntime
+    : null;
+}
+
+/** True when the model is a decision-only model served from /v1/systemone. */
+export function isDecisionModel(
+  model: Readonly<{ llmRuntime?: LlmRuntimeProfile }> | null | undefined,
+): boolean {
+  return model?.llmRuntime?.capability === "decision-only";
+}
+
 const vaeDecoderSchema = z
   .object({
     kind: z.literal("vae"),
@@ -341,7 +379,7 @@ export const modelSpecObjectSchema = z
     source: repositoryUrlSchema,
     repositoryRevision: z.string().regex(/^[a-fA-F0-9]{40}$/),
     artifacts: z.array(modelArtifactSchema).min(1),
-    llmRuntime: embeddingLlmRuntimeProfileSchema.optional(),
+    llmRuntime: llmRuntimeProfileSchema.optional(),
     ttsRuntime: ttsRuntimeProfileSchema.optional(),
     imageRuntime: imageRuntimeProfileSchema.optional(),
     imageLaunchOptions: imageLaunchOptionsSchema.optional(),

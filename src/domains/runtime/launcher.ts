@@ -1,5 +1,8 @@
 import { delimiter, dirname, resolve } from "node:path";
-import type { ParallelAllocation } from "../config/parallel";
+import {
+  llamaContextPerSequence,
+  type ParallelAllocation,
+} from "../config/parallel";
 import { ensureBinary } from "../../manager/binaries";
 import { gibibyte, type MemoryTopology } from "./memory-safety";
 import { requireSdGpuContract, sdGpuArgs } from "./sd-gpu";
@@ -51,6 +54,7 @@ export function buildLlamaServerArgs(
     | "parallel"
     | "hardware"
     | "embedding"
+    | "decision"
     | "kvCache"
     | "promptCacheRamMib"
     | "projectorPath"
@@ -71,7 +75,15 @@ export function buildLlamaServerArgs(
   ];
   if (plan.projectorPath) args.push("--mmproj", plan.projectorPath);
 
-  if (plan.embedding) {
+  if (plan.decision) {
+    // llama.cpp evaluates a decision prompt in one micro-batch, so the batch
+    // must cover the context of a slot. It keeps no KV cache and rejects the
+    // prompt cache, and the model ships no default chat template.
+    const perSlot = String(
+      llamaContextPerSequence(plan.ctxSize, plan.parallel.slots),
+    );
+    args.push("-b", perSlot, "-ub", perSlot, "--flash-attn", "on");
+  } else if (plan.embedding) {
     args.push("--embedding", "--pooling", plan.embedding.pooling);
     if (process.platform === "darwin" && process.arch === "arm64") {
       args.push("--flash-attn", "auto");
@@ -90,7 +102,7 @@ export function buildLlamaServerArgs(
     "--cache-ram",
     String(plan.promptCacheRamMib),
   );
-  if (!plan.embedding) args.push("--cache-reuse", "256");
+  if (!plan.embedding && !plan.decision) args.push("--cache-reuse", "256");
 
   return { args, parallel: plan.parallel };
 }

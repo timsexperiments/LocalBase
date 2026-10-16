@@ -78,6 +78,7 @@ function supports(model: Model | undefined, kind: "text" | "image") {
   return (
     model?.catalog.kind === "llm" &&
     model.catalog.capabilities?.kind !== "embedding" &&
+    model.catalog.capabilities?.kind !== "decision" &&
     modelAcceptsInput(model, kind)
   );
 }

@@ -23,6 +23,7 @@ import {
   byId,
   CATALOG,
   calculateMaxSafeContextSize,
+  isDecisionModel,
   primaryArtifact,
   resolveCatalogInstallation,
   speechVoiceSchema,
@@ -3260,7 +3261,7 @@ export async function runServe(
           ),
       });
     },
-    onLlmReady: async ({ modelId, baseUrl, embedding }) => {
+    onLlmReady: async ({ modelId, baseUrl, embedding, decision }) => {
       const spec = byId(modelId);
       const artifactSha256 = spec ? runtimeCapabilityKey(spec) : null;
       if (!artifactSha256) return;
@@ -3269,6 +3270,7 @@ export async function runServe(
         modelId,
         artifactSha256,
         embedding,
+        decision,
         store: runtimeCapabilities,
       });
       if (record)
@@ -4571,7 +4573,9 @@ export async function runServe(
       }
       if (requestedModel?.llmRuntime) {
         return badRequest(
-          `Model '${requestedModel.modelId}' supports embeddings only.`,
+          requestedModel.llmRuntime.capability === "decision-only"
+            ? `Model '${requestedModel.modelId}' is a decision model. Send typed questions to POST /v1/systemone instead.`
+            : `Model '${requestedModel.modelId}' supports embeddings only.`,
         );
       }
       const preparedRequest = prepareChatCompletionRequest(
@@ -4728,7 +4732,15 @@ export async function runServe(
       const parsed = await parseJsonRequest(request, embeddingsRequestSchema);
       if (!parsed.success) return parsed.response;
       const requestedModel = byId(parsed.data.model);
-      const dimensions = requestedModel?.llmRuntime?.dimensions;
+      if (requestedModel && isDecisionModel(requestedModel)) {
+        return badRequest(
+          `Model '${requestedModel.modelId}' is a decision model. Send typed questions to POST /v1/systemone instead.`,
+        );
+      }
+      const dimensions =
+        requestedModel?.llmRuntime?.capability === "embedding-only"
+          ? requestedModel.llmRuntime.dimensions
+          : undefined;
       if (
         dimensions &&
         parsed.data.dimensions !== undefined &&
@@ -4737,8 +4749,8 @@ export async function runServe(
       ) {
         return badRequest(
           dimensions.minimum === dimensions.maximum
-            ? `Model '${requestedModel.modelId}' supports ${dimensions.minimum} dimensions.`
-            : `Model '${requestedModel.modelId}' supports dimensions from ${dimensions.minimum} through ${dimensions.maximum}.`,
+            ? `Model '${parsed.data.model}' supports ${dimensions.minimum} dimensions.`
+            : `Model '${parsed.data.model}' supports dimensions from ${dimensions.minimum} through ${dimensions.maximum}.`,
         );
       }
       let selected;

@@ -244,6 +244,11 @@ local-base --non-interactive --json keys revoke key_ID
 Scope changes, rotation, and revocation apply to the next request without a
 restart. Provider and access-policy changes require a restart.
 
+Default inference keys include `inference:decision`, which grants
+`POST /v1/systemone` for decision models. Keys created before LocalBase added
+the scope, and keys created with explicit scopes, do not receive it; add it with
+`keys scopes`.
+
 Keys that administer LocalBase need explicit management scopes. Ordinary
 inference keys do not receive them.
 

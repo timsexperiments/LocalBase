@@ -933,3 +933,45 @@ describe("LLM context budget", () => {
     expect(budget.reasons).toEqual([]);
   });
 });
+
+describe("decision model launch", () => {
+  const plan = (decision: boolean) =>
+    resolveLlmLaunchPlan({
+      root,
+      modelId: "clef-flash",
+      host: "127.0.0.1",
+      artifactBytes: 6 * 1024 ** 3,
+      runtimeId: "llm:1",
+      modelsDirectory: `${root}/models/llm`,
+      modelFile: "clef.gguf",
+      port: 8080,
+      ctxSize: 8192,
+      parallel: 1,
+      hardware: { memoryGb: 64 },
+      decision,
+    });
+
+  test("decision servers skip the prompt cache and batch a slot at once", () => {
+    const decision = plan(true);
+    expect(decision.decision).toBe(true);
+    expect(decision.promptCacheRamMib).toBe(0);
+    const { args } = buildLlamaServerArgs(decision);
+    const at = (flag: string) => args[args.indexOf(flag) + 1];
+    expect(at("-b")).toBe("8192");
+    expect(at("-ub")).toBe("8192");
+    expect(at("--cache-ram")).toBe("0");
+    expect(at("--flash-attn")).toBe("on");
+    expect(args).not.toContain("--jinja");
+    expect(args).not.toContain("--embeddings");
+    expect(args).not.toContain("--cache-reuse");
+  });
+
+  test("chat models keep the chat flags", () => {
+    const chat = plan(false);
+    expect(chat.decision).toBe(false);
+    const { args } = buildLlamaServerArgs(chat);
+    expect(args).toContain("--jinja");
+    expect(args).toContain("--cache-reuse");
+    expect(args).not.toContain("-ub");
+  });
+});

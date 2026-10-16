@@ -879,6 +879,7 @@ describe("readGgufCapabilityHeader", () => {
       poolingType: null,
       expertCount: 128,
       chatTemplate: "{% if tools %}x{% endif %}\n<think>",
+      decisionType: null,
       hasVisionEncoder: false,
       hasAudioEncoder: false,
     });
@@ -906,5 +907,58 @@ describe("readGgufCapabilityHeader", () => {
     expect(
       await readGgufCapabilityHeader(join(directory, "missing.gguf")),
     ).toBeNull();
+  });
+});
+
+describe("decision models", () => {
+  const clef = () =>
+    write(
+      "clef.gguf",
+      base("clef", [
+        { key: "clef.attention.head_count_kv", type: "u32", value: 4 },
+        { key: "clef.attention.key_length", type: "u32", value: 256 },
+        { key: "clef.attention.value_length", type: "u32", value: 256 },
+        { key: "clef.context_length", type: "u32", value: 262144 },
+        { key: "clef.decision.type", type: "string", value: "clef" },
+        ...ssm("clef"),
+      ]),
+    );
+
+  test("decision GGUFs allocate no KV cache or recurrent state", async () => {
+    const geometry = await readLlmKvGeometry(clef());
+    expect(geometry).toMatchObject({
+      fullKvHeads: 0,
+      swaKvHeads: 0,
+      recurrentBytesPerSlot: 0,
+      contextLength: 262144,
+      decisionType: "clef",
+    });
+    expect(
+      kvCacheBytes(geometry!, {
+        ctxTokens: 8192,
+        slots: 1,
+        cacheTypeK: "q8_0",
+        cacheTypeV: "q8_0",
+      }),
+    ).toBe(0);
+  });
+
+  test("the capability header carries the decision type", async () => {
+    expect((await readGgufCapabilityHeader(clef()))?.decisionType).toBe("clef");
+  });
+
+  test("an invalid decision type is ignored", () => {
+    const values = new Map<string, string | number>([
+      ["general.architecture", "clef"],
+      ["clef.block_count", 32],
+      ["clef.attention.head_count", 16],
+      ["clef.attention.head_count_kv", 4],
+      ["clef.attention.key_length", 256],
+      ["clef.attention.value_length", 256],
+      ["clef.decision.type", "Not A Type!"],
+    ]);
+    const geometry = kvGeometryFromMetadata(values);
+    expect(geometry?.decisionType).toBeUndefined();
+    expect(geometry?.fullKvHeads).toBeGreaterThan(0);
   });
 });

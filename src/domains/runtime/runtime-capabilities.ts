@@ -44,7 +44,7 @@ const llamaPropsSchema = z
  */
 export function parseLlamaServerProps(
   body: unknown,
-  options: Readonly<{ embedding: boolean }>,
+  options: Readonly<{ embedding: boolean; decision?: boolean }>,
 ): Omit<
   RuntimeCapabilityRecord,
   "modelId" | "artifactSha256" | "observedAt"
@@ -53,7 +53,7 @@ export function parseLlamaServerProps(
   if (!parsed.success) return null;
   const props = parsed.data;
   const capabilities: Partial<Record<Capability, boolean>> = {};
-  if (!options.embedding) {
+  if (!options.embedding && !options.decision) {
     const toolCalls = props.chat_template_caps?.supports_tool_calls;
     if (toolCalls !== undefined) capabilities["tool-calling"] = toolCalls;
     if (
@@ -70,6 +70,37 @@ export function parseLlamaServerProps(
     inputModalities,
     buildInfo: props.build_info ?? "unknown",
   };
+}
+
+const llamaModelsSchema = z
+  .object({
+    data: z.array(
+      z
+        .object({
+          architecture: z
+            .object({ output_modalities: z.array(z.string()).optional() })
+            .passthrough()
+            .optional(),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
+/**
+ * Reads whether llama-server serves the loaded model as a decision model.
+ * llama.cpp reports `output_modalities: ["decisions"]` in `/v1/models` for
+ * System One decision models; `/props` has no such flag. Returns null when
+ * the body does not say either way.
+ */
+export function parseLlamaServerDecision(body: unknown): boolean | null {
+  const parsed = llamaModelsSchema.safeParse(body);
+  if (!parsed.success) return null;
+  const outputs = parsed.data.data.flatMap(
+    (model) => model.architecture?.output_modalities ?? [],
+  );
+  if (outputs.length === 0) return null;
+  return outputs.includes("decisions");
 }
 
 const storedOpinionsSchema = z.record(z.string(), z.boolean());
@@ -164,6 +195,8 @@ export type LlamaServerProbe = Readonly<{
   modelId: string;
   artifactSha256: string;
   embedding: boolean;
+  /** Decision models also report through `/v1/models` output modalities. */
+  decision?: boolean;
   store: RuntimeCapabilityStore;
   fetch?: (url: string, init: RequestInit) => Promise<Response>;
   now?: () => Date;
@@ -184,10 +217,24 @@ export async function probeLlamaServerCapabilities(
   if (!response.ok) return null;
   const parsed = parseLlamaServerProps(await response.json(), {
     embedding: probe.embedding,
+    decision: probe.decision,
   });
   if (!parsed) return null;
+  let decision: boolean | null = null;
+  if (probe.decision) {
+    const models = await request(`${probe.baseUrl}/v1/models`, {
+      signal: AbortSignal.timeout(probe.timeoutMs ?? 5_000),
+    }).catch(() => null);
+    decision = models?.ok
+      ? parseLlamaServerDecision(await models.json().catch(() => null))
+      : null;
+  }
   const record: RuntimeCapabilityRecord = {
     ...parsed,
+    capabilities:
+      decision === null
+        ? parsed.capabilities
+        : { ...parsed.capabilities, decision },
     modelId: probe.modelId,
     artifactSha256: probe.artifactSha256,
     observedAt: (probe.now?.() ?? new Date()).toISOString(),
