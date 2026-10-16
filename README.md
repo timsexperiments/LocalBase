@@ -16,7 +16,7 @@ LocalBase is a Bun/TypeScript unified, OpenAI-compatible gateway for local AI ru
 - Self-healing process supervision with bounded restart backoff.
 - Zod request and response validation.
 - SQLite-backed configuration and API-key storage.
-- Hardware-aware context sizing (`auto`) or an explicit persisted context ceiling (`configure --ctx-mode explicit`), with the effective limit and every reduction explained in `/v1/models`.
+- Hardware-aware context sizing (`auto`) or an explicit persisted context ceiling (`configure --ctx-mode explicit`), with the effective limit and every reduction explained in `/v1/models`. `GET /v1/models/{model}` returns one entry of that list, under the same `models:read` scope and visibility rules; IDs a key cannot list return 404 `model_not_found`.
 
 The runtime keeps one active model per service. Memory pressure can evict idle runtimes or stop all runtimes in an emergency. Simultaneous multi-model process pools are not supported.
 

@@ -159,10 +159,13 @@ import {
   loadUiAccessConfig,
 } from "../../../ui/access";
 import {
+  canonicalGatewayHttpRoute,
   gatewayRequestDisablesIdleTimeout,
   gatewayRouteServesBufferedJson,
   modelMetadataIdFromPath,
+  servedModelIdFromPath,
   selectGatewayRoute,
+  unmatchedRouteHint,
 } from "../route-dispatch";
 import { gatewayAuthorizationRequirement } from "../route-authorization";
 import { VideoJobManager } from "../video/video-job-manager";
@@ -5097,13 +5100,20 @@ export async function runServe(
       return withServerTiming(response, inference.serverTiming());
     }
 
-    if (route === "models") {
+    if (route === "models" || route === "modelRetrieve") {
+      const modelId =
+        route === "modelRetrieve" ? servedModelIdFromPath(pathname) : undefined;
+      if (route === "modelRetrieve") {
+        if (request.method !== "GET") return methodNotAllowed("GET");
+        if (modelId === undefined) return routeNotFound();
+      }
       const data = await listServedModels(
         currentConfig,
         authorization.kind === "authorized"
           ? authorization.principal.permissions
           : undefined,
         {
+          modelId,
           enabled: {
             llm: input.llm !== false,
             stt: input.stt ?? currentConfig.selectedSttModels.length > 0,
@@ -5160,6 +5170,12 @@ export async function runServe(
           },
         },
       );
+      if (route === "modelRetrieve") {
+        // Unlisted and unauthorized IDs share one answer, so a key cannot
+        // probe for models it could not list.
+        const [model] = data;
+        return model ? Response.json(model) : modelNotFound(modelId ?? "");
+      }
       return Response.json({
         object: "list",
         data,
@@ -5194,6 +5210,11 @@ export async function runServe(
         parent,
       );
       span.setAttribute("localbase.request_id", requestId);
+      if (canonicalGatewayHttpRoute(pathname) === "unmatched-route") {
+        const hint = unmatchedRouteHint(pathname);
+        span.setAttribute("localbase.route.family", hint.family);
+        span.setAttribute("localbase.route.segments", hint.segments);
+      }
       const uiRequest = isUiAccessPath(pathname);
       if (method === "OPTIONS" && !uiRequest) {
         span.setAttribute("http.response.status_code", 403);

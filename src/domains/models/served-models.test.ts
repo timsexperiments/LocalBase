@@ -210,6 +210,24 @@ describe("listServedModels", () => {
     ]);
   });
 
+  test("restricts the projection to one ID with the list's visibility rules", async () => {
+    const listed = byId(await listServedModels(config), "whisper-tiny-q8_0");
+    if (!listed) throw new Error("Expected the STT model to be listed.");
+    expect(
+      await listServedModels(config, undefined, {
+        modelId: "whisper-tiny-q8_0",
+      }),
+    ).toEqual([listed]);
+    expect(
+      await listServedModels(config, undefined, { modelId: "not-served" }),
+    ).toEqual([]);
+    expect(
+      await listServedModels(config, ["models:read", "inference:chat"], {
+        modelId: "whisper-tiny-q8_0",
+      }),
+    ).toEqual([]);
+  });
+
   test("applies serve modality disables and reduced per-slot context", async () => {
     const data = await listServedModels(
       { ...config, ctxSize: 4096, parallel: 2 },

@@ -16,6 +16,7 @@ export type GatewayRoute =
   | "embeddings"
   | "decision"
   | "models"
+  | "modelRetrieve"
   | "modelMetadataList"
   | "modelMetadataDetail"
   | "notFound";
@@ -32,6 +33,7 @@ const apiHttpRoutes = [
   "/_localbase/models",
   "/_localbase/models/{model_id}",
   "/v1/models",
+  "/v1/models/{model}",
   "/v1/chat/completions",
   "/v1/embeddings",
   "/v1/systemone",
@@ -78,6 +80,7 @@ export const gatewayHttpRoutes = [
 const uiApiPrefix = "/app/api";
 const modelMetadataPrefix = "/_localbase/models/";
 const videoPrefix = "/v1/videos/";
+const servedModelPrefix = "/v1/models/";
 
 export function videoJobIdFromPath(pathname: string): string | undefined {
   if (!pathname.startsWith(videoPrefix)) return undefined;
@@ -95,6 +98,22 @@ export function modelMetadataIdFromPath(pathname: string): string | undefined {
   if (!pathname.startsWith(modelMetadataPrefix)) return undefined;
   const encodedModelId = pathname.slice(modelMetadataPrefix.length);
   if (!encodedModelId || encodedModelId.includes("/")) return undefined;
+  try {
+    return decodeURIComponent(encodedModelId);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Decodes the model ID of an OpenAI `GET /v1/models/{model}` path. Clients
+ * that do not percent-encode slash-bearing IDs send them as extra segments,
+ * so the whole remainder is the ID.
+ */
+export function servedModelIdFromPath(pathname: string): string | undefined {
+  if (!pathname.startsWith(servedModelPrefix)) return undefined;
+  const encodedModelId = pathname.slice(servedModelPrefix.length);
+  if (!encodedModelId) return undefined;
   try {
     return decodeURIComponent(encodedModelId);
   } catch {
@@ -144,7 +163,9 @@ export function selectGatewayRoute(pathname: string): GatewayRoute {
       }
       return modelMetadataIdFromPath(pathname)
         ? "modelMetadataDetail"
-        : "notFound";
+        : servedModelIdFromPath(pathname)
+          ? "modelRetrieve"
+          : "notFound";
   }
 }
 
@@ -190,6 +211,8 @@ function apiHttpRoute(pathname: string): ApiHttpRoute | undefined {
       return "/v1/systemone";
     case "models":
       return "/v1/models";
+    case "modelRetrieve":
+      return "/v1/models/{model}";
     case "notFound":
       return pathname === "/_localbase/model-management" ||
         pathname === "/_localbase/model-discovery" ||
@@ -216,6 +239,55 @@ export function canonicalGatewayHttpRoute(value: string): GatewayHttpRoute {
     if (uiApiRoute) return `${uiApiPrefix}${uiApiRoute}`;
   }
   return "unmatched-route";
+}
+
+/** Upper bound on the segment count an unmatched-route hint reports. */
+export const MAX_UNMATCHED_ROUTE_SEGMENTS = 16;
+
+const knownRouteLiteralPrefixes: readonly (readonly string[])[] =
+  gatewayHttpRoutes.map((route) => {
+    const literals: string[] = [];
+    for (const segment of route.split("/").slice(1)) {
+      if (!segment || segment.startsWith("{")) break;
+      literals.push(segment);
+    }
+    return literals;
+  });
+
+export type UnmatchedRouteHint = Readonly<{
+  /**
+   * The longest literal prefix the path shares with a known route, as
+   * `/<literal>/.../*`, or `other`. Built only from route-table literals,
+   * never from request segments, so the value set stays bounded.
+   */
+  family: string;
+  /** Path segment count, capped at {@link MAX_UNMATCHED_ROUTE_SEGMENTS}. */
+  segments: number;
+}>;
+
+/**
+ * Describes an unmatched path without recording its segments or query, so a
+ * 404 shows which route family a client was near (for example a missing
+ * `/v1/*` endpoint) while logs and metrics stay low-cardinality.
+ */
+export function unmatchedRouteHint(value: string): UnmatchedRouteHint {
+  const segments = value.split("?", 1)[0].split("/").slice(1);
+  let matched = 0;
+  for (const literals of knownRouteLiteralPrefixes) {
+    let shared = 0;
+    while (
+      shared < literals.length &&
+      shared < segments.length &&
+      literals[shared] === segments[shared]
+    )
+      shared++;
+    matched = Math.max(matched, shared);
+  }
+  return {
+    family:
+      matched === 0 ? "other" : `/${segments.slice(0, matched).join("/")}/*`,
+    segments: Math.min(segments.length, MAX_UNMATCHED_ROUTE_SEGMENTS),
+  };
 }
 
 /**
@@ -264,6 +336,7 @@ export function gatewayRequestDisablesIdleTimeout(pathname: string): boolean {
  */
 const bufferedJsonRoutes: ReadonlySet<GatewayRoute> = new Set<GatewayRoute>([
   "models",
+  "modelRetrieve",
   "modelMetadataList",
   "modelMetadataDetail",
 ]);

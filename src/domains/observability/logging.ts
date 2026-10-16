@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import {
   canonicalGatewayHttpRoute,
+  unmatchedRouteHint,
   gatewayHttpRoutes,
   type GatewayHttpRoute,
 } from "../runtime/route-dispatch";
@@ -1110,13 +1111,17 @@ export class LocalBaseLogger implements ILogger {
     const route: GatewayHttpRoute = recognizedHttpRoute(path);
     if (status < 400 && (route === "/health" || route === "/health/ready"))
       return;
+    const hint =
+      route === "unmatched-route" ? unmatchedRouteHint(path) : undefined;
     this.event({
       severity: httpRequestSeverity(route, status),
       eventName: "http.request",
       category: "http",
       component: "gateway",
       runtime: "gateway",
-      message: `${method} ${route} -> ${status}`,
+      message: hint
+        ? `${method} ${route} -> ${status} (near ${hint.family}, ${hint.segments} segments)`
+        : `${method} ${route} -> ${status}`,
       requestId,
       trace,
       http: {
@@ -1125,20 +1130,31 @@ export class LocalBaseLogger implements ILogger {
         status: parsedStatus.data,
         durationMs: Number(durationMs.toFixed(2)),
       },
-      attributes: auth
-        ? {
-            auth_outcome: auth.outcome,
-            ...(auth.outcome === "authenticated"
-              ? { auth_principal_id: auth.principalId }
-              : {}),
-            ...(auth.outcome === "authenticated" && auth.principalName
-              ? { auth_principal_name: auth.principalName }
-              : {}),
-            ...(auth.outcome === "authenticated"
-              ? { auth_source: auth.source }
-              : {}),
-          }
-        : undefined,
+      attributes:
+        auth || hint
+          ? {
+              ...(hint
+                ? {
+                    route_family: hint.family,
+                    route_segments: hint.segments,
+                  }
+                : {}),
+              ...(auth
+                ? {
+                    auth_outcome: auth.outcome,
+                    ...(auth.outcome === "authenticated"
+                      ? { auth_principal_id: auth.principalId }
+                      : {}),
+                    ...(auth.outcome === "authenticated" && auth.principalName
+                      ? { auth_principal_name: auth.principalName }
+                      : {}),
+                    ...(auth.outcome === "authenticated"
+                      ? { auth_source: auth.source }
+                      : {}),
+                  }
+                : {}),
+            }
+          : undefined,
     });
   }
 

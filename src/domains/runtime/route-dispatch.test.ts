@@ -3,7 +3,10 @@ import {
   canonicalGatewayHttpRoute,
   gatewayRequestDisablesIdleTimeout,
   gatewayRouteServesBufferedJson,
+  MAX_UNMATCHED_ROUTE_SEGMENTS,
   selectGatewayRoute,
+  servedModelIdFromPath,
+  unmatchedRouteHint,
   videoJobIdFromPath,
 } from "./route-dispatch";
 
@@ -189,4 +192,59 @@ test("compresses only in-memory metadata JSON routes", () => {
   expect(gatewayRouteServesBufferedJson("/_localbase/models/a")).toBe(true);
   expect(gatewayRouteServesBufferedJson("/v1/chat/completions")).toBe(false);
   expect(gatewayRouteServesBufferedJson("/app/api/v1/videos")).toBe(false);
+});
+
+test("routes OpenAI model retrieval and decodes the model ID", () => {
+  expect(selectGatewayRoute("/v1/models/whisper-base.en-q8_0")).toBe(
+    "modelRetrieve",
+  );
+  expect(servedModelIdFromPath("/v1/models/whisper-base.en-q8_0")).toBe(
+    "whisper-base.en-q8_0",
+  );
+  expect(servedModelIdFromPath("/v1/models/org%2Fmodel%3Aq4")).toBe(
+    "org/model:q4",
+  );
+  // Clients that skip encoding send slash-bearing IDs as extra segments.
+  expect(servedModelIdFromPath("/v1/models/org/model")).toBe("org/model");
+  expect(servedModelIdFromPath("/v1/models/")).toBeUndefined();
+  expect(servedModelIdFromPath("/v1/models/%E0%A4%A")).toBeUndefined();
+  expect(selectGatewayRoute("/v1/models/%E0%A4%A")).toBe("notFound");
+  expect(canonicalGatewayHttpRoute("/v1/models/secret-model?x=1")).toBe(
+    "/v1/models/{model}",
+  );
+  expect(canonicalGatewayHttpRoute("/app/api/v1/models/a")).toBe(
+    "/app/api/v1/models/{model}",
+  );
+  expect(gatewayRouteServesBufferedJson("/v1/models/a")).toBe(true);
+  expect(gatewayRequestDisablesIdleTimeout("/v1/models/a")).toBe(false);
+});
+
+test("hints at the nearest route family from route-table literals only", () => {
+  expect(unmatchedRouteHint("/v1/models/")).toEqual({
+    family: "/v1/models/*",
+    segments: 3,
+  });
+  expect(unmatchedRouteHint("/v1/completions?token=secret")).toEqual({
+    family: "/v1/*",
+    segments: 2,
+  });
+  expect(unmatchedRouteHint("/v1/videos/not-a-job")).toEqual({
+    family: "/v1/videos/*",
+    segments: 3,
+  });
+  expect(unmatchedRouteHint("/_localbase/secret-thing")).toEqual({
+    family: "/_localbase/*",
+    segments: 2,
+  });
+  expect(unmatchedRouteHint("/app/api/private")).toEqual({
+    family: "/app/api/*",
+    segments: 3,
+  });
+  expect(unmatchedRouteHint("/tenant-123/v1/models")).toEqual({
+    family: "other",
+    segments: 3,
+  });
+  expect(unmatchedRouteHint(`/${"a/".repeat(40)}`).segments).toBe(
+    MAX_UNMATCHED_ROUTE_SEGMENTS,
+  );
 });
