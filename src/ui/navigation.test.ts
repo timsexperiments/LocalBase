@@ -86,6 +86,7 @@ describe("playground navigation boundary", () => {
       "stt",
       "video",
       "embedding",
+      "decision",
     ] as const) {
       for (const panel of [
         null,

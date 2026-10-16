@@ -34,6 +34,7 @@ import {
   imageResultText,
   type StudioRequest,
 } from "./studio";
+import { DecisionLab } from "./decision-lab";
 import {
   chatContext,
   compact,
@@ -122,6 +123,7 @@ const labels: Record<Mode, string> = {
   stt: "Transcribe",
   video: "Video",
   embedding: "Embeddings",
+  decision: "Decision",
 };
 const composerLabels: Record<Mode, string> = {
   llm: "Message",
@@ -130,6 +132,7 @@ const composerLabels: Record<Mode, string> = {
   tts: "Text to read aloud",
   stt: "Message",
   embedding: "Text to embed",
+  decision: "State",
 };
 const composerPlaceholders: Record<Mode, string> = {
   llm: "Message LocalBase…",
@@ -138,6 +141,7 @@ const composerPlaceholders: Record<Mode, string> = {
   tts: "Write something to read aloud…",
   stt: "Message LocalBase…",
   embedding: "Enter text to embed…",
+  decision: "Describe the state to decide on…",
 };
 const navigationAbortReason = Symbol("navigation");
 /** Messages rendered when a conversation opens, then mounted per step. */
@@ -621,6 +625,7 @@ function App() {
     capabilities?.kind === "video" &&
     capabilities.mode === "s2v";
   const studio = active?.mode === "image" || active?.mode === "video";
+  const decision = active?.mode === "decision";
   const update = (id: string, change: (c: Conversation) => Conversation) =>
     setConversations((items) =>
       items.map((c) => (c.id === id ? change(c) : c)),
@@ -1582,6 +1587,15 @@ function App() {
             </section>
           </main>
         )}
+        {decision && activeModeAllowed && (
+          <DecisionLab
+            key={active.id}
+            model={model}
+            credential={credential}
+            onChooseModel={() => setDrawer("models")}
+            onSessionExpired={sessionExpired}
+          />
+        )}
         {studio && activeModeAllowed && (
           <Studio
             key={active.id}
@@ -1619,7 +1633,7 @@ function App() {
           />
         )}
         <main
-          hidden={!activeModeAllowed || studio}
+          hidden={!activeModeAllowed || studio || decision}
           ref={transcript}
           aria-label="Conversation"
           onScroll={(e) => {
@@ -1804,7 +1818,10 @@ function App() {
             )}
           </div>
         </main>
-        <div className="composer-area" hidden={!activeModeAllowed || studio}>
+        <div
+          className="composer-area"
+          hidden={!activeModeAllowed || studio || decision}
+        >
           {showLatest && (
             <button
               className="jump-latest"

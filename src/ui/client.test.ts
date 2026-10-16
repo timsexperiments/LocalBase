@@ -49,6 +49,7 @@ describe("playground client boundaries", () => {
     expect(canUseMode(permissions, "image")).toBe(false);
     expect(hasPermission(permissions, "inference:speech")).toBe(false);
     expect(permittedModes(null)).toEqual([]);
+    expect(permittedModes(["inference:decision"])).toEqual(["decision"]);
     expect(permittedUiModes(permissions)).toEqual([]);
     expect(permittedUiModes([...permissions, "models:read"])).toEqual([
       "llm",
@@ -622,6 +623,11 @@ describe("playground client boundaries", () => {
           },
         },
         {
+          id: "decision",
+          catalog: { ...common.catalog, capabilities: { kind: "decision" } },
+          device: { selected: true, installed: true, runtime: null },
+        },
+        {
           id: "speech",
           catalog: { ...common.catalog, kind: "tts", capabilities: speech },
           device: { selected: true, installed: true, runtime: null },
@@ -667,6 +673,9 @@ describe("playground client boundaries", () => {
     expect(catalogModels(models, "embedding").map((model) => model.id)).toEqual(
       ["embedding"],
     );
+    expect(catalogModels(models, "decision").map((model) => model.id)).toEqual([
+      "decision",
+    ]);
     const first = models[0];
     if (!first) throw new Error("Expected model fixture.");
     expect(modelMemorySummary(first, parsed.host.memory)).toBe(
