@@ -18,6 +18,7 @@ import { describe, expect, test } from "bun:test";
 import {
   backendBindHost,
   configuredLlmContextSize,
+  DECISION_CONTEXT_TOKENS,
   describeLlmContextBudget,
   recommendedLlmContextSize,
   resolveImageLaunchPlan,
@@ -28,6 +29,7 @@ import {
 import { buildLlamaServerArgs } from "./launcher";
 import { resolveLlmProjectorPath, runtimeEndpoint } from "./supervisor-factory";
 import { SupervisorRegistry } from "./supervisor-registry";
+import type { ParallelSlots } from "../config/parallel";
 
 function catalogModel(modelId: string): ModelSpec {
   const model = byId(modelId);
@@ -935,7 +937,11 @@ describe("LLM context budget", () => {
 });
 
 describe("decision model launch", () => {
-  const plan = (decision: boolean) =>
+  const plan = (
+    decision: boolean,
+    ctxSize = 8192,
+    parallel: ParallelSlots = 1,
+  ) =>
     resolveLlmLaunchPlan({
       root,
       modelId: "clef-flash",
@@ -945,8 +951,8 @@ describe("decision model launch", () => {
       modelsDirectory: `${root}/models/llm`,
       modelFile: "clef.gguf",
       port: 8080,
-      ctxSize: 8192,
-      parallel: 1,
+      ctxSize,
+      parallel,
       hardware: { memoryGb: 64 },
       decision,
     });
@@ -964,6 +970,44 @@ describe("decision model launch", () => {
     expect(args).not.toContain("--jinja");
     expect(args).not.toContain("--embeddings");
     expect(args).not.toContain("--cache-reuse");
+  });
+
+  test("decision servers cap each slot at the decision context", () => {
+    const single = plan(true, 65536);
+    expect(single.ctxSize).toBe(DECISION_CONTEXT_TOKENS);
+    expect(single.parallel.contextPerSlot).toBe(DECISION_CONTEXT_TOKENS);
+    const at = (flag: string) => {
+      const { args } = buildLlamaServerArgs(single);
+      return args[args.indexOf(flag) + 1];
+    };
+    expect(at("-c")).toBe("8192");
+    expect(at("-ub")).toBe("8192");
+
+    const four = plan(true, 65536, 4);
+    expect(four.ctxSize).toBe(4 * DECISION_CONTEXT_TOKENS);
+    expect(four.parallel.contextPerSlot).toBe(DECISION_CONTEXT_TOKENS);
+
+    const auto = plan(true, 65536, "auto");
+    expect(auto.parallel.contextPerSlot).toBeLessThanOrEqual(
+      DECISION_CONTEXT_TOKENS,
+    );
+    expect(plan(true, 65536).memoryDemand).toEqual(plan(true).memoryDemand);
+  });
+
+  test("the context budget explains the decision cap", () => {
+    const budget = describeLlmContextBudget({
+      model: catalogModel("clef-flash-q4_k_m"),
+      configCtxSize: 65536,
+      ctxMode: "explicit",
+      memoryGb: 64,
+      plan: plan(true, 65536),
+    });
+    expect(budget.launch_context).toBe(DECISION_CONTEXT_TOKENS);
+    expect(budget.reasons.join(" ")).toContain("Decision models");
+  });
+
+  test("chat models keep the configured context", () => {
+    expect(plan(false, 65536).ctxSize).toBe(65536);
   });
 
   test("chat models keep the chat flags", () => {
