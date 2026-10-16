@@ -29,6 +29,17 @@ function byId(data: Awaited<ReturnType<typeof listServedModels>>, id: string) {
 }
 
 describe("listServedModels", () => {
+  test("reports a decision model's output modality as decisions", async () => {
+    const data = await listServedModels({
+      ...config,
+      selectedLlmModels: [...config.selectedLlmModels, "clef-flash-q4_k_m"],
+    });
+    expect(byId(data, "clef-flash-q4_k_m")?.architecture).toEqual({
+      input_modalities: ["text", "image"],
+      output_modalities: ["decisions"],
+    });
+  });
+
   test("lists every kind once with modalities in stable order", async () => {
     const data = await listServedModels(config);
     expect(data.map((model) => model.id)).toEqual([

@@ -156,6 +156,16 @@ These raised the derived tiers of unmeasured models: the SDXL family, flux1-schn
 
 The 2026-10-14 pass lowered stable-diffusion-v1-5 from 8 to 6 GiB. The Wan VAE recalibration raised the catalog-only wan2.2-ti2v-5b-q6_k and hunyuanvideo-1.5-t2v-480p-q4_k_m from 24 to 32 GiB. It also raised the Wan2.2 S2V unified demand to 32.33 GiB; its accelerator minimum stays 24. The SDXL VAE change pushed juggernaut-xl-v9's derived tier to 24, so it was measured as well. The measured demand keeps it at 16.
 
+## Decision model (2026-10-15)
+
+clef-flash-q4_k_m was measured with its decision launch through a scratch gateway: ctx 8192, 1 slot, batch and ubatch equal to the context, flash attention, q8_0 KV types, `--cache-ram 0` and the Q8_0 projector. The workload was the three model-card decision requests (invoice, checkout, Stripe). Columns are the same as above.
+
+| Model             | Accelerator | Peak RSS | Previous estimate | minVramGb |
+| ----------------- | ----------: | -------: | ----------------: | --------- |
+| clef-flash-q4_k_m |        8.62 |     7.96 |              9.26 | 11 → 10   |
+
+A decision server keeps no KV or recurrent context (0 MiB). The MTL0 buffers are 5629.85 MiB of model weights, a 1842.53 MiB compute buffer (the 8192-token ubatch), and 595.29 MiB of projector weights plus a 248.10 MiB projector compute buffer. Host buffers are 1211.86 MiB: the 545.64 MiB CPU-mapped embedding, 640.34 MiB of CPU compute, 24.93 MiB of projector CPU compute and the 0.95 MiB output buffer. Peak RSS from `/usr/bin/time -l` was 8351440 KiB. Steady RSS through the gateway after the three requests was 7431296 KiB.
+
 ## Not measured
 
 Models without a measured record keep estimate confidence:

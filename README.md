@@ -69,6 +69,14 @@ curl http://127.0.0.1:2273/v1/systemone \
   - `noul`: optional `{ "true": "...", "false": "..." }` descriptions.
 - Responses contain `model`, per-question `answers`, and `usage: { input_tokens, output_tokens }`. Choice answers return `choice`, `probabilities`, and `confidence`. Score answers return `score`, `legend`, `probabilities`, and `confidence`. Noul answers return the true probability as `noul`.
 
+The default decision model is Clef Flash (`clef-flash-q4_k_m`, about 7.1 GB). It is Cloudflare's Apache-2.0 9B model, pinned to the ggml-org Q4_K_M GGUF and its Q8_0 image projector. It needs about 8.6 GiB of accelerator memory and answers in roughly 0.5–1 s per request on Apple silicon:
+
+```bash
+local-base models install clef-flash-q4_k_m
+```
+
+Clef 27B is the larger qualified alternative. Add other decision GGUFs through the Hugging Face search. Files whose header carries decision heads are detected as decision models.
+
 Decision models list `architecture.output_modalities: ["decisions"]` in `/v1/models`. They reject chat completions and embeddings, and other models reject `/v1/systemone` with HTTP 400 `unsupported_model_capability`. The route requires the `inference:decision` scope.
 
 ## Supported platforms

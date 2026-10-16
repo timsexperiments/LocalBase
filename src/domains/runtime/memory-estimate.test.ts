@@ -24,6 +24,7 @@ import {
 } from "./memory-estimate";
 import { gibibyte } from "./memory-safety";
 import {
+  DECISION_MEASUREMENT_DATE,
   IMAGE_VIDEO_MEASUREMENT_DATE,
   MEASUREMENT_DATE,
   MEMORY_MEASUREMENTS,
@@ -334,9 +335,11 @@ describe("measured demand", () => {
     for (const record of MEMORY_MEASUREMENTS) {
       const model = catalogModel(record.modelId);
       expect(model.kind).toBe(record.kind);
-      expect([MEASUREMENT_DATE, IMAGE_VIDEO_MEASUREMENT_DATE]).toContain(
-        record.date,
-      );
+      expect([
+        MEASUREMENT_DATE,
+        IMAGE_VIDEO_MEASUREMENT_DATE,
+        DECISION_MEASUREMENT_DATE,
+      ]).toContain(record.date);
       expect(record.hardware).toContain("64 GiB");
       expect(record.method.length).toBeGreaterThan(0);
       // Only CPU-only runtimes (Kokoro) record no accelerator buffers.
@@ -374,6 +377,7 @@ describe("measured demand", () => {
   test("measured catalog models report confidence measured", () => {
     for (const modelId of [
       "qwen3.5-9b-q4_k_m",
+      "clef-flash-q4_k_m",
       "whisper-large-v3-turbo",
       "qwen3-tts-1.7b-base-q4_k_m",
       "kokoro-82m-v1.0-q8",
