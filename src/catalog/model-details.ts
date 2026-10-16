@@ -10,6 +10,7 @@ export const modeLabels = {
   stt: "Transcription",
   video: "Video",
   embedding: "Embeddings",
+  decision: "Decision",
 } as const;
 export type ModeLabelKey = keyof typeof modeLabels;
 

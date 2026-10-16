@@ -45,8 +45,9 @@ export function modelDetailLines(
   const memory = catalog.memory;
   const resolution = catalog.capabilityResolution;
   const mode =
-    catalog.capabilities?.kind === "embedding"
-      ? modeLabels.embedding
+    catalog.capabilities?.kind === "embedding" ||
+    catalog.capabilities?.kind === "decision"
+      ? modeLabels[catalog.capabilities.kind]
       : modeLabels[catalog.kind];
   const lines = [
     catalog.displayName,

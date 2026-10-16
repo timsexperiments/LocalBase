@@ -46,6 +46,7 @@ const modeNames = {
   stt: "Transcription",
   video: "Video",
   embedding: "Embeddings",
+  decision: "Decision",
 };
 const fitOptions = [
   ["fits,tight", "Fits this machine"],
@@ -97,10 +98,11 @@ function writeFilters({ query, enabled }: Filters) {
     history.replaceState(history.state, "", next);
 }
 
-/** Embedding models are LLM-kind entries, listed under their own mode. */
+/** Embedding and decision models are LLM-kind entries, listed under their own mode. */
 function modelMode(model: Model) {
-  return model.catalog.capabilities?.kind === "embedding"
-    ? "embedding"
+  const kind = model.catalog.capabilities?.kind;
+  return kind === "embedding" || kind === "decision"
+    ? kind
     : model.catalog.kind;
 }
 

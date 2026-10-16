@@ -86,8 +86,9 @@ export function ModelDetails({
   const { catalog } = model;
   const memory = catalog.memory;
   const mode =
-    catalog.capabilities?.kind === "embedding"
-      ? modeLabels.embedding
+    catalog.capabilities?.kind === "embedding" ||
+    catalog.capabilities?.kind === "decision"
+      ? modeLabels[catalog.capabilities.kind]
       : modeLabels[catalog.kind];
   const capabilities =
     catalog.capabilityResolution?.capabilities ??

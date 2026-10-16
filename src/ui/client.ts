@@ -364,6 +364,7 @@ export const modes = [
   "stt",
   "video",
   "embedding",
+  "decision",
 ] as const;
 export type Mode = (typeof modes)[number];
 const modePermissions = {
@@ -373,6 +374,7 @@ const modePermissions = {
   stt: "inference:transcription",
   video: "inference:video",
   embedding: "inference:embeddings",
+  decision: "inference:decision",
 } as const satisfies Record<Mode, Permission>;
 
 export function hasPermission(
@@ -541,8 +543,8 @@ export function writeHistory(conversations: Conversation[]) {
 export function catalogModels(models: Model[], mode: Mode) {
   return models
     .filter((m) =>
-      mode === "embedding"
-        ? m.catalog.capabilities?.kind === "embedding"
+      mode === "embedding" || mode === "decision"
+        ? m.catalog.capabilities?.kind === mode
         : m.catalog.kind === mode &&
           m.catalog.capabilities?.kind !== "embedding" &&
           m.catalog.capabilities?.kind !== "decision",
