@@ -18,11 +18,11 @@ downloaded in the background and read from its cache.
 
 The effective catalog is built from up to three tiers:
 
-| Tier     | Source                                     | Trust when added |
-| -------- | ------------------------------------------ | ---------------- |
-| user     | `<root>/catalog.d/*.json`                  | `user`           |
+| Tier     | Source                                    | Trust when added |
+| -------- | ----------------------------------------- | ---------------- |
+| user     | `<root>/catalog.d/*.json`                 | `user`           |
 | remote   | the community feed, cached under `<root>` | `community`      |
-| built-in | shipped with the binary                    | `qualified`      |
+| built-in | shipped with the binary                   | `qualified`      |
 
 When more than one tier names the same `modelId`, user beats remote, and
 remote beats built-in.
@@ -88,8 +88,14 @@ Precedence, highest first:
 
 Not yet done: a recipe installs a catalog entry this binary or the feed
 already has; it cannot create a new multi-file entry from an arbitrary
-repository. Published memory peaks are shown for reference and do not feed
-LocalBase's memory planning, which uses its own measurements and estimates.
+repository.
+
+Published memory peaks also feed the memory fit, as a fallback. A peak is used
+only when the annotation matches the pinned revision (and, when the recipe
+names one, the primary file's sha256) and was taken at the launch shape
+LocalBase would plan. It ranks below this machine's own observed peak and the
+binary's checked-in measurements, and above the estimate. The fit and details
+show "Measured (catalog feed)" when it applies. Launch admission is unchanged.
 
 Manage the feed with `local-base models feed`:
 
@@ -239,6 +245,30 @@ The view calls `POST /_localbase/model-discovery` on the gateway with one of:
 
 The gateway uses the saved Hugging Face token, or else `HF_TOKEN`, and sends
 it only to huggingface.co. It is never returned or logged.
+
+Results whose catalog-feed notes describe a revision other than the Hub's
+current one say "(other revision)" on the feed badge.
+
+### Hugging Face token
+
+The **Hugging Face token** panel at the top of the view saves, replaces,
+checks and clears the token. It shows only whether a token is set and where it
+comes from (**Saved** or **From HF_TOKEN**); the value is never shown again.
+Saving checks the token with Hugging Face's whoami first and refuses one the
+Hub rejects; it still saves when the Hub cannot be reached. Clearing the saved
+token falls back to `HF_TOKEN` when it is set. A gated repository, a refused
+preview or a Hub rate limit links straight to the panel. The panel needs the
+`models:manage` permission and calls `/_localbase/hf-token`:
+
+```text
+GET                                       -> { "configured": true, "source": "saved", "envAvailable": false }
+POST { "action": "save", "token": "hf_…" } -> status plus { "check": { "state": "valid", ... } }
+POST { "action": "validate" }              -> checks the token in use
+POST { "action": "clear" }                 -> removes the saved token
+```
+
+A token saved here lasts until it is cleared or replaced, but running
+`local-base configure` with an `hfToken` in a TOML file replaces it.
 
 ### Removing an entry
 

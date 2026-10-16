@@ -94,7 +94,7 @@ export const modelOutputSchema = modelSpecObjectSchema
     /** Computed minimum memory (GiB); see domains/models/memory-fit.ts. */
     minVramGb: z.number().int().positive(),
     minimumVramEstimateGb: z.number().int().positive(),
-    memorySource: z.enum(["estimate", "measured", "observed"]),
+    memorySource: z.enum(["estimate", "feed", "measured", "observed"]),
     memoryLaunchShape: z.string().min(1),
     observedPeakBytes: z.number().int().positive().nullable(),
     fitVerdict: z.enum(["fits", "tight", "wont-fit"]),

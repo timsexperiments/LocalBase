@@ -140,6 +140,12 @@ import {
   hubTokenFrom,
   runDiscoveryRequest,
 } from "../../models/discovery";
+import {
+  hubTokenRequestSchema,
+  hubTokenStatus,
+  runHubTokenRequest,
+} from "../../models/hub-token";
+import { checkHubToken } from "../../models/huggingface";
 import { videoTargetFromTopology } from "../../models/model-eligibility";
 import {
   ModelManagementError,
@@ -3399,6 +3405,81 @@ export async function runServe(
     if (authManagementResponse) return authManagementResponse;
     const publicAsset = playground ?? playgroundResponse(request, pathname);
     if (publicAsset) return publicAsset;
+    if (pathname === "/_localbase/hf-token") {
+      const principal = requestAuth.resolve(ctx.runtimeConfig.copy());
+      if (principal.kind === "anonymous") return unauthorized();
+      if (request.method !== "GET" && request.method !== "POST")
+        return methodNotAllowed("GET, POST");
+      if (
+        authorize({
+          principal,
+          requirement: { kind: "permission", permission: "models:manage" },
+        }).kind !== "authorized"
+      )
+        return forbidden();
+      const headers = { "cache-control": "no-store" };
+      const tokenDeps = {
+        saved: () => ctx.runtimeConfig.copy().hfToken || undefined,
+        env: () => process.env.HF_TOKEN || undefined,
+        save: async (token: string) => {
+          await ctx.runtimeConfig.update((fresh) => {
+            fresh.hfToken = token;
+          });
+        },
+        check: (token: string) => checkHubToken(token),
+      };
+      ctx.runtimeConfig.refreshSync();
+      if (request.method === "GET")
+        return Response.json(hubTokenStatus(tokenDeps), { headers });
+      let input;
+      try {
+        const body = await readBoundedRequestBody(request, 1024);
+        input = hubTokenRequestSchema.safeParse(
+          JSON.parse(new TextDecoder().decode(body)),
+        );
+      } catch (error) {
+        if (request.signal.aborted) return requestAborted();
+        const tooLarge = error instanceof PayloadTooLargeError;
+        return openAIErrorResponse(
+          {
+            message: tooLarge
+              ? "Hugging Face token body exceeds the 1024 byte limit."
+              : "Invalid Hugging Face token payload.",
+            type: "invalid_request_error",
+            param: null,
+            code: "validation_failed",
+          },
+          tooLarge ? 413 : 400,
+          tooLarge ? { ...headers, connection: "close" } : headers,
+        );
+      }
+      // The parse error would quote the rejected input; keep it generic.
+      if (!input.success)
+        return openAIErrorResponse(
+          {
+            message:
+              "Expected a Hugging Face access token without spaces (8 to 256 characters).",
+            type: "invalid_request_error",
+            param: null,
+            code: "validation_failed",
+          },
+          400,
+          headers,
+        );
+      const outcome = await runHubTokenRequest(tokenDeps, input.data);
+      if ("error" in outcome.body)
+        return openAIErrorResponse(
+          {
+            message: outcome.body.error.message,
+            type: "invalid_request_error",
+            param: null,
+            code: outcome.body.error.code,
+          },
+          outcome.status,
+          headers,
+        );
+      return Response.json(outcome.body, { status: outcome.status, headers });
+    }
     if (pathname === "/_localbase/model-discovery") {
       const principal = requestAuth.resolve(ctx.runtimeConfig.copy());
       if (principal.kind === "anonymous") return unauthorized();

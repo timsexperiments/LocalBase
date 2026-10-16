@@ -39,6 +39,7 @@ export const catalogTierLabels = {
 export const memoryFigureLabels = {
   estimate: "Estimate",
   measured: "Measured",
+  feed: "Measured (catalog feed)",
   observed: "Seen on this machine",
 } as const;
 

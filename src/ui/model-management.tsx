@@ -124,6 +124,7 @@ function customOption(
 const fitSources = {
   estimate: "Based on an estimate",
   measured: "Based on a measurement",
+  feed: "Based on a published measurement",
   observed: "Based on use here",
 } as const;
 

@@ -16,8 +16,10 @@
  * Precedence, highest first: a verified runtime observation, then the
  * user's own catalog entry, then the feed. A feed mark never removes a
  * capability a user (or modified) entry declares, and only a verified
- * runtime round-trip turns a marked capability back on. Peaks are shown to
- * the user; memory planning keeps using the checked-in measurements.
+ * runtime round-trip turns a marked capability back on. Measured peaks feed
+ * memory planning only from an exact match at the planned launch shape, and
+ * rank below this machine's own observations and the checked-in
+ * measurements (see `plannableFeedPeaks` and models/memory-fit.ts).
  *
  * Readers are tolerant: an annotation that fails validation is skipped and
  * counted, and an unknown or invalid field inside an otherwise good
@@ -199,12 +201,14 @@ function primaryKey(model: ModelSpec): PrimaryKey | null {
 
 let current: readonly FeedAnnotation[] = [];
 let byRepo = new Map<string, FeedAnnotation[]>();
+let generation = 0;
 
 /** Replaces the annotations in force (from the cached feed). */
 export function setFeedAnnotations(
   annotations: readonly FeedAnnotation[],
 ): void {
   current = annotations;
+  generation += 1;
   byRepo = new Map();
   for (const annotation of annotations) {
     const key = repoKey(annotation.repo);
@@ -214,6 +218,11 @@ export function setFeedAnnotations(
 
 export function feedAnnotations(): readonly FeedAnnotation[] {
   return current;
+}
+
+/** Bumps whenever the annotations in force change; lets readers drop caches. */
+export function feedAnnotationsGeneration(): number {
+  return generation;
 }
 
 /** Every annotation for one repository, any revision. */
@@ -249,6 +258,25 @@ export function annotationFor(model: ModelSpec): AnnotationMatch | null {
     (annotation) => annotation.modelId === model.modelId,
   );
   return sameId ? { annotation: sameId, exact: false } : null;
+}
+
+/**
+ * Measured peaks memory planning may use for `model`: only from an
+ * annotation that describes exactly its primary file at the pinned revision
+ * and, when the annotation carries a recipe, the same primary sha256. The
+ * caller still matches each peak's launch shape to the launch it plans.
+ */
+export function plannableFeedPeaks(model: ModelSpec): readonly MemoryPeak[] {
+  const match = annotationFor(model);
+  if (!match?.exact) return [];
+  const pinned = model.artifacts
+    .find(({ role }) => role === "primary")
+    ?.sha256?.toLowerCase();
+  const published = match.annotation.recipe?.files.find(
+    ({ role }) => role === "primary",
+  )?.sha256;
+  if (pinned && published && published.toLowerCase() !== pinned) return [];
+  return match.annotation.memoryPeaks ?? [];
 }
 
 /** The entry is the user's: a user file added or patched it. */

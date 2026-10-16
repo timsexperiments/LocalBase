@@ -166,6 +166,12 @@ test("labels browser shell, asset, sign-in, and UI API routes", () => {
   expect(canonicalGatewayHttpRoute("/app/api/_localbase/model-discovery")).toBe(
     "/app/api/_localbase/model-discovery",
   );
+  expect(canonicalGatewayHttpRoute("/_localbase/hf-token")).toBe(
+    "/_localbase/hf-token",
+  );
+  expect(canonicalGatewayHttpRoute("/app/api/_localbase/hf-token")).toBe(
+    "/app/api/_localbase/hf-token",
+  );
   expect(canonicalGatewayHttpRoute("/app/api/private")).toBe("unmatched-route");
   expect(canonicalGatewayHttpRoute("/app/other")).toBe("unmatched-route");
 });

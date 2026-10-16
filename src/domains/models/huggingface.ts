@@ -39,8 +39,17 @@ export type HubClientOptions = Readonly<{
   now?: () => number;
 }>;
 
+/** Why the Hub refused, when a token would plausibly help. */
+export type HubErrorCode = "hub_auth_required" | "hub_rate_limited";
+
 export class HubError extends Error {
   override name = "HubError";
+  constructor(
+    message: string,
+    readonly code?: HubErrorCode,
+  ) {
+    super(message);
+  }
 }
 
 const repoIdSchema = z
@@ -99,6 +108,7 @@ const searchHitSchema = z
     library_name: z.string().optional(),
     tags: z.array(z.string()).default([]),
     gated: z.union([z.boolean(), z.string()]).optional(),
+    sha: z.string().optional(),
   })
   .passthrough();
 
@@ -174,12 +184,20 @@ async function hubJson(
     if (response.status >= 500 && cached) {
       return { body: cached.body, cached: true };
     }
+    const auth = response.status === 401 || response.status === 403;
     throw new HubError(
       response.status === 404
         ? `Hugging Face has no public repository for that name (${what}).`
-        : response.status === 401 || response.status === 403
+        : auth
           ? `Hugging Face refused access (${response.status}) while trying to ${what}. The repository may be gated: accept its terms on huggingface.co and save a token with \`local-base configure --hf-token\`.`
-          : `Hugging Face answered ${response.status} while trying to ${what}. Try again later; nothing was changed.`,
+          : response.status === 429
+            ? `Hugging Face answered 429 (rate limited) while trying to ${what}. Wait a minute, or save a Hugging Face token for a higher limit; nothing was changed.`
+            : `Hugging Face answered ${response.status} while trying to ${what}. Try again later; nothing was changed.`,
+      auth
+        ? "hub_auth_required"
+        : response.status === 429
+          ? "hub_rate_limited"
+          : undefined,
     );
   }
   let body: unknown;
@@ -382,6 +400,8 @@ export type HubSearchHit = Readonly<{
   libraryName: string | null;
   /** The repository asks users to accept terms before downloading. */
   gated: boolean;
+  /** The current commit sha, when the Hub returned one with the search. */
+  sha?: string;
   likely: LikelyKind;
 }>;
 
@@ -392,6 +412,7 @@ const SEARCH_FIELDS = [
   "tags",
   "gated",
   "library_name",
+  "sha",
 ] as const;
 
 /**
@@ -440,6 +461,9 @@ export async function searchHub(
       pipelineTag: hit.pipeline_tag ?? null,
       libraryName: hit.library_name ?? null,
       gated: isGated(hit.gated),
+      ...(hit.sha && /^[a-fA-F0-9]{40}$/.test(hit.sha)
+        ? { sha: hit.sha.toLowerCase() }
+        : {}),
       likely: likelyKind(hit.pipeline_tag, hit.tags, {
         repo: hit.id,
         library: hit.library_name ?? null,
@@ -965,5 +989,66 @@ export function generateEntry(
     projector: vision ? projector : null,
     detected,
     contextLength,
+  };
+}
+
+const whoamiSchema = z.object({
+  name: z.string().max(200).optional(),
+  auth: z
+    .object({
+      accessToken: z
+        .object({ role: z.string().max(40).optional() })
+        .partial()
+        .optional(),
+    })
+    .partial()
+    .optional(),
+});
+
+export type HubTokenCheck =
+  | Readonly<{ state: "valid"; name: string | null; role: string | null }>
+  | Readonly<{ state: "invalid" }>
+  | Readonly<{ state: "unreachable"; message: string }>;
+
+/**
+ * Asks the Hub who a token belongs to. Never cached, and the token goes
+ * only to huggingface.co; the result carries no part of the token.
+ */
+export async function checkHubToken(
+  token: string,
+  fetcher: HubFetch = fetch as unknown as HubFetch,
+): Promise<HubTokenCheck> {
+  let response: Awaited<ReturnType<HubFetch>>;
+  try {
+    response = await fetcher(`${HF_ENDPOINT}/api/whoami-v2`, {
+      headers: { accept: "application/json", authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    return {
+      state: "unreachable",
+      message: "Could not reach Hugging Face to check the token.",
+    };
+  }
+  if (response.status === 401 || response.status === 403)
+    return { state: "invalid" };
+  if (!response.ok)
+    return {
+      state: "unreachable",
+      message: `Hugging Face answered ${response.status} while checking the token.`,
+    };
+  const parsed = whoamiSchema.safeParse(
+    await response.json().catch(() => null),
+  );
+  if (!parsed.success)
+    return {
+      state: "unreachable",
+      message:
+        "Hugging Face sent an unexpected answer while checking the token.",
+    };
+  return {
+    state: "valid",
+    name: parsed.data.name ?? null,
+    role: parsed.data.auth?.accessToken?.role ?? null,
   };
 }
