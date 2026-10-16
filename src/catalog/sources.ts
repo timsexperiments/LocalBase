@@ -31,6 +31,7 @@ import {
   modelSpecSchema,
   type ModelSpec,
 } from "../catalog";
+import type { FeedAnnotation } from "./annotations";
 
 export const catalogTierSchema = z.enum(["built-in", "remote", "user"]);
 export type CatalogTier = z.infer<typeof catalogTierSchema>;
@@ -83,6 +84,8 @@ export type CatalogLayer = Readonly<{
   entries: readonly CatalogLayerEntry[];
   /** Problems found while reading the layer, before validation. */
   diagnostics?: readonly CatalogDiagnostic[];
+  /** Feed annotations published with a remote layer (see `./annotations.ts`). */
+  annotations?: readonly FeedAnnotation[];
 }>;
 
 export type CatalogComposition = Readonly<{

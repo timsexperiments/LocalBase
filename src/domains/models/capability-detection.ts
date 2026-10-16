@@ -13,6 +13,7 @@ import {
   type CapabilitySource,
   type ModelCapability,
 } from "../../catalog/capabilities";
+import { effectiveUnsupportedCapabilities } from "../../catalog/annotations";
 import { createGgufCapabilityHeaderReader } from "../runtime/gguf-geometry-cache";
 import type { GgufCapabilityHeader } from "../runtime/gguf-metadata";
 
@@ -426,8 +427,10 @@ function opinionsEqualTo(
 
 /**
  * Resolves the effective capability set. Each capability takes the highest
- * source with an opinion: runtime over detected over the catalog
- * declaration. Disagreements are kept as mismatches for diagnostics.
+ * source with an opinion: runtime over detected over the catalog (the
+ * entry's own declaration, then marks the remote feed publishes for its
+ * exact repo and revision; see `catalog/annotations.ts`). Disagreements
+ * are kept as mismatches for diagnostics.
  */
 export function resolveModelCapabilities(
   model: ModelSpec,
@@ -440,7 +443,7 @@ export function resolveModelCapabilities(
   const runtime = sources.runtime?.capabilities ?? {};
   const verified = sources.runtime?.verified ?? {};
   const unsupported = new Map(
-    (model.unsupportedCapabilities ?? []).map((entry) => [entry.id, entry]),
+    effectiveUnsupportedCapabilities(model).map((entry) => [entry.id, entry]),
   );
   const ids = new Set<Capability>([
     ...model.capabilities.map(({ id }) => id),

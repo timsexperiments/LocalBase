@@ -29,21 +29,26 @@ remote beats built-in.
 
 ## Remote community feed
 
-New catalog models can arrive without a LocalBase release. The repository
-publishes its catalog as a versioned feed,
-[`catalog/feed.json`](../catalog/feed.json), and a running gateway downloads
-it about once a day: it checks hourly and downloads only when the cached
-copy is more than 24 hours old.
+New catalog models, and what LocalBase has learned about Hugging Face files,
+can arrive without a LocalBase release. The repository publishes its catalog
+as a versioned feed, [`catalog/feed-v2.json`](../catalog/feed-v2.json), and a
+running gateway downloads it about once a day: it checks hourly and
+downloads only when the cached copy is more than 24 hours old. Binaries
+released before schema version 2 keep reading the models-only
+[`catalog/feed.json`](../catalog/feed.json).
 
 - **Only new models.** The feed adds model ids this binary does not ship.
   Entries for built-in ids are ignored, so the feed cannot change a
   qualified entry, and your `catalog.d` files always win over it.
 - **Pinned and checked.** Every entry pins a repository revision and artifact
   checksums, like any catalog entry. The feed document carries a
-  `schemaVersion` and the sha256 of its `models` array; a feed with a
-  mismatched checksum, an unknown schema version or more than 8 MiB is
-  rejected whole. A feed entry that is not a valid spec is skipped and
-  reported, and the rest still load.
+  `schemaVersion` and a sha256 of its contents (its `models` and
+  `annotations`); a feed with a mismatched checksum, a schema version this
+  binary cannot read or more than 8 MiB is rejected whole. A newer document
+  stays readable by older binaries when it sets `minReaderVersion` to a
+  version they know; they ignore the fields they do not understand. A feed
+  entry or annotation that does not validate is skipped and reported, and
+  the rest still load.
 - **Offline fallback.** The last good download is kept in
   `<root>/cache/catalog-feed/`. If a refresh fails, LocalBase keeps using
   it; with no download at all, the built-in catalog is used.
@@ -52,10 +57,44 @@ copy is more than 24 hours old.
   details view names the feed, and `local-base diagnostics` reports the feed
   state and any skipped entries.
 
+### Annotations
+
+Schema version 2 adds `annotations`, keyed by Hugging Face repository and
+revision (and optionally the file). Each one can publish:
+
+- **Status**: `qualified` (LocalBase ships and supports this exact revision)
+  or `verified` (LocalBase checked it and published what it found).
+- **Verified-unsupported capabilities** with a reason, such as a chat
+  template with no tool-call format.
+- **Measured memory peaks** per variant and launch shape, with the hardware
+  and date.
+- **A recipe** for a multi-file model (image, video, text-to-speech): every
+  file pinned by revision, size and sha256.
+
+Search results (`POST /_localbase/model-discovery` and **Find more models**)
+show the annotation beside each file and repository, with an **Install**
+action for a recipe. Installed models show it in the model details view and
+in `local-base models show <id>`; `local-base models catalog` summarizes it.
+
+Precedence, highest first:
+
+1. **Runtime observation.** A verified tool-call round-trip turns a
+   capability back on whatever the feed says.
+2. **Your entry.** A mark never removes a capability a `catalog.d` file adds
+   or declares; it is shown as "not applied". Adding a file from Hugging Face
+   writes the feed's marks into the new entry, where you can edit them.
+3. **The feed.** Marks apply only to an exact revision match. An annotation
+   for another revision of the same model is shown, never applied.
+
+Not yet done: a recipe installs a catalog entry this binary or the feed
+already has; it cannot create a new multi-file entry from an arbitrary
+repository. Published memory peaks are shown for reference and do not feed
+LocalBase's memory planning, which uses its own measurements and estimates.
+
 Manage the feed with `local-base models feed`:
 
 ```sh
-local-base models feed status            # URL, last download, revision, counts
+local-base models feed status            # URL, last download, schema, counts
 local-base models feed refresh           # download now if stale
 local-base models feed refresh --force   # download now
 local-base models feed use https://example.com/my-feed.json
@@ -69,8 +108,9 @@ turn the feed off. The CLI reads the cached feed but never downloads it
 except through `models feed refresh`.
 
 To publish your own feed, use the same document shape. Contributors
-regenerate the repository feed after editing `src/catalog/models/` with
-`bun run catalog:feed`; a test fails while it is out of date.
+regenerate both repository feeds, with annotations built from the catalog
+and the checked-in memory measurements, after editing `src/catalog/models/`
+with `bun run catalog:feed`; a test fails while either is out of date.
 
 ## Same-id semantics: add or patch
 

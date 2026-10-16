@@ -246,6 +246,9 @@ export const diagnosticsManifestSchema = z
               builtIn: z.number().int().nonnegative(),
               added: z.array(z.string().min(1)),
               skipped: z.number().int().nonnegative(),
+              schemaVersion: z.number().int().positive().nullable(),
+              annotations: z.number().int().nonnegative(),
+              annotationsSkipped: z.number().int().nonnegative(),
             })
             .strict(),
         })

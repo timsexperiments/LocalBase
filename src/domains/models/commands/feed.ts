@@ -48,6 +48,10 @@ export function catalogFeedStatusLines(status: CatalogFeedStatus): string[] {
     lines.push(
       `Models:    ${status.entries} in the feed · ${status.added.length} added (community) · ${status.builtIn} already built in${status.skipped ? ` · ${status.skipped} skipped as invalid` : ""}`,
     );
+    if (status.schemaVersion !== null)
+      lines.push(
+        `Schema:    version ${status.schemaVersion}${status.schemaVersion < 2 ? " (no annotations)" : ` · ${status.annotations} annotation(s)${status.annotationsSkipped ? ` · ${status.annotationsSkipped} skipped as invalid` : ""}`}`,
+      );
   }
   if (status.lastError) {
     lines.push(`Last error: ${status.lastError}`);

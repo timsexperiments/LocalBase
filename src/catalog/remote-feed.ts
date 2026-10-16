@@ -1,12 +1,16 @@
 /**
  * The remote catalog feed (the `remote` tier in `./sources.ts`).
  *
- * The repository publishes its catalog data as `catalog/feed.json`. A
- * gateway downloads that feed on a schedule so new models arrive without a
+ * The repository publishes its catalog data as `catalog/feed-v2.json`, and
+ * as the models-only v1 `catalog/feed.json` older binaries still read. A
+ * gateway downloads the feed on a schedule so new models arrive without a
  * binary release. The feed is checked as a whole (format, version and a
- * SHA-256 of its models) and every entry is then validated like any other
+ * SHA-256 of its body) and every entry is then validated like any other
  * catalog entry, so pinned revisions and file checksums are required.
  * Entries that fail are skipped and reported; they never stop LocalBase.
+ * Version 2 also carries annotations keyed by Hugging Face repository and
+ * revision (`./annotations.ts`): verified status, unsupported capabilities,
+ * measured memory peaks and multi-file recipes.
  *
  * The last good download is kept under `<root>/cache/catalog-feed/` and is
  * what every process loads. A failed refresh keeps it. Without a cache the
@@ -29,6 +33,11 @@ import { join } from "node:path";
 import { z } from "zod";
 import { BUILT_IN_CATALOG, CATALOG } from "../catalog";
 import {
+  MAX_FEED_ANNOTATIONS,
+  parseFeedAnnotations,
+  type FeedAnnotation,
+} from "./annotations";
+import {
   catalogDiagnostics,
   catalogProvenance,
   composeCatalog,
@@ -36,9 +45,12 @@ import {
 } from "./sources";
 
 export const CATALOG_FEED_FORMAT = "localbase-catalog-feed";
-export const CATALOG_FEED_SCHEMA_VERSION = 1;
+/** The version this LocalBase writes and reads; v1 feeds are still read. */
+export const CATALOG_FEED_SCHEMA_VERSION = 2;
+/** The models-only format `catalog/feed.json` keeps for older binaries. */
+export const CATALOG_FEED_LEGACY_SCHEMA_VERSION = 1;
 export const DEFAULT_CATALOG_FEED_URL =
-  "https://raw.githubusercontent.com/timsexperiments/LocalBase/main/catalog/feed.json";
+  "https://raw.githubusercontent.com/timsexperiments/LocalBase/main/catalog/feed-v2.json";
 /** A cached feed younger than this is not downloaded again. */
 export const CATALOG_FEED_TTL_MS = 24 * 60 * 60 * 1000;
 /** `LOCALBASE_CATALOG_FEED_URL=off` disables the feed; a URL replaces it. */
@@ -78,30 +90,86 @@ export const catalogFeedUrlSchema = z
     if (problem) context.addIssue({ code: "custom", message: problem });
   });
 
-/** The published feed document. */
+/**
+ * The published feed document.
+ *
+ * Version 1 is `{format, schemaVersion, sha256, models}` with the sha256 of
+ * `JSON.stringify(models)`. Version 2 adds `annotations` (see
+ * `./annotations.ts`) and `minReaderVersion`, and its sha256 covers every
+ * body key (everything but the header), so a later version can add keys an
+ * older reader still verifies and ignores. A feed whose `minReaderVersion`
+ * is above this reader's version is refused with an upgrade message.
+ */
 export const catalogFeedSchema = z
   .object({
     format: z.literal(CATALOG_FEED_FORMAT),
     schemaVersion: z.number().int().positive(),
-    /** SHA-256 of `JSON.stringify(models)`; also the feed's revision. */
+    /** The oldest reader version that understands this document. */
+    minReaderVersion: z.number().int().positive().optional(),
+    /** The checksum of the body; also the feed's revision. */
     sha256: sha256Schema,
     models: z.array(z.unknown()).max(MAX_FEED_MODELS),
+    annotations: z.array(z.unknown()).max(MAX_FEED_ANNOTATIONS).optional(),
   })
-  .strict();
+  .passthrough();
 export type CatalogFeed = z.infer<typeof catalogFeedSchema>;
 
-/** Builds the feed document for a list of catalog entries. */
-export function buildCatalogFeed(models: readonly unknown[]): CatalogFeed {
+const HEADER_KEYS = new Set([
+  "format",
+  "schemaVersion",
+  "minReaderVersion",
+  "sha256",
+]);
+
+/** Builds the current (v2) feed document. */
+export function buildCatalogFeed(
+  models: readonly unknown[],
+  annotations: readonly FeedAnnotation[] = [],
+): CatalogFeed {
+  const body = { models: [...models], annotations: [...annotations] };
   return {
     format: CATALOG_FEED_FORMAT,
     schemaVersion: CATALOG_FEED_SCHEMA_VERSION,
-    sha256: feedChecksum(models),
+    minReaderVersion: CATALOG_FEED_SCHEMA_VERSION,
+    sha256: feedChecksum(CATALOG_FEED_SCHEMA_VERSION, body),
+    ...body,
+  };
+}
+
+/** Builds the models-only v1 document older binaries read. */
+export function buildLegacyCatalogFeed(
+  models: readonly unknown[],
+): CatalogFeed {
+  return {
+    format: CATALOG_FEED_FORMAT,
+    schemaVersion: CATALOG_FEED_LEGACY_SCHEMA_VERSION,
+    sha256: feedChecksum(CATALOG_FEED_LEGACY_SCHEMA_VERSION, { models }),
     models: [...models],
   };
 }
 
-function feedChecksum(models: readonly unknown[]): string {
-  return createHash("sha256").update(JSON.stringify(models)).digest("hex");
+function feedChecksum(
+  schemaVersion: number,
+  document: Readonly<Record<string, unknown>>,
+): string {
+  const hash = createHash("sha256");
+  if (schemaVersion === CATALOG_FEED_LEGACY_SCHEMA_VERSION) {
+    return hash.update(JSON.stringify(document.models)).digest("hex");
+  }
+  const body = Object.fromEntries(
+    Object.keys(document)
+      .filter((key) => !HEADER_KEYS.has(key))
+      .sort()
+      .map((key) => [key, document[key]]),
+  );
+  return hash.update(JSON.stringify(body)).digest("hex");
+}
+
+/** The feed's annotations, invalid ones skipped and counted. */
+export function catalogFeedAnnotations(
+  feed: CatalogFeed,
+): ReturnType<typeof parseFeedAnnotations> {
+  return parseFeedAnnotations(feed.annotations ?? []);
 }
 
 // Settings ----------------------------------------------------------------
@@ -216,6 +284,20 @@ function readJson<T>(path: string, schema: z.ZodType<T>): T | null {
   }
 }
 
+/**
+ * v1 and v2 documents, and any later one that declares this reader can use
+ * it (`minReaderVersion` at or below the current version).
+ */
+function readableVersion(
+  header: Readonly<{ schemaVersion: number; minReaderVersion?: number }>,
+): boolean {
+  if (header.schemaVersion <= CATALOG_FEED_SCHEMA_VERSION) return true;
+  return (
+    header.minReaderVersion !== undefined &&
+    header.minReaderVersion <= CATALOG_FEED_SCHEMA_VERSION
+  );
+}
+
 function readCachedFeed(root: string, url: string): CachedFeed | null {
   const cached = readJson(
     join(catalogFeedCacheDirectory(root), "feed.json"),
@@ -223,7 +305,7 @@ function readCachedFeed(root: string, url: string): CachedFeed | null {
   );
   if (!cached || cached.url !== url) return null;
   // A cache written by a newer LocalBase is not readable here.
-  if (cached.feed.schemaVersion !== CATALOG_FEED_SCHEMA_VERSION) return null;
+  if (!readableVersion(cached.feed)) return null;
   return cached;
 }
 
@@ -253,6 +335,7 @@ function entryModelId(data: unknown): string | undefined {
 function feedLayer(url: string, feed: CatalogFeed): CatalogLayer {
   return {
     tier: "remote",
+    annotations: catalogFeedAnnotations(feed).annotations,
     entries: feed.models.flatMap((data, index) => {
       const modelId = entryModelId(data);
       return modelId && BUILT_IN_IDS.has(modelId)
@@ -350,6 +433,7 @@ export function parseCatalogFeed(text: string): CatalogFeed {
     .object({
       format: z.literal(CATALOG_FEED_FORMAT),
       schemaVersion: z.number().int().positive(),
+      minReaderVersion: z.number().int().positive().optional(),
     })
     .safeParse(body);
   if (!header.success) {
@@ -357,9 +441,9 @@ export function parseCatalogFeed(text: string): CatalogFeed {
       `The document is not a LocalBase catalog feed (expected "format": "${CATALOG_FEED_FORMAT}").`,
     );
   }
-  if (header.data.schemaVersion !== CATALOG_FEED_SCHEMA_VERSION) {
+  if (!readableVersion(header.data)) {
     throw new CatalogFeedError(
-      `The feed uses schema version ${header.data.schemaVersion}; this LocalBase reads version ${CATALOG_FEED_SCHEMA_VERSION}. Upgrade LocalBase to use it.`,
+      `The feed uses schema version ${header.data.schemaVersion}; this LocalBase reads up to version ${CATALOG_FEED_SCHEMA_VERSION}. Upgrade LocalBase to use it.`,
     );
   }
   const parsed = catalogFeedSchema.safeParse(body);
@@ -369,9 +453,11 @@ export function parseCatalogFeed(text: string): CatalogFeed {
       `The feed is malformed (${issue ? `${issue.path.join(".") || "document"}: ${issue.message}` : "invalid"}).`,
     );
   }
-  if (feedChecksum(parsed.data.models) !== parsed.data.sha256) {
+  if (
+    feedChecksum(parsed.data.schemaVersion, parsed.data) !== parsed.data.sha256
+  ) {
     throw new CatalogFeedError(
-      "The feed's sha256 does not match its models; it was truncated or altered.",
+      "The feed's sha256 does not match its contents; it was truncated or altered.",
     );
   }
   return parsed.data;
@@ -496,6 +582,12 @@ export type CatalogFeedStatus = Readonly<{
   added: readonly string[];
   /** Feed entries skipped as invalid. */
   skipped: number;
+  /** The cached document's schema version; null without a cache. */
+  schemaVersion: number | null;
+  /** Annotations (verified status, marks, peaks, recipes) in the cached feed. */
+  annotations: number;
+  /** Annotations skipped as invalid. */
+  annotationsSkipped: number;
 }>;
 
 /**
@@ -528,6 +620,9 @@ export function catalogFeedStatus(
       builtIn: 0,
       added: [],
       skipped: 0,
+      schemaVersion: null,
+      annotations: 0,
+      annotationsSkipped: 0,
     };
   }
   const cached = readCachedFeed(root, settings.url);
@@ -540,6 +635,9 @@ export function catalogFeedStatus(
         return modelId !== undefined && BUILT_IN_IDS.has(modelId);
       }).length
     : 0;
+  const annotations = cached
+    ? catalogFeedAnnotations(cached.feed)
+    : { annotations: [], skipped: 0 };
   return {
     ...base,
     enabled: true,
@@ -555,6 +653,9 @@ export function catalogFeedStatus(
     ).map(({ modelId }) => modelId),
     skipped: catalogDiagnostics().filter(({ tier }) => tier === "remote")
       .length,
+    schemaVersion: cached?.feed.schemaVersion ?? null,
+    annotations: annotations.annotations.length,
+    annotationsSkipped: annotations.skipped,
   };
 }
 
