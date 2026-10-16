@@ -119,10 +119,19 @@ export const configureResultSchema = z
       .optional(),
   })
   .strict();
+export const serviceStderrSummarySchema = z
+  .object({
+    path: z.string().min(1),
+    bytes: z.number().int().nonnegative(),
+    modifiedAt: z.iso.datetime({ offset: true }),
+    archiveBytes: z.number().int().nonnegative(),
+  })
+  .strict();
 export const doctorResultSchema = z
   .object({
     hardware: hardwareOutputSchema,
     configuration: configurationOutputSchema,
+    serviceStderr: serviceStderrSummarySchema.optional(),
   })
   .strict();
 export const gatewayReadinessOutputSchema = gatewayReadinessSchema;

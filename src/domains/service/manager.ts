@@ -17,6 +17,7 @@ import {
   type ServiceMetadata,
 } from "./definitions";
 import { otelServiceEnvironment } from "../observability/otel-config";
+import { prepareServiceStderrLog } from "../observability/service-stderr";
 import { gatewayHealthSchema, type GatewayHealth } from "../runtime/health";
 import { ensureLocalBaseRootMarker } from "../../utils/root";
 import {
@@ -642,6 +643,7 @@ async function writeDefinition(
 ): Promise<void> {
   if (definition.manager === "launchd") {
     parseLaunchdDefinition(definition.contents);
+    await prepareServiceStderrLog(root);
   } else {
     parseSystemdDefinition(definition.contents);
   }

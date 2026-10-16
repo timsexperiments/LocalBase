@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +16,12 @@ import {
   logEventSchema,
   readLogSnapshot,
 } from "./domains/observability/logging";
+import {
+  MAX_SERVICE_STDERR_BYTES,
+  prepareServiceStderrLog,
+  serviceStderrArchivePath,
+  serviceStderrPath,
+} from "./domains/observability/service-stderr";
 import {
   canonicalLocalBaseRoot,
   ensureLocalBaseRootMarker,
@@ -173,3 +179,41 @@ test("managed pre-context failures leave one bounded stable bootstrap record", a
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test.skipIf(process.platform !== "darwin")(
+  "launchd-managed initialization bounds oversized captured stderr",
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), "local-base-stderr-bound-"));
+    try {
+      const root = join(directory, "root");
+      ensureLocalBaseRootMarker(root);
+      await prepareServiceStderrLog(root);
+      await writeFile(
+        serviceStderrPath(root),
+        Buffer.alloc(MAX_SERVICE_STDERR_BYTES + 1024, "x"),
+      );
+
+      const ctx = await createAppContext(
+        { root, nonInteractive: false, json: false },
+        true,
+        true,
+        { ...process.env, LOCALBASE_SERVICE_TOKEN: crypto.randomUUID() },
+      );
+      try {
+        expect(statSync(serviceStderrPath(root)).size).toBe(0);
+        expect(statSync(serviceStderrArchivePath(root)).size).toBe(
+          MAX_SERVICE_STDERR_BYTES,
+        );
+      } finally {
+        await ctx.initializationOperation?.release();
+        await ctx.logger.close();
+        ctx.database.close();
+      }
+      expect(
+        (await readLogSnapshot(root)).map((event) => event.eventName),
+      ).toContain("service.stderr-rotated");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);

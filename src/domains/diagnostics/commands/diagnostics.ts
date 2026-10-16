@@ -48,6 +48,7 @@ import {
   resolveOtelConfiguration,
   type OtelConfiguration,
 } from "../../observability/otel";
+import { inspectServiceStderrLog } from "../../observability/service-stderr";
 import {
   getServiceInspectionReadOnly,
   type ServiceInspection,
@@ -201,6 +202,15 @@ const logsSchema = z
       })
       .strict(),
     bytes: z.number().int().nonnegative(),
+    /** Metadata only: captured service stderr is unredacted and never bundled. */
+    serviceStderr: z
+      .object({
+        bytes: z.number().int().nonnegative(),
+        archiveBytes: z.number().int().nonnegative(),
+        modifiedAt: z.iso.datetime({ offset: true }),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -606,6 +616,9 @@ export async function runDiagnostics(
         .catch(() => unavailable("otel_unavailable"))
     : Promise.resolve(unavailable("otel_unavailable"));
 
+  const serviceStderr = await inspectServiceStderrLog(root).catch(
+    () => undefined,
+  );
   let capturedEvents: DiagnosticsLogEvent[] = [];
   const logResult = await readLogSnapshot(root, {}, MAX_LOG_EVENTS)
     .then((events) => {
@@ -620,6 +633,15 @@ export async function runDiagnostics(
             : {}),
         },
         bytes: bounded.bytes,
+        ...(serviceStderr
+          ? {
+              serviceStderr: {
+                bytes: serviceStderr.bytes,
+                archiveBytes: serviceStderr.archiveBytes,
+                modifiedAt: serviceStderr.modifiedAt,
+              },
+            }
+          : {}),
       });
     })
     .catch(() => unavailable("logs_unavailable"));
@@ -654,6 +676,11 @@ export async function runDiagnostics(
     archive: { path, entries: entries.length, bytes },
   });
   execution.output.info(`Created diagnostics bundle: ${path}`);
+  if (serviceStderr) {
+    execution.output.info(
+      `Service stderr: ${serviceStderr.bytes} bytes captured at ${serviceStderr.path}. It holds unredacted gateway crash output, so the bundle records only its size; review it before sharing.`,
+    );
+  }
   if (manifest.models.available) {
     const feed = manifest.models.data.catalogFeed;
     execution.output.info(

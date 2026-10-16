@@ -331,7 +331,7 @@ See [Operating LocalBase](docs/operations.md) for queue limits, model-switch beh
 
 ## Logs
 
-`serve` is the single writer of redacted JSON Lines events under `$LOCALBASE_ROOT/logs`. The active file rotates at 10 MiB and retains five archives. These files are the primary operational record for foreground and managed services. A managed startup failure before the primary sink is available atomically records one private, bounded structured bootstrap event. launchd output is discarded; the systemd journal remains a secondary Linux fallback.
+`serve` is the single writer of redacted JSON Lines events under `$LOCALBASE_ROOT/logs`. The active file rotates at 10 MiB and retains five archives. These files are the primary operational record for foreground and managed services. A managed startup failure before the primary sink is available atomically records one private, bounded structured bootstrap event. On macOS, launchd discards stdout and appends stderr to the private `$LOCALBASE_ROOT/logs/service-stderr.log`, which catches what the structured sink cannot (Bun panics, uncaught errors, failures before logging starts); the managed gateway stops copying events to the console once its sink opens, and at startup a file over 1 MiB has its newest 1 MiB moved to `service-stderr.log.1` and is then emptied. It is raw, unredacted output, so `doctor` and `diagnostics` report only its size and path, never its content. The systemd journal remains the secondary Linux fallback.
 
 ```bash
 local-base logs --level error

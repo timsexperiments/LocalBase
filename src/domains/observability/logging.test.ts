@@ -236,6 +236,37 @@ test("quiet test logs suppress routine output but keep warnings and errors", () 
   expect(writes).toEqual({ stdout: 0, stderr: 2 });
 });
 
+test("launchd-managed loggers stop mirroring events to the console once the file sink opens", async () => {
+  const root = createRoot();
+  const writes: string[] = [];
+  const originalWrites = {
+    stdout: process.stdout.write,
+    stderr: process.stderr.write,
+  };
+  const capture = ((chunk: string | Uint8Array) => {
+    writes.push(String(chunk));
+    return true;
+  }) as typeof process.stdout.write;
+  process.stdout.write = capture;
+  process.stderr.write = capture;
+  const logger = new LocalBaseLogger(undefined, { consoleWithFileSink: false });
+  try {
+    logger.error("gateway", "before sink");
+    await logger.enableFileLogging(root);
+    logger.error("gateway", "after sink");
+    await logger.close();
+  } finally {
+    process.stdout.write = originalWrites.stdout;
+    process.stderr.write = originalWrites.stderr;
+  }
+
+  expect(writes.join("")).toContain("before sink");
+  expect(writes.join("")).not.toContain("after sink");
+  expect((await readLogSnapshot(root)).map((entry) => entry.message)).toEqual([
+    "after sink",
+  ]);
+});
+
 test("JSON logger writes only JSON lines to stdout", () => {
   const writes: string[] = [];
   const originalWrite = process.stdout.write;
