@@ -7,11 +7,11 @@
       "tier": "managed",
       "runtimes": {
         "llama-server": {
-          "tag": "b10419",
-          "assetName": "llama-b10419-bin-macos-arm64.tar.gz",
-          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b10419/llama-b10419-bin-macos-arm64.tar.gz",
-          "expectedSizeBytes": 11080871,
-          "sha256": "10e16c9092b193b26b02326079776c7b5605e67b70e21d3230e9970b1cccb0c0",
+          "tag": "b11671",
+          "assetName": "llama-b11671-bin-macos-arm64.tar.gz",
+          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11671/llama-b11671-bin-macos-arm64.tar.gz",
+          "expectedSizeBytes": 12201717,
+          "sha256": "0f9c093f77b9c194f2f097df6204d9f5f8758968815e7db0374e98b0485ef9df",
           "format": "tar.gz",
           "stripComponents": 1
         },
@@ -66,11 +66,11 @@
       "tier": "managed",
       "runtimes": {
         "llama-server": {
-          "tag": "b10839",
-          "assetName": "llama-b10839-bin-ubuntu-vulkan-x64.tar.gz",
-          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b10839/llama-b10839-bin-ubuntu-vulkan-x64.tar.gz",
-          "expectedSizeBytes": 34308194,
-          "sha256": "3c07591859c8634255b8345955bc19147532e251e3eab4d10b224adfdcc5bc08",
+          "tag": "b11671",
+          "assetName": "llama-b11671-bin-ubuntu-vulkan-x64.tar.gz",
+          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11671/llama-b11671-bin-ubuntu-vulkan-x64.tar.gz",
+          "expectedSizeBytes": 30508272,
+          "sha256": "fb449c1564dda0cdbfcc68d46bf9929b337e41fe76d5c512877cdec62c487cf3",
           "format": "tar.gz",
           "stripComponents": 1
         },

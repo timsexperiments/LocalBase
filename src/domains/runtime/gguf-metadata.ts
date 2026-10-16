@@ -13,7 +13,7 @@ const KV_CELL_PADDING = 256;
 const HYBRID_QWEN_FULL_ATTENTION_INTERVAL = 4;
 const HYBRID_QWEN_ARCHITECTURES = new Set(["qwen3next", "qwen35", "qwen35moe"]);
 /**
- * Other recurrent or hybrid architectures (b10419 llm_arch_is_recurrent or
+ * Other recurrent or hybrid architectures (b11671 llm_arch_is_recurrent or
  * is_hybrid) whose per-slot state is not modelled; geometry is unknown so
  * callers fall back to a coarse estimate instead of under-counting.
  */
@@ -34,6 +34,11 @@ const UNMODELLED_RECURRENT_ARCHITECTURES = new Set([
   "nemotron_h_moe",
   "kimi-linear",
   "deepseek4",
+  "bailingmoe3",
+  "kimi-k3",
+  "glm5-next",
+  "qwen4exp",
+  "minimax-01",
 ]);
 /** llama.cpp stores recurrent conv/ssm state as F32. */
 const RECURRENT_STATE_BYTES = 4;
