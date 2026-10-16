@@ -291,6 +291,14 @@ export const diagnosticsInputSchema = z
   .strict();
 export type DiagnosticsInput = z.infer<typeof diagnosticsInputSchema>;
 
+export const smokeInputSchema = z
+  .object({
+    switchTo: z.string().trim().min(1).max(256).optional(),
+    timeout: z.coerce.number().int().min(1).max(3_600).default(300),
+  })
+  .strict();
+export type SmokeInput = z.infer<typeof smokeInputSchema>;
+
 export const keysListInputSchema = z.object({});
 export type KeysListInput = z.infer<typeof keysListInputSchema>;
 

@@ -39,6 +39,7 @@ import {
   catalogInputSchema,
   configureInputSchema,
   diagnosticsInputSchema,
+  smokeInputSchema,
   doctorInputSchema,
   initInputSchema,
   installedInputSchema,
@@ -89,6 +90,7 @@ import {
   type CatalogInput,
   type ConfigureInput,
   type DiagnosticsInput,
+  type SmokeInput,
   type DoctorInput,
   type GlobalOptions,
   type InitInput,
@@ -138,6 +140,7 @@ import {
   catalogResultSchema,
   configureResultSchema,
   diagnosticsResultSchema,
+  smokeResultSchema,
   doctorResultSchema,
   initResultSchema,
   installedResultSchema,
@@ -1021,6 +1024,37 @@ const diagnosticsCommand = command<DiagnosticsInput>({
   },
 });
 
+const smokeCommand = command<SmokeInput>({
+  path: ["smoke"],
+  description: "Check that a running gateway serves real inference",
+  examples: [
+    "local-base smoke",
+    "local-base smoke --json --switch-to qwen2.5-coder-1.5b-instruct-q4_k_m",
+  ],
+  args: {
+    "switch-to": {
+      type: "string",
+      valueHint: "model",
+      description: "Also switch to this LLM and back; interrupts other clients",
+    },
+    timeout: {
+      type: "string",
+      valueHint: "seconds",
+      description: "Per-request timeout, including model loads (default 300)",
+    },
+  },
+  parse: (input) => smokeInputSchema.parse(input),
+  validate: (input) => {
+    if (input.switchTo) assertCatalogModels([input.switchTo], "llm");
+    return input;
+  },
+  resultSchema: smokeResultSchema,
+  run: async (input, context, execution) => {
+    const { runSmoke } = await import("../../diagnostics/commands/smoke");
+    return await runSmoke(input, context, execution);
+  },
+});
+
 const keysListCommand = command<KeysListInput>({
   path: ["keys", "list"],
   description: "List API keys",
@@ -1818,6 +1852,7 @@ export const commands = [
   statusCommand,
   logsCommand,
   diagnosticsCommand,
+  smokeCommand,
   keysListCommand,
   keysCreateCommand,
   keysRevokeCommand,
@@ -2027,6 +2062,7 @@ export const rootCommand = defineCommand({
     status: statusCommand.citty,
     logs: logsCommand.citty,
     diagnostics: diagnosticsCommand.citty,
+    smoke: smokeCommand.citty,
     keys: keysCommand,
     access: accessCommand,
     reset: resetCommand.citty,

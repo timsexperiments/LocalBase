@@ -146,6 +146,23 @@ export const diagnosticsResultSchema = z
       .strict(),
   })
   .strict();
+export const smokeStepSchema = z
+  .object({
+    name: z.enum(["health", "chat", "switch", "switch-back"]),
+    model: z.string().min(1).nullable(),
+    ok: z.boolean(),
+    durationMs: z.number().int().nonnegative(),
+    detail: z.string().min(1),
+  })
+  .strict();
+export const smokeResultSchema = z
+  .object({
+    passed: z.boolean(),
+    gatewayUrl: z.string().url().nullable(),
+    steps: z.array(smokeStepSchema),
+    failure: z.string().min(1).nullable(),
+  })
+  .strict();
 export const catalogResultSchema = z
   .object({ models: z.array(modelOutputSchema) })
   .strict();
