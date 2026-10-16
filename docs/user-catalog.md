@@ -282,8 +282,19 @@ POST { "action": "validate" }              -> checks the token in use
 POST { "action": "clear" }                 -> removes the saved token
 ```
 
-A token saved here lasts until it is cleared or replaced, but running
-`local-base configure` with an `hfToken` in a TOML file replaces it.
+A token saved here lasts until it is cleared or replaced. `local-base configure`
+changes it only when asked:
+
+- `--hf-token <token>` always replaces the saved token, and `--hf-token ""`
+  clears it.
+- An `hfToken` in a TOML file passed with `--config` is saved only when no
+  token is saved yet, or when it equals the saved one. It never overwrites a
+  different saved token, such as one saved in this panel, so re-running
+  configure with the same file is safe. Configure then keeps the saved token
+  and prints a warning, without either value. To switch to the TOML token,
+  replace it here or pass `--hf-token`.
+- Interactive configure prompts for the token, with the saved one (or
+  `HF_TOKEN`) as the default, unless a flag or TOML file sets it.
 
 ### Removing an entry
 
