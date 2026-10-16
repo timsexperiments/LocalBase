@@ -88,7 +88,7 @@ Precedence, highest first:
 
 Not yet done: a recipe installs a catalog entry this binary or the feed
 already has; it cannot create a new multi-file entry from an arbitrary
-repository.
+repository (`models add` can, for the image pipelines below).
 
 Published memory peaks also feed the memory fit, as a fallback. A peak is used
 only when the annotation matches the pinned revision (and, when the recipe
@@ -172,7 +172,8 @@ Add one with: local-base models add hf:<org>/<repo>[:<file-or-quant>]
 The search lists repositories LocalBase can run, sorted by downloads. By
 default it lists GGUF language models. `--kind stt` lists speech recognition
 repositories with whisper.cpp `ggml-*.bin` files, and `--kind image` lists
-text-to-image repositories. `LIKELY KIND` says what LocalBase would run each
+text-to-image repositories, plus image-to-image and GGUF repositories of a
+supported pipeline. `LIKELY KIND` says what LocalBase would run each
 result as, or why it cannot. `GATED` marks repositories whose terms you must
 accept on Hugging Face before downloading.
 
@@ -206,9 +207,23 @@ local-base models add hf:Org/sd-checkpoint:model.safetensors      # an image che
   Q8_0, then the smallest file.
 - **Image:** a `text-to-image` repository with a single-file Stable Diffusion
   checkpoint (`.safetensors`, `.ckpt` or `.gguf`) at the repository root,
-  which sd-server loads with `-m`. Diffusers folders, LoRAs and pipelines that
-  need several separately mapped files (FLUX, SD3, Qwen-Image, Wan and
-  similar) are refused.
+  which sd-server loads with `-m`. A checkpoint is launched with
+  `--prediction v` (`imageLaunchOptions.prediction: "v"`) when its name or
+  tags say v-prediction (`v-pred`, `768-v`, SD 2.x 768) or its
+  `scheduler/scheduler_config.json` declares `v_prediction`; the entry's notes
+  say why.
+- **Image pipelines:** repositories of FLUX.1 (dev and schnell, and their
+  fine-tunes), FLUX.2 klein 4B and 9B, and Z-Image-Turbo, found by repository
+  name, `base_model` tags or `model_index.json`. LocalBase pins the diffusion
+  model file from the repository (with no selector, the first of Q4_0, Q4_K,
+  Q4_K_S, Q5_0 and Q8_0, else the smallest), and the text encoders and VAE
+  from the measured built-in entry for that pipeline, each with its own
+  revision and sha256. Files with the same bytes as an installed model are
+  shared, not downloaded again. FLUX.1 dev-style models get 20 steps.
+- **Refused, with a reason:** diffusers folder layouts with no single-file
+  release, LoRAs, and pipelines sd-server cannot map from one repository
+  (Qwen-Image, SD3, FLUX.1 Kontext, FLUX.2 dev, Wan and other video models).
+  Search results show the reason instead of an **Add** button.
 
 If the choice is ambiguous it lists the files and asks you to pick one. Ids
 that a built-in or remote entry already uses are refused; pick another with

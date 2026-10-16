@@ -619,6 +619,9 @@ export function resolveImageLaunchPlan(input: {
     launchOptions: Object.freeze({
       diffusionFlashAttention:
         input.model?.imageLaunchOptions?.diffusionFlashAttention ?? false,
+      ...(input.model?.imageLaunchOptions?.prediction
+        ? { prediction: input.model.imageLaunchOptions.prediction }
+        : {}),
     }),
     ...(imageRuntime ? { imageRuntime } : {}),
   });

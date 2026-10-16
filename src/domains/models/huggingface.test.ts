@@ -606,16 +606,48 @@ test("classifies speech and image repositories", () => {
       library: "diffusion-single-file",
     }).kind,
   ).toBe("image");
-  for (const repo of [
-    "black-forest-labs/FLUX.1-dev",
-    "Qwen/Qwen-Image",
-    "stabilityai/stable-diffusion-3.5-large",
-    "Wan-AI/Wan2.1-T2V-1.3B",
-  ]) {
-    expect(likelyKind("text-to-image", [], { repo }).label).toMatch(
-      /multi-file/,
-    );
+  for (const [repo, label] of [
+    ["black-forest-labs/FLUX.1-dev", "image (FLUX.1 pipeline)"],
+    ["Tongyi-MAI/Z-Image-Turbo", "image (Z-Image-Turbo pipeline)"],
+    ["Org/FLUX.2-klein-9B-GGUF", "image (FLUX.2 klein 9B pipeline)"],
+  ] as const) {
+    expect(likelyKind("text-to-image", [], { repo })).toMatchObject({
+      kind: "image",
+      label,
+    });
   }
+  for (const [repo, reason] of [
+    ["Qwen/Qwen-Image", /Qwen2\.5-VL/],
+    ["stabilityai/stable-diffusion-3.5-large", /SD3|CLIP-G/],
+    ["Wan-AI/Wan2.1-T2V-1.3B", /video/],
+    ["black-forest-labs/FLUX.1-Kontext-dev", /edit/i],
+    ["black-forest-labs/FLUX.2-dev", /Mistral/],
+  ] as const) {
+    const likely = likelyKind("text-to-image", [], { repo });
+    expect(likely.kind).toBeNull();
+    expect(likely.label).toMatch(reason);
+  }
+  // Fine-tunes inherit the pipeline from base_model tags.
+  expect(
+    likelyKind(
+      "text-to-image",
+      ["base_model:finetune:black-forest-labs/FLUX.1-dev"],
+      {
+        repo: "Artist/painterly-v2",
+      },
+    ).pipeline,
+  ).toBe("flux1");
+  // Image-to-image and untagged GGUF repositories of a known pipeline count.
+  expect(
+    likelyKind("image-to-image", [], { repo: "unsloth/FLUX.2-klein-4B-GGUF" })
+      .pipeline,
+  ).toBe("flux2-klein-4b");
+  expect(
+    likelyKind(undefined, ["gguf"], {
+      repo: "leejet/FLUX.1-schnell-gguf",
+      library: "gguf",
+    }).kind,
+  ).toBe("image");
   expect(
     likelyKind("text-to-image", ["lora"], { repo: "Org/style-lora" }).kind,
   ).toBeNull();
@@ -743,15 +775,6 @@ test("generates single-file Stable Diffusion entries", async () => {
   expect(() =>
     generateEntry(diffusersOnly, parseHfReference("hf:TinyArt/x")),
   ).toThrow(/single-file Stable Diffusion checkpoint/);
-  const flux = await parseInfo(
-    imageInfo({ id: "black-forest-labs/FLUX.1-schnell" }),
-  );
-  expect(() =>
-    generateEntry(
-      flux,
-      parseHfReference("hf:black-forest-labs/FLUX.1-schnell"),
-    ),
-  ).toThrow(/multi-file pipeline/);
 });
 
 test("searches speech and image repositories with the token", async () => {
@@ -830,4 +853,285 @@ test("models search passes the saved token and shows gated repositories", async 
     kind: "llm",
     results: [{ gated: true, kind: "llm" }],
   });
+});
+
+test("generates multi-file pipeline entries from the measured profiles", async () => {
+  const dev = await parseInfo(
+    imageInfo({
+      id: "black-forest-labs/FLUX.1-dev",
+      library_name: "diffusers",
+      siblings: [
+        { rfilename: "model_index.json", size: 500 },
+        lfs("flux1-dev.safetensors", 23_800_000_000, "a"),
+        lfs("ae.safetensors", 335_000_000, "b"),
+        lfs(
+          "transformer/diffusion_pytorch_model-00001-of-00003.safetensors",
+          9_900_000_000,
+          "c",
+        ),
+        lfs(
+          "text_encoder_2/model-00001-of-00002.safetensors",
+          4_990_000_000,
+          "d",
+        ),
+      ],
+    }),
+  );
+  const choices = entryChoices(dev);
+  expect(choices.pipeline).toBe("flux1");
+  expect(choices.choices.map(({ path }) => path)).toEqual([
+    "flux1-dev.safetensors",
+  ]);
+  const entry = generateEntry(
+    dev,
+    parseHfReference("hf:black-forest-labs/FLUX.1-dev"),
+  );
+  const spec = modelSpecSchema.parse(entry.spec);
+  const template = byId("flux1-schnell-q4_0")!;
+  expect(spec).toMatchObject({
+    kind: "image",
+    family: "FLUX.1",
+    size: "12B",
+    imageLaunchOptions: { diffusionFlashAttention: true },
+    imageRuntime: {
+      kind: "diffusion-flux1",
+      artifacts: {
+        diffusionModel: "flux1-dev.safetensors",
+        vae: "flux1-ae.safetensors",
+        t5xxl: "flux1-t5xxl_fp16.safetensors",
+      },
+      generation: { sampler: "euler", steps: 20, cfgScale: 1 },
+    },
+  });
+  expect(spec.artifacts.map(({ filename }) => filename)).toEqual(
+    template.artifacts.map(({ filename }, index) =>
+      index === 0 ? "flux1-dev.safetensors" : filename,
+    ),
+  );
+  // Every supplementary file is pinned to its own repository revision.
+  for (const artifact of spec.artifacts.slice(1)) {
+    expect(artifact.source?.revision).toMatch(/^[a-f0-9]{40}$/);
+  }
+  expect(spec.artifacts[0]).toMatchObject({
+    sha256: "a".repeat(64),
+    sourcePath: "flux1-dev.safetensors",
+  });
+  expect(spec.storageGb).toBeGreaterThan(23.8 + 10);
+
+  const klein = await parseInfo(
+    imageInfo({
+      id: "unsloth/FLUX.2-klein-4B-GGUF",
+      pipeline_tag: "image-to-image",
+      library_name: "gguf",
+      siblings: [
+        lfs("flux-2-klein-4b-Q8_0.gguf", 4_300_000_000, "a"),
+        lfs("flux-2-klein-4b-Q4_0.gguf", 2_500_000_000, "b"),
+        lfs("flux-2-klein-4b-Q2_K.gguf", 1_600_000_000, "c"),
+      ],
+    }),
+  );
+  const kleinEntry = generateEntry(
+    klein,
+    parseHfReference("hf:unsloth/FLUX.2-klein-4B-GGUF"),
+  );
+  const kleinSpec = modelSpecSchema.parse(kleinEntry.spec);
+  expect(kleinSpec).toMatchObject({
+    family: "FLUX.2-klein",
+    size: "4B",
+    quant: "Q4_0",
+    imageRuntime: {
+      kind: "diffusion-qwen3",
+      artifacts: {
+        diffusionModel: "flux-2-klein-4b-q4_0-flux-2-klein-4b-Q4_0.gguf",
+      },
+      generation: { steps: 4 },
+    },
+  });
+  expect(kleinSpec.capabilities.map(({ id }) => id)).toEqual(["text-to-image"]);
+
+  // The same bytes as the built-in's file are shared, not downloaded twice.
+  const builtIn = byId("flux2-klein-4b-q4_0")!.artifacts[0]!;
+  const sameBytes = await parseInfo(
+    imageInfo({
+      id: "leejet/FLUX.2-klein-4B-GGUF",
+      pipeline_tag: undefined,
+      library_name: "gguf",
+      tags: ["gguf"],
+      siblings: [
+        {
+          rfilename: builtIn.sourcePath,
+          size: builtIn.expectedSizeBytes,
+          lfs: { sha256: builtIn.sha256, size: builtIn.expectedSizeBytes },
+        },
+      ],
+    }),
+  );
+  expect(
+    generateEntry(
+      sameBytes,
+      parseHfReference("hf:leejet/FLUX.2-klein-4B-GGUF"),
+      { modelId: "klein-copy" },
+    ).spec.artifacts,
+  ).toContainEqual(expect.objectContaining({ filename: builtIn.filename }));
+
+  const missing = await parseInfo(
+    imageInfo({
+      id: "Org/FLUX.1-dev-lora-pack",
+      siblings: [lfs("tiny.safetensors", 100_000_000, "a")],
+    }),
+  );
+  expect(() => entryChoices(missing)).toThrow(/no FLUX\.1 diffusion model/);
+});
+
+test("explains diffusers folder layouts sd.cpp cannot load", async () => {
+  const diffusers = await parseInfo(
+    imageInfo({
+      siblings: [
+        { rfilename: "model_index.json", size: 500 },
+        lfs("unet/diffusion_pytorch_model.safetensors", 3_440_000_000, "e"),
+      ],
+    }),
+  );
+  expect(() => entryChoices(diffusers)).toThrow(/diffusers folder layout/);
+});
+
+test("launches v-prediction checkpoints with --prediction v", async () => {
+  const byName = await parseInfo(
+    imageInfo({
+      id: "Laxhar/noobai-XL-Vpred-1.0",
+      siblings: [lfs("NoobAI-XL-Vpred-v1.0.safetensors", 6_900_000_000, "a")],
+    }),
+  );
+  const named = modelSpecSchema.parse(
+    generateEntry(byName, parseHfReference("hf:Laxhar/noobai-XL-Vpred-1.0"))
+      .spec,
+  );
+  expect(named.imageLaunchOptions).toEqual({
+    diffusionFlashAttention: false,
+    prediction: "v",
+  });
+  expect(named.notes).toMatch(/--prediction v/);
+
+  // An SD 2.1 repository found by its scheduler config.
+  const body = imageInfo({
+    id: "Org/sd-two-one",
+    siblings: [
+      { rfilename: "scheduler/scheduler_config.json", size: 400 },
+      lfs("v2-1.safetensors", 5_200_000_000, "a"),
+    ],
+  });
+  const { fetch, calls } = fakeFetch((url) =>
+    url.endsWith("scheduler/scheduler_config.json")
+      ? { body: { prediction_type: "v_prediction" } }
+      : { body },
+  );
+  const info = await fetchModelInfo(
+    { root: scratchRoot(false), fetch },
+    "Org/sd-two-one",
+  );
+  expect(info.schedulerPrediction).toBe("v");
+  expect(calls.at(-1)!.url).toBe(
+    `https://huggingface.co/Org/sd-two-one/resolve/${SHA}/scheduler/scheduler_config.json`,
+  );
+  const spec = modelSpecSchema.parse(
+    generateEntry(info, parseHfReference("hf:Org/sd-two-one")).spec,
+  );
+  expect(spec.imageLaunchOptions?.prediction).toBe("v");
+
+  // Epsilon checkpoints stay unchanged, and a failed config read is ignored.
+  const eps = await fetchModelInfo(
+    {
+      root: scratchRoot(false),
+      fetch: fakeFetch((url) =>
+        url.endsWith("scheduler_config.json") ? { status: 404 } : { body },
+      ).fetch,
+    },
+    "Org/sd-two-one",
+  );
+  expect(eps.schedulerPrediction).toBeUndefined();
+  expect(
+    modelSpecSchema.parse(
+      generateEntry(eps, parseHfReference("hf:Org/sd-two-one")).spec,
+    ).imageLaunchOptions,
+  ).toEqual({ diffusionFlashAttention: false });
+});
+
+test("image searches add launchable image-to-image and GGUF pipelines", async () => {
+  const pages: Record<string, unknown[]> = {
+    "text-to-image": [
+      {
+        id: "stabilityai/sdxl-turbo",
+        downloads: 500,
+        pipeline_tag: "text-to-image",
+        library_name: "diffusers",
+        tags: [],
+      },
+    ],
+    "image-to-image": [
+      {
+        id: "unsloth/FLUX.2-klein-4B-GGUF",
+        downloads: 900,
+        pipeline_tag: "image-to-image",
+        library_name: "gguf",
+        tags: ["gguf"],
+      },
+      {
+        id: "Org/upscaler",
+        downloads: 2000,
+        pipeline_tag: "image-to-image",
+        tags: [],
+      },
+    ],
+    gguf: [
+      {
+        id: "leejet/FLUX.1-schnell-gguf",
+        downloads: 100,
+        tags: ["gguf"],
+        library_name: "gguf",
+      },
+      {
+        id: "TinyOrg/Flux-Chat-7B-GGUF",
+        downloads: 5000,
+        pipeline_tag: "text-generation",
+        tags: ["gguf"],
+      },
+      {
+        id: "unsloth/FLUX.2-klein-4B-GGUF",
+        downloads: 900,
+        pipeline_tag: "image-to-image",
+        library_name: "gguf",
+        tags: ["gguf"],
+      },
+    ],
+  };
+  const { fetch, calls } = fakeFetch((url) => {
+    const params = new URL(url).searchParams;
+    return { body: pages[params.get("pipeline_tag") ?? params.get("filter")!] };
+  });
+  const { hits } = await searchHub(
+    { root: scratchRoot(), fetch, kind: "image" },
+    "flux",
+  );
+  expect(calls).toHaveLength(3);
+  expect(hits.map(({ repo }) => repo)).toEqual([
+    "unsloth/FLUX.2-klein-4B-GGUF",
+    "stabilityai/sdxl-turbo",
+    "leejet/FLUX.1-schnell-gguf",
+  ]);
+
+  // An empty query skips the unfiltered GGUF search; a failing extra page
+  // does not fail the search.
+  const failing = fakeFetch((url) =>
+    new URL(url).searchParams.get("pipeline_tag") === "image-to-image"
+      ? { status: 500 }
+      : { body: pages["text-to-image"] },
+  );
+  const quiet = await searchHub(
+    { root: scratchRoot(), fetch: failing.fetch, kind: "image" },
+    "",
+  );
+  expect(failing.calls).toHaveLength(2);
+  expect(quiet.hits.map(({ repo }) => repo)).toEqual([
+    "stabilityai/sdxl-turbo",
+  ]);
 });
