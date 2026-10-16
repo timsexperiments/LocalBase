@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  appendFileSync,
   mkdirSync,
   symlinkSync,
   mkdtempSync,
@@ -22,6 +23,10 @@ import {
   openSecureDirectory,
   setSecureFilePublicationTestHooksForTests,
 } from "../../../utils/secure-file-publication";
+import {
+  prepareServiceStderrLog,
+  serviceStderrPath,
+} from "../../observability/service-stderr";
 import { diagnosticsManifestSchema, runDiagnostics } from "./diagnostics";
 import { CATALOG } from "../../../catalog";
 import { hasCapability } from "../../../catalog/capabilities";
@@ -437,6 +442,55 @@ test("collects capabilities without creating a missing database", async () => {
     expect(await Bun.file(databasePath(root)).exists()).toBe(false);
   } finally {
     await logger.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("records captured service stderr size without bundling its unredacted content", async () => {
+  const root = await fixture();
+  const output = join(root, "report.zip");
+  const messages: string[] = [];
+  try {
+    await prepareServiceStderrLog(root);
+    appendFileSync(
+      serviceStderrPath(root),
+      "panic: request body prompt=stderr-secret\n",
+    );
+    await runDiagnostics(
+      { output },
+      { logger: createLogger(), config: { root } },
+      {
+        ...execution(),
+        output: {
+          info: (message: string) => messages.push(message),
+          error() {},
+          lifecycle() {},
+        },
+      },
+    );
+    const entries = await archiveEntries(output);
+    const manifest = diagnosticsManifestSchema.parse(
+      JSON.parse(new TextDecoder().decode(entries["manifest.json"])),
+    );
+    expect(manifest.logs.available).toBe(true);
+    if (manifest.logs.available) {
+      expect(manifest.logs.data.serviceStderr).toEqual({
+        bytes: 41,
+        archiveBytes: 0,
+        modifiedAt: expect.any(String),
+      });
+    }
+    for (const bytes of Object.values(entries)) {
+      const entryText = new TextDecoder().decode(bytes);
+      expect(entryText).not.toContain("stderr-secret");
+      expect(entryText).not.toContain(root);
+    }
+    expect(
+      messages.some((message) =>
+        message.includes(`41 bytes captured at ${serviceStderrPath(root)}`),
+      ),
+    ).toBe(true);
+  } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });

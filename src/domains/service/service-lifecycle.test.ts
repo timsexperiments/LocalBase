@@ -6,6 +6,7 @@ import {
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -267,7 +268,7 @@ test("renders secure definitions and preserves supported path characters", async
         ...telemetry,
       },
       standardOutPath: "/dev/null",
-      standardErrorPath: "/dev/null",
+      standardErrorPath: join(canonical, "logs", "service-stderr.log"),
     });
 
     const systemd = await createServiceDefinition(
@@ -678,7 +679,13 @@ describe.serial("compiled CLI service lifecycle", () => {
         OTEL_EXPORTER_OTLP_ENDPOINT: "http://127.0.0.1:4318",
         OTEL_TRACES_SAMPLER: "always_on",
       },
+      standardOutPath: "/dev/null",
+      standardErrorPath: join(canonical, "logs", "service-stderr.log"),
     });
+    // launchd opens StandardErrorPath itself, so install pre-creates it privately.
+    expect(
+      lstatSync(join(canonical, "logs", "service-stderr.log")).mode & 0o777,
+    ).toBe(0o600);
 
     const repeated = await runCli(
       executable,

@@ -14,6 +14,10 @@ import {
   writeBootstrapDiagnostic,
   type ILogger,
 } from "./domains/observability/logging";
+import {
+  boundServiceStderrLog,
+  capturesServiceStderr,
+} from "./domains/observability/service-stderr";
 import { DatabaseSession } from "./db/client";
 import { z } from "zod";
 import {
@@ -198,7 +202,9 @@ export async function createAppContext(
   // User catalog entries must exist before config validation looks them up.
   loadCatalogSources(root);
   const database = new DatabaseSession();
-  const logger = createLogger(environment.LOG_FORMAT);
+  const logger = createLogger(environment.LOG_FORMAT, {
+    consoleWithFileSink: !capturesServiceStderr(environment),
+  });
   let initializationOperation: OperationLease | undefined;
   let bootstrapWritten = false;
   try {
@@ -253,6 +259,9 @@ export async function createAppContext(
     if (initializeUnderOperationLock) {
       await logger.enableFileLogging(root);
       await clearBootstrapDiagnostic(root);
+      if (capturesServiceStderr(environment)) {
+        await boundCapturedServiceStderr(root, logger);
+      }
     }
 
     if (overrides.host) config.host = overrides.host;
@@ -294,5 +303,37 @@ export async function createAppContext(
     await initializationOperation?.release();
     database.close();
     throw error;
+  }
+}
+
+/** Bounding captured stderr is housekeeping; a failure must not block gateway startup. */
+async function boundCapturedServiceStderr(
+  root: string,
+  logger: ILogger,
+): Promise<void> {
+  try {
+    if (await boundServiceStderrLog(root)) {
+      logger.event({
+        severity: "info",
+        eventName: "service.stderr-rotated",
+        category: "service",
+        component: "service",
+        runtime: "service",
+        message: "Rotated captured service stderr that exceeded its size cap.",
+      });
+    }
+  } catch (error) {
+    logger.event({
+      severity: "warn",
+      eventName: "service.stderr-rotation-failed",
+      category: "service",
+      component: "service",
+      runtime: "service",
+      message: "Could not bound captured service stderr.",
+      error: {
+        type: error instanceof Error ? error.name : "Error",
+        message: error instanceof Error ? error.message : String(error),
+      },
+    });
   }
 }

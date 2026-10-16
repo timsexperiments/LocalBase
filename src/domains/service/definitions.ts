@@ -8,6 +8,7 @@ import {
   OTEL_ENVIRONMENT_NAMES,
   otelServiceEnvironmentSchema,
 } from "../observability/otel-config";
+import { serviceStderrPath } from "../observability/service-stderr";
 
 export const servicePlatformSchema = z.enum(["darwin", "linux"]);
 export type ServicePlatform = z.infer<typeof servicePlatformSchema>;
@@ -278,8 +279,9 @@ export function renderLaunchdDefinition(
     parsedInvocation.program,
     ...parsedInvocation.arguments,
   ];
+  // Stdout only carries console copies of structured events; stderr keeps crash output.
   const stdoutPath = "/dev/null";
-  const stderrPath = "/dev/null";
+  const stderrPath = serviceStderrPath(workingDirectory);
   const telemetry = otelServiceEnvironmentSchema.parse(otelEnvironment);
 
   launchdDefinitionSchema.parse({

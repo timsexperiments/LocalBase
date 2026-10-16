@@ -2,17 +2,22 @@ import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { DoctorInput } from "../../app/commands/inputs";
 import { publicConfiguration } from "../../app/commands/results";
+import {
+  inspectServiceStderrLog,
+  type ServiceStderrSummary,
+} from "../../observability/service-stderr";
 
-export function runDoctor(
+export async function runDoctor(
   _input: DoctorInput,
   ctx: AppContext,
   execution: CommandExecution,
-): {
+): Promise<{
   data: {
     hardware: AppContext["specs"];
     configuration: ReturnType<typeof publicConfiguration>;
+    serviceStderr?: ServiceStderrSummary;
   };
-} {
+}> {
   const specs = ctx.specs;
 
   execution.output.info(`OS: ${specs.osName}`);
@@ -70,10 +75,21 @@ export function runDoctor(
       );
     }
   }
+
+  // Only metadata: captured stderr is raw crash output that skipped log redaction.
+  const serviceStderr = await inspectServiceStderrLog(ctx.config.root).catch(
+    () => undefined,
+  );
+  if (serviceStderr) {
+    execution.output.info(
+      `Service stderr: ${serviceStderr.bytes} bytes captured at ${serviceStderr.path} (last written ${serviceStderr.modifiedAt}${serviceStderr.archiveBytes > 0 ? `; ${serviceStderr.archiveBytes} bytes in the .1 archive` : ""}). It holds unredacted gateway crash output; review it before sharing.`,
+    );
+  }
   return {
     data: {
       hardware: specs,
       configuration: publicConfiguration(ctx.config, ctx.otelConfiguration),
+      ...(serviceStderr ? { serviceStderr } : {}),
     },
   };
 }

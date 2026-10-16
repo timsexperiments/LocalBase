@@ -1004,13 +1004,23 @@ export type HttpRequestLogInput = Readonly<{
   auth?: HttpRequestAuth;
 }>;
 
+export type LoggerOptions = {
+  /**
+   * Keep mirroring events to the console after the file sink opens. Disabled for the
+   * launchd service so its captured stderr holds only output the sink cannot record.
+   */
+  consoleWithFileSink?: boolean;
+};
+
 /** Composite console and file logger for gateway operational events. */
 export class LocalBaseLogger implements ILogger {
   private readonly format: "human" | "json";
   private writer: RotatingLogWriter | undefined;
   private otel: OtelRuntime | undefined;
+  private readonly consoleWithFileSink: boolean;
 
-  constructor(format?: string) {
+  constructor(format?: string, options: LoggerOptions = {}) {
+    this.consoleWithFileSink = options.consoleWithFileSink ?? true;
     this.format =
       format?.toLowerCase() === "json" ||
       process.env.LOG_FORMAT?.toLowerCase() === "json"
@@ -1028,7 +1038,9 @@ export class LocalBaseLogger implements ILogger {
 
   private writeEvent(input: LogEventInput, exportOtel: boolean): void {
     const event = createLogEvent(input, this.otel?.activeCorrelation());
-    consoleWrite(event, this.format);
+    if (!this.writer || this.consoleWithFileSink) {
+      consoleWrite(event, this.format);
+    }
     this.writer?.enqueue(event);
     if (exportOtel) this.otel?.emit(event);
   }
@@ -1162,8 +1174,11 @@ export class LocalBaseLogger implements ILogger {
   }
 }
 
-export function createLogger(format?: string): ILogger {
-  return new LocalBaseLogger(format);
+export function createLogger(
+  format?: string,
+  options: LoggerOptions = {},
+): ILogger {
+  return new LocalBaseLogger(format, options);
 }
 
 export type LogFilters = {
