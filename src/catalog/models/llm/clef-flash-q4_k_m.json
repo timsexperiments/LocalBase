@@ -1,0 +1,39 @@
+{
+  "modelId": "clef-flash-q4_k_m",
+  "displayName": "Clef Flash",
+  "kind": "llm",
+  "provider": "Cloudflare",
+  "family": "Clef",
+  "version": "Flash",
+  "size": "9B",
+  "quant": "Q4_K_M",
+  "storageGb": 7.11,
+  "source": "https://huggingface.co/ggml-org/Clef-Flash-GGUF",
+  "repositoryRevision": "6b4fe4c59098479652d94f0fe11a40facbebd1ec",
+  "artifacts": [
+    {
+      "sourcePath": "Clef-Flash-Q4_K_M.gguf",
+      "filename": "Clef-Flash-Q4_K_M.gguf",
+      "expectedSizeBytes": 6486448288,
+      "sha256": "3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2",
+      "role": "primary"
+    },
+    {
+      "sourcePath": "mmproj-Clef-Flash-Q8_0.gguf",
+      "filename": "mmproj-Clef-Flash-Q8_0.gguf",
+      "expectedSizeBytes": 624229728,
+      "sha256": "9dd8bc279f57d33b0697d4d0fe900fe751a24c9e3d30ab90969d4714ffc0722d",
+      "role": "supplementary"
+    }
+  ],
+  "llmRuntime": {
+    "capability": "decision-only"
+  },
+  "inputModalities": ["text", "image"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 262144,
+  "capabilities": ["decision", "long-context"],
+  "commercialStatus": "open",
+  "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.",
+  "notes": "Default decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef-flash (Apache-2.0, built from Qwen3.5-9B; base revision 8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3). Answers choice, score, and noul questions through POST /v1/systemone. Clef 27B is the larger qualified alternative."
+}

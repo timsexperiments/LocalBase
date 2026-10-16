@@ -2,7 +2,7 @@
   "format": "localbase-catalog-feed",
   "schemaVersion": 2,
   "minReaderVersion": 2,
-  "sha256": "961c5fc3b160a8b42658c0e69912e204679d6a626a83a6812916eafa005b9de7",
+  "sha256": "0014ea524d1e89b8e4198a242ef64473432f3dc7c7e355866a056fa5ab3bca7b",
   "models": [
     {
       "modelId": "qwen3.5-0.8b-q4_k_m",
@@ -616,6 +616,53 @@
       "commercialStatus": "open",
       "catch": "Embedding endpoint only. Chat completions are rejected before runtime admission.",
       "notes": "Official Apache-2.0 Q8_0 GGUF. The runtime uses last-token pooling and emits 1024-dimensional vectors."
+    },
+    {
+      "modelId": "clef-flash-q4_k_m",
+      "displayName": "Clef Flash",
+      "kind": "llm",
+      "provider": "Cloudflare",
+      "family": "Clef",
+      "version": "Flash",
+      "size": "9B",
+      "quant": "Q4_K_M",
+      "storageGb": 7.11,
+      "source": "https://huggingface.co/ggml-org/Clef-Flash-GGUF",
+      "repositoryRevision": "6b4fe4c59098479652d94f0fe11a40facbebd1ec",
+      "artifacts": [
+        {
+          "sourcePath": "Clef-Flash-Q4_K_M.gguf",
+          "filename": "Clef-Flash-Q4_K_M.gguf",
+          "expectedSizeBytes": 6486448288,
+          "sha256": "3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "mmproj-Clef-Flash-Q8_0.gguf",
+          "filename": "mmproj-Clef-Flash-Q8_0.gguf",
+          "expectedSizeBytes": 624229728,
+          "sha256": "9dd8bc279f57d33b0697d4d0fe900fe751a24c9e3d30ab90969d4714ffc0722d",
+          "role": "supplementary"
+        }
+      ],
+      "llmRuntime": {
+        "capability": "decision-only"
+      },
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 262144,
+      "capabilities": [
+        "decision",
+        "long-context"
+      ],
+      "commercialStatus": "open",
+      "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.",
+      "notes": "Default decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef-flash (Apache-2.0, built from Qwen3.5-9B; base revision 8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3). Answers choice, score, and noul questions through POST /v1/systemone. Clef 27B is the larger qualified alternative."
     },
     {
       "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
@@ -3484,6 +3531,48 @@
       "modelId": "qwen3-embedding-0.6b-q8_0",
       "kind": "llm",
       "status": "qualified"
+    },
+    {
+      "repo": "ggml-org/Clef-Flash-GGUF",
+      "revision": "6b4fe4c59098479652d94f0fe11a40facbebd1ec",
+      "file": "Clef-Flash-Q4_K_M.gguf",
+      "modelId": "clef-flash-q4_k_m",
+      "kind": "llm",
+      "status": "qualified",
+      "memoryPeaks": [
+        {
+          "variant": "Q4_K_M",
+          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+          "peakBytes": 9990832128,
+          "backendAcceleratorBytes": 8719958016,
+          "hostBufferBytes": 1270874112,
+          "peakRssBytes": 8551874560,
+          "measuredAt": "2026-10-15",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ],
+      "recipe": {
+        "modelId": "clef-flash-q4_k_m",
+        "files": [
+          {
+            "repositoryUrl": "https://huggingface.co/ggml-org/Clef-Flash-GGUF",
+            "revision": "6b4fe4c59098479652d94f0fe11a40facbebd1ec",
+            "path": "Clef-Flash-Q4_K_M.gguf",
+            "sizeBytes": 6486448288,
+            "sha256": "3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2",
+            "role": "primary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/ggml-org/Clef-Flash-GGUF",
+            "revision": "6b4fe4c59098479652d94f0fe11a40facbebd1ec",
+            "path": "mmproj-Clef-Flash-Q8_0.gguf",
+            "sizeBytes": 624229728,
+            "sha256": "9dd8bc279f57d33b0697d4d0fe900fe751a24c9e3d30ab90969d4714ffc0722d",
+            "role": "supplementary"
+          }
+        ],
+        "totalBytes": 7110678016
+      }
     },
     {
       "repo": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",

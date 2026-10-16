@@ -245,6 +245,38 @@ describe("catalog artifact validation", () => {
     }
   });
 
+  test("pins the default decision model and its projector", () => {
+    const clef = byId("clef-flash-q4_k_m");
+    expect(clef).toMatchObject({
+      kind: "llm",
+      provider: "Cloudflare",
+      source: "https://huggingface.co/ggml-org/Clef-Flash-GGUF",
+      repositoryRevision: "6b4fe4c59098479652d94f0fe11a40facbebd1ec",
+      llmRuntime: { capability: "decision-only" },
+      inputModalities: ["text", "image"],
+      contextWindowTokens: 262_144,
+      artifacts: [
+        {
+          filename: "Clef-Flash-Q4_K_M.gguf",
+          expectedSizeBytes: 6486448288,
+          sha256:
+            "3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2",
+          role: "primary",
+        },
+        {
+          filename: "mmproj-Clef-Flash-Q8_0.gguf",
+          expectedSizeBytes: 624229728,
+          sha256:
+            "9dd8bc279f57d33b0697d4d0fe900fe751a24c9e3d30ab90969d4714ffc0722d",
+          role: "supplementary",
+        },
+      ],
+    });
+    expect(hasCapability(clef!, "decision")).toBe(true);
+    // A decision model never stands in for a chat recommendation.
+    expect(recommendedForVram(128)).not.toContainEqual(clef);
+  });
+
   test("pins the embedding-only Qwen runtime contract", () => {
     expect(byId("qwen3-embedding-0.6b-q8_0")).toMatchObject({
       kind: "llm",

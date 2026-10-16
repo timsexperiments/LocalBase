@@ -22,6 +22,7 @@ import stt_whisper_small_q8_0 from "./stt/whisper-small-q8_0.json";
 import stt_whisper_medium_q8_0 from "./stt/whisper-medium-q8_0.json";
 import image_realvis_xl_v5_0 from "./image/realvis-xl-v5.0.json";
 import llm_qwen3_embedding_0_6b_q8_0 from "./llm/qwen3-embedding-0.6b-q8_0.json";
+import llm_clef_flash_q4_k_m from "./llm/clef-flash-q4_k_m.json";
 import llm_qwen2_5_coder_1_5b_instruct_q4_k_m from "./llm/qwen2.5-coder-1.5b-instruct-q4_k_m.json";
 import llm_qwen2_5_coder_3b_instruct_q4_k_m from "./llm/qwen2.5-coder-3b-instruct-q4_k_m.json";
 import llm_qwen2_5_coder_7b_instruct_q4_k_m from "./llm/qwen2.5-coder-7b-instruct-q4_k_m.json";
@@ -102,6 +103,7 @@ export const CATALOG_DATA: readonly unknown[] = [
   stt_whisper_medium_q8_0,
   image_realvis_xl_v5_0,
   llm_qwen3_embedding_0_6b_q8_0,
+  llm_clef_flash_q4_k_m,
   llm_qwen2_5_coder_1_5b_instruct_q4_k_m,
   llm_qwen2_5_coder_3b_instruct_q4_k_m,
   llm_qwen2_5_coder_7b_instruct_q4_k_m,

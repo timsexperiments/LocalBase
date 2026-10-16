@@ -31,6 +31,9 @@ const mb = (value: number): number => Math.round(value * 1e6);
 export const MEASUREMENT_DATE = "2026-10-13";
 /** Second pass: the remaining runnable image and video profiles. */
 export const IMAGE_VIDEO_MEASUREMENT_DATE = "2026-10-14";
+
+/** Date of the decision-model measurement (Clef Flash). */
+export const DECISION_MEASUREMENT_DATE = "2026-10-15";
 export const MEASUREMENT_HARDWARE = "Apple M-series 64 GiB, macOS 26";
 
 export type LlmMeasurementShape = Readonly<{
@@ -88,6 +91,11 @@ const LLM_METHOD =
   "llama-server with gateway flags (ctx 8192, 1 slot, q8_0 KV, flash " +
   "attention, cache-ram 2048); two chats of ~1750 prompt + <=256 output " +
   "tokens; MTL0 model + context + compute buffers; RSS sampled every 250 ms";
+const DECISION_METHOD =
+  "llama-server decision launch via the gateway (ctx 8192, 1 slot, batch = " +
+  "ctx, flash attention, cache-ram 0, Q8_0 projector); the three model-card " +
+  "decision requests; MTL0 model + compute + projector buffers; peak RSS " +
+  "from /usr/bin/time -l";
 const IMAGE_METHOD =
   "sd-server via the gateway, catalog defaults with --diffusion-fa; params " +
   "+ largest stage compute buffer (VAE decode); RSS sampled every 250 ms";
@@ -99,6 +107,7 @@ function llm(
   hostMib: number,
   peakRssBytes: number,
   date: string = MEASUREMENT_DATE,
+  method: string = LLM_METHOD,
 ): MemoryMeasurement {
   return {
     kind: "llm",
@@ -110,7 +119,7 @@ function llm(
     peakRssBytes,
     date,
     hardware: MEASUREMENT_HARDWARE,
-    method: LLM_METHOD,
+    method: method,
   };
 }
 
@@ -119,6 +128,16 @@ export const MEMORY_MEASUREMENTS: readonly MemoryMeasurement[] = Object.freeze([
   llm("qwen3.5-2b-q4_k_m", "Q4_K_M", 1259 + 70 + 493, 414, 1_593_032_704),
   llm("qwen3.5-4b-q4_k_m", "Q4_K_M", 2740 + 186 + 495, 515, 3_320_250_368),
   llm("qwen3.5-9b-q4_k_m", "Q4_K_M", 5626 + 186 + 501, 569, 6_390_480_896),
+  // Decision server: no KV or recurrent context; the projector loads on MTL0.
+  llm(
+    "clef-flash-q4_k_m",
+    "Q4_K_M",
+    5630 + 1843 + 595 + 248,
+    1212,
+    8_551_874_560,
+    DECISION_MEASUREMENT_DATE,
+    DECISION_METHOD,
+  ),
   // Re-measured 2026-10-14: buffers unchanged, peak RSS 5% above the first pass.
   llm(
     "qwen3.5-27b-q4_k_m",
