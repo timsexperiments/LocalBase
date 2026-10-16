@@ -362,7 +362,7 @@ export class ManagedService {
           async () => await this.waitHealthy(startedProcess, attempt),
         );
         this.assertStartupActive(attempt);
-        reservation.materialize();
+        reservation.materialize(startedProcess.pid);
         this.lifecycle("backend.ready", "info", { pid: startedProcess.pid });
         this.lifecycleState = "running";
         this.notifyReady({

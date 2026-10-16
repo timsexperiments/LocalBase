@@ -1,4 +1,5 @@
 import type { HostMemoryProvider } from "./memory/host-memory-provider";
+import type { MemorySampler } from "./observed-memory";
 import {
   evaluateMemoryAdmission,
   effectiveMemoryReserveBytes,
@@ -24,7 +25,8 @@ export type RuntimeMemoryReservationRequest = Readonly<{
 
 export type RuntimeMemoryReservation = Readonly<{
   runtimeId: string;
-  materialize: () => void;
+  /** Marks the reservation resident; `pid` lets releases be measured. */
+  materialize: (pid?: number) => void;
   release: () => void;
 }>;
 
@@ -34,6 +36,8 @@ type ReservationEntry = {
   /** Accelerator demand counted against the unified GPU working-set cap. */
   acceleratorBytes: number;
   state: "pending" | "resident";
+  /** Process holding the reservation once resident, when known. */
+  pid?: number;
 };
 
 function pendingDemandByPool(
@@ -168,6 +172,8 @@ export class MemorySafetyController {
     private readonly provider: HostMemoryProvider,
     private readonly config: MemorySafetyConfig,
     private readonly bypassAdmission = false,
+    /** Measures a releasing runtime so its credit never exceeds its footprint. */
+    private readonly sampleMemory?: MemorySampler,
   ) {
     this.pressurePoolId = provider.topology.system.id;
   }
@@ -206,7 +212,8 @@ export class MemorySafetyController {
       });
       return Object.freeze({
         runtimeId: request.runtimeId,
-        materialize: () => this.materialize(request.runtimeId, token),
+        materialize: (pid?: number) =>
+          this.materialize(request.runtimeId, token, pid),
         release: () => this.release(request.runtimeId, token),
       });
     });
@@ -217,7 +224,10 @@ export class MemorySafetyController {
    * runtimes were already stopped, without creating a reservation, advancing
    * hysteresis, or mutating any state. Returns the rejection, if any.
    *
-   * Freed memory is estimated from the releasing runtimes' projected demand.
+   * Freed memory is each releasing runtime's projected demand, capped on
+   * unified hosts at the process's measured footprint: a resident process
+   * often holds less than its projection, and crediting the projection lets
+   * a switch pass here and then fail after the current model is stopped.
    */
   async checkAdmission(
     request: Omit<RuntimeMemoryReservationRequest, "runtimeId"> & {
@@ -226,8 +236,10 @@ export class MemorySafetyController {
     options: { releasingRuntimeIds?: readonly string[] } = {},
   ): Promise<RuntimeMemoryAdmissionError | undefined> {
     if (this.bypassAdmission) return undefined;
+    const releasing = new Set(options.releasingRuntimeIds ?? []);
+    // Sampled outside the lock: a footprint run can take a moment.
+    const measured = await this.measureReleasing(releasing);
     return await this.exclusive(async () => {
-      const releasing = new Set(options.releasingRuntimeIds ?? []);
       try {
         this.evaluate(
           {
@@ -236,6 +248,7 @@ export class MemorySafetyController {
           },
           await this.provider.snapshot(),
           releasing,
+          measured,
         );
         return undefined;
       } catch (error) {
@@ -245,22 +258,52 @@ export class MemorySafetyController {
     });
   }
 
-  private materialize(runtimeId: string, token: symbol): void {
+  private materialize(runtimeId: string, token: symbol, pid?: number): void {
     const current = this.reservations.get(runtimeId);
-    if (current?.token === token) current.state = "resident";
+    if (current?.token !== token) return;
+    current.state = "resident";
+    if (pid !== undefined) current.pid = pid;
+  }
+
+  /**
+   * Current footprint of each resident releasing runtime, by reservation id.
+   * Only unified hosts are measured: there the footprint covers the whole
+   * demand, while on discrete hosts it misses device memory.
+   */
+  private async measureReleasing(
+    releasing: ReadonlySet<string>,
+  ): Promise<ReadonlyMap<string, number>> {
+    const measured = new Map<string, number>();
+    const sample = this.sampleMemory;
+    if (!sample || releasing.size === 0 || this.topology.kind !== "unified")
+      return measured;
+    const targets = [...this.reservations].filter(
+      ([id, entry]) =>
+        isReleasing(id, releasing) &&
+        entry.state === "resident" &&
+        entry.pid !== undefined,
+    );
+    await Promise.all(
+      targets.map(async ([id, entry]) => {
+        const result = await sample(entry.pid!).catch(() => null);
+        if (result) measured.set(id, result.bytes);
+      }),
+    );
+    return measured;
   }
 
   private evaluate(
     request: RuntimeMemoryReservationRequest,
     rawSnapshot: HostMemorySnapshot,
     releasing: ReadonlySet<string> = new Set(),
+    measured: ReadonlyMap<string, number> = new Map(),
   ): readonly ProjectedMemoryDemand[] {
     const topology = this.provider.topology;
     const remaining = [...this.reservations].filter(
       ([id]) => !isReleasing(id, releasing),
     );
     const pending = pendingDemandByPool(remaining.map(([, entry]) => entry));
-    const snapshot = this.addReleasedMemory(rawSnapshot, releasing);
+    const snapshot = this.addReleasedMemory(rawSnapshot, releasing, measured);
     const capacity = this.capacityShortfall(request);
     if (capacity) {
       this.reject(
@@ -346,10 +389,14 @@ export class MemorySafetyController {
     return decision.projectedDemand;
   }
 
-  /** Adds back the resident bytes of runtimes that are about to be stopped. */
+  /**
+   * Adds back the resident bytes of runtimes that are about to be stopped,
+   * never more than a runtime's measured footprint when one was sampled.
+   */
   private addReleasedMemory(
     snapshot: HostMemorySnapshot,
     releasing: ReadonlySet<string>,
+    measured: ReadonlyMap<string, number>,
   ): HostMemorySnapshot {
     if (releasing.size === 0) return snapshot;
     const freed = new Map<string, number>();
@@ -357,11 +404,13 @@ export class MemorySafetyController {
       if (!isReleasing(id, releasing)) continue;
       // Pending reservations are not part of the measured sample.
       if (entry.state !== "resident") continue;
+      const footprint = measured.get(id);
       for (const demand of entry.projectedDemand) {
-        freed.set(
-          demand.poolId,
-          (freed.get(demand.poolId) ?? 0) + demand.bytes,
-        );
+        const bytes =
+          footprint === undefined
+            ? demand.bytes
+            : Math.min(demand.bytes, footprint);
+        freed.set(demand.poolId, (freed.get(demand.poolId) ?? 0) + bytes);
       }
     }
     return {
