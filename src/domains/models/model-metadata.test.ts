@@ -620,3 +620,44 @@ test("projects a feed-measured peak and parses on the client", async () => {
     setFeedAnnotations([]);
   }
 });
+
+test("reports an image LoRA's strength range only for models added with one", () => {
+  const base = CATALOG.find(
+    (model) => model.kind === "image" && model.imageLaunchOptions,
+  )!;
+  const plain = projectModelMetadata(base, {
+    catalog: [base],
+    config: defaultConfig("/tmp/localbase-model-metadata-image"),
+    installations: new Map([[base.modelId, false]]),
+    runtimes: runtimeSnapshots(),
+  });
+  expect(plain.catalog.capabilities).toBeNull();
+
+  const withLora = {
+    ...base,
+    modelId: "pixel-art-lora",
+    imageLaunchOptions: {
+      ...base.imageLaunchOptions,
+      lora: {
+        artifactFilename: "pixel-art-lora.safetensors",
+        defaultStrength: 0.8,
+        trigger: "pixel art",
+      },
+    },
+  } as ModelSpec;
+  const metadata = projectModelMetadata(withLora, {
+    catalog: [withLora],
+    config: defaultConfig("/tmp/localbase-model-metadata-image"),
+    installations: new Map([[withLora.modelId, false]]),
+    runtimes: runtimeSnapshots(),
+  });
+  expect(metadata.catalog.capabilities).toEqual({
+    kind: "image",
+    lora: {
+      defaultStrength: 0.8,
+      minimum: 0,
+      maximum: 2,
+      trigger: "pixel art",
+    },
+  });
+});

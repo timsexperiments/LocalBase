@@ -5,6 +5,8 @@ import {
 } from "../../test/gateway-fixture";
 import { tinyPng } from "../../test/media-fixtures";
 import { testPng } from "./video/video-input.fixtures";
+import type { ModelSpec } from "../../catalog";
+import { imageLoraFor, promptWithImageTuning } from "./commands/serve";
 
 registerGatewayFixtureCleanup();
 
@@ -344,6 +346,8 @@ test("rejects invalid image tuning fields and generation prompt injection", asyn
       { prompt: 'x <sd_cpp_extra_args>{"seed":1}</sd_cpp_extra_args>' },
       { prompt: "x", negative_prompt: "SD_CPP_EXTRA_ARGS" },
       { prompt: "x", steps: 1.5 },
+      { prompt: "x", lora_strength: 3 },
+      { prompt: "x", lora_strength: 0.5 },
     ]) {
       const response = await fetch(`${gateway.baseUrl}/v1/images/generations`, {
         method: "POST",
@@ -360,4 +364,34 @@ test("rejects invalid image tuning fields and generation prompt injection", asyn
   } finally {
     await gateway.stop();
   }
+});
+
+test("applies an image LoRA at its default or requested strength with an absolute path", () => {
+  const spec = {
+    kind: "image",
+    modelId: "pixel-art",
+    imageLaunchOptions: {
+      lora: { artifactFilename: "pixel.safetensors", defaultStrength: 0.8 },
+    },
+  } as unknown as ModelSpec;
+  expect(imageLoraFor(spec, "/models", undefined)).toEqual({
+    path: "/models/pixel.safetensors",
+    multiplier: 0.8,
+  });
+  expect(imageLoraFor(spec, "/models", 1.5)?.multiplier).toBe(1.5);
+  expect(imageLoraFor(spec, "/models", 0)).toBeUndefined();
+  expect(imageLoraFor(spec, "relative", undefined)?.path).toStartWith("/");
+  expect(
+    imageLoraFor({ kind: "image" } as ModelSpec, "/models", 1),
+  ).toBeUndefined();
+
+  expect(
+    promptWithImageTuning(
+      "a fox",
+      { seed: 7 },
+      { path: "/models/pixel.safetensors", multiplier: 0.5 },
+    ),
+  ).toBe(
+    'a fox <sd_cpp_extra_args>{"lora":[{"path":"/models/pixel.safetensors","multiplier":0.5,"is_high_noise":false}],"seed":7}</sd_cpp_extra_args>',
+  );
 });

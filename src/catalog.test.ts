@@ -203,6 +203,48 @@ describe("catalog artifact validation", () => {
     }
   });
 
+  test("an image LoRA names a supplementary artifact the runtime leaves unmapped", () => {
+    const klein = byId("flux2-klein-4b-q4_0");
+    if (!klein?.imageRuntime || !klein.imageLaunchOptions)
+      throw new Error("Missing catalog fixtures");
+    const loraArtifact = {
+      ...klein.artifacts[0]!,
+      role: "supplementary" as const,
+      filename: "style-lora.safetensors",
+    };
+    const withLora = (
+      lora: Record<string, unknown>,
+      artifacts = [...klein.artifacts, loraArtifact],
+    ) => ({
+      ...klein,
+      modelId: "style-lora",
+      artifacts,
+      imageLaunchOptions: { ...klein.imageLaunchOptions, lora },
+    });
+    const valid = {
+      artifactFilename: "style-lora.safetensors",
+      defaultStrength: 1,
+      trigger: "pixel art",
+    };
+    expect(catalogSchema.safeParse([withLora(valid)]).success).toBe(true);
+    for (const invalid of [
+      withLora({ ...valid, artifactFilename: "missing.safetensors" }),
+      withLora({
+        ...valid,
+        artifactFilename: klein.imageRuntime.artifacts.diffusionModel,
+      }),
+      withLora({ ...valid, defaultStrength: 2.5 }),
+      withLora({ ...valid, defaultStrength: -1 }),
+      withLora({ ...valid, extra: true }),
+      withLora(valid, [
+        ...klein.artifacts,
+        { ...loraArtifact, role: "primary" as const },
+      ]),
+    ]) {
+      expect(catalogSchema.safeParse([invalid]).success).toBe(false);
+    }
+  });
+
   test("pins the embedding-only Qwen runtime contract", () => {
     expect(byId("qwen3-embedding-0.6b-q8_0")).toMatchObject({
       kind: "llm",

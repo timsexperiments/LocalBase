@@ -40,6 +40,7 @@ void everyVideoMode;
 type ClientCapabilities =
   | Extract<MetadataCapabilities, { kind: "embedding" }>
   | Extract<MetadataCapabilities, { kind: "decision" }>
+  | Extract<MetadataCapabilities, { kind: "image" }>
   | Extract<MetadataCapabilities, { kind: "video" }>
   | (Pick<SpeechCapabilities, "kind"> & {
       voice: Pick<
@@ -50,6 +51,15 @@ type ClientCapabilities =
 
 const capabilitiesSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("decision") }),
+  z.object({
+    kind: z.literal("image"),
+    lora: z.object({
+      defaultStrength: z.number().min(0),
+      minimum: z.literal(0),
+      maximum: z.number().positive(),
+      trigger: z.string().min(1).nullable(),
+    }),
+  }),
   z.object({
     kind: z.literal("video"),
     mode: z.enum(videoModes),

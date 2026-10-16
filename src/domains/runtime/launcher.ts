@@ -242,6 +242,10 @@ export function buildSdImageServerArgs(plan: ImageLaunchPlan): string[] {
 }
 
 function imageArtifactPaths(plan: ImageLaunchPlan): string[] {
+  return [...imageModelPaths(plan), ...(plan.loraPath ? [plan.loraPath] : [])];
+}
+
+function imageModelPaths(plan: ImageLaunchPlan): string[] {
   const profile = plan.imageRuntime;
   if (!profile) return [plan.modelPath];
   switch (profile.kind) {

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  IMAGE_LORA_MAX_STRENGTH,
   kokoroSpeechVoiceSchema,
   legacyFeatures,
   modelModalitySchema,
@@ -58,6 +59,21 @@ const videoCapabilitiesSchema = z
     fps: z.number().int().positive(),
     jobDeadlineMs: z.number().int().positive(),
     outputFormats: z.tuple([z.literal("mp4")]),
+  })
+  .strict();
+
+/** Present only for image entries whose engine applies a pinned LoRA. */
+const imageCapabilitiesSchema = z
+  .object({
+    kind: z.literal("image"),
+    lora: z
+      .object({
+        defaultStrength: z.number().min(0),
+        minimum: z.literal(0),
+        maximum: z.number().positive(),
+        trigger: z.string().min(1).nullable(),
+      })
+      .strict(),
   })
   .strict();
 
@@ -230,6 +246,7 @@ export const modelMetadataSchema = z
             decisionCapabilitiesSchema,
             speechCapabilitiesSchema,
             videoCapabilitiesSchema,
+            imageCapabilitiesSchema,
           ])
           .nullable(),
         inputModalities: z.array(modelModalitySchema).min(1),
@@ -485,7 +502,19 @@ export function projectModelMetadata(
                         model.videoRuntime.qualification.jobDeadlineMs,
                       outputFormats: ["mp4"],
                     }
-                  : null,
+                  : model.imageLaunchOptions?.lora
+                    ? {
+                        kind: "image",
+                        lora: {
+                          defaultStrength:
+                            model.imageLaunchOptions.lora.defaultStrength,
+                          minimum: 0,
+                          maximum: IMAGE_LORA_MAX_STRENGTH,
+                          trigger:
+                            model.imageLaunchOptions.lora.trigger ?? null,
+                        },
+                      }
+                    : null,
       inputModalities: model.inputModalities,
       outputModalities: model.outputModalities,
       contextWindowTokens: model.contextWindowTokens,

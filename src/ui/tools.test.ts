@@ -606,6 +606,15 @@ test("generation defaults omit optional overrides and validate effective boundar
   const defaults = defaultGenerationSettings();
   expect(chatParameters(defaults.llm)).toEqual({});
   expect(imageParameters(defaults.image)).toEqual({});
+  const loraImage = fixture("lora", "image", {
+    kind: "image",
+    lora: { defaultStrength: 0.8, minimum: 0, maximum: 2, trigger: null },
+  });
+  expect(imageParameters({ lora_strength: 0.5 }, image)).toEqual({});
+  expect(imageParameters({ lora_strength: 0 }, loraImage)).toEqual({
+    lora_strength: 0,
+  });
+  expect(() => imageParameters({ lora_strength: 2.5 }, loraImage)).toThrow();
   expect(videoParameters(defaults.video)).toEqual({});
   expect(transcriptionParameters(multilingualStt, defaults.stt)).toEqual({});
   expect(() => chatParameters({ temperature: 2.1 })).toThrow();
