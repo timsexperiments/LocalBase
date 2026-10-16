@@ -14,12 +14,46 @@ import {
   writeCompleteCatalogArtifact,
   type GatewayFixture,
 } from "../../../test/gateway-fixture";
+import { applyCatalogLayers } from "../../../catalog/sources";
+import { loadCatalogSources } from "../../../catalog/user-catalog";
 import { runSmoke } from "./smoke";
 
 registerGatewayFixtureCleanup();
 
 const REPLACEMENT_MODEL = "mistral-nemo-12b-instruct-q4_k_m";
 const RESIDENT_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+const DECISION_MODEL = "decision-fixture-q4_k_m";
+const decisionCatalogEntry = {
+  modelId: DECISION_MODEL,
+  displayName: "Decision Fixture",
+  kind: "llm",
+  provider: "Fixture",
+  family: "Decision",
+  version: "9B",
+  size: "9B",
+  quant: "Q4_K_M",
+  storageGb: 0.01,
+  source: "https://huggingface.co/fixture/decision-GGUF",
+  repositoryRevision: "0123456789abcdef0123456789abcdef01234567",
+  artifacts: [
+    {
+      sourcePath: "decision-fixture.gguf",
+      filename: "decision-fixture.gguf",
+      expectedSizeBytes: 1024,
+      sha256:
+        "0000000000000000000000000000000000000000000000000000000000000000",
+      role: "primary",
+    },
+  ],
+  llmRuntime: { capability: "decision-only" },
+  inputModalities: ["text"],
+  outputModalities: ["text"],
+  contextWindowTokens: 8192,
+  capabilities: ["decision"],
+  commercialStatus: "open",
+  catch: "Decision endpoint only.",
+  notes: "Test decision model.",
+};
 
 const execution: CommandExecution = {
   global: { nonInteractive: true, json: true },
@@ -49,9 +83,22 @@ async function runSmokeCli(gateway: GatewayFixture, args: string[] = []) {
 function storedKeyNames(gateway: GatewayFixture): string[] {
   const database = new DatabaseSession();
   try {
-    return loadApiKeys(database, gateway.readConfig()).map((key) => key.name);
+    // Only the root matters, so no catalog lookup can reject a fixture model.
+    return loadApiKeys(database, defaultConfig(gateway.root)).map(
+      (key) => key.name,
+    );
   } finally {
     database.close();
+  }
+}
+
+/** Reads or edits fixture config with the fixture's user catalog applied. */
+function withFixtureCatalog<T>(gateway: GatewayFixture, work: () => T): T {
+  loadCatalogSources(gateway.root);
+  try {
+    return work();
+  } finally {
+    applyCatalogLayers([]);
   }
 }
 
@@ -116,6 +163,97 @@ test(
         ["switch-back", RESIDENT_MODEL, true],
       ]);
       expect(gateway.readConfig().activeLlmModel).toBe(RESIDENT_MODEL);
+      expect(storedKeyNames(gateway)).toEqual([]);
+    } finally {
+      await gateway.stop();
+    }
+  },
+  { timeout: 60_000 },
+);
+
+test(
+  "smoke asks a decision model one typed question instead of chatting",
+  async () => {
+    const gateway = await startGatewayFixture({
+      auth: { mode: "bearer" },
+      llmCatalogEntry: decisionCatalogEntry,
+    });
+    try {
+      const run = await runSmokeCli(gateway);
+      expect(run.exitCode).toBe(0);
+      expect(
+        run.result.steps.map((step) => [step.name, step.model, step.ok]),
+      ).toEqual([
+        ["health", null, true],
+        ["decision", DECISION_MODEL, true],
+      ]);
+      expect(run.result.steps[1]?.detail).toBe(
+        "answered a yes/no question (noul 0.75)",
+      );
+      const paths = gateway.upstreamRequests.map((request) => request.path);
+      expect(paths).not.toContain("/v1/chat/completions");
+      const decision = gateway.upstreamRequests.find(
+        (request) => request.path === "/v1/systemone",
+      );
+      expect(JSON.parse(decision?.body ?? "{}")).toMatchObject({
+        model: DECISION_MODEL,
+        questions: { ok: { type: "noul" } },
+      });
+      expect(`${run.stdout}${run.stderr}`).not.toMatch(/lb_[A-Za-z0-9]/);
+      expect(storedKeyNames(gateway)).toEqual(["conformance"]);
+    } finally {
+      await gateway.stop();
+    }
+  },
+  { timeout: 60_000 },
+);
+
+test(
+  "smoke switches to a decision model with a typed question and back",
+  async () => {
+    const gateway = await startGatewayFixture({
+      llmCatalogEntry: decisionCatalogEntry,
+    });
+    try {
+      await writeCompleteCatalogArtifact(
+        defaultConfig(gateway.root).llmModelsDir,
+        RESIDENT_MODEL,
+      );
+      withFixtureCatalog(gateway, () => {
+        const config = gateway.readConfig();
+        config.selectedLlmModels = [
+          ...config.selectedLlmModels,
+          RESIDENT_MODEL,
+        ];
+        gateway.saveConfig(config);
+      });
+      // Make the chat model resident so the decision model is the switch target.
+      const warm = await fetch(`${gateway.baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: RESIDENT_MODEL,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      });
+      expect(warm.status).toBe(200);
+      await warm.text();
+
+      const run = await runSmokeCli(gateway, ["--switch-to", DECISION_MODEL]);
+      expect(run.exitCode).toBe(0);
+      expect(
+        run.result.steps.map((step) => [step.name, step.model, step.ok]),
+      ).toEqual([
+        ["health", null, true],
+        ["chat", RESIDENT_MODEL, true],
+        ["switch", DECISION_MODEL, true],
+        ["switch-back", RESIDENT_MODEL, true],
+      ]);
+      const paths = gateway.upstreamRequests.map((request) => request.path);
+      expect(paths.filter((path) => path === "/v1/systemone")).toHaveLength(1);
+      expect(
+        withFixtureCatalog(gateway, () => gateway.readConfig().activeLlmModel),
+      ).toBe(RESIDENT_MODEL);
       expect(storedKeyNames(gateway)).toEqual([]);
     } finally {
       await gateway.stop();

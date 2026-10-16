@@ -3,6 +3,7 @@ import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
 import type { SmokeInput } from "../../app/commands/inputs";
 import { smokeStepSchema } from "../../app/commands/results";
+import { byId, isDecisionModel } from "../../../catalog";
 import { createApiKey, deleteApiKey } from "../../../manager";
 import { LOCALBASE_VERSION } from "../../../version";
 import {
@@ -12,8 +13,12 @@ import {
 
 type SmokeStep = z.infer<typeof smokeStepSchema>;
 
-/** Scopes the throwaway credential needs: one chat call and residency reads. */
-const SMOKE_KEY_SCOPES = ["inference:chat", "models:read"] as const;
+/** Scopes the throwaway credential needs: one inference call and residency reads. */
+const SMOKE_KEY_SCOPES = [
+  "inference:chat",
+  "inference:decision",
+  "models:read",
+] as const;
 const SMOKE_KEY_NAME = "local-base smoke (temporary)";
 const HEALTH_TIMEOUT_MS = 5_000;
 const MAX_TOKENS = 4;
@@ -34,7 +39,10 @@ const metadataListViewSchema = z.object({
   data: z.array(
     z.object({
       id: z.string(),
-      catalog: z.object({ kind: z.string() }),
+      catalog: z.object({
+        kind: z.string(),
+        capabilities: z.object({ kind: z.string() }).nullable().optional(),
+      }),
       device: z.object({
         runtime: z.object({ state: z.string() }).nullable(),
       }),
@@ -59,6 +67,20 @@ const chatViewSchema = z.object({
     .object({ completion_tokens: z.number().optional() })
     .optional()
     .nullable(),
+});
+
+// The smallest valid System One request asks one yes/no ("noul") question.
+const DECISION_QUESTION_ID = "ok";
+
+const decisionViewSchema = z.object({
+  answers: z.record(
+    z.string(),
+    z.discriminatedUnion("type", [
+      z.object({ type: z.literal("noul"), noul: z.number() }),
+      z.object({ type: z.literal("choice"), choice: z.string() }),
+      z.object({ type: z.literal("score"), score: z.number() }),
+    ]),
+  ),
 });
 
 const errorViewSchema = z.object({
@@ -135,12 +157,18 @@ async function checkHealth(baseUrl: string): Promise<string> {
   return `ok, version ${version}${mismatch}, llm ${llm.state}`;
 }
 
-/** The LLM the gateway currently holds a runtime for, if any. */
-async function residentLlm(
+type LlmView = Readonly<{
+  /** The LLM the gateway currently holds a runtime for, if any. */
+  resident: string | null;
+  /** LLMs the gateway serves from POST /v1/systemone instead of chat. */
+  decision: ReadonlySet<string>;
+}>;
+
+async function readLlms(
   baseUrl: string,
   headers: HeadersInit,
   timeoutMs: number,
-): Promise<string | null> {
+): Promise<LlmView> {
   const response = await request(
     `${baseUrl}/_localbase/models`,
     { method: "GET", headers },
@@ -153,11 +181,15 @@ async function residentLlm(
   const list = metadataListViewSchema.safeParse(await readJson(response));
   if (!list.success)
     throw new SmokeFailure("model metadata has an unexpected shape");
-  return (
-    list.data.data.find(
-      (model) => model.catalog.kind === "llm" && model.device.runtime !== null,
-    )?.id ?? null
-  );
+  const llms = list.data.data.filter((model) => model.catalog.kind === "llm");
+  return {
+    resident: llms.find((model) => model.device.runtime !== null)?.id ?? null,
+    decision: new Set(
+      llms
+        .filter((model) => model.catalog.capabilities?.kind === "decision")
+        .map((model) => model.id),
+    ),
+  };
 }
 
 async function chat(
@@ -192,21 +224,75 @@ async function chat(
   return `completed with ${tokens} output token${tokens === 1 ? "" : "s"}`;
 }
 
+async function decide(
+  baseUrl: string,
+  headers: HeadersInit,
+  model: string,
+  timeoutMs: number,
+): Promise<string> {
+  const response = await request(
+    `${baseUrl}/v1/systemone`,
+    {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({
+        model,
+        state: "LocalBase smoke check.",
+        questions: {
+          [DECISION_QUESTION_ID]: {
+            type: "noul",
+            instructions: "Is this a test?",
+          },
+        },
+      }),
+    },
+    timeoutMs,
+  );
+  if (!response.ok) throw new SmokeFailure(await errorReason(response));
+  const decision = decisionViewSchema.safeParse(await readJson(response));
+  const answer = decision.success
+    ? decision.data.answers[DECISION_QUESTION_ID]
+    : undefined;
+  if (answer?.type !== "noul")
+    throw new SmokeFailure("decision response has no answer to the question");
+  return `answered a yes/no question (noul ${answer.noul.toFixed(2)})`;
+}
+
+/** Prefers the gateway's classification; the local catalog covers misses. */
+function isDecision(model: string, llms: LlmView | null): boolean {
+  return llms?.decision.has(model) || isDecisionModel(byId(model));
+}
+
+/** Sends the smallest real request the model serves: a chat or a decision. */
+async function infer(
+  baseUrl: string,
+  headers: HeadersInit,
+  model: string,
+  timeoutMs: number,
+  llms: LlmView | null,
+): Promise<string> {
+  return isDecision(model, llms)
+    ? await decide(baseUrl, headers, model, timeoutMs)
+    : await chat(baseUrl, headers, model, timeoutMs);
+}
+
 async function switchModel(
   baseUrl: string,
   headers: HeadersInit,
   from: string,
   to: string,
   timeoutMs: number,
+  llms: LlmView | null,
 ): Promise<string> {
   let failure: SmokeFailure | undefined;
   try {
-    await chat(baseUrl, headers, to, timeoutMs);
+    await infer(baseUrl, headers, to, timeoutMs, llms);
   } catch (error) {
     if (!(error instanceof SmokeFailure)) throw error;
     failure = error;
   }
-  const resident = await residentLlm(baseUrl, headers, timeoutMs).catch(
+  const resident = await readLlms(baseUrl, headers, timeoutMs).then(
+    (view) => view.resident,
     () => null,
   );
   if (failure) {
@@ -304,27 +390,39 @@ export async function runSmoke(
         authorization: `Bearer ${rawKey}`,
         "x-api-key": rawKey,
       };
-      let model = ctx.config.activeLlmModel;
+      let llms: LlmView | null = null;
       try {
-        model = (await residentLlm(baseUrl, headers, timeoutMs)) ?? model;
+        llms = await readLlms(baseUrl, headers, timeoutMs);
       } catch {
-        // Fall back to the configured default; the chat step reports failures.
+        // Fall back to the configured default and the local catalog; the
+        // inference step reports failures.
       }
+      const model = llms?.resident ?? ctx.config.activeLlmModel;
+      const inference = isDecision(model, llms) ? "decision" : "chat";
       if (!model) {
-        await step("chat", null, async () => {
+        await step(inference, null, async () => {
           throw new SmokeFailure("no resident or default LLM is configured");
         });
       }
-      await step("chat", model, () => chat(baseUrl, headers, model, timeoutMs));
+      await step(inference, model, () =>
+        infer(baseUrl, headers, model, timeoutMs, llms),
+      );
       const target = input.switchTo;
       if (target) {
         await step("switch", target, async () => {
           if (target === model)
             throw new SmokeFailure(`${target} is already the resident model`);
-          return await switchModel(baseUrl, headers, model, target, timeoutMs);
+          return await switchModel(
+            baseUrl,
+            headers,
+            model,
+            target,
+            timeoutMs,
+            llms,
+          );
         });
         await step("switch-back", model, () =>
-          switchModel(baseUrl, headers, target, model, timeoutMs),
+          switchModel(baseUrl, headers, target, model, timeoutMs, llms),
         );
       }
     } finally {

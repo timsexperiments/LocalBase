@@ -70,7 +70,7 @@ Public `GET` and `HEAD /health/ready` report request admission readiness. HTTP `
 
 `/health/ready` does not start runtimes or refresh configuration. Use public `/health` for process liveness. Readiness means at least one configured inference type can enter its queue. It does not promise that a backend is already running or that a response will finish within a caller's deadline.
 
-After a deploy, run `local-base smoke` to prove inference works end to end: it checks `/health`, then sends a 4-token chat completion to the resident (or default) LLM and exits `1` with the failing step if either fails. It authenticates with a temporary `inference:chat`/`models:read` key written to the root's database and deletes it afterwards, so no key is needed or printed. `--switch-to <model>` also switches to that LLM and back, failing if either switch is refused or rolled back; it interrupts other clients of the LLM, so it is opt-in. `--json` returns each step.
+After a deploy, run `local-base smoke` to prove inference works end to end: it checks `/health`, then sends a 4-token chat completion to the resident (or default) LLM, or one yes/no question to `POST /v1/systemone` when that LLM is a decision model, and exits `1` with the failing step if either fails. It authenticates with a temporary `inference:chat`/`inference:decision`/`models:read` key written to the root's database and deletes it afterwards, so no key is needed or printed. `--switch-to <model>` also switches to that LLM and back, failing if either switch is refused or rolled back; it interrupts other clients of the LLM, so it is opt-in. `--json` returns each step.
 
 ## Integrated qualification
 
