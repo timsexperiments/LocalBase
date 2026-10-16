@@ -63,6 +63,11 @@ import type { MemorySafetyController } from "./memory-controller";
 import type { MemoryTopology } from "./memory-safety";
 import { catalogModelDemand } from "./memory-estimate";
 import {
+  ttsAdmissionDemand,
+  withAdmissionDemand,
+  type ObservedPeakSource,
+} from "./admission-demand";
+import {
   SPEECH_MEMORY_DEMAND,
   SpeechSupervisor,
   type SpeechPreparation,
@@ -110,6 +115,12 @@ export type RuntimeSupervisorFactory = Readonly<{
 export type RuntimeSupervisorFactoryDependencies = Readonly<{
   memorySafety: MemorySafetyController;
   installMissing?: boolean;
+  /**
+   * Peaks this machine recorded for each model. When present, launch
+   * admission plans with the observed peak for the same artifact and launch
+   * shape ahead of checked-in, feed and estimated figures.
+   */
+  observedMemory?: ObservedPeakSource;
   /** Host platform used to select the video runtime target; defaults to this process. */
   host?: Readonly<{ platform: NodeJS.Platform; arch: NodeJS.Architecture }>;
   /**
@@ -472,6 +483,15 @@ export function createRuntimeSupervisorFactory(
   dependencies: RuntimeSupervisorFactoryDependencies,
 ): RuntimeSupervisorFactory {
   let nextRuntimeGeneration = 0;
+  const admit = <Plan extends Parameters<typeof withAdmissionDemand>[0]>(
+    modelId: string,
+    plan: Plan,
+    artifactBytes?: number,
+  ): Plan =>
+    withAdmissionDemand(plan, byId(modelId), {
+      observed: dependencies.observedMemory,
+      artifactBytes,
+    });
   const baseUrl = (
     modality: ServerRuntimeModality,
     snapshot: RuntimeConfigSnapshot,
@@ -559,6 +579,11 @@ export function createRuntimeSupervisorFactory(
             }
           }
           const modelPath = join(config.llmModelsDir, modelFile);
+          const llmBytes = await llmArtifactBytes(
+            modelId,
+            config.llmModelsDir,
+            modelFile,
+          );
           const plan = resolveConfiguredLlmLaunchPlan({
             runtimeId,
             root: config.root,
@@ -572,17 +597,14 @@ export function createRuntimeSupervisorFactory(
             ctxMode: config.ctxMode,
             ctxSizeOverride: overrides.ctxSize,
             parallel: config.parallel,
-            artifactBytes: await llmArtifactBytes(
-              modelId,
-              config.llmModelsDir,
-              modelFile,
-            ),
+            artifactBytes: llmBytes,
             memoryGb: ctx.specs.gpuVramGb,
             kvGeometry: await readLlmKvGeometry(modelPath),
             trainingContextLength:
               await readLlmTrainingContextLength(modelPath),
           });
-          return signal?.aborted ? undefined : plan.memoryDemand;
+          const admitted = admit(modelId, plan, llmBytes);
+          return signal?.aborted ? undefined : admitted.memoryDemand;
         },
         launch: async () => {
           let modelFile = overrides.llmModelFile;
@@ -646,6 +668,11 @@ export function createRuntimeSupervisorFactory(
             `Spawning model "${modelId}" (file: ${modelFile}, context: ${ctxSize} tokens)`,
           );
           const modelPath = join(config.llmModelsDir, modelFile);
+          const llmBytes = await llmArtifactBytes(
+            modelId,
+            config.llmModelsDir,
+            modelFile,
+          );
           const plan = resolveConfiguredLlmLaunchPlan({
             runtimeId,
             root: config.root,
@@ -659,11 +686,7 @@ export function createRuntimeSupervisorFactory(
             ctxMode: config.ctxMode,
             ctxSizeOverride: overrides.ctxSize,
             parallel: config.parallel,
-            artifactBytes: await llmArtifactBytes(
-              modelId,
-              config.llmModelsDir,
-              modelFile,
-            ),
+            artifactBytes: llmBytes,
             memoryGb: ctx.specs.gpuVramGb,
             kvGeometry: await readLlmKvGeometry(modelPath),
             trainingContextLength:
@@ -685,7 +708,7 @@ export function createRuntimeSupervisorFactory(
           for (const reason of budget.reasons) {
             ctx.logger.info("llama-server", reason);
           }
-          return plan;
+          return admit(modelId, plan, llmBytes);
         },
         start: async (plan) => {
           if (plan.component !== "llama-server") {
@@ -743,7 +766,9 @@ export function createRuntimeSupervisorFactory(
               preflightModelFile,
             ),
           });
-          return signal?.aborted ? undefined : plan.memoryDemand;
+          return signal?.aborted
+            ? undefined
+            : admit(modelId, plan).memoryDemand;
         },
         launch: async () => {
           let modelFile = overrides.sttModelFile;
@@ -767,21 +792,24 @@ export function createRuntimeSupervisorFactory(
             `Spawning STT model "${modelId}" (file: ${modelFile})`,
           );
           const spec = byId(modelId);
-          return resolveSttLaunchPlan({
-            runtimeId,
-            root: config.root,
-            modelsDirectory: config.sttModelsDir,
+          return admit(
             modelId,
-            modelFile,
-            host: sttHost(snapshot.config, overrides),
-            port: sttPort(snapshot.config, overrides),
-            model: spec,
-            artifactBytes: await artifactBytes(
+            resolveSttLaunchPlan({
+              runtimeId,
+              root: config.root,
+              modelsDirectory: config.sttModelsDir,
               modelId,
-              config.sttModelsDir,
               modelFile,
-            ),
-          });
+              host: sttHost(snapshot.config, overrides),
+              port: sttPort(snapshot.config, overrides),
+              model: spec,
+              artifactBytes: await artifactBytes(
+                modelId,
+                config.sttModelsDir,
+                modelFile,
+              ),
+            }),
+          );
         },
         start: async (plan) => {
           if (plan.component !== "whisper-server") {
@@ -802,7 +830,12 @@ export function createRuntimeSupervisorFactory(
     if (modality === "tts") {
       const ttsSpec = byId(modelId);
       const ttsDemand =
-        ttsSpec?.kind === "tts" ? catalogModelDemand(ttsSpec) : undefined;
+        ttsSpec?.kind === "tts"
+          ? ttsAdmissionDemand(ttsSpec, catalogModelDemand(ttsSpec), {
+              observed: dependencies.observedMemory,
+              loadsPrimaryArtifact: !overrides.ttsModelFile,
+            })
+          : undefined;
       const createWarmServer = (
         preparation: TtsServerPreparation,
       ): WarmSpeechServer => {
@@ -1001,7 +1034,9 @@ export function createRuntimeSupervisorFactory(
             target,
             model: spec,
           });
-          return signal?.aborted ? undefined : plan.memoryDemand;
+          return signal?.aborted
+            ? undefined
+            : admit(modelId, plan).memoryDemand;
         },
         launch: async () => {
           const spec = byId(modelId);
@@ -1092,7 +1127,7 @@ export function createRuntimeSupervisorFactory(
               config.videoModelsDir,
             );
           }
-          return plan;
+          return admit(modelId, plan);
         },
         start: async (plan) => {
           if (plan.component !== "sd-server" || plan.modality !== "video") {
@@ -1145,7 +1180,7 @@ export function createRuntimeSupervisorFactory(
               )
             : await artifactBytes(modelId, config.imageModelsDir, modelFile),
         });
-        return signal?.aborted ? undefined : plan.memoryDemand;
+        return signal?.aborted ? undefined : admit(modelId, plan).memoryDemand;
       },
       launch: async () => {
         let modelFile = overrides.imageModelFile;
@@ -1198,23 +1233,27 @@ export function createRuntimeSupervisorFactory(
           `Spawning image model "${modelId}" (file: ${modelFile})`,
         );
         const spec = byId(modelId);
-        return resolveImageLaunchPlan({
-          runtimeId,
-          root: config.root,
-          modelsDirectory: config.imageModelsDir,
+        return admit(
           modelId,
-          modelFile,
-          host: imageHost(overrides),
-          port: imagePort(overrides),
-          model: spec,
-          imageRuntime: spec?.imageRuntime,
-          artifactBytes: spec?.imageRuntime
-            ? spec.artifacts.reduce(
-                (total, artifact) => total + (artifact.expectedSizeBytes ?? 0),
-                0,
-              )
-            : await artifactBytes(modelId, config.imageModelsDir, modelFile),
-        });
+          resolveImageLaunchPlan({
+            runtimeId,
+            root: config.root,
+            modelsDirectory: config.imageModelsDir,
+            modelId,
+            modelFile,
+            host: imageHost(overrides),
+            port: imagePort(overrides),
+            model: spec,
+            imageRuntime: spec?.imageRuntime,
+            artifactBytes: spec?.imageRuntime
+              ? spec.artifacts.reduce(
+                  (total, artifact) =>
+                    total + (artifact.expectedSizeBytes ?? 0),
+                  0,
+                )
+              : await artifactBytes(modelId, config.imageModelsDir, modelFile),
+          }),
+        );
       },
       start: async (plan) => {
         if (plan.component !== "sd-server" || plan.modality !== "image") {

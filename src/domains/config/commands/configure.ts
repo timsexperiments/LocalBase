@@ -95,6 +95,30 @@ function validateComposedModelConfiguration(
   }
 }
 
+/**
+ * The Hugging Face token configure saves. `--hf-token` always replaces the
+ * saved token ("" clears it). A TOML `hfToken` only fills in a missing token:
+ * it never overwrites a different token already saved, for example one saved
+ * in the admin UI, so re-running configure with the same file is harmless.
+ */
+export function resolveConfiguredHubToken(
+  input: Readonly<{
+    flag?: string;
+    toml?: string;
+    saved?: string;
+    env?: string;
+  }>,
+): Readonly<{ token: string; keptSaved: boolean }> {
+  if (input.flag !== undefined) return { token: input.flag, keptSaved: false };
+  const saved = input.saved ?? "";
+  if (input.toml !== undefined) {
+    if (!saved || saved === input.toml)
+      return { token: input.toml, keptSaved: false };
+    return { token: saved, keptSaved: true };
+  }
+  return { token: input.saved ?? input.env ?? "", keptSaved: false };
+}
+
 function warnAboutParallelOomRisk(
   parallel: LocalBaseConfig["parallel"],
   vramGb: number,
@@ -621,6 +645,17 @@ export async function runConfigure(
   );
   maybeLock("memory", rawToml.memory);
 
+  const hubToken = resolveConfiguredHubToken({
+    flag: flags.hfToken,
+    toml: rawToml.hfToken,
+    saved: config.hfToken,
+    env: process.env.HF_TOKEN,
+  });
+  if (hubToken.keptSaved)
+    execution.output.error(
+      "Warning: the hfToken in the TOML file was not applied because a different Hugging Face token is already saved, for example from the admin UI. Replace it there, or pass --hf-token.",
+    );
+
   const memory = memorySafetyConfigSchema.parse({
     systemReserve: {
       ...config.memory.systemReserve,
@@ -652,12 +687,7 @@ export async function runConfigure(
     activeTtsModel,
     activeImageModel,
     activeVideoModel,
-    hfToken:
-      flags.hfToken ??
-      rawToml.hfToken ??
-      config.hfToken ??
-      process.env.HF_TOKEN ??
-      "",
+    hfToken: hubToken.token,
     otelEndpoint:
       flags.otelEndpoint ?? rawToml.otelEndpoint ?? config.otelEndpoint,
     otelHeaders: flags.otelHeaders ?? rawToml.otelHeaders ?? config.otelHeaders,

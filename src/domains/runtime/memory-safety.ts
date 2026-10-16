@@ -102,9 +102,18 @@ export type RuntimeMemoryDemand = Readonly<{
   /**
    * authoritative: exact accounting; derived: computed from known model
    * geometry; estimated: size-based fallback or allowance; measured: observed
-   * peak from a real run (see memory-estimate.ts preferMeasured).
+   * peak from a checked-in calibration run (see memory-estimate.ts
+   * preferMeasured); feed: a peak the catalog feed publishes for the exact
+   * file, revision and launch shape; observed: the peak this machine recorded
+   * for the same artifact and launch shape (see admission-demand.ts).
    */
-  confidence: "authoritative" | "derived" | "estimated" | "measured";
+  confidence:
+    | "authoritative"
+    | "derived"
+    | "estimated"
+    | "measured"
+    | "feed"
+    | "observed";
 }>;
 
 export type ProjectedMemoryDemand = Readonly<{

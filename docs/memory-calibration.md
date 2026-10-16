@@ -1,6 +1,6 @@
 # Memory calibration
 
-LocalBase admits a runtime only when its memory demand fits the pool. Demand comes from a formula estimate (`src/domains/runtime/memory-estimate.ts`). When a model has been measured at its exact launch shape, the measured record replaces the estimate and the demand carries confidence `measured`. Records live in [`src/domains/runtime/memory-measurements.ts`](../src/domains/runtime/memory-measurements.ts).
+LocalBase admits a runtime only when its memory demand fits the pool. Demand comes from a formula estimate (`src/domains/runtime/memory-estimate.ts`). When a model has been measured at its exact launch shape, the measured record replaces the estimate and the demand carries confidence `measured`. A matching feed peak (`feed`) or a peak observed on this machine (`observed`) can also replace it; see [Admission](#admission). Records live in [`src/domains/runtime/memory-measurements.ts`](../src/domains/runtime/memory-measurements.ts).
 
 Measured demand is still an admission reservation, not a hard limit. Pool reserves, pressure monitoring and emergency eviction remain active.
 
@@ -47,7 +47,7 @@ The catalog no longer stores a hand-entered `minVramGb`. Each model's minimum is
 2. **measured**: a record in `MEMORY_MEASUREMENTS` at the reference shape.
 3. **estimate**: the formula estimate from artifact sizes. For an installed GGUF (LLM or TTS talker), the layer, KV-head and embedding geometry is read from the file. Otherwise the shape comes from a size heuristic (`fallbackLlmShape`): P billion parameters from the catalog size, else from the bytes at 4.89 bits per weight; layers = ceil(16 × P^0.4); embedding = sqrt(P × 10^9 / (12 × layers)); 8 KV heads of dimension 128; vocabulary 152064. It assumes full attention in every layer, so it overstates hybrid and sliding-window models until the file is installed.
 
-The API, CLI, diagnostics and UI report the source next to the minimum. `minVramGb` and `minimumVramEstimateGb` remain in the JSON outputs and hold the computed minimum. The verdict for this machine is `fits`, `tight` (under 4 GiB headroom, or the minimum is over 75% of memory) or `wont-fit`. Admission still uses the full launch-plan demand, not the minimum.
+The API, CLI, diagnostics and UI report the source next to the minimum. `minVramGb` and `minimumVramEstimateGb` remain in the JSON outputs and hold the computed minimum. The verdict for this machine is `fits`, `tight` (under 4 GiB headroom, or the minimum is over 75% of memory) or `wont-fit`. Admission uses the full launch-plan demand, not the minimum; see [Admission](#admission).
 
 ## Observed peaks
 
@@ -56,6 +56,17 @@ Once a backend is ready, the gateway samples its memory every 5 s until it exits
 ## Feed peaks
 
 Entries without checked-in measurements (user and discovered entries) can use a measured peak published in the catalog feed. The figure source is `feed`. A feed peak is used only when the annotation is an exact revision match, the recipe's primary sha256 (if any) matches the pinned artifact, and its launch shape equals the planned one (the reference shape for LLMs, `default` for STT, `ctx=N` for TTS, the flash-attention setting for image, and the qualification shape for video). Precedence is observed, then checked-in measurement, then feed, then estimate. A runtime observation always wins.
+
+## Admission
+
+Launch admission uses the same order as the fit figure, applied to the planned launch (`src/domains/runtime/admission-demand.ts`):
+
+1. **observed**: a macOS `footprint` peak recorded on this machine for the same artifact sha256 and the exact planned launch shape. The demand is the peak plus max(512 MiB, 10%), the same margin as `minimumMemoryGb`, used for unified, host and accelerator alike. Runtime always wins, so an observed peak replaces every other figure, larger or smaller. Unlike the fit figure, admission does not fall back to a peak from another shape. A different context, slot count or KV type plans from the sources below.
+2. **measured**: a checked-in record at the planned shape.
+3. **feed**: a feed peak for the exact file, revision and planned shape, turned into a demand by `measuredDemand`, as for checked-in records. If several match, the largest is used. A local file larger than the catalog artifact adds the difference.
+4. **estimate**: the formula estimate.
+
+Evidence applies only when the launch loads the catalog primary artifact. A launch overridden to another model file plans from its estimate. Diagnostics report the source as `demand_confidence`. Admission only reserves memory. The pressure monitor that runs after load is unchanged and can still evict a runtime whose real use exceeds its reservation.
 
 ## Measurements (2026-10-13)
 

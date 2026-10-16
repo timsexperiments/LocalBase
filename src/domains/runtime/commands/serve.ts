@@ -3240,6 +3240,7 @@ export async function runServe(
   const observationStop = new AbortController();
   const factory = createRuntimeSupervisorFactory(ctx, launchOverrides, {
     memorySafety,
+    observedMemory,
     installMissing: input.installMissing || config.installMissingModels,
     onBackendReady: ({ modelId, ready }) => {
       const target = observationTarget(byId(modelId), ready.plan);
