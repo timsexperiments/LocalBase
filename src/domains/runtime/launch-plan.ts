@@ -106,6 +106,14 @@ export function configuredLlmContextSize(
 }
 
 /**
+ * Launch context for decision models. llama.cpp evaluates a decision prompt as
+ * one micro-batch the size of a slot context, so the compute buffer grows with
+ * the per-slot context: Clef Flash needs about 26 GB at 64K but 8.5 GB at the
+ * measured 8K, which covers the state, questions, and a few images.
+ */
+export const DECISION_CONTEXT_TOKENS = 8192;
+
+/**
  * Explains how the configured context ceiling became the per-request limit so
  * operators can see every reduction instead of guessing from `/v1/models`.
  */
@@ -170,6 +178,15 @@ export function describeLlmContextBudget(input: {
   if (modelWindow !== null && modelWindow < preWindow) {
     reasons.push(
       `The model's advertised context window caps the launch context at ${fmt(modelWindow)}.`,
+    );
+  }
+  if (
+    input.model?.llmRuntime?.capability === "decision-only" &&
+    DECISION_CONTEXT_TOKENS * slots <
+      Math.min(preWindow, modelWindow ?? preWindow)
+  ) {
+    reasons.push(
+      `Decision models evaluate a prompt as one micro-batch, so each slot is capped at ${fmt(DECISION_CONTEXT_TOKENS)} tokens to bound the compute buffer.`,
     );
   }
   if (slots > 1) {
@@ -481,7 +498,7 @@ export function resolveLlmLaunchPlan(input: {
   projectorPath?: string | null;
 }): LlmLaunchPlan {
   const decision = input.decision === true;
-  const ctxSize = Math.min(
+  const windowCtxSize = Math.min(
     input.ctxSize,
     input.contextWindowTokens ?? input.ctxSize,
   );
@@ -497,18 +514,18 @@ export function resolveLlmLaunchPlan(input: {
   // the prompt cache on a decision server.
   const promptCacheRamMib =
     input.embedding || decision ? 0 : LLAMA_PROMPT_CACHE_RAM_MIB;
-  const parallel = allocateParallelSlots({
+  const allocated = allocateParallelSlots({
     parallel: input.parallel,
     memoryGb: input.hardware.memoryGb,
     modelRequirementGb: input.artifactBytes / gibibyte,
-    ctxSize,
+    ctxSize: windowCtxSize,
     ...(decision
       ? { kvCacheGb: () => 0 }
       : kvGeometry
         ? {
             kvCacheGb: (slots: number) =>
               kvCacheBytes(kvGeometry, {
-                ctxTokens: ctxSize,
+                ctxTokens: windowCtxSize,
                 slots,
                 cacheTypeK: kvCache.typeK,
                 cacheTypeV: kvCache.typeV,
@@ -516,6 +533,19 @@ export function resolveLlmLaunchPlan(input: {
           }
         : {}),
   });
+  // Decision compute grows with the per-slot micro-batch, so cap each slot.
+  const ctxSize = decision
+    ? Math.min(windowCtxSize, DECISION_CONTEXT_TOKENS * allocated.slots)
+    : windowCtxSize;
+  const parallel = decision
+    ? {
+        ...allocated,
+        contextPerSlot: Math.min(
+          allocated.contextPerSlot,
+          DECISION_CONTEXT_TOKENS,
+        ),
+      }
+    : allocated;
   return Object.freeze({
     runtimeId: input.runtimeId,
     modality: "llm",
