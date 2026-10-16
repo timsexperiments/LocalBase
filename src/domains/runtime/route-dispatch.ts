@@ -14,6 +14,7 @@ export type GatewayRoute =
   | "videoCancel"
   | "chatCompletion"
   | "embeddings"
+  | "decision"
   | "models"
   | "modelMetadataList"
   | "modelMetadataDetail"
@@ -33,6 +34,7 @@ const apiHttpRoutes = [
   "/v1/models",
   "/v1/chat/completions",
   "/v1/embeddings",
+  "/v1/systemone",
   "/v1/audio/transcriptions",
   "/v1/audio/translations",
   "/v1/audio/speech",
@@ -130,6 +132,8 @@ export function selectGatewayRoute(pathname: string): GatewayRoute {
       return "chatCompletion";
     case "/v1/embeddings":
       return "embeddings";
+    case "/v1/systemone":
+      return "decision";
     case "/v1/models":
       return "models";
     default:
@@ -182,6 +186,8 @@ function apiHttpRoute(pathname: string): ApiHttpRoute | undefined {
       return "/v1/chat/completions";
     case "embeddings":
       return "/v1/embeddings";
+    case "decision":
+      return "/v1/systemone";
     case "models":
       return "/v1/models";
     case "notFound":
@@ -229,6 +235,7 @@ const unboundedIdleRoutes: ReadonlySet<GatewayRoute> = new Set<GatewayRoute>([
   "videoContent",
   "chatCompletion",
   "embeddings",
+  "decision",
 ]);
 
 /**

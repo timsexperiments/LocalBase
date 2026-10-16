@@ -1,5 +1,8 @@
 import { persistConfiguration } from "../domains/config/declarative";
 import { mkdirSync, mkdtempSync, rmSync, truncateSync } from "node:fs";
+import { ensureLocalBaseRootMarker } from "../utils/root";
+import { applyCatalogLayers } from "../catalog/sources";
+import { writeUserCatalogEntry } from "../catalog/user-catalog";
 import { tmpdir } from "node:os";
 import { afterAll } from "bun:test";
 import {
@@ -275,6 +278,16 @@ export type GatewayFixtureOptions = {
   ctxSize?: number;
   ctxSizeOverride?: number;
   llmModel?: string;
+  /**
+   * A raw catalog spec written to `<root>/catalog.d` and selected as the LLM
+   * model, for models the bundled catalog does not ship.
+   */
+  llmCatalogEntry?: {
+    modelId: string;
+    artifacts: Array<
+      { filename: string; expectedSizeBytes: number } & Record<string, unknown>
+    >;
+  } & Record<string, unknown>;
 };
 
 async function readProcessOutput(
@@ -1668,6 +1681,58 @@ function startMockUpstream(
           ],
         });
       }
+      if (path === "/v1/systemone") {
+        const payload = JSON.parse(body) as {
+          questions: Record<string, { type: string; criteria?: unknown }>;
+        };
+        const answers = Object.fromEntries(
+          Object.entries(payload.questions).map(([id, question]) => {
+            if (question.type === "choice") {
+              const options = Object.keys(
+                question.criteria as Record<string, unknown>,
+              );
+              return [
+                id,
+                {
+                  type: "choice",
+                  choice: options[0],
+                  probabilities: Object.fromEntries(
+                    options.map((option, index) => [
+                      option,
+                      index === 0 ? 1 : 0,
+                    ]),
+                  ),
+                  confidence: 1,
+                },
+              ];
+            }
+            if (question.type === "score") {
+              const levels = question.criteria as string[];
+              return [
+                id,
+                {
+                  type: "score",
+                  score: 0,
+                  legend: Object.fromEntries(
+                    levels.map((level, index) => [String(index), level]),
+                  ),
+                  probabilities: Object.fromEntries(
+                    levels.map((_, index) => [String(index), index ? 0 : 1]),
+                  ),
+                  confidence: 1,
+                },
+              ];
+            }
+            return [id, { type: "noul", noul: 0.75 }];
+          }),
+        );
+        // llama-server reports the model file path, not the catalog id.
+        return Response.json({
+          model: "/models/decision-fixture.gguf",
+          answers,
+          usage: { input_tokens: 42, output_tokens: 0 },
+        });
+      }
       if (path === "/v1/embeddings") {
         const payload = JSON.parse(body) as { input: unknown };
         const inputs = Array.isArray(payload.input)
@@ -1858,7 +1923,8 @@ export async function startGatewayFixture(
     }
     config.port = llmPort;
     config.sttPort = sttPort;
-    const llmModel = options.llmModel ?? LLM_MODEL;
+    const llmModel =
+      options.llmCatalogEntry?.modelId ?? options.llmModel ?? LLM_MODEL;
     config.activeLlmModel = llmModel;
     config.selectedLlmModels = [llmModel];
     config.activeSttModel = STT_MODEL;
@@ -1876,13 +1942,23 @@ export async function startGatewayFixture(
     config.otelSampleRatio = 100;
     config.parallel = options.parallel ?? config.parallel;
     config.ctxSize = options.ctxSize ?? config.ctxSize;
-    const database = new DatabaseSession();
-    if (options.pendingRestart) persistConfiguration(database, config);
-    else saveConfig(database, config);
-    if (options.auth) {
-      apiKey = createApiKey(database, config, "conformance").rawKey;
+    if (options.llmCatalogEntry) {
+      ensureLocalBaseRootMarker(config.root);
+      writeUserCatalogEntry(config.root, options.llmCatalogEntry);
     }
-    database.close();
+    const database = new DatabaseSession();
+    try {
+      if (options.pendingRestart) persistConfiguration(database, config);
+      else saveConfig(database, config);
+      if (options.auth) {
+        apiKey = createApiKey(database, config, "conformance").rawKey;
+      }
+    } finally {
+      database.close();
+      // The gateway subprocess reads catalog.d itself; restore the bundled
+      // catalog so the entry does not leak into other tests in this process.
+      if (options.llmCatalogEntry) applyCatalogLayers([]);
+    }
 
     mkdirSync(config.llmModelsDir, { recursive: true });
     mkdirSync(config.sttModelsDir, { recursive: true });
@@ -1894,7 +1970,18 @@ export async function startGatewayFixture(
     // Settle every step before failing so no sibling recreates the root after
     // cleanup deletes it.
     const setup = await Promise.allSettled([
-      writeCompleteCatalogArtifact(config.llmModelsDir, llmModel),
+      ...(options.llmCatalogEntry
+        ? [
+            (async () => {
+              const entry = options.llmCatalogEntry!;
+              for (const artifact of entry.artifacts) {
+                const path = join(config.llmModelsDir, artifact.filename);
+                await Bun.write(path, "");
+                truncateSync(path, artifact.expectedSizeBytes);
+              }
+            })(),
+          ]
+        : [writeCompleteCatalogArtifact(config.llmModelsDir, llmModel)]),
       ...(options.ttsEnabled || options.ttsInstalled
         ? [
             writeCompleteCatalogArtifacts(config.ttsModelsDir, TTS_MODEL),
@@ -1959,7 +2046,7 @@ export async function startGatewayFixture(
     const failed = setup.find(
       (result): result is PromiseRejectedResult => result.status === "rejected",
     );
-    if (failed) throw failed.reason;
+    if (failed?.status === "rejected") throw failed.reason;
     if (!liveFixtureRoots.has(root)) throw reapedDuringStartup();
   } catch (error) {
     llmUpstream.server.stop(true);

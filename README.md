@@ -6,6 +6,7 @@ LocalBase is a Bun/TypeScript unified, OpenAI-compatible gateway for local AI ru
 
 - **LLM** OpenAI-compatible chat completions, including configured-model switching.
 - **Embeddings** for local indexing and search.
+- **Decisions** through `POST /v1/systemone` for decision models such as Clef: classification, scoring, and yes/no probabilities in one forward pass.
 - **STT** audio transcriptions and translations.
 - **TTS** through `/v1/audio/speech` with the bounded Qwen3 TTS base model.
 - **Image generation** through the OpenAI-compatible `/v1/images/generations` endpoint.
@@ -36,6 +37,39 @@ Public `GET` and `HEAD /health/ready` report whether at least one configured mod
 `POST /v1/images/edits` accepts multipart fields `model` (optional; defaults to the active image model), `prompt`, `image` or repeated `image[]` (1–4 PNG or JPEG files), optional nonempty PNG/JPEG `mask`, `n` (1–10), `size` (`256x256`, `512x512`, or `1024x1024`), `response_format` (`url` or `b64_json`), `output_format` (`png` or `jpeg`), and optional `strength` (0–1). Each input image and mask is structurally validated before model admission and limited to 2048 pixels per side and 4.2 megapixels. PNG decompression is bounded to its declared scanline size. WebP is not accepted because the pinned image backend uses stb_image, which does not decode WebP. Requests are limited to 20 MiB total and 8 MiB per file. Responses contain base64 image data for either response format.
 
 `POST /v1/videos` retains its JSON request contract. For TI2V profiles, add top-level `input_reference` containing canonical PNG base64 or a `data:image/png;base64,...` URL; dimensions must match that profile's fixed canvas. Multipart requests may instead supply `input_reference` as a PNG file, with the remaining video fields as form values. Text-only TI2V requests remain supported. Image-to-video is experimental and unqualified; see [video qualification](docs/video-qualification.md).
+
+### Decision models
+
+Decision models answer structured questions about a state instead of generating text. `POST /v1/systemone` follows the llama.cpp System One contract used by Workers AI and Jev:
+
+```bash
+curl http://127.0.0.1:2273/v1/systemone \
+  -H "Authorization: Bearer $LOCALBASE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "MODEL_ID",
+    "state": { "invoice": "INV-104", "due": "2026-09-01", "paid": false },
+    "questions": {
+      "status": {
+        "type": "choice",
+        "instructions": "What is the invoice status?",
+        "criteria": { "overdue": "Past the due date and unpaid", "paid": null, "open": null }
+      },
+      "urgency": { "type": "score", "criteria": ["low", "medium", "high"] },
+      "escalate": { "type": "noul", "instructions": "Should a human follow up?" }
+    }
+  }'
+```
+
+- `state` is required and may be a string, object, array, or `null`.
+- `files` and `images` are optional lists of `data:image/...;base64,` or `data:audio/...;base64,` URLs. Models without the matching projector return HTTP 501.
+- Each question has a `type`, optional `instructions`, and `criteria`. `instructions` defaults to the question ID.
+  - `choice`: 2–255 options mapped to a description or `null`.
+  - `score`: 2–10 level labels, lowest first.
+  - `noul`: optional `{ "true": "...", "false": "..." }` descriptions.
+- Responses contain `model`, per-question `answers`, and `usage: { input_tokens, output_tokens }`. Choice answers return `choice`, `probabilities`, and `confidence`. Score answers return `score`, `legend`, `probabilities`, and `confidence`. Noul answers return the true probability as `noul`.
+
+Decision models list `architecture.output_modalities: ["decisions"]` in `/v1/models`. They reject chat completions and embeddings, and other models reject `/v1/systemone` with HTTP 400 `unsupported_model_capability`. The route requires the `inference:decision` scope.
 
 ## Supported platforms
 
@@ -312,7 +346,7 @@ Standard `OTEL_EXPORTER_OTLP_ENDPOINT`, signal-specific endpoint/header variable
 
 ## Automation and JSON output
 
-Stored API keys default to `inference:chat`, `inference:embeddings`, `inference:image`, `inference:video`, `inference:speech`, `inference:transcription`, and `models:read`. Existing keys migrate to this same set without administrative permissions. The `LOCALBASE_API_KEY` environment credential retains full access.
+Stored API keys default to `inference:chat`, `inference:embeddings`, `inference:decision`, `inference:image`, `inference:video`, `inference:speech`, `inference:transcription`, and `models:read`. Existing keys migrate to this set without administrative permissions or `inference:decision`; add that scope with `keys scopes`. The `LOCALBASE_API_KEY` environment credential retains full access.
 
 ```bash
 local-base keys create --name chat-client --scopes inference:chat,models:read --json
@@ -325,10 +359,10 @@ local-base keys revoke key_ID --json
 `keys scopes` replaces the complete scope set and takes effect on the next request without a restart. Use `--scopes ""` to grant no permissions. Scope lists accept only these permissions:
 
 ```text
-inference:chat, inference:embeddings, inference:image, inference:video,
-inference:speech, inference:transcription, models:read, models:manage,
-configuration:read, configuration:manage, keys:read, keys:manage,
-access:read, access:manage, sessions:read, sessions:revoke,
+inference:chat, inference:embeddings, inference:decision, inference:image,
+inference:video, inference:speech, inference:transcription, models:read,
+models:manage, configuration:read, configuration:manage, keys:read,
+keys:manage, access:read, access:manage, sessions:read, sessions:revoke,
 system:read, system:manage
 ```
 

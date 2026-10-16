@@ -2585,6 +2585,143 @@ describe("API gateway integration", () => {
     }
   });
 
+  test("rejects models that are not decision models from /v1/systemone before runtime admission", async () => {
+    const idleGateway = await startGatewayFixture();
+    try {
+      const response = await fetch(`${idleGateway.baseUrl}/v1/systemone`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "qwen3-embedding-0.6b-q8_0",
+          state: "ok",
+          questions: { relevant: { type: "noul", instructions: "Relevant?" } },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: "unsupported_model_capability",
+          param: "model",
+          message: expect.stringContaining("is not a decision model"),
+        },
+      });
+      expect(idleGateway.upstreamRequests).toEqual([]);
+      expect(await idleGateway.readLlmRuntimeLaunches()).toEqual([]);
+    } finally {
+      await idleGateway.stop();
+    }
+  });
+
+  test("proxies /v1/systemone decisions for catalog decision models", async () => {
+    const decisionGateway = await startGatewayFixture({
+      llmCatalogEntry: {
+        modelId: "decision-fixture-q4_k_m",
+        displayName: "Decision Fixture",
+        kind: "llm",
+        provider: "Fixture",
+        family: "Decision",
+        version: "9B",
+        size: "9B",
+        quant: "Q4_K_M",
+        storageGb: 0.01,
+        source: "https://huggingface.co/fixture/decision-GGUF",
+        repositoryRevision: "0123456789abcdef0123456789abcdef01234567",
+        artifacts: [
+          {
+            sourcePath: "decision-fixture.gguf",
+            filename: "decision-fixture.gguf",
+            expectedSizeBytes: 1024,
+            sha256:
+              "0000000000000000000000000000000000000000000000000000000000000000",
+            role: "primary",
+          },
+        ],
+        llmRuntime: { capability: "decision-only" },
+        inputModalities: ["text"],
+        outputModalities: ["text"],
+        contextWindowTokens: 8192,
+        capabilities: ["decision"],
+        commercialStatus: "open",
+        catch: "Decision endpoint only.",
+        notes: "Test decision model.",
+      },
+    });
+    try {
+      const response = await fetch(`${decisionGateway.baseUrl}/v1/systemone`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "decision-fixture-q4_k_m",
+          state: { invoice: "INV-1", due: "2026-01-01" },
+          questions: {
+            status: {
+              type: "choice",
+              instructions: "Invoice status",
+              criteria: { overdue: "Past due", paid: null },
+            },
+            urgency: {
+              type: "score",
+              criteria: ["low", "medium", "high"],
+            },
+            relevant: { type: "noul" },
+          },
+        }),
+      });
+      expect(response.status).toBe(200);
+      const decision = await response.json();
+      expect(decision).toMatchObject({
+        model: "decision-fixture-q4_k_m",
+        answers: {
+          status: { choice: "overdue" },
+          urgency: { score: 0 },
+          relevant: { noul: 0.75 },
+        },
+        usage: { input_tokens: 42, output_tokens: 0 },
+      });
+      expect(JSON.stringify(decision)).not.toContain(".gguf");
+
+      const upstream = decisionGateway.upstreamRequests.find(
+        (entry) => entry.path === "/v1/systemone",
+      );
+      expect(upstream).toBeDefined();
+      const forwarded = JSON.parse(upstream!.body);
+      expect(forwarded.questions.status.instructions).toBe("Invoice status");
+      expect(forwarded.questions.urgency.instructions).toBe("urgency");
+      expect(forwarded.questions.relevant.instructions).toBe("relevant");
+
+      const models = await fetch(`${decisionGateway.baseUrl}/v1/models`);
+      expect(models.status).toBe(200);
+      const listed = (await models.json()) as {
+        data: Array<{
+          id: string;
+          architecture?: { output_modalities?: string[] };
+        }>;
+      };
+      expect(
+        listed.data.find((model) => model.id === "decision-fixture-q4_k_m"),
+      ).toMatchObject({ architecture: { output_modalities: ["decisions"] } });
+
+      const chat = await fetch(
+        `${decisionGateway.baseUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "decision-fixture-q4_k_m",
+            messages: [{ role: "user", content: "hello" }],
+          }),
+        },
+      );
+      expect(chat.status).toBe(400);
+      await expect(chat.json()).resolves.toMatchObject({
+        error: { message: expect.stringContaining("decision model") },
+      });
+    } finally {
+      await decisionGateway.stop();
+    }
+  });
+
   test("returns the admitted model instead of a backend model path", async () => {
     const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
     const response = await request("/v1/chat/completions", {
@@ -3993,6 +4130,66 @@ describe("API gateway integration", () => {
         body: JSON.stringify({ model: "embeddings-model" }),
       },
       expectedPath: "input",
+    },
+    {
+      name: "decisions require questions",
+      path: "/v1/systemone",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "decision-model", state: "ok" }),
+      },
+      expectedPath: "questions",
+    },
+    {
+      name: "decision choice questions require two options",
+      path: "/v1/systemone",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "decision-model",
+          state: "ok",
+          questions: {
+            route: { type: "choice", criteria: { billing: null } },
+          },
+        }),
+      },
+      expectedPath: "questions.route.criteria",
+    },
+    {
+      name: "decision score questions allow at most ten levels",
+      path: "/v1/systemone",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "decision-model",
+          state: "ok",
+          questions: {
+            urgency: {
+              type: "score",
+              criteria: Array.from({ length: 11 }, (_, i) => `level ${i}`),
+            },
+          },
+        }),
+      },
+      expectedPath: "questions.urgency.criteria",
+    },
+    {
+      name: "decision files must be data URLs",
+      path: "/v1/systemone",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "decision-model",
+          state: "ok",
+          images: ["https://example.com/a.png"],
+          questions: { table: { type: "noul" } },
+        }),
+      },
+      expectedPath: "images.0",
     },
   ];
 

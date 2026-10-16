@@ -1068,6 +1068,106 @@ const embeddingsRequestSchema = z
   })
   .passthrough();
 
+const decisionInstructionsSchema = z.union([
+  z.string(),
+  z.record(z.string(), z.unknown()),
+  z.array(z.unknown()),
+]);
+
+/** Up to 255 options: the most any llama.cpp decision architecture accepts. */
+const MAX_DECISION_CHOICE_OPTIONS = 255;
+
+const decisionQuestionSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("choice"),
+      instructions: decisionInstructionsSchema.optional(),
+      criteria: z
+        .record(z.string().min(1), z.string().nullable())
+        .refine((criteria) => Object.keys(criteria).length >= 2, {
+          message: "A choice question needs at least 2 options.",
+        })
+        .refine(
+          (criteria) =>
+            Object.keys(criteria).length <= MAX_DECISION_CHOICE_OPTIONS,
+          {
+            message: `A choice question accepts at most ${MAX_DECISION_CHOICE_OPTIONS} options.`,
+          },
+        ),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("score"),
+      instructions: decisionInstructionsSchema.optional(),
+      criteria: z.array(z.string()).min(2).max(10),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("noul"),
+      instructions: decisionInstructionsSchema.optional(),
+      criteria: z
+        .object({ true: z.string().optional(), false: z.string().optional() })
+        .strict()
+        .optional(),
+    })
+    .strict(),
+]);
+
+const decisionFileSchema = z
+  .string()
+  .regex(
+    /^data:(image|audio)\/[a-z0-9.+-]+;base64,/i,
+    "Each file must be a base64 data URL (data:image/... or data:audio/...).",
+  );
+
+/**
+ * POST /v1/systemone: the TypeSafe System One request llama-server answers
+ * with a decision model. `model` is required so the gateway can admit the
+ * right runtime.
+ */
+const decisionRequestSchema = z
+  .object({
+    model: modelIdSchema,
+    state: z
+      .union([
+        z.string(),
+        z.record(z.string(), z.unknown()),
+        z.array(z.unknown()),
+        z.null(),
+      ])
+      .optional()
+      .refine((state) => state !== undefined, {
+        message: "state is required.",
+      }),
+    files: z.array(decisionFileSchema).optional(),
+    images: z.array(decisionFileSchema).optional(),
+    questions: z
+      .record(z.string().min(1), decisionQuestionSchema)
+      .refine((questions) => Object.keys(questions).length > 0, {
+        message: "questions must contain at least one question.",
+      }),
+  })
+  .strict();
+
+/** Fills a missing or empty `instructions` with the question id. */
+function prepareDecisionRequest(
+  request: z.output<typeof decisionRequestSchema>,
+): z.output<typeof decisionRequestSchema> {
+  const questions = Object.fromEntries(
+    Object.entries(request.questions).map(([id, question]) => [
+      id,
+      question.instructions === undefined ||
+      (typeof question.instructions === "string" &&
+        question.instructions.trim().length === 0)
+        ? { ...question, instructions: id }
+        : question,
+    ]),
+  );
+  return { ...request, questions };
+}
+
 const chatCompletionResponseSchema = z
   .object({
     id: z.string(),
@@ -1257,6 +1357,40 @@ const embeddingsResponseSchema = z
       prompt_tokens: z.number(),
       total_tokens: z.number(),
     }),
+  })
+  .passthrough();
+
+const decisionProbabilitiesSchema = z.record(z.string(), z.number());
+
+const decisionResponseSchema = z
+  .object({
+    model: z.string(),
+    answers: z.record(
+      z.string(),
+      z.discriminatedUnion("type", [
+        z
+          .object({
+            type: z.literal("choice"),
+            choice: z.string(),
+            probabilities: decisionProbabilitiesSchema,
+            confidence: z.number(),
+          })
+          .passthrough(),
+        z
+          .object({
+            type: z.literal("score"),
+            score: z.number(),
+            legend: z.record(z.string(), z.string()),
+            probabilities: decisionProbabilitiesSchema,
+            confidence: z.number(),
+          })
+          .passthrough(),
+        z.object({ type: z.literal("noul"), noul: z.number() }).passthrough(),
+      ]),
+    ),
+    usage: z
+      .object({ input_tokens: z.number(), output_tokens: z.number() })
+      .passthrough(),
   })
   .passthrough();
 
@@ -4882,6 +5016,86 @@ export async function runServe(
       return withServerTiming(response, inference.serverTiming());
     }
 
+    if (route === "decision") {
+      const parsed = await parseJsonRequest(request, decisionRequestSchema);
+      if (!parsed.success) return parsed.response;
+      const requestedModel = byId(parsed.data.model);
+      if (requestedModel && !isDecisionModel(requestedModel)) {
+        return openAIErrorResponse(
+          {
+            message: `Model '${requestedModel.modelId}' is not a decision model. Choose a model whose architecture.output_modalities include "decisions" from GET /v1/models.`,
+            type: "invalid_request_error",
+            param: "model",
+            code: "unsupported_model_capability",
+          },
+          400,
+        );
+      }
+      let selected;
+      try {
+        selected = await reconciler.admitModel(
+          "llm",
+          parsed.data.model,
+          request.signal,
+        );
+      } catch (error) {
+        if (error instanceof RuntimeRequestAbortedError)
+          return requestAborted();
+        const queueError = queueFailure(error, "llm");
+        if (queueError) return queueError;
+        throw error;
+      }
+      if (selected.kind === "not-configured") return notConfigured("LLM");
+      if (selected.kind === "model-not-found") {
+        return modelNotFound(parsed.data.model ?? "");
+      }
+      if (selected.kind === "unavailable") return serviceUnavailable("LLM");
+      if (selected.kind === "insufficient-memory") {
+        return resourceUnavailable(selected.error);
+      }
+      const inference = beginInference("llm", selected.value);
+      const body = prepareDecisionRequest(parsed.data);
+      const response = await proxyWithAdmission(
+        selected.value.admission,
+        "LLM",
+        request.signal,
+        async () =>
+          await proxyRequest(
+            requestWithJsonBody(request, body),
+            factory.baseUrl("llm", selected.value.admission.snapshot),
+            undefined,
+            decisionResponseSchema,
+            undefined,
+            ctx.otel,
+            (value) => {
+              // Decisions report prompt tokens only; map them to usage.
+              const usage = decisionResponseSchema.safeParse(value).data?.usage;
+              if (usage) {
+                inference.observeValidatedBackendMetadata({
+                  usage: {
+                    prompt_tokens: usage.input_tokens,
+                    completion_tokens: usage.output_tokens,
+                    total_tokens: usage.input_tokens + usage.output_tokens,
+                  },
+                });
+              }
+            },
+            (status) =>
+              inference.finish({
+                outcome: "error",
+                httpStatus: status,
+                source: "response_validation",
+              }),
+            undefined,
+            selected.value.modelId,
+            (status) => inference.observeUpstreamStatus(status),
+            inference.context(),
+          ),
+        (terminal) => inference.finish(terminal),
+      );
+      return withServerTiming(response, inference.serverTiming());
+    }
+
     if (route === "models") {
       const data = await listServedModels(
         currentConfig,
@@ -5065,6 +5279,7 @@ export async function runServe(
         const inferenceTiming =
           selectedRoute === "chatCompletion" ||
           selectedRoute === "embeddings" ||
+          selectedRoute === "decision" ||
           selectedRoute === "transcription" ||
           selectedRoute === "speechGeneration" ||
           selectedRoute === "imageGeneration" ||
