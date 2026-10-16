@@ -10,6 +10,10 @@ import {
   type ModelSpec,
 } from "../../catalog";
 import {
+  annotationSummaryFor,
+  annotationSummarySchema,
+} from "../../catalog/annotations";
+import {
   capabilityMismatchSchema,
   capabilitySchema,
   capabilitySourceSchema,
@@ -211,6 +215,11 @@ export const modelMetadataSchema = z
         maxOutputTokens: z.null(),
         /** Capabilities the catalog verified as unsupported, with the reason. */
         unsupportedCapabilities: z.array(unsupportedCapabilitySchema),
+        /**
+         * What the remote catalog feed publishes for this entry's repository
+         * (status, unsupported marks, measured peaks, recipe); null without one.
+         */
+        feedAnnotation: annotationSummarySchema.nullable(),
         capabilityResolution: z
           .object({
             capabilities: z.array(
@@ -455,6 +464,7 @@ export function projectModelMetadata(
       unsupportedCapabilities: (model.unsupportedCapabilities ?? []).map(
         (entry) => ({ ...entry }),
       ),
+      feedAnnotation: annotationSummaryFor(model),
       capabilityResolution: capabilityResolution(
         input.capabilities?.get(model.modelId) ??
           resolveModelCapabilities(model, {}),

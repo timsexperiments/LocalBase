@@ -18,6 +18,7 @@ import {
   modeLabels,
 } from "../catalog/model-details";
 import { modelMemoryRequirement, modelName, type Model } from "./client";
+import { FeedAnnotationDetails, FeedStatusBadge } from "./feed-annotation";
 
 const sourceLabels: Readonly<Record<string, string>> = capabilitySourceLabels;
 
@@ -318,6 +319,16 @@ export function ModelDetails({
             )}
           </dl>
         </section>
+
+        {catalog.feedAnnotation && (
+          <section aria-labelledby="model-details-feed">
+            <h3 id="model-details-feed" className="model-details-feed-heading">
+              From the catalog feed{" "}
+              <FeedStatusBadge annotation={catalog.feedAnnotation} />
+            </h3>
+            <FeedAnnotationDetails annotation={catalog.feedAnnotation} />
+          </section>
+        )}
 
         <section aria-labelledby="model-details-files">
           <h3 id="model-details-files">Files</h3>

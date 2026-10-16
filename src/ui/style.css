@@ -1676,6 +1676,74 @@ dialog.management-page {
 .discovery-card .error {
   margin: 10px 0 0;
 }
+.model-badge.feed-status {
+  border: 1px solid var(--accent-border);
+  background: none;
+  color: var(--accent);
+}
+.model-badge.feed-qualified {
+  background: var(--accent-soft);
+}
+.model-details-feed-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.model-details-feed-heading .model-badge {
+  font-weight: 400;
+}
+.feed-revision-note code {
+  overflow-wrap: anywhere;
+}
+.feed-marks.compact {
+  margin: 0 0 10px;
+}
+.feed-marks.compact li {
+  font-size: 12px;
+  padding: 4px 0;
+}
+.feed-marks .muted {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.discovery-recipes {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+.discovery-recipes li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  font-size: 13px;
+}
+.discovery-recipes li > div {
+  flex: 1 1 12em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.discovery-recipe-file {
+  display: block;
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
+.discovery-recipes .muted {
+  font-size: 12px;
+}
+.discovery-recipes button {
+  font-size: 12px;
+}
+.discovery-recipes .install-model {
+  background: var(--accent);
+  color: var(--accent-text);
+}
 @media (min-width: 760px) {
   .discovery-search {
     grid-template-columns: minmax(0, 1fr) 180px auto;

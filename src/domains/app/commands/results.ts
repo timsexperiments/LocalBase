@@ -244,6 +244,9 @@ const catalogFeedStatusResultSchema = z
     builtIn: z.number(),
     added: z.array(z.string()),
     skipped: z.number(),
+    schemaVersion: z.number().nullable(),
+    annotations: z.number(),
+    annotationsSkipped: z.number(),
   })
   .strict();
 export const feedRefreshResultSchema = z

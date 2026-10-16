@@ -1,6 +1,14 @@
 import { useRef, useState, type FormEvent } from "react";
 import { z } from "zod";
-import { api, type Connection } from "./client";
+import { formatFileSize } from "../catalog/model-details";
+import { api, feedAnnotationSchema, type Connection } from "./client";
+import {
+  describeFeedPeak,
+  FeedMarks,
+  FeedRevisionNote,
+  FeedStatusBadge,
+  headlineFeedPeak,
+} from "./feed-annotation";
 
 const kindNames = {
   llm: "Chat",
@@ -28,6 +36,8 @@ const choiceSchema = z.object({
       message: z.string(),
     })
     .nullable(),
+  /** What the catalog feed publishes for this file; absent on older servers. */
+  annotation: feedAnnotationSchema.nullable().optional(),
 });
 const previewSchema = z.object({
   kind: z.enum(["llm", "stt", "image"]),
@@ -47,6 +57,15 @@ const hitSchema = z.object({
   }),
   preview: previewSchema.nullable(),
   reason: z.string().nullable(),
+  /** Catalog-feed annotations for the repo; absent on older servers. */
+  catalog: z
+    .array(
+      feedAnnotationSchema.extend({
+        displayName: z.string().nullable(),
+        installable: z.boolean(),
+      }),
+    )
+    .optional(),
 });
 const searchSchema = z.object({
   cached: z.boolean(),
@@ -63,6 +82,15 @@ const addSchema = z.object({
 });
 type Hit = z.infer<typeof hitSchema>;
 type Choice = z.infer<typeof choiceSchema>;
+type CatalogNote = NonNullable<Hit["catalog"]>[number];
+const recipeSchema = z.object({
+  modelId: z.string(),
+  displayName: z.string(),
+  operation: z
+    .object({ state: z.string().optional(), detail: z.string().optional() })
+    .passthrough()
+    .nullable(),
+});
 
 function compactCount(value: number) {
   if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
@@ -114,9 +142,40 @@ function DiscoveryCard({
   const [preview, setPreview] = useState(hit.preview);
   const [reason, setReason] = useState(hit.reason);
   const [path, setPath] = useState(hit.preview?.defaultPath ?? "");
-  const [busy, setBusy] = useState<"" | "preview" | "add" | "install">("");
+  const [busy, setBusy] = useState<
+    "" | "preview" | "add" | "install" | "recipe"
+  >("");
   const [error, setError] = useState("");
   const choice = preview?.choices.find((item) => item.path === path);
+  const notes = hit.catalog ?? [];
+  const recipes = notes.filter((note) => note.recipe);
+  const annotation = choice?.annotation ?? null;
+  const peak = annotation ? headlineFeedPeak(annotation) : undefined;
+
+  async function installRecipe(note: CatalogNote) {
+    if (!note.recipe) return;
+    setBusy("recipe");
+    setError("");
+    try {
+      const started = recipeSchema.parse(
+        await discovery(connection, {
+          action: "install-recipe",
+          modelId: note.recipe.modelId,
+        }),
+      );
+      if (started.operation?.state === "failed")
+        setError(
+          `The install did not start: ${started.operation.detail ?? "unknown error"}`,
+        );
+      else onAdded(`Installing ${started.displayName} (${started.modelId}).`);
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Could not start the install.",
+      );
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function loadPreview() {
     setBusy("preview");
@@ -187,6 +246,10 @@ function DiscoveryCard({
           </a>
         </h3>
         {hit.gated && <span className="model-badge gated">Gated</span>}
+        <FeedStatusBadge
+          annotation={annotation ?? notes[0]}
+          showRevision={!!annotation}
+        />
         {choice?.fit && (
           <span
             className={`model-badge fit-${choice.fit.verdict}`}
@@ -249,6 +312,15 @@ function DiscoveryCard({
                 <dt>Quant</dt>
                 <dd>{choice.quant ?? "—"}</dd>
               </div>
+              {peak && (
+                <div className="model-storage-fit">
+                  <dt>Measured peak</dt>
+                  <dd>
+                    {describeFeedPeak(peak)}
+                    <span className="muted"> · {peak.hardware}</span>
+                  </dd>
+                </div>
+              )}
               {choice.fit && (
                 <div className="model-storage-fit">
                   <dt>Fit</dt>
@@ -256,6 +328,12 @@ function DiscoveryCard({
                 </div>
               )}
             </dl>
+          )}
+          {annotation && (
+            <>
+              <FeedRevisionNote annotation={annotation} />
+              <FeedMarks annotation={annotation} compact />
+            </>
           )}
           <div className="catalog-actions">
             <button
@@ -292,6 +370,41 @@ function DiscoveryCard({
             </div>
           )}
         </>
+      )}
+      {recipes.length > 0 && (
+        <ul className="discovery-recipes" aria-label="LocalBase recipes">
+          {recipes.map((note) => (
+            <li key={note.recipe!.modelId}>
+              <div>
+                <strong>{note.displayName ?? note.recipe!.modelId}</strong>
+                <span className="muted">
+                  {" "}
+                  · {note.recipe!.fileCount} files ·{" "}
+                  {formatFileSize(note.recipe!.totalBytes)}
+                  {headlineFeedPeak(note)
+                    ? ` · peak ${describeFeedPeak(headlineFeedPeak(note)!)}`
+                    : ""}
+                </span>
+                {note.file && (
+                  <code className="discovery-recipe-file">{note.file}</code>
+                )}
+              </div>
+              <button
+                type="button"
+                className="install-model"
+                disabled={!canManage || !note.installable || !!busy}
+                title={
+                  note.installable
+                    ? "Installs the catalog entry with every file pinned by sha256."
+                    : "This LocalBase version's catalog does not have this entry yet."
+                }
+                onClick={() => void installRecipe(note)}
+              >
+                {busy === "recipe" ? "Starting…" : "Install LocalBase recipe"}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
       {error && (
         <p className="error" role="alert">

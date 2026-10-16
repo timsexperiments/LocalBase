@@ -9,6 +9,11 @@ import {
   queryCatalog,
   type CatalogQuery,
 } from "../../../catalog/catalog-query";
+import {
+  annotationSummaryFor,
+  headlinePeak,
+} from "../../../catalog/annotations";
+import { formatGb } from "../../../catalog/model-details";
 import { catalogProvenance } from "../../../catalog/sources";
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
@@ -109,6 +114,18 @@ export async function runCatalog(
       execution.output.info(
         `      unsupported: ${unsupported.id} (verified: ${unsupported.reason})`,
       );
+    const feed = annotationSummaryFor(model);
+    if (feed) {
+      const peak = headlinePeak(feed.memoryPeaks);
+      execution.output.info(
+        `      feed: ${feed.status ?? "annotated"}${feed.revisionMatch ? "" : " (other revision)"}${peak ? ` · measured peak ${formatGb(peak.peakBytes)}` : ""}${feed.recipe ? ` · recipe ${feed.recipe.fileCount} files` : ""}`,
+      );
+      for (const mark of feed.unsupportedCapabilities)
+        if (mark.applied)
+          execution.output.info(
+            `      unsupported: ${mark.id} (feed, verified: ${mark.reason})`,
+          );
+    }
     if (fit.source === "observed")
       execution.output.info(
         `      memory: ${describeMemoryFigure(fit.figure)}`,

@@ -80,6 +80,42 @@ const capabilitiesSchema = z.discriminatedUnion("kind", [
   }),
 ]) satisfies z.ZodType<ClientCapabilities>;
 
+/** A catalog feed annotation as the server summarizes it. */
+export const feedAnnotationSchema = z.object({
+  repo: z.string(),
+  revision: z.string(),
+  file: z.string().nullable(),
+  modelId: z.string().nullable(),
+  status: z.enum(["qualified", "verified"]).nullable(),
+  revisionMatch: z.boolean(),
+  unsupportedCapabilities: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      reason: z.string(),
+      applied: z.boolean(),
+    }),
+  ),
+  memoryPeaks: z.array(
+    z.object({
+      variant: z.string(),
+      launchShape: z.string(),
+      peakBytes: z.number(),
+      measuredAt: z.string(),
+      hardware: z.string(),
+    }),
+  ),
+  recipe: z
+    .object({
+      modelId: z.string(),
+      fileCount: z.number(),
+      totalBytes: z.number(),
+      files: z.array(z.object({ path: z.string(), sizeBytes: z.number() })),
+    })
+    .nullable(),
+});
+export type FeedAnnotationSummary = z.infer<typeof feedAnnotationSchema>;
+
 const modelSchema = z.object({
   id: z.string(),
   catalog: z.object({
@@ -96,6 +132,8 @@ const modelSchema = z.object({
     unsupportedCapabilities: z
       .array(z.object({ id: z.string(), reason: z.string() }))
       .optional(),
+    /** What the remote catalog feed publishes for this repo; absent on older servers. */
+    feedAnnotation: feedAnnotationSchema.nullable().optional(),
     /** Commercial-use classification; absent on older servers. */
     commercialStatus: z.enum(["open", "conditional", "prohibited"]).optional(),
     /** One-line description; absent on older servers. */

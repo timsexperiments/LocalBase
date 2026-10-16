@@ -27,7 +27,7 @@ TTS is disabled by default. The first supported model is `qwen3-tts-1.7b-base-q4
 
 Use [`local-base config`](docs/declarative-config.md) to validate, plan, apply, and export versioned TOML configuration without prompts.
 
-Add your own models, or adjust built-in ones, in `<root>/catalog.d/`, or find and pin chat, transcription and image models from Hugging Face with `local-base models search`, `local-base models add hf:<org>/<repo>` or the catalog's **Find more models** view. New community models also arrive between releases through a remote catalog feed the gateway refreshes daily (`local-base models feed status`). See [User catalog and Hugging Face models](docs/user-catalog.md).
+Add your own models, or adjust built-in ones, in `<root>/catalog.d/`, or find and pin chat, transcription and image models from Hugging Face with `local-base models search`, `local-base models add hf:<org>/<repo>` or the catalog's **Find more models** view. New community models, plus verified-unsupported capabilities, measured memory peaks and multi-file install recipes for Hugging Face files, also arrive between releases through a remote catalog feed the gateway refreshes daily (`local-base models feed status`). See [User catalog and Hugging Face models](docs/user-catalog.md).
 
 Public `GET` and `HEAD /health/ready` report whether at least one configured modality can admit a request, including bounded queue waiting. `/health` remains process liveness.
 

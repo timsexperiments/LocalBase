@@ -11,6 +11,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { modelSpecSchema, type ModelSpec } from "../catalog";
 import { safeFilenameSchema } from "../utils/checksum";
+import { setFeedAnnotations } from "./annotations";
 import { readRemoteCatalogLayer } from "./remote-feed";
 import { canonicalLocalBaseRoot } from "../utils/root";
 import {
@@ -103,6 +104,7 @@ export function loadCatalogSources(
     options.remote === undefined
       ? readRemoteCatalogLayer(root)
       : options.remote;
+  setFeedAnnotations(remote?.annotations ?? []);
   return applyCatalogLayers([
     ...(remote ? [remote] : []),
     readUserCatalogLayer(root),

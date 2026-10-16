@@ -6,6 +6,14 @@
  */
 import { z } from "zod";
 import { byId, modelSpecSchema, type ModelSpec } from "../../catalog";
+import {
+  annotationsForRepo,
+  feedAnnotations,
+  summarizeAnnotation,
+  type AnnotationSummary,
+  type FeedAnnotation,
+} from "../../catalog/annotations";
+import type { UnsupportedCapability } from "../../catalog/capabilities";
 import { catalogProvenance } from "../../catalog/sources";
 import { writeUserCatalogEntry } from "../../catalog/user-catalog";
 import {
@@ -52,7 +60,21 @@ export type DiscoveryChoice = Readonly<{
     minVramGb: number;
     message: string;
   }> | null;
+  /**
+   * What the catalog feed publishes about this file. Its marks apply (and
+   * Add writes them into the new entry) only at the same revision.
+   */
+  annotation: AnnotationSummary | null;
 }>;
+
+/** A catalog-feed annotation for a search result's repository. */
+export type DiscoveryCatalogNote = AnnotationSummary &
+  Readonly<{
+    /** The catalog entry's name, when this binary's catalog has it. */
+    displayName: string | null;
+    /** The recipe installs an entry this catalog has. */
+    installable: boolean;
+  }>;
 
 export type DiscoveryPreview = Readonly<{
   kind: AddableKind;
@@ -67,11 +89,106 @@ export type DiscoveryHit = HubSearchHit &
     preview: DiscoveryPreview | null;
     /** Why there is no preview (unsupported kind, no usable files, offline). */
     reason: string | null;
+    /** Catalog-feed annotations for this repository, recipes first. */
+    catalog: readonly DiscoveryCatalogNote[];
   }>;
 
 /** Repositories with more files are trimmed to keep responses small. */
 const MAX_CHOICES = 40;
 const PREVIEW_CONCURRENCY = 4;
+/** At most this many feed annotations accompany one search result. */
+const MAX_CATALOG_NOTES = 3;
+
+function sameRevision(annotation: FeedAnnotation, sha: string | undefined) {
+  return !!sha && annotation.revision.toLowerCase() === sha.toLowerCase();
+}
+
+/**
+ * The feed annotation for one file of a repository: the one published for
+ * the repository's current revision first, else one for another revision.
+ */
+export function annotationForFile(
+  repo: string,
+  sha: string | undefined,
+  path: string,
+): Readonly<{ annotation: FeedAnnotation; revisionMatch: boolean }> | null {
+  const candidates = annotationsForRepo(repo).filter(
+    (annotation) => annotation.file === undefined || annotation.file === path,
+  );
+  const exact = candidates.find((annotation) => sameRevision(annotation, sha));
+  if (exact) return { annotation: exact, revisionMatch: true };
+  const other = candidates[0];
+  return other ? { annotation: other, revisionMatch: false } : null;
+}
+
+function choiceAnnotation(
+  info: HubModelInfo,
+  path: string,
+): AnnotationSummary | null {
+  const match = annotationForFile(info.id, info.sha, path);
+  if (!match) return null;
+  return summarizeAnnotation(match.annotation, {
+    revisionMatch: match.revisionMatch,
+    applied: new Set(
+      match.revisionMatch
+        ? (match.annotation.unsupportedCapabilities ?? []).map(({ id }) => id)
+        : [],
+    ),
+  });
+}
+
+/** The feed annotations to show beside a search result. */
+export function catalogNotesFor(
+  repo: string,
+  sha?: string,
+): DiscoveryCatalogNote[] {
+  const rank = (annotation: FeedAnnotation) =>
+    (annotation.recipe ? 0 : 2) + (annotation.status ? 0 : 1);
+  return [...annotationsForRepo(repo)]
+    .sort((a, b) => rank(a) - rank(b))
+    .slice(0, MAX_CATALOG_NOTES)
+    .map((annotation) => {
+      const model = annotation.modelId ? byId(annotation.modelId) : undefined;
+      const recipeModel = annotation.recipe
+        ? byId(annotation.recipe.modelId)
+        : undefined;
+      return {
+        ...summarizeAnnotation(annotation, {
+          revisionMatch: sameRevision(annotation, sha),
+        }),
+        displayName: model?.displayName ?? null,
+        installable: !!recipeModel,
+      };
+    });
+}
+
+/**
+ * Writes the feed's verified-unsupported marks into a generated entry, so
+ * an added file starts with what the feed knows and the user can edit it.
+ * Marked ids are removed from the declared capabilities, which a catalog
+ * entry may not list in both places.
+ */
+export function withFeedMarks(
+  spec: Record<string, unknown>,
+  marks: readonly UnsupportedCapability[],
+): Record<string, unknown> {
+  if (marks.length === 0) return spec;
+  const ids = new Set(marks.map(({ id }) => id));
+  const capabilities = Array.isArray(spec.capabilities)
+    ? spec.capabilities.filter((capability: unknown) => {
+        const id =
+          typeof capability === "string"
+            ? capability
+            : (capability as { id?: unknown } | null)?.id;
+        return !ids.has(id as UnsupportedCapability["id"]);
+      })
+    : spec.capabilities;
+  return {
+    ...spec,
+    capabilities,
+    unsupportedCapabilities: marks.map((mark) => ({ ...mark })),
+  };
+}
 
 function previewFor(
   info: HubModelInfo,
@@ -107,6 +224,7 @@ function previewFor(
       modelId: entry.modelId,
       existing: catalogOwner(entry.modelId),
       fit,
+      annotation: choiceAnnotation(info, file.path),
     });
   }
   if (choices.length === 0) {
@@ -171,11 +289,18 @@ export async function discoverModels(
     PREVIEW_CONCURRENCY,
     async (hit): Promise<DiscoveryHit> => {
       const url = hubRepoUrl(hit.repo);
+      const catalog = catalogNotesFor(hit.repo);
       if (hit.likely.kind === null) {
-        return { ...hit, url, preview: null, reason: hit.likely.label };
+        return {
+          ...hit,
+          url,
+          preview: null,
+          reason: hit.likely.label,
+          catalog,
+        };
       }
       if (previews <= 0) {
-        return { ...hit, url, preview: null, reason: null };
+        return { ...hit, url, preview: null, reason: null, catalog };
       }
       previews -= 1;
       try {
@@ -185,6 +310,7 @@ export async function discoverModels(
           url,
           preview: previewFor(info, options.systemVramGb),
           reason: null,
+          catalog: catalogNotesFor(hit.repo, info.sha),
         };
       } catch (error) {
         return {
@@ -195,6 +321,7 @@ export async function discoverModels(
             error instanceof HubError
               ? error.message
               : "Could not read this repository from Hugging Face.",
+          catalog,
         };
       }
     },
@@ -209,6 +336,13 @@ export async function previewRepository(
 ): Promise<DiscoveryPreview> {
   const info = await fetchModelInfo(options, repo);
   return previewFor(info, options.systemVramGb);
+}
+
+/** The published annotation whose recipe installs `modelId`. */
+function annotationForRecipe(modelId: string): FeedAnnotation | undefined {
+  return feedAnnotations().find(
+    (annotation) => annotation.recipe?.modelId === modelId,
+  );
 }
 
 export class CatalogConflictError extends Error {
@@ -250,7 +384,15 @@ export async function addFromHub(
     input.modelId ? { modelId: input.modelId } : {},
   );
   const replaced = conflict(entry.modelId);
-  const { path, model } = writeUserCatalogEntry(options.root, entry.spec);
+  const primary = entry.weights[0]?.path;
+  const match = primary ? annotationForFile(info.id, info.sha, primary) : null;
+  const spec = withFeedMarks(
+    entry.spec,
+    match?.revisionMatch
+      ? (match.annotation.unsupportedCapabilities ?? [])
+      : [],
+  );
+  const { path, model } = writeUserCatalogEntry(options.root, spec);
   return { entry, path, model, replaced };
 }
 
@@ -273,6 +415,12 @@ export const discoveryRequestSchema = z.discriminatedUnion("action", [
       selector: z.string().min(1).max(300).optional(),
       modelId: z.string().min(1).max(200).optional(),
       install: z.boolean().default(false),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("install-recipe"),
+      modelId: z.string().min(1).max(200),
     })
     .strict(),
 ]);
@@ -328,6 +476,33 @@ export async function runDiscoveryRequest(
           repo: request.repo,
           url: hubRepoUrl(request.repo),
           preview: await previewRepository(deps, request.repo),
+        },
+      };
+    }
+    if (request.action === "install-recipe") {
+      const model = byId(request.modelId);
+      if (!model)
+        return failure(
+          404,
+          "model_not_found",
+          `"${request.modelId}" is not in this catalog. Update LocalBase or the catalog feed.`,
+        );
+      const published = annotationForRecipe(request.modelId);
+      if (!published)
+        return failure(
+          400,
+          "no_recipe",
+          `The catalog feed has no install recipe for "${request.modelId}".`,
+        );
+      const operation = await deps.install(model.modelId);
+      return {
+        status: 200,
+        body: {
+          modelId: model.modelId,
+          displayName: model.displayName,
+          kind: model.kind,
+          replaced: false,
+          operation,
         },
       };
     }

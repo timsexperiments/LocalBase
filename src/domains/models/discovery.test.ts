@@ -8,16 +8,22 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { byId } from "../../catalog";
+import { BUILT_IN_CATALOG, byId } from "../../catalog";
+import {
+  setFeedAnnotations,
+  type FeedAnnotation,
+} from "../../catalog/annotations";
 import { applyCatalogLayers, catalogProvenance } from "../../catalog/sources";
 import {
   addFromHub,
   CatalogConflictError,
   discoverModels,
   discoveryRequestSchema,
+  catalogNotesFor,
   hubTokenFrom,
   previewRepository,
   runDiscoveryRequest,
+  withFeedMarks,
   type DiscoveryDependencies,
 } from "./discovery";
 import type { HubFetch } from "./huggingface";
@@ -35,6 +41,7 @@ function scratchRoot(): string {
 
 afterEach(() => {
   applyCatalogLayers([]);
+  setFeedAnnotations([]);
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
 });
@@ -305,4 +312,172 @@ test("reports Hugging Face outages as upstream failures", async () => {
     { action: "search", query: "tiny", kind: "llm" },
   );
   expect(outcome.status).toBe(502);
+});
+
+const toolMark = {
+  id: "tool-calling",
+  supported: false,
+  source: "declared",
+  verified: true,
+  reason: "The chat template has no tool-call format.",
+} as const;
+
+function tinyAnnotation(
+  overrides: Partial<FeedAnnotation> = {},
+): FeedAnnotation {
+  return {
+    repo: llmRepo.id,
+    revision: SHA,
+    file: "tiny-0.5b-instruct-q8_0.gguf",
+    status: "verified",
+    unsupportedCapabilities: [toolMark],
+    ...overrides,
+  };
+}
+
+test("previews carry the feed annotation for each file", async () => {
+  setFeedAnnotations([tinyAnnotation()]);
+  const { fetch } = hub();
+  const { hits } = await discoverModels(
+    { root: scratchRoot(), fetch, kind: "llm", systemVramGb: 16 },
+    "tiny",
+  );
+  const tiny = hits.find((hit) => hit.repo === llmRepo.id)!;
+  const [q4, q8] = tiny.preview!.choices;
+  expect(q4!.annotation).toBeNull();
+  expect(q8!.annotation).toMatchObject({
+    status: "verified",
+    revisionMatch: true,
+    unsupportedCapabilities: [{ id: "tool-calling", applied: true }],
+  });
+  expect(tiny.catalog).toHaveLength(1);
+  expect(tiny.catalog[0]).toMatchObject({ revisionMatch: true });
+  expect(hits.find((hit) => hit.repo !== llmRepo.id)!.catalog).toEqual([]);
+});
+
+test("an annotation for another revision is shown but not applied", async () => {
+  setFeedAnnotations([tinyAnnotation({ revision: "0".repeat(40) })]);
+  const { fetch } = hub();
+  const preview = await previewRepository(
+    { root: scratchRoot(), fetch, systemVramGb: 16 },
+    llmRepo.id,
+  );
+  const q8 = preview.choices.find(
+    (choice) => choice.path === "tiny-0.5b-instruct-q8_0.gguf",
+  )!;
+  expect(q8.annotation).toMatchObject({
+    revisionMatch: false,
+    unsupportedCapabilities: [{ applied: false }],
+  });
+
+  const root = scratchRoot();
+  const added = await addFromHub(
+    { root, fetch },
+    { repo: llmRepo.id, selector: "q8_0" },
+  );
+  expect(added.model.unsupportedCapabilities ?? []).toEqual([]);
+});
+
+test("adding a file writes the feed's marks into the new entry", async () => {
+  setFeedAnnotations([tinyAnnotation()]);
+  const { fetch } = hub();
+  const root = scratchRoot();
+  const added = await addFromHub(
+    { root, fetch },
+    { repo: llmRepo.id, selector: "q8_0" },
+  );
+  expect(added.model.unsupportedCapabilities).toEqual([toolMark]);
+  expect(added.model.capabilities.some(({ id }) => id === "tool-calling")).toBe(
+    false,
+  );
+});
+
+test("withFeedMarks removes marked ids from the declared capabilities", () => {
+  const spec = {
+    capabilities: ["text-generation", { id: "tool-calling" }],
+  };
+  expect(withFeedMarks(spec, [])).toBe(spec);
+  expect(withFeedMarks(spec, [toolMark])).toEqual({
+    capabilities: ["text-generation"],
+    unsupportedCapabilities: [toolMark],
+  });
+});
+
+const multiFile = BUILT_IN_CATALOG.find(
+  (model) =>
+    model.artifacts.length > 1 &&
+    model.source.startsWith("https://huggingface.co/"),
+)!;
+
+function recipeAnnotation(): FeedAnnotation {
+  const repo = new URL(multiFile.source).pathname.slice(1);
+  return {
+    repo,
+    revision: multiFile.repositoryRevision.toLowerCase(),
+    modelId: multiFile.modelId,
+    status: "qualified",
+    recipe: {
+      modelId: multiFile.modelId,
+      totalBytes: 30,
+      files: [
+        {
+          repositoryUrl: multiFile.source,
+          revision: multiFile.repositoryRevision.toLowerCase(),
+          path: "a.gguf",
+          sizeBytes: 10,
+          sha256: "a".repeat(64),
+          role: "primary",
+        },
+        {
+          repositoryUrl: multiFile.source,
+          revision: multiFile.repositoryRevision.toLowerCase(),
+          path: "b.gguf",
+          sizeBytes: 20,
+          sha256: "b".repeat(64),
+          role: "supplementary",
+        },
+      ],
+    },
+  };
+}
+
+test("search results list recipes for catalog entries first", () => {
+  const recipe = recipeAnnotation();
+  setFeedAnnotations([{ repo: recipe.repo, revision: "1".repeat(40) }, recipe]);
+  const notes = catalogNotesFor(recipe.repo);
+  expect(notes[0]).toMatchObject({
+    modelId: multiFile.modelId,
+    displayName: multiFile.displayName,
+    installable: true,
+    recipe: { fileCount: 2, totalBytes: 30 },
+  });
+  expect(notes[1]!.installable).toBe(false);
+});
+
+test("install-recipe installs a catalog entry the feed has a recipe for", async () => {
+  const { fetch } = hub();
+  const installs: string[] = [];
+  const run = (body: unknown) =>
+    runDiscoveryRequest(
+      deps(scratchRoot(), fetch, installs),
+      discoveryRequestSchema.parse(body),
+    );
+  const missing = await run({ action: "install-recipe", modelId: "nope" });
+  expect(missing.status).toBe(404);
+  const noRecipe = await run({
+    action: "install-recipe",
+    modelId: multiFile.modelId,
+  });
+  expect(noRecipe.status).toBe(400);
+  setFeedAnnotations([recipeAnnotation()]);
+  const installed = await run({
+    action: "install-recipe",
+    modelId: multiFile.modelId,
+  });
+  expect(installed.status).toBe(200);
+  expect(installed.body).toMatchObject({
+    modelId: multiFile.modelId,
+    operation: { state: "running" },
+  });
+  expect(installs).toEqual([multiFile.modelId]);
 });

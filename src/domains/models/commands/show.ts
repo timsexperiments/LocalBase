@@ -16,6 +16,7 @@ import {
   memoryFigureLabels,
   modeLabels,
 } from "../../../catalog/model-details";
+import type { AnnotationSummary } from "../../../catalog/annotations";
 import { catalogProvenance } from "../../../catalog/sources";
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
@@ -98,6 +99,44 @@ export function modelDetailLines(
       `  Seen on this machine: ${formatGb(peak.peakBytes)} with ${describeLaunchShape(peak.launchShape)}, ${peak.observedAt.slice(0, 10)}`,
     );
   if (memory.fit) lines.push(`  This machine:   ${describeFit(memory.fit)}`);
+  if (catalog.feedAnnotation)
+    lines.push("", ...feedAnnotationLines(catalog.feedAnnotation));
+  return lines;
+}
+
+const feedStatusLabels = {
+  qualified: "Qualified by LocalBase",
+  verified: "Verified by LocalBase",
+} as const;
+
+function describeFeedShape(shape: string): string {
+  const described = describeLaunchShape(shape);
+  return described === shape ? shape.split(";").join(", ") : described;
+}
+
+/** The "From the catalog feed" section of `models show`. */
+export function feedAnnotationLines(annotation: AnnotationSummary): string[] {
+  const lines = [
+    "From the catalog feed",
+    `  Status:         ${annotation.status ? feedStatusLabels[annotation.status] : "Not qualified or verified"}`,
+    `  Published for:  ${annotation.repo}${annotation.file ? ` · ${annotation.file}` : ""} at ${annotation.revision}`,
+  ];
+  if (!annotation.revisionMatch)
+    lines.push(
+      "  Note:           The feed describes another revision than the one pinned here, so its marks are not applied.",
+    );
+  for (const peak of annotation.memoryPeaks)
+    lines.push(
+      `  Measured peak:  ${formatGb(peak.peakBytes)} with ${describeFeedShape(peak.launchShape)} (${peak.variant} on ${peak.hardware}, ${peak.measuredAt})`,
+    );
+  if (annotation.recipe)
+    lines.push(
+      `  Recipe:         ${annotation.recipe.fileCount} files, ${formatFileSize(annotation.recipe.totalBytes)}, pinned by sha256`,
+    );
+  for (const mark of annotation.unsupportedCapabilities)
+    lines.push(
+      `  ${mark.label} · Verified unsupported: ${mark.reason}${mark.applied ? "" : annotation.revisionMatch ? " (not applied: your entry declares it)" : " (not applied)"}`,
+    );
   return lines;
 }
 
