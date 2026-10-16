@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSession, databasePath } from "./client";
+import { DatabaseSession, databasePath, openReadOnlyDatabase } from "./client";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { readMigrationFiles } from "drizzle-orm/migrator";
@@ -183,5 +183,71 @@ test("uses one database identity for canonical root aliases", () => {
   } finally {
     session.close();
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+/** Holds an exclusive lock from another process, like a gateway committing a write. */
+async function holdExclusiveLock(path: string, holdMs: number) {
+  const holder = Bun.spawn(
+    [
+      process.execPath,
+      "-e",
+      [
+        'import { Database } from "bun:sqlite";',
+        "const db = new Database(Bun.argv.at(-2));",
+        'db.exec("BEGIN EXCLUSIVE");',
+        'process.stdout.write("locked\\n");',
+        "Bun.sleepSync(Number(Bun.argv.at(-1)));",
+        'db.exec("COMMIT");',
+        "db.close();",
+      ].join(""),
+      path,
+      String(holdMs),
+    ],
+    { stdout: "pipe", stderr: "inherit" },
+  );
+  const reader = holder.stdout.getReader();
+  let output = "";
+  while (!output.includes("locked")) {
+    const { done, value } = await reader.read();
+    if (done) throw new Error("Lock holder exited before locking.");
+    output += new TextDecoder().decode(value);
+  }
+  reader.releaseLock();
+  return holder;
+}
+
+test("waits for another process's write lock instead of failing with SQLITE_BUSY", async () => {
+  const root = mkdtempSync(join(tmpdir(), "local-base-db-busy-"));
+  const setup = new DatabaseSession();
+  const readers = new DatabaseSession();
+  try {
+    saveConfig(setup, defaultConfig(root, 0));
+    setup.close();
+
+    const holder = await holdExclusiveLock(databasePath(root), 300);
+    try {
+      // A fresh session migrates first, which is where CI saw SQLITE_BUSY.
+      expect(() => loadConfig(readers, root)).not.toThrow();
+    } finally {
+      await holder.exited;
+    }
+    expect(holder.exitCode).toBe(0);
+
+    const readOnlyHolder = await holdExclusiveLock(databasePath(root), 300);
+    const readonly = openReadOnlyDatabase(root);
+    try {
+      expect(readonly.db.select().from(schema.configTable).get()?.id).toBe(
+        "default",
+      );
+    } finally {
+      readonly.close();
+      await readOnlyHolder.exited;
+    }
+    expect(readOnlyHolder.exitCode).toBe(0);
+  } finally {
+    setup.close();
+    readers.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });
