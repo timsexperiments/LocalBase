@@ -689,6 +689,93 @@ describe("memory controller", () => {
       expect(rejection?.capacity).toBeUndefined();
     });
 
+    test("credits a releasing runtime no more than its measured footprint", async () => {
+      const sampled: number[] = [];
+      const controller = new MemorySafetyController(
+        // Same switch that fits on the projection alone (see above), but the
+        // resident process holds only 6 GiB of its 14 GiB projection.
+        sequencedProvider([32 * gibibyte, 10 * gibibyte]).provider,
+        defaultMemorySafetyConfig(),
+        false,
+        async (pid) => {
+          sampled.push(pid);
+          return { bytes: 6 * gibibyte, method: "footprint" };
+        },
+      );
+      const resident = await controller.reserve({
+        runtimeId: "llm:a:1",
+        demand,
+      });
+      resident.materialize(4242);
+
+      const rejection = await controller.checkAdmission(
+        { demand },
+        { releasingRuntimeIds: ["llm:a:1"] },
+      );
+      expect(rejection).toBeInstanceOf(RuntimeMemoryAdmissionError);
+      expect(rejection?.capacity).toBeUndefined();
+      expect(sampled).toEqual([4242]);
+      // Without releases there is nothing to measure.
+      await controller.checkAdmission({ demand });
+      expect(sampled).toEqual([4242]);
+    });
+
+    test("never credits more than the projection when the footprint is larger", async () => {
+      const controller = new MemorySafetyController(
+        sequencedProvider([32 * gibibyte, 10 * gibibyte]).provider,
+        defaultMemorySafetyConfig(),
+        false,
+        async () => ({ bytes: 20 * gibibyte, method: "footprint" }),
+      );
+      const resident = await controller.reserve({
+        runtimeId: "llm:a:1",
+        demand,
+      });
+      resident.materialize(4242);
+
+      expect(
+        await controller.checkAdmission(
+          { demand },
+          { releasingRuntimeIds: ["llm:a:1"] },
+        ),
+      ).toBeUndefined();
+    });
+
+    test("falls back to the projection when the footprint is unavailable", async () => {
+      for (const sample of [
+        async () => null,
+        async () => {
+          throw new Error("footprint failed");
+        },
+      ]) {
+        const controller = new MemorySafetyController(
+          sequencedProvider([32 * gibibyte, 10 * gibibyte]).provider,
+          defaultMemorySafetyConfig(),
+          false,
+          sample,
+        );
+        const resident = await controller.reserve({
+          runtimeId: "llm:a:1",
+          demand,
+        });
+        // Also covers a resident runtime whose pid was never reported.
+        resident.materialize();
+        expect(
+          await controller.checkAdmission(
+            { demand },
+            { releasingRuntimeIds: ["llm:a:1"] },
+          ),
+        ).toBeUndefined();
+        resident.materialize(4242);
+        expect(
+          await controller.checkAdmission(
+            { demand },
+            { releasingRuntimeIds: ["llm:a:1"] },
+          ),
+        ).toBeUndefined();
+      }
+    });
+
     test("does not advance hysteresis or reserve memory", async () => {
       const sequenced = sequencedProvider([32 * gibibyte]);
       const controller = new MemorySafetyController(

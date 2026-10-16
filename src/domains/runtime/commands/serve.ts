@@ -3422,6 +3422,7 @@ export async function runServe(
     memoryProvider,
     ctx.config.memory,
     bypassCheck,
+    platformMemorySampler() ?? undefined,
   );
   // Aborted on shutdown so an in-flight memory sample never delays exit.
   const observationStop = new AbortController();
