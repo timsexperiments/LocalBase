@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createAppContext,
+  otelDiagnostic,
   parseEnvironmentOverrides,
   resolveEffectiveRoot,
 } from "./context";
@@ -15,6 +16,8 @@ import {
   logDirectory,
   logEventSchema,
   readLogSnapshot,
+  type ILogger,
+  type LogEventInput,
 } from "./domains/observability/logging";
 import {
   MAX_SERVICE_STDERR_BYTES,
@@ -217,3 +220,19 @@ test.skipIf(process.platform !== "darwin")(
     }
   },
 );
+
+test("OTel diagnostics stay local and name recovery separately", () => {
+  const events: LogEventInput[] = [];
+  const logger = {
+    localDiagnostic: (event: LogEventInput) => events.push(event),
+  } as unknown as ILogger;
+  const diagnostic = otelDiagnostic(logger);
+  diagnostic("warn", "OTLP export failed.", { signal: "logs" });
+  diagnostic("info", "OTLP export recovered.", { signal: "logs" });
+  expect(
+    events.map(({ severity, eventName }) => [severity, eventName]),
+  ).toEqual([
+    ["warn", "observability.export-failed"],
+    ["info", "observability.export-recovered"],
+  ]);
+});

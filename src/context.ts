@@ -40,6 +40,7 @@ import {
   OtelRuntimeHolder,
   resolveOtelConfiguration,
   type OtelConfiguration,
+  type OtelDiagnostic,
 } from "./domains/observability/otel";
 
 /**
@@ -62,15 +63,14 @@ export interface MinimalAppContext {
   config: Pick<LocalBaseConfig, "root">;
 }
 
-function otelDiagnostic(logger: ILogger) {
-  return (
-    severity: "warn" | "error",
-    message: string,
-    attributes?: Record<string, unknown>,
-  ): void => {
+export function otelDiagnostic(logger: ILogger): OtelDiagnostic {
+  return (severity, message, attributes) => {
     const event = {
       severity,
-      eventName: "observability.export-failed",
+      eventName:
+        severity === "info"
+          ? "observability.export-recovered"
+          : "observability.export-failed",
       category: "logging",
       component: "otel",
       runtime: "gateway",
