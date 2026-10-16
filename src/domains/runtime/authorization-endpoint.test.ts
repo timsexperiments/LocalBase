@@ -55,6 +55,14 @@ const scopedRoutes: {
     allowedStatus: 200,
   },
   {
+    // The fixture's active model is not a decision model, so an allowed
+    // request is rejected before admission.
+    path: "/v1/systemone",
+    method: "POST",
+    permission: "inference:decision",
+    allowedStatus: 400,
+  },
+  {
     path: "/v1/images/generations",
     method: "POST",
     permission: "inference:image",
@@ -145,11 +153,17 @@ test(
                 }
               : route.permission === "inference:image"
                 ? { prompt: "A paper kite" }
-                : {
-                    model: config.activeLlmModel,
-                    input: "query",
-                    messages: [{ role: "user", content: "hello" }],
-                  };
+                : route.permission === "inference:decision"
+                  ? {
+                      model: config.activeLlmModel,
+                      state: "query",
+                      questions: { relevant: { type: "noul" } },
+                    }
+                  : {
+                      model: config.activeLlmModel,
+                      input: "query",
+                      messages: [{ role: "user", content: "hello" }],
+                    };
           body = JSON.stringify(payload);
         }
         return fetch(`${gateway.baseUrl}${route.path}`, {

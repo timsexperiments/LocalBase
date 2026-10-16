@@ -59,6 +59,12 @@ const protectedRoutes: {
     alwaysRequired: false,
   },
   {
+    path: "/v1/systemone",
+    method: "POST",
+    permission: "inference:decision",
+    alwaysRequired: false,
+  },
+  {
     path: "/v1/audio/transcriptions",
     method: "POST",
     permission: "inference:transcription",

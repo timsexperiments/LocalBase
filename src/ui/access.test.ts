@@ -400,6 +400,7 @@ test("maps only allowlisted UI calls and keeps credentials off headers and reque
     ["GET", "/_localbase/models"],
     ["POST", "/v1/chat/completions"],
     ["POST", "/v1/embeddings"],
+    ["POST", "/v1/systemone"],
     ["POST", "/v1/images/generations"],
     ["POST", "/v1/audio/speech"],
     ["POST", "/v1/audio/transcriptions"],

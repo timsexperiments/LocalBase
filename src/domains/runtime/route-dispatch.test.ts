@@ -42,6 +42,7 @@ test("selects each supported gateway route by its exact path", () => {
   ).toBe("videoCancel");
   expect(selectGatewayRoute("/v1/chat/completions")).toBe("chatCompletion");
   expect(selectGatewayRoute("/v1/embeddings")).toBe("embeddings");
+  expect(selectGatewayRoute("/v1/systemone")).toBe("decision");
   expect(selectGatewayRoute("/v1/models")).toBe("models");
 });
 
@@ -84,6 +85,7 @@ test("disables the idle timeout only for long-running inference routes", () => {
   for (const pathname of [
     "/v1/chat/completions",
     "/v1/embeddings",
+    "/v1/systemone",
     "/v1/audio/transcriptions",
     "/v1/audio/translations",
     "/v1/audio/speech",

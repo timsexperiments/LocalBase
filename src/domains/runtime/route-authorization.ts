@@ -61,6 +61,10 @@ export function gatewayAuthorizationRequirement({
       return authRequired
         ? { kind: "permission", permission: "inference:embeddings" }
         : { kind: "public" };
+    case "decision":
+      return authRequired
+        ? { kind: "permission", permission: "inference:decision" }
+        : { kind: "public" };
     case "notFound":
       return { kind: authRequired ? "authenticated" : "public" };
     default: {
