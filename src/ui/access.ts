@@ -63,7 +63,10 @@ function allowedUiRoute(method: string, pathname: string): boolean {
     ["/_localbase/access-management", "/_localbase/api-keys"].includes(pathname)
   )
     return method === "GET" || method === "POST";
-  if (pathname === "/_localbase/model-management")
+  if (
+    pathname === "/_localbase/model-management" ||
+    pathname === "/_localbase/hf-token"
+  )
     return method === "GET" || method === "POST";
   if (pathname === "/_localbase/model-discovery") return method === "POST";
   if (method === "GET" && pathname === "/_localbase/models") return true;

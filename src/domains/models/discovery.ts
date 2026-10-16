@@ -28,6 +28,7 @@ import {
   type AddableKind,
   type GeneratedEntry,
   type HubClientOptions,
+  type HubErrorCode,
   type HubModelInfo,
   type HubSearchHit,
 } from "./huggingface";
@@ -89,6 +90,8 @@ export type DiscoveryHit = HubSearchHit &
     preview: DiscoveryPreview | null;
     /** Why there is no preview (unsupported kind, no usable files, offline). */
     reason: string | null;
+    /** Set when the Hub refused in a way a token could fix. */
+    reasonCode?: HubErrorCode;
     /** Catalog-feed annotations for this repository, recipes first. */
     catalog: readonly DiscoveryCatalogNote[];
   }>;
@@ -289,7 +292,7 @@ export async function discoverModels(
     PREVIEW_CONCURRENCY,
     async (hit): Promise<DiscoveryHit> => {
       const url = hubRepoUrl(hit.repo);
-      const catalog = catalogNotesFor(hit.repo);
+      const catalog = catalogNotesFor(hit.repo, hit.sha);
       if (hit.likely.kind === null) {
         return {
           ...hit,
@@ -321,6 +324,9 @@ export async function discoverModels(
             error instanceof HubError
               ? error.message
               : "Could not read this repository from Hugging Face.",
+          ...(error instanceof HubError && error.code
+            ? { reasonCode: error.code }
+            : {}),
           catalog,
         };
       }
@@ -544,7 +550,7 @@ export async function runDiscoveryRequest(
         );
       return failure(
         upstream ? 502 : 400,
-        upstream ? "hub_unavailable" : "hub_rejected",
+        error.code ?? (upstream ? "hub_unavailable" : "hub_rejected"),
         error.message,
       );
     }

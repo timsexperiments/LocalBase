@@ -639,6 +639,18 @@ export async function logoutSession(): Promise<void> {
 export function sessionConnection(session: SessionState): Connection | null {
   return session.kind === "session" ? session : null;
 }
+/** A gateway error that keeps its HTTP status and machine-readable code. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export async function api(
   path: string,
   _connection: Connection,
@@ -682,10 +694,12 @@ export async function api(
     if (response.status === 401) {
       throw new SessionRequiredError();
     }
-    throw new Error(
+    throw new ApiError(
       parsed.success
         ? parsed.data.error.message
         : `Request failed (${response.status}). Try again.`,
+      response.status,
+      parsed.success ? parsed.data.error.code : undefined,
     );
   }
   if (response.headers.get("content-type")?.includes("text/html")) {

@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import type { ModelMetadata } from "../domains/models/model-metadata";
 import {
   api,
+  ApiError,
   discardLegacyFragmentCredential,
   logoutSession,
   readSession,
@@ -241,6 +242,32 @@ describe("playground client boundaries", () => {
           { method: "POST" },
         ),
       ).rejects.toThrow("Permission required: models:manage.");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  test("gateway errors keep their status and code for the UI", async () => {
+    const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json(
+        {
+          error: {
+            code: "hub_rate_limited",
+            message: "Hugging Face answered 429 (rate limited).",
+          },
+        },
+        { status: 502 },
+      ),
+    );
+    try {
+      const error = await api("/_localbase/model-discovery", {
+        kind: "session",
+      }).catch((error: unknown) => error);
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        status: 502,
+        code: "hub_rate_limited",
+        message: "Hugging Face answered 429 (rate limited).",
+      });
     } finally {
       fetchMock.mockRestore();
     }

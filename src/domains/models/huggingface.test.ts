@@ -19,6 +19,7 @@ import {
   commercialStatusForLicense,
   fetchModelInfo,
   generateEntry,
+  checkHubToken,
   HubError,
   likelyKind,
   entryChoices,
@@ -323,6 +324,40 @@ test("explains offline, missing and gated repositories", async () => {
     /refused access \(403\).*configure --hf-token/,
   );
   await expect(fail(() => ({ status: 503 }))).rejects.toThrow(/answered 503/);
+  const code = (respond: Parameters<typeof fakeFetch>[0]) =>
+    fail(respond).catch((error: HubError) => error.code);
+  expect(await code(() => ({ status: 401 }))).toBe("hub_auth_required");
+  expect(await code(() => ({ status: 403 }))).toBe("hub_auth_required");
+  expect(await code(() => ({ status: 429 }))).toBe("hub_rate_limited");
+  expect(await code(() => ({ status: 503 }))).toBeUndefined();
+  expect(await code(() => ({ status: 404 }))).toBeUndefined();
+  await expect(fail(() => ({ status: 429 }))).rejects.toThrow(
+    /rate limited.*save a Hugging Face token/,
+  );
+});
+
+test("checks a token with whoami and never caches or echoes it", async () => {
+  const token = "hf_" + "x".repeat(34);
+  const { fetch, calls } = fakeFetch(() => ({
+    body: { name: "someone", auth: { accessToken: { role: "read" } } },
+  }));
+  const valid = await checkHubToken(token, fetch);
+  expect(valid).toEqual({ state: "valid", name: "someone", role: "read" });
+  expect(calls[0]!.url).toBe("https://huggingface.co/api/whoami-v2");
+  expect(calls[0]!.headers.authorization).toBe(`Bearer ${token}`);
+  expect(JSON.stringify(valid)).not.toContain(token);
+  expect(
+    await checkHubToken(token, fakeFetch(() => ({ status: 401 })).fetch),
+  ).toEqual({ state: "invalid" });
+  expect(
+    await checkHubToken(token, fakeFetch(() => ({ status: 500 })).fetch),
+  ).toMatchObject({ state: "unreachable" });
+  expect(
+    await checkHubToken(token, fakeFetch(() => new Error("offline")).fetch),
+  ).toMatchObject({ state: "unreachable" });
+  expect(
+    await checkHubToken(token, fakeFetch(() => ({ body: {} })).fetch),
+  ).toEqual({ state: "valid", name: null, role: null });
 });
 
 test("sends the token only to huggingface.co and never caches outside a root", async () => {
@@ -341,6 +376,7 @@ test("searches GGUF repositories by downloads", async () => {
     body: [
       {
         id: "TinyOrg/Tiny-GGUF",
+        sha: SHA.toUpperCase(),
         downloads: 275_200,
         likes: 3,
         pipeline_tag: "text-generation",
@@ -348,6 +384,7 @@ test("searches GGUF repositories by downloads", async () => {
       },
       {
         id: "TinyOrg/Embed-GGUF",
+        sha: "not-a-commit",
         downloads: 5,
         pipeline_tag: "feature-extraction",
         tags: [],
@@ -375,14 +412,17 @@ test("searches GGUF repositories by downloads", async () => {
     "tags",
     "gated",
     "library_name",
+    "sha",
   ]);
   expect(cached).toBe(false);
   expect(hits[0]).toMatchObject({
     repo: "TinyOrg/Tiny-GGUF",
     license: "apache-2.0",
     likely: { kind: "llm" },
+    sha: SHA,
   });
   expect(hits[1]!.likely.kind).toBeNull();
+  expect(hits[1]!.sha).toBeUndefined();
 });
 
 test("models search prints a table and the add hint", async () => {

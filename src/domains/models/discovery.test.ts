@@ -170,6 +170,8 @@ test("previews addable search results with memory fit and gated state", async ()
   expect(gated!.gated).toBe(true);
   expect(gated!.preview).toBeNull();
   expect(gated!.reason).toMatch(/refused access \(403\)/);
+  expect(gated!.reasonCode).toBe("hub_auth_required");
+  expect(tiny!.reasonCode).toBeUndefined();
   expect(embed!.preview).toBeNull();
   expect(embed!.reason).toMatch(/embeddings/);
   // Unsupported results are never fetched; the token goes only to huggingface.co.
@@ -353,6 +355,64 @@ test("previews carry the feed annotation for each file", async () => {
   expect(tiny.catalog).toHaveLength(1);
   expect(tiny.catalog[0]).toMatchObject({ revisionMatch: true });
   expect(hits.find((hit) => hit.repo !== llmRepo.id)!.catalog).toEqual([]);
+});
+
+test("unpreviewed results compare feed notes with the search sha", async () => {
+  setFeedAnnotations([tinyAnnotation()]);
+  const withSha = (sha: string) =>
+    (async (url: string) => {
+      const body = searchResults.map((hit) =>
+        hit.id === llmRepo.id ? { ...hit, sha } : hit,
+      );
+      return {
+        ok: new URL(url).pathname === "/api/models",
+        status: 200,
+        json: async () => body,
+      };
+    }) as HubFetch;
+  const search = async (sha: string) =>
+    (
+      await discoverModels(
+        {
+          root: scratchRoot(),
+          fetch: withSha(sha),
+          kind: "llm",
+          systemVramGb: 16,
+          previewLimit: 0,
+        },
+        "tiny",
+      )
+    ).hits.find((hit) => hit.repo === llmRepo.id)!;
+  const current = await search(SHA);
+  expect(current.preview).toBeNull();
+  expect(current.sha).toBe(SHA);
+  expect(current.catalog[0]).toMatchObject({ revisionMatch: true });
+  const moved = await search("1".repeat(40));
+  expect(moved.catalog[0]).toMatchObject({ revisionMatch: false });
+});
+
+test("rate limits and refusals keep a code the UI can act on", async () => {
+  const outcome = (status: number) =>
+    runDiscoveryRequest(
+      deps(
+        scratchRoot(),
+        async () => ({ ok: false, status, json: async () => ({}) }),
+        [],
+      ),
+      { action: "search", query: "tiny", kind: "llm" },
+    );
+  expect(await outcome(429)).toMatchObject({
+    status: 502,
+    body: { error: { code: "hub_rate_limited" } },
+  });
+  expect(await outcome(401)).toMatchObject({
+    status: 400,
+    body: { error: { code: "hub_auth_required" } },
+  });
+  expect(await outcome(500)).toMatchObject({
+    status: 502,
+    body: { error: { code: "hub_unavailable" } },
+  });
 });
 
 test("an annotation for another revision is shown but not applied", async () => {

@@ -27,6 +27,7 @@ const apiHttpRoutes = [
   "/_localbase/api-keys",
   "/_localbase/model-management",
   "/_localbase/model-discovery",
+  "/_localbase/hf-token",
   "/_localbase/models",
   "/_localbase/models/{model_id}",
   "/v1/models",
@@ -185,7 +186,8 @@ function apiHttpRoute(pathname: string): ApiHttpRoute | undefined {
       return "/v1/models";
     case "notFound":
       return pathname === "/_localbase/model-management" ||
-        pathname === "/_localbase/model-discovery"
+        pathname === "/_localbase/model-discovery" ||
+        pathname === "/_localbase/hf-token"
         ? pathname
         : undefined;
   }

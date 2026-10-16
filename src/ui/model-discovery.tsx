@@ -1,7 +1,7 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { z } from "zod";
 import { formatFileSize } from "../catalog/model-details";
-import { api, feedAnnotationSchema, type Connection } from "./client";
+import { api, ApiError, feedAnnotationSchema, type Connection } from "./client";
 import {
   describeFeedPeak,
   FeedMarks,
@@ -9,6 +9,7 @@ import {
   FeedStatusBadge,
   headlineFeedPeak,
 } from "./feed-annotation";
+import { HfTokenPanel } from "./hf-token";
 
 const kindNames = {
   llm: "Chat",
@@ -57,6 +58,10 @@ const hitSchema = z.object({
   }),
   preview: previewSchema.nullable(),
   reason: z.string().nullable(),
+  /** Set when the Hub refused (auth) or rate-limited the preview. */
+  reasonCode: z.string().optional(),
+  /** The Hub's current revision sha, used to match feed annotations. */
+  sha: z.string().optional(),
   /** Catalog-feed annotations for the repo; absent on older servers. */
   catalog: z
     .array(
@@ -91,6 +96,53 @@ const recipeSchema = z.object({
     .passthrough()
     .nullable(),
 });
+
+/** Error codes a saved Hugging Face token can fix. */
+const tokenCodes = new Set(["hub_auth_required", "hub_rate_limited"]);
+
+type Failure = { message: string; token: boolean };
+
+function failure(error: unknown, fallback: string): Failure {
+  return {
+    message: error instanceof Error ? error.message : fallback,
+    token: error instanceof ApiError && tokenCodes.has(error.code ?? ""),
+  };
+}
+
+/** An error line, with a link to the token panel when a token would help. */
+function FailureLine({
+  failure,
+  onToken,
+}: {
+  failure: Failure;
+  onToken?: (() => void) | undefined;
+}) {
+  return (
+    <p className="error discovery-error" role="alert">
+      <span>{failure.message}</span>
+      {failure.token && onToken && <TokenLink onToken={onToken} />}
+    </p>
+  );
+}
+
+function TokenLink({
+  onToken,
+  children = "Add a Hugging Face token",
+}: {
+  onToken: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className="link-button"
+      aria-controls="hf-token"
+      onClick={onToken}
+    >
+      {children}
+    </button>
+  );
+}
 
 function compactCount(value: number) {
   if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
@@ -133,11 +185,14 @@ function DiscoveryCard({
   connection,
   canManage,
   onAdded,
+  onToken,
 }: {
   hit: Hit;
   connection: Connection;
   canManage: boolean;
   onAdded: (message: string) => void;
+  /** Opens the token panel; absent without models:manage. */
+  onToken?: (() => void) | undefined;
 }) {
   const [preview, setPreview] = useState(hit.preview);
   const [reason, setReason] = useState(hit.reason);
@@ -145,7 +200,8 @@ function DiscoveryCard({
   const [busy, setBusy] = useState<
     "" | "preview" | "add" | "install" | "recipe"
   >("");
-  const [error, setError] = useState("");
+  const [reasonCode, setReasonCode] = useState(hit.reasonCode);
+  const [error, setError] = useState<Failure | null>(null);
   const choice = preview?.choices.find((item) => item.path === path);
   const notes = hit.catalog ?? [];
   const recipes = notes.filter((note) => note.recipe);
@@ -155,7 +211,7 @@ function DiscoveryCard({
   async function installRecipe(note: CatalogNote) {
     if (!note.recipe) return;
     setBusy("recipe");
-    setError("");
+    setError(null);
     try {
       const started = recipeSchema.parse(
         await discovery(connection, {
@@ -164,14 +220,13 @@ function DiscoveryCard({
         }),
       );
       if (started.operation?.state === "failed")
-        setError(
-          `The install did not start: ${started.operation.detail ?? "unknown error"}`,
-        );
+        setError({
+          message: `The install did not start: ${started.operation.detail ?? "unknown error"}`,
+          token: false,
+        });
       else onAdded(`Installing ${started.displayName} (${started.modelId}).`);
     } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Could not start the install.",
-      );
+      setError(failure(error, "Could not start the install."));
     } finally {
       setBusy("");
     }
@@ -179,7 +234,7 @@ function DiscoveryCard({
 
   async function loadPreview() {
     setBusy("preview");
-    setError("");
+    setError(null);
     try {
       const next = z
         .object({ preview: previewSchema })
@@ -188,11 +243,10 @@ function DiscoveryCard({
         ).preview;
       setPreview(next);
       setReason(null);
+      setReasonCode(undefined);
       setPath(next.defaultPath ?? "");
     } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Could not read the repo.",
-      );
+      setError(failure(error, "Could not read the repo."));
     } finally {
       setBusy("");
     }
@@ -201,7 +255,7 @@ function DiscoveryCard({
   async function add(install: boolean) {
     if (!choice) return;
     setBusy(install ? "install" : "add");
-    setError("");
+    setError(null);
     try {
       const added = addSchema.parse(
         await discovery(connection, {
@@ -213,9 +267,10 @@ function DiscoveryCard({
       );
       const failed = added.operation?.state === "failed";
       if (failed)
-        setError(
-          `Added, but the install did not start: ${added.operation?.detail ?? "unknown error"}`,
-        );
+        setError({
+          message: `Added, but the install did not start: ${added.operation?.detail ?? "unknown error"}`,
+          token: false,
+        });
       onAdded(
         `${added.replaced ? "Updated" : "Added"} ${added.displayName} (${added.modelId})${install && !failed ? "; installing now" : ""}.`,
       );
@@ -229,7 +284,7 @@ function DiscoveryCard({
           },
       );
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not add it.");
+      setError(failure(error, "Could not add it."));
     } finally {
       setBusy("");
     }
@@ -248,7 +303,7 @@ function DiscoveryCard({
         {hit.gated && <span className="model-badge gated">Gated</span>}
         <FeedStatusBadge
           annotation={annotation ?? notes[0]}
-          showRevision={!!annotation}
+          showRevision={!!annotation || !!hit.sha}
         />
         {choice?.fit && (
           <span
@@ -271,8 +326,15 @@ function DiscoveryCard({
           <a href={hit.url} target="_blank" rel="noopener noreferrer">
             Accept terms on Hugging Face
           </a>
-          , then save a Hugging Face token with{" "}
-          <code>local-base configure</code>.
+          , then{" "}
+          {onToken ? (
+            <TokenLink onToken={onToken}>save a Hugging Face token</TokenLink>
+          ) : (
+            <>
+              save a Hugging Face token with <code>local-base configure</code>
+            </>
+          )}
+          .
         </p>
       )}
       {preview ? (
@@ -356,7 +418,15 @@ function DiscoveryCard({
       ) : (
         <>
           {reason && reason !== hit.likely.label && (
-            <p className="hint">{reason}</p>
+            <p className="hint">
+              {reason}
+              {reasonCode && tokenCodes.has(reasonCode) && onToken && (
+                <>
+                  {" "}
+                  <TokenLink onToken={onToken} />
+                </>
+              )}
+            </p>
           )}
           {supported && (!reason || reason.startsWith("Could not")) && (
             <div className="catalog-actions">
@@ -406,11 +476,7 @@ function DiscoveryCard({
           ))}
         </ul>
       )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <FailureLine failure={error} onToken={onToken} />}
     </article>
   );
 }
@@ -430,7 +496,15 @@ export function ModelDiscovery({
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [cached, setCached] = useState(false);
   const [searching, setSearching] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<Failure | null>(null);
+  const [tokenOpen, setTokenOpen] = useState(false);
+  const [tokenFocus, setTokenFocus] = useState(0);
+  const openToken = canManage
+    ? () => {
+        setTokenOpen(true);
+        setTokenFocus((value) => value + 1);
+      }
+    : undefined;
   const [notice, setNotice] = useState("");
   const [searched, setSearched] = useState(0);
   const abort = useRef<AbortController | null>(null);
@@ -441,7 +515,7 @@ export function ModelDiscovery({
     const controller = new AbortController();
     abort.current = controller;
     setSearching(true);
-    setError("");
+    setError(null);
     try {
       const result = searchSchema.parse(
         await discovery(
@@ -456,9 +530,7 @@ export function ModelDiscovery({
       setSearched((value) => value + 1);
     } catch (error) {
       if (!controller.signal.aborted)
-        setError(
-          error instanceof Error ? error.message : "Search failed. Try again.",
-        );
+        setError(failure(error, "Search failed. Try again."));
     } finally {
       if (abort.current === controller) setSearching(false);
     }
@@ -476,6 +548,14 @@ export function ModelDiscovery({
           Read-only access. Sign in with an account authorized to manage models
           to add them.
         </p>
+      )}
+      {canManage && (
+        <HfTokenPanel
+          connection={connection}
+          open={tokenOpen}
+          onToggle={setTokenOpen}
+          focusKey={tokenFocus}
+        />
       )}
       <form
         className="discovery-search"
@@ -513,11 +593,7 @@ export function ModelDiscovery({
           </button>
         </div>
       )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <FailureLine failure={error} onToken={openToken} />}
       {hits && (
         <p className="catalog-count" aria-live="polite">
           {hits.length} results by downloads
@@ -532,6 +608,7 @@ export function ModelDiscovery({
               hit={hit}
               connection={connection}
               canManage={canManage}
+              onToken={openToken}
               onAdded={(message) => {
                 setNotice(message);
                 onAdded();
