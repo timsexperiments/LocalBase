@@ -572,10 +572,13 @@ const installCommand = command<InstallInput>({
 
 const addCommand = command<AddInput>({
   path: ["models", "add"],
-  description: "Add a GGUF model from Hugging Face to the user catalog",
+  description:
+    "Add a GGUF, whisper.cpp or Stable Diffusion model from Hugging Face to the user catalog",
   examples: [
     "local-base models add hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:q4_k_m",
     "local-base models add hf:ggml-org/gemma-3-4b-it-GGUF --install",
+    "local-base models add hf:ggerganov/whisper.cpp:ggml-small-q8_0.bin",
+    "local-base models add hf:stable-diffusion-v1-5/stable-diffusion-v1-5:v1-5-pruned-emaonly.safetensors",
   ],
   args: {
     reference: {
@@ -605,14 +608,21 @@ const addCommand = command<AddInput>({
 
 const searchCommand = command<SearchInput>({
   path: ["models", "search"],
-  description: "Search Hugging Face for GGUF models LocalBase can run",
+  description: "Search Hugging Face for models LocalBase can run",
   examples: [
     "local-base models search qwen coder",
     "local-base --json models search gemma --limit 5",
+    "local-base models search --kind stt",
   ],
   requiresDatabase: false,
   readOnlyConfiguration: true,
   args: {
+    kind: {
+      type: "enum",
+      options: ["llm", "stt", "image"],
+      description:
+        "What to search for: GGUF language models (default), whisper.cpp speech models or text-to-image checkpoints",
+    },
     limit: {
       type: "string",
       valueHint: "count",

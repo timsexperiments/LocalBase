@@ -135,6 +135,11 @@ import { composeGatewayHealth } from "../gateway-health";
 import { composeGatewayReadiness } from "../readiness";
 import { playgroundResponse } from "../../../ui/static";
 import { createModelManagement } from "../../models/model-management";
+import {
+  discoveryRequestSchema,
+  hubTokenFrom,
+  runDiscoveryRequest,
+} from "../../models/discovery";
 import { videoTargetFromTopology } from "../../models/model-eligibility";
 import {
   ModelManagementError,
@@ -3394,6 +3399,82 @@ export async function runServe(
     if (authManagementResponse) return authManagementResponse;
     const publicAsset = playground ?? playgroundResponse(request, pathname);
     if (publicAsset) return publicAsset;
+    if (pathname === "/_localbase/model-discovery") {
+      const principal = requestAuth.resolve(ctx.runtimeConfig.copy());
+      if (principal.kind === "anonymous") return unauthorized();
+      if (request.method !== "POST") return methodNotAllowed("POST");
+      if (
+        authorize({
+          principal,
+          requirement: { kind: "permission", permission: "models:manage" },
+        }).kind !== "authorized"
+      )
+        return forbidden();
+      const headers = { "cache-control": "no-store" };
+      let input;
+      try {
+        const body = await readBoundedRequestBody(request, 2048);
+        input = discoveryRequestSchema.safeParse(
+          JSON.parse(new TextDecoder().decode(body)),
+        );
+      } catch (error) {
+        if (request.signal.aborted) return requestAborted();
+        const tooLarge = error instanceof PayloadTooLargeError;
+        return openAIErrorResponse(
+          {
+            message: tooLarge
+              ? "Model discovery body exceeds the 2048 byte limit."
+              : "Invalid model discovery payload.",
+            type: "invalid_request_error",
+            param: null,
+            code: "validation_failed",
+          },
+          tooLarge ? 413 : 400,
+          tooLarge ? { ...headers, connection: "close" } : headers,
+        );
+      }
+      if (!input.success) return badRequest("Invalid model discovery payload.");
+      ctx.runtimeConfig.refreshSync();
+      const runtime = ctx.runtimeConfig.copy();
+      const token = hubTokenFrom(runtime);
+      const outcome = await runDiscoveryRequest(
+        {
+          root: runtime.root,
+          ...(token ? { token } : {}),
+          systemVramGb: ctx.specs.gpuVramGb,
+          refresh: async () => {
+            await reconciler.refreshConfiguration();
+          },
+          install: async (modelId) => {
+            try {
+              return await management.run(modelId, "install");
+            } catch (error) {
+              if (!(error instanceof ModelManagementError)) throw error;
+              return {
+                action: "install",
+                state: "failed",
+                detail: error.message,
+              };
+            }
+          },
+        },
+        input.data,
+      );
+      if ("error" in outcome.body) {
+        const error = outcome.body.error as { message: string; code: string };
+        return openAIErrorResponse(
+          {
+            message: error.message,
+            type: "invalid_request_error",
+            param: null,
+            code: error.code,
+          },
+          outcome.status,
+          headers,
+        );
+      }
+      return Response.json(outcome.body, { status: outcome.status, headers });
+    }
     if (pathname === "/_localbase/model-management") {
       const principal = requestAuth.resolve(ctx.runtimeConfig.copy());
       if (principal.kind === "anonymous") return unauthorized();

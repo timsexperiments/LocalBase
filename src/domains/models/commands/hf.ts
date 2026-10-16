@@ -22,11 +22,12 @@ import {
   searchHub,
   type HubFetch,
 } from "../huggingface";
+import { hubTokenFrom } from "../discovery";
 
 export type HubCommandOptions = Readonly<{ fetch?: HubFetch }>;
 
 function hubToken(ctx: Pick<AppContext, "config">): string | undefined {
-  return ctx.config.hfToken || process.env.HF_TOKEN || undefined;
+  return hubTokenFrom(ctx.config);
 }
 
 /** Refuses ids that a built-in or remote entry already owns. */
@@ -83,9 +84,10 @@ export async function runAdd(
     `  License:       ${entry.license ?? "not stated"} (${model.commercialStatus})`,
   );
   out.info(`  Pipeline:      ${entry.pipelineTag ?? "not stated"}`);
-  out.info(
-    `  Context:       ${entry.contextLength ? `${entry.contextLength.toLocaleString("en-US")} tokens` : "unknown until installed"}`,
-  );
+  if (entry.kind === "llm")
+    out.info(
+      `  Context:       ${entry.contextLength ? `${entry.contextLength.toLocaleString("en-US")} tokens` : "unknown until installed"}`,
+    );
   out.info(
     `  Capabilities:  ${model.capabilities.map(({ id }) => capabilityLabel(id)).join(", ")} (declared)`,
   );
@@ -137,26 +139,42 @@ export async function runSearch(
   execution: CommandExecution,
   options: HubCommandOptions = {},
 ) {
+  const token = hubToken(ctx);
+  const kind = input.kind ?? "llm";
   const { hits, cached } = await searchHub(
     {
       root: ctx.config.root,
       limit: input.limit,
+      kind,
+      ...(token ? { token } : {}),
       ...(options.fetch ? { fetch: options.fetch } : {}),
     },
     input.query,
   );
   const out = execution.output;
   if (hits.length === 0) {
-    out.info("No GGUF models on Hugging Face match that search.");
+    out.info(
+      kind === "llm"
+        ? "No GGUF models on Hugging Face match that search."
+        : `No ${kind === "stt" ? "speech recognition" : "text-to-image"} models on Hugging Face match that search.`,
+    );
   } else {
     const rows = hits.map((hit) => [
       hit.repo,
       compactCount(hit.downloads),
       hit.license ?? "-",
       hit.pipelineTag ?? "-",
+      hit.gated ? "yes" : "-",
       hit.likely.label,
     ]);
-    const header = ["MODEL", "DOWNLOADS", "LICENSE", "PIPELINE", "LIKELY KIND"];
+    const header = [
+      "MODEL",
+      "DOWNLOADS",
+      "LICENSE",
+      "PIPELINE",
+      "GATED",
+      "LIKELY KIND",
+    ];
     const widths = header.map((title, column) =>
       Math.max(title.length, ...rows.map((row) => row[column]!.length)),
     );
@@ -173,11 +191,17 @@ export async function runSearch(
     out.info(
       "Add one with: local-base models add hf:<org>/<repo>[:<file-or-quant>]",
     );
+    if (hits.some((hit) => hit.gated)) {
+      out.info(
+        "Gated repositories need their terms accepted at https://huggingface.co/<org>/<repo> and a saved Hugging Face token.",
+      );
+    }
   }
   if (cached) out.info("(Results from the local cache.)");
   return {
     data: {
       query: input.query,
+      kind,
       cached,
       results: hits.map((hit) => ({
         repo: hit.repo,
@@ -186,6 +210,8 @@ export async function runSearch(
         license: hit.license,
         pipelineTag: hit.pipelineTag,
         likelyKind: hit.likely.label,
+        kind: hit.likely.kind,
+        gated: hit.gated,
         addable: hit.likely.kind !== null,
       })),
     },

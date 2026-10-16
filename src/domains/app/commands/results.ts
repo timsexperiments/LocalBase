@@ -202,6 +202,7 @@ export const addResultSchema = z
 export const searchResultSchema = z
   .object({
     query: z.string(),
+    kind: z.enum(["llm", "stt", "image"]),
     cached: z.boolean(),
     results: z.array(
       z
@@ -212,6 +213,8 @@ export const searchResultSchema = z
           license: z.string().nullable(),
           pipelineTag: z.string().nullable(),
           likelyKind: z.string(),
+          kind: z.enum(["llm", "stt", "image"]).nullable(),
+          gated: z.boolean(),
           addable: z.boolean(),
         })
         .strict(),

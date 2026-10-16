@@ -117,14 +117,18 @@ local-base models search qwen 0.5b
 ```
 
 ```
-MODEL                           DOWNLOADS  LICENSE     PIPELINE         LIKELY KIND
-Qwen/Qwen2.5-0.5B-Instruct-GGUF 275.2k     apache-2.0  text-generation  llm
+MODEL                            DOWNLOADS  LICENSE     PIPELINE         GATED  LIKELY KIND
+Qwen/Qwen2.5-0.5B-Instruct-GGUF  275.2k     apache-2.0  text-generation  -      llm
 
 Add one with: local-base models add hf:<org>/<repo>[:<file-or-quant>]
 ```
 
-The search lists only GGUF repositories, which are the format LocalBase's LLM
-engine runs, sorted by downloads.
+The search lists repositories LocalBase can run, sorted by downloads. By
+default it lists GGUF language models. `--kind stt` lists speech recognition
+repositories with whisper.cpp `ggml-*.bin` files, and `--kind image` lists
+text-to-image repositories. `LIKELY KIND` says what LocalBase would run each
+result as, or why it cannot. `GATED` marks repositories whose terms you must
+accept on Hugging Face before downloading.
 
 ```sh
 local-base models add hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF          # picks Q4_K_M
@@ -132,6 +136,8 @@ local-base models add hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q8_0     # a quant
 local-base models add hf:Org/Repo:path/to/file.gguf               # an exact file
 local-base models add hf:Org/Repo --install                       # add, then download
 local-base models add hf:Org/Repo --id my-model                   # choose the id
+local-base models add hf:ggerganov/whisper.cpp:ggml-small.bin     # a whisper model
+local-base models add hf:Org/sd-checkpoint:model.safetensors      # an image checkpoint
 ```
 
 `models add` reads the repository's metadata from the Hugging Face API, then:
@@ -143,19 +149,56 @@ local-base models add hf:Org/Repo --id my-model                   # choose the i
 - pairs an `mmproj` projector for image-input models;
 - writes `<root>/catalog.d/<id>.json`.
 
-When there is no selector, `models add` uses the only GGUF file if there is
-one, or else the first available quant from Q4_K_M, Q4_K_S, Q5_K_M and Q8_0.
-Otherwise it lists the files and asks you to pick one.
+`models add` infers the kind from the pipeline tag and the files:
+
+- **Chat (llm):** a `text-generation` or image-text-to-text repository with
+  GGUF files. With no selector it uses the only GGUF file, or else the first
+  available quant from Q4_K_M, Q4_K_S, Q5_K_M and Q8_0.
+- **Transcription (stt):** an `automatic-speech-recognition` repository with
+  whisper.cpp `ggml-*.bin` files (Core ML encoders and VAD models are
+  skipped). With no selector it prefers a base Q8_0 file, then the smallest
+  Q8_0, then the smallest file.
+- **Image:** a `text-to-image` repository with a single-file Stable Diffusion
+  checkpoint (`.safetensors`, `.ckpt` or `.gguf`) at the repository root,
+  which sd-server loads with `-m`. Diffusers folders, LoRAs and pipelines that
+  need several separately mapped files (FLUX, SD3, Qwen-Image, Wan and
+  similar) are refused.
+
+If the choice is ambiguous it lists the files and asks you to pick one. Ids
+that a built-in or remote entry already uses are refused; pick another with
+`--id`.
 
 Capabilities found in the chat template (for example tool calling) are shown
 as `detected`. They are confirmed from the installed files and at runtime, not
-written into the entry. Only GGUF language models can be added for now.
+written into the entry.
 
 Gated or private repositories need a token: `local-base configure
 --hf-token`. Hugging Face responses are cached under `<root>/cache/hf/` for
 ten minutes. If Hugging Face cannot be reached, the cached answer is used.
 With no cache, the command fails and changes nothing. Serving requests never
 contacts Hugging Face.
+
+### Finding models in the catalog UI
+
+The catalog page has a **Find more models** view. Search by name and kind
+(Chat, Transcription or Image). Each result shows its downloads, license,
+pipeline tag and likely kind, and for the most downloaded results, the file
+`models add` would pin with its download size and a memory-fit estimate for
+this machine. Gated results get a badge and a link to accept the terms on
+Hugging Face. **Add** writes the same pinned entry as `models add`; **Add and
+install** also starts the download. Adding needs the `models:manage`
+permission.
+
+The view calls `POST /_localbase/model-discovery` on the gateway with one of:
+
+```text
+{ "action": "search", "query": "qwen 0.5b", "kind": "llm" }
+{ "action": "preview", "repo": "Org/Repo" }
+{ "action": "add", "repo": "Org/Repo", "selector": "file.gguf", "install": false }
+```
+
+The gateway uses the saved Hugging Face token, or else `HF_TOKEN`, and sends
+it only to huggingface.co. It is never returned or logged.
 
 ### Removing an entry
 

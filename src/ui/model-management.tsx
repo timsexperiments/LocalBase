@@ -20,6 +20,7 @@ import {
 } from "../catalog/capabilities";
 import { catalogPanelKeys, detailsUrl, readDetails } from "./navigation";
 import { ModelDetails } from "./model-details";
+import { ModelDiscovery } from "./model-discovery";
 import {
   modelManagementSchema,
   type ModelManagementAction,
@@ -192,6 +193,7 @@ export function ModelManagement({
     action: "install" | "uninstall";
   } | null>(null);
   const [revision, setRevision] = useState(0);
+  const [view, setView] = useState<"catalog" | "discover">("catalog");
   const [details, setDetails] = useState(() => readDetails(location.search));
   // True while the open details view is a history entry this page pushed.
   const pushedDetails = useRef(false);
@@ -514,341 +516,388 @@ export function ModelManagement({
         </p>
       ) : (
         <>
-          <div className="storage-summary">
-            <span>
-              <strong>
-                {models.filter((model) => model.device.installed).length}
-              </strong>{" "}
-              installed <span className="muted">/ {models.length} models</span>
-            </span>
-            <span>
-              {state
-                ? `${bytes(state.storage.availableBytes)} free of ${bytes(state.storage.totalBytes)}`
-                : "Checking storage…"}
-            </span>
+          <div className="admin-tabs catalog-views" aria-label="Catalog view">
+            <button
+              type="button"
+              aria-pressed={view === "catalog"}
+              onClick={() => setView("catalog")}
+            >
+              Local catalog
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "discover"}
+              onClick={() => setView("discover")}
+            >
+              Find more models
+            </button>
           </div>
-          <p className="hint">
-            Install downloads the files. Enable makes a model available for
-            requests. The default is used when a client does not choose a model.
-          </p>
-          {state && !state.canManage && (
-            <p className="notice" role="status">
-              Read-only access. Sign in with an account authorized to manage
-              models.
-            </p>
-          )}
-          <div
-            className="catalog-filters"
-            role="search"
-            aria-label="Catalog filters"
-          >
-            <div className="dictation-field catalog-search">
-              <input
-                type="search"
-                aria-label="Search catalog"
-                placeholder="Search names, ids, and descriptions…"
-                value={query.search ?? ""}
-                onChange={(event) =>
-                  updateQuery({ search: event.target.value || undefined })
-                }
-              />
-              {canDictate && (
-                <DictationButton
-                  label="catalog search"
-                  onText={(text) =>
-                    updateQuery({
-                      search: appendDictation(query.search ?? "", text),
-                    })
+          {view === "discover" ? (
+            <ModelDiscovery
+              connection={connection}
+              canManage={Boolean(state?.canManage)}
+              onAdded={() => setRevision((value) => value + 1)}
+            />
+          ) : (
+            <>
+              <div className="storage-summary">
+                <span>
+                  <strong>
+                    {models.filter((model) => model.device.installed).length}
+                  </strong>{" "}
+                  installed{" "}
+                  <span className="muted">/ {models.length} models</span>
+                </span>
+                <span>
+                  {state
+                    ? `${bytes(state.storage.availableBytes)} free of ${bytes(state.storage.totalBytes)}`
+                    : "Checking storage…"}
+                </span>
+              </div>
+              <p className="hint">
+                Install downloads the files. Enable makes a model available for
+                requests. The default is used when a client does not choose a
+                model.
+              </p>
+              {state && !state.canManage && (
+                <p className="notice" role="status">
+                  Read-only access. Sign in with an account authorized to manage
+                  models.
+                </p>
+              )}
+              <div
+                className="catalog-filters"
+                role="search"
+                aria-label="Catalog filters"
+              >
+                <div className="dictation-field catalog-search">
+                  <input
+                    type="search"
+                    aria-label="Search catalog"
+                    placeholder="Search names, ids, and descriptions…"
+                    value={query.search ?? ""}
+                    onChange={(event) =>
+                      updateQuery({ search: event.target.value || undefined })
+                    }
+                  />
+                  {canDictate && (
+                    <DictationButton
+                      label="catalog search"
+                      onText={(text) =>
+                        updateQuery({
+                          search: appendDictation(query.search ?? "", text),
+                        })
+                      }
+                    />
+                  )}
+                </div>
+                <select
+                  aria-label="Filter model mode"
+                  value={kindValue}
+                  onChange={(event) =>
+                    updateQuery({ kinds: listFilter(event.target.value) })
                   }
-                />
-              )}
-            </div>
-            <select
-              aria-label="Filter model mode"
-              value={kindValue}
-              onChange={(event) =>
-                updateQuery({ kinds: listFilter(event.target.value) })
-              }
-            >
-              <option value="">All modes</option>
-              {modes.map((mode) => (
-                <option value={mode} key={mode}>
-                  {modeNames[mode]}
-                </option>
-              ))}
-              {customOption(
-                kindValue,
-                modes.map((mode) => [mode, modeNames[mode]] as const),
-              )}
-            </select>
-            <select
-              aria-label="Filter installation"
-              value={installation}
-              onChange={(event) => {
-                const value = event.target.value;
-                updateFilters({
-                  enabled: value === "enabled",
-                  query: {
-                    ...query,
-                    installed:
-                      value === "installed"
-                        ? true
-                        : value === "uninstalled"
-                          ? false
-                          : undefined,
-                  },
-                });
-              }}
-            >
-              <option value="all">All models</option>
-              <option value="installed">Installed</option>
-              <option value="uninstalled">Not installed</option>
-              <option value="enabled">Enabled</option>
-            </select>
-            <select
-              aria-label="Filter by fit on this machine"
-              value={fitValue}
-              onChange={(event) =>
-                updateQuery({ fits: listFilter(event.target.value) })
-              }
-            >
-              <option value="">Any fit</option>
-              {fitOptions.map(([value, label]) => (
-                <option value={value} key={value}>
-                  {label}
-                </option>
-              ))}
-              {customOption(fitValue, fitOptions)}
-            </select>
-            <select
-              aria-label="Filter by license"
-              value={licenseValue}
-              onChange={(event) =>
-                updateQuery({ licenses: listFilter(event.target.value) })
-              }
-            >
-              <option value="">Any license</option>
-              {licenseOptions.map(([value, label]) => (
-                <option value={value} key={value}>
-                  {label}
-                </option>
-              ))}
-              {customOption(licenseValue, licenseOptions)}
-            </select>
-            <select
-              aria-label="Add a capability filter"
-              value=""
-              onChange={(event) => {
-                const capability = capabilitySchema.safeParse(
-                  event.target.value,
-                );
-                if (capability.success)
-                  updateQuery({
-                    capabilities: [...selectedCapabilities, capability.data],
-                  });
-              }}
-            >
-              <option value="">
-                {selectedCapabilities.length
-                  ? "Add capability…"
-                  : "Any capability"}
-              </option>
-              {capabilitySchema.options
-                .filter((id) => !selectedCapabilities.includes(id))
-                .map((id) => (
-                  <option value={id} key={id}>
-                    {capabilityLabels[id]}
-                  </option>
-                ))}
-            </select>
-            <div className="catalog-sort">
-              <select
-                aria-label="Sort models"
-                value={query.sort ?? ""}
-                onChange={(event) =>
-                  updateQuery({
-                    sort: (event.target.value || undefined) as
-                      CatalogSort | undefined,
-                  })
-                }
-              >
-                <option value="">Sort: default order</option>
-                {sortOptions.map(([value, label]) => (
-                  <option value={value} key={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="catalog-reverse"
-                aria-pressed={Boolean(query.reverse)}
-                aria-label="Reverse order"
-                title="Reverse order"
-                onClick={() =>
-                  updateQuery({ reverse: query.reverse ? undefined : true })
-                }
-              >
-                <span aria-hidden="true">⇅</span>
-              </button>
-            </div>
-          </div>
-          {selectedCapabilities.length > 0 && (
-            <ul className="catalog-chips" aria-label="Required capabilities">
-              {selectedCapabilities.map((id) => (
-                <li key={id}>
-                  <button
-                    type="button"
-                    className="catalog-chip"
-                    aria-label={`Remove ${capabilityLabels[id]} filter`}
-                    onClick={() =>
+                >
+                  <option value="">All modes</option>
+                  {modes.map((mode) => (
+                    <option value={mode} key={mode}>
+                      {modeNames[mode]}
+                    </option>
+                  ))}
+                  {customOption(
+                    kindValue,
+                    modes.map((mode) => [mode, modeNames[mode]] as const),
+                  )}
+                </select>
+                <select
+                  aria-label="Filter installation"
+                  value={installation}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    updateFilters({
+                      enabled: value === "enabled",
+                      query: {
+                        ...query,
+                        installed:
+                          value === "installed"
+                            ? true
+                            : value === "uninstalled"
+                              ? false
+                              : undefined,
+                      },
+                    });
+                  }}
+                >
+                  <option value="all">All models</option>
+                  <option value="installed">Installed</option>
+                  <option value="uninstalled">Not installed</option>
+                  <option value="enabled">Enabled</option>
+                </select>
+                <select
+                  aria-label="Filter by fit on this machine"
+                  value={fitValue}
+                  onChange={(event) =>
+                    updateQuery({ fits: listFilter(event.target.value) })
+                  }
+                >
+                  <option value="">Any fit</option>
+                  {fitOptions.map(([value, label]) => (
+                    <option value={value} key={value}>
+                      {label}
+                    </option>
+                  ))}
+                  {customOption(fitValue, fitOptions)}
+                </select>
+                <select
+                  aria-label="Filter by license"
+                  value={licenseValue}
+                  onChange={(event) =>
+                    updateQuery({ licenses: listFilter(event.target.value) })
+                  }
+                >
+                  <option value="">Any license</option>
+                  {licenseOptions.map(([value, label]) => (
+                    <option value={value} key={value}>
+                      {label}
+                    </option>
+                  ))}
+                  {customOption(licenseValue, licenseOptions)}
+                </select>
+                <select
+                  aria-label="Add a capability filter"
+                  value=""
+                  onChange={(event) => {
+                    const capability = capabilitySchema.safeParse(
+                      event.target.value,
+                    );
+                    if (capability.success)
                       updateQuery({
-                        capabilities: listFilter<Capability>(
-                          selectedCapabilities
-                            .filter((value) => value !== id)
-                            .join(","),
-                        ),
+                        capabilities: [
+                          ...selectedCapabilities,
+                          capability.data,
+                        ],
+                      });
+                  }}
+                >
+                  <option value="">
+                    {selectedCapabilities.length
+                      ? "Add capability…"
+                      : "Any capability"}
+                  </option>
+                  {capabilitySchema.options
+                    .filter((id) => !selectedCapabilities.includes(id))
+                    .map((id) => (
+                      <option value={id} key={id}>
+                        {capabilityLabels[id]}
+                      </option>
+                    ))}
+                </select>
+                <div className="catalog-sort">
+                  <select
+                    aria-label="Sort models"
+                    value={query.sort ?? ""}
+                    onChange={(event) =>
+                      updateQuery({
+                        sort: (event.target.value || undefined) as
+                          CatalogSort | undefined,
                       })
                     }
                   >
-                    {capabilityLabels[id]} <span aria-hidden="true">×</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {error && (
-            <div className="error" role="alert">
-              <span>{error}</span>
-              <button
-                onClick={() => {
-                  setError("");
-                  setRevision((value) => value + 1);
-                }}
-              >
-                Refresh
-              </button>
-            </div>
-          )}
-          <p className="catalog-count" role="status">
-            {filtered.length === 1 ? "1 model" : `${filtered.length} models`}
-            {filtering ? (filtered.length === 1 ? " matches" : " match") : ""}
-          </p>
-          <div className="catalog-grid">
-            {filtered.map((model) => {
-              const local = state?.models.find((item) => item.id === model.id);
-              return (
-                <article className="catalog-card" key={model.id}>
-                  <header>
-                    <h3>{modelName(model)}</h3>
-                    {model.catalog.qualificationState === "experimental" && (
-                      <span className="model-badge">Experimental</span>
-                    )}
-                    <span
-                      className={`model-badge ${model.device.installed ? "installed" : ""}`}
-                    >
-                      {model.device.installed ? "Installed" : "Not installed"}
-                    </span>
-                    {model.catalog.memory.fit && (
-                      <span
-                        className={`model-badge fit-${model.catalog.memory.fit.verdict}`}
-                      >
-                        {fitBadges[model.catalog.memory.fit.verdict]}
-                      </span>
-                    )}
-                  </header>
-                  <p className="model-id">{model.id}</p>
-                  {model.catalog.qualificationState === "experimental" && (
-                    <p className="hint">
-                      Unqualified; hardware behavior and admission estimates
-                      need validation.
-                    </p>
-                  )}
-                  <p className="model-facts">
-                    {model.catalog.quantization} ·{" "}
-                    {model.device.selected ? "Enabled" : "Disabled"}
-                    {local?.active ? " · Default" : ""}
-                  </p>
-                  {model.catalog.summary && (
-                    <p className="model-summary">{model.catalog.summary}</p>
-                  )}
-                  <CapabilityBadges model={model} />
-                  <dl className="model-storage">
-                    <div>
-                      <dt>Model files</dt>
-                      <dd>
-                        {local ? bytes(local.installedBytes) : "Checking…"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Download size</dt>
-                      <dd>
-                        {local?.downloadBytes != null
-                          ? bytes(local.downloadBytes)
-                          : `~${model.catalog.memory.storageEstimateGb} GB`}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Min. memory</dt>
-                      <dd>{modelMemoryRequirement(model)}</dd>
-                    </div>
-                    {modelFitLabel(model) && (
-                      <div className="model-storage-fit">
-                        <dt>This machine</dt>
-                        <dd>{fitDetail(model)}</dd>
-                      </div>
-                    )}
-                  </dl>
-                  {controls(model, local)}
+                    <option value="">Sort: default order</option>
+                    {sortOptions.map(([value, label]) => (
+                      <option value={value} key={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     type="button"
-                    className="catalog-details-button"
-                    aria-label={`Details for ${modelName(model)}`}
-                    onClick={() => openDetails(model.id)}
+                    className="catalog-reverse"
+                    aria-pressed={Boolean(query.reverse)}
+                    aria-label="Reverse order"
+                    title="Reverse order"
+                    onClick={() =>
+                      updateQuery({ reverse: query.reverse ? undefined : true })
+                    }
                   >
-                    Details
+                    <span aria-hidden="true">⇅</span>
                   </button>
-                </article>
-              );
-            })}
-          </div>
-          {!filtered.length && (
-            <div className="catalog-empty" role="status">
-              <p>No models match these filters.</p>
-              {filtering && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateFilters({
-                      enabled: false,
-                      query: {
-                        ...(query.sort ? { sort: query.sort } : {}),
-                        ...(query.reverse ? { reverse: true } : {}),
-                      },
-                    })
-                  }
+                </div>
+              </div>
+              {selectedCapabilities.length > 0 && (
+                <ul
+                  className="catalog-chips"
+                  aria-label="Required capabilities"
                 >
-                  Clear filters
-                </button>
+                  {selectedCapabilities.map((id) => (
+                    <li key={id}>
+                      <button
+                        type="button"
+                        className="catalog-chip"
+                        aria-label={`Remove ${capabilityLabels[id]} filter`}
+                        onClick={() =>
+                          updateQuery({
+                            capabilities: listFilter<Capability>(
+                              selectedCapabilities
+                                .filter((value) => value !== id)
+                                .join(","),
+                            ),
+                          })
+                        }
+                      >
+                        {capabilityLabels[id]} <span aria-hidden="true">×</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
-            </div>
-          )}
-          {detailsModel && (
-            <ModelDetails
-              key={detailsModel.id}
-              model={detailsModel}
-              status={state?.models.find((item) => item.id === detailsModel.id)}
-              close={closeDetails}
-              actions={controls(
-                detailsModel,
-                state?.models.find((item) => item.id === detailsModel.id),
+              {error && (
+                <div className="error" role="alert">
+                  <span>{error}</span>
+                  <button
+                    onClick={() => {
+                      setError("");
+                      setRevision((value) => value + 1);
+                    }}
+                  >
+                    Refresh
+                  </button>
+                </div>
               )}
-            />
+              <p className="catalog-count" role="status">
+                {filtered.length === 1
+                  ? "1 model"
+                  : `${filtered.length} models`}
+                {filtering
+                  ? filtered.length === 1
+                    ? " matches"
+                    : " match"
+                  : ""}
+              </p>
+              <div className="catalog-grid">
+                {filtered.map((model) => {
+                  const local = state?.models.find(
+                    (item) => item.id === model.id,
+                  );
+                  return (
+                    <article className="catalog-card" key={model.id}>
+                      <header>
+                        <h3>{modelName(model)}</h3>
+                        {model.catalog.qualificationState ===
+                          "experimental" && (
+                          <span className="model-badge">Experimental</span>
+                        )}
+                        <span
+                          className={`model-badge ${model.device.installed ? "installed" : ""}`}
+                        >
+                          {model.device.installed
+                            ? "Installed"
+                            : "Not installed"}
+                        </span>
+                        {model.catalog.memory.fit && (
+                          <span
+                            className={`model-badge fit-${model.catalog.memory.fit.verdict}`}
+                          >
+                            {fitBadges[model.catalog.memory.fit.verdict]}
+                          </span>
+                        )}
+                      </header>
+                      <p className="model-id">{model.id}</p>
+                      {model.catalog.qualificationState === "experimental" && (
+                        <p className="hint">
+                          Unqualified; hardware behavior and admission estimates
+                          need validation.
+                        </p>
+                      )}
+                      <p className="model-facts">
+                        {model.catalog.quantization} ·{" "}
+                        {model.device.selected ? "Enabled" : "Disabled"}
+                        {local?.active ? " · Default" : ""}
+                      </p>
+                      {model.catalog.summary && (
+                        <p className="model-summary">{model.catalog.summary}</p>
+                      )}
+                      <CapabilityBadges model={model} />
+                      <dl className="model-storage">
+                        <div>
+                          <dt>Model files</dt>
+                          <dd>
+                            {local ? bytes(local.installedBytes) : "Checking…"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Download size</dt>
+                          <dd>
+                            {local?.downloadBytes != null
+                              ? bytes(local.downloadBytes)
+                              : `~${model.catalog.memory.storageEstimateGb} GB`}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Min. memory</dt>
+                          <dd>{modelMemoryRequirement(model)}</dd>
+                        </div>
+                        {modelFitLabel(model) && (
+                          <div className="model-storage-fit">
+                            <dt>This machine</dt>
+                            <dd>{fitDetail(model)}</dd>
+                          </div>
+                        )}
+                      </dl>
+                      {controls(model, local)}
+                      <button
+                        type="button"
+                        className="catalog-details-button"
+                        aria-label={`Details for ${modelName(model)}`}
+                        onClick={() => openDetails(model.id)}
+                      >
+                        Details
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+              {!filtered.length && (
+                <div className="catalog-empty" role="status">
+                  <p>No models match these filters.</p>
+                  {filtering && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateFilters({
+                          enabled: false,
+                          query: {
+                            ...(query.sort ? { sort: query.sort } : {}),
+                            ...(query.reverse ? { reverse: true } : {}),
+                          },
+                        })
+                      }
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </div>
+              )}
+              {detailsModel && (
+                <ModelDetails
+                  key={detailsModel.id}
+                  model={detailsModel}
+                  status={state?.models.find(
+                    (item) => item.id === detailsModel.id,
+                  )}
+                  close={closeDetails}
+                  actions={controls(
+                    detailsModel,
+                    state?.models.find((item) => item.id === detailsModel.id),
+                  )}
+                />
+              )}
+              <p className="hint">
+                File sizes can include artifacts shared by multiple models.
+                Memory requirements are estimates, not reserved memory.
+              </p>
+            </>
           )}
-          <p className="hint">
-            File sizes can include artifacts shared by multiple models. Memory
-            requirements are estimates, not reserved memory.
-          </p>
         </>
       )}
     </div>
