@@ -10,7 +10,7 @@ import {
 import { createRoot } from "react-dom/client";
 import { Copy, MessageMarkdown } from "./message-markdown";
 import { ModelManagement } from "./model-management";
-import { pollWhileVisible } from "./visibility";
+import { pollWhileVisible, trackResume } from "./visibility";
 import { AuthManagement } from "./auth-management";
 import {
   attachmentAccept,
@@ -81,6 +81,8 @@ import {
   modelName,
   embeddingSummary,
   embeddingSummaryText,
+  EdgeSignInExpiredError,
+  gatewayFetch,
   modelsSchema,
   modes,
   modelAcceptsInput,
@@ -640,16 +642,22 @@ function App() {
       "push",
     );
   }
-  function sessionExpired(message: string) {
+  function sessionExpired(error: SessionRequiredError) {
     setModels([]);
     setHostMemory(null);
+    // Reloading discards the page, so an edge sign-in waits for the user to
+    // choose it rather than taking over a tab they may be typing in.
+    if (error instanceof EdgeSignInExpiredError) {
+      setSession({ kind: "error", message: error.message, action: "reload" });
+      return;
+    }
     setSession({
       kind: "error",
       message: redirectToSignIn()
         ? "Your sign-in has expired. Taking you to sign in…"
         : signInFailed()
           ? "Sign-in didn't complete. Try signing in again."
-          : message,
+          : error.message,
     });
   }
   async function checkSession(signal?: AbortSignal) {
@@ -660,7 +668,7 @@ function App() {
     } catch (e) {
       if (signal?.aborted) return;
       if (e instanceof SessionRequiredError) {
-        sessionExpired(e.message);
+        sessionExpired(e);
         return;
       }
       setModels([]);
@@ -684,11 +692,13 @@ function App() {
       setHostMemory(null);
       setSession({ kind: "error", message: "You signed out." });
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Could not sign out. Try again.",
-      );
+      if (cause instanceof SessionRequiredError) sessionExpired(cause);
+      else
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Could not sign out. Try again.",
+        );
     } finally {
       setSigningOut(false);
     }
@@ -702,7 +712,7 @@ function App() {
               .then((r) => r.json())
               .then((v) => modelsSchema.parse(v))
           : null,
-        fetch("/health/ready", { signal, cache: "no-store" })
+        gatewayFetch("/health/ready", { signal, cache: "no-store" })
           .then((r) => r.json())
           .then((v) => readinessSchema.parse(v)),
       ]);
@@ -716,7 +726,7 @@ function App() {
       if (!signal?.aborted) {
         setModels([]);
         setHostMemory(null);
-        if (e instanceof SessionRequiredError) sessionExpired(e.message);
+        if (e instanceof SessionRequiredError) sessionExpired(e);
         else if (e instanceof z.ZodError) {
           console.error("Unexpected gateway response", e.issues);
           setConnection(
@@ -729,8 +739,12 @@ function App() {
   }
   useEffect(() => {
     const abort = new AbortController();
+    const stopTracking = trackResume();
     void checkSession(abort.signal);
-    return () => abort.abort();
+    return () => {
+      abort.abort();
+      stopTracking();
+    };
   }, []);
   useEffect(() => {
     if (session.kind !== "session" || canOpenDrawer(drawer) || !active) return;
@@ -1307,7 +1321,7 @@ function App() {
       stream.flush();
       if (e instanceof SessionRequiredError) {
         authenticationFailed = true;
-        sessionExpired(e.message);
+        sessionExpired(e);
       }
       const steered = abort.signal.reason === steerAbortReason;
       patch((m) =>
@@ -1392,7 +1406,7 @@ function App() {
           `Couldn't summarize earlier messages (${result.error}); they were dropped from the model's context.`,
         ]);
     } catch (e) {
-      if (e instanceof SessionRequiredError) sessionExpired(e.message);
+      if (e instanceof SessionRequiredError) sessionExpired(e);
       else if (!abort.signal.aborted)
         setError(e instanceof Error ? e.message : "Compaction failed.");
     } finally {
@@ -1405,16 +1419,25 @@ function App() {
     }
   }
   if (!active) return null;
+  const signInAction =
+    session.kind !== "error" ? null : session.action === "reload" ? (
+      <button className="download" onClick={() => location.reload()}>
+        Reload
+      </button>
+    ) : (
+      <a className="download" href="/app/login">
+        Sign in
+      </a>
+    );
+  const sessionNotice = session.kind === "error" && (
+    <div className="error session-notice" role="alert">
+      <span>{session.message}</span>
+      {signInAction}
+    </div>
+  );
   const notices = (
     <>
-      {session.kind === "error" && (
-        <div className="error session-notice" role="alert">
-          <span>{session.message}</span>
-          <a className="download" href="/app/login">
-            Sign in
-          </a>
-        </div>
-      )}
+      {sessionNotice}
       {warnings.length > 0 && (
         <div className="error" role="alert">
           <span>{warnings.join(" ")}</span>
@@ -2084,11 +2107,13 @@ function App() {
           }
           close={() => setDrawer(null)}
         >
+          {visibleDrawer !== "settings" && sessionNotice}
           {visibleDrawer === "catalog" ? (
             <ModelManagement
               connection={credential}
               models={models}
               refreshModels={refresh}
+              onSessionExpired={sessionExpired}
               openSettings={() => setDrawer("settings")}
               canDictate={canDictate}
             />
@@ -2174,11 +2199,7 @@ function App() {
               <button disabled={busy} onClick={() => void checkSession()}>
                 Refresh connection
               </button>
-              {session.kind === "error" && (
-                <a className="download" href="/app/login">
-                  Sign in
-                </a>
-              )}
+              {signInAction}
               <hr />
               {canDictate && (
                 <>

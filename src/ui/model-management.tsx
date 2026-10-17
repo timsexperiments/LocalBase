@@ -32,6 +32,7 @@ import {
   modelMemoryRequirement,
   modelName,
   modes,
+  SessionRequiredError,
   type Connection,
   type Model,
 } from "./client";
@@ -174,22 +175,37 @@ function bytes(value: number | null) {
   return `${(value / 1024 ** 3).toFixed(1)} GiB`;
 }
 
+/** The storage line: free space, or why it is not known yet. */
+export function storageSummary(
+  storage: ManagementState["storage"] | null,
+  failed: boolean,
+) {
+  if (storage)
+    return `${bytes(storage.availableBytes)} free of ${bytes(storage.totalBytes)}`;
+  // A failed status check must not look like one that is still running.
+  return failed ? "Storage unavailable" : "Checking storage…";
+}
+
 export function ModelManagement({
   connection,
   models,
   refreshModels,
+  onSessionExpired,
   openSettings,
   canDictate,
 }: {
   connection: Connection | null;
   models: Model[];
   refreshModels: (signal?: AbortSignal) => Promise<void>;
+  onSessionExpired: (error: SessionRequiredError) => void;
   openSettings: () => void;
   canDictate: boolean;
 }) {
   const [state, setState] = useState<ManagementState | null>(null);
   const [filters, setFilters] = useState(readFilters);
   const [error, setError] = useState("");
+  // Why the latest status poll failed; cleared when a poll succeeds.
+  const [loadError, setLoadError] = useState("");
   const [pending, setPending] = useState(false);
   const [confirmation, setConfirmation] = useState<{
     modelId: string;
@@ -224,6 +240,7 @@ export function ModelManagement({
         );
         if (abort.signal.aborted) return;
         setState(next);
+        setLoadError("");
         running = next.models.some(
           (model) => model.operation?.state === "running",
         );
@@ -231,7 +248,8 @@ export function ModelManagement({
       } catch (error) {
         if (!abort.signal.aborted) {
           setState(null);
-          setError(
+          if (error instanceof SessionRequiredError) onSessionExpired(error);
+          setLoadError(
             error instanceof Error
               ? error.message
               : "Could not load model status.",
@@ -269,6 +287,7 @@ export function ModelManagement({
       setConfirmation(null);
       setRevision((value) => value + 1);
     } catch (error) {
+      if (error instanceof SessionRequiredError) onSessionExpired(error);
       setError(error instanceof Error ? error.message : "Model update failed.");
     } finally {
       setPending(false);
@@ -552,9 +571,7 @@ export function ModelManagement({
                   <span className="muted">/ {models.length} models</span>
                 </span>
                 <span>
-                  {state
-                    ? `${bytes(state.storage.availableBytes)} free of ${bytes(state.storage.totalBytes)}`
-                    : "Checking storage…"}
+                  {storageSummary(state?.storage ?? null, Boolean(loadError))}
                 </span>
               </div>
               <p className="hint">
@@ -754,12 +771,13 @@ export function ModelManagement({
                   ))}
                 </ul>
               )}
-              {error && (
+              {(error || loadError) && (
                 <div className="error" role="alert">
-                  <span>{error}</span>
+                  <span>{error || loadError}</span>
                   <button
                     onClick={() => {
                       setError("");
+                      setLoadError("");
                       setRevision((value) => value + 1);
                     }}
                   >
