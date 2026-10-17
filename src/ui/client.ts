@@ -10,6 +10,7 @@ import type {
   ModelMetadataList,
 } from "../domains/models/model-metadata";
 import type { Attachment } from "./attachments";
+import { resumedRecently } from "./visibility";
 
 export function discardLegacyFragmentCredential({
   location,
@@ -573,11 +574,79 @@ export type Session = Connection & {
   permissions: readonly Permission[];
 };
 export type SessionState =
-  Session | { kind: "checking" } | { kind: "error"; message: string };
+  | Session
+  | { kind: "checking" }
+  // `reload` asks for a full-page reload, so a sign-in in front of LocalBase
+  // (such as Cloudflare Access) can run its own login flow.
+  | { kind: "error"; message: string; action?: "reload" };
 export class SessionRequiredError extends Error {
   constructor(message = "Your sign-in has expired.") {
     super(message);
   }
+}
+/**
+ * The sign-in in front of LocalBase (such as Cloudflare Access) expired: it
+ * answered a gateway request with a redirect to its login page. Only a
+ * top-level navigation can complete that login, so the page must reload.
+ */
+export class EdgeSignInExpiredError extends SessionRequiredError {
+  constructor() {
+    super("Your sign-in expired. Reload to sign in again.");
+    this.name = "EdgeSignInExpiredError";
+  }
+}
+const unreachableMessage =
+  "Could not reach the gateway. Check the connection and try again.";
+/** Waits between retries of a failed read right after the tab is shown again. */
+export const resumeRetryDelaysMs = [400, 1200] as const;
+function pause(ms: number, signal?: AbortSignal | null) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+/**
+ * Fetches a same-origin gateway path without ever following a redirect. The
+ * gateway never redirects these requests, so a redirect means a sign-in in
+ * front of it intercepted the request. A read that fails at the network level
+ * just after the tab is shown again (iOS Safari often fails the first request
+ * after resuming) is retried briefly before it counts as unreachable.
+ */
+export async function gatewayFetch(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const retryable = method === "GET" || method === "HEAD";
+  let response: Response;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      response = await fetch(path, { ...init, redirect: "manual" });
+      break;
+    } catch (error) {
+      if (init.signal?.aborted) throw error;
+      const delay = resumeRetryDelaysMs[attempt];
+      if (!retryable || delay === undefined || !resumedRecently())
+        throw new Error(unreachableMessage);
+      await pause(delay, init.signal);
+    }
+  }
+  if (
+    response.type === "opaqueredirect" ||
+    (response.status >= 300 && response.status < 400)
+  ) {
+    await response.body?.cancel();
+    throw new EdgeSignInExpiredError();
+  }
+  return response;
 }
 const sessionSchema = z.object({
   authenticated: z.literal(true),
@@ -586,11 +655,10 @@ const sessionSchema = z.object({
   logoutUrl: z.literal("/cdn-cgi/access/logout").optional(),
 });
 export async function readSession(signal?: AbortSignal): Promise<Session> {
-  const response = await fetch("/app/session", {
+  const response = await gatewayFetch("/app/session", {
     signal,
     credentials: "same-origin",
     cache: "no-store",
-    redirect: "error",
     headers: { "x-localbase-ui": "1" },
   });
   if (response.status === 401 || response.status === 403) {
@@ -638,11 +706,10 @@ export function signInFailed(): boolean {
   return new URLSearchParams(location.search).get("signin") === "failed";
 }
 export async function logoutSession(): Promise<void> {
-  const response = await fetch("/app/logout", {
+  const response = await gatewayFetch("/app/logout", {
     method: "POST",
     credentials: "same-origin",
     cache: "no-store",
-    redirect: "error",
     headers: { "x-localbase-ui": "1" },
   });
   if (!response.ok) {
@@ -683,22 +750,12 @@ export async function api(
   headers.delete("authorization");
   headers.delete("x-api-key");
   headers.set("x-localbase-ui", "1");
-  let response: Response;
-  try {
-    response = await fetch(`/app/api${path}`, {
-      ...init,
-      headers,
-      cache: "no-store",
-      credentials: "same-origin",
-      redirect: "error",
-    });
-  } catch (error) {
-    if (!init.signal?.aborted)
-      throw new Error(
-        "Could not reach the gateway. Check the connection and try again.",
-      );
-    throw error;
-  }
+  const response = await gatewayFetch(`/app/api${path}`, {
+    ...init,
+    headers,
+    cache: "no-store",
+    credentials: "same-origin",
+  });
   if (!response.ok) {
     const value: unknown = await response.json().catch(() => null);
     const parsed = z

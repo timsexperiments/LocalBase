@@ -46,3 +46,27 @@ export function onVisible(
   target.addEventListener("visibilitychange", change);
   return () => target.removeEventListener("visibilitychange", change);
 }
+
+/** How long after the page is shown again a network failure may be a resume glitch. */
+export const resumeWindowMs = 10_000;
+let shownAt = Number.NEGATIVE_INFINITY;
+
+/**
+ * Records when the page becomes visible again, for `resumedRecently`. iOS
+ * Safari often fails the first requests after a backgrounded tab resumes.
+ * Returns a function that stops tracking and forgets the last resume.
+ */
+export function trackResume(target: VisibilityTarget = document) {
+  const stop = onVisible(() => {
+    shownAt = Date.now();
+  }, target);
+  return () => {
+    stop();
+    shownAt = Number.NEGATIVE_INFINITY;
+  };
+}
+
+/** Whether the page became visible again within the last `resumeWindowMs`. */
+export function resumedRecently(now = Date.now()) {
+  return now - shownAt < resumeWindowMs;
+}

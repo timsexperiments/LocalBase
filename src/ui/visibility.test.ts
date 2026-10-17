@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
-import { onVisible, pollWhileVisible } from "./visibility";
+import {
+  onVisible,
+  pollWhileVisible,
+  resumedRecently,
+  resumeWindowMs,
+  trackResume,
+} from "./visibility";
 
 class FakeDocument extends EventTarget {
   hidden = false;
@@ -64,5 +70,29 @@ describe("onVisible", () => {
     page.set(true);
     page.set(false);
     expect(resumes).toBe(1);
+  });
+});
+
+describe("trackResume", () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  test("counts only the moments right after the page is shown again", () => {
+    const page = new FakeDocument();
+    const stop = trackResume(page);
+    expect(resumedRecently()).toBe(false);
+    page.set(true);
+    expect(resumedRecently()).toBe(false);
+    page.set(false);
+    expect(resumedRecently()).toBe(true);
+    jest.advanceTimersByTime(resumeWindowMs - 1);
+    expect(resumedRecently()).toBe(true);
+    jest.advanceTimersByTime(1);
+    expect(resumedRecently()).toBe(false);
+
+    page.set(true);
+    page.set(false);
+    stop();
+    expect(resumedRecently()).toBe(false);
   });
 });

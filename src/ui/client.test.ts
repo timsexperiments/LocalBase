@@ -1,10 +1,21 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  jest,
+  spyOn,
+  test,
+} from "bun:test";
 import type { ModelMetadata } from "../domains/models/model-metadata";
 import {
   api,
   ApiError,
   discardLegacyFragmentCredential,
+  EdgeSignInExpiredError,
+  gatewayFetch,
   logoutSession,
+  resumeRetryDelaysMs,
   readSession,
   redirectToSignIn,
   sessionConnection,
@@ -30,6 +41,7 @@ import {
   speechVoiceCount,
   type Model,
 } from "./client";
+import { resumeWindowMs, trackResume } from "./visibility";
 
 function streaming(parts: Uint8Array[]) {
   return new Response(
@@ -118,7 +130,7 @@ describe("playground client boundaries", () => {
       expect(options).toMatchObject({
         credentials: "same-origin",
         cache: "no-store",
-        redirect: "error",
+        redirect: "manual",
       });
       expect(new Headers(options?.headers).get("x-localbase-ui")).toBe("1");
       await expect(readSession()).rejects.toThrow(/sign-in/i);
@@ -142,7 +154,7 @@ describe("playground client boundaries", () => {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
-        redirect: "error",
+        redirect: "manual",
       });
       expect(new Headers(options?.headers).get("x-localbase-ui")).toBe("1");
     } finally {
@@ -203,7 +215,7 @@ describe("playground client boundaries", () => {
         expect(headers.has("x-api-key")).toBe(false);
         expect(options).toMatchObject({
           credentials: "same-origin",
-          redirect: "error",
+          redirect: "manual",
           cache: "no-store",
         });
       }
@@ -746,6 +758,209 @@ describe("playground client boundaries", () => {
           ],
         }).success,
       ).toBe(false);
+    }
+  });
+});
+
+// What `redirect: "manual"` yields in a browser for a cross-origin redirect.
+function opaqueRedirect() {
+  const response = new Response(null, { status: 200 });
+  Object.defineProperty(response, "type", { value: "opaqueredirect" });
+  Object.defineProperty(response, "status", { value: 0 });
+  Object.defineProperty(response, "ok", { value: false });
+  return response;
+}
+function accessLogin() {
+  return new Response("login", {
+    status: 302,
+    headers: {
+      location:
+        "https://team.cloudflareaccess.com/cdn-cgi/access/login/localbase.example",
+    },
+  });
+}
+function mockFetch(implementation: () => Promise<Response>) {
+  return spyOn(globalThis, "fetch").mockImplementation(
+    Object.assign(implementation, { preconnect: fetch.preconnect }),
+  );
+}
+async function settle() {
+  for (let index = 0; index < 20; index++) await Promise.resolve();
+}
+class FakeDocument extends EventTarget {
+  hidden = false;
+  set(hidden: boolean) {
+    this.hidden = hidden;
+    this.dispatchEvent(new Event("visibilitychange"));
+  }
+}
+
+describe("sign-in in front of the gateway", () => {
+  test.each([
+    ["an opaque redirect", opaqueRedirect],
+    ["a 302 to the Access login", accessLogin],
+  ])(
+    "%s on any gateway call means the edge sign-in expired",
+    async (_, redirect) => {
+      const fetchMock = mockFetch(async () => redirect());
+      try {
+        for (const call of [
+          () => api("/_localbase/models", { kind: "session" }),
+          () =>
+            api(
+              "/_localbase/model-management",
+              { kind: "session" },
+              { method: "POST" },
+            ),
+          () => readSession(),
+          () => logoutSession(),
+          () => gatewayFetch("/health/ready"),
+        ]) {
+          const error = await call().catch((error: unknown) => error);
+          expect(error).toBeInstanceOf(EdgeSignInExpiredError);
+          expect(error).toBeInstanceOf(SessionRequiredError);
+          expect(error instanceof Error && error.message).toBe(
+            "Your sign-in expired. Reload to sign in again.",
+          );
+        }
+        // Redirects are never followed for gateway calls.
+        for (const [, options] of fetchMock.mock.calls)
+          expect(options?.redirect).toBe("manual");
+      } finally {
+        fetchMock.mockRestore();
+      }
+    },
+  );
+  test("a gateway 401 is LocalBase's own session, not the edge sign-in", async () => {
+    const fetchMock = mockFetch(
+      async () => new Response(null, { status: 401 }),
+    );
+    try {
+      for (const call of [
+        () => api("/_localbase/models", { kind: "session" }),
+        () => readSession(),
+      ]) {
+        const error = await call().catch((error: unknown) => error);
+        expect(error).toBeInstanceOf(SessionRequiredError);
+        expect(error).not.toBeInstanceOf(EdgeSignInExpiredError);
+      }
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+});
+
+describe("network failures right after the tab is shown again", () => {
+  let page: FakeDocument;
+  let stopTracking: () => void;
+  beforeEach(() => {
+    jest.useFakeTimers();
+    page = new FakeDocument();
+    stopTracking = trackResume(page);
+    page.set(true);
+    page.set(false);
+  });
+  afterEach(() => {
+    stopTracking();
+    jest.useRealTimers();
+  });
+  const loadFailed = async (): Promise<Response> => {
+    throw new TypeError("Load failed");
+  };
+
+  test("retries a read with a short backoff and recovers", async () => {
+    const fetchMock = spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockResolvedValue(Response.json({ data: [] }));
+    try {
+      let result: Response | undefined;
+      void api("/_localbase/models", { kind: "session" }).then(
+        (response) => (result = response),
+      );
+      await settle();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(resumeRetryDelaysMs[0] - 1);
+      await settle();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(1);
+      await settle();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      jest.advanceTimersByTime(resumeRetryDelaysMs[1]);
+      await settle();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(result?.status).toBe(200);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  test("reports the gateway as unreachable once the retries run out", async () => {
+    const fetchMock = mockFetch(loadFailed);
+    try {
+      let error: unknown;
+      void api("/_localbase/models", { kind: "session" }).catch(
+        (cause: unknown) => (error = cause),
+      );
+      for (const delay of resumeRetryDelaysMs) {
+        await settle();
+        jest.advanceTimersByTime(delay);
+      }
+      await settle();
+      expect(fetchMock).toHaveBeenCalledTimes(resumeRetryDelaysMs.length + 1);
+      expect(error).not.toBeInstanceOf(SessionRequiredError);
+      expect(error instanceof Error && error.message).toContain(
+        "Could not reach the gateway",
+      );
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  test("never retries a request that may have changed something", async () => {
+    const fetchMock = mockFetch(loadFailed);
+    try {
+      await expect(
+        api(
+          "/_localbase/model-management",
+          { kind: "session" },
+          { method: "POST", body: "{}" },
+        ),
+      ).rejects.toThrow("Could not reach the gateway");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  test("fails at once when the tab was not just shown again", async () => {
+    jest.advanceTimersByTime(resumeWindowMs);
+    const fetchMock = mockFetch(loadFailed);
+    try {
+      await expect(
+        api("/_localbase/models", { kind: "session" }),
+      ).rejects.toThrow("Could not reach the gateway");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+  test("stops retrying when the request is aborted during the backoff", async () => {
+    const fetchMock = mockFetch(loadFailed);
+    const abort = new AbortController();
+    try {
+      let error: unknown;
+      void api(
+        "/_localbase/models",
+        { kind: "session" },
+        { signal: abort.signal },
+      ).catch((cause: unknown) => (error = cause));
+      await settle();
+      abort.abort();
+      await settle();
+      jest.advanceTimersByTime(resumeRetryDelaysMs[0]);
+      await settle();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(error).toBe(abort.signal.reason);
+    } finally {
+      fetchMock.mockRestore();
     }
   });
 });

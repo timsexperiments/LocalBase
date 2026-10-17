@@ -68,7 +68,7 @@ export function DecisionLab({
   model: Model | undefined;
   credential: Connection | null;
   onChooseModel: () => void;
-  onSessionExpired: (message: string) => void;
+  onSessionExpired: (error: SessionRequiredError) => void;
 }) {
   const [format, setFormat] = useState<DecisionStateFormat>(
     firstExample.format,
@@ -207,7 +207,7 @@ export function DecisionLab({
         );
     } catch (e) {
       if (abort.signal.aborted) return;
-      if (e instanceof SessionRequiredError) onSessionExpired(e.message);
+      if (e instanceof SessionRequiredError) onSessionExpired(e);
       else
         setError(
           e instanceof ApiError || e instanceof Error
