@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { diag } from "@opentelemetry/api";
 import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,10 +14,12 @@ import { withRootOperation } from "./domains/service/ownership";
 import {
   ACTIVE_LOG_FILENAME,
   bootstrapDiagnosticPath,
+  LocalBaseLogger,
   logDirectory,
   logEventSchema,
   readLogSnapshot,
   type ILogger,
+  type LogEvent,
   type LogEventInput,
 } from "./domains/observability/logging";
 import {
@@ -25,6 +28,7 @@ import {
   serviceStderrArchivePath,
   serviceStderrPath,
 } from "./domains/observability/service-stderr";
+import { createOtelRuntime } from "./domains/observability/otel";
 import {
   canonicalLocalBaseRoot,
   ensureLocalBaseRootMarker,
@@ -235,4 +239,89 @@ test("OTel diagnostics stay local and name recovery separately", () => {
     ["warn", "observability.export-failed"],
     ["info", "observability.export-recovered"],
   ]);
+});
+
+async function closeLoggerAfterExportOutage(consoleWithFileSink: boolean) {
+  const root = mkdtempSync(join(tmpdir(), "local-base-otel-diagnostics-"));
+  ensureLocalBaseRootMarker(root);
+  const writes: string[] = [];
+  const originalWrites = {
+    stdout: process.stdout.write,
+    stderr: process.stderr.write,
+  };
+  const capture = ((chunk: string | Uint8Array) => {
+    writes.push(String(chunk));
+    return true;
+  }) as typeof process.stdout.write;
+  const exported: LogEvent[] = [];
+  let sinkOpenedAt = 0;
+  process.stdout.write = capture;
+  process.stderr.write = capture;
+  try {
+    const logger = new LocalBaseLogger(undefined, { consoleWithFileSink });
+    const runtime = createOtelRuntime(
+      {
+        enabled: true,
+        tracesEndpoint: "http://127.0.0.1:1/v1/traces",
+        logsEndpoint: "http://127.0.0.1:1/v1/logs",
+        headers: {},
+        tracesHeaders: {},
+        logsHeaders: {},
+        sampleRatio: 1,
+        sampler: "parentbased_traceidratio",
+        source: "persistent",
+        displayEndpoint: "http://127.0.0.1:1/",
+      },
+      otelDiagnostic(logger),
+    );
+    const emit = runtime.emit.bind(runtime);
+    runtime.emit = (event) => {
+      exported.push(event);
+      emit(event);
+    };
+    logger.setOtelRuntime(runtime);
+    await logger.enableFileLogging(root);
+    sinkOpenedAt = writes.length;
+    // The batch exporter sends this on shutdown, where the collector refuses it.
+    logger.warn("gateway", "queued for export");
+    await logger.close();
+  } finally {
+    process.stdout.write = originalWrites.stdout;
+    process.stderr.write = originalWrites.stderr;
+    // The SDK logger is process-global; drop it so later runtimes do not report through this closed logger.
+    diag.disable();
+  }
+  try {
+    return {
+      console: writes.slice(sinkOpenedAt).join(""),
+      file: await readLogSnapshot(root),
+      exported,
+    };
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test("captured service stderr gets no OTel export diagnostics once the file sink opens", async () => {
+  const { console, file, exported } = await closeLoggerAfterExportOutage(false);
+
+  expect(
+    file
+      .filter(({ eventName }) => eventName === "observability.export-failed")
+      .map(({ attributes }) => attributes?.signal),
+  ).toEqual(["logs"]);
+  expect(console).not.toContain("[otel]");
+  expect(console).not.toContain("OTLP export");
+  expect(console).not.toContain("queued for export");
+  expect(exported.map(({ message }) => message)).toEqual(["queued for export"]);
+});
+
+test("foreground serve still prints OTel export diagnostics without re-exporting them", async () => {
+  const { console, file, exported } = await closeLoggerAfterExportOutage(true);
+
+  expect(console).toContain("[otel] OTLP export failed.");
+  expect(
+    file.some(({ eventName }) => eventName === "observability.export-failed"),
+  ).toBe(true);
+  expect(exported.map(({ message }) => message)).toEqual(["queued for export"]);
 });
