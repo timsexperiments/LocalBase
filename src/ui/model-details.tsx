@@ -27,6 +27,7 @@ export type ModelDetailsStatus = Readonly<{
   /** True when this model is its mode's default. */
   active?: boolean;
   downloadBytes?: number | null;
+  installedBytes?: number;
 }>;
 
 /** A short revision for display; the full one stays in the tooltip. */
@@ -78,8 +79,18 @@ export function ModelDetails({
     if (dialog && !dialog.open) dialog.showModal();
     return () => {
       dialog?.close();
-      if (previous instanceof HTMLElement && previous.isConnected)
+      if (
+        previous instanceof HTMLElement &&
+        previous !== document.body &&
+        previous.isConnected
+      )
         previous.focus();
+      else
+        document
+          .querySelector<HTMLInputElement>(
+            ".model-management input[type=search]",
+          )
+          ?.focus();
     };
   }, []);
 
@@ -156,6 +167,8 @@ export function ModelDetails({
           </ul>
         </header>
 
+        <div className="model-details-actions">{actions}</div>
+
         {catalog.summary && <p className="model-summary">{catalog.summary}</p>}
         {catalog.notes && (
           <p className="model-details-notes">{catalog.notes}</p>
@@ -166,8 +179,6 @@ export function ModelDetails({
             estimate, still need checking.
           </p>
         )}
-
-        <div className="model-details-actions">{actions}</div>
 
         <section aria-labelledby="model-details-about">
           <h3 id="model-details-about">About</h3>
@@ -360,6 +371,11 @@ export function ModelDetails({
           ) : (
             <p className="muted">
               About {catalog.memory.storageEstimateGb} GB to download.
+            </p>
+          )}
+          {status?.installedBytes !== undefined && (
+            <p className="hint">
+              Stored on disk: {formatFileSize(status.installedBytes)}.
             </p>
           )}
           {status?.downloadBytes != null && (

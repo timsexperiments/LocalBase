@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createRoot } from "react-dom/client";
 import { Copy, MessageMarkdown } from "./message-markdown";
+import { ModelPickerList } from "./model-picker";
 import { ModelManagement } from "./model-management";
 import { pollWhileVisible, trackResume } from "./visibility";
 import { AuthManagement } from "./auth-management";
@@ -79,7 +80,6 @@ import {
   modelMemorySummary,
   speechAcceptsCustomVoices,
   speechVoiceCount,
-  modelModalities,
   modelName,
   embeddingSummary,
   embeddingSummaryText,
@@ -2329,7 +2329,7 @@ function App() {
                   />
                 )}
               </div>
-              <p className="hint">Install or enable a model to use it here.</p>
+              <p className="hint">Choose a model for this conversation.</p>
               {canManageModels && (
                 <a
                   className="manage-models-link"
@@ -2368,60 +2368,21 @@ function App() {
                   ))}
                 </div>
               )}
-              {pickerModels.length ? (
-                pickerModels
-                  .filter((candidate) =>
-                    `${modelName(candidate)} ${candidate.catalog.name} ${candidate.id} ${candidate.catalog.quantization}`
-                      .toLowerCase()
-                      .includes(modelSearch.toLowerCase()),
-                  )
-                  .map((m) => (
-                    <button
-                      disabled={
-                        busy || !m.device.installed || !m.device.selected
-                      }
-                      className={`model-card ${m.id === model?.id ? "selected" : ""}`}
-                      key={m.id}
-                      aria-pressed={m.id === model?.id}
-                      onClick={() => {
-                        update(active.id, (c) => ({ ...c, model: m.id }));
-                        setPanel(null);
-                        writeNavigation(
-                          conversationNavigation(active, null, m.id),
-                          "push",
-                        );
-                      }}
-                    >
-                      <strong>{modelName(m)}</strong>
-                      <span>
-                        {m.catalog.quantization} ·{" "}
-                        {m.device.installed
-                          ? m.device.selected
-                            ? "Installed · Enabled"
-                            : "Installed · Disabled"
-                          : "Not installed"}
-                      </span>
-                      <small className="model-id">{m.id}</small>
-                      <small>
-                        {modelModalities(m)}
-                        {m.catalog.contextWindowTokens
-                          ? ` · ${m.catalog.contextWindowTokens.toLocaleString()} context`
-                          : ""}
-                      </small>
-                      <small>{modelMemorySummary(m, hostMemory)}</small>
-                    </button>
-                  ))
-              ) : (
-                <p>
-                  No catalog models for {labels[active.mode].toLowerCase()}.
-                </p>
-              )}
-              {pickerModels.length > 0 &&
-                !pickerModels.some((candidate) =>
-                  `${modelName(candidate)} ${candidate.catalog.name} ${candidate.id} ${candidate.catalog.quantization}`
-                    .toLowerCase()
-                    .includes(modelSearch.toLowerCase()),
-                ) && <p className="hint">No models match your search.</p>}
+              <ModelPickerList
+                models={pickerModels}
+                selectedId={model?.id}
+                search={modelSearch}
+                busy={busy}
+                hostMemory={hostMemory}
+                onChoose={(id) => {
+                  update(active.id, (c) => ({ ...c, model: id }));
+                  setPanel(null);
+                  writeNavigation(
+                    conversationNavigation(active, null, id),
+                    "push",
+                  );
+                }}
+              />
             </>
           ) : (
             <>
