@@ -483,6 +483,7 @@ test("rejects malformed WAV boundaries", () => {
     speakerFiles: {
       harbor: "/models/harbor.wav",
       willow: "/models/willow.wav",
+      "voice-0123456789ab": "/root/voices/voice-0123456789ab.wav",
     },
   };
   const args = speechNativeArguments(
@@ -499,6 +500,7 @@ test("rejects malformed WAV boundaries", () => {
   for (const [voice, path] of [
     ["harbor", "/models/harbor.wav"],
     ["willow", "/models/willow.wav"],
+    ["voice-0123456789ab", "/root/voices/voice-0123456789ab.wav"],
   ] as const) {
     expect(
       speechNativeArguments(
@@ -558,4 +560,24 @@ test("the talker context covers the longest prompt plus every frame", () => {
   );
   // llama.cpp caps n_batch at n_ctx and decodes the prompt in one batch.
   expect(worstPromptTokens).toBeLessThanOrEqual(SPEECH_CONTEXT_TOKENS);
+});
+
+test("never resolves inherited or unprepared voices to speaker files", () => {
+  const preparation = {
+    kind: "llama-tts" as const,
+    binaryPath: "/runtime/llama-tts",
+    modelPath: "/models/model.gguf",
+    projectorPath: "/models/mmproj.gguf",
+    speakerFiles: { harbor: "/models/harbor.wav" },
+  };
+  for (const voice of ["constructor", "__proto__", "voice-ffffffffffff"]) {
+    expect(
+      speechNativeArguments(
+        preparation,
+        "/private/prompt.txt",
+        "/private/output.wav",
+        voice,
+      ),
+    ).not.toContain("--tts-speaker-file");
+  }
 });

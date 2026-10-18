@@ -47,8 +47,15 @@ type ClientCapabilities =
       voice: Pick<
         SpeechCapabilities["voice"],
         "requestValues" | "defaultRequestValue"
-      >;
+      > & {
+        custom?: Extract<
+          SpeechCapabilities["voice"],
+          { selection: "catalog-reference" }
+        >["custom"];
+      };
     });
+// Custom voice profiles are addressed by server-issued ids.
+const customVoiceIdSchema = z.string().regex(/^voice-[0-9a-f]{12}$/);
 
 const capabilitiesSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("decision") }),
@@ -82,8 +89,20 @@ const capabilitiesSchema = z.discriminatedUnion("kind", [
     kind: z.literal("speech"),
     voice: z.union([
       z.object({
-        requestValues: z.array(z.enum(["default", "harbor", "willow"])).min(1),
+        requestValues: z
+          .array(
+            z.union([
+              z.enum(["default", "harbor", "willow"]),
+              customVoiceIdSchema,
+            ]),
+          )
+          .min(1),
         defaultRequestValue: z.literal("default"),
+        custom: z
+          .array(
+            z.object({ requestValue: customVoiceIdSchema, name: z.string() }),
+          )
+          .optional(),
       }),
       z.object({
         requestValues: z.array(z.enum(["af_heart", "af_bella"])).min(1),
@@ -970,6 +989,33 @@ export function codeLanguage(className: string | undefined) {
     .find((name) => name.startsWith("language-"))
     ?.slice("language-".length);
   return language || undefined;
+}
+
+/** The label for a voice choice: a custom voice name, or the voice value. */
+export function speechVoiceLabel(
+  model: Pick<Model, "catalog"> | undefined,
+  voice: string,
+): string {
+  const cap = model?.catalog.capabilities;
+  if (cap?.kind !== "speech") return voice;
+  return (
+    ("custom" in cap.voice
+      ? cap.voice.custom?.find(({ requestValue }) => requestValue === voice)
+          ?.name
+      : undefined) ?? voice
+  );
+}
+
+/** Whether a speech model clones voices from stored reference recordings. */
+export function speechAcceptsCustomVoices(
+  model: Pick<Model, "catalog"> | undefined,
+): boolean {
+  const cap = model?.catalog.capabilities;
+  return (
+    cap?.kind === "speech" &&
+    "custom" in cap.voice &&
+    cap.voice.custom !== undefined
+  );
 }
 
 /** How many voices a speech model accepts; 0 for other models. */

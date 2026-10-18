@@ -1,3 +1,4 @@
+import { createCustomVoiceStore } from "../../voices/voice-store";
 import { CATALOG, byId } from "../../../catalog";
 import {
   capabilityLabel,
@@ -159,6 +160,13 @@ export async function runShow(
     capabilities,
     memory: cliMemoryInputs(ctx, models),
     systemMemoryGb: ctx.specs.gpuVramGb,
+    customVoices:
+      spec.kind === "tts"
+        ? createCustomVoiceStore(
+            ctx.database.get(ctx.config.root),
+            ctx.config.root,
+          ).list()
+        : [],
   })!;
   const config = ctx.config;
   const status: ModelStatus = {

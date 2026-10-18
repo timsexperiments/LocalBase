@@ -25,6 +25,7 @@ import { emailDeliveryConfigSummarySchema } from "../../auth/email-delivery";
 import { accessControlConfigSchema } from "../../auth/access-control";
 import { apiKeyMetadataSchema } from "../../auth/api-key-public";
 import { managedUserSchema } from "../../auth/users";
+import { customVoiceSchema } from "../../voices/voice-contract";
 
 export { publicApiKey } from "../../auth/api-key-public";
 
@@ -284,6 +285,12 @@ export const feedRefreshResultSchema = z
   .strict();
 export const feedStatusResultSchema = z
   .object({ feed: catalogFeedStatusResultSchema })
+  .strict();
+export const voicesListResultSchema = z
+  .object({ voices: z.array(customVoiceSchema) })
+  .strict();
+export const voiceResultSchema = z
+  .object({ voice: customVoiceSchema })
   .strict();
 export const keysListResultSchema = z
   .object({ keys: z.array(apiKeyMetadataOutputSchema) })

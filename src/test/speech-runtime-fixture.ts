@@ -219,6 +219,17 @@ async function runSpeechServerFixture(args: string[]): Promise<void> {
           input: string;
           voice: string;
         };
+        // Like tts-server, only voices registered at launch are known.
+        const voices = args.flatMap((arg, index) =>
+          args[index - 1] === "--voice" ? [arg.split("=", 1)[0]] : [],
+        );
+        if (
+          body.voice &&
+          body.voice !== "default" &&
+          !voices.includes(body.voice)
+        ) {
+          return Response.json({ error: "unknown voice" }, { status: 400 });
+        }
         control = JSON.parse(
           await Bun.file(__LOCALBASE_TEST_SPEECH_CONTROL_PATH__).text(),
         ) as SpeechFixtureControl;

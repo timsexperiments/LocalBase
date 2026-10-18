@@ -9,7 +9,11 @@ import { DatabaseSession } from "../../db/client";
 import { RuntimeConfigController } from "./config-snapshot";
 import { MemorySafetyController } from "./memory-controller";
 import { defaultMemorySafetyConfig, gibibyte } from "./memory-safety";
-import { createRuntimeSupervisorFactory } from "./supervisor-factory";
+import {
+  createRuntimeSupervisorFactory,
+  withPresentSpeakerFiles,
+} from "./supervisor-factory";
+import { resolveTtsLaunchPlan } from "./launch-plan";
 import { RuntimeReconciler } from "./runtime-reconciler";
 import {
   SupervisorRegistry,
@@ -435,3 +439,41 @@ test.each([
     }
   },
 );
+
+test("drops deleted custom voices from a warm server relaunch only", async () => {
+  const root = mkdtempSync(join(tmpdir(), "localbase-speaker-files-"));
+  try {
+    const kept = join(root, "voice-aaaaaaaaaaaa.wav");
+    await Bun.write(kept, "RIFF");
+    const plan = resolveTtsLaunchPlan({
+      runtimeId: "tts",
+      root,
+      modelId: "test-tts",
+      modelPath: join(root, "model.gguf"),
+      projectorPath: join(root, "mmproj.gguf"),
+      speakerFiles: {
+        harbor: join(root, "missing-harbor.wav"),
+        "voice-aaaaaaaaaaaa": kept,
+        "voice-bbbbbbbbbbbb": join(root, "voice-bbbbbbbbbbbb.wav"),
+      },
+      host: "127.0.0.1",
+      port: 24_999,
+      memoryDemand: {
+        unifiedBytes: gibibyte,
+        hostBytes: gibibyte,
+        acceleratorBytes: gibibyte,
+        confidence: "estimated",
+      },
+    });
+    const relaunch = await withPresentSpeakerFiles(plan);
+    // A missing catalog reference stays, so the launch still fails loudly.
+    expect(relaunch.speakerFiles).toEqual({
+      harbor: join(root, "missing-harbor.wav"),
+      "voice-aaaaaaaaaaaa": kept,
+    });
+    await Bun.write(join(root, "voice-bbbbbbbbbbbb.wav"), "RIFF");
+    expect(await withPresentSpeakerFiles(plan)).toBe(plan);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

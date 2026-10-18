@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 import { z } from "zod";
-import { modelHasCapability, type Model, type Mode } from "./client";
+import {
+  modelHasCapability,
+  speechVoiceLabel,
+  type Model,
+  type Mode,
+} from "./client";
 import { DictationButton, appendDictation } from "./dictation";
 
 export const imageSizes = [
@@ -438,7 +443,9 @@ export function GenerationSettingsFields({
               >
                 <option value="">Model default</option>
                 {voices.map((voice) => (
-                  <option key={voice}>{voice}</option>
+                  <option key={voice} value={voice}>
+                    {speechVoiceLabel(model, voice)}
+                  </option>
                 ))}
               </select>
             </Field>

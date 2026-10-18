@@ -55,6 +55,9 @@ import {
   keysCreateInputSchema,
   keysListInputSchema,
   keysScopesInputSchema,
+  voicesAddInputSchema,
+  voicesListInputSchema,
+  voicesRemoveInputSchema,
   logsInputSchema,
   recommendInputSchema,
   resetInputSchema,
@@ -107,6 +110,9 @@ import {
   type KeysCreateInput,
   type KeysListInput,
   type KeysScopesInput,
+  type VoicesAddInput,
+  type VoicesListInput,
+  type VoicesRemoveInput,
   type LogsInput,
   type RecommendInput,
   type ResetInput,
@@ -154,6 +160,8 @@ import {
   keyMetadataResultSchema,
   keySecretResultSchema,
   keysListResultSchema,
+  voiceResultSchema,
+  voicesListResultSchema,
   logsResultSchema,
   recommendResultSchema,
   resetResultSchema,
@@ -1142,6 +1150,67 @@ const keysScopesCommand = command<KeysScopesInput>({
   },
 });
 
+const voicesListCommand = command<VoicesListInput>({
+  path: ["voices", "list"],
+  description: "List custom TTS voices",
+  parse: (input) => voicesListInputSchema.parse(input),
+  resultSchema: voicesListResultSchema,
+  run: async (input, context, execution) => {
+    const { runVoicesList } = await import("../../voices/commands/voices");
+    return runVoicesList(input, context, execution);
+  },
+});
+
+const voicesAddCommand = command<VoicesAddInput>({
+  path: ["voices", "add"],
+  description: "Add a custom TTS voice from a 3 to 30 second WAV recording",
+  examples: ["local-base voices add clip.wav --name Narrator --consent"],
+  args: {
+    file: {
+      type: "positional",
+      required: true,
+      description: "WAV recording of the voice",
+    },
+    name: {
+      type: "string",
+      valueHint: "name",
+      description: "Display name",
+      required: true,
+    },
+    consent: {
+      type: "boolean",
+      description:
+        "Confirm the voice is yours or its speaker allowed it to be cloned",
+    },
+  },
+  positionals: { minimum: 1, maximum: 1 },
+  parse: (input) => voicesAddInputSchema.parse(input),
+  resultSchema: voiceResultSchema,
+  run: async (input, context, execution) => {
+    const { runVoicesAdd } = await import("../../voices/commands/voices");
+    return await runVoicesAdd(input, context, execution);
+  },
+});
+
+const voicesRemoveCommand = command<VoicesRemoveInput>({
+  path: ["voices", "remove"],
+  description: "Delete a custom TTS voice and its recording",
+  args: {
+    voiceId: {
+      type: "positional",
+      description: "Voice ID",
+      required: true,
+    },
+  },
+  positionals: { minimum: 1, maximum: 1 },
+  parse: (input) => voicesRemoveInputSchema.parse(input),
+  resultSchema: voiceResultSchema,
+  run: async (input, context, execution) => {
+    const { runVoicesRemove } = await import("../../voices/commands/voices");
+    return await runVoicesRemove(input, context, execution);
+  },
+});
+
 const accessShowCommand = command<AccessShowInput>({
   path: ["access", "show"],
   description: "Show browser identity provider configuration",
@@ -1858,6 +1927,9 @@ export const commands = [
   keysRevokeCommand,
   keysRotateCommand,
   keysScopesCommand,
+  voicesListCommand,
+  voicesAddCommand,
+  voicesRemoveCommand,
   accessShowCommand,
   accessCloudflareCommand,
   accessOidcAddCommand,
@@ -1926,6 +1998,16 @@ export const keysCommand = defineCommand({
     revoke: keysRevokeCommand.citty,
     rotate: keysRotateCommand.citty,
     scopes: keysScopesCommand.citty,
+  },
+});
+
+export const voicesCommand = defineCommand({
+  meta: { name: "local-base voices", description: "Manage custom TTS voices" },
+  args: globalArgs,
+  subCommands: {
+    list: voicesListCommand.citty,
+    add: voicesAddCommand.citty,
+    remove: voicesRemoveCommand.citty,
   },
 });
 
@@ -2064,6 +2146,7 @@ export const rootCommand = defineCommand({
     diagnostics: diagnosticsCommand.citty,
     smoke: smokeCommand.citty,
     keys: keysCommand,
+    voices: voicesCommand,
     access: accessCommand,
     reset: resetCommand.citty,
     uninstall: uninstallCommand.citty,
@@ -2088,6 +2171,7 @@ export function groupForPath(path: string[]): CittyCommand | undefined {
   if (path.length !== 1) return undefined;
   if (path[0] === "models") return modelsCommand;
   if (path[0] === "keys") return keysCommand;
+  if (path[0] === "voices") return voicesCommand;
   if (path[0] === "access") return accessCommand;
   if (path[0] === "config") return configCommand;
   return undefined;

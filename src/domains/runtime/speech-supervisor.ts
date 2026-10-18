@@ -7,10 +7,10 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import type {
-  KokoroSpeechVoice,
-  ReferenceSpeechVoice,
-  SpeechVoice,
+import {
+  isCustomSpeechVoiceId,
+  type KokoroSpeechVoice,
+  type RequestSpeechVoice,
 } from "../../catalog";
 import type { ILogger } from "../observability/logging";
 import { guardianProcessCommand } from "./backend-guardian";
@@ -57,7 +57,7 @@ export const SPEECH_MEMORY_DEMAND: RuntimeMemoryDemand = Object.freeze({
 
 export type SpeechGenerationInput = Readonly<{
   text: string;
-  voice?: SpeechVoice;
+  voice?: RequestSpeechVoice;
   signal?: AbortSignal;
 }>;
 
@@ -66,7 +66,8 @@ export type TtsServerPreparation = Readonly<{
   binaryPath: string;
   modelPath: string;
   projectorPath: string;
-  speakerFiles: Readonly<Record<ReferenceSpeechVoice, string>>;
+  /** Reference clips by voice: the catalog voices plus stored custom voices. */
+  speakerFiles: Readonly<Record<string, string>>;
 }>;
 
 /**
@@ -96,7 +97,7 @@ export type SpeechPreparation =
       binaryPath: string;
       modelPath: string;
       projectorPath: string;
-      speakerFiles: Readonly<Record<ReferenceSpeechVoice, string>>;
+      speakerFiles: Readonly<Record<string, string>>;
     }>
   | Readonly<{
       kind: "kokoro-onnx";
@@ -128,6 +129,16 @@ export class SpeechOutputError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SpeechOutputError";
+  }
+}
+
+/** A custom voice that is no longer stored, or whose reference file is gone. */
+export class SpeechVoiceUnavailableError extends Error {
+  constructor() {
+    super(
+      "The requested custom voice is not available. It may have been deleted.",
+    );
+    this.name = "SpeechVoiceUnavailableError";
   }
 }
 
@@ -328,10 +339,10 @@ export function speechNativeArguments(
   preparation: Extract<SpeechPreparation, { kind: "llama-tts" }>,
   promptPath: string,
   outputPath: string,
-  voice: ReferenceSpeechVoice | "default" = "default",
+  voice = "default",
 ): string[] {
   const speakerFile =
-    voice === "default" ? undefined : preparation.speakerFiles[voice];
+    voice === "default" ? undefined : preparedSpeakerFile(preparation, voice);
   return [
     preparation.binaryPath,
     "--offline",
@@ -487,11 +498,32 @@ function generatedKokoroSampleCount(stderr: string): number {
   return samples;
 }
 
+function preparedSpeakerFile(
+  preparation: Readonly<{ speakerFiles: Readonly<Record<string, string>> }>,
+  voice: string,
+): string | undefined {
+  return Object.hasOwn(preparation.speakerFiles, voice)
+    ? preparation.speakerFiles[voice]
+    : undefined;
+}
+
+/** Whether a prepared runtime already holds the reference for `voice`. */
+function preparationHasVoice(
+  preparation: SpeechPreparation,
+  voice: RequestSpeechVoice | undefined,
+): boolean {
+  if (preparation.kind === "kokoro-onnx") return true;
+  if (voice === undefined || !isCustomSpeechVoiceId(voice)) return true;
+  return preparedSpeakerFile(preparation, voice) !== undefined;
+}
+
 function llamaVoice(
-  voice: SpeechVoice | undefined,
-): ReferenceSpeechVoice | "default" {
+  preparation: Readonly<{ speakerFiles: Readonly<Record<string, string>> }>,
+  voice: RequestSpeechVoice | undefined,
+): string {
   if (voice === undefined || voice === "default") return "default";
-  if (voice === "harbor" || voice === "willow") return voice;
+  if (preparedSpeakerFile(preparation, voice)) return voice;
+  if (isCustomSpeechVoiceId(voice)) throw new SpeechVoiceUnavailableError();
   throw new SpeechOutputError("Voice is not supported by llama-tts.");
 }
 
@@ -552,7 +584,7 @@ async function boundedText(response: Response, limit: number): Promise<string> {
     .slice(0, 512);
 }
 
-function kokoroVoice(voice: SpeechVoice | undefined): KokoroSpeechVoice {
+function kokoroVoice(voice: RequestSpeechVoice | undefined): KokoroSpeechVoice {
   if (voice === "af_heart" || voice === "af_bella") return voice;
   throw new SpeechOutputError("Voice is not supported by kokoro-onnx.");
 }
@@ -626,13 +658,22 @@ export class SpeechSupervisor {
     );
   }
 
-  async ensureRunning(): Promise<void> {
+  /**
+   * Prepares the runtime. A custom voice created after preparation is not in
+   * the prepared reference set, so the runtime is prepared again (restarting a
+   * warm server) once in-flight generations finish.
+   */
+  async ensureRunning(voice?: RequestSpeechVoice): Promise<void> {
     if (this.shuttingDown) throw new Error("llama-tts is shutting down.");
     if (this.lifecycleState === "failed" && this.active.size > 0) {
       throw new Error("llama-tts has an unresolved child process.");
     }
     if (this.lifecycleState === "stopping") {
       throw new SpeechGenerationAbortedError();
+    }
+    if (this.preparation && !preparationHasVoice(this.preparation, voice)) {
+      await this.reprepare();
+      return;
     }
     if (this.preparation) {
       if (this.warm) await this.warm.ensureRunning();
@@ -645,6 +686,41 @@ export class SpeechSupervisor {
       this.preparationPromise = this.prepare(generation);
     }
     await this.preparationPromise;
+  }
+
+  private reprepare(): Promise<void> {
+    if (!this.preparationPromise) {
+      const previous = this.warm;
+      const pending = [...this.active].map(({ done }) => done);
+      this.preparation = undefined;
+      this.warm = undefined;
+      this.lifecycleState = "starting";
+      const generation = ++this.preparationGeneration;
+      this.options.logger.event({
+        severity: "info",
+        eventName: "backend.voices-changed",
+        category: "runtime",
+        component: "llama-tts",
+        runtime: "tts",
+        message: "Reloading the speech runtime with the current voices.",
+        attributes: { model_id: this.options.modelId },
+      });
+      const run = async () => {
+        await Promise.all(pending);
+        // The replacement binds the same port, so the old server must be gone.
+        if (previous) await previous.shutdown();
+        await this.prepare(generation);
+      };
+      this.preparationPromise = run().catch((error: unknown) => {
+        if (generation === this.preparationGeneration) {
+          this.preparationPromise = undefined;
+          if (this.lifecycleState === "starting")
+            this.lifecycleState = "failed";
+        }
+        throw error;
+      });
+    }
+    return this.preparationPromise;
   }
 
   private async prepare(generation: number): Promise<void> {
@@ -734,23 +810,24 @@ export class SpeechSupervisor {
     input: SpeechGenerationInput,
   ): Promise<SpeechAudioStream> {
     this.assertSpeechInput(input);
-    await this.ensureRunning();
+    await this.ensureRunning(input.voice);
     const preparation = this.preparation;
     const warm = this.warm;
     if (!preparation || this.lifecycleState !== "running") {
       throw new SpeechGenerationAbortedError();
     }
     if (preparation.kind === "tts-server" && warm) {
-      return await this.streamWarmSpeech(warm, input);
+      return await this.streamWarmSpeech(warm, preparation, input);
     }
     return bufferedSpeechStream(await this.generateSpeech(input));
   }
 
   private async generateWarmSpeech(
     warm: WarmSpeechServer,
+    preparation: TtsServerPreparation,
     input: SpeechGenerationInput,
   ): Promise<Uint8Array> {
-    const { pcm } = await this.streamWarmSpeech(warm, input);
+    const { pcm } = await this.streamWarmSpeech(warm, preparation, input);
     const reader = pcm.getReader();
     const chunks: Uint8Array[] = [];
     let size = 0;
@@ -775,9 +852,10 @@ export class SpeechSupervisor {
 
   private async streamWarmSpeech(
     warm: WarmSpeechServer,
+    preparation: TtsServerPreparation,
     input: SpeechGenerationInput,
   ): Promise<SpeechAudioStream> {
-    const voice = llamaVoice(input.voice);
+    const voice = llamaVoice(preparation, input.voice);
     const active = operation();
     this.active.add(active);
     const request = new AbortController();
@@ -903,7 +981,7 @@ export class SpeechSupervisor {
   private async requestWarmSpeech(
     warm: WarmSpeechServer,
     text: string,
-    voice: ReferenceSpeechVoice | "default",
+    voice: string,
     signal: AbortSignal,
   ): Promise<Response> {
     const body = JSON.stringify({ input: text, voice });
@@ -951,14 +1029,14 @@ export class SpeechSupervisor {
 
   async generateSpeech(input: SpeechGenerationInput): Promise<Uint8Array> {
     this.assertSpeechInput(input);
-    await this.ensureRunning();
+    await this.ensureRunning(input.voice);
     const preparation = this.preparation;
     if (!preparation || this.lifecycleState !== "running") {
       throw new SpeechGenerationAbortedError();
     }
     if (preparation.kind === "tts-server") {
       if (!this.warm) throw new SpeechGenerationAbortedError();
-      return await this.generateWarmSpeech(this.warm, input);
+      return await this.generateWarmSpeech(this.warm, preparation, input);
     }
 
     const active = operation();
@@ -1065,7 +1143,7 @@ export class SpeechSupervisor {
               preparation,
               promptPath,
               outputPath,
-              llamaVoice(input.voice),
+              llamaVoice(preparation, input.voice),
             )
           : kokoroNativeArguments(
               preparation,

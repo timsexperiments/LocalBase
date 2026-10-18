@@ -64,6 +64,18 @@ test("normalizes dynamic gateway paths without recording identifiers", () => {
       "/v1/videos/00000000-0000-4000-8000-000000000000/cancel",
     ),
   ).toBe("/v1/videos/{job_id}/cancel");
+  expect(canonicalGatewayHttpRoute("/_localbase/voices")).toBe(
+    "/_localbase/voices",
+  );
+  expect(
+    canonicalGatewayHttpRoute("/app/api/_localbase/voices/voice-0123456789ab"),
+  ).toBe("/app/api/_localbase/voices/{voice_id}");
+  expect(
+    canonicalGatewayHttpRoute("/_localbase/voices/voice-0123456789ab/audio"),
+  ).toBe("/_localbase/voices/{voice_id}/audio");
+  expect(canonicalGatewayHttpRoute("/_localbase/voices/..%2Fsecret")).toBe(
+    "unmatched-route",
+  );
   expect(canonicalGatewayHttpRoute("/private/model-name")).toBe(
     "unmatched-route",
   );

@@ -1,3 +1,5 @@
+import { voiceRouteFromPath } from "../voices/voice-http";
+
 export type GatewayRoute =
   | "health"
   | "readiness"
@@ -30,6 +32,9 @@ const apiHttpRoutes = [
   "/_localbase/model-management",
   "/_localbase/model-discovery",
   "/_localbase/hf-token",
+  "/_localbase/voices",
+  "/_localbase/voices/{voice_id}",
+  "/_localbase/voices/{voice_id}/audio",
   "/_localbase/models",
   "/_localbase/models/{model_id}",
   "/v1/models",
@@ -213,12 +218,20 @@ function apiHttpRoute(pathname: string): ApiHttpRoute | undefined {
       return "/v1/models";
     case "modelRetrieve":
       return "/v1/models/{model}";
-    case "notFound":
-      return pathname === "/_localbase/model-management" ||
+    case "notFound": {
+      if (
+        pathname === "/_localbase/model-management" ||
         pathname === "/_localbase/model-discovery" ||
         pathname === "/_localbase/hf-token"
-        ? pathname
-        : undefined;
+      )
+        return pathname;
+      // Voice ids stay out of route labels, logs and metrics.
+      const voice = voiceRouteFromPath(pathname);
+      if (voice?.kind === "collection") return "/_localbase/voices";
+      if (voice?.kind === "voice") return "/_localbase/voices/{voice_id}";
+      if (voice?.kind === "audio") return "/_localbase/voices/{voice_id}/audio";
+      return undefined;
+    }
   }
 }
 

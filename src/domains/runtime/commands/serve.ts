@@ -10,6 +10,7 @@ import {
   principalOwnerId,
   principalSchema,
   type AuthorizationRequirement,
+  type Permission,
   type Principal,
 } from "../../auth/authorization";
 import { resolveAccessControl } from "../../auth/access-control";
@@ -26,8 +27,9 @@ import {
   calculateMaxSafeContextSize,
   isDecisionModel,
   primaryArtifact,
+  isCustomSpeechVoiceId,
+  requestSpeechVoiceSchema,
   resolveCatalogInstallation,
-  speechVoiceSchema,
   ttsVoiceAllowed,
   modelKindSchema,
   type ModelSpec,
@@ -128,6 +130,7 @@ import {
   SpeechGenerationAbortedError,
   SpeechGenerationTimeoutError,
   SpeechOutputError,
+  SpeechVoiceUnavailableError,
   bufferedSpeechStream,
   speechPcmFromWav,
   speechWavFromPcm,
@@ -148,6 +151,11 @@ import {
   runHubTokenRequest,
 } from "../../models/hub-token";
 import { checkHubToken } from "../../models/huggingface";
+import { createCustomVoiceStore } from "../../voices/voice-store";
+import {
+  handleVoiceRequest,
+  voiceRouteFromPath,
+} from "../../voices/voice-http";
 import { videoTargetFromTopology } from "../../models/model-eligibility";
 import {
   ModelManagementError,
@@ -436,6 +444,20 @@ function notConfigured(feature: string): Response {
   );
 }
 
+/** A custom voice id with no stored profile, such as one that was deleted. */
+function customVoiceNotFound(): Response {
+  return openAIErrorResponse(
+    {
+      message:
+        "The requested custom voice does not exist. It may have been deleted; list voices at /_localbase/voices.",
+      type: "invalid_request_error",
+      param: "voice",
+      code: "voice_not_found",
+    },
+    400,
+  );
+}
+
 function badRequest(message: string, param: string | null = null): Response {
   return openAIErrorResponse(
     {
@@ -583,6 +605,9 @@ export function speechGenerationFailure(error: unknown): Readonly<{
   }
   if (error instanceof SpeechGenerationTimeoutError) {
     return { response: speechTimeout(), source: "speech_timeout" };
+  }
+  if (error instanceof SpeechVoiceUnavailableError) {
+    return { response: customVoiceNotFound() };
   }
   if (error instanceof SpeechOutputError) {
     return { response: upstreamFailure(error.message) };
@@ -1019,7 +1044,7 @@ const speechGenerationRequestSchema = z
         (value) => Array.from(value).length <= SPEECH_MAX_INPUT_CHARACTERS,
         `input must not exceed ${SPEECH_MAX_INPUT_CHARACTERS} characters`,
       ),
-    voice: speechVoiceSchema,
+    voice: requestSpeechVoiceSchema,
     response_format: z
       .enum(["wav", "pcm"], {
         error: "response_format supports only 'wav' or 'pcm'",
@@ -2805,6 +2830,7 @@ export async function runServe(
   const database = ctx.database.get(config.root);
   const runtimeCapabilities = createRuntimeCapabilityStore(database);
   const observedMemory = createObservedMemoryStore(database);
+  const voiceStore = createCustomVoiceStore(database, config.root);
   const readCachedLlmKvGeometry = createLlmKvGeometryReader();
   const modelSupports = async (
     model: ModelSpec,
@@ -3432,6 +3458,7 @@ export async function runServe(
   const factory = createRuntimeSupervisorFactory(ctx, launchOverrides, {
     memorySafety,
     observedMemory,
+    customVoiceFiles: () => voiceStore.referenceFiles(),
     installMissing: input.installMissing || config.installMissingModels,
     onBackendReady: ({ modelId, ready }) => {
       const target = observationTarget(byId(modelId), ready.plan);
@@ -3823,6 +3850,28 @@ export async function runServe(
         );
       }
     }
+    const voiceRoute = voiceRouteFromPath(pathname);
+    if (voiceRoute) {
+      const principal = requestAuth.resolve(ctx.runtimeConfig.copy());
+      if (principal.kind === "anonymous") return unauthorized();
+      const allowed = (permission: Permission) =>
+        authorize({
+          principal,
+          requirement: { kind: "permission", permission },
+        }).kind === "authorized";
+      // Voices are model inputs stored under the root, so they follow the
+      // model permissions: models:read lists them, models:manage changes them.
+      return await handleVoiceRequest(request, voiceRoute, {
+        store: voiceStore,
+        manager: allowed("models:manage")
+          ? principalOwnerId(principal)
+          : undefined,
+        canRead: allowed("models:read"),
+        readBody: readBoundedRequestBody,
+        isPayloadTooLarge: (error) => error instanceof PayloadTooLargeError,
+        logger: ctx.logger,
+      });
+    }
     const route = selectGatewayRoute(pathname);
     const queueFailure = (error: unknown, modality: RuntimeModality) =>
       inferenceQueueError(error, {
@@ -3940,6 +3989,7 @@ export async function runServe(
             runtimes,
             memory: resolvedMemory,
             systemMemoryGb: ctx.specs.gpuVramGb,
+            customVoices: voiceStore.list(),
           },
           {
             topology: memoryProvider.topology,
@@ -3965,6 +4015,7 @@ export async function runServe(
         runtimes,
         memory: await memory,
         systemMemoryGb: ctx.specs.gpuVramGb,
+        customVoices: voiceStore.list(),
       };
 
       const modelId = modelMetadataIdFromPath(pathname);
@@ -4159,6 +4210,12 @@ export async function runServe(
         return badRequest(
           `Voice "${parsed.data.voice}" is not supported by model "${parsed.data.model}".`,
         );
+      }
+      if (
+        isCustomSpeechVoiceId(parsed.data.voice) &&
+        !(await voiceStore.resolve(parsed.data.voice))
+      ) {
+        return customVoiceNotFound();
       }
 
       let admission: RuntimeAdmission | undefined;

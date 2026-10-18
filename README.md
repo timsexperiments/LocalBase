@@ -24,7 +24,29 @@ The runtime keeps one active model per service. Memory pressure can evict idle r
 
 Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` return catalog identity, every declared artifact checksum and size, catalog memory estimates, and local selection, installation, and runtime state. `selected` reports configured selection. `runtime` reports the observed applied supervisor, so a replacement may be selected while the previous model drains. The gateway captures both before file inspection. Runtime metadata separates resolved native slots, active admissions, arithmetic availability, immediate dispatch eligibility, and bounded waiting-room capacity. Reads do not start runtimes or hash model files. Capability fields remain `null` without an authoritative value; the TTS model reports its WAV, catalog-voice, and cold-request contract. Each `/v1/models` entry also lists `capabilities` as `[{ "id", "source" }]`, where `source` is `declared` (catalog), `detected` (installed files), or `runtime` (the running engine). `local-base models show <id>` prints one model's provenance, files, capabilities with their sources, memory figures, and fit on this machine; add `--json` for the same data. In the browser, **Details** on a catalog card opens the same view at a linkable `?panel=catalog&details=<id>` URL.
 
-TTS is disabled by default. The first supported model is `qwen3-tts-1.7b-base-q4_k_m`. Requests must set `voice` to `default`, `harbor`, or `willow`; omitted `response_format` defaults to WAV, unlike OpenAI's MP3 default, so clients that omit the format receive WAV bytes. The only supported explicit format is `wav`. `default` uses no reference file. Harbor and Willow are fixed, checksum-pinned CC0 references from Kyutai's verified Unmute voice donations ([provenance](https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations)); clients cannot supply audio paths, URLs, or uploads. Speed is fixed at `1`, instructions are unsupported, and input is limited to 256 characters. Each request runs a cold, bounded native generation and returns PCM16 mono WAV at 24 kHz. Human voice quality has not been assessed.
+TTS is disabled by default. The first supported model is `qwen3-tts-1.7b-base-q4_k_m`. Requests must set `voice` to `default`, `harbor`, `willow`, or the id of a stored custom voice (below); omitted `response_format` defaults to WAV, unlike OpenAI's MP3 default, so clients that omit the format receive WAV bytes. The only supported explicit format is `wav`. `default` uses no reference file. Harbor and Willow are fixed, checksum-pinned CC0 references from Kyutai's verified Unmute voice donations ([provenance](https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations)). Speech requests cannot supply audio paths, URLs, or uploads; only an administrator can add a reference, through the voice endpoints below. Speed is fixed at `1`, instructions are unsupported, and input is limited to 256 characters. Each request runs a cold, bounded native generation and returns PCM16 mono WAV at 24 kHz. Human voice quality has not been assessed.
+
+### Custom voices
+
+The Qwen3 TTS runtime clones a voice zero-shot from a short reference recording, so a custom voice is just a stored recording; nothing is trained. The runtime encodes the clip into a speaker embedding (ECAPA-TDNN x-vector) on each request and needs no transcript. LocalBase stores each reference as 24 kHz mono PCM16 WAV, the rate the speaker encoder resamples to, under `<root>/voices/<id>.wav` (directory `0700`, file `0600`), with its name, SHA-256, duration, creation time, creating principal and consent attestation in the database. Uploads must be 3 to 30 seconds of RIFF/WAVE PCM or float audio (8 to 192 kHz, up to 8 channels, at most 12 MiB). They are decoded and resampled in TypeScript, never by a native decoder, and the rewritten file drops every metadata chunk. Silent clips are rejected. The browser converts microphone recordings and other formats to WAV before upload. At most 32 voices are stored.
+
+| Method and path | Permission | Purpose |
+| --- | --- | --- |
+| `GET /_localbase/voices` | `models:read` | List voices, limits and the consent statement; `createdBy` only for managers |
+| `POST /_localbase/voices` | `models:manage` | Create from multipart `name`, `consent=true` and an `audio` file |
+| `GET /_localbase/voices/{id}` | `models:read` | Read one voice |
+| `PATCH /_localbase/voices/{id}` | `models:manage` | Rename with JSON `{"name": "..."}` |
+| `DELETE /_localbase/voices/{id}` | `models:manage` | Delete the voice and its recording |
+| `GET /_localbase/voices/{id}/audio` | `models:manage` | Play back the stored reference |
+
+```bash
+curl http://127.0.0.1:2273/_localbase/voices -H 'Authorization: Bearer <ADMIN_KEY>' \
+  -F name=Narrator -F consent=true -F audio=@narrator.wav
+curl http://127.0.0.1:2273/v1/audio/speech -H 'Authorization: Bearer <API_KEY>' -H 'Content-Type: application/json' \
+  -d '{"model":"qwen3-tts-1.7b-base-q4_k_m","input":"Hello.","voice":"voice-0123456789ab"}' --output speech.wav
+```
+
+`consent` must be literally `true`: the creator attests that the voice is their own or that its speaker allowed it to be cloned. Names are trimmed, at most 48 characters, unique ignoring case, and cannot be a built-in voice name. Requests address a voice by its server-issued id (`voice-` and 12 hex digits), never by name or path. Custom voices appear in `/_localbase/models` speech metadata as extra `requestValues` with their names under `voice.custom`; `/v1/models` carries no voice list. A deleted or unknown id fails with HTTP 400 `voice_not_found`. The warm `tts-server` registers voices when it starts, so the first request for a new voice reloads it once in-flight generations finish (under a second with the weights cached). Logs record voice ids, never display names or audio, and diagnostics bundles record only the number of custom voices. The CLI manages the same store: `local-base voices list`, `local-base voices add clip.wav --name Narrator --consent` and `local-base voices remove <id>`.
 
 Use [`local-base config`](docs/declarative-config.md) to validate, plan, apply, and export versioned TOML configuration without prompts.
 
@@ -288,7 +310,7 @@ Open `/app` on the configured HTTPS origin. The playground requires a verified h
 
 Open **Access & API keys** from Settings or `/app?panel=admin` to inspect and update identity-provider configuration, access policies, API-key scopes, rotation, and revocation. The page appears only after human sign-in and each operation still requires its corresponding `access:*` or `keys:*` permission. New and rotated API-key secrets are held only in page memory and shown once.
 
-Model Lab calls models directly without generation tools. It supports chat, images, speech, audio-file transcription, text-to-video, and embeddings. Voice choices, embedding dimension bounds, and the fixed video profile come from model metadata. Completed videos play inline and download as MP4 in Chat and Model Lab. Speech-to-video portrait and audio inputs are not supported in Model Lab yet.
+Model Lab calls models directly without generation tools. It supports chat, images, speech, audio-file transcription, text-to-video, and embeddings. Voice choices (including custom voices, which managers can record, upload, play, rename and delete under **My voices** in generation controls), embedding dimension bounds, and the fixed video profile come from model metadata. Completed videos play inline and download as MP4 in Chat and Model Lab. Speech-to-video portrait and audio inputs are not supported in Model Lab yet.
 
 The gateway converts the runtime's AVI output to MP4 using a pinned, checksum-verified converter installed automatically when needed. It does not use a system FFmpeg installation.
 

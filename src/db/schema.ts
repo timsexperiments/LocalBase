@@ -273,3 +273,26 @@ export const modelObservedMemoryTable = sqliteTable(
     }),
   ],
 );
+
+/**
+ * Custom TTS voice profiles. The reference clip lives at
+ * `<root>/voices/<id>.wav`; the row records who created it and their consent
+ * attestation. `name_key` keeps display names unique ignoring case.
+ */
+export const ttsCustomVoicesTable = sqliteTable(
+  "tts_custom_voices",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    nameKey: text("name_key").notNull(),
+    sha256: text("sha256").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    durationMs: integer("duration_ms").notNull(),
+    createdAt: text("created_at").notNull(),
+    /** Principal owner id, such as `api-key:<id>` or a browser user. */
+    createdBy: text("created_by").notNull(),
+    consentStatement: text("consent_statement").notNull(),
+    consentAttestedAt: text("consent_attested_at").notNull(),
+  },
+  (table) => [uniqueIndex("tts_custom_voices_name_key").on(table.nameKey)],
+);
