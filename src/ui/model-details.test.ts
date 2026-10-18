@@ -75,7 +75,7 @@ test("details show provenance, capability sources, memory, and files in plain wo
   const markup = renderToStaticMarkup(
     createElement(ModelDetails, {
       model,
-      status: { active: true },
+      status: { active: true, installedBytes: 1024 ** 3 },
       close: () => {},
       actions: createElement("button", null, "Uninstall"),
     }),
@@ -87,6 +87,7 @@ test("details show provenance, capability sources, memory, and files in plain wo
   expect(markup).toContain("at revision 0123456789ab");
   expect(markup).toContain("32,768 tokens");
   expect(markup).toContain("Uninstall");
+  expect(markup).toContain("Stored on disk: 1.0 GB");
   expect(markup).toContain("model.gguf");
   expect(markup).toContain("1.2 GB");
   expect(markup).toContain("Fits, 50 GB to spare of 64 GB");

@@ -1,7 +1,13 @@
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { z } from "zod";
 import { formatFileSize } from "../catalog/model-details";
-import { api, ApiError, feedAnnotationSchema, type Connection } from "./client";
+import {
+  api,
+  ApiError,
+  feedAnnotationSchema,
+  type Connection,
+  type Model,
+} from "./client";
 import {
   describeFeedPeak,
   FeedMarks,
@@ -9,6 +15,12 @@ import {
   FeedStatusBadge,
   headlineFeedPeak,
 } from "./feed-annotation";
+import {
+  recommendedChoice,
+  orderedChoices,
+  lowQualityQuant,
+  qualifiedCatalogMatch,
+} from "./model-choice";
 import { HfTokenPanel } from "./hf-token";
 
 const kindNames = {
@@ -27,6 +39,7 @@ const fitBadges = {
 const choiceSchema = z.object({
   path: z.string(),
   sizeBytes: z.number(),
+  partCount: z.number().int().positive().optional(),
   quant: z.string().nullable(),
   modelId: z.string(),
   existing: z.enum(["built-in", "remote", "user"]).nullable(),
@@ -155,15 +168,18 @@ function size(value: number) {
   return `${Math.max(1, Math.round(value / 1024 ** 2))} MiB`;
 }
 
-function addable(choice: Choice) {
-  return choice.existing === null || choice.existing === "user";
+function initialPath(choices: Choice[]) {
+  return (
+    recommendedChoice(choices)?.path ??
+    orderedChoices(choices).find(
+      (choice) => choice.quant === null && choice.fit?.verdict !== "wont-fit",
+    )?.path ??
+    ""
+  );
 }
 
-function choiceLabel(choice: Choice) {
-  const parts = [choice.path, size(choice.sizeBytes)];
-  if (choice.existing === "user") parts.push("in your catalog");
-  else if (choice.existing) parts.push(`already ${choice.existing}`);
-  return parts.join(" · ");
+function addable(choice: Choice) {
+  return choice.existing === null || choice.existing === "user";
 }
 
 async function discovery(
@@ -180,13 +196,17 @@ async function discovery(
   return response.json();
 }
 
-function DiscoveryCard({
+export function DiscoveryCard({
   hit,
   connection,
   canManage,
   onAdded,
   onToken,
+  catalogMatch,
+  openCatalog,
 }: {
+  catalogMatch: Model | undefined;
+  openCatalog: (id: string) => void;
   hit: Hit;
   connection: Connection;
   canManage: boolean;
@@ -196,12 +216,16 @@ function DiscoveryCard({
 }) {
   const [preview, setPreview] = useState(hit.preview);
   const [reason, setReason] = useState(hit.reason);
-  const [path, setPath] = useState(hit.preview?.defaultPath ?? "");
+  const [path, setPath] = useState(() =>
+    initialPath(hit.preview?.choices ?? []),
+  );
   const [busy, setBusy] = useState<
     "" | "preview" | "add" | "install" | "recipe"
   >("");
   const [reasonCode, setReasonCode] = useState(hit.reasonCode);
   const [error, setError] = useState<Failure | null>(null);
+  const choices = orderedChoices(preview?.choices ?? []);
+  const recommendation = recommendedChoice(choices);
   const choice = preview?.choices.find((item) => item.path === path);
   const notes = hit.catalog ?? [];
   const recipes = notes.filter((note) => note.recipe);
@@ -244,7 +268,7 @@ function DiscoveryCard({
       setPreview(next);
       setReason(null);
       setReasonCode(undefined);
-      setPath(next.defaultPath ?? "");
+      setPath(initialPath(next.choices));
     } catch (error) {
       setError(failure(error, "Could not read the repo."));
     } finally {
@@ -337,60 +361,137 @@ function DiscoveryCard({
           .
         </p>
       )}
+      {catalogMatch && (
+        <div className="catalog-match">
+          <strong>Available in the Local catalog</strong>
+          <p>
+            Use {catalogMatch.catalog.displayName ?? catalogMatch.id}, the
+            qualified entry with its files already chosen.
+          </p>
+          <button
+            className="install-model"
+            onClick={() => openCatalog(catalogMatch.id)}
+          >
+            View catalog model →
+          </button>
+        </div>
+      )}
       {preview ? (
-        <>
-          <label className="discovery-file">
-            <span>File</span>
-            <select
-              value={path}
-              disabled={!canManage || busy !== ""}
-              onChange={(event) => setPath(event.target.value)}
-            >
-              {!preview.defaultPath && <option value="">Choose a file…</option>}
-              {preview.choices.map((item) => (
-                <option
-                  key={item.path}
-                  value={item.path}
-                  disabled={!addable(item)}
-                >
-                  {choiceLabel(item)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {choice && (
-            <dl className="model-storage">
-              <div>
-                <dt>Download</dt>
-                <dd>{size(choice.sizeBytes)}</dd>
-              </div>
-              <div>
-                <dt>Memory</dt>
-                <dd>
-                  {choice.fit ? `~${choice.fit.minVramGb.toFixed(1)} GB` : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt>Quant</dt>
-                <dd>{choice.quant ?? "—"}</dd>
-              </div>
-              {peak && (
-                <div className="model-storage-fit">
-                  <dt>Measured peak</dt>
+        <details className="discovery-download" open={!catalogMatch}>
+          <summary>
+            {catalogMatch ? "Use a community file instead" : "Download options"}
+          </summary>
+          {choice ? (
+            <div className="download-recommendation" role="status">
+              <strong>
+                {choice.path === recommendation?.path && choice.quant
+                  ? "Suggested download"
+                  : "Selected download"}{" "}
+                · {choice.quant ?? "Quantization unknown"}
+              </strong>
+              <p>
+                {lowQualityQuant(choice.quant)
+                  ? "Very low-bit compression saves space but can noticeably reduce quality. Choose a Q4 file or a smaller model when possible."
+                  : /Q4/i.test(choice.quant ?? "")
+                    ? "A balance of download size and quality. Higher-bit files use more memory for potentially better fidelity."
+                    : choice.quant
+                      ? "Higher-bit files use more memory. Compare the estimated fit before installing."
+                      : "Quantization is not identified. Check the publisher’s notes and estimated fit before installing."}
+              </p>
+              {!choice.fit && (
+                <p>
+                  Memory fit is unknown. Check your available memory before
+                  installing.
+                </p>
+              )}
+              <span className="discovery-filename">{choice.path}</span>
+              {(choice.partCount ?? 1) > 1 && (
+                <p>
+                  {choice.partCount} parts · all downloaded together · total
+                  size below
+                </p>
+              )}
+              <dl className="model-storage">
+                <div>
+                  <dt>Download</dt>
+                  <dd>{size(choice.sizeBytes)}</dd>
+                </div>
+                <div>
+                  <dt>Memory</dt>
                   <dd>
-                    {describeFeedPeak(peak)}
-                    <span className="muted"> · {peak.hardware}</span>
+                    {choice.fit
+                      ? `~${choice.fit.minVramGb.toFixed(1)} GB`
+                      : "—"}
                   </dd>
                 </div>
-              )}
-              {choice.fit && (
-                <div className="model-storage-fit">
-                  <dt>Fit</dt>
-                  <dd>{choice.fit.message}</dd>
+                <div>
+                  <dt>Quant</dt>
+                  <dd>{choice.quant ?? "—"}</dd>
                 </div>
-              )}
-            </dl>
+                {peak && (
+                  <div className="model-storage-fit">
+                    <dt>Measured peak</dt>
+                    <dd>
+                      {describeFeedPeak(peak)}
+                      <span className="muted"> · {peak.hardware}</span>
+                    </dd>
+                  </div>
+                )}
+                {choice.fit && (
+                  <div className="model-storage-fit">
+                    <dt>Fit</dt>
+                    <dd>{choice.fit.message}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          ) : (
+            <p className="hint">
+              No balanced download fits the available estimate. Choose a file
+              below, or try a smaller model.
+            </p>
           )}
+          <details className="discovery-alternatives">
+            <summary>
+              Choose another file · {preview.choices.length}{" "}
+              {preview.choices.length === 1 ? "option" : "options"}
+            </summary>
+            <fieldset className="discovery-file-options">
+              <legend>Download file</legend>
+              {choices.map((item) => (
+                <label key={item.path}>
+                  <input
+                    type="radio"
+                    name={hit.repo}
+                    value={item.path}
+                    checked={path === item.path}
+                    disabled={!canManage || !!busy}
+                    onChange={() => setPath(item.path)}
+                  />
+                  <span>
+                    <strong>
+                      {item.quant ?? "Quantization unknown"} ·{" "}
+                      {size(item.sizeBytes)}
+                      {(item.partCount ?? 1) > 1
+                        ? ` · ${item.partCount} parts, total`
+                        : ""}
+                      {item.path === recommendation?.path ? " · Suggested" : ""}
+                    </strong>
+                    <span className="discovery-filename">{item.path}</span>
+                    <small>
+                      {lowQualityQuant(item.quant)
+                        ? "Low quality: prefer Q4 or a smaller model"
+                        : item.fit
+                          ? fitBadges[item.fit.verdict]
+                          : "Fit unknown"}
+                      {item.existing ? " · Already in catalog" : ""}
+                    </small>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          </details>
+
           {annotation && (
             <>
               <FeedRevisionNote annotation={annotation} />
@@ -398,23 +499,31 @@ function DiscoveryCard({
             </>
           )}
           <div className="catalog-actions">
-            <button
-              type="button"
-              disabled={!canManage || !choice || !addable(choice) || !!busy}
-              onClick={() => void add(false)}
-            >
-              {busy === "add" ? "Adding…" : "Add"}
-            </button>
-            <button
-              type="button"
-              className="install-model"
-              disabled={!canManage || !choice || !addable(choice) || !!busy}
-              onClick={() => void add(true)}
-            >
-              {busy === "install" ? "Adding…" : "Add and install"}
-            </button>
+            {choice && !addable(choice) ? (
+              <button onClick={() => openCatalog(choice.modelId)}>
+                Open existing catalog entry →
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled={!canManage || !choice || !addable(choice) || !!busy}
+                  onClick={() => void add(false)}
+                >
+                  {busy === "add" ? "Adding…" : "Save to catalog"}
+                </button>
+                <button
+                  type="button"
+                  className="install-model"
+                  disabled={!canManage || !choice || !addable(choice) || !!busy}
+                  onClick={() => void add(true)}
+                >
+                  {busy === "install" ? "Adding…" : "Add and install"}
+                </button>
+              </>
+            )}
           </div>
-        </>
+        </details>
       ) : (
         <>
           {reason && reason !== hit.likely.label && (
@@ -486,7 +595,11 @@ export function ModelDiscovery({
   connection,
   canManage,
   onAdded,
+  models,
+  openCatalog,
 }: {
+  models: Model[];
+  openCatalog: (id: string) => void;
   connection: Connection;
   canManage: boolean;
   onAdded: () => void;
@@ -539,9 +652,8 @@ export function ModelDiscovery({
   return (
     <section className="model-discovery" aria-label="Find more models">
       <p className="hint">
-        Search Hugging Face for chat, transcription, and image models. Add pins
-        the exact file and revision to your catalog; LocalBase has not qualified
-        these models.
+        Explore Hugging Face. Start with the Local catalog for qualified models.
+        Community downloads are pinned to an exact file and revision.
       </p>
       {!canManage && (
         <p className="notice" role="status">
@@ -606,6 +718,8 @@ export function ModelDiscovery({
             <DiscoveryCard
               key={`${searched}:${hit.repo}`}
               hit={hit}
+              catalogMatch={qualifiedCatalogMatch(hit.repo, models)}
+              openCatalog={openCatalog}
               connection={connection}
               canManage={canManage}
               onToken={openToken}

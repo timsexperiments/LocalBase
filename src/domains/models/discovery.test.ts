@@ -580,3 +580,33 @@ test("pipeline previews count the shared encoders in the download size", async (
   expect(encoders).toBeGreaterThan(0);
   expect(q4.sizeBytes).toBe(6_790_000_000 + encoders);
 });
+
+test("preview presents complete shard sets once with total size and part count", async () => {
+  const repo = {
+    ...llmRepo,
+    siblings: [
+      lfs("BF16/model-BF16-00001-of-00002.gguf", 3_000_000_000, "a"),
+      lfs("BF16/model-BF16-00002-of-00002.gguf", 2_000_000_000, "b"),
+      lfs("Q4/model-Q4_K_M.gguf", 1_000_000_000, "c"),
+      lfs("MTP/mtp-model-Q4_0.gguf", 100_000_000, "d"),
+    ],
+  };
+  const preview = await previewRepository(
+    {
+      root: scratchRoot(),
+      systemVramGb: 16,
+      fetch: async () => ({ ok: true, status: 200, json: async () => repo }),
+    },
+    repo.id,
+  );
+  expect(preview.choices).toHaveLength(2);
+  expect(preview.choices[0]).toMatchObject({
+    sizeBytes: 5_000_000_000,
+    partCount: 2,
+    quant: "BF16",
+  });
+  expect(preview.choices[1]).toMatchObject({
+    sizeBytes: 1_000_000_000,
+    partCount: 1,
+  });
+});

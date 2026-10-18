@@ -1304,3 +1304,32 @@ test("detects decision models from Hub tags and GGUF architecture", async () => 
   expect(spec.capabilities.map(({ id }) => id)).toEqual(["decision"]);
   expect(spec.inputModalities).toEqual(["text", "image"]);
 });
+
+test("auxiliary GGUFs are neither model choices nor explicit add targets", async () => {
+  const auxiliary = [
+    "MTP/mtp-model-Q4_0.gguf",
+    "draft/model-Q4_K_M.gguf",
+    "model-draft-Q4_K_M.gguf",
+    "mmproj-model-f16.gguf",
+    "projectors/vision-f16.gguf",
+    "model-imatrix.gguf",
+    "importance_matrix/data.gguf",
+    "adapters/model-Q4_K_M.gguf",
+    "model-lora-Q4_K_M.gguf",
+    "tokenizer.gguf",
+  ];
+  const info = await parseInfo(
+    modelInfo({
+      siblings: [
+        lfs("model-Q4_K_M.gguf", 400_000_000, "a"),
+        ...auxiliary.map((path) => lfs(path, 10_000_000, "b")),
+      ],
+    }),
+  );
+  expect(entryChoices(info).choices.map((file) => file.path)).toEqual([
+    "model-Q4_K_M.gguf",
+  ]);
+  for (const selector of auxiliary) {
+    expect(() => generateEntry(info, { repo: info.id, selector })).toThrow();
+  }
+});

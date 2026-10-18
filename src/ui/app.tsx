@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createRoot } from "react-dom/client";
 import { Copy, MessageMarkdown } from "./message-markdown";
+import { ModelPickerList } from "./model-picker";
 import { ModelManagement } from "./model-management";
 import { pollWhileVisible, trackResume } from "./visibility";
 import { AuthManagement } from "./auth-management";
@@ -79,7 +80,6 @@ import {
   modelMemorySummary,
   speechAcceptsCustomVoices,
   speechVoiceCount,
-  modelModalities,
   modelName,
   embeddingSummary,
   embeddingSummaryText,
@@ -307,11 +307,13 @@ function Drawer({
   close,
   children,
   fullPage = false,
+  headerAction,
 }: {
   title: string;
   close: () => void;
   children: ReactNode;
   fullPage?: boolean;
+  headerAction?: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -339,6 +341,7 @@ function Drawer({
       <div className="drawer">
         <div className="drawer-header">
           <h2 id="drawer-title">{title}</h2>
+          {headerAction}
           <button aria-label="Close drawer" onClick={close}>
             ✕
           </button>
@@ -2116,6 +2119,30 @@ function App() {
                       ? "Models"
                       : "History"
           }
+          headerAction={
+            visibleDrawer === "models" && canManageModels ? (
+              <a
+                className="manage-models-link"
+                href={navigationUrl(
+                  location.href,
+                  conversationNavigation(active, "catalog"),
+                )}
+                onClick={(event) => {
+                  if (
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return;
+                  event.preventDefault();
+                  setDrawer("catalog");
+                }}
+              >
+                Manage models →
+              </a>
+            ) : null
+          }
           close={() => setDrawer(null)}
         >
           {visibleDrawer !== "settings" && sessionNotice}
@@ -2312,7 +2339,7 @@ function App() {
             </>
           ) : visibleDrawer === "models" ? (
             <>
-              <div className="dictation-field">
+              <div className="dictation-field picker-search">
                 <input
                   type="search"
                   aria-label="Search models"
@@ -2329,31 +2356,12 @@ function App() {
                   />
                 )}
               </div>
-              <p className="hint">Install or enable a model to use it here.</p>
-              {canManageModels && (
-                <a
-                  className="manage-models-link"
-                  href={navigationUrl(
-                    location.href,
-                    conversationNavigation(active, "catalog"),
-                  )}
-                  onClick={(event) => {
-                    if (
-                      event.metaKey ||
-                      event.ctrlKey ||
-                      event.shiftKey ||
-                      event.altKey
-                    )
-                      return;
-                    event.preventDefault();
-                    setDrawer("catalog");
-                  }}
-                >
-                  Manage models →
-                </a>
-              )}
+              <p className="hint picker-hint">
+                Choose a model for this conversation.
+              </p>
+
               {page === "lab" && (
-                <div className="modes">
+                <div className="modes picker-modes">
                   {allowedModes.map((mode) => (
                     <button
                       disabled={busy}
@@ -2368,60 +2376,21 @@ function App() {
                   ))}
                 </div>
               )}
-              {pickerModels.length ? (
-                pickerModels
-                  .filter((candidate) =>
-                    `${modelName(candidate)} ${candidate.catalog.name} ${candidate.id} ${candidate.catalog.quantization}`
-                      .toLowerCase()
-                      .includes(modelSearch.toLowerCase()),
-                  )
-                  .map((m) => (
-                    <button
-                      disabled={
-                        busy || !m.device.installed || !m.device.selected
-                      }
-                      className={`model-card ${m.id === model?.id ? "selected" : ""}`}
-                      key={m.id}
-                      aria-pressed={m.id === model?.id}
-                      onClick={() => {
-                        update(active.id, (c) => ({ ...c, model: m.id }));
-                        setPanel(null);
-                        writeNavigation(
-                          conversationNavigation(active, null, m.id),
-                          "push",
-                        );
-                      }}
-                    >
-                      <strong>{modelName(m)}</strong>
-                      <span>
-                        {m.catalog.quantization} ·{" "}
-                        {m.device.installed
-                          ? m.device.selected
-                            ? "Installed · Enabled"
-                            : "Installed · Disabled"
-                          : "Not installed"}
-                      </span>
-                      <small className="model-id">{m.id}</small>
-                      <small>
-                        {modelModalities(m)}
-                        {m.catalog.contextWindowTokens
-                          ? ` · ${m.catalog.contextWindowTokens.toLocaleString()} context`
-                          : ""}
-                      </small>
-                      <small>{modelMemorySummary(m, hostMemory)}</small>
-                    </button>
-                  ))
-              ) : (
-                <p>
-                  No catalog models for {labels[active.mode].toLowerCase()}.
-                </p>
-              )}
-              {pickerModels.length > 0 &&
-                !pickerModels.some((candidate) =>
-                  `${modelName(candidate)} ${candidate.catalog.name} ${candidate.id} ${candidate.catalog.quantization}`
-                    .toLowerCase()
-                    .includes(modelSearch.toLowerCase()),
-                ) && <p className="hint">No models match your search.</p>}
+              <ModelPickerList
+                models={pickerModels}
+                selectedId={model?.id}
+                search={modelSearch}
+                busy={busy}
+                hostMemory={hostMemory}
+                onChoose={(id) => {
+                  update(active.id, (c) => ({ ...c, model: id }));
+                  setPanel(null);
+                  writeNavigation(
+                    conversationNavigation(active, null, id),
+                    "push",
+                  );
+                }}
+              />
             </>
           ) : (
             <>
