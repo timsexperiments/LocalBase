@@ -894,12 +894,20 @@ export function quantOf(path: string): string | null {
   );
 }
 
-/** First shard or single-file GGUF weights, without projectors. */
+/** Supporting files cannot be installed as standalone language models. */
+function auxiliaryGguf(path: string) {
+  if (/mmproj/i.test(basename(path))) return true;
+  return /(?:^|[\/_.-])(?:mmproj|projectors?|mtp|draft|imatrix|importance[-_]matrix|adapters?|lora|tokenizers?|vocab)(?=[\/_.-]|$)/i.test(
+    path,
+  );
+}
+
+/** First shard or single-file GGUF weights, without auxiliary files. */
 function llmChoices(files: readonly HubFile[]): HubFile[] {
   return files.filter(
     (file) =>
       /\.gguf$/i.test(file.path) &&
-      !/mmproj/i.test(basename(file.path)) &&
+      !auxiliaryGguf(file.path) &&
       (!SHARD.test(file.path) || SHARD.exec(file.path)![1] === "00001"),
   );
 }

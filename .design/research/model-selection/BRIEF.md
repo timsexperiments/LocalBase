@@ -4,7 +4,7 @@ Mode: mixed
 Status: researched
 
 ## Goal and constraints
-Help a local AI user choose an appropriate model, install it, enable it, and select it for a conversation. Cover 320–1600 CSS px, both themes, existing React/CSS tokens and APIs. No backend changes or new dependencies.
+Help a local AI user choose an appropriate model, install it, enable it, and select it for a conversation. Cover 320–1600 CSS px, both themes, existing React/CSS tokens and APIs. No new dependencies. Round 2 also changes the shared backend file classifier and adds a shard count to discovery previews, as requested by the reviewer.
 
 ## Evidence and limits
 Inspected supplied mobile and desktop captures, current components and styles, LM Studio's rendered public download guide at 1280 and 390 px, Carbon's rendered filtering guide at 390 px, and Hugging Face/W3C page text. Public documentation is evidence of documented behavior, not direct testing of those apps. No competitor signed-in flows or user study. Capture dates of supplied images are unknown. Research accessed 2026-10-17 America/Chicago.
@@ -44,3 +44,13 @@ A wall of filters, filename-only choice with no recommendation, automatic low-bi
 
 ## Implementation handoff
 src/ui/model-management.tsx, model-discovery.tsx, model-details.tsx, app.tsx picker region only, style.css; focused pure choice/matching tests and existing server-rendered component test patterns. Browser captures before/after, all widths/themes, bun run check and bun test ./src/ui. No production requests. No captured third-party images shipped or committed.
+
+## Review round 2, 2026-10-18
+
+This round reuses R01–R05 and the existing visual direction. Evidence is the review findings, source inspection and rendered local fixtures. No new competitor research or user study was performed.
+
+- D02 refined: use three compact rows for name/state, key facts and actions. Remove the redundant uninstalled badge. Group chat quant variants only when display name, source, revision, qualification, trust, modalities, context and capabilities match. Preserve distinct catalog IDs and actions. The variant selector names installed/ready options; prefer a ready variant on initial display. Search and filters run before grouping, so only matching variants appear. Details retains memory provenance and full metadata.
+- D03 refined: auxiliary GGUFs are excluded at the shared models-add classifier, including explicit file selection. Preserve projector pairing with complete vision models. The backend already downloads complete shard sets and totals their bytes; expose the weight-part count. Present the recommendation first, then increasing total download size. Unknown quantization is a neutral selection. Keep selected filename, total download size, memory, quant and fit in one panel that updates with the radio choice.
+- D05 refined: put Manage models beside the picker title. Remove its standalone row. Left-align the mode buttons with the search and results; use 44px mode targets and tighter vertical spacing.
+
+Validation: see the round-2 section in VALIDATION.md. The fixture preview uses the actual app bundle and built-in catalog projection, with simulated device state. Discovery fixtures run through the real backend preview classifier and include auxiliary files, two BF16 shards and unknown quantization. Fixture sizes and installation state are test inputs, not fresh publisher or device measurements.

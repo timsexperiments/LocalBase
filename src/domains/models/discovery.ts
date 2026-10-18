@@ -52,6 +52,8 @@ export function catalogOwner(modelId: string): CatalogOwner {
 export type DiscoveryChoice = Readonly<{
   path: string;
   sizeBytes: number;
+  /** All weight shards are downloaded together. */
+  partCount: number;
   quant: string | null;
   modelId: string;
   /** The catalog tier that already has this id, if any. */
@@ -223,6 +225,7 @@ function previewFor(
     choices.push({
       path: file.path,
       sizeBytes: downloadBytes(entry),
+      partCount: entry.weights.length,
       quant: quantOf(file.path),
       modelId: entry.modelId,
       existing: catalogOwner(entry.modelId),

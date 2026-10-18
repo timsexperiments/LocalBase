@@ -18,6 +18,7 @@ import {
 } from "../catalog/capabilities";
 import { catalogPanelKeys, detailsUrl, readDetails } from "./navigation";
 import { ModelDetails } from "./model-details";
+import { catalogVariantGroups } from "./model-choice";
 import { ModelDiscovery } from "./model-discovery";
 import {
   modelManagementSchema,
@@ -156,6 +157,9 @@ export function ModelManagement({
 }) {
   const [state, setState] = useState<ManagementState | null>(null);
   const [filters, setFilters] = useState(readFilters);
+  const [variantChoices, setVariantChoices] = useState<Record<string, string>>(
+    {},
+  );
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [error, setError] = useState("");
   // Why the latest status poll failed; cleared when a poll succeeds.
@@ -305,6 +309,7 @@ export function ModelManagement({
     (model) => ({ ...metadataCatalogRow(model), kind: modelMode(model) }),
     query,
   );
+  const groups = catalogVariantGroups(filtered);
   const installation = enabled
     ? "enabled"
     : query.installed === undefined
@@ -820,63 +825,100 @@ export function ModelManagement({
                 </div>
               )}
               <p className="catalog-count" role="status">
-                {filtered.length === 1
-                  ? "1 model"
-                  : `${filtered.length} models`}
-                {filtering
-                  ? filtered.length === 1
-                    ? " matches"
-                    : " match"
-                  : ""}
+                {groups.length === 1 ? "1 model" : `${groups.length} models`}
+                {groups.length !== filtered.length &&
+                  ` · ${filtered.length} variants`}
+                {filtering ? (groups.length === 1 ? " matches" : " match") : ""}
               </p>
               <div className="catalog-grid">
-                {filtered.map((model) => {
+                {groups.map((variants) => {
+                  const first = variants[0];
+                  if (!first) return null;
+                  const model =
+                    variants.find(
+                      (item) => item.id === variantChoices[first.id],
+                    ) ??
+                    variants.find(
+                      (item) => item.device.installed && item.device.selected,
+                    ) ??
+                    variants.find((item) => item.device.installed) ??
+                    first;
                   const local = state?.models.find(
                     (item) => item.id === model.id,
                   );
                   return (
-                    <article className="catalog-card" key={model.id}>
+                    <article
+                      className="catalog-card catalog-model"
+                      key={first.id}
+                    >
                       <header>
                         <h3>{modelName(model)}</h3>
                         {model.catalog.qualificationState ===
                           "experimental" && (
                           <span className="model-badge">Experimental</span>
                         )}
-                        <span
-                          className={`model-badge ${model.device.installed ? "installed" : ""}`}
-                        >
-                          {model.device.installed
-                            ? "Installed"
-                            : "Not installed"}
+                        {model.device.installed && (
+                          <span className="model-badge installed">
+                            {local?.active
+                              ? "Default"
+                              : model.device.selected
+                                ? "Ready"
+                                : "Installed"}
+                          </span>
+                        )}
+                      </header>
+                      <p className="model-facts catalog-key-facts">
+                        {variants.length === 1 && (
+                          <span>{model.catalog.quantization}</span>
+                        )}
+                        <span>
+                          {local?.downloadBytes != null
+                            ? bytes(local.downloadBytes)
+                            : "~" +
+                              model.catalog.memory.storageEstimateGb +
+                              " GB"}{" "}
+                          download
+                        </span>
+                        <span title={modelMemoryRequirement(model)}>
+                          ~{model.catalog.memory.minimumVramEstimateGb} GB
+                          memory
                         </span>
                         {model.catalog.memory.fit && (
                           <span
-                            className={`model-badge fit-${model.catalog.memory.fit.verdict}`}
+                            className={
+                              "fit-text-" + model.catalog.memory.fit.verdict
+                            }
                           >
                             {fitBadges[model.catalog.memory.fit.verdict]}
                           </span>
                         )}
-                      </header>
-                      <p className="model-facts">
-                        {model.catalog.quantization} ·{" "}
-                        {model.device.selected ? "Enabled" : "Disabled"}
-                        {local?.active ? " · Default" : ""}
                       </p>
-                      <dl className="model-storage catalog-card-storage">
-                        <div>
-                          <dt>Download size</dt>
-                          <dd>
-                            {local?.downloadBytes != null
-                              ? bytes(local.downloadBytes)
-                              : `~${model.catalog.memory.storageEstimateGb} GB`}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>Min. memory</dt>
-                          <dd>{modelMemoryRequirement(model)}</dd>
-                        </div>
-                      </dl>
                       <div className="catalog-card-footer">
+                        {variants.length > 1 && (
+                          <select
+                            className="catalog-variant"
+                            disabled={pending || running}
+                            aria-label={"Variant for " + modelName(model)}
+                            value={model.id}
+                            onChange={(event) =>
+                              setVariantChoices((current) => ({
+                                ...current,
+                                [first.id]: event.target.value,
+                              }))
+                            }
+                          >
+                            {variants.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.catalog.quantization}
+                                {item.device.installed
+                                  ? item.device.selected
+                                    ? " · Ready"
+                                    : " · Installed"
+                                  : ""}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                         {controls(model, local, true)}
                         <button
                           type="button"

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   lowQualityQuant,
+  catalogVariantGroups,
   recommendedChoice,
   qualifiedCatalogMatch,
 } from "./model-choice";
@@ -100,4 +101,64 @@ test("matches qualified catalog identities without swallowing derivatives or ver
       catalog({ qualificationState: "experimental" }),
     ]),
   ).toBeUndefined();
+});
+
+test("unknown quantization is never a recommendation", () => {
+  expect(
+    recommendedChoice([{ ...choice("unknown"), quant: null }]),
+  ).toBeUndefined();
+});
+
+const variant = (
+  id: string,
+  quantization: string,
+  overrides: Partial<Model["catalog"]> = {},
+): Model => ({
+  id,
+  catalog: {
+    name: "qwen",
+    displayName: "Qwen3.5 0.8B",
+    kind: "llm",
+    qualificationState: "qualified",
+    source: "https://huggingface.co/org/qwen",
+    revision: "same-revision",
+    quantization,
+    memory: { minimumVramEstimateGb: 3, storageEstimateGb: 0.58 },
+    features: [],
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    contextWindowTokens: 8192,
+    capabilities: null,
+    ...overrides,
+  },
+  device: { installed: false, selected: false, runtime: null },
+});
+test("catalog groups quant variants while keeping distinct identities and capabilities separate", () => {
+  const q4 = variant("q4", "Q4_K_M");
+  const q8 = variant("q8", "Q8_0");
+  expect(
+    catalogVariantGroups([q4, q8]).map((group) =>
+      group.map((model) => model.id),
+    ),
+  ).toEqual([["q4", "q8"]]);
+  for (const changes of [
+    { source: "https://huggingface.co/other/qwen" },
+    { revision: "different" },
+    { displayName: "Qwen3.5 2B" },
+    { inputModalities: ["text", "image"] },
+    { contextWindowTokens: 4096 },
+  ]) {
+    expect(
+      catalogVariantGroups([q4, variant("other", "Q8_0", changes)]),
+    ).toHaveLength(2);
+  }
+  expect(
+    catalogVariantGroups([q4, variant("same-quant", "Q4_K_M")]),
+  ).toHaveLength(2);
+  expect(
+    catalogVariantGroups([
+      variant("missing-q4", "Q4_K_M", { revision: undefined }),
+      variant("missing-q8", "Q8_0", { revision: undefined }),
+    ]),
+  ).toHaveLength(2);
 });

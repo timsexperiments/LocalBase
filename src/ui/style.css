@@ -1057,13 +1057,6 @@ dialog::backdrop {
 .model-card:disabled {
   opacity: 0.65;
 }
-.manage-models-link {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-  justify-content: flex-end;
-  margin-bottom: 12px;
-}
 dialog.management-page {
   box-sizing: border-box;
   width: 100%;
@@ -3122,15 +3115,6 @@ button.link {
   align-items: start;
   gap: 6px;
 }
-.catalog-card-storage {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding-block: 12px;
-  border-block: 1px solid var(--border);
-}
-.catalog-card-storage dd {
-  font-size: 15px;
-  font-weight: 550;
-}
 .catalog-card
   > :is(
     header,
@@ -3308,6 +3292,83 @@ summary:focus-visible {
 }
 .catalog-filter-fields[hidden] {
   display: none;
+}
+
+/* Three compact rows: identity, facts, then actions for the chosen variant. */
+.catalog-model {
+  padding: 12px;
+  gap: 8px;
+}
+.drawer .catalog-model > header {
+  align-items: center;
+  margin: 0;
+}
+.catalog-model h3 {
+  flex: 1 1 140px;
+  font-size: 15px;
+}
+.catalog-key-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  line-height: 1.5;
+}
+.fit-text-fits {
+  color: var(--accent);
+}
+.fit-text-wont-fit {
+  color: var(--error);
+}
+.catalog-model .catalog-card-footer {
+  gap: 6px;
+}
+.drawer .catalog-variant {
+  flex: 1 1 108px;
+  width: auto;
+  min-width: 0;
+  max-width: 180px;
+  margin: 0;
+  font-size: 13px;
+  padding-inline: 8px;
+}
+.catalog-model .catalog-actions button,
+.catalog-model .catalog-details-button {
+  padding-inline: 10px;
+}
+.drawer-header > h2 {
+  margin-right: auto;
+}
+.drawer-header .manage-models-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0;
+  font-size: 13px;
+}
+.drawer .picker-search input {
+  margin-block: 0;
+}
+.picker-hint {
+  margin-block: 10px 8px;
+}
+.picker-modes {
+  justify-content: flex-start;
+  margin-block: 8px 12px;
+}
+.picker-modes button {
+  min-height: 44px;
+}
+.download-recommendation .model-storage {
+  margin-bottom: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 759px) {
+  .drawer .catalog-variant {
+    font-size: 16px;
+  }
 }
 .voice-profiles {
   min-width: 0;

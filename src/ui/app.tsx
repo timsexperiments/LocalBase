@@ -307,11 +307,13 @@ function Drawer({
   close,
   children,
   fullPage = false,
+  headerAction,
 }: {
   title: string;
   close: () => void;
   children: ReactNode;
   fullPage?: boolean;
+  headerAction?: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -339,6 +341,7 @@ function Drawer({
       <div className="drawer">
         <div className="drawer-header">
           <h2 id="drawer-title">{title}</h2>
+          {headerAction}
           <button aria-label="Close drawer" onClick={close}>
             ✕
           </button>
@@ -2116,6 +2119,30 @@ function App() {
                       ? "Models"
                       : "History"
           }
+          headerAction={
+            visibleDrawer === "models" && canManageModels ? (
+              <a
+                className="manage-models-link"
+                href={navigationUrl(
+                  location.href,
+                  conversationNavigation(active, "catalog"),
+                )}
+                onClick={(event) => {
+                  if (
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return;
+                  event.preventDefault();
+                  setDrawer("catalog");
+                }}
+              >
+                Manage models →
+              </a>
+            ) : null
+          }
           close={() => setDrawer(null)}
         >
           {visibleDrawer !== "settings" && sessionNotice}
@@ -2312,7 +2339,7 @@ function App() {
             </>
           ) : visibleDrawer === "models" ? (
             <>
-              <div className="dictation-field">
+              <div className="dictation-field picker-search">
                 <input
                   type="search"
                   aria-label="Search models"
@@ -2329,31 +2356,12 @@ function App() {
                   />
                 )}
               </div>
-              <p className="hint">Choose a model for this conversation.</p>
-              {canManageModels && (
-                <a
-                  className="manage-models-link"
-                  href={navigationUrl(
-                    location.href,
-                    conversationNavigation(active, "catalog"),
-                  )}
-                  onClick={(event) => {
-                    if (
-                      event.metaKey ||
-                      event.ctrlKey ||
-                      event.shiftKey ||
-                      event.altKey
-                    )
-                      return;
-                    event.preventDefault();
-                    setDrawer("catalog");
-                  }}
-                >
-                  Manage models →
-                </a>
-              )}
+              <p className="hint picker-hint">
+                Choose a model for this conversation.
+              </p>
+
               {page === "lab" && (
-                <div className="modes">
+                <div className="modes picker-modes">
                   {allowedModes.map((mode) => (
                     <button
                       disabled={busy}

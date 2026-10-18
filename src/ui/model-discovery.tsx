@@ -17,6 +17,7 @@ import {
 } from "./feed-annotation";
 import {
   recommendedChoice,
+  orderedChoices,
   lowQualityQuant,
   qualifiedCatalogMatch,
 } from "./model-choice";
@@ -38,6 +39,7 @@ const fitBadges = {
 const choiceSchema = z.object({
   path: z.string(),
   sizeBytes: z.number(),
+  partCount: z.number().int().positive().optional(),
   quant: z.string().nullable(),
   modelId: z.string(),
   existing: z.enum(["built-in", "remote", "user"]).nullable(),
@@ -166,6 +168,16 @@ function size(value: number) {
   return `${Math.max(1, Math.round(value / 1024 ** 2))} MiB`;
 }
 
+function initialPath(choices: Choice[]) {
+  return (
+    recommendedChoice(choices)?.path ??
+    orderedChoices(choices).find(
+      (choice) => choice.quant === null && choice.fit?.verdict !== "wont-fit",
+    )?.path ??
+    ""
+  );
+}
+
 function addable(choice: Choice) {
   return choice.existing === null || choice.existing === "user";
 }
@@ -204,15 +216,16 @@ export function DiscoveryCard({
 }) {
   const [preview, setPreview] = useState(hit.preview);
   const [reason, setReason] = useState(hit.reason);
-  const [path, setPath] = useState(
-    () => recommendedChoice(hit.preview?.choices ?? [])?.path ?? "",
+  const [path, setPath] = useState(() =>
+    initialPath(hit.preview?.choices ?? []),
   );
   const [busy, setBusy] = useState<
     "" | "preview" | "add" | "install" | "recipe"
   >("");
   const [reasonCode, setReasonCode] = useState(hit.reasonCode);
   const [error, setError] = useState<Failure | null>(null);
-  const recommendation = recommendedChoice(preview?.choices ?? []);
+  const choices = orderedChoices(preview?.choices ?? []);
+  const recommendation = recommendedChoice(choices);
   const choice = preview?.choices.find((item) => item.path === path);
   const notes = hit.catalog ?? [];
   const recipes = notes.filter((note) => note.recipe);
@@ -255,7 +268,7 @@ export function DiscoveryCard({
       setPreview(next);
       setReason(null);
       setReasonCode(undefined);
-      setPath(recommendedChoice(next.choices)?.path ?? "");
+      setPath(initialPath(next.choices));
     } catch (error) {
       setError(failure(error, "Could not read the repo."));
     } finally {
@@ -371,7 +384,7 @@ export function DiscoveryCard({
           {choice ? (
             <div className="download-recommendation" role="status">
               <strong>
-                {choice.path === recommendation?.path
+                {choice.path === recommendation?.path && choice.quant
                   ? "Suggested download"
                   : "Selected download"}{" "}
                 · {choice.quant ?? "Quantization unknown"}
@@ -392,6 +405,45 @@ export function DiscoveryCard({
                 </p>
               )}
               <span className="discovery-filename">{choice.path}</span>
+              {(choice.partCount ?? 1) > 1 && (
+                <p>
+                  {choice.partCount} parts · all downloaded together · total
+                  size below
+                </p>
+              )}
+              <dl className="model-storage">
+                <div>
+                  <dt>Download</dt>
+                  <dd>{size(choice.sizeBytes)}</dd>
+                </div>
+                <div>
+                  <dt>Memory</dt>
+                  <dd>
+                    {choice.fit
+                      ? `~${choice.fit.minVramGb.toFixed(1)} GB`
+                      : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Quant</dt>
+                  <dd>{choice.quant ?? "—"}</dd>
+                </div>
+                {peak && (
+                  <div className="model-storage-fit">
+                    <dt>Measured peak</dt>
+                    <dd>
+                      {describeFeedPeak(peak)}
+                      <span className="muted"> · {peak.hardware}</span>
+                    </dd>
+                  </div>
+                )}
+                {choice.fit && (
+                  <div className="model-storage-fit">
+                    <dt>Fit</dt>
+                    <dd>{choice.fit.message}</dd>
+                  </div>
+                )}
+              </dl>
             </div>
           ) : (
             <p className="hint">
@@ -406,7 +458,7 @@ export function DiscoveryCard({
             </summary>
             <fieldset className="discovery-file-options">
               <legend>Download file</legend>
-              {preview.choices.map((item) => (
+              {choices.map((item) => (
                 <label key={item.path}>
                   <input
                     type="radio"
@@ -418,7 +470,11 @@ export function DiscoveryCard({
                   />
                   <span>
                     <strong>
-                      {item.quant ?? "Original"} · {size(item.sizeBytes)}
+                      {item.quant ?? "Quantization unknown"} ·{" "}
+                      {size(item.sizeBytes)}
+                      {(item.partCount ?? 1) > 1
+                        ? ` · ${item.partCount} parts, total`
+                        : ""}
                       {item.path === recommendation?.path ? " · Suggested" : ""}
                     </strong>
                     <span className="discovery-filename">{item.path}</span>
@@ -435,39 +491,7 @@ export function DiscoveryCard({
               ))}
             </fieldset>
           </details>
-          {choice && (
-            <dl className="model-storage">
-              <div>
-                <dt>Download</dt>
-                <dd>{size(choice.sizeBytes)}</dd>
-              </div>
-              <div>
-                <dt>Memory</dt>
-                <dd>
-                  {choice.fit ? `~${choice.fit.minVramGb.toFixed(1)} GB` : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt>Quant</dt>
-                <dd>{choice.quant ?? "—"}</dd>
-              </div>
-              {peak && (
-                <div className="model-storage-fit">
-                  <dt>Measured peak</dt>
-                  <dd>
-                    {describeFeedPeak(peak)}
-                    <span className="muted"> · {peak.hardware}</span>
-                  </dd>
-                </div>
-              )}
-              {choice.fit && (
-                <div className="model-storage-fit">
-                  <dt>Fit</dt>
-                  <dd>{choice.fit.message}</dd>
-                </div>
-              )}
-            </dl>
-          )}
+
           {annotation && (
             <>
               <FeedRevisionNote annotation={annotation} />

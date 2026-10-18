@@ -35,7 +35,8 @@ export function recommendedChoice<T extends DownloadChoice>(
   return choices
     .filter(
       (choice) =>
-        !lowQualityQuant(choice.quant ?? choice.path) &&
+        choice.quant !== null &&
+        !lowQualityQuant(choice.quant) &&
         !/(?:^|\/)(?:mtp[-_.]|mmproj[-_.]|projectors?\/)/i.test(choice.path) &&
         !/(?:^|\/)mtp\//i.test(choice.path) &&
         choice.fit?.verdict !== "wont-fit",
@@ -76,4 +77,48 @@ export function qualifiedCatalogMatch<T extends CatalogIdentity>(
         identity(name)
     );
   });
+}
+
+/** Keep recommendations first, then increasing download size, independent of paths. */
+export function orderedChoices<
+  T extends DownloadChoice & { sizeBytes: number },
+>(choices: readonly T[]) {
+  const recommended = recommendedChoice(choices);
+  return [...choices].sort(
+    (a, b) =>
+      Number(b === recommended) - Number(a === recommended) ||
+      a.sizeBytes - b.sizeBytes ||
+      a.path.localeCompare(b.path),
+  );
+}
+
+/** Group only chat quants with matching identity, revision and capabilities. */
+export function catalogVariantGroups(models: readonly Model[]) {
+  const groups = new Map<string, Model[]>();
+  for (const model of models) {
+    const c = model.catalog;
+    const key =
+      c.kind === "llm" && c.displayName && c.source && c.revision
+        ? JSON.stringify([
+            c.displayName,
+            c.source,
+            c.revision,
+            c.qualificationState,
+            c.trust,
+            c.inputModalities,
+            c.outputModalities,
+            c.capabilities,
+            c.contextWindowTokens,
+            c.unsupportedCapabilities,
+          ])
+        : model.id;
+    const group = groups.get(key);
+    if (
+      group &&
+      !group.some((item) => item.catalog.quantization === c.quantization)
+    )
+      group.push(model);
+    else groups.set(group ? model.id : key, [model]);
+  }
+  return [...groups.values()];
 }
