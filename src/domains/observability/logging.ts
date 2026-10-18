@@ -1183,10 +1183,16 @@ export class LocalBaseLogger implements ILogger {
   }
 
   async close(): Promise<void> {
-    await this.writer?.close();
-    this.writer = undefined;
-    await this.otel?.shutdown();
+    // OTel's final flush reports export failures through localDiagnostic, so it must
+    // finish while the file sink is open; otherwise they fall back to the console.
+    const otel = this.otel;
     this.otel = undefined;
+    try {
+      await otel?.shutdown();
+    } finally {
+      await this.writer?.close();
+      this.writer = undefined;
+    }
   }
 }
 
