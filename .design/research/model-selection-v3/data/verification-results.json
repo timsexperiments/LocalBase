@@ -1,0 +1,688 @@
+{
+  "interactionChecks": [
+    {
+      "name": "picker focus enters modal",
+      "result": true
+    },
+    {
+      "name": "back-tab remains in modal",
+      "result": false
+    },
+    {
+      "name": "Escape closes and restores focus",
+      "result": true
+    },
+    {
+      "name": "model selection preserves draft",
+      "result": true
+    },
+    {
+      "name": "corrected backward modal wrap",
+      "result": true
+    },
+    {
+      "name": "forward modal wrap",
+      "result": true
+    },
+    {
+      "name": "default qualified file matches catalog bytes",
+      "result": true
+    },
+    {
+      "name": "26 weight variants; supplemental assets excluded as standalone choices",
+      "result": true
+    },
+    {
+      "name": "alternate file produces compatibility warning",
+      "result": true
+    },
+    {
+      "name": "download review states installed disabled and exact rounded bytes",
+      "result": true
+    },
+    {
+      "name": "pause changes state",
+      "result": false
+    },
+    {
+      "name": "retry preserves chosen model and file",
+      "result": true
+    },
+    {
+      "name": "verification leads to installed disabled",
+      "result": true
+    },
+    {
+      "name": "enable is separate action",
+      "result": false
+    },
+    {
+      "name": "enable result, normalized text",
+      "result": true
+    },
+    {
+      "name": "pause result, normalized text",
+      "result": true
+    },
+    {
+      "name": "busy Clef unload is disabled",
+      "result": true
+    },
+    {
+      "name": "idle unload updates memory without removing files",
+      "result": true
+    },
+    {
+      "name": "default disable guard",
+      "result": true
+    },
+    {
+      "name": "default removal guard",
+      "result": true
+    },
+    {
+      "name": "Compass priority affects recommendation",
+      "result": true
+    },
+    {
+      "name": "Compass uses inline picker, excludes decision model",
+      "result": true
+    },
+    {
+      "name": "Compass selection returns to draft",
+      "result": true
+    },
+    {
+      "name": "Control room focus trap",
+      "result": true
+    },
+    {
+      "name": "Control room Escape restores focus",
+      "result": true
+    },
+    {
+      "name": "empty library acquisition starts at find",
+      "result": true
+    },
+    {
+      "name": "unqualified alternate cannot be enabled",
+      "result": true
+    },
+    {
+      "name": "unknown memory has no positive fit claim",
+      "result": true
+    },
+    {
+      "name": "session recovery reconnects download",
+      "result": true
+    },
+    {
+      "name": "discovery failure gives recovery",
+      "result": true
+    },
+    {
+      "name": "retry restores results",
+      "result": true
+    }
+  ],
+  "reflow": [
+    {
+      "concept": "shelf",
+      "state": "picker",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "library",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "add",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "download",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "warning",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "empty",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "running",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "picker",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "library",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "add",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "download",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "warning",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "empty",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "shelf",
+      "state": "running",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "picker",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "library",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "add",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "download",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "warning",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "empty",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "running",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "picker",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "library",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "add",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "download",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "warning",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "empty",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "compass",
+      "state": "running",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "picker",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "library",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "add",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "download",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "warning",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "empty",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "running",
+      "theme": "light",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "picker",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "library",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "add",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "download",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "warning",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "empty",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    },
+    {
+      "concept": "control",
+      "state": "running",
+      "theme": "dark",
+      "width": 320,
+      "scrollWidth": 320,
+      "errors": [],
+      "allButtonTargets44": true
+    }
+  ],
+  "contrast": [
+    {
+      "theme": "light",
+      "colors": {
+        "canvas": "#faf9fc",
+        "surface": "#fff",
+        "soft": "#efedf1",
+        "text": "#29252e",
+        "muted": "#6e6576",
+        "accent": "#286452",
+        "on-accent": "#fff",
+        "tint": "#e5eee9",
+        "warn": "#80500b",
+        "warn-bg": "#fff4dd",
+        "control": "#8c8295"
+      },
+      "ratios": [
+        {
+          "foreground": "text",
+          "background": "surface",
+          "ratio": 15.02,
+          "minimum": 4.5,
+          "pass": true
+        },
+        {
+          "foreground": "muted",
+          "background": "surface",
+          "ratio": 5.55,
+          "minimum": 4.5,
+          "pass": true
+        },
+        {
+          "foreground": "muted",
+          "background": "soft",
+          "ratio": 4.77,
+          "minimum": 4.5,
+          "pass": true
+        },
+        {
+          "foreground": "accent",
+          "background": "tint",
+          "ratio": 5.84,
+          "minimum": 4.5,
+          "pass": true
+        },
+        {
+          "foreground": "on-accent",
+          "background": "accent",
+          "ratio": 6.92,
+          "minimum": 4.5,
+          "pass": true
+        },
+        {
+          "foreground": "warn",
+          "background": "warn-bg",
+          "ratio": 6.27,
+          "minimum": 4.5,
+          "pass": true
+        },
+        {
+          "foreground": "control",
+          "background": "surface",
+          "ratio": 3.66,
+          "minimum": 3,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "colors": {
+        "canvas": "#201e25",
+        "surface": "#2b2730",
+        "soft": "#332e39",
+        "text": "#eee9f1",
+        "muted": "#b3a8bc",
+        "accent": "#a4d3bc",
+        "on-accent": "#172c23",
+        "tint": "#293d34",
+        "warn": "#f3cb82",
+        "warn-bg": "#3f3220",
+        "control": "#897d92"
+      },
+      "ratios": [
+        {
+          "foreground": "text",
+          "background": "surface",
+          "ratio": 12.23,
+          "minimum": 4.5,
+          "pass": true
+        },
+        {
+          "foreground": "muted",
+          "background": "surface",
+          "ratio": 6.44,
+          "minimum": 4.5,
+          "pass": true
+        },
+        {
+          "foreground": "muted",
+          "background": "soft",
+          "ratio": 5.81,
+          "minimum": 4.5,
+          "pass": true
+        },
+        {
+          "foreground": "accent",
+          "background": "tint",
+          "ratio": 6.97,
+          "minimum": 4.5,
+          "pass": true
+        },
+        {
+          "foreground": "on-accent",
+          "background": "accent",
+          "ratio": 8.88,
+          "minimum": 4.5,
+          "pass": true
+        },
+        {
+          "foreground": "warn",
+          "background": "warn-bg",
+          "ratio": 8.1,
+          "minimum": 4.5,
+          "pass": true
+        },
+        {
+          "foreground": "control",
+          "background": "surface",
+          "ratio": 3.77,
+          "minimum": 3,
+          "pass": true
+        }
+      ]
+    }
+  ],
+  "textEnlargement": [
+    {
+      "concept": "shelf",
+      "state": "library",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "errors": []
+    },
+    {
+      "concept": "shelf",
+      "state": "add",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "errors": []
+    },
+    {
+      "concept": "compass",
+      "state": "library",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "errors": []
+    },
+    {
+      "concept": "compass",
+      "state": "add",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "errors": []
+    },
+    {
+      "concept": "control",
+      "state": "library",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "errors": []
+    },
+    {
+      "concept": "control",
+      "state": "add",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "errors": []
+    }
+  ]
+}

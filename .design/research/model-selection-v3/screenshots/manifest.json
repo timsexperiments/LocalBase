@@ -1,0 +1,1534 @@
+[
+  {
+    "concept": "shelf",
+    "state": "picker",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "shelf-picker-390-light.png",
+    "audit": {
+      "heading": "A day by the river",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "library",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "shelf-library-390-light.png",
+    "audit": {
+      "heading": "Your library",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "add",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "shelf-add-390-light.png",
+    "audit": {
+      "heading": "Qwen3.8 27B",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "download",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "shelf-download-390-light.png",
+    "audit": {
+      "heading": "Downloads",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "warning",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "shelf-warning-390-light.png",
+    "audit": {
+      "heading": "There is not room right now",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "empty",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "shelf-empty-390-light.png",
+    "audit": {
+      "heading": "Your Mac is ready",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "picker",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "compass-picker-390-light.png",
+    "audit": {
+      "heading": "Which model for this chat?",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "library",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "compass-library-390-light.png",
+    "audit": {
+      "heading": "Your tools, ready when needed",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "add",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "compass-add-390-light.png",
+    "audit": {
+      "heading": "Qwen3.8 27B",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "download",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "compass-download-390-light.png",
+    "audit": {
+      "heading": "Downloads",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "warning",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "compass-warning-390-light.png",
+    "audit": {
+      "heading": "There is not room right now",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "empty",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "compass-empty-390-light.png",
+    "audit": {
+      "heading": "Your Mac is ready",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "picker",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "control-picker-390-light.png",
+    "audit": {
+      "heading": "A day by the river",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "library",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "control-library-390-light.png",
+    "audit": {
+      "heading": "Disk inventory",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "control",
+    "state": "add",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "control-add-390-light.png",
+    "audit": {
+      "heading": "Qwen3.8 27B",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "download",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "control-download-390-light.png",
+    "audit": {
+      "heading": "Downloads",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "warning",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "control-warning-390-light.png",
+    "audit": {
+      "heading": "Review a load plan",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "empty",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "control-empty-390-light.png",
+    "audit": {
+      "heading": "Your Mac is ready",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "picker",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "shelf-picker-390-dark.png",
+    "audit": {
+      "heading": "A day by the river",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "library",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "shelf-library-390-dark.png",
+    "audit": {
+      "heading": "Your library",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "add",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "shelf-add-390-dark.png",
+    "audit": {
+      "heading": "Qwen3.8 27B",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "download",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "shelf-download-390-dark.png",
+    "audit": {
+      "heading": "Downloads",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "warning",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "shelf-warning-390-dark.png",
+    "audit": {
+      "heading": "There is not room right now",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "empty",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "shelf-empty-390-dark.png",
+    "audit": {
+      "heading": "Your Mac is ready",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "picker",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "compass-picker-390-dark.png",
+    "audit": {
+      "heading": "Which model for this chat?",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "library",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "compass-library-390-dark.png",
+    "audit": {
+      "heading": "Your tools, ready when needed",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "add",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "compass-add-390-dark.png",
+    "audit": {
+      "heading": "Qwen3.8 27B",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "download",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "compass-download-390-dark.png",
+    "audit": {
+      "heading": "Downloads",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "warning",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "compass-warning-390-dark.png",
+    "audit": {
+      "heading": "There is not room right now",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "empty",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "compass-empty-390-dark.png",
+    "audit": {
+      "heading": "Your Mac is ready",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "picker",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "control-picker-390-dark.png",
+    "audit": {
+      "heading": "A day by the river",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "library",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "control-library-390-dark.png",
+    "audit": {
+      "heading": "Disk inventory",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "control",
+    "state": "add",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "control-add-390-dark.png",
+    "audit": {
+      "heading": "Qwen3.8 27B",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "download",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "control-download-390-dark.png",
+    "audit": {
+      "heading": "Downloads",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "warning",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "control-warning-390-dark.png",
+    "audit": {
+      "heading": "Review a load plan",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "empty",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "control-empty-390-dark.png",
+    "audit": {
+      "heading": "Your Mac is ready",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "picker",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "shelf-picker-1280-light.png",
+    "audit": {
+      "heading": "A day by the river",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "library",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "shelf-library-1280-light.png",
+    "audit": {
+      "heading": "Your library",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "add",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "shelf-add-1280-light.png",
+    "audit": {
+      "heading": "Qwen3.8 27B",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "download",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "shelf-download-1280-light.png",
+    "audit": {
+      "heading": "Downloads",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "warning",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "shelf-warning-1280-light.png",
+    "audit": {
+      "heading": "There is not room right now",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "empty",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "shelf-empty-1280-light.png",
+    "audit": {
+      "heading": "Your Mac is ready",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "picker",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "compass-picker-1280-light.png",
+    "audit": {
+      "heading": "Which model for this chat?",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "library",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "compass-library-1280-light.png",
+    "audit": {
+      "heading": "Your tools, ready when needed",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "add",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "compass-add-1280-light.png",
+    "audit": {
+      "heading": "Qwen3.8 27B",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "download",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "compass-download-1280-light.png",
+    "audit": {
+      "heading": "Downloads",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "warning",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "compass-warning-1280-light.png",
+    "audit": {
+      "heading": "There is not room right now",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "empty",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "compass-empty-1280-light.png",
+    "audit": {
+      "heading": "Your Mac is ready",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "picker",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "control-picker-1280-light.png",
+    "audit": {
+      "heading": "A day by the river",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "library",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "control-library-1280-light.png",
+    "audit": {
+      "heading": "Disk inventory",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "control",
+    "state": "add",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "control-add-1280-light.png",
+    "audit": {
+      "heading": "Qwen3.8 27B",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "download",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "control-download-1280-light.png",
+    "audit": {
+      "heading": "Downloads",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "warning",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "control-warning-1280-light.png",
+    "audit": {
+      "heading": "Review a load plan",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "empty",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "control-empty-1280-light.png",
+    "audit": {
+      "heading": "Your Mac is ready",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "picker",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "shelf-picker-1280-dark.png",
+    "audit": {
+      "heading": "A day by the river",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "library",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "shelf-library-1280-dark.png",
+    "audit": {
+      "heading": "Your library",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "add",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "shelf-add-1280-dark.png",
+    "audit": {
+      "heading": "Qwen3.8 27B",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "download",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "shelf-download-1280-dark.png",
+    "audit": {
+      "heading": "Downloads",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "warning",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "shelf-warning-1280-dark.png",
+    "audit": {
+      "heading": "There is not room right now",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "empty",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "shelf-empty-1280-dark.png",
+    "audit": {
+      "heading": "Your Mac is ready",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "picker",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "compass-picker-1280-dark.png",
+    "audit": {
+      "heading": "Which model for this chat?",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "library",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "compass-library-1280-dark.png",
+    "audit": {
+      "heading": "Your tools, ready when needed",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "add",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "compass-add-1280-dark.png",
+    "audit": {
+      "heading": "Qwen3.8 27B",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "download",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "compass-download-1280-dark.png",
+    "audit": {
+      "heading": "Downloads",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "warning",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "compass-warning-1280-dark.png",
+    "audit": {
+      "heading": "There is not room right now",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "empty",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "compass-empty-1280-dark.png",
+    "audit": {
+      "heading": "Your Mac is ready",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "picker",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "control-picker-1280-dark.png",
+    "audit": {
+      "heading": "A day by the river",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "library",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "control-library-1280-dark.png",
+    "audit": {
+      "heading": "Disk inventory",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "control",
+    "state": "add",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "control-add-1280-dark.png",
+    "audit": {
+      "heading": "Qwen3.8 27B",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "download",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "control-download-1280-dark.png",
+    "audit": {
+      "heading": "Downloads",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "warning",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "control-warning-1280-dark.png",
+    "audit": {
+      "heading": "Review a load plan",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "control",
+    "state": "empty",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "control-empty-1280-dark.png",
+    "audit": {
+      "heading": "Your Mac is ready",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false,
+      "unnamedButtons": 0
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "running",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "shelf-running-390-light.png",
+    "audit": {
+      "heading": "Running now",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "home",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "compass-home-390-light.png",
+    "audit": {
+      "heading": "What do you want to do?",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "guide",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "compass-guide-390-light.png",
+    "audit": {
+      "heading": "What matters for this chat?",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "recommend",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "compass-recommend-390-light.png",
+    "audit": {
+      "heading": "A model for chat",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "control",
+    "state": "running",
+    "width": 390,
+    "height": 844,
+    "theme": "light",
+    "file": "control-running-390-light.png",
+    "audit": {
+      "heading": "What is using the Mac?",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "running",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "shelf-running-390-dark.png",
+    "audit": {
+      "heading": "Running now",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "home",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "compass-home-390-dark.png",
+    "audit": {
+      "heading": "What do you want to do?",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "guide",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "compass-guide-390-dark.png",
+    "audit": {
+      "heading": "What matters for this chat?",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "recommend",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "compass-recommend-390-dark.png",
+    "audit": {
+      "heading": "A model for chat",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "control",
+    "state": "running",
+    "width": 390,
+    "height": 844,
+    "theme": "dark",
+    "file": "control-running-390-dark.png",
+    "audit": {
+      "heading": "What is using the Mac?",
+      "width": 390,
+      "scrollWidth": 390,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "running",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "shelf-running-1280-light.png",
+    "audit": {
+      "heading": "Running now",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "home",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "compass-home-1280-light.png",
+    "audit": {
+      "heading": "What do you want to do?",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "guide",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "compass-guide-1280-light.png",
+    "audit": {
+      "heading": "What matters for this chat?",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "recommend",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "compass-recommend-1280-light.png",
+    "audit": {
+      "heading": "A model for chat",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "control",
+    "state": "running",
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "file": "control-running-1280-light.png",
+    "audit": {
+      "heading": "What is using the Mac?",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "light",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "shelf",
+    "state": "running",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "shelf-running-1280-dark.png",
+    "audit": {
+      "heading": "Running now",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "home",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "compass-home-1280-dark.png",
+    "audit": {
+      "heading": "What do you want to do?",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "guide",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "compass-guide-1280-dark.png",
+    "audit": {
+      "heading": "What matters for this chat?",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "compass",
+    "state": "recommend",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "compass-recommend-1280-dark.png",
+    "audit": {
+      "heading": "A model for chat",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  },
+  {
+    "concept": "control",
+    "state": "running",
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "file": "control-running-1280-dark.png",
+    "audit": {
+      "heading": "What is using the Mac?",
+      "width": 1280,
+      "scrollWidth": 1280,
+      "theme": "dark",
+      "errors": [],
+      "hasRemoteResources": false
+    }
+  }
+]
