@@ -1594,6 +1594,13 @@ function App() {
         )}
       </header>
       <div className="workspace">
+        {/* Losing the session drops every permission, which hides the
+            composer area that normally carries this notice. */}
+        {session.kind === "error" && !activeModeAllowed && (
+          <main className="conversation">
+            <section className="empty">{sessionNotice}</section>
+          </main>
+        )}
         {session.kind === "session" && !activeModeAllowed && (
           <main className="conversation">
             <section className="empty">
