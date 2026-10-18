@@ -596,6 +596,7 @@ describe("playground client boundaries", () => {
             provenanceUrl: "https://example.com/harbor",
           },
         ],
+        custom: [],
       },
       residency: "cold-per-request",
     } satisfies ModelMetadata["catalog"]["capabilities"];
@@ -736,6 +737,7 @@ describe("playground client boundaries", () => {
       voice: {
         requestValues: ["default", "harbor"],
         defaultRequestValue: "default",
+        custom: [],
       },
     });
     for (const capabilities of [

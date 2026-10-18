@@ -35,6 +35,7 @@ import {
   type StudioRequest,
 } from "./studio";
 import { DecisionLab } from "./decision-lab";
+import { VoiceProfiles } from "./voice-profiles";
 import {
   chatContext,
   compact,
@@ -76,6 +77,7 @@ import {
   imageResponseSchema,
   logoutSession,
   modelMemorySummary,
+  speechAcceptsCustomVoices,
   speechVoiceCount,
   modelModalities,
   modelName,
@@ -1704,9 +1706,11 @@ function App() {
                         : active.mode === "image"
                           ? "Write a prompt to generate an image."
                           : active.mode === "tts"
-                            ? speechVoiceCount(model) > 1
-                              ? "Enter the words to read aloud. Pick a voice in generation controls."
-                              : "Enter the words to read aloud."
+                            ? speechAcceptsCustomVoices(model)
+                              ? "Enter the words to read aloud. Pick a voice, or add your own, in generation controls."
+                              : speechVoiceCount(model) > 1
+                                ? "Enter the words to read aloud. Pick a voice in generation controls."
+                                : "Enter the words to read aloud."
                             : "Choose an audio file to transcribe."}
                 </p>
               </section>
@@ -2161,6 +2165,14 @@ function App() {
                       setModelSettings(model.id, settings)
                     }
                   />
+                  {active.mode === "tts" &&
+                    credential &&
+                    speechAcceptsCustomVoices(model) && (
+                      <VoiceProfiles
+                        connection={credential}
+                        onChanged={() => void refresh()}
+                      />
+                    )}
                 </div>
               ) : (
                 <p className="generation-settings-hint">

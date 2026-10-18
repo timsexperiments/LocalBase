@@ -10,6 +10,7 @@ import type { BrowserIdentity } from "../domains/auth/browser-identity";
 import type { BrowserSessionStore } from "../domains/auth/browser-sessions";
 import type { MagicLinkSessionAdapter } from "../domains/auth/magic-links";
 import { videoJobIdFromPath } from "../domains/runtime/route-dispatch";
+import { voiceRouteFromPath } from "../domains/voices/voice-http";
 import {
   createDirectSessionManager,
   githubCallbackPath,
@@ -70,6 +71,12 @@ function allowedUiRoute(method: string, pathname: string): boolean {
     return method === "GET" || method === "POST";
   if (pathname === "/_localbase/model-discovery") return method === "POST";
   if (method === "GET" && pathname === "/_localbase/models") return true;
+  const voice = voiceRouteFromPath(pathname);
+  if (voice?.kind === "collection")
+    return method === "GET" || method === "POST";
+  if (voice?.kind === "voice")
+    return method === "GET" || method === "PATCH" || method === "DELETE";
+  if (voice?.kind === "audio") return method === "GET";
   if (
     method === "POST" &&
     [

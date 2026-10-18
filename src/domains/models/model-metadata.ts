@@ -4,9 +4,10 @@ import {
   kokoroSpeechVoiceSchema,
   legacyFeatures,
   modelModalitySchema,
+  customSpeechVoiceIdSchema,
   referenceSpeechVoiceSchema,
+  requestSpeechVoiceSchema,
   resolveCatalogInstallation,
-  speechVoiceSchema,
   type ModelKind,
   type ModelSpec,
 } from "../../catalog";
@@ -104,7 +105,7 @@ const speechCapabilitiesSchema = z
       z
         .object({
           selection: z.literal("catalog-reference"),
-          requestValues: z.array(speechVoiceSchema).min(1),
+          requestValues: z.array(requestSpeechVoiceSchema).min(1),
           defaultRequestValue: z.literal("default"),
           references: z.array(
             z
@@ -112,6 +113,15 @@ const speechCapabilitiesSchema = z
                 name: referenceSpeechVoiceSchema,
                 license: z.literal("CC0-1.0"),
                 provenanceUrl: z.string().url(),
+              })
+              .strict(),
+          ),
+          /** Stored custom voice profiles, also listed in requestValues. */
+          custom: z.array(
+            z
+              .object({
+                requestValue: customSpeechVoiceIdSchema,
+                name: z.string().min(1),
               })
               .strict(),
           ),
@@ -357,6 +367,8 @@ export type ModelMetadataProjectionInput = Readonly<{
   memory?: ReadonlyMap<string, ModelMemoryInputs>;
   /** This machine's memory in GiB; adds a fit verdict when present. */
   systemMemoryGb?: number;
+  /** Stored custom voices, offered by models that clone from a reference. */
+  customVoices?: readonly Readonly<{ id: string; name: string }>[];
 }>;
 
 function selectedModelIds(
@@ -465,6 +477,7 @@ export function projectModelMetadata(
                       ...model.ttsRuntime.referenceVoices.map(
                         ({ name }) => name,
                       ),
+                      ...(input.customVoices ?? []).map(({ id }) => id),
                     ],
                     defaultRequestValue: "default",
                     references: model.ttsRuntime.referenceVoices.map(
@@ -474,6 +487,10 @@ export function projectModelMetadata(
                         provenanceUrl,
                       }),
                     ),
+                    custom: (input.customVoices ?? []).map(({ id, name }) => ({
+                      requestValue: id,
+                      name,
+                    })),
                   },
                   residency: "cold-per-request",
                 }

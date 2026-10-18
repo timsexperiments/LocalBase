@@ -3,6 +3,7 @@ import { verifyAuthoritativeFile } from "../../utils/checksum";
 import {
   byId,
   embeddingRuntimeProfile,
+  isCustomSpeechVoiceId,
   isDecisionModel,
   llmProjectorArtifact,
   primaryArtifact,
@@ -39,6 +40,7 @@ import {
   resolveSttLaunchPlan,
   resolveTtsLaunchPlan,
   resolveVideoLaunchPlan,
+  type TtsLaunchPlan,
 } from "./launch-plan";
 import {
   imageStartupTimeoutMs,
@@ -123,6 +125,11 @@ export type RuntimeSupervisorFactoryDependencies = Readonly<{
    * shape ahead of checked-in, feed and estimated figures.
    */
   observedMemory?: ObservedPeakSource;
+  /**
+   * Stored custom voice references by voice id. Read on every speech
+   * preparation, so a new voice is picked up when the runtime reloads.
+   */
+  customVoiceFiles?: () => Promise<Readonly<Record<string, string>>>;
   /** Host platform used to select the video runtime target; defaults to this process. */
   host?: Readonly<{ platform: NodeJS.Platform; arch: NodeJS.Architecture }>;
   /**
@@ -481,6 +488,36 @@ export function runtimeLaunchOverrides(
     ...(input.sttModelFile ? { sttModelFile: input.sttModelFile } : {}),
     ...(input.imageModelFile ? { imageModelFile: input.imageModelFile } : {}),
     ...(input.ttsModelFile ? { ttsModelFile: input.ttsModelFile } : {}),
+  });
+}
+
+/**
+ * Drops custom voices whose reference file was deleted after the plan was
+ * resolved. Catalog references stay, so a missing one still fails the launch.
+ */
+export async function withPresentSpeakerFiles(
+  plan: TtsLaunchPlan,
+): Promise<TtsLaunchPlan> {
+  const entries = await Promise.all(
+    Object.entries(plan.speakerFiles).map(
+      async ([voice, path]) =>
+        [
+          voice,
+          path,
+          !isCustomSpeechVoiceId(voice) || (await Bun.file(path).exists()),
+        ] as const,
+    ),
+  );
+  if (entries.every(([, , present]) => present)) return plan;
+  return Object.freeze({
+    ...plan,
+    speakerFiles: Object.freeze(
+      Object.fromEntries(
+        entries
+          .filter(([, , present]) => present)
+          .map(([voice, path]) => [voice, path]),
+      ),
+    ),
   });
 }
 
@@ -865,7 +902,8 @@ export function createRuntimeSupervisorFactory(
           healthUrl: plan.healthUrl,
           slotsUrl: plan.slotsUrl,
           logger: ctx.logger,
-          launch: async () => plan,
+          // A crash restart must not fail on a custom voice deleted since launch.
+          launch: async () => await withPresentSpeakerFiles(plan),
           start: async (launchPlan) => {
             if (launchPlan.component !== "tts-server") {
               throw new Error("Expected tts-server launch plan.");
@@ -964,6 +1002,7 @@ export function createRuntimeSupervisorFactory(
             modelPath,
             projectorPath: join(config.ttsModelsDir, projector.filename),
             speakerFiles: Object.freeze({
+              ...(await dependencies.customVoiceFiles?.()),
               harbor: join(config.ttsModelsDir, references.harbor.filename),
               willow: join(config.ttsModelsDir, references.willow.filename),
             }),

@@ -108,7 +108,10 @@ function createWarmHarness(
       binaryPath: "/nonexistent/tts-server",
       modelPath: "/nonexistent/model.gguf",
       projectorPath: "/nonexistent/codec.gguf",
-      speakerFiles: {} as never,
+      speakerFiles: {
+        harbor: "/models/harbor.wav",
+        willow: "/models/willow.wav",
+      },
     }),
     createWarmServer: () => {
       calls.create += 1;

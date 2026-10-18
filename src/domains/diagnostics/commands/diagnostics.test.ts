@@ -28,6 +28,8 @@ import {
   serviceStderrPath,
 } from "../../observability/service-stderr";
 import { diagnosticsManifestSchema, runDiagnostics } from "./diagnostics";
+import { createCustomVoiceStore } from "../../voices/voice-store";
+import { toneWav } from "../../../test/voice-audio-fixture";
 import { CATALOG } from "../../../catalog";
 import { hasCapability } from "../../../catalog/capabilities";
 import { runtimeCapabilityKey } from "../../models/model-capabilities";
@@ -69,6 +71,14 @@ test("creates a strict decoded archive without sensitive or path data", async ()
       })
       .where(eq(configTable.id, "default"))
       .run();
+    const voice = await createCustomVoiceStore(database.get(root), root).create(
+      {
+        name: "Private Speaker Name",
+        audio: toneWav({ seconds: 3 }),
+        consent: true,
+        createdBy: "api-key:diagnostics",
+      },
+    );
     database.close();
     await logger.enableFileLogging(root);
     logger.event({
@@ -104,6 +114,10 @@ test("creates a strict decoded archive without sensitive or path data", async ()
     );
     expect(manifest.configuration.available).toBe(true);
     expect(manifest.hardware.available).toBe(true);
+    expect(manifest.voices).toEqual({
+      available: true,
+      data: { customVoices: 1 },
+    });
     expect(manifest.models.available).toBe(true);
     const text = new TextDecoder().decode(entries["logs/events.jsonl"]);
     for (const line of text.trim().split("\n")) {
@@ -121,6 +135,9 @@ test("creates a strict decoded archive without sensitive or path data", async ()
     for (const bytes of Object.values(entries)) {
       const entryText = new TextDecoder().decode(bytes);
       expect(entryText).not.toContain("direct-span-secret");
+      expect(entryText).not.toContain("Private Speaker Name");
+      expect(entryText).not.toContain(voice.id);
+      expect(entryText).not.toContain("RIFF");
       expect(entryText).not.toContain("secret-value");
       expect(entryText).not.toContain("do not archive this content");
       expect(entryText).not.toContain(root);

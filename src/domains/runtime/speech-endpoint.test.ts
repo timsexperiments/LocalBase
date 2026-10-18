@@ -65,8 +65,9 @@ describe("OpenAI speech endpoint", () => {
     };
     for (const [overrides, expected] of [
       [{ response_format: "mp3" }, "supports only 'wav'"],
-      [{ voice: "alloy" }, "Invalid option"],
-      [{ voice: "../../private/reference.wav" }, "Invalid option"],
+      [{ voice: "alloy" }, "or a custom voice id"],
+      [{ voice: "../../private/reference.wav" }, "or a custom voice id"],
+      [{ voice: "voice-../../etc/passwd" }, "or a custom voice id"],
       [{ voice: "af_heart" }, "not supported by model"],
       [{ speed: 1.25 }, "speed must be 1"],
       [{ instructions: "Whisper" }, "instructions are not supported"],

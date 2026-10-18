@@ -6,6 +6,12 @@ import {
 } from "./catalog/capabilities";
 import { CATALOG_DATA } from "./catalog/models";
 import { safeFilenameSchema } from "./utils/checksum";
+import {
+  builtInSpeechVoices,
+  customSpeechVoiceIdSchema,
+} from "./domains/voices/voice-contract";
+
+export { customSpeechVoiceIdSchema };
 
 export {
   capabilitySchema,
@@ -21,13 +27,7 @@ export type ModelKind = z.infer<typeof modelKindSchema>;
 export const modelModalitySchema = z.enum(["text", "audio", "image", "video"]);
 export type ModelModality = z.infer<typeof modelModalitySchema>;
 
-export const speechVoiceSchema = z.enum([
-  "default",
-  "harbor",
-  "willow",
-  "af_heart",
-  "af_bella",
-]);
+export const speechVoiceSchema = z.enum(builtInSpeechVoices);
 export type SpeechVoice = z.infer<typeof speechVoiceSchema>;
 
 export const referenceSpeechVoiceSchema = z.enum(["harbor", "willow"]);
@@ -35,6 +35,23 @@ export type ReferenceSpeechVoice = z.infer<typeof referenceSpeechVoiceSchema>;
 
 export const kokoroSpeechVoiceSchema = z.enum(["af_heart", "af_bella"]);
 export type KokoroSpeechVoice = z.infer<typeof kokoroSpeechVoiceSchema>;
+
+export function isCustomSpeechVoiceId(voice: string): boolean {
+  return customSpeechVoiceIdSchema.safeParse(voice).success;
+}
+
+/** A `voice` request value: a built-in name or a custom voice id. */
+export const requestSpeechVoiceSchema = z
+  .string()
+  .refine(
+    (voice) =>
+      speechVoiceSchema.safeParse(voice).success ||
+      isCustomSpeechVoiceId(voice),
+    {
+      error: `voice must be one of ${speechVoiceSchema.options.join(", ")} or a custom voice id`,
+    },
+  );
+export type RequestSpeechVoice = z.infer<typeof requestSpeechVoiceSchema>;
 
 export const commercialStatusSchema = z.enum([
   "open",
@@ -845,11 +862,16 @@ export function ttsReferenceArtifacts(
   return Object.freeze({ harbor: harborArtifact, willow: willowArtifact });
 }
 
-export function ttsVoiceAllowed(model: ModelSpec, voice: SpeechVoice): boolean {
+/** Whether the model can serve `voice`; custom ids still need a stored profile. */
+export function ttsVoiceAllowed(
+  model: ModelSpec,
+  voice: RequestSpeechVoice,
+): boolean {
   if (model.kind !== "tts" || !model.ttsRuntime) return false;
   if (model.ttsRuntime.kind === "llama-tts") {
     return (
       voice === "default" ||
+      isCustomSpeechVoiceId(voice) ||
       model.ttsRuntime.referenceVoices.some(({ name }) => name === voice)
     );
   }

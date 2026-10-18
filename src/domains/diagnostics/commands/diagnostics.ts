@@ -23,6 +23,8 @@ import {
 } from "../../../catalog/sources";
 import { catalogFeedStatus } from "../../../catalog/remote-feed";
 import { openReadOnlyDatabase } from "../../../db/client";
+import { ttsCustomVoicesTable } from "../../../db/schema";
+import { count } from "drizzle-orm";
 import type { CapabilityMismatch } from "../../models/capability-detection";
 import { resolveCapabilitiesForModel } from "../../models/model-capabilities";
 import { evaluateModelFit } from "../../models/memory-fit";
@@ -71,6 +73,7 @@ const errorCodeSchema = z.enum([
   "service_unavailable",
   "otel_unavailable",
   "logs_unavailable",
+  "voices_unavailable",
 ]);
 
 const availabilitySchema = <T extends z.ZodType>(data: T) =>
@@ -192,6 +195,11 @@ const observabilitySchema = z
   })
   .strict();
 
+/** Custom voices are counted only: no names, ids or audio enter the bundle. */
+const voicesSchema = z
+  .object({ customVoices: z.number().int().nonnegative() })
+  .strict();
+
 const logsSchema = z
   .object({
     includedEvents: z.number().int().nonnegative(),
@@ -267,6 +275,7 @@ export const diagnosticsManifestSchema = z
     service: availabilitySchema(serviceSchema),
     observability: availabilitySchema(observabilitySchema),
     logs: availabilitySchema(logsSchema),
+    voices: availabilitySchema(voicesSchema),
   })
   .strict();
 
@@ -444,6 +453,19 @@ function openRuntimeCapabilityStore(root: string) {
     };
   } catch {
     return null;
+  }
+}
+
+function voiceData(root: string) {
+  const database = openReadOnlyDatabase(root);
+  try {
+    const row = database.db
+      .select({ value: count() })
+      .from(ttsCustomVoicesTable)
+      .get();
+    return voicesSchema.parse({ customVoices: row?.value ?? 0 });
+  } finally {
+    database.close();
   }
 }
 
@@ -646,6 +668,9 @@ export async function runDiagnostics(
     })
     .catch(() => unavailable("logs_unavailable"));
   const logs = await logResult;
+  const voices = await Promise.resolve()
+    .then(() => section(voiceData(root)))
+    .catch(() => unavailable("voices_unavailable"));
 
   const manifest: DiagnosticsManifest = diagnosticsManifestSchema.parse({
     schemaVersion: 1,
@@ -658,6 +683,7 @@ export async function runDiagnostics(
     service,
     observability: await observability,
     logs,
+    voices,
   });
 
   const logText = capturedEvents

@@ -223,6 +223,7 @@ test("reports only the supported cold speech contract", () => {
     config,
     installations: new Map([[speechModelId, true]]),
     runtimes: runtimeSnapshots(),
+    customVoices: [{ id: "voice-0123456789ab", name: "Narrator" }],
   });
 
   expect(metadata.catalog.capabilities).toEqual({
@@ -230,7 +231,7 @@ test("reports only the supported cold speech contract", () => {
     outputFormats: ["wav"],
     voice: {
       selection: "catalog-reference",
-      requestValues: ["default", "harbor", "willow"],
+      requestValues: ["default", "harbor", "willow", "voice-0123456789ab"],
       defaultRequestValue: "default",
       references: [
         {
@@ -246,6 +247,7 @@ test("reports only the supported cold speech contract", () => {
             "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations",
         },
       ],
+      custom: [{ requestValue: "voice-0123456789ab", name: "Narrator" }],
     },
     residency: "cold-per-request",
   });

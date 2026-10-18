@@ -2,11 +2,20 @@ const SAMPLE_RATE = 16_000;
 const MAX_SECONDS = 60;
 const MAX_BYTES = 16 * 1024 * 1024;
 
-/** Encode mono samples at 16 kHz as little-endian PCM16 WAV. */
-export function encodePcm16Wav(samples: Float32Array): Blob {
-  if (!samples.length || samples.length > SAMPLE_RATE * MAX_SECONDS)
+export type WavCapture = Readonly<{ sampleRate: number; maxSeconds: number }>;
+const dictationCapture: WavCapture = {
+  sampleRate: SAMPLE_RATE,
+  maxSeconds: MAX_SECONDS,
+};
+
+/** Encode mono samples (16 kHz unless stated) as little-endian PCM16 WAV. */
+export function encodePcm16Wav(
+  samples: Float32Array,
+  { sampleRate, maxSeconds }: WavCapture = dictationCapture,
+): Blob {
+  if (!samples.length || samples.length > sampleRate * maxSeconds)
     throw new Error(
-      "Dictation must contain between 0 and 60 seconds of audio.",
+      `Recordings must contain between 0 and ${maxSeconds} seconds of audio.`,
     );
   const buffer = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buffer);
@@ -20,8 +29,8 @@ export function encodePcm16Wav(samples: Float32Array): Blob {
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
   view.setUint16(22, 1, true);
-  view.setUint32(24, SAMPLE_RATE, true);
-  view.setUint32(28, SAMPLE_RATE * 2, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
   view.setUint16(32, 2, true);
   view.setUint16(34, 16, true);
   text(36, "data");
@@ -72,7 +81,16 @@ function microphone(signal: AbortSignal): Promise<MediaStream> {
   });
 }
 
-async function toWav(blob: Blob, signal: AbortSignal): Promise<Blob> {
+/**
+ * Decodes any browser-supported audio and renders it as mono PCM16 WAV at the
+ * capture rate, trimmed to the capture limit.
+ */
+export async function toWav(
+  blob: Blob,
+  signal: AbortSignal,
+  capture: WavCapture = dictationCapture,
+): Promise<Blob> {
+  const { sampleRate, maxSeconds } = capture;
   signal.throwIfAborted();
   const context = new AudioContext();
   let closed = false;
@@ -89,10 +107,10 @@ async function toWav(blob: Blob, signal: AbortSignal): Promise<Blob> {
       throw new Error("No audio was recorded.");
     // Trim encoder padding and delayed final chunks at the recording limit.
     const frames = Math.min(
-      SAMPLE_RATE * MAX_SECONDS,
-      Math.ceil(decoded.duration * SAMPLE_RATE),
+      sampleRate * maxSeconds,
+      Math.ceil(decoded.duration * sampleRate),
     );
-    const offline = new OfflineAudioContext(1, frames, SAMPLE_RATE);
+    const offline = new OfflineAudioContext(1, frames, sampleRate);
     const source = offline.createBufferSource();
     source.buffer = decoded;
     try {
@@ -100,7 +118,7 @@ async function toWav(blob: Blob, signal: AbortSignal): Promise<Blob> {
       source.start();
       const rendered = await offline.startRendering();
       signal.throwIfAborted();
-      return encodePcm16Wav(rendered.getChannelData(0));
+      return encodePcm16Wav(rendered.getChannelData(0), capture);
     } finally {
       source.disconnect();
     }
@@ -113,8 +131,11 @@ async function toWav(blob: Blob, signal: AbortSignal): Promise<Blob> {
 /** Manual and automatic stops resolve finished; cancellation rejects with AbortError. */
 export async function startRecording({
   signal,
+  capture = dictationCapture,
 }: {
   signal: AbortSignal;
+  /** Output rate and length limit; dictation uses 16 kHz and 60 s. */
+  capture?: WavCapture;
 }): Promise<{
   stop(): void;
   cancel(): void;
@@ -218,7 +239,7 @@ export async function startRecording({
       finish(new Error("No audio was recorded."));
       return;
     }
-    void toWav(blob, conversion.signal).then((wav) => {
+    void toWav(blob, conversion.signal, capture).then((wav) => {
       if (settled) return;
       settled = true;
       recorder.onerror = null;
@@ -233,7 +254,7 @@ export async function startRecording({
   }
   try {
     recorder.start(250);
-    if (!settled) timer = setTimeout(stop, MAX_SECONDS * 1000);
+    if (!settled) timer = setTimeout(stop, capture.maxSeconds * 1000);
   } catch (error) {
     finish(error);
     throw error;

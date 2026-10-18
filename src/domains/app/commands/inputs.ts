@@ -316,6 +316,21 @@ export const keysCreateInputSchema = z.object({
 });
 export type KeysCreateInput = z.infer<typeof keysCreateInputSchema>;
 
+export const voicesListInputSchema = z.object({});
+export type VoicesListInput = z.infer<typeof voicesListInputSchema>;
+
+export const voicesAddInputSchema = z.object({
+  file: z.string().min(1),
+  name: z.string().min(1),
+  consent: z.boolean().default(false),
+});
+export type VoicesAddInput = z.infer<typeof voicesAddInputSchema>;
+
+export const voicesRemoveInputSchema = z.object({
+  voiceId: z.string().min(1),
+});
+export type VoicesRemoveInput = z.infer<typeof voicesRemoveInputSchema>;
+
 export const keyIdInputSchema = z.object({
   keyId: z.string().min(1),
 });
