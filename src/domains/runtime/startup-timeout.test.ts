@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { byId, CATALOG, type ModelSpec } from "../../catalog";
 import { totalArtifactBytes } from "./memory-estimate";
 import { gibibyte } from "./memory-safety";
@@ -15,6 +15,14 @@ import {
   llmStartupTimeoutMsForWeights,
   VIDEO_STARTUP_TIMEOUT_MS,
 } from "./startup-timeout";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 // Catalog LLMs that have had the long llama-server startup budget since it was
 // introduced (hand-written minVramGb >= 16 before #278; unchanged through #280).
@@ -34,6 +42,7 @@ const LONG_STARTUP_LLMS = new Set([
   "devstral-small-2-24b-instruct-q4_k_m",
   "qwen3.5-27b-q4_k_m",
   "mistral-small-3.2-24b-instruct-q4_k_m",
+  "clef-q4_k_m",
 ]);
 
 describe("llmStartupTimeoutMsForWeights", () => {

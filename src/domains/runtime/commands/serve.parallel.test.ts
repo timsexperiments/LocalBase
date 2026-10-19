@@ -18,13 +18,21 @@ import {
   type LogEvent,
 } from "../../observability/logging";
 
-const INITIAL_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-const SWITCHED_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
+const INITIAL_MODEL = "qwen3.5-4b-q4_k_m";
+const SWITCHED_MODEL = "qwen3.5-9b-q4_k_m";
 const PROJECT_ROOT = join(import.meta.dirname, "../../../..");
 const textEncoder = new TextEncoder();
 const textBytes = (value: string) => textEncoder.encode(value);
 const LAZY_LLAMA_LAUNCH_TIMEOUT_MS = 10_000;
 const POLL_INTERVAL_MS = 25;
+
+function primaryFile(modelId: string): string {
+  const artifact = byId(modelId)?.artifacts.find(
+    ({ role }) => role === "primary",
+  );
+  if (!artifact) throw new Error(`Missing catalog model ${modelId}`);
+  return artifact.filename;
+}
 
 function saveTestConfig(config: ReturnType<typeof defaultConfig>): void {
   const database = new DatabaseSession();
@@ -253,19 +261,19 @@ test(
       config.selectedLlmModels = [INITIAL_MODEL, SWITCHED_MODEL];
       config.activeSttModel = "";
       config.selectedSttModels = [];
-      config.activeImageModel = "stable-diffusion-v1-5";
-      config.selectedImageModels = ["stable-diffusion-v1-5"];
+      config.activeImageModel = "juggernaut-xl-v9";
+      config.selectedImageModels = ["juggernaut-xl-v9"];
       saveTestConfig(config);
 
       mkdirSync(join(root, "bin"), { recursive: true });
       mkdirSync(runtimeDir, { recursive: true });
       await Promise.all([
         Bun.write(
-          join(config.llmModelsDir, `${INITIAL_MODEL}.gguf`),
+          join(config.llmModelsDir, primaryFile(INITIAL_MODEL)),
           "model placeholder",
         ),
         Bun.write(
-          join(config.llmModelsDir, `${SWITCHED_MODEL}.gguf`),
+          join(config.llmModelsDir, primaryFile(SWITCHED_MODEL)),
           "model placeholder",
         ),
         compileRuntimeFixture(join(runtimeDir, "llama-server"), {
@@ -278,7 +286,7 @@ test(
         )?.expectedSizeBytes;
         if (expectedSizeBytes !== undefined) {
           truncateSync(
-            join(config.llmModelsDir, `${modelId}.gguf`),
+            join(config.llmModelsDir, primaryFile(modelId)),
             expectedSizeBytes,
           );
         }
@@ -330,7 +338,7 @@ test(
         data: Array<{ id: string; context_length?: number }>;
       };
       expect(
-        servedModels.data.some(({ id }) => id === "stable-diffusion-v1-5"),
+        servedModels.data.some(({ id }) => id === "juggernaut-xl-v9"),
       ).toBe(false);
       expect(
         servedModels.data.find(({ id }) => id === INITIAL_MODEL)
@@ -377,7 +385,7 @@ test(
       const launchArgs = (await Bun.file(argsPath).text()).trim().split("\n");
       expect(launchArgs[launchArgs.indexOf("--parallel") + 1]).toBe("3");
       expect(launchArgs[launchArgs.indexOf("-m") + 1]).toBe(
-        join(config.llmModelsDir, `${SWITCHED_MODEL}.gguf`),
+        join(config.llmModelsDir, primaryFile(SWITCHED_MODEL)),
       );
 
       await stopProcess(gateway);
@@ -419,7 +427,7 @@ test(
     const runtimeDir = join(root, "test-runtimes");
     const wrapperPort = reservePort();
     const backendPort = reservePort();
-    const modelId = "qwen3-coder-next-q4_k_m";
+    const modelId = "qwen3.8-27b-q4_k_m";
     const primaryName = "test-lazy-00001-of-00002.gguf";
     const supplementaryName = "test-lazy-00002-of-00002.gguf";
     const primary = textBytes("primary shard");

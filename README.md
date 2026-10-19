@@ -52,6 +52,33 @@ Use [`local-base config`](docs/declarative-config.md) to validate, plan, apply, 
 
 Add your own models, or adjust built-in ones, in `<root>/catalog.d/`, or find and pin chat, transcription and image models from Hugging Face with `local-base models search`, `local-base models add hf:<org>/<repo>` or the catalog's **Find more models** view. New community models, plus verified-unsupported capabilities, measured memory peaks and multi-file install recipes for Hugging Face files, also arrive between releases through a remote catalog feed the gateway refreshes daily (`local-base models feed status`). See [User catalog and Hugging Face models](docs/user-catalog.md).
 
+### Built-in catalog
+
+The built-in catalog is a small, tested set: one entry per job, and one chat model per memory band. Minimums are LocalBase's computed figures at the reference launch shape (`local-base models catalog` shows yours).
+
+| Kind | Purpose | Model id | Minimum memory |
+| --- | --- | --- | --- |
+| Chat | Tiny (about 4 GB) | `qwen3.5-4b-q4_k_m` | 5 GB |
+| Chat | Small (about 8 GB) | `qwen3.5-9b-q4_k_m` | 8 GB |
+| Chat | Medium (about 12 GB) | `gpt-oss-20b-q4_k_m` | 14 GB |
+| Chat | Large (18 GB and up) | `qwen3.8-27b-q4_k_m` | 21 GB |
+| Embeddings | Fast | `qwen3-embedding-0.6b-q8_0` | 3 GB |
+| Embeddings | Quality | `qwen3-embedding-4b-q4_k_m` | 5 GB |
+| Decisions | Fast (default) | `clef-flash-q4_k_m` | 10 GB |
+| Decisions | Quality | `clef-q4_k_m` | 25 GB (estimate) |
+| Speech to text | Fast, multilingual | `whisper-base-q8_0` | 1 GB |
+| Speech to text | Quality, translation | `whisper-large-v3-turbo` | 3 GB |
+| Text to speech | Voices and cloning | `qwen3-tts-1.7b-base-q4_k_m` | 5 GB |
+| Text to speech | Lightweight (experimental) | `kokoro-82m-v1.0-q8` | 1 GB |
+| Image | Photorealism | `z-image-turbo-q4_0` | 15 GB |
+| Image | General and illustration | `flux2-klein-4b-q4_0` | 13 GB |
+| Image | Fast, low memory | `dreamshaper-8-lcm` | 5 GB |
+| Image | Image to image | `juggernaut-xl-v9` | 16 GB |
+| Video | Text and image to video (experimental) | `fastwan2.2-ti2v-5b-q6_k` | 8 GB |
+| Video | Speech to video (experimental, Linux NVIDIA) | `wan2.2-s2v-14b-fp8` | 21 GB |
+
+Models that earlier releases shipped and this one no longer lists keep working after an upgrade. When LocalBase finds one installed, or named in the model settings, it writes the same spec (id, pinned revision, files and checksums) to `<root>/catalog.d/` as your own entry, exactly as if you had added it from Hugging Face. API clients keep calling the same id, defaults and selections stay valid, and checked-in memory measurements still apply while the files are unchanged. The only visible difference is that it is no longer marked as qualified by LocalBase; its notes start with "No longer in the LocalBase catalog". Remove it like any user entry with `local-base models remove-entry <id>` after deselecting it.
+
 Public `GET` and `HEAD /health/ready` report whether at least one configured modality can admit a request, including bounded queue waiting. `/health` remains process liveness.
 
 ### Image and video inputs
@@ -97,7 +124,7 @@ The default decision model is Clef Flash (`clef-flash-q4_k_m`, about 7.1 GB). It
 local-base models install clef-flash-q4_k_m
 ```
 
-Clef 27B is the larger qualified alternative. Add other decision GGUFs through the Hugging Face search. Files whose header carries decision heads are detected as decision models.
+Clef 27B (`clef-q4_k_m`, about 19.9 GB, Apache-2.0, post-trained from Qwen3.8-27B) is the larger alternative: stronger on intent and retrieval decisions, at roughly 2.5 times the memory. Add other decision GGUFs through the Hugging Face search. Files whose header carries decision heads are detected as decision models.
 
 Decision models list `architecture.output_modalities: ["decisions"]` in `/v1/models`. They reject chat completions and embeddings, and other models reject `/v1/systemone` with HTTP 400 `unsupported_model_capability`. The route requires the `inference:decision` scope.
 
@@ -152,18 +179,18 @@ Configure a small LLM and create an API key:
 ```bash
 local-base init
 local-base --non-interactive configure --defaults \
-  --llm-models qwen2.5-coder-7b-instruct-q4_k_m \
-  --active-llm qwen2.5-coder-7b-instruct-q4_k_m \
+  --llm-models qwen3.5-9b-q4_k_m \
+  --active-llm qwen3.5-9b-q4_k_m \
   --stt-models '' \
   --tts-models '' \
   --image-models '' \
   --parallel auto \
   --create-key
-local-base models install qwen2.5-coder-7b-instruct-q4_k_m
+local-base models install qwen3.5-9b-q4_k_m
 local-base start
 ```
 
-Fresh configuration defaults to Qwen2.5 Coder 7B Instruct Q4_K_M (Apache-2.0, tool-capable, about 4.68 GB). `serve` never downloads model weights without consent: install them with `local-base models install <id>`, or pass `local-base serve --install-missing` to approve missing selected models. Backend runtime binaries remain managed automatically.
+Fresh configuration defaults to Qwen3.5 9B Q4_K_M (Apache-2.0, tool-capable, about 6.17 GB). `serve` never downloads model weights without consent: install them with `local-base models install <id>`, or pass `local-base serve --install-missing` to approve missing selected models. Backend runtime binaries remain managed automatically.
 
 Store the displayed API key, then verify inference:
 
@@ -172,7 +199,7 @@ export LOCALBASE_API_KEY='lb_...'
 curl http://127.0.0.1:2273/v1/chat/completions \
   -H "Authorization: Bearer $LOCALBASE_API_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"qwen2.5-coder-7b-instruct-q4_k_m","messages":[{"role":"user","content":"Say hello in two words."}]}'
+  -d '{"model":"qwen3.5-9b-q4_k_m","messages":[{"role":"user","content":"Say hello in two words."}]}'
 ```
 
 Use `local-base status` to inspect the service and `local-base logs --follow` to stream logs.

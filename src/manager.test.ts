@@ -199,7 +199,7 @@ function createInstallConfig(): LocalBaseConfig {
 
 test("fresh configuration defaults to the tool-capable Qwen 7B model", () => {
   expect(defaultConfig("/tmp/local-base-default-model").activeLlmModel).toBe(
-    "qwen2.5-coder-7b-instruct-q4_k_m",
+    "qwen3.5-9b-q4_k_m",
   );
 });
 
@@ -292,13 +292,13 @@ describe.serial("transactional model artifact installation", () => {
       config.allowExperimental = true;
       config.selectedVideoModels = [
         "wan2.2-s2v-14b-fp8",
-        "wan2.1-t2v-1.3b-q8_0",
+        "fastwan2.2-ti2v-5b-q6_k",
       ];
       config.activeVideoModel = config.selectedVideoModels[0]!;
       saveConfig(database, config);
 
       detection.mockReturnValue(null);
-      config.selectedVideoModels = ["wan2.1-t2v-1.3b-q8_0"];
+      config.selectedVideoModels = ["fastwan2.2-ti2v-5b-q6_k"];
       config.activeVideoModel = config.selectedVideoModels[0]!;
       expect(() => saveConfig(database, config)).not.toThrow();
 
@@ -306,7 +306,7 @@ describe.serial("transactional model artifact installation", () => {
       expect(() => saveConfig(database, config)).not.toThrow();
 
       config.selectedVideoModels = [
-        "wan2.1-t2v-1.3b-q8_0",
+        "fastwan2.2-ti2v-5b-q6_k",
         "wan2.2-s2v-14b-fp8",
       ];
       config.activeVideoModel = "wan2.2-s2v-14b-fp8";

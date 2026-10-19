@@ -52,7 +52,7 @@ test("service install consent preserves the persisted configuration", () => {
   try {
     const persisted = defaultConfig(root);
     persisted.gatewayPort = 24567;
-    persisted.activeLlmModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    persisted.activeLlmModel = "qwen3.5-4b-q4_k_m";
     persisted.selectedLlmModels = [persisted.activeLlmModel];
     persisted.activeSttModel = "";
     persisted.selectedSttModels = [];
@@ -66,7 +66,7 @@ test("service install consent preserves the persisted configuration", () => {
 
     expect(loadConfig(database, root)).toMatchObject({
       gatewayPort: 24567,
-      activeLlmModel: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+      activeLlmModel: "qwen3.5-4b-q4_k_m",
       selectedSttModels: [],
       installMissingModels: true,
     });

@@ -21,14 +21,14 @@ async function withToml(
 
 test("parses standard TOML arrays and inline comments", async () => {
   await withToml(
-    'host = "127.0.0.1" # gateway bind address\nport = 2273 # gateway port\nparallel = "auto"\nselectedLlmModels = [\n  "qwen2.5-coder-7b-instruct-q4_k_m",\n]\nselectedImageModels = ["stable-diffusion-v1-5"]\n[memory.systemReserve]\npercent = 20\n',
+    'host = "127.0.0.1" # gateway bind address\nport = 2273 # gateway port\nparallel = "auto"\nselectedLlmModels = [\n  "qwen3.5-9b-q4_k_m",\n]\nselectedImageModels = ["juggernaut-xl-v9"]\n[memory.systemReserve]\npercent = 20\n',
     async (path) => {
       await expect(loadTomlOverrides(path)).resolves.toEqual({
         host: "127.0.0.1",
         port: 2273,
         parallel: "auto",
-        selectedLlmModels: ["qwen2.5-coder-7b-instruct-q4_k_m"],
-        selectedImageModels: ["stable-diffusion-v1-5"],
+        selectedLlmModels: ["qwen3.5-9b-q4_k_m"],
+        selectedImageModels: ["juggernaut-xl-v9"],
         memory: {
           systemReserve: { percent: 20 },
         },
@@ -39,11 +39,11 @@ test("parses standard TOML arrays and inline comments", async () => {
 
 test("accepts structurally valid existing video model selections", async () => {
   await withToml(
-    'selectedVideoModels = ["wan2.1-t2v-1.3b-q8_0"]\nactiveVideoModel = "wan2.1-t2v-1.3b-q8_0"\n',
+    'selectedVideoModels = ["fastwan2.2-ti2v-5b-q6_k"]\nactiveVideoModel = "fastwan2.2-ti2v-5b-q6_k"\n',
     async (path) => {
       await expect(loadTomlOverrides(path)).resolves.toMatchObject({
-        selectedVideoModels: ["wan2.1-t2v-1.3b-q8_0"],
-        activeVideoModel: "wan2.1-t2v-1.3b-q8_0",
+        selectedVideoModels: ["fastwan2.2-ti2v-5b-q6_k"],
+        activeVideoModel: "fastwan2.2-ti2v-5b-q6_k",
       });
     },
   );

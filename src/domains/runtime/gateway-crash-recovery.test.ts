@@ -43,7 +43,7 @@ async function expectStreamTerminated(
 test("compiled gateway releases a crashed backend stream and recovers", async () => {
   const gateway = await startGatewayFixture({ llmRuntimeHttpBackend: true });
   try {
-    const firstModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const firstModel = "qwen3.5-4b-q4_k_m";
     const launchOffset = (await gateway.readLlmRuntimeLaunches()).length;
     const response = await request(
       gateway.baseUrl,
@@ -71,7 +71,7 @@ test("compiled gateway releases a crashed backend stream and recovers", async ()
     await gateway.crashLlmRuntime();
     await expectStreamTerminated(recoveredReader);
 
-    const replacementModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const replacementModel = "qwen3.5-9b-q4_k_m";
     const config = gateway.readConfig();
     gateway.saveConfig({
       ...config,

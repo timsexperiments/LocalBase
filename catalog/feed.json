@@ -1,8 +1,1006 @@
 {
   "format": "localbase-catalog-feed",
   "schemaVersion": 1,
-  "sha256": "c75f0930ac4a900404f6915ce8f2792b4fadeffd562ce155bbf661cd578776d1",
+  "sha256": "48533f66a15694f889d4ca35909df0c73c405ae2e2bcbac0a497949810564267",
   "models": [
+    {
+      "modelId": "qwen3.5-4b-q4_k_m",
+      "displayName": "Qwen3.5 4B",
+      "kind": "llm",
+      "provider": "Qwen",
+      "family": "Qwen3.5",
+      "version": "3.5",
+      "size": "4B",
+      "quant": "Q4_K_M",
+      "storageGb": 3.02,
+      "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF",
+      "repositoryRevision": "4168f45a16a1290d65a4ec0fa312ae917a4c15d6",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+          "filename": "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+          "expectedSizeBytes": 3013027808,
+          "sha256": "13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 262144,
+      "capabilities": [
+        "text-generation",
+        "tool-calling"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
+      "notes": "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts."
+    },
+    {
+      "modelId": "qwen3.5-9b-q4_k_m",
+      "displayName": "Qwen3.5 9B",
+      "kind": "llm",
+      "provider": "Qwen",
+      "family": "Qwen3.5",
+      "version": "3.5",
+      "size": "9B",
+      "quant": "Q4_K_M",
+      "storageGb": 6.17,
+      "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF",
+      "repositoryRevision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+          "filename": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+          "expectedSizeBytes": 6169341984,
+          "sha256": "d784ce9eda1a5a7b51e8f705a9e6310844bf4f173654d115823c775fdea56d43",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 262144,
+      "capabilities": [
+        "text-generation",
+        "tool-calling"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
+      "notes": "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts."
+    },
+    {
+      "modelId": "gpt-oss-20b-q4_k_m",
+      "displayName": "gpt-oss 20B",
+      "kind": "llm",
+      "provider": "OpenAI",
+      "family": "GPT-OSS",
+      "version": "1",
+      "size": "20B",
+      "quant": "Q4_K_M",
+      "codingScore": 9.5,
+      "storageGb": 14,
+      "source": "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
+      "repositoryRevision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
+      "artifacts": [
+        {
+          "sourcePath": "openai_gpt-oss-20b-Q4_K_M.gguf",
+          "filename": "openai_gpt-oss-20b-Q4_K_M.gguf",
+          "expectedSizeBytes": 11673418816,
+          "sha256": "86a21df11afa5a40031ec1974e368ae0ab561ee3995f4d08ff432e8b2b7af9fc",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 131072,
+      "capabilities": [
+        "reasoning",
+        "tool-calling"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache 2.0.",
+      "notes": "OpenAI's open-weight reasoning model, optimized for edge devices."
+    },
+    {
+      "modelId": "qwen3.8-27b-q4_k_m",
+      "displayName": "Qwen3.8 27B",
+      "kind": "llm",
+      "provider": "Qwen",
+      "family": "Qwen3.8",
+      "version": "3.8",
+      "size": "27B",
+      "quant": "Q4_K_M",
+      "storageGb": 17.8,
+      "source": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF",
+      "repositoryRevision": "f0eec4a4bb4975114a030d048952d83c0a53c034",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen3.8-27B-Q4_K_M.gguf",
+          "filename": "Qwen3.8-27B-Q4_K_M.gguf",
+          "expectedSizeBytes": 17772537440,
+          "sha256": "e103abf9d914d1d7b2f2592f055f2759a71195c350a01c135f71aaae86bca52b",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "capabilities": [
+        "reasoning",
+        "tool-calling",
+        "long-context"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache 2.0.",
+      "notes": "Text-only LocalBase entry."
+    },
+    {
+      "modelId": "qwen3-embedding-0.6b-q8_0",
+      "displayName": "Qwen3 Embedding 0.6B",
+      "kind": "llm",
+      "provider": "Qwen",
+      "family": "Qwen3-Embedding",
+      "version": "0.6B",
+      "size": "0.6B",
+      "quant": "Q8_0",
+      "storageGb": 0.64,
+      "source": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
+      "repositoryRevision": "370f27d7550e0def9b39c1f16d3fbaa13aa67728",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+          "filename": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+          "expectedSizeBytes": 639150592,
+          "sha256": "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
+          "role": "primary"
+        }
+      ],
+      "llmRuntime": {
+        "capability": "embedding-only",
+        "pooling": "last",
+        "dimensions": {
+          "minimum": 1024,
+          "maximum": 1024
+        }
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 32768,
+      "capabilities": [
+        "embeddings",
+        "multilingual",
+        "code-retrieval"
+      ],
+      "commercialStatus": "open",
+      "catch": "Embedding endpoint only. Chat completions are rejected before runtime admission.",
+      "notes": "Official Apache-2.0 Q8_0 GGUF. The runtime uses last-token pooling and emits 1024-dimensional vectors."
+    },
+    {
+      "modelId": "qwen3-embedding-4b-q4_k_m",
+      "displayName": "Qwen3 Embedding 4B",
+      "kind": "llm",
+      "provider": "Qwen",
+      "family": "Qwen3-Embedding",
+      "version": "4B",
+      "size": "4B",
+      "quant": "Q4_K_M",
+      "storageGb": 2.5,
+      "source": "https://huggingface.co/Qwen/Qwen3-Embedding-4B-GGUF",
+      "repositoryRevision": "f4602530db1d980e16da9d7d3a70294cf5c190be",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen3-Embedding-4B-Q4_K_M.gguf",
+          "filename": "Qwen3-Embedding-4B-Q4_K_M.gguf",
+          "expectedSizeBytes": 2496703776,
+          "sha256": "2b0cf8f17b4c723c27303015383c27ec4bf2d8314bb677d05e920dd70bb0f16b",
+          "role": "primary"
+        }
+      ],
+      "llmRuntime": {
+        "capability": "embedding-only",
+        "pooling": "last",
+        "dimensions": {
+          "minimum": 2560,
+          "maximum": 2560
+        }
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 32768,
+      "capabilities": [
+        "embeddings",
+        "multilingual",
+        "code-retrieval"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.",
+      "notes": "Last-token pooling with fixed 2560-dimensional output. Embedded tokenizer; memory estimate assumes short inputs."
+    },
+    {
+      "modelId": "clef-flash-q4_k_m",
+      "displayName": "Clef Flash",
+      "kind": "llm",
+      "provider": "Cloudflare",
+      "family": "Clef",
+      "version": "Flash",
+      "size": "9B",
+      "quant": "Q4_K_M",
+      "storageGb": 7.11,
+      "source": "https://huggingface.co/ggml-org/Clef-Flash-GGUF",
+      "repositoryRevision": "6b4fe4c59098479652d94f0fe11a40facbebd1ec",
+      "artifacts": [
+        {
+          "sourcePath": "Clef-Flash-Q4_K_M.gguf",
+          "filename": "Clef-Flash-Q4_K_M.gguf",
+          "expectedSizeBytes": 6486448288,
+          "sha256": "3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "mmproj-Clef-Flash-Q8_0.gguf",
+          "filename": "mmproj-Clef-Flash-Q8_0.gguf",
+          "expectedSizeBytes": 624229728,
+          "sha256": "9dd8bc279f57d33b0697d4d0fe900fe751a24c9e3d30ab90969d4714ffc0722d",
+          "role": "supplementary"
+        }
+      ],
+      "llmRuntime": {
+        "capability": "decision-only"
+      },
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 262144,
+      "capabilities": [
+        "decision",
+        "long-context"
+      ],
+      "commercialStatus": "open",
+      "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.",
+      "notes": "Default decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef-flash (Apache-2.0, built from Qwen3.5-9B; base revision 8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3). Answers choice, score, and noul questions through POST /v1/systemone. Clef (clef-q4_k_m) is the larger qualified alternative."
+    },
+    {
+      "modelId": "clef-q4_k_m",
+      "displayName": "Clef 27B",
+      "kind": "llm",
+      "provider": "Cloudflare",
+      "family": "Clef",
+      "version": "27B",
+      "size": "27B",
+      "quant": "Q4_K_M",
+      "storageGb": 19.86,
+      "source": "https://huggingface.co/ggml-org/Clef-GGUF",
+      "repositoryRevision": "d2aa75cb425ae922b5c3c15ef3157d417b7f7641",
+      "artifacts": [
+        {
+          "sourcePath": "Clef-Q4_K_M.gguf",
+          "filename": "Clef-Q4_K_M.gguf",
+          "expectedSizeBytes": 19232219200,
+          "sha256": "9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "mmproj-Clef-Q8_0.gguf",
+          "filename": "mmproj-Clef-Q8_0.gguf",
+          "expectedSizeBytes": 629247456,
+          "sha256": "744ad2db24c336fc9120dd5ba06344c0601b9efd365fe96be01ce5c4e6ab64cf",
+          "role": "supplementary"
+        }
+      ],
+      "llmRuntime": {
+        "capability": "decision-only"
+      },
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 262144,
+      "capabilities": [
+        "decision",
+        "long-context"
+      ],
+      "commercialStatus": "open",
+      "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission. Needs about 2.5x the memory of Clef Flash.",
+      "notes": "Larger decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef (Apache-2.0, post-trained from Qwen3.8-27B; source revision 0b331204bb13fbd2ca93a64df1956f5b55478ce5). Answers choice, score, and noul questions through POST /v1/systemone. Stronger than Clef Flash on intent and retrieval decisions; Clef Flash is the faster default."
+    },
+    {
+      "modelId": "whisper-base-q8_0",
+      "displayName": "Whisper Base",
+      "kind": "stt",
+      "provider": "OpenAI/ggml",
+      "family": "Whisper",
+      "version": "base",
+      "size": "base",
+      "quant": "Q8_0",
+      "storageGb": 0.15,
+      "source": "https://huggingface.co/ggerganov/whisper.cpp",
+      "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "artifacts": [
+        {
+          "sourcePath": "ggml-base-q8_0.bin",
+          "filename": "ggml-base-q8_0.bin",
+          "expectedSizeBytes": 81768585,
+          "sha256": "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "audio"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "capabilities": [
+        "speech-to-text",
+        "multilingual"
+      ],
+      "commercialStatus": "open",
+      "catch": "MIT License.",
+      "notes": "Good default STT latency/quality tradeoff."
+    },
+    {
+      "modelId": "whisper-large-v3-turbo",
+      "displayName": "Whisper Large V3 Turbo",
+      "kind": "stt",
+      "provider": "OpenAI/ggml",
+      "family": "Whisper",
+      "version": "large-v3-turbo",
+      "size": "large",
+      "quant": "Q5_0",
+      "storageGb": 1.7,
+      "source": "https://huggingface.co/ggerganov/whisper.cpp",
+      "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "artifacts": [
+        {
+          "sourcePath": "ggml-large-v3-turbo.bin",
+          "filename": "ggml-large-v3-turbo.bin",
+          "expectedSizeBytes": 1624555275,
+          "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "audio"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "capabilities": [
+        "speech-to-text",
+        "multilingual",
+        "translation"
+      ],
+      "commercialStatus": "open",
+      "catch": "MIT License.",
+      "notes": "Best quality Whisper family model for local deployment."
+    },
+    {
+      "modelId": "qwen3-tts-1.7b-base-q4_k_m",
+      "displayName": "Qwen3 TTS 1.7B Base",
+      "kind": "tts",
+      "provider": "Qwen/ggml",
+      "family": "Qwen3-TTS",
+      "version": "12Hz-1.7B-Base",
+      "size": "1.7B",
+      "quant": "Q4_K_M",
+      "storageGb": 1.49,
+      "source": "https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
+      "repositoryRevision": "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
+          "filename": "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
+          "expectedSizeBytes": 1035965280,
+          "sha256": "8d18c94acb2addd042f97da63c98be144eafa76d0d9495177eab65130cf85129",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+          "filename": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+          "expectedSizeBytes": 446422912,
+          "sha256": "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
+          "role": "supplementary"
+        },
+        {
+          "sourcePath": "voice-donations/0a67.wav",
+          "filename": "qwen3-tts-harbor.wav",
+          "expectedSizeBytes": 480044,
+          "sha256": "4bd75d0ef0ad3f4e82ac075eab2a132651d2463f83bec210edeeccaf69294886",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/kyutai/tts-voices",
+            "revision": "323332d33f997de8394f24a193e1a76df720e01a"
+          }
+        },
+        {
+          "sourcePath": "voice-donations/1410.wav",
+          "filename": "qwen3-tts-willow.wav",
+          "expectedSizeBytes": 480044,
+          "sha256": "8edd516de8c2171b67757cacb29e1effd3e6a8b78f5d6b035069273fadefac2b",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/kyutai/tts-voices",
+            "revision": "323332d33f997de8394f24a193e1a76df720e01a"
+          }
+        }
+      ],
+      "ttsRuntime": {
+        "kind": "llama-tts",
+        "projectorArtifactFilename": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+        "referenceVoices": [
+          {
+            "name": "harbor",
+            "artifactFilename": "qwen3-tts-harbor.wav",
+            "license": "CC0-1.0",
+            "provenanceUrl": "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations"
+          },
+          {
+            "name": "willow",
+            "artifactFilename": "qwen3-tts-willow.wav",
+            "license": "CC0-1.0",
+            "provenanceUrl": "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations"
+          }
+        ]
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "audio"
+      ],
+      "capabilities": [
+        "text-to-speech"
+      ],
+      "outputFormat": "wav",
+      "commercialStatus": "open",
+      "catch": "The converted repository omits license metadata; the upstream Qwen model is Apache-2.0.",
+      "notes": "Default remains native runtime voice. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed."
+    },
+    {
+      "modelId": "kokoro-82m-v1.0-q8",
+      "displayName": "Kokoro 82M v1.0",
+      "kind": "tts",
+      "qualificationState": "experimental",
+      "provider": "hexgrad/onnx-community",
+      "family": "Kokoro",
+      "version": "v1.0",
+      "size": "82M",
+      "quant": "Q8",
+      "storageGb": 0.09,
+      "source": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
+      "repositoryRevision": "1939ad2a8e416c0acfeecc08a694d14ef25f2231",
+      "artifacts": [
+        {
+          "sourcePath": "onnx/model_quantized.onnx",
+          "filename": "kokoro-82m-v1.0-model_quantized.onnx",
+          "expectedSizeBytes": 92361116,
+          "sha256": "fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "config.json",
+          "filename": "kokoro-82m-v1.0-config.json",
+          "expectedSizeBytes": 44,
+          "sha256": "df34b4f930b23447cd4dc410fabfb42eb3f24e803e6c3f97d618fb359380a36f",
+          "role": "supplementary"
+        },
+        {
+          "sourcePath": "tokenizer.json",
+          "filename": "kokoro-82m-v1.0-tokenizer.json",
+          "expectedSizeBytes": 3497,
+          "sha256": "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34",
+          "role": "supplementary"
+        },
+        {
+          "sourcePath": "tokenizer_config.json",
+          "filename": "kokoro-82m-v1.0-tokenizer_config.json",
+          "expectedSizeBytes": 113,
+          "sha256": "be1cb066d6ef6b074b3f15e6a6dd21ac88ff3cdaedf325f0aaed686c70f75d20",
+          "role": "supplementary"
+        }
+      ],
+      "ttsRuntime": {
+        "kind": "kokoro-onnx",
+        "artifacts": {
+          "model": "kokoro-82m-v1.0-model_quantized.onnx",
+          "config": "kokoro-82m-v1.0-config.json",
+          "tokenizer": "kokoro-82m-v1.0-tokenizer.json",
+          "tokenizerConfig": "kokoro-82m-v1.0-tokenizer_config.json"
+        },
+        "voices": [
+          {
+            "name": "af_heart"
+          },
+          {
+            "name": "af_bella"
+          }
+        ],
+        "defaultVoice": "af_heart"
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "audio"
+      ],
+      "capabilities": [
+        "text-to-speech"
+      ],
+      "outputFormat": "wav",
+      "commercialStatus": "open",
+      "catch": "Apache-2.0 weights. Requires the kokoro-v0.0.2 LocalBase runtime package.",
+      "notes": "CPU ONNX runtime with bundled af_heart and af_bella voices. English only. Human voice quality has not been assessed."
+    },
+    {
+      "modelId": "z-image-turbo-q4_0",
+      "displayName": "Z-Image Turbo",
+      "kind": "image",
+      "provider": "Tongyi",
+      "family": "Z-Image",
+      "version": "Turbo",
+      "size": "6B",
+      "quant": "Q4_0",
+      "storageGb": 6.6,
+      "source": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
+      "repositoryRevision": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
+      "artifacts": [
+        {
+          "sourcePath": "z_image_turbo-Q4_0.gguf",
+          "filename": "z_image_turbo-Q4_0.gguf",
+          "expectedSizeBytes": 3683370944,
+          "sha256": "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "split_files/vae/ae.safetensors",
+          "filename": "z-image-ae.safetensors",
+          "expectedSizeBytes": 335304388,
+          "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/Comfy-Org/z_image_turbo",
+            "revision": "08d04455279082882deaabc8d0d09fc914c071e1"
+          }
+        },
+        {
+          "sourcePath": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+          "filename": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+          "expectedSizeBytes": 2497281120,
+          "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF",
+            "revision": "a06e946bb6b655725eafa393f4a9745d460374c9"
+          }
+        }
+      ],
+      "imageRuntime": {
+        "kind": "diffusion-qwen3",
+        "artifacts": {
+          "diffusionModel": "z_image_turbo-Q4_0.gguf",
+          "vae": "z-image-ae.safetensors",
+          "textEncoder": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+        },
+        "generation": {
+          "sampler": "euler",
+          "steps": 8,
+          "cfgScale": 1
+        }
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "image"
+      ],
+      "imageLaunchOptions": {
+        "diffusionFlashAttention": true
+      },
+      "capabilities": [
+        "text-to-image"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
+      "notes": "Distilled eight-step profile with separate VAE and Qwen3 Instruct encoder. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
+    },
+    {
+      "modelId": "flux2-klein-4b-q4_0",
+      "displayName": "FLUX.2 Klein 4B",
+      "kind": "image",
+      "provider": "Black Forest Labs",
+      "family": "FLUX.2-klein",
+      "version": "2",
+      "size": "4B",
+      "quant": "Q4_0",
+      "storageGb": 5.3,
+      "source": "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
+      "repositoryRevision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
+      "artifacts": [
+        {
+          "sourcePath": "flux-2-klein-4b-Q4_0.gguf",
+          "filename": "flux-2-klein-4b-Q4_0.gguf",
+          "expectedSizeBytes": 2460378560,
+          "sha256": "d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "split_files/vae/flux2-vae.safetensors",
+          "filename": "flux2-vae.safetensors",
+          "expectedSizeBytes": 336211292,
+          "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/Comfy-Org/flux2-klein-4B",
+            "revision": "5f526678002e43af5551dadb73ce2e8c91b43afe"
+          }
+        },
+        {
+          "sourcePath": "Qwen3-4B-Q4_K_M.gguf",
+          "filename": "Qwen3-4B-Q4_K_M.gguf",
+          "expectedSizeBytes": 2497281312,
+          "sha256": "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-GGUF",
+            "revision": "22c9fc8a8c7700b76a1789366280a6a5a1ad1120"
+          }
+        }
+      ],
+      "imageRuntime": {
+        "kind": "diffusion-qwen3",
+        "artifacts": {
+          "diffusionModel": "flux-2-klein-4b-Q4_0.gguf",
+          "vae": "flux2-vae.safetensors",
+          "textEncoder": "Qwen3-4B-Q4_K_M.gguf"
+        },
+        "generation": {
+          "sampler": "euler",
+          "steps": 4,
+          "cfgScale": 1
+        }
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "image"
+      ],
+      "imageLaunchOptions": {
+        "diffusionFlashAttention": true
+      },
+      "capabilities": [
+        "text-to-image"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
+      "notes": "Distilled four-step profile with separate FLUX2 VAE and Qwen3 encoder. Peak memory was measured on Apple Silicon (2026-10-13); broader native inference qualification is pending."
+    },
+    {
+      "modelId": "dreamshaper-8-lcm",
+      "displayName": "DreamShaper 8 LCM",
+      "kind": "image",
+      "provider": "Lykon",
+      "family": "Stable-Diffusion",
+      "version": "DreamShaper 8 LCM",
+      "size": "2.0GB",
+      "quant": "F16",
+      "storageGb": 2.13,
+      "source": "https://huggingface.co/Lykon/dreamshaper-8-lcm",
+      "repositoryRevision": "4645d8bc6a8e6b106d21606d63e8460cdad4f1a6",
+      "artifacts": [
+        {
+          "sourcePath": "DreamShaper8_LCM.safetensors",
+          "filename": "DreamShaper8_LCM.safetensors",
+          "expectedSizeBytes": 2133804992,
+          "sha256": "a4f3e1526c5dc4fcbe342f5c410d83ae202c7a415fcefcbb92e0f93fcd0a87c3",
+          "role": "primary"
+        }
+      ],
+      "imageRuntime": {
+        "kind": "checkpoint",
+        "artifacts": {
+          "diffusionModel": "DreamShaper8_LCM.safetensors"
+        },
+        "generation": {
+          "sampler": "lcm",
+          "scheduler": "lcm",
+          "steps": 4,
+          "cfgScale": 1
+        }
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "image"
+      ],
+      "imageLaunchOptions": {
+        "diffusionFlashAttention": true
+      },
+      "capabilities": [
+        "text-to-image"
+      ],
+      "commercialStatus": "open",
+      "catch": "CreativeML Open RAIL-M license.",
+      "notes": "Cloudflare Workers AI photorealism model distilled for fast four-step generation. Native inference qualification is pending."
+    },
+    {
+      "modelId": "juggernaut-xl-v9",
+      "displayName": "Juggernaut XL v9",
+      "kind": "image",
+      "provider": "RunDiffusion",
+      "family": "Stable-Diffusion-XL",
+      "version": "9.0",
+      "size": "6.6GB",
+      "quant": "F16",
+      "storageGb": 6.61,
+      "source": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
+      "repositoryRevision": "cf419233522daa0b9ea36c3aff98fa2cab1fb0fb",
+      "artifacts": [
+        {
+          "sourcePath": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+          "filename": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+          "expectedSizeBytes": 7105348188,
+          "sha256": "c9e3e68f89b8e38689e1097d4be4573cf308de4e3fd044c64ca697bdb4aa8bca",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "image"
+      ],
+      "imageLaunchOptions": {
+        "diffusionFlashAttention": true
+      },
+      "capabilities": [
+        "text-to-image",
+        "image-to-image"
+      ],
+      "commercialStatus": "open",
+      "catch": "Stability AI Community License.",
+      "notes": "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism."
+    },
+    {
+      "modelId": "fastwan2.2-ti2v-5b-q6_k",
+      "displayName": "FastWan2.2 TI2V 5B",
+      "kind": "video",
+      "provider": "FastVideo/ggml",
+      "family": "FastWan2.2-TI2V",
+      "version": "2.2",
+      "size": "5B",
+      "quant": "Q6_K",
+      "storageGb": 10.28,
+      "source": "https://huggingface.co/Green-Sky/FastWan2.2-TI2V-5B-FullAttn-GGUF",
+      "repositoryRevision": "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
+      "artifacts": [
+        {
+          "sourcePath": "FastWan2.2-TI2V-5B-q6_k.gguf",
+          "filename": "FastWan2.2-TI2V-5B-q6_k.gguf",
+          "expectedSizeBytes": 4210247200,
+          "sha256": "416a87e30f2328dbefd7666ac90b395ead74f443748ff31c83483ac4ac6121cc",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "umt5-xxl-encoder-Q8_0.gguf",
+          "filename": "umt5-xxl-encoder-Q8_0.gguf",
+          "expectedSizeBytes": 6043068256,
+          "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+            "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7"
+          }
+        },
+        {
+          "sourcePath": "safetensors/taew2_2.safetensors",
+          "filename": "taew2_2.safetensors",
+          "expectedSizeBytes": 22848048,
+          "sha256": "b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://github.com/madebyollin/taehv",
+            "revision": "fa579a9a726b0a55951998d73e309bfdf0abd342"
+          }
+        }
+      ],
+      "videoRuntime": {
+        "mode": "ti2v",
+        "artifacts": {
+          "diffusionModel": "FastWan2.2-TI2V-5B-q6_k.gguf",
+          "textEncoder": "umt5-xxl-encoder-Q8_0.gguf",
+          "decoder": {
+            "kind": "tae",
+            "artifactFilename": "taew2_2.safetensors"
+          }
+        },
+        "qualification": {
+          "jobDeadlineMs": 600000,
+          "maxWidth": 480,
+          "maxHeight": 832,
+          "maxFrames": 81,
+          "fps": 16,
+          "generation": {
+            "sampler": "euler",
+            "scheduler": "lcm",
+            "steps": 3,
+            "cfgScale": 1,
+            "flowShift": 3,
+            "seed": 42
+          },
+          "launchOptions": {
+            "cpuOffload": true,
+            "diffusionFlashAttention": true,
+            "vaeConvDirect": true
+          }
+        },
+        "supportedTargets": [
+          {
+            "platform": "darwin",
+            "architecture": "arm64",
+            "accelerator": "apple-unified"
+          },
+          {
+            "platform": "linux",
+            "architecture": "x64",
+            "accelerator": "nvidia"
+          }
+        ]
+      },
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "outputModalities": [
+        "video"
+      ],
+      "capabilities": [
+        "text-to-video",
+        "image-to-video"
+      ],
+      "outputFormat": "avi",
+      "experimentalRuntime": true,
+      "commercialStatus": "open",
+      "catch": "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
+      "notes": "Experimental and unqualified text-to-video and image-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 480x832, 81 frames, and 16 fps."
+    },
+    {
+      "modelId": "wan2.2-s2v-14b-fp8",
+      "displayName": "Wan2.2 S2V 14B",
+      "kind": "video",
+      "qualificationState": "experimental",
+      "provider": "Wan/Comfy-Org",
+      "family": "Wan2.2-S2V",
+      "version": "2.2",
+      "size": "14B",
+      "quant": "FP8",
+      "storageGb": 23.33,
+      "source": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+      "repositoryRevision": "c4f60d30c55a624e35427060fdd217579a6c1d77",
+      "artifacts": [
+        {
+          "sourcePath": "split_files/diffusion_models/wan2.2_s2v_14B_fp8_scaled.safetensors",
+          "filename": "wan2.2_s2v_14B_fp8_scaled.safetensors",
+          "expectedSizeBytes": 16394832474,
+          "sha256": "140e75af5534ac3d91e710d9df756f7032addd64b341ba2c1c70e3e6da9aa216",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "umt5-xxl-encoder-Q8_0.gguf",
+          "filename": "umt5-xxl-encoder-Q8_0.gguf",
+          "expectedSizeBytes": 6043068256,
+          "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+            "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7"
+          }
+        },
+        {
+          "sourcePath": "split_files/vae/wan_2.1_vae.safetensors",
+          "filename": "wan_2.1_vae.safetensors",
+          "expectedSizeBytes": 253815318,
+          "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+            "revision": "617a7633e636506f850e043bc4605f290a466a8e"
+          }
+        },
+        {
+          "sourcePath": "split_files/audio_encoders/wav2vec2_large_english_fp16.safetensors",
+          "filename": "wav2vec2_large_english_fp16.safetensors",
+          "expectedSizeBytes": 630997322,
+          "sha256": "f0017a43ea57ef6b3d4866be607844bbd8cada6d30966f7d70044ed0d63d3f9e",
+          "role": "supplementary"
+        }
+      ],
+      "videoRuntime": {
+        "mode": "s2v",
+        "artifacts": {
+          "diffusionModel": "wan2.2_s2v_14B_fp8_scaled.safetensors",
+          "textEncoder": "umt5-xxl-encoder-Q8_0.gguf",
+          "decoder": {
+            "kind": "vae",
+            "artifactFilename": "wan_2.1_vae.safetensors"
+          },
+          "audioEncoder": "wav2vec2_large_english_fp16.safetensors"
+        },
+        "qualification": {
+          "maxWidth": 480,
+          "maxHeight": 640,
+          "maxFrames": 33,
+          "fps": 16,
+          "jobDeadlineMs": 1800000,
+          "generation": {
+            "sampler": "euler",
+            "scheduler": "discrete",
+            "steps": 20,
+            "cfgScale": 6,
+            "flowShift": 3,
+            "seed": 42
+          },
+          "launchOptions": {
+            "cpuOffload": true,
+            "diffusionFlashAttention": true,
+            "vaeConvDirect": false
+          }
+        },
+        "supportedTargets": [
+          {
+            "platform": "linux",
+            "architecture": "x64",
+            "accelerator": "nvidia"
+          }
+        ]
+      },
+      "inputModalities": [
+        "text",
+        "image",
+        "audio"
+      ],
+      "outputModalities": [
+        "video"
+      ],
+      "capabilities": [
+        "speech-to-video"
+      ],
+      "outputFormat": "avi",
+      "experimentalRuntime": true,
+      "commercialStatus": "open",
+      "catch": "Apache-2.0 licenses for the pinned artifacts. Output audio is the supplied driving track, not generated speech.",
+      "notes": "Experimental and unqualified Linux x64 single-NVIDIA portrait animation at exactly 480x640, 33 frames, and 16 fps. Admission reservations are estimates and must be re-measured in a pinned-runtime hardware run before qualification. Requires a portrait and speech no longer than 2.0625 seconds. Lip-sync quality and longer clips are not qualified."
+    },
     {
       "modelId": "qwen3.5-0.8b-q4_k_m",
       "displayName": "Qwen3.5 0.8B",
@@ -142,123 +1140,6 @@
       "commercialStatus": "open",
       "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
       "notes": "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts."
-    },
-    {
-      "modelId": "qwen3.5-4b-q4_k_m",
-      "displayName": "Qwen3.5 4B",
-      "kind": "llm",
-      "provider": "Qwen",
-      "family": "Qwen3.5",
-      "version": "3.5",
-      "size": "4B",
-      "quant": "Q4_K_M",
-      "storageGb": 3.02,
-      "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF",
-      "repositoryRevision": "4168f45a16a1290d65a4ec0fa312ae917a4c15d6",
-      "artifacts": [
-        {
-          "sourcePath": "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
-          "filename": "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
-          "expectedSizeBytes": 3013027808,
-          "sha256": "13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 262144,
-      "capabilities": [
-        "text-generation",
-        "tool-calling"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
-      "notes": "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts."
-    },
-    {
-      "modelId": "qwen3.5-9b-q4_k_m",
-      "displayName": "Qwen3.5 9B",
-      "kind": "llm",
-      "provider": "Qwen",
-      "family": "Qwen3.5",
-      "version": "3.5",
-      "size": "9B",
-      "quant": "Q4_K_M",
-      "storageGb": 6.17,
-      "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF",
-      "repositoryRevision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
-      "artifacts": [
-        {
-          "sourcePath": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
-          "filename": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
-          "expectedSizeBytes": 6169341984,
-          "sha256": "d784ce9eda1a5a7b51e8f705a9e6310844bf4f173654d115823c775fdea56d43",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 262144,
-      "capabilities": [
-        "text-generation",
-        "tool-calling"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
-      "notes": "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts."
-    },
-    {
-      "modelId": "qwen3-embedding-4b-q4_k_m",
-      "displayName": "Qwen3 Embedding 4B",
-      "kind": "llm",
-      "provider": "Qwen",
-      "family": "Qwen3-Embedding",
-      "version": "4B",
-      "size": "4B",
-      "quant": "Q4_K_M",
-      "storageGb": 2.5,
-      "source": "https://huggingface.co/Qwen/Qwen3-Embedding-4B-GGUF",
-      "repositoryRevision": "f4602530db1d980e16da9d7d3a70294cf5c190be",
-      "artifacts": [
-        {
-          "sourcePath": "Qwen3-Embedding-4B-Q4_K_M.gguf",
-          "filename": "Qwen3-Embedding-4B-Q4_K_M.gguf",
-          "expectedSizeBytes": 2496703776,
-          "sha256": "2b0cf8f17b4c723c27303015383c27ec4bf2d8314bb677d05e920dd70bb0f16b",
-          "role": "primary"
-        }
-      ],
-      "llmRuntime": {
-        "capability": "embedding-only",
-        "pooling": "last",
-        "dimensions": {
-          "minimum": 2560,
-          "maximum": 2560
-        }
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 32768,
-      "capabilities": [
-        "embeddings",
-        "multilingual",
-        "code-retrieval"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.",
-      "notes": "Last-token pooling with fixed 2560-dimensional output. Embedded tokenizer; memory estimate assumes short inputs."
     },
     {
       "modelId": "qwen3-embedding-4b-q8_0",
@@ -570,98 +1451,6 @@
       "commercialStatus": "conditional",
       "catch": "CreativeML Open RAIL++-M use restrictions apply.",
       "notes": "Bundled CLIP encoders and VAE; built-in CLIP tokenizer. Uses server defaults, not the author's recommended DPM++ Karras preset."
-    },
-    {
-      "modelId": "qwen3-embedding-0.6b-q8_0",
-      "displayName": "Qwen3 Embedding 0.6B",
-      "kind": "llm",
-      "provider": "Qwen",
-      "family": "Qwen3-Embedding",
-      "version": "0.6B",
-      "size": "0.6B",
-      "quant": "Q8_0",
-      "storageGb": 0.64,
-      "source": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
-      "repositoryRevision": "370f27d7550e0def9b39c1f16d3fbaa13aa67728",
-      "artifacts": [
-        {
-          "sourcePath": "Qwen3-Embedding-0.6B-Q8_0.gguf",
-          "filename": "Qwen3-Embedding-0.6B-Q8_0.gguf",
-          "expectedSizeBytes": 639150592,
-          "sha256": "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
-          "role": "primary"
-        }
-      ],
-      "llmRuntime": {
-        "capability": "embedding-only",
-        "pooling": "last",
-        "dimensions": {
-          "minimum": 1024,
-          "maximum": 1024
-        }
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 32768,
-      "capabilities": [
-        "embeddings",
-        "multilingual",
-        "code-retrieval"
-      ],
-      "commercialStatus": "open",
-      "catch": "Embedding endpoint only. Chat completions are rejected before runtime admission.",
-      "notes": "Official Apache-2.0 Q8_0 GGUF. The runtime uses last-token pooling and emits 1024-dimensional vectors."
-    },
-    {
-      "modelId": "clef-flash-q4_k_m",
-      "displayName": "Clef Flash",
-      "kind": "llm",
-      "provider": "Cloudflare",
-      "family": "Clef",
-      "version": "Flash",
-      "size": "9B",
-      "quant": "Q4_K_M",
-      "storageGb": 7.11,
-      "source": "https://huggingface.co/ggml-org/Clef-Flash-GGUF",
-      "repositoryRevision": "6b4fe4c59098479652d94f0fe11a40facbebd1ec",
-      "artifacts": [
-        {
-          "sourcePath": "Clef-Flash-Q4_K_M.gguf",
-          "filename": "Clef-Flash-Q4_K_M.gguf",
-          "expectedSizeBytes": 6486448288,
-          "sha256": "3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "mmproj-Clef-Flash-Q8_0.gguf",
-          "filename": "mmproj-Clef-Flash-Q8_0.gguf",
-          "expectedSizeBytes": 624229728,
-          "sha256": "9dd8bc279f57d33b0697d4d0fe900fe751a24c9e3d30ab90969d4714ffc0722d",
-          "role": "supplementary"
-        }
-      ],
-      "llmRuntime": {
-        "capability": "decision-only"
-      },
-      "inputModalities": [
-        "text",
-        "image"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 262144,
-      "capabilities": [
-        "decision",
-        "long-context"
-      ],
-      "commercialStatus": "open",
-      "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.",
-      "notes": "Default decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef-flash (Apache-2.0, built from Qwen3.5-9B; base revision 8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3). Answers choice, score, and noul questions through POST /v1/systemone. Clef 27B is the larger qualified alternative."
     },
     {
       "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
@@ -1465,43 +2254,6 @@
       "notes": "Microsoft MoE release; high performance with 6.6B active parameters."
     },
     {
-      "modelId": "gpt-oss-20b-q4_k_m",
-      "displayName": "gpt-oss 20B",
-      "kind": "llm",
-      "provider": "OpenAI",
-      "family": "GPT-OSS",
-      "version": "1",
-      "size": "20B",
-      "quant": "Q4_K_M",
-      "codingScore": 9.5,
-      "storageGb": 14,
-      "source": "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
-      "repositoryRevision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
-      "artifacts": [
-        {
-          "sourcePath": "openai_gpt-oss-20b-Q4_K_M.gguf",
-          "filename": "openai_gpt-oss-20b-Q4_K_M.gguf",
-          "expectedSizeBytes": 11673418816,
-          "sha256": "86a21df11afa5a40031ec1974e368ae0ab561ee3995f4d08ff432e8b2b7af9fc",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 131072,
-      "capabilities": [
-        "reasoning",
-        "tool-calling"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "OpenAI's open-weight reasoning model, optimized for edge devices."
-    },
-    {
       "modelId": "falcon-2-11b-instruct-q4_k_m",
       "displayName": "Falcon 2 11B Instruct",
       "kind": "llm",
@@ -1758,42 +2510,6 @@
       "notes": "Excellent 12B model with large 128k context window."
     },
     {
-      "modelId": "qwen3.8-27b-q4_k_m",
-      "displayName": "Qwen3.8 27B",
-      "kind": "llm",
-      "provider": "Qwen",
-      "family": "Qwen3.8",
-      "version": "3.8",
-      "size": "27B",
-      "quant": "Q4_K_M",
-      "storageGb": 17.8,
-      "source": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF",
-      "repositoryRevision": "f0eec4a4bb4975114a030d048952d83c0a53c034",
-      "artifacts": [
-        {
-          "sourcePath": "Qwen3.8-27B-Q4_K_M.gguf",
-          "filename": "Qwen3.8-27B-Q4_K_M.gguf",
-          "expectedSizeBytes": 17772537440,
-          "sha256": "e103abf9d914d1d7b2f2592f055f2759a71195c350a01c135f71aaae86bca52b",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "capabilities": [
-        "reasoning",
-        "tool-calling",
-        "long-context"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "Text-only LocalBase entry."
-    },
-    {
       "modelId": "devstral-small-2-24b-instruct-q4_k_m",
       "displayName": "Devstral Small 2 24B",
       "kind": "llm",
@@ -1939,42 +2655,6 @@
       "notes": "Text-only LocalBase entry; official 131k-token context. Base revision 95a6d26c4bfb886c58daf9d3f7332c857cb27b43."
     },
     {
-      "modelId": "whisper-large-v3-turbo",
-      "displayName": "Whisper Large V3 Turbo",
-      "kind": "stt",
-      "provider": "OpenAI/ggml",
-      "family": "Whisper",
-      "version": "large-v3-turbo",
-      "size": "large",
-      "quant": "Q5_0",
-      "storageGb": 1.7,
-      "source": "https://huggingface.co/ggerganov/whisper.cpp",
-      "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "artifacts": [
-        {
-          "sourcePath": "ggml-large-v3-turbo.bin",
-          "filename": "ggml-large-v3-turbo.bin",
-          "expectedSizeBytes": 1624555275,
-          "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "audio"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "capabilities": [
-        "speech-to-text",
-        "multilingual",
-        "translation"
-      ],
-      "commercialStatus": "open",
-      "catch": "MIT License.",
-      "notes": "Best quality Whisper family model for local deployment."
-    },
-    {
       "modelId": "whisper-tiny-en-q8_0",
       "displayName": "Whisper Tiny (English)",
       "kind": "stt",
@@ -2007,198 +2687,6 @@
       "commercialStatus": "open",
       "catch": "MIT License.",
       "notes": "Ultra-fast English STT with lower accuracy."
-    },
-    {
-      "modelId": "whisper-base-q8_0",
-      "displayName": "Whisper Base",
-      "kind": "stt",
-      "provider": "OpenAI/ggml",
-      "family": "Whisper",
-      "version": "base",
-      "size": "base",
-      "quant": "Q8_0",
-      "storageGb": 0.15,
-      "source": "https://huggingface.co/ggerganov/whisper.cpp",
-      "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "artifacts": [
-        {
-          "sourcePath": "ggml-base-q8_0.bin",
-          "filename": "ggml-base-q8_0.bin",
-          "expectedSizeBytes": 81768585,
-          "sha256": "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "audio"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "capabilities": [
-        "speech-to-text",
-        "multilingual"
-      ],
-      "commercialStatus": "open",
-      "catch": "MIT License.",
-      "notes": "Good default STT latency/quality tradeoff."
-    },
-    {
-      "modelId": "qwen3-tts-1.7b-base-q4_k_m",
-      "displayName": "Qwen3 TTS 1.7B Base",
-      "kind": "tts",
-      "provider": "Qwen/ggml",
-      "family": "Qwen3-TTS",
-      "version": "12Hz-1.7B-Base",
-      "size": "1.7B",
-      "quant": "Q4_K_M",
-      "storageGb": 1.49,
-      "source": "https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
-      "repositoryRevision": "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
-      "artifacts": [
-        {
-          "sourcePath": "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
-          "filename": "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
-          "expectedSizeBytes": 1035965280,
-          "sha256": "8d18c94acb2addd042f97da63c98be144eafa76d0d9495177eab65130cf85129",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
-          "filename": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
-          "expectedSizeBytes": 446422912,
-          "sha256": "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
-          "role": "supplementary"
-        },
-        {
-          "sourcePath": "voice-donations/0a67.wav",
-          "filename": "qwen3-tts-harbor.wav",
-          "expectedSizeBytes": 480044,
-          "sha256": "4bd75d0ef0ad3f4e82ac075eab2a132651d2463f83bec210edeeccaf69294886",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/kyutai/tts-voices",
-            "revision": "323332d33f997de8394f24a193e1a76df720e01a"
-          }
-        },
-        {
-          "sourcePath": "voice-donations/1410.wav",
-          "filename": "qwen3-tts-willow.wav",
-          "expectedSizeBytes": 480044,
-          "sha256": "8edd516de8c2171b67757cacb29e1effd3e6a8b78f5d6b035069273fadefac2b",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/kyutai/tts-voices",
-            "revision": "323332d33f997de8394f24a193e1a76df720e01a"
-          }
-        }
-      ],
-      "ttsRuntime": {
-        "kind": "llama-tts",
-        "projectorArtifactFilename": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
-        "referenceVoices": [
-          {
-            "name": "harbor",
-            "artifactFilename": "qwen3-tts-harbor.wav",
-            "license": "CC0-1.0",
-            "provenanceUrl": "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations"
-          },
-          {
-            "name": "willow",
-            "artifactFilename": "qwen3-tts-willow.wav",
-            "license": "CC0-1.0",
-            "provenanceUrl": "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations"
-          }
-        ]
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "audio"
-      ],
-      "capabilities": [
-        "text-to-speech"
-      ],
-      "outputFormat": "wav",
-      "commercialStatus": "open",
-      "catch": "The converted repository omits license metadata; the upstream Qwen model is Apache-2.0.",
-      "notes": "Default remains native runtime voice. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed."
-    },
-    {
-      "modelId": "kokoro-82m-v1.0-q8",
-      "displayName": "Kokoro 82M v1.0",
-      "kind": "tts",
-      "qualificationState": "experimental",
-      "provider": "hexgrad/onnx-community",
-      "family": "Kokoro",
-      "version": "v1.0",
-      "size": "82M",
-      "quant": "Q8",
-      "storageGb": 0.09,
-      "source": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
-      "repositoryRevision": "1939ad2a8e416c0acfeecc08a694d14ef25f2231",
-      "artifacts": [
-        {
-          "sourcePath": "onnx/model_quantized.onnx",
-          "filename": "kokoro-82m-v1.0-model_quantized.onnx",
-          "expectedSizeBytes": 92361116,
-          "sha256": "fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "config.json",
-          "filename": "kokoro-82m-v1.0-config.json",
-          "expectedSizeBytes": 44,
-          "sha256": "df34b4f930b23447cd4dc410fabfb42eb3f24e803e6c3f97d618fb359380a36f",
-          "role": "supplementary"
-        },
-        {
-          "sourcePath": "tokenizer.json",
-          "filename": "kokoro-82m-v1.0-tokenizer.json",
-          "expectedSizeBytes": 3497,
-          "sha256": "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34",
-          "role": "supplementary"
-        },
-        {
-          "sourcePath": "tokenizer_config.json",
-          "filename": "kokoro-82m-v1.0-tokenizer_config.json",
-          "expectedSizeBytes": 113,
-          "sha256": "be1cb066d6ef6b074b3f15e6a6dd21ac88ff3cdaedf325f0aaed686c70f75d20",
-          "role": "supplementary"
-        }
-      ],
-      "ttsRuntime": {
-        "kind": "kokoro-onnx",
-        "artifacts": {
-          "model": "kokoro-82m-v1.0-model_quantized.onnx",
-          "config": "kokoro-82m-v1.0-config.json",
-          "tokenizer": "kokoro-82m-v1.0-tokenizer.json",
-          "tokenizerConfig": "kokoro-82m-v1.0-tokenizer_config.json"
-        },
-        "voices": [
-          {
-            "name": "af_heart"
-          },
-          {
-            "name": "af_bella"
-          }
-        ],
-        "defaultVoice": "af_heart"
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "audio"
-      ],
-      "capabilities": [
-        "text-to-speech"
-      ],
-      "outputFormat": "wav",
-      "commercialStatus": "open",
-      "catch": "Apache-2.0 weights. Requires the kokoro-v0.0.2 LocalBase runtime package.",
-      "notes": "CPU ONNX runtime with bundled af_heart and af_bella voices. English only. Human voice quality has not been assessed."
     },
     {
       "modelId": "flux1-schnell-q4_0",
@@ -2283,78 +2771,6 @@
       "commercialStatus": "open",
       "catch": "Apache-2.0 model weights. The converted encoder repository omits license metadata; upstream CLIP and T5 license terms also apply.",
       "notes": "Cloudflare Workers AI model with a four-step native profile. The large T5 encoder runs on CPU. Measured at 1024x1024 with --diffusion-fa: 13.6 GiB accelerator and 16.8 GiB peak RSS."
-    },
-    {
-      "modelId": "flux2-klein-4b-q4_0",
-      "displayName": "FLUX.2 Klein 4B",
-      "kind": "image",
-      "provider": "Black Forest Labs",
-      "family": "FLUX.2-klein",
-      "version": "2",
-      "size": "4B",
-      "quant": "Q4_0",
-      "storageGb": 5.3,
-      "source": "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
-      "repositoryRevision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
-      "artifacts": [
-        {
-          "sourcePath": "flux-2-klein-4b-Q4_0.gguf",
-          "filename": "flux-2-klein-4b-Q4_0.gguf",
-          "expectedSizeBytes": 2460378560,
-          "sha256": "d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "split_files/vae/flux2-vae.safetensors",
-          "filename": "flux2-vae.safetensors",
-          "expectedSizeBytes": 336211292,
-          "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/Comfy-Org/flux2-klein-4B",
-            "revision": "5f526678002e43af5551dadb73ce2e8c91b43afe"
-          }
-        },
-        {
-          "sourcePath": "Qwen3-4B-Q4_K_M.gguf",
-          "filename": "Qwen3-4B-Q4_K_M.gguf",
-          "expectedSizeBytes": 2497281312,
-          "sha256": "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-GGUF",
-            "revision": "22c9fc8a8c7700b76a1789366280a6a5a1ad1120"
-          }
-        }
-      ],
-      "imageRuntime": {
-        "kind": "diffusion-qwen3",
-        "artifacts": {
-          "diffusionModel": "flux-2-klein-4b-Q4_0.gguf",
-          "vae": "flux2-vae.safetensors",
-          "textEncoder": "Qwen3-4B-Q4_K_M.gguf"
-        },
-        "generation": {
-          "sampler": "euler",
-          "steps": 4,
-          "cfgScale": 1
-        }
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "image"
-      ],
-      "imageLaunchOptions": {
-        "diffusionFlashAttention": true
-      },
-      "capabilities": [
-        "text-to-image"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
-      "notes": "Distilled four-step profile with separate FLUX2 VAE and Qwen3 encoder. Peak memory was measured on Apple Silicon (2026-10-13); broader native inference qualification is pending."
     },
     {
       "modelId": "flux2-klein-4b-q8_0",
@@ -2501,78 +2917,6 @@
       "notes": "Larger distilled four-step model with a Qwen3 8B encoder. Photorealism relative to the 4B model has not been assessed locally. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
     },
     {
-      "modelId": "z-image-turbo-q4_0",
-      "displayName": "Z-Image Turbo",
-      "kind": "image",
-      "provider": "Tongyi",
-      "family": "Z-Image",
-      "version": "Turbo",
-      "size": "6B",
-      "quant": "Q4_0",
-      "storageGb": 6.6,
-      "source": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
-      "repositoryRevision": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
-      "artifacts": [
-        {
-          "sourcePath": "z_image_turbo-Q4_0.gguf",
-          "filename": "z_image_turbo-Q4_0.gguf",
-          "expectedSizeBytes": 3683370944,
-          "sha256": "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "split_files/vae/ae.safetensors",
-          "filename": "z-image-ae.safetensors",
-          "expectedSizeBytes": 335304388,
-          "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/Comfy-Org/z_image_turbo",
-            "revision": "08d04455279082882deaabc8d0d09fc914c071e1"
-          }
-        },
-        {
-          "sourcePath": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-          "filename": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-          "expectedSizeBytes": 2497281120,
-          "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF",
-            "revision": "a06e946bb6b655725eafa393f4a9745d460374c9"
-          }
-        }
-      ],
-      "imageRuntime": {
-        "kind": "diffusion-qwen3",
-        "artifacts": {
-          "diffusionModel": "z_image_turbo-Q4_0.gguf",
-          "vae": "z-image-ae.safetensors",
-          "textEncoder": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
-        },
-        "generation": {
-          "sampler": "euler",
-          "steps": 8,
-          "cfgScale": 1
-        }
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "image"
-      ],
-      "imageLaunchOptions": {
-        "diffusionFlashAttention": true
-      },
-      "capabilities": [
-        "text-to-image"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
-      "notes": "Distilled eight-step profile with separate VAE and Qwen3 Instruct encoder. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
-    },
-    {
       "modelId": "stable-diffusion-v1-5",
       "displayName": "Stable Diffusion 1.5",
       "kind": "image",
@@ -2609,55 +2953,6 @@
       "commercialStatus": "open",
       "catch": "CreativeML Open RAIL-M license.",
       "notes": "Extremely lightweight baseline model. Perfect for low VRAM systems (under 8GB) and fast prototyping. Generates 512x512 images."
-    },
-    {
-      "modelId": "dreamshaper-8-lcm",
-      "displayName": "DreamShaper 8 LCM",
-      "kind": "image",
-      "provider": "Lykon",
-      "family": "Stable-Diffusion",
-      "version": "DreamShaper 8 LCM",
-      "size": "2.0GB",
-      "quant": "F16",
-      "storageGb": 2.13,
-      "source": "https://huggingface.co/Lykon/dreamshaper-8-lcm",
-      "repositoryRevision": "4645d8bc6a8e6b106d21606d63e8460cdad4f1a6",
-      "artifacts": [
-        {
-          "sourcePath": "DreamShaper8_LCM.safetensors",
-          "filename": "DreamShaper8_LCM.safetensors",
-          "expectedSizeBytes": 2133804992,
-          "sha256": "a4f3e1526c5dc4fcbe342f5c410d83ae202c7a415fcefcbb92e0f93fcd0a87c3",
-          "role": "primary"
-        }
-      ],
-      "imageRuntime": {
-        "kind": "checkpoint",
-        "artifacts": {
-          "diffusionModel": "DreamShaper8_LCM.safetensors"
-        },
-        "generation": {
-          "sampler": "lcm",
-          "scheduler": "lcm",
-          "steps": 4,
-          "cfgScale": 1
-        }
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "image"
-      ],
-      "imageLaunchOptions": {
-        "diffusionFlashAttention": true
-      },
-      "capabilities": [
-        "text-to-image"
-      ],
-      "commercialStatus": "open",
-      "catch": "CreativeML Open RAIL-M license.",
-      "notes": "Cloudflare Workers AI photorealism model distilled for fast four-step generation. Native inference qualification is pending."
     },
     {
       "modelId": "dreamshaper-v8",
@@ -2772,44 +3067,6 @@
       "commercialStatus": "open",
       "catch": "Stability AI Community License.",
       "notes": "Standard high-resolution (1024x1024) image generator. Recommended for standard workstation GPUs."
-    },
-    {
-      "modelId": "juggernaut-xl-v9",
-      "displayName": "Juggernaut XL v9",
-      "kind": "image",
-      "provider": "RunDiffusion",
-      "family": "Stable-Diffusion-XL",
-      "version": "9.0",
-      "size": "6.6GB",
-      "quant": "F16",
-      "storageGb": 6.61,
-      "source": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
-      "repositoryRevision": "cf419233522daa0b9ea36c3aff98fa2cab1fb0fb",
-      "artifacts": [
-        {
-          "sourcePath": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
-          "filename": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
-          "expectedSizeBytes": 7105348188,
-          "sha256": "c9e3e68f89b8e38689e1097d4be4573cf308de4e3fd044c64ca697bdb4aa8bca",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "image"
-      ],
-      "imageLaunchOptions": {
-        "diffusionFlashAttention": true
-      },
-      "capabilities": [
-        "text-to-image",
-        "image-to-image"
-      ],
-      "commercialStatus": "open",
-      "catch": "Stability AI Community License.",
-      "notes": "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism."
     },
     {
       "modelId": "animagine-xl-3.1",
@@ -2987,216 +3244,6 @@
       "commercialStatus": "open",
       "catch": "Apache-2.0 licenses for the pinned artifacts.",
       "notes": "Experimental text-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 320x320, 33 frames, and 16 fps."
-    },
-    {
-      "modelId": "wan2.2-s2v-14b-fp8",
-      "displayName": "Wan2.2 S2V 14B",
-      "kind": "video",
-      "qualificationState": "experimental",
-      "provider": "Wan/Comfy-Org",
-      "family": "Wan2.2-S2V",
-      "version": "2.2",
-      "size": "14B",
-      "quant": "FP8",
-      "storageGb": 23.33,
-      "source": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
-      "repositoryRevision": "c4f60d30c55a624e35427060fdd217579a6c1d77",
-      "artifacts": [
-        {
-          "sourcePath": "split_files/diffusion_models/wan2.2_s2v_14B_fp8_scaled.safetensors",
-          "filename": "wan2.2_s2v_14B_fp8_scaled.safetensors",
-          "expectedSizeBytes": 16394832474,
-          "sha256": "140e75af5534ac3d91e710d9df756f7032addd64b341ba2c1c70e3e6da9aa216",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "umt5-xxl-encoder-Q8_0.gguf",
-          "filename": "umt5-xxl-encoder-Q8_0.gguf",
-          "expectedSizeBytes": 6043068256,
-          "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
-            "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7"
-          }
-        },
-        {
-          "sourcePath": "split_files/vae/wan_2.1_vae.safetensors",
-          "filename": "wan_2.1_vae.safetensors",
-          "expectedSizeBytes": 253815318,
-          "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged",
-            "revision": "617a7633e636506f850e043bc4605f290a466a8e"
-          }
-        },
-        {
-          "sourcePath": "split_files/audio_encoders/wav2vec2_large_english_fp16.safetensors",
-          "filename": "wav2vec2_large_english_fp16.safetensors",
-          "expectedSizeBytes": 630997322,
-          "sha256": "f0017a43ea57ef6b3d4866be607844bbd8cada6d30966f7d70044ed0d63d3f9e",
-          "role": "supplementary"
-        }
-      ],
-      "videoRuntime": {
-        "mode": "s2v",
-        "artifacts": {
-          "diffusionModel": "wan2.2_s2v_14B_fp8_scaled.safetensors",
-          "textEncoder": "umt5-xxl-encoder-Q8_0.gguf",
-          "decoder": {
-            "kind": "vae",
-            "artifactFilename": "wan_2.1_vae.safetensors"
-          },
-          "audioEncoder": "wav2vec2_large_english_fp16.safetensors"
-        },
-        "qualification": {
-          "maxWidth": 480,
-          "maxHeight": 640,
-          "maxFrames": 33,
-          "fps": 16,
-          "jobDeadlineMs": 1800000,
-          "generation": {
-            "sampler": "euler",
-            "scheduler": "discrete",
-            "steps": 20,
-            "cfgScale": 6,
-            "flowShift": 3,
-            "seed": 42
-          },
-          "launchOptions": {
-            "cpuOffload": true,
-            "diffusionFlashAttention": true,
-            "vaeConvDirect": false
-          }
-        },
-        "supportedTargets": [
-          {
-            "platform": "linux",
-            "architecture": "x64",
-            "accelerator": "nvidia"
-          }
-        ]
-      },
-      "inputModalities": [
-        "text",
-        "image",
-        "audio"
-      ],
-      "outputModalities": [
-        "video"
-      ],
-      "capabilities": [
-        "speech-to-video"
-      ],
-      "outputFormat": "avi",
-      "experimentalRuntime": true,
-      "commercialStatus": "open",
-      "catch": "Apache-2.0 licenses for the pinned artifacts. Output audio is the supplied driving track, not generated speech.",
-      "notes": "Experimental and unqualified Linux x64 single-NVIDIA portrait animation at exactly 480x640, 33 frames, and 16 fps. Admission reservations are estimates and must be re-measured in a pinned-runtime hardware run before qualification. Requires a portrait and speech no longer than 2.0625 seconds. Lip-sync quality and longer clips are not qualified."
-    },
-    {
-      "modelId": "fastwan2.2-ti2v-5b-q6_k",
-      "displayName": "FastWan2.2 TI2V 5B",
-      "kind": "video",
-      "provider": "FastVideo/ggml",
-      "family": "FastWan2.2-TI2V",
-      "version": "2.2",
-      "size": "5B",
-      "quant": "Q6_K",
-      "storageGb": 10.28,
-      "source": "https://huggingface.co/Green-Sky/FastWan2.2-TI2V-5B-FullAttn-GGUF",
-      "repositoryRevision": "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
-      "artifacts": [
-        {
-          "sourcePath": "FastWan2.2-TI2V-5B-q6_k.gguf",
-          "filename": "FastWan2.2-TI2V-5B-q6_k.gguf",
-          "expectedSizeBytes": 4210247200,
-          "sha256": "416a87e30f2328dbefd7666ac90b395ead74f443748ff31c83483ac4ac6121cc",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "umt5-xxl-encoder-Q8_0.gguf",
-          "filename": "umt5-xxl-encoder-Q8_0.gguf",
-          "expectedSizeBytes": 6043068256,
-          "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
-            "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7"
-          }
-        },
-        {
-          "sourcePath": "safetensors/taew2_2.safetensors",
-          "filename": "taew2_2.safetensors",
-          "expectedSizeBytes": 22848048,
-          "sha256": "b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://github.com/madebyollin/taehv",
-            "revision": "fa579a9a726b0a55951998d73e309bfdf0abd342"
-          }
-        }
-      ],
-      "videoRuntime": {
-        "mode": "ti2v",
-        "artifacts": {
-          "diffusionModel": "FastWan2.2-TI2V-5B-q6_k.gguf",
-          "textEncoder": "umt5-xxl-encoder-Q8_0.gguf",
-          "decoder": {
-            "kind": "tae",
-            "artifactFilename": "taew2_2.safetensors"
-          }
-        },
-        "qualification": {
-          "jobDeadlineMs": 600000,
-          "maxWidth": 480,
-          "maxHeight": 832,
-          "maxFrames": 81,
-          "fps": 16,
-          "generation": {
-            "sampler": "euler",
-            "scheduler": "lcm",
-            "steps": 3,
-            "cfgScale": 1,
-            "flowShift": 3,
-            "seed": 42
-          },
-          "launchOptions": {
-            "cpuOffload": true,
-            "diffusionFlashAttention": true,
-            "vaeConvDirect": true
-          }
-        },
-        "supportedTargets": [
-          {
-            "platform": "darwin",
-            "architecture": "arm64",
-            "accelerator": "apple-unified"
-          },
-          {
-            "platform": "linux",
-            "architecture": "x64",
-            "accelerator": "nvidia"
-          }
-        ]
-      },
-      "inputModalities": [
-        "text",
-        "image"
-      ],
-      "outputModalities": [
-        "video"
-      ],
-      "capabilities": [
-        "text-to-video",
-        "image-to-video"
-      ],
-      "outputFormat": "avi",
-      "experimentalRuntime": true,
-      "commercialStatus": "open",
-      "catch": "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
-      "notes": "Experimental and unqualified text-to-video and image-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 480x832, 81 frames, and 16 fps."
     },
     {
       "modelId": "wan2.2-ti2v-5b-q6_k",

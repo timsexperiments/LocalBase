@@ -125,9 +125,9 @@ test(
         "--hf-token",
         "private-token",
         "--llm-models",
-        "qwen2.5-coder-7b-instruct-q4_k_m,mistral-nemo-12b-instruct-q4_k_m",
+        "qwen3.5-9b-q4_k_m,gpt-oss-20b-q4_k_m",
         "--active-llm",
-        "mistral-nemo-12b-instruct-q4_k_m",
+        "gpt-oss-20b-q4_k_m",
         "--parallel",
         "3",
         "--ctx-size",
@@ -822,11 +822,8 @@ test(
         ok: true,
         data: {
           configuration: {
-            selectedLlmModels: [
-              "qwen2.5-coder-7b-instruct-q4_k_m",
-              "mistral-nemo-12b-instruct-q4_k_m",
-            ],
-            activeLlmModel: "mistral-nemo-12b-instruct-q4_k_m",
+            selectedLlmModels: ["qwen3.5-9b-q4_k_m", "gpt-oss-20b-q4_k_m"],
+            activeLlmModel: "gpt-oss-20b-q4_k_m",
             parallel: 3,
             ctxSize: 8192,
             hfTokenConfigured: true,
@@ -1202,9 +1199,9 @@ test("JSON mode rejects interactive and destructive commands without consent", a
       "--defaults",
       "--no-create-key",
       "--llm-models",
-      "qwen2.5-coder-7b-instruct-q4_k_m",
+      "qwen3.5-9b-q4_k_m",
       "--active-llm",
-      "mistral-nemo-12b-instruct-q4_k_m",
+      "gpt-oss-20b-q4_k_m",
     ]);
     expect(incompatibleSelection.exitCode).toBe(2);
     expect(jsonDocument(incompatibleSelection.stdout)).toMatchObject({

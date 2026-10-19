@@ -168,12 +168,17 @@ A decision server keeps no KV or recurrent context (0 MiB). The MTL0 buffers are
 
 ## Not measured
 
-Models without a measured record keep estimate confidence:
+Built-in entries without a measured record keep estimate confidence:
 
-- flux2-klein-9b-q4_0 with `--diffusion-fa`: it uses the derived estimate (see above).
+- clef-q4_k_m (Clef 27B, added 2026-10-18): estimate 21.99 GiB accelerator at the 8192-token decision launch, minimum 25 GB. Measure it with the decision method above (ctx 8192, batch = ctx, `--cache-ram 0`, Q8_0 projector).
+- qwen3.8-27b-q4_k_m: skipped in the first pass because its download was paused. Estimate 18.38 GiB, minimum 21 GB.
+- qwen3-embedding-0.6b-q8_0 and qwen3-embedding-4b-q4_k_m: estimates assume short inputs.
+- whisper-base-q8_0: estimate only.
 - wan2.2-s2v-14b-fp8: it targets only Linux x64 with NVIDIA GPUs.
-- The catalog-only video profiles, the q8_0 LLM variants and other speech models.
-- qwen3.8-27b-q4_k_m: skipped in the first pass because its download was paused.
+
+## Former built-in entries
+
+Entries that left the built-in catalog (`src/catalog/former/`) keep their records here. An install that kept one as a user entry (see the README's built-in catalog section) still plans from its record while the entry's files and launch shape match what was measured (`usesReferenceMeasurements`). Their unmeasured profiles, such as flux2-klein-9b-q4_0 with `--diffusion-fa`, the catalog-only video profiles and the q8_0 LLM variants, keep their estimates.
 
 ## Adding a measurement
 

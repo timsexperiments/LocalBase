@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { join } from "node:path";
 import { byId, primaryArtifact } from "../../catalog";
 import {
@@ -8,12 +8,20 @@ import {
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
 import { gatewayHealthSchema } from "./health";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 registerGatewayFixtureCleanup();
 
 const STT_MODEL = "whisper-large-v3-turbo";
-const IMAGE_MODEL = "stable-diffusion-v1-5";
-const REPLACEMENT_LLM_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
+const IMAGE_MODEL = "juggernaut-xl-v9";
+const REPLACEMENT_LLM_MODEL = "qwen3.5-9b-q4_k_m";
 
 async function imageRequest(gateway: GatewayFixture): Promise<Response> {
   return await fetch(`${gateway.baseUrl}/v1/images/generations`, {
@@ -323,7 +331,7 @@ test(
       const recoveredRequest = await chatRequest(
         gateway,
         {},
-        "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        "qwen3.5-4b-q4_k_m",
       );
       expect(recoveredRequest.status).toBe(200);
       await recoveredRequest.text();

@@ -12,9 +12,11 @@ import {
   describeCapabilityMismatch,
   hasCapability,
 } from "./capabilities";
+import { formerCatalogEntry } from "./former";
 
+// Former built-in entries keep their data; installs that had them keep them.
 function catalogEntry(modelId: string): ModelSpec {
-  const model = byId(modelId);
+  const model = byId(modelId) ?? formerCatalogEntry(modelId);
   if (!model) throw new Error(`Missing catalog fixture ${modelId}.`);
   return model;
 }

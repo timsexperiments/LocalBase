@@ -5,7 +5,7 @@ import { join } from "node:path";
 import {
   CATALOG,
   artifactDownloadUrl,
-  byId,
+  byId as catalogById,
   calculateMaxSafeContextSize,
   catalogSchema,
   hasCapability,
@@ -29,6 +29,13 @@ import { qualifiedVideoInput } from "./domains/runtime/video/gateway-contract";
 
 import { resolveImageLaunchPlan } from "./domains/runtime/launch-plan";
 import { buildSdImageServerArgs } from "./domains/runtime/launcher";
+import { formerCatalogEntry } from "./catalog/former";
+
+// Entries that left the built-in catalog keep their pinned data: installs
+// that had them keep them as user entries (see catalog/former).
+function byId(modelId: string): ModelSpec | undefined {
+  return catalogById(modelId) ?? formerCatalogEntry(modelId);
+}
 
 const checksum = "a".repeat(64);
 
@@ -275,6 +282,60 @@ describe("catalog artifact validation", () => {
     expect(hasCapability(clef!, "decision")).toBe(true);
     // A decision model never stands in for a chat recommendation.
     expect(recommendedForVram(128)).not.toContainEqual(clef);
+  });
+
+  test("pins the larger decision model and its projector", () => {
+    const clef = catalogById("clef-q4_k_m");
+    expect(clef).toMatchObject({
+      kind: "llm",
+      provider: "Cloudflare",
+      source: "https://huggingface.co/ggml-org/Clef-GGUF",
+      repositoryRevision: "d2aa75cb425ae922b5c3c15ef3157d417b7f7641",
+      llmRuntime: { capability: "decision-only" },
+      inputModalities: ["text", "image"],
+      contextWindowTokens: 262_144,
+      commercialStatus: "open",
+      artifacts: [
+        {
+          filename: "Clef-Q4_K_M.gguf",
+          expectedSizeBytes: 19232219200,
+          sha256:
+            "9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+          role: "primary",
+        },
+        {
+          filename: "mmproj-Clef-Q8_0.gguf",
+          expectedSizeBytes: 629247456,
+          sha256:
+            "744ad2db24c336fc9120dd5ba06344c0601b9efd365fe96be01ce5c4e6ab64cf",
+          role: "supplementary",
+        },
+      ],
+    });
+    expect(hasCapability(clef!, "decision")).toBe(true);
+    expect(recommendedForVram(128)).not.toContainEqual(clef);
+  });
+
+  test("ships one chat model per memory band and exactly two decision models", () => {
+    const chat = CATALOG.filter(
+      (model) => model.kind === "llm" && !model.llmRuntime,
+    );
+    const minimums = chat.map(computedMinVramGb).sort((a, b) => a - b);
+    expect(chat.map(({ modelId }) => modelId).sort()).toEqual([
+      "gpt-oss-20b-q4_k_m",
+      "qwen3.5-4b-q4_k_m",
+      "qwen3.5-9b-q4_k_m",
+      "qwen3.8-27b-q4_k_m",
+    ]);
+    // Tiny, small, medium and large: no two chat entries share a band.
+    expect(new Set(minimums).size).toBe(minimums.length);
+    expect(minimums[0]).toBeLessThanOrEqual(6);
+    expect(minimums.at(-1)).toBeGreaterThanOrEqual(18);
+    expect(
+      CATALOG.filter(
+        (model) => model.llmRuntime?.capability === "decision-only",
+      ).map(({ modelId }) => modelId),
+    ).toEqual(["clef-flash-q4_k_m", "clef-q4_k_m"]);
   });
 
   test("pins the embedding-only Qwen runtime contract", () => {

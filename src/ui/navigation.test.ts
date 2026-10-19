@@ -176,16 +176,14 @@ describe("playground navigation boundary", () => {
 
   test("keeps an open model details view linkable with the catalog", () => {
     const href =
-      "https://local.test/app?panel=catalog&q=coder&details=qwen2.5-coder-1.5b-instruct-q4_k_m";
-    expect(readDetails(new URL(href).search)).toBe(
-      "qwen2.5-coder-1.5b-instruct-q4_k_m",
-    );
+      "https://local.test/app?panel=catalog&q=coder&details=qwen3.5-4b-q4_k_m";
+    expect(readDetails(new URL(href).search)).toBe("qwen3.5-4b-q4_k_m");
     expect(readDetails("?details=")).toBeNull();
     expect(readDetails("?details=..%2Fescape")).toBeNull();
     expect(readDetails("?panel=catalog")).toBeNull();
     const open = navigationUrl(href, conversationNavigation(saved, "catalog"));
     expect(new URL(open, href).searchParams.get("details")).toBe(
-      "qwen2.5-coder-1.5b-instruct-q4_k_m",
+      "qwen3.5-4b-q4_k_m",
     );
     expect(
       navigationUrl(href, conversationNavigation(saved, null)),

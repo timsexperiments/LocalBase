@@ -32,6 +32,7 @@ import {
   type ModelSpec,
 } from "../catalog";
 import type { FeedAnnotation } from "./annotations";
+import { formerCatalogEntry } from "./former";
 
 export const catalogTierSchema = z.enum(["built-in", "remote", "user"]);
 export type CatalogTier = z.infer<typeof catalogTierSchema>;
@@ -268,10 +269,27 @@ export function catalogDiagnostics(): readonly CatalogDiagnostic[] {
 /**
  * Whether the checked-in reference memory measurements describe this entry.
  * They were taken with the qualified files and launch shape, so they do not
- * apply to user-added or modified entries.
+ * apply to user-added or modified entries. A former built-in entry kept as a
+ * user entry (`./former`) still launches the measured files, so its records
+ * apply while every launch-shaped field matches what was measured.
  */
 export function usesReferenceMeasurements(
   model: Pick<ModelSpec, "modelId">,
 ): boolean {
-  return catalogProvenance(model.modelId).trust === "qualified";
+  if (catalogProvenance(model.modelId).trust === "qualified") return true;
+  return matchesFormerEntry(model);
+}
+
+/** The entry launches exactly what an earlier release shipped for its id. */
+export function matchesFormerEntry(model: Pick<ModelSpec, "modelId">): boolean {
+  const former = formerCatalogEntry(model.modelId);
+  if (!former) return false;
+  const current =
+    CATALOG.find(({ modelId }) => modelId === model.modelId) ?? model;
+  return [...LAUNCH_SHAPED_FIELDS].every((key) =>
+    sameValue(
+      (former as Record<string, unknown>)[key],
+      (current as Record<string, unknown>)[key],
+    ),
+  );
 }

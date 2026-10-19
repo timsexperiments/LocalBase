@@ -34,12 +34,12 @@ sttHost = "127.0.0.1"
 sttPort = 18080
 
 [models]
-selectedLlmModels = ["qwen2.5-coder-7b-instruct-q4_k_m"]
+selectedLlmModels = ["qwen3.5-9b-q4_k_m"]
 selectedSttModels = ["whisper-base-q8_0"]
 selectedTtsModels = []
 selectedImageModels = []
 selectedVideoModels = []
-activeLlmModel = "qwen2.5-coder-7b-instruct-q4_k_m"
+activeLlmModel = "qwen3.5-9b-q4_k_m"
 activeSttModel = "whisper-base-q8_0"
 activeTtsModel = ""
 activeImageModel = ""

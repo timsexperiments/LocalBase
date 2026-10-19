@@ -18,8 +18,8 @@ import {
 
 registerGatewayFixtureCleanup();
 
-const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-const alternateModelId = "qwen2.5-coder-3b-instruct-q4_k_m";
+const modelId = "qwen3.5-4b-q4_k_m";
+const alternateModelId = "qwen3.8-27b-q4_k_m";
 const speechModelId = "qwen3-tts-1.7b-base-q4_k_m";
 
 function apiKeyHeaders(apiKey: string): Record<string, string> {
@@ -230,10 +230,10 @@ describe("authenticated model metadata endpoints", () => {
     expect(llm).toMatchObject({
       catalog: {
         capabilities: null,
-        features: ["code-generation", "code-editing"],
+        features: ["text-generation", "tool-calling"],
         inputModalities: ["text"],
         outputModalities: ["text"],
-        contextWindowTokens: 32_768,
+        contextWindowTokens: 262_144,
         maxOutputTokens: null,
       },
       device: {

@@ -243,7 +243,7 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
       beforeReplacement,
     );
 
-    failSttModel = "whisper-tiny-en-q8_0";
+    failSttModel = "whisper-base-q8_0";
     const failedStt = controller.copy();
     failedStt.activeSttModel = failSttModel;
     failedStt.selectedSttModels = [failSttModel];
@@ -1305,8 +1305,8 @@ test("drains a warming video job when the model is disabled", async () => {
   config.activeTtsModel = "";
   config.selectedImageModels = [];
   config.activeImageModel = "";
-  config.selectedVideoModels = ["wan2.1-t2v-1.3b-q8_0"];
-  config.activeVideoModel = "wan2.1-t2v-1.3b-q8_0";
+  config.selectedVideoModels = ["fastwan2.2-ti2v-5b-q6_k"];
+  config.activeVideoModel = "fastwan2.2-ti2v-5b-q6_k";
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
   let markWarming!: () => void;
@@ -1426,7 +1426,7 @@ test("emergency eviction aborts stopped-video preflight without leaking an admis
   );
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
-  const modelId = "wan2.1-t2v-1.3b-q8_0";
+  const modelId = "fastwan2.2-ti2v-5b-q6_k";
   config.selectedVideoModels = [modelId];
   config.activeVideoModel = modelId;
   saveConfig(database, config);
@@ -1494,7 +1494,7 @@ test.each([
   const root = mkdtempSync(join(tmpdir(), "localbase-video-active-preflight-"));
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
-  const modelId = "wan2.1-t2v-1.3b-q8_0";
+  const modelId = "fastwan2.2-ti2v-5b-q6_k";
   if (scenario === "llm") {
     config.selectedLlmModels = [config.activeLlmModel];
   } else {
