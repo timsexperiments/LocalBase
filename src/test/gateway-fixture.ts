@@ -276,6 +276,11 @@ export type GatewayFixtureOptions = {
   videoEnabled?: boolean;
   parallel?: LocalBaseConfig["parallel"];
   ctxSize?: number;
+  /**
+   * `explicit` launches at `ctxSize` instead of the memory-safe recommendation,
+   * which follows the host's real memory and differs between machines.
+   */
+  ctxMode?: LocalBaseConfig["ctxMode"];
   ctxSizeOverride?: number;
   llmModel?: string;
   /**
@@ -1942,6 +1947,7 @@ export async function startGatewayFixture(
     config.otelSampleRatio = 100;
     config.parallel = options.parallel ?? config.parallel;
     config.ctxSize = options.ctxSize ?? config.ctxSize;
+    config.ctxMode = options.ctxMode ?? config.ctxMode;
     if (options.llmCatalogEntry) {
       ensureLocalBaseRootMarker(config.root);
       writeUserCatalogEntry(config.root, options.llmCatalogEntry);

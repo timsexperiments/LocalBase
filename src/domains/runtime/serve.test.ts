@@ -1890,7 +1890,8 @@ describe("API gateway integration", () => {
 
   beforeAll(
     async () => {
-      gateway = await startGatewayFixture();
+      // A fixed context keeps default generation caps independent of host memory.
+      gateway = await startGatewayFixture({ ctxMode: "explicit" });
     },
     { timeout: 30_000 },
   );
