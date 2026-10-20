@@ -89,8 +89,8 @@ type Definition struct {
 	Launch        *Launch             `json:"launch,omitempty"`
 	// Automatic false keeps a backend out of automatic selection (for
 	// example until a managed package is pinned); it stays selectable.
-	Automatic *bool `json:"automatic,omitempty"`
-	Notes         string              `json:"notes,omitempty"`
+	Automatic *bool  `json:"automatic,omitempty"`
+	Notes     string `json:"notes,omitempty"`
 
 	BuiltIn bool `json:"-"`
 }

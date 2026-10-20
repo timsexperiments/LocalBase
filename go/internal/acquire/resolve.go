@@ -88,7 +88,7 @@ type Plan struct {
 	SizeKnown  bool          `json:"sizeKnown"`
 	// Choices lists the weight files to pick from when the repository has
 	// several and none was named (no files are planned then).
-	Choices []string `json:"choices,omitempty"`
+	Choices   []string `json:"choices,omitempty"`
 	hfOrigins []string
 	// Preview holds the facts known before downloading (pinned upstream
 	// metadata, or a local file's header), for a backend recommendation in
