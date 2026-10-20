@@ -32,6 +32,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -56,6 +57,7 @@ type Target struct {
 	BaseURL   string
 	Key       string // default scopes
 	ChatOnly  string // inference:chat only
+	Admin     string // every permission
 	RealModel bool
 	Root      string // scratch root of a launched gateway
 	stop      func()
@@ -111,14 +113,14 @@ func freePort() int {
 // fixture builds a scratch root both implementations accept: marker, a
 // migrated database with a config row and two keys, the remote feed off,
 // and optionally the real chat model and llama-server package.
-func fixture(dir string, llmPort int) (key, chatOnly string, real bool, err error) {
+func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, err error) {
 	r, err := root.Init(dir)
 	if err != nil {
-		return "", "", false, err
+		return "", "", "", false, err
 	}
 	st, err := store.Open(r.DB())
 	if err != nil {
-		return "", "", false, err
+		return "", "", "", false, err
 	}
 	defer st.Close()
 	sel, _ := json.Marshal([]string{chatModel, decisionModel, embeddingModel})
@@ -133,17 +135,21 @@ func fixture(dir string, llmPort int) (key, chatOnly string, real bool, err erro
 		r.Dir, llmPort, freePort(), string(sel), `["whisper-base-en-q8_0"]`, `["qwen3-tts-1.7b-base-q4_k_m","kokoro-82m-v1.0-q8"]`,
 		`["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0"]`, `["wan2.1-t2v-1.3b-q8_0","fastwan2.2-ti2v-5b-q6_k"]`, chatModel)
 	if err != nil {
-		return "", "", false, err
+		return "", "", "", false, err
 	}
 	_, key, err = st.CreateAPIKey(context.Background(), "contract", []string{
 		"inference:chat", "inference:embeddings", "inference:decision", "inference:image", "inference:video",
 		"inference:speech", "inference:transcription", "models:read"})
 	if err != nil {
-		return "", "", false, err
+		return "", "", "", false, err
 	}
 	_, chatOnly, err = st.CreateAPIKey(context.Background(), "contract-chat-only", []string{"inference:chat"})
 	if err != nil {
-		return "", "", false, err
+		return "", "", "", false, err
+	}
+	_, admin, err = st.CreateAPIKey(context.Background(), "contract-admin", auth.Permissions)
+	if err != nil {
+		return "", "", "", false, err
 	}
 	os.WriteFile(filepath.Join(r.Dir, "catalog-feed.json"), []byte(`{"url":null}`), 0o600)
 	// Active non-LLM models: sparse files at the expected sizes, which pass the
@@ -178,12 +184,12 @@ func fixture(dir string, llmPort int) (key, chatOnly string, real bool, err erro
 			os.MkdirAll(filepath.Join(r.Dir, "bin"), 0o700)
 			out, cerr := exec.Command("cp", "-R", runtimes, filepath.Join(r.Dir, "bin", "runtimes")).CombinedOutput()
 			if cerr != nil {
-				return "", "", false, fmt.Errorf("copy runtimes: %v %s", cerr, out)
+				return "", "", "", false, fmt.Errorf("copy runtimes: %v %s", cerr, out)
 			}
 			real = true
 		}
 	}
-	return key, chatOnly, real, nil
+	return key, chatOnly, admin, real, nil
 }
 
 func repoRoot() string {
@@ -199,7 +205,7 @@ func launch(impl string) (*Target, error) {
 	dir, _ = filepath.EvalSymlinks(dir)
 	rootDir := filepath.Join(dir, "root")
 	port, llmPort := freePort(), freePort()
-	key, chatOnly, real, err := fixture(rootDir, llmPort)
+	key, chatOnly, admin, real, err := fixture(rootDir, llmPort)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +225,7 @@ func launch(impl string) (*Target, error) {
 		return nil, fmt.Errorf("unknown impl %q", impl)
 	}
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "LOCALBASE_") {
+		if !strings.HasPrefix(kv, "LOCALBASE_") && !strings.HasPrefix(kv, "HF_TOKEN=") {
 			cmd.Env = append(cmd.Env, kv)
 		}
 	}
@@ -260,7 +266,7 @@ func launch(impl string) (*Target, error) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return &Target{Name: impl, BaseURL: base, Key: key, ChatOnly: chatOnly, RealModel: real, Root: rootDir, stop: stop}, nil
+	return &Target{Name: impl, BaseURL: base, Key: key, ChatOnly: chatOnly, Admin: admin, RealModel: real, Root: rootDir, stop: stop}, nil
 }
 
 // --- request helpers ---------------------------------------------------------

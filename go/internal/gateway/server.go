@@ -34,6 +34,7 @@ type Server struct {
 	MemoryGB int
 	Root     *root.Root
 	Memory   *memory.Controller
+	Browser  *auth.Browser
 	// UI handles /app and / when set.
 	UI http.Handler
 
@@ -46,6 +47,10 @@ func New(s *Server) *Server {
 	s.started = time.Now()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
+	for _, p := range []string{"/app/login", "/oidc/callback", "/github/callback", "/app/login/magic", "/magic-link/callback",
+		"/app/logout", "/app/session", "/app/api", "/app/api/"} {
+		mux.HandleFunc(p, s.uiAccess)
+	}
 	mux.HandleFunc("/health/ready", s.ready)
 	mux.HandleFunc("/_localbase/instance", s.instance)
 	mux.HandleFunc("/v1/models", s.guard("models:read", s.listModels))
@@ -55,6 +60,9 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/v1/systemone", s.guard("inference:decision", s.systemone))
 	mux.HandleFunc("/_localbase/models", s.guard("models:read", s.modelMetadata))
 	mux.HandleFunc("/_localbase/models/{model_id...}", s.guard("models:read", s.modelMetadata))
+	mux.HandleFunc("/_localbase/access-management", s.accessManagement)
+	mux.HandleFunc("/_localbase/api-keys", s.apiKeys)
+	mux.HandleFunc("/_localbase/hf-token", s.hfToken)
 	if s.UI != nil {
 		mux.Handle("/app", s.UI)
 		mux.Handle("/app/", s.UI)
@@ -88,6 +96,14 @@ func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFun
 		}
 		if s.NoAuth {
 			next(w, r)
+			return
+		}
+		if bp, ok := r.Context().Value(browserPrincipalKey{}).(*auth.Principal); ok {
+			if !bp.Can(permission) {
+				forbidden(w, r)
+				return
+			}
+			next(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, bp)))
 			return
 		}
 		p, err := s.Auth.ResolveAPI(r.Context(), r)

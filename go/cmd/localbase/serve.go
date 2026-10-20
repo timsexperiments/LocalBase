@@ -51,7 +51,6 @@ func serveCommand() *cli.Command {
 		opt("auth-mode", "<bearer|x-api-key|either>", "Authentication header mode"),
 		flag("bypass-memory-check", "Start despite model memory warnings"),
 		opt("log-level", "<debug|info|warn|error>", "Minimum event severity (default info)"),
-		flag("dev-ui-login", "Milestone 0 only: let /app/login accept an API key with models:read"),
 	}, Run: serve}
 }
 
@@ -155,11 +154,30 @@ func serve(c *cli.Ctx) (any, error) {
 		Install: installer(e, installMissing, log)}, cfg)
 	defer llm.Close()
 
+	access, err := auth.LoadAccess(r.Dir)
+	if err != nil {
+		return nil, err
+	}
+	browser := auth.NewBrowser(st, r.Dir, access, log)
+	if browser.HasMagicLink() == nil {
+		auth.ClearMagicLinks(context.Background(), st)
+	}
+	for _, reg := range func() []auth.Registration {
+		if access == nil {
+			return nil
+		}
+		return access.Provider.Registrations
+	}() {
+		if reg.Kind == "github-oauth" {
+			log.Warn("GitHub sign-in ("+reg.ID+") is not supported by this version and is ignored.", "event", "auth.registration-ignored")
+		}
+	}
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
 	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth,
-		MemoryGB: memoryGB, Root: r, Memory: mem}
-	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem,
-		NoAuth: noAuth, DevLogin: c.Bool("dev-ui-login"), RootDir: r.Dir})
+		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser}
+	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
+		Principal: func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
+		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout()})
 	gateway.New(srv)
 
 	ln, err := net.Listen("tcp", net.JoinHostPort(listenHost, strconv.Itoa(listenPort)))

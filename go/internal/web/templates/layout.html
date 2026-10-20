@@ -12,7 +12,7 @@
 <script src="{{asset "vendor/htmx-2.0.10.min.js"}}" defer></script>
 <script src="{{asset "js/session.js"}}" type="module"></script>
 </head>
-<body class="min-h-dvh" hx-boost="true">
+<body class="min-h-dvh" hx-boost="true" hx-headers='{"X-Localbase-UI": "1"}'>
 <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 btn btn-primary">Skip to content</a>
 <header class="sticky top-0 z-20 border-b border-line bg-canvas/95 backdrop-blur pt-[env(safe-area-inset-top)]">
   <div class="mx-auto flex max-w-5xl items-center justify-between gap-3 px-[max(1rem,env(safe-area-inset-left))] py-2">
@@ -21,10 +21,10 @@
       LocalBase
     </a>
     {{if and .Principal (not .NoAuth)}}
-    <form method="post" action="/app/logout" hx-boost="false"><button class="btn btn-quiet text-sm">Sign out</button></form>
+    <button type="button" class="btn btn-quiet text-sm" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>
     {{end}}
   </div>
-  {{if ne .Page "login"}}
+  {{if .Principal}}
   <nav aria-label="Models" class="mx-auto max-w-5xl px-[max(0.5rem,env(safe-area-inset-left))]">
     <ul class="grid grid-cols-3 gap-1 pb-2 sm:flex sm:gap-2">
       {{template "tab" (dict "Href" "/app/models" "Label" "Library" "Active" (eq .Page "library" "details"))}}

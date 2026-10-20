@@ -6,7 +6,6 @@ package web
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -14,11 +13,8 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
-	"net/url"
 	"path"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -36,14 +32,19 @@ var templateFS embed.FS
 var staticFS embed.FS
 
 type Deps struct {
-	Store    *store.Store
-	Catalog  *catalog.Catalog
-	LLM      *runtime.LLM
-	Auth     *auth.Resolver
-	Memory   *memory.Controller
-	NoAuth   bool
-	DevLogin bool
-	RootDir  string
+	Store   *store.Store
+	Catalog *catalog.Catalog
+	LLM     *runtime.LLM
+	Auth    *auth.Resolver
+	Memory  *memory.Controller
+	NoAuth  bool
+	RootDir string
+	// Principal resolves the signed-in browser identity (nil when none).
+	Principal func(*http.Request) *auth.Principal
+	// SignInEnabled: browser access is configured (ui-access.json).
+	SignInEnabled bool
+	// LogoutURL is where a Cloudflare Access session signs out ("" otherwise).
+	LogoutURL string
 }
 
 type UI struct {
@@ -51,23 +52,10 @@ type UI struct {
 	pages    map[string]*template.Template
 	assetVer map[string]string
 	mux      *http.ServeMux
-
-	mu       sync.Mutex
-	sessions map[string]session
 }
-
-type session struct {
-	p       *auth.Principal
-	expires time.Time
-}
-
-const (
-	sessionCookie = "lb_session"
-	sessionIdle   = 12 * time.Hour
-)
 
 func New(d Deps) *UI {
-	u := &UI{d: d, sessions: map[string]session{}, assetVer: map[string]string{}}
+	u := &UI{d: d, assetVer: map[string]string{}}
 	fs.WalkDir(staticFS, "static", func(p string, e fs.DirEntry, err error) error {
 		if err == nil && !e.IsDir() {
 			b, _ := staticFS.ReadFile(p)
@@ -110,7 +98,7 @@ func New(d Deps) *UI {
 	}
 	base := template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/parts.html"))
 	u.pages = map[string]*template.Template{}
-	for _, page := range []string{"library", "running", "get", "details", "login"} {
+	for _, page := range []string{"library", "running", "get", "details", "signin", "forbidden"} {
 		t := template.Must(base.Clone())
 		u.pages[page] = template.Must(t.ParseFS(templateFS, "templates/"+page+".html"))
 	}
@@ -118,10 +106,6 @@ func New(d Deps) *UI {
 	m.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/models", http.StatusFound) })
 	m.HandleFunc("GET /app", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/models", http.StatusFound) })
 	m.HandleFunc("GET /app/assets/{name...}", u.asset)
-	m.HandleFunc("GET /app/login", u.loginPage)
-	m.HandleFunc("POST /app/login", u.login)
-	m.HandleFunc("POST /app/logout", u.logout)
-	m.HandleFunc("GET /app/session", u.sessionProbe)
 	m.HandleFunc("GET /app/models", u.need("models:read", u.library))
 	m.HandleFunc("GET /app/models/get", u.need("models:read", u.getModels))
 	m.HandleFunc("GET /app/models/running", u.need("models:read", u.running))
@@ -161,126 +145,53 @@ func (u *UI) asset(w http.ResponseWriter, r *http.Request) {
 	w.Write(b)
 }
 
-// --- sessions ---------------------------------------------------------------
+// --- sign-in ------------------------------------------------------------------
 //
-// Milestone 0 ships only a development sign-in (an API key exchanged for an
-// opaque, in-memory session cookie). OIDC and Cloudflare Access replace it in
-// milestone 3 behind the same principal type.
+// Pages use the browser identity the gateway resolves (Cloudflare Access or a
+// LocalBase session from OIDC or a magic link). The gateway owns /app/login,
+// /app/logout and /app/session.
 
 func (u *UI) principal(r *http.Request) *auth.Principal {
 	if u.d.NoAuth {
 		return &auth.Principal{Kind: "browser-session", ID: "no-auth", Permissions: auth.Permissions}
 	}
-	c, err := r.Cookie(sessionCookie)
-	if err != nil {
-		return auth.Anonymous
+	if u.d.Principal != nil {
+		if p := u.d.Principal(r); p != nil {
+			return p
+		}
 	}
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	s, ok := u.sessions[c.Value]
-	if !ok || time.Now().After(s.expires) {
-		delete(u.sessions, c.Value)
-		return auth.Anonymous
-	}
-	s.expires = time.Now().Add(sessionIdle)
-	u.sessions[c.Value] = s
-	return s.p
+	return auth.Anonymous
 }
 
 type ctxKey struct{}
 
-// need requires a permission. An expired session sends htmx requests to
-// sign-in with HX-Redirect and full pages with a 303, keeping the return URL.
+// need requires a permission. Without a session, htmx requests get
+// HX-Redirect to sign-in and full pages a 303; without browser access
+// configured, a page explains how to set it up.
 func (u *UI) need(permission string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p := u.principal(r)
 		if !p.Authenticated() {
-			target := r.URL.RequestURI()
-			if cur := r.Header.Get("HX-Current-URL"); cur != "" {
-				if cu, err := url.Parse(cur); err == nil {
-					target = cu.RequestURI()
-				}
+			if !u.d.SignInEnabled {
+				w.WriteHeader(http.StatusUnauthorized)
+				u.render(w, r, "signin", map[string]any{})
+				return
 			}
-			login := "/app/login?next=" + url.QueryEscape(target)
 			if r.Header.Get("HX-Request") == "true" {
-				w.Header().Set("HX-Redirect", login)
+				w.Header().Set("HX-Redirect", "/app/login")
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
-			http.Redirect(w, r, login, http.StatusSeeOther)
+			http.Redirect(w, r, "/app/login", http.StatusSeeOther)
 			return
 		}
 		if !p.Can(permission) {
-			http.Error(w, "This account cannot view models.", http.StatusForbidden)
+			w.WriteHeader(http.StatusForbidden)
+			u.render(w, r, "forbidden", map[string]any{"Permission": permission})
 			return
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, p)))
 	}
-}
-
-func safeNext(next string) string {
-	if !strings.HasPrefix(next, "/app") || strings.HasPrefix(next, "//") {
-		return "/app/models"
-	}
-	return next
-}
-
-func sameOrigin(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return r.Header.Get("Sec-Fetch-Site") == "same-origin"
-	}
-	o, err := url.Parse(origin)
-	return err == nil && o.Host == r.Host
-}
-
-func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
-	u.render(w, r, "login", map[string]any{"Next": safeNext(r.URL.Query().Get("next")), "DevLogin": u.d.DevLogin})
-}
-
-func (u *UI) login(w http.ResponseWriter, r *http.Request) {
-	if !u.d.DevLogin || !sameOrigin(r) {
-		http.Error(w, "Sign-in is not available.", http.StatusForbidden)
-		return
-	}
-	r.ParseForm()
-	next := safeNext(r.PostForm.Get("next"))
-	p, err := u.d.Auth.ResolveKey(r.Context(), strings.TrimSpace(r.PostForm.Get("key")))
-	if err != nil || !p.Authenticated() || !p.Can("models:read") {
-		w.WriteHeader(http.StatusUnauthorized)
-		u.render(w, r, "login", map[string]any{"Next": next, "DevLogin": true, "Error": "That key was not accepted. It needs the models:read permission."})
-		return
-	}
-	b := make([]byte, 32)
-	rand.Read(b)
-	token := hex.EncodeToString(b)
-	u.mu.Lock()
-	u.sessions[token] = session{p: &auth.Principal{Kind: "browser-session", ID: "dev:" + p.ID, Name: p.Name, Permissions: p.Permissions}, expires: time.Now().Add(sessionIdle)}
-	u.mu.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteLaxMode})
-	http.Redirect(w, r, next, http.StatusSeeOther)
-}
-
-func (u *UI) logout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(sessionCookie); err == nil && sameOrigin(r) {
-		u.mu.Lock()
-		delete(u.sessions, c.Value)
-		u.mu.Unlock()
-	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Path: "/", MaxAge: -1, HttpOnly: true})
-	http.Redirect(w, r, "/app/login", http.StatusSeeOther)
-}
-
-// sessionProbe lets the page tell a LocalBase sign-in expiry (401 here)
-// from an edge sign-in expiry (the edge redirects this fetch) (#363/#364).
-func (u *UI) sessionProbe(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	if !u.principal(r).Authenticated() {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"authenticated":false}`))
-		return
-	}
-	w.Write([]byte(`{"authenticated":true}`))
 }
 
 func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data map[string]any) {
@@ -295,7 +206,7 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 		data["Principal"] = p
 	}
 	data["Page"] = page
-	data["DevLogin"] = u.d.DevLogin
+	data["LogoutURL"] = u.d.LogoutURL
 	data["NoAuth"] = u.d.NoAuth
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Vary", "HX-Request, HX-Target")

@@ -32,7 +32,12 @@ function show(message, action) {
 async function diagnose() {
   let response;
   try {
-    response = await fetch("/app/session", { redirect: "manual", credentials: "same-origin", cache: "no-store" });
+    response = await fetch("/app/session", {
+      redirect: "manual",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "X-Localbase-UI": "1" },
+    });
   } catch {
     show("Can't reach LocalBase right now. Check the connection and try again.");
     return;
@@ -40,7 +45,7 @@ async function diagnose() {
   if (response.type === "opaqueredirect") {
     show("Your sign-in expired. Reload to sign in again.", { label: "Reload", run: () => location.reload() });
   } else if (response.status === 401) {
-    location.assign("/app/login?next=" + encodeURIComponent(location.pathname + location.search));
+    location.assign("/app/login");
   } else {
     show("That didn't load. Try again.");
   }
@@ -56,4 +61,17 @@ document.addEventListener("htmx:afterRequest", (event) => {
 // an hx-trigger filter because the CSP forbids htmx's eval.
 document.addEventListener("htmx:beforeRequest", (event) => {
   if (document.hidden && event.detail.elt?.hasAttribute?.("data-poll")) event.preventDefault();
+});
+
+// Sign out: the gateway clears the LocalBase session; a Cloudflare Access
+// session then signs out at the edge.
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest?.("[data-logout]");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    await fetch("/app/logout", { method: "POST", credentials: "same-origin", headers: { "X-Localbase-UI": "1" } });
+  } finally {
+    location.assign(button.dataset.logoutUrl || "/app/login");
+  }
 });

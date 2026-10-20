@@ -1,0 +1,7 @@
+{{define "title"}}Not allowed · LocalBase{{end}}
+{{define "main"}}
+<section class="mx-auto max-w-md" aria-labelledby="forbidden-title">
+  <h1 id="forbidden-title" class="text-3xl font-bold tracking-tight">You can't open this page</h1>
+  <p class="mt-3 text-muted">Your account doesn't have the <code>{{.Permission}}</code> permission. Ask the person who runs this LocalBase to add it.</p>
+</section>
+{{end}}
