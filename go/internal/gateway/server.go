@@ -15,6 +15,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
@@ -35,6 +36,9 @@ type Server struct {
 	Root     *root.Root
 	Memory   *memory.Controller
 	Browser  *auth.Browser
+	// Library joins the catalog, imports and backend selections (nil in
+	// unit tests that need neither).
+	Library *library.Library
 	// UI handles /app and / when set.
 	UI http.Handler
 

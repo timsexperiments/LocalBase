@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
@@ -71,6 +72,8 @@ func serviceUnavailable(w http.ResponseWriter, r *http.Request, service string) 
 func runtimeError(w http.ResponseWriter, r *http.Request, err error, model string) {
 	var ae *memory.AdmissionError
 	var notInstalled *runtime.NotInstalledError
+	var launch *runtime.LaunchError
+	var started *runtime.BackendStartError
 	switch {
 	case errors.Is(err, runtime.ErrQueueFull):
 		w.Header().Set("Retry-After", "1")
@@ -82,6 +85,12 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model strin
 		modelNotFound(w, r, model)
 	case errors.As(err, &notInstalled):
 		writeError(w, r, 409, "invalid_request_error", "model_install_consent_required", notInstalled.Error(), strp("model"))
+	case errors.As(err, &launch):
+		writeError(w, r, 409, "invalid_request_error", launch.Code, launch.Message, strp("model"))
+	case errors.As(err, &started):
+		// A chosen or imported backend reports its own startup error; nothing
+		// else is substituted.
+		writeError(w, r, 503, "api_error", "backend_startup_failed", obs.BoundedText(started.Error(), 1024), nil)
 	case errors.As(err, &ae):
 		w.Header().Set("Retry-After", "5")
 		msg := "Insufficient available memory to start the requested runtime. Please try again shortly."

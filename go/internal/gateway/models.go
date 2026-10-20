@@ -4,10 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/library"
+	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -77,7 +80,67 @@ func (s *Server) ServedModels(p *auth.Principal, only string) []Model {
 			out = append(out, s.project(kind, id, spec, runningID, runningPlan))
 		}
 	}
+	for _, e := range s.importedLLMs() {
+		id := e.Model.ID
+		if seen[id] || (only != "" && id != only) {
+			continue
+		}
+		task := importTask(&e.Model)
+		if p != nil && !p.Can(map[string]string{"chat": "inference:chat", "embeddings": "inference:embeddings", "decision": "inference:decision"}[task]) {
+			continue
+		}
+		seen[id] = true
+		m := s.project("llm", id, nil, runningID, runningPlan)
+		m.Name = e.Model.Name
+		switch task {
+		case "embeddings":
+			m.Architecture.Output = []string{"embeddings"}
+		case "decision":
+			m.Architecture.Output = []string{"decisions"}
+		}
+		if slices.Contains(e.Model.Capabilities, "vision") {
+			m.Architecture.Input = []string{"text", "image"}
+		}
+		out = append(out, m)
+	}
 	return out
+}
+
+// importedLLMs lists imported models the LLM runtime serves.
+func (s *Server) importedLLMs() []library.Entry {
+	if s.Library == nil {
+		return nil
+	}
+	entries, err := s.Library.Entries(context.Background())
+	if err != nil {
+		return nil
+	}
+	var out []library.Entry
+	for _, e := range entries {
+		if e.Imported && importTask(&e.Model) != "" {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func importTask(m *models.Model) string {
+	for _, t := range []string{"chat", "embeddings", "decision"} {
+		if m.HasTask(t) {
+			return t
+		}
+	}
+	return ""
+}
+
+// importedTask is an imported model's LLM task, or "".
+func (s *Server) importedTask(id string) string {
+	for _, e := range s.importedLLMs() {
+		if e.Model.ID == id {
+			return importTask(&e.Model)
+		}
+	}
+	return ""
 }
 
 func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, runningPlan *runtime.LLMPlan) Model {
