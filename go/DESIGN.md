@@ -512,7 +512,8 @@ migration. The UI runs under a strict CSP (`script-src 'self'`,
 | M1 | Full LLM path: embeddings, systemone, queues, switch preflight and rollback, `/v1/models/{id}`, `/health/ready`, observed-peak sampler, JSONL logging, `/_localbase/models` | Contract suite green against both implementations for LLM routes |
 | M2 | CLI: init, configure, keys, models catalog/list/show/install (downloads + checksum), doctor, logs, smoke; service start/stop/status on launchd | `smoke` passes on a scratch root, and a launchd unit on a scratch label |
 | M3 | Browser auth (OIDC, CF Access, magic link?), policy, users, sessions, admin API; UI: Chat, Library, Get models, Running now, admin | Phone review on a LAN port |
-| M4 | STT, TTS (tts-server), custom voices, images (+edits, LoRA); Lab pages, voices page | Contract suite for media routes |
+| M3.5 | Model import and backend selection (§12): backend registry, logical models with platform variants, best-effort detection, per-device overrides, custom adapters, HF/URL/local imports with private header profiles | The spec's acceptance checks pass as end-to-end tests on scratch roots |
+| M4 | STT (whisper.cpp), TTS (CrispASR adapter, §12.8), custom voices, images (+edits, LoRA); Lab pages, voices page | Contract suite for media routes |
 | M5 | Catalog feed, HF discovery, `config` TOML, diagnostics, OTLP exporter | Feature-complete except video |
 | M6 | Video jobs + converter; Linux/systemd qualification | Full contract suite on both platforms |
 | M7 | Shadow on live-data copy, cutover with operator, rollback drill | Rollback rehearsed once |
@@ -618,3 +619,196 @@ Remaining for M3: UI pages (Chat with streaming, attachments, picker and auto-co
 7. **TOML without a library.** TS already has its own small TOML reader and
    writer (`src/utils/toml.ts`); Go ports that subset too. The only third-party
    module stays `modernc.org/sqlite`.
+
+## 12. Model import and backend selection (M3.5)
+
+The spec is `docs/model-import-and-backend-selection.md` (copied unchanged
+from the main checkout). Its acceptance checks are this milestone's test list.
+The requirements that supersede earlier preferences (2026-10-20):
+
+- **Automatic choice by default, explicit choice always available.** Detection
+  is best-effort and may be wrong. The backend field may be blank, and every
+  registered backend stays selectable, with warnings instead of disabled
+  options.
+- **Selection is per model, per device.** It is never part of an exported
+  model definition.
+- **Facts only.** The catalog and product text carry source-derived facts.
+  Memory figures state their assumptions.
+
+### 12.1 Records
+
+| Record | Where | Contents |
+| --- | --- | --- |
+| Backend definition | built-in (embedded) and `<root>/backends.d/<id>.json` (custom) | `schema: "localbase.backend/v1"`, `id`, `engine`, `version`, `adapter` (interface id and version), `tasks`, `formats`, `architectures` (supported, known-unsupported), `quantizations`, `companions` per task, `platforms` (os/arch/accelerator), `runtimeVersion` constraint, launch description |
+| Logical model | catalog (`variants`) or `imported_models` (DB) | `id`, name, tasks, capabilities, provenance; one or more `variants` |
+| Variant | inside a model | `id`, artifacts with roles (`weights`, `projector`, `tokenizer`, `vae`, `text-encoder`, `voice`, ...), and facts: `architecture`, `format`, `precision`, `contextLength`, `dimensions`, `backends` (compatible backend ids and version ranges) |
+| Fact | everywhere a property can be unknown | `{value, source}` with source `pinned-metadata`, `inspected`, `declared` or `verified-runtime`; a missing fact is `unknown`, and conflicting facts become `unknown` with both recorded |
+| Artifact source | inside an artifact | `kind` (`huggingface`, `url`, `local`), origin, immutable revision (HF commit), expected size and `sha256` with `hashTrust` (`authoritative`, `user`, `observed`), optional `authProfile` id |
+| Auth profile | `<root>/credentials/auth-profiles.json` (0600, private) | `id`, `origins` (scope), header names and secret values; model records hold only the id |
+| Backend selection | `model_backend_selections` (DB) | `modelId`, `deviceId`, `mode` (`auto`/`manual`), `backendId` (nullable), `variantId`; detection results are recomputed, never stored over a manual choice |
+
+Legacy catalog entries (the TS `modelSpecObjectSchema`) load as a logical
+model with one variant whose facts come from the entry, marked
+`pinned-metadata`. New entries can declare `variants` directly. `deviceId` is
+a hash of the platform UUID (`IOPlatformUUID`, `/etc/machine-id`), so a root
+copied to another machine starts in automatic mode there.
+
+The schema change is one new drizzle-format migration owned by Go
+(`0015_model_import`). TS ignores tables it does not know, and its migrator
+starts after the newest recorded migration, so a binary-swap rollback still
+works; TS just does not see imported models.
+
+### 12.2 Detection and routing
+
+Host facts are OS, architecture, accelerators (Metal on Apple Silicon; CUDA
+when `nvidia-smi` lists a device; Vulkan when a Vulkan loader and device are
+present; always CPU), and each backend's installed version.
+
+For each variant and backend the detector reports `supported`, `likely`,
+`unknown` or `incompatible`, with reasons. It checks:
+
+- the task;
+- the format, which comes from file headers, not the extension;
+- the architecture, which is `unknown` when metadata is missing (not
+  incompatible);
+- the quantization;
+- required companions, so an incomplete bundle lists its missing files;
+- platform and accelerator;
+- the runtime version.
+
+A GGUF file is not evidence of support: the architecture key must match the
+backend's list.
+
+Routing rules are a versioned, explicit table (`routing/v1`): per platform
+and accelerator, an ordered backend preference. For example, Apple Silicon
+prefers llama.cpp-Metal (or an MLX backend, when one is registered and
+measured), and Linux prefers llama.cpp-CUDA when CUDA is present, then
+Vulkan. The recommendation is the first variant/backend pair rated
+`supported` or `likely` that keeps every requested capability. Otherwise the
+selection is blank. A faster backend never drops a capability.
+
+### 12.3 Selection and overrides
+
+- **Automatic mode** recomputes on each read, so the result can be null.
+- **Manual mode** keeps the chosen id, even if that backend is unregistered
+  later; it is then shown as unavailable, and nothing is substituted.
+- **Reset to automatic** deletes the manual row.
+- **Another variant:** when a manual backend needs a different variant, the
+  selection names it and reports its download size. Nothing is downloaded or
+  swapped implicitly.
+
+At launch, the planner resolves model → selection → variant → backend:
+
+- **No backend:** `409 backend_not_selected` ("Select a backend to run this
+  model").
+- **Backend not registered:** `409 backend_unavailable`.
+- **Missing files:** `409 model_assets_missing`, listing them.
+- **Otherwise:** the adapter prepares the launch. Memory admission, integrity
+  checks and process limits run as for curated models.
+
+An override flagged incompatible still launches, and its real startup error
+is reported. There is never a silent CPU or model fallback.
+
+### 12.4 Adapters and custom backends
+
+Built-in adapters implement Go interfaces (`Inspect`, `Prepare`, `Launch`,
+`Health`, `Cancel`, `Unload`) per task. A custom backend is registered
+explicitly (`local-base backends add --file def.json`, or the UI). It names
+an existing executable and the `process-openai/v1` adapter interface:
+LocalBase starts the executable with templated arguments (`{model}`,
+`{port}`, `{host}`, `{ctx}`), waits for its health path, and proxies the
+OpenAI-compatible routes for the declared tasks. Memory admission uses the
+definition's declared estimate rule, which must state its assumptions.
+
+Downloads never register, install or run anything: repository code (`*.py`,
+`trust_remote_code`, custom pipelines) is ignored, and only weights and data
+files are fetched.
+
+### 12.5 Acquisition
+
+- **Sources:** a Hugging Face repo or file (revision resolved to a commit
+  through the API), a direct `https://` or `http://` URL, or a local file.
+- **Staging:** `models/.staging/` with resumable ranges, then an `inspect`
+  step, then an atomic publish.
+- **Hashes:**
+  - With a trusted hash (catalog, HF LFS `sha256`, or one the user typed), a
+    mismatch blocks publication.
+  - With no trusted hash, the computed hash is recorded as
+    `hashTrust: "observed"`, which proves identity only. It is never shown as
+    publisher verification.
+- **Custom sources** show the trust warning from the spec. Plain HTTP adds a
+  separate insecure-transport warning and needs an explicit `--allow-http`
+  or a checkbox.
+- **Headers:**
+  - Auth-profile headers are sent only to origins in the profile.
+  - A redirect to another origin drops them, as it drops the HF token
+    outside `huggingface.co`.
+  - `Range`, `Host`, `Content-Length`, `Transfer-Encoding`, `Connection` and
+    `Accept-Encoding` belong to the downloader and are rejected in profiles.
+- **Redaction:** logs, errors, progress and exports redact header values and
+  the query values of URLs from custom sources.
+
+### 12.6 Surfaces
+
+- **CLI:**
+  - `models import <source>` with `--file`, `--revision`, `--sha256`,
+    `--auth-profile`, `--backend <id|auto>`, `--variant`, `--allow-http` and
+    `--yes`.
+  - `models backend <model>`: show the selection, `--set <id>`, `--auto`.
+  - `models inspect <model>`.
+  - `backends list|show|add|remove`.
+  - `auth-profiles add|list|remove`. Header values come from environment
+    variables or stdin, never from argv.
+- **API:** `/_localbase/model-imports` (resolve, start, progress),
+  `/_localbase/backends`, `/_localbase/model-backend` (get/set/reset).
+- **UI:**
+  - The Get models import form shows source, warnings, variants, size and the
+    backend select.
+  - Model settings show the backend select, findings and Reset to automatic.
+  - Backends has a list and an Add backend form.
+  - Recommended backends are listed first, and every option shows its finding
+    as a label.
+- **OpenAI-compatible routes:** unchanged.
+
+### 12.7 Facts-only content
+
+- **Text:** catalog and UI text are limited to license, revision,
+  architecture, precision, context, dimensions, sizes, hashes, tasks,
+  companions and platform limits.
+- **No rankings:** `codingScore` is not shown, and a lint test rejects
+  quality words in catalog text (the same rule as TS PR #368).
+- **Memory estimates:** they are labelled with their assumptions, for example
+  "weights plus KV cache at 8,192 tokens, estimated" or "measured peak on this
+  device". Weight size is never shown as a VRAM minimum.
+
+### 12.8 Engine set (proposal; revises §11.1)
+
+| Engine | Tasks | Platforms / accelerators | Status here |
+| --- | --- | --- | --- |
+| llama.cpp | chat, vision, embeddings, decisions | macOS Metal; Linux Vulkan and a managed CUDA build; CPU | Integrated. The Mac and Linux pins should match (today: b11671 on the Mac and a different Linux pin); the CUDA package is new work. |
+| stable-diffusion.cpp | images, video | Metal, Vulkan | Integrated in TS (M4/M6 in Go). Exact launch profile per architecture. |
+| CrispASR | TTS now (Kokoro, Qwen TTS); ASR after qualification | Mac, Linux | TTS Mac/Linux tests done (audit 2026-10-20). Parakeet, Qwen-ASR, Whisper and Vulkan are documented upstream but not qualified here. No managed pin yet. |
+| whisper.cpp | ASR | Metal, Vulkan | Transition exception until CrispASR ASR is qualified. |
+| ONNX Runtime (CPU) | Kokoro | CPU | Transition exception; replaced by CrispASR Kokoro once pinned. |
+
+This replaces §11.1 ("no Kokoro, tts-server only"). Kokoro comes back
+through CrispASR, and `tts-server` and `llama-tts` become transition
+backends for Qwen TTS until CrispASR is pinned. MLX is not in the core set.
+It can be registered as an adapter when a measured advantage justifies it,
+and the routing table already allows it on Apple Silicon. CPU, Metal, Vulkan
+and CUDA are accelerator builds of one engine, not separate engines. None of
+this claims that every backend/model pair is tested: each built-in
+definition lists only what is qualified as `supported`, and anything else
+documented upstream is `likely` or `unknown`.
+
+### 12.9 Plan and status
+
+| Step | Contents |
+| --- | --- |
+| 1 | `internal/backends`: definitions, registry (built-in plus `backends.d`), host probe, routing table, detector |
+| 2 | `internal/models`: logical models, variants, facts; legacy catalog adapter; file inspection (GGUF, safetensors header, ONNX magic, split sets, companions) |
+| 3 | Migration 0015, selection store, device id |
+| 4 | `internal/acquire`: sources, auth profiles, origin-scoped client, redaction, staging, hash trust, publish |
+| 5 | Launch planning through the selection, with errors; `process-openai/v1` adapter |
+| 6 | CLI, admin API, htmx pages |
+| 7 | End-to-end tests for every acceptance check (fake HF and URL servers, fake backends, scratch roots) |
