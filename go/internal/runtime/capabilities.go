@@ -105,13 +105,11 @@ func engineCapabilities(s *catalog.Spec) Detected {
 			return Detected{Capabilities: Opinions{}}
 		}
 		return Detected{Capabilities: Opinions{}, InputModalities: []string{"text"}}
-	case s.Kind == "image" && len(s.ImageRuntime) > 0:
-		var rt struct{ Kind string }
-		json.Unmarshal(s.ImageRuntime, &rt)
+	case s.Kind == "image" && s.ImageRuntime != nil:
+		rt := s.ImageRuntime
 		return opinions([]string{"image profile " + rt.Kind + ": text-to-image only"}, "text-to-image", true, "image-to-image", false)
-	case s.Kind == "video" && len(s.VideoRuntime) > 0:
-		var rt struct{ Mode string }
-		json.Unmarshal(s.VideoRuntime, &rt)
+	case s.Kind == "video" && s.VideoRuntime != nil:
+		rt := s.VideoRuntime
 		return opinions([]string{"video profile " + rt.Mode}, "text-to-video", rt.Mode == "t2v" || rt.Mode == "ti2v",
 			"image-to-video", rt.Mode == "ti2v", "speech-to-video", rt.Mode == "s2v")
 	}
@@ -309,7 +307,7 @@ func detectFromFiles(s *catalog.Spec, dir string) *Detected {
 				return cachedFile(p, func() *Detected { return diffusersDetect(p) })
 			}
 		}
-		if len(s.ImageRuntime) > 0 || !strings.HasSuffix(primary, ".safetensors") {
+		if s.ImageRuntime != nil || !strings.HasSuffix(primary, ".safetensors") {
 			return nil
 		}
 		return cachedFile(primary, func() *Detected {

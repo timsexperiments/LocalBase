@@ -1,0 +1,1090 @@
+[
+ {
+  "modelId": "qwen3.5-0.8b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 1731779680,
+   "hostBytes": 1403083872,
+   "acceleratorBytes": 1712569440,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 1677721600,
+   "hostBytes": 827424768,
+   "unifiedBytes": 1898971136
+  },
+  "minVramGb": 3,
+  "source": "measured",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen3.5-0.8b-q8_0",
+  "estimate": {
+   "unifiedBytes": 1987488864,
+   "hostBytes": 1658793056,
+   "acceleratorBytes": 1968278624,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 3,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen3.5-2b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 2678418528,
+   "hostBytes": 2344447072,
+   "acceleratorBytes": 2659208288,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 2447376384,
+   "hostBytes": 1593032704,
+   "unifiedBytes": 2881486848
+  },
+  "minVramGb": 3,
+  "source": "measured",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen3.5-2b-q8_0",
+  "estimate": {
+   "unifiedBytes": 3362360416,
+   "hostBytes": 3028388960,
+   "acceleratorBytes": 3343150176,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 4,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen3.5-4b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 4407920608,
+   "hostBytes": 4068231136,
+   "acceleratorBytes": 4388710368,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 4124049408,
+   "hostBytes": 3320250368,
+   "unifiedBytes": 4664066048
+  },
+  "minVramGb": 5,
+  "source": "measured",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen3.5-9b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 7767978016,
+   "hostBytes": 7420629024,
+   "acceleratorBytes": 7748767776,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 7156531200,
+   "hostBytes": 6390480896,
+   "unifiedBytes": 7753170944
+  },
+  "minVramGb": 8,
+  "source": "measured",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen3-embedding-4b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 4331998496,
+   "hostBytes": 3992309024,
+   "acceleratorBytes": 4312788256,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 5,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=f16/f16"
+ },
+ {
+  "modelId": "qwen3-embedding-4b-q8_0",
+  "estimate": {
+   "unifiedBytes": 6114954944,
+   "hostBytes": 5775265472,
+   "acceleratorBytes": 6095744704,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 7,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=f16/f16"
+ },
+ {
+  "modelId": "qwen3-embedding-8b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 6820602176,
+   "hostBytes": 6474400064,
+   "acceleratorBytes": 6801391936,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 7,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=f16/f16"
+ },
+ {
+  "modelId": "qwen3-embedding-8b-q8_0",
+  "estimate": {
+   "unifiedBytes": 10190903072,
+   "hostBytes": 9844700960,
+   "acceleratorBytes": 10171692832,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 11,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=f16/f16"
+ },
+ {
+  "modelId": "whisper-tiny-q8_0",
+  "estimate": {
+   "unifiedBytes": 680426905,
+   "hostBytes": 580408345,
+   "acceleratorBytes": 277773721,
+   "confidence": "derived"
+  },
+  "measured": null,
+  "minVramGb": 1,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "whisper-base-en-q8_0",
+  "estimate": {
+   "unifiedBytes": 767329843,
+   "hostBytes": 618652723,
+   "acceleratorBytes": 364676659,
+   "confidence": "derived"
+  },
+  "measured": null,
+  "minVramGb": 1,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "whisper-small-q8_0",
+  "estimate": {
+   "unifiedBytes": 1093286879,
+   "hostBytes": 801335519,
+   "acceleratorBytes": 690633695,
+   "confidence": "derived"
+  },
+  "measured": null,
+  "minVramGb": 2,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "whisper-medium-q8_0",
+  "estimate": {
+   "unifiedBytes": 1933337651,
+   "hostBytes": 1360240691,
+   "acceleratorBytes": 1530684467,
+   "confidence": "derived"
+  },
+  "measured": null,
+  "minVramGb": 2,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "realvis-xl-v5.0",
+  "estimate": {
+   "unifiedBytes": 15528000080,
+   "hostBytes": 7474936400,
+   "acceleratorBytes": 15528000080,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 15536079503,
+   "hostBytes": 7805108224,
+   "unifiedBytes": 15536079503
+  },
+  "minVramGb": 16,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "qwen3-embedding-0.6b-q8_0",
+  "estimate": {
+   "unifiedBytes": 1991903744,
+   "hostBytes": 1664993792,
+   "acceleratorBytes": 1972693504,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 3,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=f16/f16"
+ },
+ {
+  "modelId": "clef-flash-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 9965762048,
+   "hostBytes": 7666759168,
+   "acceleratorBytes": 9946551808,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 9256828928,
+   "hostBytes": 8551874560,
+   "unifiedBytes": 10527703040
+  },
+  "minVramGb": 10,
+  "source": "measured",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 2344531520,
+   "hostBytes": 2012091968,
+   "acceleratorBytes": 2325321280,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 3,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen2.5-coder-3b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 3443988928,
+   "hostBytes": 3106658752,
+   "acceleratorBytes": 3424778688,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 4,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen2.5-coder-7b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 6207924224,
+   "hostBytes": 5863057408,
+   "acceleratorBytes": 6188713984,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 7,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen2.5-coder-14b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 10716859840,
+   "hostBytes": 10364177856,
+   "acceleratorBytes": 10697649600,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 11,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen2.5-coder-32b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 21912574144,
+   "hostBytes": 21548267712,
+   "acceleratorBytes": 21893363904,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 23,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen3-coder-next-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 51005660576,
+   "hostBytes": 50624871840,
+   "acceleratorBytes": 50986450336,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 53,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "llama-3.2-1b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 1979109504,
+   "hostBytes": 1648988288,
+   "acceleratorBytes": 1959899264,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 3,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "llama-3.2-3b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 3358433824,
+   "hostBytes": 3021103648,
+   "acceleratorBytes": 3339223584,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 4,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "llama-3.1-8b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 6482576800,
+   "hostBytes": 6136374688,
+   "acceleratorBytes": 6463366560,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 7,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "llama-3.3-70b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 45023276000,
+   "hostBytes": 44645149664,
+   "acceleratorBytes": 45004065760,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 47,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "deepseek-r1-distill-qwen-14b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 10716859808,
+   "hostBytes": 10364177824,
+   "acceleratorBytes": 10697649568,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 11,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "deepseek-coder-6.7b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 5607145696,
+   "hostBytes": 5262999776,
+   "acceleratorBytes": 5587935456,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 6,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "deepseek-coder-v2-lite-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 12148118272,
+   "hostBytes": 11793961728,
+   "acceleratorBytes": 12128908032,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 13,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "deepseek-coder-33b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 22020124672,
+   "hostBytes": 21655416832,
+   "acceleratorBytes": 22000914432,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 23,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "gemma-3-1b-it-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 1977473536,
+   "hostBytes": 1647352320,
+   "acceleratorBytes": 1958263296,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 3,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "gemma-3-4b-it-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 3884650912,
+   "hostBytes": 3544961440,
+   "acceleratorBytes": 3865440672,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 5,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "gemma-3-12b-it-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 8991469600,
+   "hostBytes": 8640991264,
+   "acceleratorBytes": 8972259360,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 10,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "gemma-3-27b-it-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 18533628544,
+   "hostBytes": 18172033664,
+   "acceleratorBytes": 18514418304,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 19,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "phi-4-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 10781864384,
+   "hostBytes": 10429182400,
+   "acceleratorBytes": 10762654144,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 12,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "phi-3.5-mini-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 3787412768,
+   "hostBytes": 3448436000,
+   "acceleratorBytes": 3768202528,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 5,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "phi-3.5-moe-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 27554074464,
+   "hostBytes": 27185532768,
+   "acceleratorBytes": 27534864224,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 29,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "gpt-oss-20b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 13549034560,
+   "hostBytes": 13192092736,
+   "acceleratorBytes": 13529824320,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 12737052672,
+   "hostBytes": 11673418816,
+   "unifiedBytes": 13155434496
+  },
+  "minVramGb": 14,
+  "source": "measured",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "falcon-2-11b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 7941985984,
+   "hostBytes": 7592285888,
+   "acceleratorBytes": 7922775744,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 9,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "deepseek-r1-distill-qwen-32b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 21912574112,
+   "hostBytes": 21548267680,
+   "acceleratorBytes": 21893363872,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 23,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "deepseek-r1-distill-llama-8b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 6482574176,
+   "hostBytes": 6136372064,
+   "acceleratorBytes": 6463363936,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 7,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "deepseek-r1-distill-llama-70b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 45023273120,
+   "hostBytes": 44645146784,
+   "acceleratorBytes": 45004062880,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 47,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen2.5-72b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 49936983712,
+   "hostBytes": 49558292128,
+   "acceleratorBytes": 49917773472,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 52,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "codestral-22b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 15253864800,
+   "hostBytes": 14895563104,
+   "acceleratorBytes": 15234654560,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 16,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "mistral-nemo-12b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 9168102528,
+   "hostBytes": 8817624192,
+   "acceleratorBytes": 9148892288,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 9037676544,
+   "hostBytes": 8069824512,
+   "unifiedBytes": 9444524032
+  },
+  "minVramGb": 10,
+  "source": "measured",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen3.8-27b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 19759760992,
+   "hostBytes": 19398166112,
+   "acceleratorBytes": 19740550752,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 21,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "devstral-small-2-24b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 16283945856,
+   "hostBytes": 15924415360,
+   "acceleratorBytes": 16264735616,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 17,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "ministral-3-14b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 9968342592,
+   "hostBytes": 9615660608,
+   "acceleratorBytes": 9949132352,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 9759096832,
+   "hostBytes": 8239593024,
+   "unifiedBytes": 10165944320
+  },
+  "minVramGb": 10,
+  "source": "measured",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen3.5-27b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 19972096480,
+   "hostBytes": 19610501600,
+   "acceleratorBytes": 19952886240,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 19037945856,
+   "hostBytes": 19027968000,
+   "unifiedBytes": 19782434816
+  },
+  "minVramGb": 20,
+  "source": "measured",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "mistral-small-3.2-24b-instruct-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 16283422848,
+   "hostBytes": 15923892352,
+   "acceleratorBytes": 16264212608,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 17,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "whisper-large-v3-turbo",
+  "estimate": {
+   "unifiedBytes": 2494821387,
+   "hostBytes": 2161426187,
+   "acceleratorBytes": 2092168203,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 2076017728,
+   "hostBytes": 1900625920,
+   "unifiedBytes": 2076017728
+  },
+  "minVramGb": 3,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "whisper-tiny-en-q8_0",
+  "estimate": {
+   "unifiedBytes": 680440267,
+   "hostBytes": 580421707,
+   "acceleratorBytes": 277787083,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 343117728,
+   "hostBytes": 169902080,
+   "unifiedBytes": 343117728
+  },
+  "minVramGb": 1,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "whisper-base-q8_0",
+  "estimate": {
+   "unifiedBytes": 767316617,
+   "hostBytes": 618639497,
+   "acceleratorBytes": 364663433,
+   "confidence": "derived"
+  },
+  "measured": null,
+  "minVramGb": 1,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "qwen3-tts-1.7b-base-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 4041382072,
+   "hostBytes": 4041382072,
+   "acceleratorBytes": 4041382072,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 4415553536,
+   "hostBytes": 4160536576,
+   "unifiedBytes": 4415553536
+  },
+  "minVramGb": 5,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "kokoro-82m-v1.0-q8",
+  "estimate": {
+   "unifiedBytes": 1166106594,
+   "hostBytes": 1166106594,
+   "acceleratorBytes": 0,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 0,
+   "hostBytes": 1027719168,
+   "unifiedBytes": 1027719168
+  },
+  "minVramGb": 1,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "flux1-schnell-q4_0",
+  "estimate": {
+   "unifiedBytes": 24770089212,
+   "hostBytes": 17790767356,
+   "acceleratorBytes": 14736104036,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 14569565061,
+   "hostBytes": 18007343104,
+   "unifiedBytes": 25991561216
+  },
+  "minVramGb": 15,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "flux2-klein-4b-q4_0",
+  "estimate": {
+   "unifiedBytes": 12810063932,
+   "hostBytes": 5830742076,
+   "acceleratorBytes": 12810063932,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 12638224384,
+   "hostBytes": 5983240192,
+   "unifiedBytes": 12638224384
+  },
+  "minVramGb": 13,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "flux2-klein-4b-q8_0",
+  "estimate": {
+   "unifiedBytes": 14650314812,
+   "hostBytes": 7670992956,
+   "acceleratorBytes": 14650314812,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 14478475264,
+   "hostBytes": 8412053504,
+   "unifiedBytes": 14478475264
+  },
+  "minVramGb": 15,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "flux2-klein-9b-q4_0",
+  "estimate": {
+   "unifiedBytes": 18496396604,
+   "hostBytes": 11517074748,
+   "acceleratorBytes": 18496396604,
+   "confidence": "derived"
+  },
+  "measured": null,
+  "minVramGb": 19,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "z-image-turbo-q4_0",
+  "estimate": {
+   "unifiedBytes": 14032149220,
+   "hostBytes": 7052827364,
+   "acceleratorBytes": 14032149220,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 13859679109,
+   "hostBytes": 7087439872,
+   "unifiedBytes": 13859679109
+  },
+  "minVramGb": 15,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "stable-diffusion-v1-5",
+  "estimate": {
+   "unifiedBytes": 6546847680,
+   "hostBytes": 4802017216,
+   "acceleratorBytes": 6546847680,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 5201471734,
+   "hostBytes": 4996431872,
+   "unifiedBytes": 5201471734
+  },
+  "minVramGb": 6,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "dreamshaper-8-lcm",
+  "estimate": {
+   "unifiedBytes": 4415506368,
+   "hostBytes": 2670675904,
+   "acceleratorBytes": 4415506368,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 4415616451,
+   "hostBytes": 3006021632,
+   "unifiedBytes": 4415616451
+  },
+  "minVramGb": 5,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "dreamshaper-v8",
+  "estimate": {
+   "unifiedBytes": 4414327270,
+   "hostBytes": 2669496806,
+   "acceleratorBytes": 4414327270,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 4415616451,
+   "hostBytes": 2988212224,
+   "unifiedBytes": 4415616451
+  },
+  "minVramGb": 5,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "sdxl-turbo",
+  "estimate": {
+   "unifiedBytes": 15528016497,
+   "hostBytes": 7474952817,
+   "acceleratorBytes": 15528016497,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 15536079503,
+   "hostBytes": 8064352256,
+   "unifiedBytes": 15536079503
+  },
+  "minVramGb": 16,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "sdxl-base-1.0",
+  "estimate": {
+   "unifiedBytes": 15528012926,
+   "hostBytes": 7474949246,
+   "acceleratorBytes": 15528012926,
+   "confidence": "derived"
+  },
+  "measured": null,
+  "minVramGb": 16,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "juggernaut-xl-v9",
+  "estimate": {
+   "unifiedBytes": 15695282780,
+   "hostBytes": 7642219100,
+   "acceleratorBytes": 15695282780,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 15536079503,
+   "hostBytes": 7788806144,
+   "unifiedBytes": 15536079503
+  },
+  "minVramGb": 16,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "animagine-xl-3.1",
+  "estimate": {
+   "unifiedBytes": 15528260368,
+   "hostBytes": 7475196688,
+   "acceleratorBytes": 15528260368,
+   "confidence": "derived"
+  },
+  "measured": null,
+  "minVramGb": 16,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "realvis-xl-v4.0",
+  "estimate": {
+   "unifiedBytes": 15527975298,
+   "hostBytes": 7474911618,
+   "acceleratorBytes": 15527975298,
+   "confidence": "derived"
+  },
+  "measured": null,
+  "minVramGb": 16,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "wan2.1-t2v-1.3b-q8_0",
+  "estimate": {
+   "unifiedBytes": 11987110486,
+   "hostBytes": 8369523286,
+   "acceleratorBytes": 6979321856,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 6979321856,
+   "hostBytes": 12147949568,
+   "unifiedBytes": 14711080878
+  },
+  "minVramGb": 8,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "wan2.2-s2v-14b-fp8",
+  "estimate": {
+   "unifiedBytes": 34712345882,
+   "hostBytes": 23859584282,
+   "acceleratorBytes": 19595788288,
+   "confidence": "derived"
+  },
+  "measured": null,
+  "minVramGb": 21,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "fastwan2.2-ti2v-5b-q6_k",
+  "estimate": {
+   "unifiedBytes": 16947204016,
+   "hostBytes": 10813034416,
+   "acceleratorBytes": 6979321856,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 6979321856,
+   "hostBytes": 13746454528,
+   "unifiedBytes": 17156810998
+  },
+  "minVramGb": 8,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "wan2.2-ti2v-5b-q6_k",
+  "estimate": {
+   "unifiedBytes": 24901303616,
+   "hostBytes": 10792713536,
+   "acceleratorBytes": 24964497408,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 26,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "wan2.2-t2v-a14b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 39989800928,
+   "hostBytes": 25881210848,
+   "acceleratorBytes": 39996882944,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 41,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "ltx-2.3-22b-distilled-1.1-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 36141346643,
+   "hostBytes": 22032756563,
+   "acceleratorBytes": 36238786560,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 38,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "hunyuanvideo-1.5-t2v-480p-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 24460332666,
+   "hostBytes": 10351742586,
+   "acceleratorBytes": 24696061952,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 26,
+  "source": "estimate",
+  "launchShape": "default"
+ }
+]

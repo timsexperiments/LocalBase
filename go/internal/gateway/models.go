@@ -8,7 +8,6 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -111,17 +110,9 @@ func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, 
 			b := plan.Budget
 			m.ContextBudget = &b
 		}
-		if spec != nil {
-			var peaks []store.ObservedPeak
-			if sha := spec.Primary().SHA256; sha != "" {
-				peaks, _ = s.Store.ObservedPeaks(context.Background(), spec.ModelID, sha)
-			}
-			var geo *memory.Geometry
-			if plan != nil {
-				geo = plan.Geometry
-			}
-			m.Memory = runtime.FitFor(spec, s.MemoryGB, geo, peaks)
-		}
+	}
+	if spec != nil {
+		m.Memory = s.fit(spec)
 	}
 	return m
 }
@@ -170,4 +161,9 @@ func (s *Server) retrieveModel(w http.ResponseWriter, r *http.Request) {
 // from its files, reported by its runtime).
 func (s *Server) capabilities(ctx context.Context, spec *catalog.Spec) runtime.Resolved {
 	return runtime.CapabilitiesFor(ctx, s.Store, spec, s.Root.ModelsDir(spec.Kind))
+}
+
+// fit is a model's memory figure on this machine.
+func (s *Server) fit(spec *catalog.Spec) *runtime.Fit {
+	return runtime.ModelFit(context.Background(), s.Store, spec, s.Root.ModelsDir(spec.Kind), s.MemoryGB)
 }

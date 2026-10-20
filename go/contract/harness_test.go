@@ -32,6 +32,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -126,9 +127,10 @@ func fixture(dir string, llmPort int) (key, chatOnly string, real bool, err erro
 		active_image_model, active_video_model, hf_token, install_missing_models, parallel, otel_endpoint,
 		otel_headers, otel_sample_ratio, memory_system_reserve_percent, memory_system_reserve_minimum_gb,
 		memory_accelerator_reserve_percent, memory_accelerator_reserve_minimum_gb)
-		VALUES ('default', ?, '127.0.0.1', 2273, '127.0.0.1', ?, 65536, 'auto', '127.0.0.1', ?, ?, '[]', '[]', '[]', '[]',
-		0, ?, '', '', '', '', '', 0, '1', '', '', 100, 15, 8, 10, 2)`,
-		r.Dir, llmPort, freePort(), string(sel), chatModel)
+		VALUES ('default', ?, '127.0.0.1', 2273, '127.0.0.1', ?, 65536, 'auto', '127.0.0.1', ?, ?, ?, ?, ?, ?,
+		1, ?, 'whisper-base-en-q8_0', 'qwen3-tts-1.7b-base-q4_k_m', 'dreamshaper-8-lcm', 'wan2.1-t2v-1.3b-q8_0', '', 0, '1', '', '', 100, 15, 8, 10, 2)`,
+		r.Dir, llmPort, freePort(), string(sel), `["whisper-base-en-q8_0"]`, `["qwen3-tts-1.7b-base-q4_k_m","kokoro-82m-v1.0-q8"]`,
+		`["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0"]`, `["wan2.1-t2v-1.3b-q8_0","fastwan2.2-ti2v-5b-q6_k"]`, chatModel)
 	if err != nil {
 		return "", "", false, err
 	}
@@ -143,6 +145,20 @@ func fixture(dir string, llmPort int) (key, chatOnly string, real bool, err erro
 		return "", "", false, err
 	}
 	os.WriteFile(filepath.Join(r.Dir, "catalog-feed.json"), []byte(`{"url":null}`), 0o600)
+	// Active non-LLM models: sparse files at the expected sizes, which pass the
+	// install check of both implementations without real weights.
+	cat, _ := catalog.Load("")
+	for _, id := range []string{"whisper-base-en-q8_0", "qwen3-tts-1.7b-base-q4_k_m", "dreamshaper-8-lcm", "wan2.1-t2v-1.3b-q8_0"} {
+		spec := cat.ByID(id)
+		dir := r.ModelsDir(spec.Kind)
+		os.MkdirAll(dir, 0o700)
+		for _, a := range spec.Artifacts {
+			if f, err := os.Create(filepath.Join(dir, a.Filename)); err == nil {
+				f.Truncate(a.ExpectedSizeBytes)
+				f.Close()
+			}
+		}
+	}
 	os.MkdirAll(r.ModelsDir("llm"), 0o700)
 	modelLinked := false
 	if models := os.Getenv("LOCALBASE_CONTRACT_MODELS"); models != "" {

@@ -1,6 +1,10 @@
 package runtime
 
 import (
+	"context"
+	"path/filepath"
+	"strings"
+
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -17,56 +21,45 @@ type Fit struct {
 	SystemMemoryGB    int    `json:"system_memory_gb"`
 }
 
-// referenceLaunch is the catalog fit shape: 8K (or the model window), one
-// slot, no prompt cache, and the KV type of the resolved shape. Unlike the
-// launch plan, a missing file uses the size-based fallback geometry (q8_0
-// compatible), as the TS catalogLlmReference does.
-func referenceLaunch(spec *catalog.Spec, shape memory.LLMShape) memory.LLMLaunch {
-	kv := "q8_0"
-	if spec.IsEmbedding() || !shape.Geometry.Q8Compatible {
-		kv = "f16"
+// ReferenceShape is the launch-shape key of a model's catalog reference
+// launch: the LLM shape, or "default" for the other kinds.
+func ReferenceShape(spec *catalog.Spec, g *memory.Geometry) string {
+	if spec.Kind != "llm" {
+		return "default"
 	}
-	ctx := memory.LLMReferenceContext
-	if spec.ContextWindowTokens != nil {
-		ctx = min(ctx, *spec.ContextWindowTokens)
-	}
-	return memory.LLMLaunch{CtxTokens: ctx, Slots: 1, CacheTypeK: kv, CacheTypeV: kv, Decision: spec.IsDecision()}
+	_, _, l := memory.LLMReference(spec, g)
+	return l.LaunchShape()
 }
 
-// FitFor ports evaluateModelFit for LLMs: observed (reference shape first,
-// else newest) > measured > estimate. Other kinds return nil until their
-// estimators are ported.
+// FitFor ports evaluateModelFit: observed (reference shape first, else
+// newest) > measured > estimate. Feed peaks arrive with the feed (M5). g is
+// the installed GGUF geometry (LLM or TTS talker), or nil.
 func FitFor(spec *catalog.Spec, systemGB int, g *memory.Geometry, observed []store.ObservedPeak) *Fit {
-	if spec == nil || spec.Kind != "llm" {
+	if spec == nil {
 		return nil
 	}
-	weights := spec.TotalArtifactBytes()
-	resolved := memory.ResolveShape(spec.Size, spec.Quant, weights, g)
-	l := referenceLaunch(spec, resolved)
-	shape := l.LaunchShape()
-	ref := memory.EstimateLLM(weights, resolved, l).AcceleratorBytes
-	source := "estimate"
-	if spec.Qualified() {
-		if d, ok := memory.MeasuredLLMDemand(spec.ModelID, l, weights); ok {
-			ref, source = d.AcceleratorBytes, "measured"
-		}
+	ref, source := memory.EstimateCatalog(spec, g).AcceleratorBytes, "estimate"
+	if d, ok := memory.MeasuredCatalog(spec, g); ok {
+		ref, source = d.AcceleratorBytes, "measured"
 	}
+	shape := ReferenceShape(spec, g)
 	f := &Fit{Source: source, LaunchShape: shape, SystemMemoryGB: systemGB}
-	var usable []store.ObservedPeak
-	for _, p := range observed {
-		if p.Method == "footprint" && p.PeakBytes > 0 {
-			usable = append(usable, p)
+	demand := ref
+	var pick *store.ObservedPeak
+	for i := range observed { // newest first
+		p := &observed[i]
+		if p.Method != "footprint" || p.PeakBytes <= 0 {
+			continue
+		}
+		if pick == nil {
+			pick = p
+		}
+		if p.LaunchShape == shape {
+			pick = p
+			break
 		}
 	}
-	demand := ref
-	if len(usable) > 0 {
-		pick := usable[0] // newest first
-		for _, p := range usable {
-			if p.LaunchShape == shape {
-				pick = p
-				break
-			}
-		}
+	if pick != nil {
 		demand = pick.PeakBytes
 		peak := pick.PeakBytes
 		f.Source, f.LaunchShape, f.ObservedPeakBytes = "observed", pick.LaunchShape, &peak
@@ -81,4 +74,23 @@ func FitFor(spec *catalog.Spec, systemGB int, g *memory.Geometry, observed []sto
 		f.Fit = "fits"
 	}
 	return f
+}
+
+// ModelFit is a model's memory figure on this machine. Like TS, local facts
+// (GGUF geometry, observed peaks) count only once every artifact in dir is
+// installed.
+func ModelFit(ctx context.Context, st *store.Store, spec *catalog.Spec, dir string, systemGB int) *Fit {
+	if complete, _ := spec.Installation(dir); !complete {
+		return FitFor(spec, systemGB, nil, nil)
+	}
+	var geo *memory.Geometry
+	primary := spec.Primary()
+	if (spec.Kind == "llm" || (spec.TTSRuntime != nil && spec.TTSRuntime.Kind == "llama-tts")) && strings.HasSuffix(primary.Filename, ".gguf") {
+		geo = memory.ReadGeometry(filepath.Join(dir, primary.Filename))
+	}
+	var peaks []store.ObservedPeak
+	if primary.SHA256 != "" && st != nil {
+		peaks, _ = st.ObservedPeaks(ctx, spec.ModelID, primary.SHA256)
+	}
+	return FitFor(spec, systemGB, geo, peaks)
 }

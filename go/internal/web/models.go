@@ -76,15 +76,7 @@ func (u *UI) rows() []Row {
 			Enabled: slices.Contains(cfg.Selected[s.Kind], s.ModelID) || cfg.Active[s.Kind] == s.ModelID,
 			Default: cfg.Active[s.Kind] == s.ModelID, Loaded: runningID == s.ModelID}
 		r.Busy = r.Loaded && active > 0
-		var geo *memory.Geometry
-		if s.Kind == "llm" {
-			geo = memory.ReadGeometry(filepath.Join(u.d.RootDir, "models", "llm", s.Primary().Filename))
-		}
-		var peaks []store.ObservedPeak
-		if sha := s.Primary().SHA256; sha != "" {
-			peaks, _ = u.d.Store.ObservedPeaks(context.Background(), s.ModelID, sha)
-		}
-		if f := runtime.FitFor(s, u.memoryGB(), geo, peaks); f != nil {
+		if f := runtime.ModelFit(context.Background(), u.d.Store, s, filepath.Join(u.d.RootDir, "models", s.Kind), u.memoryGB()); f != nil {
 			r.MemoryGB, r.MemorySource = f.MinVramGB, f.Source
 		}
 		rows = append(rows, r)

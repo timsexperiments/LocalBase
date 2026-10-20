@@ -77,7 +77,8 @@ func parameterBillions(size string, weights int64, quant string) float64 {
 // FallbackShape is the size-based shape when the GGUF geometry is unknown.
 func FallbackShape(paramsB float64) LLMShape {
 	p := math.Max(0.1, paramsB)
-	layers := int(math.Ceil(16 * math.Pow(p, 0.4)))
+	// The epsilon absorbs last-bit pow differences from V8 (32^0.4 is exactly 4 there).
+	layers := int(math.Ceil(16*math.Pow(p, 0.4) - 1e-9))
 	embd := int(math.Round(math.Sqrt(p * 1e9 / (12 * float64(layers)))))
 	return LLMShape{
 		Geometry: &Geometry{Architecture: "llama", BlockCount: layers, FullKVHeads: layers * 8,
@@ -112,21 +113,25 @@ func ContextPerSequence(ctx, slots int) int {
 	return (per + 255) / 256 * 256
 }
 
-// EstimateLLM ports estimateLlmMemory (flash attention on).
-func EstimateLLM(weights int64, shape LLMShape, l LLMLaunch) Demand {
+// llmTerms are the KV cache, compute buffer and slot state of a launch.
+func llmTerms(shape LLMShape, l LLMLaunch) (kv, compute, slotState int64) {
 	slots := max(1, l.Slots)
-	var kv int64
 	if !l.Decision {
 		kv = KVCacheBytes(shape.Geometry, l.CtxTokens, slots, l.CacheTypeK, l.CacheTypeV)
 	}
-	var compute int64
 	if l.Decision {
 		ub := int64(ContextPerSequence(l.CtxTokens, slots))
 		compute = ub * 4 * decisionLiveEmbdActivation * int64(shape.EmbeddingLen)
 	} else {
 		compute = llamaUbatchTokens * 4 * (int64(shape.VocabSize) + llamaLiveEmbdActivations*int64(shape.EmbeddingLen))
 	}
-	slotState := int64(slots) * (int64(shape.VocabSize)*llamaSlotBytesPerVocab + llamaSlotFixedBytes)
+	slotState = int64(slots) * (int64(shape.VocabSize)*llamaSlotBytesPerVocab + llamaSlotFixedBytes)
+	return kv, compute, slotState
+}
+
+// EstimateLLM ports estimateLlmMemory (flash attention on).
+func EstimateLLM(weights int64, shape LLMShape, l LLMLaunch) Demand {
+	kv, compute, slotState := llmTerms(shape, l)
 	conf := "derived"
 	if !shape.FromGGUF {
 		conf = "estimated"
@@ -139,58 +144,30 @@ func EstimateLLM(weights int64, shape LLMShape, l LLMLaunch) Demand {
 	}
 }
 
-// Measurement is a checked-in calibration record (memory-measurements.ts).
-type Measurement struct {
-	ModelID                 string
-	CtxTokens, Slots        int
-	CacheTypeK, CacheTypeV  string
-	BackendAcceleratorBytes int64
-	HostBufferBytes         int64
-	PeakRSSBytes            int64
-	SystemDeltaBytes        int64
-}
-
-func mib(v float64) int64 { return int64(math.Round(v * float64(MiB))) }
-
-func llmRecord(id string, metalMiB, hostMiB float64, rss int64) Measurement {
-	return Measurement{ModelID: id, CtxTokens: 8192, Slots: 1, CacheTypeK: "q8_0", CacheTypeV: "q8_0",
-		BackendAcceleratorBytes: mib(metalMiB), HostBufferBytes: mib(hostMiB), PeakRSSBytes: rss}
-}
-
-// LLMMeasurements are the LLM records at the reference shape (2026-10-13..15).
-var LLMMeasurements = []Measurement{
-	llmRecord("qwen3.5-0.8b-q4_k_m", 521+70+497, 211, 827_424_768),
-	llmRecord("qwen3.5-2b-q4_k_m", 1259+70+493, 414, 1_593_032_704),
-	llmRecord("qwen3.5-4b-q4_k_m", 2740+186+495, 515, 3_320_250_368),
-	llmRecord("qwen3.5-9b-q4_k_m", 5626+186+501, 569, 6_390_480_896),
-	llmRecord("clef-flash-q4_k_m", 5630+1843+595+248, 1212, 8_551_874_560),
-	llmRecord("qwen3.5-27b-q4_k_m", 16710+421+513, 710, 19_027_968_000),
-	llmRecord("ministral-3-14b-instruct-q4_k_m", 7849+680+266, 388, 7_823_081_472),
-	llmRecord("mistral-nemo-12b-instruct-q4_k_m", 8107, 388, 8_069_824_512),
-	llmRecord("gpt-oss-20b-q4_k_m", 11120+111+404, 399, 10_298_408_960),
-}
-
 // MeasuredDemand ports measuredDemand for LLM records.
 func MeasuredDemand(r Measurement, artifactBytes, promptCache int64) Demand {
-	acc := r.BackendAcceleratorBytes + AcceleratorOverhead
+	return measuredDemand(r, artifactBytes, promptCache, AcceleratorOverhead, 0)
+}
+
+func measuredDemand(r Measurement, artifactBytes, promptCache, overhead, rounding int64) Demand {
+	raw := r.BackendAcceleratorBytes + overhead
+	acc := raw
+	if rounding > 0 {
+		acc = roundUp(raw, rounding)
+	}
 	host := max(r.PeakRSSBytes, r.HostBufferBytes, artifactBytes)
 	return Demand{
 		AcceleratorBytes: acc,
 		HostBytes:        host + promptCache,
-		UnifiedBytes:     max(acc+r.HostBufferBytes, host, r.SystemDeltaBytes) + promptCache,
+		UnifiedBytes:     max(raw+r.HostBufferBytes, host, r.SystemDeltaBytes) + promptCache,
 		Confidence:       "measured",
 	}
 }
 
 func findLLMMeasurement(id string, l LLMLaunch) *Measurement {
-	for i := range LLMMeasurements {
-		m := &LLMMeasurements[i]
-		if m.ModelID == id {
-			if m.CtxTokens == l.CtxTokens && m.Slots == l.Slots && m.CacheTypeK == l.CacheTypeK && m.CacheTypeV == l.CacheTypeV {
-				return m
-			}
-			return nil
-		}
+	m := byModel("llm", id)
+	if m != nil && m.Shape.CtxTokens == l.CtxTokens && m.Shape.Slots == l.Slots && m.Shape.CacheTypeK == l.CacheTypeK && m.Shape.CacheTypeV == l.CacheTypeV {
+		return m
 	}
 	return nil
 }

@@ -122,7 +122,8 @@ func TestModelsList(t *testing.T) {
 				t.Errorf("%s: object/owned_by = %v/%v", m["id"], m["object"], m["owned_by"])
 			}
 		}
-		want := []string{chatModel, decisionModel, embeddingModel}
+		want := []string{chatModel, decisionModel, embeddingModel, "whisper-base-en-q8_0", "qwen3-tts-1.7b-base-q4_k_m",
+			"kokoro-82m-v1.0-q8", "dreamshaper-8-lcm", "flux1-schnell-q4_0", "realvis-xl-v5.0", "wan2.1-t2v-1.3b-q8_0", "fastwan2.2-ti2v-5b-q6_k"}
 		if !reflect.DeepEqual(ids, want) {
 			t.Errorf("ids = %v, want %v", ids, want)
 		}
@@ -139,8 +140,12 @@ func TestModelsList(t *testing.T) {
 					t.Errorf("embedding output = %v", out)
 				}
 			}
-			if _, ok := m["context_budget"].(map[string]any); !ok {
-				t.Errorf("%s has no context_budget", m["id"])
+			_, hasBudget := m["context_budget"].(map[string]any)
+			if isLLM := len(ids) > 0 && (m["id"] == chatModel || m["id"] == decisionModel || m["id"] == embeddingModel); hasBudget != isLLM {
+				t.Errorf("%s: context_budget present = %v", m["id"], hasBudget)
+			}
+			if _, ok := m["memory"].(map[string]any); !ok {
+				t.Errorf("%s has no memory figure", m["id"])
 			}
 		}
 		// A chat-only key with models:read would list only chat models; the
