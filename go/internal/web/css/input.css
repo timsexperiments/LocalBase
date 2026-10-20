@@ -1,0 +1,117 @@
+@import "tailwindcss";
+@source "../templates";
+@source "../static/js";
+
+/* LocalBase tokens, carried over from the React UI. Dark mode follows the
+   system setting, as it does today. */
+:root {
+  color-scheme: light;
+  --lb-canvas: #faf9fc;
+  --lb-surface: #ffffff;
+  --lb-surface-muted: #efedf1;
+  --lb-hover: #e8e5eb;
+  --lb-text: #29252e;
+  --lb-muted: #6e6576;
+  --lb-border: #ded9e2;
+  --lb-accent: #286452;
+  --lb-accent-hover: #1c4f40;
+  --lb-accent-text: #ffffff;
+  --lb-accent-soft: #e5eee9;
+  --lb-accent-border: #a0b9ac;
+  --lb-warn: #7a5a00;
+  --lb-warn-soft: #fbf1d5;
+  --lb-error: #963e39;
+  --lb-error-surface: #fff0ed;
+  --lb-error-border: #e5bbb5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --lb-canvas: #201e25;
+    --lb-surface: #2b2730;
+    --lb-surface-muted: #332e39;
+    --lb-hover: #3d3543;
+    --lb-text: #eee9f1;
+    --lb-muted: #b3a8bc;
+    --lb-border: #453b4c;
+    --lb-accent: #a4d3bc;
+    --lb-accent-hover: #bde4d0;
+    --lb-accent-text: #172c23;
+    --lb-accent-soft: #293d34;
+    --lb-accent-border: #557b67;
+    --lb-warn: #f3d27a;
+    --lb-warn-soft: #3d3420;
+    --lb-error: #ffb4a9;
+    --lb-error-surface: #3c282c;
+    --lb-error-border: #71464a;
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--lb-canvas);
+  --color-surface: var(--lb-surface);
+  --color-surface-muted: var(--lb-surface-muted);
+  --color-hover: var(--lb-hover);
+  --color-ink: var(--lb-text);
+  --color-muted: var(--lb-muted);
+  --color-line: var(--lb-border);
+  --color-accent: var(--lb-accent);
+  --color-accent-hover: var(--lb-accent-hover);
+  --color-on-accent: var(--lb-accent-text);
+  --color-accent-soft: var(--lb-accent-soft);
+  --color-accent-line: var(--lb-accent-border);
+  --color-warn: var(--lb-warn);
+  --color-warn-soft: var(--lb-warn-soft);
+  --color-danger: var(--lb-error);
+  --color-danger-soft: var(--lb-error-surface);
+  --color-danger-line: var(--lb-error-border);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+    line-height: 1.55;
+  }
+  :focus-visible {
+    outline: 2px solid var(--lb-accent);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Keep 44px touch targets on every interactive control. */
+  .btn {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-[0.95rem] font-semibold transition-colors;
+  }
+  .btn-primary {
+    @apply bg-accent text-on-accent hover:bg-accent-hover;
+  }
+  .btn-quiet {
+    @apply border border-line bg-surface text-ink hover:bg-hover;
+  }
+  .chip {
+    @apply inline-flex min-h-11 items-center rounded-full border border-line bg-surface px-4 text-sm font-medium text-ink hover:bg-hover;
+  }
+  .chip[aria-current="true"] {
+    @apply border-accent bg-accent text-on-accent;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-md bg-surface-muted px-2 py-0.5 text-xs font-semibold text-muted;
+  }
+  .badge-ok {
+    @apply bg-accent-soft text-accent;
+  }
+  .badge-warn {
+    @apply bg-warn-soft text-warn;
+  }
+  .card {
+    @apply rounded-2xl border border-line bg-surface;
+  }
+  .eyebrow {
+    @apply text-xs font-bold uppercase tracking-[0.12em] text-accent;
+  }
+}

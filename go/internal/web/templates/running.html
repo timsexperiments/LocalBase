@@ -1,0 +1,29 @@
+{{define "title"}}Running now · LocalBase{{end}}
+{{define "main"}}
+<section aria-labelledby="running-title">
+  <p class="eyebrow">Shared memory</p>
+  <h1 id="running-title" class="mt-1 text-3xl font-bold tracking-tight">Running now</h1>
+  <p class="mt-1 text-muted">Requests from chat and API clients share this memory.</p>
+
+  <div id="running-live" class="card mt-6 p-5"
+       hx-get="/app/models/running" hx-select="#running-live" hx-target="this" hx-swap="outerHTML"
+       hx-trigger="every 3s" data-poll>
+    <h2 class="text-xl font-bold">{{if .Item}}1 model in memory{{else}}Nothing loaded{{end}}</h2>
+    <div class="mt-4">{{template "memory-bar" .}}</div>
+    {{with .Item}}
+    <div class="mt-5 flex flex-wrap items-start justify-between gap-3 border-t border-line pt-4">
+      <div class="min-w-0">
+        <h3 class="text-lg font-semibold break-words">{{.Name}}</h3>
+        <p class="text-sm text-muted">{{gib .Bytes}}{{if not .Measured}} planned{{end}} · {{num .Context}} tokens per request · {{.Slots}} {{if eq .Slots 1}}slot{{else}}slots{{end}}</p>
+        <ul class="mt-2 flex flex-wrap gap-1.5" aria-label="Status">
+          {{if .Active}}<li class="badge badge-warn">Busy · {{.Active}} {{if eq .Active 1}}request{{else}}requests{{end}}</li>{{else}}<li class="badge badge-ok">Loaded · idle</li>{{end}}
+          <li class="badge">Files stay installed</li>
+        </ul>
+      </div>
+    </div>
+    {{else}}
+    <p class="mt-4 text-muted">Models load on the first request that needs them and stay loaded until another model needs the memory.</p>
+    {{end}}
+  </div>
+</section>
+{{end}}

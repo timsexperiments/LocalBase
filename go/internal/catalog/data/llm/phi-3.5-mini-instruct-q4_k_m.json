@@ -1,0 +1,29 @@
+{
+  "modelId": "phi-3.5-mini-instruct-q4_k_m",
+  "displayName": "Phi-3.5 Mini Instruct",
+  "kind": "llm",
+  "provider": "Microsoft",
+  "family": "Phi",
+  "version": "3.5",
+  "size": "3.8B",
+  "quant": "Q4_K_M",
+  "codingScore": 7,
+  "storageGb": 2.2,
+  "source": "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF",
+  "repositoryRevision": "6d70da17e749a471ccb62ade694486011a75cda3",
+  "artifacts": [
+    {
+      "sourcePath": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+      "filename": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+      "expectedSizeBytes": 2393232672,
+      "sha256": "e4165e3a71af97f1b4820da61079826d8752a2088e313af0c7d346796c38eff5",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "capabilities": ["tool-calling", "multilingual"],
+  "commercialStatus": "open",
+  "catch": "MIT License. No restrictions.",
+  "notes": "Extremely lightweight 3.8B model with high reasoning ability."
+}

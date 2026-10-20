@@ -1,0 +1,28 @@
+{
+  "modelId": "whisper-base-q8_0",
+  "displayName": "Whisper Base",
+  "kind": "stt",
+  "provider": "OpenAI/ggml",
+  "family": "Whisper",
+  "version": "base",
+  "size": "base",
+  "quant": "Q8_0",
+  "storageGb": 0.15,
+  "source": "https://huggingface.co/ggerganov/whisper.cpp",
+  "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+  "artifacts": [
+    {
+      "sourcePath": "ggml-base-q8_0.bin",
+      "filename": "ggml-base-q8_0.bin",
+      "expectedSizeBytes": 81768585,
+      "sha256": "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["audio"],
+  "outputModalities": ["text"],
+  "capabilities": ["speech-to-text", "multilingual"],
+  "commercialStatus": "open",
+  "catch": "MIT License.",
+  "notes": "Good default STT latency/quality tradeoff."
+}

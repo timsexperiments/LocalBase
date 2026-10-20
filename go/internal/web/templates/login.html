@@ -1,0 +1,20 @@
+{{define "title"}}Sign in · LocalBase{{end}}
+{{define "main"}}
+<section class="mx-auto max-w-md" aria-labelledby="login-title">
+  <h1 id="login-title" class="text-3xl font-bold tracking-tight">Sign in</h1>
+  {{if .DevLogin}}
+  <p class="mt-2 text-muted">Development sign-in: paste an API key with the models:read permission. It is exchanged for a session cookie and never stored in the browser.</p>
+  <form method="post" action="/app/login" class="mt-6 space-y-3" hx-boost="false">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label for="key" class="block text-sm font-semibold">API key</label>
+    <input id="key" name="key" type="password" required autocomplete="off" spellcheck="false"
+           class="block min-h-12 w-full rounded-xl border border-line bg-surface px-4 text-base text-ink"
+           {{if .Error}}aria-invalid="true" aria-describedby="key-error"{{end}}>
+    {{with .Error}}<p id="key-error" class="text-sm font-semibold text-danger">{{.}}</p>{{end}}
+    <button class="btn btn-primary w-full">Sign in</button>
+  </form>
+  {{else}}
+  <p class="mt-2 text-muted">Browser sign-in is not configured on this gateway yet.</p>
+  {{end}}
+</section>
+{{end}}

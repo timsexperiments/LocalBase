@@ -1,0 +1,39 @@
+{
+  "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+  "displayName": "Qwen2.5 Coder 1.5B Instruct",
+  "kind": "llm",
+  "provider": "Qwen",
+  "family": "Qwen2.5-Coder",
+  "version": "2.5",
+  "size": "1.5B",
+  "quant": "Q4_K_M",
+  "codingScore": 6,
+  "storageGb": 1.2,
+  "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
+  "repositoryRevision": "f86cb2c1fa58255f8052cc32aeede1b7482d4361",
+  "artifacts": [
+    {
+      "sourcePath": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+      "filename": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+      "expectedSizeBytes": 1117320768,
+      "sha256": "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 32768,
+  "capabilities": ["code-generation", "code-editing"],
+  "unsupportedCapabilities": [
+    {
+      "id": "tool-calling",
+      "supported": false,
+      "source": "declared",
+      "verified": true,
+      "reason": "Protocol tool calling is unsupported for this artifact: it answers tool requests with plain text instead of tool calls."
+    }
+  ],
+  "commercialStatus": "open",
+  "catch": "Apache-2.0.",
+  "notes": "Autocomplete and tab completion model. Protocol tool calling is unsupported for this artifact."
+}

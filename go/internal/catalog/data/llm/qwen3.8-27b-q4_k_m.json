@@ -1,0 +1,28 @@
+{
+  "modelId": "qwen3.8-27b-q4_k_m",
+  "displayName": "Qwen3.8 27B",
+  "kind": "llm",
+  "provider": "Qwen",
+  "family": "Qwen3.8",
+  "version": "3.8",
+  "size": "27B",
+  "quant": "Q4_K_M",
+  "storageGb": 17.8,
+  "source": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF",
+  "repositoryRevision": "f0eec4a4bb4975114a030d048952d83c0a53c034",
+  "artifacts": [
+    {
+      "sourcePath": "Qwen3.8-27B-Q4_K_M.gguf",
+      "filename": "Qwen3.8-27B-Q4_K_M.gguf",
+      "expectedSizeBytes": 17772537440,
+      "sha256": "e103abf9d914d1d7b2f2592f055f2759a71195c350a01c135f71aaae86bca52b",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "capabilities": ["reasoning", "tool-calling", "long-context"],
+  "commercialStatus": "open",
+  "catch": "Apache 2.0.",
+  "notes": "Text-only LocalBase entry."
+}

@@ -1,0 +1,43 @@
+{
+  "modelId": "dreamshaper-8-lcm",
+  "displayName": "DreamShaper 8 LCM",
+  "kind": "image",
+  "provider": "Lykon",
+  "family": "Stable-Diffusion",
+  "version": "DreamShaper 8 LCM",
+  "size": "2.0GB",
+  "quant": "F16",
+  "storageGb": 2.13,
+  "source": "https://huggingface.co/Lykon/dreamshaper-8-lcm",
+  "repositoryRevision": "4645d8bc6a8e6b106d21606d63e8460cdad4f1a6",
+  "artifacts": [
+    {
+      "sourcePath": "DreamShaper8_LCM.safetensors",
+      "filename": "DreamShaper8_LCM.safetensors",
+      "expectedSizeBytes": 2133804992,
+      "sha256": "a4f3e1526c5dc4fcbe342f5c410d83ae202c7a415fcefcbb92e0f93fcd0a87c3",
+      "role": "primary"
+    }
+  ],
+  "imageRuntime": {
+    "kind": "checkpoint",
+    "artifacts": {
+      "diffusionModel": "DreamShaper8_LCM.safetensors"
+    },
+    "generation": {
+      "sampler": "lcm",
+      "scheduler": "lcm",
+      "steps": 4,
+      "cfgScale": 1
+    }
+  },
+  "inputModalities": ["text"],
+  "outputModalities": ["image"],
+  "imageLaunchOptions": {
+    "diffusionFlashAttention": true
+  },
+  "capabilities": ["text-to-image"],
+  "commercialStatus": "open",
+  "catch": "CreativeML Open RAIL-M license.",
+  "notes": "Cloudflare Workers AI photorealism model distilled for fast four-step generation. Native inference qualification is pending."
+}

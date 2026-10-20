@@ -1,0 +1,35 @@
+{{define "model-row"}}
+<li class="card relative flex items-start gap-3 p-4 hover:bg-hover focus-within:outline-2 focus-within:outline-accent">
+  <span aria-hidden="true" class="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-muted font-bold text-muted">{{.Initial}}</span>
+  <div class="min-w-0 flex-1">
+    <h3 class="text-lg font-semibold leading-snug break-words"><a href="/app/models/m/{{.ID}}" class="outline-none after:absolute after:inset-0 after:content-['']">{{.Name}}</a></h3>
+    <p class="mt-0.5 text-sm text-muted">
+      {{.Task}} · {{size .DiskBytes}} on disk{{if .MemoryGB}} · needs {{.MemoryGB}} GB memory{{end}}
+    </p>
+    <ul class="mt-2 flex flex-wrap gap-1.5" aria-label="Status">
+      {{if .Enabled}}<li class="badge badge-ok">Enabled</li>{{else}}<li class="badge">Not enabled</li>{{end}}
+      {{if .Default}}<li class="badge badge-ok">{{.Task}} default</li>{{end}}
+      {{if .Busy}}<li class="badge badge-warn">Busy</li>{{else if .Loaded}}<li class="badge badge-ok">Loaded · idle</li>{{end}}
+      {{if eq .Trust "user" "modified"}}<li class="badge">Your entry</li>{{end}}
+    </ul>
+  </div>
+  <span aria-hidden="true" class="self-center text-xl text-muted">›</span>
+</li>
+{{end}}
+
+{{define "memory-bar"}}
+{{/* Shared memory: other apps, models, free. Widths are percentages of capacity. */}}
+<div>
+  <svg class="block h-3 w-full overflow-hidden rounded-full" viewBox="0 0 100 3" preserveAspectRatio="none" role="img"
+       aria-label="Other apps {{gib .Other}}, models {{gib .Models}}, available {{gib .Available}}">
+    <rect width="100" height="3" class="fill-surface-muted"/>
+    <rect width="{{pct .Other .Capacity}}" height="3" class="fill-muted/60"/>
+    <rect x="{{pct .Other .Capacity}}" width="{{pct .Models .Capacity}}" height="3" class="fill-accent"/>
+  </svg>
+  <dl class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
+    <div class="flex items-center gap-1.5"><span aria-hidden="true" class="size-2.5 rounded-full bg-muted/60"></span><dt>Other apps</dt><dd class="font-semibold text-ink">{{gib .Other}}</dd></div>
+    <div class="flex items-center gap-1.5"><span aria-hidden="true" class="size-2.5 rounded-full bg-accent"></span><dt>Models</dt><dd class="font-semibold text-ink">{{gib .Models}}</dd></div>
+    <div class="flex items-center gap-1.5"><span aria-hidden="true" class="size-2.5 rounded-full border border-line bg-surface-muted"></span><dt>Available</dt><dd class="font-semibold text-ink">{{if ge .Available 0}}{{gib .Available}}{{else}}unknown{{end}}</dd></div>
+  </dl>
+</div>
+{{end}}

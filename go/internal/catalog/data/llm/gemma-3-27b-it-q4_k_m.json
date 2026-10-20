@@ -1,0 +1,29 @@
+{
+  "modelId": "gemma-3-27b-it-q4_k_m",
+  "displayName": "Gemma 3 27B IT",
+  "kind": "llm",
+  "provider": "Google",
+  "family": "Gemma",
+  "version": "3",
+  "size": "27B",
+  "quant": "Q4_K_M",
+  "codingScore": 9,
+  "storageGb": 16.5,
+  "source": "https://huggingface.co/bartowski/google_gemma-3-27b-it-GGUF",
+  "repositoryRevision": "4a05c54413bd0d87d77a97af403266f69cec0ee6",
+  "artifacts": [
+    {
+      "sourcePath": "google_gemma-3-27b-it-Q4_K_M.gguf",
+      "filename": "google_gemma-3-27b-it-Q4_K_M.gguf",
+      "expectedSizeBytes": 16546404992,
+      "sha256": "4e83142e3ad3719ac61334f70a956dcc60bbba8adb29de5114161310bb9f7170",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "capabilities": ["tool-calling", "reasoning", "multilingual"],
+  "commercialStatus": "conditional",
+  "catch": "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
+  "notes": "Top-tier 27B model; matches larger models in reasoning quality."
+}

@@ -1,0 +1,37 @@
+{
+  "modelId": "qwen3-embedding-8b-q4_k_m",
+  "displayName": "Qwen3 Embedding 8B",
+  "kind": "llm",
+  "provider": "Qwen",
+  "family": "Qwen3-Embedding",
+  "version": "8B",
+  "size": "8B",
+  "quant": "Q4_K_M",
+  "storageGb": 4.68,
+  "source": "https://huggingface.co/Qwen/Qwen3-Embedding-8B-GGUF",
+  "repositoryRevision": "69d0e58a13e463cd99a9b83e3f5fee7c10265fab",
+  "artifacts": [
+    {
+      "sourcePath": "Qwen3-Embedding-8B-Q4_K_M.gguf",
+      "filename": "Qwen3-Embedding-8B-Q4_K_M.gguf",
+      "expectedSizeBytes": 4676804928,
+      "sha256": "3fcd3febec8b3fd64435204db75bf0dd73b91e8d0661e0331acfe7e7c3120b85",
+      "role": "primary"
+    }
+  ],
+  "llmRuntime": {
+    "capability": "embedding-only",
+    "pooling": "last",
+    "dimensions": {
+      "minimum": 4096,
+      "maximum": 4096
+    }
+  },
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 32768,
+  "capabilities": ["embeddings", "multilingual", "code-retrieval"],
+  "commercialStatus": "open",
+  "catch": "Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.",
+  "notes": "Last-token pooling with fixed 4096-dimensional output. Embedded tokenizer; memory estimate assumes short inputs."
+}

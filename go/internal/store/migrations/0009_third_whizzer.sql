@@ -1,0 +1,1 @@
+ALTER TABLE `config` ADD `allow_experimental` integer DEFAULT false NOT NULL;

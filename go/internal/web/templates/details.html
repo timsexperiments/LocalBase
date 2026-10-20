@@ -1,0 +1,38 @@
+{{define "title"}}{{.Spec.Name}} · LocalBase{{end}}
+{{define "main"}}
+<article aria-labelledby="model-title">
+  <a href="/app/models" class="inline-flex min-h-11 items-center text-sm font-semibold text-accent">← Library</a>
+  <p class="eyebrow mt-2">{{.Task}} · {{.Spec.Provider}}</p>
+  <h1 id="model-title" class="mt-1 text-3xl font-bold tracking-tight break-words">{{.Spec.Name}}</h1>
+  <p class="mt-1 text-muted break-all">{{.Spec.ModelID}}</p>
+
+  <div class="mt-6 grid grid-cols-1 gap-3 min-[700px]:grid-cols-2">
+    <section class="card p-5" aria-labelledby="mem-h">
+      <h2 id="mem-h" class="font-bold">Memory on this machine</h2>
+      {{with .Fit}}
+      <p class="mt-2 text-2xl font-bold">{{.MinVramGB}} GB</p>
+      <p class="text-sm text-muted">Minimum from the {{.Source}} figure at {{.LaunchShape}}. This machine has {{.SystemMemoryGB}} GB.</p>
+      <p class="mt-2">{{if eq .Fit "fits"}}<span class="badge badge-ok">Fits</span>{{else if eq .Fit "tight"}}<span class="badge badge-warn">Tight fit</span>{{else}}<span class="badge">Won't fit</span>{{end}}</p>
+      {{else}}
+      <p class="mt-2 text-muted">A memory figure for this kind of model arrives in a later milestone.</p>
+      {{end}}
+    </section>
+    <section class="card p-5" aria-labelledby="files-h">
+      <h2 id="files-h" class="font-bold">Files</h2>
+      <p class="mt-1 text-sm text-muted">{{if .Disk}}{{gb .Disk}} installed{{else}}Not installed{{end}} · pinned revision <span class="break-all">{{.Spec.RepositoryRevision}}</span></p>
+      <ul class="mt-2 space-y-2 text-sm">
+        {{range .Spec.Artifacts}}
+        <li class="break-all"><span class="font-semibold">{{.Filename}}</span> · {{gb .ExpectedSizeBytes}}{{if eq .Role "supplementary"}} · supplementary{{end}}</li>
+        {{end}}
+      </ul>
+    </section>
+    <section class="card p-5 min-[700px]:col-span-2" aria-labelledby="about-h">
+      <h2 id="about-h" class="font-bold">About</h2>
+      {{if .Spec.Capabilities}}<ul class="mt-2 flex flex-wrap gap-1.5" aria-label="Capabilities">{{range .Spec.Capabilities}}<li class="badge">{{.ID}}</li>{{end}}</ul>{{end}}
+      <p class="mt-2">{{.Spec.Notes}}</p>
+      {{if .Spec.Catch}}<p class="mt-2 text-sm text-muted">{{.Spec.Catch}}</p>{{end}}
+      <a class="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-accent underline-offset-4 hover:underline" href="{{.Spec.Source}}" rel="noopener noreferrer" hx-boost="false">Source repository</a>
+    </section>
+  </div>
+</article>
+{{end}}

@@ -1,0 +1,28 @@
+{
+  "modelId": "qwen2.5-coder-14b-instruct-q4_k_m",
+  "displayName": "Qwen2.5 Coder 14B Instruct",
+  "kind": "llm",
+  "provider": "Qwen",
+  "family": "Qwen2.5-Coder",
+  "version": "2.5",
+  "size": "14B",
+  "quant": "Q4_K_M",
+  "storageGb": 9.1,
+  "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
+  "repositoryRevision": "d0a692ef765eefbf2fabb130b3cb2e8917e3d225",
+  "artifacts": [
+    {
+      "sourcePath": "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+      "filename": "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+      "expectedSizeBytes": 8988110272,
+      "sha256": "c1e659736d89ac1065fb495330fb824d94001974a4bfa78e7270e43476a8d940",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "capabilities": ["tool-calling", "code-generation", "code-editing"],
+  "commercialStatus": "open",
+  "catch": "Apache-2.0.",
+  "notes": "Top-end coding option that still fits on 12GB with careful context settings."
+}

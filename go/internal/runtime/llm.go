@@ -1,0 +1,509 @@
+package runtime
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
+	"os"
+	"path/filepath"
+	goruntime "runtime"
+	"slices"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
+)
+
+var (
+	ErrQueueFull     = errors.New("inference queue is full")
+	ErrQueueTimeout  = errors.New("inference request exceeded its queue wait deadline")
+	ErrUnavailable   = errors.New("runtime unavailable")
+	ErrModelNotFound = errors.New("model not found")
+	ErrStartupFailed = errors.New("runtime failed to start")
+)
+
+const (
+	defaultStartupBudget = 60 * time.Second
+	largeStartupBudget   = 180 * time.Second
+	largeStartupWeights  = 10 * memory.GiB
+	stopGrace            = 10 * time.Second
+	samplePeriod         = 5 * time.Second
+)
+
+// LLMDeps are the LLM manager's collaborators.
+type LLMDeps struct {
+	Root          string
+	ModelsDir     string
+	RuntimesDir   string
+	Store         *store.Store
+	Catalog       *catalog.Catalog
+	Memory        *memory.Controller
+	Log           *slog.Logger
+	MemoryGB      float64
+	CtxOverride   int
+	PortOverride  int
+	QueueCapacity int
+	QueueTimeout  time.Duration
+	// Binary overrides managed resolution (tests: a fake backend).
+	Binary string
+}
+
+type backend struct {
+	modelID string
+	spec    *catalog.Spec
+	plan    *LLMPlan
+	proc    *Process
+	res     *memory.Reservation
+	baseURL string
+	stop    chan struct{}
+}
+
+type waiter struct {
+	model       string
+	ready       chan error
+	lease       *Lease
+	dispatching bool
+	done        bool
+}
+
+// LLM manages the one llama-server the gateway runs: a FIFO queue in front
+// of it, model switches, and memory admission. It replaces the TS
+// reconciler, supervisor registry and factory for this modality.
+type LLM struct {
+	d LLMDeps
+
+	mu       sync.Mutex
+	cfg      *store.Config
+	cur      *backend
+	starting bool
+	active   int
+	queue    []*waiter
+	closed   bool
+	geometry map[string]geometryEntry
+}
+
+type geometryEntry struct {
+	mod time.Time
+	g   *memory.Geometry
+}
+
+func NewLLM(d LLMDeps, cfg *store.Config) *LLM {
+	if d.QueueCapacity <= 0 {
+		d.QueueCapacity = 16
+	}
+	if d.QueueTimeout <= 0 {
+		d.QueueTimeout = 60 * time.Second
+	}
+	return &LLM{d: d, cfg: cfg, geometry: map[string]geometryEntry{}}
+}
+
+// Config returns the configuration snapshot the manager runs with.
+func (m *LLM) Config() *store.Config {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cfg
+}
+
+// ConfiguredIDs is the active model plus the selected ones, in order.
+func ConfiguredIDs(cfg *store.Config, kind string) []string {
+	var ids []string
+	for _, id := range append([]string{cfg.Active[kind]}, cfg.Selected[kind]...) {
+		if id != "" && !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// Resolve maps a requested model ("" = the active one) to a configured id.
+func (m *LLM) Resolve(model string) (string, *catalog.Spec, error) {
+	cfg := m.Config()
+	if model == "" {
+		model = cfg.Active["llm"]
+	}
+	if !slices.Contains(ConfiguredIDs(cfg, "llm"), model) {
+		return "", nil, ErrModelNotFound
+	}
+	return model, m.d.Catalog.ByID(model), nil
+}
+
+func (m *LLM) port() int {
+	if m.d.PortOverride > 0 {
+		return m.d.PortOverride
+	}
+	return m.cfg.Port
+}
+
+// geometryFor caches GGUF geometry by path and modification time.
+func (m *LLM) geometryFor(path string) *memory.Geometry {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil
+	}
+	m.mu.Lock()
+	e, ok := m.geometry[path]
+	m.mu.Unlock()
+	if ok && e.mod.Equal(info.ModTime()) {
+		return e.g
+	}
+	g := memory.ReadGeometry(path)
+	m.mu.Lock()
+	m.geometry[path] = geometryEntry{info.ModTime(), g}
+	m.mu.Unlock()
+	return g
+}
+
+// Plan computes the launch plan for a model without starting anything.
+func (m *LLM) Plan(modelID string) (*LLMPlan, error) {
+	spec := m.d.Catalog.ByID(modelID)
+	file := modelID + ".gguf"
+	if spec != nil {
+		file = spec.Primary().Filename
+	}
+	return PlanLLM(PlanInput{Config: m.Config(), Spec: spec, ModelID: modelID, ModelsDir: m.d.ModelsDir,
+		MemoryGB: m.d.MemoryGB, CtxOverride: m.d.CtxOverride, Port: m.port(),
+		Geometry: m.geometryFor(filepath.Join(m.d.ModelsDir, file))})
+}
+
+// Running reports the resident model and its plan, if any.
+func (m *LLM) Running() (string, *LLMPlan, int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.cur == nil {
+		return "", nil, m.active
+	}
+	return m.cur.modelID, m.cur.plan, m.active
+}
+
+// Lease is an admitted request. Release it when the response body completes.
+type Lease struct {
+	m       *LLM
+	b       *backend
+	once    sync.Once
+	BaseURL string
+	ModelID string
+	Plan    *LLMPlan
+	Spec    *catalog.Spec
+	Waited  time.Duration
+}
+
+func (l *Lease) Release() {
+	l.once.Do(func() {
+		l.m.mu.Lock()
+		l.m.active--
+		l.m.pump()
+		l.m.mu.Unlock()
+	})
+}
+
+// Acquire waits in the FIFO queue until the model is running and a slot is
+// free. The queue deadline covers waiting and model transitions, not the
+// backend start this request itself triggers.
+func (m *LLM) Acquire(ctx context.Context, modelID string) (*Lease, error) {
+	start := time.Now()
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return nil, ErrUnavailable
+	}
+	if len(m.queue) >= m.d.QueueCapacity {
+		m.mu.Unlock()
+		return nil, ErrQueueFull
+	}
+	w := &waiter{model: modelID, ready: make(chan error, 1)}
+	m.queue = append(m.queue, w)
+	m.pump()
+	m.mu.Unlock()
+
+	timer := time.NewTimer(m.d.QueueTimeout)
+	defer timer.Stop()
+	for {
+		select {
+		case err := <-w.ready:
+			if err != nil {
+				return nil, err
+			}
+			w.lease.Waited = time.Since(start)
+			return w.lease, nil
+		case <-ctx.Done():
+			m.abandon(w)
+			return nil, ctx.Err()
+		case <-timer.C:
+			m.mu.Lock()
+			if w.dispatching || w.done {
+				m.mu.Unlock()
+				continue // its own backend start is not limited by the queue deadline
+			}
+			m.remove(w)
+			m.pump()
+			m.mu.Unlock()
+			return nil, ErrQueueTimeout
+		}
+	}
+}
+
+func (m *LLM) remove(w *waiter) {
+	if i := slices.Index(m.queue, w); i >= 0 {
+		m.queue = slices.Delete(m.queue, i, i+1)
+	}
+}
+
+// abandon drops a cancelled waiter, returning a lease it was already granted.
+func (m *LLM) abandon(w *waiter) {
+	m.mu.Lock()
+	granted := w.done && w.lease != nil
+	m.remove(w)
+	m.pump()
+	m.mu.Unlock()
+	if granted {
+		w.lease.Release()
+	}
+}
+
+func (m *LLM) grant(w *waiter) {
+	m.queue = m.queue[1:]
+	m.active++
+	w.done = true
+	w.lease = &Lease{m: m, b: m.cur, BaseURL: m.cur.baseURL, ModelID: m.cur.modelID, Plan: m.cur.plan, Spec: m.cur.spec}
+	w.ready <- nil
+}
+
+func (m *LLM) fail(w *waiter, err error) {
+	m.remove(w)
+	w.done = true
+	w.ready <- err
+}
+
+// pump dispatches from the head of the queue. Called with mu held. Later
+// requests never bypass a switch the head is waiting for.
+func (m *LLM) pump() {
+	for len(m.queue) > 0 && !m.starting && !m.closed {
+		head := m.queue[0]
+		if m.cur != nil && m.cur.modelID == head.model {
+			if m.active >= m.cur.plan.Parallel.Slots {
+				return
+			}
+			m.grant(head)
+			continue
+		}
+		if m.active > 0 {
+			return // drain the current model first
+		}
+		m.starting = true
+		head.dispatching = true
+		go m.switchTo(head.model)
+		return
+	}
+}
+
+// switchTo replaces the running model. Preflight checks admission as if the
+// current model were stopped, crediting it at most its measured footprint
+// (#355), so a switch that cannot fit never stops the current model. If the
+// new model fails after the old one stopped, the old one is restored (#296).
+func (m *LLM) switchTo(modelID string) {
+	err := m.doSwitch(modelID)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.starting = false
+	if err != nil {
+		for len(m.queue) > 0 && m.queue[0].model == modelID {
+			m.fail(m.queue[0], err)
+		}
+	}
+	m.pump()
+}
+
+func (m *LLM) doSwitch(modelID string) error {
+	plan, err := m.Plan(modelID)
+	if err != nil {
+		return err
+	}
+	spec := m.d.Catalog.ByID(modelID)
+	demand := m.admissionDemand(spec, plan)
+	m.mu.Lock()
+	prev := m.cur
+	m.mu.Unlock()
+	if prev != nil {
+		if err := m.d.Memory.CheckAdmission(context.Background(), demand, []string{"llm"}); err != nil {
+			m.d.Log.Warn("Switch preflight rejected; keeping the current model.", "event", "runtime.switch-rejected",
+				"runtime", "llm", "model_id", modelID, "current_model_id", prev.modelID, "error", err.Error())
+			return err
+		}
+		m.stopBackend(prev)
+	}
+	b, err := m.startBackend(modelID, spec, plan, demand)
+	if err != nil {
+		if prev != nil {
+			m.d.Log.Warn("Switch failed; restoring the previous model.", "event", "runtime.switch-rollback",
+				"runtime", "llm", "model_id", modelID, "previous_model_id", prev.modelID, "error", err.Error())
+			if rb, rerr := m.startBackend(prev.modelID, prev.spec, prev.plan, m.admissionDemand(prev.spec, prev.plan)); rerr == nil {
+				m.install(rb)
+			}
+		}
+		return err
+	}
+	m.install(b)
+	return nil
+}
+
+func (m *LLM) install(b *backend) {
+	m.mu.Lock()
+	m.cur = b
+	m.mu.Unlock()
+	go m.watch(b)
+}
+
+// admissionDemand applies observed > measured > estimate (feed: milestone 5).
+// Evidence applies only when the launch loads the catalog's primary file.
+func (m *LLM) admissionDemand(spec *catalog.Spec, plan *LLMPlan) memory.Demand {
+	if spec == nil || spec.Primary().SHA256 == "" {
+		return plan.Demand
+	}
+	peaks, err := m.d.Store.ObservedPeaks(context.Background(), spec.ModelID, spec.Primary().SHA256)
+	if err != nil {
+		return plan.Demand
+	}
+	return ApplyObserved(plan.Demand, peaks, plan.Launch.LaunchShape())
+}
+
+func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, demand memory.Demand) (*backend, error) {
+	if !fileExists(plan.ModelPath) {
+		return nil, fmt.Errorf("%w: model file %s is not installed", ErrStartupFailed, filepath.Base(plan.ModelPath))
+	}
+	bin := m.d.Binary
+	if bin == "" {
+		var err error
+		if bin, err = ResolveBinary(m.d.RuntimesDir, "llama-server"); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrStartupFailed, err)
+		}
+	}
+	res, err := m.d.Memory.Reserve(context.Background(), "llm", demand)
+	if err != nil {
+		return nil, err
+	}
+	m.d.Log.Info("Starting llama-server for "+modelID+".", "event", "runtime.starting", "runtime", "llm",
+		"model_id", modelID, "ctx_size", plan.CtxSize, "slots", plan.Parallel.Slots,
+		"demand_bytes", demand.UnifiedBytes, "demand_confidence", demand.Confidence)
+	proc, err := StartProcess("llama-server", bin, plan.Args(goruntime.GOOS == "darwin" && goruntime.GOARCH == "arm64"), nil, m.d.Log)
+	if err != nil {
+		res.Release()
+		return nil, fmt.Errorf("%w: %v", ErrStartupFailed, err)
+	}
+	res.Materialize(proc.PID())
+	budget := defaultStartupBudget
+	if plan.ArtifactBytes >= largeStartupWeights {
+		budget = largeStartupBudget
+	}
+	base := "http://" + net.JoinHostPort(plan.Host, strconv.Itoa(plan.Port))
+	if err := proc.WaitHealthy(context.Background(), base+"/health", budget); err != nil {
+		proc.Stop(stopGrace)
+		res.Release()
+		return nil, fmt.Errorf("%w: %v", ErrStartupFailed, err)
+	}
+	m.d.Log.Info("llama-server is ready for "+modelID+".", "event", "runtime.ready", "runtime", "llm", "model_id", modelID, "pid", proc.PID())
+	return &backend{modelID: modelID, spec: spec, plan: plan, proc: proc, res: res, baseURL: base, stop: make(chan struct{})}, nil
+}
+
+func (m *LLM) stopBackend(b *backend) {
+	m.mu.Lock()
+	if m.cur == b {
+		m.cur = nil
+	}
+	m.mu.Unlock()
+	close(b.stop)
+	b.proc.Stop(stopGrace)
+	b.res.Release()
+}
+
+// watch samples the observed peak and handles an unexpected exit: the slot
+// is cleared and the next request starts the model again.
+func (m *LLM) watch(b *backend) {
+	tick := time.NewTicker(samplePeriod)
+	defer tick.Stop()
+	var peak int64
+	record := b.spec != nil && b.spec.Primary().SHA256 != "" && goruntime.GOOS == "darwin"
+	sample := func() {
+		if !record {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		bytes, ok := memory.Footprint(ctx, b.proc.PID())
+		cancel()
+		if ok && bytes > peak {
+			peak = bytes
+			_ = m.d.Store.RecordObservedPeak(context.Background(), store.ObservedPeak{ModelID: b.modelID,
+				ArtifactSHA256: b.spec.Primary().SHA256, LaunchShape: b.plan.Launch.LaunchShape(),
+				PeakBytes: bytes, Method: "footprint"})
+		}
+	}
+	sample()
+	for {
+		select {
+		case <-b.stop:
+			return
+		case <-b.proc.Done():
+			m.mu.Lock()
+			crashed := m.cur == b
+			if crashed {
+				m.cur = nil
+			}
+			m.mu.Unlock()
+			if crashed {
+				b.res.Release()
+				m.d.Log.Error("llama-server exited unexpectedly.", "event", "runtime.exited", "runtime", "llm",
+					"model_id", b.modelID, "error", fmt.Sprint(b.proc.ExitErr()))
+				m.mu.Lock()
+				m.pump()
+				m.mu.Unlock()
+			}
+			return
+		case <-tick.C:
+			sample()
+		}
+	}
+}
+
+// EmergencyStop stops the runtime and rejects queued work (memory critical).
+func (m *LLM) EmergencyStop(reason error) {
+	m.mu.Lock()
+	b := m.cur
+	for len(m.queue) > 0 {
+		m.fail(m.queue[0], reason)
+	}
+	m.mu.Unlock()
+	if b != nil {
+		m.stopBackend(b)
+	}
+}
+
+// Close rejects queued work and stops the runtime.
+func (m *LLM) Close() {
+	m.mu.Lock()
+	m.closed = true
+	b := m.cur
+	for len(m.queue) > 0 {
+		m.fail(m.queue[0], ErrUnavailable)
+	}
+	m.mu.Unlock()
+	if b != nil {
+		m.stopBackend(b)
+	}
+}
+
+// Footprint samples the running backend's memory footprint (macOS).
+func (m *LLM) Footprint(ctx context.Context) (int64, bool) {
+	m.mu.Lock()
+	b := m.cur
+	m.mu.Unlock()
+	if b == nil {
+		return 0, false
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	return memory.Footprint(ctx, b.proc.PID())
+}

@@ -1,0 +1,36 @@
+name: Go rewrite
+
+on:
+  pull_request:
+    paths: ["go/**", "drizzle/**", "src/catalog/models/**", "src/manager/managed-runtime-manifest.json", ".github/workflows/go.yml"]
+  push:
+    branches: [main, rewrite/go]
+    paths: ["go/**", "drizzle/**", "src/catalog/models/**", "src/manager/managed-runtime-manifest.json", ".github/workflows/go.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Unit tests
+        run: go test -race ./internal/...
+      - name: Compiled CSS is current
+        run: tools/tailwind.sh --check
+      - name: Contract suite against the Go gateway
+        run: go test ./contract -args -impl=go
