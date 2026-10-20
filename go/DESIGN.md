@@ -551,10 +551,21 @@ Deliberate differences the contract suite found and kept:
 - Crash recovery is lazy: an exited backend is cleared, and the next request
   starts it again. TS restarts in the background with bounded backoff.
 
-Known gaps to close in M1: `memory` and capability `source` values for non-LLM
-kinds; runtime-detected capabilities; structured-output schema checks; tool
-schema anchoring; embeddings and systemone routes; feed peaks in admission;
-`Server-Timing`; inference telemetry events.
+### M1 (done 2026-10-19)
+
+| Area | Evidence |
+| --- | --- |
+| Capability detection and resolution (GGUF, whisper, image checkpoints, runtime `/props` probe) | Golden over all 76 catalog entries and the real model files (`tools/golden/capabilities.ts`). |
+| Memory figures for every kind (STT, TTS, image, video estimates; measurement table embedded from TS) | Golden over all 76 entries (`tools/golden/catalog-memory.ts`); `/v1/models` side by side with five kinds selected. |
+| `/v1/embeddings`, `/v1/systemone`, chat validation, tool-schema anchoring, structured-output checks and validation | 40 rejection cases compared side by side (status, type, code, param); real embeddings through both. |
+| `/_localbase/models` (+ query parameters) | Side by side over the list, two details and eleven query variants. |
+| `inference.completed` and admission events, `Server-Timing`, reasoning normalization, upstream error envelopes, 409 install consent | Gateway tests over the fake backend. |
+
+New deliberate difference: an overflowing prompt answers OpenAI's `400
+context_length_exceeded` (param `messages`) instead of relaying llama-server's
+`exceed_context_size_error` (§11, decision 4). Feed peaks and OTLP spans land
+with M5. Health reports speech, image and video as configured but not
+admitting until M4.
 
 Disk note: the machine had about 57 GB free when this work started, below the
 90 GB floor. This branch adds about 180 MB of `node_modules` (needed to run TS
