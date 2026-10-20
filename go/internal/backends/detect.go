@@ -58,9 +58,12 @@ func Assess(m *models.Model, v *models.Variant, d *Definition, h Host, missing [
 			taskOK = true
 		}
 	}
-	if !taskOK {
+	switch {
+	case len(m.Tasks) == 0:
+		unknown = append(unknown, "what the model does is not known yet")
+	case !taskOK:
 		incompatible = append(incompatible, fmt.Sprintf("does not run %s models", strings.Join(m.Tasks, "/")))
-	} else if len(f.Drops) > 0 {
+	case len(f.Drops) > 0:
 		f.Warnings = append(f.Warnings, "does not declare "+strings.Join(f.Drops, ", ")+"; those features would not work")
 	}
 

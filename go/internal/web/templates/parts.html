@@ -57,6 +57,7 @@
   <form class="mt-3 grid gap-2" hx-post="/app/models/backend/{{.ModelID}}" hx-target="#backend-panel" hx-swap="outerHTML">
     <label class="text-sm font-semibold" for="backend-select">Run with</label>
     <select id="backend-select" name="backend" class="input min-h-11">
+      {{if or (not .BackendID) .Unavailable}}<option value="" selected disabled>Choose a backend…</option>{{end}}
       {{range .Options}}
       <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}} — {{.RatingLabel}}{{if .Recommended}} (recommended){{end}} · {{.Install}}</option>
       {{end}}

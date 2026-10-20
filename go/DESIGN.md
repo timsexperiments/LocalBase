@@ -815,3 +815,25 @@ documented upstream is `likely` or `unknown`.
 | 5 | Launch planning through the selection, with errors; `process-openai/v1` adapter |
 | 6 | CLI, admin API, htmx pages |
 | 7 | End-to-end tests for every acceptance check (fake HF and URL servers, fake backends, scratch roots) |
+
+#### Status (2026-10-20)
+
+Steps 1–7 are implemented. Evidence:
+
+| Acceptance check (spec) | Test |
+| --- | --- |
+| Same logical model picks a Metal/MLX variant on Apple Silicon and a CUDA/Vulkan variant on Linux, by explicit rules | `backends.TestPlatformVariants` (registered MLX backend, CUDA with and without a build, Vulkan) |
+| A GGUF extension is not evidence; an incomplete split names its missing files | `backends.TestExtensionIsNotEvidence`; e2e step 2 (local split) |
+| Unknown metadata leaves the selection blank; every backend stays selectable | `backends.TestSelectionModes`; e2e step 2 |
+| Manual choices survive reinspection and restart; reset restores detection; a removed backend is not replaced | `backends.TestSelectionModes`, `store.TestBackendChoicesPersist`; e2e step 5 (gateway restart, another device id) |
+| Overrides report real startup errors without bypassing integrity or memory checks; imports finish without a backend | e2e steps 3–4 (`backend_startup_failed`, `insufficient_memory`, `backend_not_selected`) |
+| Public and authenticated HF imports resolve an immutable revision | `acquire.TestHuggingFaceImport`; e2e step 1 (token kept off the CDN origin) |
+| Direct URLs: custom-source warning, private headers not in progress, errors, exports or redirects | `acquire.TestDirectURLImport`; e2e steps 2 and 6 (CLI output, logs, DB and export scanned for the secrets) |
+| Unpinned URLs record an observed hash; a trusted-checksum mismatch blocks publication | `acquire.TestDirectURLImport`; e2e step 2 |
+| Custom adapters use the same versioned interfaces; downloads never run code | `backends.TestCustomDefinitionRules`; e2e step 4 (`process-openai/v1`) and step 1 (`.py` never requested) |
+| OpenAI-compatible routes unchanged | Full TS/Go contract suite still green; e2e step 6 |
+
+Also checked by hand: the import, model settings and backend pages at 390 px
+in light and dark on a scratch gateway. Not done here, by design: live
+deployment, CrispASR pins and adapters (M4), a managed CUDA package, and
+qualification of any new backend/model pair.
