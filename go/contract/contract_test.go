@@ -124,8 +124,19 @@ func TestModelsList(t *testing.T) {
 				t.Errorf("%s: object/owned_by = %v/%v", m["id"], m["object"], m["owned_by"])
 			}
 		}
-		want := []string{chatModel, decisionModel, embeddingModel, "whisper-base-en-q8_0", "qwen3-tts-1.7b-base-q4_k_m",
-			"kokoro-82m-v1.0-q8", "dreamshaper-8-lcm", "flux1-schnell-q4_0", "realvis-xl-v5.0", "wan2.1-t2v-1.3b-q8_0", "fastwan2.2-ti2v-5b-q6_k"}
+		// Image models: the fixture selection, with the active one first (any
+		// image request makes its model active).
+		images := []string{"dreamshaper-8-lcm", "flux1-schnell-q4_0", "realvis-xl-v5.0", "sdxl-turbo"}
+		if slices.Contains(ids, "dreamshaper-v8") {
+			images = append(images, "dreamshaper-v8")
+		}
+		if first := slices.IndexFunc(ids, func(id string) bool { return slices.Contains(images, id) }); first >= 0 {
+			if i := slices.Index(images, ids[first]); i > 0 {
+				images = slices.Concat([]string{images[i]}, images[:i], images[i+1:])
+			}
+		}
+		want := slices.Concat([]string{chatModel, decisionModel, embeddingModel, "whisper-base-en-q8_0", "qwen3-tts-1.7b-base-q4_k_m",
+			"kokoro-82m-v1.0-q8"}, images, []string{"wan2.1-t2v-1.3b-q8_0", "fastwan2.2-ti2v-5b-q6_k"})
 		// With a real whisper model linked, tiny.en is selected too, and a request
 		// to it makes it the active (first) STT model.
 		if slices.Contains(ids, "whisper-tiny-en-q8_0") {

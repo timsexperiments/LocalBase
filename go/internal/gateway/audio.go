@@ -27,7 +27,7 @@ type formPart struct {
 	value    string
 	file     []byte
 	filename string
-	ctype    string
+	ctype    string // from the filename extension, as Bun's File.type; the part header is ignored
 	isFile   bool
 }
 
@@ -54,8 +54,11 @@ func readMultipart(r *http.Request, body []byte) (map[string][]formPart, error) 
 		}
 		name := p.FormName()
 		part := formPart{value: string(data)}
-		if p.FileName() != "" {
-			part = formPart{file: data, filename: p.FileName(), ctype: p.Header.Get("Content-Type"), isFile: true}
+		// A filename parameter makes a file part, even when empty (as in Bun).
+		if _, dp, err := mime.ParseMediaType(p.Header.Get("Content-Disposition")); err == nil {
+			if fn, ok := dp["filename"]; ok {
+				part = formPart{file: data, filename: fn, ctype: fileTypeOf(fn), isFile: true}
+			}
 		}
 		out[name] = append(out[name], part)
 	}
@@ -310,4 +313,21 @@ func normalizeTranscriptionJSON(d map[string]any, format string) map[string]any 
 
 func notConfigured(w http.ResponseWriter, r *http.Request, feature string) {
 	writeError(w, r, 501, "invalid_request_error", "route_disabled", feature+" route is disabled.", nil)
+}
+
+// fileTypeOf is Bun's File.type for an uploaded file: the MIME type of the
+// filename's extension ("" for none or an unknown one).
+func fileTypeOf(name string) string {
+	i := strings.LastIndex(name, ".")
+	if i <= 0 || i == len(name)-1 {
+		return ""
+	}
+	switch ext := strings.ToLower(name[i+1:]); ext {
+	case "png":
+		return "image/png"
+	case "jpg", "jpeg", "jpe":
+		return "image/jpeg"
+	default:
+		return mime.TypeByExtension("." + ext)
+	}
 }

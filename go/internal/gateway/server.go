@@ -72,6 +72,8 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/v1/audio/transcriptions", s.guard("inference:transcription", s.transcription))
 	mux.HandleFunc("/v1/audio/translations", s.guard("inference:transcription", s.transcription))
 	mux.HandleFunc("/v1/audio/speech", s.guard("inference:speech", s.speech))
+	mux.HandleFunc("/v1/images/generations", s.guard("inference:image", s.imageGeneration))
+	mux.HandleFunc("/v1/images/edits", s.guard("inference:image", s.imageEdit))
 	mux.HandleFunc("/_localbase/models", s.guard("models:read", s.modelMetadata))
 	mux.HandleFunc("/_localbase/models/{model_id...}", s.guard("models:read", s.modelMetadata))
 	mux.HandleFunc("/_localbase/access-management", s.accessManagement)

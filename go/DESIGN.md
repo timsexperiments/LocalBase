@@ -967,7 +967,8 @@ attestation and is deferred; Qwen TTS stays on tts-server.
 | 2 | Done | `TestDifferentialTranscriptionRejections`; `TestTranscriptionReal` (whisper tiny.en, identical text on TS and Go in every format) |
 | 3 | Done for Kokoro via CrispASR and the tts-server adapter | `TestDifferentialSpeechRejections` (same status, code, param and message as TS); `TestSpeechKokoroCrispASR` (automatic `crispasr-metal`, WAV/PCM/SSE, whisper hears the input); `runtime.TestEnsureBinaryInstallsPinnedRelease` (offline: checksums, extraction, dictionary rebuild); `backends.TestCrispASRWithoutPin` |
 | 4 | Done | `voices.TestNormalizeAudioGolden` (15 recordings and every rejection reproduce the TS normalizer byte for byte: `tools/golden/voices.ts`); `voices.TestNameRulesGolden` (NFC, NFKC key, JS whitespace and lowercase); `TestDifferentialVoices` (same stored sha256 on both gateways, every rejection, permission and method error); `TestCLIVoices` |
-| 5–7 | Not started | |
+| 5 | Done | `TestDifferentialImageRejections` (generation and edit validation, permissions, content checks); `TestImageReal` (DreamShaper 8 through sd-server: generation and edit are byte-identical on TS and Go); validator and tuning-block unit tests |
+| 6–7 | Not started | |
 
 `serve` now honours `--stt-*`, `--tts-*` and `--image-*` host and port
 options and `--no-stt`, `--no-tts` and `--no-image` (TS defaults: TTS 8092,
@@ -988,3 +989,21 @@ of `x/text/unicode/norm` (BSD, Unicode 15), so go.mod still lists only
 modernc.org/sqlite. One deliberate difference: a multipart body TS cannot
 parse makes it answer 500 `gateway_error`; Go answers 400
 `validation_failed`.
+
+Images (step 5) keep the TS launch profile (`-m` or the diffusion component
+arguments, generation defaults, `--diffusion-fa`, `--prediction`; 30 s
+startup, 180 s from 10 GiB of catalog weights), the `<sd_cpp_extra_args>`
+tuning block byte for byte (LoRA, negative prompt, seed, strength, steps,
+guidance), and the edit upload checks (PNG/JPEG structure, 2048 px and
+4.2 MP limits). As in Bun, an uploaded file's type comes from its filename
+extension, not the part header. A media model becomes active when it is
+requested, before its files are checked (TS activateModel), so a request for
+a selected but missing model changes the default for later requests on both.
+
+Deliberate difference: after a failed start, TS answers every later request
+for that model with 503 `service_unavailable`; Go repeats the actual error
+(for example 409 `model_install_consent_required`).
+
+Contract fixtures: launched gateways run offline (dead proxies, loopback
+exempt), so a missing runtime or model fails instead of downloading, and
+`bin/runtimes` fixtures merge instead of nesting.

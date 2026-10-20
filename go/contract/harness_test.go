@@ -135,6 +135,14 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 	if err := linkCrispASR(r); err != nil {
 		return "", "", "", false, err
 	}
+	// A real image model (read-only link), when LOCALBASE_CONTRACT_IMAGE_MODELS has it.
+	imageSel := `["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0","sdxl-turbo"]`
+	if d := os.Getenv("LOCALBASE_CONTRACT_IMAGE_MODELS"); d != "" && fileExists(filepath.Join(d, imageFile)) {
+		os.MkdirAll(r.ModelsDir("image"), 0o700)
+		if os.Symlink(filepath.Join(d, imageFile), filepath.Join(r.ModelsDir("image"), imageFile)) == nil {
+			imageSel = `["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0","sdxl-turbo","dreamshaper-v8"]`
+		}
+	}
 	_, err = st.DB.Exec(`INSERT INTO config (id, root, gateway_host, gateway_port, host, port, ctx_size, ctx_mode,
 		stt_host, stt_port, selected_llm_models, selected_stt_models, selected_tts_models, selected_image_models,
 		selected_video_models, allow_experimental, active_llm_model, active_stt_model, active_tts_model,
@@ -144,7 +152,7 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 		VALUES ('default', ?, '127.0.0.1', 2273, '127.0.0.1', ?, 65536, 'auto', '127.0.0.1', ?, ?, ?, ?, ?, ?,
 		1, ?, 'whisper-base-en-q8_0', 'qwen3-tts-1.7b-base-q4_k_m', 'dreamshaper-8-lcm', 'wan2.1-t2v-1.3b-q8_0', '', 0, '1', '', '', 100, 15, 8, 10, 2)`,
 		r.Dir, llmPort, freePort(), string(sel), sttSel, `["qwen3-tts-1.7b-base-q4_k_m","kokoro-82m-v1.0-q8"]`,
-		`["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0"]`, `["wan2.1-t2v-1.3b-q8_0","fastwan2.2-ti2v-5b-q6_k"]`, chatModel)
+		imageSel, `["wan2.1-t2v-1.3b-q8_0","fastwan2.2-ti2v-5b-q6_k"]`, chatModel)
 	if err != nil {
 		return "", "", "", false, err
 	}
@@ -192,8 +200,9 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 	if runtimes := os.Getenv("LOCALBASE_CONTRACT_RUNTIMES"); runtimes != "" && modelLinked {
 		{
 			// Copy, never link, the runtime package: backends must not run from the live root.
-			os.MkdirAll(filepath.Join(r.Dir, "bin"), 0o700)
-			out, cerr := exec.Command("cp", "-R", runtimes, filepath.Join(r.Dir, "bin", "runtimes")).CombinedOutput()
+			// Merge into bin/runtimes, which other fixtures may already have created.
+			os.MkdirAll(r.RuntimesDir(), 0o700)
+			out, cerr := exec.Command("cp", "-R", runtimes+"/.", r.RuntimesDir()).CombinedOutput()
 			if cerr != nil {
 				return "", "", "", false, fmt.Errorf("copy runtimes: %v %s", cerr, out)
 			}
@@ -241,7 +250,9 @@ func launch(impl string) (*Target, error) {
 			cmd.Env = append(cmd.Env, kv)
 		}
 	}
-	cmd.Env = append(cmd.Env, "LOCALBASE_CATALOG_FEED_URL=off")
+	// Offline: a missing fixture must fail, not be downloaded (loopback stays reachable).
+	cmd.Env = append(cmd.Env, "LOCALBASE_CATALOG_FEED_URL=off", "HTTPS_PROXY=http://127.0.0.1:9", "HTTP_PROXY=http://127.0.0.1:9",
+		"https_proxy=http://127.0.0.1:9", "http_proxy=http://127.0.0.1:9", "NO_PROXY=127.0.0.1,localhost", "no_proxy=127.0.0.1,localhost")
 	logf, _ := os.Create(filepath.Join(dir, "serve.log"))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

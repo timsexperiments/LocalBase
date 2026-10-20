@@ -265,14 +265,28 @@ func (s *Service) doSwitch(modelID, key string) error {
 	if err != nil {
 		return err
 	}
-	// The legacy catalog variant keeps the TS install check; other variants
-	// were installed (or refused) by the gate.
+	demand := s.demand(t)
+	// As TS activateModel: the switch must fit (crediting the running backend),
+	// then the model becomes active, then it is installed and started. A start
+	// that fails leaves it active. The legacy catalog variant keeps the TS
+	// install check; when its files are missing the fit check is skipped, as
+	// the TS preflight cannot resolve a plan. Other variants were installed (or
+	// refused) by the gate.
+	var installErr error
 	if s.d.Catalog.ByID(modelID) != nil && !t.Imported && t.Variant.ID == "default" {
-		if err := s.ensureInstalled(modelID); err != nil {
+		installErr = s.ensureInstalled(modelID)
+	}
+	if installErr == nil {
+		if err := s.d.Memory.CheckAdmission(context.Background(), demand, []string{s.d.Modality}); err != nil {
 			return err
 		}
 	}
-	demand := s.demand(t)
+	if s.d.Activate != nil && !t.Imported {
+		s.d.Activate(s.d.Kind, modelID)
+	}
+	if installErr != nil {
+		return installErr
+	}
 	s.mu.Lock()
 	prev := s.cur
 	s.cur = nil
@@ -294,9 +308,6 @@ func (s *Service) doSwitch(modelID, key string) error {
 	s.cur = b
 	s.mu.Unlock()
 	go s.watch(b)
-	if s.d.Activate != nil && !t.Imported {
-		s.d.Activate(s.d.Kind, modelID)
-	}
 	return nil
 }
 
@@ -357,7 +368,11 @@ func (s *Service) start(t *Target, demand memory.Demand) (*svcBackend, error) {
 	}
 	res.Materialize(proc.PID())
 	base := "http://" + net.JoinHostPort(host, strconv.Itoa(port))
-	if err := proc.WaitHealthy(context.Background(), base+cmd.health, s.d.Startup); err != nil {
+	budget := s.d.Startup
+	if cmd.startup > 0 {
+		budget = cmd.startup
+	}
+	if err := proc.WaitHealthy(context.Background(), base+cmd.health, budget); err != nil {
 		proc.Stop(stopGrace)
 		res.Release()
 		return nil, fail(err)
@@ -450,6 +465,7 @@ type serviceCommand struct {
 	name, bin, dir string
 	args, env      []string
 	health         string
+	startup        time.Duration // 0: the service default
 }
 
 func (s *Service) binary(name string, t *Target) (string, error) {
@@ -509,6 +525,11 @@ func (s *Service) command(t *Target, host string, port int) (*serviceCommand, er
 			break
 		}
 		return s.ttsServerCommand(t, host, port, weights)
+	case "sd-server/v1":
+		if s.d.Modality != "image" {
+			break
+		}
+		return s.sdServerCommand(t, host, port, weights)
 	case "process-openai/v1":
 		l := d.Launch
 		repl := strings.NewReplacer("{model}", weights, "{model_dir}", t.Dir, "{host}", host, "{port}", strconv.Itoa(port), "{ctx}", "0", "{projector}", "")
