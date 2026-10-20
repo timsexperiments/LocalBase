@@ -31,7 +31,11 @@ func SanitizedEndpoint(v string) string {
 		return ""
 	}
 	u, _ := url.Parse(v)
-	return u.Scheme + "://" + u.Host + u.Path
+	path := u.Path
+	if path == "" {
+		path = "/" // WHATWG URL serialization, as TS reports it
+	}
+	return u.Scheme + "://" + u.Host + path
 }
 
 var (

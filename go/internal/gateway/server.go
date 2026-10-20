@@ -47,6 +47,7 @@ func New(s *Server) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/health/ready", s.ready)
+	mux.HandleFunc("/_localbase/instance", s.instance)
 	mux.HandleFunc("/v1/models", s.guard("models:read", s.listModels))
 	mux.HandleFunc("/v1/models/{model...}", s.guard("models:read", s.retrieveModel))
 	mux.HandleFunc("/v1/chat/completions", s.guard("inference:chat", s.chat))
@@ -297,4 +298,15 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, status, body)
+}
+
+// instance proves this gateway's identity to a CLI that knows the instance
+// token from the lock record (guards against PID reuse).
+func (s *Server) instance(w http.ResponseWriter, r *http.Request) {
+	o := s.Root.Instance()
+	if o == nil || r.Header.Get("X-Localbase-Instance-Token") != o.InstanceToken {
+		w.WriteHeader(404)
+		return
+	}
+	writeJSON(w, 200, map[string]string{"instanceId": o.InstanceID, "rootHash": o.RootHash})
 }

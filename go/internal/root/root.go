@@ -20,6 +20,7 @@ const markerName = ".localbase-root.json"
 // Root is a validated, canonical LocalBase data directory.
 type Root struct {
 	Dir string
+	owner *Owner
 }
 
 type marker struct {

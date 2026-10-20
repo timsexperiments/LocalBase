@@ -135,7 +135,7 @@ func serve(c *cli.Ctx) (any, error) {
 	if h := c.String("llm-host"); h != "" {
 		cfg.Host = h
 	}
-	release, err := r.Lock(listenHost, listenPort)
+	release, err := r.LockAs(listenHost, listenPort, os.Getenv("LOCALBASE_SERVICE_ID"), os.Getenv("LOCALBASE_SERVICE_TOKEN"))
 	if err != nil {
 		return nil, err
 	}

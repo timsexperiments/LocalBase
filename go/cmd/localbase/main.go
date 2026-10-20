@@ -15,17 +15,14 @@ func main() {
 }
 
 func app() *cli.App {
+	commands := []*cli.Command{initCommand(), configureCommand(), serveCommand()}
+	commands = append(commands, serviceCommands()...)
+	commands = append(commands, modelsCommand(), keysCommand())
 	return &cli.App{
 		Name:    "local-base",
 		Version: gateway.Version,
 		Summary: "Local AI installer, manager, and OpenAI-compatible gateway",
 		Default: "configure",
-		Root: &cli.Command{Sub: []*cli.Command{
-			initCommand(),
-			configureCommand(),
-			serveCommand(),
-			keysCommand(),
-			modelsCommand(),
-		}},
+		Root:    &cli.Command{Sub: commands},
 	}
 }

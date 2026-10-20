@@ -224,3 +224,33 @@ func TestCLIModels(t *testing.T) {
 		compareCLI(t, roots, c)
 	}
 }
+
+func TestCLIConfigure(t *testing.T) {
+	requireTS(t)
+	ts, gr := twinRoots(t)
+	roots := [2]string{ts, gr}
+	msg := func(p string) bool { return p == ".error.message" }
+	tomlPath := filepath.Join(filepath.Dir(ts), "overrides.toml")
+	os.WriteFile(tomlPath, []byte("ctxSize = 65536\nparallel = 2\nselectedSttModels = []\nactiveSttModel = \"\"\n[memory.systemReserve]\npercent = 20\n"), 0o600)
+	badToml := filepath.Join(filepath.Dir(ts), "bad.toml")
+	os.WriteFile(badToml, []byte("bogus = 1\n"), 0o600)
+	for _, c := range []cliCase{
+		{args: []string{"--json", "configure"}, skip: msg},
+		{args: []string{"--json", "configure", "--defaults", "--no-create-key"}},
+		{args: []string{"--json", "configure", "--parallel", "3", "--ctx-mode", "explicit"}},
+		{args: []string{"--json", "configure", "--llm-models", "qwen2.5-coder-1.5b-instruct-q4_k_m,clef-flash-q4_k_m", "--active-llm", "clef-flash-q4_k_m"}},
+		{args: []string{"--json", "configure", "--stt-models", "", "--tts-models", "qwen3-tts-1.7b-base-q4_k_m"}},
+		{args: []string{"--json", "configure", "--config", tomlPath}},
+		{args: []string{"--json", "configure", "--config", badToml}, skip: msg},
+		{args: []string{"--json", "configure", "--llm-models", "nope"}, skip: msg},
+		{args: []string{"--json", "configure", "--parallel", "9"}, skip: msg},
+		{args: []string{"--json", "configure", "--active-llm", "qwen3-tts-1.7b-base-q4_k_m"}, skip: msg},
+		{args: []string{"--json", "configure", "--tts-models", "kokoro-82m-v1.0-q8"}, skip: msg},
+		{args: []string{"--json", "configure", "--otel-endpoint", "ftp://x"}, skip: msg},
+		{args: []string{"--json", "configure", "--otel-endpoint", "http://collector:4318", "--otel-headers", "x-token=abc", "--otel-sample-ratio", "50"}},
+		{args: []string{"--json", "configure", "--hf-token", "hf_test"}},
+		{args: []string{"--json", "configure", "--create-key"}, skip: func(p string) bool { return strings.HasPrefix(p, ".data.createdKey") }},
+	} {
+		compareCLI(t, roots, c)
+	}
+}
