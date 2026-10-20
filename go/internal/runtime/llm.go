@@ -92,7 +92,7 @@ type LLM struct {
 	geometry map[string]geometryEntry
 	probes   sync.WaitGroup
 	switches sync.WaitGroup // in-flight model switches; Close waits for them
-	failed   bool // the last start failed and nothing runs
+	failed   bool           // the last start failed and nothing runs
 }
 
 type geometryEntry struct {
