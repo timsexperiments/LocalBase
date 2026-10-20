@@ -20,6 +20,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
 const Version = "0.2.0-go"
@@ -43,6 +44,8 @@ type Server struct {
 	STT   *runtime.Service
 	TTS   *runtime.Service
 	Image *runtime.Service
+	// Voices stores custom voice profiles (nil: the routes are disabled).
+	Voices *voices.Store
 	// UI handles /app and / when set.
 	UI http.Handler
 
@@ -78,6 +81,8 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/model-backend", s.modelBackendAPI)
 	mux.HandleFunc("/_localbase/model-imports", s.modelImportsAPI)
 	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
+	mux.HandleFunc("/_localbase/voices", s.voicesAPI)
+	mux.HandleFunc("/_localbase/voices/", s.voicesAPI)
 	if s.UI != nil {
 		mux.Handle("/app", s.UI)
 		mux.Handle("/app/", s.UI)

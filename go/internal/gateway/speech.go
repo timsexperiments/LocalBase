@@ -321,17 +321,14 @@ func writeSpeech(w http.ResponseWriter, req *speechRequest, pcm []byte) {
 	}
 }
 
+// customVoiceExists: a stored voice whose recording still matches its
+// checksum (TS voiceStore.resolve).
 func (s *Server) customVoiceExists(r *http.Request, id string) bool {
-	voices, err := s.Store.Voices(r.Context())
-	if err != nil {
+	if s.Voices == nil {
 		return false
 	}
-	for _, v := range voices {
-		if v.ID == id {
-			return true
-		}
-	}
-	return false
+	p, err := s.Voices.Resolve(r.Context(), id)
+	return err == nil && p != ""
 }
 
 // readBody reads a bounded request body (25 MiB, TS MAX_REQUEST_BYTES).

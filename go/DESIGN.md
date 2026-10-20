@@ -966,7 +966,8 @@ attestation and is deferred; Qwen TTS stays on tts-server.
 | 1 | Done | `runtime.TestService*` (queue, admission, switch, crash recovery, close) |
 | 2 | Done | `TestDifferentialTranscriptionRejections`; `TestTranscriptionReal` (whisper tiny.en, identical text on TS and Go in every format) |
 | 3 | Done for Kokoro via CrispASR and the tts-server adapter | `TestDifferentialSpeechRejections` (same status, code, param and message as TS); `TestSpeechKokoroCrispASR` (automatic `crispasr-metal`, WAV/PCM/SSE, whisper hears the input); `runtime.TestEnsureBinaryInstallsPinnedRelease` (offline: checksums, extraction, dictionary rebuild); `backends.TestCrispASRWithoutPin` |
-| 4–7 | Not started | |
+| 4 | Done | `voices.TestNormalizeAudioGolden` (15 recordings and every rejection reproduce the TS normalizer byte for byte: `tools/golden/voices.ts`); `voices.TestNameRulesGolden` (NFC, NFKC key, JS whitespace and lowercase); `TestDifferentialVoices` (same stored sha256 on both gateways, every rejection, permission and method error); `TestCLIVoices` |
+| 5–7 | Not started | |
 
 `serve` now honours `--stt-*`, `--tts-*` and `--image-*` host and port
 options and `--no-stt`, `--no-tts` and `--no-image` (TS defaults: TTS 8092,
@@ -974,3 +975,16 @@ images 8090). The TTS server restarts when the custom voice set changes,
 since it loads voices at launch. `TestSpeechKokoroCrispASR` needs
 `LOCALBASE_CONTRACT_CRISPASR` (the unpacked release, the dictionary and the
 pinned Kokoro files) and is skipped in CI.
+
+Custom voices (step 4) keep the TS store: `<root>/voices/<id>.wav` (0600 in
+a 0700 directory) plus the `tts_custom_voices` row, so a rollback to TS sees
+the same voices. Recordings are decoded and resampled in Go with the TS
+arithmetic (float32 samples and kernels, float64 sums, JavaScript rounding),
+so the same upload stores the same bytes and checksum on either gateway. A
+voice resolves for speech only while its recording matches its checksum.
+Voice names need Unicode NFC and NFKC, which the standard library does not
+export; `internal/third_party/norm` is the Go toolchain's own vendored copy
+of `x/text/unicode/norm` (BSD, Unicode 15), so go.mod still lists only
+modernc.org/sqlite. One deliberate difference: a multipart body TS cannot
+parse makes it answer 500 `gateway_error`; Go answers 400
+`validation_failed`.

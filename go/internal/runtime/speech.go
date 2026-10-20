@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
 // Speech backends (TS speech-supervisor.ts and the 2026-10-20 CrispASR
@@ -25,7 +27,7 @@ const (
 )
 
 // SpeakerFiles are a tts-server model's voices: the catalog reference clips
-// plus stored custom voices whose file is present.
+// plus stored custom voices whose recording matches its checksum.
 func (s *Service) SpeakerFiles(ctx context.Context, t *Target) map[string]string {
 	out := map[string]string{}
 	if spec := s.d.Catalog.ByID(t.ModelID); spec != nil && spec.TTSRuntime != nil {
@@ -36,12 +38,9 @@ func (s *Service) SpeakerFiles(ctx context.Context, t *Target) map[string]string
 		}
 	}
 	if s.d.Store != nil && s.d.RootDir != "" {
-		if voices, err := s.d.Store.Voices(ctx); err == nil {
-			for _, v := range voices {
-				if p := filepath.Join(s.d.RootDir, "voices", v.ID+".wav"); fileExists(p) {
-					out[v.ID] = p
-				}
-			}
+		// Only recordings that still match their checksum (TS referenceFiles).
+		if files, err := voices.New(s.d.Store, s.d.RootDir).ReferenceFiles(ctx); err == nil {
+			maps.Copy(out, files)
 		}
 	}
 	return out

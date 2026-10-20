@@ -1,6 +1,7 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @source "../templates";
 @source "../static/js";
+@source "../*.go";
 
 /* LocalBase tokens, carried over from the React UI. Dark mode follows the
    system setting, as it does today. */
