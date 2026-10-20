@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -93,7 +94,7 @@ func (m *LLM) launchCommand(plan *LLMPlan, t *Target) (name, bin string, args []
 	if t == nil {
 		bin := m.d.Binary
 		if bin == "" {
-			if bin, err = ResolveBinary(m.d.RuntimesDir, "llama-server"); err != nil {
+			if bin, err = EnsureBinary(context.Background(), m.d.RuntimesDir, "llama-server"); err != nil {
 				return "", "", nil, "", err
 			}
 		}
@@ -119,7 +120,7 @@ func (m *LLM) launchCommand(plan *LLMPlan, t *Target) (name, bin string, args []
 		case m.d.Binary != "":
 			bin = m.d.Binary
 		case d.Runtime != nil:
-			if bin, err = ResolveBinary(m.d.RuntimesDir, d.Runtime.Executable); err != nil {
+			if bin, err = EnsureBinary(context.Background(), m.d.RuntimesDir, d.Runtime.Executable); err != nil {
 				return "", "", nil, "", fmt.Errorf("%s is not installed on this device: %v", d.Name, err)
 			}
 		default:

@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -186,11 +187,58 @@ func serve(c *cli.Ctx) (any, error) {
 		Binary: os.Getenv("LOCALBASE_LLAMA_SERVER"), ModelFileOverride: c.String("llm-model-file"),
 		Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey, Activate: activate}, cfg)
 	defer llm.Close()
-	stt := runtime.NewService(runtime.ServiceDeps{Modality: "stt", Kind: "stt", Catalog: cat, Store: st, Memory: mem, Log: log,
-		Config: llm.Config, Gate: lib.GateFor("transcription"), SelectionKey: lib.SelectionKey, RuntimesDir: r.RuntimesDir(),
-		ModelsDir: r.ModelsDir("stt"), CacheDir: filepath.Join(r.Dir, "cache"), Host: cfg.SttHost, Port: cfg.SttPort,
-		Binaries: map[string]string{"whisper-server": os.Getenv("LOCALBASE_WHISPER_SERVER")}, Install: installer(e, installMissing, log), Activate: activate})
-	defer stt.Close()
+	// The media modalities: one supervised backend each, through the selection.
+	lib.InstallMissing = installMissing
+	lib.HFToken = func() string { return llm.Config().HFToken }
+	hostPort := func(name, host string, port int) (string, int, error) {
+		if h := c.String(name + "-host"); h != "" {
+			host = h
+		}
+		if c.Has(name + "-port") {
+			p, err := intOpt(c, name+"-port", 1, 65535)
+			if err != nil {
+				return "", 0, err
+			}
+			port = p
+		}
+		return host, port, nil
+	}
+	binaries := map[string]string{"whisper-server": os.Getenv("LOCALBASE_WHISPER_SERVER"), "tts-server": os.Getenv("LOCALBASE_TTS_SERVER"),
+		"crispasr": os.Getenv("LOCALBASE_CRISPASR"), "sd-server": os.Getenv("LOCALBASE_SD_SERVER")}
+	service := func(modality, task, host string, port int) (*runtime.Service, error) {
+		if enabled, set := c.OptBool(modality); set && !enabled {
+			return nil, nil
+		}
+		h, p, err := hostPort(modality, host, port)
+		if err != nil {
+			return nil, err
+		}
+		d := runtime.ServiceDeps{Modality: modality, Kind: modality, Catalog: cat, Store: st, Memory: mem, Log: log,
+			Config: llm.Config, Gate: lib.GateFor(task), SelectionKey: lib.SelectionKey, RuntimesDir: r.RuntimesDir(),
+			ModelsDir: r.ModelsDir(modality), RootDir: r.Dir, CacheDir: filepath.Join(r.Dir, "cache"), Host: h, Port: p,
+			Binaries: binaries, Install: installer(e, installMissing, log), Activate: activate}
+		if modality == "tts" {
+			d.ExtraKey = func() string { return voiceStamp(st) }
+		}
+		return runtime.NewService(d), nil
+	}
+	stt, err := service("stt", "transcription", cfg.SttHost, cfg.SttPort)
+	if err != nil {
+		return nil, err
+	}
+	tts, err := service("tts", "speech", "127.0.0.1", 8092)
+	if err != nil {
+		return nil, err
+	}
+	image, err := service("image", "image", "127.0.0.1", 8090)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range []*runtime.Service{stt, tts, image} {
+		if s != nil {
+			defer s.Close()
+		}
+	}
 
 	access, err := auth.LoadAccess(r.Dir)
 	if err != nil {
@@ -212,7 +260,7 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
 	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth,
-		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt}
+		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image}
 	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
 		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib})
@@ -281,4 +329,18 @@ func serve(c *cli.Ctx) (any, error) {
 		c.Line(map[string]any{"event": "stopped", "exitCode": 0})
 	}
 	return nil, nil
+}
+
+// voiceStamp identifies the stored custom voice set; the warm speech server
+// restarts when it changes, since it loads voices at launch.
+func voiceStamp(st *store.Store) string {
+	voices, err := st.Voices(context.Background())
+	if err != nil {
+		return "error"
+	}
+	var b strings.Builder
+	for _, v := range voices {
+		b.WriteString(v.ID + ":" + v.SHA256 + ";")
+	}
+	return b.String()
 }

@@ -61,7 +61,7 @@ func (s *Server) backendsAPI(w http.ResponseWriter, r *http.Request) {
 	for _, d := range l.Registry.All() {
 		out = append(out, map[string]any{"id": d.ID, "name": d.Name, "engine": d.Engine, "builtIn": d.BuiltIn,
 			"adapter": d.Adapter, "tasks": d.Tasks, "install": l.Host().Install[d.ID], "installLabel": l.Host().InstallLabel(d.ID),
-			"automatic": d.Automatic == nil || *d.Automatic, "notes": d.Notes})
+			"automatic": d.Automatic == nil || *d.Automatic, "automaticTasks": d.AutomaticTasks, "notes": d.Notes})
 	}
 	noStore(w, 200, map[string]any{"backends": out, "skipped": l.Registry.Skipped(), "host": l.Host()})
 }

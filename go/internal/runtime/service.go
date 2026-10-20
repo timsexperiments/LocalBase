@@ -49,9 +49,13 @@ type ServiceDeps struct {
 	SelectionKey func(modelID string) string
 	RuntimesDir  string
 	ModelsDir    string // catalog models of this modality
-	CacheDir     string // per-root cache for backends (CrispASR voices, Metal caches)
-	Host         string
-	Port         int
+	RootDir      string // for custom voices (<root>/voices/<id>.wav)
+	// ExtraKey adds to the selection key (TTS: the custom voice set, which
+	// the warm speech servers load at launch).
+	ExtraKey func() string
+	CacheDir string // per-root cache for backends (CrispASR voices, Metal caches)
+	Host     string
+	Port     int
 	// Binaries override managed executables by name (tests: a fake server).
 	Binaries      map[string]string
 	QueueCapacity int
@@ -150,6 +154,9 @@ func (s *Service) Acquire(ctx context.Context, modelID string) (*ServiceLease, e
 	key := ""
 	if s.d.SelectionKey != nil {
 		key = s.d.SelectionKey(modelID)
+	}
+	if s.d.ExtraKey != nil {
+		key += "|" + s.d.ExtraKey()
 	}
 	s.mu.Lock()
 	if s.closed {
@@ -251,17 +258,19 @@ func (s *Service) pump() {
 }
 
 func (s *Service) doSwitch(modelID, key string) error {
-	if s.d.Catalog.ByID(modelID) != nil {
-		if err := s.ensureInstalled(modelID); err != nil {
-			return err
-		}
-	}
 	if s.d.Gate == nil {
 		return fmt.Errorf("%w: no backend selection", ErrStartupFailed)
 	}
 	t, err := s.d.Gate(modelID)
 	if err != nil {
 		return err
+	}
+	// The legacy catalog variant keeps the TS install check; other variants
+	// were installed (or refused) by the gate.
+	if s.d.Catalog.ByID(modelID) != nil && !t.Imported && t.Variant.ID == "default" {
+		if err := s.ensureInstalled(modelID); err != nil {
+			return err
+		}
 	}
 	demand := s.demand(t)
 	s.mu.Lock()
@@ -341,7 +350,7 @@ func (s *Service) start(t *Target, demand memory.Demand) (*svcBackend, error) {
 	}
 	s.d.Log.Info("Starting "+cmd.name+" for "+t.ModelID+".", "event", "runtime.starting", "runtime", s.d.Modality,
 		"model_id", t.ModelID, "backend_id", t.Backend.ID, "demand_bytes", demand.UnifiedBytes, "demand_confidence", demand.Confidence)
-	proc, err := StartProcess(cmd.name, cmd.bin, cmd.args, cmd.env, s.d.Log)
+	proc, err := StartProcessIn(cmd.name, cmd.bin, cmd.dir, cmd.args, cmd.env, s.d.Log)
 	if err != nil {
 		res.Release()
 		return nil, fail(err)
@@ -438,9 +447,9 @@ func (s *Service) Close() {
 // --- adapters --------------------------------------------------------------------------
 
 type serviceCommand struct {
-	name, bin string
-	args, env []string
-	health    string
+	name, bin, dir string
+	args, env      []string
+	health         string
 }
 
 func (s *Service) binary(name string, t *Target) (string, error) {
@@ -450,7 +459,7 @@ func (s *Service) binary(name string, t *Target) (string, error) {
 	if b := s.d.Binaries[name]; b != "" {
 		return b, nil
 	}
-	return ResolveBinary(s.d.RuntimesDir, name)
+	return EnsureBinary(context.Background(), s.d.RuntimesDir, name)
 }
 
 func (t *Target) artifact(role string) string {
@@ -491,7 +500,15 @@ func (s *Service) command(t *Target, host string, port int) (*serviceCommand, er
 		return &serviceCommand{name: "whisper-server", bin: bin, health: "/health",
 			args: []string{"--model", weights, "--host", host, "--port", strconv.Itoa(port)}}, nil
 	case "crispasr/v1":
+		if s.d.Modality != "tts" {
+			break
+		}
 		return s.crispasrCommand(t, host, port, weights)
+	case "tts-server/v1":
+		if s.d.Modality != "tts" {
+			break
+		}
+		return s.ttsServerCommand(t, host, port, weights)
 	case "process-openai/v1":
 		l := d.Launch
 		repl := strings.NewReplacer("{model}", weights, "{model_dir}", t.Dir, "{host}", host, "{port}", strconv.Itoa(port), "{ctx}", "0", "{projector}", "")
@@ -506,8 +523,4 @@ func (s *Service) command(t *Target, host string, port int) (*serviceCommand, er
 		return &serviceCommand{name: d.ID, bin: l.Command, args: args, health: health}, nil
 	}
 	return nil, fmt.Errorf("%s (adapter %s) does not run %s models", d.Name, d.Adapter, taskOf(s.d.Modality))
-}
-
-func (s *Service) crispasrCommand(t *Target, host string, port int, weights string) (*serviceCommand, error) {
-	return nil, fmt.Errorf("%s: the CrispASR adapter is not wired yet", t.Backend.Name)
 }

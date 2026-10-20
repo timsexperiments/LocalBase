@@ -271,37 +271,65 @@ func TestNoRatingFromNames(t *testing.T) {
 	}
 }
 
-// CrispASR has no managed pin: it is listed and labelled, never chosen
-// automatically, even when an executable is found.
+// CrispASR without a managed package (Linux today) is listed and labelled,
+// never chosen automatically; with the pinned macOS package it is chosen for
+// the speech models it is qualified on. The Vulkan build stays manual.
 func TestCrispASRWithoutPin(t *testing.T) {
 	reg, _ := Load("")
 	tts := &models.Model{ID: "k", Tasks: []string{"speech"}, Capabilities: []string{}, Variants: []models.Variant{{ID: "v",
 		Format: models.Of("gguf", models.SourceInspect), Architecture: models.Of("kokoro", models.SourceInspect),
 		Artifacts: []models.Artifact{{Filename: "k.gguf", Role: models.RoleWeights, Required: true}, {Filename: "af.bin", Role: models.RoleVoice, Required: true}}}}}
-	for _, installed := range []string{Missing, Installed} {
-		h := host("darwin", "arm64", []string{"metal", "cpu"}, reg, map[string]string{"crispasr-metal": installed, "crispasr-cpu": installed})
-		if installed == Missing {
-			h.Unpackaged = map[string]bool{"crispasr-metal": true, "crispasr-cpu": true}
-		}
-		rec := reg.Recommend(tts, h, nil)
-		if strings.HasPrefix(rec.BackendID, "crispasr") {
-			t.Errorf("install=%s: CrispASR chosen automatically", installed)
-		}
-		var listed *Finding
-		for i, o := range rec.Options {
-			if o.BackendID == "crispasr-metal" {
-				listed = &rec.Options[i]
+	// No package for this device.
+	h := host("darwin", "arm64", []string{"metal", "cpu"}, reg, map[string]string{"crispasr-metal": Missing, "crispasr-cpu": Missing})
+	h.Unpackaged = map[string]bool{"crispasr-metal": true, "crispasr-cpu": true}
+	rec := reg.Recommend(tts, h, nil)
+	if strings.HasPrefix(rec.BackendID, "crispasr") {
+		t.Errorf("an unpackaged CrispASR was chosen automatically")
+	}
+	for _, o := range rec.Options {
+		if o.BackendID == "crispasr-metal" {
+			codes := []string{}
+			for _, w := range o.Warnings {
+				codes = append(codes, w.Code)
+			}
+			if !slices.Contains(codes, CodeNoManagedPackage) {
+				t.Errorf("warnings %v", codes)
 			}
 		}
-		if listed == nil {
-			t.Fatal("CrispASR is not listed")
+	}
+	// The pinned package: installable, chosen.
+	h = host("darwin", "arm64", []string{"metal", "cpu"}, reg, map[string]string{"crispasr-metal": Installable, "crispasr-cpu": Installable})
+	if rec := reg.Recommend(tts, h, nil); rec.BackendID != "crispasr-metal" {
+		t.Errorf("pinned CrispASR not chosen: %q", rec.BackendID)
+	}
+	// Recognition is not qualified: a GGUF whisper model goes to whisper.cpp
+	// even with CrispASR installed and first in the routing order, and the
+	// CrispASR option says why it was passed over.
+	stt := &models.Model{ID: "w", Tasks: []string{"transcription"}, Capabilities: []string{}, Variants: []models.Variant{{ID: "v",
+		Format: models.Of("gguf", models.SourceInspect), Architecture: models.Of("whisper", models.SourceInspect),
+		Artifacts: []models.Artifact{{Filename: "w.gguf", Role: models.RoleWeights, Required: true}}}}}
+	h = host("darwin", "arm64", []string{"metal", "cpu"}, reg, map[string]string{"crispasr-metal": Installed, "crispasr-cpu": Installed, "whisper.cpp-metal": Installed})
+	rec = reg.Recommend(stt, h, nil)
+	if strings.HasPrefix(rec.BackendID, "crispasr") {
+		t.Errorf("CrispASR chosen automatically for transcription: %q", rec.BackendID)
+	}
+	for _, o := range rec.Options {
+		if o.BackendID == "crispasr-metal" && !slices.ContainsFunc(o.Warnings, func(w Reason) bool { return w.Code == CodeManualOnly }) {
+			t.Errorf("CrispASR transcription option lacks %s: %v", CodeManualOnly, o.Warnings)
 		}
-		codes := []string{}
-		for _, w := range listed.Warnings {
-			codes = append(codes, w.Code)
-		}
-		if !slices.Contains(codes, CodeManualOnly) || (installed == Missing && !slices.Contains(codes, CodeNoManagedPackage)) {
-			t.Errorf("install=%s: warnings %v", installed, codes)
-		}
+	}
+	if rec := reg.Recommend(tts, h, nil); rec.BackendID != "crispasr-metal" {
+		t.Errorf("installed CrispASR not chosen for speech: %q", rec.BackendID)
+	}
+	bad := *reg.Get("crispasr-metal")
+	bad.AutomaticTasks = []string{"image"}
+	if err := bad.Validate(); err == nil || !strings.Contains(err.Error(), "automaticTasks") {
+		t.Errorf("automaticTasks outside tasks: %v", err)
+	}
+	// The Vulkan build is manual-only, even when installed.
+	h = host("linux", "x64", []string{"vulkan", "cpu"}, reg, map[string]string{"crispasr-vulkan": Installed, "crispasr-cpu": Missing})
+	h.Unpackaged = map[string]bool{"crispasr-cpu": true}
+	if rec := reg.Recommend(tts, h, nil); strings.HasPrefix(rec.BackendID, "crispasr") {
+		t.Errorf("Linux CrispASR chosen automatically: %q", rec.BackendID)
 	}
 }

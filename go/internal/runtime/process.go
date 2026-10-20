@@ -27,7 +27,13 @@ const maxLogLine = 4096
 // StartProcess launches bin with args. Output lines are logged at debug
 // level, bounded per line, under the runtime's name.
 func StartProcess(name, bin string, args []string, env []string, log *slog.Logger) (*Process, error) {
+	return StartProcessIn(name, bin, "", args, env, log)
+}
+
+// StartProcessIn is StartProcess with a working directory ("" = inherit).
+func StartProcessIn(name, bin, dir string, args []string, env []string, log *slog.Logger) (*Process, error) {
 	cmd := exec.Command(bin, args...)
+	cmd.Dir = dir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if env != nil {
 		cmd.Env = env

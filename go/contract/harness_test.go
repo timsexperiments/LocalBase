@@ -132,6 +132,9 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 			sttSel = `["whisper-base-en-q8_0","whisper-tiny-en-q8_0"]`
 		}
 	}
+	if err := linkCrispASR(r); err != nil {
+		return "", "", "", false, err
+	}
 	_, err = st.DB.Exec(`INSERT INTO config (id, root, gateway_host, gateway_port, host, port, ctx_size, ctx_mode,
 		stt_host, stt_port, selected_llm_models, selected_stt_models, selected_tts_models, selected_image_models,
 		selected_video_models, allow_experimental, active_llm_model, active_stt_model, active_tts_model,
@@ -218,7 +221,8 @@ func launch(impl string) (*Target, error) {
 		return nil, err
 	}
 	var cmd *exec.Cmd
-	args := []string{"--root", rootDir, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort)}
+	args := []string{"--root", rootDir, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort),
+		"--tts-port", fmt.Sprint(freePort()), "--image-port", fmt.Sprint(freePort()), "--video-port", fmt.Sprint(freePort())}
 	switch impl {
 	case "go":
 		bin := filepath.Join(dir, "local-base")

@@ -193,8 +193,11 @@ func Assess(m *models.Model, v *models.Variant, d *Definition, h Host, missing [
 			warn(CodeNotInstalled, "Not installed on this device.")
 		}
 	}
-	if !d.automatic() {
+	switch {
+	case !d.automatic():
 		warn(CodeManualOnly, "LocalBase never picks this backend automatically; you can still choose it.")
+	case !d.automaticFor(m):
+		warn(CodeManualOnly, "LocalBase picks this backend automatically only for %s, which it has qualified; you can still choose it.", strings.Join(d.AutomaticTasks, ", "))
 	}
 	if len(missing) > 0 {
 		warn(CodeFilesMissing, "These files are not downloaded yet: %s.", strings.Join(missing, ", "))

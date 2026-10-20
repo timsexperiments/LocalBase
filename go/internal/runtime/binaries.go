@@ -38,7 +38,7 @@ type manifest struct {
 // executableFamily maps an executable to the runtime package that ships it.
 var executableFamily = map[string]string{
 	"llama-server": "llama-server", "llama-tts": "llama-server", "whisper-server": "whisper-server",
-	"sd-server": "sd-server", "sd-cli": "sd-server", "tts-server": "tts-server",
+	"sd-server": "sd-server", "sd-cli": "sd-server", "tts-server": "tts-server", "crispasr": "crispasr",
 }
 
 func pinnedRuntime(family string) (manifestArtifact, bool) {
@@ -61,8 +61,7 @@ func pinnedRuntime(family string) (manifestArtifact, bool) {
 // binary installs. On CLI-only platforms a user-managed executable on PATH
 // (outside <root>/bin) is used instead. Downloading arrives in milestone 2.
 func ResolveBinary(runtimesDir, name string) (string, error) {
-	family := executableFamily[name]
-	if pin, ok := pinnedRuntime(family); ok {
+	if family, pin, _, ok := release(name); ok {
 		path := filepath.Join(runtimesDir, family, strings.ToLower(pin.SHA256), name)
 		if fileExists(path) {
 			return path, nil
@@ -82,11 +81,7 @@ func ResolveBinary(runtimesDir, name string) (string, error) {
 // HasPinnedRuntime reports a managed package for an executable on this
 // platform.
 func HasPinnedRuntime(name string) bool {
-	family, ok := executableFamily[name]
-	if !ok {
-		return false
-	}
-	_, ok = pinnedRuntime(family)
+	_, _, _, ok := release(name)
 	return ok
 }
 

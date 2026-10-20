@@ -800,7 +800,7 @@ files are fetched.
 | --- | --- | --- | --- |
 | llama.cpp | chat, vision, embeddings, decisions | macOS Metal; Linux Vulkan and a managed CUDA build; CPU | Integrated. The Mac and Linux pins should match (today: b11671 on the Mac and a different Linux pin); the CUDA package is new work. |
 | stable-diffusion.cpp | images, video | Metal, Vulkan | Integrated in TS (M4/M6 in Go). Exact launch profile per architecture. |
-| CrispASR | TTS now (Kokoro, Qwen TTS); ASR after qualification | Mac, Linux | TTS Mac/Linux tests done (audit 2026-10-20). Parakeet, Qwen-ASR, Whisper and Vulkan are documented upstream but not qualified here. No managed pin yet. |
+| CrispASR | TTS now (Kokoro, Qwen TTS); ASR after qualification | Mac, Linux | TTS Mac/Linux tests done (audit 2026-10-20). Parakeet, Qwen-ASR, Whisper and Vulkan are documented upstream but not qualified here. macOS arm64 is pinned in M4 (§13.3); Linux is not. |
 | whisper.cpp | ASR | Metal, Vulkan | Transition exception until CrispASR ASR is qualified. |
 | ONNX Runtime (CPU) | Kokoro | CPU | Transition exception; replaced by CrispASR Kokoro once pinned. |
 
@@ -850,7 +850,7 @@ export and the database for three planted secrets.
 | OP2 profiles redacted everywhere (planted secrets) | `OP2 no output, page, log, export or database contains a planted secret` | `acquire.TestDirectURLImport` |
 | OP3 HF token off CDN origins unless the `huggingface` profile lists them; anonymous CDN works; HTTPS→HTTP refused | `OP3 the Hugging Face token stays off CDN origins ...`, `OP3 an HTTPS to plain-HTTP redirect is refused, even with --allow-http, and no header crosses it` (direct URL and HF→http CDN hop) | `acquire.TestHFTokenCDNScope`, `TestRedirectDowngradeRefused` |
 | OP4 ratings never from names; user sentences plus machine codes; findings table | `OP4 models inspect --json has a findings table ...`, `AC2 ...` | `backends.TestNoRatingFromNames` |
-| OP5 CrispASR listed as not installed, never automatic until pinned | `OP5 CrispASR is listed as not installed ...` (backends list, the API, the selector page, and a Kokoro speech model it rates supported but is never chosen for) | `backends.TestCrispASRWithoutPin` |
+| OP5 CrispASR listed as not installed, never automatic until pinned (M4: automatic only where pinned, and only for speech) | `OP5 CrispASR is automatic only where pinned, and only for speech` (backends list, a Kokoro speech model, a GGUF whisper model it is never chosen for) | `backends.TestCrispASRWithoutPin` |
 | Rollback stays a binary swap | `rollback: TS opens the database Go wrote` | `store.TestBackendChoicesPersist` |
 
 HTTPS→HTTP redirects are refused anywhere in a redirect chain (no consent
@@ -915,6 +915,38 @@ custom-registered builds. **CrispASR speech recognition stays unqualified**:
 whisper.cpp keeps transcription until CrispASR ASR is measured here, and
 CrispASR's ASR architectures stay `likely`.
 
+The definitions enforce that split with `automaticTasks: ["speech"]`: routing
+picks a backend automatically only for models whose tasks are all listed, so
+a GGUF whisper import goes to whisper.cpp even though `crispasr-metal` comes
+first in the routing order. CrispASR transcription stays selectable by hand,
+with the `not-chosen-automatically` warning.
+
+The managed package is installed on first use (`runtime.EnsureBinary`):
+- the archive is checked against its pinned size and sha256 and extracted
+  with path checks;
+- the Misaki dictionary is rebuilt from two pinned hexgrad/misaki files (gold
+  first, then silver entries gold lacks) and must reproduce its recorded
+  sha256 `9c44a4b8…`;
+- a TS-compatible `.managed-binaries.json` receipt is written.
+
+An installed package with a missing or damaged dictionary is rebuilt, and
+the adapter refuses to start without it (builtin G2P mispronounces common
+words). The server runs as the screen did: builtin-only G2P, no punctuation
+model, network blocked by dead proxies, working directory the model
+directory.
+
+The Kokoro catalog model gains a `crispasr-f16` variant (pinned
+`cstr/kokoro-82m-GGUF` F16 weights and the `af_heart` voice GGUF), qualified
+on `crispasr-metal` and `crispasr-cpu`. `af_bella` is not in the pinned voice
+revision, so it answers `voice_not_supported` on this variant. `onnx-cpu`
+becomes manual-only.
+
+**Provenance (product decision, open):** CrispASR adds an inaudible AI-content
+watermark and C2PA metadata by default. LocalBase passes none of its marking
+opt-outs, so Kokoro output through CrispASR is marked; tts-server output is
+not. Qwen3-TTS through CrispASR needs a reference voice and a consent
+attestation and is deferred; Qwen TTS stays on tts-server.
+
 ### 13.4 Plan
 
 | Step | Contents |
@@ -926,3 +958,19 @@ CrispASR's ASR architectures stay `likely`.
 | 5 | Images: sd-server adapter, `/v1/images/generations` and `/edits`, LoRA |
 | 6 | UI: Lab pages (speak, transcribe, images) and the voices page |
 | 7 | Contract cases TS/Go for every route; real small-model runs (whisper tiny, Kokoro) on scratch roots |
+
+### 13.5 Status
+
+| Step | State | Evidence |
+| --- | --- | --- |
+| 1 | Done | `runtime.TestService*` (queue, admission, switch, crash recovery, close) |
+| 2 | Done | `TestDifferentialTranscriptionRejections`; `TestTranscriptionReal` (whisper tiny.en, identical text on TS and Go in every format) |
+| 3 | Done for Kokoro via CrispASR and the tts-server adapter | `TestDifferentialSpeechRejections` (same status, code, param and message as TS); `TestSpeechKokoroCrispASR` (automatic `crispasr-metal`, WAV/PCM/SSE, whisper hears the input); `runtime.TestEnsureBinaryInstallsPinnedRelease` (offline: checksums, extraction, dictionary rebuild); `backends.TestCrispASRWithoutPin` |
+| 4–7 | Not started | |
+
+`serve` now honours `--stt-*`, `--tts-*` and `--image-*` host and port
+options and `--no-stt`, `--no-tts` and `--no-image` (TS defaults: TTS 8092,
+images 8090). The TTS server restarts when the custom voice set changes,
+since it loads voices at launch. `TestSpeechKokoroCrispASR` needs
+`LOCALBASE_CONTRACT_CRISPASR` (the unpacked release, the dictionary and the
+pinned Kokoro files) and is skipped in CI.

@@ -353,7 +353,7 @@ func backendsCommand() *cli.Command {
 				h := l.Host()
 				c.Info("%-30s %-10s %-40s %s", d.ID, kind, h.InstallLabel(d.ID), strings.Join(d.Tasks, ","))
 				out = append(out, map[string]any{"id": d.ID, "name": d.Name, "engine": d.Engine, "builtIn": d.BuiltIn,
-					"install": h.Install[d.ID], "installLabel": h.InstallLabel(d.ID), "automatic": d.Automatic == nil || *d.Automatic,
+					"install": h.Install[d.ID], "installLabel": h.InstallLabel(d.ID), "automatic": d.Automatic == nil || *d.Automatic, "automaticTasks": d.AutomaticTasks,
 					"tasks": d.Tasks, "adapter": d.Adapter})
 			}
 			for _, d := range l.Registry.Skipped() {

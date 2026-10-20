@@ -1,6 +1,8 @@
 package models
 
 import (
+	_ "embed"
+	"encoding/json"
 	"slices"
 	"strings"
 
@@ -42,6 +44,9 @@ func FromSpec(s *catalog.Spec) Model {
 		v.QualifiedOn = qualifiedOn(s)
 	}
 	m.Variants = []Variant{v}
+	if s.Trust == "qualified" {
+		m.Variants = append(m.Variants, overlayVariants[s.ModelID]...)
+	}
 	return m
 }
 
@@ -211,3 +216,17 @@ func qualifiedOn(s *catalog.Spec) []string {
 	}
 	return nil
 }
+
+//go:embed catalog-variants.json
+var catalogVariantsJSON []byte
+
+// overlayVariants are the extra variants of built-in catalog models.
+var overlayVariants = func() map[string][]Variant {
+	var f struct {
+		Models map[string][]Variant `json:"models"`
+	}
+	if err := json.Unmarshal(catalogVariantsJSON, &f); err != nil {
+		panic("catalog-variants.json: " + err.Error())
+	}
+	return f.Models
+}()
