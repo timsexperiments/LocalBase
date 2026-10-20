@@ -1057,3 +1057,26 @@ origin. Recording, file conversion and resampling to WAV happen in the
 browser (`static/js/audio.js`), since the server decodes only WAV.
 `TestServeForUI` serves the contract fixture with `--no-auth` on a test
 port for checking the pages by hand.
+
+## 14. M5: catalog feed, discovery, declarative config, diagnostics, OTLP
+
+Stacked on M4 (`rewrite/go-m5` on `rewrite/go-m4`). M5 makes the Go gateway
+feature-complete except video. Every route and command keeps the TS contract,
+checked side by side; where TS talks to the network (Hugging Face, the feed,
+an OTLP collector), goldens come from running the TS code against recorded
+or local responses.
+
+### 14.1 Plan
+
+| Step | Contents | Evidence |
+| --- | --- | --- |
+| 1 | `/_localbase/model-management` (GET state; POST install, uninstall, enable, disable, activate; install answers 202 with an operation to poll) | Differential cases on twin scratch roots, a local download source for installs |
+| 2 | Remote catalog feed: download, format/version/sha256 checks, per-entry validation, annotations, the `cache/catalog-feed` last-good copy, the 24 h schedule in `serve`, `models feed` CLI, `LOCALBASE_CATALOG_FEED_URL` | Feed goldens from `remote-feed.ts`; both gateways loading the same local feed |
+| 3 | Hugging Face discovery: `models search`, `models add hf:…`, `models remove-entry`, `/_localbase/model-discovery` | Goldens from `huggingface.ts`/`discovery.ts` with a mocked fetch; Go against a local fake hub |
+| 4 | `config validate/plan/apply/show` (declarative TOML) | CLI contract on twin roots |
+| 5 | `diagnostics` (redacted ZIP bundle) | Bundle listing and redaction compared with TS; planted secrets never appear |
+| 6 | OTLP export of traces and logs over `http/protobuf` (the only protocol TS supports), the OTEL_* settings, export-failure reporting, and the TS log redaction rules | A local collector decodes both gateways' exports for the same requests; protobuf encoding hand-written, no SDK |
+| 7 | Contract sweep and real runs; DESIGN status | Full suite on both implementations |
+
+OTLP stays dependency-free: the exporter encodes the few OTLP protobuf
+messages it needs (resource, scope, spans, log records, attributes) directly.
