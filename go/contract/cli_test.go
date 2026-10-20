@@ -289,7 +289,9 @@ func TestTSReadsGoLogs(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("ts logs: %d %s %s", r.code, r.stdout, r.stderr)
 	}
-	var env struct{ Data struct{ Events []map[string]any } }
+	var env struct {
+		Data struct{ Events []map[string]any }
+	}
 	if err := json.Unmarshal([]byte(r.stdout), &env); err != nil {
 		t.Fatal(err)
 	}
