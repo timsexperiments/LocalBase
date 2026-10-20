@@ -464,7 +464,6 @@ func installer(e *env, allowed bool, log *slog.Logger) func(context.Context, str
 	}
 }
 
-
 func modelsShow() *cli.Command {
 	return &cli.Command{Name: "show", Summary: "Show everything known about one model", Usage: "<modelId>", MinArgs: 1, MaxArgs: 1,
 		Examples: []string{"local-base models show qwen2.5-coder-7b-instruct-q4_k_m", "local-base --json models show whisper-large-v3-turbo"},

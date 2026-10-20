@@ -166,7 +166,9 @@ func TestCLIInitAndKeys(t *testing.T) {
 	ids := [2]string{}
 	for i, impl := range []string{"ts", "go"} {
 		r := runCLI(t, impl, roots[i], "--json", "keys", "list")
-		var env struct{ Data struct{ Keys []struct{ ID string } } }
+		var env struct {
+			Data struct{ Keys []struct{ ID string } }
+		}
 		json.Unmarshal([]byte(r.stdout), &env)
 		if len(env.Data.Keys) == 0 {
 			t.Fatalf("%s: no keys", impl)
