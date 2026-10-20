@@ -19,6 +19,14 @@ type Fit struct {
 	ObservedPeakBytes *int64 `json:"observed_peak_bytes"`
 	Fit               string `json:"fit"`
 	SystemMemoryGB    int    `json:"system_memory_gb"`
+
+	// Detail for /_localbase/models.
+	DemandBytes     int64                `json:"-"`
+	ReferenceBytes  int64                `json:"-"`
+	ReferenceSource string               `json:"-"`
+	ReferenceShape  string               `json:"-"`
+	Observed        *store.ObservedPeak  `json:"-"`
+	Peaks           []store.ObservedPeak `json:"-"`
 }
 
 // ReferenceShape is the launch-shape key of a model's catalog reference
@@ -43,7 +51,8 @@ func FitFor(spec *catalog.Spec, systemGB int, g *memory.Geometry, observed []sto
 		ref, source = d.AcceleratorBytes, "measured"
 	}
 	shape := ReferenceShape(spec, g)
-	f := &Fit{Source: source, LaunchShape: shape, SystemMemoryGB: systemGB}
+	f := &Fit{Source: source, LaunchShape: shape, SystemMemoryGB: systemGB, ReferenceBytes: ref, ReferenceSource: source,
+		ReferenceShape: shape, Peaks: observed}
 	demand := ref
 	var pick *store.ObservedPeak
 	for i := range observed { // newest first
@@ -62,8 +71,9 @@ func FitFor(spec *catalog.Spec, systemGB int, g *memory.Geometry, observed []sto
 	if pick != nil {
 		demand = pick.PeakBytes
 		peak := pick.PeakBytes
-		f.Source, f.LaunchShape, f.ObservedPeakBytes = "observed", pick.LaunchShape, &peak
+		f.Source, f.LaunchShape, f.ObservedPeakBytes, f.Observed = "observed", pick.LaunchShape, &peak, pick
 	}
+	f.DemandBytes = demand
 	f.MinVramGB = memory.MinimumMemoryGB(demand)
 	switch {
 	case systemGB < f.MinVramGB:

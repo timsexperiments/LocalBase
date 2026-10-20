@@ -89,6 +89,7 @@ type LLM struct {
 	closed   bool
 	geometry map[string]geometryEntry
 	probes   sync.WaitGroup
+	failed   bool // the last start failed and nothing runs
 }
 
 type geometryEntry struct {
@@ -317,6 +318,7 @@ func (m *LLM) switchTo(modelID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.starting = false
+	m.failed = err != nil && m.cur == nil
 	if err != nil {
 		for len(m.queue) > 0 && m.queue[0].model == modelID {
 			m.fail(m.queue[0], err)
@@ -554,4 +556,41 @@ func (m *LLM) ensureInstalled(modelID string) error {
 		return &NotInstalledError{ModelID: modelID}
 	}
 	return m.d.Install(context.Background(), modelID)
+}
+
+// Snapshot is the runtime's lifecycle state for health and metadata.
+type Snapshot struct {
+	State     string // disabled | idle | starting | running | draining | stopping | failed
+	ModelID   string // running model, else the active one
+	Slots     int    // execution slots of the running model, 0 if none
+	Active    int
+	Waiting   int
+	Capacity  int
+	Accepting bool
+}
+
+func (m *LLM) Snapshot() Snapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := Snapshot{ModelID: m.cfg.Active["llm"], Active: m.active, Waiting: len(m.queue), Capacity: m.d.QueueCapacity,
+		Accepting: !m.closed}
+	switch {
+	case m.closed:
+		s.State = "stopping"
+	case m.starting:
+		s.State = "starting"
+	case m.cur != nil:
+		s.State, s.ModelID, s.Slots = "running", m.cur.modelID, m.cur.plan.Parallel.Slots
+		if len(m.queue) > 0 && m.queue[0].model != m.cur.modelID && m.active > 0 {
+			s.State = "draining"
+		}
+	case m.failed:
+		s.State = "failed"
+	default:
+		s.State = "idle"
+	}
+	if len(ConfiguredIDs(m.cfg, "llm")) == 0 {
+		s.State = "disabled"
+	}
+	return s
 }

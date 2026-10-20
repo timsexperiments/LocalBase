@@ -2,6 +2,7 @@ package contract
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -403,4 +404,88 @@ func TestEmbeddings(t *testing.T) {
 			t.Errorf("embedding has %d dimensions", len(vec))
 		}
 	})
+}
+
+// diffJSON returns the paths where a and b differ, skipping paths for which
+// skip returns true.
+func diffJSON(path string, a, b any, skip func(string) bool) []string {
+	if skip != nil && skip(path) {
+		return nil
+	}
+	switch av := a.(type) {
+	case map[string]any:
+		bv, ok := b.(map[string]any)
+		if !ok {
+			return []string{path}
+		}
+		var out []string
+		keys := map[string]bool{}
+		for k := range av {
+			keys[k] = true
+		}
+		for k := range bv {
+			keys[k] = true
+		}
+		sorted := make([]string, 0, len(keys))
+		for k := range keys {
+			sorted = append(sorted, k)
+		}
+		sort.Strings(sorted)
+		for _, k := range sorted {
+			out = append(out, diffJSON(path+"."+k, av[k], bv[k], skip)...)
+		}
+		return out
+	case []any:
+		bv, ok := b.([]any)
+		if !ok || len(av) != len(bv) {
+			return []string{path + fmt.Sprintf(" (len %d vs %v)", len(av), len(bv))}
+		}
+		var out []string
+		for i := range av {
+			out = append(out, diffJSON(fmt.Sprintf("%s[%d]", path, i), av[i], bv[i], skip)...)
+		}
+		return out
+	}
+	if !reflect.DeepEqual(a, b) {
+		return []string{fmt.Sprintf("%s: %v vs %v", path, a, b)}
+	}
+	return nil
+}
+
+// TestDifferentialModelMetadata compares /_localbase/models between the two
+// implementations, apart from live host memory and runtime queue state.
+func TestDifferentialModelMetadata(t *testing.T) {
+	if len(targets) < 2 {
+		t.Skip("run with -impl=both")
+	}
+	volatile := func(p string) bool {
+		return p == ".host.memory.system.availableBytes" || strings.HasSuffix(p, ".device.runtime") ||
+			strings.Contains(p, ".observedPeaks") || strings.Contains(p, ".memory.observed") ||
+			strings.HasSuffix(p, ".memory.demandBytes") || strings.HasSuffix(p, ".memory.minimumVramEstimateGb") ||
+			strings.HasSuffix(p, ".memory.source") || strings.HasSuffix(p, ".memory.launchShape") ||
+			strings.HasSuffix(p, ".fit.headroomGb") || strings.HasSuffix(p, ".fit.verdict")
+	}
+	for _, path := range []string{"/_localbase/models", "/_localbase/models/" + chatModel, "/_localbase/models/" + embeddingModel,
+		"/_localbase/models?kind=stt,tts&sort=size", "/_localbase/models?q=qwen%20coder", "/_localbase/models?capability=tool-calling&fit=fits,tight",
+		"/_localbase/models?installed=true", "/_localbase/models?sort=context&reverse=true", "/_localbase/models?license=open&sort=name",
+		"/_localbase/models?sort=fit", "/_localbase/models/no-such-model"} {
+		var bodies []any
+		var statuses []int
+		for _, tg := range targets {
+			r := do(t, "GET", tg.BaseURL+path, bearer(tg.Key), "")
+			var v any
+			json.Unmarshal(r.Body, &v)
+			bodies, statuses = append(bodies, v), append(statuses, r.Status)
+		}
+		if statuses[0] != statuses[1] {
+			t.Errorf("%s: status %d vs %d", path, statuses[0], statuses[1])
+			continue
+		}
+		if d := diffJSON("", bodies[0], bodies[1], volatile); len(d) > 0 {
+			if len(d) > 15 {
+				d = append(d[:15], fmt.Sprintf("... %d more", len(d)-15))
+			}
+			t.Errorf("%s differs (%s vs %s):\n  %s", path, targets[0].Name, targets[1].Name, strings.Join(d, "\n  "))
+		}
+	}
 }

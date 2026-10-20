@@ -101,7 +101,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 		Log: log, MemoryGB: 64, Binary: fakeBinary, QueueCapacity: 4, QueueTimeout: 5 * time.Second}, cfg)
 	t.Cleanup(llm.Close)
 	srv := New(&Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, LLM: llm, Log: log,
-		NoAuth: true, MemoryGB: 64, Root: r})
+		NoAuth: true, MemoryGB: 64, Root: r, Memory: mem})
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 	return ts

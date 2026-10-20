@@ -15,6 +15,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -32,6 +33,7 @@ type Server struct {
 	NoAuth   bool
 	MemoryGB int
 	Root     *root.Root
+	Memory   *memory.Controller
 	// UI handles /app and / when set.
 	UI http.Handler
 
@@ -50,6 +52,8 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/v1/chat/completions", s.guard("inference:chat", s.chat))
 	mux.HandleFunc("/v1/embeddings", s.guard("inference:embeddings", s.embeddings))
 	mux.HandleFunc("/v1/systemone", s.guard("inference:decision", s.systemone))
+	mux.HandleFunc("/_localbase/models", s.guard("models:read", s.modelMetadata))
+	mux.HandleFunc("/_localbase/models/{model...}", s.guard("models:read", s.modelMetadata))
 	if s.UI != nil {
 		mux.Handle("/app", s.UI)
 		mux.Handle("/app/", s.UI)
