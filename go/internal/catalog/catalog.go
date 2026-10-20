@@ -305,3 +305,32 @@ func sameJSON(a, b json.RawMessage) bool {
 	}
 	return reflect.DeepEqual(x, y)
 }
+
+// Installation reports whether every artifact is in dir at its expected size
+// (no hashing), and the bytes found.
+func (s *Spec) Installation(dir string) (complete bool, bytes int64) {
+	complete = true
+	for _, a := range s.Artifacts {
+		info, err := os.Stat(filepath.Join(dir, a.Filename))
+		if err != nil || !info.Mode().IsRegular() || (a.ExpectedSizeBytes > 0 && info.Size() != a.ExpectedSizeBytes) {
+			complete = false
+			continue
+		}
+		bytes += info.Size()
+	}
+	return complete, bytes
+}
+
+// Projector is an LLM's vision/audio projector artifact, if it ships one.
+func (s *Spec) Projector() *Artifact {
+	if s.Kind != "llm" {
+		return nil
+	}
+	for i := range s.Artifacts {
+		a := &s.Artifacts[i]
+		if a.Role == "supplementary" && strings.Contains(strings.ToLower(a.Filename), "mmproj") {
+			return a
+		}
+	}
+	return nil
+}

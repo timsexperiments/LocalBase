@@ -59,7 +59,7 @@ Line counts are production code, without tests.
    database rows and config files.
 3. **Three TTS backends.** These are cold `llama-tts` per request, warm
    `tts-server`, and Kokoro, which ships a bundled Bun runtime. Keep
-   `tts-server` only. Kokoro is a decision for you (§10).
+   `tts-server` only. Kokoro is dropped (§11).
 4. **The `/app/api/*` mirror and the UI's JSON client.** The React app calls a
    mirror of every API route under `/app/api` with a cookie session, and
    re-parses every response. With a server-rendered UI, page handlers call the
@@ -133,8 +133,7 @@ Go standard library first. Every addition needs a reason:
 | Module | Why |
 | --- | --- |
 | `modernc.org/sqlite` | Pure-Go SQLite, so `CGO_ENABLED=0` still produces a static binary and cross-compiling to linux/amd64 is trivial. |
-| `github.com/ebitengine/purego` (darwin only, proposed; question 6) | Calls `host_statistics64` (free + inactive pages) and Metal's `recommendedMaxWorkingSetSize` without cgo. `sysctl` doesn't expose inactive pages, and the working-set probe matters: 0.81× on a 64 GB M4 Max against a 0.75× heuristic. M0 ships the fallback: it shells out to `vm_stat` and uses the heuristic, with `LOCALBASE_GPU_WORKING_SET_GB` as an override. |
-| `github.com/BurntSushi/toml` (milestone 5) | `config show/plan/apply` TOML. Small and stable. |
+| (none else) | Dropped after review (§11): purego (Metal working set comes from `llama-server --list-devices`) and a TOML library (a small reader like TS's `toml.ts`). |
 
 Not added: an HTTP router (Go 1.22+ `ServeMux` patterns cover every route), a
 CLI framework, a logging library, the OTel SDK, a JSON Schema library, a JWT
@@ -266,7 +265,7 @@ Drop = removed, with the reason.
 | `/app/api/*` mirror | Drop | Only the React UI used it (§2.4). Browser sessions on `/v1/*` keep working for UI-originated fetches such as chat streaming. |
 | `/`, `/app`, `/app/login*`, `/app/logout`, `/app/session` | Simplify | Server-rendered pages (§6). `/app/session` stays for expiry probing. |
 | `/oidc/callback`, `/magic-link/callback` | Keep | |
-| `/github/callback` | Question (§10) | Not used by the live install. |
+| `/github/callback` | Drop (§11) | Not used by the live install. |
 | Unmatched routes | Keep | 404 `route_disabled`, plus `route_family`/`route_segments` log hints (#362). |
 
 Cross-cutting behavior that stays:
@@ -300,8 +299,8 @@ Cross-cutting behavior that stays:
 | `keys list/create/revoke/rotate/scopes` | Keep | Same JSON envelope. |
 | `voices list/add/remove` | Keep | |
 | `access show/cloudflare/oidc/disable/policy/users` | Keep | |
-| `access magic-link`, `access email` | Keep if you keep magic link (§10) | |
-| `access github` | Question (§10) | |
+| `access magic-link`, `access email` | Keep (§11) | |
+| `access github` | Drop (§11) | |
 | `logs` | Keep | `--follow`, `--level`, `--since`, `--limit`, `--runtime`, `--request-id`. |
 | `doctor`, `diagnostics` | Simplify | One report struct. The bundle drops paths and content, as today. |
 | `smoke` | Keep (#356, #360) | Temp key, a 4-token chat or one systemone question, then the key is deleted. `--switch-to`. |
@@ -416,10 +415,9 @@ running state, the selected model).
 
 Simplified or dropped in the UI:
 
-- Chat auto-compaction (compaction.ts, 345 lines) becomes a plain
-  "conversation is near the context limit" notice with a "start a new chat
-  with a summary" action. That makes one explicit model call instead of a
-  hidden background compaction. **Simplify.**
+- Chat auto-compaction (compaction.ts) is kept in the chat UI: older turns fold
+  into a model-written summary at 75% of the context. The API never compacts
+  (§11). **Keep.**
 - Block-wise progressive markdown rendering for very long chats (#297)
   becomes chunked append only. Revisit if long chats get slow on the phone.
   **Simplify.**
@@ -563,20 +561,25 @@ Disk note: the machine had about 57 GB free when this work started, below the
 for the contract suite) and an 80 MB Tailwind CLI in `go/.cache`. Scratch roots
 symlink model files rather than copying them.
 
-## 11. Questions for you
+## 11. Decisions (2026-10-19)
 
-1. **Kokoro TTS.** Your memory notes say Kokoro (#175) is the next feature,
-   and it needs a bundled Bun runtime. Do you want Go to support Kokoro at
-   cutover, or keep it out of scope until the rewrite lands?
-2. **GitHub OAuth and magic-link sign-in.** The live install uses Google OIDC
-   only. Should we drop GitHub OAuth? Keep magic link (it pulls in SMTP
-   config and the `access email` commands)?
-3. **Linux S2V video and whisper PCI matching.** These target Linux NVIDIA
-   only. Port them in M6, or drop them until there's a Linux NVIDIA user?
-4. **Chat auto-compaction.** Replace it with an explicit "new chat with
-   summary" action (§6), or keep automatic compaction?
-5. **Binary name.** Keep `local-base`, or switch to `localbase` with a
-   `local-base` symlink?
-6. **purego.** Accept this one darwin-only dependency for accurate free
-   memory and the Metal working set, or use `vm_stat` and a 0.75× heuristic
-   with no dependency?
+1. **Kokoro TTS: dropped.** Speech uses the warm `tts-server` only. Kokoro
+   catalog entries are listed but report `unsupported_runtime`; Kokoro can come
+   back later as its own feature.
+2. **Sign-in: OIDC, Cloudflare Access and magic link.** GitHub OAuth is dropped
+   (`/github/callback` and `access github`). Magic-link mail uses `net/smtp`.
+3. **Linux NVIDIA-only features (S2V video, whisper PCI matching): deferred.**
+   The modality slot and the platform probe stay open for them, and Pixelator
+   is available to test NVIDIA work when they are added.
+4. **Compaction.** The chat UI compacts automatically, as today. The API never
+   rewrites a conversation: an overflowing prompt gets OpenAI's
+   `400 context_length_exceeded` error, as OpenAI and OpenRouter do.
+5. **Binary name: `local-base`**, unchanged, so the launchd unit, scripts and
+   rollback stay as they are.
+6. **No purego.** The user wants as few dependencies as possible. Free memory
+   comes from `vm_stat`, and the Metal working set from the managed
+   llama-server's `--list-devices` output, read once and cached. The 0.75×
+   heuristic and `LOCALBASE_GPU_WORKING_SET_GB` remain the fallback.
+7. **TOML without a library.** TS already has its own small TOML reader and
+   writer (`src/utils/toml.ts`); Go ports that subset too. The only third-party
+   module stays `modernc.org/sqlite`.

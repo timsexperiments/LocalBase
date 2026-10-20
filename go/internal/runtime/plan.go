@@ -187,11 +187,9 @@ func PlanLLM(in PlanInput) (*LLMPlan, error) {
 		if p.Embedding {
 			p.Pooling = spec.LLMRuntime.Pooling
 		}
-		for _, a := range spec.Artifacts {
-			if a.Role == "supplementary" && strings.Contains(strings.ToLower(a.Filename), "mmproj") && spec.Kind == "llm" {
-				if path := filepath.Join(in.ModelsDir, a.Filename); fileExists(path) {
-					p.ProjectorPath = path
-				}
+		if a := spec.Projector(); a != nil {
+			if path := filepath.Join(in.ModelsDir, a.Filename); fileExists(path) {
+				p.ProjectorPath = path
 			}
 		}
 	}

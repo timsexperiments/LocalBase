@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -137,7 +138,7 @@ func (g *ggufReader) u64() (uint64, error) {
 	return binary.LittleEndian.Uint64(b[:]), err
 }
 
-func (g *ggufReader) str(keep bool) (string, bool, error) {
+func (g *ggufReader) str(keep bool, maxBytes int) (string, bool, error) {
 	n, err := g.u64()
 	if err != nil {
 		return "", false, err
@@ -145,7 +146,7 @@ func (g *ggufReader) str(keep bool) (string, bool, error) {
 	if n > 1<<30 {
 		return "", false, errors.New("implausible GGUF string")
 	}
-	if !keep || n > maxKeptStringBytes {
+	if !keep || n > uint64(maxBytes) {
 		_, err := g.r.Discard(int(n))
 		return "", false, err
 	}
@@ -202,10 +203,10 @@ func (g *ggufReader) scalar(t uint32) (float64, error) {
 }
 
 // value is a kept scalar (float64), string, or []float64.
-func (g *ggufReader) value(t uint32, keep bool) (any, error) {
+func (g *ggufReader) value(t uint32, keep bool, maxStr int) (any, error) {
 	switch {
 	case t == 8:
-		s, ok, err := g.str(keep)
+		s, ok, err := g.str(keep, maxStr)
 		if !ok {
 			return nil, err
 		}
@@ -230,7 +231,7 @@ func (g *ggufReader) value(t uint32, keep bool) (any, error) {
 				return nil, err
 			}
 			for i := uint64(0); i < n; i++ {
-				if _, err := g.value(et, false); err != nil {
+				if _, err := g.value(et, false, 0); err != nil {
 					return nil, err
 				}
 			}
@@ -257,6 +258,11 @@ func (g *ggufReader) value(t uint32, keep bool) (any, error) {
 
 // ReadGGUFKeys reads the geometry-relevant header keys of a GGUF file.
 func ReadGGUFKeys(path string) (map[string]any, error) {
+	return readKeys(path, keepKey, func(string) int { return maxKeptStringBytes })
+}
+
+// readKeys reads the header keys keep selects; maxStr bounds each kept string.
+func readKeys(path string, keep func(string) bool, maxStr func(string) int) (map[string]any, error) {
 	f, err := os.Open(MetadataPath(path))
 	if err != nil {
 		return nil, err
@@ -281,7 +287,7 @@ func ReadGGUFKeys(path string) (map[string]any, error) {
 		if err := g.spend(1); err != nil {
 			return nil, err
 		}
-		key, _, err := g.str(true)
+		key, _, err := g.str(true, maxKeptStringBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -289,12 +295,12 @@ func ReadGGUFKeys(path string) (map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		keep := keepKey(key)
-		v, err := g.value(t, keep)
+		k := keep(key)
+		v, err := g.value(t, k, maxStr(key))
 		if err != nil {
 			return nil, err
 		}
-		if keep && v != nil {
+		if k && v != nil {
 			values[key] = v
 		}
 	}
@@ -568,4 +574,71 @@ func KVCacheBytes(g *Geometry, ctxTokens, slots int, typeK, typeV string) int64 
 	}
 	swa := float64(slots) * float64(swaCells) * float64(g.SWAKVHeads) * (float64(g.SWAKeyLength)*bk + float64(g.SWAValueLength)*bv)
 	return int64(math.Ceil(full + swa + float64(slots)*float64(g.RecurrentBytesPerSlot)))
+}
+
+const (
+	chatTemplateKey      = "tokenizer.chat_template"
+	maxChatTemplateBytes = 256 * 1024
+)
+
+// CapabilityHeader is what a GGUF header says about a model's capabilities.
+type CapabilityHeader struct {
+	Architecture     string
+	ContextLength    int // 0 = unknown
+	PoolingType      *int
+	ExpertCount      int
+	ChatTemplate     string // default and named variants, joined
+	DecisionType     string
+	HasVisionEncoder bool
+	HasAudioEncoder  bool
+}
+
+var decisionTypeRe = regexp.MustCompile(`^[a-z0-9_-]{1,32}$`)
+
+// ReadCapabilityHeader returns nil on any failure.
+func ReadCapabilityHeader(path string) *CapabilityHeader {
+	values, err := readKeys(path, func(k string) bool {
+		return k == "general.architecture" || k == chatTemplateKey || strings.HasPrefix(k, chatTemplateKey+".") ||
+			strings.HasSuffix(k, ".context_length") || strings.HasSuffix(k, ".pooling_type") ||
+			strings.HasSuffix(k, ".expert_count") || strings.HasSuffix(k, ".decision.type") ||
+			k == "clip.has_vision_encoder" || k == "clip.has_audio_encoder"
+	}, func(k string) int {
+		if strings.HasPrefix(k, chatTemplateKey) {
+			return maxChatTemplateBytes
+		}
+		return maxKeptStringBytes
+	})
+	if err != nil {
+		return nil
+	}
+	h := &CapabilityHeader{}
+	h.Architecture, _ = values["general.architecture"].(string)
+	if a := h.Architecture; a != "" {
+		h.ContextLength = bounded(values[a+".context_length"], maxTokens)
+		if p, ok := values[a+".pooling_type"].(float64); ok && p == math.Trunc(p) {
+			n := int(p)
+			h.PoolingType = &n
+		}
+		if e, ok := values[a+".expert_count"].(float64); ok && e == math.Trunc(e) && e > 0 {
+			h.ExpertCount = int(e)
+		}
+		if d, ok := values[a+".decision.type"].(string); ok && decisionTypeRe.MatchString(d) {
+			h.DecisionType = d
+		}
+	}
+	var templates []string
+	keys := make([]string, 0, len(values))
+	for k := range values {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if s, ok := values[k].(string); ok && s != "" && (k == chatTemplateKey || strings.HasPrefix(k, chatTemplateKey+".")) {
+			templates = append(templates, s)
+		}
+	}
+	h.ChatTemplate = strings.Join(templates, "\n")
+	h.HasVisionEncoder = values["clip.has_vision_encoder"] == 1.0
+	h.HasAudioEncoder = values["clip.has_audio_encoder"] == 1.0
+	return h
 }

@@ -160,7 +160,7 @@ func serve(dir string, args []string) int {
 	defer llm.Close()
 
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: *authMode}
-	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: *noAuth, MemoryGB: memoryGB}
+	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: *noAuth, MemoryGB: memoryGB, Root: r}
 	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem,
 		NoAuth: *noAuth, DevLogin: *devUILogin, RootDir: r.Dir})
 	gateway.New(srv)

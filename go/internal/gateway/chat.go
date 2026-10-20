@@ -1,17 +1,17 @@
 package gateway
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 )
 
@@ -26,26 +26,36 @@ func DefaultMaxTokens() int {
 	return 4096
 }
 
+func payloadTooLarge(w http.ResponseWriter, r *http.Request) {
+	// The rest of the body may still be in flight: do not reuse the connection.
+	w.Header().Set("Connection", "close")
+	writeError(w, r, 413, "invalid_request_error", "payload_too_large", "Request body exceeds the 25 MiB limit.", nil)
+}
+
 // readJSON reads a bounded JSON object body, keeping unknown fields so they
 // pass through to the backend unchanged.
 func readJSON(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 	if r.ContentLength > maxRequestBytes {
-		writeError(w, r, 413, "invalid_request_error", "payload_too_large", "Request body exceeds the 25 MiB limit.", nil)
+		payloadTooLarge(w, r)
 		return nil, false
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBytes+1))
 	if err != nil {
-		badRequest(w, r, "Could not read the request body.", nil)
+		if r.Context().Err() != nil {
+			w.WriteHeader(499)
+			return nil, false
+		}
+		badRequest(w, r, "Invalid JSON payload.", nil)
 		return nil, false
 	}
 	if len(body) > maxRequestBytes {
-		writeError(w, r, 413, "invalid_request_error", "payload_too_large", "Request body exceeds the 25 MiB limit.", nil)
+		payloadTooLarge(w, r)
 		return nil, false
 	}
 	var req map[string]any
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
-	if err := dec.Decode(&req); err != nil || req == nil {
+	if err := dec.Decode(&req); err != nil || req == nil || dec.More() {
 		badRequest(w, r, "Invalid JSON payload.", nil)
 		return nil, false
 	}
@@ -79,6 +89,111 @@ func toolParam(req map[string]any) string {
 	return ""
 }
 
+// prepareChat removes no-op tool fields, anchors tool schema patterns for
+// llama.cpp's grammar converter, and turns a named tool_choice into
+// "required" over that one tool.
+func prepareChat(req map[string]any) {
+	if tools, ok := req["tools"].([]any); ok && len(tools) == 0 {
+		delete(req, "tools")
+	}
+	if fns, ok := req["functions"].([]any); ok && len(fns) == 0 {
+		delete(req, "functions")
+	}
+	if tc, ok := req["tool_choice"]; ok && (tc == "none" || tc == nil) {
+		delete(req, "tool_choice")
+	}
+	if fc, ok := req["function_call"]; ok && fc == "none" {
+		delete(req, "function_call")
+	}
+	if msgs, ok := req["messages"].([]any); ok {
+		for _, m := range msgs {
+			if msg, ok := m.(map[string]any); ok && msg["role"] == "assistant" {
+				if calls, ok := msg["tool_calls"].([]any); ok && len(calls) == 0 {
+					delete(msg, "tool_calls")
+				}
+			}
+		}
+	}
+	tools, _ := req["tools"].([]any)
+	for _, t := range tools {
+		fn, _ := t.(map[string]any)["function"].(map[string]any)
+		if params, ok := fn["parameters"]; ok {
+			fn["parameters"] = anchorPatterns(params)
+		}
+	}
+	if tc, ok := req["tool_choice"].(map[string]any); ok {
+		name := tc["function"].(map[string]any)["name"]
+		var selected []any
+		for _, t := range tools {
+			if t.(map[string]any)["function"].(map[string]any)["name"] == name {
+				selected = append(selected, t)
+			}
+		}
+		req["tools"], req["tool_choice"] = selected, "required"
+	}
+}
+
+var (
+	dataKeywords      = []string{"enum", "const", "default", "examples"}
+	schemaMapKeywords = []string{"properties", "patternProperties", "$defs", "definitions", "dependentSchemas"}
+)
+
+// anchorPatterns wraps unanchored `pattern` strings in ^...$; llama.cpp
+// rejects unanchored ones while JSON Schema treats patterns as unanchored.
+func anchorPatterns(v any) any {
+	switch x := v.(type) {
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = anchorPatterns(e)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			switch m, isMap := e.(map[string]any); {
+			case k == "pattern":
+				if s, ok := e.(string); ok {
+					out[k] = anchorPattern(s)
+				} else {
+					out[k] = anchorPatterns(e)
+				}
+			case contains(dataKeywords, k):
+				out[k] = e
+			case contains(schemaMapKeywords, k) && isMap:
+				inner := make(map[string]any, len(m))
+				for name, schema := range m {
+					inner[name] = anchorPatterns(schema)
+				}
+				out[k] = inner
+			default:
+				out[k] = anchorPatterns(e)
+			}
+		}
+		return out
+	}
+	return v
+}
+
+func anchorPattern(p string) string {
+	start := strings.HasPrefix(p, "^")
+	end := strings.HasSuffix(p, "$") && !strings.HasSuffix(p, `\$`)
+	if start && end {
+		return p
+	}
+	body := p
+	if strings.Contains(p, "|") {
+		body = "(?:" + p + ")"
+	}
+	if !start {
+		body = "^" + body
+	}
+	if !end {
+		body += "$"
+	}
+	return body
+}
+
 func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w, r, "POST")
@@ -88,21 +203,13 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	model, _ := req["model"].(string)
-	if strings.TrimSpace(model) == "" {
-		badRequest(w, r, "model must not be empty", strp("model"))
+	if c := validateChat(req); !c.ok() {
+		c.reply(w, r)
 		return
 	}
-	if _, ok := req["messages"].([]any); !ok {
-		badRequest(w, r, "messages must be an array", strp("messages"))
-		return
-	}
-	id, spec, err := s.LLM.Resolve(model)
-	if err != nil {
-		modelNotFound(w, r, model)
-		return
-	}
-	if p := toolParam(req); p != "" && spec != nil && !spec.HasCapability("tool-calling") {
+	model := req["model"].(string)
+	spec := s.Catalog.ByID(model)
+	if p := toolParam(req); p != "" && spec != nil && !s.capabilities(r.Context(), spec).Has("tool-calling") {
 		writeError(w, r, 400, "invalid_request_error", "unsupported_model_capability",
 			fmt.Sprintf("Model '%s' does not support tool calling. Choose a tool-capable model from GET /v1/models.", spec.ModelID), strp(p))
 		return
@@ -115,137 +222,147 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, r, msg, nil)
 		return
 	}
-
-	lease, err := s.LLM.Acquire(r.Context(), id)
-	if err != nil {
-		var ae *memory.AdmissionError
-		if errors.As(err, &ae) {
-			s.Log.Warn("Memory admission rejected the runtime.", "event", "inference.admission-rejected", "runtime", "llm",
-				"request_id", w.Header().Get("X-Localbase-Request-Id"), "model_id", id, "reason", ae.Reason,
-				"requested_bytes", ae.RequestedBytes, "demand_confidence", ae.Confidence)
-		}
-		runtimeError(w, r, err, model)
+	prepareChat(req)
+	prepStart := time.Now()
+	schema, rejection := prepareStructuredOutput(req["response_format"])
+	prepMs := float64(time.Since(prepStart).Microseconds()) / 1000
+	if rejection != nil {
+		writeError(w, r, 400, "invalid_request_error", rejection.code, rejection.message, strp("response_format.json_schema.schema"))
 		return
 	}
-	defer lease.Release() // held until the body is fully relayed
-
-	if _, a := req["max_tokens"]; !a {
-		if _, b := req["max_completion_tokens"]; !b {
-			limit := memory.ContextPerSequence(lease.Plan.CtxSize, lease.Plan.Parallel.Slots)
-			if lease.Spec != nil && lease.Spec.ContextWindowTokens != nil {
-				limit = min(limit, *lease.Spec.ContextWindowTokens)
+	streaming := req["stream"] == true
+	o := inferOpts{path: "/v1/chat/completions", kind: "chat", streaming: streaming, schema: schema}
+	if schema != nil {
+		o.prepareMs = &prepMs
+	}
+	_, a := req["max_tokens"]
+	_, b := req["max_completion_tokens"]
+	s.inferLLM(w, r, model, req, o, func(l leaseInfo) {
+		if !a && !b {
+			// No template-aware tokenizer here: keep the default within the
+			// resolved per-slot context.
+			limit := memory.ContextPerSequence(l.ctxSize, l.slots)
+			if l.spec != nil && l.spec.ContextWindowTokens != nil {
+				limit = min(limit, *l.spec.ContextWindowTokens)
 			}
 			req["max_tokens"] = min(DefaultMaxTokens(), limit, s.LLM.Config().CtxSize)
 		}
-	}
-	req["model"] = id
-	body, _ := json.Marshal(req)
-	s.proxy(w, r, lease.BaseURL+"/v1/chat/completions", body, id)
+	})
 }
 
-// proxy relays a backend response, flushing each chunk so SSE streams stay
-// incremental. The request context cancels the upstream call when the
-// client goes away; llama-server stays up (#276).
-func (s *Server) proxy(w http.ResponseWriter, r *http.Request, url string, body []byte, modelID string) {
-	up, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(body))
-	up.Header.Set("Content-Type", "application/json")
-	for _, h := range []string{"Traceparent", "Tracestate"} {
-		if v := r.Header.Get(h); v != "" {
-			up.Header.Set(h, v)
-		}
-	}
-	resp, err := http.DefaultClient.Do(up)
-	if err != nil {
-		if r.Context().Err() != nil {
-			w.WriteHeader(499)
-			return
-		}
-		serviceUnavailable(w, r, "LLM")
+func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, r, "POST")
 		return
 	}
-	defer resp.Body.Close()
-	for _, h := range []string{"Content-Type", "Cache-Control"} {
-		if v := resp.Header.Get(h); v != "" {
-			w.Header().Set(h, v)
-		}
-	}
-	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
-		w.WriteHeader(resp.StatusCode)
-		relaySSE(w, resp.Body, modelID)
+	req, ok := readJSON(w, r)
+	if !ok {
 		return
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
-	if err != nil {
-		serviceUnavailable(w, r, "LLM")
+	if c := validateEmbeddings(req); !c.ok() {
+		c.reply(w, r)
 		return
 	}
-	// Report the public model id, not the backend's file path.
-	if resp.StatusCode < 300 {
-		var obj map[string]json.RawMessage
-		if json.Unmarshal(raw, &obj) == nil && obj != nil {
-			obj["model"], _ = json.Marshal(modelID)
-			raw, _ = json.Marshal(obj)
-		}
+	model := req["model"].(string)
+	spec := s.Catalog.ByID(model)
+	if spec != nil && spec.IsDecision() {
+		badRequest(w, r, fmt.Sprintf("Model '%s' is a decision model. Send typed questions to POST /v1/systemone instead.", spec.ModelID), nil)
+		return
 	}
-	w.Header().Del("Content-Length")
-	w.WriteHeader(resp.StatusCode)
-	w.Write(raw)
-}
-
-const upstreamErrorEvent = "data: {\"error\":{\"message\":\"The upstream service returned an invalid event stream.\",\"type\":\"server_error\",\"param\":null,\"code\":\"upstream_error\"}}\n\n"
-
-// relaySSE forwards a chat stream event by event, flushing each one. JSON
-// data events get the public model id; anything unparseable ends the stream
-// with an upstream_error event.
-func relaySSE(w http.ResponseWriter, body io.Reader, modelID string) {
-	flusher, _ := w.(http.Flusher)
-	sc := bufio.NewScanner(body)
-	sc.Buffer(make([]byte, 64<<10), 16<<20)
-	var event []string
-	flush := func() bool {
-		if len(event) == 0 {
-			return true
-		}
-		var out strings.Builder
-		for _, line := range event {
-			data, isData := strings.CutPrefix(line, "data:")
-			if isData {
-				data = strings.TrimPrefix(data, " ")
-				if data != "[DONE]" {
-					var obj map[string]json.RawMessage
-					if json.Unmarshal([]byte(data), &obj) != nil {
-						w.Write([]byte(upstreamErrorEvent))
-						return false
-					}
-					if _, has := obj["model"]; has {
-						obj["model"], _ = json.Marshal(modelID)
-					}
-					b, _ := json.Marshal(obj)
-					data = string(b)
+	if spec != nil && spec.IsEmbedding() && len(spec.LLMRuntime.Dimensions) > 0 {
+		if v, present := req["dimensions"]; present {
+			var d struct{ Minimum, Maximum float64 }
+			json.Unmarshal(spec.LLMRuntime.Dimensions, &d)
+			n, _ := number(v)
+			if n < d.Minimum || n > d.Maximum {
+				msg := fmt.Sprintf("Model '%s' supports dimensions from %s through %s.", model, trimFloat(d.Minimum), trimFloat(d.Maximum))
+				if d.Minimum == d.Maximum {
+					msg = fmt.Sprintf("Model '%s' supports %s dimensions.", model, trimFloat(d.Minimum))
 				}
-				line = "data: " + data
-			}
-			out.WriteString(line + "\n")
-		}
-		out.WriteString("\n")
-		event = event[:0]
-		if _, err := w.Write([]byte(out.String())); err != nil {
-			return false
-		}
-		if flusher != nil {
-			flusher.Flush()
-		}
-		return true
-	}
-	for sc.Scan() {
-		line := strings.TrimSuffix(sc.Text(), "\r")
-		if line == "" {
-			if !flush() {
+				badRequest(w, r, msg, nil)
 				return
 			}
-			continue
 		}
-		event = append(event, line)
 	}
-	flush()
+	s.inferLLM(w, r, model, req, inferOpts{path: "/v1/embeddings", kind: "embeddings"}, nil)
+}
+
+func (s *Server) systemone(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, r, "POST")
+		return
+	}
+	req, ok := readJSON(w, r)
+	if !ok {
+		return
+	}
+	if c := validateDecision(req); !c.ok() {
+		c.reply(w, r)
+		return
+	}
+	model := req["model"].(string)
+	if spec := s.Catalog.ByID(model); spec != nil && !spec.IsDecision() {
+		writeError(w, r, 400, "invalid_request_error", "unsupported_model_capability",
+			fmt.Sprintf(`Model '%s' is not a decision model. Choose a model whose architecture.output_modalities include "decisions" from GET /v1/models.`, spec.ModelID), strp("model"))
+		return
+	}
+	// A missing or blank instructions defaults to the question id.
+	for id, q := range req["questions"].(map[string]any) {
+		qm := q.(map[string]any)
+		if in, present := qm["instructions"]; !present || (isString(in) && strings.TrimSpace(in.(string)) == "") {
+			qm["instructions"] = id
+		}
+	}
+	s.inferLLM(w, r, model, req, inferOpts{path: "/v1/systemone", kind: "decision"}, nil)
+}
+
+func isString(v any) bool { _, ok := v.(string); return ok }
+
+// leaseInfo is what a handler may use to finish the backend request once
+// the model is admitted.
+type leaseInfo struct {
+	spec    *catalog.Spec
+	ctxSize int
+	slots   int
+}
+
+type inferOpts struct {
+	path      string
+	kind      string // chat | embeddings | decision
+	streaming bool
+	schema    map[string]any
+	prepareMs *float64
+}
+
+// inferLLM admits the request on the LLM runtime, finishes the body, and
+// relays the backend response. The lease is held until the body is relayed.
+func (s *Server) inferLLM(w http.ResponseWriter, r *http.Request, model string, req map[string]any, o inferOpts, finish func(leaseInfo)) {
+	started := time.Now()
+	requestID := w.Header().Get("X-Localbase-Request-Id")
+	if _, _, err := s.LLM.Resolve(model); err != nil {
+		modelNotFound(w, r, model)
+		return
+	}
+	lease, err := s.LLM.Acquire(r.Context(), model)
+	if err != nil {
+		s.logAdmissionRejection(requestID, "llm", model, err)
+		runtimeError(w, r, err, model)
+		return
+	}
+	defer lease.Release()
+	if finish != nil {
+		finish(leaseInfo{spec: lease.Spec, ctxSize: lease.Plan.CtxSize, slots: lease.Plan.Parallel.Slots})
+	}
+	req["model"] = lease.ModelID
+	body, _ := json.Marshal(req)
+	tel := &inference{s: s, modality: "llm", modelID: lease.ModelID, spec: lease.Spec, requestID: requestID,
+		started: started, queueWait: lease.Waited, active: lease.Active, slots: lease.Slots, waiting: lease.Waiting,
+		streaming: o.streaming, prepareMs: o.prepareMs}
+	if o.schema != nil {
+		tel.schemaValidation = "not_performed"
+		if o.streaming {
+			tel.schemaValidation = "not_performed_streaming"
+		}
+	}
+	s.relay(w, r, lease.BaseURL+o.path, body, lease.ModelID, o, tel)
 }

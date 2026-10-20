@@ -23,7 +23,7 @@ type Model struct {
 	ContextLength *int                   `json:"context_length,omitempty"`
 	ContextBudget *runtime.ContextBudget `json:"context_budget,omitempty"`
 	Memory        *runtime.Fit           `json:"memory,omitempty"`
-	Capabilities  []catalog.Capability   `json:"capabilities,omitempty"`
+	Capabilities  any                    `json:"capabilities,omitempty"` // []catalog.Capability; [] is kept
 	Architecture  struct {
 		Input  []string `json:"input_modalities"`
 		Output []string `json:"output_modalities"`
@@ -94,9 +94,11 @@ func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, 
 		case spec.IsDecision():
 			m.Architecture.Output = []string{"decisions"}
 		}
-		for _, c := range spec.Capabilities {
-			m.Capabilities = append(m.Capabilities, catalog.Capability{ID: c.ID, Source: "declared"})
+		caps := s.capabilities(context.Background(), spec).Capabilities
+		if caps == nil {
+			caps = []catalog.Capability{}
 		}
+		m.Capabilities = caps
 	}
 	if kind == "llm" {
 		plan := runningPlan
@@ -162,4 +164,10 @@ func (s *Server) retrieveModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, data[0])
+}
+
+// capabilities resolves a model's effective capabilities (declared, detected
+// from its files, reported by its runtime).
+func (s *Server) capabilities(ctx context.Context, spec *catalog.Spec) runtime.Resolved {
+	return runtime.CapabilitiesFor(ctx, s.Store, spec, s.Root.ModelsDir(spec.Kind))
 }

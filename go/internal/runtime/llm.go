@@ -85,6 +85,7 @@ type LLM struct {
 	queue    []*waiter
 	closed   bool
 	geometry map[string]geometryEntry
+	probes   sync.WaitGroup
 }
 
 type geometryEntry struct {
@@ -190,6 +191,8 @@ type Lease struct {
 	Plan    *LLMPlan
 	Spec    *catalog.Spec
 	Waited  time.Duration
+	// Active, Slots and Waiting describe the queue when the lease was granted.
+	Active, Slots, Waiting int
 }
 
 func (l *Lease) Release() {
@@ -269,7 +272,8 @@ func (m *LLM) grant(w *waiter) {
 	m.queue = m.queue[1:]
 	m.active++
 	w.done = true
-	w.lease = &Lease{m: m, b: m.cur, BaseURL: m.cur.baseURL, ModelID: m.cur.modelID, Plan: m.cur.plan, Spec: m.cur.spec}
+	w.lease = &Lease{m: m, b: m.cur, BaseURL: m.cur.baseURL, ModelID: m.cur.modelID, Plan: m.cur.plan, Spec: m.cur.spec,
+		Active: m.active, Slots: m.cur.plan.Parallel.Slots, Waiting: len(m.queue)}
 	w.ready <- nil
 }
 
@@ -356,6 +360,17 @@ func (m *LLM) install(b *backend) {
 	m.cur = b
 	m.mu.Unlock()
 	go m.watch(b)
+	if b.spec != nil && m.d.Store != nil {
+		m.probes.Add(1)
+		go func() {
+			defer m.probes.Done()
+			if rec, err := ProbeLlamaServer(context.Background(), m.d.Store, b.baseURL, b.spec); err != nil {
+				m.d.Log.Debug("Runtime capability probe failed.", "runtime", "llm", "model_id", b.modelID, "error", err.Error())
+			} else if rec != nil {
+				m.d.Log.Info("Recorded runtime capabilities for "+b.modelID+" ("+rec.BuildInfo+").", "event", "runtime.capabilities-recorded", "category", "runtime", "runtime", "llm", "model_id", b.modelID)
+			}
+		}()
+	}
 }
 
 // admissionDemand applies observed > measured > estimate (feed: milestone 5).
@@ -479,6 +494,7 @@ func (m *LLM) EmergencyStop(reason error) {
 	if b != nil {
 		m.stopBackend(b)
 	}
+	m.probes.Wait()
 }
 
 // Close rejects queued work and stops the runtime.
