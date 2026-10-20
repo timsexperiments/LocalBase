@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 )
 
@@ -97,8 +98,11 @@ func serviceCommands() []*cli.Command {
 				return nil, err
 			}
 			defer e.Close()
-			in, err := service.Inspect(e.Root, false)
-			if err != nil {
+			var in service.Inspection
+			if err := root.WithOperation(e.Root.Dir, "status", func() (err error) {
+				in, err = service.Inspect(e.Root, false)
+				return err
+			}); err != nil {
 				return nil, err
 			}
 			printStatus(c, in)

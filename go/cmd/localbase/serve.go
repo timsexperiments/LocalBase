@@ -18,6 +18,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/gateway"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/web"
@@ -137,7 +138,14 @@ func serve(c *cli.Ctx) (any, error) {
 	if h := c.String("llm-host"); h != "" {
 		cfg.Host = h
 	}
+	// Hold the operation lease (or claim the one a service start handed off)
+	// until this process owns the gateway lock.
+	initLease, err := root.ServeInitialization(r.Dir, os.Getenv("LOCALBASE_SERVICE_TOKEN"))
+	if err != nil {
+		return nil, err
+	}
 	release, err := r.LockAs(listenHost, listenPort, os.Getenv("LOCALBASE_SERVICE_ID"), os.Getenv("LOCALBASE_SERVICE_TOKEN"))
+	initLease.Release()
 	if err != nil {
 		return nil, err
 	}

@@ -214,7 +214,7 @@ func runConfigure(c *cli.Ctx) (any, error) {
 	if p, err := strconv.Atoi(cfg.Parallel); err == nil && p > 1 && e.memoryGB() < 16 {
 		fmt.Fprintf(c.Stderr, "Warning: Setting parallel slots to %d on a system with only %d GB VRAM may cause Out-Of-Memory (OOM) crashes.\n", p, e.memoryGB())
 	}
-	if err := e.save(cfg); err != nil {
+	if err := root.WithOperation(e.Root.Dir, "configure", func() error { return e.save(cfg) }); err != nil {
 		var inv *conf.InvalidError
 		if errors.As(err, &inv) {
 			return nil, cli.Inputf("%s", conf.Summary(inv.Issues))

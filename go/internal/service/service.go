@@ -832,7 +832,18 @@ func stopManaged(r *root.Root, m Metadata, alsoDisable bool) error {
 
 // Start installs and starts the service (restart replaces a running one
 // with a fresh token).
+// Start installs and starts the service, holding the root operation lease and
+// handing it to the gateway it launches.
 func Start(r *root.Root, restart, installMissing bool) (Inspection, error) {
+	lease, err := root.AcquireOperation(r.Dir, "service-start")
+	if err != nil {
+		return Inspection{}, err
+	}
+	defer lease.Release()
+	return start(r, lease, restart, installMissing)
+}
+
+func start(r *root.Root, lease *root.Lease, restart, installMissing bool) (Inspection, error) {
 	st, prev := readManifest(r.Dir)
 	current := ""
 	if st == "valid" && prev.Root == r.Dir {
@@ -888,11 +899,23 @@ func Start(r *root.Root, restart, installMissing bool) (Inspection, error) {
 	if err := startManager(d); err != nil {
 		return Inspection{}, err
 	}
+	if err := lease.Handoff(token); err != nil {
+		return Inspection{}, err
+	}
 	return Inspect(r, true)
 }
 
-// Stop stops and disables the service.
-func Stop(r *root.Root) (Inspection, error) {
+// Stop stops and disables the service under the root operation lease.
+func Stop(r *root.Root) (in Inspection, err error) {
+	err = root.WithOperation(r.Dir, "stop", func() error {
+		in, err = StopWithin(r)
+		return err
+	})
+	return in, err
+}
+
+// StopWithin is Stop for a caller that holds the operation lease.
+func StopWithin(r *root.Root) (Inspection, error) {
 	m, err := MetadataFor(r.Dir)
 	if err != nil {
 		return Inspection{}, err
@@ -915,7 +938,8 @@ func HasEvidence(r *root.Root) bool {
 	return defErr == nil || manErr == nil || state != "missing"
 }
 
-// Remove stops the service and deletes its definition and manifest.
+// Remove stops the service and deletes its definition and manifest. The
+// caller holds the operation lease.
 func Remove(r *root.Root) (Inspection, error) {
 	m, err := MetadataFor(r.Dir)
 	if err != nil {

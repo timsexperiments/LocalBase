@@ -25,8 +25,13 @@ func maintenanceCommands() []*cli.Command {
 				if err != nil {
 					return nil, err
 				}
+				lease, err := root.AcquireOperation(r.Dir, "reset")
+				if err != nil {
+					return nil, err
+				}
+				defer lease.Release()
 				if service.HasEvidence(r) {
-					if _, err := service.Stop(r); err != nil {
+					if _, err := service.StopWithin(r); err != nil {
 						return nil, err
 					}
 				}
@@ -65,6 +70,11 @@ func maintenanceCommands() []*cli.Command {
 				if err != nil {
 					return nil, err
 				}
+				lease, err := root.AcquireOperation(r.Dir, "uninstall")
+				if err != nil {
+					return nil, err
+				}
+				defer lease.Release()
 				removed := false
 				if service.HasEvidence(r) {
 					in, err := service.Remove(r)
