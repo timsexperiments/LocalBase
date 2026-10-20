@@ -229,23 +229,26 @@ func (s *Server) unmatched(w http.ResponseWriter, r *http.Request) {
 
 // --- health ------------------------------------------------------------------
 
-func (s *Server) modalityHealth() map[string]any {
+// modality reports one runtime's configuration, lifecycle state and whether
+// a request could enter its queue now.
+func (s *Server) modality(kind string) (configured bool, state string, admits bool) {
+	if kind == "llm" {
+		snap := s.LLM.Snapshot()
+		configured = snap.State != "disabled"
+		return configured, snap.State, configured && snap.Accepting && snap.Waiting < snap.Capacity
+	}
+	// Speech, image and video runtimes arrive in milestone 4.
 	cfg := s.LLM.Config()
+	if len(cfg.Selected[kind]) > 0 && cfg.Active[kind] != "" {
+		return true, "idle", false
+	}
+	return false, "disabled", false
+}
+
+func (s *Server) modalityHealth() map[string]any {
 	out := map[string]any{}
-	running, _, _ := s.LLM.Running()
 	for _, kind := range store.Kinds {
-		configured := len(runtime.ConfiguredIDs(cfg, kind)) > 0
-		state := "disabled"
-		if configured {
-			state = "idle"
-		}
-		if kind == "llm" && running != "" {
-			state = "running"
-		}
-		if kind != "llm" && configured {
-			state = "disabled" // served from milestone 4
-			configured = false
-		}
+		configured, state, _ := s.modality(kind)
 		out[kind] = map[string]any{"configured": configured, "state": state}
 	}
 	return out
@@ -275,10 +278,19 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, r, "GET, HEAD")
 		return
 	}
-	body := map[string]any{"status": "ready", "reason": "request_admission_available", "modalities": []string{"llm"}}
+	admitting := []string{}
+	for _, kind := range store.Kinds {
+		if _, _, admits := s.modality(kind); admits {
+			admitting = append(admitting, kind)
+		}
+	}
+	body := map[string]any{"status": "ready", "reason": "request_admission_available", "modalities": admitting}
 	status := 200
-	if s.stopping.Load() {
+	switch {
+	case s.stopping.Load():
 		body, status = map[string]any{"status": "unready", "reason": "gateway_stopping", "modalities": []string{}}, 503
+	case len(admitting) == 0:
+		body, status = map[string]any{"status": "unready", "reason": "no_request_admission", "modalities": []string{}}, 503
 	}
 	if r.Method == http.MethodHead {
 		w.WriteHeader(status)
