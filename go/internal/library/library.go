@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	goruntime "runtime"
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
@@ -34,6 +35,9 @@ type Library struct {
 // layout (and a custom backend's own executable).
 func InstallState(runtimesDir string) func(*backends.Definition) string {
 	return func(d *backends.Definition) string {
+		if !runsOnThisPlatform(d) {
+			return backends.Missing
+		}
 		if d.Launch != nil && d.Launch.Command != "" {
 			if runtime.Executable(d.Launch.Command) {
 				return backends.Installed
@@ -249,4 +253,13 @@ func (l *Library) Gate() runtime.Gate {
 		}
 		return t, nil
 	}
+}
+
+func runsOnThisPlatform(d *backends.Definition) bool {
+	for _, p := range d.Platforms {
+		if (p.OS == goruntime.GOOS || p.OS == "*") && (p.Arch == backends.GoArch() || p.Arch == "*") {
+			return true
+		}
+	}
+	return false
 }

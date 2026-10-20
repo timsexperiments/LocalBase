@@ -42,6 +42,7 @@ type Server struct {
 	// UI handles /app and / when set.
 	UI http.Handler
 
+	imports  importJobs
 	started  time.Time
 	stopping atomic.Bool
 	mux      *http.ServeMux
@@ -67,6 +68,9 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/access-management", s.accessManagement)
 	mux.HandleFunc("/_localbase/api-keys", s.apiKeys)
 	mux.HandleFunc("/_localbase/hf-token", s.hfToken)
+	mux.HandleFunc("/_localbase/backends", s.backendsAPI)
+	mux.HandleFunc("/_localbase/model-backend", s.modelBackendAPI)
+	mux.HandleFunc("/_localbase/model-imports", s.modelImportsAPI)
 	if s.UI != nil {
 		mux.Handle("/app", s.UI)
 		mux.Handle("/app/", s.UI)
