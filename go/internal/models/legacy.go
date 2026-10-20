@@ -1,7 +1,6 @@
 package models
 
 import (
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -9,8 +8,9 @@ import (
 )
 
 // FromSpec reads a catalog entry (the TS modelSpecObjectSchema) as a logical
-// model with one variant. Facts the entry pins are SourcePinned; the
-// architecture of an LLM is left unknown until its GGUF header is inspected.
+// model with one variant. Facts the entry pins are SourcePinned. The file
+// format, and an LLM's architecture, stay unknown until the file's header
+// is inspected: a file name is never evidence.
 // Built-in entries record the backends they were qualified on; user entries
 // record none.
 func FromSpec(s *catalog.Spec) Model {
@@ -21,9 +21,6 @@ func FromSpec(s *catalog.Spec) Model {
 	m.Tasks = []string{specTask(s)}
 	m.Capabilities = specCapabilities(s)
 	v := Variant{ID: "default"}
-	if f := specFormat(s); f != "" {
-		v.Format = Of(f, SourcePinned)
-	}
 	if a := specArchitecture(s); a != "" {
 		v.Architecture = Of(a, SourcePinned)
 	}
@@ -102,26 +99,6 @@ func specCapabilities(s *catalog.Spec) []string {
 		}
 	}
 	return out
-}
-
-func specFormat(s *catalog.Spec) string {
-	p := s.Primary()
-	if p == nil {
-		return ""
-	}
-	switch strings.ToLower(filepath.Ext(p.Filename)) {
-	case ".gguf":
-		return "gguf"
-	case ".safetensors":
-		return "safetensors"
-	case ".onnx":
-		return "onnx"
-	case ".bin":
-		if s.Kind == "stt" {
-			return "ggml"
-		}
-	}
-	return ""
 }
 
 func specArchitecture(s *catalog.Spec) string {

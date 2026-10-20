@@ -146,7 +146,7 @@ func canonicalRoute(path string) (route, uiPage string) {
 	switch {
 	case slices.Contains(apiRoutes, path), slices.Contains(uiRoutes, path):
 		return path, ""
-	case path == "/_localbase/backends", path == "/_localbase/model-backend", path == "/_localbase/model-imports":
+	case path == "/_localbase/backends", path == "/_localbase/model-backend", path == "/_localbase/model-imports", path == "/_localbase/auth-profiles":
 		// Go-only model APIs, recorded under the TS model-management route.
 		return "/_localbase/model-management", path
 	case strings.HasPrefix(path, "/app/static/"):

@@ -77,7 +77,7 @@ func Import(ctx context.Context, rootDir string, p *Plan, progress func(Progress
 	}
 	red := redactorFor(p.profile)
 	red.Add(p.hfToken)
-	client := newClient(p.profile, p.hfToken)
+	client := newClient(p.profile, p.hfToken, p.hfOrigins)
 	var arts []models.Artifact
 	for _, f := range p.Files {
 		final := filepath.Join(staging, f.Filename)
@@ -126,6 +126,17 @@ func Import(ctx context.Context, rootDir string, p *Plan, progress func(Progress
 		arts = append(arts, art)
 	}
 	progress(Progress{Phase: "inspect"})
+	// Roles come from the headers, not the file names: a projector is a file
+	// whose header says so.
+	for i := range arts {
+		ff := models.InspectFile(filepath.Join(staging, arts[i].Filename))
+		switch {
+		case ff.Role == models.RoleProjector:
+			arts[i].Role = models.RoleProjector
+		case arts[i].Role == models.RoleProjector:
+			arts[i].Role = models.RoleCompanion
+		}
+	}
 	v := models.Variant{ID: "default", Artifacts: arts}
 	in := models.InspectVariant(v, staging)
 	if len(in.Missing) > 0 {

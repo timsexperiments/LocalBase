@@ -54,6 +54,8 @@ type Request struct {
 	Name        string
 	Task        string // when the source does not say
 	HFToken     string
+
+	hfOrigins []string // extra origins for the token (the "huggingface" profile)
 }
 
 // PlannedFile is one file to fetch.
@@ -87,6 +89,7 @@ type Plan struct {
 	// Choices lists the weight files to pick from when the repository has
 	// several and none was named (no files are planned then).
 	Choices []string `json:"choices,omitempty"`
+	hfOrigins []string
 	// Preview holds the facts known before downloading (pinned upstream
 	// metadata, or a local file's header), for a backend recommendation in
 	// the import form. Downloaded files are inspected again.
@@ -128,6 +131,7 @@ func Resolve(ctx context.Context, rootDir string, req Request) (*Plan, error) {
 			return nil, errors.New("--sha256 must be 64 hexadecimal characters")
 		}
 	}
+	req.hfOrigins = hfTokenOrigins(rootDir)
 	src := strings.TrimSpace(req.Source)
 	var p *Plan
 	var err error
@@ -150,7 +154,7 @@ func Resolve(ctx context.Context, rootDir string, req Request) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	p.profile, p.hfToken = profile, req.HFToken
+	p.profile, p.hfToken, p.hfOrigins = profile, req.HFToken, req.hfOrigins
 	if req.Name != "" {
 		p.Name = req.Name
 	}
@@ -243,7 +247,7 @@ func resolveHF(ctx context.Context, repo, file string, req Request, profile *Pro
 	if rev == "" {
 		rev = "main"
 	}
-	client := newClient(profile, req.HFToken)
+	client := newClient(profile, req.HFToken, req.hfOrigins)
 	api := HFEndpoint() + "/api/models/" + repo + "/revision/" + url.PathEscape(rev) + "?blobs=true"
 	hreq, _ := http.NewRequestWithContext(ctx, http.MethodGet, api, nil)
 	hreq.Header.Set("Accept", "application/json")
@@ -456,7 +460,7 @@ func resolveURL(ctx context.Context, raw string, req Request, profile *Profile) 
 	if profile != nil && !profile.Allows(origin) {
 		return nil, fmt.Errorf("auth profile %s is not allowed for %s; add the origin to the profile", profile.ID, origin)
 	}
-	client := newClient(profile, "")
+	client := newClient(profile, "", nil)
 	size, name := int64(0), path.Base(u.Path)
 	hreq, _ := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	hreq.Header.Set("Range", "bytes=0-0")

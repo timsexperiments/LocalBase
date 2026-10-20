@@ -27,6 +27,9 @@ type Host struct {
 	Accelerators []string `json:"accelerators"`
 	// Install maps a backend id to Installed, Installable or Missing.
 	Install map[string]string `json:"install"`
+	// Unpackaged marks built-in backends with no managed package for this
+	// platform (nothing LocalBase could install).
+	Unpackaged map[string]bool `json:"unpackaged,omitempty"`
 }
 
 // Has reports an accelerator.
@@ -89,10 +92,13 @@ func GoArch() string {
 
 // NewHost describes this device. install reports each backend's install
 // state (the caller knows where runtimes live).
-func NewHost(accelerators []string, reg *Registry, install func(*Definition) string) Host {
-	h := Host{OS: goruntime.GOOS, Arch: GoArch(), Accelerators: accelerators, Install: map[string]string{}}
+func NewHost(accelerators []string, reg *Registry, install func(*Definition) string, packaged func(*Definition) bool) Host {
+	h := Host{OS: goruntime.GOOS, Arch: GoArch(), Accelerators: accelerators, Install: map[string]string{}, Unpackaged: map[string]bool{}}
 	for _, d := range reg.All() {
 		h.Install[d.ID] = install(d)
+		if d.BuiltIn && d.Launch == nil && h.Install[d.ID] == Missing && packaged != nil && !packaged(d) {
+			h.Unpackaged[d.ID] = true
+		}
 	}
 	return h
 }

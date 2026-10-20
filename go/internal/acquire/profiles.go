@@ -83,7 +83,7 @@ func (p *Profile) Validate() error {
 		}
 		p.Origins[i] = norm
 	}
-	if len(p.Headers) == 0 {
+	if len(p.Headers) == 0 && p.ID != HFProfileID {
 		return errors.New("a profile needs at least one header")
 	}
 	for name, value := range p.Headers {
@@ -239,4 +239,24 @@ func (r *Redactor) Text(s string) string {
 		s = strings.ReplaceAll(s, v, "[REDACTED]")
 	}
 	return s
+}
+
+// HFProfileID names the profile whose origins may also receive the Hugging
+// Face token (CDNs such as cas-bridge.xethub.hf.co or a CloudFront host).
+// Without it the token goes to the Hugging Face endpoint only, and CDN
+// downloads are anonymous, as signed CDN URLs need no token.
+const HFProfileID = "huggingface"
+
+func hfTokenOrigins(rootDir string) []string {
+	if rootDir == "" {
+		return nil
+	}
+	ps, err := LoadProfiles(rootDir)
+	if err != nil {
+		return nil
+	}
+	if p := ps.Get(HFProfileID); p != nil {
+		return p.Origins
+	}
+	return nil
 }

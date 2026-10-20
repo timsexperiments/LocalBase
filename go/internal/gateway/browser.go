@@ -29,7 +29,7 @@ func allowedUIRoute(method, p string) bool {
 		return method == "GET" || method == "POST"
 	case "/_localbase/model-backend", "/_localbase/model-imports":
 		return method == "GET" || method == "POST"
-	case "/_localbase/backends":
+	case "/_localbase/backends", "/_localbase/auth-profiles":
 		return method == "GET"
 	case "/_localbase/model-discovery":
 		return method == "POST"

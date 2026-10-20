@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	goruntime "runtime"
 	"strings"
 	"sync"
@@ -22,9 +24,12 @@ import (
 )
 
 // TestModelImportAcceptance runs the acceptance checks of
-// docs/model-import-and-backend-selection.md against the real local-base
-// binary on a scratch root and port, with fake Hugging Face, vendor and
-// backend servers. Nothing touches the network or the live install.
+// docs/model-import-and-backend-selection.md (AC1-AC10) and the operator's
+// review points (OP1-OP5) against the real local-base binary on scratch
+// roots and ports, with fake Hugging Face, CDN, vendor and backend servers.
+// Nothing touches the network or the live install. Subtests run in order
+// and share state; their names map one-to-one to the PR's traceability
+// table.
 
 const (
 	vendorSecret = "vendor-secret-7d1e9a"
@@ -32,9 +37,11 @@ const (
 	signedValue  = "signedquery8842"
 )
 
+var plantedSecrets = []string{vendorSecret, hfToken, signedValue}
+
 type seen struct {
 	mu   sync.Mutex
-	reqs []string // method path auth header-values
+	reqs []string // method path header-values
 }
 
 func (s *seen) add(r *http.Request) {
@@ -84,8 +91,19 @@ type e2e struct {
 	env    []string
 	base   string
 	key    string
+	noAuth bool
 	stop   func()
 	outDir string
+}
+
+// scan fails when output contains a planted secret.
+func (e *e2e) scan(label, text string) {
+	e.t.Helper()
+	for _, s := range plantedSecrets {
+		if strings.Contains(text, s) {
+			e.t.Fatalf("%s contains a credential (%s):\n%s", label, s, text)
+		}
+	}
 }
 
 func (e *e2e) cli(extraEnv []string, args ...string) cliResult {
@@ -102,11 +120,7 @@ func (e *e2e) cli(extraEnv []string, args ...string) cliResult {
 		e.t.Fatal(err)
 	}
 	r := cliResult{code, out.String(), errb.String()}
-	for _, s := range []string{vendorSecret, hfToken, signedValue} {
-		if strings.Contains(r.stdout+r.stderr, s) {
-			e.t.Fatalf("%v printed a credential (%s):\n%s%s", args, s, r.stdout, r.stderr)
-		}
-	}
+	e.scan(fmt.Sprint(args), r.stdout+r.stderr)
 	return r
 }
 
@@ -123,10 +137,23 @@ func (e *e2e) json(args ...string) map[string]any {
 	return env.Data
 }
 
-func (e *e2e) serve() {
+// do sends an API request and scans the response for credentials.
+func (e *e2e) do(method, path, body string) *Resp {
+	e.t.Helper()
+	h := bearer(e.key)
+	if e.noAuth {
+		h = map[string]string{}
+	}
+	r := do(e.t, method, e.base+path, h, body)
+	e.scan(method+" "+path, string(r.Body))
+	return r
+}
+
+func (e *e2e) serve(extra ...string) {
 	e.t.Helper()
 	port, llmPort := freePort(), freePort()
-	cmd := exec.Command(goCLI(e.t), "--root", e.root, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort))
+	args := append([]string{"--root", e.root, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort)}, extra...)
+	cmd := exec.Command(goCLI(e.t), args...)
 	cmd.Env = append(cleanEnv(), e.env...)
 	logf, _ := os.Create(filepath.Join(e.outDir, fmt.Sprintf("serve-%d.log", port)))
 	cmd.Stdout, cmd.Stderr = logf, logf
@@ -135,7 +162,12 @@ func (e *e2e) serve() {
 		e.t.Fatal(err)
 	}
 	e.base = fmt.Sprintf("http://127.0.0.1:%d", port)
+	stopped := false
 	e.stop = func() {
+		if stopped {
+			return
+		}
+		stopped = true
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		done := make(chan struct{})
 		go func() { cmd.Wait(); close(done) }()
@@ -165,8 +197,7 @@ func (e *e2e) serve() {
 }
 
 func (e *e2e) chat(model string) *Resp {
-	return do(e.t, "POST", e.base+"/v1/chat/completions", bearer(e.key),
-		`{"model":"`+model+`","messages":[{"role":"user","content":"fake:reply hello there"}]}`)
+	return e.do("POST", "/v1/chat/completions", `{"model":"`+model+`","messages":[{"role":"user","content":"fake:reply hello there"}]}`)
 }
 
 func (e *e2e) setBackend(model, backend string) map[string]any {
@@ -175,7 +206,7 @@ func (e *e2e) setBackend(model, backend string) map[string]any {
 	if backend == "" {
 		body = `{"action":"reset","model":"` + model + `"}`
 	}
-	r := do(e.t, "POST", e.base+"/_localbase/model-backend", bearer(e.key), body)
+	r := e.do("POST", "/_localbase/model-backend", body)
 	if r.Status != 200 {
 		e.t.Fatalf("set backend %s: %d %s", backend, r.Status, r.Body)
 	}
@@ -184,7 +215,7 @@ func (e *e2e) setBackend(model, backend string) map[string]any {
 
 func (e *e2e) selection(model string) map[string]any {
 	e.t.Helper()
-	r := do(e.t, "GET", e.base+"/_localbase/model-backend?model="+model, bearer(e.key), "")
+	r := e.do("GET", "/_localbase/model-backend?model="+model, "")
 	if r.Status != 200 {
 		e.t.Fatalf("selection: %d %s", r.Status, r.Body)
 	}
@@ -203,13 +234,22 @@ func wantCode(t *testing.T, r *Resp, status int, code string) {
 	}
 }
 
-// platformBackends are the built-in builds for this host's own platform:
-// the automatic llama.cpp choice and a transcription-only backend.
+// platformBackends are this host's automatic llama.cpp build ("" on Linux:
+// CUDA, Vulkan or CPU, depending on the machine) and a transcription-only
+// backend built for this platform.
 func platformBackends() (llama, wrongTask string) {
 	if goruntime.GOOS == "darwin" {
 		return "llama.cpp-metal", "whisper.cpp-metal"
 	}
-	return "", "whisper.cpp-vulkan" // Linux: CUDA, Vulkan or CPU, depending on the machine
+	return "", "whisper.cpp-vulkan"
+}
+
+func warningCodes(f map[string]any) []string {
+	var out []string
+	for _, w := range f["warnings"].([]any) {
+		out = append(out, w.(map[string]any)["code"].(string))
+	}
+	return out
 }
 
 func TestModelImportAcceptance(t *testing.T) {
@@ -223,7 +263,7 @@ func TestModelImportAcceptance(t *testing.T) {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
 
-	// --- fake sources ---------------------------------------------------------------
+	// --- fake sources -------------------------------------------------------------
 	weights := ggufFile(t, "qwen3", nil, 64*1024)
 	projector := ggufFile(t, "clip", map[string]any{"clip.has_vision_encoder": true}, 8*1024)
 	mystery := ggufFile(t, "mystery-arch", nil, 32*1024)
@@ -243,12 +283,10 @@ func TestModelImportAcceptance(t *testing.T) {
 	defer cdn.Close()
 	hf := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hfSeen.add(r)
-		gated := strings.Contains(r.URL.Path, "gated")
-		if gated && r.Header.Get("Authorization") != "Bearer "+hfToken {
+		if strings.Contains(r.URL.Path, "gated") && r.Header.Get("Authorization") != "Bearer "+hfToken {
 			w.WriteHeader(401)
 			return
 		}
-		repo := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/models/"), "/revision/")[0]
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/api/models/") && strings.Contains(r.URL.Path, "/revision/"):
 			json.NewEncoder(w).Encode(map[string]any{"sha": commit, "pipeline_tag": "image-text-to-text",
@@ -258,10 +296,10 @@ func TestModelImportAcceptance(t *testing.T) {
 					map[string]any{"rfilename": "mmproj-model-f16.gguf", "lfs": map[string]any{"sha256": hexsum(projector), "size": len(projector)}},
 					map[string]any{"rfilename": "modeling_evil.py", "size": 12},
 				}})
-			_ = repo
 		case strings.Contains(r.URL.Path, "/resolve/"+commit+"/"):
+			// Like the Hub: a signed redirect to a CDN on another origin.
 			name := r.URL.Path[strings.LastIndex(r.URL.Path, "/"):]
-			http.Redirect(w, r, cdn.URL+"/blobs"+name+"?X-Amz-Signature="+signedValue, 302)
+			http.Redirect(w, r, cdn.URL+"/xet"+name+"?X-Amz-Signature="+signedValue, 302)
 		default:
 			w.WriteHeader(404)
 		}
@@ -290,118 +328,206 @@ func TestModelImportAcceptance(t *testing.T) {
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp,
 		env: []string{"HF_ENDPOINT=" + hf.URL, "LOCALBASE_LLAMA_SERVER=" + fake, "LOCALBASE_DEVICE_ID=device-one",
 			"VENDOR_KEY=" + vendorSecret}}
-	if r := e.cli(nil, "init"); r.code != 0 {
-		t.Fatalf("init: %s%s", r.stdout, r.stderr)
+	defer func() {
+		if e.stop != nil {
+			e.stop()
+		}
+	}()
+	ok := true
+	step := func(name string, fn func(t *testing.T)) {
+		if !ok {
+			t.Run(name, func(t *testing.T) { t.Skip("an earlier step failed") })
+			return
+		}
+		ok = t.Run(name, func(st *testing.T) {
+			e.t = st
+			fn(st)
+		})
+		e.t = t
 	}
-	key := e.json("keys", "create", "--name", "e2e", "--scopes", "inference:chat,models:read,models:manage")
-	e.key = key["secret"].(string)
 	autoLlama, wrongTask := platformBackends()
 
-	// 1. A public Hugging Face import resolves an immutable revision, never
-	// fetches repository code, and chooses this platform's variant/backend.
-	d := e.json("models", "import", "hf:org/model-GGUF", "--id", "vision-model")
-	plan := d["plan"].(map[string]any)
-	sel := d["selection"].(map[string]any)
-	if plan["revision"] != commit || plan["custom"] != false {
-		t.Fatalf("plan %v", plan)
-	}
-	if b, _ := sel["backendId"].(string); b == "" || (autoLlama != "" && b != autoLlama) {
-		t.Fatalf("automatic backend %q on %s", b, goruntime.GOOS)
-	}
-	if hfSeen.contains(".py") || cdnSeen.contains(".py") {
-		t.Fatal("repository code was requested")
-	}
-	if cdnSeen.contains(hfToken) {
-		t.Fatal("token on the CDN")
-	}
-	// An authenticated (gated) repository needs the token, which stays on the HF origin.
-	if r := e.cli(nil, "models", "import", "hf:org/gated-GGUF", "--id", "gated-model"); r.code == 0 {
-		t.Fatal("gated import without a token succeeded")
-	}
-	if r := e.cli([]string{"HF_TOKEN=" + hfToken}, "models", "import", "hf:org/gated-GGUF", "--id", "gated-model"); r.code != 0 {
-		t.Fatalf("gated import with a token: %s%s", r.stdout, r.stderr)
-	}
-	if !hfSeen.contains("Bearer " + hfToken) {
-		t.Fatal("the token never reached Hugging Face")
-	}
-	if cdnSeen.contains(hfToken) {
-		t.Fatal("the Hugging Face token followed the redirect to the CDN")
-	}
+	step("setup", func(t *testing.T) {
+		if r := e.cli(nil, "init"); r.code != 0 {
+			t.Fatalf("init: %s%s", r.stdout, r.stderr)
+		}
+		e.key = e.json("keys", "create", "--name", "e2e", "--scopes", "inference:chat,models:read,models:manage")["secret"].(string)
+		e.json("auth-profiles", "add", "--id", "vendor", "--origin", vendor.URL, "--header-env", "X-Api-Key=VENDOR_KEY")
+	})
 
-	// 2. A direct URL shows the custom-source warning and needs consent;
-	// private headers stay on their origin; unknown metadata leaves the
-	// backend blank, and the import still finishes.
-	if d := e.json("auth-profiles", "add", "--id", "vendor", "--origin", vendor.URL, "--header-env", "X-Api-Key=VENDOR_KEY"); d == nil {
-		t.Fatal("profile")
-	}
-	src := vendor.URL + "/files/mystery.gguf?sig=" + signedValue
-	r := e.cli(nil, "models", "import", src, "--auth-profile", "vendor", "--allow-http", "--task", "chat", "--id", "mystery")
-	if r.code != 2 || !strings.Contains(r.stdout+r.stderr, "custom source that LocalBase has not verified") ||
-		!strings.Contains(r.stdout+r.stderr, "plain HTTP") {
-		t.Fatalf("custom source without consent: %d %s%s", r.code, r.stdout, r.stderr)
-	}
-	d = e.json("models", "import", src, "--auth-profile", "vendor", "--allow-http", "--task", "chat", "--id", "mystery", "--yes")
-	sel = d["selection"].(map[string]any)
-	if sel["backendId"] != "" || sel["mode"] != "auto" {
-		t.Fatalf("unknown architecture must leave the backend blank: %v", sel)
-	}
-	if opts := sel["recommendation"].(map[string]any)["options"].([]any); len(opts) < 10 {
-		t.Fatalf("every registered backend must stay selectable, got %d", len(opts))
-	}
-	art := d["model"].(map[string]any)["variants"].([]any)[0].(map[string]any)["artifacts"].([]any)[0].(map[string]any)
-	if art["hashTrust"] != "observed" || art["sha256"] != hexsum(mystery) {
-		t.Fatalf("unpinned URL must record an observed hash: %v", art)
-	}
-	// Redirects to another origin do not carry the private header.
-	e.json("models", "import", vendor.URL+"/moved/mystery.gguf", "--auth-profile", "vendor", "--allow-http", "--task", "chat", "--id", "moved", "--yes")
-	if otherSeen.contains(vendorSecret) {
-		t.Fatal("the private header followed a redirect to another origin")
-	}
-	// A wrong trusted checksum blocks publication.
-	r = e.cli(nil, "models", "import", src, "--auth-profile", "vendor", "--allow-http", "--task", "chat", "--id", "pinned", "--yes",
-		"--sha256", strings.Repeat("0", 64))
-	if r.code == 0 || fileExists(filepath.Join(e.root, "models", "imported", "pinned")) {
-		t.Fatalf("checksum mismatch published: %s%s", r.stdout, r.stderr)
-	}
-	// An incomplete multi-file model names its missing files.
-	split := filepath.Join(tmp, "split")
-	os.MkdirAll(split, 0o755)
-	for i := 1; i <= 2; i++ {
-		os.WriteFile(filepath.Join(split, fmt.Sprintf("big-%05d-of-00003.gguf", i)), ggufFile(t, "qwen3", map[string]any{"split.count": 3, "split.no": i - 1}, 4096), 0o644)
-	}
-	r = e.cli(nil, "models", "import", filepath.Join(split, "big-00001-of-00003.gguf"), "--task", "chat")
-	if r.code == 0 || !strings.Contains(r.stdout+r.stderr, "big-00003-of-00003.gguf") {
-		t.Fatalf("incomplete split: %s%s", r.stdout, r.stderr)
-	}
+	step("AC6 public and authenticated Hugging Face imports resolve an immutable revision", func(t *testing.T) {
+		d := e.json("models", "import", "hf:org/model-GGUF", "--id", "vision-model")
+		if plan := d["plan"].(map[string]any); plan["revision"] != commit || plan["custom"] != false {
+			t.Fatalf("plan %v", plan)
+		}
+		if a := d["model"].(map[string]any)["variants"].([]any)[0].(map[string]any)["artifacts"].([]any)[0].(map[string]any); a["source"].(map[string]any)["revision"] != commit || a["hashTrust"] != "authoritative" {
+			t.Fatalf("artifact %v", a)
+		}
+		if r := e.cli(nil, "models", "import", "hf:org/gated-GGUF", "--id", "gated-model"); r.code == 0 {
+			t.Fatal("gated import without a token succeeded")
+		}
+		if r := e.cli([]string{"HF_TOKEN=" + hfToken}, "models", "import", "hf:org/gated-GGUF", "--id", "gated-model"); r.code != 0 {
+			t.Fatalf("gated import with a token: %s%s", r.stdout, r.stderr)
+		}
+		if !hfSeen.contains("Bearer " + hfToken) {
+			t.Fatal("the token never reached Hugging Face")
+		}
+	})
 
-	// 3. Run through the gateway: the selection decides the backend.
-	e.serve()
-	defer func() { e.stop() }()
-	if r := e.chat("vision-model"); r.Status != 200 || !strings.Contains(string(r.Body), "hello there") {
-		t.Fatalf("automatic backend chat: %d %s", r.Status, r.Body)
-	}
-	wantCode(t, e.chat("mystery"), 409, "backend_not_selected")
+	step("OP3 the Hugging Face token stays off CDN origins and anonymous CDN downloads work", func(t *testing.T) {
+		if cdnSeen.contains(hfToken) {
+			t.Fatal("the Hugging Face token followed the redirect to the CDN")
+		}
+		if !cdnSeen.contains("/xet/model-Q4_K_M.gguf") {
+			t.Fatal("the public import did not download from the CDN")
+		}
+	})
 
-	// Any registered backend can be chosen, with its finding shown.
-	s := e.setBackend("mystery", "llama.cpp-cpu")
-	if s["mode"] != "manual" || s["finding"].(map[string]any)["rating"] == "supported" {
-		t.Fatalf("manual unknown choice: %v", s)
-	}
-	if r := e.chat("mystery"); r.Status != 200 {
-		t.Fatalf("manual CPU backend chat: %d %s", r.Status, r.Body)
-	}
-	// A detected-incompatible choice is allowed and reports the real startup error.
-	s = e.setBackend("mystery", wrongTask)
-	if s["finding"].(map[string]any)["rating"] != "incompatible" {
-		t.Fatalf("incompatible finding: %v", s)
-	}
-	r2 := e.chat("mystery")
-	wantCode(t, r2, 503, "backend_startup_failed")
-	if !strings.Contains(string(r2.Body), "does not run chat models") {
-		t.Fatalf("startup error: %s", r2.Body)
-	}
+	step("AC9 downloading weights never executes repository code or adds a backend", func(t *testing.T) {
+		if hfSeen.contains(".py") || cdnSeen.contains(".py") {
+			t.Fatal("repository code was requested")
+		}
+		for _, b := range e.json("backends", "list")["backends"].([]any) {
+			if b.(map[string]any)["builtIn"] != true {
+				t.Fatalf("a download registered a backend: %v", b)
+			}
+		}
+	})
 
-	// 4. A custom adapter through the versioned interface.
+	step("AC1 the logical model picks this platform's variant and backend by rule", func(t *testing.T) {
+		sel := e.json("models", "backend", "vision-model")["selection"].(map[string]any)
+		b, _ := sel["backendId"].(string)
+		if b == "" || (autoLlama != "" && b != autoLlama) {
+			t.Fatalf("automatic backend %q on %s", b, goruntime.GOOS)
+		}
+	})
+
+	step("AC7 a direct URL shows the custom-source warning and keeps private headers off progress, errors, exports and redirects", func(t *testing.T) {
+		src := vendor.URL + "/files/mystery.gguf?sig=" + signedValue
+		r := e.cli(nil, "models", "import", src, "--auth-profile", "vendor", "--allow-http", "--task", "chat", "--id", "mystery")
+		if r.code != 2 || !strings.Contains(r.stdout+r.stderr, "custom source that LocalBase has not verified") || !strings.Contains(r.stdout+r.stderr, "plain HTTP") {
+			t.Fatalf("custom source without consent: %d %s%s", r.code, r.stdout, r.stderr)
+		}
+		e.json("models", "import", src, "--auth-profile", "vendor", "--allow-http", "--task", "chat", "--id", "mystery", "--yes")
+		if !vendorSeen.contains(vendorSecret) {
+			t.Fatal("the private header never reached its origin")
+		}
+		e.json("models", "import", vendor.URL+"/moved/mystery.gguf", "--auth-profile", "vendor", "--allow-http", "--task", "chat", "--id", "moved", "--yes")
+		if otherSeen.contains(vendorSecret) {
+			t.Fatal("the private header followed a redirect to another origin")
+		}
+		if exp := e.cli(nil, "--json", "models", "export", "mystery"); !strings.Contains(exp.stdout, `"authProfile":"vendor"`) {
+			t.Fatalf("export lost the profile reference: %s", exp.stdout)
+		}
+	})
+
+	step("AC3 unknown metadata leaves the backend blank and every backend selectable; AC5 imports finish without a backend", func(t *testing.T) {
+		sel := e.json("models", "backend", "mystery")["selection"].(map[string]any)
+		if sel["backendId"] != "" || sel["mode"] != "auto" {
+			t.Fatalf("unknown architecture must leave the backend blank: %v", sel)
+		}
+		reg := e.json("backends", "list")["backends"].([]any)
+		if opts := sel["recommendation"].(map[string]any)["options"].([]any); len(opts) != len(reg) {
+			t.Fatalf("%d options for %d registered backends", len(opts), len(reg))
+		}
+	})
+
+	step("AC8 an unpinned URL records an observed hash; a trusted-checksum mismatch blocks publication", func(t *testing.T) {
+		m := e.json("models", "export", "mystery")["model"].(map[string]any)
+		a := m["variants"].([]any)[0].(map[string]any)["artifacts"].([]any)[0].(map[string]any)
+		if a["hashTrust"] != "observed" || a["sha256"] != hexsum(mystery) {
+			t.Fatalf("artifact %v", a)
+		}
+		r := e.cli(nil, "models", "import", vendor.URL+"/files/mystery.gguf", "--auth-profile", "vendor", "--allow-http", "--task", "chat",
+			"--id", "pinned", "--yes", "--sha256", strings.Repeat("0", 64))
+		if r.code == 0 || fileExists(filepath.Join(e.root, "models", "imported", "pinned")) {
+			t.Fatalf("checksum mismatch published: %s%s", r.stdout, r.stderr)
+		}
+	})
+
+	step("AC2 a GGUF extension is not evidence; an incomplete multi-file model names its missing files", func(t *testing.T) {
+		dir := filepath.Join(tmp, "split")
+		os.MkdirAll(dir, 0o755)
+		for i := 1; i <= 2; i++ {
+			os.WriteFile(filepath.Join(dir, fmt.Sprintf("big-%05d-of-00003.gguf", i)), ggufFile(t, "qwen3", map[string]any{"split.count": 3, "split.no": i - 1}, 4096), 0o644)
+		}
+		r := e.cli(nil, "models", "import", filepath.Join(dir, "big-00001-of-00003.gguf"), "--task", "chat")
+		if r.code == 0 || !strings.Contains(r.stdout+r.stderr, "big-00003-of-00003.gguf") {
+			t.Fatalf("incomplete split: %s%s", r.stdout, r.stderr)
+		}
+		os.WriteFile(filepath.Join(tmp, "llama-3-8b-instruct.Q4_K_M.gguf"), []byte("not a model at all, only a name"), 0o644)
+		e.json("models", "import", filepath.Join(tmp, "llama-3-8b-instruct.Q4_K_M.gguf"), "--task", "chat", "--id", "named-only")
+		sel := e.json("models", "backend", "named-only")["selection"].(map[string]any)
+		if sel["backendId"] != "" {
+			t.Fatalf("a file name produced a backend: %v", sel)
+		}
+		for _, o := range sel["recommendation"].(map[string]any)["options"].([]any) {
+			if r := o.(map[string]any)["rating"]; r == "supported" || r == "likely" {
+				t.Fatalf("a file name produced a %s rating: %v", r, o)
+			}
+		}
+	})
+
+	step("OP4 models inspect --json has a findings table with codes and sentences", func(t *testing.T) {
+		d := e.json("models", "inspect", "vision-model")
+		findings := d["findings"].([]any)
+		backends := e.json("backends", "list")["backends"].([]any)
+		if len(findings) != len(backends) {
+			t.Fatalf("%d findings for 1 variant and %d backends", len(findings), len(backends))
+		}
+		for _, f := range findings {
+			for _, r := range f.(map[string]any)["reasons"].([]any) {
+				rm := r.(map[string]any)
+				if rm["code"] == "" || !strings.HasSuffix(rm["message"].(string), ".") {
+					t.Fatalf("reason %v", rm)
+				}
+			}
+		}
+	})
+
+	step("OP5 CrispASR is listed as not installed and never chosen automatically", func(t *testing.T) {
+		sel := e.json("models", "backend", "vision-model")["selection"].(map[string]any)
+		if strings.HasPrefix(sel["backendId"].(string), "crispasr") {
+			t.Fatal("CrispASR chosen automatically")
+		}
+		found := false
+		for _, o := range sel["recommendation"].(map[string]any)["options"].([]any) {
+			om := o.(map[string]any)
+			if strings.HasPrefix(om["backendId"].(string), "crispasr") {
+				found = true
+				codes := strings.Join(warningCodes(om), ",")
+				if om["install"] != "missing" || !strings.Contains(codes, "no-managed-package") || !strings.Contains(codes, "not-chosen-automatically") {
+					t.Fatalf("CrispASR option %v", om)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("CrispASR is not listed")
+		}
+	})
+
+	step("AC5 overrides report real startup errors without bypassing integrity or resource checks", func(t *testing.T) {
+		e.serve()
+		if r := e.chat("vision-model"); r.Status != 200 || !strings.Contains(string(r.Body), "hello there") {
+			t.Fatalf("automatic backend chat: %d %s", r.Status, r.Body)
+		}
+		wantCode(t, e.chat("mystery"), 409, "backend_not_selected")
+		if s := e.setBackend("mystery", "llama.cpp-cpu"); s["mode"] != "manual" || s["finding"].(map[string]any)["rating"] == "supported" {
+			t.Fatalf("manual unknown choice: %v", s)
+		}
+		if r := e.chat("mystery"); r.Status != 200 {
+			t.Fatalf("manual CPU backend chat: %d %s", r.Status, r.Body)
+		}
+		if s := e.setBackend("mystery", wrongTask); s["finding"].(map[string]any)["rating"] != "incompatible" {
+			t.Fatalf("incompatible finding: %v", s)
+		}
+		r := e.chat("mystery")
+		wantCode(t, r, 503, "backend_startup_failed")
+		if !strings.Contains(string(r.Body), "does not run chat models") {
+			t.Fatalf("startup error: %s", r.Body)
+		}
+	})
+
 	def := func(id string, factor float64) string {
 		p := filepath.Join(tmp, id+".json")
 		b, _ := json.Marshal(map[string]any{"schema": "localbase.backend/v1", "id": id, "name": "Custom " + id, "engine": "fake-engine",
@@ -413,77 +539,195 @@ func TestModelImportAcceptance(t *testing.T) {
 		os.WriteFile(p, b, 0o644)
 		return p
 	}
-	e.json("backends", "add", "--file", def("fake-custom", 1))
-	e.json("backends", "add", "--file", def("fake-hungry", 1e7))
-	s = e.setBackend("mystery", "fake-custom")
-	if s["finding"].(map[string]any)["rating"] != "supported" {
-		t.Fatalf("custom backend finding: %v", s)
-	}
-	if r := e.chat("mystery"); r.Status != 200 {
-		t.Fatalf("custom backend chat: %d %s", r.Status, r.Body)
-	}
-	// An override never bypasses memory admission.
-	e.setBackend("mystery", "fake-hungry")
-	wantCode(t, e.chat("mystery"), 503, "insufficient_memory")
 
-	// 5. Manual choices survive reinspection and restart.
-	e.json("models", "inspect", "mystery")
-	e.stop()
-	e.serve()
-	if s := e.selection("mystery"); s["mode"] != "manual" || s["backendId"] != "fake-hungry" {
-		t.Fatalf("after restart: %v", s)
-	}
-	// Device-local: another device starts in automatic mode.
-	d2 := e.cli([]string{"LOCALBASE_DEVICE_ID=device-two"}, "--json", "models", "backend", "mystery")
-	if !strings.Contains(d2.stdout, `"mode":"auto"`) {
-		t.Fatalf("another device inherited the choice: %s", d2.stdout)
-	}
-	// A removed backend is kept as unavailable, never replaced.
-	e.json("backends", "remove", "fake-hungry")
-	if s := e.selection("mystery"); s["backendId"] != "fake-hungry" || s["unavailable"] != true {
-		t.Fatalf("removed backend: %v", s)
-	}
-	wantCode(t, e.chat("mystery"), 409, "backend_unavailable")
-	// Reset to automatic restores detection: blank again for this model.
-	if s := e.setBackend("mystery", ""); s["mode"] != "auto" || s["backendId"] != "" {
-		t.Fatalf("reset: %v", s)
-	}
-	wantCode(t, e.chat("mystery"), 409, "backend_not_selected")
+	step("AC9 a custom adapter declares support through the same versioned interface", func(t *testing.T) {
+		e.json("backends", "add", "--file", def("fake-custom", 1))
+		e.json("backends", "add", "--file", def("fake-hungry", 1e7))
+		if s := e.setBackend("mystery", "fake-custom"); s["finding"].(map[string]any)["rating"] != "supported" {
+			t.Fatalf("custom backend finding: %v", s)
+		}
+		if r := e.chat("mystery"); r.Status != 200 {
+			t.Fatalf("custom backend chat: %d %s", r.Status, r.Body)
+		}
+	})
 
-	// 6. Exports, the API listing and logs carry no credentials, and the
-	// OpenAI-compatible routes are unchanged in shape.
-	exp := e.cli(nil, "--json", "models", "export", "mystery")
-	if !strings.Contains(exp.stdout, `"authProfile":"vendor"`) || strings.Contains(exp.stdout, "device-one") {
-		t.Fatalf("export: %s", exp.stdout)
-	}
-	list := do(t, "GET", e.base+"/v1/models", bearer(e.key), "")
-	if list.Status != 200 || !strings.Contains(string(list.Body), `"id":"vision-model"`) || !strings.Contains(string(list.Body), `"object":"list"`) {
-		t.Fatalf("models list: %s", list.Body)
-	}
-	e.stop()
-	e.stop = func() {}
-	logs, _ := filepath.Glob(filepath.Join(e.root, "logs", "*"))
-	logs = append(logs, func() []string { m, _ := filepath.Glob(filepath.Join(tmp, "serve-*.log")); return m }()...)
-	for _, f := range logs {
-		b, _ := os.ReadFile(f)
-		for _, s := range []string{vendorSecret, hfToken, signedValue} {
-			if bytes.Contains(b, []byte(s)) {
-				t.Fatalf("%s contains a credential", filepath.Base(f))
+	step("AC5 an override never bypasses memory admission", func(t *testing.T) {
+		e.setBackend("mystery", "fake-hungry")
+		wantCode(t, e.chat("mystery"), 503, "insufficient_memory")
+	})
+
+	step("AC4 manual selections survive reinspection and restart", func(t *testing.T) {
+		e.json("models", "inspect", "mystery")
+		e.stop()
+		e.serve()
+		if s := e.selection("mystery"); s["mode"] != "manual" || s["backendId"] != "fake-hungry" {
+			t.Fatalf("after restart: %v", s)
+		}
+	})
+
+	step("OP1 exports carry no selection or device hash; another root and device start in automatic mode", func(t *testing.T) {
+		exp := e.cli(nil, "--json", "models", "export", "mystery")
+		for _, s := range []string{"device-one", "fake-hungry", "manual", "selection"} {
+			if strings.Contains(exp.stdout, s) {
+				t.Fatalf("export contains %q: %s", s, exp.stdout)
 			}
 		}
-	}
-	db, _ := os.ReadFile(filepath.Join(e.root, "local-base.db"))
-	for _, s := range []string{vendorSecret, signedValue} {
-		if bytes.Contains(db, []byte(s)) {
-			t.Fatal("the database contains a credential; it belongs in the auth profile file only")
+		for _, args := range [][]string{{"--json", "models", "backend", "mystery"}, {"--json", "models", "inspect", "mystery"}} {
+			if out := e.cli(nil, args...); strings.Contains(out.stdout, "device-one") {
+				t.Fatalf("%v shows the device hash", args)
+			}
 		}
-	}
+		file := filepath.Join(tmp, "mystery-export.json")
+		os.WriteFile(file, []byte(exp.stdout), 0o644)
+		second := &e2e{t: t, root: filepath.Join(tmp, "root-two"), outDir: tmp, env: []string{"LOCALBASE_DEVICE_ID=device-two"}}
+		if r := second.cli(nil, "init"); r.code != 0 {
+			t.Fatalf("init second root: %s", r.stderr)
+		}
+		d := second.json("models", "add-definition", file)
+		if sel := d["selection"].(map[string]any); sel["mode"] != "auto" {
+			t.Fatalf("second root inherited a manual choice: %v", sel)
+		}
+		// The same root on another device is automatic too.
+		d2 := e.cli([]string{"LOCALBASE_DEVICE_ID=device-two"}, "--json", "models", "backend", "mystery")
+		if !strings.Contains(d2.stdout, `"mode":"auto"`) {
+			t.Fatalf("another device inherited the choice: %s", d2.stdout)
+		}
+	})
 
-	// 7. Rollback stays a binary swap: TS opens the database Go wrote.
-	if _, err := exec.LookPath("bun"); err == nil && *implFlag == "both" {
-		tsr := runCLI(t, "ts", e.root, "--json", "keys", "list")
-		if tsr.code != 0 {
-			t.Fatalf("TS could not open the database: %s%s", tsr.stdout, tsr.stderr)
+	step("AC4 a removed backend is kept as unavailable; reset to automatic restores detection", func(t *testing.T) {
+		e.json("backends", "remove", "fake-hungry")
+		if s := e.selection("mystery"); s["backendId"] != "fake-hungry" || s["unavailable"] != true {
+			t.Fatalf("removed backend: %v", s)
 		}
-	}
+		wantCode(t, e.chat("mystery"), 409, "backend_unavailable")
+		if s := e.setBackend("mystery", ""); s["mode"] != "auto" || s["backendId"] != "" {
+			t.Fatalf("reset: %v", s)
+		}
+		wantCode(t, e.chat("mystery"), 409, "backend_not_selected")
+	})
+
+	step("AC10 OpenAI-compatible routes are unchanged", func(t *testing.T) {
+		list := e.do("GET", "/v1/models", "")
+		var body struct {
+			Object string `json:"object"`
+			Data   []struct {
+				ID     string `json:"id"`
+				Object string `json:"object"`
+			} `json:"data"`
+		}
+		if list.Status != 200 || json.Unmarshal(list.Body, &body) != nil || body.Object != "list" {
+			t.Fatalf("models list: %s", list.Body)
+		}
+		found := false
+		for _, m := range body.Data {
+			found = found || (m.ID == "vision-model" && m.Object == "model")
+		}
+		if !found {
+			t.Fatalf("imported model not listed: %s", list.Body)
+		}
+	})
+
+	step("OP2 no output, page, log, export or database contains a planted secret", func(t *testing.T) {
+		if r := e.do("GET", "/_localbase/auth-profiles", ""); r.Status != 200 || !strings.Contains(string(r.Body), `"X-Api-Key"`) {
+			t.Fatalf("auth profiles: %d %s", r.Status, r.Body)
+		}
+		for _, p := range []string{"/_localbase/backends", "/_localbase/model-backend?model=mystery", "/_localbase/model-backend?model=vision-model", "/_localbase/models"} {
+			e.do("GET", p, "")
+		}
+		e.json("auth-profiles", "list")
+		e.json("models", "export", "moved")
+		e.stop()
+		// The UI pages, through a loopback --no-auth gateway.
+		e.serve("--no-auth")
+		e.noAuth = true
+		for _, p := range []string{"/app/models/import", "/app/backends", "/app/models/m/mystery", "/app/models/m/moved", "/app/models/m/vision-model", "/app/models/get"} {
+			r := e.do("GET", p, "")
+			if r.Status != 200 {
+				t.Fatalf("%s: %d", p, r.Status)
+			}
+		}
+		form := "source=" + vendor.URL + "/files/mystery.gguf%3Fsig%3D" + signedValue + "&task=chat&auth_profile=vendor&allow_http=1&id=ui-mystery"
+		req, _ := http.NewRequest("POST", e.base+"/app/models/import/resolve", strings.NewReader(form))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		req.Header.Set("X-Localbase-UI", "1")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		e.scan("import resolve page", string(b))
+		if !strings.Contains(string(b), "custom source") {
+			t.Fatalf("resolve page: %s", b)
+		}
+		// Finish the import through the page: only the token travels.
+		m := regexp.MustCompile(`name="token" value="([0-9a-f-]{36})"`).FindStringSubmatch(string(b))
+		if m == nil {
+			t.Fatalf("no token in the resolve page: %s", b)
+		}
+		post := func(path, form string) string {
+			req, _ := http.NewRequest("POST", e.base+path, strings.NewReader(form))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("HX-Request", "true")
+			req.Header.Set("X-Localbase-UI", "1")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			b, _ := io.ReadAll(resp.Body)
+			e.scan(path, string(b))
+			return string(b)
+		}
+		if page := post("/app/models/import/start", "token="+m[1]+"&backend=auto"); !strings.Contains(page, "Confirm that you trust") {
+			t.Fatalf("a custom source started without consent: %s", page)
+		}
+		// The token survives a refused start; a new check gives a new one anyway.
+		page := post("/app/models/import/start", "token="+m[1]+"&backend=auto&confirm=1")
+		job := regexp.MustCompile(`/app/models/import/jobs/(imp_[0-9a-f-]{36})`).FindStringSubmatch(page)
+		if job == nil {
+			t.Fatalf("no job: %s", page)
+		}
+		deadline := time.Now().Add(20 * time.Second)
+		for {
+			req, _ := http.NewRequest("GET", e.base+"/app/models/import/jobs/"+job[1], nil)
+			req.Header.Set("HX-Request", "true")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			e.scan("import job", string(b))
+			if strings.Contains(string(b), "Imported") {
+				break
+			}
+			if strings.Contains(string(b), "import failed") || time.Now().After(deadline) {
+				t.Fatalf("UI import: %d %q (job %s, start page %q)", resp.StatusCode, b, job[1], page)
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		if page := post("/app/models/import/start", "token="+m[1]+"&backend=auto&confirm=1"); !strings.Contains(page, "expired") {
+			t.Fatalf("a used token was accepted again: %s", page)
+		}
+		e.stop()
+		files, _ := filepath.Glob(filepath.Join(e.root, "logs", "*"))
+		more, _ := filepath.Glob(filepath.Join(tmp, "serve-*.log"))
+		for _, f := range append(files, more...) {
+			b, _ := os.ReadFile(f)
+			e.scan(filepath.Base(f), string(b))
+		}
+		db, _ := os.ReadFile(filepath.Join(e.root, "local-base.db"))
+		e.scan("local-base.db", string(db))
+	})
+
+	step("rollback: TS opens the database Go wrote", func(t *testing.T) {
+		if _, err := exec.LookPath("bun"); err != nil || *implFlag != "both" {
+			t.Skip("needs bun and -impl=both")
+		}
+		if r := runCLI(t, "ts", e.root, "--json", "keys", "list"); r.code != 0 {
+			t.Fatalf("TS could not open the database: %s%s", r.stdout, r.stderr)
+		}
+	})
 }

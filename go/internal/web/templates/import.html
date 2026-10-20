@@ -14,6 +14,8 @@
         <select class="input min-h-11" name="task"><option value="">From the source</option>{{range .Tasks}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
       <label class="grid gap-1"><span class="text-sm font-semibold">Auth profile <span class="font-normal text-muted">(private headers)</span></span>
         <select class="input min-h-11" name="auth_profile"><option value="">None</option>{{range .Profiles}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+      <label class="grid gap-1"><span class="text-sm font-semibold">Model id <span class="font-normal text-muted">(optional)</span></span>
+        <input class="input min-h-11" name="id" autocomplete="off" spellcheck="false" pattern="[a-z0-9][a-z0-9._-]{0,127}"></label>
       <label class="grid gap-1"><span class="text-sm font-semibold">SHA-256 you trust <span class="font-normal text-muted">(optional)</span></span>
         <input class="input min-h-11" name="sha256" autocomplete="off" spellcheck="false" pattern="[0-9a-fA-F]{64}"></label>
     </div>
@@ -53,12 +55,7 @@
         {{range $.Options}}<option value="{{.ID}}">{{.Name}} — {{.RatingLabel}} · {{.Install}}</option>{{end}}
       </select></label>
     <p class="text-sm text-muted">{{if $.Recommended}}Detected from the source's metadata and checked again after download.{{else}}Nothing was detected as compatible. You can still download it and choose any backend now or later.{{end}}</p>
-    <input type="hidden" name="source" value="{{$.Form.Source}}">
-    {{if not .Choices}}<input type="hidden" name="file" value="{{$.Form.File}}">{{end}}
-    <input type="hidden" name="task" value="{{$.Form.Task}}">
-    <input type="hidden" name="auth_profile" value="{{$.Form.AuthProfile}}">
-    <input type="hidden" name="sha256" value="{{$.Form.SHA256}}">
-    {{if $.Form.AllowHTTP}}<input type="hidden" name="allow_http" value="1">{{end}}
+    <input type="hidden" name="token" value="{{$.Token}}">
     {{if .Custom}}<label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="confirm" value="1" required class="size-5"> I trust this source{{if $.Insecure}} and accept the unencrypted transfer{{end}}</label>{{end}}
     <button type="submit" class="btn btn-primary justify-self-start">Download</button>
   </form>

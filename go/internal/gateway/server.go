@@ -70,6 +70,7 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/backends", s.backendsAPI)
 	mux.HandleFunc("/_localbase/model-backend", s.modelBackendAPI)
 	mux.HandleFunc("/_localbase/model-imports", s.modelImportsAPI)
+	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
 	if s.UI != nil {
 		mux.Handle("/app", s.UI)
 		mux.Handle("/app/", s.UI)

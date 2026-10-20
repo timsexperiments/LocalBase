@@ -333,3 +333,64 @@ func TestRedactURL(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// The Hugging Face token reaches a CDN origin only when the "huggingface"
+// profile lists it; anonymous CDN downloads keep working without it.
+func TestHFTokenCDNScope(t *testing.T) {
+	weights := ggufBytes(t, "qwen3", 4096)
+	cdnRec := &recorder{}
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cdnRec.note(r)
+		serveRange(w, r, weights)
+	}))
+	defer cdn.Close()
+	const commit = "1111111111222222222233333333334444444444"
+	hf := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/revision/"):
+			json.NewEncoder(w).Encode(map[string]any{"sha": commit, "pipeline_tag": "text-generation",
+				"siblings": []any{map[string]any{"rfilename": "m.gguf", "lfs": map[string]any{"sha256": sum(weights), "size": len(weights)}}}})
+		default:
+			http.Redirect(w, r, cdn.URL+"/xet/m.gguf?sig=x", 302)
+		}
+	}))
+	defer hf.Close()
+	t.Setenv("HF_ENDPOINT", hf.URL)
+	ctx := context.Background()
+	root := t.TempDir()
+	run := func(id, token string) {
+		t.Helper()
+		p, err := Resolve(ctx, root, Request{Source: "hf:org/m", HFToken: token, ID: id})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Import(ctx, root, p, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("anonymous", "") // public repository, no token at all
+	run("tokened", "hf_scopetest123")
+	if cdnRec.anyHeader("hf_scopetest123") {
+		t.Fatal("the token reached the CDN without being allowed")
+	}
+	if err := SaveProfile(root, Profile{ID: HFProfileID, Origins: []string{cdn.URL}}); err != nil {
+		t.Fatal(err)
+	}
+	run("allowed", "hf_scopetest123")
+	if !cdnRec.anyHeader("hf_scopetest123") {
+		t.Fatal("the huggingface profile did not extend the token to its CDN origin")
+	}
+}
+
+func TestRedirectDowngradeRefused(t *testing.T) {
+	mk := func(u string) *http.Request { r, _ := http.NewRequest("GET", u, nil); return r }
+	if err := redirectPolicy(mk("http://cdn.example.com/f"), []*http.Request{mk("https://src.example.com/f")}); !errors.Is(err, ErrDowngrade) {
+		t.Fatalf("https -> http: %v", err)
+	}
+	if err := redirectPolicy(mk("http://c.example.com/f"), []*http.Request{mk("https://a.example.com/f"), mk("https://b.example.com/f")}); !errors.Is(err, ErrDowngrade) {
+		t.Fatalf("https -> https -> http: %v", err)
+	}
+	if err := redirectPolicy(mk("https://b.example.com/f"), []*http.Request{mk("http://a.example.com/f")}); err != nil {
+		t.Fatalf("http -> https is an upgrade: %v", err)
+	}
+}

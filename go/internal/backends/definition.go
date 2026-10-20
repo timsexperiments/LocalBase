@@ -87,6 +87,9 @@ type Definition struct {
 	Platforms     []Platform          `json:"platforms"`
 	Runtime       *Runtime            `json:"runtime,omitempty"`
 	Launch        *Launch             `json:"launch,omitempty"`
+	// Automatic false keeps a backend out of automatic selection (for
+	// example until a managed package is pinned); it stays selectable.
+	Automatic *bool `json:"automatic,omitempty"`
 	Notes         string              `json:"notes,omitempty"`
 
 	BuiltIn bool `json:"-"`
@@ -143,6 +146,9 @@ func (d *Definition) Validate() error {
 	}
 	return nil
 }
+
+// automatic reports whether routing may pick this backend.
+func (d *Definition) automatic() bool { return d.Automatic == nil || *d.Automatic }
 
 // Supports reports task or capability support.
 func (d *Definition) Supports(taskOrCapability string) bool {

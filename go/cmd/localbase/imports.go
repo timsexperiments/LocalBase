@@ -63,10 +63,10 @@ func printSelection(c *cli.Ctx, s backends.Selection, reg *backends.Registry) {
 	default:
 		c.Info("Backend: %s (%s, %s)", s.BackendID, s.Mode, s.Finding.Rating)
 		for _, r := range s.Finding.Reasons {
-			c.Info("  - %s", r)
+			c.Info("  - %s", r.Message)
 		}
 		for _, w := range s.Finding.Warnings {
-			c.Info("  ! %s", w)
+			c.Info("  ! %s", w.Message)
 		}
 		if s.DownloadBytes > 0 {
 			c.Info("  ! downloading them needs %s", humanBytes(s.DownloadBytes))
@@ -87,7 +87,7 @@ func printSelection(c *cli.Ctx, s backends.Selection, reg *backends.Registry) {
 		}
 		detail := ""
 		if len(o.Reasons) > 0 {
-			detail = ": " + o.Reasons[0]
+			detail = ": " + o.Reasons[0].Message
 		}
 		c.Info(" %s %-48s %-12s %s%s", mark, name, o.Rating, o.Install, detail)
 	}
@@ -240,7 +240,7 @@ func modelsBackendCommand() *cli.Command {
 				return nil, err
 			}
 			printSelection(c, s, l.Registry)
-			return map[string]any{"modelId": id, "deviceId": l.DeviceID, "selection": s}, nil
+			return map[string]any{"modelId": id, "selection": s}, nil
 		})}
 }
 
@@ -277,12 +277,26 @@ func modelsInspectCommand() *cli.Command {
 					c.Info("  problem: %s", p)
 				}
 			}
-			rec := l.Registry.Recommend(&en.Model, l.Host(), ins)
-			c.Info("Automatic choice: %s", map[bool]string{true: "none", false: rec.BackendID}[rec.BackendID == ""])
-			for _, o := range rec.Options {
-				c.Info("  %-30s %-12s %s", o.BackendID, o.Rating, strings.Join(o.Reasons, "; "))
+			host := l.Host()
+			rec := l.Registry.Recommend(&en.Model, host, ins)
+			c.Info("Automatic choice: %s", map[bool]string{true: "none", false: rec.BackendID + " (" + rec.VariantID + ")"}[rec.BackendID == ""])
+			// Every variant against every backend, for review.
+			findings := []backends.Finding{}
+			for _, v := range en.Model.Variants {
+				in := ins[v.ID]
+				c.Info("Variant %s:", v.ID)
+				for _, d := range l.Registry.All() {
+					f := backends.Assess(&en.Model, &in.Variant, d, host, in.Missing)
+					findings = append(findings, f)
+					codes := []string{}
+					for _, r := range f.Reasons {
+						codes = append(codes, r.Code)
+					}
+					c.Info("  %-30s %-12s %s", d.ID, f.Rating, strings.Join(codes, ","))
+				}
 			}
-			return map[string]any{"model": en.Model, "inspections": ins, "recommendation": rec, "host": l.Host()}, nil
+			return map[string]any{"model": en.Model, "inspections": ins, "recommendation": rec, "findings": findings,
+				"host": map[string]any{"os": host.OS, "arch": host.Arch, "accelerators": host.Accelerators}}, nil
 		})}
 }
 
@@ -465,4 +479,54 @@ func authProfilesCommand() *cli.Command {
 				return map[string]any{"removed": removed}, nil
 			})},
 	}}
+}
+
+// modelsAddDefinitionCommand adds a model definition exported elsewhere
+// (models export). Only the definition travels: its files are downloaded
+// separately, and backend choices are never part of it, so the model starts
+// in automatic mode on this device.
+func modelsAddDefinitionCommand() *cli.Command {
+	return &cli.Command{Name: "add-definition", Summary: "Add a model definition exported by models export", Usage: "<file.json>", MinArgs: 1, MaxArgs: 1,
+		Run: withLibrary(func(c *cli.Ctx, e *env, l *library.Library) (any, error) {
+			b, err := os.ReadFile(c.Args[0])
+			if err != nil {
+				return nil, cli.Inputf("unable to read %s", c.Args[0])
+			}
+			var wrapped struct {
+				Model *models.Model `json:"model"`
+				Data  *struct {
+					Model *models.Model `json:"model"`
+				} `json:"data"`
+			}
+			m := &models.Model{}
+			if json.Unmarshal(b, &wrapped) == nil && wrapped.Data != nil && wrapped.Data.Model != nil {
+				m = wrapped.Data.Model
+			} else if wrapped.Model != nil {
+				m = wrapped.Model
+			} else if err := json.Unmarshal(b, m); err != nil {
+				return nil, cli.Inputf("not a model definition: %v", err)
+			}
+			if err := m.Validate(); err != nil {
+				return nil, cli.Inputf("invalid model definition: %v", err)
+			}
+			if _, err := l.Get(context.Background(), m.ID); err == nil {
+				return nil, cli.Inputf("a model with id %s already exists here", m.ID)
+			}
+			m.Origin = "import"
+			def, _ := json.Marshal(m)
+			if err := e.Store.SaveImportedModel(context.Background(), m.ID, def); err != nil {
+				return nil, err
+			}
+			en, err := l.Get(context.Background(), m.ID)
+			if err != nil {
+				return nil, err
+			}
+			sel, err := l.Selection(context.Background(), en)
+			if err != nil {
+				return nil, err
+			}
+			c.Info("Added %s. Its files are not downloaded; backend selection on this device is automatic.", m.ID)
+			printSelection(c, sel, l.Registry)
+			return map[string]any{"model": m, "selection": sel}, nil
+		})}
 }

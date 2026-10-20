@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/models"
@@ -237,5 +238,70 @@ func TestBuiltinsLoad(t *testing.T) {
 	}
 	if compareVersions("b11671", "b10419") <= 0 || compareVersions("v1.2.10", "v1.2.9") <= 0 {
 		t.Error("version compare")
+	}
+}
+
+// "Likely" or better never comes from a name: only from facts with an
+// evidence source.
+func TestNoRatingFromNames(t *testing.T) {
+	reg, _ := Load("")
+	h := host("darwin", "arm64", []string{"metal", "cpu"}, reg, nil)
+	v := models.Variant{ID: "v", Format: models.Fact[string]{Value: "gguf", Source: "filename"},
+		Architecture: models.Fact[string]{Value: "llama", Source: "filename"},
+		Artifacts:    []models.Artifact{{Filename: "llama-3-8b.gguf", Role: models.RoleWeights, Required: true}}}
+	m := chatModel(v)
+	for _, d := range reg.All() {
+		f := Assess(m, &m.Variants[0], d, h, nil)
+		if Plausible(f.Rating) {
+			t.Errorf("%s rated %s from file-name facts", d.ID, f.Rating)
+		}
+		for _, r := range f.Reasons {
+			if r.Code == "" || r.Message == "" || !strings.HasSuffix(r.Message, ".") {
+				t.Errorf("%s: reason %+v needs a code and a sentence", d.ID, r)
+			}
+		}
+	}
+	f := Assess(m, &m.Variants[0], reg.Get("llama.cpp-metal"), h, nil)
+	codes := []string{}
+	for _, r := range f.Reasons {
+		codes = append(codes, r.Code)
+	}
+	if !slices.Contains(codes, CodeFormatUnknown) || !slices.Contains(codes, CodeArchWeakEvidence) {
+		t.Errorf("codes %v", codes)
+	}
+}
+
+// CrispASR has no managed pin: it is listed and labelled, never chosen
+// automatically, even when an executable is found.
+func TestCrispASRWithoutPin(t *testing.T) {
+	reg, _ := Load("")
+	tts := &models.Model{ID: "k", Tasks: []string{"speech"}, Capabilities: []string{}, Variants: []models.Variant{{ID: "v",
+		Format: models.Of("gguf", models.SourceInspect), Architecture: models.Of("kokoro", models.SourceInspect),
+		Artifacts: []models.Artifact{{Filename: "k.gguf", Role: models.RoleWeights, Required: true}, {Filename: "af.bin", Role: models.RoleVoice, Required: true}}}}}
+	for _, installed := range []string{Missing, Installed} {
+		h := host("darwin", "arm64", []string{"metal", "cpu"}, reg, map[string]string{"crispasr-metal": installed, "crispasr-cpu": installed})
+		if installed == Missing {
+			h.Unpackaged = map[string]bool{"crispasr-metal": true, "crispasr-cpu": true}
+		}
+		rec := reg.Recommend(tts, h, nil)
+		if strings.HasPrefix(rec.BackendID, "crispasr") {
+			t.Errorf("install=%s: CrispASR chosen automatically", installed)
+		}
+		var listed *Finding
+		for i, o := range rec.Options {
+			if o.BackendID == "crispasr-metal" {
+				listed = &rec.Options[i]
+			}
+		}
+		if listed == nil {
+			t.Fatal("CrispASR is not listed")
+		}
+		codes := []string{}
+		for _, w := range listed.Warnings {
+			codes = append(codes, w.Code)
+		}
+		if !slices.Contains(codes, CodeManualOnly) || (installed == Missing && !slices.Contains(codes, CodeNoManagedPackage)) {
+			t.Errorf("install=%s: warnings %v", installed, codes)
+		}
 	}
 }

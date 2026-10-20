@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
@@ -62,12 +63,12 @@ func options(reg *backends.Registry, rec backends.Recommendation, selected strin
 	for _, o := range rec.Options {
 		v := optionView{ID: o.BackendID, Name: o.BackendID, Rating: o.Rating, RatingLabel: ratingLabels[o.Rating],
 			Install: installLabels[o.Install], Selected: o.BackendID == selected, Recommended: o.BackendID == rec.BackendID,
-			Warnings: o.Warnings}
+			Warnings: backends.Messages(o.Warnings)}
 		if d := reg.Get(o.BackendID); d != nil {
 			v.Name = d.Name
 		}
 		if len(o.Reasons) > 0 {
-			v.Reason = o.Reasons[0]
+			v.Reason = o.Reasons[0].Message
 		}
 		out = append(out, v)
 	}
@@ -88,7 +89,7 @@ func (u *UI) backendView(modelID string, s backends.Selection) backendView {
 		}
 	}
 	if f := s.Finding; f != nil {
-		v.Rating, v.RatingLabel, v.Reasons, v.Warnings = f.Rating, ratingLabels[f.Rating], f.Reasons, f.Warnings
+		v.Rating, v.RatingLabel, v.Reasons, v.Warnings = f.Rating, ratingLabels[f.Rating], backends.Messages(f.Reasons), backends.Messages(f.Warnings)
 	}
 	return v
 }
@@ -230,6 +231,8 @@ func (u *UI) importResolve(w http.ResponseWriter, r *http.Request) {
 	}
 	rec := u.d.Library.Preview(plan)
 	data["Plan"] = plan
+	data["Token"] = u.remember(f)
+	data["Form"] = importForm{} // never echo the source or checksum back
 	data["Insecure"] = slices.ContainsFunc(plan.Warnings, func(w acquire.Warning) bool { return w.Code == acquire.WarnInsecureHTTP })
 	data["Options"] = options(u.d.Library.Registry, rec, "")
 	data["Recommended"] = rec.BackendID
@@ -240,9 +243,19 @@ func (u *UI) importResolve(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UI) importStart(w http.ResponseWriter, r *http.Request) {
-	f := readImportForm(r)
+	token := r.FormValue("token")
+	f, ok := u.recall(token)
+	if !ok {
+		r.Header.Set("HX-Target", "import-plan")
+		u.render(w, r, "import", map[string]any{"Error": "This check expired. Check the source again."})
+		return
+	}
+	if v := strings.TrimSpace(r.FormValue("file")); v != "" {
+		f.File = v
+	}
+	f.Backend, f.Confirm = r.FormValue("backend"), r.FormValue("confirm") == "1"
 	r.Header.Set("HX-Target", "import-plan")
-	data := map[string]any{"Form": f, "Tasks": models.Tasks}
+	data := map[string]any{"Tasks": models.Tasks}
 	fail := func(msg string) {
 		data["Error"] = msg
 		u.render(w, r, "import", data)
@@ -262,10 +275,15 @@ func (u *UI) importStart(w http.ResponseWriter, r *http.Request) {
 		fail("Choose what the model does.")
 		return
 	}
+	if _, err := u.d.Library.Get(r.Context(), plan.ID); err == nil {
+		fail("A model with id " + plan.ID + " already exists. Check the source again with another model id.")
+		return
+	}
 	if f.Backend != "" && f.Backend != "auto" && u.d.Library.Registry.Get(f.Backend) == nil {
 		fail("That backend is not registered.")
 		return
 	}
+	u.forget(token)
 	id := u.d.Library.StartImport(plan, f.Backend, nil)
 	r.Header.Set("HX-Target", "import-job")
 	u.render(w, r, "import", map[string]any{"Job": u.d.Library.Job(id)})
@@ -313,4 +331,46 @@ func (u *UI) backendsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	u.render(w, r, "backends", data)
+}
+
+// pendingImport is a resolved import waiting for confirmation. The page gets
+// only its token, so a source URL with signed query values or a typed
+// checksum is never sent back to the browser.
+type pendingImport struct {
+	form    importForm
+	created time.Time
+}
+
+const pendingTTL = 30 * time.Minute
+
+func (u *UI) remember(f importForm) string {
+	u.pendingMu.Lock()
+	defer u.pendingMu.Unlock()
+	if u.pending == nil {
+		u.pending = map[string]pendingImport{}
+	}
+	for k, p := range u.pending {
+		if time.Since(p.created) > pendingTTL {
+			delete(u.pending, k)
+		}
+	}
+	token := root.NewID()
+	u.pending[token] = pendingImport{form: f, created: time.Now()}
+	return token
+}
+
+func (u *UI) recall(token string) (importForm, bool) {
+	u.pendingMu.Lock()
+	defer u.pendingMu.Unlock()
+	p, ok := u.pending[token]
+	if !ok || time.Since(p.created) > pendingTTL {
+		return importForm{}, false
+	}
+	return p.form, true
+}
+
+func (u *UI) forget(token string) {
+	u.pendingMu.Lock()
+	delete(u.pending, token)
+	u.pendingMu.Unlock()
 }

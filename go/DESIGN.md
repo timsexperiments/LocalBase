@@ -647,6 +647,16 @@ The requirements that supersede earlier preferences (2026-10-20):
 | Auth profile | `<root>/credentials/auth-profiles.json` (0600, private) | `id`, `origins` (scope), header names and secret values; model records hold only the id |
 | Backend selection | `model_backend_selections` (DB) | `modelId`, `deviceId`, `mode` (`auto`/`manual`), `backendId` (nullable), `variantId`; detection results are recomputed, never stored over a manual choice |
 
+Auth profile values are **plaintext at rest**: the file is mode 0600 in a
+0700 directory, readable by the account LocalBase runs as and by anyone with
+its backups. That matches the minimal-dependencies policy (no keychain or
+secret-service library). A profile named `huggingface` may list CDN origins
+that also receive the Hugging Face token; otherwise the token goes to the
+Hugging Face endpoint only. Every route, page, export and log shows profiles
+as ids, origins and header names only (`/_localbase/auth-profiles`, `auth-profiles list`). The
+`diagnostics` bundle (M5) must leave out `credentials/`, the `model_backend_selections` rows
+and the device hash; `config show` reads none of them.
+
 Legacy catalog entries (the TS `modelSpecObjectSchema`) load as a logical
 model with one variant whose facts come from the entry, marked
 `pinned-metadata`. New entries can declare `variants` directly. `deviceId` is
@@ -818,20 +828,34 @@ documented upstream is `likely` or `unknown`.
 
 #### Status (2026-10-20)
 
-Steps 1–7 are implemented. Evidence:
+Steps 1–7 are implemented, with the operator review (OP1–OP5) folded in.
+`contract/import_e2e_test.go` has one subtest per check; it runs the real
+binary on scratch roots and ports against fake Hugging Face, CDN, vendor and
+backend servers, and scans every CLI output, API response, UI page, log,
+export and the database for three planted secrets.
 
-| Acceptance check (spec) | Test |
-| --- | --- |
-| Same logical model picks a Metal/MLX variant on Apple Silicon and a CUDA/Vulkan variant on Linux, by explicit rules | `backends.TestPlatformVariants` (registered MLX backend, CUDA with and without a build, Vulkan) |
-| A GGUF extension is not evidence; an incomplete split names its missing files | `backends.TestExtensionIsNotEvidence`; e2e step 2 (local split) |
-| Unknown metadata leaves the selection blank; every backend stays selectable | `backends.TestSelectionModes`; e2e step 2 |
-| Manual choices survive reinspection and restart; reset restores detection; a removed backend is not replaced | `backends.TestSelectionModes`, `store.TestBackendChoicesPersist`; e2e step 5 (gateway restart, another device id) |
-| Overrides report real startup errors without bypassing integrity or memory checks; imports finish without a backend | e2e steps 3–4 (`backend_startup_failed`, `insufficient_memory`, `backend_not_selected`) |
-| Public and authenticated HF imports resolve an immutable revision | `acquire.TestHuggingFaceImport`; e2e step 1 (token kept off the CDN origin) |
-| Direct URLs: custom-source warning, private headers not in progress, errors, exports or redirects | `acquire.TestDirectURLImport`; e2e steps 2 and 6 (CLI output, logs, DB and export scanned for the secrets) |
-| Unpinned URLs record an observed hash; a trusted-checksum mismatch blocks publication | `acquire.TestDirectURLImport`; e2e step 2 |
-| Custom adapters use the same versioned interfaces; downloads never run code | `backends.TestCustomDefinitionRules`; e2e step 4 (`process-openai/v1`) and step 1 (`.py` never requested) |
-| OpenAI-compatible routes unchanged | Full TS/Go contract suite still green; e2e step 6 |
+| Check | End-to-end subtest | Unit tests |
+| --- | --- | --- |
+| AC1 Metal/MLX variant on Apple Silicon, CUDA/Vulkan on Linux, by rule | `AC1 the logical model picks this platform's variant and backend by rule` | `backends.TestPlatformVariants` |
+| AC2 extension is not evidence; incomplete multi-file model names missing files | `AC2 a GGUF extension is not evidence; ...` | `backends.TestExtensionIsNotEvidence`, `TestNoRatingFromNames` |
+| AC3 unknown metadata leaves the selection blank; all backends selectable | `AC3 unknown metadata leaves the backend blank ...` | `backends.TestSelectionModes` |
+| AC4 manual choices survive reinspection and restart; reset; removed backend not replaced | `AC4 manual selections survive reinspection and restart`, `AC4 a removed backend is kept as unavailable ...` | `backends.TestSelectionModes`, `store.TestBackendChoicesPersist` |
+| AC5 overrides get real startup errors without bypassing checks; imports finish without a backend | `AC5 overrides report real startup errors ...`, `AC5 an override never bypasses memory admission`, `AC3 ...; AC5 imports finish without a backend` | |
+| AC6 public and authenticated HF imports resolve an immutable revision | `AC6 public and authenticated Hugging Face imports ...` | `acquire.TestHuggingFaceImport` |
+| AC7 direct URL warning; private headers kept out of progress, errors, exports, redirects | `AC7 a direct URL shows the custom-source warning ...`, `OP2 ...` | `acquire.TestDirectURLImport` |
+| AC8 observed hash for unpinned URLs; trusted mismatch blocks publication | `AC8 an unpinned URL records an observed hash ...` | `acquire.TestDirectURLImport` |
+| AC9 custom adapters through the same versioned interfaces; downloads never execute code | `AC9 a custom adapter declares support ...`, `AC9 downloading weights never executes repository code or adds a backend` | `backends.TestCustomDefinitionRules` |
+| AC10 OpenAI-compatible interfaces unchanged | `AC10 OpenAI-compatible routes are unchanged`; the TS/Go contract suite | |
+| OP1 device identity stays local; export, import elsewhere, automatic there | `OP1 exports carry no selection or device hash; ...` | |
+| OP2 profiles redacted everywhere (planted secrets) | `OP2 no output, page, log, export or database contains a planted secret` | `acquire.TestDirectURLImport` |
+| OP3 HF token off CDN origins unless the `huggingface` profile lists them; anonymous CDN works; HTTPS→HTTP refused | `OP3 the Hugging Face token stays off CDN origins ...` | `acquire.TestHFTokenCDNScope`, `TestRedirectDowngradeRefused` |
+| OP4 ratings never from names; user sentences plus machine codes; findings table | `OP4 models inspect --json has a findings table ...`, `AC2 ...` | `backends.TestNoRatingFromNames` |
+| OP5 CrispASR listed as not installed, never automatic until pinned | `OP5 CrispASR is listed as not installed ...` | `backends.TestCrispASRWithoutPin` |
+| Rollback stays a binary swap | `rollback: TS opens the database Go wrote` | `store.TestBackendChoicesPersist` |
+
+HTTPS→HTTP redirects are refused anywhere in a redirect chain (no consent
+path): the source chose HTTPS, and a downgrade mid-transfer is what an
+attacker would cause. Plain HTTP sources need explicit consent up front.
 
 Also checked by hand: the import, model settings and backend pages at 390 px
 in light and dark on a scratch gateway. Not done here, by design: live

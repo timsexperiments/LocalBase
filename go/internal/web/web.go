@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -55,6 +56,9 @@ type UI struct {
 	pages    map[string]*template.Template
 	assetVer map[string]string
 	mux      *http.ServeMux
+
+	pendingMu sync.Mutex
+	pending   map[string]pendingImport
 }
 
 func New(d Deps) *UI {

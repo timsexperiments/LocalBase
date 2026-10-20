@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 )
@@ -26,7 +27,7 @@ type scopedTransport struct {
 	base    http.RoundTripper
 	profile *Profile
 	hfToken string
-	hfOrig  string
+	hfOrigs []string // origins the Hugging Face token may reach
 }
 
 func (t *scopedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -45,31 +46,44 @@ func (t *scopedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			}
 		}
 	}
-	if t.hfToken != "" && origin == t.hfOrig && (t.profile == nil || t.profile.Headers["Authorization"] == "") {
+	if t.hfToken != "" && slices.Contains(t.hfOrigs, origin) && (t.profile == nil || t.profile.Headers["Authorization"] == "") {
 		r.Header.Set("Authorization", "Bearer "+t.hfToken)
 	}
 	return t.base.RoundTrip(r)
 }
 
 // newClient returns a client that sends profile headers only to the
-// profile's origins and the Hugging Face token only to the Hugging Face
-// endpoint's origin.
-func newClient(profile *Profile, hfToken string) *http.Client {
+// profile's origins, and the Hugging Face token only to the Hugging Face
+// endpoint's origin plus any origins listed in a "huggingface" auth profile
+// (for example a CDN the person chose to trust with the token). Anonymous
+// downloads from CDNs work without it.
+func newClient(profile *Profile, hfToken string, hfExtra []string) *http.Client {
 	hfOrig, _ := Origin(HFEndpoint())
 	base := http.DefaultTransport.(*http.Transport).Clone()
 	base.ResponseHeaderTimeout = 60 * time.Second
 	return &http.Client{
-		Transport: &scopedTransport{base: base, profile: profile, hfToken: hfToken, hfOrig: hfOrig},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 10 {
-				return errors.New("too many redirects")
-			}
-			if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
-				return errors.New("refusing a redirect from HTTPS to plain HTTP")
-			}
-			return nil
-		},
+		Transport:     &scopedTransport{base: base, profile: profile, hfToken: hfToken, hfOrigs: append([]string{hfOrig}, hfExtra...)},
+		CheckRedirect: redirectPolicy,
 	}
+}
+
+// ErrDowngrade: an HTTPS download was redirected to plain HTTP. It is refused,
+// not offered for consent: the source chose HTTPS, and a downgrade in the
+// middle of a transfer is how a man in the middle would look.
+var ErrDowngrade = errors.New("refusing a redirect from HTTPS to plain HTTP")
+
+// redirectPolicy limits redirects and refuses HTTPS to HTTP downgrades
+// anywhere in the chain.
+func redirectPolicy(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("too many redirects")
+	}
+	for _, v := range via {
+		if v.URL.Scheme == "https" && req.URL.Scheme != "https" {
+			return ErrDowngrade
+		}
+	}
+	return nil
 }
 
 // redactErr turns transport errors into text without URLs' secrets: a

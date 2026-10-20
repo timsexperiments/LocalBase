@@ -83,7 +83,7 @@ func Open(r *root.Root, st *store.Store, cat *catalog.Catalog, accelerators []st
 	}
 	l := &Library{Root: r, Store: st, Catalog: cat, Registry: reg,
 		DeviceID: backends.DeviceID(backends.ProbeOptions{})}
-	l.host = backends.NewHost(accelerators, reg, InstallState(r.RuntimesDir()))
+	l.host = backends.NewHost(accelerators, reg, InstallState(r.RuntimesDir()), Packaged)
 	l.stamp = "unset"
 	l.refresh()
 	return l, nil
@@ -310,7 +310,7 @@ func (l *Library) refresh() {
 		return
 	}
 	l.stamp = stamp
-	l.host = backends.NewHost(l.host.Accelerators, l.Registry, InstallState(l.Root.RuntimesDir()))
+	l.host = backends.NewHost(l.host.Accelerators, l.Registry, InstallState(l.Root.RuntimesDir()), Packaged)
 }
 
 // Host is this device as detection sees it.
@@ -337,4 +337,10 @@ func (l *Library) SelectionKey(modelID string) string {
 		return "auto|" + stamp
 	}
 	return "manual|" + c.BackendID + "|" + c.VariantID + "|" + stamp
+}
+
+// Packaged reports a managed package for a built-in backend on this
+// platform.
+func Packaged(d *backends.Definition) bool {
+	return d.Runtime != nil && runsOnThisPlatform(d) && runtime.HasPinnedRuntime(d.Runtime.Executable) && (d.Runtime.Managed || cpuOnly(d))
 }

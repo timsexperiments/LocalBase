@@ -88,7 +88,7 @@ func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
 		case err != nil:
 			badRequest(w, r, err.Error(), nil)
 		default:
-			noStore(w, 200, map[string]any{"model": id, "deviceId": l.DeviceID, "selection": sel})
+			noStore(w, 200, map[string]any{"model": id, "selection": sel})
 		}
 	}
 	if r.Method == http.MethodGet {
@@ -210,4 +210,26 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	id := l.StartImport(plan, in.Backend, s.Log)
 	noStore(w, 202, map[string]any{"job": id, "plan": plan})
+}
+
+// authProfilesAPI lists auth profiles: ids, origins and header names. Header
+// values never leave the credential file.
+func (s *Server) authProfilesAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, r, "GET")
+		return
+	}
+	if s.adminPrincipal(w, r, "models:manage") == nil {
+		return
+	}
+	ps, err := acquire.LoadProfiles(s.Root.Dir)
+	if err != nil {
+		serviceUnavailable(w, r, "Model management")
+		return
+	}
+	out := []acquire.PublicProfile{}
+	for _, p := range ps.Profiles {
+		out = append(out, p.Public())
+	}
+	noStore(w, 200, map[string]any{"profiles": out})
 }
