@@ -219,7 +219,10 @@ func serve(c *cli.Ctx) (any, error) {
 			ModelsDir: r.ModelsDir(modality), RootDir: r.Dir, CacheDir: filepath.Join(r.Dir, "cache"), Host: h, Port: p,
 			Binaries: binaries, Install: installer(e, installMissing, log), Activate: activate}
 		if modality == "tts" {
-			d.ExtraKey = func() string { return voiceStamp(st) }
+			// A changed voice set or marking setting restarts the speech server.
+			d.ExtraKey = func() string {
+				return voiceStamp(st) + "|marking=" + strconv.FormatBool(runtime.SpeechMarking(context.Background(), st))
+			}
 		}
 		return runtime.NewService(d), nil
 	}
@@ -264,7 +267,12 @@ func serve(c *cli.Ctx) (any, error) {
 		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Voices: voices.New(st, r.Dir)}
 	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
-		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib})
+		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib,
+		Call: func(ctx context.Context, p *auth.Principal, method, path, ct string, body []byte) web.APIResult {
+			res := srv.Call(ctx, p, method, path, ct, body)
+			return web.APIResult{Status: res.Status, Header: res.Header, Body: res.Body}
+		},
+		Voices: voices.New(st, r.Dir).List})
 	gateway.New(srv)
 
 	ln, err := net.Listen("tcp", net.JoinHostPort(listenHost, strconv.Itoa(listenPort)))

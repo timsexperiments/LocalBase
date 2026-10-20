@@ -133,6 +133,7 @@ Go standard library first. Every addition needs a reason:
 | Module | Why |
 | --- | --- |
 | `modernc.org/sqlite` | Pure-Go SQLite, so `CGO_ENABLED=0` still produces a static binary and cross-compiling to linux/amd64 is trivial. |
+| `internal/third_party/norm` (vendored, not a module) | Unicode NFC/NFKC for voice names (TS `String.prototype.normalize`). A copy of the Go go1.26.0 toolchain's vendored `golang.org/x/text/unicode/norm` (x/text v0.32.0, BSD-3-Clause, Unicode 15.0). Provenance and edits in its README; `PINS` and `norm_pins_test.go` fail on drift. |
 | (none else) | Dropped after review (§11): purego (Metal working set comes from `llama-server --list-devices`) and a TOML library (a small reader like TS's `toml.ts`). |
 
 Not added: an HTTP router (Go 1.22+ `ServeMux` patterns cover every route), a
@@ -941,10 +942,19 @@ on `crispasr-metal` and `crispasr-cpu`. `af_bella` is not in the pinned voice
 revision, so it answers `voice_not_supported` on this variant. `onnx-cpu`
 becomes manual-only.
 
-**Provenance (product decision, open):** CrispASR adds an inaudible AI-content
-watermark and C2PA metadata by default. LocalBase passes none of its marking
-opt-outs, so Kokoro output through CrispASR is marked; tts-server output is
-not. Qwen3-TTS through CrispASR needs a reference voice and a consent
+**Provenance (product decision, open):** CrispASR marks synthesized speech
+with an inaudible AI-content watermark and, in its own WAV files, a C2PA
+manifest. Measured on the pinned build (2026-10-20): it watermarks raw PCM
+responses even with every opt-out, and honors the opt-outs only for WAV. The
+gateway therefore asks CrispASR for WAV and keeps only its samples. With
+marking on (the default) the output carries the watermark but not the C2PA
+manifest, because LocalBase writes its own WAV header and PCM can hold none.
+The single switch is `local-base speech marking on|off` (the Go setting
+`speech.provenance-marking`, stored in `go_settings`); off passes
+`--no-watermark --no-c2pa --no-spoken-disclaimer
+--accept-marking-responsibility` and restarts the speech server on the next
+request. `TestSpeechKokoroCrispASR` detects the watermark when on and its
+absence when off. tts-server output is not marked. Qwen3-TTS through CrispASR needs a reference voice and a consent
 attestation and is deferred; Qwen TTS stays on tts-server.
 
 ### 13.4 Plan
@@ -968,7 +978,8 @@ attestation and is deferred; Qwen TTS stays on tts-server.
 | 3 | Done for Kokoro via CrispASR and the tts-server adapter | `TestDifferentialSpeechRejections` (same status, code, param and message as TS); `TestSpeechKokoroCrispASR` (automatic `crispasr-metal`, WAV/PCM/SSE, whisper hears the input); `runtime.TestEnsureBinaryInstallsPinnedRelease` (offline: checksums, extraction, dictionary rebuild); `backends.TestCrispASRWithoutPin` |
 | 4 | Done | `voices.TestNormalizeAudioGolden` (15 recordings and every rejection reproduce the TS normalizer byte for byte: `tools/golden/voices.ts`); `voices.TestNameRulesGolden` (NFC, NFKC key, JS whitespace and lowercase); `TestDifferentialVoices` (same stored sha256 on both gateways, every rejection, permission and method error); `TestCLIVoices` |
 | 5 | Done | `TestDifferentialImageRejections` (generation and edit validation, permissions, content checks); `TestImageReal` (DreamShaper 8 through sd-server: generation and edit are byte-identical on TS and Go); validator and tuning-block unit tests |
-| 6–7 | Not started | |
+| 6 | Done | `/app/lab` (image, speech, transcription) and `/app/voices` (record or upload, consent, preview, rename, delete), exercised in a browser against real models at 320 and 1280 px; `web` handler tests (API errors shown escaped, results bound to their owner, cross-site posts refused) |
+| 7 | Not started | |
 
 `serve` now honours `--stt-*`, `--tts-*` and `--image-*` host and port
 options and `--no-stt`, `--no-tts` and `--no-image` (TS defaults: TTS 8092,
@@ -1000,10 +1011,49 @@ extension, not the part header. A media model becomes active when it is
 requested, before its files are checked (TS activateModel), so a request for
 a selected but missing model changes the default for later requests on both.
 
-Deliberate difference: after a failed start, TS answers every later request
-for that model with 503 `service_unavailable`; Go repeats the actual error
-(for example 409 `model_install_consent_required`).
+Retry semantics are listed in §13.6.
 
 Contract fixtures: launched gateways run offline (dead proxies, loopback
 exempt), so a missing runtime or model fails instead of downloading, and
 `bin/runtimes` fixtures merge instead of nesting.
+
+### 13.6 Status changes for the cutover checklist
+
+Live clients (naya-device-worker, t3-opencode) retry on 503 with
+`Retry-After`. The contract: **transient failures keep 503 (or 429) with
+`Retry-After`**, as TS answers them; **failures that need someone to act
+answer their real 4xx without it**. `gateway.TestRuntimeErrorRetrySemantics`
+pins the mapping and `TestDifferentialRetrySemantics` checks it on both
+gateways with a real sd-server.
+
+| Class | Status, code | Retry-After | TS |
+| --- | --- | --- | --- |
+| A backend crashed or did not become healthy | 503 `service_unavailable` ("Image service is currently restarting…", the service named as in TS) | 5 | same |
+| A chosen or imported backend failed to start (M3.5, Go only) | 503 `backend_startup_failed` | 5 | no equivalent |
+| Memory pressure | 503 `insufficient_memory` | 5 | same |
+| Queue full or timed out | 429 `inference_queue_full`, `inference_queue_timeout` | 1 | same |
+| Files not installed | 409 `model_install_consent_required` | none | same on the first request |
+| Launch can never work as configured | 409 `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported` | none | no equivalent (M3.5) |
+
+Deliberate status changes to verify against the live clients at cutover:
+
+1. **A repeated request after a permanent start failure.** TS keeps the failed
+   runtime and answers 503 `service_unavailable` with `Retry-After: 5`; Go
+   answers the real 409 every time. A retrying client now stops instead of
+   retrying a model that cannot start. Transient start failures still answer
+   503 with `Retry-After` on every attempt, as in TS.
+2. **An unparseable multipart body** (voices, image edits, transcription):
+   TS 500 `gateway_error`; Go 400 `validation_failed`.
+3. **The wrong method on a JSON inference route** (for example `GET
+   /v1/chat/completions`): TS 400; Go 405 with `Allow: POST`.
+4. **An overflowing prompt** (M1): 400 `context_length_exceeded` instead of
+   the relayed `exceed_context_size_error`.
+
+The Lab and My voices pages (step 6) call the API in-process as the signed-in
+person (`gateway.Server.Call`), so they get exactly the API's validation,
+permissions and errors without a JSON client. Generated media is kept per
+person for 30 minutes (at most 16 results) and served from the UI's own
+origin. Recording, file conversion and resampling to WAV happen in the
+browser (`static/js/audio.js`), since the server decodes only WAV.
+`TestServeForUI` serves the contract fixture with `--no-auth` on a test
+port for checking the pages by hand.

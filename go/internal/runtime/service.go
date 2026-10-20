@@ -276,7 +276,11 @@ func (s *Service) doSwitch(modelID, key string) error {
 	if s.d.Catalog.ByID(modelID) != nil && !t.Imported && t.Variant.ID == "default" {
 		installErr = s.ensureInstalled(modelID)
 	}
-	if installErr == nil {
+	// TS sizes image models with an imageRuntime profile from the catalog, so
+	// its preflight resolves (and can reject for memory) without the files.
+	spec := s.d.Catalog.ByID(modelID)
+	catalogSized := spec != nil && !t.Imported && spec.ImageRuntime != nil
+	if installErr == nil || catalogSized {
 		if err := s.d.Memory.CheckAdmission(context.Background(), demand, []string{s.d.Modality}); err != nil {
 			return err
 		}

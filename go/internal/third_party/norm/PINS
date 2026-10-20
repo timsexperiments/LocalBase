@@ -1,0 +1,25 @@
+# Provenance of this copy. Do not edit by hand; norm_pins_test.go checks it.
+# source: $GOROOT/src/vendor/golang.org/x/text/unicode/norm (Go go1.26.0 toolchain)
+# module: golang.org/x/text v0.32.0 (from $GOROOT/src/vendor/modules.txt)
+# license: BSD-3-Clause (LICENSE, the x/text license)
+#
+# upstream <file> <sha256 of the toolchain file>
+upstream composition.go 3d1be52960f2693926472819b747646e7d2371d2bb5f53097cf9d46c913052df
+upstream forminfo.go b8d7e1fd095038fee9db7ea058bea492c55d642de2178475569ee763eebe25d7
+upstream input.go 965b431790bb139543d71a9c497920ef7d9a15af417456a2bbd0cdb629330e8d
+upstream iter.go 16a40d326f9b37c5430a18894f718007728ce8324afb08d8c0a17ce7289714b0
+upstream normalize.go b9e7aeff51e6cb036ff4e8c6255410e7068c112e329a137d333e639f63c4a8ab
+upstream trie.go d87793d558251ee8824954f0b7bc5564803e4c9d59a8c4eebb4c3c5cfbd19492
+upstream tables15.0.0.go 61f78dd80390fdfff02b4e49aea4feac75dde7919b9a5d9c63042ab3e2dc1d6e
+upstream LICENSE 911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad
+#
+# local <file> <sha256 of this repository's file>
+local composition.go 3d1be52960f2693926472819b747646e7d2371d2bb5f53097cf9d46c913052df
+local forminfo.go b8d7e1fd095038fee9db7ea058bea492c55d642de2178475569ee763eebe25d7
+local input.go 965b431790bb139543d71a9c497920ef7d9a15af417456a2bbd0cdb629330e8d
+local iter.go 16a40d326f9b37c5430a18894f718007728ce8324afb08d8c0a17ce7289714b0
+local normalize.go 951e3213ab212fb0953d0016185ffe9de625561c836cb0454364af7112a095db
+local trie.go d87793d558251ee8824954f0b7bc5564803e4c9d59a8c4eebb4c3c5cfbd19492
+local tables15.0.0.go 036dda732b522a3bbacfbbb0d6c4b75584fdbff72ab9f5930715433936e71bad
+local errors.go a2e52c8dbfcda8dbbdd63b055f5832706fdeef297f0f7c06f75b1ee3b05f391d
+local LICENSE 911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad

@@ -96,16 +96,21 @@ func (u *UI) backendView(modelID string, s backends.Selection) backendView {
 
 // mutating guards a state-changing form post: an htmx request from this
 // page's own origin, carrying the UI marker header.
+// sameOriginUI accepts only htmx requests from this origin with the UI header.
+func sameOriginUI(r *http.Request) bool {
+	site := r.Header.Get("Sec-Fetch-Site")
+	origin := r.Header.Get("Origin")
+	sameOrigin := origin == ""
+	if o, err := url.Parse(origin); err == nil && origin != "" {
+		sameOrigin = o.Host == r.Host
+	}
+	return r.Header.Get("X-Localbase-Ui") == "1" && r.Header.Get("HX-Request") == "true" && sameOrigin &&
+		(site == "" || site == "same-origin")
+}
+
 func (u *UI) mutating(permission string, next http.HandlerFunc) http.HandlerFunc {
 	return u.need(permission, func(w http.ResponseWriter, r *http.Request) {
-		site := r.Header.Get("Sec-Fetch-Site")
-		origin := r.Header.Get("Origin")
-		sameOrigin := origin == ""
-		if o, err := url.Parse(origin); err == nil && origin != "" {
-			sameOrigin = o.Host == r.Host
-		}
-		if r.Header.Get("X-Localbase-Ui") != "1" || r.Header.Get("HX-Request") != "true" || !sameOrigin ||
-			(site != "" && site != "same-origin") {
+		if !sameOriginUI(r) {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}

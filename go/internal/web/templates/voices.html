@@ -1,0 +1,62 @@
+{{define "title"}}My voices · LocalBase{{end}}
+{{define "main"}}
+<section aria-labelledby="voices-title">
+  <h1 id="voices-title" class="text-3xl font-bold tracking-tight">My voices</h1>
+  <p class="mt-1 text-muted">A voice is a short recording that speech models clone from. Recordings stay on this LocalBase, in its own folder, and only people who manage models can play them back.</p>
+  {{if .List.CanManage}}
+  <form class="card mt-6 grid gap-3 p-5" hx-post="/app/voices" hx-encoding="multipart/form-data" hx-target="#voice-list" hx-swap="outerHTML"
+    hx-disabled-elt="find button[type=submit]" data-audio-form data-reset-on-success>
+    <h2 class="text-lg font-semibold">Add a voice</h2>
+    <label class="grid gap-1"><span class="text-sm font-semibold">Name</span>
+      <input class="input min-h-11" name="name" required maxlength="48" autocomplete="off"></label>
+    <div class="grid gap-1"><span class="text-sm font-semibold">Recording <span class="font-normal text-muted">({{.List.Limits.MinSeconds}} to {{.List.Limits.MaxSeconds}} seconds of clear speech)</span></span>
+      <div class="flex flex-wrap items-center gap-2">
+        <input class="input min-h-11 max-w-full" type="file" name="audio" accept="audio/*" data-audio-input required>
+        <button type="button" class="btn btn-quiet" data-record>Record</button>
+      </div>
+      <p class="text-sm text-muted" data-audio-status aria-live="polite">Upload a file or record here; it is converted to WAV in the browser.</p>
+      <audio controls class="hidden w-full" data-audio-preview></audio>
+    </div>
+    <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="consent" value="true" required class="mt-0.5 size-5 shrink-0"> <span>{{.List.ConsentStatement}}</span></label>
+    <button type="submit" class="btn btn-primary justify-self-start">Add voice</button>
+  </form>
+  {{end}}
+  {{template "voice-list" .}}
+</section>
+<script src="{{asset "js/audio.js"}}" type="module"></script>
+{{end}}
+
+{{define "voice-list"}}
+<div id="voice-list" class="mt-6" aria-live="polite">
+  {{with .Notice}}<p class="card mb-3 p-4 {{if $.Failed}}text-danger{{end}}" {{if $.Failed}}role="alert"{{end}}>{{.}}</p>{{end}}
+  {{with .Error}}<p class="card mb-3 p-4 text-danger" role="alert">{{.}}</p>{{end}}
+  {{if not .List.Data}}
+  <p class="card p-4 text-muted">No voices yet.</p>
+  {{else}}
+  <ul class="grid gap-3">
+    {{range .List.Data}}
+    <li class="card grid gap-3 p-4">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 class="text-lg font-semibold break-words">{{.Name}}</h2>
+        <span class="text-sm text-muted">{{printf "%.1f" (seconds .DurationMs)}} s · added {{slice .CreatedAt 0 10}}</span>
+      </div>
+      {{if $.List.CanManage}}
+      <audio controls preload="none" src="/app/voices/{{.ID}}/audio" class="w-full"></audio>
+      <div class="flex flex-wrap items-end gap-2">
+        <form class="flex flex-wrap items-end gap-2" hx-post="/app/voices/{{.ID}}/rename" hx-target="#voice-list" hx-swap="outerHTML">
+          <label class="grid gap-1"><span class="text-sm font-semibold">Rename</span>
+            <input class="input min-h-11" name="name" required maxlength="48" value="{{.Name}}" autocomplete="off"></label>
+          <button type="submit" class="btn btn-quiet">Save</button>
+        </form>
+        <form hx-post="/app/voices/{{.ID}}/delete" hx-target="#voice-list" hx-swap="outerHTML" hx-confirm="Delete {{.Name}} and its recording?">
+          <button type="submit" class="btn btn-quiet text-danger">Delete</button>
+        </form>
+      </div>
+      {{end}}
+      <p class="text-sm text-muted">Use it as <code class="break-all">{{.ID}}</code> in the speech API.</p>
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
+</div>
+{{end}}

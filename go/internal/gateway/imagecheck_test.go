@@ -154,3 +154,39 @@ func TestPromptWithTuning(t *testing.T) {
 		}
 	}
 }
+
+func TestWAVSamples(t *testing.T) {
+	wav := func(rate uint32, chunks ...[]byte) []byte {
+		var b bytes.Buffer
+		b.WriteString("RIFF\x00\x00\x00\x00WAVE")
+		fmtc := make([]byte, 16)
+		binary.LittleEndian.PutUint16(fmtc, 1)
+		binary.LittleEndian.PutUint16(fmtc[2:], 1)
+		binary.LittleEndian.PutUint32(fmtc[4:], rate)
+		binary.LittleEndian.PutUint16(fmtc[14:], 16)
+		chunk := func(id string, data []byte) {
+			b.WriteString(id)
+			binary.Write(&b, binary.LittleEndian, uint32(len(data)))
+			b.Write(data)
+			if len(data)%2 == 1 {
+				b.WriteByte(0)
+			}
+		}
+		chunk("fmt ", fmtc)
+		for _, c := range chunks {
+			chunk(string(c[:4]), c[4:])
+		}
+		return b.Bytes()
+	}
+	samples := []byte{1, 2, 3, 4}
+	// A C2PA manifest chunk (odd-sized, padded) before the samples is skipped.
+	if got := wavSamples(wav(24000, []byte("C2PAabc"), append([]byte("data"), samples...))); !bytes.Equal(got, samples) {
+		t.Errorf("samples %v", got)
+	}
+	if wavSamples(wav(22050, append([]byte("data"), samples...))) != nil {
+		t.Error("wrong rate accepted")
+	}
+	if wavSamples([]byte("RIFF")) != nil || wavSamples(wav(24000)) != nil {
+		t.Error("malformed accepted")
+	}
+}

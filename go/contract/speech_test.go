@@ -174,4 +174,24 @@ func TestSpeechKokoroCrispASR(t *testing.T) {
 		t.Fatalf("transcript: %d %q", tr.Status, tr.Body)
 	}
 	t.Logf("heard: %s", tr.Body)
+
+	// Marking: on by default (the watermark is detectable); `speech marking
+	// off` restarts the server without it on the next request.
+	detector := filepath.Join(os.Getenv("LOCALBASE_CONTRACT_CRISPASR"), "rt", "crispasr-macos-arm64", "crispasr")
+	marked := func(wav []byte) bool {
+		p := filepath.Join(t.TempDir(), "check.wav")
+		os.WriteFile(p, wav, 0o600)
+		out, _ := exec.Command(detector, "--detect-watermark", p).CombinedOutput()
+		return strings.Contains(string(out), "WATERMARK DETECTED")
+	}
+	if !marked(wav) {
+		t.Error("default output carries no AI-content watermark")
+	}
+	if r := runCLI(t, "go", tg.Root, "--json", "speech", "marking", "off"); r.code != 0 {
+		t.Fatalf("speech marking off: %s %s", r.stdout, r.stderr)
+	}
+	defer runCLI(t, "go", tg.Root, "speech", "marking", "on")
+	if r := speak(""); r.Status != 200 || marked(r.Body) {
+		t.Errorf("marking off: %d, still marked %v", r.Status, r.Status == 200)
+	}
 }

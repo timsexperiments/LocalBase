@@ -1,0 +1,100 @@
+{{define "title"}}Lab · LocalBase{{end}}
+{{define "main"}}
+<section aria-labelledby="lab-title">
+  <h1 id="lab-title" class="text-3xl font-bold tracking-tight">Lab</h1>
+  <p class="mt-1 text-muted">Try the media models you selected. Results stay on this device and expire after 30 minutes.</p>
+  <nav aria-label="Lab" class="mt-4 flex flex-wrap gap-2">
+    <a class="chip" href="/app/lab?tab=image" {{if eq .Tab "image"}}aria-current="true"{{end}}>Image</a>
+    <a class="chip" href="/app/lab?tab=speech" {{if eq .Tab "speech"}}aria-current="true"{{end}}>Speech</a>
+    <a class="chip" href="/app/lab?tab=transcribe" {{if eq .Tab "transcribe"}}aria-current="true"{{end}}>Transcribe</a>
+  </nav>
+
+  {{if eq .Tab "image"}}
+  {{if not .CanImage}}{{template "lab-denied" "image generation"}}{{else if not .Models}}{{template "lab-none" "image"}}{{else}}
+  <form class="card mt-4 grid gap-3 p-5" hx-post="/app/lab/image" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <label class="grid gap-1"><span class="text-sm font-semibold">Prompt</span>
+      <textarea class="input min-h-24" name="prompt" required maxlength="16384" placeholder="What should the picture show?"></textarea></label>
+    <div class="grid gap-3 min-[600px]:grid-cols-2">
+      {{template "lab-models" .Models}}
+      <label class="grid gap-1"><span class="text-sm font-semibold">Size</span>
+        <select class="input min-h-11" name="size">{{range .Sizes}}<option>{{.}}</option>{{end}}</select></label>
+    </div>
+    <details class="text-sm">
+      <summary class="flex min-h-11 cursor-pointer items-center font-semibold">More settings</summary>
+      <div class="grid gap-3 pt-2 min-[600px]:grid-cols-3">
+        <label class="grid gap-1 min-[600px]:col-span-3"><span class="font-semibold">Avoid <span class="font-normal text-muted">(negative prompt)</span></span>
+          <input class="input min-h-11" name="negative_prompt" maxlength="16384"></label>
+        <label class="grid gap-1"><span class="font-semibold">Seed</span><input class="input min-h-11" name="seed" inputmode="numeric" pattern="[0-9]*"></label>
+        <label class="grid gap-1"><span class="font-semibold">Steps</span><input class="input min-h-11" name="steps" inputmode="numeric" pattern="[0-9]*"></label>
+      </div>
+    </details>
+    <button type="submit" class="btn btn-primary justify-self-start">Generate<span class="htmx-indicator">…</span></button>
+  </form>
+  {{end}}
+  {{end}}
+
+  {{if eq .Tab "speech"}}
+  {{if not .CanSpeech}}{{template "lab-denied" "speech"}}{{else if not .Models}}{{template "lab-none" "speech"}}{{else}}
+  <form class="card mt-4 grid gap-3 p-5" hx-post="/app/lab/speech" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <label class="grid gap-1"><span class="text-sm font-semibold">Text</span>
+      <textarea class="input min-h-24" name="input" required maxlength="256" placeholder="Up to 256 characters"></textarea></label>
+    <div class="grid gap-3 min-[600px]:grid-cols-2">
+      <label class="grid gap-1"><span class="text-sm font-semibold">Model</span>
+        <select class="input min-h-11" name="model" hx-get="/app/lab/voices" hx-target="#lab-voices" hx-swap="outerHTML" hx-trigger="change" hx-disabled-elt="unset">
+          {{range .Models}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
+      {{template "lab-voices" .}}
+    </div>
+    <p class="text-sm text-muted">{{if .CanManage}}<a class="font-semibold text-accent underline-offset-4 hover:underline" href="/app/voices">Add your own voice</a> to models that clone from a recording.{{else}}Custom voices appear here for models that clone from a recording.{{end}}</p>
+    <button type="submit" class="btn btn-primary justify-self-start">Speak<span class="htmx-indicator">…</span></button>
+  </form>
+  {{end}}
+  {{end}}
+
+  {{if eq .Tab "transcribe"}}
+  {{if not .CanTranscribe}}{{template "lab-denied" "transcription"}}{{else if not .Models}}{{template "lab-none" "transcription"}}{{else}}
+  <form class="card mt-4 grid gap-3 p-5" hx-post="/app/lab/transcribe" hx-encoding="multipart/form-data" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button" data-audio-form data-audio-rate="16000">
+    <div class="grid gap-1"><span class="text-sm font-semibold">Recording</span>
+      <div class="flex flex-wrap items-center gap-2">
+        <input class="input min-h-11 max-w-full" type="file" name="file" accept="audio/*" data-audio-input required>
+        <button type="button" class="btn btn-quiet" data-record>Record</button>
+      </div>
+      <p class="text-sm text-muted" data-audio-status aria-live="polite">Any audio the browser can play; it is converted to WAV before upload.</p>
+      <audio controls class="hidden w-full" data-audio-preview></audio>
+    </div>
+    <div class="grid gap-3 min-[600px]:grid-cols-2">
+      {{template "lab-models" .Models}}
+      <label class="grid gap-1"><span class="text-sm font-semibold">Language <span class="font-normal text-muted">(optional)</span></span>
+        <input class="input min-h-11" name="language" maxlength="16" placeholder="en"></label>
+    </div>
+    <label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="translate" class="size-5"> Translate to English</label>
+    <button type="submit" class="btn btn-primary justify-self-start">Transcribe<span class="htmx-indicator">…</span></button>
+  </form>
+  {{end}}
+  {{end}}
+
+  {{template "lab-result" .}}
+</section>
+<script src="{{asset "js/audio.js"}}" type="module"></script>
+{{end}}
+
+{{define "lab-models"}}
+<label class="grid gap-1"><span class="text-sm font-semibold">Model</span>
+  <select class="input min-h-11" name="model">{{range .}}<option value="{{.ID}}">{{.Name}}{{if .Active}} (current){{end}}</option>{{end}}</select></label>
+{{end}}
+
+{{define "lab-voices"}}
+<label class="grid gap-1" id="lab-voices"><span class="text-sm font-semibold">Voice</span>
+  <select class="input min-h-11" name="voice" required>{{range .Voices}}<option value="{{.ID}}">{{.Name}}</option>{{else}}<option value="">No voices</option>{{end}}</select></label>
+{{end}}
+
+{{define "lab-result"}}
+<div id="lab-result" class="mt-4" aria-live="polite">
+  {{with .Error}}<p class="card p-4 text-danger" role="alert">{{.}}</p>{{end}}
+  {{with .Image}}<figure class="card overflow-hidden p-2"><img src="{{.}}" alt="Generated image" class="mx-auto h-auto max-w-full rounded-xl"><figcaption class="p-2 text-sm"><a class="font-semibold text-accent" href="{{.}}" download="image.png">Download</a></figcaption></figure>{{end}}
+  {{with .Audio}}<div class="card grid gap-2 p-4"><audio controls src="{{.}}" class="w-full"></audio><a class="text-sm font-semibold text-accent" href="{{.}}" download="speech.wav">Download</a></div>{{end}}
+  {{if .Transcript}}<div class="card p-4"><p class="eyebrow">Transcript</p><p class="mt-1 whitespace-pre-wrap">{{.Transcript}}</p></div>{{end}}
+</div>
+{{end}}
+
+{{define "lab-denied"}}<p class="card mt-4 p-4 text-muted">Your access does not include {{.}}.</p>{{end}}
+{{define "lab-none"}}<p class="card mt-4 p-4 text-muted">No {{.}} model is selected yet. Choose one in <a class="font-semibold text-accent" href="/app/models/get">Get models</a>.</p>{{end}}

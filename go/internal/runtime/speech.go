@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
@@ -79,8 +80,8 @@ const misakiDict = "misaki-merged.json"
 //     never fetches anything on its own;
 //   - voices resolved from the model directory.
 //
-// CrispASR's AI-content watermark and C2PA provenance stay on: LocalBase
-// passes none of its marking opt-outs.
+// CrispASR's AI-content marking stays on unless the speech.provenance-marking
+// setting is "off" (SpeechMarking).
 func (s *Service) crispasrCommand(t *Target, host string, port int, weights string) (*serviceCommand, error) {
 	arch := t.Variant.Architecture
 	if !arch.Known() {
@@ -107,6 +108,9 @@ func (s *Service) crispasrCommand(t *Target, host string, port int, weights stri
 		args = append(args, "--no-gpu")
 	} else {
 		args = append(args, "--gpu-backend", acc)
+	}
+	if !SpeechMarking(context.Background(), s.d.Store) {
+		args = append(args, markingOptOut...)
 	}
 	env := append(os.Environ(),
 		"CRISPASR_KOKORO_G2P=builtin-only",
@@ -175,3 +179,21 @@ func (t *Target) Voices() []string {
 	}
 	return out
 }
+
+// SpeechMarkingKey is the Go setting that controls CrispASR's AI-content
+// marking ("on", the default, or "off").
+const SpeechMarkingKey = "speech.provenance-marking"
+
+// SpeechMarking reports whether synthesized speech is marked. Unset or
+// unreadable means marked: opting out takes an explicit "off".
+func SpeechMarking(ctx context.Context, st *store.Store) bool {
+	if st == nil {
+		return true
+	}
+	v, ok, err := st.Setting(ctx, SpeechMarkingKey)
+	return err != nil || !ok || v != "off"
+}
+
+// markingOptOut is CrispASR's full opt-out: no audio watermark, no C2PA
+// signing, no spoken disclaimer, with the attestation it requires.
+var markingOptOut = []string{"--no-watermark", "--no-c2pa", "--no-spoken-disclaimer", "--accept-marking-responsibility"}

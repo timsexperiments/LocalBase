@@ -163,7 +163,7 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 	}
 	lease, err := s.TTS.Acquire(r.Context(), id)
 	if err != nil {
-		runtimeError(w, r, err, id)
+		runtimeError(w, r, err, id, "TTS")
 		return
 	}
 	defer lease.Release()
@@ -196,7 +196,10 @@ func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, re
 	client := &http.Client{Timeout: speechTimeout}
 	switch t.Backend.Adapter {
 	case "crispasr/v1":
-		payload := map[string]any{"input": req.Input, "response_format": "pcm"}
+		// WAV, not PCM: CrispASR always watermarks raw PCM (it cannot carry
+		// C2PA), so only WAV honors the speech.provenance-marking opt-out. The
+		// samples are taken from its data chunk.
+		payload := map[string]any{"input": req.Input, "response_format": "wav"}
 		if req.Voice != "default" {
 			file := t.VoiceFile(req.Voice)
 			if file == "" {
@@ -212,10 +215,11 @@ func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, re
 			return nil, errors.New("Speech runtime request failed.")
 		}
 		defer resp.Body.Close()
-		pcm, _ := io.ReadAll(io.LimitReader(resp.Body, speechMaxPCMBytes*4+1))
+		wav, _ := io.ReadAll(io.LimitReader(resp.Body, speechMaxPCMBytes*4+1<<20))
 		if resp.StatusCode != 200 {
 			return nil, fmt.Errorf("Speech runtime rejected the request (HTTP %d).", resp.StatusCode)
 		}
+		pcm := wavSamples(wav)
 		if len(pcm) == 0 || len(pcm)%2 != 0 {
 			return nil, errors.New("Speech runtime returned an unexpected audio format.")
 		}
@@ -394,4 +398,33 @@ func jsonKind(b []byte) string {
 		return "null"
 	}
 	return "number"
+}
+
+// wavSamples returns the data chunk of a 24 kHz mono 16-bit PCM WAV, nil for
+// anything else. Other chunks (such as a C2PA manifest) are skipped.
+func wavSamples(b []byte) []byte {
+	if len(b) < 12 || string(b[0:4]) != "RIFF" || string(b[8:12]) != "WAVE" {
+		return nil
+	}
+	le := binary.LittleEndian
+	formatOK := false
+	for off := 12; off+8 <= len(b); {
+		id, size := string(b[off:off+4]), int(le.Uint32(b[off+4:]))
+		body := off + 8
+		if size < 0 || size > len(b)-body {
+			return nil
+		}
+		switch id {
+		case "fmt ":
+			formatOK = size >= 16 && le.Uint16(b[body:]) == 1 && le.Uint16(b[body+2:]) == 1 &&
+				le.Uint32(b[body+4:]) == runtime.SpeechSampleRate && le.Uint16(b[body+14:]) == 16
+		case "data":
+			if !formatOK {
+				return nil
+			}
+			return b[body : body+size]
+		}
+		off = body + size + size%2
+	}
+	return nil
 }

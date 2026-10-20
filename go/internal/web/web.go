@@ -23,6 +23,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
 //go:generate ../../tools/tailwind.sh
@@ -49,6 +50,10 @@ type Deps struct {
 	LogoutURL string
 	// Library: models, imports and backend selection.
 	Library *library.Library
+	// Call runs an API route in-process as the signed-in person (Lab, voices).
+	Call func(ctx context.Context, p *auth.Principal, method, path, contentType string, body []byte) APIResult
+	// Voices lists stored custom voices.
+	Voices func(ctx context.Context) ([]voices.Voice, error)
 }
 
 type UI struct {
@@ -59,6 +64,8 @@ type UI struct {
 
 	pendingMu sync.Mutex
 	pending   map[string]pendingImport
+
+	results resultStore
 }
 
 func New(d Deps) *UI {
@@ -87,8 +94,9 @@ func New(d Deps) *UI {
 			}
 			return s
 		},
-		"gib":  func(b int64) string { return fmt.Sprintf("%.1f GiB", float64(b)/float64(memory.GiB)) },
-		"list": func(v ...string) []string { return v },
+		"gib":     func(b int64) string { return fmt.Sprintf("%.1f GiB", float64(b)/float64(memory.GiB)) },
+		"seconds": func(ms int64) float64 { return float64(ms) / 1000 },
+		"list":    func(v ...string) []string { return v },
 		"dict": func(kv ...any) map[string]any {
 			m := map[string]any{}
 			for i := 0; i+1 < len(kv); i += 2 {
@@ -105,7 +113,7 @@ func New(d Deps) *UI {
 	}
 	base := template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/parts.html"))
 	u.pages = map[string]*template.Template{}
-	for _, page := range []string{"library", "running", "get", "details", "signin", "forbidden", "import", "backends"} {
+	for _, page := range []string{"library", "running", "get", "details", "signin", "forbidden", "import", "backends", "lab", "voices"} {
 		t := template.Must(base.Clone())
 		u.pages[page] = template.Must(t.ParseFS(templateFS, "templates/"+page+".html"))
 	}
@@ -125,6 +133,17 @@ func New(d Deps) *UI {
 	m.HandleFunc("POST /app/models/backend/{id}", u.mutating("models:manage", u.backendPanel))
 	m.HandleFunc("GET /app/backends", u.need("models:read", u.backendsPage))
 	m.HandleFunc("POST /app/backends", u.mutating("models:manage", u.backendsPage))
+	m.HandleFunc("GET /app/lab", u.need("models:read", u.lab))
+	m.HandleFunc("GET /app/lab/voices", u.need("models:read", u.labVoiceOptions))
+	m.HandleFunc("POST /app/lab/image", u.mutating("inference:image", u.labImage))
+	m.HandleFunc("POST /app/lab/speech", u.mutating("inference:speech", u.labSpeech))
+	m.HandleFunc("POST /app/lab/transcribe", u.uploading("inference:transcription", 26<<20, u.labTranscribe))
+	m.HandleFunc("GET /app/lab/results/{id}", u.need("models:read", u.labResult))
+	m.HandleFunc("GET /app/voices", u.need("models:read", u.voicesPage))
+	m.HandleFunc("POST /app/voices", u.uploading("models:manage", 13<<20, u.voiceCreate))
+	m.HandleFunc("POST /app/voices/{id}/rename", u.mutating("models:manage", u.voiceRename))
+	m.HandleFunc("POST /app/voices/{id}/delete", u.mutating("models:manage", u.voiceDelete))
+	m.HandleFunc("GET /app/voices/{id}/audio", u.need("models:manage", u.voiceAudio))
 	m.HandleFunc("/app/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	u.mux = m
 	return u

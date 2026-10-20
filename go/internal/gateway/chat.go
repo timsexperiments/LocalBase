@@ -367,7 +367,7 @@ func (s *Server) inferLLM(w http.ResponseWriter, r *http.Request, model string, 
 	lease, err := s.LLM.Acquire(r.Context(), model)
 	if err != nil {
 		s.logAdmissionRejection(requestID, "llm", model, err)
-		runtimeError(w, r, err, model)
+		runtimeError(w, r, err, model, "LLM")
 		return
 	}
 	defer lease.Release()

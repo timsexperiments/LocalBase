@@ -84,6 +84,14 @@
 }
 
 @layer components {
+  /* htmx request indicators (its built-in styles are off for the CSP). */
+  .htmx-indicator {
+    @apply hidden;
+  }
+  .htmx-request .htmx-indicator,
+  .htmx-request.htmx-indicator {
+    @apply inline;
+  }
   /* Keep 44px touch targets on every interactive control. */
   .btn {
     @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-[0.95rem] font-semibold transition-colors;

@@ -160,7 +160,7 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	}
 	lease, err := s.STT.Acquire(r.Context(), id)
 	if err != nil {
-		runtimeError(w, r, err, id)
+		runtimeError(w, r, err, id, "STT")
 		return
 	}
 	defer lease.Release()

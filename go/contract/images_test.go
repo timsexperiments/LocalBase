@@ -234,3 +234,48 @@ func TestImageReal(t *testing.T) {
 func named(field, filename string, b []byte) imgPart {
 	return imgPart{name: field, filename: filename, file: b, isFile: true}
 }
+
+// TestDifferentialRetrySemantics: clients (device workers, coding agents)
+// retry on 503 with Retry-After. A start that fails transiently must keep
+// that contract on both gateways, every time it is asked again; a failure
+// that needs someone to act answers its real 4xx without Retry-After.
+func TestDifferentialRetrySemantics(t *testing.T) {
+	if os.Getenv("LOCALBASE_CONTRACT_RUNTIMES") == "" {
+		t.Skip("needs LOCALBASE_CONTRACT_RUNTIMES (a real sd-server that fails to load placeholder weights)")
+	}
+	ask := func(model string) map[string]*Resp {
+		out := map[string]*Resp{}
+		for _, tg := range targets {
+			h := bearer(tg.Key)
+			h["Content-Type"] = "application/json"
+			out[tg.Name] = do(t, "POST", tg.BaseURL+"/v1/images/generations", h,
+				`{"model":"`+model+`","prompt":"a","size":"256x256","response_format":"b64_json"}`)
+		}
+		return out
+	}
+	check := func(label string, rs map[string]*Resp, status int, code string, retry bool) {
+		t.Helper()
+		for name, r := range rs {
+			got := r.JSON(t)["error"].(map[string]any)["code"]
+			if r.Status != status || got != code || (r.Header.Get("Retry-After") != "") != retry {
+				t.Errorf("%s %s: %d %v Retry-After=%q, want %d %s retry=%v", name, label, r.Status, got, r.Header.Get("Retry-After"), status, code, retry)
+			}
+		}
+	}
+	// Transient: the backend starts and dies on the placeholder weights.
+	// Asked twice: TS keeps its failed runtime, Go retries the start.
+	for i := 1; i <= 2; i++ {
+		rs := ask("dreamshaper-8-lcm")
+		check(fmt.Sprintf("failed start #%d", i), rs, 503, "service_unavailable", true)
+		sameError(t, fmt.Sprintf("failed start #%d", i), rs)
+	}
+	// Permanent until someone installs it: 409, no Retry-After.
+	check("files missing", ask("realvis-xl-v5.0"), 409, "model_install_consent_required", false)
+	// A missing multi-file model is sized from the catalog first, so on a busy
+	// machine it is a transient memory 503; either way both gateways agree.
+	flux := ask("flux1-schnell-q4_0")
+	sameError(t, "missing catalog-sized model", flux)
+	if a, b := flux["ts"], flux["go"]; a != nil && b != nil && (a.Header.Get("Retry-After") == "") != (b.Header.Get("Retry-After") == "") {
+		t.Errorf("Retry-After differs: ts %q, go %q", a.Header.Get("Retry-After"), b.Header.Get("Retry-After"))
+	}
+}
