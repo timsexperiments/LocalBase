@@ -101,6 +101,7 @@ type LLM struct {
 	closed   bool
 	geometry map[string]geometryEntry
 	probes   sync.WaitGroup
+	switches sync.WaitGroup // in-flight model switches; Close waits for them
 	failed   bool // the last start failed and nothing runs
 }
 
@@ -362,7 +363,11 @@ func (m *LLM) pump() {
 		}
 		m.starting = true
 		head.dispatching = true
-		go m.switchTo(head.model, head.key)
+		m.switches.Add(1)
+		go func(model, key string) {
+			defer m.switches.Done()
+			m.switchTo(model, key)
+		}(head.model, head.key)
 		return
 	}
 }
@@ -447,6 +452,11 @@ func (m *LLM) doSwitch(modelID, key string) error {
 
 func (m *LLM) install(b *backend) {
 	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		m.stopBackend(b)
+		return
+	}
 	m.cur = b
 	m.mu.Unlock()
 	go m.watch(b)
@@ -594,14 +604,20 @@ func (m *LLM) EmergencyStop(reason error) {
 func (m *LLM) Close() {
 	m.mu.Lock()
 	m.closed = true
-	b := m.cur
 	for len(m.queue) > 0 {
 		m.fail(m.queue[0], ErrUnavailable)
 	}
 	m.mu.Unlock()
+	// A switch in flight finishes (and sees closed) before the backend stops,
+	// and probes finish before the store they write to is closed.
+	m.switches.Wait()
+	m.mu.Lock()
+	b := m.cur
+	m.mu.Unlock()
 	if b != nil {
 		m.stopBackend(b)
 	}
+	m.probes.Wait()
 }
 
 // Footprint samples the running backend's memory footprint (macOS).
