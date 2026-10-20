@@ -428,11 +428,9 @@ Simplified or dropped in the UI:
 
 `/app/models` (Library) is server-rendered from the real catalog and DB, with
 filter chips through htmx, light and dark, and the 320 px and 44 px rules. It
-is reachable with `--no-auth` (loopback only, please), or through the M0-only
-`serve --dev-ui-login` flag. That flag lets `/app/login` exchange an API key
-with `models:read` for an opaque, in-memory, HttpOnly session cookie, so the page
-can be tried from a phone on a LAN port without exposing inference
-unauthenticated. M3 replaces it with OIDC and Cloudflare Access. M0 also
+is reachable with `--no-auth` (loopback only, please). M0 had a
+`serve --dev-ui-login` flag for phone testing; M3 removed it in favor of the
+real sign-in (OIDC, Cloudflare Access, magic link). M0 also
 renders Running now (a live shared-memory bar, polled every 3 s while the page
 is visible), a read-only model details page, and a placeholder Get models
 page.
@@ -585,13 +583,26 @@ Disk note: the machine had about 57 GB free when this work started, below the
 for the contract suite) and an 80 MB Tailwind CLI in `go/.cache`. Scratch roots
 symlink model files rather than copying them.
 
+### M3 (in progress)
+
+| Area | Evidence |
+| --- | --- |
+| Browser sign-in: CF Access (RS256 JWKS), OIDC (discovery, PKCE, nonce, aud/azp), magic links, sessions, `/app/api` forwarding with same-origin rules | End-to-end tests against a fake TLS identity provider; JWS verification for every allowed algorithm; the live `ui-access.json`, policy and users load in Go (read-only, on a DB copy). |
+| Policy, revision, users, invitations | The policy revision hash is identical to TS. A shared `collate` package reproduces ICU root order, which TS uses to sort policies and catalog names. |
+| Admin APIs: `/_localbase/access-management`, `/_localbase/api-keys`, `/_localbase/hf-token` | A 95-step differential script gets the same status and body from both gateways. |
+| `access` CLI (all but `github add`) | A 60-step twin-root session matches TS envelopes and exit codes. CLI errors are redacted like TS. |
+| Root operation lease (`<rootHash>.operation.lock`) | Same on-disk format; Go and TS exclude each other in both directions. Service start hands it to the gateway it starts. Serve, configure, status, stop, reset, uninstall and the admin APIs hold it. |
+
+Remaining for M3: UI pages (Chat with streaming, attachments, picker and auto-compaction; Library; Get models; Running now; admin for access, keys and the HF token; settings) and the phone review.
+
 ## 11. Decisions (2026-10-19)
 
 1. **Kokoro TTS: dropped.** Speech uses the warm `tts-server` only. Kokoro
    catalog entries are listed but report `unsupported_runtime`; Kokoro can come
    back later as its own feature.
 2. **Sign-in: OIDC, Cloudflare Access and magic link.** GitHub OAuth is dropped
-   (`/github/callback` and `access github`). Magic-link mail uses `net/smtp`.
+   (`/github/callback` and `access github add`; existing GitHub registrations
+   stay in `ui-access.json` for rollback and can be listed and removed). Magic-link mail uses `net/smtp`.
 3. **Linux NVIDIA-only features (S2V video, whisper PCI matching): deferred.**
    The modality slot and the platform probe stay open for them, and Pixelator
    is available to test NVIDIA work when they are added.

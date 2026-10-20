@@ -71,17 +71,19 @@ func keyNotFound(err error) error {
 	return err
 }
 
-func keysCommand() *cli.Command {
-	withEnv := func(run func(c *cli.Ctx, e *env) (any, error)) func(c *cli.Ctx) (any, error) {
-		return func(c *cli.Ctx) (any, error) {
-			e, err := openEnv(c)
-			if err != nil {
-				return nil, err
-			}
-			defer e.Close()
-			return run(c, e)
+// withEnv opens the root for a command.
+func withEnv(run func(c *cli.Ctx, e *env) (any, error)) func(c *cli.Ctx) (any, error) {
+	return func(c *cli.Ctx) (any, error) {
+		e, err := openEnv(c)
+		if err != nil {
+			return nil, err
 		}
+		defer e.Close()
+		return run(c, e)
 	}
+}
+
+func keysCommand() *cli.Command {
 	ctx := context.Background()
 	return &cli.Command{Name: "keys", Summary: "Manage API keys", Sub: []*cli.Command{
 		{Name: "list", Summary: "List API keys", Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {

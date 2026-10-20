@@ -18,6 +18,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
 // InputError is invalid command input (exit 2, code invalid_input).
@@ -165,6 +167,8 @@ func (a *App) writeEnvelope(v any) {
 }
 
 func (a *App) fail(json bool, code, message string, exit int, help *Command, path []string) int {
+	// TS redacts every CLI error message like an external log text.
+	message = obs.BoundedText(message, 2048)
 	if json {
 		a.writeEnvelope(map[string]any{"ok": false, "error": map[string]string{"code": code, "message": message}})
 	}

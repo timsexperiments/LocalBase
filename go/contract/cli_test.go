@@ -80,7 +80,7 @@ func runCLI(t *testing.T, impl, root string, args ...string) cliResult {
 	return cliResult{code, out.String(), errb.String()}
 }
 
-var volatileValue = regexp.MustCompile(`key_[0-9a-f-]{36}|lb_[A-Za-z0-9_-]{32}|\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z`)
+var volatileValue = regexp.MustCompile(`key_[0-9a-f-]{36}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|lb_[A-Za-z0-9_-]{32}|\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z`)
 
 // normalize parses an envelope, replaces root paths and volatile values.
 func normalize(t *testing.T, s, root string) any {
@@ -92,6 +92,8 @@ func normalize(t *testing.T, s, root string) any {
 			return "<key-id>"
 		case strings.HasPrefix(m, "lb_"):
 			return "<secret>"
+		case len(m) == 36 && m[8] == '-':
+			return "<uuid>"
 		}
 		return "<time>"
 	})

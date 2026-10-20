@@ -184,7 +184,7 @@ func serve(c *cli.Ctx) (any, error) {
 	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth,
 		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser}
 	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
-		Principal: func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
+		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
 		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout()})
 	gateway.New(srv)
 
