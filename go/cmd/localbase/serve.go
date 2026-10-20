@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"os/signal"
 	"strconv"
 	"syscall"
@@ -164,12 +165,32 @@ func serve(c *cli.Ctx) (any, error) {
 		log.Warn("Skipped a custom backend definition: "+d, "event", "backend.definition-skipped")
 	}
 	installMissing := c.Bool("install-missing") || cfg.InstallMissingModels
-	llm := runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: r.ModelsDir("llm"), RuntimesDir: r.RuntimesDir(),
+	var llm *runtime.LLM
+	// A switch to another configured model makes it the active one, as in TS.
+	activate := func(kind, modelID string) {
+		cur := llm.Config()
+		if cur.Active[kind] == modelID {
+			return
+		}
+		next := cur.Clone()
+		next.Active[kind] = modelID
+		if err := root.WithOperation(r.Dir, "update runtime configuration", func() error { return st.SaveConfig(context.Background(), next) }); err != nil {
+			log.Warn("Could not record the active "+kind+" model.", "event", "config.save-failed", "error", err.Error())
+			return
+		}
+		llm.SetConfig(next)
+	}
+	llm = runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: r.ModelsDir("llm"), RuntimesDir: r.RuntimesDir(),
 		Store: st, Catalog: cat, Memory: mem, Log: log, MemoryGB: float64(memoryGB), CtxOverride: ctxSize,
 		PortOverride: llmPort, QueueCapacity: queueCap, QueueTimeout: time.Duration(queueTimeout) * time.Millisecond,
 		Binary: os.Getenv("LOCALBASE_LLAMA_SERVER"), ModelFileOverride: c.String("llm-model-file"),
-		Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey}, cfg)
+		Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey, Activate: activate}, cfg)
 	defer llm.Close()
+	stt := runtime.NewService(runtime.ServiceDeps{Modality: "stt", Kind: "stt", Catalog: cat, Store: st, Memory: mem, Log: log,
+		Config: llm.Config, Gate: lib.GateFor("transcription"), SelectionKey: lib.SelectionKey, RuntimesDir: r.RuntimesDir(),
+		ModelsDir: r.ModelsDir("stt"), CacheDir: filepath.Join(r.Dir, "cache"), Host: cfg.SttHost, Port: cfg.SttPort,
+		Binaries: map[string]string{"whisper-server": os.Getenv("LOCALBASE_WHISPER_SERVER")}, Install: installer(e, installMissing, log), Activate: activate})
+	defer stt.Close()
 
 	access, err := auth.LoadAccess(r.Dir)
 	if err != nil {
@@ -191,7 +212,7 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
 	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth,
-		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib}
+		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt}
 	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
 		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib})

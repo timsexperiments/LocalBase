@@ -39,6 +39,10 @@ type Server struct {
 	// Library joins the catalog, imports and backend selections (nil in
 	// unit tests that need neither).
 	Library *library.Library
+	// STT, TTS and Image supervise the media modalities (nil: route disabled).
+	STT   *runtime.Service
+	TTS   *runtime.Service
+	Image *runtime.Service
 	// UI handles /app and / when set.
 	UI http.Handler
 
@@ -62,6 +66,8 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/v1/chat/completions", s.guard("inference:chat", s.chat))
 	mux.HandleFunc("/v1/embeddings", s.guard("inference:embeddings", s.embeddings))
 	mux.HandleFunc("/v1/systemone", s.guard("inference:decision", s.systemone))
+	mux.HandleFunc("/v1/audio/transcriptions", s.guard("inference:transcription", s.transcription))
+	mux.HandleFunc("/v1/audio/translations", s.guard("inference:transcription", s.transcription))
 	mux.HandleFunc("/_localbase/models", s.guard("models:read", s.modelMetadata))
 	mux.HandleFunc("/_localbase/models/{model_id...}", s.guard("models:read", s.modelMetadata))
 	mux.HandleFunc("/_localbase/access-management", s.accessManagement)

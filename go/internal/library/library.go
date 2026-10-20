@@ -227,7 +227,10 @@ func (l *Library) SaveImport(ctx context.Context, res *acquire.Result, backendID
 var llmTasks = []string{"chat", "embeddings", "decision"}
 
 // Gate resolves a model for the LLM runtime through the selection.
-func (l *Library) Gate() runtime.Gate {
+func (l *Library) Gate() runtime.Gate { return l.GateFor(llmTasks...) }
+
+// GateFor resolves models of the given tasks through the selection.
+func (l *Library) GateFor(tasks ...string) runtime.Gate {
 	return func(modelID string) (*runtime.Target, error) {
 		ctx := context.Background()
 		e, err := l.Get(ctx, modelID)
@@ -237,7 +240,7 @@ func (l *Library) Gate() runtime.Gate {
 		if err != nil {
 			return nil, err
 		}
-		if !slices.ContainsFunc(llmTasks, e.Model.HasTask) {
+		if !slices.ContainsFunc(tasks, e.Model.HasTask) {
 			return nil, runtime.ErrModelNotFound
 		}
 		s, err := l.Selection(ctx, e)

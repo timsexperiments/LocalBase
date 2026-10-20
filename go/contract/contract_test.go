@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -125,6 +126,15 @@ func TestModelsList(t *testing.T) {
 		}
 		want := []string{chatModel, decisionModel, embeddingModel, "whisper-base-en-q8_0", "qwen3-tts-1.7b-base-q4_k_m",
 			"kokoro-82m-v1.0-q8", "dreamshaper-8-lcm", "flux1-schnell-q4_0", "realvis-xl-v5.0", "wan2.1-t2v-1.3b-q8_0", "fastwan2.2-ti2v-5b-q6_k"}
+		// With a real whisper model linked, tiny.en is selected too, and a request
+		// to it makes it the active (first) STT model.
+		if slices.Contains(ids, "whisper-tiny-en-q8_0") {
+			stt := []string{"whisper-base-en-q8_0", "whisper-tiny-en-q8_0"}
+			if i := slices.Index(ids, "whisper-tiny-en-q8_0"); i < slices.Index(ids, "whisper-base-en-q8_0") {
+				stt = []string{"whisper-tiny-en-q8_0", "whisper-base-en-q8_0"}
+			}
+			want = slices.Concat(want[:3], stt, want[4:])
+		}
 		if !reflect.DeepEqual(ids, want) {
 			t.Errorf("ids = %v, want %v", ids, want)
 		}
