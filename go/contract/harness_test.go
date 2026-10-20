@@ -171,6 +171,9 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 		return "", "", "", false, err
 	}
 	os.WriteFile(filepath.Join(r.Dir, "catalog-feed.json"), []byte(`{"url":null}`), 0o600)
+	if err := addTinyCatalogModel(r.Dir, r.ModelsDir("stt")); err != nil {
+		return "", "", "", false, err
+	}
 	// Active non-LLM models: sparse files at the expected sizes, which pass the
 	// install check of both implementations without real weights.
 	cat, _ := catalog.Load("")

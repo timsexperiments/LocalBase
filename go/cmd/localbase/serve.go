@@ -330,6 +330,7 @@ func serve(c *cli.Ctx) (any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	httpServer.Shutdown(ctx)
+	srv.WaitManagementIdle() // an accepted install finishes, as TS whenIdle
 	llm.Close()
 	log.Info("LocalBase stopped.", "event", "gateway.stopped")
 	if serveErr != nil {

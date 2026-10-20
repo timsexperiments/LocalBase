@@ -1,0 +1,178 @@
+package contract
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+)
+
+// tinyModel is a user catalog entry whose 4 KiB file is already in place, so
+// an install completes through checksum verification without a network.
+const tinyModel = "contract-tiny-stt"
+
+func tinyBytes() []byte {
+	b := make([]byte, 4096)
+	for i := range b {
+		b[i] = byte(i * 7)
+	}
+	return b
+}
+
+func addTinyCatalogModel(rootDir, sttDir string) error {
+	data := tinyBytes()
+	sum := sha256.Sum256(data)
+	entry := map[string]any{
+		"modelId": tinyModel, "displayName": "Contract Tiny", "kind": "stt", "provider": "LocalBase tests", "family": "Whisper",
+		"version": "test", "size": "tiny", "quant": "Q8_0", "storageGb": 0.01,
+		"source": "https://huggingface.co/localbase/contract-tiny", "repositoryRevision": strings.Repeat("a", 40),
+		"artifacts": []any{map[string]any{"sourcePath": "ggml-contract-tiny.bin", "filename": "ggml-contract-tiny.bin",
+			"expectedSizeBytes": len(data), "sha256": hex.EncodeToString(sum[:]), "role": "primary"}},
+		"inputModalities": []string{"audio"}, "outputModalities": []string{"text"}, "capabilities": []string{"speech-to-text"},
+		"commercialStatus": "open", "catch": "Test data.", "notes": "Contract fixture.",
+	}
+	b, _ := json.MarshalIndent(entry, "", "  ")
+	if err := os.MkdirAll(filepath.Join(rootDir, "catalog.d"), 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(rootDir, "catalog.d", tinyModel+".json"), b, 0o600); err != nil {
+		return err
+	}
+	os.MkdirAll(sttDir, 0o700)
+	return os.WriteFile(filepath.Join(sttDir, "ggml-contract-tiny.bin"), data, 0o600)
+}
+
+// TestDifferentialModelManagement compares /_localbase/model-management on
+// both gateways: the catalog state, every rejection, enable/activate/disable,
+// uninstall, and an install polled to completion.
+func TestDifferentialModelManagement(t *testing.T) {
+	const path = "/_localbase/model-management"
+	post := func(key func(*Target) string, body string) map[string]*Resp {
+		out := map[string]*Resp{}
+		for _, tg := range targets {
+			h := bearer(key(tg))
+			h["Content-Type"] = "application/json"
+			out[tg.Name] = do(t, "POST", tg.BaseURL+path, h, body)
+		}
+		return out
+	}
+	admin := func(tg *Target) string { return tg.Admin }
+	reader := func(tg *Target) string { return tg.Key }
+	state := func(tg *Target) map[string]any {
+		r := do(t, "GET", tg.BaseURL+path, bearer(tg.Admin), "")
+		if r.Status != 200 || r.Header.Get("Cache-Control") != "no-store" {
+			t.Fatalf("%s GET: %d %s", tg.Name, r.Status, r.Body)
+		}
+		return r.JSON(t)
+	}
+	same := func(label string) {
+		t.Helper()
+		var first map[string]any
+		for _, tg := range targets {
+			s := state(tg)
+			if first == nil {
+				first = s
+				continue
+			}
+			// Free space moves between two reads; everything else must match.
+			if d := diffJSON("", first, s, func(p string) bool { return strings.HasSuffix(p, ".availableBytes") }); len(d) > 0 {
+				if len(d) > 15 {
+					d = d[:15]
+				}
+				t.Errorf("%s: state differs:\n  %s", label, strings.Join(d, "\n  "))
+			}
+		}
+	}
+	sameOK := func(label string, rs map[string]*Resp, status int) {
+		t.Helper()
+		var first string
+		for name, r := range rs {
+			if r.Status != status {
+				t.Errorf("%s %s: %d %s", label, name, r.Status, r.Body)
+			}
+			body := strings.TrimSpace(string(r.Body))
+			if first == "" {
+				first = body
+			} else if body != first {
+				t.Errorf("%s: bodies differ:\n %s\n %s", label, first, r.Body)
+			}
+		}
+	}
+	same("initial")
+	// The active LLM, whichever earlier tests left as the default.
+	activeLLM := chatModel
+	for _, m := range state(targets[0])["models"].([]any) {
+		e := m.(map[string]any)
+		if id, _ := e["id"].(string); e["active"] == true && slices.Contains([]string{chatModel, decisionModel, embeddingModel}, id) {
+			activeLLM = id
+		}
+	}
+	for label, body := range map[string]string{
+		"not json": `{`, "array": `[]`, "extra key": `{"modelId":"x","action":"enable","x":1}`, "empty id": `{"modelId":"","action":"enable"}`,
+		"bad action": `{"modelId":"x","action":"delete"}`, "long id": `{"modelId":"` + strings.Repeat("m", 201) + `","action":"enable"}`,
+		"too large": `{"modelId":"` + strings.Repeat("m", 1100) + `","action":"enable"}`, "unknown model": `{"modelId":"no-such","action":"enable"}`,
+		"enable missing files": `{"modelId":"flux1-schnell-q4_0","action":"activate"}`,
+		"activate unselected":  `{"modelId":"` + tinyModel + `","action":"activate"}`,
+		"disable default llm":  `{"modelId":"` + activeLLM + `","action":"disable"}`,
+		"uninstall selected":   `{"modelId":"whisper-base-en-q8_0","action":"uninstall"}`,
+		"install selected":     `{"modelId":"whisper-base-en-q8_0","action":"install"}`,
+		"experimental":         `{"modelId":"no-such","action":"install"}`,
+	} {
+		sameError(t, "management "+label, post(admin, body))
+	}
+	sameError(t, "management as reader", post(reader, `{"modelId":"`+tinyModel+`","action":"enable"}`))
+	sameError(t, "management PUT", func() map[string]*Resp {
+		out := map[string]*Resp{}
+		for _, tg := range targets {
+			out[tg.Name] = do(t, "PUT", tg.BaseURL+path, bearer(tg.Admin), "")
+		}
+		return out
+	}())
+
+	// Install (already present: verified, then complete), polled to the end.
+	sameOK("install", post(admin, `{"modelId":"`+tinyModel+`","action":"install"}`), 202)
+	for _, tg := range targets {
+		deadline := time.Now().Add(30 * time.Second)
+		for {
+			op := entryOf(t, state(tg), tinyModel)["operation"].(map[string]any)
+			if op["state"] != "running" {
+				if op["state"] != "complete" || op["detail"] != "Installation complete" {
+					t.Errorf("%s install: %v", tg.Name, op)
+				}
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s install still running: %v", tg.Name, op)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	same("after install")
+	sameOK("enable", post(admin, `{"modelId":"`+tinyModel+`","action":"enable"}`), 200)
+	sameOK("activate", post(admin, `{"modelId":"`+tinyModel+`","action":"activate"}`), 200)
+	same("after activate")
+	sameOK("disable active stt", post(admin, `{"modelId":"`+tinyModel+`","action":"disable"}`), 200)
+	sameOK("uninstall", post(admin, `{"modelId":"`+tinyModel+`","action":"uninstall"}`), 200)
+	same("after uninstall")
+	for _, tg := range targets {
+		if e := entryOf(t, state(tg), tinyModel); e["installed"] != false || e["installedBytes"] != 0.0 {
+			t.Errorf("%s after uninstall: %v", tg.Name, e)
+		}
+	}
+}
+
+func entryOf(t *testing.T, state map[string]any, id string) map[string]any {
+	t.Helper()
+	for _, m := range state["models"].([]any) {
+		if e := m.(map[string]any); e["id"] == id {
+			return e
+		}
+	}
+	t.Fatalf("%s not listed", id)
+	return nil
+}

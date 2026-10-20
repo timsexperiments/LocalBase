@@ -46,6 +46,8 @@ type Server struct {
 	Image *runtime.Service
 	// Voices stores custom voice profiles (nil: the routes are disabled).
 	Voices *voices.Store
+
+	mgmt *management
 	// UI handles /app and / when set.
 	UI http.Handler
 
@@ -56,6 +58,7 @@ type Server struct {
 
 func New(s *Server) *Server {
 	s.started = time.Now()
+	s.mgmt = &management{operations: map[string]*mgmtOperation{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
 	for _, p := range []string{"/app/login", "/oidc/callback", "/github/callback", "/app/login/magic", "/magic-link/callback",
@@ -81,6 +84,7 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/hf-token", s.hfToken)
 	mux.HandleFunc("/_localbase/backends", s.backendsAPI)
 	mux.HandleFunc("/_localbase/model-backend", s.modelBackendAPI)
+	mux.HandleFunc("/_localbase/model-management", s.modelManagementAPI)
 	mux.HandleFunc("/_localbase/model-imports", s.modelImportsAPI)
 	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
 	mux.HandleFunc("/_localbase/voices", s.voicesAPI)
