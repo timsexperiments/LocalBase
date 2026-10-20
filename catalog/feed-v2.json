@@ -2,7 +2,7 @@
   "format": "localbase-catalog-feed",
   "schemaVersion": 2,
   "minReaderVersion": 2,
-  "sha256": "6df1f41ea2e4011cd4f6a61dbd0c479fcaf486b5806df90ccc3083a1a0e17e63",
+  "sha256": "090524a4678ad91694fdbfeb570f24d5b99afd5358cf5ffce968e3412257c494",
   "models": [
     {
       "modelId": "qwen3.5-4b-q4_k_m",
@@ -13,7 +13,7 @@
       "version": "3.5",
       "size": "4B",
       "quant": "Q4_K_M",
-      "storageGb": 3.02,
+      "storageGb": 3.01,
       "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF",
       "repositoryRevision": "4168f45a16a1290d65a4ec0fa312ae917a4c15d6",
       "artifacts": [
@@ -38,7 +38,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
-      "notes": "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts."
+      "notes": "bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.5-4B. GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 32 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned."
     },
     {
       "modelId": "qwen3.5-9b-q4_k_m",
@@ -74,7 +74,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
-      "notes": "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts."
+      "notes": "bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.5-9B. GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 32 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned."
     },
     {
       "modelId": "gpt-oss-20b-q4_k_m",
@@ -85,8 +85,7 @@
       "version": "1",
       "size": "20B",
       "quant": "Q4_K_M",
-      "codingScore": 9.5,
-      "storageGb": 14,
+      "storageGb": 11.67,
       "source": "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
       "repositoryRevision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
       "artifacts": [
@@ -110,8 +109,8 @@
         "tool-calling"
       ],
       "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "OpenAI's open-weight reasoning model, optimized for edge devices."
+      "catch": "Apache-2.0.",
+      "notes": "bartowski imatrix Q4_K_M GGUF of openai/gpt-oss-20b; the expert feed-forward weights stay MXFP4. Upstream: 21B parameters, 3.6B active per token. GGUF header: architecture gpt-oss, 24 layers, 32 experts with 4 active per token, 128-token sliding-window attention layers, 131,072-token training context."
     },
     {
       "modelId": "qwen3.8-27b-q4_k_m",
@@ -122,7 +121,7 @@
       "version": "3.8",
       "size": "27B",
       "quant": "Q4_K_M",
-      "storageGb": 17.8,
+      "storageGb": 17.77,
       "source": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF",
       "repositoryRevision": "f0eec4a4bb4975114a030d048952d83c0a53c034",
       "artifacts": [
@@ -140,14 +139,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 262144,
       "capabilities": [
         "reasoning",
         "tool-calling",
         "long-context"
       ],
       "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "Text-only LocalBase entry."
+      "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
+      "notes": "bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.8-27B (quantized with llama.cpp b10419). GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 64 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned."
     },
     {
       "modelId": "qwen3-embedding-0.6b-q8_0",
@@ -192,7 +192,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Embedding endpoint only. Chat completions are rejected before runtime admission.",
-      "notes": "Official Apache-2.0 Q8_0 GGUF. The runtime uses last-token pooling and emits 1024-dimensional vectors."
+      "notes": "Official Qwen Q8_0 GGUF of Qwen3-Embedding-0.6B (base Qwen3-0.6B-Base, 28 layers; the model card states a 32k-token context). The runtime uses last-token pooling and emits 1024-dimensional vectors. Embedded tokenizer; memory estimate assumes short inputs."
     },
     {
       "modelId": "qwen3-embedding-4b-q4_k_m",
@@ -237,7 +237,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.",
-      "notes": "Last-token pooling with fixed 2560-dimensional output. Embedded tokenizer; memory estimate assumes short inputs."
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen3-Embedding-4B (base Qwen3-4B-Base, 36 layers). The model card states a 32k-token context; the GGUF header declares 40,960. Last-token pooling with fixed 2560-dimensional output. Embedded tokenizer; memory estimate assumes short inputs."
     },
     {
       "modelId": "clef-flash-q4_k_m",
@@ -284,7 +284,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.",
-      "notes": "Default decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef-flash (Apache-2.0, built from Qwen3.5-9B; base revision 8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3). Answers choice, score, and noul questions through POST /v1/systemone. Clef (clef-q4_k_m) is the larger qualified alternative."
+      "notes": "Default decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef-flash (Apache-2.0, built from Qwen3.5-9B; base revision 8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3). GGUF header: architecture clef, 32 layers, 4 decision blocks, 262,144-token training context. Answers choice, score, and noul questions through POST /v1/systemone. Clef (clef-q4_k_m) is the 27B decision model."
     },
     {
       "modelId": "clef-q4_k_m",
@@ -330,8 +330,8 @@
         "long-context"
       ],
       "commercialStatus": "open",
-      "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission. Needs about 2.5x the memory of Clef Flash.",
-      "notes": "Larger decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef (Apache-2.0, post-trained from Qwen3.8-27B; source revision 0b331204bb13fbd2ca93a64df1956f5b55478ce5). Answers choice, score, and noul questions through POST /v1/systemone. Stronger than Clef Flash on intent and retrieval decisions; Clef Flash is the faster default."
+      "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.",
+      "notes": "Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef (Apache-2.0, post-trained from Qwen3.8-27B; source revision 0b331204bb13fbd2ca93a64df1956f5b55478ce5). GGUF header: architecture clef, 64 layers, 4 decision blocks, 262,144-token training context. Answers choice, score, and noul questions through POST /v1/systemone. Clef Flash (clef-flash-q4_k_m) is the 9B default decision model."
     },
     {
       "modelId": "whisper-base-q8_0",
@@ -342,7 +342,7 @@
       "version": "base",
       "size": "base",
       "quant": "Q8_0",
-      "storageGb": 0.15,
+      "storageGb": 0.08,
       "source": "https://huggingface.co/ggerganov/whisper.cpp",
       "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "artifacts": [
@@ -366,7 +366,7 @@
       ],
       "commercialStatus": "open",
       "catch": "MIT License.",
-      "notes": "Good default STT latency/quality tradeoff."
+      "notes": "whisper.cpp ggml Q8_0 conversion of OpenAI Whisper base (74M parameters, multilingual). File header: 6 encoder and 6 decoder layers, 80 mel bins. Vocabulary and mel filters are bundled; no Core ML encoder required."
     },
     {
       "modelId": "whisper-large-v3-turbo",
@@ -376,8 +376,8 @@
       "family": "Whisper",
       "version": "large-v3-turbo",
       "size": "large",
-      "quant": "Q5_0",
-      "storageGb": 1.7,
+      "quant": "F16",
+      "storageGb": 1.62,
       "source": "https://huggingface.co/ggerganov/whisper.cpp",
       "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
       "artifacts": [
@@ -402,7 +402,7 @@
       ],
       "commercialStatus": "open",
       "catch": "MIT License.",
-      "notes": "Best quality Whisper family model for local deployment."
+      "notes": "whisper.cpp ggml F16 conversion of OpenAI Whisper large-v3-turbo (809M parameters, multilingual): large-v3 with the decoder reduced from 32 to 4 layers. File header: 32 encoder and 4 decoder layers, 128 mel bins. Vocabulary and mel filters are bundled; no Core ML encoder required."
     },
     {
       "modelId": "qwen3-tts-1.7b-base-q4_k_m",
@@ -413,7 +413,7 @@
       "version": "12Hz-1.7B-Base",
       "size": "1.7B",
       "quant": "Q4_K_M",
-      "storageGb": 1.49,
+      "storageGb": 1.48,
       "source": "https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
       "repositoryRevision": "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
       "artifacts": [
@@ -483,8 +483,8 @@
       ],
       "outputFormat": "wav",
       "commercialStatus": "open",
-      "catch": "The converted repository omits license metadata; the upstream Qwen model is Apache-2.0.",
-      "notes": "Default remains native runtime voice. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed."
+      "catch": "Apache-2.0 per the GGUF header and the upstream Qwen model; the converted repository has no model card or license file.",
+      "notes": "Official ggml-org Q4_K_M talker GGUF and Q8_0 projector of Qwen3-TTS-12Hz-1.7B-Base. GGUF header: architecture qwen3tts, 28 layers, 32,768-token training context; LocalBase launches the talker at 2,048. The default voice uses no reference audio. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed."
     },
     {
       "modelId": "kokoro-82m-v1.0-q8",
@@ -559,7 +559,7 @@
       "outputFormat": "wav",
       "commercialStatus": "open",
       "catch": "Apache-2.0 weights. Requires the kokoro-v0.0.2 LocalBase runtime package.",
-      "notes": "CPU ONNX runtime with bundled af_heart and af_bella voices. English only. Human voice quality has not been assessed."
+      "notes": "Quantized ONNX export of hexgrad/Kokoro-82M (82M parameters) run on the CPU ONNX runtime, with bundled af_heart and af_bella voices. English only. Human voice quality has not been assessed."
     },
     {
       "modelId": "z-image-turbo-q4_0",
@@ -570,7 +570,7 @@
       "version": "Turbo",
       "size": "6B",
       "quant": "Q4_0",
-      "storageGb": 6.6,
+      "storageGb": 6.52,
       "source": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
       "repositoryRevision": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
       "artifacts": [
@@ -631,7 +631,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
-      "notes": "Distilled eight-step profile with separate VAE and Qwen3 Instruct encoder. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
+      "notes": "stable-diffusion.cpp Q4_0 GGUF of Tongyi-MAI/Z-Image-Turbo (6B), with the Z-Image VAE (Comfy-Org) and a Qwen3-4B-Instruct-2507 Q4_K_M text encoder (unsloth). LocalBase profile: euler sampler, 8 steps, CFG 1. Peak memory was measured on Apple M-series 64 GiB, macOS 26 (2026-10-14); broader native inference qualification is pending."
     },
     {
       "modelId": "flux2-klein-4b-q4_0",
@@ -642,7 +642,7 @@
       "version": "2",
       "size": "4B",
       "quant": "Q4_0",
-      "storageGb": 5.3,
+      "storageGb": 5.29,
       "source": "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
       "repositoryRevision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
       "artifacts": [
@@ -703,7 +703,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
-      "notes": "Distilled four-step profile with separate FLUX2 VAE and Qwen3 encoder. Peak memory was measured on Apple Silicon (2026-10-13); broader native inference qualification is pending."
+      "notes": "stable-diffusion.cpp Q4_0 GGUF of black-forest-labs/FLUX.2-klein-4B, with the FLUX.2 VAE (Comfy-Org) and a Qwen3-4B Q4_K_M text encoder (unsloth). LocalBase profile: euler sampler, 4 steps, CFG 1. Peak memory was measured on Apple M-series 64 GiB, macOS 26 (2026-10-13); broader native inference qualification is pending."
     },
     {
       "modelId": "dreamshaper-8-lcm",
@@ -752,7 +752,7 @@
       ],
       "commercialStatus": "open",
       "catch": "CreativeML Open RAIL-M license.",
-      "notes": "Cloudflare Workers AI photorealism model distilled for fast four-step generation. Native inference qualification is pending."
+      "notes": "Lykon's DreamShaper 8 LCM: a Stable Diffusion 1.5 fine-tune distilled with latent consistency (LCM), shipped as one F16 safetensors checkpoint. LocalBase profile: LCM sampler and scheduler, 4 steps, CFG 1. Native inference qualification is pending."
     },
     {
       "modelId": "juggernaut-xl-v9",
@@ -763,7 +763,7 @@
       "version": "9.0",
       "size": "6.6GB",
       "quant": "F16",
-      "storageGb": 6.61,
+      "storageGb": 7.11,
       "source": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
       "repositoryRevision": "cf419233522daa0b9ea36c3aff98fa2cab1fb0fb",
       "artifacts": [
@@ -789,8 +789,8 @@
         "image-to-image"
       ],
       "commercialStatus": "open",
-      "catch": "Stability AI Community License.",
-      "notes": "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism."
+      "catch": "CreativeML Open RAIL-M license.",
+      "notes": "RunDiffusion's Juggernaut XL v9, a Stable Diffusion XL 1.0 fine-tune shipped as one F16 safetensors checkpoint with its CLIP encoders and VAE. Text-to-image and image-to-image."
     },
     {
       "modelId": "fastwan2.2-ti2v-5b-q6_k",
@@ -893,7 +893,7 @@
       "experimentalRuntime": true,
       "commercialStatus": "open",
       "catch": "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
-      "notes": "Experimental and unqualified text-to-video and image-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 480x832, 81 frames, and 16 fps."
+      "notes": "Q6_K GGUF of FastWan2.2-TI2V-5B-FullAttn (Green-Sky), with a UMT5-XXL Q8_0 encoder (city96) and the taew2_2 tiny VAE (madebyollin/taehv). Experimental and unqualified text-to-video and image-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 480x832, 81 frames, and 16 fps."
     },
     {
       "modelId": "wan2.2-s2v-14b-fp8",
@@ -905,7 +905,7 @@
       "version": "2.2",
       "size": "14B",
       "quant": "FP8",
-      "storageGb": 23.33,
+      "storageGb": 23.32,
       "source": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
       "repositoryRevision": "c4f60d30c55a624e35427060fdd217579a6c1d77",
       "artifacts": [
@@ -1451,7 +1451,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "CreativeML Open RAIL++-M use restrictions apply.",
-      "notes": "Bundled CLIP encoders and VAE; built-in CLIP tokenizer. Uses server defaults, not the author's recommended DPM++ Karras preset."
+      "notes": "Bundled CLIP encoders and VAE; built-in CLIP tokenizer. Uses server defaults, not the DPM++ Karras preset the model card suggests."
     },
     {
       "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
@@ -1462,7 +1462,6 @@
       "version": "2.5",
       "size": "1.5B",
       "quant": "Q4_K_M",
-      "codingScore": 6,
       "storageGb": 1.2,
       "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
       "repositoryRevision": "f86cb2c1fa58255f8052cc32aeede1b7482d4361",
@@ -1497,7 +1496,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0.",
-      "notes": "Autocomplete and tab completion model. Protocol tool calling is unsupported for this artifact."
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-1.5B-Instruct; 32,768-token context (model card and GGUF header). Supports fill-in-the-middle completion prompts. Protocol tool calling is unsupported for this artifact."
     },
     {
       "modelId": "qwen2.5-coder-3b-instruct-q4_k_m",
@@ -1508,7 +1507,6 @@
       "version": "2.5",
       "size": "3B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 2.2,
       "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
       "repositoryRevision": "f74adce6aa16316c625447af059dbebe4983757c",
@@ -1527,6 +1525,7 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 32768,
       "capabilities": [
         "tool-calling",
         "code-generation",
@@ -1534,7 +1533,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "Qwen Research License; non-commercial use only.",
-      "notes": "Fast coding baseline for low-VRAM GPUs."
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-3B-Instruct; 32,768-token context (model card and GGUF header)."
     },
     {
       "modelId": "qwen2.5-coder-7b-instruct-q4_k_m",
@@ -1545,7 +1544,6 @@
       "version": "2.5",
       "size": "7B",
       "quant": "Q4_K_M",
-      "codingScore": 9,
       "storageGb": 4.7,
       "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
       "repositoryRevision": "13fb94bfda8c8cf22497dc57b78f391a9acb426a",
@@ -1571,7 +1569,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0.",
-      "notes": "Great coding quality per watt; ideal default for a 12GB GPU."
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-7B-Instruct. The model card states a 32,768-token context; the GGUF header declares 131,072."
     },
     {
       "modelId": "qwen2.5-coder-14b-instruct-q4_k_m",
@@ -1607,7 +1605,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0.",
-      "notes": "Top-end coding option that still fits on 12GB with careful context settings."
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-14B-Instruct. The model card states a 32,768-token context; the GGUF header declares 131,072."
     },
     {
       "modelId": "qwen2.5-coder-32b-instruct-q4_k_m",
@@ -1618,7 +1616,6 @@
       "version": "2.5",
       "size": "32B",
       "quant": "Q4_K_M",
-      "codingScore": 10,
       "storageGb": 20.3,
       "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF",
       "repositoryRevision": "9d3053fce650fe1cdbdb75998c2a87add9d178ef",
@@ -1644,7 +1641,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0.",
-      "notes": "State-of-the-art local coding model. Perfect for unified memory setups."
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-32B-Instruct. The model card states a 32,768-token context; the GGUF header declares 131,072."
     },
     {
       "modelId": "qwen3-coder-next-q4_k_m",
@@ -1655,7 +1652,6 @@
       "version": "Next",
       "size": "80B-A3B",
       "quant": "Q4_K_M",
-      "codingScore": 10,
       "storageGb": 48.4,
       "source": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
       "repositoryRevision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
@@ -1703,8 +1699,8 @@
         "long-context"
       ],
       "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "Qwen's sparse next-generation coding model for agentic workflows."
+      "catch": "Apache-2.0.",
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen3-Coder-Next, split into four files. GGUF header: architecture qwen3next, 512 experts with 10 active per token, 262,144-token training context."
     },
     {
       "modelId": "llama-3.2-1b-instruct-q4_k_m",
@@ -1715,7 +1711,6 @@
       "version": "3.2",
       "size": "1B",
       "quant": "Q4_K_M",
-      "codingScore": 5,
       "storageGb": 1,
       "source": "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF",
       "repositoryRevision": "067b946cf014b7c697f3654f621d577a3e3afd1c",
@@ -1734,12 +1729,13 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling"
       ],
       "commercialStatus": "conditional",
       "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
-      "notes": "Ultra-small Llama model for low-resource environments."
+      "notes": "bartowski Q4_K_M GGUF of meta-llama/Llama-3.2-1B-Instruct (Llama 3.2 Community License). GGUF header: architecture llama, 131,072-token training context."
     },
     {
       "modelId": "llama-3.2-3b-instruct-q4_k_m",
@@ -1750,7 +1746,6 @@
       "version": "3.2",
       "size": "3B",
       "quant": "Q4_K_M",
-      "codingScore": 7,
       "storageGb": 2,
       "source": "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
       "repositoryRevision": "5ab33fa94d1d04e903623ae72c95d1696f09f9e8",
@@ -1769,13 +1764,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "reasoning"
       ],
       "commercialStatus": "conditional",
       "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
-      "notes": "Highly capable 3B generalist model."
+      "notes": "bartowski Q4_K_M GGUF of meta-llama/Llama-3.2-3B-Instruct (Llama 3.2 Community License). GGUF header: architecture llama, 131,072-token training context."
     },
     {
       "modelId": "llama-3.1-8b-instruct-q4_k_m",
@@ -1786,7 +1782,6 @@
       "version": "3.1",
       "size": "8B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 4.7,
       "source": "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
       "repositoryRevision": "bf5b95e96dac0462e2a09145ec66cae9a3f12067",
@@ -1805,6 +1800,7 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "multilingual",
@@ -1812,7 +1808,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
-      "notes": "One of the most popular open-source 8B models for general tasks and coding."
+      "notes": "bartowski Q4_K_M GGUF of meta-llama/Meta-Llama-3.1-8B-Instruct (Llama 3.1 Community License). GGUF header: architecture llama, 131,072-token training context."
     },
     {
       "modelId": "llama-3.3-70b-instruct-q4_k_m",
@@ -1823,7 +1819,6 @@
       "version": "3.3",
       "size": "70B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 42,
       "source": "https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF",
       "repositoryRevision": "b6c5c9f176f3279204034e1d16d393105e95cb88",
@@ -1842,6 +1837,7 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "reasoning",
@@ -1849,7 +1845,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
-      "notes": "High quality generalist model for large GPU servers."
+      "notes": "bartowski Q4_K_M GGUF of meta-llama/Llama-3.3-70B-Instruct (Llama 3.3 Community License). GGUF header: architecture llama, 131,072-token training context."
     },
     {
       "modelId": "deepseek-r1-distill-qwen-14b-q4_k_m",
@@ -1860,7 +1856,6 @@
       "version": "R1",
       "size": "14B",
       "quant": "Q4_K_M",
-      "codingScore": 9,
       "storageGb": 9,
       "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
       "repositoryRevision": "9f5d77d401799416e0702290a691038b44012e0c",
@@ -1879,14 +1874,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "reasoning",
         "tool-calling",
         "code-generation"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No revenue caps.",
-      "notes": "Reasoning-focused model with strong coding quality in quantized form."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-R1-Distill-Qwen-14B (DeepSeek-R1 outputs distilled into Qwen2.5-14B). GGUF header: architecture qwen2, 131,072-token training context."
     },
     {
       "modelId": "deepseek-coder-6.7b-instruct-q4_k_m",
@@ -1897,7 +1893,6 @@
       "version": "1",
       "size": "6.7B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 4.8,
       "source": "https://huggingface.co/TheBloke/deepseek-coder-6.7B-Instruct-GGUF",
       "repositoryRevision": "9e221e6b41cb1bf1c5d8f9718e81e3dc781f7557",
@@ -1916,14 +1911,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 16384,
       "capabilities": [
         "tool-calling",
         "code-generation",
         "code-editing"
       ],
       "commercialStatus": "open",
-      "catch": "Permissive License (DeepSeek License), allows commercial use.",
-      "notes": "Highly capable code model from the first-gen DeepSeek coder series."
+      "catch": "DeepSeek License; the upstream license permits commercial use.",
+      "notes": "TheBloke Q4_K_M GGUF of deepseek-ai/deepseek-coder-6.7b-instruct. GGUF header: architecture llama, 16,384-token training context."
     },
     {
       "modelId": "deepseek-coder-v2-lite-instruct-q4_k_m",
@@ -1934,7 +1930,6 @@
       "version": "2",
       "size": "16B",
       "quant": "Q4_K_M",
-      "codingScore": 9.5,
       "storageGb": 11.2,
       "source": "https://huggingface.co/bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
       "repositoryRevision": "8f248fa2072348f77a8bc37754e470de1f61866e",
@@ -1959,8 +1954,8 @@
         "code-editing"
       ],
       "commercialStatus": "open",
-      "catch": "Permissive License (DeepSeek License), allows commercial use.",
-      "notes": "State-of-the-art MoE coding model with 16B total parameters and 2.4B active."
+      "catch": "DeepSeek License; the upstream license permits commercial use.",
+      "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct, a mixture-of-experts model with 16B total and 2.4B active parameters. GGUF header: architecture deepseek2, 64 routed experts with 6 active. The model card states a 128k-token context; the GGUF header declares 163,840."
     },
     {
       "modelId": "deepseek-coder-33b-instruct-q4_k_m",
@@ -1971,7 +1966,6 @@
       "version": "1",
       "size": "33B",
       "quant": "Q4_K_M",
-      "codingScore": 9,
       "storageGb": 21,
       "source": "https://huggingface.co/TheBloke/deepseek-coder-33B-Instruct-GGUF",
       "repositoryRevision": "cd6a4d02d3502901ff7f980b6373387ab8b8e91a",
@@ -1990,14 +1984,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 16384,
       "capabilities": [
         "tool-calling",
         "code-generation",
         "code-editing"
       ],
       "commercialStatus": "open",
-      "catch": "Permissive License (DeepSeek License), allows commercial use.",
-      "notes": "Top-tier 33B coding model, excellent balance between performance and footprint."
+      "catch": "DeepSeek License; the upstream license permits commercial use.",
+      "notes": "TheBloke Q4_K_M GGUF of deepseek-ai/deepseek-coder-33b-instruct. GGUF header: architecture llama, 16,384-token training context."
     },
     {
       "modelId": "gemma-3-1b-it-q4_k_m",
@@ -2008,7 +2003,6 @@
       "version": "3",
       "size": "1B",
       "quant": "Q4_K_M",
-      "codingScore": 5,
       "storageGb": 0.9,
       "source": "https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF",
       "repositoryRevision": "116f76234503685a98f572982177b11d44ec8ff1",
@@ -2027,13 +2021,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 32768,
       "capabilities": [
         "tool-calling",
         "reasoning"
       ],
       "commercialStatus": "conditional",
       "catch": "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
-      "notes": "Smallest Gemma 3 variant, fast and lightweight."
+      "notes": "bartowski Q4_K_M GGUF of google/gemma-3-1b-it (text only). GGUF header: architecture gemma3, 32,768-token training context."
     },
     {
       "modelId": "gemma-3-4b-it-q4_k_m",
@@ -2044,7 +2039,6 @@
       "version": "3",
       "size": "4B",
       "quant": "Q4_K_M",
-      "codingScore": 6,
       "storageGb": 2.8,
       "source": "https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF",
       "repositoryRevision": "71506238f970075ca85125cd749c28b1b0eee84e",
@@ -2063,13 +2057,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "reasoning"
       ],
       "commercialStatus": "conditional",
       "catch": "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
-      "notes": "Highly capable 4B generalist and reasoning model."
+      "notes": "bartowski Q4_K_M GGUF of google/gemma-3-4b-it. GGUF header: architecture gemma3, 131,072-token training context. Text-only LocalBase entry; the vision projector is not included in the managed artifact set."
     },
     {
       "modelId": "gemma-3-12b-it-q4_k_m",
@@ -2080,7 +2075,6 @@
       "version": "3",
       "size": "12B",
       "quant": "Q4_K_M",
-      "codingScore": 7,
       "storageGb": 8,
       "source": "https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF",
       "repositoryRevision": "648e3a36a77c8a9f12d86e741f9dcb9089c769c4",
@@ -2099,13 +2093,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "reasoning"
       ],
       "commercialStatus": "conditional",
       "catch": "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
-      "notes": "Text-only LocalBase entry; the vision projector is not included in the managed artifact set."
+      "notes": "bartowski Q4_K_M GGUF of google/gemma-3-12b-it. GGUF header: architecture gemma3, 131,072-token training context. Text-only LocalBase entry; the vision projector is not included in the managed artifact set."
     },
     {
       "modelId": "gemma-3-27b-it-q4_k_m",
@@ -2116,7 +2111,6 @@
       "version": "3",
       "size": "27B",
       "quant": "Q4_K_M",
-      "codingScore": 9,
       "storageGb": 16.5,
       "source": "https://huggingface.co/bartowski/google_gemma-3-27b-it-GGUF",
       "repositoryRevision": "4a05c54413bd0d87d77a97af403266f69cec0ee6",
@@ -2135,6 +2129,7 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "reasoning",
@@ -2142,7 +2137,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
-      "notes": "Top-tier 27B model; matches larger models in reasoning quality."
+      "notes": "bartowski Q4_K_M GGUF of google/gemma-3-27b-it. GGUF header: architecture gemma3, 131,072-token training context. Text-only LocalBase entry; the vision projector is not included in the managed artifact set."
     },
     {
       "modelId": "phi-4-q4_k_m",
@@ -2153,7 +2148,6 @@
       "version": "4",
       "size": "14B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 9,
       "source": "https://huggingface.co/bartowski/phi-4-GGUF",
       "repositoryRevision": "19cd65f97c2f1712a81c506611d3f9c94b16a1e1",
@@ -2172,14 +2166,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 16384,
       "capabilities": [
         "reasoning",
         "tool-calling",
         "code-generation"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No restrictions.",
-      "notes": "Compact reasoning model with strong quality density."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of microsoft/phi-4 (14B). GGUF header: architecture phi3, 16,384-token training context."
     },
     {
       "modelId": "phi-3.5-mini-instruct-q4_k_m",
@@ -2190,7 +2185,6 @@
       "version": "3.5",
       "size": "3.8B",
       "quant": "Q4_K_M",
-      "codingScore": 7,
       "storageGb": 2.2,
       "source": "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF",
       "repositoryRevision": "6d70da17e749a471ccb62ade694486011a75cda3",
@@ -2209,13 +2203,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "multilingual"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No restrictions.",
-      "notes": "Extremely lightweight 3.8B model with high reasoning ability."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of microsoft/Phi-3.5-mini-instruct (3.8B parameters). GGUF header: architecture phi3, 131,072-token training context."
     },
     {
       "modelId": "phi-3.5-moe-instruct-q4_k_m",
@@ -2226,7 +2221,6 @@
       "version": "3.5",
       "size": "42B",
       "quant": "Q4_K_M",
-      "codingScore": 8.5,
       "storageGb": 23,
       "source": "https://huggingface.co/bartowski/Phi-3.5-MoE-instruct-GGUF",
       "repositoryRevision": "4b580329100cf44d7d041b6f63967b26869a6937",
@@ -2245,14 +2239,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "mixture-of-experts",
         "reasoning",
         "multilingual"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No restrictions.",
-      "notes": "Microsoft MoE release; high performance with 6.6B active parameters."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of microsoft/Phi-3.5-MoE-instruct, a mixture-of-experts model with 6.6B active parameters (model card). GGUF header: architecture phimoe, 16 experts with 2 active, 131,072-token training context."
     },
     {
       "modelId": "falcon-2-11b-instruct-q4_k_m",
@@ -2263,7 +2258,6 @@
       "version": "2",
       "size": "11B",
       "quant": "Q4_K_M",
-      "codingScore": 7,
       "storageGb": 7,
       "source": "https://huggingface.co/bartowski/Falcon3-10B-Instruct-GGUF",
       "repositoryRevision": "a826d55e0af24842680260d23f7221b6138c342a",
@@ -2282,13 +2276,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 32768,
       "capabilities": [
         "tool-calling",
         "multilingual"
       ],
       "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "General-purpose LLM alternative in permissive license family."
+      "catch": "TII Falcon LLM License (falcon-llm-license): https://falconllm.tii.ae/falcon-terms-and-conditions.html.",
+      "notes": "The pinned file is bartowski's Q4_K_M GGUF of tiiuae/Falcon3-10B-Instruct (Falcon3 10B, not Falcon 2 11B). GGUF header: architecture llama, 32,768-token training context. Upstream lists English, French, Spanish and Portuguese."
     },
     {
       "modelId": "deepseek-r1-distill-qwen-32b-q4_k_m",
@@ -2299,7 +2294,6 @@
       "version": "Qwen-32B",
       "size": "32B",
       "quant": "Q4_K_M",
-      "codingScore": 9.5,
       "storageGb": 20.3,
       "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
       "repositoryRevision": "1dc8cf9ffa5dd333057ea1b09ccf4772d8726dec",
@@ -2318,14 +2312,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "reasoning",
         "tool-calling",
         "code-generation"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No restrictions.",
-      "notes": "DeepSeek-R1 reasoning model distilled on Qwen-32B. Superb coding and logic."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-R1-Distill-Qwen-32B (DeepSeek-R1 outputs distilled into Qwen2.5-32B). GGUF header: architecture qwen2, 131,072-token training context."
     },
     {
       "modelId": "deepseek-r1-distill-llama-8b-q4_k_m",
@@ -2336,7 +2331,6 @@
       "version": "Llama-8B",
       "size": "8B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 4.7,
       "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
       "repositoryRevision": "935d400c2ed1a29cc2a1045df25ec7998fb4dfe4",
@@ -2355,14 +2349,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "reasoning",
         "tool-calling",
         "code-generation"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No restrictions.",
-      "notes": "DeepSeek-R1 reasoning model distilled on Llama-8B. Great for laptop runs."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-R1-Distill-Llama-8B (DeepSeek-R1 outputs distilled into Llama-3.1-8B). GGUF header: architecture llama, 131,072-token training context."
     },
     {
       "modelId": "deepseek-r1-distill-llama-70b-q4_k_m",
@@ -2373,7 +2368,6 @@
       "version": "Llama-70B",
       "size": "70B",
       "quant": "Q4_K_M",
-      "codingScore": 9.5,
       "storageGb": 42,
       "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
       "repositoryRevision": "1842c5f7280f933ead58adf8afd078672c9f6cd0",
@@ -2392,14 +2386,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "reasoning",
         "tool-calling",
         "code-generation"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No restrictions.",
-      "notes": "DeepSeek-R1 reasoning model distilled on Llama-3-70B. High reasoning quality."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-R1-Distill-Llama-70B (DeepSeek-R1 outputs distilled into Llama-3.3-70B-Instruct). GGUF header: architecture llama, 131,072-token training context."
     },
     {
       "modelId": "qwen2.5-72b-instruct-q4_k_m",
@@ -2410,7 +2405,6 @@
       "version": "2.5",
       "size": "72B",
       "quant": "Q4_K_M",
-      "codingScore": 10,
       "storageGb": 47,
       "source": "https://huggingface.co/bartowski/Qwen2.5-72B-Instruct-GGUF",
       "repositoryRevision": "d43fd973131bce821f41e2df3c78c6fe15c5627a",
@@ -2429,6 +2423,7 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 32768,
       "capabilities": [
         "tool-calling",
         "code-generation",
@@ -2436,7 +2431,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "Qwen license; authorization is required for products with over 100 million monthly active users. See the upstream Qwen license.",
-      "notes": "Top-tier 72B reasoning and coding model. Superb logic, math, and code generation."
+      "notes": "bartowski Q4_K_M GGUF of Qwen/Qwen2.5-72B-Instruct. GGUF header: architecture qwen2, 32,768-token training context. Longer contexts need YaRN rope scaling, which LocalBase does not configure."
     },
     {
       "modelId": "codestral-22b-instruct-q4_k_m",
@@ -2447,7 +2442,6 @@
       "version": "22B-v0.1",
       "size": "22B",
       "quant": "Q4_K_M",
-      "codingScore": 9,
       "storageGb": 14,
       "source": "https://huggingface.co/bartowski/Codestral-22B-v0.1-GGUF",
       "repositoryRevision": "0e6abe14d6aeaf2c99d5dc9973205e8e38692d90",
@@ -2466,13 +2460,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 32768,
       "capabilities": [
         "code-generation",
         "code-editing"
       ],
       "commercialStatus": "conditional",
       "catch": "Mistral commercial terms apply for non-research use.",
-      "notes": "Mistral's dedicated coding model. Strong FIM capability."
+      "notes": "bartowski Q4_K_M GGUF of mistralai/Codestral-22B-v0.1. GGUF header: architecture llama, 32,768-token training context. Upstream supports instruct and fill-in-the-middle (FIM) prompts."
     },
     {
       "modelId": "mistral-nemo-12b-instruct-q4_k_m",
@@ -2483,7 +2478,6 @@
       "version": "Nemo",
       "size": "12B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 7.5,
       "source": "https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF",
       "repositoryRevision": "a2dd64a0a76ea1bdb2bb6ab6fa5496b003c7c908",
@@ -2507,8 +2501,8 @@
         "multilingual"
       ],
       "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "Excellent 12B model with large 128k context window."
+      "catch": "Apache-2.0.",
+      "notes": "bartowski Q4_K_M GGUF of mistralai/Mistral-Nemo-Instruct-2407 (base Mistral-Nemo-Base-2407). GGUF header: architecture llama. The model card states training with a 128k-token context window; the GGUF header declares 1,024,000."
     },
     {
       "modelId": "devstral-small-2-24b-instruct-q4_k_m",
@@ -2519,7 +2513,6 @@
       "version": "2",
       "size": "24B",
       "quant": "Q4_K_M",
-      "codingScore": 10,
       "storageGb": 14.4,
       "source": "https://huggingface.co/bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF",
       "repositoryRevision": "027695770ae1de77c2f6fb19f8e1ba9d65fcd15d",
@@ -2544,8 +2537,8 @@
         "long-context"
       ],
       "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "Code-focused 24B model."
+      "catch": "Apache-2.0.",
+      "notes": "bartowski Q4_K_M GGUF of mistralai/Devstral-Small-2-24B-Instruct-2512, a code-agent model built on Mistral-Small-3.1-24B-Base-2503. GGUF header: architecture mistral3. The model card states a 256k-token context; the GGUF header declares 393,216."
     },
     {
       "modelId": "ministral-3-14b-instruct-q4_k_m",
@@ -2574,13 +2567,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 262144,
       "capabilities": [
         "tool-calling",
         "long-context"
       ],
       "commercialStatus": "open",
       "catch": "Apache 2.0.",
-      "notes": "Text-only LocalBase entry."
+      "notes": "Official Mistral Q4_K_M GGUF of Ministral-3-14B-Instruct-2512 (base Ministral-3-14B-Base-2512). GGUF header: architecture mistral3, 262,144-token training context; the model card states a 256k-token context. Text-only LocalBase entry."
     },
     {
       "modelId": "qwen3.5-27b-q4_k_m",
@@ -2616,7 +2610,7 @@
         "long-context"
       ],
       "commercialStatus": "open",
-      "catch": "Apache 2.0.",
+      "catch": "Apache-2.0.",
       "notes": "Text-only LocalBase entry; official 262k-token context. Base revision fc05daec18b0a78c049392ed2e771dde82bdf654."
     },
     {
@@ -2687,7 +2681,7 @@
       ],
       "commercialStatus": "open",
       "catch": "MIT License.",
-      "notes": "Ultra-fast English STT with lower accuracy."
+      "notes": "English-only transcription with OpenAI Whisper tiny.en (39M parameters), whisper.cpp ggml Q8_0. Vocabulary and mel filters are bundled; no Core ML encoder required."
     },
     {
       "modelId": "flux1-schnell-q4_0",
@@ -2771,7 +2765,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0 model weights. The converted encoder repository omits license metadata; upstream CLIP and T5 license terms also apply.",
-      "notes": "Cloudflare Workers AI model with a four-step native profile. The large T5 encoder runs on CPU. Measured at 1024x1024 with --diffusion-fa: 13.6 GiB accelerator and 16.8 GiB peak RSS."
+      "notes": "stable-diffusion.cpp Q4_0 GGUF of black-forest-labs/FLUX.1-schnell with a four-step native profile. The T5-XXL encoder runs on CPU. Measured at 1024x1024 with --diffusion-fa on Apple M-series 64 GiB, macOS 26: 13.6 GiB accelerator and 16.8 GiB peak RSS."
     },
     {
       "modelId": "flux2-klein-4b-q8_0",
@@ -2843,7 +2837,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
-      "notes": "Less-compressed Q8 diffusion weights with the same Q4 Qwen3 encoder as the compact 4B profile. Image quality relative to Q4 has not been assessed locally. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
+      "notes": "Q8_0 diffusion weights of FLUX.2-klein-4B with the same Qwen3-4B Q4_K_M encoder as flux2-klein-4b-q4_0. Image quality relative to Q4_0 has not been assessed locally. Peak memory was measured on Apple M-series 64 GiB, macOS 26 (2026-10-14); broader native inference qualification is pending."
     },
     {
       "modelId": "flux2-klein-9b-q4_0",
@@ -2915,7 +2909,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "FLUX Non-Commercial License; commercial deployment requires a separate Black Forest Labs license. Qwen3 encoder is Apache-2.0.",
-      "notes": "Larger distilled four-step model with a Qwen3 8B encoder. Photorealism relative to the 4B model has not been assessed locally. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
+      "notes": "Four-step profile of black-forest-labs/FLUX.2-klein-9B (stable-diffusion.cpp Q4_0 GGUF) with a Qwen3-8B text encoder. Image quality relative to the 4B model has not been assessed locally. Peak memory was measured on Apple M-series 64 GiB, macOS 26 (2026-10-14); broader native inference qualification is pending."
     },
     {
       "modelId": "stable-diffusion-v1-5",
@@ -2953,7 +2947,7 @@
       ],
       "commercialStatus": "open",
       "catch": "CreativeML Open RAIL-M license.",
-      "notes": "Extremely lightweight baseline model. Perfect for low VRAM systems (under 8GB) and fast prototyping. Generates 512x512 images."
+      "notes": "Stable Diffusion v1.5 checkpoint (stable-diffusion-v1-5 mirror of the RunwayML release). Generates 512x512 images."
     },
     {
       "modelId": "dreamshaper-v8",
@@ -2991,7 +2985,7 @@
       ],
       "commercialStatus": "open",
       "catch": "CreativeML Open RAIL-M license.",
-      "notes": "Highly optimized community model for digital art, anime, and portraiture. Extremely fast and lightweight."
+      "notes": "Lykon's DreamShaper 8, a Stable Diffusion 1.5 fine-tune, shipped as one F16 safetensors checkpoint."
     },
     {
       "modelId": "sdxl-turbo",
@@ -3029,7 +3023,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Stability AI Community License.",
-      "notes": "High-speed 1-step real-time generation model. Excellent for fast interactive feedback cycles."
+      "notes": "Stability AI's SDXL-Turbo: SDXL 1.0 distilled with adversarial diffusion distillation for 1-4 step sampling at 512x512 (model card)."
     },
     {
       "modelId": "sdxl-base-1.0",
@@ -3066,8 +3060,8 @@
         "image-to-image"
       ],
       "commercialStatus": "open",
-      "catch": "Stability AI Community License.",
-      "notes": "Standard high-resolution (1024x1024) image generator. Recommended for standard workstation GPUs."
+      "catch": "CreativeML Open RAIL++-M license.",
+      "notes": "Stability AI's Stable Diffusion XL 1.0 base model (1024x1024 native resolution), shipped as one F16 safetensors checkpoint."
     },
     {
       "modelId": "animagine-xl-3.1",
@@ -3104,8 +3098,8 @@
         "image-to-image"
       ],
       "commercialStatus": "open",
-      "catch": "Stability AI Community License.",
-      "notes": "The premier open-source model for high-fidelity anime, manga, and Japanese illustration styles."
+      "catch": "CreativeML Open RAIL++-M license.",
+      "notes": "Cagliostro Research Lab's Animagine XL 3.1, a Stable Diffusion XL fine-tune for anime-style images, shipped as one F16 safetensors checkpoint."
     },
     {
       "modelId": "realvis-xl-v4.0",
@@ -3142,8 +3136,8 @@
         "image-to-image"
       ],
       "commercialStatus": "open",
-      "catch": "CreativeML Open RAIL-M license.",
-      "notes": "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures."
+      "catch": "CreativeML Open RAIL++-M license.",
+      "notes": "SG161222's RealVisXL V4.0, a Stable Diffusion XL fine-tune, shipped as one F16 safetensors checkpoint."
     },
     {
       "modelId": "wan2.1-t2v-1.3b-q8_0",

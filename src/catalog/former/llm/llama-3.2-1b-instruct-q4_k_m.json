@@ -7,7 +7,6 @@
   "version": "3.2",
   "size": "1B",
   "quant": "Q4_K_M",
-  "codingScore": 5,
   "storageGb": 1,
   "source": "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF",
   "repositoryRevision": "067b946cf014b7c697f3654f621d577a3e3afd1c",
@@ -22,8 +21,9 @@
   ],
   "inputModalities": ["text"],
   "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
   "capabilities": ["tool-calling"],
   "commercialStatus": "conditional",
   "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
-  "notes": "Ultra-small Llama model for low-resource environments."
+  "notes": "bartowski Q4_K_M GGUF of meta-llama/Llama-3.2-1B-Instruct (Llama 3.2 Community License). GGUF header: architecture llama, 131,072-token training context."
 }

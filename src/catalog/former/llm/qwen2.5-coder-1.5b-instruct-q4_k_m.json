@@ -7,7 +7,6 @@
   "version": "2.5",
   "size": "1.5B",
   "quant": "Q4_K_M",
-  "codingScore": 6,
   "storageGb": 1.2,
   "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
   "repositoryRevision": "f86cb2c1fa58255f8052cc32aeede1b7482d4361",
@@ -35,5 +34,5 @@
   ],
   "commercialStatus": "open",
   "catch": "Apache-2.0.",
-  "notes": "Autocomplete and tab completion model. Protocol tool calling is unsupported for this artifact."
+  "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-1.5B-Instruct; 32,768-token context (model card and GGUF header). Supports fill-in-the-middle completion prompts. Protocol tool calling is unsupported for this artifact."
 }

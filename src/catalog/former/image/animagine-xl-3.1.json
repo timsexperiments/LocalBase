@@ -26,6 +26,6 @@
   },
   "capabilities": ["text-to-image", "image-to-image"],
   "commercialStatus": "open",
-  "catch": "Stability AI Community License.",
-  "notes": "The premier open-source model for high-fidelity anime, manga, and Japanese illustration styles."
+  "catch": "CreativeML Open RAIL++-M license.",
+  "notes": "Cagliostro Research Lab's Animagine XL 3.1, a Stable Diffusion XL fine-tune for anime-style images, shipped as one F16 safetensors checkpoint."
 }

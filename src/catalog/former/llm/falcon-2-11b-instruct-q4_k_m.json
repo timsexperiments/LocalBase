@@ -7,7 +7,6 @@
   "version": "2",
   "size": "11B",
   "quant": "Q4_K_M",
-  "codingScore": 7,
   "storageGb": 7,
   "source": "https://huggingface.co/bartowski/Falcon3-10B-Instruct-GGUF",
   "repositoryRevision": "a826d55e0af24842680260d23f7221b6138c342a",
@@ -22,8 +21,9 @@
   ],
   "inputModalities": ["text"],
   "outputModalities": ["text"],
+  "contextWindowTokens": 32768,
   "capabilities": ["tool-calling", "multilingual"],
   "commercialStatus": "open",
-  "catch": "Apache 2.0.",
-  "notes": "General-purpose LLM alternative in permissive license family."
+  "catch": "TII Falcon LLM License (falcon-llm-license): https://falconllm.tii.ae/falcon-terms-and-conditions.html.",
+  "notes": "The pinned file is bartowski's Q4_K_M GGUF of tiiuae/Falcon3-10B-Instruct (Falcon3 10B, not Falcon 2 11B). GGUF header: architecture llama, 32,768-token training context. Upstream lists English, French, Spanish and Portuguese."
 }

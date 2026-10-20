@@ -27,5 +27,5 @@
   "capabilities": ["text-to-image", "image-to-image"],
   "commercialStatus": "open",
   "catch": "Stability AI Community License.",
-  "notes": "High-speed 1-step real-time generation model. Excellent for fast interactive feedback cycles."
+  "notes": "Stability AI's SDXL-Turbo: SDXL 1.0 distilled with adversarial diffusion distillation for 1-4 step sampling at 512x512 (model card)."
 }

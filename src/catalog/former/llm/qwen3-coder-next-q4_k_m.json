@@ -7,7 +7,6 @@
   "version": "Next",
   "size": "80B-A3B",
   "quant": "Q4_K_M",
-  "codingScore": 10,
   "storageGb": 48.4,
   "source": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
   "repositoryRevision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
@@ -51,6 +50,6 @@
     "long-context"
   ],
   "commercialStatus": "open",
-  "catch": "Apache 2.0.",
-  "notes": "Qwen's sparse next-generation coding model for agentic workflows."
+  "catch": "Apache-2.0.",
+  "notes": "Official Qwen Q4_K_M GGUF of Qwen3-Coder-Next, split into four files. GGUF header: architecture qwen3next, 512 experts with 10 active per token, 262,144-token training context."
 }

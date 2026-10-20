@@ -7,7 +7,6 @@
   "version": "3.3",
   "size": "70B",
   "quant": "Q4_K_M",
-  "codingScore": 8,
   "storageGb": 42,
   "source": "https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF",
   "repositoryRevision": "b6c5c9f176f3279204034e1d16d393105e95cb88",
@@ -22,8 +21,9 @@
   ],
   "inputModalities": ["text"],
   "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
   "capabilities": ["tool-calling", "reasoning", "multilingual"],
   "commercialStatus": "conditional",
   "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
-  "notes": "High quality generalist model for large GPU servers."
+  "notes": "bartowski Q4_K_M GGUF of meta-llama/Llama-3.3-70B-Instruct (Llama 3.3 Community License). GGUF header: architecture llama, 131,072-token training context."
 }

@@ -7,7 +7,6 @@
   "version": "Llama-8B",
   "size": "8B",
   "quant": "Q4_K_M",
-  "codingScore": 8,
   "storageGb": 4.7,
   "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
   "repositoryRevision": "935d400c2ed1a29cc2a1045df25ec7998fb4dfe4",
@@ -22,8 +21,9 @@
   ],
   "inputModalities": ["text"],
   "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
   "capabilities": ["reasoning", "tool-calling", "code-generation"],
   "commercialStatus": "open",
-  "catch": "MIT License. No restrictions.",
-  "notes": "DeepSeek-R1 reasoning model distilled on Llama-8B. Great for laptop runs."
+  "catch": "MIT License.",
+  "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-R1-Distill-Llama-8B (DeepSeek-R1 outputs distilled into Llama-3.1-8B). GGUF header: architecture llama, 131,072-token training context."
 }

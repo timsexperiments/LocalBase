@@ -26,6 +26,6 @@
   },
   "capabilities": ["text-to-image", "image-to-image"],
   "commercialStatus": "open",
-  "catch": "CreativeML Open RAIL-M license.",
-  "notes": "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures."
+  "catch": "CreativeML Open RAIL++-M license.",
+  "notes": "SG161222's RealVisXL V4.0, a Stable Diffusion XL fine-tune, shipped as one F16 safetensors checkpoint."
 }

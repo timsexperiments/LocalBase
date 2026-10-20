@@ -34,6 +34,6 @@
   "contextWindowTokens": 262144,
   "capabilities": ["decision", "long-context"],
   "commercialStatus": "open",
-  "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission. Needs about 2.5x the memory of Clef Flash.",
-  "notes": "Larger decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef (Apache-2.0, post-trained from Qwen3.8-27B; source revision 0b331204bb13fbd2ca93a64df1956f5b55478ce5). Answers choice, score, and noul questions through POST /v1/systemone. Stronger than Clef Flash on intent and retrieval decisions; Clef Flash is the faster default."
+  "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.",
+  "notes": "Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef (Apache-2.0, post-trained from Qwen3.8-27B; source revision 0b331204bb13fbd2ca93a64df1956f5b55478ce5). GGUF header: architecture clef, 64 layers, 4 decision blocks, 262,144-token training context. Answers choice, score, and noul questions through POST /v1/systemone. Clef Flash (clef-flash-q4_k_m) is the 9B default decision model."
 }

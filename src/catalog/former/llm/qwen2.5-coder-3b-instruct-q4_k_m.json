@@ -7,7 +7,6 @@
   "version": "2.5",
   "size": "3B",
   "quant": "Q4_K_M",
-  "codingScore": 8,
   "storageGb": 2.2,
   "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
   "repositoryRevision": "f74adce6aa16316c625447af059dbebe4983757c",
@@ -22,8 +21,9 @@
   ],
   "inputModalities": ["text"],
   "outputModalities": ["text"],
+  "contextWindowTokens": 32768,
   "capabilities": ["tool-calling", "code-generation", "code-editing"],
   "commercialStatus": "conditional",
   "catch": "Qwen Research License; non-commercial use only.",
-  "notes": "Fast coding baseline for low-VRAM GPUs."
+  "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-3B-Instruct; 32,768-token context (model card and GGUF header)."
 }

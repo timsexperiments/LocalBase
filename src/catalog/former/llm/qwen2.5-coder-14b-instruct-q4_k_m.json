@@ -24,5 +24,5 @@
   "capabilities": ["tool-calling", "code-generation", "code-editing"],
   "commercialStatus": "open",
   "catch": "Apache-2.0.",
-  "notes": "Top-end coding option that still fits on 12GB with careful context settings."
+  "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-14B-Instruct. The model card states a 32,768-token context; the GGUF header declares 131,072."
 }

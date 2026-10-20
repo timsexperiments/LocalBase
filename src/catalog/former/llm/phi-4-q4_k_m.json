@@ -7,7 +7,6 @@
   "version": "4",
   "size": "14B",
   "quant": "Q4_K_M",
-  "codingScore": 8,
   "storageGb": 9,
   "source": "https://huggingface.co/bartowski/phi-4-GGUF",
   "repositoryRevision": "19cd65f97c2f1712a81c506611d3f9c94b16a1e1",
@@ -22,8 +21,9 @@
   ],
   "inputModalities": ["text"],
   "outputModalities": ["text"],
+  "contextWindowTokens": 16384,
   "capabilities": ["reasoning", "tool-calling", "code-generation"],
   "commercialStatus": "open",
-  "catch": "MIT License. No restrictions.",
-  "notes": "Compact reasoning model with strong quality density."
+  "catch": "MIT License.",
+  "notes": "bartowski Q4_K_M GGUF of microsoft/phi-4 (14B). GGUF header: architecture phi3, 16,384-token training context."
 }

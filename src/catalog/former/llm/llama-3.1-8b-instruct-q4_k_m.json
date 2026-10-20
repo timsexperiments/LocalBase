@@ -7,7 +7,6 @@
   "version": "3.1",
   "size": "8B",
   "quant": "Q4_K_M",
-  "codingScore": 8,
   "storageGb": 4.7,
   "source": "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
   "repositoryRevision": "bf5b95e96dac0462e2a09145ec66cae9a3f12067",
@@ -22,8 +21,9 @@
   ],
   "inputModalities": ["text"],
   "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
   "capabilities": ["tool-calling", "multilingual", "reasoning"],
   "commercialStatus": "conditional",
   "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
-  "notes": "One of the most popular open-source 8B models for general tasks and coding."
+  "notes": "bartowski Q4_K_M GGUF of meta-llama/Meta-Llama-3.1-8B-Instruct (Llama 3.1 Community License). GGUF header: architecture llama, 131,072-token training context."
 }

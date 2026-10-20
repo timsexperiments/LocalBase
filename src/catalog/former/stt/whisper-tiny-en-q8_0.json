@@ -24,5 +24,5 @@
   "capabilities": ["speech-to-text"],
   "commercialStatus": "open",
   "catch": "MIT License.",
-  "notes": "Ultra-fast English STT with lower accuracy."
+  "notes": "English-only transcription with OpenAI Whisper tiny.en (39M parameters), whisper.cpp ggml Q8_0. Vocabulary and mel filters are bundled; no Core ML encoder required."
 }

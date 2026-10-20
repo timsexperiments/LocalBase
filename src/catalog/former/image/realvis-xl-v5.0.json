@@ -27,5 +27,5 @@
   "capabilities": ["text-to-image"],
   "commercialStatus": "conditional",
   "catch": "CreativeML Open RAIL++-M use restrictions apply.",
-  "notes": "Bundled CLIP encoders and VAE; built-in CLIP tokenizer. Uses server defaults, not the author's recommended DPM++ Karras preset."
+  "notes": "Bundled CLIP encoders and VAE; built-in CLIP tokenizer. Uses server defaults, not the DPM++ Karras preset the model card suggests."
 }

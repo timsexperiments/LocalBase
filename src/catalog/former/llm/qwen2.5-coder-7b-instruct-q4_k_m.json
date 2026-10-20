@@ -7,7 +7,6 @@
   "version": "2.5",
   "size": "7B",
   "quant": "Q4_K_M",
-  "codingScore": 9,
   "storageGb": 4.7,
   "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
   "repositoryRevision": "13fb94bfda8c8cf22497dc57b78f391a9acb426a",
@@ -25,5 +24,5 @@
   "capabilities": ["tool-calling", "code-generation", "code-editing"],
   "commercialStatus": "open",
   "catch": "Apache-2.0.",
-  "notes": "Great coding quality per watt; ideal default for a 12GB GPU."
+  "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-7B-Instruct. The model card states a 32,768-token context; the GGUF header declares 131,072."
 }

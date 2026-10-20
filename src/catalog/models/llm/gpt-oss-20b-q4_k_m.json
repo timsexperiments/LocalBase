@@ -7,8 +7,7 @@
   "version": "1",
   "size": "20B",
   "quant": "Q4_K_M",
-  "codingScore": 9.5,
-  "storageGb": 14,
+  "storageGb": 11.67,
   "source": "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
   "repositoryRevision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
   "artifacts": [
@@ -25,6 +24,6 @@
   "contextWindowTokens": 131072,
   "capabilities": ["reasoning", "tool-calling"],
   "commercialStatus": "open",
-  "catch": "Apache 2.0.",
-  "notes": "OpenAI's open-weight reasoning model, optimized for edge devices."
+  "catch": "Apache-2.0.",
+  "notes": "bartowski imatrix Q4_K_M GGUF of openai/gpt-oss-20b; the expert feed-forward weights stay MXFP4. Upstream: 21B parameters, 3.6B active per token. GGUF header: architecture gpt-oss, 24 layers, 32 experts with 4 active per token, 128-token sliding-window attention layers, 131,072-token training context."
 }

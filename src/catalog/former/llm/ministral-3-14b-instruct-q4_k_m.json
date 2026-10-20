@@ -21,8 +21,9 @@
   ],
   "inputModalities": ["text"],
   "outputModalities": ["text"],
+  "contextWindowTokens": 262144,
   "capabilities": ["tool-calling", "long-context"],
   "commercialStatus": "open",
   "catch": "Apache 2.0.",
-  "notes": "Text-only LocalBase entry."
+  "notes": "Official Mistral Q4_K_M GGUF of Ministral-3-14B-Instruct-2512 (base Ministral-3-14B-Base-2512). GGUF header: architecture mistral3, 262,144-token training context; the model card states a 256k-token context. Text-only LocalBase entry."
 }

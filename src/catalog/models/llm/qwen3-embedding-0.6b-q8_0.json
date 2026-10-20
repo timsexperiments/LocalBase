@@ -33,5 +33,5 @@
   "capabilities": ["embeddings", "multilingual", "code-retrieval"],
   "commercialStatus": "open",
   "catch": "Embedding endpoint only. Chat completions are rejected before runtime admission.",
-  "notes": "Official Apache-2.0 Q8_0 GGUF. The runtime uses last-token pooling and emits 1024-dimensional vectors."
+  "notes": "Official Qwen Q8_0 GGUF of Qwen3-Embedding-0.6B (base Qwen3-0.6B-Base, 28 layers; the model card states a 32k-token context). The runtime uses last-token pooling and emits 1024-dimensional vectors. Embedded tokenizer; memory estimate assumes short inputs."
 }

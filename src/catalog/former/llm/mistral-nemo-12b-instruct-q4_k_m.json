@@ -7,7 +7,6 @@
   "version": "Nemo",
   "size": "12B",
   "quant": "Q4_K_M",
-  "codingScore": 8,
   "storageGb": 7.5,
   "source": "https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF",
   "repositoryRevision": "a2dd64a0a76ea1bdb2bb6ab6fa5496b003c7c908",
@@ -24,6 +23,6 @@
   "outputModalities": ["text"],
   "capabilities": ["tool-calling", "multilingual"],
   "commercialStatus": "open",
-  "catch": "Apache 2.0.",
-  "notes": "Excellent 12B model with large 128k context window."
+  "catch": "Apache-2.0.",
+  "notes": "bartowski Q4_K_M GGUF of mistralai/Mistral-Nemo-Instruct-2407 (base Mistral-Nemo-Base-2407). GGUF header: architecture llama. The model card states training with a 128k-token context window; the GGUF header declares 1,024,000."
 }

@@ -233,11 +233,7 @@ export function recommendedForVram(vramGb: number): ModelSpec[] {
       model.kind === "llm" &&
       !model.llmRuntime &&
       computedMinVramGb(model) <= vramGb,
-  ).sort(
-    (a, b) =>
-      (b.codingScore ?? 0) - (a.codingScore ?? 0) ||
-      computedMinVramGb(b) - computedMinVramGb(a),
-  );
+  ).sort((a, b) => computedMinVramGb(b) - computedMinVramGb(a));
 }
 
 function recommendedKindForVram(

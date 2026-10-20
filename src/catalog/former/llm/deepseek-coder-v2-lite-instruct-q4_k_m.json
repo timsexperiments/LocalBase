@@ -7,7 +7,6 @@
   "version": "2",
   "size": "16B",
   "quant": "Q4_K_M",
-  "codingScore": 9.5,
   "storageGb": 11.2,
   "source": "https://huggingface.co/bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
   "repositoryRevision": "8f248fa2072348f77a8bc37754e470de1f61866e",
@@ -24,6 +23,6 @@
   "outputModalities": ["text"],
   "capabilities": ["mixture-of-experts", "code-generation", "code-editing"],
   "commercialStatus": "open",
-  "catch": "Permissive License (DeepSeek License), allows commercial use.",
-  "notes": "State-of-the-art MoE coding model with 16B total parameters and 2.4B active."
+  "catch": "DeepSeek License; the upstream license permits commercial use.",
+  "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct, a mixture-of-experts model with 16B total and 2.4B active parameters. GGUF header: architecture deepseek2, 64 routed experts with 6 active. The model card states a 128k-token context; the GGUF header declares 163,840."
 }

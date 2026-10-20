@@ -27,5 +27,5 @@
   "capabilities": ["text-to-image", "image-to-image"],
   "commercialStatus": "open",
   "catch": "CreativeML Open RAIL-M license.",
-  "notes": "Highly optimized community model for digital art, anime, and portraiture. Extremely fast and lightweight."
+  "notes": "Lykon's DreamShaper 8, a Stable Diffusion 1.5 fine-tune, shipped as one F16 safetensors checkpoint."
 }

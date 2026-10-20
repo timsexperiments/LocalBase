@@ -27,5 +27,5 @@
   "capabilities": ["text-to-image", "image-to-image"],
   "commercialStatus": "open",
   "catch": "CreativeML Open RAIL-M license.",
-  "notes": "Extremely lightweight baseline model. Perfect for low VRAM systems (under 8GB) and fast prototyping. Generates 512x512 images."
+  "notes": "Stable Diffusion v1.5 checkpoint (stable-diffusion-v1-5 mirror of the RunwayML release). Generates 512x512 images."
 }

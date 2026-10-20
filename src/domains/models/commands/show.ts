@@ -10,12 +10,14 @@ import {
   catalogTrustLabels,
   describeFit,
   describeLaunchShape,
+  describeMemoryBasis,
   formatFileSize,
   formatGb,
   formatTokens,
   licenseLabels,
   memoryFigureLabels,
   modeLabels,
+  planningMinimumNote,
 } from "../../../catalog/model-details";
 import type { AnnotationSummary } from "../../../catalog/annotations";
 import { catalogProvenance } from "../../../catalog/sources";
@@ -90,17 +92,18 @@ export function modelDetailLines(
     ),
     "",
     "Memory",
-    `  Needs at least: ${memory.minimumVramEstimateGb} GB${memory.source ? ` (${memoryFigureLabels[memory.source].toLowerCase()})` : ""}`,
+    `  Planning min:   ${memory.minimumVramEstimateGb} GB${memory.source ? ` (${memoryFigureLabels[memory.source].toLowerCase()})` : ""}`,
   ];
   if (memory.reference)
     lines.push(
-      `  ${memoryFigureLabels[memory.reference.source]}: ${formatGb(memory.reference.bytes)} with ${describeLaunchShape(memory.reference.launchShape)}`,
+      `  ${memoryFigureLabels[memory.reference.source]}: ${formatGb(memory.reference.bytes)} with ${describeLaunchShape(memory.reference.launchShape)} (${describeMemoryBasis(memory.reference)})`,
     );
   for (const peak of memory.observedPeaks ?? [])
     lines.push(
       `  Seen on this machine: ${formatGb(peak.peakBytes)} with ${describeLaunchShape(peak.launchShape)}, ${peak.observedAt.slice(0, 10)}`,
     );
   if (memory.fit) lines.push(`  This machine:   ${describeFit(memory.fit)}`);
+  lines.push(`  Note:           ${planningMinimumNote}`);
   if (catalog.feedAnnotation)
     lines.push("", ...feedAnnotationLines(catalog.feedAnnotation));
   return lines;

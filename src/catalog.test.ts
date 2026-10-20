@@ -65,6 +65,7 @@ const verifiedContextWindows = new Map<string, number>([
   ["qwen3.5-2b-q8_0", 262_144],
   ["qwen3.5-4b-q4_k_m", 262_144],
   ["qwen3.5-9b-q4_k_m", 262_144],
+  ["qwen3.8-27b-q4_k_m", 262_144],
   ["qwen3-embedding-4b-q4_k_m", 32_768],
   ["qwen3-embedding-4b-q8_0", 32_768],
   ["qwen3-embedding-8b-q4_k_m", 32_768],
@@ -984,7 +985,8 @@ describe("catalog artifact validation", () => {
     }
 
     const gemma = byId("gemma-3-12b-it-q4_k_m");
-    expect(gemma?.contextWindowTokens).toBeNull();
+    // From the pinned GGUF header (gemma3.context_length).
+    expect(gemma?.contextWindowTokens).toBe(131_072);
     expect(gemma).toMatchObject({
       inputModalities: ["text"],
       outputModalities: ["text"],

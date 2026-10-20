@@ -24,6 +24,6 @@
   "contextWindowTokens": 262144,
   "capabilities": ["reasoning", "tool-calling", "long-context"],
   "commercialStatus": "open",
-  "catch": "Apache 2.0.",
+  "catch": "Apache-2.0.",
   "notes": "Text-only LocalBase entry; official 262k-token context. Base revision fc05daec18b0a78c049392ed2e771dde82bdf654."
 }

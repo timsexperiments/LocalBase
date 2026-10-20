@@ -45,6 +45,7 @@ import {
   resolveModelCapabilities,
   type ResolvedCapabilities,
 } from "./capability-detection";
+import { MEASUREMENT_HARDWARE } from "../runtime/memory-measurements";
 
 const nullableNumberSchema = z.number().nullable();
 const memorySourceSchema = z.enum(["estimate", "feed", "measured", "observed"]);
@@ -199,6 +200,8 @@ export const modelMetadataSchema = z
                 bytes: z.number().int().nonnegative(),
                 /** The launch shape the estimate or measurement describes. */
                 launchShape: z.string().min(1),
+                /** Machine a measured figure was recorded on; absent for estimates. */
+                hardware: z.string().min(1).optional(),
               })
               .strict()
               .optional(),
@@ -670,6 +673,12 @@ function memoryProjection(
       bytes: Math.round(figure.referenceBytes),
       launchShape:
         figure.feedPeak?.launchShape ?? referenceLaunchShape(model, inputs),
+      // Every checked-in record shares one machine (see memory-measurements.ts).
+      ...(figure.referenceSource === "measured"
+        ? { hardware: MEASUREMENT_HARDWARE }
+        : figure.feedPeak
+          ? { hardware: figure.feedPeak.hardware }
+          : {}),
     },
     observedPeaks: (inputs?.observed ?? []).map(
       ({ peakBytes, launchShape, method, observedAt }) => ({

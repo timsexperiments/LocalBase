@@ -7,7 +7,6 @@
   "version": "3",
   "size": "27B",
   "quant": "Q4_K_M",
-  "codingScore": 9,
   "storageGb": 16.5,
   "source": "https://huggingface.co/bartowski/google_gemma-3-27b-it-GGUF",
   "repositoryRevision": "4a05c54413bd0d87d77a97af403266f69cec0ee6",
@@ -22,8 +21,9 @@
   ],
   "inputModalities": ["text"],
   "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
   "capabilities": ["tool-calling", "reasoning", "multilingual"],
   "commercialStatus": "conditional",
   "catch": "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
-  "notes": "Top-tier 27B model; matches larger models in reasoning quality."
+  "notes": "bartowski Q4_K_M GGUF of google/gemma-3-27b-it. GGUF header: architecture gemma3, 131,072-token training context. Text-only LocalBase entry; the vision projector is not included in the managed artifact set."
 }

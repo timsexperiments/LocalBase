@@ -62,5 +62,5 @@
   "capabilities": ["text-to-image"],
   "commercialStatus": "conditional",
   "catch": "FLUX Non-Commercial License; commercial deployment requires a separate Black Forest Labs license. Qwen3 encoder is Apache-2.0.",
-  "notes": "Larger distilled four-step model with a Qwen3 8B encoder. Photorealism relative to the 4B model has not been assessed locally. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
+  "notes": "Four-step profile of black-forest-labs/FLUX.2-klein-9B (stable-diffusion.cpp Q4_0 GGUF) with a Qwen3-8B text encoder. Image quality relative to the 4B model has not been assessed locally. Peak memory was measured on Apple M-series 64 GiB, macOS 26 (2026-10-14); broader native inference qualification is pending."
 }

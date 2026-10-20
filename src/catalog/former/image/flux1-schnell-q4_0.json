@@ -74,5 +74,5 @@
   "capabilities": ["text-to-image"],
   "commercialStatus": "open",
   "catch": "Apache-2.0 model weights. The converted encoder repository omits license metadata; upstream CLIP and T5 license terms also apply.",
-  "notes": "Cloudflare Workers AI model with a four-step native profile. The large T5 encoder runs on CPU. Measured at 1024x1024 with --diffusion-fa: 13.6 GiB accelerator and 16.8 GiB peak RSS."
+  "notes": "stable-diffusion.cpp Q4_0 GGUF of black-forest-labs/FLUX.1-schnell with a four-step native profile. The T5-XXL encoder runs on CPU. Measured at 1024x1024 with --diffusion-fa on Apple M-series 64 GiB, macOS 26: 13.6 GiB accelerator and 16.8 GiB peak RSS."
 }

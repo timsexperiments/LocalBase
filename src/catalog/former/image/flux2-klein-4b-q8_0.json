@@ -62,5 +62,5 @@
   "capabilities": ["text-to-image"],
   "commercialStatus": "open",
   "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
-  "notes": "Less-compressed Q8 diffusion weights with the same Q4 Qwen3 encoder as the compact 4B profile. Image quality relative to Q4 has not been assessed locally. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
+  "notes": "Q8_0 diffusion weights of FLUX.2-klein-4B with the same Qwen3-4B Q4_K_M encoder as flux2-klein-4b-q4_0. Image quality relative to Q4_0 has not been assessed locally. Peak memory was measured on Apple M-series 64 GiB, macOS 26 (2026-10-14); broader native inference qualification is pending."
 }

@@ -7,7 +7,6 @@
   "version": "Llama-70B",
   "size": "70B",
   "quant": "Q4_K_M",
-  "codingScore": 9.5,
   "storageGb": 42,
   "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
   "repositoryRevision": "1842c5f7280f933ead58adf8afd078672c9f6cd0",
@@ -22,8 +21,9 @@
   ],
   "inputModalities": ["text"],
   "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
   "capabilities": ["reasoning", "tool-calling", "code-generation"],
   "commercialStatus": "open",
-  "catch": "MIT License. No restrictions.",
-  "notes": "DeepSeek-R1 reasoning model distilled on Llama-3-70B. High reasoning quality."
+  "catch": "MIT License.",
+  "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-R1-Distill-Llama-70B (DeepSeek-R1 outputs distilled into Llama-3.3-70B-Instruct). GGUF header: architecture llama, 131,072-token training context."
 }

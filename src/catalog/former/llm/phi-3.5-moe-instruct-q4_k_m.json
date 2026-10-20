@@ -7,7 +7,6 @@
   "version": "3.5",
   "size": "42B",
   "quant": "Q4_K_M",
-  "codingScore": 8.5,
   "storageGb": 23,
   "source": "https://huggingface.co/bartowski/Phi-3.5-MoE-instruct-GGUF",
   "repositoryRevision": "4b580329100cf44d7d041b6f63967b26869a6937",
@@ -22,8 +21,9 @@
   ],
   "inputModalities": ["text"],
   "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
   "capabilities": ["mixture-of-experts", "reasoning", "multilingual"],
   "commercialStatus": "open",
-  "catch": "MIT License. No restrictions.",
-  "notes": "Microsoft MoE release; high performance with 6.6B active parameters."
+  "catch": "MIT License.",
+  "notes": "bartowski Q4_K_M GGUF of microsoft/Phi-3.5-MoE-instruct, a mixture-of-experts model with 6.6B active parameters (model card). GGUF header: architecture phimoe, 16 experts with 2 active, 131,072-token training context."
 }

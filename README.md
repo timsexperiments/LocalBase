@@ -54,28 +54,30 @@ Add your own models, or adjust built-in ones, in `<root>/catalog.d/`, or find an
 
 ### Built-in catalog
 
-The built-in catalog is a small, tested set: one entry per job, and one chat model per memory band. Minimums are LocalBase's computed figures at the reference launch shape (`local-base models catalog` shows yours).
+The built-in catalog is a small, tested set: one entry per job, and one chat model per memory band. The table lists facts from each entry's pinned files; `local-base models show <id>` has the full record.
 
-| Kind | Purpose | Model id | Minimum memory |
-| --- | --- | --- | --- |
-| Chat | Tiny (about 4 GB) | `qwen3.5-4b-q4_k_m` | 5 GB |
-| Chat | Small (about 8 GB) | `qwen3.5-9b-q4_k_m` | 8 GB |
-| Chat | Medium (about 12 GB) | `gpt-oss-20b-q4_k_m` | 14 GB |
-| Chat | Large (18 GB and up) | `qwen3.8-27b-q4_k_m` | 21 GB |
-| Embeddings | Fast | `qwen3-embedding-0.6b-q8_0` | 3 GB |
-| Embeddings | Quality | `qwen3-embedding-4b-q4_k_m` | 5 GB |
-| Decisions | Fast (default) | `clef-flash-q4_k_m` | 10 GB |
-| Decisions | Quality | `clef-q4_k_m` | 25 GB (estimate) |
-| Speech to text | Fast, multilingual | `whisper-base-q8_0` | 1 GB |
-| Speech to text | Quality, translation | `whisper-large-v3-turbo` | 3 GB |
-| Text to speech | Voices and cloning | `qwen3-tts-1.7b-base-q4_k_m` | 5 GB |
-| Text to speech | Lightweight (experimental) | `kokoro-82m-v1.0-q8` | 1 GB |
-| Image | Photorealism | `z-image-turbo-q4_0` | 15 GB |
-| Image | General and illustration | `flux2-klein-4b-q4_0` | 13 GB |
-| Image | Fast, low memory | `dreamshaper-8-lcm` | 5 GB |
-| Image | Image to image | `juggernaut-xl-v9` | 16 GB |
-| Video | Text and image to video (experimental) | `fastwan2.2-ti2v-5b-q6_k` | 8 GB |
-| Video | Speech to video (experimental, Linux NVIDIA) | `wan2.2-s2v-14b-fp8` | 21 GB |
+The planning minimum is LocalBase's figure for admission and fit: the accelerator demand at the reference launch (LLMs: 8,192-token context, 1 request at a time, q8_0 KV cache, or f16 for embeddings) plus a margin of 512 MiB or 10%, whichever is larger. "Measured" figures were recorded on Apple M-series 64 GiB unified memory, macOS 26 ([memory calibration](docs/memory-calibration.md)); "estimate" figures come from the formula. They are not hardware requirements: other settings and machines need different amounts, and `local-base models catalog` shows the figures this machine uses.
+
+| Kind | Band or job | Model id | Pinned build | Planning minimum |
+| --- | --- | --- | --- | --- |
+| Chat | About 4 GB | `qwen3.5-4b-q4_k_m` | Qwen3.5-4B, Q4_K_M GGUF, 262,144-token context, text only | 5 GB (measured) |
+| Chat | About 8 GB | `qwen3.5-9b-q4_k_m` | Qwen3.5-9B, Q4_K_M GGUF, 262,144-token context, text only | 8 GB (measured) |
+| Chat | About 12 GB | `gpt-oss-20b-q4_k_m` | gpt-oss-20b (21B MoE, 3.6B active), Q4_K_M GGUF with MXFP4 experts, 131,072-token context | 14 GB (measured) |
+| Chat | 18 GB and up | `qwen3.8-27b-q4_k_m` | Qwen3.8-27B, Q4_K_M GGUF, 262,144-token context, text only | 21 GB (estimate) |
+| Embeddings | Smaller | `qwen3-embedding-0.6b-q8_0` | Qwen3-Embedding-0.6B, Q8_0 GGUF, 1024 dimensions | 3 GB (estimate) |
+| Embeddings | Larger | `qwen3-embedding-4b-q4_k_m` | Qwen3-Embedding-4B, Q4_K_M GGUF, 2560 dimensions | 5 GB (estimate) |
+| Decisions | Default | `clef-flash-q4_k_m` | Cloudflare Clef Flash (9B), Q4_K_M GGUF and Q8_0 projector | 10 GB (measured) |
+| Decisions | Larger | `clef-q4_k_m` | Cloudflare Clef (27B), Q4_K_M GGUF and Q8_0 projector | 25 GB (estimate) |
+| Speech to text | Multilingual | `whisper-base-q8_0` | Whisper base (74M), ggml Q8_0 | 1 GB (estimate) |
+| Speech to text | Multilingual, translation | `whisper-large-v3-turbo` | Whisper large-v3-turbo (809M), ggml F16 | 3 GB (measured) |
+| Text to speech | Voices and cloning | `qwen3-tts-1.7b-base-q4_k_m` | Qwen3-TTS-12Hz-1.7B-Base, Q4_K_M GGUF | 5 GB (measured) |
+| Text to speech | CPU (experimental) | `kokoro-82m-v1.0-q8` | Kokoro-82M, quantized ONNX, English | 1 GB (measured) |
+| Image | Text to image | `z-image-turbo-q4_0` | Z-Image-Turbo (6B), Q4_0 GGUF, 8 steps | 15 GB (measured) |
+| Image | Text to image | `flux2-klein-4b-q4_0` | FLUX.2-klein-4B, Q4_0 GGUF, 4 steps | 13 GB (measured) |
+| Image | Text to image | `dreamshaper-8-lcm` | DreamShaper 8 LCM (Stable Diffusion 1.5), F16, 4 steps | 5 GB (measured) |
+| Image | Image to image | `juggernaut-xl-v9` | Juggernaut XL v9 (SDXL 1.0 fine-tune), F16 | 16 GB (measured) |
+| Video | Text and image to video (experimental) | `fastwan2.2-ti2v-5b-q6_k` | FastWan2.2-TI2V-5B, Q6_K GGUF, 480x832, 81 frames | 8 GB (measured) |
+| Video | Speech to video (experimental, Linux x64 NVIDIA only) | `wan2.2-s2v-14b-fp8` | Wan2.2-S2V-14B, FP8 safetensors, 480x640, 33 frames | 21 GB (estimate) |
 
 Models that earlier releases shipped and this one no longer lists keep working after an upgrade. When LocalBase finds one installed, or named in the model settings, it writes the same spec (id, pinned revision, files and checksums) to `<root>/catalog.d/` as your own entry, exactly as if you had added it from Hugging Face. API clients keep calling the same id, defaults and selections stay valid, and checked-in memory measurements still apply while the files are unchanged. The only visible difference is that it is no longer marked as qualified by LocalBase; its notes start with "No longer in the LocalBase catalog". Remove it like any user entry with `local-base models remove-entry <id>` after deselecting it.
 
@@ -118,13 +120,13 @@ curl http://127.0.0.1:2273/v1/systemone \
   - `noul`: optional `{ "true": "...", "false": "..." }` descriptions.
 - Responses contain `model`, per-question `answers`, and `usage: { input_tokens, output_tokens }`. Choice answers return `choice`, `probabilities`, and `confidence`. Score answers return `score`, `legend`, `probabilities`, and `confidence`. Noul answers return the true probability as `noul`.
 
-The default decision model is Clef Flash (`clef-flash-q4_k_m`, about 7.1 GB). It is Cloudflare's Apache-2.0 9B model, pinned to the ggml-org Q4_K_M GGUF and its Q8_0 image projector. It needs about 8.6 GiB of accelerator memory and answers in roughly 0.5–1 s per request on Apple silicon:
+The default decision model is Clef Flash (`clef-flash-q4_k_m`, about 7.1 GB). It is Cloudflare's Apache-2.0 9B model, pinned to the ggml-org Q4_K_M GGUF and its Q8_0 image projector. Its decision launch (8,192-token context, 1 request at a time, Q8_0 projector) measured 8.62 GiB of accelerator demand on Apple M-series 64 GiB unified memory, macOS 26; other machines and settings differ:
 
 ```bash
 local-base models install clef-flash-q4_k_m
 ```
 
-Clef 27B (`clef-q4_k_m`, about 19.9 GB, Apache-2.0, post-trained from Qwen3.8-27B) is the larger alternative: stronger on intent and retrieval decisions, at roughly 2.5 times the memory. Add other decision GGUFs through the Hugging Face search. Files whose header carries decision heads are detected as decision models.
+Clef 27B (`clef-q4_k_m`, about 19.9 GB, Apache-2.0, post-trained from Qwen3.8-27B) is also built in. Its planning minimum is a 25 GB formula estimate at the same decision launch; it has not been measured. Add other decision GGUFs through the Hugging Face search. Files whose header carries decision heads are detected as decision models.
 
 Decision models list `architecture.output_modalities: ["decisions"]` in `/v1/models`. They reject chat completions and embeddings, and other models reject `/v1/systemone` with HTTP 400 `unsupported_model_capability`. The route requires the `inference:decision` scope.
 

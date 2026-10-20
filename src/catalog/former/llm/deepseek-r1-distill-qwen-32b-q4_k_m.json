@@ -7,7 +7,6 @@
   "version": "Qwen-32B",
   "size": "32B",
   "quant": "Q4_K_M",
-  "codingScore": 9.5,
   "storageGb": 20.3,
   "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
   "repositoryRevision": "1dc8cf9ffa5dd333057ea1b09ccf4772d8726dec",
@@ -22,8 +21,9 @@
   ],
   "inputModalities": ["text"],
   "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
   "capabilities": ["reasoning", "tool-calling", "code-generation"],
   "commercialStatus": "open",
-  "catch": "MIT License. No restrictions.",
-  "notes": "DeepSeek-R1 reasoning model distilled on Qwen-32B. Superb coding and logic."
+  "catch": "MIT License.",
+  "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-R1-Distill-Qwen-32B (DeepSeek-R1 outputs distilled into Qwen2.5-32B). GGUF header: architecture qwen2, 131,072-token training context."
 }

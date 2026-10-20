@@ -221,9 +221,9 @@ describe("authenticated model metadata endpoints", () => {
       ],
     });
     const llm = body.data.find((model) => model.id === modelId);
-    const unknownContext = metadataById(body, alternateModelId);
+    const alternate = metadataById(body, alternateModelId);
     const speech = metadataById(body, speechModelId);
-    if (!llm || !unknownContext || !speech)
+    if (!llm || !alternate || !speech)
       throw new Error("Expected catalog metadata fixtures.");
 
     expect(body.data).toHaveLength(CATALOG.length);
@@ -252,9 +252,9 @@ describe("authenticated model metadata endpoints", () => {
         },
       },
     });
-    expect(unknownContext.catalog.features).toContain("tool-calling");
-    expect(unknownContext.catalog.contextWindowTokens).toBeNull();
-    expect(unknownContext.catalog.maxOutputTokens).toBeNull();
+    expect(alternate.catalog.features).toContain("tool-calling");
+    expect(alternate.catalog.contextWindowTokens).toBe(262_144);
+    expect(alternate.catalog.maxOutputTokens).toBeNull();
     expect(speech.catalog).toMatchObject({
       inputModalities: ["text"],
       outputModalities: ["audio"],
