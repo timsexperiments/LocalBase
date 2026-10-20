@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"os"
 	"sort"
+	"time"
 )
 
 // GGUF writes a GGUF v3 file with the given header keys and no tensors,
@@ -52,3 +53,6 @@ func GGUF(path string, kv map[string]any, size int) error {
 	}
 	return os.WriteFile(path, b.Bytes(), 0o644)
 }
+
+// Epoch is a fixed modification time for served test files.
+var Epoch = time.Unix(1_700_000_000, 0)
