@@ -170,6 +170,9 @@ func specRole(s *catalog.Spec, a catalog.Artifact) string {
 		}
 	}
 	if r := s.TTSRuntime; r != nil {
+		if r.ProjectorArtifactFilename != "" && r.ProjectorArtifactFilename == a.Filename {
+			return RoleProjector // the Qwen TTS codec projector
+		}
 		for _, v := range r.ReferenceVoices {
 			if v.ArtifactFilename == a.Filename {
 				return RoleVoice

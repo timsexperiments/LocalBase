@@ -1,7 +1,7 @@
 {
   "schema": "localbase.routing/v1",
   "rules": [
-    {"os": "darwin", "arch": "arm64", "prefer": ["engine:mlx", "llama.cpp-metal", "stable-diffusion.cpp-metal", "crispasr-metal", "whisper.cpp-metal", "tts-server", "onnx-cpu"]},
+    {"os": "darwin", "arch": "arm64", "prefer": ["engine:mlx", "llama.cpp-metal", "stable-diffusion.cpp-metal", "tts-server", "crispasr-metal", "whisper.cpp-metal", "onnx-cpu"]},
     {"os": "linux", "arch": "x64", "prefer": ["llama.cpp-cuda", "llama.cpp-vulkan", "stable-diffusion.cpp-vulkan", "crispasr-vulkan", "whisper.cpp-vulkan", "tts-server", "crispasr-cpu", "onnx-cpu", "llama.cpp-cpu"]},
     {"os": "*", "arch": "*", "prefer": ["llama.cpp-cpu", "crispasr-cpu", "onnx-cpu"]}
   ]

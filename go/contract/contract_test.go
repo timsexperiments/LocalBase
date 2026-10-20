@@ -52,6 +52,21 @@ func TestReadiness(t *testing.T) {
 			t.Errorf("modalities = %v", body["modalities"])
 		}
 	})
+	// Every configured media modality admits requests on both. Video arrives in
+	// Go with M6, so only TS lists it for now.
+	admitting := map[string]string{}
+	for _, tg := range targets {
+		var list []string
+		for _, m := range do(t, "GET", tg.BaseURL+"/health/ready", nil, "").JSON(t)["modalities"].([]any) {
+			if m != "video" {
+				list = append(list, m.(string))
+			}
+		}
+		admitting[tg.Name] = strings.Join(list, ",")
+		if admitting[tg.Name] != "llm,stt,tts,image" {
+			t.Errorf("%s admits %s", tg.Name, admitting[tg.Name])
+		}
+	}
 }
 
 func TestAuthentication(t *testing.T) {

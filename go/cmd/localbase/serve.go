@@ -217,7 +217,8 @@ func serve(c *cli.Ctx) (any, error) {
 		d := runtime.ServiceDeps{Modality: modality, Kind: modality, Catalog: cat, Store: st, Memory: mem, Log: log,
 			Config: llm.Config, Gate: lib.GateFor(task), SelectionKey: lib.SelectionKey, RuntimesDir: r.RuntimesDir(),
 			ModelsDir: r.ModelsDir(modality), RootDir: r.Dir, CacheDir: filepath.Join(r.Dir, "cache"), Host: h, Port: p,
-			Binaries: binaries, Install: installer(e, installMissing, log), Activate: activate}
+			Binaries: binaries, Install: installer(e, installMissing, log), Activate: activate,
+			QueueCapacity: queueCap, QueueTimeout: time.Duration(queueTimeout) * time.Millisecond}
 		if modality == "tts" {
 			// A changed voice set or marking setting restarts the speech server.
 			d.ExtraKey = func() string {

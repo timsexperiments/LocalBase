@@ -284,12 +284,17 @@ func (s *Server) modality(kind string) (configured bool, state string, admits bo
 		configured = snap.State != "disabled"
 		return configured, snap.State, configured && snap.Accepting && snap.Waiting < snap.Capacity
 	}
-	// Speech, image and video runtimes arrive in milestone 4.
 	cfg := s.LLM.Config()
-	if len(cfg.Selected[kind]) > 0 && cfg.Active[kind] != "" {
+	if len(cfg.Selected[kind]) == 0 || cfg.Active[kind] == "" {
+		return false, "disabled", false
+	}
+	svc := map[string]*runtime.Service{"stt": s.STT, "tts": s.TTS, "image": s.Image}[kind]
+	if svc == nil {
+		// Video arrives with M6; a disabled service (--no-x) admits nothing.
 		return true, "idle", false
 	}
-	return false, "disabled", false
+	snap := svc.Snapshot()
+	return true, snap.State, snap.Accepting && snap.Waiting < snap.Capacity
 }
 
 func (s *Server) modalityHealth() map[string]any {

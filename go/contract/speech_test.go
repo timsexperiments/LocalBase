@@ -195,3 +195,90 @@ func TestSpeechKokoroCrispASR(t *testing.T) {
 		t.Errorf("marking off: %d, still marked %v", r.Status, r.Status == 200)
 	}
 }
+
+// TestSpeechQwenReal runs Qwen3-TTS through tts-server on both gateways: a
+// reference voice, then a custom voice cloned from an uploaded recording.
+func TestSpeechQwenReal(t *testing.T) {
+	d := os.Getenv("LOCALBASE_CONTRACT_TTS_MODELS")
+	if d == "" || os.Getenv("LOCALBASE_CONTRACT_RUNTIMES") == "" {
+		t.Skip("needs LOCALBASE_CONTRACT_TTS_MODELS and LOCALBASE_CONTRACT_RUNTIMES")
+	}
+	clip, err := os.ReadFile(filepath.Join(d, "qwen3-tts-harbor.wav"))
+	if err != nil {
+		t.Skip("no reference clip")
+	}
+	checkWAV := func(label string, r *Resp) []byte {
+		t.Helper()
+		b := r.Body
+		if r.Status != 200 || len(b) < 44+24000 || string(b[:4]) != "RIFF" || binary.LittleEndian.Uint32(b[24:]) != 24000 {
+			t.Fatalf("%s: %d %.300s", label, r.Status, b)
+		}
+		return b
+	}
+	outputs := map[string][2][]byte{}
+	for _, tg := range targets {
+		h := bearer(tg.Key)
+		h["Content-Type"] = "application/json"
+		ref := checkWAV(tg.Name+" reference voice", do(t, "POST", tg.BaseURL+"/v1/audio/speech", h,
+			`{"model":"qwen3-tts-1.7b-base-q4_k_m","input":"Good morning, this is a test.","voice":"harbor"}`))
+
+		body, ct := voiceForm(voicePart{name: "name", value: "Cloned"}, voicePart{name: "consent", value: "true"}, voicePart{name: "audio", file: clip})
+		ah := bearer(tg.Admin)
+		ah["Content-Type"] = ct
+		created := do(t, "POST", tg.BaseURL+"/_localbase/voices", ah, body)
+		if created.Status != 201 {
+			t.Fatalf("%s create voice: %d %s", tg.Name, created.Status, created.Body)
+		}
+		id := created.JSON(t)["id"].(string)
+		// The warm server loads voices at launch: the new voice restarts it.
+		custom := checkWAV(tg.Name+" custom voice", do(t, "POST", tg.BaseURL+"/v1/audio/speech", h,
+			`{"model":"qwen3-tts-1.7b-base-q4_k_m","input":"Good morning, this is a test.","voice":"`+id+`"}`))
+		do(t, "DELETE", tg.BaseURL+"/_localbase/voices/"+id, bearer(tg.Admin), "")
+		outputs[tg.Name] = [2][]byte{ref, custom}
+	}
+	// Sampling differs run to run, so compare what was said: whisper must hear
+	// the sentence in every output.
+	if os.Getenv("LOCALBASE_CONTRACT_STT_MODELS") != "" {
+		goTarget := targets[len(targets)-1]
+		for name, outs := range outputs {
+			for i, wav := range outs {
+				heard := transcribe(t, goTarget, wav)
+				t.Logf("%s output %d (%.1f s): %s", name, i, float64(len(wav)-44)/48000, heard)
+				if !strings.Contains(strings.ToLower(heard), "good morning") {
+					t.Errorf("%s output %d does not say the input: %q", name, i, heard)
+				}
+			}
+		}
+	}
+	if len(targets) == 2 {
+		a, b := outputs["ts"], outputs["go"]
+		t.Logf("reference voice identical: %v (%d vs %d bytes); custom voice identical: %v (%d vs %d bytes)",
+			bytes.Equal(a[0], b[0]), len(a[0]), len(b[0]), bytes.Equal(a[1], b[1]), len(a[1]), len(b[1]))
+	}
+}
+
+// transcribe runs whisper tiny.en on a 24 kHz WAV through tg (afconvert to 16 kHz).
+func transcribe(t *testing.T, tg *Target, wav []byte) string {
+	t.Helper()
+	in := filepath.Join(t.TempDir(), "in.wav")
+	out := filepath.Join(t.TempDir(), "out.wav")
+	os.WriteFile(in, wav, 0o600)
+	if b, err := exec.Command("afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", in, out).CombinedOutput(); err != nil {
+		t.Fatalf("afconvert: %v %s", err, b)
+	}
+	clip, _ := os.ReadFile(out)
+	var b bytes.Buffer
+	w := multipart.NewWriter(&b)
+	fw, _ := w.CreateFormFile("file", "speech.wav")
+	fw.Write(clip)
+	w.WriteField("model", "whisper-tiny-en-q8_0")
+	w.WriteField("response_format", "text")
+	w.Close()
+	h := bearer(tg.Key)
+	h["Content-Type"] = w.FormDataContentType()
+	r := do(t, "POST", tg.BaseURL+"/v1/audio/transcriptions", h, b.String())
+	if r.Status != 200 {
+		t.Fatalf("transcribe: %d %s", r.Status, r.Body)
+	}
+	return string(r.Body)
+}

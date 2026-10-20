@@ -178,6 +178,13 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 		spec := cat.ByID(id)
 		dir := r.ModelsDir(spec.Kind)
 		os.MkdirAll(dir, 0o700)
+		// The real Qwen3-TTS files (read-only links), when LOCALBASE_CONTRACT_TTS_MODELS has them.
+		if d := os.Getenv("LOCALBASE_CONTRACT_TTS_MODELS"); d != "" && id == "qwen3-tts-1.7b-base-q4_k_m" && fileExists(filepath.Join(d, spec.Artifacts[0].Filename)) {
+			for _, a := range spec.Artifacts {
+				os.Symlink(filepath.Join(d, a.Filename), filepath.Join(dir, a.Filename))
+			}
+			continue
+		}
 		for _, a := range spec.Artifacts {
 			if f, err := os.Create(filepath.Join(dir, a.Filename)); err == nil {
 				f.Truncate(a.ExpectedSizeBytes)

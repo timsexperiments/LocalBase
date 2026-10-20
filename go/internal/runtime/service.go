@@ -27,13 +27,14 @@ import (
 type Service struct {
 	d ServiceDeps
 
-	mu      sync.Mutex
-	cur     *svcBackend
-	busy    bool
-	queue   []*svcWaiter
-	closed  bool
-	failed  bool
-	switchW sync.WaitGroup
+	mu        sync.Mutex
+	cur       *svcBackend
+	busy      bool
+	queue     []*svcWaiter
+	closed    bool
+	failed    bool
+	switching bool // a model is being stopped or started
+	switchW   sync.WaitGroup
 }
 
 // ServiceDeps are a Service's collaborators.
@@ -106,10 +107,10 @@ func (l *ServiceLease) Release() {
 // NewService builds a supervisor.
 func NewService(d ServiceDeps) *Service {
 	if d.QueueCapacity <= 0 {
-		d.QueueCapacity = 8
+		d.QueueCapacity = 16 // TS DEFAULT_MAX_WAITING_INFERENCES
 	}
 	if d.QueueTimeout <= 0 {
-		d.QueueTimeout = 120 * time.Second
+		d.QueueTimeout = 60 * time.Second // TS DEFAULT_INFERENCE_QUEUE_WAIT_MS
 	}
 	if d.Startup <= 0 {
 		d.Startup = 60 * time.Second
@@ -235,12 +236,13 @@ func (s *Service) pump() {
 			return
 		}
 		s.busy = true // the switch holds the backend
+		s.switching = true
 		s.switchW.Add(1)
 		go func(model, key string) {
 			defer s.switchW.Done()
 			err := s.doSwitch(model, key)
 			s.mu.Lock()
-			s.busy = false
+			s.busy, s.switching = false, false
 			s.failed = err != nil && s.cur == nil
 			if err != nil {
 				for len(s.queue) > 0 && s.queue[0].model == model && s.queue[0].key == key {
@@ -434,6 +436,22 @@ wait:
 }
 
 // Running reports the resident model.
+// Snapshot reports the service for /health (the LLM's Snapshot fields).
+func (s *Service) Snapshot() Snapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	snap := Snapshot{Waiting: len(s.queue), Capacity: s.d.QueueCapacity, Accepting: !s.closed, State: "idle"}
+	switch {
+	case s.closed:
+		snap.State = "stopping"
+	case s.switching:
+		snap.State = "starting"
+	case s.cur != nil:
+		snap.State, snap.ModelID = "running", s.cur.modelID
+	}
+	return snap
+}
+
 func (s *Service) Running() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
