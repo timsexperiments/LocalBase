@@ -220,6 +220,13 @@ func TestCLIModels(t *testing.T) {
 		{args: []string{"--json", "models", "show", "qwen3-embedding-0.6b-q8_0"}},
 		{args: []string{"--json", "models", "show", "nope"}},
 		{args: []string{"--json", "models", "install", "nope"}},
+		{args: []string{"--json", "doctor"}},
+		{args: []string{"--json", "reset"}, skip: func(p string) bool { return p == ".error.message" }},
+		{args: []string{"--json", "reset", "--yes"}},
+		{args: []string{"--json", "keys", "list"}},
+		{args: []string{"--json", "uninstall"}, skip: func(p string) bool { return p == ".error.message" }},
+		{args: []string{"--json", "uninstall", "-y"}},
+		{args: []string{"--json", "reset", "--yes"}, skip: func(p string) bool { return p == ".error.message" }},
 	} {
 		compareCLI(t, roots, c)
 	}
@@ -317,6 +324,35 @@ func TestCLILogs(t *testing.T) {
 				}
 				t.Errorf("%s %v differs:\n  %s", tg.Name, args, strings.Join(d, "\n  "))
 			}
+		}
+	}
+}
+
+// TestCLISmoke runs each CLI's smoke check against its own gateway.
+func TestCLISmoke(t *testing.T) {
+	requireTS(t)
+	for _, tg := range targets {
+		if tg.Root == "" || !tg.RealModel {
+			continue
+		}
+		r := runCLI(t, tg.Name, tg.Root, "--json", "smoke", "--timeout", "120")
+		var env struct {
+			OK   bool `json:"ok"`
+			Data struct {
+				Passed bool `json:"passed"`
+				Steps  []struct {
+					Name string `json:"name"`
+					OK   bool   `json:"ok"`
+				} `json:"steps"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(r.stdout), &env); err != nil || r.code != 0 || !env.Data.Passed || len(env.Data.Steps) != 2 {
+			t.Errorf("%s smoke: exit %d %s %s", tg.Name, r.code, r.stdout, r.stderr)
+		}
+		// The temporary key is gone afterwards.
+		keys := runCLI(t, tg.Name, tg.Root, "--json", "keys", "list")
+		if strings.Contains(keys.stdout, "smoke (temporary)") {
+			t.Errorf("%s: smoke key left behind", tg.Name)
 		}
 	}
 }

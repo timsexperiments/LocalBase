@@ -110,6 +110,9 @@ func serve(c *cli.Ctx) (any, error) {
 		return nil, err
 	}
 
+	if os.Getenv("LOCALBASE_SERVICE_TOKEN") != "" {
+		obs.BoundServiceStderr(r.Dir) // #357: launchd never rotates the capture
+	}
 	sink, err := obs.OpenSink(r.LogsDir())
 	if err != nil {
 		return nil, err

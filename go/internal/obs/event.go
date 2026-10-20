@@ -86,7 +86,9 @@ var (
 	componentInvalid = regexp.MustCompile(`[^a-z0-9]+`)
 )
 
-func eventName(s string) string { return normalize(s, eventNameInvalid, maxEventName, "localbase.event") }
+func eventName(s string) string {
+	return normalize(s, eventNameInvalid, maxEventName, "localbase.event")
+}
 
 func componentName(s string) string {
 	return normalize(strings.ReplaceAll(s, ".", "-"), componentInvalid, maxComponent, "localbase")

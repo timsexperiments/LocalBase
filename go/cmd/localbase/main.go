@@ -15,9 +15,11 @@ func main() {
 }
 
 func app() *cli.App {
-	commands := []*cli.Command{initCommand(), configureCommand(), serveCommand()}
+	// The TS command order.
+	commands := []*cli.Command{initCommand(), configureCommand(), doctorCommand(), modelsCommand(), serveCommand()}
 	commands = append(commands, serviceCommands()...)
-	commands = append(commands, logsCommand(), modelsCommand(), keysCommand())
+	commands = append(commands, logsCommand(), smokeCommand(), keysCommand())
+	commands = append(commands, maintenanceCommands()...)
 	return &cli.App{
 		Name:    "local-base",
 		Version: gateway.Version,

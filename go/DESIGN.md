@@ -261,7 +261,7 @@ Drop = removed, with the reason.
 | `GET,POST /_localbase/access-management` | Keep | Providers, policy, users. |
 | `GET,PUT,DELETE /_localbase/hf-token` | Keep | |
 | `/_localbase/voices…` | Keep (#366) | Same limits: 3–30 s, 12 MiB, 32 voices, consent attestation. WAV decode and resample in Go. |
-| `GET /_localbase/instance` | Drop | Lease endpoint for ownership checks, replaced by the flock and the service manager (§2.5). The CLI's `status` uses `/health` plus the manager. |
+| `GET /_localbase/instance` | Keep | Identity proof by instance token (guards against PID reuse); either CLI uses it during cutover and rollback. The lease and handshake around it are dropped (§2.5). |
 | `/app/api/*` mirror | Drop | Only the React UI used it (§2.4). Browser sessions on `/v1/*` keep working for UI-originated fetches such as chat streaming. |
 | `/`, `/app`, `/app/login*`, `/app/logout`, `/app/session` | Simplify | Server-rendered pages (§6). `/app/session` stays for expiry probing. |
 | `/oidc/callback`, `/magic-link/callback` | Keep | |
@@ -566,6 +566,19 @@ context_length_exceeded` (param `messages`) instead of relaying llama-server's
 `exceed_context_size_error` (§11, decision 4). Feed peaks and OTLP spans land
 with M5. Health reports speech, image and video as configured but not
 admitting until M4.
+
+### M2 (done 2026-10-19)
+
+| Area | Evidence |
+| --- | --- |
+| CLI framework: globals anywhere, `{ok,data}` envelopes, exit codes 0/1/2, `--no-x` flags | Unit tests; every CLI contract case compares exit codes and envelopes. |
+| `init`, `configure` (flags and `--config` TOML), `keys *`, `models catalog/recommend/list/show/install`, `doctor`, `logs`, `smoke`, `reset`, `uninstall` | CLI contract: each command through both binaries on twin scratch roots; `smoke` against both gateways with real inference; `logs` over both gateways' files. |
+| Downloads: resumable, size- and sha256-checked, sharing the TS `.checksums.json` cache and lock | File identity matches the TS cache records (read-only check against the live cache). |
+| TOML without a library | Conformance cases generated from Bun's parser. |
+| Service: launchd/systemd definitions, manifest, status rules, start/stop/restart | The plist renders byte-for-byte like the live one (fingerprint matches its manifest). A real launchd agent on a scratch root and label: start, status (Go and TS), restart, stop, uninstall, all cleaned up. |
+| Log events valid under the TS schema | The TS `logs` command reads every event the Go gateway wrote. |
+
+Kept rather than dropped: `/_localbase/instance` (identity proof by instance token), so either CLI can verify a gateway during cutover and rollback. Moved to later milestones: `diagnostics` and `config validate/plan/apply/show` (M5), `voices` (M4), `access` (M3).
 
 Disk note: the machine had about 57 GB free when this work started, below the
 90 GB floor. This branch adds about 180 MB of `node_modules` (needed to run TS
