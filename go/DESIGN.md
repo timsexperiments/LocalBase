@@ -846,16 +846,20 @@ export and the database for three planted secrets.
 | AC8 observed hash for unpinned URLs; trusted mismatch blocks publication | `AC8 an unpinned URL records an observed hash ...` | `acquire.TestDirectURLImport` |
 | AC9 custom adapters through the same versioned interfaces; downloads never execute code | `AC9 a custom adapter declares support ...`, `AC9 downloading weights never executes repository code or adds a backend` | `backends.TestCustomDefinitionRules` |
 | AC10 OpenAI-compatible interfaces unchanged | `AC10 OpenAI-compatible routes are unchanged`; the TS/Go contract suite | |
-| OP1 device identity stays local; export, import elsewhere, automatic there | `OP1 exports carry no selection or device hash; ...` | |
+| OP1 device identity stays local; export, import elsewhere, automatic there | `OP1 exports carry no selection or device hash; ...` (exported bytes scanned for the device id, the hashed machine id, selection fields and secrets; the second root has zero selection rows) | |
 | OP2 profiles redacted everywhere (planted secrets) | `OP2 no output, page, log, export or database contains a planted secret` | `acquire.TestDirectURLImport` |
-| OP3 HF token off CDN origins unless the `huggingface` profile lists them; anonymous CDN works; HTTPS→HTTP refused | `OP3 the Hugging Face token stays off CDN origins ...` | `acquire.TestHFTokenCDNScope`, `TestRedirectDowngradeRefused` |
+| OP3 HF token off CDN origins unless the `huggingface` profile lists them; anonymous CDN works; HTTPS→HTTP refused | `OP3 the Hugging Face token stays off CDN origins ...`, `OP3 an HTTPS to plain-HTTP redirect is refused, even with --allow-http, and no header crosses it` (direct URL and HF→http CDN hop) | `acquire.TestHFTokenCDNScope`, `TestRedirectDowngradeRefused` |
 | OP4 ratings never from names; user sentences plus machine codes; findings table | `OP4 models inspect --json has a findings table ...`, `AC2 ...` | `backends.TestNoRatingFromNames` |
-| OP5 CrispASR listed as not installed, never automatic until pinned | `OP5 CrispASR is listed as not installed ...` | `backends.TestCrispASRWithoutPin` |
+| OP5 CrispASR listed as not installed, never automatic until pinned | `OP5 CrispASR is listed as not installed ...` (backends list, the API, the selector page, and a Kokoro speech model it rates supported but is never chosen for) | `backends.TestCrispASRWithoutPin` |
 | Rollback stays a binary swap | `rollback: TS opens the database Go wrote` | `store.TestBackendChoicesPersist` |
 
 HTTPS→HTTP redirects are refused anywhere in a redirect chain (no consent
 path): the source chose HTTPS, and a downgrade mid-transfer is what an
-attacker would cause. Plain HTTP sources need explicit consent up front.
+attacker would cause. Plain HTTP sources need explicit consent up front. `--allow-http` covers
+only a source that is plain HTTP from the start; it never permits a
+downgrade. `LOCALBASE_DOWNLOAD_CA_FILE` adds PEM trust anchors for
+downloads (networks with their own CA, and the e2e TLS servers); certificate
+validation stays on.
 
 Also checked by hand: the import, model settings and backend pages at 390 px
 in light and dark on a scratch gateway. Not done here, by design: live

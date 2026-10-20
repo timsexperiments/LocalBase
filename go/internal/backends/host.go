@@ -140,3 +140,17 @@ func DeviceID(o ProbeOptions) string {
 	sum := sha256.Sum256([]byte("localbase-device:" + raw))
 	return hex.EncodeToString(sum[:16])
 }
+
+// InstallLabel is the install state in words, for lists and selectors.
+func (h Host) InstallLabel(id string) string {
+	switch h.Install[id] {
+	case Installed:
+		return "installed"
+	case Installable:
+		return "installs on first use"
+	}
+	if h.Unpackaged[id] {
+		return "not installed (no managed package yet)"
+	}
+	return "not installed"
+}

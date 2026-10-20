@@ -350,9 +350,11 @@ func backendsCommand() *cli.Command {
 				if !d.BuiltIn {
 					kind = "custom"
 				}
-				c.Info("%-30s %-10s %-12s %s", d.ID, kind, l.Host().Install[d.ID], strings.Join(d.Tasks, ","))
+				h := l.Host()
+				c.Info("%-30s %-10s %-40s %s", d.ID, kind, h.InstallLabel(d.ID), strings.Join(d.Tasks, ","))
 				out = append(out, map[string]any{"id": d.ID, "name": d.Name, "engine": d.Engine, "builtIn": d.BuiltIn,
-					"install": l.Host().Install[d.ID], "tasks": d.Tasks, "adapter": d.Adapter})
+					"install": h.Install[d.ID], "installLabel": h.InstallLabel(d.ID), "automatic": d.Automatic == nil || *d.Automatic,
+					"tasks": d.Tasks, "adapter": d.Adapter})
 			}
 			for _, d := range l.Registry.Skipped() {
 				c.Info("Skipped: %s", d)

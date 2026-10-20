@@ -58,11 +58,11 @@ type backendView struct {
 	Error         string
 }
 
-func options(reg *backends.Registry, rec backends.Recommendation, selected string) []optionView {
+func options(reg *backends.Registry, h backends.Host, rec backends.Recommendation, selected string) []optionView {
 	var out []optionView
 	for _, o := range rec.Options {
 		v := optionView{ID: o.BackendID, Name: o.BackendID, Rating: o.Rating, RatingLabel: ratingLabels[o.Rating],
-			Install: installLabels[o.Install], Selected: o.BackendID == selected, Recommended: o.BackendID == rec.BackendID,
+			Install: h.InstallLabel(o.BackendID), Selected: o.BackendID == selected, Recommended: o.BackendID == rec.BackendID,
 			Warnings: backends.Messages(o.Warnings)}
 		if d := reg.Get(o.BackendID); d != nil {
 			v.Name = d.Name
@@ -78,7 +78,7 @@ func options(reg *backends.Registry, rec backends.Recommendation, selected strin
 func (u *UI) backendView(modelID string, s backends.Selection) backendView {
 	reg := u.d.Library.Registry
 	v := backendView{ModelID: modelID, Mode: s.Mode, BackendID: s.BackendID, Unavailable: s.Unavailable,
-		DownloadBytes: s.DownloadBytes, Options: options(reg, s.Recommendation, s.BackendID)}
+		DownloadBytes: s.DownloadBytes, Options: options(reg, u.d.Library.Host(), s.Recommendation, s.BackendID)}
 	if d := reg.Get(s.BackendID); d != nil {
 		v.BackendName = d.Name
 	}
@@ -234,7 +234,7 @@ func (u *UI) importResolve(w http.ResponseWriter, r *http.Request) {
 	data["Token"] = u.remember(f)
 	data["Form"] = importForm{} // never echo the source or checksum back
 	data["Insecure"] = slices.ContainsFunc(plan.Warnings, func(w acquire.Warning) bool { return w.Code == acquire.WarnInsecureHTTP })
-	data["Options"] = options(u.d.Library.Registry, rec, "")
+	data["Options"] = options(u.d.Library.Registry, u.d.Library.Host(), rec, "")
 	data["Recommended"] = rec.BackendID
 	if d := u.d.Library.Registry.Get(rec.BackendID); d != nil {
 		data["Recommended"] = d.Name
@@ -310,7 +310,7 @@ func (u *UI) backendsPage(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"Host": l.Host(), "Skipped": l.Registry.Skipped(), "InstallLabels": installLabels}
 	var rows []map[string]any
 	for _, d := range l.Registry.All() {
-		rows = append(rows, map[string]any{"Def": d, "Install": installLabels[l.Host().Install[d.ID]]})
+		rows = append(rows, map[string]any{"Def": d, "Install": l.Host().InstallLabel(d.ID)})
 	}
 	data["Backends"] = rows
 	if r.Method == http.MethodPost {

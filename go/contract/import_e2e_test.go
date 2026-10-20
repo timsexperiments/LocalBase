@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/backends"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
@@ -324,10 +327,32 @@ func TestModelImportAcceptance(t *testing.T) {
 		}
 	}))
 	defer vendor.Close()
+	// HTTPS sources that redirect to plain HTTP: a direct URL and a Hugging
+	// Face endpoint whose download hop points at an http:// CDN.
+	tlsSource := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, vendor.URL+"/files/mystery.gguf", 302)
+	}))
+	defer tlsSource.Close()
+	tlsHF := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/revision/"):
+			json.NewEncoder(w).Encode(map[string]any{"sha": commit, "pipeline_tag": "text-generation",
+				"siblings": []any{map[string]any{"rfilename": "model-Q4_K_M.gguf", "lfs": map[string]any{"sha256": hexsum(weights), "size": len(weights)}}}})
+		default:
+			http.Redirect(w, r, cdn.URL+"/downgrade/model-Q4_K_M.gguf", 302)
+		}
+	}))
+	defer tlsHF.Close()
+	caFile := filepath.Join(tmp, "test-ca.pem")
+	var caPEM []byte
+	for _, s := range []*httptest.Server{tlsSource, tlsHF} {
+		caPEM = append(caPEM, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.Certificate().Raw})...)
+	}
+	os.WriteFile(caFile, caPEM, 0o644)
 
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp,
 		env: []string{"HF_ENDPOINT=" + hf.URL, "LOCALBASE_LLAMA_SERVER=" + fake, "LOCALBASE_DEVICE_ID=device-one",
-			"VENDOR_KEY=" + vendorSecret}}
+			"VENDOR_KEY=" + vendorSecret, "LOCALBASE_DOWNLOAD_CA_FILE=" + caFile}}
 	defer func() {
 		if e.stop != nil {
 			e.stop()
@@ -421,6 +446,35 @@ func TestModelImportAcceptance(t *testing.T) {
 		}
 	})
 
+	step("OP3 an HTTPS to plain-HTTP redirect is refused, even with --allow-http, and no header crosses it", func(t *testing.T) {
+		// The profile even lists the http:// origin; nothing may reach it.
+		e.json("auth-profiles", "add", "--id", "tlsvendor", "--origin", tlsSource.URL, "--origin", vendor.URL, "--header-env", "X-Api-Key=VENDOR_KEY")
+		before := vendorSeen.count()
+		for _, extra := range [][]string{nil, {"--allow-http"}} {
+			args := append([]string{"models", "import", tlsSource.URL + "/dl/mystery.gguf", "--auth-profile", "tlsvendor", "--task", "chat",
+				"--id", "downgraded", "--yes"}, extra...)
+			r := e.cli(nil, args...)
+			if r.code == 0 || !strings.Contains(r.stdout+r.stderr, "refusing a redirect from HTTPS to plain HTTP") {
+				t.Fatalf("%v: %d %s%s", extra, r.code, r.stdout, r.stderr)
+			}
+		}
+		if vendorSeen.count() != before {
+			t.Fatal("a request crossed the HTTPS to HTTP downgrade")
+		}
+		if fileExists(filepath.Join(e.root, "models", "imported", "downgraded")) {
+			t.Fatal("a downgraded download was published")
+		}
+		// A Hugging Face download hop to an http:// CDN is refused the same way.
+		cdnBefore := cdnSeen.count()
+		r := e.cli([]string{"HF_ENDPOINT=" + tlsHF.URL, "HF_TOKEN=" + hfToken}, "models", "import", "hf:org/plain-cdn", "--id", "hf-downgraded")
+		if r.code == 0 || !strings.Contains(r.stdout+r.stderr, "refusing a redirect from HTTPS to plain HTTP") {
+			t.Fatalf("HF downgrade: %d %s%s", r.code, r.stdout, r.stderr)
+		}
+		if cdnSeen.count() != cdnBefore || cdnSeen.contains(hfToken) {
+			t.Fatal("the HF download reached the http:// CDN")
+		}
+	})
+
 	step("AC3 unknown metadata leaves the backend blank and every backend selectable; AC5 imports finish without a backend", func(t *testing.T) {
 		sel := e.json("models", "backend", "mystery")["selection"].(map[string]any)
 		if sel["backendId"] != "" || sel["mode"] != "auto" {
@@ -486,24 +540,62 @@ func TestModelImportAcceptance(t *testing.T) {
 	})
 
 	step("OP5 CrispASR is listed as not installed and never chosen automatically", func(t *testing.T) {
-		sel := e.json("models", "backend", "vision-model")["selection"].(map[string]any)
-		if strings.HasPrefix(sel["backendId"].(string), "crispasr") {
-			t.Fatal("CrispASR chosen automatically")
+		// backends list says "not installed", not an error.
+		for _, b := range e.json("backends", "list")["backends"].([]any) {
+			bm := b.(map[string]any)
+			if strings.HasPrefix(bm["id"].(string), "crispasr") &&
+				(bm["install"] != "missing" || bm["installLabel"] != "not installed (no managed package yet)" || bm["automatic"] != false) {
+				t.Fatalf("CrispASR in backends list: %v", bm)
+			}
+		}
+		if r := e.cli(nil, "backends", "list"); !strings.Contains(r.stdout, "not installed (no managed package yet)") || r.code != 0 {
+			t.Fatalf("human backends list: %s%s", r.stdout, r.stderr)
+		}
+		// A speech model CrispASR is the routing table's first choice for.
+		crisp := "crispasr-metal"
+		if goruntime.GOOS == "linux" {
+			crisp = "crispasr-cpu"
+		}
+		def := map[string]any{"id": "kokoro-def", "name": "Kokoro definition", "tasks": []string{"speech"}, "capabilities": []string{},
+			"origin": "import", "variants": []any{map[string]any{"id": "q8",
+				"format": map[string]any{"value": "gguf", "source": "declared"}, "architecture": map[string]any{"value": "kokoro", "source": "declared"},
+				"precision": map[string]any{}, "contextLength": map[string]any{}, "dimensions": map[string]any{},
+				"artifacts": []any{
+					map[string]any{"filename": "kokoro.gguf", "role": "weights", "required": true, "source": map[string]any{"kind": "local"}},
+					map[string]any{"filename": "af_heart.bin", "role": "voice", "required": true, "source": map[string]any{"kind": "local"}}}}}}
+		b, _ := json.Marshal(def)
+		file := filepath.Join(tmp, "kokoro-def.json")
+		os.WriteFile(file, b, 0o644)
+		sel := e.json("models", "add-definition", file)["selection"].(map[string]any)
+		if sel["backendId"] != "" {
+			t.Fatalf("a backend without a managed package was chosen automatically: %v", sel)
 		}
 		found := false
 		for _, o := range sel["recommendation"].(map[string]any)["options"].([]any) {
 			om := o.(map[string]any)
-			if strings.HasPrefix(om["backendId"].(string), "crispasr") {
+			if !strings.HasPrefix(om["backendId"].(string), "crispasr") {
+				continue
+			}
+			codes := strings.Join(warningCodes(om), ",")
+			if om["install"] != "missing" || !strings.Contains(codes, "no-managed-package") || !strings.Contains(codes, "not-chosen-automatically") {
+				t.Fatalf("CrispASR option %v", om)
+			}
+			if om["backendId"] == crisp {
 				found = true
-				codes := strings.Join(warningCodes(om), ",")
-				if om["install"] != "missing" || !strings.Contains(codes, "no-managed-package") || !strings.Contains(codes, "not-chosen-automatically") {
-					t.Fatalf("CrispASR option %v", om)
+				if om["rating"] != "supported" {
+					t.Fatalf("%s should rate this Kokoro variant supported (it would be preferred): %v", crisp, om)
 				}
 			}
 		}
 		if !found {
-			t.Fatal("CrispASR is not listed")
+			t.Fatalf("%s is not listed", crisp)
 		}
+		// Choosing it by hand is allowed and shown as not installed.
+		s := e.json("models", "backend", "kokoro-def", "--set", crisp)["selection"].(map[string]any)
+		if s["backendId"] != crisp || s["mode"] != "manual" {
+			t.Fatalf("manual CrispASR: %v", s)
+		}
+		e.json("models", "backend", "kokoro-def", "--auto")
 	})
 
 	step("AC5 overrides report real startup errors without bypassing integrity or resource checks", func(t *testing.T) {
@@ -579,6 +671,14 @@ func TestModelImportAcceptance(t *testing.T) {
 		}
 		file := filepath.Join(tmp, "mystery-export.json")
 		os.WriteFile(file, []byte(exp.stdout), 0o644)
+		// The exported bytes: no selection, device id (override or hash) or credential.
+		exported, _ := os.ReadFile(file)
+		e.scan("exported model", string(exported))
+		for _, s := range []string{"device", "backendId", realDeviceID(t)} {
+			if strings.Contains(string(exported), s) {
+				t.Fatalf("export contains %q", s)
+			}
+		}
 		second := &e2e{t: t, root: filepath.Join(tmp, "root-two"), outDir: tmp, env: []string{"LOCALBASE_DEVICE_ID=device-two"}}
 		if r := second.cli(nil, "init"); r.code != 0 {
 			t.Fatalf("init second root: %s", r.stderr)
@@ -586,6 +686,12 @@ func TestModelImportAcceptance(t *testing.T) {
 		d := second.json("models", "add-definition", file)
 		if sel := d["selection"].(map[string]any); sel["mode"] != "auto" {
 			t.Fatalf("second root inherited a manual choice: %v", sel)
+		}
+		if n := selectionRows(t, filepath.Join(second.root, "local-base.db")); n != 0 {
+			t.Fatalf("the second root has %d selection rows", n)
+		}
+		if n := selectionRows(t, filepath.Join(e.root, "local-base.db")); n == 0 {
+			t.Fatal("the first root lost its manual choice")
 		}
 		// The same root on another device is automatic too.
 		d2 := e.cli([]string{"LOCALBASE_DEVICE_ID=device-two"}, "--json", "models", "backend", "mystery")
@@ -645,6 +751,9 @@ func TestModelImportAcceptance(t *testing.T) {
 			if r.Status != 200 {
 				t.Fatalf("%s: %d", p, r.Status)
 			}
+		}
+		if r := e.do("GET", "/app/models/m/kokoro-def", ""); r.Status != 200 || !strings.Contains(string(r.Body), "not installed (no managed package yet)") {
+			t.Fatalf("CrispASR in the selector: %d", r.Status)
 		}
 		form := "source=" + vendor.URL + "/files/mystery.gguf%3Fsig%3D" + signedValue + "&task=chat&auth_profile=vendor&allow_http=1&id=ui-mystery"
 		req, _ := http.NewRequest("POST", e.base+"/app/models/import/resolve", strings.NewReader(form))
@@ -730,4 +839,38 @@ func TestModelImportAcceptance(t *testing.T) {
 			t.Fatalf("TS could not open the database: %s%s", r.stdout, r.stderr)
 		}
 	})
+}
+
+func (s *seen) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.reqs)
+}
+
+// selectionRows counts stored backend choices in a database.
+func selectionRows(t *testing.T, db string) int {
+	t.Helper()
+	st, err := store.OpenReadOnly(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	var n int
+	if err := st.DB.QueryRow(`SELECT COUNT(*) FROM model_backend_selections`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// realDeviceID is this machine's hashed device id (without the test override).
+func realDeviceID(t *testing.T) string {
+	t.Helper()
+	old, had := os.LookupEnv("LOCALBASE_DEVICE_ID")
+	os.Unsetenv("LOCALBASE_DEVICE_ID")
+	defer func() {
+		if had {
+			os.Setenv("LOCALBASE_DEVICE_ID", old)
+		}
+	}()
+	return backends.DeviceID(backends.ProbeOptions{})
 }

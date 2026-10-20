@@ -1,6 +1,8 @@
 package acquire
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net/http"
@@ -60,6 +62,9 @@ func (t *scopedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 func newClient(profile *Profile, hfToken string, hfExtra []string) *http.Client {
 	hfOrig, _ := Origin(HFEndpoint())
 	base := http.DefaultTransport.(*http.Transport).Clone()
+	if pool := extraRoots(); pool != nil {
+		base.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	}
 	base.ResponseHeaderTimeout = 60 * time.Second
 	return &http.Client{
 		Transport:     &scopedTransport{base: base, profile: profile, hfToken: hfToken, hfOrigs: append([]string{hfOrig}, hfExtra...)},
@@ -97,4 +102,26 @@ func redactErr(err error, red *Redactor) error {
 		return errors.New(red.Text(err.Error()))
 	}
 	return err
+}
+
+// extraRoots adds the certificates in LOCALBASE_DOWNLOAD_CA_FILE (PEM) to
+// the system roots for downloads, for networks with their own TLS CA (and
+// tests). Validation stays on; this only adds trust anchors.
+func extraRoots() *x509.CertPool {
+	path := os.Getenv("LOCALBASE_DOWNLOAD_CA_FILE")
+	if path == "" {
+		return nil
+	}
+	pem, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil
+	}
+	return pool
 }
