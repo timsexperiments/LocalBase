@@ -653,10 +653,13 @@ model with one variant whose facts come from the entry, marked
 a hash of the platform UUID (`IOPlatformUUID`, `/etc/machine-id`), so a root
 copied to another machine starts in automatic mode there.
 
-The schema change is one new drizzle-format migration owned by Go
-(`0015_model_import`). TS ignores tables it does not know, and its migrator
-starts after the newest recorded migration, so a binary-swap rollback still
-works; TS just does not see imported models.
+The new tables are not a drizzle migration: TS rejects any database whose
+`__drizzle_migrations` rows differ from its own journal
+(`validateMigrationJournal`), which would break binary-swap rollback. Go
+keeps a small extension schema instead: `go_schema` records one version, and
+its statements are idempotent `CREATE TABLE IF NOT EXISTS`. TS ignores tables
+it does not know, so a rollback keeps working; TS just does not see imported
+models or selections.
 
 ### 12.2 Detection and routing
 
@@ -807,7 +810,7 @@ documented upstream is `likely` or `unknown`.
 | --- | --- |
 | 1 | `internal/backends`: definitions, registry (built-in plus `backends.d`), host probe, routing table, detector |
 | 2 | `internal/models`: logical models, variants, facts; legacy catalog adapter; file inspection (GGUF, safetensors header, ONNX magic, split sets, companions) |
-| 3 | Migration 0015, selection store, device id |
+| 3 | Go extension schema (`go_schema`), selection store, device id |
 | 4 | `internal/acquire`: sources, auth profiles, origin-scoped client, redaction, staging, hash trust, publish |
 | 5 | Launch planning through the selection, with errors; `process-openai/v1` adapter |
 | 6 | CLI, admin API, htmx pages |

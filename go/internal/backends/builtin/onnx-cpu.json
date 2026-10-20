@@ -1,0 +1,15 @@
+{
+  "schema": "localbase.backend/v1",
+  "id": "onnx-cpu",
+  "name": "ONNX Runtime (CPU)",
+  "engine": "onnxruntime",
+  "adapter": "kokoro-onnx/v1",
+  "tasks": ["speech"],
+  "capabilities": [],
+  "formats": ["onnx"],
+  "architectures": {"supported": ["kokoro"]},
+  "companions": {"speech": ["config", "tokenizer"]},
+  "platforms": [{"os":"darwin","arch":"arm64","accelerator":"cpu"},{"os":"linux","arch":"x64","accelerator":"cpu"}],
+  "runtime": {"family": "kokoro-tts", "executable": "kokoro-tts", "managed": false},
+  "notes": "Transition backend for Kokoro until CrispASR is pinned."
+}
