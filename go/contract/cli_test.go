@@ -254,3 +254,69 @@ func TestCLIConfigure(t *testing.T) {
 		compareCLI(t, roots, c)
 	}
 }
+
+// TestTSReadsGoLogs runs the TS `logs` command over the Go gateway's event
+// file: every line Go wrote must pass the TS event schema.
+func TestTSReadsGoLogs(t *testing.T) {
+	requireTS(t)
+	var goT *Target
+	for _, tg := range targets {
+		if tg.Name == "go" {
+			goT = tg
+		}
+	}
+	if goT == nil {
+		t.Skip("no Go target")
+	}
+	// Make a few events of different kinds.
+	do(t, "GET", goT.BaseURL+"/v1/models", bearer(goT.Key), "")
+	do(t, "GET", goT.BaseURL+"/nope", bearer(goT.Key), "")
+	do(t, "POST", goT.BaseURL+"/v1/chat/completions", bearer(goT.Key), `{"model":"x","messages":[]}`)
+	do(t, "GET", goT.BaseURL+"/app/models", nil, "")
+	raw, err := os.ReadFile(filepath.Join(goT.Root, "logs", "events.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Count(strings.TrimSpace(string(raw)), "\n") + 1
+	r := runCLI(t, "ts", goT.Root, "--json", "logs", "--limit", "5000")
+	if r.code != 0 {
+		t.Fatalf("ts logs: %d %s %s", r.code, r.stdout, r.stderr)
+	}
+	var env struct{ Data struct{ Events []map[string]any } }
+	if err := json.Unmarshal([]byte(r.stdout), &env); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Data.Events) != lines {
+		t.Errorf("TS read %d of %d Go events; stderr: %s", len(env.Data.Events), lines, r.stderr)
+	}
+}
+
+// TestCLILogs reads each launched gateway's log with both CLIs: the same
+// file must give the same events.
+func TestCLILogs(t *testing.T) {
+	requireTS(t)
+	for _, tg := range targets {
+		if tg.Root == "" {
+			continue
+		}
+		do(t, "GET", tg.BaseURL+"/v1/models", bearer(tg.Key), "")
+		do(t, "GET", tg.BaseURL+"/nope", bearer(tg.Key), "")
+		for _, args := range [][]string{{"--json", "logs"}, {"--json", "logs", "--limit", "2"}, {"--json", "logs", "--level", "warn"},
+			{"--json", "logs", "--runtime", "gateway", "--since", "2020-01-01T00:00:00Z"}, {"--json", "logs", "--limit", "0"},
+			{"--json", "logs", "--level", "loud"}} {
+			ts := runCLI(t, "ts", tg.Root, args...)
+			gr := runCLI(t, "go", tg.Root, args...)
+			if ts.code != gr.code {
+				t.Errorf("%s %v: exit ts=%d go=%d", tg.Name, args, ts.code, gr.code)
+				continue
+			}
+			skip := func(p string) bool { return p == ".error.message" }
+			if d := diffJSON("", normalize(t, ts.stdout, tg.Root), normalize(t, gr.stdout, tg.Root), skip); len(d) > 0 {
+				if len(d) > 10 {
+					d = d[:10]
+				}
+				t.Errorf("%s %v differs:\n  %s", tg.Name, args, strings.Join(d, "\n  "))
+			}
+		}
+	}
+}

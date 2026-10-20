@@ -54,7 +54,7 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/v1/embeddings", s.guard("inference:embeddings", s.embeddings))
 	mux.HandleFunc("/v1/systemone", s.guard("inference:decision", s.systemone))
 	mux.HandleFunc("/_localbase/models", s.guard("models:read", s.modelMetadata))
-	mux.HandleFunc("/_localbase/models/{model...}", s.guard("models:read", s.modelMetadata))
+	mux.HandleFunc("/_localbase/models/{model_id...}", s.guard("models:read", s.modelMetadata))
 	if s.UI != nil {
 		mux.Handle("/app", s.UI)
 		mux.Handle("/app/", s.UI)
@@ -211,7 +211,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case rec.auth != nil:
 			attrs = append(attrs, "auth_outcome", "unauthenticated")
 		}
-		s.Log.Info(msg, attrs...)
+		level := slog.LevelInfo
+		switch {
+		case status >= 500:
+			level = slog.LevelError
+		case status == 401 && label == "/app/session":
+		case status >= 400:
+			level = slog.LevelWarn
+		}
+		s.Log.Log(r.Context(), level, msg, attrs...)
 	}()
 	s.mux.ServeHTTP(rec, r)
 }

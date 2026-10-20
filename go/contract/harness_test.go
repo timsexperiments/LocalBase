@@ -57,6 +57,7 @@ type Target struct {
 	Key       string // default scopes
 	ChatOnly  string // inference:chat only
 	RealModel bool
+	Root      string // scratch root of a launched gateway
 	stop      func()
 }
 
@@ -259,7 +260,7 @@ func launch(impl string) (*Target, error) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return &Target{Name: impl, BaseURL: base, Key: key, ChatOnly: chatOnly, RealModel: real, stop: stop}, nil
+	return &Target{Name: impl, BaseURL: base, Key: key, ChatOnly: chatOnly, RealModel: real, Root: rootDir, stop: stop}, nil
 }
 
 // --- request helpers ---------------------------------------------------------

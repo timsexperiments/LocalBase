@@ -17,7 +17,7 @@ func main() {
 func app() *cli.App {
 	commands := []*cli.Command{initCommand(), configureCommand(), serveCommand()}
 	commands = append(commands, serviceCommands()...)
-	commands = append(commands, modelsCommand(), keysCommand())
+	commands = append(commands, logsCommand(), modelsCommand(), keysCommand())
 	return &cli.App{
 		Name:    "local-base",
 		Version: gateway.Version,

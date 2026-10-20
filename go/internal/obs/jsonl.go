@@ -13,8 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
+	"slices"
 	"sync"
 )
 
@@ -102,14 +101,12 @@ func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 
 func (h *Handler) WithGroup(string) slog.Handler { return h }
 
-var secretKey = regexp.MustCompile(`(?i)(authorization|cookie|token|secret|password|api_?key|credential)`)
-
-// Redact replaces values whose keys name credentials.
+// Redact replaces values whose keys name credentials or request content.
 func Redact(key string, v any) any {
-	if secretKey.MatchString(key) {
-		return "[REDACTED]"
+	if _, val, ok := attribute(key, v); ok {
+		return val
 	}
-	return v
+	return redacted
 }
 
 func severity(l slog.Level) string {
@@ -136,35 +133,75 @@ func uuid() string {
 func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 	ev := map[string]any{
 		"schemaVersion": 2, "id": uuid(), "timestamp": r.Time.UTC().Format("2006-01-02T15:04:05.000Z"),
-		"severity": severity(r.Level), "eventName": "log", "category": "system", "component": "gateway",
-		"runtime": "gateway", "message": r.Message,
+		"severity": severity(r.Level), "eventName": "localbase.event", "category": "", "component": "gateway",
+		"runtime": "gateway",
 	}
 	attributes := map[string]any{}
-	visit := func(a slog.Attr) {
+	addAttr := func(key string, v any) {
+		if len(attributes) >= maxAttributes {
+			return
+		}
+		if k, val, ok := attribute(key, v); ok {
+			attributes[k] = val
+		}
+	}
+	var visit func(a slog.Attr)
+	visit = func(a slog.Attr) {
+		v := a.Value.Resolve()
 		switch a.Key {
 		case "event":
-			ev["eventName"] = a.Value.String()
-			if cat, _, ok := strings.Cut(a.Value.String(), "."); ok && ev["category"] == "system" {
-				ev["category"] = cat
+			ev["eventName"] = eventName(v.String())
+		case "category":
+			if slices.Contains(categories, v.String()) {
+				ev["category"] = v.String()
 			}
-		case "category", "component", "runtime":
-			ev[a.Key] = a.Value.String()
+		case "runtime":
+			if slices.Contains(runtimes, v.String()) {
+				ev["runtime"] = v.String()
+			}
+		case "component":
+			ev["component"] = componentName(v.String())
 		case "request_id":
-			ev["requestId"] = a.Value.String()
+			if id := safeRequestID(v.String()); id != "" {
+				ev["requestId"] = id
+			}
+		case "error":
+			ev["error"] = map[string]any{"type": "Error", "message": BoundedText(v.String(), maxMessage)}
 		case "http":
 			m := map[string]any{}
-			for _, g := range a.Value.Group() {
-				m[g.Key] = g.Value.Any()
+			for _, g := range v.Group() {
+				m[g.Key] = g.Value.Resolve().Any()
+			}
+			if p, ok := m["path"].(string); ok {
+				route, page := canonicalRoute(p)
+				m["path"] = route
+				if page != "" {
+					addAttr("ui_route", page)
+				}
 			}
 			ev["http"] = m
 		default:
-			attributes[a.Key] = Redact(a.Key, a.Value.Any())
+			if v.Kind() == slog.KindGroup {
+				for _, g := range v.Group() {
+					visit(g)
+				}
+				return
+			}
+			addAttr(a.Key, v.Any())
 		}
 	}
 	for _, a := range h.attrs {
 		visit(a)
 	}
 	r.Attrs(func(a slog.Attr) bool { visit(a); return true })
+	if ev["category"] == "" {
+		ev["category"] = categoryFor(ev["eventName"].(string))
+	}
+	msg := BoundedText(r.Message, maxMessage)
+	if msg == "" {
+		msg = "Unknown error"
+	}
+	ev["message"] = msg
 	if len(attributes) > 0 {
 		ev["attributes"] = attributes
 	}
