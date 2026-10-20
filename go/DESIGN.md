@@ -865,3 +865,64 @@ Also checked by hand: the import, model settings and backend pages at 390 px
 in light and dark on a scratch gateway. Not done here, by design: live
 deployment, CrispASR pins and adapters (M4), a managed CUDA package, and
 qualification of any new backend/model pair.
+
+## 13. M4: speech, voices and images
+
+Stacked on M3.5 (`rewrite/go-m4` on `rewrite/go-model-import`). The
+OpenAI-compatible routes keep the TS contract: the same validation, error
+codes and response shapes, checked by the TS/Go contract suite. Internals use
+the M3.5 backend registry: every modality resolves model → selection →
+backend → adapter, with the same explicit launch errors.
+
+### 13.1 Runtime
+
+One generic supervisor (`runtime.Service`) replaces the TS per-modality
+supervisor factory for STT, TTS and images. Each holds one resident backend
+process for one model at a time, with:
+- a FIFO queue with capacity and timeout (as for the LLM);
+- memory admission before start, with demand from the backend's estimate
+  rule, stated with its assumptions;
+- a model switch: stop, then start; no rollback onto another model;
+- an unexpected exit clears the slot, and the next request restarts it;
+- startup failures of chosen or imported backends are reported as
+  `backend_startup_failed`.
+
+### 13.2 Adapters
+
+| Adapter | Backends | Contract |
+| --- | --- | --- |
+| `whisper-server/v1` | whisper.cpp (Metal, Vulkan) | `POST /inference` multipart (translation is a flag) |
+| `crispasr/v1` | CrispASR | `--server --backend kokoro\|qwen3-tts`, `POST /v1/audio/speech` (WAV, 24 kHz mono), `GET /health` |
+| `tts-server/v1` | tts-server (transition) | TS warm-server protocol |
+| `sd-server/v1` | stable-diffusion.cpp | OpenAI-compatible images API of the pinned sd-server |
+
+### 13.3 CrispASR
+
+The 2026-10-20 TTS screen ran the CrispASR v0.8.43 release assets:
+- `crispasr-macos-arm64.tar.gz`, sha256 `5c13fbbc…`, 18,012,924 bytes;
+- `crispasr-linux-x86_64-cuda.tar.gz`, sha256 `abeb01ea…`, 225,358,330
+  bytes, plus pinned CUDA runtime wheels.
+
+It loaded Kokoro 82M F16 (with a voice GGUF) and Qwen3-TTS 0.6B Q8_0 (with
+its 12 Hz tokenizer), on CPU and on Metal or CUDA, through its HTTP server.
+Every output was a valid WAV; the quality audit is still pending.
+
+M4 pins the macOS arm64 asset as a managed package, so `crispasr-metal` and
+`crispasr-cpu` become installable on Apple Silicon and automatic routing may
+pick them for speech. Linux stays unpinned until the CUDA library set is
+packaged, so `crispasr-cuda` and `crispasr-cpu` there are manual-only,
+custom-registered builds. **CrispASR speech recognition stays unqualified**:
+whisper.cpp keeps transcription until CrispASR ASR is measured here, and
+CrispASR's ASR architectures stay `likely`.
+
+### 13.4 Plan
+
+| Step | Contents |
+| --- | --- |
+| 1 | `runtime.Service`, a generic supervisor with an adapter interface; LLM untouched |
+| 2 | STT: whisper adapter, `/v1/audio/transcriptions` and `/translations` (multipart validation, response formats) |
+| 3 | TTS: CrispASR adapter (Kokoro, Qwen TTS) and tts-server; `/v1/audio/speech` (WAV/PCM, streaming formats) |
+| 4 | Custom voices: `/_localbase/voices` CRUD and audio; `voices` CLI |
+| 5 | Images: sd-server adapter, `/v1/images/generations` and `/edits`, LoRA |
+| 6 | UI: Lab pages (speak, transcribe, images) and the voices page |
+| 7 | Contract cases TS/Go for every route; real small-model runs (whisper tiny, Kokoro) on scratch roots |
