@@ -376,6 +376,14 @@ func TestModelImportAcceptance(t *testing.T) {
 		if r := e.cli(nil, "init"); r.code != 0 {
 			t.Fatalf("init: %s%s", r.stdout, r.stderr)
 		}
+		// Small launches and reserves, so the tiny test models fit on small CI
+		// runners; memory admission itself stays on (an override must not
+		// bypass it, see the AC5 memory step).
+		cfg := filepath.Join(tmp, "small.toml")
+		os.WriteFile(cfg, []byte("ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"), 0o644)
+		if r := e.cli(nil, "--non-interactive", "configure", "--config", cfg); r.code != 0 {
+			t.Fatalf("configure: %s%s", r.stdout, r.stderr)
+		}
 		e.key = e.json("keys", "create", "--name", "e2e", "--scopes", "inference:chat,models:read,models:manage")["secret"].(string)
 		e.json("auth-profiles", "add", "--id", "vendor", "--origin", vendor.URL, "--header-env", "X-Api-Key=VENDOR_KEY")
 	})
