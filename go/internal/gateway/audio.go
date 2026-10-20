@@ -227,7 +227,9 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 
 var whitespaceRe = regexp.MustCompile(`\s+`)
 
-func normalizeTranscriptText(s string) string { return strings.TrimSpace(whitespaceRe.ReplaceAllString(s, " ")) }
+func normalizeTranscriptText(s string) string {
+	return strings.TrimSpace(whitespaceRe.ReplaceAllString(s, " "))
+}
 
 func looksLikeBackendError(resp *http.Response, body []byte) bool {
 	if !strings.Contains(resp.Header.Get("Content-Type"), "json") {
