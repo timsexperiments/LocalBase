@@ -37,18 +37,20 @@ const (
 
 // LLMDeps are the LLM manager's collaborators.
 type LLMDeps struct {
-	Root          string
-	ModelsDir     string
-	RuntimesDir   string
-	Store         *store.Store
-	Catalog       *catalog.Catalog
-	Memory        *memory.Controller
-	Log           *slog.Logger
-	MemoryGB      float64
-	CtxOverride   int
-	PortOverride  int
-	QueueCapacity int
-	QueueTimeout  time.Duration
+	Root        string
+	ModelsDir   string
+	RuntimesDir string
+	Store       *store.Store
+	Catalog     *catalog.Catalog
+	Memory      *memory.Controller
+	Log         *slog.Logger
+	MemoryGB    float64
+	CtxOverride int
+	// ModelFileOverride replaces the active model's file (serve --llm-model-file).
+	ModelFileOverride string
+	PortOverride      int
+	QueueCapacity     int
+	QueueTimeout      time.Duration
 	// Binary overrides managed resolution (tests: a fake backend).
 	Binary string
 	// Install downloads a missing model (serve --install-missing); nil means
@@ -170,9 +172,14 @@ func (m *LLM) Plan(modelID string) (*LLMPlan, error) {
 	if spec != nil {
 		file = spec.Primary().Filename
 	}
+	override := ""
+	if m.d.ModelFileOverride != "" && modelID == m.Config().Active["llm"] {
+		override, file = m.d.ModelFileOverride, m.d.ModelFileOverride
+	}
 	return PlanLLM(PlanInput{Config: m.Config(), Spec: spec, ModelID: modelID, ModelsDir: m.d.ModelsDir,
 		MemoryGB: m.d.MemoryGB, CtxOverride: m.d.CtxOverride, Port: m.port(),
-		Geometry: m.geometryFor(filepath.Join(m.d.ModelsDir, file))})
+		ModelFile: override,
+		Geometry:  m.geometryFor(filepath.Join(m.d.ModelsDir, file))})
 }
 
 // Running reports the resident model and its plan, if any.

@@ -112,17 +112,20 @@ func Open(dir string) (*Root, error) {
 }
 
 // Init creates the directory and marker if absent and returns the root.
-// A nonempty directory without a marker is rejected.
+// A nonempty directory without a marker, / and the home directory are rejected.
 func Init(dir string) (*Root, error) {
 	dir, err := canonical(dir)
 	if err != nil {
 		return nil, err
 	}
+	if home, _ := os.UserHomeDir(); dir == "/" || (home != "" && dir == mustCanonical(home)) {
+		return nil, fmt.Errorf("Refusing LocalBase operation for protected directory: %s.", dir)
+	}
 	if r, err := Open(dir); err == nil {
 		return r, nil
 	}
 	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
-		return nil, fmt.Errorf("%s is not empty and has no LocalBase marker", dir)
+		return nil, fmt.Errorf("Refusing to initialize nonempty LocalBase root: %s.", dir)
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
@@ -145,3 +148,15 @@ func (r *Root) LogsDir() string              { return filepath.Join(r.Dir, "logs
 func (r *Root) VoicesDir() string            { return filepath.Join(r.Dir, "voices") }
 func (r *Root) RuntimesDir() string          { return filepath.Join(r.Dir, "bin", "runtimes") }
 func (r *Root) ModelsDir(kind string) string { return filepath.Join(r.Dir, "models", kind) }
+
+func mustCanonical(p string) string {
+	c, err := canonical(p)
+	if err != nil {
+		return p
+	}
+	return c
+}
+
+// Canonical is the canonical form of a root path (symlinks resolved through
+// the deepest existing ancestor).
+func Canonical(dir string) (string, error) { return canonical(dir) }

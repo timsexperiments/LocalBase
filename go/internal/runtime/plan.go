@@ -164,6 +164,8 @@ type PlanInput struct {
 	ReadHeader bool
 	// Geometry, when set, is used instead of reading the header.
 	Geometry *memory.Geometry
+	// ModelFile overrides the catalog's primary file (serve --llm-model-file).
+	ModelFile string
 }
 
 func fmtInt(n int) string {
@@ -195,6 +197,9 @@ func PlanLLM(in PlanInput) (*LLMPlan, error) {
 				p.ProjectorPath = path
 			}
 		}
+	}
+	if in.ModelFile != "" {
+		modelFile = in.ModelFile
 	}
 	p.ModelPath = filepath.Join(in.ModelsDir, modelFile)
 	if p.ArtifactBytes == 0 {
