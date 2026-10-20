@@ -546,10 +546,9 @@ func validateDecision(req map[string]any) *checker {
 	c := &checker{}
 	c.strict(req, "", "model", "state", "files", "images", "questions")
 	c.modelID(req)
-	if _, present := req["state"]; !present {
-		c.fail("state", "state is required.")
-	} else {
-		switch req["state"].(type) {
+	// TS declares state required but its schema accepts a missing one.
+	if v, present := req["state"]; present {
+		switch v.(type) {
 		case nil, string, map[string]any, []any:
 		default:
 			c.fail("state", "Invalid input")

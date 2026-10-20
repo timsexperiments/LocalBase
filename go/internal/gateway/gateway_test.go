@@ -84,7 +84,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 		t.Fatal(err)
 	}
 	for _, id := range []string{chatModel, embeddingModel, decisionModel} {
-		os.WriteFile(filepath.Join(models, cat.ByID(id).Primary().Filename), []byte("not a real gguf"), 0o600)
+		installSparse(t, models, cat.ByID(id))
 	}
 	st, err := store.Open(r.DB())
 	if err != nil {
@@ -288,7 +288,6 @@ func TestEmbeddingsAndSystemOne(t *testing.T) {
 		t.Errorf("systemone: %d %s", got.status, got.body)
 	}
 	for _, body := range []string{
-		`{"model":"` + decisionModel + `","questions":{"q":{"type":"noul"}}}`,
 		`{"model":"` + decisionModel + `","state":1,"questions":{}}`,
 		`{"model":"` + decisionModel + `","state":null,"questions":{"q":{"type":"choice","criteria":{"a":null}}}}`,
 		`{"model":"` + decisionModel + `","state":null,"questions":{"q":{"type":"score","criteria":["a"]}}}`,
@@ -298,5 +297,22 @@ func TestEmbeddingsAndSystemOne(t *testing.T) {
 		if got := post(t, ts, "/v1/systemone", body); got.code() != "validation_failed" {
 			t.Errorf("%s: %d %s", body, got.status, got.body)
 		}
+	}
+}
+
+// installSparse creates a model's artifacts at their expected sizes as
+// sparse files, so the install check passes without real weights.
+func installSparse(t *testing.T, dir string, s *catalog.Spec) {
+	t.Helper()
+	for _, a := range s.Artifacts {
+		f, err := os.Create(filepath.Join(dir, a.Filename))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.WriteString("not a real gguf")
+		if err := f.Truncate(max(a.ExpectedSizeBytes, 15)); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
 	}
 }

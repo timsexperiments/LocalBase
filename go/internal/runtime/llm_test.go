@@ -79,7 +79,7 @@ func newTestLLM(t *testing.T, host *bigHost) *LLM {
 		t.Fatal(err)
 	}
 	for _, id := range []string{modelA, modelB} {
-		os.WriteFile(filepath.Join(models, cat.ByID(id).Primary().Filename), []byte("not a real gguf"), 0o600)
+		installSparse(t, models, cat.ByID(id))
 	}
 	st, err := store.Open(filepath.Join(dir, "local-base.db"))
 	if err != nil {
@@ -239,4 +239,21 @@ func TestCrashedBackendRestartsOnNextRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	l2.Release()
+}
+
+// installSparse creates a model's artifacts at their expected sizes as
+// sparse files, so the install check passes without real weights.
+func installSparse(t *testing.T, dir string, s *catalog.Spec) {
+	t.Helper()
+	for _, a := range s.Artifacts {
+		f, err := os.Create(filepath.Join(dir, a.Filename))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.WriteString("not a real gguf")
+		if err := f.Truncate(max(a.ExpectedSizeBytes, 15)); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+	}
 }

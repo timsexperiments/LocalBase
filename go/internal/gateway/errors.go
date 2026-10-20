@@ -70,6 +70,7 @@ func serviceUnavailable(w http.ResponseWriter, r *http.Request, service string) 
 // runtimeError maps runtime and admission errors to responses.
 func runtimeError(w http.ResponseWriter, r *http.Request, err error, model string) {
 	var ae *memory.AdmissionError
+	var notInstalled *runtime.NotInstalledError
 	switch {
 	case errors.Is(err, runtime.ErrQueueFull):
 		w.Header().Set("Retry-After", "1")
@@ -79,6 +80,8 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model strin
 		writeError(w, r, 429, "rate_limit_error", "inference_queue_timeout", "The inference request exceeded its queue wait deadline.", nil)
 	case errors.Is(err, runtime.ErrModelNotFound):
 		modelNotFound(w, r, model)
+	case errors.As(err, &notInstalled):
+		writeError(w, r, 409, "invalid_request_error", "model_install_consent_required", notInstalled.Error(), strp("model"))
 	case errors.As(err, &ae):
 		w.Header().Set("Retry-After", "5")
 		msg := "Insufficient available memory to start the requested runtime. Please try again shortly."

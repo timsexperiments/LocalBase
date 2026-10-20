@@ -51,6 +51,9 @@ type LLMDeps struct {
 	QueueTimeout  time.Duration
 	// Binary overrides managed resolution (tests: a fake backend).
 	Binary string
+	// Install downloads a missing model (serve --install-missing); nil means
+	// requests for missing models fail with NotInstalledError.
+	Install func(ctx context.Context, modelID string) error
 }
 
 type backend struct {
@@ -323,6 +326,9 @@ func (m *LLM) switchTo(modelID string) {
 }
 
 func (m *LLM) doSwitch(modelID string) error {
+	if err := m.ensureInstalled(modelID); err != nil {
+		return err
+	}
 	plan, err := m.Plan(modelID)
 	if err != nil {
 		return err
@@ -522,4 +528,30 @@ func (m *LLM) Footprint(ctx context.Context) (int64, bool) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	return memory.Footprint(ctx, b.proc.PID())
+}
+
+// NotInstalledError: the model's files are missing or incomplete and serve
+// may not download them.
+type NotInstalledError struct{ ModelID string }
+
+func (e *NotInstalledError) Error() string {
+	return fmt.Sprintf(`Model "%s" is not installed. Install it with "local-base models install %s" or restart serve with --install-missing.`, e.ModelID, e.ModelID)
+}
+
+// ensureInstalled checks the model's files (sizes, no hashing) before the
+// current model is touched, and installs them when allowed.
+func (m *LLM) ensureInstalled(modelID string) error {
+	installed := false
+	if spec := m.d.Catalog.ByID(modelID); spec != nil {
+		installed, _ = spec.Installation(m.d.ModelsDir)
+	} else {
+		installed = fileExists(filepath.Join(m.d.ModelsDir, modelID+".bin")) || fileExists(filepath.Join(m.d.ModelsDir, modelID+".gguf"))
+	}
+	if installed {
+		return nil
+	}
+	if m.d.Install == nil {
+		return &NotInstalledError{ModelID: modelID}
+	}
+	return m.d.Install(context.Background(), modelID)
 }

@@ -179,6 +179,9 @@ func PlanLLM(in PlanInput) (*LLMPlan, error) {
 	spec, cfg := in.Spec, in.Config
 	p := &LLMPlan{ModelID: in.ModelID, Host: BackendHost(cfg.Host), Port: in.Port}
 	modelFile := in.ModelID + ".gguf"
+	if spec == nil && fileExists(filepath.Join(in.ModelsDir, in.ModelID+".bin")) {
+		modelFile = in.ModelID + ".bin"
+	}
 	if spec != nil {
 		modelFile = spec.Primary().Filename
 		p.ArtifactBytes = spec.TotalArtifactBytes()

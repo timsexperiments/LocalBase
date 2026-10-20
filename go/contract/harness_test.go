@@ -150,6 +150,10 @@ func fixture(dir string, llmPort int) (key, chatOnly string, real bool, err erro
 		if _, err := os.Stat(src); err == nil {
 			modelLinked = os.Symlink(src, filepath.Join(r.ModelsDir("llm"), filepath.Base(src))) == nil
 		}
+		// The 0.6 GB embedding model, when present, for the embeddings cases.
+		if emb := filepath.Join(models, "Qwen3-Embedding-0.6B-Q8_0.gguf"); fileExists(emb) {
+			os.Symlink(emb, filepath.Join(r.ModelsDir("llm"), filepath.Base(emb)))
+		}
 	}
 	if runtimes := os.Getenv("LOCALBASE_CONTRACT_RUNTIMES"); runtimes != "" && modelLinked {
 		{
@@ -304,3 +308,5 @@ func each(t *testing.T, f func(t *testing.T, tg *Target)) {
 		t.Run(tg.Name, func(t *testing.T) { f(t, tg) })
 	}
 }
+
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }

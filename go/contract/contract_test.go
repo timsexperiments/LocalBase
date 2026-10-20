@@ -299,3 +299,103 @@ func j(v any) string {
 	b, _ := json.Marshal(m)
 	return string(b)
 }
+
+// rejectionCases fail before admission in both implementations.
+var rejectionCases = []struct{ path, body string }{
+	{"/v1/chat/completions", `not json`},
+	{"/v1/chat/completions", `{"model":"","messages":[]}`},
+	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"robot","content":"x"}]}`},
+	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"assistant"}]}`},
+	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"temperature":3}`},
+	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"top_p":-1}`},
+	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"max_tokens":0}`},
+	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"tool","content":"x"}]}`},
+	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"user","content":[{"type":"image_url","image_url":{}}]}]}`},
+	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"tool_choice":{"type":"function","function":{"name":"x"}}}`},
+	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"tools":[{"type":"function","function":{"name":"f","extra":1}}]}`},
+	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"response_format":{"type":"yaml"}}`},
+	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"response_format":{"type":"json_schema","json_schema":{"name":"bad name","schema":{}}}}`},
+	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"type":"string","pattern":"x"}},"required":["a"],"additionalProperties":false}`)},
+	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"type":"string"}},"required":["a"]}`)},
+	{"/v1/chat/completions", schemaCase(`{"type":"object","foo":1}`)},
+	{"/v1/chat/completions", schemaCase(`{"type":"strng"}`)},
+	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{},"required":["missing"],"additionalProperties":false}`)},
+	{"/v1/chat/completions", schemaCase(`{"type":"array","items":{"type":"string"}}`)},
+	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"maxLength":3}},"required":["a"],"additionalProperties":false}`)},
+	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"type":"string","minLength":1}},"required":["a"],"additionalProperties":false}`)},
+	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"type":"number","minimum":1}},"required":["a"],"additionalProperties":false}`)},
+	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"$ref":"#/$defs/missing"}},"required":["a"],"additionalProperties":false}`)},
+	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"enum":["x",{"y":1}]}},"required":["a"],"additionalProperties":false}`)},
+	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"type":"string","format":"date"}},"required":["a"],"additionalProperties":false}`)},
+	{"/v1/embeddings", `{"model":"` + embeddingModel + `"}`},
+	{"/v1/embeddings", `{"model":"` + embeddingModel + `","input":[1,"a"]}`},
+	{"/v1/embeddings", `{"model":"` + embeddingModel + `","input":"x","encoding_format":"base64"}`},
+	{"/v1/embeddings", `{"model":"` + embeddingModel + `","input":"x","dimensions":-1}`},
+	{"/v1/embeddings", `{"model":"` + embeddingModel + `","input":"x","dimensions":5000}`},
+	{"/v1/embeddings", `{"model":"` + decisionModel + `","input":"x"}`},
+	{"/v1/embeddings", `{"model":"no-such-model","input":"x"}`},
+	{"/v1/systemone", `{"model":"` + decisionModel + `","state":null,"questions":{}}`},
+	{"/v1/systemone", `{"model":"` + decisionModel + `","state":null,"questions":{"q":{"type":"choice","criteria":{"a":null}}}}`},
+	{"/v1/systemone", `{"model":"` + decisionModel + `","state":null,"questions":{"q":{"type":"score","criteria":["a"]}}}`},
+	{"/v1/systemone", `{"model":"` + decisionModel + `","state":null,"questions":{"q":{"type":"maybe"}}}`},
+	{"/v1/systemone", `{"model":"` + decisionModel + `","state":null,"files":["x"],"questions":{"q":{"type":"noul"}}}`},
+	{"/v1/systemone", `{"model":"` + decisionModel + `","state":null,"extra":1,"questions":{"q":{"type":"noul"}}}`},
+	{"/v1/systemone", `{"model":"` + chatModel + `","state":null,"questions":{"q":{"type":"noul"}}}`},
+	{"/v1/systemone", `{"model":"no-such-model","state":null,"questions":{"q":{"type":"noul"}}}`},
+}
+
+func schemaCase(schema string) string {
+	return `{"model":"` + chatModel + `","messages":[{"role":"user","content":"x"}],"response_format":{"type":"json_schema","json_schema":{"name":"s","schema":` + schema + `}}}`
+}
+
+// TestDifferentialRejections sends requests that fail validation to every
+// target and requires the same status, error type, code and param.
+func TestDifferentialRejections(t *testing.T) {
+	for _, c := range rejectionCases {
+		var first *Resp
+		var firstName string
+		for _, tg := range targets {
+			r := do(t, "POST", tg.BaseURL+c.path, bearer(tg.Key), c.body)
+			if r.Status != 400 && r.Status != 404 {
+				t.Errorf("%s %s %s: %d %s", tg.Name, c.path, c.body, r.Status, r.Body)
+				continue
+			}
+			r.ErrorCode(t)
+			if first == nil {
+				first, firstName = r, tg.Name
+				continue
+			}
+			ea, eb := first.JSON(t)["error"].(map[string]any), r.JSON(t)["error"].(map[string]any)
+			for _, k := range []string{"type", "code", "param"} {
+				if ea[k] != eb[k] || first.Status != r.Status {
+					t.Errorf("%s %s:\n %s %d %s\n %s %d %s", c.path, c.body, firstName, first.Status, first.Body, tg.Name, r.Status, r.Body)
+					break
+				}
+			}
+		}
+	}
+}
+
+func TestEmbeddings(t *testing.T) {
+	each(t, func(t *testing.T, tg *Target) {
+		if !tg.RealModel {
+			t.Skip("needs LOCALBASE_CONTRACT_MODELS and LOCALBASE_CONTRACT_RUNTIMES")
+		}
+		r := do(t, "POST", tg.BaseURL+"/v1/embeddings", bearer(tg.Key), `{"model":"`+embeddingModel+`","input":["hello","world"]}`)
+		if r.Status == 404 {
+			t.Skip("embedding model file not linked")
+		}
+		if r.Status != 200 {
+			t.Fatalf("%d %s", r.Status, r.Body)
+		}
+		body := r.JSON(t)
+		data, _ := body["data"].([]any)
+		if body["model"] != embeddingModel || len(data) != 2 {
+			t.Fatalf("%s", r.Body)
+		}
+		vec, _ := data[0].(map[string]any)["embedding"].([]any)
+		if len(vec) < 64 {
+			t.Errorf("embedding has %d dimensions", len(vec))
+		}
+	})
+}
