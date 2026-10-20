@@ -166,3 +166,10 @@ func runsHere(d *backends.Definition) bool {
 	}
 	return false
 }
+
+func (m *LLM) selectionKey(modelID string) string {
+	if m.d.SelectionKey == nil {
+		return ""
+	}
+	return m.d.SelectionKey(modelID)
+}

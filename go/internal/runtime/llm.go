@@ -59,10 +59,14 @@ type LLMDeps struct {
 	// Gate resolves the backend selection (nil: every model runs on the
 	// managed llama-server, as before backend selection).
 	Gate Gate
+	// SelectionKey identifies a model's current backend selection cheaply;
+	// a running model whose key changed is restarted on its next request.
+	SelectionKey func(modelID string) string
 }
 
 type backend struct {
 	modelID string
+	key     string
 	spec    *catalog.Spec
 	target  *Target
 	demand  memory.Demand
@@ -75,6 +79,7 @@ type backend struct {
 
 type waiter struct {
 	model       string
+	key         string
 	ready       chan error
 	lease       *Lease
 	dispatching bool
@@ -190,6 +195,12 @@ func (m *LLM) Plan(modelID string) (*LLMPlan, error) {
 
 func (m *LLM) planFor(modelID string, t *Target) (*LLMPlan, error) {
 	if t != nil && t.Imported {
+		if t.Variant == nil {
+			if t.Model == nil || len(t.Model.Variants) == 0 {
+				return nil, errors.New("the model has no variant")
+			}
+			t.Variant = &t.Model.Variants[0] // listing a model without a selection
+		}
 		w, err := t.weights()
 		if err != nil {
 			return nil, err
@@ -259,6 +270,7 @@ func (l *Lease) Release() {
 // backend start this request itself triggers.
 func (m *LLM) Acquire(ctx context.Context, modelID string) (*Lease, error) {
 	start := time.Now()
+	key := m.selectionKey(modelID)
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -268,7 +280,7 @@ func (m *LLM) Acquire(ctx context.Context, modelID string) (*Lease, error) {
 		m.mu.Unlock()
 		return nil, ErrQueueFull
 	}
-	w := &waiter{model: modelID, ready: make(chan error, 1)}
+	w := &waiter{model: modelID, key: key, ready: make(chan error, 1)}
 	m.queue = append(m.queue, w)
 	m.pump()
 	m.mu.Unlock()
@@ -338,7 +350,7 @@ func (m *LLM) fail(w *waiter, err error) {
 func (m *LLM) pump() {
 	for len(m.queue) > 0 && !m.starting && !m.closed {
 		head := m.queue[0]
-		if m.cur != nil && m.cur.modelID == head.model {
+		if m.cur != nil && m.cur.modelID == head.model && m.cur.key == head.key {
 			if m.active >= m.cur.plan.Parallel.Slots {
 				return
 			}
@@ -350,7 +362,7 @@ func (m *LLM) pump() {
 		}
 		m.starting = true
 		head.dispatching = true
-		go m.switchTo(head.model)
+		go m.switchTo(head.model, head.key)
 		return
 	}
 }
@@ -359,21 +371,21 @@ func (m *LLM) pump() {
 // current model were stopped, crediting it at most its measured footprint
 // (#355), so a switch that cannot fit never stops the current model. If the
 // new model fails after the old one stopped, the old one is restored (#296).
-func (m *LLM) switchTo(modelID string) {
-	err := m.doSwitch(modelID)
+func (m *LLM) switchTo(modelID, key string) {
+	err := m.doSwitch(modelID, key)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.starting = false
 	m.failed = err != nil && m.cur == nil
 	if err != nil {
-		for len(m.queue) > 0 && m.queue[0].model == modelID {
+		for len(m.queue) > 0 && m.queue[0].model == modelID && m.queue[0].key == key {
 			m.fail(m.queue[0], err)
 		}
 	}
 	m.pump()
 }
 
-func (m *LLM) doSwitch(modelID string) error {
+func (m *LLM) doSwitch(modelID, key string) error {
 	// Catalog models keep the install check (and its consent error) first;
 	// then the selection: an unselected or unavailable backend fails before
 	// the current model is stopped.
@@ -416,15 +428,19 @@ func (m *LLM) doSwitch(modelID string) error {
 	}
 	b, err := m.startBackend(modelID, spec, plan, demand, t)
 	if err != nil {
-		if prev != nil {
+		// A changed backend for the same model is not rolled back: the
+		// person chose it, and the old one must not answer in its place.
+		if prev != nil && prev.modelID != modelID {
 			m.d.Log.Warn("Switch failed; restoring the previous model.", "event", "runtime.switch-rollback",
 				"runtime", "llm", "model_id", modelID, "previous_model_id", prev.modelID, "error", err.Error())
 			if rb, rerr := m.startBackend(prev.modelID, prev.spec, prev.plan, prev.demand, prev.target); rerr == nil {
+				rb.key = prev.key
 				m.install(rb)
 			}
 		}
 		return err
 	}
+	b.key = key
 	m.install(b)
 	return nil
 }

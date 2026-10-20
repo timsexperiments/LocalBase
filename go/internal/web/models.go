@@ -174,6 +174,19 @@ func (u *UI) getModels(w http.ResponseWriter, r *http.Request) {
 
 func (u *UI) details(w http.ResponseWriter, r *http.Request) {
 	s := u.d.Catalog.ByID(r.PathValue("id"))
+	var backend any
+	if u.d.Library != nil {
+		if e, err := u.d.Library.Get(r.Context(), r.PathValue("id")); err == nil {
+			if sel, err := u.d.Library.Selection(r.Context(), e); err == nil {
+				backend = u.backendView(e.Model.ID, sel)
+			}
+			if s == nil && e.Imported {
+				ins := u.d.Library.Inspect(e)
+				u.render(w, r, "details", map[string]any{"Imported": e, "Inspection": ins, "Backend": backend})
+				return
+			}
+		}
+	}
 	if s == nil {
 		http.NotFound(w, r)
 		return
@@ -188,5 +201,5 @@ func (u *UI) details(w http.ResponseWriter, r *http.Request) {
 		peaks, _ = u.d.Store.ObservedPeaks(r.Context(), s.ModelID, sha)
 	}
 	u.render(w, r, "details", map[string]any{"Spec": s, "Task": t, "Disk": u.installedBytes(s),
-		"Fit": runtime.FitFor(s, u.memoryGB(), geo, peaks)})
+		"Fit": runtime.FitFor(s, u.memoryGB(), geo, peaks), "Backend": backend})
 }

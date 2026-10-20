@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	goruntime "runtime"
 	"slices"
 	"sort"
-	goruntime "runtime"
+	"sync"
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
@@ -27,8 +29,12 @@ type Library struct {
 	Store    *store.Store
 	Catalog  *catalog.Catalog
 	Registry *backends.Registry
-	Host     backends.Host
+	host     backends.Host
 	DeviceID string
+
+	jobs  jobs
+	mu    sync.Mutex
+	stamp string
 }
 
 // InstallState reports a backend's install state from the managed runtime
@@ -77,7 +83,9 @@ func Open(r *root.Root, st *store.Store, cat *catalog.Catalog, accelerators []st
 	}
 	l := &Library{Root: r, Store: st, Catalog: cat, Registry: reg,
 		DeviceID: backends.DeviceID(backends.ProbeOptions{})}
-	l.Host = backends.NewHost(accelerators, reg, InstallState(r.RuntimesDir()))
+	l.host = backends.NewHost(accelerators, reg, InstallState(r.RuntimesDir()))
+	l.stamp = "unset"
+	l.refresh()
 	return l, nil
 }
 
@@ -94,6 +102,7 @@ var ErrNotFound = errors.New("model not found")
 
 // Entries lists catalog models, then imports.
 func (l *Library) Entries(ctx context.Context) ([]Entry, error) {
+	l.refresh()
 	var out []Entry
 	for _, s := range l.Catalog.Models {
 		out = append(out, Entry{Model: models.FromSpec(s), Dir: l.Root.ModelsDir(s.Kind), Spec: s})
@@ -151,6 +160,7 @@ func (l *Library) Inspect(e *Entry) map[string]*models.Inspection {
 
 // Selection resolves the backend that runs a model on this device.
 func (l *Library) Selection(ctx context.Context, e *Entry) (backends.Selection, error) {
+	l.refresh()
 	c, err := l.Store.BackendChoice(ctx, e.Model.ID, l.DeviceID)
 	if err != nil {
 		return backends.Selection{}, err
@@ -159,12 +169,13 @@ func (l *Library) Selection(ctx context.Context, e *Entry) (backends.Selection, 
 	if c != nil {
 		choice = &backends.Choice{Mode: backends.ModeManual, BackendID: c.BackendID, VariantID: c.VariantID}
 	}
-	return l.Registry.Resolve(&e.Model, l.Host, l.Inspect(e), choice), nil
+	return l.Registry.Resolve(&e.Model, l.Host(), l.Inspect(e), choice), nil
 }
 
 // SetBackend stores a manual choice. Any registered backend is accepted,
 // whatever detection says; the finding is returned for display.
 func (l *Library) SetBackend(ctx context.Context, id, backendID, variantID string) (backends.Selection, error) {
+	l.refresh()
 	e, err := l.Get(ctx, id)
 	if err != nil {
 		return backends.Selection{}, err
@@ -262,4 +273,68 @@ func runsOnThisPlatform(d *backends.Definition) bool {
 		}
 	}
 	return false
+}
+
+// Preview rates a resolved import before downloading, from the facts the
+// source publishes. The recommendation is checked again against the
+// downloaded files.
+func (l *Library) Preview(p *acquire.Plan) backends.Recommendation {
+	l.refresh()
+	m := models.Model{ID: p.ID, Name: p.Name, Tasks: []string{p.Task}, Capabilities: []string{}, Variants: []models.Variant{p.Preview}}
+	if p.Task == "" {
+		m.Tasks = nil
+	}
+	if p.Task == "chat" && slices.ContainsFunc(p.Files, func(f acquire.PlannedFile) bool { return f.Role == models.RoleProjector }) {
+		m.Capabilities = []string{"vision"}
+	}
+	return l.Registry.Recommend(&m, l.Host(), nil)
+}
+
+// refresh reloads the registry when backends.d changed (a backend added or
+// removed by the CLI or the UI while the gateway runs).
+func (l *Library) refresh() {
+	stamp := ""
+	if entries, err := os.ReadDir(backends.Dir(l.Root.Dir)); err == nil {
+		for _, e := range entries {
+			if info, err := e.Info(); err == nil {
+				stamp += e.Name() + info.ModTime().String() + ";"
+			}
+		}
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if stamp == l.stamp {
+		return
+	}
+	if l.Registry.Reload(l.Root.Dir) != nil {
+		return
+	}
+	l.stamp = stamp
+	l.host = backends.NewHost(l.host.Accelerators, l.Registry, InstallState(l.Root.RuntimesDir()))
+}
+
+// Host is this device as detection sees it.
+func (l *Library) Host() backends.Host {
+	l.refresh()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.host
+}
+
+// SelectionKey identifies a model's current selection: the stored manual
+// choice (or automatic mode) and the registry state. It is one primary-key
+// read, cheap enough for every request.
+func (l *Library) SelectionKey(modelID string) string {
+	l.refresh()
+	l.mu.Lock()
+	stamp := l.stamp
+	l.mu.Unlock()
+	c, err := l.Store.BackendChoice(context.Background(), modelID, l.DeviceID)
+	switch {
+	case err != nil:
+		return "error"
+	case c == nil:
+		return "auto|" + stamp
+	}
+	return "manual|" + c.BackendID + "|" + c.VariantID + "|" + stamp
 }

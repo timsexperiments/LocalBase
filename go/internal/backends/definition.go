@@ -17,6 +17,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 )
@@ -159,10 +160,30 @@ func decode(b []byte, v any) error {
 
 // Registry is the set of backends: built-in plus custom (<root>/backends.d).
 type Registry struct {
+	mu          sync.RWMutex
 	defs        map[string]*Definition
-	Diagnostics []string // custom definitions that failed to load
+	diagnostics []string // custom definitions that failed to load
 	routing     routing
 	dir         string
+}
+
+// Skipped lists custom definition files that failed to load.
+func (r *Registry) Skipped() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return append([]string(nil), r.diagnostics...)
+}
+
+// Reload re-reads the custom definitions in place.
+func (r *Registry) Reload(rootDir string) error {
+	fresh, err := Load(rootDir)
+	if err != nil {
+		return err
+	}
+	r.mu.Lock()
+	r.defs, r.diagnostics, r.routing, r.dir = fresh.defs, fresh.diagnostics, fresh.routing, fresh.dir
+	r.mu.Unlock()
+	return nil
 }
 
 // Dir is where custom definitions live.
@@ -203,7 +224,7 @@ func Load(rootDir string) (*Registry, error) {
 			err = fmt.Errorf("file name must be %s.json", d.ID)
 		}
 		if err != nil {
-			r.Diagnostics = append(r.Diagnostics, fmt.Sprintf("%s: %v", filepath.Base(f), err))
+			r.diagnostics = append(r.diagnostics, fmt.Sprintf("%s: %v", filepath.Base(f), err))
 			continue
 		}
 		r.defs[d.ID] = d
@@ -225,10 +246,16 @@ func ReadCustom(path string) (*Definition, error) {
 }
 
 // Get returns a definition, or nil.
-func (r *Registry) Get(id string) *Definition { return r.defs[id] }
+func (r *Registry) Get(id string) *Definition {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.defs[id]
+}
 
 // All returns every definition, built-ins first, then by id.
 func (r *Registry) All() []*Definition {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	out := make([]*Definition, 0, len(r.defs))
 	for _, d := range r.defs {
 		out = append(out, d)

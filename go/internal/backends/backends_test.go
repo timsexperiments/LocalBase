@@ -57,8 +57,8 @@ func TestPlatformVariants(t *testing.T) {
 	root := t.TempDir()
 	writeMLX(t, root)
 	reg, err := Load(root)
-	if err != nil || len(reg.Diagnostics) > 0 {
-		t.Fatal(err, reg.Diagnostics)
+	if err != nil || len(reg.Skipped()) > 0 {
+		t.Fatal(err, reg.Skipped())
 	}
 	mlx := models.Variant{ID: "mlx-4bit", Format: models.Of("mlx", models.SourceDeclared), Architecture: models.Of("qwen3", models.SourceDeclared),
 		Artifacts: []models.Artifact{{Filename: "model.safetensors", Role: models.RoleWeights, Required: true}}}
@@ -214,8 +214,8 @@ func TestCustomDefinitionRules(t *testing.T) {
 	// A file that does not validate is reported, not loaded.
 	os.WriteFile(filepath.Join(Dir(root), "broken.json"), []byte(`{"schema":"localbase.backend/v1","id":"broken"}`), 0o600)
 	reg, _ := Load(root)
-	if reg.Get("my-engine") == nil || reg.Get("broken") != nil || len(reg.Diagnostics) != 1 {
-		t.Errorf("custom load: %v", reg.Diagnostics)
+	if reg.Get("my-engine") == nil || reg.Get("broken") != nil || len(reg.Skipped()) != 1 {
+		t.Errorf("custom load: %v", reg.Skipped())
 	}
 	// Custom backends are never chosen automatically unless a rule names them.
 	h := host("linux", "x64", []string{"cpu"}, reg, map[string]string{"my-engine": Installed})

@@ -42,7 +42,6 @@ type Server struct {
 	// UI handles /app and / when set.
 	UI http.Handler
 
-	imports  importJobs
 	started  time.Time
 	stopping atomic.Bool
 	mux      *http.ServeMux

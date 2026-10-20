@@ -87,6 +87,10 @@ type Plan struct {
 	// Choices lists the weight files to pick from when the repository has
 	// several and none was named (no files are planned then).
 	Choices []string `json:"choices,omitempty"`
+	// Preview holds the facts known before downloading (pinned upstream
+	// metadata, or a local file's header), for a backend recommendation in
+	// the import form. Downloaded files are inspected again.
+	Preview models.Variant `json:"preview"`
 	profile *Profile
 	hfToken string
 }
@@ -166,6 +170,10 @@ func Resolve(ctx context.Context, rootDir string, req Request) (*Plan, error) {
 		}
 		p.TotalBytes += f.SizeBytes
 	}
+	p.Preview.ID = "preview"
+	for _, f := range p.Files {
+		p.Preview.Artifacts = append(p.Preview.Artifacts, models.Artifact{Filename: f.Filename, Role: f.Role, Required: f.Required, SizeBytes: f.SizeBytes})
+	}
 	if !p.SizeKnown && len(p.Files) > 0 {
 		p.Warnings = append(p.Warnings, Warning{WarnUnknownSize, "The source does not report the size of every file; it is checked after download."})
 	}
@@ -210,7 +218,11 @@ var pipelineTasks = map[string]string{
 type hfInfo struct {
 	SHA         string `json:"sha"`
 	PipelineTag string `json:"pipeline_tag"`
-	CardData    struct {
+	GGUF        *struct {
+		Architecture  string `json:"architecture"`
+		ContextLength int    `json:"context_length"`
+	} `json:"gguf"`
+	CardData struct {
 		License any `json:"license"`
 	} `json:"cardData"`
 	Siblings []struct {
@@ -258,6 +270,15 @@ func resolveHF(ctx context.Context, repo, file string, req Request, profile *Pro
 		Task: pipelineTasks[info.PipelineTag], Warnings: []Warning{}}
 	if l, ok := info.CardData.License.(string); ok {
 		p.License = l
+	}
+	if g := info.GGUF; g != nil {
+		p.Preview.Format = models.Of("gguf", models.SourcePinned)
+		if g.Architecture != "" {
+			p.Preview.Architecture = models.Of(g.Architecture, models.SourcePinned)
+		}
+		if g.ContextLength > 0 {
+			p.Preview.ContextLength = models.Of(g.ContextLength, models.SourcePinned)
+		}
 	}
 	type sib struct {
 		name   string
@@ -473,7 +494,7 @@ func resolveURL(ctx context.Context, raw string, req Request, profile *Profile) 
 		size = 0
 	}
 	pf := PlannedFile{Filename: name, Role: models.RoleWeights, Required: true, SizeBytes: size,
-		Source: models.Source{Kind: "url", URL: raw, AuthProfile: req.AuthProfile}, fetchURL: raw}
+		Source: models.Source{Kind: "url", URL: RedactURL(raw), AuthProfile: req.AuthProfile}, fetchURL: raw}
 	if req.SHA256 != "" {
 		pf.SHA256, pf.HashTrust = req.SHA256, models.HashUser
 	}
@@ -524,6 +545,9 @@ func resolveLocal(src string, req Request) (*Plan, error) {
 	} else {
 		p.Files = []PlannedFile{pf}
 	}
+	first := p.Files[0]
+	ff := models.InspectFile(first.local)
+	p.Preview = models.Variant{Format: ff.Format, Architecture: ff.Architecture, Precision: ff.Precision, ContextLength: ff.ContextLength}
 	p.ID, p.Name = deriveID(name), strings.TrimSuffix(name, filepath.Ext(name))
 	return p, nil
 }

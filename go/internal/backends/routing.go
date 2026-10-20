@@ -26,7 +26,10 @@ type routing struct {
 // order.
 func (r *Registry) Preference(h Host) []string {
 	var prefer []string
-	for _, rule := range r.routing.Rules {
+	r.mu.RLock()
+	rules := r.routing.Rules
+	r.mu.RUnlock()
+	for _, rule := range rules {
 		if (rule.OS == h.OS || rule.OS == "*") && (rule.Arch == h.Arch || rule.Arch == "*") {
 			prefer = rule.Prefer
 			break

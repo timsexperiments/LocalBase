@@ -155,7 +155,16 @@ func modelsImportCommand() *cli.Command {
 			if plan.SizeKnown {
 				c.Info("Total: %s", humanBytes(plan.TotalBytes))
 			}
-			out := map[string]any{"plan": plan}
+			preview := l.Preview(plan)
+			switch {
+			case backend != "" && backend != "auto":
+				c.Info("Backend: %s (your choice)", backend)
+			case preview.BackendID != "":
+				c.Info("Backend: %s (automatic, from the source's metadata; checked again after download)", preview.BackendID)
+			default:
+				c.Info("Backend: none detected yet. The import can finish without one; choose one later with local-base models backend.")
+			}
+			out := map[string]any{"plan": plan, "recommendation": preview}
 			if c.Bool("dry-run") {
 				return out, nil
 			}
@@ -268,12 +277,12 @@ func modelsInspectCommand() *cli.Command {
 					c.Info("  problem: %s", p)
 				}
 			}
-			rec := l.Registry.Recommend(&en.Model, l.Host, ins)
+			rec := l.Registry.Recommend(&en.Model, l.Host(), ins)
 			c.Info("Automatic choice: %s", map[bool]string{true: "none", false: rec.BackendID}[rec.BackendID == ""])
 			for _, o := range rec.Options {
 				c.Info("  %-30s %-12s %s", o.BackendID, o.Rating, strings.Join(o.Reasons, "; "))
 			}
-			return map[string]any{"model": en.Model, "inspections": ins, "recommendation": rec, "host": l.Host}, nil
+			return map[string]any{"model": en.Model, "inspections": ins, "recommendation": rec, "host": l.Host()}, nil
 		})}
 }
 
@@ -327,15 +336,15 @@ func backendsCommand() *cli.Command {
 				if !d.BuiltIn {
 					kind = "custom"
 				}
-				c.Info("%-30s %-10s %-12s %s", d.ID, kind, l.Host.Install[d.ID], strings.Join(d.Tasks, ","))
+				c.Info("%-30s %-10s %-12s %s", d.ID, kind, l.Host().Install[d.ID], strings.Join(d.Tasks, ","))
 				out = append(out, map[string]any{"id": d.ID, "name": d.Name, "engine": d.Engine, "builtIn": d.BuiltIn,
-					"install": l.Host.Install[d.ID], "tasks": d.Tasks, "adapter": d.Adapter})
+					"install": l.Host().Install[d.ID], "tasks": d.Tasks, "adapter": d.Adapter})
 			}
-			for _, d := range l.Registry.Diagnostics {
+			for _, d := range l.Registry.Skipped() {
 				c.Info("Skipped: %s", d)
 			}
-			c.Info("Accelerators on this device: %s", strings.Join(l.Host.Accelerators, ", "))
-			return map[string]any{"backends": out, "skipped": l.Registry.Diagnostics, "host": l.Host}, nil
+			c.Info("Accelerators on this device: %s", strings.Join(l.Host().Accelerators, ", "))
+			return map[string]any{"backends": out, "skipped": l.Registry.Skipped(), "host": l.Host()}, nil
 		})},
 		{Name: "show", Summary: "Show a backend definition", Usage: "<backendId>", MinArgs: 1, MaxArgs: 1,
 			Run: withLibrary(func(c *cli.Ctx, e *env, l *library.Library) (any, error) {
@@ -347,7 +356,7 @@ func backendsCommand() *cli.Command {
 				if !c.Global.JSON {
 					c.Info("%s", b)
 				}
-				return map[string]any{"backend": d, "builtIn": d.BuiltIn, "install": l.Host.Install[d.ID]}, nil
+				return map[string]any{"backend": d, "builtIn": d.BuiltIn, "install": l.Host().Install[d.ID]}, nil
 			})},
 		{Name: "add", Summary: "Register a custom backend from a definition file", Options: []cli.Option{
 			{Name: "file", Value: "<definition.json>", Help: "A localbase.backend/v1 definition"},

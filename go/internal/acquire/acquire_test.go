@@ -214,6 +214,9 @@ func TestDirectURLImport(t *testing.T) {
 		t.Fatalf("artifact %+v", a)
 	}
 	export, _ := res.Model.Export()
+	if strings.Contains(string(export), "abc123") {
+		t.Fatal("the export contains a signed query value")
+	}
 	if strings.Contains(string(export), secret) {
 		t.Fatal("the export contains the header value")
 	}

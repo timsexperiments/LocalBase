@@ -160,7 +160,7 @@ func serve(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, d := range lib.Registry.Diagnostics {
+	for _, d := range lib.Registry.Skipped() {
 		log.Warn("Skipped a custom backend definition: "+d, "event", "backend.definition-skipped")
 	}
 	installMissing := c.Bool("install-missing") || cfg.InstallMissingModels
@@ -168,7 +168,7 @@ func serve(c *cli.Ctx) (any, error) {
 		Store: st, Catalog: cat, Memory: mem, Log: log, MemoryGB: float64(memoryGB), CtxOverride: ctxSize,
 		PortOverride: llmPort, QueueCapacity: queueCap, QueueTimeout: time.Duration(queueTimeout) * time.Millisecond,
 		Binary: os.Getenv("LOCALBASE_LLAMA_SERVER"), ModelFileOverride: c.String("llm-model-file"),
-		Install: installer(e, installMissing, log), Gate: lib.Gate()}, cfg)
+		Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey}, cfg)
 	defer llm.Close()
 
 	access, err := auth.LoadAccess(r.Dir)
@@ -194,7 +194,7 @@ func serve(c *cli.Ctx) (any, error) {
 		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib}
 	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
-		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout()})
+		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib})
 	gateway.New(srv)
 
 	ln, err := net.Listen("tcp", net.JoinHostPort(listenHost, strconv.Itoa(listenPort)))

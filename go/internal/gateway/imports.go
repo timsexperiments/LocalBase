@@ -1,13 +1,10 @@
 package gateway
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
-	"sync"
-	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
@@ -27,22 +24,6 @@ import (
 //	GET  /_localbase/model-imports?id=JOB     models:manage
 //
 // Responses never contain header values, tokens or signed URL queries.
-
-type importJob struct {
-	mu        sync.Mutex
-	ID        string              `json:"id"`
-	State     string              `json:"state"` // running | done | failed
-	Progress  acquire.Progress    `json:"progress"`
-	Error     string              `json:"error,omitempty"`
-	Model     *models.Model       `json:"model,omitempty"`
-	Selection *backends.Selection `json:"selection,omitempty"`
-	Started   time.Time           `json:"started"`
-}
-
-type importJobs struct {
-	mu   sync.Mutex
-	jobs map[string]*importJob
-}
 
 func (s *Server) adminPrincipal(w http.ResponseWriter, r *http.Request, permission string) *auth.Principal {
 	p := s.principal(r)
@@ -79,9 +60,9 @@ func (s *Server) backendsAPI(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{}
 	for _, d := range l.Registry.All() {
 		out = append(out, map[string]any{"id": d.ID, "name": d.Name, "engine": d.Engine, "builtIn": d.BuiltIn,
-			"adapter": d.Adapter, "tasks": d.Tasks, "install": l.Host.Install[d.ID], "notes": d.Notes})
+			"adapter": d.Adapter, "tasks": d.Tasks, "install": l.Host().Install[d.ID], "notes": d.Notes})
 	}
-	noStore(w, 200, map[string]any{"backends": out, "skipped": l.Registry.Diagnostics, "host": l.Host})
+	noStore(w, 200, map[string]any{"backends": out, "skipped": l.Registry.Skipped(), "host": l.Host()})
 }
 
 func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
@@ -160,16 +141,12 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
-		s.imports.mu.Lock()
-		job := s.imports.jobs[r.URL.Query().Get("id")]
-		s.imports.mu.Unlock()
+		job := l.Job(r.URL.Query().Get("id"))
 		if job == nil {
 			writeError(w, r, 404, "invalid_request_error", "import_not_found", "No import with that id.", nil)
 			return
 		}
-		job.mu.Lock()
 		b, _ := json.Marshal(job)
-		job.mu.Unlock()
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(b)
@@ -217,7 +194,7 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Action == "resolve" {
-		noStore(w, 200, map[string]any{"plan": plan})
+		noStore(w, 200, map[string]any{"plan": plan, "recommendation": l.Preview(plan)})
 		return
 	}
 	switch {
@@ -231,46 +208,6 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, 400, "invalid_request_error", "import_task_required", "Choose what the model does.", nil)
 		return
 	}
-	job := &importJob{ID: newJobID(), State: "running", Started: time.Now()}
-	s.imports.mu.Lock()
-	if s.imports.jobs == nil {
-		s.imports.jobs = map[string]*importJob{}
-	}
-	s.imports.jobs[job.ID] = job
-	s.imports.mu.Unlock()
-	go s.runImport(l, job, plan, in.Backend)
-	noStore(w, 202, map[string]any{"job": job.ID, "plan": plan})
+	id := l.StartImport(plan, in.Backend, s.Log)
+	noStore(w, 202, map[string]any{"job": id, "plan": plan})
 }
-
-func (s *Server) runImport(l *library.Library, job *importJob, plan *acquire.Plan, backend string) {
-	ctx := context.Background()
-	err := rootpkg.WithOperation(s.Root.Dir, "install model", func() error {
-		res, err := acquire.Import(ctx, s.Root.Dir, plan, func(p acquire.Progress) {
-			job.mu.Lock()
-			job.Progress = p
-			job.mu.Unlock()
-		})
-		if err != nil {
-			return err
-		}
-		sel, err := l.SaveImport(ctx, res, backend)
-		if err != nil {
-			return err
-		}
-		job.mu.Lock()
-		job.Model, job.Selection = &res.Model, &sel
-		job.mu.Unlock()
-		return nil
-	})
-	job.mu.Lock()
-	defer job.mu.Unlock()
-	if err != nil {
-		job.State, job.Error = "failed", obs.BoundedText(err.Error(), 1024)
-		s.Log.Warn("Model import failed.", "event", "model.import-failed", "error", job.Error)
-		return
-	}
-	job.State = "done"
-	s.Log.Info("Imported model "+job.Model.ID+".", "event", "model.imported", "model_id", job.Model.ID)
-}
-
-func newJobID() string { return "imp_" + rootpkg.NewID() }
