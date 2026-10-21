@@ -81,8 +81,9 @@ Line counts are production code, without tests.
    ready with exactly those settings.
 7. **The OpenTelemetry SDK.** It brings 11 packages, a diag-echo filter, and
    batch processors whose failures needed their own reporter. In Go, a small
-   OTLP/HTTP JSON exporter (logs and traces only) uses a bounded channel, one
-   goroutine, a 5 s deadline, and the #358 outage-reporting rules built in.
+   OTLP/HTTP exporter (logs and traces only, hand-encoded protobuf, the one
+   protocol TS supports) uses a bounded queue per signal, one goroutine each,
+   a 5 s deadline, and the #358 outage-reporting rules built in (M5).
 8. **Interactive prompts** (`@inquirer`). Every command already accepts
    `--non-interactive` with flags. Go keeps the flags and drops the prompts.
    `configure` without flags prints what to pass.
@@ -536,7 +537,7 @@ What this branch contains, and what each part was checked against.
 | Memory controller | Done | Table tests for admission, permanent shortfall, GPU working-set sum (#283), switch preflight credit capped at footprint (#355), hysteresis, and `vm_stat`/`footprint` parsing. |
 | LLM supervisor + FIFO queue | Done | A fake llama-server runs as a real process. Covered: cold start, drain before switch, FIFO across a switch, queue full and timeout, failed switch restores the previous model (#296), preflight rejection keeps the current model, crash then restart on the next request. Passes `-race` repeatedly. |
 | `/health`, `/health/ready`, `/v1/models`, `/v1/models/{id}`, `/v1/chat/completions` | Done | The contract suite passes against TS and Go. The differential test finds `/v1/models` identical on matching fixtures, apart from the measured peak's value. Real inference through both with qwen2.5-coder-1.5b (1.1 GB). |
-| JSONL events | Done | Schema 2, the same field names, rotation at 10 MiB with 5 archives. Not yet: OTLP or the full TS redaction rules. |
+| JSONL events | Done | Schema 2, the same field names, rotation at 10 MiB with 5 archives. OTLP export and the full TS event schema on read came with M5 (§14.2). |
 | UI: Library, Running now, details | Done | Rendered and exercised in a browser at 320, 390 and 1280 px, light and dark: no horizontal scroll, 44 px targets, htmx filter and search with URL history, live polling under CSP, edge-expiry probe. |
 | CLI | Partial | `serve`, `keys create/list`, `version`. Everything else is M2. |
 
@@ -1097,6 +1098,7 @@ messages it needs (resource, scope, spans, log records, attributes) directly.
 | 3 | Done | `hub` goldens from `tools/golden/hub.ts`: 37 recorded Hub responses replayed offline (14 repositories: GGUF with quants, a projector and shards, a decision model, whisper.cpp, SDXL, FLUX.1, an SDXL LoRA, LCM and v-prediction checkpoints, gated and missing repositories; searches); kind detection, file choices, every generated entry, searches, previews with fit and feed notes, and discovery match TS. `TestCLIHubGolden` (the TS command handlers' output lines, JSON, catalog files and errors, byte for byte), `TestDifferentialModelDiscoveryRejections`, `TestModelDiscoveryEndToEnd` |
 | 4 | Done | `TestCLIConfigDeclarative` (twin roots: 40 invalid documents with the JSON envelope and the raw message before redaction compared, plans, `--detailed-exit-code`, apply with `--restart never`, `--wait` refused without a gateway, apply creating a fresh root, stdin, human output, and each CLI reading the other's pending restart), `TestCLIConfigForegroundGateway` (automatic restart refused next to a foreground gateway; unchanged apply with `--wait`), `TestDeclarativeGolden` (`tools/golden/config.ts`: 54 documents, their messages before redaction, normalized configurations, plans against saved, pending and absent configurations, and renderings; runs in CI), `TestStaticFingerprintMatchesTypeScript`, `TestPendingRestartLifecycle`, `TestDocumentKeyOrder` |
 | 5 | Done | `TestCLIDiagnostics` (twin roots with planted secrets in log messages, errors, attributes and identifiers, a launch-shaped catalog patch, an invalid catalog file, a credentialed feed URL, OTLP environment headers and captured service stderr: the manifests match field for field, `logs/events.jsonl` byte for byte, the human output line for line, no secret reaches either archive; an uninitialized root; the output rules, with an existing file never replaced), `TestEventsGolden` (`tools/golden/logs.ts`: 50 lines, which ones the reader keeps and their redacted diagnostics form; runs in CI) |
+| 6 | Done | `TestDifferentialOTLP` (each gateway exports to a local collector; for the same requests, an authenticated list, an unmatched route, missing and invalid credentials, and a real chat under a remote traceparent, the span trees match: names, kinds, flags, status, parentage and attributes, including the inference, backend client and backend start and load spans; every exported log record is a local event with the TS attribute mapping and its span correlation; request and inference records match; exporter headers are sent and never logged), `TestDifferentialOTLPFailures` (a failing collector is reported in the local log with the same events on both, never exported), `TestCLIOtelEnvironment` (doctor and configure report the effective OTEL_* settings; invalid variables fail both before anything is saved), `otlp` goldens from `tools/golden/otel.ts` (ratio sampler decisions, Retry-After handling, the outage reporter over a scripted outage) and collector tests in CI |
 
 The feed brings three Go structures with it. `internal/jsjson` reproduces
 JavaScript's JSON round trip (property order, number formatting), which the
@@ -1115,3 +1117,10 @@ catalog files are reported with the TS wording, in the TS order (unreadable
 files first, then entries), and record which fields a patch changed; a
 wrong-typed field is worded as zod words it, while other validation failures
 keep the Go wording.
+
+OTLP brought three gateway changes that also show in the local log. Request
+events carry the TS auth outcome (`disabled` on public routes, `missing` or
+`invalid` instead of `unauthenticated`). Speech and transcription now record
+`inference.completed` with an inference span, as TS does. The queue wait in
+`Server-Timing` and inference telemetry ends when a request leaves the queue,
+not when its model has finished loading (TS `queueWaitMs`).

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -20,9 +21,11 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway"
+	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -129,7 +132,8 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	var level slog.Level
 	level.UnmarshalText([]byte(c.String("log-level")))
-	log := slog.New(obs.NewHandler(sink, level))
+	handler := obs.NewHandler(sink, level)
+	log := slog.New(handler)
 	for _, d := range cat.Diagnostics {
 		log.Warn("Skipped a catalog file: "+d.Message, "event", "catalog.entry-skipped", "path", d.Path)
 	}
@@ -156,6 +160,11 @@ func serve(c *cli.Ctx) (any, error) {
 		return nil, err
 	}
 	defer release()
+	tel, err := startTelemetry(cfg, handler, log)
+	if err != nil {
+		return nil, err
+	}
+	defer tel.Shutdown() // after gateway.stopped, before the log closes
 
 	memoryGB := e.memoryGB()
 	mem := memory.NewController(e.Host, memory.Reserve{Percent: cfg.SystemReserve.Percent, MinimumGB: cfg.SystemReserve.MinimumGB},
@@ -187,7 +196,7 @@ func serve(c *cli.Ctx) (any, error) {
 		Store: st, Catalog: cat, Memory: mem, Log: log, MemoryGB: float64(memoryGB), CtxOverride: ctxSize,
 		PortOverride: llmPort, QueueCapacity: queueCap, QueueTimeout: time.Duration(queueTimeout) * time.Millisecond,
 		Binary: os.Getenv("LOCALBASE_LLAMA_SERVER"), ModelFileOverride: c.String("llm-model-file"),
-		Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey, Activate: activate}, cfg)
+		Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey, Activate: activate, Otel: tel}, cfg)
 	defer llm.Close()
 	// The media modalities: one supervised backend each, through the selection.
 	lib.InstallMissing = installMissing
@@ -219,7 +228,7 @@ func serve(c *cli.Ctx) (any, error) {
 			Config: llm.Config, Gate: lib.GateFor(task), SelectionKey: lib.SelectionKey, RuntimesDir: r.RuntimesDir(),
 			ModelsDir: r.ModelsDir(modality), RootDir: r.Dir, CacheDir: filepath.Join(r.Dir, "cache"), Host: h, Port: p,
 			Binaries: binaries, Install: installer(e, installMissing, log), Activate: activate,
-			QueueCapacity: queueCap, QueueTimeout: time.Duration(queueTimeout) * time.Millisecond}
+			QueueCapacity: queueCap, QueueTimeout: time.Duration(queueTimeout) * time.Millisecond, Otel: tel}
 		if modality == "tts" {
 			// A changed voice set or marking setting restarts the speech server.
 			d.ExtraKey = func() string {
@@ -266,7 +275,7 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
 	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth,
-		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Voices: voices.New(st, r.Dir)}
+		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Voices: voices.New(st, r.Dir), Otel: tel}
 	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
 		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib,
@@ -422,4 +431,46 @@ func startFeedScheduler(rootDir string, cat *catalog.Catalog, log *slog.Logger, 
 		}
 	}()
 	return done
+}
+
+// startTelemetry starts OTLP export when OTEL_* or the saved settings
+// enable it (TS activateContextOtel): every event the gateway logs is
+// exported with its span correlation, except the exporter's own
+// diagnostics, which stay in the local log.
+func startTelemetry(cfg *store.Config, handler *obs.Handler, log *slog.Logger) (*otlp.Runtime, error) {
+	oc, err := obs.ResolveOtel(cfg.OtelEndpoint, cfg.OtelHeaders, cfg.OtelSampleRatio, os.Getenv)
+	if err != nil {
+		return nil, err
+	}
+	tel := otlp.New(oc, gateway.Version, func(severity, message string, attrs map[string]any) {
+		event, level := "observability.export-failed", slog.LevelWarn
+		switch severity {
+		case "info":
+			event, level = "observability.export-recovered", slog.LevelInfo
+		case "error":
+			level = slog.LevelError
+		}
+		args := []any{"event", event, "category", "logging", "component", "otel", obs.LocalOnly, true}
+		keys := make([]string, 0, len(attrs))
+		for k := range attrs {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			args = append(args, k, attrs[k])
+		}
+		log.Log(context.Background(), level, message, args...)
+	})
+	if tel.Enabled() {
+		hooks := handler.Hooks()
+		hooks.Correlate = otlp.Correlation
+		hooks.Export = func(line []byte) {
+			if v, err := jsjson.Parse(line); err == nil {
+				if o, ok := v.(*jsjson.Object); ok {
+					tel.Emit(o)
+				}
+			}
+		}
+	}
+	return tel, nil
 }

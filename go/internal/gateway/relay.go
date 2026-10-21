@@ -17,6 +17,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
@@ -43,6 +44,9 @@ type inference struct {
 	promptMs, predictedMs  *float64
 	finishReasons          map[string]bool
 	finished               bool
+	// span is the localbase.inference span and ctx carries it.
+	span *otlp.Span
+	ctx  context.Context
 }
 
 var knownFinishReasons = []string{"stop", "length", "tool_calls", "content_filter", "function_call"}
@@ -93,6 +97,42 @@ func (t *inference) observe(v map[string]any) {
 	}
 }
 
+// begin starts the inference span under the request's server span, with
+// the admission facts (TS InferenceTelemetry constructor).
+func (t *inference) begin(ctx context.Context, method string) {
+	if t.ctx != nil {
+		return
+	}
+	t.ctx, t.span = t.s.Otel.Start(ctx, "localbase.inference", otlp.KindInternal, "http.request.method", method)
+	sp := t.span
+	sp.SetAttr("localbase.inference.model_id", t.modelID)
+	sp.SetAttr("localbase.inference.runtime.name", runtimeNames[t.modality])
+	if t.spec != nil {
+		sp.SetAttr("localbase.inference.artifact.revision", t.revision())
+		sp.SetAttr("localbase.inference.model.quantization", t.spec.Quant)
+	}
+	sp.SetAttr("localbase.inference.admission.active", t.active)
+	sp.SetAttr("localbase.inference.admission.slots", t.slots)
+	sp.SetAttr("localbase.inference.admission.waiting", t.waiting)
+	sp.SetAttr("localbase.request_id", t.requestID)
+	sp.SetAttr("localbase.inference.queue.duration_ms", ms(t.queueWait))
+	if t.prepareMs != nil {
+		sp.SetAttr("localbase.inference.json_schema.requested", true)
+		sp.SetAttr("localbase.inference.json_schema.native_mode", "requested")
+		sp.SetAttr("localbase.inference.json_schema.preparation.duration_ms", *t.prepareMs)
+	}
+}
+
+// revision is the artifact revision the model was installed from.
+func (t *inference) revision() string {
+	rev := t.spec.RepositoryRevision
+	var src struct{ Revision string }
+	if json.Unmarshal(t.spec.Primary().Source, &src) == nil && src.Revision != "" {
+		rev = src.Revision
+	}
+	return rev
+}
+
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
 
 func round2(f float64) float64 { return math.Round(f*100) / 100 }
@@ -123,12 +163,7 @@ func (t *inference) finish(outcome string, status int, source string) {
 	t.finished = true
 	attrs := []any{"model_id", t.modelID}
 	if t.spec != nil {
-		rev := t.spec.RepositoryRevision
-		var src struct{ Revision string }
-		if json.Unmarshal(t.spec.Primary().Source, &src) == nil && src.Revision != "" {
-			rev = src.Revision
-		}
-		attrs = append(attrs, "artifact_revision", rev, "quantization", t.spec.Quant)
+		attrs = append(attrs, "artifact_revision", t.revision(), "quantization", t.spec.Quant)
 	}
 	attrs = append(attrs, "runtime_name", runtimeNames[t.modality], "admission_active", t.active,
 		"admission_slots", t.slots, "admission_waiting", t.waiting, "outcome", outcome, "http_status", status)
@@ -159,6 +194,7 @@ func (t *inference) finish(outcome string, status int, source string) {
 		reasons := sortedKeys(t.finishReasons)
 		attrs = append(attrs, "finish_reasons", strings.Join(reasons, ","))
 	}
+	t.finishSpan(outcome, status, source)
 	level := slog.LevelInfo
 	switch outcome {
 	case "error":
@@ -166,9 +202,50 @@ func (t *inference) finish(outcome string, status int, source string) {
 	case "cancelled":
 		level = slog.LevelWarn
 	}
-	t.s.Log.Log(context.Background(), level, "Inference response settled.", "event", "inference.completed",
+	ctx := t.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	defer t.span.End()
+	t.s.Log.Log(ctx, level, "Inference response settled.", "event", "inference.completed",
 		"category", "runtime", "component", "inference", "runtime", t.modality, "request_id", t.requestID,
 		slog.Group("attributes", attrs...))
+}
+
+// finishSpan records the outcome on the inference span (TS finish).
+func (t *inference) finishSpan(outcome string, status int, source string) {
+	sp := t.span
+	sp.SetAttr("localbase.inference.total.duration_ms", ms(time.Since(t.started)))
+	sp.SetAttr("localbase.inference.outcome", outcome)
+	sp.SetAttr("http.response.status_code", status)
+	if t.upstreamStatus != 0 {
+		sp.SetAttr("localbase.inference.upstream.status_code", t.upstreamStatus)
+	}
+	if source != "" {
+		sp.SetAttr("localbase.inference.terminal.source", source)
+	}
+	if t.prepareMs != nil && t.schemaValidation != "" {
+		sp.SetAttr("localbase.inference.json_schema.validation", t.schemaValidation)
+		if t.schemaSkipReasons != "" {
+			sp.SetAttr("localbase.inference.json_schema.skip_reasons", t.schemaSkipReasons)
+		}
+	}
+	for _, f := range []struct {
+		key string
+		v   *float64
+	}{{"gen_ai.usage.input_tokens", t.promptTokens}, {"gen_ai.usage.output_tokens", t.completionTokens},
+		{"localbase.inference.usage.total_tokens", t.totalTokens}, {"localbase.inference.backend.prompt.duration_ms", t.promptMs},
+		{"localbase.inference.backend.predicted.duration_ms", t.predictedMs}} {
+		if f.v != nil {
+			sp.SetAttr(f.key, *f.v)
+		}
+	}
+	if len(t.finishReasons) > 0 {
+		sp.SetAttr("localbase.inference.finish_reasons", strings.Join(sortedKeys(t.finishReasons), ","))
+	}
+	if outcome != "completed" {
+		sp.SetError("")
+	}
 }
 
 var runtimeNames = map[string]string{"llm": "llama-server", "stt": "whisper-server", "tts": "tts-server",
@@ -214,18 +291,14 @@ func upstreamFailure(w http.ResponseWriter, r *http.Request, message string) {
 // event by event, JSON after checking its shape. The request context cancels
 // the backend call when the client goes away; the backend stays up (#276).
 func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body []byte, modelID string, o inferOpts, t *inference) {
+	t.begin(r.Context(), r.Method)
 	up, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(body))
 	ct := "application/json"
 	if o.contentType != "" {
 		ct = o.contentType
 	}
 	up.Header.Set("Content-Type", ct)
-	for _, h := range []string{"Traceparent", "Tracestate"} {
-		if v := r.Header.Get(h); v != "" {
-			up.Header.Set(h, v)
-		}
-	}
-	resp, err := proxyClient.Do(up)
+	resp, err := s.backendCall(t.ctx, r, up, proxyClient)
 	if err != nil {
 		if r.Context().Err() != nil {
 			w.WriteHeader(499)
@@ -317,6 +390,35 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 	}
 	writeJSON(w, resp.StatusCode, obj)
 	t.finish("completed", resp.StatusCode, "")
+}
+
+// backendCall sends the backend request inside a localbase.backend.inference
+// client span, carrying its trace context to the backend. Without an
+// exporter the caller's own trace context is passed through.
+func (s *Server) backendCall(ctx context.Context, r *http.Request, up *http.Request, client *http.Client) (*http.Response, error) {
+	if !s.Otel.Enabled() {
+		for _, h := range []string{"Traceparent", "Tracestate"} {
+			if v := r.Header.Get(h); v != "" {
+				up.Header.Set(h, v)
+			}
+		}
+		return client.Do(up)
+	}
+	ctx, span := s.Otel.Start(ctx, "localbase.backend.inference", otlp.KindClient,
+		"server.address", up.URL.Hostname(), "http.request.method", r.Method)
+	defer span.End()
+	otlp.Inject(ctx, up.Header)
+	resp, err := client.Do(up)
+	if err != nil {
+		span.RecordException("Error", "The upstream service could not be reached.")
+		span.SetError("The upstream service could not be reached.")
+		return nil, err
+	}
+	span.SetAttr("http.response.status_code", resp.StatusCode)
+	if resp.StatusCode >= 500 {
+		span.SetError("Upstream returned a server error.")
+	}
+	return resp, nil
 }
 
 // normalizeReasoning reports reasoning_content as `reasoning`, the field

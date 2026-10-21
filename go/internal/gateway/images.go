@@ -296,7 +296,7 @@ func (s *Server) acquireImage(w http.ResponseWriter, r *http.Request, model stri
 
 func (s *Server) imageTelemetry(w http.ResponseWriter, lease *runtime.ServiceLease, started time.Time) *inference {
 	return &inference{s: s, modality: "image", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
-		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited}
+		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}
 }
 
 func (s *Server) imageGeneration(w http.ResponseWriter, r *http.Request) {

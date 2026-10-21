@@ -25,7 +25,7 @@ func initCommand() *cli.Command {
 		c.Info("Initialized local-base at %s", cfg.Root)
 		c.Info("LLM directory: %s", e.Root.ModelsDir("llm"))
 		c.Info("STT directory: %s", e.Root.ModelsDir("stt"))
-		return map[string]any{"configuration": conf.Public(cfg)}, nil
+		return map[string]any{"configuration": conf.Public(cfg, nil)}, nil
 	}}
 }
 

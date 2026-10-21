@@ -11,6 +11,9 @@ import (
 	"os/exec"
 	"syscall"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 )
 
 // Process is one supervised backend. It runs in its own process group so a
@@ -122,4 +125,19 @@ func (p *Process) Stop(grace time.Duration) {
 		_ = syscall.Kill(-pgid, syscall.SIGKILL)
 		<-p.done
 	}
+}
+
+// spanned runs fn inside a backend lifecycle span (TS supervisor
+// localbase.backend.start and localbase.backend.model_load); a failure is
+// recorded on it, redacted.
+func spanned(rt *otlp.Runtime, ctx context.Context, name, backendName string, fn func() error) error {
+	_, sp := rt.Start(ctx, name, otlp.KindInternal, "localbase.backend", backendName)
+	defer sp.End()
+	err := fn()
+	if err != nil {
+		msg := obs.BoundedText(err.Error(), 2048)
+		sp.RecordException("Error", msg)
+		sp.SetError(msg)
+	}
+	return err
 }

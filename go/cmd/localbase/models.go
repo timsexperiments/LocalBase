@@ -26,6 +26,9 @@ import (
 // readEnv is the environment of listing commands: it never creates the root
 // or the database. Without a database the defaults stand in, as TS does.
 func readEnv(c *cli.Ctx, persisted bool) (*env, error) {
+	if err := checkOtelEnvironment(); err != nil {
+		return nil, err
+	}
 	dir := root.Resolve(c.Global.Root)
 	e := &env{Root: &root.Root{Dir: dir}, Host: memory.NewHostProvider()}
 	if r, err := root.Open(dir); err == nil {

@@ -62,6 +62,8 @@ type Target struct {
 	RealModel bool
 	Root      string // scratch root of a launched gateway
 	stop      func()
+	// halt stops the process and keeps its files; stop also removes them.
+	halt func()
 }
 
 var targets []*Target
@@ -228,7 +230,10 @@ func repoRoot() string {
 	return filepath.Dir(filepath.Dir(wd)) // go/contract -> repo
 }
 
-func launch(impl string) (*Target, error) {
+func launch(impl string) (*Target, error) { return launchEnv(impl, nil) }
+
+// launchEnv launches a gateway with extra environment entries.
+func launchEnv(impl string, extra []string) (*Target, error) {
 	dir, err := os.MkdirTemp("", "lbgo-contract-"+impl+"-")
 	if err != nil {
 		return nil, err
@@ -264,13 +269,19 @@ func launch(impl string) (*Target, error) {
 	// Offline: a missing fixture must fail, not be downloaded (loopback stays reachable).
 	cmd.Env = append(cmd.Env, "LOCALBASE_CATALOG_FEED_URL=off", "HTTPS_PROXY=http://127.0.0.1:9", "HTTP_PROXY=http://127.0.0.1:9",
 		"https_proxy=http://127.0.0.1:9", "http_proxy=http://127.0.0.1:9", "NO_PROXY=127.0.0.1,localhost", "no_proxy=127.0.0.1,localhost")
+	cmd.Env = append(cmd.Env, extra...)
 	logf, _ := os.Create(filepath.Join(dir, "serve.log"))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	stop := func() {
+	halted := false
+	halt := func() {
+		if halted {
+			return
+		}
+		halted = true
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		done := make(chan struct{})
 		go func() { cmd.Wait(); close(done) }()
@@ -281,6 +292,9 @@ func launch(impl string) (*Target, error) {
 			<-done
 		}
 		logf.Close()
+	}
+	stop := func() {
+		halt()
 		if os.Getenv("LOCALBASE_CONTRACT_KEEP") == "" {
 			os.RemoveAll(dir)
 		}
@@ -300,7 +314,7 @@ func launch(impl string) (*Target, error) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return &Target{Name: impl, BaseURL: base, Key: key, ChatOnly: chatOnly, Admin: admin, RealModel: real, Root: rootDir, stop: stop}, nil
+	return &Target{Name: impl, BaseURL: base, Key: key, ChatOnly: chatOnly, Admin: admin, RealModel: real, Root: rootDir, stop: stop, halt: halt}, nil
 }
 
 // --- request helpers ---------------------------------------------------------

@@ -97,6 +97,8 @@ type e2e struct {
 	noAuth bool
 	stop   func()
 	outDir string
+	// impl is "go" (default) or "ts".
+	impl string
 }
 
 // scan fails when output contains a planted secret.
@@ -109,9 +111,18 @@ func (e *e2e) scan(label, text string) {
 	}
 }
 
+func (e *e2e) command(args ...string) *exec.Cmd {
+	if e.impl == "ts" {
+		cmd := exec.Command("bun", append([]string{"run", "src/cli.ts"}, args...)...)
+		cmd.Dir = repoRoot()
+		return cmd
+	}
+	return exec.Command(goCLI(e.t), args...)
+}
+
 func (e *e2e) cli(extraEnv []string, args ...string) cliResult {
 	e.t.Helper()
-	cmd := exec.Command(goCLI(e.t), append([]string{"--root", e.root}, args...)...)
+	cmd := e.command(append([]string{"--root", e.root}, args...)...)
 	cmd.Env = append(append(cleanEnv(), e.env...), extraEnv...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -157,7 +168,7 @@ func (e *e2e) serve(extra ...string) {
 	port, llmPort := freePort(), freePort()
 	args := append([]string{"--root", e.root, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort),
 		"--tts-port", fmt.Sprint(freePort()), "--image-port", fmt.Sprint(freePort()), "--video-port", fmt.Sprint(freePort())}, extra...)
-	cmd := exec.Command(goCLI(e.t), args...)
+	cmd := e.command(args...)
 	cmd.Env = append(cleanEnv(), e.env...)
 	logf, _ := os.Create(filepath.Join(e.outDir, fmt.Sprintf("serve-%d.log", port)))
 	cmd.Stdout, cmd.Stderr = logf, logf

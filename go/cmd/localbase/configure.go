@@ -227,7 +227,11 @@ func runConfigure(c *cli.Ctx) (any, error) {
 			c.Info("Selected %s models: %s", kindLabel[k], strings.Join(cfg.Selected[k], ", "))
 		}
 	}
-	data := map[string]any{"configuration": conf.Public(cfg)}
+	eff, err := obs.ResolveOtel(cfg.OtelEndpoint, cfg.OtelHeaders, cfg.OtelSampleRatio, os.Getenv)
+	if err != nil {
+		return nil, err
+	}
+	data := map[string]any{"configuration": conf.Public(cfg, eff)}
 	keys, err := e.Store.ListAPIKeys(context.Background())
 	if err != nil {
 		return nil, err

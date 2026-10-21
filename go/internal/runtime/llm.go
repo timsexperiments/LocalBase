@@ -16,6 +16,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -65,6 +66,8 @@ type LLMDeps struct {
 	// SelectionKey identifies a model's current backend selection cheaply;
 	// a running model whose key changed is restarted on its next request.
 	SelectionKey func(modelID string) string
+	// Otel traces backend starts (nil: disabled).
+	Otel *otlp.Runtime
 }
 
 type backend struct {
@@ -82,11 +85,15 @@ type backend struct {
 
 type waiter struct {
 	model       string
+	parent      *otlp.Span // the request's span, for a start it triggers
 	key         string
 	ready       chan error
 	lease       *Lease
 	dispatching bool
 	done        bool
+	// dispatched is when the request left the queue: granted, or its own
+	// model switch began (TS queueWaitMs excludes the activation).
+	dispatched time.Time
 }
 
 // LLM manages the one llama-server the gateway runs: a FIFO queue in front
@@ -284,7 +291,7 @@ func (m *LLM) Acquire(ctx context.Context, modelID string) (*Lease, error) {
 		m.mu.Unlock()
 		return nil, ErrQueueFull
 	}
-	w := &waiter{model: modelID, key: key, ready: make(chan error, 1)}
+	w := &waiter{model: modelID, key: key, ready: make(chan error, 1), parent: otlp.FromContext(ctx)}
 	m.queue = append(m.queue, w)
 	m.pump()
 	m.mu.Unlock()
@@ -297,7 +304,7 @@ func (m *LLM) Acquire(ctx context.Context, modelID string) (*Lease, error) {
 			if err != nil {
 				return nil, err
 			}
-			w.lease.Waited = time.Since(start)
+			w.lease.Waited = w.dispatched.Sub(start)
 			return w.lease, nil
 		case <-ctx.Done():
 			m.abandon(w)
@@ -337,6 +344,9 @@ func (m *LLM) abandon(w *waiter) {
 func (m *LLM) grant(w *waiter) {
 	m.queue = m.queue[1:]
 	m.active++
+	if w.dispatched.IsZero() {
+		w.dispatched = time.Now()
+	}
 	w.done = true
 	w.lease = &Lease{m: m, b: m.cur, BaseURL: m.cur.baseURL, ModelID: m.cur.modelID, Plan: m.cur.plan, Spec: m.cur.spec,
 		Active: m.active, Slots: m.cur.plan.Parallel.Slots, Waiting: len(m.queue)}
@@ -366,11 +376,12 @@ func (m *LLM) pump() {
 		}
 		m.starting = true
 		head.dispatching = true
+		head.dispatched = time.Now()
 		m.switches.Add(1)
-		go func(model, key string) {
+		go func(model, key string, parent *otlp.Span) {
 			defer m.switches.Done()
-			m.switchTo(model, key)
-		}(head.model, head.key)
+			m.switchTo(model, key, parent)
+		}(head.model, head.key, head.parent)
 		return
 	}
 }
@@ -379,8 +390,8 @@ func (m *LLM) pump() {
 // current model were stopped, crediting it at most its measured footprint
 // (#355), so a switch that cannot fit never stops the current model. If the
 // new model fails after the old one stopped, the old one is restored (#296).
-func (m *LLM) switchTo(modelID, key string) {
-	err := m.doSwitch(modelID, key)
+func (m *LLM) switchTo(modelID, key string, parent *otlp.Span) {
+	err := m.doSwitch(modelID, key, parent)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.starting = false
@@ -393,7 +404,7 @@ func (m *LLM) switchTo(modelID, key string) {
 	m.pump()
 }
 
-func (m *LLM) doSwitch(modelID, key string) error {
+func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) error {
 	// Catalog models keep the install check (and its consent error) first;
 	// then the selection: an unselected or unavailable backend fails before
 	// the current model is stopped.
@@ -434,14 +445,14 @@ func (m *LLM) doSwitch(modelID, key string) error {
 		}
 		m.stopBackend(prev)
 	}
-	b, err := m.startBackend(modelID, spec, plan, demand, t)
+	b, err := m.startBackend(modelID, spec, plan, demand, t, parent)
 	if err != nil {
 		// A changed backend for the same model is not rolled back: the
 		// person chose it, and the old one must not answer in its place.
 		if prev != nil && prev.modelID != modelID {
 			m.d.Log.Warn("Switch failed; restoring the previous model.", "event", "runtime.switch-rollback",
 				"runtime", "llm", "model_id", modelID, "previous_model_id", prev.modelID, "error", err.Error())
-			if rb, rerr := m.startBackend(prev.modelID, prev.spec, prev.plan, prev.demand, prev.target); rerr == nil {
+			if rb, rerr := m.startBackend(prev.modelID, prev.spec, prev.plan, prev.demand, prev.target, parent); rerr == nil {
 				rb.key = prev.key
 				m.install(rb)
 			}
@@ -529,7 +540,8 @@ func (m *LLM) admissionDemand(spec *catalog.Spec, plan *LLMPlan) memory.Demand {
 	return feed
 }
 
-func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, demand memory.Demand, t *Target) (*backend, error) {
+func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, demand memory.Demand, t *Target, parent *otlp.Span) (*backend, error) {
+	ctx := otlp.WithSpan(context.Background(), parent)
 	fail := func(err error) error {
 		if t != nil && (t.Manual || t.Imported) {
 			return &BackendStartError{BackendID: t.Backend.ID, Cause: err}
@@ -547,10 +559,14 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 	if err != nil {
 		return nil, err
 	}
-	m.d.Log.Info("Starting "+name+" for "+modelID+".", "event", "runtime.starting", "runtime", "llm",
+	m.d.Log.InfoContext(ctx, "Starting "+name+" for "+modelID+".", "event", "runtime.starting", "runtime", "llm",
 		"model_id", modelID, "ctx_size", plan.CtxSize, "slots", plan.Parallel.Slots,
 		"demand_bytes", demand.UnifiedBytes, "demand_confidence", demand.Confidence)
-	proc, err := StartProcess(name, bin, args, nil, m.d.Log)
+	var proc *Process
+	err = spanned(m.d.Otel, ctx, "localbase.backend.start", name, func() (err error) {
+		proc, err = StartProcess(name, bin, args, nil, m.d.Log)
+		return err
+	})
 	if err != nil {
 		res.Release()
 		return nil, fail(err)
@@ -561,12 +577,14 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 		budget = largeStartupBudget
 	}
 	base := "http://" + net.JoinHostPort(plan.Host, strconv.Itoa(plan.Port))
-	if err := proc.WaitHealthy(context.Background(), base+health, budget); err != nil {
+	if err := spanned(m.d.Otel, ctx, "localbase.backend.model_load", name, func() error {
+		return proc.WaitHealthy(context.Background(), base+health, budget)
+	}); err != nil {
 		proc.Stop(stopGrace)
 		res.Release()
 		return nil, fail(err)
 	}
-	m.d.Log.Info(name+" is ready for "+modelID+".", "event", "runtime.ready", "runtime", "llm", "model_id", modelID, "pid", proc.PID())
+	m.d.Log.InfoContext(ctx, name+" is ready for "+modelID+".", "event", "runtime.ready", "runtime", "llm", "model_id", modelID, "pid", proc.PID())
 	return &backend{modelID: modelID, spec: spec, target: t, demand: demand, plan: plan, proc: proc, res: res, baseURL: base, stop: make(chan struct{})}, nil
 }
 

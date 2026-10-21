@@ -10,6 +10,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -37,6 +38,9 @@ func (e *env) memoryGB() int {
 }
 
 func openEnv(c *cli.Ctx) (*env, error) {
+	if err := checkOtelEnvironment(); err != nil {
+		return nil, err
+	}
 	r, err := root.Init(root.Resolve(c.Global.Root))
 	if err != nil {
 		return nil, err
@@ -129,4 +133,13 @@ func applyEnvOverrides(cfg *store.Config) error {
 		return err
 	}
 	return num("LOCALBASE_CTX_SIZE", &cfg.CtxSize, 2048, 2_147_483_647)
+}
+
+// checkOtelEnvironment rejects invalid OTEL_* variables before a command
+// does anything, as TS context creation does.
+func checkOtelEnvironment() error {
+	if _, err := obs.ResolveOtel("", "", 100, os.Getenv); err != nil {
+		return cli.Inputf("%s", err.Error())
+	}
+	return nil
 }

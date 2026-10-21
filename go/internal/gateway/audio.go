@@ -65,6 +65,7 @@ func readMultipart(r *http.Request, body []byte) (map[string][]formPart, error) 
 }
 
 func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
 	// No method check, as in TS: any other method fails as an invalid form.
 	if r.ContentLength > maxRequestBytes {
 		payloadTooLarge(w, r)
@@ -164,6 +165,9 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer lease.Release()
+	tel := &inference{s: s, modality: "stt", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
+		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}
+	tel.begin(r.Context(), r.Method)
 
 	// Forward the validated fields; whisper-server has one /inference
 	// endpoint, and translation is a flag.
@@ -190,25 +194,30 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	mw.Close()
 	req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, lease.BaseURL+"/inference", &out)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, err := (&http.Client{Timeout: 10 * time.Minute}).Do(req)
+	resp, err := s.backendCall(tel.ctx, r, req, &http.Client{Timeout: 10 * time.Minute})
 	if err != nil {
 		if r.Context().Err() != nil {
 			w.WriteHeader(499)
+			tel.finish("cancelled", 499, "request_aborted")
 			return
 		}
 		upstreamFailure(w, r, "The upstream service could not be reached.")
+		tel.finish("error", 502, "")
 		return
 	}
+	tel.upstreamStatus = resp.StatusCode
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		upstreamFailure(w, r, fmt.Sprintf("The upstream service failed with HTTP %d.", resp.StatusCode))
+		tel.finish("error", 502, "")
 		return
 	}
 	switch format {
 	case "text", "srt", "vtt":
 		if looksLikeBackendError(resp, raw) {
 			upstreamFailure(w, r, "The upstream service returned an invalid response.")
+			tel.finish("error", 502, "response_validation")
 			return
 		}
 		text := string(raw)
@@ -218,14 +227,17 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(resp.StatusCode)
 		io.WriteString(w, text)
+		tel.finish("completed", resp.StatusCode, "")
 		return
 	}
 	var data map[string]any
 	if json.Unmarshal(raw, &data) != nil || !validTranscription(data) {
 		upstreamFailure(w, r, "The upstream service returned an invalid response.")
+		tel.finish("error", 502, "response_validation")
 		return
 	}
 	writeJSON(w, resp.StatusCode, normalizeTranscriptionJSON(data, format))
+	tel.finish("completed", resp.StatusCode, "")
 }
 
 var whitespaceRe = regexp.MustCompile(`\s+`)
