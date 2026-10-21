@@ -7,8 +7,7 @@
  * `src/catalog/models/index.test.ts` fails when a data file is missing here.
  */
 import llm_qwen3_5_4b_q4_k_m from "./llm/qwen3.5-4b-q4_k_m.json";
-import llm_qwen3_5_9b_q4_k_m from "./llm/qwen3.5-9b-q4_k_m.json";
-import llm_gpt_oss_20b_q4_k_m from "./llm/gpt-oss-20b-q4_k_m.json";
+import llm_qwen3_6_35b_a3b_iq4_nl_xl from "./llm/qwen3.6-35b-a3b-iq4_nl_xl.json";
 import llm_qwen3_8_27b_q4_k_m from "./llm/qwen3.8-27b-q4_k_m.json";
 import llm_qwen3_embedding_0_6b_q8_0 from "./llm/qwen3-embedding-0.6b-q8_0.json";
 import llm_qwen3_embedding_4b_q4_k_m from "./llm/qwen3-embedding-4b-q4_k_m.json";
@@ -28,8 +27,7 @@ import video_wan2_2_s2v_14b_fp8 from "./video/wan2.2-s2v-14b-fp8.json";
 /** Unvalidated catalog entries in catalog order; see `validateCatalog`. */
 export const CATALOG_DATA: readonly unknown[] = [
   llm_qwen3_5_4b_q4_k_m,
-  llm_qwen3_5_9b_q4_k_m,
-  llm_gpt_oss_20b_q4_k_m,
+  llm_qwen3_6_35b_a3b_iq4_nl_xl,
   llm_qwen3_8_27b_q4_k_m,
   llm_qwen3_embedding_0_6b_q8_0,
   llm_qwen3_embedding_4b_q4_k_m,

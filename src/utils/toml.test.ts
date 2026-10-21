@@ -21,13 +21,13 @@ async function withToml(
 
 test("parses standard TOML arrays and inline comments", async () => {
   await withToml(
-    'host = "127.0.0.1" # gateway bind address\nport = 2273 # gateway port\nparallel = "auto"\nselectedLlmModels = [\n  "qwen3.5-9b-q4_k_m",\n]\nselectedImageModels = ["juggernaut-xl-v9"]\n[memory.systemReserve]\npercent = 20\n',
+    'host = "127.0.0.1" # gateway bind address\nport = 2273 # gateway port\nparallel = "auto"\nselectedLlmModels = [\n  "qwen3.8-27b-q4_k_m",\n]\nselectedImageModels = ["juggernaut-xl-v9"]\n[memory.systemReserve]\npercent = 20\n',
     async (path) => {
       await expect(loadTomlOverrides(path)).resolves.toEqual({
         host: "127.0.0.1",
         port: 2273,
         parallel: "auto",
-        selectedLlmModels: ["qwen3.5-9b-q4_k_m"],
+        selectedLlmModels: ["qwen3.8-27b-q4_k_m"],
         selectedImageModels: ["juggernaut-xl-v9"],
         memory: {
           systemReserve: { percent: 20 },

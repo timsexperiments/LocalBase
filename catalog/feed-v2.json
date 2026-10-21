@@ -2,7 +2,7 @@
   "format": "localbase-catalog-feed",
   "schemaVersion": 2,
   "minReaderVersion": 2,
-  "sha256": "090524a4678ad91694fdbfeb570f24d5b99afd5358cf5ffce968e3412257c494",
+  "sha256": "b0f6f960fd13078fa49ae7c0f3d3122271154a15bf328190b32ed7625d01f87d",
   "models": [
     {
       "modelId": "qwen3.5-4b-q4_k_m",
@@ -41,76 +41,50 @@
       "notes": "bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.5-4B. GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 32 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned."
     },
     {
-      "modelId": "qwen3.5-9b-q4_k_m",
-      "displayName": "Qwen3.5 9B",
+      "modelId": "qwen3.6-35b-a3b-iq4_nl_xl",
+      "displayName": "Qwen3.6 35B-A3B",
       "kind": "llm",
       "provider": "Qwen",
-      "family": "Qwen3.5",
-      "version": "3.5",
-      "size": "9B",
-      "quant": "Q4_K_M",
-      "storageGb": 6.17,
-      "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF",
-      "repositoryRevision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
+      "family": "Qwen3.6",
+      "version": "3.6",
+      "size": "35B-A3B",
+      "quant": "IQ4_NL_XL",
+      "storageGb": 20.4,
+      "source": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF",
+      "repositoryRevision": "a483e9e6cbd595906af30beda3187c2663a1118c",
       "artifacts": [
         {
-          "sourcePath": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
-          "filename": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
-          "expectedSizeBytes": 6169341984,
-          "sha256": "d784ce9eda1a5a7b51e8f705a9e6310844bf4f173654d115823c775fdea56d43",
+          "sourcePath": "Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf",
+          "filename": "Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf",
+          "expectedSizeBytes": 19500506080,
+          "sha256": "071ee2a008ec51372f990d8efbea92ec9dd0137974110ef68fbfde429c8c6dd4",
           "role": "primary"
+        },
+        {
+          "sourcePath": "mmproj-F16.gguf",
+          "filename": "qwen3.6-35b-a3b-iq4_nl_xl-mmproj-F16.gguf",
+          "expectedSizeBytes": 899283680,
+          "sha256": "8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f",
+          "role": "supplementary"
         }
       ],
       "inputModalities": [
-        "text"
+        "text",
+        "image"
       ],
       "outputModalities": [
         "text"
       ],
       "contextWindowTokens": 262144,
       "capabilities": [
-        "text-generation",
-        "tool-calling"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
-      "notes": "bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.5-9B. GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 32 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned."
-    },
-    {
-      "modelId": "gpt-oss-20b-q4_k_m",
-      "displayName": "gpt-oss 20B",
-      "kind": "llm",
-      "provider": "OpenAI",
-      "family": "GPT-OSS",
-      "version": "1",
-      "size": "20B",
-      "quant": "Q4_K_M",
-      "storageGb": 11.67,
-      "source": "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
-      "repositoryRevision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
-      "artifacts": [
-        {
-          "sourcePath": "openai_gpt-oss-20b-Q4_K_M.gguf",
-          "filename": "openai_gpt-oss-20b-Q4_K_M.gguf",
-          "expectedSizeBytes": 11673418816,
-          "sha256": "86a21df11afa5a40031ec1974e368ae0ab561ee3995f4d08ff432e8b2b7af9fc",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 131072,
-      "capabilities": [
         "reasoning",
-        "tool-calling"
+        "tool-calling",
+        "long-context",
+        "mixture-of-experts"
       ],
       "commercialStatus": "open",
-      "catch": "Apache-2.0.",
-      "notes": "bartowski imatrix Q4_K_M GGUF of openai/gpt-oss-20b; the expert feed-forward weights stay MXFP4. Upstream: 21B parameters, 3.6B active per token. GGUF header: architecture gpt-oss, 24 layers, 32 experts with 4 active per token, 128-token sliding-window attention layers, 131,072-token training context."
+      "catch": "Apache-2.0. Mixture-of-experts: 35B parameters, 3B active per token. Text and image input through the pinned F16 vision projector.",
+      "notes": "Unsloth Dynamic IQ4_NL_XL imatrix GGUF of Qwen/Qwen3.6-35B-A3B, with the F16 vision projector from the same repository. GGUF header: architecture qwen35moe (linear-attention layers with full attention every 4th layer), 40 layers, 256 experts with 8 routed experts per token plus a shared expert, 262,144-token training context. Projector header: clip vision encoder (27 blocks, 16-pixel patches, 768-pixel input, qwen3vl_merger projector). Embedded tokenizer and chat template with tool-call and thinking markup. The upstream card also lists video input, which this entry does not declare."
     },
     {
       "modelId": "qwen3.8-27b-q4_k_m",
@@ -2650,6 +2624,78 @@
       "notes": "Text-only LocalBase entry; official 131k-token context. Base revision 95a6d26c4bfb886c58daf9d3f7332c857cb27b43."
     },
     {
+      "modelId": "qwen3.5-9b-q4_k_m",
+      "displayName": "Qwen3.5 9B",
+      "kind": "llm",
+      "provider": "Qwen",
+      "family": "Qwen3.5",
+      "version": "3.5",
+      "size": "9B",
+      "quant": "Q4_K_M",
+      "storageGb": 6.17,
+      "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF",
+      "repositoryRevision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+          "filename": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+          "expectedSizeBytes": 6169341984,
+          "sha256": "d784ce9eda1a5a7b51e8f705a9e6310844bf4f173654d115823c775fdea56d43",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 262144,
+      "capabilities": [
+        "text-generation",
+        "tool-calling"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
+      "notes": "bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.5-9B. GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 32 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned."
+    },
+    {
+      "modelId": "gpt-oss-20b-q4_k_m",
+      "displayName": "gpt-oss 20B",
+      "kind": "llm",
+      "provider": "OpenAI",
+      "family": "GPT-OSS",
+      "version": "1",
+      "size": "20B",
+      "quant": "Q4_K_M",
+      "storageGb": 11.67,
+      "source": "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
+      "repositoryRevision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
+      "artifacts": [
+        {
+          "sourcePath": "openai_gpt-oss-20b-Q4_K_M.gguf",
+          "filename": "openai_gpt-oss-20b-Q4_K_M.gguf",
+          "expectedSizeBytes": 11673418816,
+          "sha256": "86a21df11afa5a40031ec1974e368ae0ab561ee3995f4d08ff432e8b2b7af9fc",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 131072,
+      "capabilities": [
+        "reasoning",
+        "tool-calling"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0.",
+      "notes": "bartowski imatrix Q4_K_M GGUF of openai/gpt-oss-20b; the expert feed-forward weights stay MXFP4. Upstream: 21B parameters, 3.6B active per token. GGUF header: architecture gpt-oss, 24 layers, 32 experts with 4 active per token, 128-token sliding-window attention layers, 131,072-token training context."
+    },
+    {
       "modelId": "whisper-tiny-en-q8_0",
       "displayName": "Whisper Tiny (English)",
       "kind": "stt",
@@ -3406,44 +3452,34 @@
       ]
     },
     {
-      "repo": "bartowski/Qwen_Qwen3.5-9B-GGUF",
-      "revision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
-      "file": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
-      "modelId": "qwen3.5-9b-q4_k_m",
+      "repo": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "revision": "a483e9e6cbd595906af30beda3187c2663a1118c",
+      "file": "Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf",
+      "modelId": "qwen3.6-35b-a3b-iq4_nl_xl",
       "kind": "llm",
       "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q4_K_M",
-          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
-          "peakBytes": 7216300032,
-          "backendAcceleratorBytes": 6619660288,
-          "hostBufferBytes": 596639744,
-          "peakRssBytes": 6390480896,
-          "measuredAt": "2026-10-13",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
-    },
-    {
-      "repo": "bartowski/openai_gpt-oss-20b-GGUF",
-      "revision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
-      "file": "openai_gpt-oss-20b-Q4_K_M.gguf",
-      "modelId": "gpt-oss-20b-q4_k_m",
-      "kind": "llm",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q4_K_M",
-          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
-          "peakBytes": 12618563584,
-          "backendAcceleratorBytes": 12200181760,
-          "hostBufferBytes": 418381824,
-          "peakRssBytes": 10298408960,
-          "measuredAt": "2026-10-13",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
+      "recipe": {
+        "modelId": "qwen3.6-35b-a3b-iq4_nl_xl",
+        "files": [
+          {
+            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF",
+            "revision": "a483e9e6cbd595906af30beda3187c2663a1118c",
+            "path": "Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf",
+            "sizeBytes": 19500506080,
+            "sha256": "071ee2a008ec51372f990d8efbea92ec9dd0137974110ef68fbfde429c8c6dd4",
+            "role": "primary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF",
+            "revision": "a483e9e6cbd595906af30beda3187c2663a1118c",
+            "path": "mmproj-F16.gguf",
+            "sizeBytes": 899283680,
+            "sha256": "8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f",
+            "role": "supplementary"
+          }
+        ],
+        "totalBytes": 20399789760
+      }
     },
     {
       "repo": "bartowski/Qwen3.8-27B-GGUF",
@@ -4392,6 +4428,46 @@
       "modelId": "mistral-small-3.2-24b-instruct-q4_k_m",
       "kind": "llm",
       "status": "verified"
+    },
+    {
+      "repo": "bartowski/Qwen_Qwen3.5-9B-GGUF",
+      "revision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
+      "file": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+      "modelId": "qwen3.5-9b-q4_k_m",
+      "kind": "llm",
+      "status": "verified",
+      "memoryPeaks": [
+        {
+          "variant": "Q4_K_M",
+          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+          "peakBytes": 7216300032,
+          "backendAcceleratorBytes": 6619660288,
+          "hostBufferBytes": 596639744,
+          "peakRssBytes": 6390480896,
+          "measuredAt": "2026-10-13",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
+    },
+    {
+      "repo": "bartowski/openai_gpt-oss-20b-GGUF",
+      "revision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
+      "file": "openai_gpt-oss-20b-Q4_K_M.gguf",
+      "modelId": "gpt-oss-20b-q4_k_m",
+      "kind": "llm",
+      "status": "verified",
+      "memoryPeaks": [
+        {
+          "variant": "Q4_K_M",
+          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+          "peakBytes": 12618563584,
+          "backendAcceleratorBytes": 12200181760,
+          "hostBufferBytes": 418381824,
+          "peakRssBytes": 10298408960,
+          "measuredAt": "2026-10-13",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
     },
     {
       "repo": "ggerganov/whisper.cpp",

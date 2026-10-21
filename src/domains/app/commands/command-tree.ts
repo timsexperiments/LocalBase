@@ -555,7 +555,7 @@ const installCommand = command<InstallInput>({
   path: ["models", "install"],
   description: "Download and install a model",
   examples: [
-    "local-base models install qwen3.5-9b-q4_k_m",
+    "local-base models install qwen3.5-4b-q4_k_m",
     "local-base --non-interactive models install --all",
   ],
   args: {
@@ -738,7 +738,7 @@ const showCommand = command<ShowInput>({
   path: ["models", "show"],
   description: "Show everything known about one model",
   examples: [
-    "local-base models show qwen3.5-9b-q4_k_m",
+    "local-base models show qwen3.5-4b-q4_k_m",
     "local-base --json models show whisper-large-v3-turbo",
   ],
   requiresDatabase: false,

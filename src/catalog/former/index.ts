@@ -54,6 +54,8 @@ import llm_devstral_small_2_24b_instruct_q4_k_m from "./llm/devstral-small-2-24b
 import llm_ministral_3_14b_instruct_q4_k_m from "./llm/ministral-3-14b-instruct-q4_k_m.json";
 import llm_qwen3_5_27b_q4_k_m from "./llm/qwen3.5-27b-q4_k_m.json";
 import llm_mistral_small_3_2_24b_instruct_q4_k_m from "./llm/mistral-small-3.2-24b-instruct-q4_k_m.json";
+import llm_qwen3_5_9b_q4_k_m from "./llm/qwen3.5-9b-q4_k_m.json";
+import llm_gpt_oss_20b_q4_k_m from "./llm/gpt-oss-20b-q4_k_m.json";
 import stt_whisper_tiny_en_q8_0 from "./stt/whisper-tiny-en-q8_0.json";
 // flux1-ae.safetensors is byte-identical to the ae.safetensors in the gated
 // black-forest-labs/FLUX.1-schnell repository (Apache-2.0).
@@ -118,6 +120,8 @@ export const FORMER_CATALOG_DATA: readonly unknown[] = [
   llm_ministral_3_14b_instruct_q4_k_m,
   llm_qwen3_5_27b_q4_k_m,
   llm_mistral_small_3_2_24b_instruct_q4_k_m,
+  llm_qwen3_5_9b_q4_k_m,
+  llm_gpt_oss_20b_q4_k_m,
   stt_whisper_tiny_en_q8_0,
   image_flux1_schnell_q4_0,
   image_flux2_klein_4b_q8_0,

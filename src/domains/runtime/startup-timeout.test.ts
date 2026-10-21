@@ -39,6 +39,8 @@ const LONG_STARTUP_LLMS = new Set([
   "qwen2.5-72b-instruct-q4_k_m",
   "codestral-22b-instruct-q4_k_m",
   "qwen3.8-27b-q4_k_m",
+  // Added with the long budget (weights above the threshold).
+  "qwen3.6-35b-a3b-iq4_nl_xl",
   "devstral-small-2-24b-instruct-q4_k_m",
   "qwen3.5-27b-q4_k_m",
   "mistral-small-3.2-24b-instruct-q4_k_m",

@@ -197,10 +197,13 @@ function createInstallConfig(): LocalBaseConfig {
   return defaultConfig(root);
 }
 
-test("fresh configuration defaults to the tool-capable Qwen 7B model", () => {
-  expect(defaultConfig("/tmp/local-base-default-model").activeLlmModel).toBe(
-    "qwen3.5-9b-q4_k_m",
-  );
+test("fresh configuration defaults to the compact chat model on any machine", () => {
+  for (const vramGb of [0, 4, 8, 24, 128]) {
+    const config = defaultConfig("/tmp/local-base-default-model", vramGb);
+    expect(config.activeLlmModel).toBe("qwen3.5-4b-q4_k_m");
+    expect(config.selectedLlmModels).toEqual(["qwen3.5-4b-q4_k_m"]);
+    expect(config.activeImageModel).toBe("dreamshaper-8-lcm");
+  }
 });
 
 test("lazy supervisor installation refuses without serve consent", async () => {

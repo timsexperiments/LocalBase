@@ -71,7 +71,7 @@ test("compiled gateway releases a crashed backend stream and recovers", async ()
     await gateway.crashLlmRuntime();
     await expectStreamTerminated(recoveredReader);
 
-    const replacementModel = "qwen3.5-9b-q4_k_m";
+    const replacementModel = "qwen3.8-27b-q4_k_m";
     const config = gateway.readConfig();
     gateway.saveConfig({
       ...config,

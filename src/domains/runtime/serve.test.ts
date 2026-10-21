@@ -3235,7 +3235,7 @@ describe("API gateway integration", () => {
   test("keeps concurrent LLM requests paired with their selected models", async () => {
     const initialConfig = loadGatewayConfig();
     const firstModel = initialConfig.activeLlmModel;
-    const secondModel = "qwen3.5-9b-q4_k_m";
+    const secondModel = "qwen3.8-27b-q4_k_m";
     initialConfig.selectedLlmModels = [firstModel, secondModel];
     saveGatewayConfig(initialConfig);
     await writeCompleteCatalogArtifact(initialConfig.llmModelsDir, secondModel);
@@ -3340,7 +3340,7 @@ describe("API gateway integration", () => {
   test("holds model switches until streamed LLM responses end", async () => {
     const config = loadGatewayConfig();
     const firstCatalogModel = "qwen3.5-4b-q4_k_m";
-    const secondCatalogModel = "qwen3.5-9b-q4_k_m";
+    const secondCatalogModel = "qwen3.8-27b-q4_k_m";
     const modelA = config.activeLlmModel;
     const modelB =
       modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
@@ -3477,7 +3477,7 @@ describe("API gateway integration", () => {
   test("forwards aborts while waiting for rewritten LLM response headers", async () => {
     const config = loadGatewayConfig();
     const firstCatalogModel = "qwen3.5-4b-q4_k_m";
-    const secondCatalogModel = "qwen3.5-9b-q4_k_m";
+    const secondCatalogModel = "qwen3.8-27b-q4_k_m";
     const modelA = config.activeLlmModel;
     const modelB =
       modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
@@ -3532,7 +3532,7 @@ describe("API gateway integration", () => {
   test("releases a disconnected stream before replacing its model", async () => {
     const config = loadGatewayConfig();
     const firstCatalogModel = "qwen3.5-4b-q4_k_m";
-    const secondCatalogModel = "qwen3.5-9b-q4_k_m";
+    const secondCatalogModel = "qwen3.8-27b-q4_k_m";
     const modelA = config.activeLlmModel;
     const modelB =
       modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
@@ -3598,7 +3598,7 @@ describe("API gateway integration", () => {
   test("abandons queued LLM model switches before dispatch", async () => {
     const config = loadGatewayConfig();
     const firstCatalogModel = "qwen3.5-4b-q4_k_m";
-    const secondCatalogModel = "qwen3.5-9b-q4_k_m";
+    const secondCatalogModel = "qwen3.8-27b-q4_k_m";
     const modelA = config.activeLlmModel;
     const modelB =
       modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
@@ -4305,7 +4305,7 @@ test("GPU working-set oversubscription by loaded models is retryable and explain
 });
 
 test("records runtime capabilities from llama-server and lets them gate tools", async () => {
-  const modelId = "qwen3.5-9b-q4_k_m";
+  const modelId = "qwen3.8-27b-q4_k_m";
   const spec = byId(modelId)!;
   expect(hasCapability(spec, "tool-calling")).toBe(true);
   const gateway = await startGatewayFixture({

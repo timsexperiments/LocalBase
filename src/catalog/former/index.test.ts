@@ -45,5 +45,5 @@ test("a former entry never shares an id with a built-in entry", () => {
     expect(builtIn.has(modelId)).toBe(false);
     expect(formerCatalogEntry(modelId)?.modelId).toBe(modelId);
   }
-  expect(formerCatalogEntry("qwen3.5-9b-q4_k_m")).toBeUndefined();
+  expect(formerCatalogEntry("qwen3.5-4b-q4_k_m")).toBeUndefined();
 });

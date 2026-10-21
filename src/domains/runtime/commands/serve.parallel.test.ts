@@ -19,7 +19,7 @@ import {
 } from "../../observability/logging";
 
 const INITIAL_MODEL = "qwen3.5-4b-q4_k_m";
-const SWITCHED_MODEL = "qwen3.5-9b-q4_k_m";
+const SWITCHED_MODEL = "qwen3.8-27b-q4_k_m";
 const PROJECT_ROOT = join(import.meta.dirname, "../../../..");
 const textEncoder = new TextEncoder();
 const textBytes = (value: string) => textEncoder.encode(value);

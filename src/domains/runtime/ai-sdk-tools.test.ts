@@ -21,7 +21,7 @@ import {
 
 registerGatewayFixtureCleanup();
 
-const MODEL = "qwen3.5-9b-q4_k_m";
+const MODEL = "qwen3.8-27b-q4_k_m";
 
 function upstreamBodies(
   gateway: GatewayFixture,

@@ -20,7 +20,7 @@ import { runSmoke } from "./smoke";
 
 registerGatewayFixtureCleanup();
 
-const REPLACEMENT_MODEL = "qwen3.5-9b-q4_k_m";
+const REPLACEMENT_MODEL = "qwen3.8-27b-q4_k_m";
 const RESIDENT_MODEL = "qwen3.5-4b-q4_k_m";
 const DECISION_MODEL = "decision-fixture-q4_k_m";
 const decisionCatalogEntry = {

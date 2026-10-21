@@ -28,7 +28,7 @@ import { minimalWav, tinyPng, tinyPngBase64 } from "../../test/media-fixtures";
 registerGatewayFixtureCleanup();
 
 const PRIMARY_LLM_MODEL = "qwen3.5-4b-q4_k_m";
-const SWITCHED_LLM_MODEL = "qwen3.5-9b-q4_k_m";
+const SWITCHED_LLM_MODEL = "qwen3.8-27b-q4_k_m";
 const PRIMARY_STT_MODEL = "whisper-large-v3-turbo";
 const SWITCHED_STT_MODEL = "whisper-base-q8_0";
 const PRIMARY_IMAGE_MODEL = "juggernaut-xl-v9";

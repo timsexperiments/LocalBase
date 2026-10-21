@@ -21,7 +21,7 @@ registerGatewayFixtureCleanup();
 
 const STT_MODEL = "whisper-large-v3-turbo";
 const IMAGE_MODEL = "juggernaut-xl-v9";
-const REPLACEMENT_LLM_MODEL = "qwen3.5-9b-q4_k_m";
+const REPLACEMENT_LLM_MODEL = "qwen3.8-27b-q4_k_m";
 
 async function imageRequest(gateway: GatewayFixture): Promise<Response> {
   return await fetch(`${gateway.baseUrl}/v1/images/generations`, {

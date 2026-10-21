@@ -318,3 +318,135 @@ test("kept models stay manageable: listed, enabled, disabled and uninstalled", a
     database.close();
   }
 });
+
+/**
+ * The user entry `local-base models add` wrote for this model before it
+ * joined the built-in catalog (copied from an install that had it).
+ */
+const ADDED_BEFORE_BUILT_IN = {
+  modelId: "qwen3.6-35b-a3b-iq4_nl_xl",
+  provider: "unsloth",
+  version: "a483e9e",
+  source: "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF",
+  repositoryRevision: "a483e9e6cbd595906af30beda3187c2663a1118c",
+  commercialStatus: "open",
+  catch:
+    "License: apache-2.0. Added from Hugging Face; not qualified by LocalBase.",
+  notes:
+    "Added with local-base models add hf:unsloth/Qwen3.6-35B-A3B-GGUF:Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf at revision a483e9e6cbd595906af30beda3187c2663a1118c (pipeline image-text-to-text).",
+  displayName: "Qwen3.6-35B-A3B IQ4_NL_XL",
+  kind: "llm",
+  family: "Qwen3.6-35B-A3B",
+  size: "35B",
+  quant: "IQ4_NL_XL",
+  storageGb: 20.4,
+  artifacts: [
+    {
+      sourcePath: "Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf",
+      filename: "Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf",
+      expectedSizeBytes: 19500506080,
+      sha256:
+        "071ee2a008ec51372f990d8efbea92ec9dd0137974110ef68fbfde429c8c6dd4",
+      role: "primary",
+    },
+    {
+      sourcePath: "mmproj-F16.gguf",
+      filename: "qwen3.6-35b-a3b-iq4_nl_xl-mmproj-F16.gguf",
+      expectedSizeBytes: 899283680,
+      sha256:
+        "8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f",
+      role: "supplementary",
+    },
+  ],
+  inputModalities: ["text", "image"],
+  outputModalities: ["text"],
+  contextWindowTokens: 262144,
+  capabilities: ["text-generation"],
+} as const;
+
+test("an install whose active chat model left the catalog keeps it, and a model it added that joined the catalog becomes built-in", async () => {
+  const active = "qwen3.5-9b-q4_k_m";
+  const alsoInstalled = "gpt-oss-20b-q4_k_m";
+  const promoted = ADDED_BEFORE_BUILT_IN.modelId;
+  const builtIn = BUILT_IN_CATALOG.find(({ modelId }) => modelId === promoted);
+  if (!builtIn) throw new Error(`Missing built-in entry ${promoted}`);
+
+  // The earlier release: 9B and gpt-oss built in, 9B active, Qwen3.6 added
+  // from Hugging Face as a user entry and selected.
+  const root = scratchRoot();
+  keepFormerCatalogEntries();
+  const database = new DatabaseSession();
+  try {
+    const config = defaultConfig(root, 64);
+    config.selectedLlmModels = [active, alsoInstalled, promoted];
+    config.activeLlmModel = active;
+    saveConfig(database, config);
+  } finally {
+    database.close();
+  }
+  mkdirSync(userCatalogDirectory(root), { recursive: true });
+  const addedPath = join(userCatalogDirectory(root), `${promoted}.json`);
+  writeFileSync(addedPath, JSON.stringify(ADDED_BEFORE_BUILT_IN, null, 2));
+  installSparse(root, former(active));
+  installSparse(root, former(alsoInstalled));
+  for (const artifact of builtIn.artifacts) {
+    const path = join(root, "models", "llm", artifact.filename);
+    writeFileSync(path, "");
+    truncateSync(path, artifact.expectedSizeBytes);
+  }
+
+  // The upgrade.
+  restoreBuiltInCatalog();
+  loadCatalogSources(root);
+  const config = readConfigSync(root);
+  expect(config.activeLlmModel).toBe(active);
+  expect(config.selectedLlmModels).toEqual([active, alsoInstalled, promoted]);
+
+  // Former built-ins: user entries with their pinned files and memory records.
+  for (const id of [active, alsoInstalled]) {
+    expect(catalogProvenance(id).trust).toBe("user");
+    expect(byId(id)).toMatchObject({ artifacts: former(id).artifacts });
+    expect(usesReferenceMeasurements(byId(id)!)).toBe(true);
+    expect(modelMemoryFigure(byId(id)!).source).toBe("measured");
+  }
+
+  // The added entry: the built-in spec applies as shipped, the user file is
+  // left in place, and the installed files are the built-in's files.
+  expect(catalogProvenance(promoted)).toMatchObject({
+    trust: "qualified",
+    tier: "built-in",
+    patchedFields: [],
+  });
+  expect(byId(promoted)).toEqual(builtIn);
+  expect(existsSync(addedPath)).toBe(true);
+  expect(await installedModels(config, "llm")).toEqual(
+    expect.arrayContaining([active, alsoInstalled, promoted]),
+  );
+  const served = await listServedModels(config);
+  expect(served.map(({ id }) => id)).toEqual(
+    expect.arrayContaining([active, alsoInstalled, promoted]),
+  );
+  // Nothing is adopted twice on the next start.
+  expect(adoptFormerCatalogEntries(root)).toEqual([]);
+});
+
+test("a user file for a built-in id that pins other files stays a patch", () => {
+  const root = scratchRoot();
+  mkdirSync(userCatalogDirectory(root), { recursive: true });
+  const [primary, projector] = ADDED_BEFORE_BUILT_IN.artifacts;
+  writeFileSync(
+    join(userCatalogDirectory(root), `${ADDED_BEFORE_BUILT_IN.modelId}.json`),
+    JSON.stringify({
+      ...ADDED_BEFORE_BUILT_IN,
+      artifacts: [{ ...primary, sha256: "b".repeat(64) }, projector],
+    }),
+  );
+  loadCatalogSources(root);
+  expect(catalogProvenance(ADDED_BEFORE_BUILT_IN.modelId)).toMatchObject({
+    trust: "modified",
+    tier: "user",
+  });
+  expect(byId(ADDED_BEFORE_BUILT_IN.modelId)?.catch).toBe(
+    ADDED_BEFORE_BUILT_IN.catch,
+  );
+});

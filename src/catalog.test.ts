@@ -317,21 +317,28 @@ describe("catalog artifact validation", () => {
     expect(recommendedForVram(128)).not.toContainEqual(clef);
   });
 
-  test("ships one chat model per memory band and exactly two decision models", () => {
+  test("ships a compact chat model, two larger ones and exactly two decision models", () => {
     const chat = CATALOG.filter(
       (model) => model.kind === "llm" && !model.llmRuntime,
     );
-    const minimums = chat.map(computedMinVramGb).sort((a, b) => a - b);
-    expect(chat.map(({ modelId }) => modelId).sort()).toEqual([
-      "gpt-oss-20b-q4_k_m",
+    expect(chat.map(({ modelId }) => modelId)).toEqual([
       "qwen3.5-4b-q4_k_m",
-      "qwen3.5-9b-q4_k_m",
+      "qwen3.6-35b-a3b-iq4_nl_xl",
       "qwen3.8-27b-q4_k_m",
     ]);
-    // Tiny, small, medium and large: no two chat entries share a band.
-    expect(new Set(minimums).size).toBe(minimums.length);
-    expect(minimums[0]).toBeLessThanOrEqual(6);
-    expect(minimums.at(-1)).toBeGreaterThanOrEqual(18);
+    const [compact, ...larger] = chat.map(computedMinVramGb);
+    expect(compact).toBeLessThanOrEqual(6);
+    for (const minimum of larger) expect(minimum).toBeGreaterThanOrEqual(18);
+    // The larger pair: one mixture-of-experts entry with a vision projector,
+    // one dense text-only entry.
+    const moe = byId("qwen3.6-35b-a3b-iq4_nl_xl")!;
+    expect(capabilityIds(moe)).toContain("mixture-of-experts");
+    expect(moe.inputModalities).toEqual(["text", "image"]);
+    // From the pinned GGUF header (qwen35moe.context_length).
+    expect(moe.contextWindowTokens).toBe(262_144);
+    expect(capabilityIds(byId("qwen3.8-27b-q4_k_m"))).not.toContain(
+      "mixture-of-experts",
+    );
     expect(
       CATALOG.filter(
         (model) => model.llmRuntime?.capability === "decision-only",

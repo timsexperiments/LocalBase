@@ -54,16 +54,15 @@ Add your own models, or adjust built-in ones, in `<root>/catalog.d/`, or find an
 
 ### Built-in catalog
 
-The built-in catalog is a small, tested set: one entry per job, and one chat model per memory band. The table lists facts from each entry's pinned files; `local-base models show <id>` has the full record.
+The built-in catalog is a small, tested set: one entry per job, with a compact chat model and two larger ones. The table lists facts from each entry's pinned files; `local-base models show <id>` has the full record.
 
 The planning minimum is LocalBase's figure for admission and fit: the accelerator demand at the reference launch (LLMs: 8,192-token context, 1 request at a time, q8_0 KV cache, or f16 for embeddings) plus a margin of 512 MiB or 10%, whichever is larger. "Measured" figures were recorded on Apple M-series 64 GiB unified memory, macOS 26 ([memory calibration](docs/memory-calibration.md)); "estimate" figures come from the formula. They are not hardware requirements: other settings and machines need different amounts, and `local-base models catalog` shows the figures this machine uses.
 
 | Kind | Band or job | Model id | Pinned build | Planning minimum |
 | --- | --- | --- | --- | --- |
-| Chat | About 4 GB | `qwen3.5-4b-q4_k_m` | Qwen3.5-4B, Q4_K_M GGUF, 262,144-token context, text only | 5 GB (measured) |
-| Chat | About 8 GB | `qwen3.5-9b-q4_k_m` | Qwen3.5-9B, Q4_K_M GGUF, 262,144-token context, text only | 8 GB (measured) |
-| Chat | About 12 GB | `gpt-oss-20b-q4_k_m` | gpt-oss-20b (21B MoE, 3.6B active), Q4_K_M GGUF with MXFP4 experts, 131,072-token context | 14 GB (measured) |
-| Chat | 18 GB and up | `qwen3.8-27b-q4_k_m` | Qwen3.8-27B, Q4_K_M GGUF, 262,144-token context, text only | 21 GB (estimate) |
+| Chat | Compact | `qwen3.5-4b-q4_k_m` | Qwen3.5-4B, Q4_K_M GGUF, 262,144-token context, text only | 5 GB (measured) |
+| Chat | Larger, mixture-of-experts | `qwen3.6-35b-a3b-iq4_nl_xl` | Qwen3.6-35B-A3B (35B, 3B active), IQ4_NL_XL GGUF and F16 vision projector, 262,144-token context, text and image input | 24 GB (estimate) |
+| Chat | Larger, dense | `qwen3.8-27b-q4_k_m` | Qwen3.8-27B, Q4_K_M GGUF, 262,144-token context, text only | 21 GB (estimate) |
 | Embeddings | Smaller | `qwen3-embedding-0.6b-q8_0` | Qwen3-Embedding-0.6B, Q8_0 GGUF, 1024 dimensions | 3 GB (estimate) |
 | Embeddings | Larger | `qwen3-embedding-4b-q4_k_m` | Qwen3-Embedding-4B, Q4_K_M GGUF, 2560 dimensions | 5 GB (estimate) |
 | Decisions | Default | `clef-flash-q4_k_m` | Cloudflare Clef Flash (9B), Q4_K_M GGUF and Q8_0 projector | 10 GB (measured) |
@@ -181,18 +180,18 @@ Configure a small LLM and create an API key:
 ```bash
 local-base init
 local-base --non-interactive configure --defaults \
-  --llm-models qwen3.5-9b-q4_k_m \
-  --active-llm qwen3.5-9b-q4_k_m \
+  --llm-models qwen3.5-4b-q4_k_m \
+  --active-llm qwen3.5-4b-q4_k_m \
   --stt-models '' \
   --tts-models '' \
   --image-models '' \
   --parallel auto \
   --create-key
-local-base models install qwen3.5-9b-q4_k_m
+local-base models install qwen3.5-4b-q4_k_m
 local-base start
 ```
 
-Fresh configuration defaults to Qwen3.5 9B Q4_K_M (Apache-2.0, tool-capable, about 6.17 GB). `serve` never downloads model weights without consent: install them with `local-base models install <id>`, or pass `local-base serve --install-missing` to approve missing selected models. Backend runtime binaries remain managed automatically.
+Fresh configuration defaults to Qwen3.5 4B Q4_K_M (Apache-2.0, tool-capable, about 3.01 GB). `serve` never downloads model weights without consent: install them with `local-base models install <id>`, or pass `local-base serve --install-missing` to approve missing selected models. Backend runtime binaries remain managed automatically.
 
 Store the displayed API key, then verify inference:
 
@@ -201,7 +200,7 @@ export LOCALBASE_API_KEY='lb_...'
 curl http://127.0.0.1:2273/v1/chat/completions \
   -H "Authorization: Bearer $LOCALBASE_API_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"qwen3.5-9b-q4_k_m","messages":[{"role":"user","content":"Say hello in two words."}]}'
+  -d '{"model":"qwen3.5-4b-q4_k_m","messages":[{"role":"user","content":"Say hello in two words."}]}'
 ```
 
 Use `local-base status` to inspect the service and `local-base logs --follow` to stream logs.

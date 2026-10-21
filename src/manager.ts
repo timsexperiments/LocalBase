@@ -470,7 +470,9 @@ export function defaultRoot(): string {
 
 export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
   root = canonicalLocalBaseRoot(root);
-  const llm = "qwen3.5-9b-q4_k_m";
+  // The compact chat model on every machine; larger chat models are offered
+  // by `models recommend` and configure, not selected by default.
+  const llm = "qwen3.5-4b-q4_k_m";
   const stt =
     recommendedSttForVram(vramGb)[2]?.modelId ??
     recommendedSttForVram(vramGb)[0]?.modelId ??

@@ -132,6 +132,18 @@ with `bun run catalog:feed`; a test fails while either is out of date.
 - If two files in `catalog.d` name the same `modelId`, the first file in name
   order wins and the other one is reported.
 
+### Models that joined the built-in catalog
+
+A release can add a model you already added yourself, under the same id.
+When your `catalog.d/<id>.json` is a complete spec that pins the same
+repository, revision and files (path, filename, size and sha256) as the new
+built-in entry, LocalBase sets the file aside and uses the built-in entry as
+shipped: its description, capabilities and `qualified` trust. The installed
+files, settings and API id keep working, and nothing is downloaded again.
+The file itself is left in place, so if a later release drops the entry
+again, your file applies once more. A partial file, or a complete file that
+pins different files, is still a patch as described above.
+
 ### Trust after a patch
 
 Cosmetic patches, such as `displayName`, `notes` or `catch`, keep the entry's
