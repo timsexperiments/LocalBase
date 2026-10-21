@@ -1,0 +1,111 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1786139088166,
+      "tag": "0000_useful_maggott",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786139088167,
+      "tag": "0001_video_runtime",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789923412655,
+      "tag": "0002_api_key_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789926239359,
+      "tag": "0003_declarative_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790045057398,
+      "tag": "0004_sturdy_dark_phoenix",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790048351115,
+      "tag": "0005_bent_spencer_smythe",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790087193542,
+      "tag": "0006_curvy_vivisector",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790087932970,
+      "tag": "0007_romantic_puff_adder",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791576014573,
+      "tag": "0008_majestic_spirit",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791579311933,
+      "tag": "0009_third_whizzer",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791897689720,
+      "tag": "0010_wooden_gamma_corps",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1792001445032,
+      "tag": "0011_same_miss_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1792079149809,
+      "tag": "0012_model_runtime_capabilities",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1792081954115,
+      "tag": "0013_model_observed_memory",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1792340803281,
+      "tag": "0014_tts_custom_voices",
+      "breakpoints": true
+    }
+  ]
+}

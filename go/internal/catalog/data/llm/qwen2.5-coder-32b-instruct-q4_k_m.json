@@ -1,0 +1,29 @@
+{
+  "modelId": "qwen2.5-coder-32b-instruct-q4_k_m",
+  "displayName": "Qwen2.5 Coder 32B Instruct",
+  "kind": "llm",
+  "provider": "Qwen",
+  "family": "Qwen2.5-Coder",
+  "version": "2.5",
+  "size": "32B",
+  "quant": "Q4_K_M",
+  "codingScore": 10,
+  "storageGb": 20.3,
+  "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF",
+  "repositoryRevision": "9d3053fce650fe1cdbdb75998c2a87add9d178ef",
+  "artifacts": [
+    {
+      "sourcePath": "qwen2.5-coder-32b-instruct-q4_k_m.gguf",
+      "filename": "qwen2.5-coder-32b-instruct-q4_k_m.gguf",
+      "expectedSizeBytes": 19851335872,
+      "sha256": "4d64b316b5e6319d9613e0d97935d9ebd631fc7e334da400d00085eca749d085",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "capabilities": ["tool-calling", "code-generation", "code-editing"],
+  "commercialStatus": "open",
+  "catch": "Apache-2.0.",
+  "notes": "State-of-the-art local coding model. Perfect for unified memory setups."
+}

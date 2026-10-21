@@ -1,0 +1,66 @@
+{
+  "modelId": "flux2-klein-9b-q4_0",
+  "displayName": "FLUX.2 Klein 9B",
+  "kind": "image",
+  "provider": "Black Forest Labs",
+  "family": "FLUX.2-klein",
+  "version": "2",
+  "size": "9B",
+  "quant": "Q4_0",
+  "storageGb": 10.98,
+  "source": "https://huggingface.co/leejet/FLUX.2-klein-9B-GGUF",
+  "repositoryRevision": "cc588497a95ffc2937ebbd6b9b3916a11ada6e5b",
+  "artifacts": [
+    {
+      "sourcePath": "flux-2-klein-9b-Q4_0.gguf",
+      "filename": "flux-2-klein-9b-Q4_0.gguf",
+      "expectedSizeBytes": 5616208032,
+      "sha256": "a7e77afa96871d16679ff7b949bd25f20c8179f219c4b662cac91e81ed99b944",
+      "role": "primary"
+    },
+    {
+      "sourcePath": "split_files/vae/flux2-vae.safetensors",
+      "filename": "flux2-vae.safetensors",
+      "expectedSizeBytes": 336211292,
+      "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
+      "role": "supplementary",
+      "source": {
+        "repositoryUrl": "https://huggingface.co/Comfy-Org/flux2-klein-4B",
+        "revision": "5f526678002e43af5551dadb73ce2e8c91b43afe"
+      }
+    },
+    {
+      "sourcePath": "Qwen3-8B-Q4_K_M.gguf",
+      "filename": "Qwen3-8B-Q4_K_M.gguf",
+      "expectedSizeBytes": 5027784512,
+      "sha256": "120307ba529eb2439d6c430d94104dabd578497bc7bfe7e322b5d9933b449bd4",
+      "role": "supplementary",
+      "source": {
+        "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-8B-GGUF",
+        "revision": "a6adef130ffb23ddaf1a62fec9dced968c9bc482"
+      }
+    }
+  ],
+  "imageRuntime": {
+    "kind": "diffusion-qwen3",
+    "artifacts": {
+      "diffusionModel": "flux-2-klein-9b-Q4_0.gguf",
+      "vae": "flux2-vae.safetensors",
+      "textEncoder": "Qwen3-8B-Q4_K_M.gguf"
+    },
+    "generation": {
+      "sampler": "euler",
+      "steps": 4,
+      "cfgScale": 1
+    }
+  },
+  "inputModalities": ["text"],
+  "outputModalities": ["image"],
+  "imageLaunchOptions": {
+    "diffusionFlashAttention": true
+  },
+  "capabilities": ["text-to-image"],
+  "commercialStatus": "conditional",
+  "catch": "FLUX Non-Commercial License; commercial deployment requires a separate Black Forest Labs license. Qwen3 encoder is Apache-2.0.",
+  "notes": "Larger distilled four-step model with a Qwen3 8B encoder. Photorealism relative to the 4B model has not been assessed locally. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
+}

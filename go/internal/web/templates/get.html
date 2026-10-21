@@ -1,0 +1,17 @@
+{{define "title"}}Get models · LocalBase{{end}}
+{{define "main"}}
+<section aria-labelledby="get-title">
+  <p class="eyebrow">Add to your library</p>
+  <h1 id="get-title" class="mt-1 text-3xl font-bold tracking-tight">What do you want to do?</h1>
+  <p class="mt-1 text-muted">Choose a job and LocalBase suggests a model that fits this machine, with the tested file first.</p>
+  <ul class="mt-6 grid grid-cols-1 gap-3 min-[600px]:grid-cols-2">
+    {{range list "Chat and write" "Search my documents" "Answer structured questions" "Transcribe audio" "Speak text aloud" "Make images" "Make short videos"}}
+    <li class="card flex min-h-16 items-center justify-between gap-3 p-4">
+      <span class="font-semibold">{{.}}</span>
+      <span class="badge">Coming soon</span>
+    </li>
+    {{end}}
+  </ul>
+  <p class="mt-6 text-sm text-muted">Installing from this page arrives in a later milestone. Until then, install with <code class="rounded bg-surface-muted px-1.5 py-0.5">local-base models install</code>.</p>
+</section>
+{{end}}

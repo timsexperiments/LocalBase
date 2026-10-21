@@ -1,0 +1,30 @@
+{
+  "modelId": "ltx-2.3-22b-distilled-1.1-q4_k_m",
+  "displayName": "LTX-2.3 22B Distilled 1.1",
+  "kind": "video",
+  "provider": "Lightricks/Unsloth",
+  "family": "LTX",
+  "version": "2.3-distilled-1.1",
+  "size": "22B",
+  "quant": "Q4_K_M",
+  "storageGb": 14.19,
+  "source": "https://huggingface.co/unsloth/LTX-2.3-GGUF",
+  "repositoryRevision": "96e8ed4925ead3db9ff4d0084f165ef6a74f28d0",
+  "artifacts": [
+    {
+      "sourcePath": "distilled-1.1/ltx-2.3-22b-distilled-1.1-Q4_K_M.gguf",
+      "filename": "ltx-2.3-22b-distilled-1.1-Q4_K_M.gguf",
+      "expectedSizeBytes": 14194441248,
+      "sha256": "5d09efdc0b8ec2054c44a05366cd7c6634ffa333b379b1f8baf018a78974b73d",
+      "role": "primary"
+    }
+  ],
+  "videoCatalogOnly": true,
+  "inputModalities": ["text"],
+  "outputModalities": ["video"],
+  "capabilities": [],
+  "diffusionWeightsOnly": true,
+  "commercialStatus": "conditional",
+  "catch": "Catalog only; LocalBase inference is unavailable. LTX-2 Community License; entities with annual revenue of at least USD 10 million require a paid commercial license.",
+  "notes": "Distilled diffusion weights for upstream synchronized audio/video generation. Requires Gemma text conditioning, the LTX decoder/audio components, runtime integration, and native qualification; these companion assets are not included. Downloads contain diffusion weights only, not a complete inference bundle. Memory is an unmeasured planning estimate; storage covers only the listed artifacts."
+}

@@ -1,0 +1,28 @@
+{
+  "modelId": "whisper-tiny-en-q8_0",
+  "displayName": "Whisper Tiny (English)",
+  "kind": "stt",
+  "provider": "OpenAI/ggml",
+  "family": "Whisper",
+  "version": "tiny.en",
+  "size": "tiny.en",
+  "quant": "Q8_0",
+  "storageGb": 0.08,
+  "source": "https://huggingface.co/ggerganov/whisper.cpp",
+  "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+  "artifacts": [
+    {
+      "sourcePath": "ggml-tiny.en-q8_0.bin",
+      "filename": "ggml-tiny.en-q8_0.bin",
+      "expectedSizeBytes": 43550795,
+      "sha256": "5bc2b3860aa151a4c6e7bb095e1fcce7cf12c7b020ca08dcec0c6d018bb7dd94",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["audio"],
+  "outputModalities": ["text"],
+  "capabilities": ["speech-to-text"],
+  "commercialStatus": "open",
+  "catch": "MIT License.",
+  "notes": "Ultra-fast English STT with lower accuracy."
+}

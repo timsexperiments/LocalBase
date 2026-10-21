@@ -1,0 +1,47 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#faf9fc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#201e25" media="(prefers-color-scheme: dark)">
+<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"historyCacheSize":0}'>
+<title>{{block "title" .}}LocalBase{{end}}</title>
+<link rel="stylesheet" href="{{asset "app.css"}}">
+<script src="{{asset "vendor/htmx-2.0.10.min.js"}}" defer></script>
+<script src="{{asset "js/session.js"}}" type="module"></script>
+</head>
+<body class="min-h-dvh" hx-boost="true" hx-headers='{"X-Localbase-UI": "1"}'>
+<a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 btn btn-primary">Skip to content</a>
+<header class="sticky top-0 z-20 border-b border-line bg-canvas/95 backdrop-blur pt-[env(safe-area-inset-top)]">
+  <div class="mx-auto flex max-w-5xl items-center justify-between gap-3 px-[max(1rem,env(safe-area-inset-left))] py-2">
+    <a href="/app/models" class="flex min-h-11 items-center gap-2.5 font-bold text-lg">
+      <span aria-hidden="true" class="grid size-9 place-items-center rounded-xl bg-accent text-on-accent text-base">⌘</span>
+      LocalBase
+    </a>
+    {{if and .Principal (not .NoAuth)}}
+    <button type="button" class="btn btn-quiet text-sm" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>
+    {{end}}
+  </div>
+  {{if .Principal}}
+  <nav aria-label="Models" class="mx-auto max-w-5xl px-[max(0.5rem,env(safe-area-inset-left))]">
+    <ul class="grid grid-cols-3 gap-1 pb-2 sm:flex sm:gap-2">
+      {{template "tab" (dict "Href" "/app/models" "Label" "Library" "Active" (eq .Page "library" "details"))}}
+      {{template "tab" (dict "Href" "/app/models/get" "Label" "Get models" "Active" (eq .Page "get"))}}
+      {{template "tab" (dict "Href" "/app/models/running" "Label" "Running now" "Active" (eq .Page "running"))}}
+    </ul>
+  </nav>
+  {{end}}
+</header>
+<div id="session-notice" role="alert" aria-live="assertive" class="mx-auto max-w-5xl px-4"></div>
+<main id="main" class="mx-auto max-w-5xl px-[max(1rem,env(safe-area-inset-left))] pb-[max(2rem,env(safe-area-inset-bottom))] pt-6">
+{{block "main" .}}{{end}}
+</main>
+</body>
+</html>{{end}}
+
+{{define "tab"}}
+<li><a href="{{.Href}}" {{if .Active}}aria-current="page"{{end}}
+  class="flex min-h-11 items-center justify-center rounded-xl px-3 text-[0.95rem] font-semibold whitespace-nowrap {{if .Active}}bg-accent-soft text-accent{{else}}text-muted hover:bg-hover hover:text-ink{{end}}">{{.Label}}</a></li>
+{{end}}

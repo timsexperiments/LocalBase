@@ -1,0 +1,29 @@
+{
+  "modelId": "qwen3.5-0.8b-q4_k_m",
+  "displayName": "Qwen3.5 0.8B",
+  "kind": "llm",
+  "provider": "Qwen",
+  "family": "Qwen3.5",
+  "version": "3.5",
+  "size": "0.8B",
+  "quant": "Q4_K_M",
+  "storageGb": 0.58,
+  "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-0.8B-GGUF",
+  "repositoryRevision": "f36b1ea49a332ede8fe5f389bbf5b3575ef71f48",
+  "artifacts": [
+    {
+      "sourcePath": "Qwen_Qwen3.5-0.8B-Q4_K_M.gguf",
+      "filename": "Qwen_Qwen3.5-0.8B-Q4_K_M.gguf",
+      "expectedSizeBytes": 579615840,
+      "sha256": "fb044e93939a70469c905781334f5de1e6c8b608ced6cbc8c9249bd4127d9526",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 262144,
+  "capabilities": ["text-generation"],
+  "commercialStatus": "open",
+  "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
+  "notes": "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts."
+}

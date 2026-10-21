@@ -1,0 +1,316 @@
+[
+ {
+  "kind": "llm",
+  "modelId": "qwen3.5-0.8b-q4_k_m",
+  "shape": {
+   "ctxTokens": 8192,
+   "slots": 1,
+   "cacheTypeK": "q8_0",
+   "cacheTypeV": "q8_0"
+  },
+  "backendAcceleratorBytes": 1140850688,
+  "hostBufferBytes": 221249536,
+  "peakRssBytes": 827424768
+ },
+ {
+  "kind": "llm",
+  "modelId": "qwen3.5-2b-q4_k_m",
+  "shape": {
+   "ctxTokens": 8192,
+   "slots": 1,
+   "cacheTypeK": "q8_0",
+   "cacheTypeV": "q8_0"
+  },
+  "backendAcceleratorBytes": 1910505472,
+  "hostBufferBytes": 434110464,
+  "peakRssBytes": 1593032704
+ },
+ {
+  "kind": "llm",
+  "modelId": "qwen3.5-4b-q4_k_m",
+  "shape": {
+   "ctxTokens": 8192,
+   "slots": 1,
+   "cacheTypeK": "q8_0",
+   "cacheTypeV": "q8_0"
+  },
+  "backendAcceleratorBytes": 3587178496,
+  "hostBufferBytes": 540016640,
+  "peakRssBytes": 3320250368
+ },
+ {
+  "kind": "llm",
+  "modelId": "qwen3.5-9b-q4_k_m",
+  "shape": {
+   "ctxTokens": 8192,
+   "slots": 1,
+   "cacheTypeK": "q8_0",
+   "cacheTypeV": "q8_0"
+  },
+  "backendAcceleratorBytes": 6619660288,
+  "hostBufferBytes": 596639744,
+  "peakRssBytes": 6390480896
+ },
+ {
+  "kind": "llm",
+  "modelId": "clef-flash-q4_k_m",
+  "shape": {
+   "ctxTokens": 8192,
+   "slots": 1,
+   "cacheTypeK": "q8_0",
+   "cacheTypeV": "q8_0"
+  },
+  "backendAcceleratorBytes": 8719958016,
+  "hostBufferBytes": 1270874112,
+  "peakRssBytes": 8551874560
+ },
+ {
+  "kind": "llm",
+  "modelId": "qwen3.5-27b-q4_k_m",
+  "shape": {
+   "ctxTokens": 8192,
+   "slots": 1,
+   "cacheTypeK": "q8_0",
+   "cacheTypeV": "q8_0"
+  },
+  "backendAcceleratorBytes": 18501074944,
+  "hostBufferBytes": 744488960,
+  "peakRssBytes": 19027968000
+ },
+ {
+  "kind": "llm",
+  "modelId": "ministral-3-14b-instruct-q4_k_m",
+  "shape": {
+   "ctxTokens": 8192,
+   "slots": 1,
+   "cacheTypeK": "q8_0",
+   "cacheTypeV": "q8_0"
+  },
+  "backendAcceleratorBytes": 9222225920,
+  "hostBufferBytes": 406847488,
+  "peakRssBytes": 7823081472
+ },
+ {
+  "kind": "llm",
+  "modelId": "mistral-nemo-12b-instruct-q4_k_m",
+  "shape": {
+   "ctxTokens": 8192,
+   "slots": 1,
+   "cacheTypeK": "q8_0",
+   "cacheTypeV": "q8_0"
+  },
+  "backendAcceleratorBytes": 8500805632,
+  "hostBufferBytes": 406847488,
+  "peakRssBytes": 8069824512
+ },
+ {
+  "kind": "llm",
+  "modelId": "gpt-oss-20b-q4_k_m",
+  "shape": {
+   "ctxTokens": 8192,
+   "slots": 1,
+   "cacheTypeK": "q8_0",
+   "cacheTypeV": "q8_0"
+  },
+  "backendAcceleratorBytes": 12200181760,
+  "hostBufferBytes": 418381824,
+  "peakRssBytes": 10298408960
+ },
+ {
+  "kind": "stt",
+  "modelId": "whisper-tiny-en-q8_0",
+  "shape": {},
+  "backendAcceleratorBytes": 208900000,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 169902080
+ },
+ {
+  "kind": "stt",
+  "modelId": "whisper-large-v3-turbo",
+  "shape": {},
+  "backendAcceleratorBytes": 1941800000,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 1900625920
+ },
+ {
+  "kind": "tts",
+  "modelId": "qwen3-tts-1.7b-base-q4_k_m",
+  "shape": {
+   "ctxTokens": 2048
+  },
+  "backendAcceleratorBytes": 3878682624,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 4160536576
+ },
+ {
+  "kind": "tts",
+  "modelId": "kokoro-82m-v1.0-q8",
+  "shape": {
+   "ctxTokens": 512
+  },
+  "backendAcceleratorBytes": 0,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 1027719168
+ },
+ {
+  "kind": "image",
+  "modelId": "dreamshaper-v8",
+  "shape": {
+   "width": 512,
+   "height": 512,
+   "steps": 20,
+   "diffusionFlashAttention": true
+  },
+  "backendAcceleratorBytes": 3878745539,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 2988212224
+ },
+ {
+  "kind": "image",
+  "modelId": "flux2-klein-4b-q4_0",
+  "shape": {
+   "width": 1024,
+   "height": 1024,
+   "steps": 4,
+   "diffusionFlashAttention": true
+  },
+  "backendAcceleratorBytes": 12101353472,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 5983240192
+ },
+ {
+  "kind": "image",
+  "modelId": "dreamshaper-8-lcm",
+  "shape": {
+   "width": 512,
+   "height": 512,
+   "steps": 4,
+   "diffusionFlashAttention": true
+  },
+  "backendAcceleratorBytes": 3878745539,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 3006021632
+ },
+ {
+  "kind": "image",
+  "modelId": "stable-diffusion-v1-5",
+  "shape": {
+   "width": 512,
+   "height": 512,
+   "steps": 20,
+   "diffusionFlashAttention": true
+  },
+  "backendAcceleratorBytes": 4664600822,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 4996431872
+ },
+ {
+  "kind": "image",
+  "modelId": "z-image-turbo-q4_0",
+  "shape": {
+   "width": 1024,
+   "height": 1024,
+   "steps": 8,
+   "diffusionFlashAttention": true
+  },
+  "backendAcceleratorBytes": 13322808197,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 7087439872
+ },
+ {
+  "kind": "image",
+  "modelId": "flux1-schnell-q4_0",
+  "shape": {
+   "width": 1024,
+   "height": 1024,
+   "steps": 4,
+   "diffusionFlashAttention": true
+  },
+  "backendAcceleratorBytes": 14032694149,
+  "hostBufferBytes": 9844555776,
+  "peakRssBytes": 18007343104,
+  "systemDeltaBytes": 25991561216
+ },
+ {
+  "kind": "image",
+  "modelId": "flux2-klein-4b-q8_0",
+  "shape": {
+   "width": 1024,
+   "height": 1024,
+   "steps": 4,
+   "diffusionFlashAttention": true
+  },
+  "backendAcceleratorBytes": 13941604352,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 8412053504
+ },
+ {
+  "kind": "image",
+  "modelId": "realvis-xl-v5.0",
+  "shape": {
+   "width": 1024,
+   "height": 1024,
+   "steps": 20,
+   "diffusionFlashAttention": true
+  },
+  "backendAcceleratorBytes": 14999208591,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 7805108224
+ },
+ {
+  "kind": "image",
+  "modelId": "sdxl-turbo",
+  "shape": {
+   "width": 1024,
+   "height": 1024,
+   "steps": 20,
+   "diffusionFlashAttention": true
+  },
+  "backendAcceleratorBytes": 14999208591,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 8064352256
+ },
+ {
+  "kind": "image",
+  "modelId": "juggernaut-xl-v9",
+  "shape": {
+   "width": 1024,
+   "height": 1024,
+   "steps": 20,
+   "diffusionFlashAttention": true
+  },
+  "backendAcceleratorBytes": 14999208591,
+  "hostBufferBytes": 0,
+  "peakRssBytes": 7788806144
+ },
+ {
+  "kind": "video",
+  "modelId": "fastwan2.2-ti2v-5b-q6_k",
+  "shape": {
+   "width": 480,
+   "height": 832,
+   "frames": 81,
+   "cpuOffload": true,
+   "diffusionFlashAttention": true
+  },
+  "backendAcceleratorBytes": 6348131533,
+  "hostBufferBytes": 10271808553,
+  "peakRssBytes": 13746454528,
+  "systemDeltaBytes": 15058550784
+ },
+ {
+  "kind": "video",
+  "modelId": "wan2.1-t2v-1.3b-q8_0",
+  "shape": {
+   "width": 320,
+   "height": 320,
+   "frames": 33,
+   "cpuOffload": true,
+   "diffusionFlashAttention": true
+  },
+  "backendAcceleratorBytes": 6348131533,
+  "hostBufferBytes": 7826078433,
+  "peakRssBytes": 12147949568,
+  "systemDeltaBytes": 8220786688
+ }
+]

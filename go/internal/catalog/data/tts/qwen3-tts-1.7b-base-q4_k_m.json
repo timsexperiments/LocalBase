@@ -1,0 +1,76 @@
+{
+  "modelId": "qwen3-tts-1.7b-base-q4_k_m",
+  "displayName": "Qwen3 TTS 1.7B Base",
+  "kind": "tts",
+  "provider": "Qwen/ggml",
+  "family": "Qwen3-TTS",
+  "version": "12Hz-1.7B-Base",
+  "size": "1.7B",
+  "quant": "Q4_K_M",
+  "storageGb": 1.49,
+  "source": "https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
+  "repositoryRevision": "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
+  "artifacts": [
+    {
+      "sourcePath": "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
+      "filename": "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
+      "expectedSizeBytes": 1035965280,
+      "sha256": "8d18c94acb2addd042f97da63c98be144eafa76d0d9495177eab65130cf85129",
+      "role": "primary"
+    },
+    {
+      "sourcePath": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+      "filename": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+      "expectedSizeBytes": 446422912,
+      "sha256": "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
+      "role": "supplementary"
+    },
+    {
+      "sourcePath": "voice-donations/0a67.wav",
+      "filename": "qwen3-tts-harbor.wav",
+      "expectedSizeBytes": 480044,
+      "sha256": "4bd75d0ef0ad3f4e82ac075eab2a132651d2463f83bec210edeeccaf69294886",
+      "role": "supplementary",
+      "source": {
+        "repositoryUrl": "https://huggingface.co/kyutai/tts-voices",
+        "revision": "323332d33f997de8394f24a193e1a76df720e01a"
+      }
+    },
+    {
+      "sourcePath": "voice-donations/1410.wav",
+      "filename": "qwen3-tts-willow.wav",
+      "expectedSizeBytes": 480044,
+      "sha256": "8edd516de8c2171b67757cacb29e1effd3e6a8b78f5d6b035069273fadefac2b",
+      "role": "supplementary",
+      "source": {
+        "repositoryUrl": "https://huggingface.co/kyutai/tts-voices",
+        "revision": "323332d33f997de8394f24a193e1a76df720e01a"
+      }
+    }
+  ],
+  "ttsRuntime": {
+    "kind": "llama-tts",
+    "projectorArtifactFilename": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+    "referenceVoices": [
+      {
+        "name": "harbor",
+        "artifactFilename": "qwen3-tts-harbor.wav",
+        "license": "CC0-1.0",
+        "provenanceUrl": "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations"
+      },
+      {
+        "name": "willow",
+        "artifactFilename": "qwen3-tts-willow.wav",
+        "license": "CC0-1.0",
+        "provenanceUrl": "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations"
+      }
+    ]
+  },
+  "inputModalities": ["text"],
+  "outputModalities": ["audio"],
+  "capabilities": ["text-to-speech"],
+  "outputFormat": "wav",
+  "commercialStatus": "open",
+  "catch": "The converted repository omits license metadata; the upstream Qwen model is Apache-2.0.",
+  "notes": "Default remains native runtime voice. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed."
+}

@@ -1,0 +1,30 @@
+{
+  "modelId": "gpt-oss-20b-q4_k_m",
+  "displayName": "gpt-oss 20B",
+  "kind": "llm",
+  "provider": "OpenAI",
+  "family": "GPT-OSS",
+  "version": "1",
+  "size": "20B",
+  "quant": "Q4_K_M",
+  "codingScore": 9.5,
+  "storageGb": 14,
+  "source": "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
+  "repositoryRevision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
+  "artifacts": [
+    {
+      "sourcePath": "openai_gpt-oss-20b-Q4_K_M.gguf",
+      "filename": "openai_gpt-oss-20b-Q4_K_M.gguf",
+      "expectedSizeBytes": 11673418816,
+      "sha256": "86a21df11afa5a40031ec1974e368ae0ab561ee3995f4d08ff432e8b2b7af9fc",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
+  "capabilities": ["reasoning", "tool-calling"],
+  "commercialStatus": "open",
+  "catch": "Apache 2.0.",
+  "notes": "OpenAI's open-weight reasoning model, optimized for edge devices."
+}

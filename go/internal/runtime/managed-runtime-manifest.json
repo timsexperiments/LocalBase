@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "targets": [
+    {
+      "platform": "darwin",
+      "architecture": "arm64",
+      "tier": "managed",
+      "runtimes": {
+        "llama-server": {
+          "tag": "b11671",
+          "assetName": "llama-b11671-bin-macos-arm64.tar.gz",
+          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11671/llama-b11671-bin-macos-arm64.tar.gz",
+          "expectedSizeBytes": 12201717,
+          "sha256": "0f9c093f77b9c194f2f097df6204d9f5f8758968815e7db0374e98b0485ef9df",
+          "format": "tar.gz",
+          "stripComponents": 1
+        },
+        "whisper-server": {
+          "tag": "whisper-v0.0.2",
+          "assetName": "whisper-server-macos-arm64.zip",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/whisper-v0.0.2/whisper-server-macos-arm64.zip",
+          "expectedSizeBytes": 3396088,
+          "sha256": "4a2c0e0fb878a85c8be689184ad9c471bd309562977b8ba4dd9078f881b01cea",
+          "format": "zip",
+          "stripComponents": 0
+        },
+        "sd-server": {
+          "tag": "sd-server-v0.0.2",
+          "assetName": "sd-server-macos-arm64.zip",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/sd-server-v0.0.2/sd-server-macos-arm64.zip",
+          "expectedSizeBytes": 18260204,
+          "sha256": "cd3b0aa50e7c4018b457425f47a2f4ce3923e74f702fc7b4e5a328094e5a5b6a",
+          "format": "zip",
+          "stripComponents": 0
+        },
+        "tts-server": {
+          "tag": "tts-server-v0.0.1",
+          "assetName": "tts-server-macos-arm64.zip",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/tts-server-v0.0.1/tts-server-macos-arm64.zip",
+          "expectedSizeBytes": 3982200,
+          "sha256": "5ec780ddd585897d9105dfd3d1d49fb294e5f973d6eedd9ac0fa8a99ef50b6e2",
+          "format": "zip",
+          "stripComponents": 0
+        },
+        "kokoro-tts": {
+          "tag": "kokoro-v0.0.2",
+          "assetName": "kokoro-tts-macos-arm64.tar.gz",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/kokoro-v0.0.2/kokoro-tts-macos-arm64.tar.gz",
+          "expectedSizeBytes": 173649407,
+          "sha256": "0714bb40b01c0ddd98e064287dcaa4f2cda9d2c8548a40394a48376b37aaa9f6",
+          "format": "tar.gz",
+          "stripComponents": 0,
+          "inventorySha256": "a3361419b506160d6ed643619d939c4c5ed5649beeda887936cef07ff526d05b"
+        }
+      }
+    },
+    {
+      "platform": "darwin",
+      "architecture": "x64",
+      "tier": "cli-only",
+      "runtimes": {}
+    },
+    {
+      "platform": "linux",
+      "architecture": "x64",
+      "tier": "managed",
+      "runtimes": {
+        "llama-server": {
+          "tag": "b11671",
+          "assetName": "llama-b11671-bin-ubuntu-vulkan-x64.tar.gz",
+          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11671/llama-b11671-bin-ubuntu-vulkan-x64.tar.gz",
+          "expectedSizeBytes": 30508272,
+          "sha256": "fb449c1564dda0cdbfcc68d46bf9929b337e41fe76d5c512877cdec62c487cf3",
+          "format": "tar.gz",
+          "stripComponents": 1
+        },
+        "whisper-server": {
+          "tag": "whisper-v0.0.2",
+          "assetName": "whisper-server-linux-x64.tar.gz",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/whisper-v0.0.2/whisper-server-linux-x64.tar.gz",
+          "expectedSizeBytes": 15162622,
+          "sha256": "9733673053c1ef2c51c7fa1b911fadfc66a13f412503c0062c3d13839a0cd8f1",
+          "format": "tar.gz",
+          "stripComponents": 0
+        },
+        "sd-server": {
+          "tag": "sd-server-v0.0.2",
+          "assetName": "sd-server-linux-x64.tar.gz",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/sd-server-v0.0.2/sd-server-linux-x64.tar.gz",
+          "expectedSizeBytes": 29819305,
+          "sha256": "8969a2369927af26d34a0bd13716431b5bbeeb06919cef774a47dde8190a5a4e",
+          "format": "tar.gz",
+          "stripComponents": 0
+        },
+        "tts-server": {
+          "tag": "tts-server-v0.0.1",
+          "assetName": "tts-server-linux-x64.tar.gz",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/tts-server-v0.0.1/tts-server-linux-x64.tar.gz",
+          "expectedSizeBytes": 17949032,
+          "sha256": "5e632edd558ff52d79d35ca7d579d04380210620d9b93f5f36e78c90b09576f4",
+          "format": "tar.gz",
+          "stripComponents": 0
+        },
+        "kokoro-tts": {
+          "tag": "kokoro-v0.0.2",
+          "assetName": "kokoro-tts-linux-x64.tar.gz",
+          "url": "https://github.com/timsexperiments/LocalBase/releases/download/kokoro-v0.0.2/kokoro-tts-linux-x64.tar.gz",
+          "expectedSizeBytes": 192643101,
+          "sha256": "621cd4611914eda731d33156588bb94c68911c1bd694ece75731a0c3d8788831",
+          "format": "tar.gz",
+          "stripComponents": 0,
+          "inventorySha256": "e2c326ef87d12eab8868253173cc0bd73ae61644919c6415336759ae2588b281"
+        }
+      }
+    },
+    {
+      "platform": "linux",
+      "architecture": "arm64",
+      "tier": "cli-only",
+      "runtimes": {}
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "modelId": "z-image-turbo-q4_0",
+  "displayName": "Z-Image Turbo",
+  "kind": "image",
+  "provider": "Tongyi",
+  "family": "Z-Image",
+  "version": "Turbo",
+  "size": "6B",
+  "quant": "Q4_0",
+  "storageGb": 6.6,
+  "source": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
+  "repositoryRevision": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
+  "artifacts": [
+    {
+      "sourcePath": "z_image_turbo-Q4_0.gguf",
+      "filename": "z_image_turbo-Q4_0.gguf",
+      "expectedSizeBytes": 3683370944,
+      "sha256": "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5",
+      "role": "primary"
+    },
+    {
+      "sourcePath": "split_files/vae/ae.safetensors",
+      "filename": "z-image-ae.safetensors",
+      "expectedSizeBytes": 335304388,
+      "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+      "role": "supplementary",
+      "source": {
+        "repositoryUrl": "https://huggingface.co/Comfy-Org/z_image_turbo",
+        "revision": "08d04455279082882deaabc8d0d09fc914c071e1"
+      }
+    },
+    {
+      "sourcePath": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+      "filename": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+      "expectedSizeBytes": 2497281120,
+      "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+      "role": "supplementary",
+      "source": {
+        "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF",
+        "revision": "a06e946bb6b655725eafa393f4a9745d460374c9"
+      }
+    }
+  ],
+  "imageRuntime": {
+    "kind": "diffusion-qwen3",
+    "artifacts": {
+      "diffusionModel": "z_image_turbo-Q4_0.gguf",
+      "vae": "z-image-ae.safetensors",
+      "textEncoder": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+    },
+    "generation": {
+      "sampler": "euler",
+      "steps": 8,
+      "cfgScale": 1
+    }
+  },
+  "inputModalities": ["text"],
+  "outputModalities": ["image"],
+  "imageLaunchOptions": {
+    "diffusionFlashAttention": true
+  },
+  "capabilities": ["text-to-image"],
+  "commercialStatus": "open",
+  "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
+  "notes": "Distilled eight-step profile with separate VAE and Qwen3 Instruct encoder. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
+}
