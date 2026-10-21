@@ -2086,6 +2086,65 @@ do not scale it; Safari's page zoom and reflow at 320px still work. This
 is outside the gate's categories. Supporting it would mean setting the
 root to `-apple-system-body`, a type-scale change for its own review.
 
+### 17.10 Release candidate and the service drill (2026-10-21)
+
+**Release candidate 0.2.0** (57e132d7; fe3e004d and b621798a change only
+the Chat script, the tools and this document):
+- CI is green on macOS and Linux.
+- The dual contract suite passed 96 tests. Two failed on memory and timing
+  in the full run and passed when rerun:
+  - model management, which is difference 4 of §13.6;
+  - the video job failure: both gateways answered `insufficient_memory`,
+    sampled moments apart.
+- `tools/systemd-check.sh` passed all 24 steps.
+
+**Drill on a fresh copy, after #368 went live.**
+- **The copy and the swap target.** The copy was taken under the idle
+  preflight (0 inference started in the last 60 s), with key2 inside. The
+  TS build for the swap came from a `cdb45205` export (`bun run build`),
+  byte-identical to the live binary (sha256 `b304f542…`).
+- **Reduced mode.** Available memory stayed under 25 GiB for 10 minutes
+  (best 23.2 GiB), so the drill ran in its reduced mode (`LBGO_LIGHT=1`):
+  - the copy's active LLM was the 1.5B for the smokes;
+  - the replay sent no decision request;
+  - the preflight needed 14 GiB;
+  - the 12 GiB abort floor and the live `/health` watchdog stayed on.
+- **Deferred.** The smoke on qwen3.5-9b and the replay's decision request
+  wait for 25 GiB of headroom.
+
+| Step | Result |
+| --- | --- |
+| Media | No TTS, image or video model selected before the start; `lsof`: the copy listened only on loopback scratch ports |
+| Go service, throwaway label | Started, healthy; the plist runs the copy's binary; smoke on the 1.5B passed |
+| Replay and contract subset (key2) | Passed: 9 models listed and retrieved; chat; a stream of 3 chunks, then `[DONE]` |
+| `config apply --restart auto --wait` | Activation "restarted"; healthy on the new port; acknowledged |
+| `defaultLlmModels` (run 1) | Applied; `status`: "Default chat model: qwen3.5-9b-q4_k_m (Using Qwen3.5 9B: Qwen3.6 35B-A3B needs more free memory than is available.)" |
+| `config apply --restart never`, then `restart` | Pending restart recorded, applied, cleared |
+| Rollback: binary swap to TS | TS 0.1.0 restarted under the same label and plist path; smoke and replay passed; **16 s** to a passing smoke |
+| Forward to Go | Smoke passed in 14 s |
+| Removal | `uninstall --yes`: plist removed, label unloaded, copy root removed; the live label still loaded |
+| launchd | During the drill, only the throwaway label and its plist were added. Afterwards, labels and LaunchAgents were identical to before. Spotlight's transient `com.apple.mdworker.shared.*` workers churned and are recorded apart |
+| Guard | Lowest 19.0 GiB available; live `/health` 200 on all 20 probes |
+
+**Run 1.** The first run (same copy procedure) passed every product step,
+with 16 s to a rollback smoke. It failed five checks, each of them in the
+tooling:
+- two plist checks: `plutil`'s JSON escapes `/`, so the check now compares
+  `ProgramArguments.0` raw;
+- the contract subset's media-set assertion, which no longer applies to an
+  external gateway;
+- two launchd comparisons that counted Spotlight's transient workers.
+
+**`--no-auth` UI check on the copy.** Media was off, and the default list
+was `["qwen3.6-35b-a3b-iq4_nl_xl", "qwen3.5-9b-q4_k_m"]`.
+- Chat showed "Qwen3.5 9B" with "Using Qwen3.5 9B: Qwen3.6 35B-A3B needs
+  more free memory than is available."
+- With the 1.5B picked explicitly, a real reply arrived in 4.5 s.
+- The Settings card showed the same choice and reason.
+
+**Cleanup.** The copy and clones (`/private/tmp/lbgo-shadow`) and the TS
+builds were deleted. No throwaway label or plist remains.
+
 ## 18. Fit-aware default chat model (Go only; operator, 2026-10-21)
 
 A new capability; TS has no equivalent. The user's words: "Yes 3.6 should

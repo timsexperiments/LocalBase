@@ -90,7 +90,8 @@ serve)
   pick() { while :; do p=$((24000 + RANDOM % 6000)); [ $p = 24173 ] && continue; [ $p -ge 25611 ] && [ $p -le 25613 ] && continue
     lsof -nP -iTCP:$p -sTCP:LISTEN >/dev/null 2>&1 || { echo $p; return; }; done; }
   port=$(pick)
-  args=(--root "$root" serve --host 127.0.0.1 --port "$port"
+  # LBGO_NO_AUTH=1: the --no-auth UI check (loopback only; never a real cookie).
+  args=(--root "$root" serve ${LBGO_NO_AUTH:+--no-auth} --host 127.0.0.1 --port "$port"
     --llm-host 127.0.0.1 --llm-port "$(pick)" --stt-host 127.0.0.1 --stt-port "$(pick)"
     --tts-host 127.0.0.1 --tts-port "$(pick)" --image-host 127.0.0.1 --image-port "$(pick)"
     --video-host 127.0.0.1 --video-port "$(pick)")

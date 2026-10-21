@@ -89,8 +89,12 @@ watch() { # background guard; records the lowest available memory and live /heal
     sleep 2
   done
 }
-snap() { # launchd snapshot: loaded labels and the LaunchAgents directory
-  launchctl list | awk 'NR > 1 {print $3}' | sort > "$work/launchd-$1-labels.txt"
+snap() { # launchd snapshot: loaded labels and the LaunchAgents directory.
+  # Spotlight's transient com.apple.mdworker.shared.* workers come and go on
+  # their own; they are kept apart (launchd-<n>-transient.txt), not compared.
+  launchctl list | awk 'NR > 1 {print $3}' | sort > "$work/launchd-$1-all.txt"
+  grep -v '^com\.apple\.mdworker\.shared\.' "$work/launchd-$1-all.txt" > "$work/launchd-$1-labels.txt"
+  grep '^com\.apple\.mdworker\.shared\.' "$work/launchd-$1-all.txt" > "$work/launchd-$1-transient.txt"
   ls -1 "$HOME/Library/LaunchAgents" | sort > "$work/launchd-$1-agents.txt"
 }
 in_scratch() { [ "$1" -ge 24000 ] && [ "$1" -le 29999 ] && [ "$1" != 24173 ] && { [ "$1" -lt 25611 ] || [ "$1" -gt 25613 ]; }; }
@@ -143,7 +147,7 @@ wait_health "$gport" && ok "healthy on $gport" || bad "not healthy"
 check_ports && ok "the copy listens only on loopback scratch ports" || die "the copy listens outside the scratch range"
 snap during
 [ -e "$plist" ] && ok "plist installed for the throwaway label" || bad "no plist at $plist"
-plutil -extract ProgramArguments json -o - "$plist" | grep -q "\"$bin\"" && ok "plist runs $bin" || bad "plist program"
+[ "$(plutil -extract ProgramArguments.0 raw -o - "$plist")" = "$bin" ] && ok "plist runs $bin" || bad "plist program"
 smoke && ok "Go smoke" || bad "Go smoke"
 
 if [ -n "${LBGO_KEY_FILE:-}" ]; then
@@ -169,7 +173,7 @@ if [ -n "$defaults" ] && ! grep -q '^defaultLlmModels' "$work/doc-auto.toml" && 
     mv "$work/doc-auto.tmp" "$work/doc-auto.toml"
   with_defaults=1
 else
-  echo "skipping defaultLlmModels: [$defaults] are not all selected on the copy"
+  echo "skipping defaultLlmModels: already set on the copy, or [$defaults] not all selected"
 fi
 out=$(lb --json config apply --file "$work/doc-auto.toml" --wait 2>&1)
 echo "$out" | jq -c '.data | {activation: (.activation // .result.activation), pendingRestart}' 2>/dev/null
@@ -201,7 +205,7 @@ lb restart >/dev/null; rc=$?
 wait_health "$gport3" || bad "TS not healthy"
 smoke && ok "TS smoke" || bad "TS smoke"
 echo "rollback time to smoke: $(( $(date +%s) - t0 )) s" | tee "$work/rollback-time.txt"
-plutil -extract ProgramArguments json -o - "$plist" | grep -q "\"$bin\"" && ok "TS rewrote the plist under the same label and path" || bad "plist after TS"
+[ "$(plutil -extract ProgramArguments.0 raw -o - "$plist")" = "$bin" ] && ok "TS rewrote the plist under the same label and path" || bad "plist after TS"
 if [ -n "${LBGO_KEY_FILE:-}" ]; then
   LOCALBASE_CONTRACT_KEY="$(cat "$LBGO_KEY_FILE")" LOCALBASE_REPLAY=1 LOCALBASE_REPLAY_CHAT="$chat" LOCALBASE_REPLAY_DECISION="$decision" \
     go test ./contract -count=1 -run '^TestClientReplay$' -args -url "http://127.0.0.1:$gport3" >/dev/null 2>&1 && ok "replay on TS" || bad "replay on TS"
