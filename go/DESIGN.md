@@ -2050,7 +2050,7 @@ llama-server and sparse weights, so no model was loaded.
 | Return and Send | On touch, Return adds a line: the textarea holds `first line\nsecond line` and nothing is sent. Tapping Send submits, and the fake reply appears. ⌘/Ctrl-Enter sends only under `(pointer: fine)`, as in TS |
 | Apple accessibility audit: chat, picker, history drawer, Admin, Lab | No contrast, label or element-order issues. All hit-area issues on our elements are fixed (see below). Three findings remain, none from our markup: Safari's own toolbar reload button; one nil element with a zero frame, which also appears on a bare HTML probe page with no LocalBase code; and Dynamic Type (see below) |
 | axe-core, Chrome, 64 runs | Two violations found and fixed. The Voices recording input had no label (critical); it is now `aria-labelledby`. The chat composer sat outside any landmark (best practice); it is now a form landmark, "Message composer". The final run passed with no violations, including best practice |
-| Microphone dictation, end to end | Waits for the GPU hold to clear (it needs a real whisper) |
+| Microphone dictation, end to end | Passed (2026-10-21), through `tools/mic-check.sh` in desktop Chrome. A fake capture device plays a speech clip (macOS `say`, re-encoded with the pinned ffmpeg to plain 16-bit PCM). Chat's microphone records it through `getUserMedia`, the page encodes the browser WAV, and the gateway's transcription route runs the real whisper-server with whisper-tiny-en. The transcript was "Please remind me to water the plants tomorrow morning. Please remind me to water the" (the clip loops), 4.3 s after the first tap with about 4 s of recording. The iOS Simulator cannot be fed a clip, so iOS Safari's own capture was not exercised; Chrome needs its audio service in-process to read the file |
 
 **Hit areas on iOS.** iOS reports a link's or a label's frame as the frame
 of its text, not its box. Apple's audit therefore flags any text under
@@ -2074,6 +2074,11 @@ The fixes put text in controls at 16px:
 
 The Lab's "Choose one in Get models" is now a single link, with no stray
 "." text. `TestInteractiveTextAtLeast16px` keeps these fixes in place.
+
+A later run on a dedicated Simulator ("LBGO Check iPhone 17"), free of
+the other session's device runner, passed both tests. Its audit also
+flagged the picker's "Not installed" group heading (14px), which the
+fixture showed once an uninstalled model was selected; it is now 16px.
 
 **Dynamic Type** ("partially unsupported") is reported on every page.
 The UI sizes text in rem from a fixed root size, so iOS text-size settings

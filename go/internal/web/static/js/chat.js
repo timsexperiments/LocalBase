@@ -558,7 +558,7 @@ function renderPicker() {
   const unavailable = models.filter((m) => !m.ready);
   if (unavailable.length) {
     const h = document.createElement("h3");
-    h.className = "mt-2 text-sm font-semibold text-muted";
+    h.className = "mt-2 font-semibold text-muted";
     h.textContent = "Not installed";
     parts.push(h, ...unavailable.map(row));
   }
