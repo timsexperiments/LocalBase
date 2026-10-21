@@ -1693,8 +1693,8 @@ Each item is done, or waived on record by the operator.
      (folded into the rehearsal, §17.2 step 5).
 5. **A green build:** CI on macOS and Linux, a full dual contract run, and
    `tools/systemd-check.sh`, all on the release-candidate commit.
-6. **Version string: `0.2.0`** (operator decision). The `-go` suffix is
-   dropped at the release candidate.
+6. **Version string: `0.2.0`** (operator decision). The `-go` suffix was
+   dropped at the release candidate (2026-10-21).
 
 ### 17.2 Rehearsal on this Mac, against a copy of the live root
 

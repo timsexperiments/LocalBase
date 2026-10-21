@@ -25,7 +25,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
-const Version = "0.2.0-go"
+const Version = "0.2.0"
 
 // Server holds what handlers need. Construct with New.
 type Server struct {
