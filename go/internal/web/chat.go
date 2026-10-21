@@ -162,7 +162,3 @@ func (u *UI) chat(w http.ResponseWriter, r *http.Request) {
 		"DictationModel": u.dictationModel(),
 	})
 }
-
-func (u *UI) settings(w http.ResponseWriter, r *http.Request) {
-	u.render(w, r, "settings", map[string]any{})
-}

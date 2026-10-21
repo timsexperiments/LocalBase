@@ -14,13 +14,46 @@
     <p class="mt-2 text-sm font-semibold" role="status" data-history-status></p>
   </section>
 
+  <section aria-labelledby="generation-title" class="card mt-4 p-5">
+    <h2 id="generation-title" class="text-lg font-bold">Generation controls</h2>
+    <p class="mt-1 text-muted">Temperature, output length and the settings for images, video and speech are in Chat, under <span class="font-semibold text-ink">Generation controls</span> next to the message box. They apply until the page reloads and are not saved.</p>
+    <a href="/app/chat" class="btn btn-quiet mt-4" hx-boost="false">Open Chat</a>
+  </section>
+
+  {{with .Token}}{{template "hf-token" .}}{{end}}
+
   {{if and .Principal (not .NoAuth)}}
   <section aria-labelledby="account-title" class="card mt-4 p-5">
     <h2 id="account-title" class="text-lg font-bold">Account</h2>
-    <p class="mt-1 text-muted">You’re signed in to this LocalBase in this browser.</p>
+    <p class="mt-1 text-muted">{{with .Principal.Name}}Signed in as <span class="font-semibold text-ink wrap-anywhere">{{.}}</span> in this browser.{{else}}You’re signed in to this LocalBase in this browser.{{end}}</p>
+    {{with .Can}}<p class="mt-2 text-sm"><span class="font-semibold">You can:</span> <span class="text-muted">{{.}}</span></p>{{end}}
     <button type="button" class="btn btn-quiet mt-4" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>
   </section>
   {{end}}
 </section>
 <script type="module" src="{{asset "js/settings.js"}}"></script>
+{{end}}
+
+{{define "hf-token"}}
+<section id="hf-token" aria-labelledby="hf-token-title" class="card mt-4 p-5">
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <h2 id="hf-token-title" class="text-lg font-bold">Hugging Face token</h2>
+    {{if .Status}}<span class="badge">{{if eq .Source "saved"}}Saved{{else if eq .Source "env"}}From HF_TOKEN{{else}}Not set{{end}}</span>{{end}}
+  </div>
+  <p class="mt-1 text-sm text-muted">A token lets LocalBase download gated repositories you have accepted and raises the Hub rate limit. A <a class="text-accent underline" href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">read token</a> is enough. A saved token takes precedence over HF_TOKEN and is never shown again.</p>
+  <form class="mt-4 grid gap-3" hx-post="/app/settings/hf-token" hx-target="#hf-token" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <div class="grid gap-1">
+      <label for="hf-token-input" class="text-sm font-semibold">{{if eq .Source "saved"}}Replace token{{else}}Token{{end}}</label>
+      <input id="hf-token-input" class="input" type="password" name="token" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="hf_…" maxlength="256" required>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" name="action" value="save" class="btn btn-primary">{{if eq .Source "saved"}}Replace{{else}}Save{{end}}</button>
+      <button type="submit" name="action" value="validate" formnovalidate class="btn btn-quiet" {{if not (and .Status .Status.Configured)}}disabled{{end}}>Check token</button>
+      {{if eq .Source "saved"}}<button type="submit" name="action" value="clear" formnovalidate class="btn border border-danger-line bg-danger-soft text-danger hover:bg-hover">Clear saved token</button>{{end}}
+    </div>
+  </form>
+  {{if and (eq .Source "saved") .Status.EnvAvailable}}<p class="mt-3 text-sm text-muted">Clearing it falls back to HF_TOKEN.</p>{{end}}
+  {{with .Notice}}<p class="mt-3 text-sm font-semibold" role="status">{{.}}</p>{{end}}
+  {{with .Error}}<p class="mt-3 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
+</section>
 {{end}}

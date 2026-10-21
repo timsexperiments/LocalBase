@@ -122,6 +122,7 @@ func New(d Deps) *UI {
 	m.HandleFunc("GET /app", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/chat", http.StatusFound) })
 	m.HandleFunc("GET /app/chat", u.need("models:read", u.chat))
 	m.HandleFunc("GET /app/settings", u.need("models:read", u.settings))
+	m.HandleFunc("POST /app/settings/hf-token", u.mutating("models:manage", u.hfToken))
 	m.HandleFunc("GET /app/assets/{name...}", u.asset)
 	m.HandleFunc("GET /app/models", u.need("models:read", u.library))
 	m.HandleFunc("GET /app/models/get", u.need("models:read", u.getModels))
