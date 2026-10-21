@@ -97,3 +97,14 @@ func TestChatDictationNeedsTranscription(t *testing.T) {
 		t.Error("with inference:transcription the mic is missing")
 	}
 }
+
+// Chat tools are offered only for the generation permissions this person
+// holds; the page lists them in an inert data block.
+func TestChatToolPermissions(t *testing.T) {
+	p := &auth.Principal{Kind: "browser-session", ID: "u", Permissions: []string{"models:read", "inference:chat", "inference:speech"}}
+	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }})
+	body := get(u, "/app/chat").Body.String()
+	if !strings.Contains(body, `id="chat-permissions">["inference:speech"]</script>`) || !strings.Contains(body, `aria-label="Generation controls"`) {
+		t.Errorf("permissions block: %s", body[strings.Index(body, "chat-permissions")-40:][:120])
+	}
+}

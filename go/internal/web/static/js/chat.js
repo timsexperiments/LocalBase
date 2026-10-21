@@ -6,11 +6,13 @@
 // markdown.js.
 import {
   chatContext, compact, contextWindow, interruptReply, learnContext, overflowContext, phaseLabel, planCompaction,
-  promptBudget, readHistory, steerAbortReason, streamText, titleFrom, visibleMessages, writeHistory,
+  promptBudget, readHistory, steerAbortReason, titleFrom, toolOverhead, visibleMessages, writeHistory,
 } from "./chat-core.js";
 import { attachmentAccept, chatRequestError, readAttachments } from "./attachments.js";
 import { build, parse } from "./markdown.js";
 import { appendDictation, dictationUnavailable, startRecording, transcribe } from "./dictation.js";
+import { api, generationTools, jsonRequest, modelGenerationSettings, modelName, runChat, toolModels } from "./tools.js";
+import { settingsFields } from "./generation.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -68,8 +70,15 @@ const storage = (() => {
     return { getItem: (k) => items.get(k) ?? null, setItem: (k, v) => items.set(k, String(v)) };
   }
 })();
-// Prompt overhead the request adds beyond the messages (tool schemas, later).
-const overhead = 0;
+// Chat always budgets for the tool schemas and tool system prompt (TS).
+const overhead = toolOverhead;
+// The gateway's model metadata (for tools), loaded after the page.
+let catalog = [];
+const permissions = JSON.parse($("#chat-permissions").textContent || "[]");
+// Generation settings per model id, for this page only (TS).
+let preferences = {};
+const mediaUrls = [];
+
 
 const chatsOnly = () => conversations.filter((c) => c.workspace === "chat" && c.mode === "llm");
 
@@ -262,6 +271,58 @@ function chips(attachments, remove) {
   return ul;
 }
 
+// artifactNode shows a tool call: its progress, its error, or the media it
+// made (TS MediaCard). Media lives in this page only; history keeps text.
+function artifactNode(a) {
+  const section = document.createElement("section");
+  section.className = "artifact";
+  section.dataset.artifact = `${a.id}:${a.state}`;
+  const title = document.createElement("h3");
+  title.className = "text-sm font-semibold capitalize";
+  title.textContent = a.label.replaceAll("_", " ");
+  section.append(title);
+  if (a.state !== "complete") {
+    const p = document.createElement("p");
+    p.className = `text-sm ${a.state === "error" ? "text-danger" : "working text-muted"}`;
+    p.textContent = a.detail;
+    section.append(p);
+    return section;
+  }
+  const media = a.media;
+  if (media.kind === "image") {
+    const img = document.createElement("img");
+    img.src = media.url;
+    img.alt = "Generated from your prompt";
+    img.className = "max-h-[60dvh] w-auto max-w-full rounded-xl";
+    section.append(img);
+  } else {
+    const player = document.createElement(media.kind);
+    player.controls = true;
+    player.src = media.url;
+    player.className = "w-full max-w-full rounded-xl";
+    if (media.kind === "video") {
+      player.playsInline = true;
+      player.preload = "metadata";
+      player.setAttribute("aria-label", "Generated video");
+      player.addEventListener("error", () => {
+        const note = document.createElement("p");
+        note.setAttribute("role", "status");
+        note.className = "text-sm text-muted";
+        note.textContent = "This browser could not play the video. Download the MP4 to play it in another player.";
+        player.after(note);
+      }, { once: true });
+    }
+    section.append(player);
+  }
+  const download = document.createElement("a");
+  download.href = media.url;
+  download.download = `localbase.${media.kind === "image" ? "png" : media.kind === "audio" ? "wav" : media.format}`;
+  download.className = "md-copy";
+  download.textContent = `Download ${media.kind}`;
+  section.append(download);
+  return section;
+}
+
 function messageNode(m) {
   const article = document.createElement("article");
   article.dataset.id = m.id;
@@ -300,6 +361,7 @@ function messageNode(m) {
   body.className = "reply";
   body.append(...build(parse(m.text), codeBlock));
   article.append(body);
+  for (const a of m.artifacts ?? []) article.append(artifactNode(a));
   if (m.pending) {
     const working = document.createElement("p");
     working.className = "working text-sm text-muted";
@@ -387,6 +449,12 @@ function render() {
 function rerenderMessage(m) {
   const old = list.querySelector(`article[data-id="${CSS.escape(m.id)}"]`);
   const next = messageNode(m);
+  // Keep finished media players (and their playback) across re-renders.
+  if (old)
+    for (const section of next.querySelectorAll("[data-artifact$=\":complete\"]")) {
+      const kept = old.querySelector(`[data-artifact="${CSS.escape(section.dataset.artifact)}"]`);
+      if (kept) section.replaceWith(kept);
+    }
   if (old) old.replaceWith(next);
   else list.append(next);
   empty.hidden = true;
@@ -503,18 +571,7 @@ async function apiError(response) {
 }
 
 // post sends a chat-completions request as the signed-in person.
-async function post(body, signal) {
-  const response = await fetch("/app/api/v1/chat/completions", {
-    method: "POST",
-    signal,
-    credentials: "same-origin",
-    cache: "no-store",
-    headers: { "content-type": "application/json", "X-Localbase-UI": "1" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error(await apiError(response));
-  return response;
-}
+const post = (body, signal) => api("/v1/chat/completions", jsonRequest(body, signal));
 
 const dropWarning = (error) => `Couldn’t summarize earlier messages (${error}); they were dropped from the model’s context.`;
 
@@ -748,7 +805,7 @@ async function reply(conversation, model) {
   // whether anything was folded.
   let compaction = conversation.compaction;
   const compactHistory = async (context, force) => {
-    const plan = planCompaction({ messages: history, compaction, budget: promptBudget(context), overhead, force });
+    const plan = planCompaction({ messages: history, compaction, budget: promptBudget(context, modelGenerationSettings(preferences, model.id).llm.max_tokens), overhead, force });
     if (!plan) return false;
     setPhase("compacting");
     const result = await compact({ model, messages: history, compaction, ...plan, context, signal: controller.signal, post });
@@ -763,22 +820,39 @@ async function reply(conversation, model) {
   try {
     await compactHistory(contextWindow(storage, model), false);
     let streamed = false;
-    const chat = async () => streamText(
-      await post({ model: model.id, stream: true, messages: chatContext(history, compaction) }, controller.signal),
-      (t) => {
+    // The gateway's metadata for this model (tool calling); without it the
+    // reply is plain text.
+    const full = catalog.find((m) => m.id === model.id) ?? { id: model.id, catalog: { features: [], capabilityResolution: null } };
+    const chat = () => runChat({
+      preferences,
+      model: full,
+      models: catalog,
+      signal: controller.signal,
+      messages: chatContext(history, compaction),
+      toolsEnabled: true,
+      permissions,
+      append: (t) => {
         streamed = true;
         answer.text += t;
         update();
       },
-      (t) => {
+      reasoning: (t) => {
         streamed = true;
         if (phase.name !== "thinking") setPhase("thinking");
         answer.reasoning = (answer.reasoning ?? "") + t;
         update();
       },
-    );
+      artifact: (a) => {
+        answer.artifacts = [...(answer.artifacts ?? []).filter((x) => x.id !== a.id), a];
+        if (a.state !== "working") announce(a.state === "error" ? `${a.label.replaceAll("_", " ")} failed: ${a.detail}` : `${a.label.replaceAll("_", " ")} finished`);
+        update();
+      },
+      register: (url) => mediaUrls.push(url),
+      warning: warn,
+    });
+    let protocol;
     try {
-      await chat();
+      protocol = await chat();
     } catch (e) {
       // An overflow reports the real runtime context: learn it, compact to
       // fit, and retry once if nothing was streamed yet.
@@ -786,8 +860,9 @@ async function reply(conversation, model) {
       if (!size) throw e;
       learnContext(storage, model.id, size);
       if (!(await compactHistory(size, true))) throw e;
-      await chat();
+      protocol = await chat();
     }
+    answer.protocol = protocol;
   } catch (e) {
     if (controller.signal.aborted) {
       const steered = controller.signal.reason === steerAbortReason;
@@ -797,7 +872,7 @@ async function reply(conversation, model) {
     } else {
       outcome = "Reply failed";
       const message = e instanceof TypeError ? "LocalBase couldn’t be reached. Check the connection and retry." : e.message;
-      if (!answer.text && !answer.reasoning) conversation.messages.splice(conversation.messages.indexOf(answer), 1);
+      if (!answer.text && !answer.reasoning && !answer.artifacts?.length) conversation.messages.splice(conversation.messages.indexOf(answer), 1);
       else answer.interrupted = true;
       queueMicrotask(() => showError(message, () => retry(conversation)));
     }
@@ -816,6 +891,8 @@ async function reply(conversation, model) {
     save();
     if (conversation === active) render();
     if (outcome && outcome !== "Reply failed") announce(outcome);
+    // Pick up model changes made elsewhere (TS refreshes after each send).
+    loadCatalog();
   }
 }
 
@@ -837,7 +914,7 @@ async function compactNow() {
   const context = contextWindow(storage, model);
   let plan;
   try {
-    plan = planCompaction({ messages: conversation.messages, compaction: conversation.compaction, budget: promptBudget(context), overhead, force: true });
+    plan = planCompaction({ messages: conversation.messages, compaction: conversation.compaction, budget: promptBudget(context, modelGenerationSettings(preferences, model.id).llm.max_tokens), overhead, force: true });
   } catch (e) {
     showError(e.message);
     return;
@@ -950,9 +1027,76 @@ window.addEventListener("storage", (e) => {
   } catch {}
 });
 
+// --- generation controls ----------------------------------------------------------
+
+const generation = $("#generation");
+const toolMode = { generate_image: "image", generate_video: "video", synthesize_speech: "tts" };
+const modeLabel = { image: "Image", video: "Video", tts: "Speech" };
+
+function renderGeneration() {
+  const body = $("[data-generation-body]");
+  const parts = [];
+  const note = (text) => {
+    const p = document.createElement("p");
+    p.className = "text-sm text-muted";
+    p.textContent = text;
+    return p;
+  };
+  const model = catalog.find((m) => m.id === active.model);
+  const setFor = (id) => (settings) => {
+    preferences = { ...preferences, [id]: settings };
+  };
+  if (!model) {
+    parts.push(note("Choose an installed model to adjust its controls."));
+  } else {
+    const tools = generationTools(catalog, model, permissions);
+    parts.push(note(tools.length
+      ? `Chat tools: ${tools.map((t) => t.function.name.replaceAll("_", " ")).join(", ")}.`
+      : "Text chat only. Tools need a tool-calling chat model and installed media models."));
+    parts.push(note("These apply to the model wherever it runs: chat, its tools, Model Lab and the studios. They are not saved and reset when the page reloads. Blank fields use model defaults."));
+    const heading = document.createElement("h3");
+    heading.className = "font-bold";
+    heading.textContent = modelName(model);
+    parts.push(heading, settingsFields("llm", model, modelGenerationSettings(preferences, model.id), setFor(model.id)));
+    for (const tool of tools) {
+      const mode = toolMode[tool.function.name];
+      for (const target of toolModels(catalog, tool.function.name)) {
+        const details = document.createElement("details");
+        details.className = "reasoning";
+        const summary = document.createElement("summary");
+        summary.textContent = `${modelName(target)} · ${modeLabel[mode]}`;
+        details.append(summary, settingsFields(mode, target, modelGenerationSettings(preferences, target.id), setFor(target.id)));
+        parts.push(details);
+      }
+    }
+  }
+  body.replaceChildren(...parts);
+}
+
+$("[data-open-generation]").addEventListener("click", () => {
+  renderGeneration();
+  generation.showModal();
+});
+$("[data-close-generation]").addEventListener("click", () => generation.close());
+generation.addEventListener("click", (e) => {
+  if (e.target === generation) generation.close();
+});
+
+// The gateway's model metadata, as the TS UI loads it; tools and the
+// generation controls need its capabilities. Plain chat works without it.
+async function loadCatalog() {
+  try {
+    const body = await (await api("/_localbase/models")).json();
+    if (Array.isArray(body?.data)) catalog = body.data;
+  } catch {
+    // Tools stay off; the next page load tries again.
+  }
+}
+
 // --- start --------------------------------------------------------------------------
 
 select(new URLSearchParams(location.search).get("conversation") ?? "");
 render();
+if (canChat) loadCatalog();
 if (historyError) showError(historyError);
 if (canChat && matchMedia("(pointer: fine)").matches) input.focus();

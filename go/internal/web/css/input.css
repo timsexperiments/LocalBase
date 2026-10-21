@@ -206,6 +206,9 @@
   .reasoning[open] {
     @apply pb-3;
   }
+  .artifact {
+    @apply mt-3 grid justify-items-start gap-2 rounded-xl border border-line bg-surface p-3;
+  }
   .composer-box {
     @apply rounded-2xl border border-line bg-canvas focus-within:outline-2 focus-within:outline-accent;
   }

@@ -55,6 +55,7 @@ func (u *UI) chatModels(r *http.Request) []chatModel {
 		m.Tools = caps.Has("tool-calling")
 		out = append(out, m)
 	}
+	out = append(out, u.importedChatModels(r)...)
 	slices.SortStableFunc(out, func(a, b chatModel) int {
 		rank := func(m chatModel) int {
 			switch {
@@ -67,6 +68,41 @@ func (u *UI) chatModels(r *http.Request) []chatModel {
 		}
 		return rank(a) - rank(b)
 	})
+	return out
+}
+
+// importedChatModels are imported models (M3.5) for chat, which the API
+// serves like catalog ones. One is ready when a variant has all its files.
+func (u *UI) importedChatModels(r *http.Request) []chatModel {
+	if u.d.Library == nil {
+		return nil
+	}
+	entries, err := u.d.Library.Entries(r.Context())
+	if err != nil {
+		return nil
+	}
+	var out []chatModel
+	for i := range entries {
+		e := &entries[i]
+		if !e.Imported || !e.Model.HasTask("chat") {
+			continue
+		}
+		m := chatModel{ID: e.Model.ID, Name: e.Model.Name, Inputs: []string{"text"}, Tools: slices.Contains(e.Model.Capabilities, "tools")}
+		if m.Name == "" {
+			m.Name = m.ID
+		}
+		if slices.Contains(e.Model.Capabilities, "vision") {
+			m.Vision = true
+			m.Inputs = append(m.Inputs, "image")
+		}
+		for _, in := range u.d.Library.Inspect(e) {
+			if in.Complete() {
+				m.Ready = true
+				break
+			}
+		}
+		out = append(out, m)
+	}
 	return out
 }
 
@@ -103,7 +139,17 @@ func (u *UI) chat(w http.ResponseWriter, r *http.Request) {
 			ready++
 		}
 	}
+	// The generation permissions this person holds: tools are offered only
+	// for these (the API enforces them regardless).
+	perms := []string{}
+	for _, perm := range []string{"inference:image", "inference:video", "inference:speech"} {
+		if p.Can(perm) {
+			perms = append(perms, perm)
+		}
+	}
+	pb, _ := json.Marshal(perms)
 	u.render(w, r, "chat", map[string]any{
+		"PermissionsJSON": template.JS(pb),
 		// A JSON data block: never executed, and html/template escapes it
 		// for the script context.
 		"ModelsJSON": template.JS(b),

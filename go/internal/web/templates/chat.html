@@ -74,6 +74,7 @@
               <span data-dictate-icon>{{template "icon-mic"}}</span><span data-dictate-stop hidden>{{template "icon-stop"}}</span><span data-dictate-cancel hidden>{{template "icon-close"}}</span>
             </button>
             {{end}}
+            <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-open-generation aria-haspopup="dialog" aria-label="Generation controls" title="Generation controls" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-sliders"}}</button>
             <span class="min-w-0 flex-1 truncate px-1 text-sm text-muted" data-composer-note role="status"></span>
             <button type="button" class="btn btn-quiet shrink-0 text-sm" data-dictate-discard hidden>Discard</button>
             <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-stop hidden aria-label="Stop generation">{{template "icon-stop"}}</button>
@@ -98,7 +99,17 @@
   <form method="dialog" class="grid gap-2 overflow-y-auto p-4" data-picker-list></form>
 </dialog>
 
+<dialog id="generation" aria-labelledby="generation-title"
+  class="m-auto max-h-[85dvh] w-[min(32rem,calc(100vw-1.5rem))] rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40">
+  <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
+    <h2 id="generation-title" class="text-lg font-bold">Generation controls</h2>
+    <button type="button" class="btn btn-quiet size-11 p-0" data-close-generation aria-label="Close">{{template "icon-close"}}</button>
+  </div>
+  <div class="grid gap-4 overflow-y-auto p-5" data-generation-body></div>
+</dialog>
+
 <script type="application/json" id="chat-models">{{.ModelsJSON}}</script>
+<script type="application/json" id="chat-permissions">{{.PermissionsJSON}}</script>
 <script type="module" src="{{asset "js/chat.js"}}"></script>
 {{end}}
 
@@ -134,3 +145,4 @@
 {{define "icon-down"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>{{end}}
 {{define "icon-clip"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 13 7-7a3 3 0 0 1 4 4l-9 9a5 5 0 0 1-7-7l9-9a1 1 0 0 1 4 4l-9 9a1 1 0 0 1-2-2l8-8"/></svg>{{end}}
 {{define "icon-mic"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></svg>{{end}}
+{{define "icon-sliders"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h7m4 0h5M4 17h3m4 0h9"/><circle cx="13" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>{{end}}
