@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -111,7 +112,15 @@ func (s *Server) domainError(w http.ResponseWriter, err error) bool {
 		"role-not-found":           {"role_not_found", 400},
 		"policy-conflict":          {"policy_conflict", 409},
 		"policy-revision-conflict": {"policy_revision_conflict", 409},
+		"self-lockout":             {"self_lockout", 409},
+		"last-manager":             {"last_manager", 409},
 	}[ae.Code]
+	if ae.Code == "self-lockout" || ae.Code == "last-manager" {
+		// Go-only lockout rules: the error carries its own explanation.
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, 409, map[string]any{"error": map[string]string{"code": mapped[0].(string), "message": ae.Message}})
+		return true
+	}
 	managementError(w, mapped[1].(int), mapped[0].(string))
 	return true
 }
@@ -343,6 +352,33 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		serviceUnavailable(w, r, "Access management")
 		return
 	}
+	// lockout refuses a change that would lock the caller or everyone out of
+	// access management (a Go addition; see auth.Guard). It reports whether
+	// it wrote a response.
+	lockout := func(email string, self bool, change func(*auth.Guard)) bool {
+		var perms []string
+		if current != nil {
+			perms = current.Permissions
+		}
+		g, err := auth.LoadGuard(ctx, s.Store, perms)
+		if err != nil {
+			serviceUnavailable(w, r, "Access management")
+			return true
+		}
+		var caller *auth.Identity
+		if p.Kind == "browser-session" {
+			caller = p.Identity
+		}
+		if self && g.IsCaller(caller, email) {
+			s.domainError(w, auth.ErrSelfRecord)
+			return true
+		}
+		if err := g.CheckChange(caller, change); err != nil {
+			s.domainError(w, err)
+			return true
+		}
+		return false
+	}
 	configured := func(cfg *auth.BrowserAccess) {
 		noStore(w, 200, map[string]any{"config": cfg.Summary(), "restartRequired": true})
 	}
@@ -467,6 +503,21 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	case "replace-user-roles", "enable-user", "disable-user", "remove-user":
 		var user *auth.User
 		var err error
+		if in.Action != "enable-user" && lockout(in.Email, in.Action != "replace-user-roles", func(next *auth.Guard) {
+			u := next.User(in.Email)
+			switch {
+			case u == nil:
+			case in.Action == "replace-user-roles":
+				u.Roles = in.Roles
+			case in.Action == "disable-user":
+				u.Status = "disabled"
+			default:
+				// Forgetting deletes the record: bindings apply again on sign-in.
+				next.Users = slices.DeleteFunc(next.Users, func(x auth.GuardUser) bool { return x.ID == u.ID })
+			}
+		}) {
+			return
+		}
 		switch in.Action {
 		case "replace-user-roles":
 			user, err = auth.ReplaceUserRoles(ctx, s.Store, in.Email, in.Roles)
@@ -497,6 +548,29 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		rev := auth.Revision(existing)
 		if (rev == nil) != (in.ExpectedRevision == nil) || (rev != nil && *rev != *in.ExpectedRevision) {
 			managementError(w, 409, "policy_revision_conflict")
+			return
+		}
+		if lockout("", false, func(next *auth.Guard) {
+			if in.Action == "clear-policy" {
+				// Managed users block clearing (TS refuses with policy_conflict);
+				// leave that refusal to ClearPolicy.
+				if len(next.Users) == 0 {
+					next.Policy = nil
+				}
+				return
+			}
+			// Judge the policy as it will be stored (normalized); an invalid
+			// one is left for ApplyPolicy to reject.
+			if in.Policy == nil {
+				return
+			}
+			candidate := *in.Policy
+			candidate.Roles = slices.Clone(candidate.Roles)
+			candidate.Bindings = slices.Clone(candidate.Bindings)
+			if candidate.Normalize() == nil {
+				next.Policy = &candidate
+			}
+		}) {
 			return
 		}
 		if in.Action == "clear-policy" {

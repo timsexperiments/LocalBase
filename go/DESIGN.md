@@ -1278,8 +1278,22 @@ item 5.
    disable or forget their own record, or save roles that leave them without
    `access:manage` (TS `assignedRolesGrantAccessManagement`). The API keeps
    its own rule: at least one reachable role must grant `access:manage`.
-   **Question for review:** should these self checks move into the API, for
-   CLI and API callers? That would diverge from TS. Default: no, the UI only.
+   **Decided in review (operator):** the rules live in the API, a deliberate
+   divergence from TS. Whoever calls it, `/_localbase/access-management`
+   refuses (409 `self_lockout`) a change that disables or forgets the
+   caller's own record, or leaves the caller without `access:manage`. It
+   also refuses (409 `last_manager`) a change that leaves nobody able to
+   manage access, including a policy clear while the provider-wide
+   permissions lack `access:manage`. Where TS has its own refusal (for
+   example, clearing a policy that has managed users), TS's error stays.
+   `local-base access` is the recovery path: it applies the change and warns
+   when nobody can manage access. Each successful admin change is logged as
+   `audit.access-changed` or `audit.api-key-changed`, with the action, the
+   actor kind and id (a hash for browser sessions) and the key id; never
+   emails, names or secrets. `auth.Guard` models the resolution
+   `ResolvePolicy` uses (`TestAccessLockout`); the differential script gives
+   the provider-wide permissions `access:manage` before its policy clear, so
+   both gateways still run the same steps.
 6. **First setup.** "Set up roles" creates TS `starterAccessPolicy`: an admin
    role for the person's verified email, and a member role with chat and
    `models:read`. It needs a verified email; `--no-auth` and API-key

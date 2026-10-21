@@ -217,6 +217,7 @@ func userCommand(name, summary, operation, verb, status string) *cli.Command {
 			return nil, accessError(err)
 		}
 		c.Info("%s %s.", verb, user.Email)
+		warnNoManager(c, e)
 		return map[string]any{"user": user}, nil
 	})}
 }
@@ -581,6 +582,7 @@ func accessCommand() *cli.Command {
 					return nil, accessError(err)
 				}
 				c.Info("Saved browser access policy. Changes apply immediately.")
+				warnNoManager(c, e)
 				return map[string]any{"policy": &policy, "restartRequired": false}, nil
 			})},
 			{Name: "test", Summary: "Evaluate a browser identity against the local policy", Options: []cli.Option{
@@ -642,6 +644,7 @@ func accessCommand() *cli.Command {
 				}
 				if cleared {
 					c.Info("Cleared browser access policy. Provider-wide permissions now apply.")
+					warnNoManager(c, e)
 				} else {
 					c.Info("Browser access policy was already clear.")
 				}
@@ -725,6 +728,7 @@ func accessCommand() *cli.Command {
 					return nil, accessError(err)
 				}
 				c.Info("Replaced roles for %s.", user.Email)
+				warnNoManager(c, e)
 				return map[string]any{"user": user}, nil
 			})},
 			userCommand("enable", "Enable a browser user", "enable a browser user", "Enabled", "active"),
@@ -758,4 +762,18 @@ func strictJSON(b []byte, v any) error {
 		return fmt.Errorf("%s", strings.TrimPrefix(err.Error(), "json: "))
 	}
 	return nil
+}
+
+// warnNoManager tells the operator when a change left nobody able to manage
+// browser access. The API refuses such changes; this command is the
+// recovery path, so it only warns.
+func warnNoManager(c *cli.Ctx, e *env) {
+	cfg, err := auth.LoadAccess(e.Root.Dir)
+	if err != nil || cfg == nil {
+		return
+	}
+	g, err := auth.LoadGuard(context.Background(), e.Store, cfg.Permissions)
+	if err == nil && !g.HasManager() {
+		c.Error("Warning: nobody can manage browser access now. Grant access:manage again with `local-base access users roles` or `local-base access policy apply`.")
+	}
 }
