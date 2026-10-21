@@ -1195,3 +1195,35 @@ C2PA is not passed through until they decide.
    (`testdata/hub/PINS`, `TestFixturesPinned`), and the golden script
    refuses to fetch unless `LOCALBASE_HUB_RECORD=1`. The removed-entry
    template fallback gets its golden with #368 (item 2).
+
+## 15. M3 UI pages: Chat, settings, admin, discovery
+
+The operator's order: Chat first (the user relies on it from a phone), then
+settings, admin and discovery, then a phone review, before M6. Design
+research: `.design/research/chat/BRIEF.md` (decisions D01–D10).
+
+### 15.1 Plan
+
+| Step | Scope | Evidence |
+| --- | --- | --- |
+| 1 | Chat core: `/app` opens Chat, with a compact header and drawer on phones and a sidebar from 1024 px. Model picker (ready chat models first), composer, streaming through `/app/api/v1/chat/completions` as the signed-in person, Stop, reasoning, markdown, copy, jump to latest, a status region, and every empty, error and permission state. History stays on the device, in TS's key and schema | JS cores checked against the TS functions in bun (history, chat context, the think splitter); markdown fixtures, including unsafe input; handler tests; browser checks at 320–1600 px in both themes |
+| 2 | Chat extras: attachments for vision models, dictation, send-now steering, compaction, generation settings, and generation tools | TS goldens for compaction and steering; browser checks |
+| 3 | Settings: the account, chat history (keep or clear), generation defaults, the Hugging Face token | Handler tests; browser checks |
+| 4 | Admin: API keys, browser users and roles, access | Permission tests against the API; browser checks |
+| 5 | Discovery page over `/_localbase/model-discovery` (§14 step 3), following the Shelf brief | Hub fixtures; browser checks |
+| 6 | Phone review: the iOS simulator and a real phone over a test port, with VoiceOver | Captures in both themes; the review notes |
+
+The client code is plain ES modules under `static/js`, served from 'self'
+under the existing CSP. There is no framework and no build step. Pure logic
+(history, chat context, reasoning split, markdown parsing) is kept apart
+from the DOM, so bun can test it against the TS functions
+(`go/tools/jstest`).
+
+### 15.2 Status
+
+| Step | State | Evidence |
+| --- | --- | --- |
+| 1 | Done | `go/tools/jstest`, run by `TestChatJSAgainstTS`: the chat core against the TS functions on the same inputs. This covers the think splitter under every chunking, `chatContext` with and without compaction, device history in both directions (TS-written history loads, and the Go page writes what TS writes, rejects what TS rejects, and strips what zod strips), and `streamText`, including truncation, error events and tool-call deltas. Markdown matches react-markdown with GFM on 21 fixtures; unsafe links lose their link, raw HTML stays text, and an unterminated fence still renders. `internal/web` tests cover the `/app` redirect, every page state, the permission state, Settings, and inert model JSON. Browser checks on the UI fixture with a real model, at 320, 390 and 1280 px in light and dark: a full turn with markdown and code, Stop ("Stopped", "Interrupted", focus back in the composer), the drawer (focus moves in, Escape returns it), history saved and restored, the unready model (draft kept, picker opens), a 503 with Retry, and no page overflow with long words, URLs, code and tables (code scrolls inside its block) |
+
+The phone keyboard (`interactive-widget`, the 16 px composer), VoiceOver,
+and Enter on touch screens are left for the phone review (step 6).

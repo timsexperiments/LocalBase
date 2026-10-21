@@ -127,3 +127,89 @@
     @apply w-full rounded-xl border border-line bg-canvas px-3 py-2 text-base text-ink placeholder:text-muted focus:outline-2 focus:outline-accent;
   }
 }
+
+/* Chat replies (markdown) and their code blocks. */
+@layer components {
+  .reply {
+    @apply min-w-0 wrap-anywhere leading-7;
+  }
+  .reply > * + * {
+    @apply mt-3;
+  }
+  .reply h3 {
+    @apply text-xl font-bold;
+  }
+  .reply h4 {
+    @apply text-lg font-bold;
+  }
+  .reply h5,
+  .reply h6,
+  .reply h7,
+  .reply h8 {
+    @apply font-bold;
+  }
+  .reply ul {
+    @apply list-disc pl-6;
+  }
+  .reply ol {
+    @apply list-decimal pl-6;
+  }
+  .reply li + li {
+    @apply mt-1;
+  }
+  .reply li > * + * {
+    @apply mt-2;
+  }
+  .reply a {
+    @apply font-semibold text-accent underline underline-offset-4;
+  }
+  .reply blockquote {
+    @apply border-l-4 border-line pl-4 text-muted;
+  }
+  .reply hr {
+    @apply border-line;
+  }
+  .reply :not(pre) > code {
+    @apply rounded-md bg-surface-muted px-1.5 py-0.5 text-[0.9em];
+  }
+  .md-code {
+    @apply overflow-hidden rounded-xl border border-line bg-surface;
+  }
+  .md-code-bar {
+    @apply flex items-center justify-between gap-2 border-b border-line bg-surface-muted pl-3 text-xs font-semibold text-muted;
+  }
+  .md-code pre {
+    @apply overflow-x-auto p-3 text-sm leading-6;
+  }
+  .md-copy {
+    @apply inline-flex min-h-11 items-center rounded-lg px-3 text-xs font-semibold text-muted hover:bg-hover hover:text-ink;
+  }
+  .md-table {
+    @apply overflow-x-auto;
+  }
+  .md-table table {
+    @apply w-full border-collapse text-sm;
+  }
+  .md-table th,
+  .md-table td {
+    @apply border border-line px-3 py-1.5 text-left align-top;
+  }
+  .md-table th {
+    @apply bg-surface-muted font-semibold;
+  }
+  .reasoning {
+    @apply mb-2 rounded-xl border border-line bg-surface px-3;
+  }
+  .reasoning summary {
+    @apply flex min-h-11 cursor-pointer items-center text-sm font-semibold text-muted;
+  }
+  .reasoning[open] {
+    @apply pb-3;
+  }
+}
+
+@layer components {
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+}

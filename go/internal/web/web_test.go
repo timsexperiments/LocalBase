@@ -34,11 +34,12 @@ func TestVendorPins(t *testing.T) {
 	}
 }
 
-// Templates parse and every page defines its main block.
+// Templates parse and every page defines its main block (or, like Chat,
+// replaces the whole page).
 func TestTemplatesParse(t *testing.T) {
 	u := New(Deps{})
 	for name, tpl := range u.pages {
-		if tpl.Lookup("main") == nil {
+		if tpl.Lookup("main") == nil && name != "chat" {
 			t.Errorf("%s has no main block", name)
 		}
 	}
