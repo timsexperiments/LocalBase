@@ -92,7 +92,9 @@ func (g *Guard) rolePerms(name string) []string {
 	return nil
 }
 
-func (g *Guard) roleManages(name string) bool { return slices.Contains(g.rolePerms(name), "access:manage") }
+func (g *Guard) roleManages(name string) bool {
+	return slices.Contains(g.rolePerms(name), "access:manage")
+}
 
 // linked is the managed user an identity signs in as: the one it is linked
 // to, else an invitation for its verified email (claimed on sign-in).
