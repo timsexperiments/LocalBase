@@ -1051,11 +1051,26 @@ Deliberate status changes to verify against the live clients at cutover:
    TS 500 `gateway_error`; Go 400 `validation_failed`.
 3. **The wrong method on a JSON inference route** (for example `GET
    /v1/chat/completions`): TS 400; Go 405 with `Allow: POST`.
-. **Model management while a runtime is up** (M5): TS reconciles a running
+4. **Model management while a runtime is up** (M5): TS reconciles a running
    runtime eagerly when the active model changes, so the model it switched to
    stays referenced and `uninstall` answers 409 `conflict` until
    reconciliation settles; Go switches on the next request and uninstalls a
    model no runtime holds.
+
+Operator-run steps for the cutover rehearsal, which no automated test
+covers because they need a real service manager:
+
+- **`config apply` restarting a launchd service.** Install the Go binary as
+  a service under a throwaway launchd label pointed at a scratch root and
+  port, never the live label or root. Then check that `config apply --file
+  <doc with a new gateway.port>` (default `--restart auto`) restarts it
+  (`activation: restarted`). Check that `--wait` returns once the restarted
+  gateway acknowledges the new settings (`pendingRestart: false`), and that
+  `config apply --restart never` followed by `local-base service restart`
+  clears the pending restart. Remove the label afterwards.
+- **Real OpenTelemetry Collector.** Run `go/tools/otelcol-check.sh`, which
+  uses the pinned `otelcol` 0.163.1 and verifies its checksum, against the
+  release candidate; see §14.3.
 
 The Lab and My voices pages (step 6) call the API in-process as the signed-in
 person (`gateway.Server.Call`), so they get exactly the API's validation,
@@ -1139,7 +1154,8 @@ C2PA is not passed through until they decide.
    OpenTelemetry Collector, core distribution `otelcol` 0.163.1 for
    darwin/arm64 (`otelcol_0.163.1_darwin_arm64.tar.gz`, sha256
    `664047e6ffd98ffaaf90d282bb481ffad46b1e8456f0b2f65e42d627d665d8d3`),
-   from `LOCALBASE_CONTRACT_OTELCOL`. It listens on a test port, never the
+   from `LOCALBASE_CONTRACT_OTELCOL` (or `go/tools/otelcol-check.sh`, which
+   downloads and verifies it). It listens on a test port, never the
    live collector on 127.0.0.1:4318, and writes what it parsed with its
    file exporter. Both gateways' span trees and log records, as the
    collector parsed them, match, and the Go export is accepted with no

@@ -66,6 +66,13 @@ service:
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		cmd.Wait()
 		logf.Close()
+		// The collector accepted everything: no errors, no rejected items.
+		b, _ := os.ReadFile(logf.Name())
+		for _, line := range strings.Split(string(b), "\n") {
+			if strings.Contains(line, "\terror\t") || strings.Contains(strings.ToLower(line), "rejected") {
+				t.Errorf("otelcol: %s", line)
+			}
+		}
 	}
 	deadline := time.Now().Add(20 * time.Second)
 	for {
