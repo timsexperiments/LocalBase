@@ -17,6 +17,7 @@ import {
 import { basename, join } from "node:path";
 import { z } from "zod";
 import { CATALOG, type ModelSpec } from "../../catalog";
+import { formerCatalogEntry } from "../../catalog/former";
 import { analyzeChatTemplate } from "./capability-detection";
 import type { Capability } from "../../catalog/capabilities";
 
@@ -1643,7 +1644,7 @@ function loraEntry(
   }>,
 ): Pick<GeneratedEntry, "spec" | "projector" | "detected" | "contextLength"> {
   const profile = IMAGE_LORA_BASES[base];
-  const template = CATALOG.find(({ modelId }) => modelId === profile.template);
+  const template = pipelineTemplate(profile.template);
   if (!template) {
     throw new HubError(
       `The ${profile.label} base model (${profile.template}) is missing from this LocalBase build.`,
@@ -1726,7 +1727,7 @@ function pipelineEntry(
   }>,
 ): Pick<GeneratedEntry, "spec" | "projector" | "detected" | "contextLength"> {
   const profile = IMAGE_PIPELINES[pipeline];
-  const template = CATALOG.find(({ modelId }) => modelId === profile.template);
+  const template = pipelineTemplate(profile.template);
   const runtime = template?.imageRuntime;
   if (!template || !runtime || runtime.kind === "checkpoint") {
     throw new HubError(
@@ -1781,4 +1782,17 @@ function pipelineEntry(
       notes: `${input.common.notes} ${profile.label} pipeline: the VAE and text encoders are the ones pinned by the ${template.modelId} profile.`,
     },
   };
+}
+
+/**
+ * The pinned entry a pipeline or LoRA profile borrows its encoders, VAE and
+ * runtime profile from. Profiles whose template left the built-in catalog
+ * keep using the pinned former entry (`catalog/former`), so discovering
+ * those repositories keeps working.
+ */
+function pipelineTemplate(modelId: string): ModelSpec | undefined {
+  return (
+    CATALOG.find((model) => model.modelId === modelId) ??
+    formerCatalogEntry(modelId)
+  );
 }

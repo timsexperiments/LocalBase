@@ -1,0 +1,29 @@
+{
+  "modelId": "gemma-3-12b-it-q4_k_m",
+  "displayName": "Gemma 3 12B IT",
+  "kind": "llm",
+  "provider": "Google",
+  "family": "Gemma",
+  "version": "3",
+  "size": "12B",
+  "quant": "Q4_K_M",
+  "storageGb": 8,
+  "source": "https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF",
+  "repositoryRevision": "648e3a36a77c8a9f12d86e741f9dcb9089c769c4",
+  "artifacts": [
+    {
+      "sourcePath": "google_gemma-3-12b-it-Q4_K_M.gguf",
+      "filename": "google_gemma-3-12b-it-Q4_K_M.gguf",
+      "expectedSizeBytes": 7300575264,
+      "sha256": "fc57f67efa46d711c346e587cbef7d049e95f3df8db2eb2271153343ef0acc7b",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
+  "capabilities": ["tool-calling", "reasoning"],
+  "commercialStatus": "conditional",
+  "catch": "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
+  "notes": "bartowski Q4_K_M GGUF of google/gemma-3-12b-it. GGUF header: architecture gemma3, 131,072-token training context. Text-only LocalBase entry; the vision projector is not included in the managed artifact set."
+}

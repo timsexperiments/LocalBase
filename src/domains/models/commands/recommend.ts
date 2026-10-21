@@ -50,7 +50,7 @@ export function runRecommend(
   shown.forEach((model, index) => {
     const fit = fits[index]!;
     execution.output.info(
-      `- ${model.modelId} (${model.storageGb.toFixed(2)} GB, min ${fit.minVramGb} GB ${fit.source}, features=${legacyFeatures(model).join("/")})`,
+      `- ${model.modelId} (${model.storageGb.toFixed(2)} GB, planning min ${fit.minVramGb} GB ${fit.source}, features=${legacyFeatures(model).join("/")})`,
     );
   });
   return {

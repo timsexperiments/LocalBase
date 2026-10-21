@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { byId, CATALOG, legacyFeatures, type ModelSpec } from "../../catalog";
+import { formerCatalogEntry } from "../../catalog/former";
 import { defaultConfig } from "../../manager";
 import { createRuntimeLifecycleSnapshot } from "../runtime/lifecycle-snapshot";
 import {
@@ -21,8 +22,9 @@ const speechModelId = "qwen3-tts-1.7b-base-q4_k_m";
 const embeddingModelId = "qwen3-embedding-0.6b-q8_0";
 const videoModelId = "wan2.1-t2v-1.3b-q8_0";
 
+// Several fixtures are former built-in entries; their pinned data still holds.
 function catalogModel(id = modelId) {
-  const model = byId(id);
+  const model = byId(id) ?? formerCatalogEntry(id);
   if (!model) throw new Error(`Expected catalog model ${id}.`);
   return model;
 }

@@ -403,7 +403,7 @@ test("disable preserves external persisted updates and read refreshes enabled st
 
 test("persisted Wan selection remains unavailable, disableable, and uninstallable without NVIDIA", async () => {
   const f = fixture();
-  const id = "wan2.1-t2v-1.3b-q8_0";
+  const id = "fastwan2.2-ti2v-5b-q6_k";
   f.database
     .get(f.root)
     .update(configTable)

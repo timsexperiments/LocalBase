@@ -8,7 +8,7 @@
   "version": "2.2",
   "size": "14B",
   "quant": "FP8",
-  "storageGb": 23.33,
+  "storageGb": 23.32,
   "source": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
   "repositoryRevision": "c4f60d30c55a624e35427060fdd217579a6c1d77",
   "artifacts": [
