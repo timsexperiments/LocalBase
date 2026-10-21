@@ -206,6 +206,15 @@
   .reasoning[open] {
     @apply pb-3;
   }
+  .compaction {
+    @apply rounded-xl border border-dashed border-line px-3;
+  }
+  .compaction summary {
+    @apply flex min-h-11 cursor-pointer items-center text-sm font-semibold text-muted;
+  }
+  .compaction[open] {
+    @apply pb-3;
+  }
 }
 
 @layer components {

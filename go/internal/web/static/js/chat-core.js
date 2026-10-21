@@ -325,3 +325,215 @@ export async function streamText(response, append, reasoning) {
 export function titleFrom(text) {
   return (text || "Attachments").slice(0, 60);
 }
+
+// --- compaction (TS compaction.ts) ------------------------------------------------
+
+/** Compact once the prompt would use this share of the context window. */
+export const compactionRatio = 0.75;
+/** The browser can't see the runtime slot context; assume this until an overflow reports it. */
+export const assumedRuntimeContext = 32_768;
+const fallbackContext = 8192;
+const messageOverhead = 8;
+const imageTokens = 1024;
+/** Tool schemas and the tool system prompt Chat adds. */
+export const toolOverhead = 1500;
+export const contextKey = "localbase.playground.context.v1";
+
+/** Rough token count: ~3.5 ASCII characters per token, one per other char. */
+export function estimateTextTokens(text) {
+  let ascii = 0;
+  let other = 0;
+  for (const char of text) {
+    if (char.charCodeAt(0) < 128) ascii++;
+    else other++;
+  }
+  return Math.ceil(ascii / 3.5) + other;
+}
+
+export function estimateTokens(messages) {
+  let total = 0;
+  for (const message of messages) {
+    total += messageOverhead;
+    if (typeof message.content === "string") total += estimateTextTokens(message.content);
+    else if (Array.isArray(message.content))
+      for (const part of message.content) total += part.type === "text" ? estimateTextTokens(part.text) : imageTokens;
+    if (message.role === "assistant")
+      for (const call of message.tool_calls ?? [])
+        total += messageOverhead + estimateTextTokens(call.function.name + call.function.arguments);
+  }
+  return total;
+}
+
+function learnedContexts(storage) {
+  try {
+    const value = JSON.parse(storage.getItem(contextKey) ?? "{}");
+    if (!value || typeof value !== "object") return {};
+    return Object.fromEntries(Object.entries(value).filter((e) => typeof e[1] === "number" && Number.isInteger(e[1]) && e[1] > 0));
+  } catch {
+    return {};
+  }
+}
+
+/** Context size reported by a llama.cpp overflow error, if the text is one. */
+export function overflowContext(message) {
+  const match = /available context size \((\d+) tokens\)/i.exec(message);
+  const size = match ? Number(match[1]) : NaN;
+  return Number.isSafeInteger(size) && size > 0 ? size : null;
+}
+
+/** Remembers a model's runtime context; returns false if unchanged. */
+export function learnContext(storage, modelId, size) {
+  const contexts = learnedContexts(storage);
+  if (contexts[modelId] === size) return false;
+  try {
+    storage.setItem(contextKey, JSON.stringify({ ...contexts, [modelId]: size }));
+  } catch {
+    // Best-effort; the next overflow reports the size again.
+  }
+  return true;
+}
+
+/** Best known runtime context for a chat model ({id, context}). */
+export function contextWindow(storage, model) {
+  const learned = learnedContexts(storage)[model.id];
+  if (learned) return learned;
+  return model.context ? Math.min(model.context, assumedRuntimeContext) : fallbackContext;
+}
+
+/** Prompt budget: leave room for the reply and stay under the ratio. */
+export function promptBudget(context, maxTokens) {
+  const reserve = Math.min(maxTokens ?? 1024, Math.floor(context / 2));
+  return Math.floor(Math.min(context * compactionRatio, context - reserve));
+}
+
+/**
+ * Chooses the messages to fold so the prompt fits `budget`, keeping at least
+ * the newest turn (a user message and what follows it) verbatim.
+ */
+export function planCompaction(options) {
+  const { messages, compaction, budget } = options;
+  const overhead = options.overhead ?? 0;
+  const visible = visibleMessages(messages, compaction);
+  const starts = visible.flatMap((message, index) => (message.role === "user" ? [index] : []));
+  const fits = (kept, extra) => overhead + estimateTokens(chatContext(kept)) + extra <= budget;
+  if (!options.force && fits(visible, compaction ? estimateTextTokens(compaction.summary) + 40 : 0)) return null;
+  for (let keep = options.keepTurns ?? 2; keep >= 1; keep--) {
+    const start = starts.at(-keep);
+    if (start === undefined || start === 0) continue;
+    const kept = visible.slice(start);
+    // Leave room for the summary that will replace the covered turns.
+    if (options.force || keep === 1 || fits(kept, Math.min(2048, Math.floor(budget / 4))))
+      return { covered: visible.slice(0, start), through: visible[start - 1] };
+  }
+  return null;
+}
+
+function middle(text, limit) {
+  if (text.length <= limit) return text;
+  const half = Math.max(0, Math.floor((limit - 20) / 2));
+  return `${text.slice(0, half)}\n[… ${text.length - half * 2} characters omitted …]\n${text.slice(-half)}`;
+}
+
+/** Plain-text transcript for the summarizer; reasoning and media are omitted. */
+export function transcript(messages, characters) {
+  const entries = messages.flatMap((message) => {
+    const names = (message.attachments ?? []).map(({ name }) => name);
+    const media = message.artifacts?.filter((a) => a.state === "complete");
+    const notes = [
+      ...(names.length ? [`[attached: ${names.join(", ")}]`] : []),
+      ...(message.attachmentsMissing && !names.length ? ["[attachments not available]"] : []),
+      ...(media?.length ? [`[generated: ${media.map((a) => a.label).join(", ")}]`] : []),
+      ...(message.interrupted ? [interruptedNote] : []),
+    ];
+    const text = [message.text.trim(), ...notes].filter(Boolean).join("\n");
+    return text ? [{ role: message.role === "user" ? "User" : "Assistant", text }] : [];
+  });
+  const share = Math.max(400, Math.floor(characters / (entries.length || 1)));
+  return entries.map(({ role, text }) => `${role}: ${middle(text, share)}`).join("\n\n");
+}
+
+export function stripThinking(text) {
+  return text.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/<think>[\s\S]*$/, "").trim();
+}
+
+const summaryPrompt =
+  "You compress chat history. Write a concise summary of the conversation below as short bullet points. Preserve facts, decisions, names, numbers, file names, code identifiers, user preferences, and open questions. Do not add commentary, do not answer the conversation, and do not mention that you are summarizing.";
+
+/** The summarizer request body (TS summarize). */
+export function summaryRequest(options) {
+  const maxTokens = Math.min(2048, Math.floor(options.context / 4));
+  // ~3 characters per token keeps the summarizer prompt within ~60% of context.
+  const characters = Math.max(2000, Math.floor(options.context * 0.6 * 3));
+  const previous = options.previous ? `Earlier summary:\n${middle(options.previous, Math.floor(characters / 4))}\n\n` : "";
+  return {
+    model: options.model.id,
+    stream: true,
+    temperature: 0.2,
+    max_tokens: maxTokens,
+    // Reasoning templates would otherwise spend the budget thinking.
+    chat_template_kwargs: { enable_thinking: false },
+    messages: [
+      { role: "system", content: summaryPrompt },
+      { role: "user", content: `${previous}Conversation:\n${transcript(options.messages, characters - previous.length)}` },
+    ],
+  };
+}
+
+/**
+ * Asks the chat model for a summary; throws when it fails or returns nothing.
+ * `post(body, signal)` sends a chat-completions request and resolves to an ok
+ * Response (or throws).
+ */
+export async function summarize(options) {
+  let content = "";
+  await streamText(await options.post(summaryRequest(options), options.signal), (text) => {
+    content += text;
+  });
+  const summary = stripThinking(content);
+  if (!summary) throw new Error("The model returned an empty summary.");
+  return summary.length > 12_000 ? `${summary.slice(0, 12_000)}…` : summary;
+}
+
+/**
+ * Compacts `covered` into the conversation's summary. If summarization fails
+ * (and was not cancelled), falls back to dropping those messages from context.
+ */
+export async function compact(options) {
+  const previous = options.compaction && options.messages.some(({ id }) => id === options.compaction?.through) ? options.compaction : undefined;
+  const count = (previous?.count ?? 0) + options.covered.length;
+  try {
+    const summary = await summarize({ ...options, messages: options.covered, previous: previous?.summary });
+    return { compaction: { through: options.through.id, summary, method: "summary", count } };
+  } catch (error) {
+    options.signal.throwIfAborted();
+    return {
+      // Keep the previous summary; only the newly covered turns are lost.
+      compaction: { through: options.through.id, summary: previous?.summary ?? "", method: "dropped", count },
+      error: error instanceof Error ? error.message : "Summarization failed.",
+    };
+  }
+}
+
+// --- steering (TS steering.ts) -----------------------------------------------------
+
+/** Abort reason for a reply interrupted by a steering message. */
+export const steerAbortReason = Symbol("steer");
+
+export function phaseLabel(phase, seconds) {
+  const label = phase === "compacting" ? "Compacting earlier messages" : phase === "thinking" ? "Thinking" : "Waiting for the model";
+  return seconds >= 1 ? `${label}… ${Math.floor(seconds)}s` : `${label}…`;
+}
+
+/**
+ * Marks a cut-short reply: its partial text is resent as context (without
+ * reasoning or half-finished tool protocol) and running tools show `detail`.
+ */
+export function interruptReply(message, detail) {
+  return {
+    ...message,
+    protocol: undefined,
+    interrupted: true,
+    artifacts: message.artifacts?.map((artifact) =>
+      artifact.state === "working" ? { id: artifact.id, label: artifact.label, state: "error", detail } : artifact),
+  };
+}

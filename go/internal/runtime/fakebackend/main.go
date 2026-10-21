@@ -8,6 +8,8 @@
 //
 // A last user message starting with "fake:" selects a behavior: "fake:reply <text>"
 // answers <text>, "fake:context" fails like an overflowing prompt,
+// "fake:overflow" fails the same way only while the request has more than
+// four messages (so a compacted retry succeeds),
 // "fake:reasoning" adds reasoning_content, "fake:truncated" ends a stream
 // without [DONE].
 package main
@@ -62,10 +64,10 @@ func main() {
 		content := fmt.Sprintf("hello from %s (max_tokens=%d)", name, int(maxTokens))
 		mode := lastUser(req)
 		switch {
-		case mode == "fake:context":
+		case mode == "fake:context", mode == "fake:overflow" && messageCount(req) > 4:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(400)
-			w.Write([]byte(`{"error":{"code":400,"message":"the request exceeds the available context size","type":"exceed_context_size_error","n_prompt_tokens":9000,"n_ctx":8192}}`))
+			w.Write([]byte(`{"error":{"code":400,"message":"request (9000 tokens) exceeds the available context size (8192 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":9000,"n_ctx":8192}}`))
 			return
 		case strings.HasPrefix(mode, "fake:reply "):
 			content = strings.TrimPrefix(mode, "fake:reply ")
@@ -124,6 +126,11 @@ func main() {
 		os.Exit(1)
 	}
 	http.Serve(ln, mux)
+}
+
+func messageCount(req map[string]any) int {
+	msgs, _ := req["messages"].([]any)
+	return len(msgs)
 }
 
 func lastUser(req map[string]any) string {
