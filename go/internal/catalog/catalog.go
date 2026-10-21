@@ -13,13 +13,15 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
 )
@@ -111,6 +113,9 @@ type Spec struct {
 	Origin    string `json:"-"`
 	Tier      string `json:"-"`
 	LayerPath string `json:"-"`
+	// PatchedFields are the top-level fields a higher tier changed, in
+	// schema order.
+	PatchedFields []string `json:"-"`
 }
 
 func (s *Spec) Name() string {
@@ -265,6 +270,19 @@ type RemoteLayer struct {
 // Load reads the built-in catalog and the user layer under userDir (may be "").
 func Load(userDir string) (*Catalog, error) { return LoadLayers(userDir, nil) }
 
+// specKeyOrder is specKeys in schema order (TS SPEC_KEYS).
+var specKeyOrder = func() []string {
+	var out []string
+	t := reflect.TypeOf(Spec{})
+	for i := 0; i < t.NumField(); i++ {
+		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if name != "" && name != "-" {
+			out = append(out, name)
+		}
+	}
+	return out
+}()
+
 // specKeys are the top-level fields a catalog entry may set.
 var specKeys = func() map[string]bool {
 	out := map[string]bool{}
@@ -281,6 +299,7 @@ var specKeys = func() map[string]bool {
 type layered struct {
 	raw                       map[string]json.RawMessage
 	trust, origin, tier, path string
+	patched                   []string
 }
 
 // LoadLayers composes the built-in catalog, the remote layer (nil when the
@@ -354,22 +373,36 @@ func LoadLayers(userDir string, remote *RemoteLayer) (*Catalog, error) {
 		c.Annotations = remote.Annotations
 	}
 	if userDir != "" {
-		files, _ := filepath.Glob(filepath.Join(userDir, "*.json"))
-		sort.Strings(files)
-		for _, path := range files {
-			b, err := os.ReadFile(path)
-			if err != nil {
-				c.Diagnostics = append(c.Diagnostics, Diagnostic{Tier: "user", Path: path, Message: err.Error()})
-				continue
+		files, fileDiags := readUserLayer(userDir)
+		c.Diagnostics = append(c.Diagnostics, fileDiags...)
+		seen := map[string]string{}
+		for _, f := range files {
+			path := f.path
+			report := func(modelID, msg string) {
+				c.Diagnostics = append(c.Diagnostics, Diagnostic{Tier: "user", Path: path, ModelID: modelID, Message: msg})
 			}
 			var m map[string]json.RawMessage
-			if err := json.Unmarshal(b, &m); err != nil {
-				c.Diagnostics = append(c.Diagnostics, Diagnostic{Tier: "user", Path: path, Message: "the file must contain one JSON object: " + err.Error()})
+			if json.Unmarshal(f.data, &m) != nil || m == nil {
+				report("", "The file must contain one JSON object (a model spec).")
 				continue
 			}
 			var id string
 			if json.Unmarshal(m["modelId"], &id) != nil || id == "" {
-				c.Diagnostics = append(c.Diagnostics, Diagnostic{Tier: "user", Path: path, Message: "modelId is required"})
+				report("", `The entry needs a non-empty "modelId".`)
+				continue
+			}
+			var unknown []string
+			for _, k := range jsonKeys(f.data) {
+				if !specKeys[k] {
+					unknown = append(unknown, k)
+				}
+			}
+			if len(unknown) > 0 {
+				report(id, "Unknown field(s): "+strings.Join(unknown, ", ")+".")
+				continue
+			}
+			if earlier, dup := seen[id]; dup {
+				report(id, fmt.Sprintf("Duplicate entry for %q; %s wins.", id, earlier))
 				continue
 			}
 			base, exists := entries[id]
@@ -380,28 +413,40 @@ func LoadLayers(userDir string, remote *RemoteLayer) (*Catalog, error) {
 				}
 			}
 			changedLaunch := false
+			changed := map[string]bool{}
 			for k, v := range m {
-				if exists && launchShaped[k] && !sameJSON(base.raw[k], v) {
-					changedLaunch = true
+				if exists && !sameJSON(base.raw[k], v) {
+					changed[k] = true
+					changedLaunch = changedLaunch || launchShaped[k]
 				}
 				merged[k] = v
 			}
 			if _, err := decodeStrict(merged); err != nil {
-				c.Diagnostics = append(c.Diagnostics, Diagnostic{Tier: "user", Path: path, ModelID: id, Message: err.Error()})
+				prefix := "The entry is invalid: "
+				if exists {
+					prefix = "The patched entry is invalid: "
+				}
+				report(id, prefix+describeDecodeError(err))
 				continue
 			}
-			switch {
-			case !exists:
+			seen[id] = path
+			if !exists {
 				entries[id] = &layered{raw: merged, trust: "user", origin: "user", tier: "user", path: path}
 				ids = append(ids, id)
-			default:
-				next := *base
-				next.raw, next.tier, next.path = merged, "user", path
-				if changedLaunch && (base.trust == "qualified" || base.trust == "community") {
-					next.trust = "modified"
-				}
-				entries[id] = &next
+				continue
 			}
+			next := *base
+			next.raw, next.tier, next.path = merged, "user", path
+			next.patched = nil
+			for _, k := range specKeyOrder {
+				if changed[k] || slices.Contains(base.patched, k) {
+					next.patched = append(next.patched, k)
+				}
+			}
+			if changedLaunch && (base.trust == "qualified" || base.trust == "community") {
+				next.trust = "modified"
+			}
+			entries[id] = &next
 		}
 	}
 	for _, id := range ids {
@@ -411,6 +456,7 @@ func LoadLayers(userDir string, remote *RemoteLayer) (*Catalog, error) {
 			return nil, fmt.Errorf("catalog entry %s: %w", id, err)
 		}
 		s.Trust, s.Origin, s.Tier, s.LayerPath = e.trust, e.origin, e.tier, e.path
+		s.PatchedFields = append([]string{}, e.patched...)
 		c.Models = append(c.Models, s)
 		c.byID[id] = s
 	}
@@ -465,4 +511,82 @@ func (s *Spec) Projector() *Artifact {
 		}
 	}
 	return nil
+}
+
+type userFile struct {
+	path string
+	data json.RawMessage
+}
+
+// readUserLayer reads catalog.d/*.json in name order (TS
+// loadUserCatalogLayer); files it cannot use are reported, not fatal.
+func readUserLayer(dir string) ([]userFile, []Diagnostic) {
+	names, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+			return nil, nil
+		}
+		return nil, []Diagnostic{{Tier: "user", Path: dir, Message: "The user catalog directory could not be read: " + err.Error()}}
+	}
+	var files []userFile
+	var diags []Diagnostic
+	for _, n := range names {
+		if !strings.HasSuffix(n.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(dir, n.Name())
+		st, err := os.Lstat(path)
+		switch {
+		case err != nil:
+			diags = append(diags, Diagnostic{Tier: "user", Path: path, Message: "Skipped: unreadable (" + err.Error() + ")."})
+			continue
+		case !st.Mode().IsRegular():
+			diags = append(diags, Diagnostic{Tier: "user", Path: path, Message: "Skipped: not a regular file."})
+			continue
+		case st.Size() > 1<<20:
+			diags = append(diags, Diagnostic{Tier: "user", Path: path, Message: "Skipped: larger than 1 MiB."})
+			continue
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			diags = append(diags, Diagnostic{Tier: "user", Path: path, Message: "Skipped: unreadable (" + err.Error() + ")."})
+			continue
+		}
+		if !json.Valid(b) {
+			var v any
+			msg := "invalid JSON"
+			if err := json.Unmarshal(b, &v); err != nil {
+				msg += " (" + err.Error() + ")"
+			}
+			diags = append(diags, Diagnostic{Tier: "user", Path: path, Message: "Skipped: " + msg + "."})
+			continue
+		}
+		files = append(files, userFile{path, b})
+	}
+	return files, diags
+}
+
+// describeDecodeError words a decoding failure as TS describes a zod issue
+// where the cause is a field of the wrong JSON type.
+func describeDecodeError(err error) string {
+	var te *json.UnmarshalTypeError
+	if errors.As(err, &te) {
+		expected := "object"
+		switch te.Type.Kind() {
+		case reflect.String:
+			expected = "string"
+		case reflect.Bool:
+			expected = "boolean"
+		case reflect.Float32, reflect.Float64, reflect.Int, reflect.Int64, reflect.Int32:
+			expected = "number"
+		case reflect.Slice, reflect.Array:
+			expected = "array"
+		}
+		received := map[string]string{"bool": "boolean"}[te.Value]
+		if received == "" {
+			received = te.Value
+		}
+		return te.Field + ": Invalid input: expected " + expected + ", received " + received
+	}
+	return err.Error()
 }

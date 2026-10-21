@@ -50,7 +50,7 @@ var eventNameRe = regexp.MustCompile(`^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$`)
 
 // parseEvent accepts a line that looks like a schema-2 event.
 func parseEvent(line []byte) (*Event, bool) {
-	if len(line) == 0 || len(line) > maxLineBytes {
+	if len(line) == 0 || len(line) > maxLineBytes || !validEvent(line) {
 		return nil, false
 	}
 	var head struct {

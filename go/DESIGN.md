@@ -1096,6 +1096,7 @@ messages it needs (resource, scope, spans, log records, attributes) directly.
 | 2 | Done | `catalog` goldens from `tools/golden/feed.ts` (the published `catalog/feed-v2.json` and v1 feed, crafted documents, tolerant annotation parsing, URL rules, all 76 built-in models' summaries, peaks and marks); `jsjson` goldens (JSON.stringify of parsed JSON); `TestCLIFeed` (status, use, refresh with ETag and failures, `models show` text and JSON, catalog fit and capability filters with feed peaks and marks applied); `TestFeedSchedulerReloadsCatalog` |
 | 3 | Done | `hub` goldens from `tools/golden/hub.ts`: 37 recorded Hub responses replayed offline (14 repositories: GGUF with quants, a projector and shards, a decision model, whisper.cpp, SDXL, FLUX.1, an SDXL LoRA, LCM and v-prediction checkpoints, gated and missing repositories; searches); kind detection, file choices, every generated entry, searches, previews with fit and feed notes, and discovery match TS. `TestCLIHubGolden` (the TS command handlers' output lines, JSON, catalog files and errors, byte for byte), `TestDifferentialModelDiscoveryRejections`, `TestModelDiscoveryEndToEnd` |
 | 4 | Done | `TestCLIConfigDeclarative` (twin roots: 40 invalid documents with the JSON envelope and the raw message before redaction compared, plans, `--detailed-exit-code`, apply with `--restart never`, `--wait` refused without a gateway, apply creating a fresh root, stdin, human output, and each CLI reading the other's pending restart), `TestCLIConfigForegroundGateway` (automatic restart refused next to a foreground gateway; unchanged apply with `--wait`), `TestDeclarativeGolden` (`tools/golden/config.ts`: 54 documents, their messages before redaction, normalized configurations, plans against saved, pending and absent configurations, and renderings; runs in CI), `TestStaticFingerprintMatchesTypeScript`, `TestPendingRestartLifecycle`, `TestDocumentKeyOrder` |
+| 5 | Done | `TestCLIDiagnostics` (twin roots with planted secrets in log messages, errors, attributes and identifiers, a launch-shaped catalog patch, an invalid catalog file, a credentialed feed URL, OTLP environment headers and captured service stderr: the manifests match field for field, `logs/events.jsonl` byte for byte, the human output line for line, no secret reaches either archive; an uninitialized root; the output rules, with an existing file never replaced), `TestEventsGolden` (`tools/golden/logs.ts`: 50 lines, which ones the reader keeps and their redacted diagnostics form; runs in CI) |
 
 The feed brings three Go structures with it. `internal/jsjson` reproduces
 JavaScript's JSON round trip (property order, number formatting), which the
@@ -1106,3 +1107,11 @@ check downloads a new feed. Feed peaks rank between checked-in measurements
 and estimates in every memory figure and in admission (LLM and media), and
 feed capability marks join the spec's own in capability resolution; both
 apply only to an exact repository, revision and file match.
+
+Diagnostics brought two reader changes. The log reader now applies the full
+TS event schema (strict keys, identifiers, routes, attribute names and
+values), so `logs` and diagnostics keep exactly the lines TS keeps. User
+catalog files are reported with the TS wording, in the TS order (unreadable
+files first, then entries), and record which fields a patch changed; a
+wrong-typed field is worded as zod words it, while other validation failures
+keep the Go wording.
