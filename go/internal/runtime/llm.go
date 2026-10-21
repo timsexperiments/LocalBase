@@ -484,7 +484,9 @@ func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.De
 	}
 	b.key = key
 	m.install(b)
-	if m.d.Activate != nil && (t == nil || !t.Imported) {
+	// Only a chat model becomes the active LLM: a decision or embedding
+	// request must not make the next default a model that rejects chat.
+	if m.d.Activate != nil && (t == nil || !t.Imported) && m.isChat(modelID) {
 		m.d.Activate("llm", modelID)
 	}
 	return demand, nil

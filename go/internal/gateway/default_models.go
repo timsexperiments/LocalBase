@@ -65,8 +65,13 @@ func (s *Server) defaultChatModelsAPI(w http.ResponseWriter, r *http.Request) {
 			}
 			seen[id] = true
 		}
-		c.Active["llm"], c.DefaultLLMs = in.Models[0], nil
-		if len(in.Models) >= 2 {
+		// One model is the active LLM itself. A list leaves activeLlmModel
+		// alone: TS launches it at start after a rollback, without the fit
+		// fallback.
+		c.DefaultLLMs = nil
+		if len(in.Models) == 1 {
+			c.Active["llm"] = in.Models[0]
+		} else {
 			c.DefaultLLMs = slices.Clone(in.Models)
 		}
 		return nil

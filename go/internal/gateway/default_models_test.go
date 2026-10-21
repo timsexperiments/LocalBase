@@ -40,8 +40,9 @@ func TestDefaultChatModelsAPI(t *testing.T) {
 	if r.status != 200 || !strings.Contains(r.body, `"preferredModelId":"qwen3.5-4b-q4_k_m"`) {
 		t.Fatalf("post: %d %s", r.status, r.body)
 	}
+	// A list leaves activeLlmModel alone (a rollback to TS launches it).
 	got := llm.Config()
-	if len(got.DefaultLLMs) != 2 || got.DefaultLLMs[0] != "qwen3.5-4b-q4_k_m" || got.Active["llm"] != "qwen3.5-4b-q4_k_m" {
+	if len(got.DefaultLLMs) != 2 || got.DefaultLLMs[0] != "qwen3.5-4b-q4_k_m" || got.Active["llm"] != chatModel {
 		t.Errorf("config after post: defaults %v active %s", got.DefaultLLMs, got.Active["llm"])
 	}
 	// One model: the active model alone, no list.
