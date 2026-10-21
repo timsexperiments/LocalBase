@@ -1,0 +1,1561 @@
+[
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {},
+  "result": {
+   "enabled": false,
+   "tracesEndpoint": null,
+   "logsEndpoint": null,
+   "headers": {},
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "persistent",
+   "displayEndpoint": ""
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://env:4318"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://env:4318/v1/traces",
+   "logsEndpoint": "http://env:4318/v1/logs",
+   "headers": {},
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://env:4318/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://env:4318/prefix//"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://env:4318/prefix/v1/traces",
+   "logsEndpoint": "http://env:4318/prefix/v1/logs",
+   "headers": {},
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://env:4318/prefix//"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "https://traces.example/v1/traces"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://traces.example/v1/traces",
+   "logsEndpoint": null,
+   "headers": {},
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "https://traces.example/v1/traces"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "https://logs.example:8443/custom"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": null,
+   "logsEndpoint": "https://logs.example:8443/custom",
+   "headers": {},
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "https://logs.example:8443/custom"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "authorization=Bearer%20x"
+  },
+  "result": {
+   "enabled": false,
+   "tracesEndpoint": null,
+   "logsEndpoint": null,
+   "headers": {
+    "authorization": "Bearer x"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": ""
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_TRACES_HEADERS": "x-a=1",
+   "OTEL_EXPORTER_OTLP_LOGS_HEADERS": "x-b=2"
+  },
+  "result": {
+   "enabled": false,
+   "tracesEndpoint": null,
+   "logsEndpoint": null,
+   "headers": {},
+   "tracesHeaders": {
+    "x-a": "1"
+   },
+   "logsHeaders": {
+    "x-b": "2"
+   },
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": ""
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "always_on"
+  },
+  "result": {
+   "enabled": false,
+   "tracesEndpoint": null,
+   "logsEndpoint": null,
+   "headers": {},
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "always_on",
+   "source": "environment",
+   "displayEndpoint": ""
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "0.1"
+  },
+  "result": {
+   "enabled": false,
+   "tracesEndpoint": null,
+   "logsEndpoint": null,
+   "headers": {},
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0.1,
+   "sampler": "traceidratio",
+   "source": "environment",
+   "displayEndpoint": ""
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "parentbased_traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "1"
+  },
+  "result": {
+   "enabled": false,
+   "tracesEndpoint": null,
+   "logsEndpoint": null,
+   "headers": {},
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": ""
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER_ARG": "0.3"
+  },
+  "error": "OTEL_TRACES_SAMPLER_ARG: is only valid with traceidratio or parentbased_traceidratio"
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "2"
+  },
+  "error": "OTEL_TRACES_SAMPLER_ARG: Too big: expected number to be <=1"
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "bogus"
+  },
+  "error": "OTEL_TRACES_SAMPLER: Invalid option: expected one of \"always_on\"|\"always_off\"|\"traceidratio\"|\"parentbased_always_on\"|\"parentbased_always_off\"|\"parentbased_traceidratio\""
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"
+  },
+  "result": {
+   "enabled": false,
+   "tracesEndpoint": null,
+   "logsEndpoint": null,
+   "headers": {},
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": ""
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
+  },
+  "error": "OTEL_EXPORTER_OTLP_PROTOCOL: Invalid input: expected \"http/protobuf\""
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "ftp://x"
+  },
+  "error": "OTEL_EXPORTER_OTLP_ENDPOINT: must use http or https"
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://u:p@x"
+  },
+  "error": "OTEL_EXPORTER_OTLP_ENDPOINT: must not contain credentials, query parameters, or a fragment; use OTLP headers for authentication"
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://x/?q=1"
+  },
+  "error": "OTEL_EXPORTER_OTLP_ENDPOINT: must not contain credentials, query parameters, or a fragment; use OTLP headers for authentication"
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "content-type=x"
+  },
+  "error": "OTEL_EXPORTER_OTLP_HEADERS: OTLP header content-type is managed by the transport."
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "novalue"
+  },
+  "error": "OTEL_EXPORTER_OTLP_HEADERS: OTLP headers must use key=value."
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "a=1,A=2"
+  },
+  "error": "OTEL_EXPORTER_OTLP_HEADERS: OTLP header a is duplicated."
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "a=%zz"
+  },
+  "error": "OTEL_EXPORTER_OTLP_HEADERS: OTLP header a is not valid percent-encoding."
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": ""
+  },
+  "result": {
+   "enabled": false,
+   "tracesEndpoint": null,
+   "logsEndpoint": null,
+   "headers": {},
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "persistent",
+   "displayEndpoint": ""
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "abc"
+  },
+  "error": "OTEL_TRACES_SAMPLER_ARG: Invalid input: expected number, received NaN"
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "-0.5"
+  },
+  "error": "OTEL_TRACES_SAMPLER_ARG: Too small: expected number to be >=0"
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": " "
+  },
+  "result": {
+   "enabled": false,
+   "tracesEndpoint": null,
+   "logsEndpoint": null,
+   "headers": {},
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0,
+   "sampler": "traceidratio",
+   "source": "environment",
+   "displayEndpoint": ""
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "not a url",
+   "OTEL_EXPORTER_OTLP_HEADERS": "bad"
+  },
+  "error": "Invalid URL"
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "bogus",
+   "OTEL_TRACES_SAMPLER_ARG": "0.5"
+  },
+  "error": "OTEL_TRACES_SAMPLER: Invalid option: expected one of \"always_on\"|\"always_off\"|\"traceidratio\"|\"parentbased_always_on\"|\"parentbased_always_off\"|\"parentbased_traceidratio\""
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL": "http/json",
+   "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "ftp://t"
+  },
+  "error": "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: must use http or https; OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: Invalid input: expected \"http/protobuf\""
+ },
+ {
+  "config": {
+   "otelEndpoint": "",
+   "otelHeaders": "",
+   "otelSampleRatio": 100
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector.example:80/x"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector.example/x/v1/traces",
+   "logsEndpoint": "http://collector.example/x/v1/logs",
+   "headers": {},
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://collector.example/x"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {},
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector:4318/v1/traces",
+   "logsEndpoint": "http://collector:4318/v1/logs",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0.25,
+   "sampler": "parentbased_traceidratio",
+   "source": "persistent",
+   "displayEndpoint": "http://collector:4318/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://env:4318"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://env:4318/v1/traces",
+   "logsEndpoint": "http://env:4318/v1/logs",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0.25,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://env:4318/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://env:4318/prefix//"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://env:4318/prefix/v1/traces",
+   "logsEndpoint": "http://env:4318/prefix/v1/logs",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0.25,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://env:4318/prefix//"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "https://traces.example/v1/traces"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://traces.example/v1/traces",
+   "logsEndpoint": "http://collector:4318/v1/logs",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0.25,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "https://traces.example/v1/traces"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "https://logs.example:8443/custom"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector:4318/v1/traces",
+   "logsEndpoint": "https://logs.example:8443/custom",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0.25,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "https://logs.example:8443/custom"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "authorization=Bearer%20x"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector:4318/v1/traces",
+   "logsEndpoint": "http://collector:4318/v1/logs",
+   "headers": {
+    "authorization": "Bearer x"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0.25,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://collector:4318/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_TRACES_HEADERS": "x-a=1",
+   "OTEL_EXPORTER_OTLP_LOGS_HEADERS": "x-b=2"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector:4318/v1/traces",
+   "logsEndpoint": "http://collector:4318/v1/logs",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {
+    "x-a": "1"
+   },
+   "logsHeaders": {
+    "x-b": "2"
+   },
+   "sampleRatio": 0.25,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://collector:4318/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "always_on"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector:4318/v1/traces",
+   "logsEndpoint": "http://collector:4318/v1/logs",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "always_on",
+   "source": "environment",
+   "displayEndpoint": "http://collector:4318/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "0.1"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector:4318/v1/traces",
+   "logsEndpoint": "http://collector:4318/v1/logs",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0.1,
+   "sampler": "traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://collector:4318/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "parentbased_traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "1"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector:4318/v1/traces",
+   "logsEndpoint": "http://collector:4318/v1/logs",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://collector:4318/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER_ARG": "0.3"
+  },
+  "error": "OTEL_TRACES_SAMPLER_ARG: is only valid with traceidratio or parentbased_traceidratio"
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "2"
+  },
+  "error": "OTEL_TRACES_SAMPLER_ARG: Too big: expected number to be <=1"
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "bogus"
+  },
+  "error": "OTEL_TRACES_SAMPLER: Invalid option: expected one of \"always_on\"|\"always_off\"|\"traceidratio\"|\"parentbased_always_on\"|\"parentbased_always_off\"|\"parentbased_traceidratio\""
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector:4318/v1/traces",
+   "logsEndpoint": "http://collector:4318/v1/logs",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0.25,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://collector:4318/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
+  },
+  "error": "OTEL_EXPORTER_OTLP_PROTOCOL: Invalid input: expected \"http/protobuf\""
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "ftp://x"
+  },
+  "error": "OTEL_EXPORTER_OTLP_ENDPOINT: must use http or https"
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://u:p@x"
+  },
+  "error": "OTEL_EXPORTER_OTLP_ENDPOINT: must not contain credentials, query parameters, or a fragment; use OTLP headers for authentication"
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://x/?q=1"
+  },
+  "error": "OTEL_EXPORTER_OTLP_ENDPOINT: must not contain credentials, query parameters, or a fragment; use OTLP headers for authentication"
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "content-type=x"
+  },
+  "error": "OTEL_EXPORTER_OTLP_HEADERS: OTLP header content-type is managed by the transport."
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "novalue"
+  },
+  "error": "OTEL_EXPORTER_OTLP_HEADERS: OTLP headers must use key=value."
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "a=1,A=2"
+  },
+  "error": "OTEL_EXPORTER_OTLP_HEADERS: OTLP header a is duplicated."
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "a=%zz"
+  },
+  "error": "OTEL_EXPORTER_OTLP_HEADERS: OTLP header a is not valid percent-encoding."
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": ""
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector:4318/v1/traces",
+   "logsEndpoint": "http://collector:4318/v1/logs",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0.25,
+   "sampler": "parentbased_traceidratio",
+   "source": "persistent",
+   "displayEndpoint": "http://collector:4318/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "abc"
+  },
+  "error": "OTEL_TRACES_SAMPLER_ARG: Invalid input: expected number, received NaN"
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "-0.5"
+  },
+  "error": "OTEL_TRACES_SAMPLER_ARG: Too small: expected number to be >=0"
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": " "
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector:4318/v1/traces",
+   "logsEndpoint": "http://collector:4318/v1/logs",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0,
+   "sampler": "traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://collector:4318/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "not a url",
+   "OTEL_EXPORTER_OTLP_HEADERS": "bad"
+  },
+  "error": "Invalid URL"
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "bogus",
+   "OTEL_TRACES_SAMPLER_ARG": "0.5"
+  },
+  "error": "OTEL_TRACES_SAMPLER: Invalid option: expected one of \"always_on\"|\"always_off\"|\"traceidratio\"|\"parentbased_always_on\"|\"parentbased_always_off\"|\"parentbased_traceidratio\""
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL": "http/json",
+   "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "ftp://t"
+  },
+  "error": "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: must use http or https; OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: Invalid input: expected \"http/protobuf\""
+ },
+ {
+  "config": {
+   "otelEndpoint": "http://collector:4318",
+   "otelHeaders": "x-token=abc",
+   "otelSampleRatio": 25
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector.example:80/x"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector.example/x/v1/traces",
+   "logsEndpoint": "http://collector.example/x/v1/logs",
+   "headers": {
+    "x-token": "abc"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0.25,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://collector.example/x"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {},
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://otel.example.com/base/v1/traces",
+   "logsEndpoint": "https://otel.example.com/base/v1/logs",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0,
+   "sampler": "parentbased_traceidratio",
+   "source": "persistent",
+   "displayEndpoint": "https://otel.example.com/base/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://env:4318"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://env:4318/v1/traces",
+   "logsEndpoint": "http://env:4318/v1/logs",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://env:4318/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://env:4318/prefix//"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://env:4318/prefix/v1/traces",
+   "logsEndpoint": "http://env:4318/prefix/v1/logs",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://env:4318/prefix//"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "https://traces.example/v1/traces"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://traces.example/v1/traces",
+   "logsEndpoint": "https://otel.example.com/base/v1/logs",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "https://traces.example/v1/traces"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "https://logs.example:8443/custom"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://otel.example.com/base/v1/traces",
+   "logsEndpoint": "https://logs.example:8443/custom",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "https://logs.example:8443/custom"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "authorization=Bearer%20x"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://otel.example.com/base/v1/traces",
+   "logsEndpoint": "https://otel.example.com/base/v1/logs",
+   "headers": {
+    "authorization": "Bearer x"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "https://otel.example.com/base/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_TRACES_HEADERS": "x-a=1",
+   "OTEL_EXPORTER_OTLP_LOGS_HEADERS": "x-b=2"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://otel.example.com/base/v1/traces",
+   "logsEndpoint": "https://otel.example.com/base/v1/logs",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {
+    "x-a": "1"
+   },
+   "logsHeaders": {
+    "x-b": "2"
+   },
+   "sampleRatio": 0,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "https://otel.example.com/base/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "always_on"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://otel.example.com/base/v1/traces",
+   "logsEndpoint": "https://otel.example.com/base/v1/logs",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "always_on",
+   "source": "environment",
+   "displayEndpoint": "https://otel.example.com/base/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "0.1"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://otel.example.com/base/v1/traces",
+   "logsEndpoint": "https://otel.example.com/base/v1/logs",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0.1,
+   "sampler": "traceidratio",
+   "source": "environment",
+   "displayEndpoint": "https://otel.example.com/base/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "parentbased_traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "1"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://otel.example.com/base/v1/traces",
+   "logsEndpoint": "https://otel.example.com/base/v1/logs",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 1,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "https://otel.example.com/base/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER_ARG": "0.3"
+  },
+  "error": "OTEL_TRACES_SAMPLER_ARG: is only valid with traceidratio or parentbased_traceidratio"
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "2"
+  },
+  "error": "OTEL_TRACES_SAMPLER_ARG: Too big: expected number to be <=1"
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "bogus"
+  },
+  "error": "OTEL_TRACES_SAMPLER: Invalid option: expected one of \"always_on\"|\"always_off\"|\"traceidratio\"|\"parentbased_always_on\"|\"parentbased_always_off\"|\"parentbased_traceidratio\""
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://otel.example.com/base/v1/traces",
+   "logsEndpoint": "https://otel.example.com/base/v1/logs",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "https://otel.example.com/base/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
+  },
+  "error": "OTEL_EXPORTER_OTLP_PROTOCOL: Invalid input: expected \"http/protobuf\""
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "ftp://x"
+  },
+  "error": "OTEL_EXPORTER_OTLP_ENDPOINT: must use http or https"
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://u:p@x"
+  },
+  "error": "OTEL_EXPORTER_OTLP_ENDPOINT: must not contain credentials, query parameters, or a fragment; use OTLP headers for authentication"
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://x/?q=1"
+  },
+  "error": "OTEL_EXPORTER_OTLP_ENDPOINT: must not contain credentials, query parameters, or a fragment; use OTLP headers for authentication"
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "content-type=x"
+  },
+  "error": "OTEL_EXPORTER_OTLP_HEADERS: OTLP header content-type is managed by the transport."
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "novalue"
+  },
+  "error": "OTEL_EXPORTER_OTLP_HEADERS: OTLP headers must use key=value."
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "a=1,A=2"
+  },
+  "error": "OTEL_EXPORTER_OTLP_HEADERS: OTLP header a is duplicated."
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_HEADERS": "a=%zz"
+  },
+  "error": "OTEL_EXPORTER_OTLP_HEADERS: OTLP header a is not valid percent-encoding."
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": ""
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://otel.example.com/base/v1/traces",
+   "logsEndpoint": "https://otel.example.com/base/v1/logs",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0,
+   "sampler": "parentbased_traceidratio",
+   "source": "persistent",
+   "displayEndpoint": "https://otel.example.com/base/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "abc"
+  },
+  "error": "OTEL_TRACES_SAMPLER_ARG: Invalid input: expected number, received NaN"
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": "-0.5"
+  },
+  "error": "OTEL_TRACES_SAMPLER_ARG: Too small: expected number to be >=0"
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "traceidratio",
+   "OTEL_TRACES_SAMPLER_ARG": " "
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "https://otel.example.com/base/v1/traces",
+   "logsEndpoint": "https://otel.example.com/base/v1/logs",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0,
+   "sampler": "traceidratio",
+   "source": "environment",
+   "displayEndpoint": "https://otel.example.com/base/"
+  }
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "not a url",
+   "OTEL_EXPORTER_OTLP_HEADERS": "bad"
+  },
+  "error": "Invalid URL"
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_TRACES_SAMPLER": "bogus",
+   "OTEL_TRACES_SAMPLER_ARG": "0.5"
+  },
+  "error": "OTEL_TRACES_SAMPLER: Invalid option: expected one of \"always_on\"|\"always_off\"|\"traceidratio\"|\"parentbased_always_on\"|\"parentbased_always_off\"|\"parentbased_traceidratio\""
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL": "http/json",
+   "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "ftp://t"
+  },
+  "error": "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: must use http or https; OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: Invalid input: expected \"http/protobuf\""
+ },
+ {
+  "config": {
+   "otelEndpoint": "https://otel.example.com/base/",
+   "otelHeaders": "a=1,B=two%20words",
+   "otelSampleRatio": 0
+  },
+  "env": {
+   "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector.example:80/x"
+  },
+  "result": {
+   "enabled": true,
+   "tracesEndpoint": "http://collector.example/x/v1/traces",
+   "logsEndpoint": "http://collector.example/x/v1/logs",
+   "headers": {
+    "a": "1",
+    "b": "two words"
+   },
+   "tracesHeaders": {},
+   "logsHeaders": {},
+   "sampleRatio": 0,
+   "sampler": "parentbased_traceidratio",
+   "source": "environment",
+   "displayEndpoint": "http://collector.example/x"
+  }
+ }
+]

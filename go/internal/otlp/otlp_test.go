@@ -295,3 +295,39 @@ func TestSamplingAndDisabled(t *testing.T) {
 	off.Emit(nil)
 	off.Shutdown()
 }
+
+// A collector that never answers cannot hold shutdown past the close
+// deadline, and the lost batch is reported.
+func TestShutdownWithHungCollector(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+	cfg, _ := obs.ResolveOtel(srv.URL, "", 100, func(string) string { return "" })
+	var mu sync.Mutex
+	var diags []string
+	rt := New(cfg, "test", func(sev, msg string, attrs map[string]any) {
+		mu.Lock()
+		defer mu.Unlock()
+		diags = append(diags, msg+" "+fmt.Sprint(attrs["detail"]))
+	})
+	_, s := rt.Start(context.Background(), "x", KindServer)
+	s.End()
+	start := time.Now()
+	rt.Shutdown()
+	if d := time.Since(start); d > closeDeadline+2*time.Second {
+		t.Errorf("shutdown took %v", d)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	joined := strings.Join(diags, "\n")
+	if !strings.Contains(joined, "OTLP export failed.") ||
+		!(strings.Contains(joined, "request timed out after 5000 ms") || strings.Contains(joined, "exporter closed")) {
+		t.Errorf("diagnostics: %v", diags)
+	}
+}

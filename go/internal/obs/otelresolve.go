@@ -1,7 +1,7 @@
 package obs
 
 import (
-	"fmt"
+	"errors"
 	"math"
 	"net/url"
 	"slices"
@@ -44,6 +44,7 @@ func SignalEndpoint(base, signal string) string {
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/v1/" + signal
 	u.RawPath = ""
+	u.Host = whatwgHost(u)
 	return u.String()
 }
 
@@ -57,51 +58,68 @@ func ResolveOtel(endpoint, headers string, samplePercent int, getenv func(string
 			env[name] = v
 		}
 	}
+	// The TS otelEnvironmentSchema, issue for issue in schema order; a value
+	// that is not a URL at all throws "Invalid URL" outright, as there.
+	var issues []string
 	for _, name := range []string{"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"} {
 		if v, ok := env[name]; ok {
-			if msg := ValidateEndpoint(v); msg != "" {
-				return nil, fmt.Errorf("%s: %s", name, msg)
+			list, err := endpointIssues(v)
+			if err != nil {
+				return nil, err
+			}
+			for _, msg := range list {
+				issues = append(issues, name+": "+msg)
 			}
 		}
 	}
 	for _, name := range []string{"OTEL_EXPORTER_OTLP_HEADERS", "OTEL_EXPORTER_OTLP_TRACES_HEADERS", "OTEL_EXPORTER_OTLP_LOGS_HEADERS"} {
 		if v, ok := env[name]; ok {
-			if _, err := ParseHeaders(v); err != nil {
-				return nil, fmt.Errorf("%s: %s", name, err.Error())
+			if len(v) > 8192 {
+				issues = append(issues, name+": Too big: expected string to have <=8192 characters")
+			} else if _, err := ParseHeaders(v); err != nil {
+				issues = append(issues, name+": "+err.Error())
 			}
 		}
 	}
 	for _, name := range []string{"OTEL_EXPORTER_OTLP_PROTOCOL", "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL", "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL"} {
 		if v, ok := env[name]; ok && v != "http/protobuf" {
-			return nil, fmt.Errorf(`%s: Invalid input: expected "http/protobuf"`, name)
+			issues = append(issues, name+`: Invalid input: expected "http/protobuf"`)
 		}
 	}
 	sampler, hasSampler := env["OTEL_TRACES_SAMPLER"]
 	if hasSampler && !slices.Contains(samplers, sampler) {
-		return nil, fmt.Errorf("OTEL_TRACES_SAMPLER: Invalid option")
+		issues = append(issues, `OTEL_TRACES_SAMPLER: Invalid option: expected one of "`+strings.Join(samplers, `"|"`)+`"`)
 	}
 	ratio := float64(samplePercent) / 100
-	if arg, ok := env["OTEL_TRACES_SAMPLER_ARG"]; ok {
-		f, err := strconv.ParseFloat(strings.TrimSpace(arg), 64)
-		if strings.TrimSpace(arg) == "" {
-			f, err = 0, nil // Number("  ") is 0
-		}
-		if err != nil || math.IsInf(f, 0) || math.IsNaN(f) || f < 0 || f > 1 {
-			return nil, fmt.Errorf("OTEL_TRACES_SAMPLER_ARG: must be a number from 0 to 1")
-		}
-		if sampler != "traceidratio" && sampler != "parentbased_traceidratio" {
-			return nil, fmt.Errorf("OTEL_TRACES_SAMPLER_ARG: is only valid with traceidratio or parentbased_traceidratio")
+	arg, hasArg := env["OTEL_TRACES_SAMPLER_ARG"]
+	if hasArg {
+		f := jsNumber(arg)
+		switch {
+		case math.IsNaN(f):
+			issues = append(issues, "OTEL_TRACES_SAMPLER_ARG: Invalid input: expected number, received NaN")
+		case math.IsInf(f, 0):
+			issues = append(issues, "OTEL_TRACES_SAMPLER_ARG: Invalid input: expected number, received number")
+		case f < 0:
+			issues = append(issues, "OTEL_TRACES_SAMPLER_ARG: Too small: expected number to be >=0")
+		case f > 1:
+			issues = append(issues, "OTEL_TRACES_SAMPLER_ARG: Too big: expected number to be <=1")
 		}
 		ratio = f
 	} else if hasSampler {
 		ratio = 1
+	}
+	if len(issues) == 0 && hasArg && sampler != "traceidratio" && sampler != "parentbased_traceidratio" {
+		issues = append(issues, "OTEL_TRACES_SAMPLER_ARG: is only valid with traceidratio or parentbased_traceidratio")
+	}
+	if len(issues) > 0 {
+		return nil, errors.New(strings.Join(issues, "; "))
 	}
 	if !hasSampler {
 		sampler = "parentbased_traceidratio"
 	}
 	if endpoint != "" {
 		if msg := ValidateEndpoint(endpoint); msg != "" {
-			return nil, fmt.Errorf("otelEndpoint: %s", msg)
+			return nil, errors.New(msg)
 		}
 	}
 	base := env["OTEL_EXPORTER_OTLP_ENDPOINT"]
@@ -139,4 +157,50 @@ func ResolveOtel(endpoint, headers string, samplePercent int, getenv func(string
 	}
 	c.DisplayEndpoint = SanitizedEndpoint(display)
 	return c, nil
+}
+
+// endpointIssues validates an OTLP endpoint as otelEndpointSchema does; an
+// unparseable value is an error, as TS's new URL() throws.
+func endpointIssues(v string) ([]string, error) {
+	u, err := url.Parse(v)
+	if err != nil || u.Scheme == "" || (u.Host == "" && u.Opaque == "") {
+		return nil, errors.New("Invalid URL")
+	}
+	var issues []string
+	if len(v) > 2048 {
+		issues = append(issues, "Too big: expected string to have <=2048 characters")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		issues = append(issues, "must use http or https")
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" || strings.Contains(v, "?") || strings.Contains(v, "#") {
+		issues = append(issues, "must not contain credentials, query parameters, or a fragment; use OTLP headers for authentication")
+	}
+	return issues, nil
+}
+
+// jsNumber is JavaScript's Number(string) for the decimal forms an
+// environment variable holds; anything else is NaN.
+func jsNumber(s string) float64 {
+	t := strings.TrimSpace(s)
+	if t == "" {
+		return 0
+	}
+	switch t {
+	case "Infinity", "+Infinity":
+		return math.Inf(1)
+	case "-Infinity":
+		return math.Inf(-1)
+	}
+	if strings.ContainsAny(t, "_xXoObBpPnN") && !strings.HasPrefix(strings.ToLower(t), "0x") {
+		return math.NaN()
+	}
+	f, err := strconv.ParseFloat(t, 64)
+	if err != nil {
+		if n, err := strconv.ParseInt(t, 0, 64); err == nil && strings.HasPrefix(strings.ToLower(t), "0x") {
+			return float64(n)
+		}
+		return math.NaN()
+	}
+	return f
 }

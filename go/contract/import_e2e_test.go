@@ -215,6 +215,19 @@ func (e *e2e) chat(model string) *Resp {
 	return e.do("POST", "/v1/chat/completions", `{"model":"`+model+`","messages":[{"role":"user","content":"fake:reply hello there"}]}`)
 }
 
+// chatRetrying retries a transient insufficient_memory 503 as a client
+// honouring Retry-After would: a small CI runner's free memory moves with
+// everything else on it, while admission itself stays on.
+func (e *e2e) chatRetrying(model string) *Resp {
+	for i := 0; ; i++ {
+		r := e.chat(model)
+		if r.Status != 503 || !strings.Contains(string(r.Body), "insufficient_memory") || i == 5 {
+			return r
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
 func (e *e2e) setBackend(model, backend string) map[string]any {
 	e.t.Helper()
 	body := `{"action":"set","model":"` + model + `","backendId":"` + backend + `"}`
@@ -646,14 +659,14 @@ func TestModelImportAcceptance(t *testing.T) {
 
 	step("AC5 overrides report real startup errors without bypassing integrity or resource checks", func(t *testing.T) {
 		e.serve()
-		if r := e.chat("vision-model"); r.Status != 200 || !strings.Contains(string(r.Body), "hello there") {
+		if r := e.chatRetrying("vision-model"); r.Status != 200 || !strings.Contains(string(r.Body), "hello there") {
 			t.Fatalf("automatic backend chat: %d %s", r.Status, r.Body)
 		}
 		wantCode(t, e.chat("mystery"), 409, "backend_not_selected")
 		if s := e.setBackend("mystery", "llama.cpp-cpu"); s["mode"] != "manual" || s["finding"].(map[string]any)["rating"] == "supported" {
 			t.Fatalf("manual unknown choice: %v", s)
 		}
-		if r := e.chat("mystery"); r.Status != 200 {
+		if r := e.chatRetrying("mystery"); r.Status != 200 {
 			t.Fatalf("manual CPU backend chat: %d %s", r.Status, r.Body)
 		}
 		if s := e.setBackend("mystery", wrongTask); s["finding"].(map[string]any)["rating"] != "incompatible" {

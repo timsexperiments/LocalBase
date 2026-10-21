@@ -231,20 +231,8 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		state := in.Service.State
-		running := state == "running" || state == "starting"
-		unsafe := state == "foreground" || state == "unknown" || state == "stopping"
-		if policy == "auto" && plan.RestartRequired {
-			if unsafe {
-				return nil, cli.Inputf("Cannot automatically restart this gateway. Use --restart never to save, then restart its owner explicitly.")
-			}
-			restart = true
-		}
-		if restart && (!in.Service.ManagerAvailable || unsafe) {
-			return nil, cli.Inputf("Cannot safely restart this gateway with the service manager.")
-		}
-		if wait && !restart && (plan.RestartRequired || (!running && state != "foreground")) {
-			return nil, cli.Inputf("--wait requires a running gateway without pending restart changes, or --restart always.")
+		if restart, err = applyDecision(policy, wait, plan.RestartRequired, in.Service.State, in.Service.ManagerAvailable); err != nil {
+			return nil, err
 		}
 	}
 	ctx := context.Background()
@@ -352,4 +340,27 @@ func runConfigShow(c *cli.Ctx) (any, error) {
 		}
 	}
 	return map[string]any{"document": document, "pendingRestart": pending}, nil
+}
+
+// applyDecision is whether apply restarts the managed service, or why it
+// refuses before saving (TS applyConfiguration): auto restarts for
+// restart-required changes unless the gateway is foreground, unknown or
+// stopping; always restarts; --wait needs a running gateway or a restart.
+func applyDecision(policy string, wait, restartRequired bool, state string, managerAvailable bool) (bool, error) {
+	restart := policy == "always"
+	running := state == "running" || state == "starting"
+	unsafe := state == "foreground" || state == "unknown" || state == "stopping"
+	if policy == "auto" && restartRequired {
+		if unsafe {
+			return false, cli.Inputf("Cannot automatically restart this gateway. Use --restart never to save, then restart its owner explicitly.")
+		}
+		restart = true
+	}
+	if restart && (!managerAvailable || unsafe) {
+		return false, cli.Inputf("Cannot safely restart this gateway with the service manager.")
+	}
+	if wait && !restart && (restartRequired || (!running && state != "foreground")) {
+		return false, cli.Inputf("--wait requires a running gateway without pending restart changes, or --restart always.")
+	}
+	return restart, nil
 }
