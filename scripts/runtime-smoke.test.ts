@@ -54,9 +54,9 @@ test("builds runtime smoke invocations for the current CLI contract", () => {
     "configure",
     "--defaults",
     "--stt-models",
-    "whisper-tiny-en-q8_0",
+    "whisper-base-q8_0",
     "--active-stt",
-    "whisper-tiny-en-q8_0",
+    "whisper-base-q8_0",
     "--no-create-key",
   ]);
   expect(buildServeArgs(root, 22_731, 22_732)).toEqual([

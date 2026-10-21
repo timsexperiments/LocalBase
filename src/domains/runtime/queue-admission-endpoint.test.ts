@@ -13,7 +13,7 @@ import { gatewayReadinessSchema } from "./readiness";
 
 registerGatewayFixtureCleanup();
 
-const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+const modelId = "qwen3.5-4b-q4_k_m";
 
 function headers(apiKey: string, streamId: string): HeadersInit {
   return {

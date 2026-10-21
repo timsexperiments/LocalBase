@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { byId } from "../../../catalog";
 import { RuntimeMemoryAdmissionError } from "../memory-controller";
 import { ModelInstallConsentError } from "../startup-preflight";
@@ -11,6 +11,14 @@ import { VideoBackendJobFailureError } from "./video-job-manager";
 import { assertModelEligible } from "../../models/model-eligibility";
 import { ModelManagementError } from "../../models/model-management-contract";
 import { testPcm16Wav, testPng } from "./video-input.fixtures";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 const model = byId("wan2.1-t2v-1.3b-q8_0");
 if (!model) throw new Error("Expected qualified Wan video model.");

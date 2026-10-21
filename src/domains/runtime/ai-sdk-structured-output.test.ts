@@ -11,7 +11,7 @@ import { openAIErrorResponseSchema } from "./openai-error";
 
 registerGatewayFixtureCleanup();
 
-const MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+const MODEL = "qwen3.5-4b-q4_k_m";
 
 const responseFormat = {
   type: "json_schema",

@@ -7,7 +7,7 @@
   "version": "Turbo",
   "size": "6B",
   "quant": "Q4_0",
-  "storageGb": 6.6,
+  "storageGb": 6.52,
   "source": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
   "repositoryRevision": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
   "artifacts": [
@@ -62,5 +62,5 @@
   "capabilities": ["text-to-image"],
   "commercialStatus": "open",
   "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
-  "notes": "Distilled eight-step profile with separate VAE and Qwen3 Instruct encoder. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
+  "notes": "stable-diffusion.cpp Q4_0 GGUF of Tongyi-MAI/Z-Image-Turbo (6B), with the Z-Image VAE (Comfy-Org) and a Qwen3-4B-Instruct-2507 Q4_K_M text encoder (unsloth). LocalBase profile: euler sampler, 8 steps, CFG 1. Peak memory was measured on Apple M-series 64 GiB, macOS 26 (2026-10-14); broader native inference qualification is pending."
 }

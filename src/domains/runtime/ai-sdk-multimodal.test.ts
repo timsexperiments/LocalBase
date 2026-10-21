@@ -27,12 +27,12 @@ import { minimalWav, tinyPng, tinyPngBase64 } from "../../test/media-fixtures";
 
 registerGatewayFixtureCleanup();
 
-const PRIMARY_LLM_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-const SWITCHED_LLM_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
+const PRIMARY_LLM_MODEL = "qwen3.5-4b-q4_k_m";
+const SWITCHED_LLM_MODEL = "qwen3.8-27b-q4_k_m";
 const PRIMARY_STT_MODEL = "whisper-large-v3-turbo";
-const SWITCHED_STT_MODEL = "whisper-tiny-en-q8_0";
-const PRIMARY_IMAGE_MODEL = "stable-diffusion-v1-5";
-const SWITCHED_IMAGE_MODEL = "dreamshaper-v8";
+const SWITCHED_STT_MODEL = "whisper-base-q8_0";
+const PRIMARY_IMAGE_MODEL = "juggernaut-xl-v9";
+const SWITCHED_IMAGE_MODEL = "dreamshaper-8-lcm";
 
 function artifactPath(modelsDir: string, modelId: string): string {
   const model = byId(modelId);

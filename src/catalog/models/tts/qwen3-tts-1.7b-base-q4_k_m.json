@@ -7,7 +7,7 @@
   "version": "12Hz-1.7B-Base",
   "size": "1.7B",
   "quant": "Q4_K_M",
-  "storageGb": 1.49,
+  "storageGb": 1.48,
   "source": "https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
   "repositoryRevision": "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
   "artifacts": [
@@ -71,6 +71,6 @@
   "capabilities": ["text-to-speech"],
   "outputFormat": "wav",
   "commercialStatus": "open",
-  "catch": "The converted repository omits license metadata; the upstream Qwen model is Apache-2.0.",
-  "notes": "Default remains native runtime voice. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed."
+  "catch": "Apache-2.0 per the GGUF header and the upstream Qwen model; the converted repository has no model card or license file.",
+  "notes": "Official ggml-org Q4_K_M talker GGUF and Q8_0 projector of Qwen3-TTS-12Hz-1.7B-Base. GGUF header: architecture qwen3tts, 28 layers, 32,768-token training context; LocalBase launches the talker at 2,048. The default voice uses no reference audio. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed."
 }

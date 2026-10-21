@@ -1,4 +1,5 @@
 import {
+  existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
@@ -12,6 +13,11 @@ import { join } from "node:path";
 import { modelSpecSchema, type ModelSpec } from "../catalog";
 import { safeFilenameSchema } from "../utils/checksum";
 import { setFeedAnnotations } from "./annotations";
+import {
+  FORMER_CATALOG,
+  FORMER_CATALOG_DATA,
+  formerCatalogEntry,
+} from "./former";
 import { readRemoteCatalogLayer } from "./remote-feed";
 import { canonicalLocalBaseRoot } from "../utils/root";
 import {
@@ -95,11 +101,14 @@ export function readUserCatalogLayer(root: string): CatalogLayer {
  * Loads every catalog tier for `root` into the effective catalog: the last
  * good remote feed download (unless `remote` replaces it) and then the user
  * tier. Never touches the network; `refreshCatalogFeed` downloads the feed.
+ * Installed models that left the built-in catalog are kept as user entries
+ * first (`adoptFormerCatalogEntries`).
  */
 export function loadCatalogSources(
   root: string,
   options: Readonly<{ remote?: CatalogLayer | null }> = {},
 ): CatalogComposition {
+  adoptFormerCatalogEntries(root);
   const remote =
     options.remote === undefined
       ? readRemoteCatalogLayer(root)
@@ -187,4 +196,149 @@ export function removeUserCatalogEntry(
   rmSync(path, { force: true });
   loadCatalogSources(root);
   return path;
+}
+
+/**
+ * `<root>/catalog.d/.former-built-ins`: ids already kept as user entries,
+ * one per line. An id listed here is never written again, so deleting the
+ * user entry (`models remove-entry`) sticks.
+ */
+export function formerAdoptionLogPath(root: string): string {
+  return join(userCatalogDirectory(root), ".former-built-ins");
+}
+
+function readAdoptionLog(root: string): Set<string> {
+  try {
+    return new Set(
+      readFileSync(formerAdoptionLogPath(root), "utf8")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+/** A former entry counts as installed once its primary file is on disk. */
+function formerEntryInstalled(root: string, model: ModelSpec): boolean {
+  const primary = model.artifacts.find(({ role }) => role === "primary");
+  return (
+    primary !== undefined &&
+    existsSync(join(root, "models", model.kind, primary.filename))
+  );
+}
+
+export const FORMER_ENTRY_HINT =
+  "No longer in the LocalBase catalog; kept from an earlier release.";
+
+/**
+ * The file written for a kept entry: the data file the earlier release
+ * shipped, unchanged except for a short hint in front of its notes.
+ */
+export function formerUserEntrySpec(
+  modelId: string,
+): Record<string, unknown> | undefined {
+  const data = FORMER_CATALOG_DATA.find(
+    (entry) => (entry as { modelId?: unknown }).modelId === modelId,
+  ) as Record<string, unknown> | undefined;
+  if (!data) return undefined;
+  const notes = typeof data.notes === "string" ? data.notes : "";
+  return {
+    ...data,
+    notes: notes ? `${FORMER_ENTRY_HINT} ${notes}` : FORMER_ENTRY_HINT,
+  };
+}
+
+/**
+ * Keeps models that an earlier release shipped in the built-in catalog
+ * working after an upgrade that dropped them. Each former entry
+ * (`./former`) that is installed under `<root>/models`, or named in
+ * `referencedModelIds` (selected or active in the model settings), is
+ * written to `<root>/catalog.d/<modelId>.json`: the same id, pinned
+ * revision, files and checksums, now a user entry like one added from
+ * Hugging Face. A patch the user kept at that path is applied on top of the
+ * shipped spec. Ids a complete user file already provides, and ids kept once
+ * before, are skipped. Never throws;
+ * a root that cannot be written keeps the entries out of the catalog.
+ * Returns the ids written.
+ */
+export function adoptFormerCatalogEntries(
+  root: string,
+  referencedModelIds: Iterable<string> = [],
+): string[] {
+  try {
+    const referenced = new Set(referencedModelIds);
+    const directory = userCatalogDirectory(root);
+    let adopted: Set<string> | undefined;
+    const written: string[] = [];
+    for (const model of FORMER_CATALOG) {
+      if (!referenced.has(model.modelId) && !formerEntryInstalled(root, model))
+        continue;
+      const path = join(directory, userCatalogFilename(model.modelId));
+      const patch = existsSync(path) ? userPatchAt(path, model.modelId) : {};
+      if (patch === null) continue;
+      adopted ??= readAdoptionLog(root);
+      if (adopted.has(model.modelId)) continue;
+      const shipped = formerUserEntrySpec(model.modelId);
+      if (!shipped) continue;
+      const spec = { ...shipped, ...patch };
+      mkdirSync(directory, { recursive: true, mode: 0o700 });
+      const temporary = `${path}.${process.pid}.tmp`;
+      writeFileSync(temporary, `${JSON.stringify(spec, null, 2)}\n`, {
+        mode: 0o600,
+      });
+      renameSync(temporary, path);
+      adopted.add(model.modelId);
+      written.push(model.modelId);
+    }
+    if (written.length > 0 && adopted) {
+      writeFileSync(
+        formerAdoptionLogPath(root),
+        `${[...adopted].sort().join("\n")}\n`,
+        {
+          mode: 0o600,
+        },
+      );
+    }
+    return written;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The patch a user file at `path` applied to the built-in entry, or null
+ * when the file is a complete spec of its own (or not about this model) and
+ * must be left alone.
+ */
+function userPatchAt(
+  path: string,
+  modelId: string,
+): Record<string, unknown> | null {
+  try {
+    const data = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (
+      typeof data !== "object" ||
+      data === null ||
+      Array.isArray(data) ||
+      (data as { modelId?: unknown }).modelId !== modelId ||
+      modelSpecSchema.safeParse(data).success
+    ) {
+      return null;
+    }
+    return data as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/** Former entries among `modelIds` that the effective catalog lacks. */
+export function missingFormerModelIds(
+  modelIds: Iterable<string>,
+  known: (modelId: string) => boolean,
+): string[] {
+  return [...new Set(modelIds)].filter(
+    (id) => formerCatalogEntry(id) !== undefined && !known(id),
+  );
 }

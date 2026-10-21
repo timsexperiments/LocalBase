@@ -13,6 +13,9 @@
  * key, and keys it leaves out keep the lower tier's value. Nested objects
  * (such as `llmRuntime` or `artifacts`) are replaced whole, never merged.
  * The merged result must pass the same validation as a built-in entry.
+ * One exception: a complete user spec that pins exactly the files of a
+ * built-in entry with its id (a model added before it joined the built-in
+ * catalog) is set aside, and the built-in entry applies unchanged.
  *
  * Trust follows the entry: built-in entries are `qualified`, remote entries
  * `community`, new user entries `user`. A patch that changes how the model
@@ -32,6 +35,7 @@ import {
   type ModelSpec,
 } from "../catalog";
 import type { FeedAnnotation } from "./annotations";
+import { formerCatalogEntry } from "./former";
 
 export const catalogTierSchema = z.enum(["built-in", "remote", "user"]);
 export type CatalogTier = z.infer<typeof catalogTierSchema>;
@@ -180,6 +184,17 @@ export function composeCatalog(
         continue;
       }
       const base = models.get(modelId);
+      if (
+        base &&
+        layer.tier === "user" &&
+        provenance.get(modelId) === BUILT_IN_PROVENANCE &&
+        supersededByBuiltIn(base, record)
+      ) {
+        // A model the user added before it joined the built-in catalog: the
+        // built-in entry now describes the same files, so it applies as is.
+        seen.set(modelId, entry.path);
+        continue;
+      }
       const parsed = modelSpecSchema.safeParse(
         base ? { ...base, ...record } : record,
       );
@@ -232,6 +247,52 @@ export function composeCatalog(
   return { models: [...models.values()], provenance, diagnostics };
 }
 
+/** The fields that pin what an artifact downloads. */
+function artifactPin(artifact: Record<string, unknown>): unknown {
+  return canonical({
+    sourcePath: artifact.sourcePath,
+    filename: artifact.filename,
+    expectedSizeBytes: artifact.expectedSizeBytes,
+    sha256:
+      typeof artifact.sha256 === "string"
+        ? artifact.sha256.toLowerCase()
+        : artifact.sha256,
+    source: artifact.source,
+  });
+}
+
+function pinnedFiles(artifacts: unknown): string[] | null {
+  if (!Array.isArray(artifacts)) return null;
+  return artifacts
+    .map((artifact) =>
+      JSON.stringify(artifactPin(artifact as Record<string, unknown>)),
+    )
+    .sort();
+}
+
+/**
+ * A complete user spec for a built-in id that pins the built-in's
+ * repository, revision and files exactly. Such a file was written before
+ * the model joined the built-in catalog (for example by `local-base models
+ * add`); it would otherwise replace the built-in's description, capabilities
+ * and trust with its own. A partial file, or one that pins different files,
+ * stays a patch.
+ */
+export function supersededByBuiltIn(
+  builtIn: ModelSpec,
+  record: Record<string, unknown>,
+): boolean {
+  if (!modelSpecSchema.safeParse(record).success) return false;
+  const normalize = (url: unknown) =>
+    typeof url === "string" ? url.replace(/\/+$/, "") : url;
+  return (
+    normalize(record.source) === normalize(builtIn.source) &&
+    record.repositoryRevision === builtIn.repositoryRevision &&
+    record.kind === builtIn.kind &&
+    sameValue(pinnedFiles(record.artifacts), pinnedFiles(builtIn.artifacts))
+  );
+}
+
 function* rankedTiers(layers: readonly CatalogLayer[]): Iterable<CatalogLayer> {
   for (const tier of ["remote", "user"] as const) {
     for (const layer of layers) if (layer.tier === tier) yield layer;
@@ -268,10 +329,27 @@ export function catalogDiagnostics(): readonly CatalogDiagnostic[] {
 /**
  * Whether the checked-in reference memory measurements describe this entry.
  * They were taken with the qualified files and launch shape, so they do not
- * apply to user-added or modified entries.
+ * apply to user-added or modified entries. A former built-in entry kept as a
+ * user entry (`./former`) still launches the measured files, so its records
+ * apply while every launch-shaped field matches what was measured.
  */
 export function usesReferenceMeasurements(
   model: Pick<ModelSpec, "modelId">,
 ): boolean {
-  return catalogProvenance(model.modelId).trust === "qualified";
+  if (catalogProvenance(model.modelId).trust === "qualified") return true;
+  return matchesFormerEntry(model);
+}
+
+/** The entry launches exactly what an earlier release shipped for its id. */
+export function matchesFormerEntry(model: Pick<ModelSpec, "modelId">): boolean {
+  const former = formerCatalogEntry(model.modelId);
+  if (!former) return false;
+  const current =
+    CATALOG.find(({ modelId }) => modelId === model.modelId) ?? model;
+  return [...LAUNCH_SHAPED_FIELDS].every((key) =>
+    sameValue(
+      (former as Record<string, unknown>)[key],
+      (current as Record<string, unknown>)[key],
+    ),
+  );
 }

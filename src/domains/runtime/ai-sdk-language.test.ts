@@ -15,8 +15,8 @@ import {
 
 registerGatewayFixtureCleanup();
 
-const PRIMARY_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-const SWITCHED_MODEL = "qwen2.5-coder-7b-instruct-q4_k_m";
+const PRIMARY_MODEL = "qwen3.5-4b-q4_k_m";
+const SWITCHED_MODEL = "qwen3.8-27b-q4_k_m";
 
 function modelArtifactPath(modelsDir: string, modelId: string): string {
   const model = byId(modelId);
