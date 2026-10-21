@@ -7,7 +7,7 @@
   "version": "3.5",
   "size": "4B",
   "quant": "Q4_K_M",
-  "storageGb": 3.02,
+  "storageGb": 3.01,
   "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF",
   "repositoryRevision": "4168f45a16a1290d65a4ec0fa312ae917a4c15d6",
   "artifacts": [
@@ -25,5 +25,5 @@
   "capabilities": ["text-generation", "tool-calling"],
   "commercialStatus": "open",
   "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
-  "notes": "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts."
+  "notes": "bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.5-4B. GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 32 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned."
 }

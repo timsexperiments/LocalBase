@@ -36,10 +36,10 @@ async function assertConsentError(response: Response): Promise<void> {
 test("lazy HTTP model installs require consent for every downloadable gateway modality", async () => {
   const gateway = await startGatewayFixture({ ttsEnabled: true });
   try {
-    const llm = anotherModel("llm", "qwen2.5-coder-1.5b-instruct-q4_k_m");
+    const llm = anotherModel("llm", "qwen3.5-4b-q4_k_m");
     const stt = anotherModel("stt", "whisper-large-v3-turbo");
     const tts = anotherModel("tts", TTS_MODEL);
-    const image = anotherModel("image", "stable-diffusion-v1-5");
+    const image = anotherModel("image", "juggernaut-xl-v9");
     const transcription = new FormData();
     transcription.set("model", stt.modelId);
     transcription.set(

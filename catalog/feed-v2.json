@@ -2,8 +2,980 @@
   "format": "localbase-catalog-feed",
   "schemaVersion": 2,
   "minReaderVersion": 2,
-  "sha256": "0014ea524d1e89b8e4198a242ef64473432f3dc7c7e355866a056fa5ab3bca7b",
+  "sha256": "b0f6f960fd13078fa49ae7c0f3d3122271154a15bf328190b32ed7625d01f87d",
   "models": [
+    {
+      "modelId": "qwen3.5-4b-q4_k_m",
+      "displayName": "Qwen3.5 4B",
+      "kind": "llm",
+      "provider": "Qwen",
+      "family": "Qwen3.5",
+      "version": "3.5",
+      "size": "4B",
+      "quant": "Q4_K_M",
+      "storageGb": 3.01,
+      "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF",
+      "repositoryRevision": "4168f45a16a1290d65a4ec0fa312ae917a4c15d6",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+          "filename": "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+          "expectedSizeBytes": 3013027808,
+          "sha256": "13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 262144,
+      "capabilities": [
+        "text-generation",
+        "tool-calling"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
+      "notes": "bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.5-4B. GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 32 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned."
+    },
+    {
+      "modelId": "qwen3.6-35b-a3b-iq4_nl_xl",
+      "displayName": "Qwen3.6 35B-A3B",
+      "kind": "llm",
+      "provider": "Qwen",
+      "family": "Qwen3.6",
+      "version": "3.6",
+      "size": "35B-A3B",
+      "quant": "IQ4_NL_XL",
+      "storageGb": 20.4,
+      "source": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF",
+      "repositoryRevision": "a483e9e6cbd595906af30beda3187c2663a1118c",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf",
+          "filename": "Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf",
+          "expectedSizeBytes": 19500506080,
+          "sha256": "071ee2a008ec51372f990d8efbea92ec9dd0137974110ef68fbfde429c8c6dd4",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "mmproj-F16.gguf",
+          "filename": "qwen3.6-35b-a3b-iq4_nl_xl-mmproj-F16.gguf",
+          "expectedSizeBytes": 899283680,
+          "sha256": "8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f",
+          "role": "supplementary"
+        }
+      ],
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 262144,
+      "capabilities": [
+        "reasoning",
+        "tool-calling",
+        "long-context",
+        "mixture-of-experts"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0. Mixture-of-experts: 35B parameters, 3B active per token. Text and image input through the pinned F16 vision projector.",
+      "notes": "Unsloth Dynamic IQ4_NL_XL imatrix GGUF of Qwen/Qwen3.6-35B-A3B, with the F16 vision projector from the same repository. GGUF header: architecture qwen35moe (linear-attention layers with full attention every 4th layer), 40 layers, 256 experts with 8 routed experts per token plus a shared expert, 262,144-token training context. Projector header: clip vision encoder (27 blocks, 16-pixel patches, 768-pixel input, qwen3vl_merger projector). Embedded tokenizer and chat template with tool-call and thinking markup. The upstream card also lists video input, which this entry does not declare."
+    },
+    {
+      "modelId": "qwen3.8-27b-q4_k_m",
+      "displayName": "Qwen3.8 27B",
+      "kind": "llm",
+      "provider": "Qwen",
+      "family": "Qwen3.8",
+      "version": "3.8",
+      "size": "27B",
+      "quant": "Q4_K_M",
+      "storageGb": 17.77,
+      "source": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF",
+      "repositoryRevision": "f0eec4a4bb4975114a030d048952d83c0a53c034",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen3.8-27B-Q4_K_M.gguf",
+          "filename": "Qwen3.8-27B-Q4_K_M.gguf",
+          "expectedSizeBytes": 17772537440,
+          "sha256": "e103abf9d914d1d7b2f2592f055f2759a71195c350a01c135f71aaae86bca52b",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 262144,
+      "capabilities": [
+        "reasoning",
+        "tool-calling",
+        "long-context"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
+      "notes": "bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.8-27B (quantized with llama.cpp b10419). GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 64 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned."
+    },
+    {
+      "modelId": "qwen3-embedding-0.6b-q8_0",
+      "displayName": "Qwen3 Embedding 0.6B",
+      "kind": "llm",
+      "provider": "Qwen",
+      "family": "Qwen3-Embedding",
+      "version": "0.6B",
+      "size": "0.6B",
+      "quant": "Q8_0",
+      "storageGb": 0.64,
+      "source": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
+      "repositoryRevision": "370f27d7550e0def9b39c1f16d3fbaa13aa67728",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+          "filename": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+          "expectedSizeBytes": 639150592,
+          "sha256": "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
+          "role": "primary"
+        }
+      ],
+      "llmRuntime": {
+        "capability": "embedding-only",
+        "pooling": "last",
+        "dimensions": {
+          "minimum": 1024,
+          "maximum": 1024
+        }
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 32768,
+      "capabilities": [
+        "embeddings",
+        "multilingual",
+        "code-retrieval"
+      ],
+      "commercialStatus": "open",
+      "catch": "Embedding endpoint only. Chat completions are rejected before runtime admission.",
+      "notes": "Official Qwen Q8_0 GGUF of Qwen3-Embedding-0.6B (base Qwen3-0.6B-Base, 28 layers; the model card states a 32k-token context). The runtime uses last-token pooling and emits 1024-dimensional vectors. Embedded tokenizer; memory estimate assumes short inputs."
+    },
+    {
+      "modelId": "qwen3-embedding-4b-q4_k_m",
+      "displayName": "Qwen3 Embedding 4B",
+      "kind": "llm",
+      "provider": "Qwen",
+      "family": "Qwen3-Embedding",
+      "version": "4B",
+      "size": "4B",
+      "quant": "Q4_K_M",
+      "storageGb": 2.5,
+      "source": "https://huggingface.co/Qwen/Qwen3-Embedding-4B-GGUF",
+      "repositoryRevision": "f4602530db1d980e16da9d7d3a70294cf5c190be",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen3-Embedding-4B-Q4_K_M.gguf",
+          "filename": "Qwen3-Embedding-4B-Q4_K_M.gguf",
+          "expectedSizeBytes": 2496703776,
+          "sha256": "2b0cf8f17b4c723c27303015383c27ec4bf2d8314bb677d05e920dd70bb0f16b",
+          "role": "primary"
+        }
+      ],
+      "llmRuntime": {
+        "capability": "embedding-only",
+        "pooling": "last",
+        "dimensions": {
+          "minimum": 2560,
+          "maximum": 2560
+        }
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 32768,
+      "capabilities": [
+        "embeddings",
+        "multilingual",
+        "code-retrieval"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.",
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen3-Embedding-4B (base Qwen3-4B-Base, 36 layers). The model card states a 32k-token context; the GGUF header declares 40,960. Last-token pooling with fixed 2560-dimensional output. Embedded tokenizer; memory estimate assumes short inputs."
+    },
+    {
+      "modelId": "clef-flash-q4_k_m",
+      "displayName": "Clef Flash",
+      "kind": "llm",
+      "provider": "Cloudflare",
+      "family": "Clef",
+      "version": "Flash",
+      "size": "9B",
+      "quant": "Q4_K_M",
+      "storageGb": 7.11,
+      "source": "https://huggingface.co/ggml-org/Clef-Flash-GGUF",
+      "repositoryRevision": "6b4fe4c59098479652d94f0fe11a40facbebd1ec",
+      "artifacts": [
+        {
+          "sourcePath": "Clef-Flash-Q4_K_M.gguf",
+          "filename": "Clef-Flash-Q4_K_M.gguf",
+          "expectedSizeBytes": 6486448288,
+          "sha256": "3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "mmproj-Clef-Flash-Q8_0.gguf",
+          "filename": "mmproj-Clef-Flash-Q8_0.gguf",
+          "expectedSizeBytes": 624229728,
+          "sha256": "9dd8bc279f57d33b0697d4d0fe900fe751a24c9e3d30ab90969d4714ffc0722d",
+          "role": "supplementary"
+        }
+      ],
+      "llmRuntime": {
+        "capability": "decision-only"
+      },
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 262144,
+      "capabilities": [
+        "decision",
+        "long-context"
+      ],
+      "commercialStatus": "open",
+      "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.",
+      "notes": "Default decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef-flash (Apache-2.0, built from Qwen3.5-9B; base revision 8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3). GGUF header: architecture clef, 32 layers, 4 decision blocks, 262,144-token training context. Answers choice, score, and noul questions through POST /v1/systemone. Clef (clef-q4_k_m) is the 27B decision model."
+    },
+    {
+      "modelId": "clef-q4_k_m",
+      "displayName": "Clef 27B",
+      "kind": "llm",
+      "provider": "Cloudflare",
+      "family": "Clef",
+      "version": "27B",
+      "size": "27B",
+      "quant": "Q4_K_M",
+      "storageGb": 19.86,
+      "source": "https://huggingface.co/ggml-org/Clef-GGUF",
+      "repositoryRevision": "d2aa75cb425ae922b5c3c15ef3157d417b7f7641",
+      "artifacts": [
+        {
+          "sourcePath": "Clef-Q4_K_M.gguf",
+          "filename": "Clef-Q4_K_M.gguf",
+          "expectedSizeBytes": 19232219200,
+          "sha256": "9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "mmproj-Clef-Q8_0.gguf",
+          "filename": "mmproj-Clef-Q8_0.gguf",
+          "expectedSizeBytes": 629247456,
+          "sha256": "744ad2db24c336fc9120dd5ba06344c0601b9efd365fe96be01ce5c4e6ab64cf",
+          "role": "supplementary"
+        }
+      ],
+      "llmRuntime": {
+        "capability": "decision-only"
+      },
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 262144,
+      "capabilities": [
+        "decision",
+        "long-context"
+      ],
+      "commercialStatus": "open",
+      "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.",
+      "notes": "Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef (Apache-2.0, post-trained from Qwen3.8-27B; source revision 0b331204bb13fbd2ca93a64df1956f5b55478ce5). GGUF header: architecture clef, 64 layers, 4 decision blocks, 262,144-token training context. Answers choice, score, and noul questions through POST /v1/systemone. Clef Flash (clef-flash-q4_k_m) is the 9B default decision model."
+    },
+    {
+      "modelId": "whisper-base-q8_0",
+      "displayName": "Whisper Base",
+      "kind": "stt",
+      "provider": "OpenAI/ggml",
+      "family": "Whisper",
+      "version": "base",
+      "size": "base",
+      "quant": "Q8_0",
+      "storageGb": 0.08,
+      "source": "https://huggingface.co/ggerganov/whisper.cpp",
+      "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "artifacts": [
+        {
+          "sourcePath": "ggml-base-q8_0.bin",
+          "filename": "ggml-base-q8_0.bin",
+          "expectedSizeBytes": 81768585,
+          "sha256": "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "audio"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "capabilities": [
+        "speech-to-text",
+        "multilingual"
+      ],
+      "commercialStatus": "open",
+      "catch": "MIT License.",
+      "notes": "whisper.cpp ggml Q8_0 conversion of OpenAI Whisper base (74M parameters, multilingual). File header: 6 encoder and 6 decoder layers, 80 mel bins. Vocabulary and mel filters are bundled; no Core ML encoder required."
+    },
+    {
+      "modelId": "whisper-large-v3-turbo",
+      "displayName": "Whisper Large V3 Turbo",
+      "kind": "stt",
+      "provider": "OpenAI/ggml",
+      "family": "Whisper",
+      "version": "large-v3-turbo",
+      "size": "large",
+      "quant": "F16",
+      "storageGb": 1.62,
+      "source": "https://huggingface.co/ggerganov/whisper.cpp",
+      "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "artifacts": [
+        {
+          "sourcePath": "ggml-large-v3-turbo.bin",
+          "filename": "ggml-large-v3-turbo.bin",
+          "expectedSizeBytes": 1624555275,
+          "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "audio"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "capabilities": [
+        "speech-to-text",
+        "multilingual",
+        "translation"
+      ],
+      "commercialStatus": "open",
+      "catch": "MIT License.",
+      "notes": "whisper.cpp ggml F16 conversion of OpenAI Whisper large-v3-turbo (809M parameters, multilingual): large-v3 with the decoder reduced from 32 to 4 layers. File header: 32 encoder and 4 decoder layers, 128 mel bins. Vocabulary and mel filters are bundled; no Core ML encoder required."
+    },
+    {
+      "modelId": "qwen3-tts-1.7b-base-q4_k_m",
+      "displayName": "Qwen3 TTS 1.7B Base",
+      "kind": "tts",
+      "provider": "Qwen/ggml",
+      "family": "Qwen3-TTS",
+      "version": "12Hz-1.7B-Base",
+      "size": "1.7B",
+      "quant": "Q4_K_M",
+      "storageGb": 1.48,
+      "source": "https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
+      "repositoryRevision": "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
+      "artifacts": [
+        {
+          "sourcePath": "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
+          "filename": "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
+          "expectedSizeBytes": 1035965280,
+          "sha256": "8d18c94acb2addd042f97da63c98be144eafa76d0d9495177eab65130cf85129",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+          "filename": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+          "expectedSizeBytes": 446422912,
+          "sha256": "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
+          "role": "supplementary"
+        },
+        {
+          "sourcePath": "voice-donations/0a67.wav",
+          "filename": "qwen3-tts-harbor.wav",
+          "expectedSizeBytes": 480044,
+          "sha256": "4bd75d0ef0ad3f4e82ac075eab2a132651d2463f83bec210edeeccaf69294886",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/kyutai/tts-voices",
+            "revision": "323332d33f997de8394f24a193e1a76df720e01a"
+          }
+        },
+        {
+          "sourcePath": "voice-donations/1410.wav",
+          "filename": "qwen3-tts-willow.wav",
+          "expectedSizeBytes": 480044,
+          "sha256": "8edd516de8c2171b67757cacb29e1effd3e6a8b78f5d6b035069273fadefac2b",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/kyutai/tts-voices",
+            "revision": "323332d33f997de8394f24a193e1a76df720e01a"
+          }
+        }
+      ],
+      "ttsRuntime": {
+        "kind": "llama-tts",
+        "projectorArtifactFilename": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+        "referenceVoices": [
+          {
+            "name": "harbor",
+            "artifactFilename": "qwen3-tts-harbor.wav",
+            "license": "CC0-1.0",
+            "provenanceUrl": "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations"
+          },
+          {
+            "name": "willow",
+            "artifactFilename": "qwen3-tts-willow.wav",
+            "license": "CC0-1.0",
+            "provenanceUrl": "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations"
+          }
+        ]
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "audio"
+      ],
+      "capabilities": [
+        "text-to-speech"
+      ],
+      "outputFormat": "wav",
+      "commercialStatus": "open",
+      "catch": "Apache-2.0 per the GGUF header and the upstream Qwen model; the converted repository has no model card or license file.",
+      "notes": "Official ggml-org Q4_K_M talker GGUF and Q8_0 projector of Qwen3-TTS-12Hz-1.7B-Base. GGUF header: architecture qwen3tts, 28 layers, 32,768-token training context; LocalBase launches the talker at 2,048. The default voice uses no reference audio. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed."
+    },
+    {
+      "modelId": "kokoro-82m-v1.0-q8",
+      "displayName": "Kokoro 82M v1.0",
+      "kind": "tts",
+      "qualificationState": "experimental",
+      "provider": "hexgrad/onnx-community",
+      "family": "Kokoro",
+      "version": "v1.0",
+      "size": "82M",
+      "quant": "Q8",
+      "storageGb": 0.09,
+      "source": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
+      "repositoryRevision": "1939ad2a8e416c0acfeecc08a694d14ef25f2231",
+      "artifacts": [
+        {
+          "sourcePath": "onnx/model_quantized.onnx",
+          "filename": "kokoro-82m-v1.0-model_quantized.onnx",
+          "expectedSizeBytes": 92361116,
+          "sha256": "fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "config.json",
+          "filename": "kokoro-82m-v1.0-config.json",
+          "expectedSizeBytes": 44,
+          "sha256": "df34b4f930b23447cd4dc410fabfb42eb3f24e803e6c3f97d618fb359380a36f",
+          "role": "supplementary"
+        },
+        {
+          "sourcePath": "tokenizer.json",
+          "filename": "kokoro-82m-v1.0-tokenizer.json",
+          "expectedSizeBytes": 3497,
+          "sha256": "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34",
+          "role": "supplementary"
+        },
+        {
+          "sourcePath": "tokenizer_config.json",
+          "filename": "kokoro-82m-v1.0-tokenizer_config.json",
+          "expectedSizeBytes": 113,
+          "sha256": "be1cb066d6ef6b074b3f15e6a6dd21ac88ff3cdaedf325f0aaed686c70f75d20",
+          "role": "supplementary"
+        }
+      ],
+      "ttsRuntime": {
+        "kind": "kokoro-onnx",
+        "artifacts": {
+          "model": "kokoro-82m-v1.0-model_quantized.onnx",
+          "config": "kokoro-82m-v1.0-config.json",
+          "tokenizer": "kokoro-82m-v1.0-tokenizer.json",
+          "tokenizerConfig": "kokoro-82m-v1.0-tokenizer_config.json"
+        },
+        "voices": [
+          {
+            "name": "af_heart"
+          },
+          {
+            "name": "af_bella"
+          }
+        ],
+        "defaultVoice": "af_heart"
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "audio"
+      ],
+      "capabilities": [
+        "text-to-speech"
+      ],
+      "outputFormat": "wav",
+      "commercialStatus": "open",
+      "catch": "Apache-2.0 weights. Requires the kokoro-v0.0.2 LocalBase runtime package.",
+      "notes": "Quantized ONNX export of hexgrad/Kokoro-82M (82M parameters) run on the CPU ONNX runtime, with bundled af_heart and af_bella voices. English only. Human voice quality has not been assessed."
+    },
+    {
+      "modelId": "z-image-turbo-q4_0",
+      "displayName": "Z-Image Turbo",
+      "kind": "image",
+      "provider": "Tongyi",
+      "family": "Z-Image",
+      "version": "Turbo",
+      "size": "6B",
+      "quant": "Q4_0",
+      "storageGb": 6.52,
+      "source": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
+      "repositoryRevision": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
+      "artifacts": [
+        {
+          "sourcePath": "z_image_turbo-Q4_0.gguf",
+          "filename": "z_image_turbo-Q4_0.gguf",
+          "expectedSizeBytes": 3683370944,
+          "sha256": "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "split_files/vae/ae.safetensors",
+          "filename": "z-image-ae.safetensors",
+          "expectedSizeBytes": 335304388,
+          "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/Comfy-Org/z_image_turbo",
+            "revision": "08d04455279082882deaabc8d0d09fc914c071e1"
+          }
+        },
+        {
+          "sourcePath": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+          "filename": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+          "expectedSizeBytes": 2497281120,
+          "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF",
+            "revision": "a06e946bb6b655725eafa393f4a9745d460374c9"
+          }
+        }
+      ],
+      "imageRuntime": {
+        "kind": "diffusion-qwen3",
+        "artifacts": {
+          "diffusionModel": "z_image_turbo-Q4_0.gguf",
+          "vae": "z-image-ae.safetensors",
+          "textEncoder": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+        },
+        "generation": {
+          "sampler": "euler",
+          "steps": 8,
+          "cfgScale": 1
+        }
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "image"
+      ],
+      "imageLaunchOptions": {
+        "diffusionFlashAttention": true
+      },
+      "capabilities": [
+        "text-to-image"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
+      "notes": "stable-diffusion.cpp Q4_0 GGUF of Tongyi-MAI/Z-Image-Turbo (6B), with the Z-Image VAE (Comfy-Org) and a Qwen3-4B-Instruct-2507 Q4_K_M text encoder (unsloth). LocalBase profile: euler sampler, 8 steps, CFG 1. Peak memory was measured on Apple M-series 64 GiB, macOS 26 (2026-10-14); broader native inference qualification is pending."
+    },
+    {
+      "modelId": "flux2-klein-4b-q4_0",
+      "displayName": "FLUX.2 Klein 4B",
+      "kind": "image",
+      "provider": "Black Forest Labs",
+      "family": "FLUX.2-klein",
+      "version": "2",
+      "size": "4B",
+      "quant": "Q4_0",
+      "storageGb": 5.29,
+      "source": "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
+      "repositoryRevision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
+      "artifacts": [
+        {
+          "sourcePath": "flux-2-klein-4b-Q4_0.gguf",
+          "filename": "flux-2-klein-4b-Q4_0.gguf",
+          "expectedSizeBytes": 2460378560,
+          "sha256": "d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "split_files/vae/flux2-vae.safetensors",
+          "filename": "flux2-vae.safetensors",
+          "expectedSizeBytes": 336211292,
+          "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/Comfy-Org/flux2-klein-4B",
+            "revision": "5f526678002e43af5551dadb73ce2e8c91b43afe"
+          }
+        },
+        {
+          "sourcePath": "Qwen3-4B-Q4_K_M.gguf",
+          "filename": "Qwen3-4B-Q4_K_M.gguf",
+          "expectedSizeBytes": 2497281312,
+          "sha256": "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-GGUF",
+            "revision": "22c9fc8a8c7700b76a1789366280a6a5a1ad1120"
+          }
+        }
+      ],
+      "imageRuntime": {
+        "kind": "diffusion-qwen3",
+        "artifacts": {
+          "diffusionModel": "flux-2-klein-4b-Q4_0.gguf",
+          "vae": "flux2-vae.safetensors",
+          "textEncoder": "Qwen3-4B-Q4_K_M.gguf"
+        },
+        "generation": {
+          "sampler": "euler",
+          "steps": 4,
+          "cfgScale": 1
+        }
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "image"
+      ],
+      "imageLaunchOptions": {
+        "diffusionFlashAttention": true
+      },
+      "capabilities": [
+        "text-to-image"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
+      "notes": "stable-diffusion.cpp Q4_0 GGUF of black-forest-labs/FLUX.2-klein-4B, with the FLUX.2 VAE (Comfy-Org) and a Qwen3-4B Q4_K_M text encoder (unsloth). LocalBase profile: euler sampler, 4 steps, CFG 1. Peak memory was measured on Apple M-series 64 GiB, macOS 26 (2026-10-13); broader native inference qualification is pending."
+    },
+    {
+      "modelId": "dreamshaper-8-lcm",
+      "displayName": "DreamShaper 8 LCM",
+      "kind": "image",
+      "provider": "Lykon",
+      "family": "Stable-Diffusion",
+      "version": "DreamShaper 8 LCM",
+      "size": "2.0GB",
+      "quant": "F16",
+      "storageGb": 2.13,
+      "source": "https://huggingface.co/Lykon/dreamshaper-8-lcm",
+      "repositoryRevision": "4645d8bc6a8e6b106d21606d63e8460cdad4f1a6",
+      "artifacts": [
+        {
+          "sourcePath": "DreamShaper8_LCM.safetensors",
+          "filename": "DreamShaper8_LCM.safetensors",
+          "expectedSizeBytes": 2133804992,
+          "sha256": "a4f3e1526c5dc4fcbe342f5c410d83ae202c7a415fcefcbb92e0f93fcd0a87c3",
+          "role": "primary"
+        }
+      ],
+      "imageRuntime": {
+        "kind": "checkpoint",
+        "artifacts": {
+          "diffusionModel": "DreamShaper8_LCM.safetensors"
+        },
+        "generation": {
+          "sampler": "lcm",
+          "scheduler": "lcm",
+          "steps": 4,
+          "cfgScale": 1
+        }
+      },
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "image"
+      ],
+      "imageLaunchOptions": {
+        "diffusionFlashAttention": true
+      },
+      "capabilities": [
+        "text-to-image"
+      ],
+      "commercialStatus": "open",
+      "catch": "CreativeML Open RAIL-M license.",
+      "notes": "Lykon's DreamShaper 8 LCM: a Stable Diffusion 1.5 fine-tune distilled with latent consistency (LCM), shipped as one F16 safetensors checkpoint. LocalBase profile: LCM sampler and scheduler, 4 steps, CFG 1. Native inference qualification is pending."
+    },
+    {
+      "modelId": "juggernaut-xl-v9",
+      "displayName": "Juggernaut XL v9",
+      "kind": "image",
+      "provider": "RunDiffusion",
+      "family": "Stable-Diffusion-XL",
+      "version": "9.0",
+      "size": "6.6GB",
+      "quant": "F16",
+      "storageGb": 7.11,
+      "source": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
+      "repositoryRevision": "cf419233522daa0b9ea36c3aff98fa2cab1fb0fb",
+      "artifacts": [
+        {
+          "sourcePath": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+          "filename": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+          "expectedSizeBytes": 7105348188,
+          "sha256": "c9e3e68f89b8e38689e1097d4be4573cf308de4e3fd044c64ca697bdb4aa8bca",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "image"
+      ],
+      "imageLaunchOptions": {
+        "diffusionFlashAttention": true
+      },
+      "capabilities": [
+        "text-to-image",
+        "image-to-image"
+      ],
+      "commercialStatus": "open",
+      "catch": "CreativeML Open RAIL-M license.",
+      "notes": "RunDiffusion's Juggernaut XL v9, a Stable Diffusion XL 1.0 fine-tune shipped as one F16 safetensors checkpoint with its CLIP encoders and VAE. Text-to-image and image-to-image."
+    },
+    {
+      "modelId": "fastwan2.2-ti2v-5b-q6_k",
+      "displayName": "FastWan2.2 TI2V 5B",
+      "kind": "video",
+      "provider": "FastVideo/ggml",
+      "family": "FastWan2.2-TI2V",
+      "version": "2.2",
+      "size": "5B",
+      "quant": "Q6_K",
+      "storageGb": 10.28,
+      "source": "https://huggingface.co/Green-Sky/FastWan2.2-TI2V-5B-FullAttn-GGUF",
+      "repositoryRevision": "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
+      "artifacts": [
+        {
+          "sourcePath": "FastWan2.2-TI2V-5B-q6_k.gguf",
+          "filename": "FastWan2.2-TI2V-5B-q6_k.gguf",
+          "expectedSizeBytes": 4210247200,
+          "sha256": "416a87e30f2328dbefd7666ac90b395ead74f443748ff31c83483ac4ac6121cc",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "umt5-xxl-encoder-Q8_0.gguf",
+          "filename": "umt5-xxl-encoder-Q8_0.gguf",
+          "expectedSizeBytes": 6043068256,
+          "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+            "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7"
+          }
+        },
+        {
+          "sourcePath": "safetensors/taew2_2.safetensors",
+          "filename": "taew2_2.safetensors",
+          "expectedSizeBytes": 22848048,
+          "sha256": "b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://github.com/madebyollin/taehv",
+            "revision": "fa579a9a726b0a55951998d73e309bfdf0abd342"
+          }
+        }
+      ],
+      "videoRuntime": {
+        "mode": "ti2v",
+        "artifacts": {
+          "diffusionModel": "FastWan2.2-TI2V-5B-q6_k.gguf",
+          "textEncoder": "umt5-xxl-encoder-Q8_0.gguf",
+          "decoder": {
+            "kind": "tae",
+            "artifactFilename": "taew2_2.safetensors"
+          }
+        },
+        "qualification": {
+          "jobDeadlineMs": 600000,
+          "maxWidth": 480,
+          "maxHeight": 832,
+          "maxFrames": 81,
+          "fps": 16,
+          "generation": {
+            "sampler": "euler",
+            "scheduler": "lcm",
+            "steps": 3,
+            "cfgScale": 1,
+            "flowShift": 3,
+            "seed": 42
+          },
+          "launchOptions": {
+            "cpuOffload": true,
+            "diffusionFlashAttention": true,
+            "vaeConvDirect": true
+          }
+        },
+        "supportedTargets": [
+          {
+            "platform": "darwin",
+            "architecture": "arm64",
+            "accelerator": "apple-unified"
+          },
+          {
+            "platform": "linux",
+            "architecture": "x64",
+            "accelerator": "nvidia"
+          }
+        ]
+      },
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "outputModalities": [
+        "video"
+      ],
+      "capabilities": [
+        "text-to-video",
+        "image-to-video"
+      ],
+      "outputFormat": "avi",
+      "experimentalRuntime": true,
+      "commercialStatus": "open",
+      "catch": "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
+      "notes": "Q6_K GGUF of FastWan2.2-TI2V-5B-FullAttn (Green-Sky), with a UMT5-XXL Q8_0 encoder (city96) and the taew2_2 tiny VAE (madebyollin/taehv). Experimental and unqualified text-to-video and image-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 480x832, 81 frames, and 16 fps."
+    },
+    {
+      "modelId": "wan2.2-s2v-14b-fp8",
+      "displayName": "Wan2.2 S2V 14B",
+      "kind": "video",
+      "qualificationState": "experimental",
+      "provider": "Wan/Comfy-Org",
+      "family": "Wan2.2-S2V",
+      "version": "2.2",
+      "size": "14B",
+      "quant": "FP8",
+      "storageGb": 23.32,
+      "source": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+      "repositoryRevision": "c4f60d30c55a624e35427060fdd217579a6c1d77",
+      "artifacts": [
+        {
+          "sourcePath": "split_files/diffusion_models/wan2.2_s2v_14B_fp8_scaled.safetensors",
+          "filename": "wan2.2_s2v_14B_fp8_scaled.safetensors",
+          "expectedSizeBytes": 16394832474,
+          "sha256": "140e75af5534ac3d91e710d9df756f7032addd64b341ba2c1c70e3e6da9aa216",
+          "role": "primary"
+        },
+        {
+          "sourcePath": "umt5-xxl-encoder-Q8_0.gguf",
+          "filename": "umt5-xxl-encoder-Q8_0.gguf",
+          "expectedSizeBytes": 6043068256,
+          "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+            "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7"
+          }
+        },
+        {
+          "sourcePath": "split_files/vae/wan_2.1_vae.safetensors",
+          "filename": "wan_2.1_vae.safetensors",
+          "expectedSizeBytes": 253815318,
+          "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+          "role": "supplementary",
+          "source": {
+            "repositoryUrl": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+            "revision": "617a7633e636506f850e043bc4605f290a466a8e"
+          }
+        },
+        {
+          "sourcePath": "split_files/audio_encoders/wav2vec2_large_english_fp16.safetensors",
+          "filename": "wav2vec2_large_english_fp16.safetensors",
+          "expectedSizeBytes": 630997322,
+          "sha256": "f0017a43ea57ef6b3d4866be607844bbd8cada6d30966f7d70044ed0d63d3f9e",
+          "role": "supplementary"
+        }
+      ],
+      "videoRuntime": {
+        "mode": "s2v",
+        "artifacts": {
+          "diffusionModel": "wan2.2_s2v_14B_fp8_scaled.safetensors",
+          "textEncoder": "umt5-xxl-encoder-Q8_0.gguf",
+          "decoder": {
+            "kind": "vae",
+            "artifactFilename": "wan_2.1_vae.safetensors"
+          },
+          "audioEncoder": "wav2vec2_large_english_fp16.safetensors"
+        },
+        "qualification": {
+          "maxWidth": 480,
+          "maxHeight": 640,
+          "maxFrames": 33,
+          "fps": 16,
+          "jobDeadlineMs": 1800000,
+          "generation": {
+            "sampler": "euler",
+            "scheduler": "discrete",
+            "steps": 20,
+            "cfgScale": 6,
+            "flowShift": 3,
+            "seed": 42
+          },
+          "launchOptions": {
+            "cpuOffload": true,
+            "diffusionFlashAttention": true,
+            "vaeConvDirect": false
+          }
+        },
+        "supportedTargets": [
+          {
+            "platform": "linux",
+            "architecture": "x64",
+            "accelerator": "nvidia"
+          }
+        ]
+      },
+      "inputModalities": [
+        "text",
+        "image",
+        "audio"
+      ],
+      "outputModalities": [
+        "video"
+      ],
+      "capabilities": [
+        "speech-to-video"
+      ],
+      "outputFormat": "avi",
+      "experimentalRuntime": true,
+      "commercialStatus": "open",
+      "catch": "Apache-2.0 licenses for the pinned artifacts. Output audio is the supplied driving track, not generated speech.",
+      "notes": "Experimental and unqualified Linux x64 single-NVIDIA portrait animation at exactly 480x640, 33 frames, and 16 fps. Admission reservations are estimates and must be re-measured in a pinned-runtime hardware run before qualification. Requires a portrait and speech no longer than 2.0625 seconds. Lip-sync quality and longer clips are not qualified."
+    },
     {
       "modelId": "qwen3.5-0.8b-q4_k_m",
       "displayName": "Qwen3.5 0.8B",
@@ -143,123 +1115,6 @@
       "commercialStatus": "open",
       "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
       "notes": "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts."
-    },
-    {
-      "modelId": "qwen3.5-4b-q4_k_m",
-      "displayName": "Qwen3.5 4B",
-      "kind": "llm",
-      "provider": "Qwen",
-      "family": "Qwen3.5",
-      "version": "3.5",
-      "size": "4B",
-      "quant": "Q4_K_M",
-      "storageGb": 3.02,
-      "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF",
-      "repositoryRevision": "4168f45a16a1290d65a4ec0fa312ae917a4c15d6",
-      "artifacts": [
-        {
-          "sourcePath": "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
-          "filename": "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
-          "expectedSizeBytes": 3013027808,
-          "sha256": "13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 262144,
-      "capabilities": [
-        "text-generation",
-        "tool-calling"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
-      "notes": "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts."
-    },
-    {
-      "modelId": "qwen3.5-9b-q4_k_m",
-      "displayName": "Qwen3.5 9B",
-      "kind": "llm",
-      "provider": "Qwen",
-      "family": "Qwen3.5",
-      "version": "3.5",
-      "size": "9B",
-      "quant": "Q4_K_M",
-      "storageGb": 6.17,
-      "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF",
-      "repositoryRevision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
-      "artifacts": [
-        {
-          "sourcePath": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
-          "filename": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
-          "expectedSizeBytes": 6169341984,
-          "sha256": "d784ce9eda1a5a7b51e8f705a9e6310844bf4f173654d115823c775fdea56d43",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 262144,
-      "capabilities": [
-        "text-generation",
-        "tool-calling"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
-      "notes": "Embedded tokenizer; no vision projector. Memory estimate assumes short contexts."
-    },
-    {
-      "modelId": "qwen3-embedding-4b-q4_k_m",
-      "displayName": "Qwen3 Embedding 4B",
-      "kind": "llm",
-      "provider": "Qwen",
-      "family": "Qwen3-Embedding",
-      "version": "4B",
-      "size": "4B",
-      "quant": "Q4_K_M",
-      "storageGb": 2.5,
-      "source": "https://huggingface.co/Qwen/Qwen3-Embedding-4B-GGUF",
-      "repositoryRevision": "f4602530db1d980e16da9d7d3a70294cf5c190be",
-      "artifacts": [
-        {
-          "sourcePath": "Qwen3-Embedding-4B-Q4_K_M.gguf",
-          "filename": "Qwen3-Embedding-4B-Q4_K_M.gguf",
-          "expectedSizeBytes": 2496703776,
-          "sha256": "2b0cf8f17b4c723c27303015383c27ec4bf2d8314bb677d05e920dd70bb0f16b",
-          "role": "primary"
-        }
-      ],
-      "llmRuntime": {
-        "capability": "embedding-only",
-        "pooling": "last",
-        "dimensions": {
-          "minimum": 2560,
-          "maximum": 2560
-        }
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 32768,
-      "capabilities": [
-        "embeddings",
-        "multilingual",
-        "code-retrieval"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.",
-      "notes": "Last-token pooling with fixed 2560-dimensional output. Embedded tokenizer; memory estimate assumes short inputs."
     },
     {
       "modelId": "qwen3-embedding-4b-q8_0",
@@ -570,99 +1425,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "CreativeML Open RAIL++-M use restrictions apply.",
-      "notes": "Bundled CLIP encoders and VAE; built-in CLIP tokenizer. Uses server defaults, not the author's recommended DPM++ Karras preset."
-    },
-    {
-      "modelId": "qwen3-embedding-0.6b-q8_0",
-      "displayName": "Qwen3 Embedding 0.6B",
-      "kind": "llm",
-      "provider": "Qwen",
-      "family": "Qwen3-Embedding",
-      "version": "0.6B",
-      "size": "0.6B",
-      "quant": "Q8_0",
-      "storageGb": 0.64,
-      "source": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
-      "repositoryRevision": "370f27d7550e0def9b39c1f16d3fbaa13aa67728",
-      "artifacts": [
-        {
-          "sourcePath": "Qwen3-Embedding-0.6B-Q8_0.gguf",
-          "filename": "Qwen3-Embedding-0.6B-Q8_0.gguf",
-          "expectedSizeBytes": 639150592,
-          "sha256": "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
-          "role": "primary"
-        }
-      ],
-      "llmRuntime": {
-        "capability": "embedding-only",
-        "pooling": "last",
-        "dimensions": {
-          "minimum": 1024,
-          "maximum": 1024
-        }
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 32768,
-      "capabilities": [
-        "embeddings",
-        "multilingual",
-        "code-retrieval"
-      ],
-      "commercialStatus": "open",
-      "catch": "Embedding endpoint only. Chat completions are rejected before runtime admission.",
-      "notes": "Official Apache-2.0 Q8_0 GGUF. The runtime uses last-token pooling and emits 1024-dimensional vectors."
-    },
-    {
-      "modelId": "clef-flash-q4_k_m",
-      "displayName": "Clef Flash",
-      "kind": "llm",
-      "provider": "Cloudflare",
-      "family": "Clef",
-      "version": "Flash",
-      "size": "9B",
-      "quant": "Q4_K_M",
-      "storageGb": 7.11,
-      "source": "https://huggingface.co/ggml-org/Clef-Flash-GGUF",
-      "repositoryRevision": "6b4fe4c59098479652d94f0fe11a40facbebd1ec",
-      "artifacts": [
-        {
-          "sourcePath": "Clef-Flash-Q4_K_M.gguf",
-          "filename": "Clef-Flash-Q4_K_M.gguf",
-          "expectedSizeBytes": 6486448288,
-          "sha256": "3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "mmproj-Clef-Flash-Q8_0.gguf",
-          "filename": "mmproj-Clef-Flash-Q8_0.gguf",
-          "expectedSizeBytes": 624229728,
-          "sha256": "9dd8bc279f57d33b0697d4d0fe900fe751a24c9e3d30ab90969d4714ffc0722d",
-          "role": "supplementary"
-        }
-      ],
-      "llmRuntime": {
-        "capability": "decision-only"
-      },
-      "inputModalities": [
-        "text",
-        "image"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 262144,
-      "capabilities": [
-        "decision",
-        "long-context"
-      ],
-      "commercialStatus": "open",
-      "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.",
-      "notes": "Default decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef-flash (Apache-2.0, built from Qwen3.5-9B; base revision 8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3). Answers choice, score, and noul questions through POST /v1/systemone. Clef 27B is the larger qualified alternative."
+      "notes": "Bundled CLIP encoders and VAE; built-in CLIP tokenizer. Uses server defaults, not the DPM++ Karras preset the model card suggests."
     },
     {
       "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
@@ -673,7 +1436,6 @@
       "version": "2.5",
       "size": "1.5B",
       "quant": "Q4_K_M",
-      "codingScore": 6,
       "storageGb": 1.2,
       "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
       "repositoryRevision": "f86cb2c1fa58255f8052cc32aeede1b7482d4361",
@@ -708,7 +1470,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0.",
-      "notes": "Autocomplete and tab completion model. Protocol tool calling is unsupported for this artifact."
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-1.5B-Instruct; 32,768-token context (model card and GGUF header). Supports fill-in-the-middle completion prompts. Protocol tool calling is unsupported for this artifact."
     },
     {
       "modelId": "qwen2.5-coder-3b-instruct-q4_k_m",
@@ -719,7 +1481,6 @@
       "version": "2.5",
       "size": "3B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 2.2,
       "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
       "repositoryRevision": "f74adce6aa16316c625447af059dbebe4983757c",
@@ -738,6 +1499,7 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 32768,
       "capabilities": [
         "tool-calling",
         "code-generation",
@@ -745,7 +1507,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "Qwen Research License; non-commercial use only.",
-      "notes": "Fast coding baseline for low-VRAM GPUs."
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-3B-Instruct; 32,768-token context (model card and GGUF header)."
     },
     {
       "modelId": "qwen2.5-coder-7b-instruct-q4_k_m",
@@ -756,7 +1518,6 @@
       "version": "2.5",
       "size": "7B",
       "quant": "Q4_K_M",
-      "codingScore": 9,
       "storageGb": 4.7,
       "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
       "repositoryRevision": "13fb94bfda8c8cf22497dc57b78f391a9acb426a",
@@ -782,7 +1543,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0.",
-      "notes": "Great coding quality per watt; ideal default for a 12GB GPU."
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-7B-Instruct. The model card states a 32,768-token context; the GGUF header declares 131,072."
     },
     {
       "modelId": "qwen2.5-coder-14b-instruct-q4_k_m",
@@ -818,7 +1579,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0.",
-      "notes": "Top-end coding option that still fits on 12GB with careful context settings."
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-14B-Instruct. The model card states a 32,768-token context; the GGUF header declares 131,072."
     },
     {
       "modelId": "qwen2.5-coder-32b-instruct-q4_k_m",
@@ -829,7 +1590,6 @@
       "version": "2.5",
       "size": "32B",
       "quant": "Q4_K_M",
-      "codingScore": 10,
       "storageGb": 20.3,
       "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF",
       "repositoryRevision": "9d3053fce650fe1cdbdb75998c2a87add9d178ef",
@@ -855,7 +1615,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0.",
-      "notes": "State-of-the-art local coding model. Perfect for unified memory setups."
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen2.5-Coder-32B-Instruct. The model card states a 32,768-token context; the GGUF header declares 131,072."
     },
     {
       "modelId": "qwen3-coder-next-q4_k_m",
@@ -866,7 +1626,6 @@
       "version": "Next",
       "size": "80B-A3B",
       "quant": "Q4_K_M",
-      "codingScore": 10,
       "storageGb": 48.4,
       "source": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
       "repositoryRevision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
@@ -914,8 +1673,8 @@
         "long-context"
       ],
       "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "Qwen's sparse next-generation coding model for agentic workflows."
+      "catch": "Apache-2.0.",
+      "notes": "Official Qwen Q4_K_M GGUF of Qwen3-Coder-Next, split into four files. GGUF header: architecture qwen3next, 512 experts with 10 active per token, 262,144-token training context."
     },
     {
       "modelId": "llama-3.2-1b-instruct-q4_k_m",
@@ -926,7 +1685,6 @@
       "version": "3.2",
       "size": "1B",
       "quant": "Q4_K_M",
-      "codingScore": 5,
       "storageGb": 1,
       "source": "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF",
       "repositoryRevision": "067b946cf014b7c697f3654f621d577a3e3afd1c",
@@ -945,12 +1703,13 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling"
       ],
       "commercialStatus": "conditional",
       "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
-      "notes": "Ultra-small Llama model for low-resource environments."
+      "notes": "bartowski Q4_K_M GGUF of meta-llama/Llama-3.2-1B-Instruct (Llama 3.2 Community License). GGUF header: architecture llama, 131,072-token training context."
     },
     {
       "modelId": "llama-3.2-3b-instruct-q4_k_m",
@@ -961,7 +1720,6 @@
       "version": "3.2",
       "size": "3B",
       "quant": "Q4_K_M",
-      "codingScore": 7,
       "storageGb": 2,
       "source": "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
       "repositoryRevision": "5ab33fa94d1d04e903623ae72c95d1696f09f9e8",
@@ -980,13 +1738,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "reasoning"
       ],
       "commercialStatus": "conditional",
       "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
-      "notes": "Highly capable 3B generalist model."
+      "notes": "bartowski Q4_K_M GGUF of meta-llama/Llama-3.2-3B-Instruct (Llama 3.2 Community License). GGUF header: architecture llama, 131,072-token training context."
     },
     {
       "modelId": "llama-3.1-8b-instruct-q4_k_m",
@@ -997,7 +1756,6 @@
       "version": "3.1",
       "size": "8B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 4.7,
       "source": "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
       "repositoryRevision": "bf5b95e96dac0462e2a09145ec66cae9a3f12067",
@@ -1016,6 +1774,7 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "multilingual",
@@ -1023,7 +1782,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
-      "notes": "One of the most popular open-source 8B models for general tasks and coding."
+      "notes": "bartowski Q4_K_M GGUF of meta-llama/Meta-Llama-3.1-8B-Instruct (Llama 3.1 Community License). GGUF header: architecture llama, 131,072-token training context."
     },
     {
       "modelId": "llama-3.3-70b-instruct-q4_k_m",
@@ -1034,7 +1793,6 @@
       "version": "3.3",
       "size": "70B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 42,
       "source": "https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF",
       "repositoryRevision": "b6c5c9f176f3279204034e1d16d393105e95cb88",
@@ -1053,6 +1811,7 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "reasoning",
@@ -1060,7 +1819,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
-      "notes": "High quality generalist model for large GPU servers."
+      "notes": "bartowski Q4_K_M GGUF of meta-llama/Llama-3.3-70B-Instruct (Llama 3.3 Community License). GGUF header: architecture llama, 131,072-token training context."
     },
     {
       "modelId": "deepseek-r1-distill-qwen-14b-q4_k_m",
@@ -1071,7 +1830,6 @@
       "version": "R1",
       "size": "14B",
       "quant": "Q4_K_M",
-      "codingScore": 9,
       "storageGb": 9,
       "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
       "repositoryRevision": "9f5d77d401799416e0702290a691038b44012e0c",
@@ -1090,14 +1848,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "reasoning",
         "tool-calling",
         "code-generation"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No revenue caps.",
-      "notes": "Reasoning-focused model with strong coding quality in quantized form."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-R1-Distill-Qwen-14B (DeepSeek-R1 outputs distilled into Qwen2.5-14B). GGUF header: architecture qwen2, 131,072-token training context."
     },
     {
       "modelId": "deepseek-coder-6.7b-instruct-q4_k_m",
@@ -1108,7 +1867,6 @@
       "version": "1",
       "size": "6.7B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 4.8,
       "source": "https://huggingface.co/TheBloke/deepseek-coder-6.7B-Instruct-GGUF",
       "repositoryRevision": "9e221e6b41cb1bf1c5d8f9718e81e3dc781f7557",
@@ -1127,14 +1885,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 16384,
       "capabilities": [
         "tool-calling",
         "code-generation",
         "code-editing"
       ],
       "commercialStatus": "open",
-      "catch": "Permissive License (DeepSeek License), allows commercial use.",
-      "notes": "Highly capable code model from the first-gen DeepSeek coder series."
+      "catch": "DeepSeek License; the upstream license permits commercial use.",
+      "notes": "TheBloke Q4_K_M GGUF of deepseek-ai/deepseek-coder-6.7b-instruct. GGUF header: architecture llama, 16,384-token training context."
     },
     {
       "modelId": "deepseek-coder-v2-lite-instruct-q4_k_m",
@@ -1145,7 +1904,6 @@
       "version": "2",
       "size": "16B",
       "quant": "Q4_K_M",
-      "codingScore": 9.5,
       "storageGb": 11.2,
       "source": "https://huggingface.co/bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
       "repositoryRevision": "8f248fa2072348f77a8bc37754e470de1f61866e",
@@ -1170,8 +1928,8 @@
         "code-editing"
       ],
       "commercialStatus": "open",
-      "catch": "Permissive License (DeepSeek License), allows commercial use.",
-      "notes": "State-of-the-art MoE coding model with 16B total parameters and 2.4B active."
+      "catch": "DeepSeek License; the upstream license permits commercial use.",
+      "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct, a mixture-of-experts model with 16B total and 2.4B active parameters. GGUF header: architecture deepseek2, 64 routed experts with 6 active. The model card states a 128k-token context; the GGUF header declares 163,840."
     },
     {
       "modelId": "deepseek-coder-33b-instruct-q4_k_m",
@@ -1182,7 +1940,6 @@
       "version": "1",
       "size": "33B",
       "quant": "Q4_K_M",
-      "codingScore": 9,
       "storageGb": 21,
       "source": "https://huggingface.co/TheBloke/deepseek-coder-33B-Instruct-GGUF",
       "repositoryRevision": "cd6a4d02d3502901ff7f980b6373387ab8b8e91a",
@@ -1201,14 +1958,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 16384,
       "capabilities": [
         "tool-calling",
         "code-generation",
         "code-editing"
       ],
       "commercialStatus": "open",
-      "catch": "Permissive License (DeepSeek License), allows commercial use.",
-      "notes": "Top-tier 33B coding model, excellent balance between performance and footprint."
+      "catch": "DeepSeek License; the upstream license permits commercial use.",
+      "notes": "TheBloke Q4_K_M GGUF of deepseek-ai/deepseek-coder-33b-instruct. GGUF header: architecture llama, 16,384-token training context."
     },
     {
       "modelId": "gemma-3-1b-it-q4_k_m",
@@ -1219,7 +1977,6 @@
       "version": "3",
       "size": "1B",
       "quant": "Q4_K_M",
-      "codingScore": 5,
       "storageGb": 0.9,
       "source": "https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF",
       "repositoryRevision": "116f76234503685a98f572982177b11d44ec8ff1",
@@ -1238,13 +1995,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 32768,
       "capabilities": [
         "tool-calling",
         "reasoning"
       ],
       "commercialStatus": "conditional",
       "catch": "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
-      "notes": "Smallest Gemma 3 variant, fast and lightweight."
+      "notes": "bartowski Q4_K_M GGUF of google/gemma-3-1b-it (text only). GGUF header: architecture gemma3, 32,768-token training context."
     },
     {
       "modelId": "gemma-3-4b-it-q4_k_m",
@@ -1255,7 +2013,6 @@
       "version": "3",
       "size": "4B",
       "quant": "Q4_K_M",
-      "codingScore": 6,
       "storageGb": 2.8,
       "source": "https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF",
       "repositoryRevision": "71506238f970075ca85125cd749c28b1b0eee84e",
@@ -1274,13 +2031,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "reasoning"
       ],
       "commercialStatus": "conditional",
       "catch": "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
-      "notes": "Highly capable 4B generalist and reasoning model."
+      "notes": "bartowski Q4_K_M GGUF of google/gemma-3-4b-it. GGUF header: architecture gemma3, 131,072-token training context. Text-only LocalBase entry; the vision projector is not included in the managed artifact set."
     },
     {
       "modelId": "gemma-3-12b-it-q4_k_m",
@@ -1291,7 +2049,6 @@
       "version": "3",
       "size": "12B",
       "quant": "Q4_K_M",
-      "codingScore": 7,
       "storageGb": 8,
       "source": "https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF",
       "repositoryRevision": "648e3a36a77c8a9f12d86e741f9dcb9089c769c4",
@@ -1310,13 +2067,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "reasoning"
       ],
       "commercialStatus": "conditional",
       "catch": "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
-      "notes": "Text-only LocalBase entry; the vision projector is not included in the managed artifact set."
+      "notes": "bartowski Q4_K_M GGUF of google/gemma-3-12b-it. GGUF header: architecture gemma3, 131,072-token training context. Text-only LocalBase entry; the vision projector is not included in the managed artifact set."
     },
     {
       "modelId": "gemma-3-27b-it-q4_k_m",
@@ -1327,7 +2085,6 @@
       "version": "3",
       "size": "27B",
       "quant": "Q4_K_M",
-      "codingScore": 9,
       "storageGb": 16.5,
       "source": "https://huggingface.co/bartowski/google_gemma-3-27b-it-GGUF",
       "repositoryRevision": "4a05c54413bd0d87d77a97af403266f69cec0ee6",
@@ -1346,6 +2103,7 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "reasoning",
@@ -1353,7 +2111,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "Gemma terms allow commercial use. Gated model; requires Hugging Face token configuration (local-base configure --hf-token) to install.",
-      "notes": "Top-tier 27B model; matches larger models in reasoning quality."
+      "notes": "bartowski Q4_K_M GGUF of google/gemma-3-27b-it. GGUF header: architecture gemma3, 131,072-token training context. Text-only LocalBase entry; the vision projector is not included in the managed artifact set."
     },
     {
       "modelId": "phi-4-q4_k_m",
@@ -1364,7 +2122,6 @@
       "version": "4",
       "size": "14B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 9,
       "source": "https://huggingface.co/bartowski/phi-4-GGUF",
       "repositoryRevision": "19cd65f97c2f1712a81c506611d3f9c94b16a1e1",
@@ -1383,14 +2140,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 16384,
       "capabilities": [
         "reasoning",
         "tool-calling",
         "code-generation"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No restrictions.",
-      "notes": "Compact reasoning model with strong quality density."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of microsoft/phi-4 (14B). GGUF header: architecture phi3, 16,384-token training context."
     },
     {
       "modelId": "phi-3.5-mini-instruct-q4_k_m",
@@ -1401,7 +2159,6 @@
       "version": "3.5",
       "size": "3.8B",
       "quant": "Q4_K_M",
-      "codingScore": 7,
       "storageGb": 2.2,
       "source": "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF",
       "repositoryRevision": "6d70da17e749a471ccb62ade694486011a75cda3",
@@ -1420,13 +2177,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "tool-calling",
         "multilingual"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No restrictions.",
-      "notes": "Extremely lightweight 3.8B model with high reasoning ability."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of microsoft/Phi-3.5-mini-instruct (3.8B parameters). GGUF header: architecture phi3, 131,072-token training context."
     },
     {
       "modelId": "phi-3.5-moe-instruct-q4_k_m",
@@ -1437,7 +2195,6 @@
       "version": "3.5",
       "size": "42B",
       "quant": "Q4_K_M",
-      "codingScore": 8.5,
       "storageGb": 23,
       "source": "https://huggingface.co/bartowski/Phi-3.5-MoE-instruct-GGUF",
       "repositoryRevision": "4b580329100cf44d7d041b6f63967b26869a6937",
@@ -1456,51 +2213,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "mixture-of-experts",
         "reasoning",
         "multilingual"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No restrictions.",
-      "notes": "Microsoft MoE release; high performance with 6.6B active parameters."
-    },
-    {
-      "modelId": "gpt-oss-20b-q4_k_m",
-      "displayName": "gpt-oss 20B",
-      "kind": "llm",
-      "provider": "OpenAI",
-      "family": "GPT-OSS",
-      "version": "1",
-      "size": "20B",
-      "quant": "Q4_K_M",
-      "codingScore": 9.5,
-      "storageGb": 14,
-      "source": "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
-      "repositoryRevision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
-      "artifacts": [
-        {
-          "sourcePath": "openai_gpt-oss-20b-Q4_K_M.gguf",
-          "filename": "openai_gpt-oss-20b-Q4_K_M.gguf",
-          "expectedSizeBytes": 11673418816,
-          "sha256": "86a21df11afa5a40031ec1974e368ae0ab561ee3995f4d08ff432e8b2b7af9fc",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "contextWindowTokens": 131072,
-      "capabilities": [
-        "reasoning",
-        "tool-calling"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "OpenAI's open-weight reasoning model, optimized for edge devices."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of microsoft/Phi-3.5-MoE-instruct, a mixture-of-experts model with 6.6B active parameters (model card). GGUF header: architecture phimoe, 16 experts with 2 active, 131,072-token training context."
     },
     {
       "modelId": "falcon-2-11b-instruct-q4_k_m",
@@ -1511,7 +2232,6 @@
       "version": "2",
       "size": "11B",
       "quant": "Q4_K_M",
-      "codingScore": 7,
       "storageGb": 7,
       "source": "https://huggingface.co/bartowski/Falcon3-10B-Instruct-GGUF",
       "repositoryRevision": "a826d55e0af24842680260d23f7221b6138c342a",
@@ -1530,13 +2250,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 32768,
       "capabilities": [
         "tool-calling",
         "multilingual"
       ],
       "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "General-purpose LLM alternative in permissive license family."
+      "catch": "TII Falcon LLM License (falcon-llm-license): https://falconllm.tii.ae/falcon-terms-and-conditions.html.",
+      "notes": "The pinned file is bartowski's Q4_K_M GGUF of tiiuae/Falcon3-10B-Instruct (Falcon3 10B, not Falcon 2 11B). GGUF header: architecture llama, 32,768-token training context. Upstream lists English, French, Spanish and Portuguese."
     },
     {
       "modelId": "deepseek-r1-distill-qwen-32b-q4_k_m",
@@ -1547,7 +2268,6 @@
       "version": "Qwen-32B",
       "size": "32B",
       "quant": "Q4_K_M",
-      "codingScore": 9.5,
       "storageGb": 20.3,
       "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
       "repositoryRevision": "1dc8cf9ffa5dd333057ea1b09ccf4772d8726dec",
@@ -1566,14 +2286,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "reasoning",
         "tool-calling",
         "code-generation"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No restrictions.",
-      "notes": "DeepSeek-R1 reasoning model distilled on Qwen-32B. Superb coding and logic."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-R1-Distill-Qwen-32B (DeepSeek-R1 outputs distilled into Qwen2.5-32B). GGUF header: architecture qwen2, 131,072-token training context."
     },
     {
       "modelId": "deepseek-r1-distill-llama-8b-q4_k_m",
@@ -1584,7 +2305,6 @@
       "version": "Llama-8B",
       "size": "8B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 4.7,
       "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
       "repositoryRevision": "935d400c2ed1a29cc2a1045df25ec7998fb4dfe4",
@@ -1603,14 +2323,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "reasoning",
         "tool-calling",
         "code-generation"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No restrictions.",
-      "notes": "DeepSeek-R1 reasoning model distilled on Llama-8B. Great for laptop runs."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-R1-Distill-Llama-8B (DeepSeek-R1 outputs distilled into Llama-3.1-8B). GGUF header: architecture llama, 131,072-token training context."
     },
     {
       "modelId": "deepseek-r1-distill-llama-70b-q4_k_m",
@@ -1621,7 +2342,6 @@
       "version": "Llama-70B",
       "size": "70B",
       "quant": "Q4_K_M",
-      "codingScore": 9.5,
       "storageGb": 42,
       "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
       "repositoryRevision": "1842c5f7280f933ead58adf8afd078672c9f6cd0",
@@ -1640,14 +2360,15 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 131072,
       "capabilities": [
         "reasoning",
         "tool-calling",
         "code-generation"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License. No restrictions.",
-      "notes": "DeepSeek-R1 reasoning model distilled on Llama-3-70B. High reasoning quality."
+      "catch": "MIT License.",
+      "notes": "bartowski Q4_K_M GGUF of deepseek-ai/DeepSeek-R1-Distill-Llama-70B (DeepSeek-R1 outputs distilled into Llama-3.3-70B-Instruct). GGUF header: architecture llama, 131,072-token training context."
     },
     {
       "modelId": "qwen2.5-72b-instruct-q4_k_m",
@@ -1658,7 +2379,6 @@
       "version": "2.5",
       "size": "72B",
       "quant": "Q4_K_M",
-      "codingScore": 10,
       "storageGb": 47,
       "source": "https://huggingface.co/bartowski/Qwen2.5-72B-Instruct-GGUF",
       "repositoryRevision": "d43fd973131bce821f41e2df3c78c6fe15c5627a",
@@ -1677,6 +2397,7 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 32768,
       "capabilities": [
         "tool-calling",
         "code-generation",
@@ -1684,7 +2405,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "Qwen license; authorization is required for products with over 100 million monthly active users. See the upstream Qwen license.",
-      "notes": "Top-tier 72B reasoning and coding model. Superb logic, math, and code generation."
+      "notes": "bartowski Q4_K_M GGUF of Qwen/Qwen2.5-72B-Instruct. GGUF header: architecture qwen2, 32,768-token training context. Longer contexts need YaRN rope scaling, which LocalBase does not configure."
     },
     {
       "modelId": "codestral-22b-instruct-q4_k_m",
@@ -1695,7 +2416,6 @@
       "version": "22B-v0.1",
       "size": "22B",
       "quant": "Q4_K_M",
-      "codingScore": 9,
       "storageGb": 14,
       "source": "https://huggingface.co/bartowski/Codestral-22B-v0.1-GGUF",
       "repositoryRevision": "0e6abe14d6aeaf2c99d5dc9973205e8e38692d90",
@@ -1714,13 +2434,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 32768,
       "capabilities": [
         "code-generation",
         "code-editing"
       ],
       "commercialStatus": "conditional",
       "catch": "Mistral commercial terms apply for non-research use.",
-      "notes": "Mistral's dedicated coding model. Strong FIM capability."
+      "notes": "bartowski Q4_K_M GGUF of mistralai/Codestral-22B-v0.1. GGUF header: architecture llama, 32,768-token training context. Upstream supports instruct and fill-in-the-middle (FIM) prompts."
     },
     {
       "modelId": "mistral-nemo-12b-instruct-q4_k_m",
@@ -1731,7 +2452,6 @@
       "version": "Nemo",
       "size": "12B",
       "quant": "Q4_K_M",
-      "codingScore": 8,
       "storageGb": 7.5,
       "source": "https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF",
       "repositoryRevision": "a2dd64a0a76ea1bdb2bb6ab6fa5496b003c7c908",
@@ -1755,44 +2475,8 @@
         "multilingual"
       ],
       "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "Excellent 12B model with large 128k context window."
-    },
-    {
-      "modelId": "qwen3.8-27b-q4_k_m",
-      "displayName": "Qwen3.8 27B",
-      "kind": "llm",
-      "provider": "Qwen",
-      "family": "Qwen3.8",
-      "version": "3.8",
-      "size": "27B",
-      "quant": "Q4_K_M",
-      "storageGb": 17.8,
-      "source": "https://huggingface.co/bartowski/Qwen3.8-27B-GGUF",
-      "repositoryRevision": "f0eec4a4bb4975114a030d048952d83c0a53c034",
-      "artifacts": [
-        {
-          "sourcePath": "Qwen3.8-27B-Q4_K_M.gguf",
-          "filename": "Qwen3.8-27B-Q4_K_M.gguf",
-          "expectedSizeBytes": 17772537440,
-          "sha256": "e103abf9d914d1d7b2f2592f055f2759a71195c350a01c135f71aaae86bca52b",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "capabilities": [
-        "reasoning",
-        "tool-calling",
-        "long-context"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "Text-only LocalBase entry."
+      "catch": "Apache-2.0.",
+      "notes": "bartowski Q4_K_M GGUF of mistralai/Mistral-Nemo-Instruct-2407 (base Mistral-Nemo-Base-2407). GGUF header: architecture llama. The model card states training with a 128k-token context window; the GGUF header declares 1,024,000."
     },
     {
       "modelId": "devstral-small-2-24b-instruct-q4_k_m",
@@ -1803,7 +2487,6 @@
       "version": "2",
       "size": "24B",
       "quant": "Q4_K_M",
-      "codingScore": 10,
       "storageGb": 14.4,
       "source": "https://huggingface.co/bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF",
       "repositoryRevision": "027695770ae1de77c2f6fb19f8e1ba9d65fcd15d",
@@ -1828,8 +2511,8 @@
         "long-context"
       ],
       "commercialStatus": "open",
-      "catch": "Apache 2.0.",
-      "notes": "Code-focused 24B model."
+      "catch": "Apache-2.0.",
+      "notes": "bartowski Q4_K_M GGUF of mistralai/Devstral-Small-2-24B-Instruct-2512, a code-agent model built on Mistral-Small-3.1-24B-Base-2503. GGUF header: architecture mistral3. The model card states a 256k-token context; the GGUF header declares 393,216."
     },
     {
       "modelId": "ministral-3-14b-instruct-q4_k_m",
@@ -1858,13 +2541,14 @@
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 262144,
       "capabilities": [
         "tool-calling",
         "long-context"
       ],
       "commercialStatus": "open",
       "catch": "Apache 2.0.",
-      "notes": "Text-only LocalBase entry."
+      "notes": "Official Mistral Q4_K_M GGUF of Ministral-3-14B-Instruct-2512 (base Ministral-3-14B-Base-2512). GGUF header: architecture mistral3, 262,144-token training context; the model card states a 256k-token context. Text-only LocalBase entry."
     },
     {
       "modelId": "qwen3.5-27b-q4_k_m",
@@ -1900,7 +2584,7 @@
         "long-context"
       ],
       "commercialStatus": "open",
-      "catch": "Apache 2.0.",
+      "catch": "Apache-2.0.",
       "notes": "Text-only LocalBase entry; official 262k-token context. Base revision fc05daec18b0a78c049392ed2e771dde82bdf654."
     },
     {
@@ -1940,40 +2624,76 @@
       "notes": "Text-only LocalBase entry; official 131k-token context. Base revision 95a6d26c4bfb886c58daf9d3f7332c857cb27b43."
     },
     {
-      "modelId": "whisper-large-v3-turbo",
-      "displayName": "Whisper Large V3 Turbo",
-      "kind": "stt",
-      "provider": "OpenAI/ggml",
-      "family": "Whisper",
-      "version": "large-v3-turbo",
-      "size": "large",
-      "quant": "Q5_0",
-      "storageGb": 1.7,
-      "source": "https://huggingface.co/ggerganov/whisper.cpp",
-      "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "modelId": "qwen3.5-9b-q4_k_m",
+      "displayName": "Qwen3.5 9B",
+      "kind": "llm",
+      "provider": "Qwen",
+      "family": "Qwen3.5",
+      "version": "3.5",
+      "size": "9B",
+      "quant": "Q4_K_M",
+      "storageGb": 6.17,
+      "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF",
+      "repositoryRevision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
       "artifacts": [
         {
-          "sourcePath": "ggml-large-v3-turbo.bin",
-          "filename": "ggml-large-v3-turbo.bin",
-          "expectedSizeBytes": 1624555275,
-          "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+          "sourcePath": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+          "filename": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+          "expectedSizeBytes": 6169341984,
+          "sha256": "d784ce9eda1a5a7b51e8f705a9e6310844bf4f173654d115823c775fdea56d43",
           "role": "primary"
         }
       ],
       "inputModalities": [
-        "audio"
+        "text"
       ],
       "outputModalities": [
         "text"
       ],
+      "contextWindowTokens": 262144,
       "capabilities": [
-        "speech-to-text",
-        "multilingual",
-        "translation"
+        "text-generation",
+        "tool-calling"
       ],
       "commercialStatus": "open",
-      "catch": "MIT License.",
-      "notes": "Best quality Whisper family model for local deployment."
+      "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
+      "notes": "bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.5-9B. GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 32 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned."
+    },
+    {
+      "modelId": "gpt-oss-20b-q4_k_m",
+      "displayName": "gpt-oss 20B",
+      "kind": "llm",
+      "provider": "OpenAI",
+      "family": "GPT-OSS",
+      "version": "1",
+      "size": "20B",
+      "quant": "Q4_K_M",
+      "storageGb": 11.67,
+      "source": "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
+      "repositoryRevision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
+      "artifacts": [
+        {
+          "sourcePath": "openai_gpt-oss-20b-Q4_K_M.gguf",
+          "filename": "openai_gpt-oss-20b-Q4_K_M.gguf",
+          "expectedSizeBytes": 11673418816,
+          "sha256": "86a21df11afa5a40031ec1974e368ae0ab561ee3995f4d08ff432e8b2b7af9fc",
+          "role": "primary"
+        }
+      ],
+      "inputModalities": [
+        "text"
+      ],
+      "outputModalities": [
+        "text"
+      ],
+      "contextWindowTokens": 131072,
+      "capabilities": [
+        "reasoning",
+        "tool-calling"
+      ],
+      "commercialStatus": "open",
+      "catch": "Apache-2.0.",
+      "notes": "bartowski imatrix Q4_K_M GGUF of openai/gpt-oss-20b; the expert feed-forward weights stay MXFP4. Upstream: 21B parameters, 3.6B active per token. GGUF header: architecture gpt-oss, 24 layers, 32 experts with 4 active per token, 128-token sliding-window attention layers, 131,072-token training context."
     },
     {
       "modelId": "whisper-tiny-en-q8_0",
@@ -2007,199 +2727,7 @@
       ],
       "commercialStatus": "open",
       "catch": "MIT License.",
-      "notes": "Ultra-fast English STT with lower accuracy."
-    },
-    {
-      "modelId": "whisper-base-q8_0",
-      "displayName": "Whisper Base",
-      "kind": "stt",
-      "provider": "OpenAI/ggml",
-      "family": "Whisper",
-      "version": "base",
-      "size": "base",
-      "quant": "Q8_0",
-      "storageGb": 0.15,
-      "source": "https://huggingface.co/ggerganov/whisper.cpp",
-      "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "artifacts": [
-        {
-          "sourcePath": "ggml-base-q8_0.bin",
-          "filename": "ggml-base-q8_0.bin",
-          "expectedSizeBytes": 81768585,
-          "sha256": "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "audio"
-      ],
-      "outputModalities": [
-        "text"
-      ],
-      "capabilities": [
-        "speech-to-text",
-        "multilingual"
-      ],
-      "commercialStatus": "open",
-      "catch": "MIT License.",
-      "notes": "Good default STT latency/quality tradeoff."
-    },
-    {
-      "modelId": "qwen3-tts-1.7b-base-q4_k_m",
-      "displayName": "Qwen3 TTS 1.7B Base",
-      "kind": "tts",
-      "provider": "Qwen/ggml",
-      "family": "Qwen3-TTS",
-      "version": "12Hz-1.7B-Base",
-      "size": "1.7B",
-      "quant": "Q4_K_M",
-      "storageGb": 1.49,
-      "source": "https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
-      "repositoryRevision": "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
-      "artifacts": [
-        {
-          "sourcePath": "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
-          "filename": "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
-          "expectedSizeBytes": 1035965280,
-          "sha256": "8d18c94acb2addd042f97da63c98be144eafa76d0d9495177eab65130cf85129",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
-          "filename": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
-          "expectedSizeBytes": 446422912,
-          "sha256": "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
-          "role": "supplementary"
-        },
-        {
-          "sourcePath": "voice-donations/0a67.wav",
-          "filename": "qwen3-tts-harbor.wav",
-          "expectedSizeBytes": 480044,
-          "sha256": "4bd75d0ef0ad3f4e82ac075eab2a132651d2463f83bec210edeeccaf69294886",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/kyutai/tts-voices",
-            "revision": "323332d33f997de8394f24a193e1a76df720e01a"
-          }
-        },
-        {
-          "sourcePath": "voice-donations/1410.wav",
-          "filename": "qwen3-tts-willow.wav",
-          "expectedSizeBytes": 480044,
-          "sha256": "8edd516de8c2171b67757cacb29e1effd3e6a8b78f5d6b035069273fadefac2b",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/kyutai/tts-voices",
-            "revision": "323332d33f997de8394f24a193e1a76df720e01a"
-          }
-        }
-      ],
-      "ttsRuntime": {
-        "kind": "llama-tts",
-        "projectorArtifactFilename": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
-        "referenceVoices": [
-          {
-            "name": "harbor",
-            "artifactFilename": "qwen3-tts-harbor.wav",
-            "license": "CC0-1.0",
-            "provenanceUrl": "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations"
-          },
-          {
-            "name": "willow",
-            "artifactFilename": "qwen3-tts-willow.wav",
-            "license": "CC0-1.0",
-            "provenanceUrl": "https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations"
-          }
-        ]
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "audio"
-      ],
-      "capabilities": [
-        "text-to-speech"
-      ],
-      "outputFormat": "wav",
-      "commercialStatus": "open",
-      "catch": "The converted repository omits license metadata; the upstream Qwen model is Apache-2.0.",
-      "notes": "Default remains native runtime voice. Harbor and Willow are pinned CC0 Kyutai Unmute voice-donation references: https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations. Human voice quality has not been assessed."
-    },
-    {
-      "modelId": "kokoro-82m-v1.0-q8",
-      "displayName": "Kokoro 82M v1.0",
-      "kind": "tts",
-      "qualificationState": "experimental",
-      "provider": "hexgrad/onnx-community",
-      "family": "Kokoro",
-      "version": "v1.0",
-      "size": "82M",
-      "quant": "Q8",
-      "storageGb": 0.09,
-      "source": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
-      "repositoryRevision": "1939ad2a8e416c0acfeecc08a694d14ef25f2231",
-      "artifacts": [
-        {
-          "sourcePath": "onnx/model_quantized.onnx",
-          "filename": "kokoro-82m-v1.0-model_quantized.onnx",
-          "expectedSizeBytes": 92361116,
-          "sha256": "fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "config.json",
-          "filename": "kokoro-82m-v1.0-config.json",
-          "expectedSizeBytes": 44,
-          "sha256": "df34b4f930b23447cd4dc410fabfb42eb3f24e803e6c3f97d618fb359380a36f",
-          "role": "supplementary"
-        },
-        {
-          "sourcePath": "tokenizer.json",
-          "filename": "kokoro-82m-v1.0-tokenizer.json",
-          "expectedSizeBytes": 3497,
-          "sha256": "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34",
-          "role": "supplementary"
-        },
-        {
-          "sourcePath": "tokenizer_config.json",
-          "filename": "kokoro-82m-v1.0-tokenizer_config.json",
-          "expectedSizeBytes": 113,
-          "sha256": "be1cb066d6ef6b074b3f15e6a6dd21ac88ff3cdaedf325f0aaed686c70f75d20",
-          "role": "supplementary"
-        }
-      ],
-      "ttsRuntime": {
-        "kind": "kokoro-onnx",
-        "artifacts": {
-          "model": "kokoro-82m-v1.0-model_quantized.onnx",
-          "config": "kokoro-82m-v1.0-config.json",
-          "tokenizer": "kokoro-82m-v1.0-tokenizer.json",
-          "tokenizerConfig": "kokoro-82m-v1.0-tokenizer_config.json"
-        },
-        "voices": [
-          {
-            "name": "af_heart"
-          },
-          {
-            "name": "af_bella"
-          }
-        ],
-        "defaultVoice": "af_heart"
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "audio"
-      ],
-      "capabilities": [
-        "text-to-speech"
-      ],
-      "outputFormat": "wav",
-      "commercialStatus": "open",
-      "catch": "Apache-2.0 weights. Requires the kokoro-v0.0.2 LocalBase runtime package.",
-      "notes": "CPU ONNX runtime with bundled af_heart and af_bella voices. English only. Human voice quality has not been assessed."
+      "notes": "English-only transcription with OpenAI Whisper tiny.en (39M parameters), whisper.cpp ggml Q8_0. Vocabulary and mel filters are bundled; no Core ML encoder required."
     },
     {
       "modelId": "flux1-schnell-q4_0",
@@ -2283,79 +2811,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0 model weights. The converted encoder repository omits license metadata; upstream CLIP and T5 license terms also apply.",
-      "notes": "Cloudflare Workers AI model with a four-step native profile. The large T5 encoder runs on CPU. Measured at 1024x1024 with --diffusion-fa: 13.6 GiB accelerator and 16.8 GiB peak RSS."
-    },
-    {
-      "modelId": "flux2-klein-4b-q4_0",
-      "displayName": "FLUX.2 Klein 4B",
-      "kind": "image",
-      "provider": "Black Forest Labs",
-      "family": "FLUX.2-klein",
-      "version": "2",
-      "size": "4B",
-      "quant": "Q4_0",
-      "storageGb": 5.3,
-      "source": "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
-      "repositoryRevision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
-      "artifacts": [
-        {
-          "sourcePath": "flux-2-klein-4b-Q4_0.gguf",
-          "filename": "flux-2-klein-4b-Q4_0.gguf",
-          "expectedSizeBytes": 2460378560,
-          "sha256": "d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "split_files/vae/flux2-vae.safetensors",
-          "filename": "flux2-vae.safetensors",
-          "expectedSizeBytes": 336211292,
-          "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/Comfy-Org/flux2-klein-4B",
-            "revision": "5f526678002e43af5551dadb73ce2e8c91b43afe"
-          }
-        },
-        {
-          "sourcePath": "Qwen3-4B-Q4_K_M.gguf",
-          "filename": "Qwen3-4B-Q4_K_M.gguf",
-          "expectedSizeBytes": 2497281312,
-          "sha256": "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-GGUF",
-            "revision": "22c9fc8a8c7700b76a1789366280a6a5a1ad1120"
-          }
-        }
-      ],
-      "imageRuntime": {
-        "kind": "diffusion-qwen3",
-        "artifacts": {
-          "diffusionModel": "flux-2-klein-4b-Q4_0.gguf",
-          "vae": "flux2-vae.safetensors",
-          "textEncoder": "Qwen3-4B-Q4_K_M.gguf"
-        },
-        "generation": {
-          "sampler": "euler",
-          "steps": 4,
-          "cfgScale": 1
-        }
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "image"
-      ],
-      "imageLaunchOptions": {
-        "diffusionFlashAttention": true
-      },
-      "capabilities": [
-        "text-to-image"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
-      "notes": "Distilled four-step profile with separate FLUX2 VAE and Qwen3 encoder. Peak memory was measured on Apple Silicon (2026-10-13); broader native inference qualification is pending."
+      "notes": "stable-diffusion.cpp Q4_0 GGUF of black-forest-labs/FLUX.1-schnell with a four-step native profile. The T5-XXL encoder runs on CPU. Measured at 1024x1024 with --diffusion-fa on Apple M-series 64 GiB, macOS 26: 13.6 GiB accelerator and 16.8 GiB peak RSS."
     },
     {
       "modelId": "flux2-klein-4b-q8_0",
@@ -2427,7 +2883,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
-      "notes": "Less-compressed Q8 diffusion weights with the same Q4 Qwen3 encoder as the compact 4B profile. Image quality relative to Q4 has not been assessed locally. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
+      "notes": "Q8_0 diffusion weights of FLUX.2-klein-4B with the same Qwen3-4B Q4_K_M encoder as flux2-klein-4b-q4_0. Image quality relative to Q4_0 has not been assessed locally. Peak memory was measured on Apple M-series 64 GiB, macOS 26 (2026-10-14); broader native inference qualification is pending."
     },
     {
       "modelId": "flux2-klein-9b-q4_0",
@@ -2499,79 +2955,7 @@
       ],
       "commercialStatus": "conditional",
       "catch": "FLUX Non-Commercial License; commercial deployment requires a separate Black Forest Labs license. Qwen3 encoder is Apache-2.0.",
-      "notes": "Larger distilled four-step model with a Qwen3 8B encoder. Photorealism relative to the 4B model has not been assessed locally. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
-    },
-    {
-      "modelId": "z-image-turbo-q4_0",
-      "displayName": "Z-Image Turbo",
-      "kind": "image",
-      "provider": "Tongyi",
-      "family": "Z-Image",
-      "version": "Turbo",
-      "size": "6B",
-      "quant": "Q4_0",
-      "storageGb": 6.6,
-      "source": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
-      "repositoryRevision": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
-      "artifacts": [
-        {
-          "sourcePath": "z_image_turbo-Q4_0.gguf",
-          "filename": "z_image_turbo-Q4_0.gguf",
-          "expectedSizeBytes": 3683370944,
-          "sha256": "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "split_files/vae/ae.safetensors",
-          "filename": "z-image-ae.safetensors",
-          "expectedSizeBytes": 335304388,
-          "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/Comfy-Org/z_image_turbo",
-            "revision": "08d04455279082882deaabc8d0d09fc914c071e1"
-          }
-        },
-        {
-          "sourcePath": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-          "filename": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-          "expectedSizeBytes": 2497281120,
-          "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF",
-            "revision": "a06e946bb6b655725eafa393f4a9745d460374c9"
-          }
-        }
-      ],
-      "imageRuntime": {
-        "kind": "diffusion-qwen3",
-        "artifacts": {
-          "diffusionModel": "z_image_turbo-Q4_0.gguf",
-          "vae": "z-image-ae.safetensors",
-          "textEncoder": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
-        },
-        "generation": {
-          "sampler": "euler",
-          "steps": 8,
-          "cfgScale": 1
-        }
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "image"
-      ],
-      "imageLaunchOptions": {
-        "diffusionFlashAttention": true
-      },
-      "capabilities": [
-        "text-to-image"
-      ],
-      "commercialStatus": "open",
-      "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
-      "notes": "Distilled eight-step profile with separate VAE and Qwen3 Instruct encoder. Peak memory was measured on Apple Silicon (2026-10-14); broader native inference qualification is pending."
+      "notes": "Four-step profile of black-forest-labs/FLUX.2-klein-9B (stable-diffusion.cpp Q4_0 GGUF) with a Qwen3-8B text encoder. Image quality relative to the 4B model has not been assessed locally. Peak memory was measured on Apple M-series 64 GiB, macOS 26 (2026-10-14); broader native inference qualification is pending."
     },
     {
       "modelId": "stable-diffusion-v1-5",
@@ -2609,56 +2993,7 @@
       ],
       "commercialStatus": "open",
       "catch": "CreativeML Open RAIL-M license.",
-      "notes": "Extremely lightweight baseline model. Perfect for low VRAM systems (under 8GB) and fast prototyping. Generates 512x512 images."
-    },
-    {
-      "modelId": "dreamshaper-8-lcm",
-      "displayName": "DreamShaper 8 LCM",
-      "kind": "image",
-      "provider": "Lykon",
-      "family": "Stable-Diffusion",
-      "version": "DreamShaper 8 LCM",
-      "size": "2.0GB",
-      "quant": "F16",
-      "storageGb": 2.13,
-      "source": "https://huggingface.co/Lykon/dreamshaper-8-lcm",
-      "repositoryRevision": "4645d8bc6a8e6b106d21606d63e8460cdad4f1a6",
-      "artifacts": [
-        {
-          "sourcePath": "DreamShaper8_LCM.safetensors",
-          "filename": "DreamShaper8_LCM.safetensors",
-          "expectedSizeBytes": 2133804992,
-          "sha256": "a4f3e1526c5dc4fcbe342f5c410d83ae202c7a415fcefcbb92e0f93fcd0a87c3",
-          "role": "primary"
-        }
-      ],
-      "imageRuntime": {
-        "kind": "checkpoint",
-        "artifacts": {
-          "diffusionModel": "DreamShaper8_LCM.safetensors"
-        },
-        "generation": {
-          "sampler": "lcm",
-          "scheduler": "lcm",
-          "steps": 4,
-          "cfgScale": 1
-        }
-      },
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "image"
-      ],
-      "imageLaunchOptions": {
-        "diffusionFlashAttention": true
-      },
-      "capabilities": [
-        "text-to-image"
-      ],
-      "commercialStatus": "open",
-      "catch": "CreativeML Open RAIL-M license.",
-      "notes": "Cloudflare Workers AI photorealism model distilled for fast four-step generation. Native inference qualification is pending."
+      "notes": "Stable Diffusion v1.5 checkpoint (stable-diffusion-v1-5 mirror of the RunwayML release). Generates 512x512 images."
     },
     {
       "modelId": "dreamshaper-v8",
@@ -2696,7 +3031,7 @@
       ],
       "commercialStatus": "open",
       "catch": "CreativeML Open RAIL-M license.",
-      "notes": "Highly optimized community model for digital art, anime, and portraiture. Extremely fast and lightweight."
+      "notes": "Lykon's DreamShaper 8, a Stable Diffusion 1.5 fine-tune, shipped as one F16 safetensors checkpoint."
     },
     {
       "modelId": "sdxl-turbo",
@@ -2734,7 +3069,7 @@
       ],
       "commercialStatus": "open",
       "catch": "Stability AI Community License.",
-      "notes": "High-speed 1-step real-time generation model. Excellent for fast interactive feedback cycles."
+      "notes": "Stability AI's SDXL-Turbo: SDXL 1.0 distilled with adversarial diffusion distillation for 1-4 step sampling at 512x512 (model card)."
     },
     {
       "modelId": "sdxl-base-1.0",
@@ -2771,46 +3106,8 @@
         "image-to-image"
       ],
       "commercialStatus": "open",
-      "catch": "Stability AI Community License.",
-      "notes": "Standard high-resolution (1024x1024) image generator. Recommended for standard workstation GPUs."
-    },
-    {
-      "modelId": "juggernaut-xl-v9",
-      "displayName": "Juggernaut XL v9",
-      "kind": "image",
-      "provider": "RunDiffusion",
-      "family": "Stable-Diffusion-XL",
-      "version": "9.0",
-      "size": "6.6GB",
-      "quant": "F16",
-      "storageGb": 6.61,
-      "source": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
-      "repositoryRevision": "cf419233522daa0b9ea36c3aff98fa2cab1fb0fb",
-      "artifacts": [
-        {
-          "sourcePath": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
-          "filename": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
-          "expectedSizeBytes": 7105348188,
-          "sha256": "c9e3e68f89b8e38689e1097d4be4573cf308de4e3fd044c64ca697bdb4aa8bca",
-          "role": "primary"
-        }
-      ],
-      "inputModalities": [
-        "text"
-      ],
-      "outputModalities": [
-        "image"
-      ],
-      "imageLaunchOptions": {
-        "diffusionFlashAttention": true
-      },
-      "capabilities": [
-        "text-to-image",
-        "image-to-image"
-      ],
-      "commercialStatus": "open",
-      "catch": "Stability AI Community License.",
-      "notes": "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism."
+      "catch": "CreativeML Open RAIL++-M license.",
+      "notes": "Stability AI's Stable Diffusion XL 1.0 base model (1024x1024 native resolution), shipped as one F16 safetensors checkpoint."
     },
     {
       "modelId": "animagine-xl-3.1",
@@ -2847,8 +3144,8 @@
         "image-to-image"
       ],
       "commercialStatus": "open",
-      "catch": "Stability AI Community License.",
-      "notes": "The premier open-source model for high-fidelity anime, manga, and Japanese illustration styles."
+      "catch": "CreativeML Open RAIL++-M license.",
+      "notes": "Cagliostro Research Lab's Animagine XL 3.1, a Stable Diffusion XL fine-tune for anime-style images, shipped as one F16 safetensors checkpoint."
     },
     {
       "modelId": "realvis-xl-v4.0",
@@ -2885,8 +3182,8 @@
         "image-to-image"
       ],
       "commercialStatus": "open",
-      "catch": "CreativeML Open RAIL-M license.",
-      "notes": "Top-tier photorealistic alternative to Juggernaut XL. Excellent for high-fidelity human portraits, realistic environments, and natural textures."
+      "catch": "CreativeML Open RAIL++-M license.",
+      "notes": "SG161222's RealVisXL V4.0, a Stable Diffusion XL fine-tune, shipped as one F16 safetensors checkpoint."
     },
     {
       "modelId": "wan2.1-t2v-1.3b-q8_0",
@@ -2988,216 +3285,6 @@
       "commercialStatus": "open",
       "catch": "Apache-2.0 licenses for the pinned artifacts.",
       "notes": "Experimental text-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 320x320, 33 frames, and 16 fps."
-    },
-    {
-      "modelId": "wan2.2-s2v-14b-fp8",
-      "displayName": "Wan2.2 S2V 14B",
-      "kind": "video",
-      "qualificationState": "experimental",
-      "provider": "Wan/Comfy-Org",
-      "family": "Wan2.2-S2V",
-      "version": "2.2",
-      "size": "14B",
-      "quant": "FP8",
-      "storageGb": 23.33,
-      "source": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
-      "repositoryRevision": "c4f60d30c55a624e35427060fdd217579a6c1d77",
-      "artifacts": [
-        {
-          "sourcePath": "split_files/diffusion_models/wan2.2_s2v_14B_fp8_scaled.safetensors",
-          "filename": "wan2.2_s2v_14B_fp8_scaled.safetensors",
-          "expectedSizeBytes": 16394832474,
-          "sha256": "140e75af5534ac3d91e710d9df756f7032addd64b341ba2c1c70e3e6da9aa216",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "umt5-xxl-encoder-Q8_0.gguf",
-          "filename": "umt5-xxl-encoder-Q8_0.gguf",
-          "expectedSizeBytes": 6043068256,
-          "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
-            "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7"
-          }
-        },
-        {
-          "sourcePath": "split_files/vae/wan_2.1_vae.safetensors",
-          "filename": "wan_2.1_vae.safetensors",
-          "expectedSizeBytes": 253815318,
-          "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged",
-            "revision": "617a7633e636506f850e043bc4605f290a466a8e"
-          }
-        },
-        {
-          "sourcePath": "split_files/audio_encoders/wav2vec2_large_english_fp16.safetensors",
-          "filename": "wav2vec2_large_english_fp16.safetensors",
-          "expectedSizeBytes": 630997322,
-          "sha256": "f0017a43ea57ef6b3d4866be607844bbd8cada6d30966f7d70044ed0d63d3f9e",
-          "role": "supplementary"
-        }
-      ],
-      "videoRuntime": {
-        "mode": "s2v",
-        "artifacts": {
-          "diffusionModel": "wan2.2_s2v_14B_fp8_scaled.safetensors",
-          "textEncoder": "umt5-xxl-encoder-Q8_0.gguf",
-          "decoder": {
-            "kind": "vae",
-            "artifactFilename": "wan_2.1_vae.safetensors"
-          },
-          "audioEncoder": "wav2vec2_large_english_fp16.safetensors"
-        },
-        "qualification": {
-          "maxWidth": 480,
-          "maxHeight": 640,
-          "maxFrames": 33,
-          "fps": 16,
-          "jobDeadlineMs": 1800000,
-          "generation": {
-            "sampler": "euler",
-            "scheduler": "discrete",
-            "steps": 20,
-            "cfgScale": 6,
-            "flowShift": 3,
-            "seed": 42
-          },
-          "launchOptions": {
-            "cpuOffload": true,
-            "diffusionFlashAttention": true,
-            "vaeConvDirect": false
-          }
-        },
-        "supportedTargets": [
-          {
-            "platform": "linux",
-            "architecture": "x64",
-            "accelerator": "nvidia"
-          }
-        ]
-      },
-      "inputModalities": [
-        "text",
-        "image",
-        "audio"
-      ],
-      "outputModalities": [
-        "video"
-      ],
-      "capabilities": [
-        "speech-to-video"
-      ],
-      "outputFormat": "avi",
-      "experimentalRuntime": true,
-      "commercialStatus": "open",
-      "catch": "Apache-2.0 licenses for the pinned artifacts. Output audio is the supplied driving track, not generated speech.",
-      "notes": "Experimental and unqualified Linux x64 single-NVIDIA portrait animation at exactly 480x640, 33 frames, and 16 fps. Admission reservations are estimates and must be re-measured in a pinned-runtime hardware run before qualification. Requires a portrait and speech no longer than 2.0625 seconds. Lip-sync quality and longer clips are not qualified."
-    },
-    {
-      "modelId": "fastwan2.2-ti2v-5b-q6_k",
-      "displayName": "FastWan2.2 TI2V 5B",
-      "kind": "video",
-      "provider": "FastVideo/ggml",
-      "family": "FastWan2.2-TI2V",
-      "version": "2.2",
-      "size": "5B",
-      "quant": "Q6_K",
-      "storageGb": 10.28,
-      "source": "https://huggingface.co/Green-Sky/FastWan2.2-TI2V-5B-FullAttn-GGUF",
-      "repositoryRevision": "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
-      "artifacts": [
-        {
-          "sourcePath": "FastWan2.2-TI2V-5B-q6_k.gguf",
-          "filename": "FastWan2.2-TI2V-5B-q6_k.gguf",
-          "expectedSizeBytes": 4210247200,
-          "sha256": "416a87e30f2328dbefd7666ac90b395ead74f443748ff31c83483ac4ac6121cc",
-          "role": "primary"
-        },
-        {
-          "sourcePath": "umt5-xxl-encoder-Q8_0.gguf",
-          "filename": "umt5-xxl-encoder-Q8_0.gguf",
-          "expectedSizeBytes": 6043068256,
-          "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
-            "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7"
-          }
-        },
-        {
-          "sourcePath": "safetensors/taew2_2.safetensors",
-          "filename": "taew2_2.safetensors",
-          "expectedSizeBytes": 22848048,
-          "sha256": "b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325",
-          "role": "supplementary",
-          "source": {
-            "repositoryUrl": "https://github.com/madebyollin/taehv",
-            "revision": "fa579a9a726b0a55951998d73e309bfdf0abd342"
-          }
-        }
-      ],
-      "videoRuntime": {
-        "mode": "ti2v",
-        "artifacts": {
-          "diffusionModel": "FastWan2.2-TI2V-5B-q6_k.gguf",
-          "textEncoder": "umt5-xxl-encoder-Q8_0.gguf",
-          "decoder": {
-            "kind": "tae",
-            "artifactFilename": "taew2_2.safetensors"
-          }
-        },
-        "qualification": {
-          "jobDeadlineMs": 600000,
-          "maxWidth": 480,
-          "maxHeight": 832,
-          "maxFrames": 81,
-          "fps": 16,
-          "generation": {
-            "sampler": "euler",
-            "scheduler": "lcm",
-            "steps": 3,
-            "cfgScale": 1,
-            "flowShift": 3,
-            "seed": 42
-          },
-          "launchOptions": {
-            "cpuOffload": true,
-            "diffusionFlashAttention": true,
-            "vaeConvDirect": true
-          }
-        },
-        "supportedTargets": [
-          {
-            "platform": "darwin",
-            "architecture": "arm64",
-            "accelerator": "apple-unified"
-          },
-          {
-            "platform": "linux",
-            "architecture": "x64",
-            "accelerator": "nvidia"
-          }
-        ]
-      },
-      "inputModalities": [
-        "text",
-        "image"
-      ],
-      "outputModalities": [
-        "video"
-      ],
-      "capabilities": [
-        "text-to-video",
-        "image-to-video"
-      ],
-      "outputFormat": "avi",
-      "experimentalRuntime": true,
-      "commercialStatus": "open",
-      "catch": "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
-      "notes": "Experimental and unqualified text-to-video and image-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 480x832, 81 frames, and 16 fps."
     },
     {
       "modelId": "wan2.2-ti2v-5b-q6_k",
@@ -3345,62 +3432,6 @@
   ],
   "annotations": [
     {
-      "repo": "bartowski/Qwen_Qwen3.5-0.8B-GGUF",
-      "revision": "f36b1ea49a332ede8fe5f389bbf5b3575ef71f48",
-      "file": "Qwen_Qwen3.5-0.8B-Q4_K_M.gguf",
-      "modelId": "qwen3.5-0.8b-q4_k_m",
-      "kind": "llm",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q4_K_M",
-          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
-          "peakBytes": 1362100224,
-          "backendAcceleratorBytes": 1140850688,
-          "hostBufferBytes": 221249536,
-          "peakRssBytes": 827424768,
-          "measuredAt": "2026-10-13",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
-    },
-    {
-      "repo": "bartowski/Qwen_Qwen3.5-0.8B-GGUF",
-      "revision": "f36b1ea49a332ede8fe5f389bbf5b3575ef71f48",
-      "file": "Qwen_Qwen3.5-0.8B-Q8_0.gguf",
-      "modelId": "qwen3.5-0.8b-q8_0",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/Qwen_Qwen3.5-2B-GGUF",
-      "revision": "7d26695454df6de5fbcce2e58681e62dae06ce43",
-      "file": "Qwen_Qwen3.5-2B-Q4_K_M.gguf",
-      "modelId": "qwen3.5-2b-q4_k_m",
-      "kind": "llm",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q4_K_M",
-          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
-          "peakBytes": 2344615936,
-          "backendAcceleratorBytes": 1910505472,
-          "hostBufferBytes": 434110464,
-          "peakRssBytes": 1593032704,
-          "measuredAt": "2026-10-13",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
-    },
-    {
-      "repo": "bartowski/Qwen_Qwen3.5-2B-GGUF",
-      "revision": "7d26695454df6de5fbcce2e58681e62dae06ce43",
-      "file": "Qwen_Qwen3.5-2B-Q8_0.gguf",
-      "modelId": "qwen3.5-2b-q8_0",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
       "repo": "bartowski/Qwen_Qwen3.5-4B-GGUF",
       "revision": "4168f45a16a1290d65a4ec0fa312ae917a4c15d6",
       "file": "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
@@ -3421,114 +3452,56 @@
       ]
     },
     {
-      "repo": "bartowski/Qwen_Qwen3.5-9B-GGUF",
-      "revision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
-      "file": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
-      "modelId": "qwen3.5-9b-q4_k_m",
+      "repo": "unsloth/Qwen3.6-35B-A3B-GGUF",
+      "revision": "a483e9e6cbd595906af30beda3187c2663a1118c",
+      "file": "Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf",
+      "modelId": "qwen3.6-35b-a3b-iq4_nl_xl",
       "kind": "llm",
       "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q4_K_M",
-          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
-          "peakBytes": 7216300032,
-          "backendAcceleratorBytes": 6619660288,
-          "hostBufferBytes": 596639744,
-          "peakRssBytes": 6390480896,
-          "measuredAt": "2026-10-13",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
+      "recipe": {
+        "modelId": "qwen3.6-35b-a3b-iq4_nl_xl",
+        "files": [
+          {
+            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF",
+            "revision": "a483e9e6cbd595906af30beda3187c2663a1118c",
+            "path": "Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf",
+            "sizeBytes": 19500506080,
+            "sha256": "071ee2a008ec51372f990d8efbea92ec9dd0137974110ef68fbfde429c8c6dd4",
+            "role": "primary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF",
+            "revision": "a483e9e6cbd595906af30beda3187c2663a1118c",
+            "path": "mmproj-F16.gguf",
+            "sizeBytes": 899283680,
+            "sha256": "8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f",
+            "role": "supplementary"
+          }
+        ],
+        "totalBytes": 20399789760
+      }
     },
     {
-      "repo": "Qwen/Qwen3-Embedding-4B-GGUF",
-      "revision": "f4602530db1d980e16da9d7d3a70294cf5c190be",
-      "file": "Qwen3-Embedding-4B-Q4_K_M.gguf",
-      "modelId": "qwen3-embedding-4b-q4_k_m",
+      "repo": "bartowski/Qwen3.8-27B-GGUF",
+      "revision": "f0eec4a4bb4975114a030d048952d83c0a53c034",
+      "file": "Qwen3.8-27B-Q4_K_M.gguf",
+      "modelId": "qwen3.8-27b-q4_k_m",
       "kind": "llm",
       "status": "qualified"
-    },
-    {
-      "repo": "Qwen/Qwen3-Embedding-4B-GGUF",
-      "revision": "f4602530db1d980e16da9d7d3a70294cf5c190be",
-      "file": "Qwen3-Embedding-4B-Q8_0.gguf",
-      "modelId": "qwen3-embedding-4b-q8_0",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "Qwen/Qwen3-Embedding-8B-GGUF",
-      "revision": "69d0e58a13e463cd99a9b83e3f5fee7c10265fab",
-      "file": "Qwen3-Embedding-8B-Q4_K_M.gguf",
-      "modelId": "qwen3-embedding-8b-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "Qwen/Qwen3-Embedding-8B-GGUF",
-      "revision": "69d0e58a13e463cd99a9b83e3f5fee7c10265fab",
-      "file": "Qwen3-Embedding-8B-Q8_0.gguf",
-      "modelId": "qwen3-embedding-8b-q8_0",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "ggerganov/whisper.cpp",
-      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "file": "ggml-tiny-q8_0.bin",
-      "modelId": "whisper-tiny-q8_0",
-      "kind": "stt",
-      "status": "qualified"
-    },
-    {
-      "repo": "ggerganov/whisper.cpp",
-      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "file": "ggml-base.en-q8_0.bin",
-      "modelId": "whisper-base-en-q8_0",
-      "kind": "stt",
-      "status": "qualified"
-    },
-    {
-      "repo": "ggerganov/whisper.cpp",
-      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "file": "ggml-small-q8_0.bin",
-      "modelId": "whisper-small-q8_0",
-      "kind": "stt",
-      "status": "qualified"
-    },
-    {
-      "repo": "ggerganov/whisper.cpp",
-      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "file": "ggml-medium-q8_0.bin",
-      "modelId": "whisper-medium-q8_0",
-      "kind": "stt",
-      "status": "qualified"
-    },
-    {
-      "repo": "SG161222/RealVisXL_V5.0",
-      "revision": "ac93e0dda1f6d448cae19bbfab8c5e720a5e48bc",
-      "file": "RealVisXL_V5.0_fp16.safetensors",
-      "modelId": "realvis-xl-v5.0",
-      "kind": "image",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "safetensors F16",
-          "launchShape": "1024x1024;steps=20;diffusion-fa=on",
-          "peakBytes": 14999208591,
-          "backendAcceleratorBytes": 14999208591,
-          "hostBufferBytes": 0,
-          "peakRssBytes": 7805108224,
-          "measuredAt": "2026-10-14",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
     },
     {
       "repo": "Qwen/Qwen3-Embedding-0.6B-GGUF",
       "revision": "370f27d7550e0def9b39c1f16d3fbaa13aa67728",
       "file": "Qwen3-Embedding-0.6B-Q8_0.gguf",
       "modelId": "qwen3-embedding-0.6b-q8_0",
+      "kind": "llm",
+      "status": "qualified"
+    },
+    {
+      "repo": "Qwen/Qwen3-Embedding-4B-GGUF",
+      "revision": "f4602530db1d980e16da9d7d3a70294cf5c190be",
+      "file": "Qwen3-Embedding-4B-Q4_K_M.gguf",
+      "modelId": "qwen3-embedding-4b-q4_k_m",
       "kind": "llm",
       "status": "qualified"
     },
@@ -3575,370 +3548,41 @@
       }
     },
     {
-      "repo": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
-      "revision": "f86cb2c1fa58255f8052cc32aeede1b7482d4361",
-      "file": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
-      "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified",
-      "unsupportedCapabilities": [
-        {
-          "id": "tool-calling",
-          "supported": false,
-          "source": "declared",
-          "verified": true,
-          "reason": "Protocol tool calling is unsupported for this artifact: it answers tool requests with plain text instead of tool calls."
-        }
-      ]
-    },
-    {
-      "repo": "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
-      "revision": "f74adce6aa16316c625447af059dbebe4983757c",
-      "file": "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
-      "modelId": "qwen2.5-coder-3b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
-      "revision": "13fb94bfda8c8cf22497dc57b78f391a9acb426a",
-      "file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
-      "modelId": "qwen2.5-coder-7b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
-      "revision": "d0a692ef765eefbf2fabb130b3cb2e8917e3d225",
-      "file": "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
-      "modelId": "qwen2.5-coder-14b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF",
-      "revision": "9d3053fce650fe1cdbdb75998c2a87add9d178ef",
-      "file": "qwen2.5-coder-32b-instruct-q4_k_m.gguf",
-      "modelId": "qwen2.5-coder-32b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "Qwen/Qwen3-Coder-Next-GGUF",
-      "revision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
-      "file": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
-      "modelId": "qwen3-coder-next-q4_k_m",
+      "repo": "ggml-org/Clef-GGUF",
+      "revision": "d2aa75cb425ae922b5c3c15ef3157d417b7f7641",
+      "file": "Clef-Q4_K_M.gguf",
+      "modelId": "clef-q4_k_m",
       "kind": "llm",
       "status": "qualified",
       "recipe": {
-        "modelId": "qwen3-coder-next-q4_k_m",
+        "modelId": "clef-q4_k_m",
         "files": [
           {
-            "repositoryUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
-            "revision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
-            "path": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
-            "sizeBytes": 15524827040,
-            "sha256": "6bcfc9f9c37901eeb92172e2ab871224dab36a453d263bcb2547f737409534da",
+            "repositoryUrl": "https://huggingface.co/ggml-org/Clef-GGUF",
+            "revision": "d2aa75cb425ae922b5c3c15ef3157d417b7f7641",
+            "path": "Clef-Q4_K_M.gguf",
+            "sizeBytes": 19232219200,
+            "sha256": "9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
             "role": "primary"
           },
           {
-            "repositoryUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
-            "revision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
-            "path": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00002-of-00004.gguf",
-            "sizeBytes": 14872168352,
-            "sha256": "817def0691ee9d08bf3dc4444be7aed29c9e52091e8fa9d97901ce7e7f6f01d3",
-            "role": "supplementary"
-          },
-          {
-            "repositoryUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
-            "revision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
-            "path": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00003-of-00004.gguf",
-            "sizeBytes": 14503294496,
-            "sha256": "23aa634d47dca9b4ca3ea249384e6f01951b24c83cdc076f37f6f43d6c99883f",
-            "role": "supplementary"
-          },
-          {
-            "repositoryUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
-            "revision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
-            "path": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00004-of-00004.gguf",
-            "sizeBytes": 3510702144,
-            "sha256": "249c768cc5f130dc731567d6edcbdacc48e14dec9e02c5dbe2b2185d2c5bdb2b",
+            "repositoryUrl": "https://huggingface.co/ggml-org/Clef-GGUF",
+            "revision": "d2aa75cb425ae922b5c3c15ef3157d417b7f7641",
+            "path": "mmproj-Clef-Q8_0.gguf",
+            "sizeBytes": 629247456,
+            "sha256": "744ad2db24c336fc9120dd5ba06344c0601b9efd365fe96be01ce5c4e6ab64cf",
             "role": "supplementary"
           }
         ],
-        "totalBytes": 48410992032
+        "totalBytes": 19861466656
       }
     },
     {
-      "repo": "bartowski/Llama-3.2-1B-Instruct-GGUF",
-      "revision": "067b946cf014b7c697f3654f621d577a3e3afd1c",
-      "file": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-      "modelId": "llama-3.2-1b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/Llama-3.2-3B-Instruct-GGUF",
-      "revision": "5ab33fa94d1d04e903623ae72c95d1696f09f9e8",
-      "file": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
-      "modelId": "llama-3.2-3b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
-      "revision": "bf5b95e96dac0462e2a09145ec66cae9a3f12067",
-      "file": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
-      "modelId": "llama-3.1-8b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/Llama-3.3-70B-Instruct-GGUF",
-      "revision": "b6c5c9f176f3279204034e1d16d393105e95cb88",
-      "file": "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
-      "modelId": "llama-3.3-70b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
-      "revision": "9f5d77d401799416e0702290a691038b44012e0c",
-      "file": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
-      "modelId": "deepseek-r1-distill-qwen-14b-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "TheBloke/deepseek-coder-6.7B-Instruct-GGUF",
-      "revision": "9e221e6b41cb1bf1c5d8f9718e81e3dc781f7557",
-      "file": "deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
-      "modelId": "deepseek-coder-6.7b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
-      "revision": "8f248fa2072348f77a8bc37754e470de1f61866e",
-      "file": "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
-      "modelId": "deepseek-coder-v2-lite-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "TheBloke/deepseek-coder-33B-Instruct-GGUF",
-      "revision": "cd6a4d02d3502901ff7f980b6373387ab8b8e91a",
-      "file": "deepseek-coder-33b-instruct.Q4_K_M.gguf",
-      "modelId": "deepseek-coder-33b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/google_gemma-3-1b-it-GGUF",
-      "revision": "116f76234503685a98f572982177b11d44ec8ff1",
-      "file": "google_gemma-3-1b-it-Q4_K_M.gguf",
-      "modelId": "gemma-3-1b-it-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/google_gemma-3-4b-it-GGUF",
-      "revision": "71506238f970075ca85125cd749c28b1b0eee84e",
-      "file": "google_gemma-3-4b-it-Q4_K_M.gguf",
-      "modelId": "gemma-3-4b-it-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/google_gemma-3-12b-it-GGUF",
-      "revision": "648e3a36a77c8a9f12d86e741f9dcb9089c769c4",
-      "file": "google_gemma-3-12b-it-Q4_K_M.gguf",
-      "modelId": "gemma-3-12b-it-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/google_gemma-3-27b-it-GGUF",
-      "revision": "4a05c54413bd0d87d77a97af403266f69cec0ee6",
-      "file": "google_gemma-3-27b-it-Q4_K_M.gguf",
-      "modelId": "gemma-3-27b-it-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/phi-4-GGUF",
-      "revision": "19cd65f97c2f1712a81c506611d3f9c94b16a1e1",
-      "file": "phi-4-Q4_K_M.gguf",
-      "modelId": "phi-4-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/Phi-3.5-mini-instruct-GGUF",
-      "revision": "6d70da17e749a471ccb62ade694486011a75cda3",
-      "file": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
-      "modelId": "phi-3.5-mini-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/Phi-3.5-MoE-instruct-GGUF",
-      "revision": "4b580329100cf44d7d041b6f63967b26869a6937",
-      "file": "Phi-3.5-MoE-instruct-Q4_K_M.gguf",
-      "modelId": "phi-3.5-moe-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/openai_gpt-oss-20b-GGUF",
-      "revision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
-      "file": "openai_gpt-oss-20b-Q4_K_M.gguf",
-      "modelId": "gpt-oss-20b-q4_k_m",
-      "kind": "llm",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q4_K_M",
-          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
-          "peakBytes": 12618563584,
-          "backendAcceleratorBytes": 12200181760,
-          "hostBufferBytes": 418381824,
-          "peakRssBytes": 10298408960,
-          "measuredAt": "2026-10-13",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
-    },
-    {
-      "repo": "bartowski/Falcon3-10B-Instruct-GGUF",
-      "revision": "a826d55e0af24842680260d23f7221b6138c342a",
-      "file": "Falcon3-10B-Instruct-Q4_K_M.gguf",
-      "modelId": "falcon-2-11b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
-      "revision": "1dc8cf9ffa5dd333057ea1b09ccf4772d8726dec",
-      "file": "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
-      "modelId": "deepseek-r1-distill-qwen-32b-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
-      "revision": "935d400c2ed1a29cc2a1045df25ec7998fb4dfe4",
-      "file": "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
-      "modelId": "deepseek-r1-distill-llama-8b-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
-      "revision": "1842c5f7280f933ead58adf8afd078672c9f6cd0",
-      "file": "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
-      "modelId": "deepseek-r1-distill-llama-70b-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/Qwen2.5-72B-Instruct-GGUF",
-      "revision": "d43fd973131bce821f41e2df3c78c6fe15c5627a",
-      "file": "Qwen2.5-72B-Instruct-Q4_K_M.gguf",
-      "modelId": "qwen2.5-72b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/Codestral-22B-v0.1-GGUF",
-      "revision": "0e6abe14d6aeaf2c99d5dc9973205e8e38692d90",
-      "file": "Codestral-22B-v0.1-Q4_K_M.gguf",
-      "modelId": "codestral-22b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/Mistral-Nemo-Instruct-2407-GGUF",
-      "revision": "a2dd64a0a76ea1bdb2bb6ab6fa5496b003c7c908",
-      "file": "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
-      "modelId": "mistral-nemo-12b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q4_K_M",
-          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
-          "peakBytes": 8907653120,
-          "backendAcceleratorBytes": 8500805632,
-          "hostBufferBytes": 406847488,
-          "peakRssBytes": 8069824512,
-          "measuredAt": "2026-10-13",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
-    },
-    {
-      "repo": "bartowski/Qwen3.8-27B-GGUF",
-      "revision": "f0eec4a4bb4975114a030d048952d83c0a53c034",
-      "file": "Qwen3.8-27B-Q4_K_M.gguf",
-      "modelId": "qwen3.8-27b-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF",
-      "revision": "027695770ae1de77c2f6fb19f8e1ba9d65fcd15d",
-      "file": "mistralai_Devstral-Small-2-24B-Instruct-2512-Q4_K_M.gguf",
-      "modelId": "devstral-small-2-24b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified"
-    },
-    {
-      "repo": "mistralai/Ministral-3-14B-Instruct-2512-GGUF",
-      "revision": "74fac473c43357d7fb2671713608183cc72496d0",
-      "file": "Ministral-3-14B-Instruct-2512-Q4_K_M.gguf",
-      "modelId": "ministral-3-14b-instruct-q4_k_m",
-      "kind": "llm",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q4_K_M",
-          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
-          "peakBytes": 9629073408,
-          "backendAcceleratorBytes": 9222225920,
-          "hostBufferBytes": 406847488,
-          "peakRssBytes": 7823081472,
-          "measuredAt": "2026-10-13",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
-    },
-    {
-      "repo": "bartowski/Qwen_Qwen3.5-27B-GGUF",
-      "revision": "d7b113c40283f4d99f4eb0ec20d126ad653cc736",
-      "file": "Qwen_Qwen3.5-27B-Q4_K_M.gguf",
-      "modelId": "qwen3.5-27b-q4_k_m",
-      "kind": "llm",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q4_K_M",
-          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
-          "peakBytes": 19245563904,
-          "backendAcceleratorBytes": 18501074944,
-          "hostBufferBytes": 744488960,
-          "peakRssBytes": 19027968000,
-          "measuredAt": "2026-10-14",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
-    },
-    {
-      "repo": "bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF",
-      "revision": "b3592d09be469bedab6be51f577824b3b6b76ba1",
-      "file": "mistralai_Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf",
-      "modelId": "mistral-small-3.2-24b-instruct-q4_k_m",
-      "kind": "llm",
+      "repo": "ggerganov/whisper.cpp",
+      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "file": "ggml-base-q8_0.bin",
+      "modelId": "whisper-base-q8_0",
+      "kind": "stt",
       "status": "qualified"
     },
     {
@@ -3960,34 +3604,6 @@
           "hardware": "Apple M-series 64 GiB, macOS 26"
         }
       ]
-    },
-    {
-      "repo": "ggerganov/whisper.cpp",
-      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "file": "ggml-tiny.en-q8_0.bin",
-      "modelId": "whisper-tiny-en-q8_0",
-      "kind": "stt",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q8_0",
-          "launchShape": "default",
-          "peakBytes": 208900000,
-          "backendAcceleratorBytes": 208900000,
-          "hostBufferBytes": 0,
-          "peakRssBytes": 169902080,
-          "measuredAt": "2026-10-13",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
-    },
-    {
-      "repo": "ggerganov/whisper.cpp",
-      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-      "file": "ggml-base-q8_0.bin",
-      "modelId": "whisper-base-q8_0",
-      "kind": "stt",
-      "status": "qualified"
     },
     {
       "repo": "ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
@@ -4106,12 +3722,780 @@
       }
     },
     {
+      "repo": "leejet/Z-Image-Turbo-GGUF",
+      "revision": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
+      "file": "z_image_turbo-Q4_0.gguf",
+      "modelId": "z-image-turbo-q4_0",
+      "kind": "image",
+      "status": "qualified",
+      "memoryPeaks": [
+        {
+          "variant": "Q4_0 + Qwen3-4B-Instruct Q4_K_M",
+          "launchShape": "1024x1024;steps=8;diffusion-fa=on",
+          "peakBytes": 13322808197,
+          "backendAcceleratorBytes": 13322808197,
+          "hostBufferBytes": 0,
+          "peakRssBytes": 7087439872,
+          "measuredAt": "2026-10-14",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ],
+      "recipe": {
+        "modelId": "z-image-turbo-q4_0",
+        "files": [
+          {
+            "repositoryUrl": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
+            "revision": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
+            "path": "z_image_turbo-Q4_0.gguf",
+            "sizeBytes": 3683370944,
+            "sha256": "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5",
+            "role": "primary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/Comfy-Org/z_image_turbo",
+            "revision": "08d04455279082882deaabc8d0d09fc914c071e1",
+            "path": "split_files/vae/ae.safetensors",
+            "sizeBytes": 335304388,
+            "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+            "role": "supplementary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF",
+            "revision": "a06e946bb6b655725eafa393f4a9745d460374c9",
+            "path": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+            "sizeBytes": 2497281120,
+            "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+            "role": "supplementary"
+          }
+        ],
+        "totalBytes": 6515956452
+      }
+    },
+    {
+      "repo": "leejet/FLUX.2-klein-4B-GGUF",
+      "revision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
+      "file": "flux-2-klein-4b-Q4_0.gguf",
+      "modelId": "flux2-klein-4b-q4_0",
+      "kind": "image",
+      "status": "qualified",
+      "memoryPeaks": [
+        {
+          "variant": "Q4_0",
+          "launchShape": "1024x1024;steps=4;diffusion-fa=on",
+          "peakBytes": 12101353472,
+          "backendAcceleratorBytes": 12101353472,
+          "hostBufferBytes": 0,
+          "peakRssBytes": 5983240192,
+          "measuredAt": "2026-10-14",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ],
+      "recipe": {
+        "modelId": "flux2-klein-4b-q4_0",
+        "files": [
+          {
+            "repositoryUrl": "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
+            "revision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
+            "path": "flux-2-klein-4b-Q4_0.gguf",
+            "sizeBytes": 2460378560,
+            "sha256": "d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4",
+            "role": "primary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/Comfy-Org/flux2-klein-4B",
+            "revision": "5f526678002e43af5551dadb73ce2e8c91b43afe",
+            "path": "split_files/vae/flux2-vae.safetensors",
+            "sizeBytes": 336211292,
+            "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
+            "role": "supplementary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-GGUF",
+            "revision": "22c9fc8a8c7700b76a1789366280a6a5a1ad1120",
+            "path": "Qwen3-4B-Q4_K_M.gguf",
+            "sizeBytes": 2497281312,
+            "sha256": "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a",
+            "role": "supplementary"
+          }
+        ],
+        "totalBytes": 5293871164
+      }
+    },
+    {
+      "repo": "Lykon/dreamshaper-8-lcm",
+      "revision": "4645d8bc6a8e6b106d21606d63e8460cdad4f1a6",
+      "file": "DreamShaper8_LCM.safetensors",
+      "modelId": "dreamshaper-8-lcm",
+      "kind": "image",
+      "status": "qualified",
+      "memoryPeaks": [
+        {
+          "variant": "safetensors F16 (LCM)",
+          "launchShape": "512x512;steps=4;diffusion-fa=on",
+          "peakBytes": 3878745539,
+          "backendAcceleratorBytes": 3878745539,
+          "hostBufferBytes": 0,
+          "peakRssBytes": 3006021632,
+          "measuredAt": "2026-10-14",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
+    },
+    {
+      "repo": "RunDiffusion/Juggernaut-XL-v9",
+      "revision": "cf419233522daa0b9ea36c3aff98fa2cab1fb0fb",
+      "file": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+      "modelId": "juggernaut-xl-v9",
+      "kind": "image",
+      "status": "qualified",
+      "memoryPeaks": [
+        {
+          "variant": "safetensors F16",
+          "launchShape": "1024x1024;steps=20;diffusion-fa=on",
+          "peakBytes": 14999208591,
+          "backendAcceleratorBytes": 14999208591,
+          "hostBufferBytes": 0,
+          "peakRssBytes": 7788806144,
+          "measuredAt": "2026-10-14",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
+    },
+    {
+      "repo": "Green-Sky/FastWan2.2-TI2V-5B-FullAttn-GGUF",
+      "revision": "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
+      "file": "FastWan2.2-TI2V-5B-q6_k.gguf",
+      "modelId": "fastwan2.2-ti2v-5b-q6_k",
+      "kind": "video",
+      "status": "qualified",
+      "memoryPeaks": [
+        {
+          "variant": "Q6_K + umt5-xxl Q8_0 + TAEHV",
+          "launchShape": "480x832;frames=81;cpu-offload=on;diffusion-fa=on",
+          "peakBytes": 16619940086,
+          "backendAcceleratorBytes": 6348131533,
+          "hostBufferBytes": 10271808553,
+          "peakRssBytes": 13746454528,
+          "systemDeltaBytes": 15058550784,
+          "measuredAt": "2026-10-13",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ],
+      "recipe": {
+        "modelId": "fastwan2.2-ti2v-5b-q6_k",
+        "files": [
+          {
+            "repositoryUrl": "https://huggingface.co/Green-Sky/FastWan2.2-TI2V-5B-FullAttn-GGUF",
+            "revision": "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
+            "path": "FastWan2.2-TI2V-5B-q6_k.gguf",
+            "sizeBytes": 4210247200,
+            "sha256": "416a87e30f2328dbefd7666ac90b395ead74f443748ff31c83483ac4ac6121cc",
+            "role": "primary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+            "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7",
+            "path": "umt5-xxl-encoder-Q8_0.gguf",
+            "sizeBytes": 6043068256,
+            "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+            "role": "supplementary"
+          },
+          {
+            "repositoryUrl": "https://github.com/madebyollin/taehv",
+            "revision": "fa579a9a726b0a55951998d73e309bfdf0abd342",
+            "path": "safetensors/taew2_2.safetensors",
+            "sizeBytes": 22848048,
+            "sha256": "b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325",
+            "role": "supplementary"
+          }
+        ],
+        "totalBytes": 10276163504
+      }
+    },
+    {
+      "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+      "revision": "c4f60d30c55a624e35427060fdd217579a6c1d77",
+      "file": "split_files/diffusion_models/wan2.2_s2v_14B_fp8_scaled.safetensors",
+      "modelId": "wan2.2-s2v-14b-fp8",
+      "kind": "video",
+      "status": "verified",
+      "recipe": {
+        "modelId": "wan2.2-s2v-14b-fp8",
+        "files": [
+          {
+            "repositoryUrl": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+            "revision": "c4f60d30c55a624e35427060fdd217579a6c1d77",
+            "path": "split_files/diffusion_models/wan2.2_s2v_14B_fp8_scaled.safetensors",
+            "sizeBytes": 16394832474,
+            "sha256": "140e75af5534ac3d91e710d9df756f7032addd64b341ba2c1c70e3e6da9aa216",
+            "role": "primary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
+            "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7",
+            "path": "umt5-xxl-encoder-Q8_0.gguf",
+            "sizeBytes": 6043068256,
+            "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
+            "role": "supplementary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+            "revision": "617a7633e636506f850e043bc4605f290a466a8e",
+            "path": "split_files/vae/wan_2.1_vae.safetensors",
+            "sizeBytes": 253815318,
+            "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+            "role": "supplementary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+            "revision": "c4f60d30c55a624e35427060fdd217579a6c1d77",
+            "path": "split_files/audio_encoders/wav2vec2_large_english_fp16.safetensors",
+            "sizeBytes": 630997322,
+            "sha256": "f0017a43ea57ef6b3d4866be607844bbd8cada6d30966f7d70044ed0d63d3f9e",
+            "role": "supplementary"
+          }
+        ],
+        "totalBytes": 23322713370
+      }
+    },
+    {
+      "repo": "bartowski/Qwen_Qwen3.5-0.8B-GGUF",
+      "revision": "f36b1ea49a332ede8fe5f389bbf5b3575ef71f48",
+      "file": "Qwen_Qwen3.5-0.8B-Q4_K_M.gguf",
+      "modelId": "qwen3.5-0.8b-q4_k_m",
+      "kind": "llm",
+      "status": "verified",
+      "memoryPeaks": [
+        {
+          "variant": "Q4_K_M",
+          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+          "peakBytes": 1362100224,
+          "backendAcceleratorBytes": 1140850688,
+          "hostBufferBytes": 221249536,
+          "peakRssBytes": 827424768,
+          "measuredAt": "2026-10-13",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
+    },
+    {
+      "repo": "bartowski/Qwen_Qwen3.5-0.8B-GGUF",
+      "revision": "f36b1ea49a332ede8fe5f389bbf5b3575ef71f48",
+      "file": "Qwen_Qwen3.5-0.8B-Q8_0.gguf",
+      "modelId": "qwen3.5-0.8b-q8_0",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/Qwen_Qwen3.5-2B-GGUF",
+      "revision": "7d26695454df6de5fbcce2e58681e62dae06ce43",
+      "file": "Qwen_Qwen3.5-2B-Q4_K_M.gguf",
+      "modelId": "qwen3.5-2b-q4_k_m",
+      "kind": "llm",
+      "status": "verified",
+      "memoryPeaks": [
+        {
+          "variant": "Q4_K_M",
+          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+          "peakBytes": 2344615936,
+          "backendAcceleratorBytes": 1910505472,
+          "hostBufferBytes": 434110464,
+          "peakRssBytes": 1593032704,
+          "measuredAt": "2026-10-13",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
+    },
+    {
+      "repo": "bartowski/Qwen_Qwen3.5-2B-GGUF",
+      "revision": "7d26695454df6de5fbcce2e58681e62dae06ce43",
+      "file": "Qwen_Qwen3.5-2B-Q8_0.gguf",
+      "modelId": "qwen3.5-2b-q8_0",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "Qwen/Qwen3-Embedding-4B-GGUF",
+      "revision": "f4602530db1d980e16da9d7d3a70294cf5c190be",
+      "file": "Qwen3-Embedding-4B-Q8_0.gguf",
+      "modelId": "qwen3-embedding-4b-q8_0",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "Qwen/Qwen3-Embedding-8B-GGUF",
+      "revision": "69d0e58a13e463cd99a9b83e3f5fee7c10265fab",
+      "file": "Qwen3-Embedding-8B-Q4_K_M.gguf",
+      "modelId": "qwen3-embedding-8b-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "Qwen/Qwen3-Embedding-8B-GGUF",
+      "revision": "69d0e58a13e463cd99a9b83e3f5fee7c10265fab",
+      "file": "Qwen3-Embedding-8B-Q8_0.gguf",
+      "modelId": "qwen3-embedding-8b-q8_0",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "ggerganov/whisper.cpp",
+      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "file": "ggml-tiny-q8_0.bin",
+      "modelId": "whisper-tiny-q8_0",
+      "kind": "stt",
+      "status": "verified"
+    },
+    {
+      "repo": "ggerganov/whisper.cpp",
+      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "file": "ggml-base.en-q8_0.bin",
+      "modelId": "whisper-base-en-q8_0",
+      "kind": "stt",
+      "status": "verified"
+    },
+    {
+      "repo": "ggerganov/whisper.cpp",
+      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "file": "ggml-small-q8_0.bin",
+      "modelId": "whisper-small-q8_0",
+      "kind": "stt",
+      "status": "verified"
+    },
+    {
+      "repo": "ggerganov/whisper.cpp",
+      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "file": "ggml-medium-q8_0.bin",
+      "modelId": "whisper-medium-q8_0",
+      "kind": "stt",
+      "status": "verified"
+    },
+    {
+      "repo": "SG161222/RealVisXL_V5.0",
+      "revision": "ac93e0dda1f6d448cae19bbfab8c5e720a5e48bc",
+      "file": "RealVisXL_V5.0_fp16.safetensors",
+      "modelId": "realvis-xl-v5.0",
+      "kind": "image",
+      "status": "verified",
+      "memoryPeaks": [
+        {
+          "variant": "safetensors F16",
+          "launchShape": "1024x1024;steps=20;diffusion-fa=on",
+          "peakBytes": 14999208591,
+          "backendAcceleratorBytes": 14999208591,
+          "hostBufferBytes": 0,
+          "peakRssBytes": 7805108224,
+          "measuredAt": "2026-10-14",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
+    },
+    {
+      "repo": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
+      "revision": "f86cb2c1fa58255f8052cc32aeede1b7482d4361",
+      "file": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+      "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified",
+      "unsupportedCapabilities": [
+        {
+          "id": "tool-calling",
+          "supported": false,
+          "source": "declared",
+          "verified": true,
+          "reason": "Protocol tool calling is unsupported for this artifact: it answers tool requests with plain text instead of tool calls."
+        }
+      ]
+    },
+    {
+      "repo": "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
+      "revision": "f74adce6aa16316c625447af059dbebe4983757c",
+      "file": "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
+      "modelId": "qwen2.5-coder-3b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+      "revision": "13fb94bfda8c8cf22497dc57b78f391a9acb426a",
+      "file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+      "modelId": "qwen2.5-coder-7b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
+      "revision": "d0a692ef765eefbf2fabb130b3cb2e8917e3d225",
+      "file": "qwen2.5-coder-14b-instruct-q4_k_m.gguf",
+      "modelId": "qwen2.5-coder-14b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "Qwen/Qwen2.5-Coder-32B-Instruct-GGUF",
+      "revision": "9d3053fce650fe1cdbdb75998c2a87add9d178ef",
+      "file": "qwen2.5-coder-32b-instruct-q4_k_m.gguf",
+      "modelId": "qwen2.5-coder-32b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "Qwen/Qwen3-Coder-Next-GGUF",
+      "revision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
+      "file": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
+      "modelId": "qwen3-coder-next-q4_k_m",
+      "kind": "llm",
+      "status": "verified",
+      "recipe": {
+        "modelId": "qwen3-coder-next-q4_k_m",
+        "files": [
+          {
+            "repositoryUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
+            "revision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
+            "path": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
+            "sizeBytes": 15524827040,
+            "sha256": "6bcfc9f9c37901eeb92172e2ab871224dab36a453d263bcb2547f737409534da",
+            "role": "primary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
+            "revision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
+            "path": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00002-of-00004.gguf",
+            "sizeBytes": 14872168352,
+            "sha256": "817def0691ee9d08bf3dc4444be7aed29c9e52091e8fa9d97901ce7e7f6f01d3",
+            "role": "supplementary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
+            "revision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
+            "path": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00003-of-00004.gguf",
+            "sizeBytes": 14503294496,
+            "sha256": "23aa634d47dca9b4ca3ea249384e6f01951b24c83cdc076f37f6f43d6c99883f",
+            "role": "supplementary"
+          },
+          {
+            "repositoryUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
+            "revision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
+            "path": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00004-of-00004.gguf",
+            "sizeBytes": 3510702144,
+            "sha256": "249c768cc5f130dc731567d6edcbdacc48e14dec9e02c5dbe2b2185d2c5bdb2b",
+            "role": "supplementary"
+          }
+        ],
+        "totalBytes": 48410992032
+      }
+    },
+    {
+      "repo": "bartowski/Llama-3.2-1B-Instruct-GGUF",
+      "revision": "067b946cf014b7c697f3654f621d577a3e3afd1c",
+      "file": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+      "modelId": "llama-3.2-1b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+      "revision": "5ab33fa94d1d04e903623ae72c95d1696f09f9e8",
+      "file": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+      "modelId": "llama-3.2-3b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+      "revision": "bf5b95e96dac0462e2a09145ec66cae9a3f12067",
+      "file": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+      "modelId": "llama-3.1-8b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/Llama-3.3-70B-Instruct-GGUF",
+      "revision": "b6c5c9f176f3279204034e1d16d393105e95cb88",
+      "file": "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
+      "modelId": "llama-3.3-70b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
+      "revision": "9f5d77d401799416e0702290a691038b44012e0c",
+      "file": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+      "modelId": "deepseek-r1-distill-qwen-14b-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "TheBloke/deepseek-coder-6.7B-Instruct-GGUF",
+      "revision": "9e221e6b41cb1bf1c5d8f9718e81e3dc781f7557",
+      "file": "deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
+      "modelId": "deepseek-coder-6.7b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
+      "revision": "8f248fa2072348f77a8bc37754e470de1f61866e",
+      "file": "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+      "modelId": "deepseek-coder-v2-lite-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "TheBloke/deepseek-coder-33B-Instruct-GGUF",
+      "revision": "cd6a4d02d3502901ff7f980b6373387ab8b8e91a",
+      "file": "deepseek-coder-33b-instruct.Q4_K_M.gguf",
+      "modelId": "deepseek-coder-33b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/google_gemma-3-1b-it-GGUF",
+      "revision": "116f76234503685a98f572982177b11d44ec8ff1",
+      "file": "google_gemma-3-1b-it-Q4_K_M.gguf",
+      "modelId": "gemma-3-1b-it-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/google_gemma-3-4b-it-GGUF",
+      "revision": "71506238f970075ca85125cd749c28b1b0eee84e",
+      "file": "google_gemma-3-4b-it-Q4_K_M.gguf",
+      "modelId": "gemma-3-4b-it-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/google_gemma-3-12b-it-GGUF",
+      "revision": "648e3a36a77c8a9f12d86e741f9dcb9089c769c4",
+      "file": "google_gemma-3-12b-it-Q4_K_M.gguf",
+      "modelId": "gemma-3-12b-it-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/google_gemma-3-27b-it-GGUF",
+      "revision": "4a05c54413bd0d87d77a97af403266f69cec0ee6",
+      "file": "google_gemma-3-27b-it-Q4_K_M.gguf",
+      "modelId": "gemma-3-27b-it-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/phi-4-GGUF",
+      "revision": "19cd65f97c2f1712a81c506611d3f9c94b16a1e1",
+      "file": "phi-4-Q4_K_M.gguf",
+      "modelId": "phi-4-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/Phi-3.5-mini-instruct-GGUF",
+      "revision": "6d70da17e749a471ccb62ade694486011a75cda3",
+      "file": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+      "modelId": "phi-3.5-mini-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/Phi-3.5-MoE-instruct-GGUF",
+      "revision": "4b580329100cf44d7d041b6f63967b26869a6937",
+      "file": "Phi-3.5-MoE-instruct-Q4_K_M.gguf",
+      "modelId": "phi-3.5-moe-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/Falcon3-10B-Instruct-GGUF",
+      "revision": "a826d55e0af24842680260d23f7221b6138c342a",
+      "file": "Falcon3-10B-Instruct-Q4_K_M.gguf",
+      "modelId": "falcon-2-11b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
+      "revision": "1dc8cf9ffa5dd333057ea1b09ccf4772d8726dec",
+      "file": "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+      "modelId": "deepseek-r1-distill-qwen-32b-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
+      "revision": "935d400c2ed1a29cc2a1045df25ec7998fb4dfe4",
+      "file": "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+      "modelId": "deepseek-r1-distill-llama-8b-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
+      "revision": "1842c5f7280f933ead58adf8afd078672c9f6cd0",
+      "file": "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+      "modelId": "deepseek-r1-distill-llama-70b-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/Qwen2.5-72B-Instruct-GGUF",
+      "revision": "d43fd973131bce821f41e2df3c78c6fe15c5627a",
+      "file": "Qwen2.5-72B-Instruct-Q4_K_M.gguf",
+      "modelId": "qwen2.5-72b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/Codestral-22B-v0.1-GGUF",
+      "revision": "0e6abe14d6aeaf2c99d5dc9973205e8e38692d90",
+      "file": "Codestral-22B-v0.1-Q4_K_M.gguf",
+      "modelId": "codestral-22b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/Mistral-Nemo-Instruct-2407-GGUF",
+      "revision": "a2dd64a0a76ea1bdb2bb6ab6fa5496b003c7c908",
+      "file": "Mistral-Nemo-Instruct-2407-Q4_K_M.gguf",
+      "modelId": "mistral-nemo-12b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified",
+      "memoryPeaks": [
+        {
+          "variant": "Q4_K_M",
+          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+          "peakBytes": 8907653120,
+          "backendAcceleratorBytes": 8500805632,
+          "hostBufferBytes": 406847488,
+          "peakRssBytes": 8069824512,
+          "measuredAt": "2026-10-13",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
+    },
+    {
+      "repo": "bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF",
+      "revision": "027695770ae1de77c2f6fb19f8e1ba9d65fcd15d",
+      "file": "mistralai_Devstral-Small-2-24B-Instruct-2512-Q4_K_M.gguf",
+      "modelId": "devstral-small-2-24b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "mistralai/Ministral-3-14B-Instruct-2512-GGUF",
+      "revision": "74fac473c43357d7fb2671713608183cc72496d0",
+      "file": "Ministral-3-14B-Instruct-2512-Q4_K_M.gguf",
+      "modelId": "ministral-3-14b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified",
+      "memoryPeaks": [
+        {
+          "variant": "Q4_K_M",
+          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+          "peakBytes": 9629073408,
+          "backendAcceleratorBytes": 9222225920,
+          "hostBufferBytes": 406847488,
+          "peakRssBytes": 7823081472,
+          "measuredAt": "2026-10-13",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
+    },
+    {
+      "repo": "bartowski/Qwen_Qwen3.5-27B-GGUF",
+      "revision": "d7b113c40283f4d99f4eb0ec20d126ad653cc736",
+      "file": "Qwen_Qwen3.5-27B-Q4_K_M.gguf",
+      "modelId": "qwen3.5-27b-q4_k_m",
+      "kind": "llm",
+      "status": "verified",
+      "memoryPeaks": [
+        {
+          "variant": "Q4_K_M",
+          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+          "peakBytes": 19245563904,
+          "backendAcceleratorBytes": 18501074944,
+          "hostBufferBytes": 744488960,
+          "peakRssBytes": 19027968000,
+          "measuredAt": "2026-10-14",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
+    },
+    {
+      "repo": "bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF",
+      "revision": "b3592d09be469bedab6be51f577824b3b6b76ba1",
+      "file": "mistralai_Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf",
+      "modelId": "mistral-small-3.2-24b-instruct-q4_k_m",
+      "kind": "llm",
+      "status": "verified"
+    },
+    {
+      "repo": "bartowski/Qwen_Qwen3.5-9B-GGUF",
+      "revision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
+      "file": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+      "modelId": "qwen3.5-9b-q4_k_m",
+      "kind": "llm",
+      "status": "verified",
+      "memoryPeaks": [
+        {
+          "variant": "Q4_K_M",
+          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+          "peakBytes": 7216300032,
+          "backendAcceleratorBytes": 6619660288,
+          "hostBufferBytes": 596639744,
+          "peakRssBytes": 6390480896,
+          "measuredAt": "2026-10-13",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
+    },
+    {
+      "repo": "bartowski/openai_gpt-oss-20b-GGUF",
+      "revision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
+      "file": "openai_gpt-oss-20b-Q4_K_M.gguf",
+      "modelId": "gpt-oss-20b-q4_k_m",
+      "kind": "llm",
+      "status": "verified",
+      "memoryPeaks": [
+        {
+          "variant": "Q4_K_M",
+          "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+          "peakBytes": 12618563584,
+          "backendAcceleratorBytes": 12200181760,
+          "hostBufferBytes": 418381824,
+          "peakRssBytes": 10298408960,
+          "measuredAt": "2026-10-13",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
+    },
+    {
+      "repo": "ggerganov/whisper.cpp",
+      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "file": "ggml-tiny.en-q8_0.bin",
+      "modelId": "whisper-tiny-en-q8_0",
+      "kind": "stt",
+      "status": "verified",
+      "memoryPeaks": [
+        {
+          "variant": "Q8_0",
+          "launchShape": "default",
+          "peakBytes": 208900000,
+          "backendAcceleratorBytes": 208900000,
+          "hostBufferBytes": 0,
+          "peakRssBytes": 169902080,
+          "measuredAt": "2026-10-13",
+          "hardware": "Apple M-series 64 GiB, macOS 26"
+        }
+      ]
+    },
+    {
       "repo": "leejet/FLUX.1-schnell-gguf",
       "revision": "c7f665ddaf9f197ff493f41fc211f5480f5f19ac",
       "file": "flux1-schnell-q4_0.gguf",
       "modelId": "flux1-schnell-q4_0",
       "kind": "image",
-      "status": "qualified",
+      "status": "verified",
       "memoryPeaks": [
         {
           "variant": "Q4_0 + CLIP-L + T5-XXL F16",
@@ -4167,60 +4551,10 @@
     {
       "repo": "leejet/FLUX.2-klein-4B-GGUF",
       "revision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
-      "file": "flux-2-klein-4b-Q4_0.gguf",
-      "modelId": "flux2-klein-4b-q4_0",
-      "kind": "image",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q4_0",
-          "launchShape": "1024x1024;steps=4;diffusion-fa=on",
-          "peakBytes": 12101353472,
-          "backendAcceleratorBytes": 12101353472,
-          "hostBufferBytes": 0,
-          "peakRssBytes": 5983240192,
-          "measuredAt": "2026-10-14",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ],
-      "recipe": {
-        "modelId": "flux2-klein-4b-q4_0",
-        "files": [
-          {
-            "repositoryUrl": "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
-            "revision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
-            "path": "flux-2-klein-4b-Q4_0.gguf",
-            "sizeBytes": 2460378560,
-            "sha256": "d1023499ef3f2f82ff7c50e6778495195c1b6cc34835741778868428111f9ff4",
-            "role": "primary"
-          },
-          {
-            "repositoryUrl": "https://huggingface.co/Comfy-Org/flux2-klein-4B",
-            "revision": "5f526678002e43af5551dadb73ce2e8c91b43afe",
-            "path": "split_files/vae/flux2-vae.safetensors",
-            "sizeBytes": 336211292,
-            "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
-            "role": "supplementary"
-          },
-          {
-            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-GGUF",
-            "revision": "22c9fc8a8c7700b76a1789366280a6a5a1ad1120",
-            "path": "Qwen3-4B-Q4_K_M.gguf",
-            "sizeBytes": 2497281312,
-            "sha256": "f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a",
-            "role": "supplementary"
-          }
-        ],
-        "totalBytes": 5293871164
-      }
-    },
-    {
-      "repo": "leejet/FLUX.2-klein-4B-GGUF",
-      "revision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
       "file": "flux-2-klein-4b-Q8_0.gguf",
       "modelId": "flux2-klein-4b-q8_0",
       "kind": "image",
-      "status": "qualified",
+      "status": "verified",
       "memoryPeaks": [
         {
           "variant": "Q8_0 + Qwen3-4B Q4_K_M",
@@ -4270,7 +4604,7 @@
       "file": "flux-2-klein-9b-Q4_0.gguf",
       "modelId": "flux2-klein-9b-q4_0",
       "kind": "image",
-      "status": "qualified",
+      "status": "verified",
       "recipe": {
         "modelId": "flux2-klein-9b-q4_0",
         "files": [
@@ -4303,62 +4637,12 @@
       }
     },
     {
-      "repo": "leejet/Z-Image-Turbo-GGUF",
-      "revision": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
-      "file": "z_image_turbo-Q4_0.gguf",
-      "modelId": "z-image-turbo-q4_0",
-      "kind": "image",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q4_0 + Qwen3-4B-Instruct Q4_K_M",
-          "launchShape": "1024x1024;steps=8;diffusion-fa=on",
-          "peakBytes": 13322808197,
-          "backendAcceleratorBytes": 13322808197,
-          "hostBufferBytes": 0,
-          "peakRssBytes": 7087439872,
-          "measuredAt": "2026-10-14",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ],
-      "recipe": {
-        "modelId": "z-image-turbo-q4_0",
-        "files": [
-          {
-            "repositoryUrl": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
-            "revision": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
-            "path": "z_image_turbo-Q4_0.gguf",
-            "sizeBytes": 3683370944,
-            "sha256": "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5",
-            "role": "primary"
-          },
-          {
-            "repositoryUrl": "https://huggingface.co/Comfy-Org/z_image_turbo",
-            "revision": "08d04455279082882deaabc8d0d09fc914c071e1",
-            "path": "split_files/vae/ae.safetensors",
-            "sizeBytes": 335304388,
-            "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
-            "role": "supplementary"
-          },
-          {
-            "repositoryUrl": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF",
-            "revision": "a06e946bb6b655725eafa393f4a9745d460374c9",
-            "path": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-            "sizeBytes": 2497281120,
-            "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
-            "role": "supplementary"
-          }
-        ],
-        "totalBytes": 6515956452
-      }
-    },
-    {
       "repo": "stable-diffusion-v1-5/stable-diffusion-v1-5",
       "revision": "451f4fe16113bff5a5d2269ed5ad43b0592e9a14",
       "file": "v1-5-pruned-emaonly.safetensors",
       "modelId": "stable-diffusion-v1-5",
       "kind": "image",
-      "status": "qualified",
+      "status": "verified",
       "memoryPeaks": [
         {
           "variant": "safetensors F16",
@@ -4373,32 +4657,12 @@
       ]
     },
     {
-      "repo": "Lykon/dreamshaper-8-lcm",
-      "revision": "4645d8bc6a8e6b106d21606d63e8460cdad4f1a6",
-      "file": "DreamShaper8_LCM.safetensors",
-      "modelId": "dreamshaper-8-lcm",
-      "kind": "image",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "safetensors F16 (LCM)",
-          "launchShape": "512x512;steps=4;diffusion-fa=on",
-          "peakBytes": 3878745539,
-          "backendAcceleratorBytes": 3878745539,
-          "hostBufferBytes": 0,
-          "peakRssBytes": 3006021632,
-          "measuredAt": "2026-10-14",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
-    },
-    {
       "repo": "Lykon/DreamShaper",
       "revision": "228d79cb20811466f5c5710aa91f05dabd0b8a14",
       "file": "DreamShaper_8_pruned.safetensors",
       "modelId": "dreamshaper-v8",
       "kind": "image",
-      "status": "qualified",
+      "status": "verified",
       "memoryPeaks": [
         {
           "variant": "safetensors F16",
@@ -4418,7 +4682,7 @@
       "file": "sd_xl_turbo_1.0_fp16.safetensors",
       "modelId": "sdxl-turbo",
       "kind": "image",
-      "status": "qualified",
+      "status": "verified",
       "memoryPeaks": [
         {
           "variant": "safetensors F16",
@@ -4438,27 +4702,7 @@
       "file": "sd_xl_base_1.0.safetensors",
       "modelId": "sdxl-base-1.0",
       "kind": "image",
-      "status": "qualified"
-    },
-    {
-      "repo": "RunDiffusion/Juggernaut-XL-v9",
-      "revision": "cf419233522daa0b9ea36c3aff98fa2cab1fb0fb",
-      "file": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
-      "modelId": "juggernaut-xl-v9",
-      "kind": "image",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "safetensors F16",
-          "launchShape": "1024x1024;steps=20;diffusion-fa=on",
-          "peakBytes": 14999208591,
-          "backendAcceleratorBytes": 14999208591,
-          "hostBufferBytes": 0,
-          "peakRssBytes": 7788806144,
-          "measuredAt": "2026-10-14",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ]
+      "status": "verified"
     },
     {
       "repo": "cagliostrolab/animagine-xl-3.1",
@@ -4466,7 +4710,7 @@
       "file": "animagine-xl-3.1.safetensors",
       "modelId": "animagine-xl-3.1",
       "kind": "image",
-      "status": "qualified"
+      "status": "verified"
     },
     {
       "repo": "SG161222/RealVisXL_V4.0",
@@ -4474,7 +4718,7 @@
       "file": "RealVisXL_V4.0.safetensors",
       "modelId": "realvis-xl-v4.0",
       "kind": "image",
-      "status": "qualified"
+      "status": "verified"
     },
     {
       "repo": "samuelchristlie/Wan2.1-T2V-1.3B-GGUF",
@@ -4482,7 +4726,7 @@
       "file": "Wan2.1-T2V-1.3B-Q8_0.gguf",
       "modelId": "wan2.1-t2v-1.3b-q8_0",
       "kind": "video",
-      "status": "qualified",
+      "status": "verified",
       "memoryPeaks": [
         {
           "variant": "Q8_0 + umt5-xxl Q8_0 + Wan2.1 VAE",
@@ -4525,103 +4769,6 @@
           }
         ],
         "totalBytes": 7832652374
-      }
-    },
-    {
-      "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
-      "revision": "c4f60d30c55a624e35427060fdd217579a6c1d77",
-      "file": "split_files/diffusion_models/wan2.2_s2v_14B_fp8_scaled.safetensors",
-      "modelId": "wan2.2-s2v-14b-fp8",
-      "kind": "video",
-      "status": "verified",
-      "recipe": {
-        "modelId": "wan2.2-s2v-14b-fp8",
-        "files": [
-          {
-            "repositoryUrl": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
-            "revision": "c4f60d30c55a624e35427060fdd217579a6c1d77",
-            "path": "split_files/diffusion_models/wan2.2_s2v_14B_fp8_scaled.safetensors",
-            "sizeBytes": 16394832474,
-            "sha256": "140e75af5534ac3d91e710d9df756f7032addd64b341ba2c1c70e3e6da9aa216",
-            "role": "primary"
-          },
-          {
-            "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
-            "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7",
-            "path": "umt5-xxl-encoder-Q8_0.gguf",
-            "sizeBytes": 6043068256,
-            "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
-            "role": "supplementary"
-          },
-          {
-            "repositoryUrl": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged",
-            "revision": "617a7633e636506f850e043bc4605f290a466a8e",
-            "path": "split_files/vae/wan_2.1_vae.safetensors",
-            "sizeBytes": 253815318,
-            "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
-            "role": "supplementary"
-          },
-          {
-            "repositoryUrl": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
-            "revision": "c4f60d30c55a624e35427060fdd217579a6c1d77",
-            "path": "split_files/audio_encoders/wav2vec2_large_english_fp16.safetensors",
-            "sizeBytes": 630997322,
-            "sha256": "f0017a43ea57ef6b3d4866be607844bbd8cada6d30966f7d70044ed0d63d3f9e",
-            "role": "supplementary"
-          }
-        ],
-        "totalBytes": 23322713370
-      }
-    },
-    {
-      "repo": "Green-Sky/FastWan2.2-TI2V-5B-FullAttn-GGUF",
-      "revision": "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
-      "file": "FastWan2.2-TI2V-5B-q6_k.gguf",
-      "modelId": "fastwan2.2-ti2v-5b-q6_k",
-      "kind": "video",
-      "status": "qualified",
-      "memoryPeaks": [
-        {
-          "variant": "Q6_K + umt5-xxl Q8_0 + TAEHV",
-          "launchShape": "480x832;frames=81;cpu-offload=on;diffusion-fa=on",
-          "peakBytes": 16619940086,
-          "backendAcceleratorBytes": 6348131533,
-          "hostBufferBytes": 10271808553,
-          "peakRssBytes": 13746454528,
-          "systemDeltaBytes": 15058550784,
-          "measuredAt": "2026-10-13",
-          "hardware": "Apple M-series 64 GiB, macOS 26"
-        }
-      ],
-      "recipe": {
-        "modelId": "fastwan2.2-ti2v-5b-q6_k",
-        "files": [
-          {
-            "repositoryUrl": "https://huggingface.co/Green-Sky/FastWan2.2-TI2V-5B-FullAttn-GGUF",
-            "revision": "3e8fe5537b1200654868aa24ea8d0f4012fb3a1e",
-            "path": "FastWan2.2-TI2V-5B-q6_k.gguf",
-            "sizeBytes": 4210247200,
-            "sha256": "416a87e30f2328dbefd7666ac90b395ead74f443748ff31c83483ac4ac6121cc",
-            "role": "primary"
-          },
-          {
-            "repositoryUrl": "https://huggingface.co/city96/umt5-xxl-encoder-gguf",
-            "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7",
-            "path": "umt5-xxl-encoder-Q8_0.gguf",
-            "sizeBytes": 6043068256,
-            "sha256": "2521d4de0bf9e1cc6549866463ceae85e4ec3239bc6063f7488810be39033bbc",
-            "role": "supplementary"
-          },
-          {
-            "repositoryUrl": "https://github.com/madebyollin/taehv",
-            "revision": "fa579a9a726b0a55951998d73e309bfdf0abd342",
-            "path": "safetensors/taew2_2.safetensors",
-            "sizeBytes": 22848048,
-            "sha256": "b84609b2a133d48434bd9636bfcb44bf05168dc436e2d3cecf26256faa1f5325",
-            "role": "supplementary"
-          }
-        ],
-        "totalBytes": 10276163504
       }
     },
     {

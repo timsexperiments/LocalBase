@@ -1030,7 +1030,7 @@ test("hints at the route family of an unmatched request without its segments", a
     for (const path of [
       "/v1/completions?api_key=sk-proj-abcdefghijklmnop",
       "/private-tenant/sk-proj-abcdefghijklmnop/x",
-      "/v1/models/qwen2.5-coder-1.5b-instruct-q4_k_m",
+      "/v1/models/qwen3.5-4b-q4_k_m",
     ])
       logger.request({
         method: "GET",

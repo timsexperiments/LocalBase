@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AppContext } from "../../context";
 import { byId, modelSpecSchema } from "../../catalog";
+import { formerCatalogEntry } from "../../catalog/former";
 import { applyCatalogLayers, catalogProvenance } from "../../catalog/sources";
 import { defaultConfig } from "../../manager";
 import type { CommandExecution } from "../app/commands/framework";
@@ -513,7 +514,7 @@ test("models add refuses built-in ids and remove-entry refuses selected models",
       {
         reference: "hf:TinyOrg/Tiny-0.5B-Instruct-GGUF",
         install: false,
-        id: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        id: "qwen3.5-4b-q4_k_m",
       },
       ctx,
       execution([]),
@@ -889,7 +890,8 @@ test("generates multi-file pipeline entries from the measured profiles", async (
     parseHfReference("hf:black-forest-labs/FLUX.1-dev"),
   );
   const spec = modelSpecSchema.parse(entry.spec);
-  const template = byId("flux1-schnell-q4_0")!;
+  // The FLUX.1 profile borrows from the pinned former schnell entry.
+  const template = formerCatalogEntry("flux1-schnell-q4_0")!;
   expect(spec).toMatchObject({
     kind: "image",
     family: "FLUX.1",

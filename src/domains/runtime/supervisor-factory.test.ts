@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +23,14 @@ import { SpeechSupervisor } from "./speech-supervisor";
 import { generateSpeechWithIdleRecovery } from "./commands/serve";
 import { projectVideoJob } from "./video/gateway-contract";
 import { useSupportedVideoHost } from "../../test/video-host";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 useSupportedVideoHost();
 

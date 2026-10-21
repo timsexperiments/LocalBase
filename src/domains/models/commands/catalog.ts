@@ -13,7 +13,8 @@ import {
   annotationSummaryFor,
   headlinePeak,
 } from "../../../catalog/annotations";
-import { formatGb } from "../../../catalog/model-details";
+import { formatGb, planningMinimumNote } from "../../../catalog/model-details";
+import { MEASUREMENT_HARDWARE } from "../../runtime/memory-measurements";
 import { catalogProvenance } from "../../../catalog/sources";
 import type { AppContext } from "../../../context";
 import type { CommandExecution } from "../../app/commands/framework";
@@ -100,12 +101,8 @@ export async function runCatalog(
   const listed = selected.map((model) => {
     const fit = fits.get(model.modelId)!;
     const provenance = catalogProvenance(model.modelId);
-    const coding =
-      model.codingScore === undefined
-        ? ""
-        : ` | coding=${model.codingScore}/10`;
     execution.output.info(
-      `${model.kind.padEnd(5)} | ${model.modelId.padEnd(38)} | size=${model.size.padEnd(10)} | min_vram=${String(fit.minVramGb).padStart(3)} GB ${fit.source.padEnd(8)} | fit=${fit.verdict.padEnd(8)} | storage=${model.storageGb.toFixed(2)} GB | status=${model.commercialStatus}${coding}`,
+      `${model.kind.padEnd(5)} | ${model.modelId.padEnd(38)} | size=${model.size.padEnd(10)} | plan_min=${String(fit.minVramGb).padStart(3)} GB ${fit.source.padEnd(8)} | fit=${fit.verdict.padEnd(8)} | storage=${model.storageGb.toFixed(2)} GB | status=${model.commercialStatus}`,
     );
     execution.output.info(
       `      in=${model.inputModalities.join(",")} out=${model.outputModalities.join(",")} features=${legacyFeatures(model).join(",")}${model.qualificationState === "experimental" ? " qualification=experimental (unqualified)" : ""}${provenance.trust === "qualified" ? "" : ` trust=${provenance.trust} source=${provenance.tier}`}`,
@@ -144,5 +141,9 @@ export async function runCatalog(
   });
   if (!listed.length && models.length)
     execution.output.info("No models match these filters.");
+  if (listed.length)
+    execution.output.info(
+      `plan_min: ${planningMinimumNote} Each figure is at the model's reference launch (LLMs: up to an 8,192-token context, 1 request at a time); "measured" figures were recorded on ${MEASUREMENT_HARDWARE}. Run "local-base models show <id>" for the exact settings.`,
+    );
   return { data: { models: listed } };
 }

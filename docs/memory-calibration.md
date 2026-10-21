@@ -47,7 +47,7 @@ The catalog no longer stores a hand-entered `minVramGb`. Each model's minimum is
 2. **measured**: a record in `MEMORY_MEASUREMENTS` at the reference shape.
 3. **estimate**: the formula estimate from artifact sizes. For an installed GGUF (LLM or TTS talker), the layer, KV-head and embedding geometry is read from the file. Otherwise the shape comes from a size heuristic (`fallbackLlmShape`): P billion parameters from the catalog size, else from the bytes at 4.89 bits per weight; layers = ceil(16 × P^0.4); embedding = sqrt(P × 10^9 / (12 × layers)); 8 KV heads of dimension 128; vocabulary 152064. It assumes full attention in every layer, so it overstates hybrid and sliding-window models until the file is installed.
 
-The API, CLI, diagnostics and UI report the source next to the minimum. `minVramGb` and `minimumVramEstimateGb` remain in the JSON outputs and hold the computed minimum. The verdict for this machine is `fits`, `tight` (under 4 GiB headroom, or the minimum is over 75% of memory) or `wont-fit`. Admission uses the full launch-plan demand, not the minimum; see [Admission](#admission).
+The API, CLI, diagnostics and UI report the source next to the minimum. `minVramGb` and `minimumVramEstimateGb` remain in the JSON outputs and hold the computed minimum. Despite the field names, it is a planning minimum at one launch shape, not a hardware or VRAM requirement, so the UI and CLI label it "Planning minimum" (`plan_min` in `models catalog`) and state its assumptions: `models show` and the model details view print the reference launch shape and whether the figure is a formula estimate or was measured, with the measuring machine (Apple M-series 64 GiB, macOS 26 for every checked-in record, exposed as `memory.reference.hardware` in model metadata). The minimum comes from the accelerator demand; weight size and peak RSS feed the host and unified demands, never the minimum on their own. The verdict for this machine is `fits`, `tight` (under 4 GiB headroom, or the minimum is over 75% of memory) or `wont-fit`. Admission uses the full launch-plan demand, not the minimum; see [Admission](#admission).
 
 ## Observed peaks
 
@@ -168,12 +168,18 @@ A decision server keeps no KV or recurrent context (0 MiB). The MTL0 buffers are
 
 ## Not measured
 
-Models without a measured record keep estimate confidence:
+Built-in entries without a measured record keep estimate confidence:
 
-- flux2-klein-9b-q4_0 with `--diffusion-fa`: it uses the derived estimate (see above).
+- clef-q4_k_m (Clef 27B, added 2026-10-18): estimate 21.99 GiB accelerator at the 8192-token decision launch, minimum 25 GB. Measure it with the decision method above (ctx 8192, batch = ctx, `--cache-ram 0`, Q8_0 projector).
+- qwen3.8-27b-q4_k_m: skipped in the first pass because its download was paused. Estimate 18.38 GiB, minimum 21 GB.
+- qwen3.6-35b-a3b-iq4_nl_xl (added 2026-10-21): estimate 20.95 GiB accelerator at the reference launch (8192-token context, 1 request, q8_0 KV cache, F16 projector), minimum 24 GB.
+- qwen3-embedding-0.6b-q8_0 and qwen3-embedding-4b-q4_k_m: estimates assume short inputs.
+- whisper-base-q8_0: estimate only.
 - wan2.2-s2v-14b-fp8: it targets only Linux x64 with NVIDIA GPUs.
-- The catalog-only video profiles, the q8_0 LLM variants and other speech models.
-- qwen3.8-27b-q4_k_m: skipped in the first pass because its download was paused.
+
+## Former built-in entries
+
+Entries that left the built-in catalog (`src/catalog/former/`) keep their records here. An install that kept one as a user entry (see the README's built-in catalog section) still plans from its record while the entry's files and launch shape match what was measured (`usesReferenceMeasurements`). Their unmeasured profiles, such as flux2-klein-9b-q4_0 with `--diffusion-fa`, the catalog-only video profiles and the q8_0 LLM variants, keep their estimates.
 
 ## Adding a measurement
 

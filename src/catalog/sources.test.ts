@@ -17,7 +17,7 @@ import {
   writeUserCatalogEntry,
 } from "./user-catalog";
 
-const builtInId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+const builtInId = "qwen3-embedding-0.6b-q8_0";
 const roots: string[] = [];
 
 function scratchRoot(): string {

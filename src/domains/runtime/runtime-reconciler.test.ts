@@ -243,7 +243,7 @@ test("coalesces revisions, isolates replacement, and recovers failed additions",
       beforeReplacement,
     );
 
-    failSttModel = "whisper-tiny-en-q8_0";
+    failSttModel = "whisper-base-q8_0";
     const failedStt = controller.copy();
     failedStt.activeSttModel = failSttModel;
     failedStt.selectedSttModels = [failSttModel];
@@ -446,7 +446,7 @@ test("keeps queued admissions paired with the applied model generation", async (
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "gpt-oss-20b-q4_k_m";
+  const modelB = "qwen3.8-27b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   config.selectedSttModels = [config.activeSttModel];
   saveConfig(database, config);
@@ -513,7 +513,7 @@ test("restores admission when a requested model is removed during activation", a
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "gpt-oss-20b-q4_k_m";
+  const modelB = "qwen3.8-27b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -579,7 +579,7 @@ test("rebases queued replacement work after a model activation", async () => {
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "gpt-oss-20b-q4_k_m";
+  const modelB = "qwen3.8-27b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   config.selectedSttModels = [config.activeSttModel];
   saveConfig(database, config);
@@ -641,7 +641,7 @@ test("releases transition ownership before waiting for backend readiness", async
   const root = mkdtempSync(join(tmpdir(), "localbase-runtime-admission-"));
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
-  const switchedModel = "gpt-oss-20b-q4_k_m";
+  const switchedModel = "qwen3.8-27b-q4_k_m";
   config.selectedLlmModels = [config.activeLlmModel, switchedModel];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -735,7 +735,7 @@ test("does not stop a ready runtime while a model switch drains admission", asyn
   const root = mkdtempSync(join(tmpdir(), "localbase-runtime-ready-drain-"));
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
-  const switchedModel = "gpt-oss-20b-q4_k_m";
+  const switchedModel = "qwen3.8-27b-q4_k_m";
   config.selectedLlmModels = [config.activeLlmModel, switchedModel];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -1129,7 +1129,7 @@ test("cancels queued model activation during emergency eviction and recovers", a
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "gpt-oss-20b-q4_k_m";
+  const modelB = "qwen3.8-27b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   config.selectedSttModels = [];
   config.activeSttModel = "";
@@ -1232,7 +1232,7 @@ test("emergency eviction cancels a blocked switch preflight", async () => {
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "gpt-oss-20b-q4_k_m";
+  const modelB = "qwen3.8-27b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -1305,8 +1305,8 @@ test("drains a warming video job when the model is disabled", async () => {
   config.activeTtsModel = "";
   config.selectedImageModels = [];
   config.activeImageModel = "";
-  config.selectedVideoModels = ["wan2.1-t2v-1.3b-q8_0"];
-  config.activeVideoModel = "wan2.1-t2v-1.3b-q8_0";
+  config.selectedVideoModels = ["fastwan2.2-ti2v-5b-q6_k"];
+  config.activeVideoModel = "fastwan2.2-ti2v-5b-q6_k";
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
   let markWarming!: () => void;
@@ -1426,7 +1426,7 @@ test("emergency eviction aborts stopped-video preflight without leaking an admis
   );
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
-  const modelId = "wan2.1-t2v-1.3b-q8_0";
+  const modelId = "fastwan2.2-ti2v-5b-q6_k";
   config.selectedVideoModels = [modelId];
   config.activeVideoModel = modelId;
   saveConfig(database, config);
@@ -1494,7 +1494,7 @@ test.each([
   const root = mkdtempSync(join(tmpdir(), "localbase-video-active-preflight-"));
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
-  const modelId = "wan2.1-t2v-1.3b-q8_0";
+  const modelId = "fastwan2.2-ti2v-5b-q6_k";
   if (scenario === "llm") {
     config.selectedLlmModels = [config.activeLlmModel];
   } else {
@@ -1667,7 +1667,7 @@ test.each([
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "gpt-oss-20b-q4_k_m";
+  const modelB = "qwen3.8-27b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -1762,7 +1762,7 @@ test("configuration model replacement preflights before draining the current run
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "gpt-oss-20b-q4_k_m";
+  const modelB = "qwen3.8-27b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -1920,7 +1920,7 @@ test("keeps the selected switch when actual admission fails after preflight", as
   const database = new DatabaseSession();
   const config = defaultConfig(root, 16);
   const modelA = config.activeLlmModel;
-  const modelB = "gpt-oss-20b-q4_k_m";
+  const modelB = "qwen3.8-27b-q4_k_m";
   config.selectedLlmModels = [modelA, modelB];
   saveConfig(database, config);
   const controller = new RuntimeConfigController(database, root, config);
@@ -2000,7 +2000,7 @@ test.each([
     const database = new DatabaseSession();
     const config = defaultConfig(root, 16);
     const modelA = config.activeLlmModel;
-    const modelB = "gpt-oss-20b-q4_k_m";
+    const modelB = "qwen3.8-27b-q4_k_m";
     config.selectedLlmModels = [modelA, modelB];
     saveConfig(database, config);
     const controller = new RuntimeConfigController(database, root, config);

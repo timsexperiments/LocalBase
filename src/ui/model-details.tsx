@@ -9,6 +9,7 @@ import {
   catalogTrustLabels,
   describeFit,
   describeLaunchShape,
+  describeMemoryBasis,
   fitLabels,
   formatFileSize,
   formatGb,
@@ -16,6 +17,8 @@ import {
   licenseLabels,
   memoryFigureLabels,
   modeLabels,
+  planningMinimumLabel,
+  planningMinimumNote,
 } from "../catalog/model-details";
 import { modelMemoryRequirement, modelName, type Model } from "./client";
 import { FeedAnnotationDetails, FeedStatusBadge } from "./feed-annotation";
@@ -289,7 +292,7 @@ export function ModelDetails({
           <h3 id="model-details-memory">Memory</h3>
           <dl className="model-details-facts">
             <div>
-              <dt>Needs at least</dt>
+              <dt>{planningMinimumLabel}</dt>
               <dd>{modelMemoryRequirement(model)}</dd>
             </div>
             {memory.reference && (
@@ -298,6 +301,12 @@ export function ModelDetails({
                 <dd>
                   {formatGb(memory.reference.bytes)} with{" "}
                   {describeLaunchShape(memory.reference.launchShape)}
+                  {memory.reference.source !== "feed" && (
+                    <span className="muted">
+                      {" "}
+                      ({describeMemoryBasis(memory.reference)})
+                    </span>
+                  )}
                   {memory.reference.source === "feed" && memory.feedPeak && (
                     <span className="muted">
                       {" "}
@@ -338,6 +347,7 @@ export function ModelDetails({
               </div>
             )}
           </dl>
+          <p className="model-details-note">{planningMinimumNote}</p>
         </section>
 
         {catalog.feedAnnotation && (
