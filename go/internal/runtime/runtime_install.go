@@ -128,6 +128,8 @@ func EnsureBinary(ctx context.Context, runtimesDir, name string) (string, error)
 		return "", err
 	}
 	switch rel.Format {
+	case "binary":
+		err = os.Rename(archive, filepath.Join(staging, name))
 	case "tar.gz":
 		err = extractTarGz(archive, staging, rel.StripComponents)
 	case "zip":
@@ -371,6 +373,15 @@ func buildSupport(ctx context.Context, work, staging string, f SupportFile) erro
 	}
 	var out []byte
 	switch f.Derivation {
+	case "copy":
+		// A pinned file used as published (license and notice files).
+		if len(inputs) != 1 {
+			return errors.New("copy needs one source")
+		}
+		var err error
+		if out, err = os.ReadFile(inputs[0]); err != nil {
+			return err
+		}
 	case "misaki-gold-first-union":
 		if len(inputs) != 2 {
 			return errors.New("misaki merge needs gold and silver")

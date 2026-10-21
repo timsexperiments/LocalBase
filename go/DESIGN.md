@@ -1445,3 +1445,85 @@ Screenshots are in `/tmp/lbgo-phone-review` and are not committed.
 | Tab resumed retry | Done. With no recent resume, one broken read surfaces the error. Right after the tab becomes visible again, the broken read is retried after 400 ms and succeeds (433 ms; the proxy log shows the drop, then the success). Replies (POST) are not retried, as in TS |
 | Real iOS Safari render | Done on the iOS Simulator (iPhone 17, iOS 27) through the scratch URL (08). The safe-area header sits below the status bar, and the composer stays above Safari's toolbar. `simctl` can't type, so focus, zoom and the keyboard were not exercised |
 | Keyboard (no zoom on focus, composer above the keyboard, Return adds a line on touch), VoiceOver, microphone | Operator, on a real iPhone over Cloudflare Access |
+
+## 16. M6: video jobs and the converter
+
+Branch `rewrite/go-m6`, draft PR #374, stacked on #373.
+
+### 16.1 Plan
+
+1. Video jobs: `/v1/videos` create, status, content, cancel and delete; the
+   job manager; the stable-diffusion.cpp video client and runtime; input
+   validation; the pinned AVI→MP4 converter; memory admission, idle
+   recovery and pressure for video.
+2. The Lab video page and the chat `generate_video` tool against the Go
+   routes.
+3. Linux/systemd qualification, including the Linux NVIDIA video target.
+
+Every installed video model needs the 6 GB umt5 text encoder (about 10 GB in
+total), above the 2 GB limit for test models. A real-model run waits for the
+operator. Until then the success path is covered by the fake sd-server
+video API, and the TS comparison covers everything up to the job's start.
+
+### 16.2 Status
+
+| Step | State | Notes |
+| --- | --- | --- |
+| 1 | Built | `internal/video` (job manager, sd-server client, converter), `gateway/video_*.go`, `runtime/video.go`. Details below |
+| 2 | Next | |
+| 3 | | |
+
+Step 1:
+
+- **Contract.** `TestVideoGolden` (`tools/golden/video.ts`) pins the
+  create-request validation messages (22 cases), the native input
+  validation (18 cases, including PNG and WAV checks), the qualification
+  result and profile-mismatch message for each of the three catalog models
+  with a runtime profile (11 cases each), and the job projections (16,
+  including every failure code and memory message). Mutation checks fail
+  each part.
+- **Job manager** (TS `VideoJobManager`). One job at a time (429
+  `video_job_busy`). The job's deadline comes from the catalog. Artifacts
+  are limited to 64 MiB per job and 256 MiB in total, with at most 20
+  finished jobs, kept for 15 minutes. Files are private, under
+  `<root>/tmp/video-jobs`, and removed at start. The job holds the video
+  runtime's lease until it finishes, and cancelling stops that runtime
+  first. A stop that fails leaves the job running, so a later cancel can
+  retry it. Memory pressure fails the active job (`FailVideo`).
+- **Runtime.** `Service` runs `sd-server` in `vid_gen` mode with TS's
+  arguments (`buildSdVideoServerArgs`) and its 180 s startup budget. Every
+  catalog artifact is verified (size and sha256, through the checksum
+  cache) before launch. Eligibility follows TS: an experimental model
+  needs the opt-in, and a device the profile does not list gets
+  `model_hardware_ineligible`. A memory refusal of a stopped video runtime
+  logs stage `start-preflight`. Found and fixed: catalog video models named
+  backends that don't exist (`stable-diffusion.cpp-apple-unified`), so none
+  could select one. TS runs them on the Metal and Vulkan sd-server builds,
+  and Go now does too.
+- **Converter.** TS's pinned ffmpeg builds, in the Go runtime manifest.
+  `TestFFmpegPinsMatchTS` (`tools/golden/ffmpeg.ts`) keeps them equal. The
+  managed installer gained the `binary` format and `copy` support files
+  (the license and notices). The command line, the 120 s deadline, the
+  frame-count check and the `ftyp` check are TS's. Like Go's other
+  backends, the converter runs in its own process group with no guardian
+  process.
+- **Diagnostics.** `video.job-terminal` and `video.job-containment-failed`
+  as in TS. The JSONL writer now takes an `error_type`, for TS's typed
+  errors. Go now also logs `backend.start-failed` with its cause for every
+  runtime. It had no such event; the comparison run found it when a sparse
+  wan2.1 failed its checksum silently.
+- **Tests.**
+  - `TestDifferentialVideoRejections` compares 44 requests that never
+    start a job: validation, profile mismatches, unknown and non-video
+    models, install consent, the multipart form, and the job routes for
+    missing and malformed ids.
+  - `TestDifferentialVideoJobFailure` starts the same job on both gateways
+    (sparse wan2.1 weights); both accept it and end it failed with
+    `video_generation_failed`.
+  - `TestVideoJobLifecycle` (Go only, fake sd-server and converter) covers
+    completion with the converted MP4 and its headers, the native body sent
+    to the backend, busy, cancel stopping the runtime, a failed backend
+    job, the memory-pressure failure, and delete.
+  - Job manager unit tests cover owners, the deadline, shutdown, the
+    artifact limits and eviction, the TTL, pressure, and the stop retry.
+    They pass under `-race`.

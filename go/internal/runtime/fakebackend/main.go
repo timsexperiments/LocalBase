@@ -30,12 +30,15 @@ func main() {
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--host":
+		case "--host", "--listen-ip":
 			i++
 			host = args[i]
-		case "--port":
+		case "--port", "--listen-port":
 			i++
 			port = args[i]
+		case "--diffusion-model":
+			i++
+			model = args[i]
 		case "-m":
 			i++
 			model = args[i]
@@ -51,6 +54,7 @@ func main() {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
+	addVideo(mux)
 	mux.HandleFunc("GET /props", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"model_path": model, "build_info": "fake",
 			"chat_template": "{% if tools %}{{ tools }}{% endif %}<think>", "modalities": map[string]any{"vision": false},

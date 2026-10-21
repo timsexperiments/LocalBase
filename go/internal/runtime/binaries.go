@@ -38,7 +38,7 @@ type manifest struct {
 // executableFamily maps an executable to the runtime package that ships it.
 var executableFamily = map[string]string{
 	"llama-server": "llama-server", "llama-tts": "llama-server", "whisper-server": "whisper-server",
-	"sd-server": "sd-server", "sd-cli": "sd-server", "tts-server": "tts-server", "crispasr": "crispasr",
+	"sd-server": "sd-server", "sd-cli": "sd-server", "tts-server": "tts-server", "crispasr": "crispasr", "ffmpeg": "ffmpeg",
 }
 
 func pinnedRuntime(family string) (manifestArtifact, bool) {

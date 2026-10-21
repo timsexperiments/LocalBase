@@ -71,3 +71,13 @@ func logRolledBack(log *slog.Logger, modality, from, to string, reload bool, err
 		"category", "runtime", "component", modalityComponents[modality], "runtime", modality,
 		slog.Group("attributes", "from_model", from, "to_model", to, "reload", reload))
 }
+
+// logStartFailed is TS backend.start-failed: a backend that could not start,
+// with the cause.
+func logStartFailed(log *slog.Logger, modality string, err error) {
+	if log == nil {
+		return
+	}
+	log.Error("Backend startup failed.", "event", "backend.start-failed", "category", "runtime",
+		"component", modalityComponents[modality], "runtime", modality, "error", err.Error())
+}

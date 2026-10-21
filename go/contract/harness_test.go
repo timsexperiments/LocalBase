@@ -138,6 +138,16 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 	if err := linkCrispASR(r); err != nil {
 		return "", "", "", false, err
 	}
+	// The real FastWan video files (read-only links), when
+	// LOCALBASE_CONTRACT_VIDEO_MODELS has them (an operator-approved memory window).
+	if d := os.Getenv("LOCALBASE_CONTRACT_VIDEO_MODELS"); d != "" {
+		os.MkdirAll(r.ModelsDir("video"), 0o700)
+		for _, f := range []string{"FastWan2.2-TI2V-5B-q6_k.gguf", "umt5-xxl-encoder-Q8_0.gguf", "taew2_2.safetensors"} {
+			if fileExists(filepath.Join(d, f)) {
+				os.Symlink(filepath.Join(d, f), filepath.Join(r.ModelsDir("video"), f))
+			}
+		}
+	}
 	// A real image model (read-only link), when LOCALBASE_CONTRACT_IMAGE_MODELS has it.
 	imageSel := `["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0","sdxl-turbo"]`
 	if d := os.Getenv("LOCALBASE_CONTRACT_IMAGE_MODELS"); d != "" && fileExists(filepath.Join(d, imageFile)) {
@@ -192,6 +202,10 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 			continue
 		}
 		for _, a := range spec.Artifacts {
+			// Never through a link: a real file linked in above stays untouched.
+			if _, err := os.Lstat(filepath.Join(dir, a.Filename)); err == nil {
+				continue
+			}
 			if f, err := os.Create(filepath.Join(dir, a.Filename)); err == nil {
 				f.Truncate(a.ExpectedSizeBytes)
 				f.Close()

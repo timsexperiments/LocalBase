@@ -565,6 +565,7 @@ func (m *LLM) admissionDemand(spec *catalog.Spec, plan *LLMPlan) memory.Demand {
 func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, demand memory.Demand, t *Target, parent *otlp.Span) (*backend, error) {
 	ctx := otlp.WithSpan(context.Background(), parent)
 	fail := func(err error) error {
+		logStartFailed(m.d.Log, "llm", err)
 		if t != nil && (t.Manual || t.Imported) {
 			return &BackendStartError{BackendID: t.Backend.ID, Cause: err}
 		}

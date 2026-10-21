@@ -208,8 +208,11 @@ func qualifiedOn(s *catalog.Spec) []string {
 	case "video":
 		var out []string
 		if s.VideoRuntime != nil {
+			// TS runs every video target on the pinned sd-server: Metal on
+			// Apple unified memory, Vulkan on the Linux NVIDIA target.
+			build := map[string]string{"apple-unified": "metal", "nvidia": "vulkan"}
 			for _, t := range s.VideoRuntime.SupportedTargets {
-				id := "stable-diffusion.cpp-" + t.Accelerator
+				id := "stable-diffusion.cpp-" + build[t.Accelerator]
 				if !slices.Contains(out, id) {
 					out = append(out, id)
 				}
