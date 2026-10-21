@@ -131,6 +131,7 @@
       <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/lab">Lab</a></li>
       <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/voices">My voices</a></li>
       <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/settings">Settings</a></li>
+      {{if and .Principal (or (.Principal.Can "access:read") (.Principal.Can "keys:read"))}}<li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/admin">Admin</a></li>{{end}}
     </ul>
     {{if not .NoAuth}}<button type="button" class="btn btn-quiet mt-2 w-full text-sm" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>{{end}}
   </nav>
