@@ -1472,7 +1472,7 @@ video API, and the TS comparison covers everything up to the job's start.
 | --- | --- | --- |
 | 1 | Built | `internal/video` (job manager, sd-server client, converter), `gateway/video_*.go`, `runtime/video.go`. Details below |
 | 2 | Done | Lab video section (`web/labvideo.go`, `static/js/video.js`) and the chat tool. Details below |
-| 3 | | |
+| 3 | Done | Linux CI job, service unit golden, and the systemd check in a local container (§16.4) |
 
 Step 1:
 
@@ -1610,3 +1610,35 @@ automatic only where LocalBase pins it was enforced only while it was
 missing. A managed backend without a pinned package for the device
 (CrispASR on Linux) is now manual-only even when installed, and its option
 carries `not-chosen-automatically` (`TestUnpinnedManagedBackendIsManualOnly`).
+
+### 16.4 Linux/systemd qualification (step 3)
+
+Pixelator is not used for this: it is System One's GPU host, held by other
+work. The qualification runs locally and is opt-in:
+`tools/systemd-check.sh` (Docker and bun). It builds the linux/arm64
+binary, then starts a disposable Debian container with systemd as PID 1:
+`tools/systemd-check/Dockerfile`, base pinned to the `debian:bookworm-slim`
+index digest, `--privileged --cgroupns=private`, cgroup v2, no published
+ports, no GPU. Inside it, as a non-root user with lingering enabled, on a
+scratch root, so the unit label is a scratch one, the script checks:
+
+- `start` installs, enables and starts the unit, and `status` reports
+  running and the gateway ready;
+- the installed unit is byte-identical to TS's `renderSystemdDefinition`
+  for the same service manifest (`tools/golden/systemd-unit.ts`, 577
+  bytes), with the token and journal-only stderr;
+- `config apply --restart never` (a new gateway port) records a pending
+  restart; `restart` applies it, so the gateway answers on the new port,
+  and the pending change is acknowledged;
+- the gateway's output is in the user journal, and there is no stderr file
+  on Linux (that file is the launchd path);
+- `stop` leaves the unit inactive and disabled and the gateway gone; then
+  `uninstall --yes` removes the unit, systemd no longer lists it, and the
+  root is gone.
+
+The container and the image are always removed. Result on 2026-10-21
+(Docker Desktop 29.4.3, arm64): every check passes on three consecutive
+runs. Two fixes to the script were needed. It waits for systemd-logind
+before enabling lingering, and then starts the user manager itself:
+lingering alone raced logind once. And it copies files into the home
+directory, because `docker cp` cannot write into a tmpfs mount.
