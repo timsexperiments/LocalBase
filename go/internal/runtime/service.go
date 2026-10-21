@@ -35,6 +35,7 @@ type Service struct {
 	closed    bool
 	failed    bool
 	switching bool // a model is being stopped or started
+	claimed   bool // idle recovery is stopping the backend; hold requests
 	switchW   sync.WaitGroup
 }
 
@@ -68,6 +69,9 @@ type ServiceDeps struct {
 	Activate func(kind, modelID string)
 	// Otel traces backend starts (nil: disabled).
 	Otel *otlp.Runtime
+	// Recovery stops idle runtimes of other modalities when a model is
+	// refused for memory (nil: no recovery).
+	Recovery *IdleRecovery
 }
 
 type svcBackend struct {
@@ -230,7 +234,7 @@ func (s *Service) abandon(w *svcWaiter) {
 
 // pump dispatches the head of the queue. Called with mu held.
 func (s *Service) pump() {
-	for len(s.queue) > 0 && !s.busy && !s.closed {
+	for len(s.queue) > 0 && !s.busy && !s.claimed && !s.closed {
 		head := s.queue[0]
 		if s.cur != nil && s.cur.modelID == head.model && s.cur.key == head.key {
 			s.queue = s.queue[1:]
@@ -249,7 +253,9 @@ func (s *Service) pump() {
 		s.switchW.Add(1)
 		go func(model, key string, parent *otlp.Span) {
 			defer s.switchW.Done()
-			err := s.doSwitch(model, key, parent)
+			err := s.d.Recovery.retryAfterRecovery(s.d.Modality, func() (memory.Demand, error) {
+				return s.doSwitch(model, key, parent)
+			})
 			s.mu.Lock()
 			s.busy, s.switching = false, false
 			s.failed = err != nil && s.cur == nil
@@ -268,39 +274,34 @@ func (s *Service) pump() {
 	}
 }
 
-func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) error {
+func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.Demand, err error) {
 	if s.d.Gate == nil {
-		return fmt.Errorf("%w: no backend selection", ErrStartupFailed)
+		return demand, fmt.Errorf("%w: no backend selection", ErrStartupFailed)
 	}
 	t, err := s.d.Gate(modelID)
 	if err != nil {
-		return err
+		return demand, err
 	}
-	demand := s.demand(t)
+	demand = s.demand(t)
 	// As TS activateModel: the switch must fit (crediting the running backend),
 	// then the model becomes active, then it is installed and started. A start
 	// that fails leaves it active. The legacy catalog variant keeps the TS
-	// install check; when its files are missing the fit check is skipped, as
-	// the TS preflight cannot resolve a plan. Other variants were installed (or
-	// refused) by the gate.
+	// install check. Other variants were installed (or refused) by the gate.
+	spec := s.d.Catalog.ByID(modelID)
 	var installErr error
-	if s.d.Catalog.ByID(modelID) != nil && !t.Imported && t.Variant.ID == "default" {
+	if spec != nil && !t.Imported && t.Variant.ID == "default" {
 		installErr = s.ensureInstalled(modelID)
 	}
-	// TS sizes image models with an imageRuntime profile from the catalog, so
-	// its preflight resolves (and can reject for memory) without the files.
-	spec := s.d.Catalog.ByID(modelID)
-	catalogSized := spec != nil && !t.Imported && spec.ImageRuntime != nil
-	if installErr == nil || catalogSized {
+	if installErr == nil || preflightsFromCatalog(s.d.Modality, spec, t) {
 		if err := s.d.Memory.CheckAdmission(context.Background(), demand, []string{s.d.Modality}); err != nil {
-			return err
+			return demand, err
 		}
 	}
 	if s.d.Activate != nil && !t.Imported {
 		s.d.Activate(s.d.Kind, modelID)
 	}
 	if installErr != nil {
-		return installErr
+		return demand, installErr
 	}
 	s.mu.Lock()
 	prev := s.cur
@@ -311,19 +312,31 @@ func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) error {
 	}
 	b, err := s.start(t, demand, parent)
 	if err != nil {
-		return err
+		return demand, err
 	}
 	b.key = key
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
 		s.stop(b)
-		return ErrUnavailable
+		return demand, ErrUnavailable
 	}
 	s.cur = b
 	s.mu.Unlock()
 	go s.watch(b)
-	return nil
+	return demand, nil
+}
+
+// preflightsFromCatalog reports whether the TS switch preflight sizes a
+// catalog model whose files are missing, so the fit check (and a 503
+// insufficient_memory) comes before the install. The TS image and stt
+// preflights fall back to the catalog's primary artifact filename and
+// expectedSizeBytes (supervisor-factory preflightDemand: "a missing catalog
+// artifact is admitted on its catalog demand"), with or without an
+// imageRuntime profile; the TS tts runtime has no switch preflight.
+// tools/golden/media-admission.ts pins the demand and verdicts.
+func preflightsFromCatalog(modality string, spec *catalog.Spec, t *Target) bool {
+	return spec != nil && !t.Imported && (modality == "image" || modality == "stt")
 }
 
 func (s *Service) ensureInstalled(modelID string) error {

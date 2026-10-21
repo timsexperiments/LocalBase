@@ -137,8 +137,8 @@ func TestHysteresis(t *testing.T) {
 }
 
 func TestParseVMStatAndFootprint(t *testing.T) {
-	vm := []byte("Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                   100.\nPages active:      5.\nPages inactive:                              50.\n")
-	if b, err := parseVMStat(vm); err != nil || b != 150*16384 {
+	vm := []byte("Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                   100.\nPages active:      5.\nPages inactive:                              50.\nPages speculative:                           25.\n")
+	if b, err := parseVMStat(vm); err != nil || b != 175*16384 {
 		t.Fatalf("vm_stat = %d %v", b, err)
 	}
 	fp := []byte("  Dirty      Clean  Reclaimable    Regions    Category\n2160 KB     544 KB          0 B        409    TOTAL\n")

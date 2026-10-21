@@ -44,7 +44,7 @@ func NewHostProvider() HostProvider {
 
 // --- darwin ---------------------------------------------------------------
 
-// darwinProvider reads free + inactive pages with vm_stat, the same figure
+// darwinProvider reads free + speculative + inactive pages with vm_stat, the same figure
 // the TS provider reads through host_statistics64 (see DESIGN.md §10 on
 // replacing the exec with purego).
 type darwinProvider struct {
@@ -94,15 +94,16 @@ func (d *darwinProvider) Snapshot(ctx context.Context) Snapshot {
 	return Snapshot{Available: avail, Pressure: "normal"}
 }
 
-// parseVMStat returns (free + inactive) * page size. XNU's free count
-// already includes speculative pages.
+// parseVMStat returns (free + speculative + inactive) * page size: TS reads
+// free_count + inactive_count from host_statistics64, and vm_stat prints
+// "Pages free" as free_count - speculative_count, with speculative apart.
 func parseVMStat(out []byte) (int64, error) {
 	m := vmStatRe.FindSubmatch(out)
 	if m == nil {
 		return 0, errors.New("vm_stat: no page size")
 	}
 	page, _ := strconv.ParseInt(string(m[1]), 10, 64)
-	var free, inactive int64 = -1, -1
+	var free, inactive, speculative int64 = -1, -1, 0
 	sc := bufio.NewScanner(bytes.NewReader(out))
 	for sc.Scan() {
 		k, v, ok := strings.Cut(sc.Text(), ":")
@@ -118,12 +119,14 @@ func parseVMStat(out []byte) (int64, error) {
 			free = n
 		case "Pages inactive":
 			inactive = n
+		case "Pages speculative":
+			speculative = n
 		}
 	}
 	if free < 0 || inactive < 0 || page <= 0 {
 		return 0, errors.New("vm_stat: missing counters")
 	}
-	return (free + inactive) * page, nil
+	return (free + speculative + inactive) * page, nil
 }
 
 func sysctlInt(name string) int64 {

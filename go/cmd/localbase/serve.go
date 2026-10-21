@@ -177,6 +177,8 @@ func serve(c *cli.Ctx) (any, error) {
 		log.Warn("Skipped a custom backend definition: "+d, "event", "backend.definition-skipped")
 	}
 	installMissing := c.Bool("install-missing") || cfg.InstallMissingModels
+	// A model refused for memory may stop the idle runtimes of other modalities.
+	recovery := &runtime.IdleRecovery{Memory: mem, Log: log}
 	var llm *runtime.LLM
 	// A switch to another configured model makes it the active one, as in TS.
 	activate := func(kind, modelID string) {
@@ -196,7 +198,8 @@ func serve(c *cli.Ctx) (any, error) {
 		Store: st, Catalog: cat, Memory: mem, Log: log, MemoryGB: float64(memoryGB), CtxOverride: ctxSize,
 		PortOverride: llmPort, QueueCapacity: queueCap, QueueTimeout: time.Duration(queueTimeout) * time.Millisecond,
 		Binary: os.Getenv("LOCALBASE_LLAMA_SERVER"), ModelFileOverride: c.String("llm-model-file"),
-		Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey, Activate: activate, Otel: tel}, cfg)
+		Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey, Activate: activate, Otel: tel, Recovery: recovery}, cfg)
+	recovery.Add(llm)
 	defer llm.Close()
 	// The media modalities: one supervised backend each, through the selection.
 	lib.InstallMissing = installMissing
@@ -228,7 +231,7 @@ func serve(c *cli.Ctx) (any, error) {
 			Config: llm.Config, Gate: lib.GateFor(task), SelectionKey: lib.SelectionKey, RuntimesDir: r.RuntimesDir(),
 			ModelsDir: r.ModelsDir(modality), RootDir: r.Dir, CacheDir: filepath.Join(r.Dir, "cache"), Host: h, Port: p,
 			Binaries: binaries, Install: installer(e, installMissing, log), Activate: activate,
-			QueueCapacity: queueCap, QueueTimeout: time.Duration(queueTimeout) * time.Millisecond, Otel: tel}
+			QueueCapacity: queueCap, QueueTimeout: time.Duration(queueTimeout) * time.Millisecond, Otel: tel, Recovery: recovery}
 		if modality == "tts" {
 			// A changed voice set or marking setting restarts the speech server.
 			d.ExtraKey = func() string {
@@ -251,6 +254,7 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	for _, s := range []*runtime.Service{stt, tts, image} {
 		if s != nil {
+			recovery.Add(s)
 			defer s.Close()
 		}
 	}

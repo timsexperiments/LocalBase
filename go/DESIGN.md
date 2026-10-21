@@ -190,6 +190,15 @@ reproduces them byte for byte and the table tests are ported from TS:
   reserve on a 64 GB host). `TestMediaAdmissionGolden`
   (`tools/golden/media-admission.ts`) pins the demand and the verdict around
   each model's threshold.
+- Idle-eviction recovery (`runtime.IdleRecovery`, TS
+  `admitModelWithIdleRecovery`): a model refused for memory, short of a
+  permanent shortfall, claims the idle runtimes of the other modalities
+  (running, no lease, nothing queued). If admission passes with them
+  credited, they are stopped, the host is sampled until the model is
+  admitted on uncredited memory (10 s, every 100 ms), and the switch runs
+  again. A retry refused for memory again answers the first refusal. Without
+  it, a full run had TS stop whisper and the embedding model and answer 409
+  while Go answered 503.
 - `HostProvider`: darwin uses `host_statistics64` free+inactive (vm_stat
   free + speculative + inactive, since vm_stat prints speculative pages apart),
   `hw.memsize`, `kern.memorystatus_vm_pressure_level` and the Metal working
