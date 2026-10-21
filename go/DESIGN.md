@@ -1944,3 +1944,37 @@ Run with the operator's approval, under their conditions.
 The decision question made clef-flash the copy's active LLM, and both
 implementations save a switched model as active. That happened in the copy
 only.
+
+### 17.8 Catalog direction and model-directory hygiene (operator, 2026-10-21)
+
+**#368, revised** to the TS-runnable part of the approved proposal. Port
+it when it merges, as planned (§17.1). The proposal's benchmark metrics
+are internal and never appear in product text.
+
+| Area | Change |
+| --- | --- |
+| Chat | qwen3.5-4b (compact), qwen3.6-35b-a3b-iq4_nl_xl (new built-in, promoted from the live user entry at unsloth rev a483e9e6), qwen3.8-27b |
+| Former entries | qwen3.5-9b and gpt-oss-20b become user entries |
+| Unchanged | embeddings 0.6B and 4B, whisper-large-v3-turbo, images (Z-Image, Klein), video, Clef |
+
+**Go-only entries.** Each is added only after its backend is qualified on
+this hardware:
+
+- CrispASR Kokoro-82M F16 with its voices;
+- CrispASR Qwen3-TTS-0.6B Base Q8 with the F16 codec (voice cloning);
+- Parakeet TDT 0.6B v3 and Qwen3-ASR-1.7B, each needing a maintained
+  Mac or Linux backend first (tested only through MLX so far);
+- a portable FLUX.2 Klein profile, if the MLX result is the one to ship.
+
+Platform-specific adapters such as MLX are acceptable where justified,
+with the same user experience. The metadata-only candidates (SD Turbo,
+SDXL Lightning, Wan 1.3B, 5B and A14B, optionally LTX 2.5) are not
+qualified and are not built-ins; the weekly scan owns them.
+
+**Staging in model directories.** `models list` now skips dot-prefixed
+entries, such as a `.benchmark-parts-*.gguf/` staging directory, partial
+downloads and checksum caches. It also skips anything that isn't a
+regular file, even when the name ends in a model extension
+(`looseModelFile`, `TestLooseModelFiles`). TS `models list` lists such a
+directory as an LLM, so on a root that contains one, Go's output is
+shorter. The live directory is the operator's to clean up.

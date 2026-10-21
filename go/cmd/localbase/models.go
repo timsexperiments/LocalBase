@@ -317,8 +317,7 @@ func installedModels(e *env, kind string) []string {
 			}
 		}
 		for _, en := range entries {
-			ext := filepath.Ext(en.Name())
-			if slices.Contains([]string{".gguf", ".bin", ".onnx", ".safetensors", ".pth"}, ext) && !known[en.Name()] {
+			if looseModelFile(dir, en.Name()) && !known[en.Name()] {
 				names = append(names, en.Name())
 			}
 		}
@@ -503,4 +502,20 @@ func modelsShow() *cli.Command {
 			return map[string]any{"model": m, "status": map[string]bool{"installed": m.Device.Installed,
 				"enabled": m.Device.Selected, "default": isDefault}}, nil
 		}}
+}
+
+// looseModelFile reports whether a models directory entry is a model file
+// someone placed there: a regular file (or a link to one) with a model
+// extension. Dot-prefixed entries are staging (benchmark parts, partial
+// downloads, checksum caches) and directories are never models, even when
+// their name ends in .gguf.
+func looseModelFile(dir, name string) bool {
+	if strings.HasPrefix(name, ".") {
+		return false
+	}
+	if !slices.Contains([]string{".gguf", ".bin", ".onnx", ".safetensors", ".pth"}, filepath.Ext(name)) {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(dir, name))
+	return err == nil && info.Mode().IsRegular()
 }
