@@ -489,15 +489,44 @@ func (m *LLM) install(b *backend) {
 
 // admissionDemand applies observed > measured > estimate (feed: milestone 5).
 // Evidence applies only when the launch loads the catalog's primary file.
+// admissionDemand is the demand a launch is admitted with, most trusted
+// first (TS admissionDemand): this machine's observed peak, the checked-in
+// measurement, a feed peak for exactly this file and launch shape, the
+// estimate.
 func (m *LLM) admissionDemand(spec *catalog.Spec, plan *LLMPlan) memory.Demand {
-	if spec == nil || spec.Primary().SHA256 == "" {
+	// Evidence only applies when the launch loads the catalog primary file.
+	if spec == nil || filepath.Base(plan.ModelPath) != spec.Primary().Filename {
 		return plan.Demand
 	}
-	peaks, err := m.d.Store.ObservedPeaks(context.Background(), spec.ModelID, spec.Primary().SHA256)
-	if err != nil {
+	shape := plan.Launch.LaunchShape()
+	if sha := spec.Primary().SHA256; sha != "" {
+		if peaks, err := m.d.Store.ObservedPeaks(context.Background(), spec.ModelID, sha); err == nil {
+			if d := ApplyObserved(plan.Demand, peaks, shape); d.Confidence == "observed" {
+				return d
+			}
+		}
+	}
+	if plan.Demand.Confidence == "measured" || m.d.Catalog == nil {
 		return plan.Demand
 	}
-	return ApplyObserved(plan.Demand, peaks, plan.Launch.LaunchShape())
+	var best *catalog.MemoryPeak
+	for _, p := range m.d.Catalog.PlannableFeedPeaks(spec) {
+		if p.LaunchShape == shape && (best == nil || p.PeakBytes > best.PeakBytes) {
+			p := p
+			best = &p
+		}
+	}
+	if best == nil {
+		return plan.Demand
+	}
+	catalogBytes := spec.TotalArtifactBytes()
+	feed := memory.FeedDemand(spec, *best, catalogBytes, plan.Launch.PromptCacheBytes)
+	// The feed measured the catalog file; a larger local file adds its extra.
+	extra := max(plan.ArtifactBytes, catalogBytes) - catalogBytes
+	feed.UnifiedBytes += extra
+	feed.HostBytes += extra
+	feed.AcceleratorBytes += extra
+	return feed
 }
 
 func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, demand memory.Demand, t *Target) (*backend, error) {

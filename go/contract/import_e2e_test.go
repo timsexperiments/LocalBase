@@ -273,7 +273,7 @@ func TestModelImportAcceptance(t *testing.T) {
 	mystery := ggufFile(t, "mystery-arch", nil, 32*1024)
 	const commit = "aaaabbbbccccddddeeeeffff0000111122223333"
 	cdnSeen, hfSeen, vendorSeen, otherSeen := &seen{}, &seen{}, &seen{}, &seen{}
-	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	cdn := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cdnSeen.add(r)
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/model-Q4_K_M.gguf"):
@@ -283,9 +283,9 @@ func TestModelImportAcceptance(t *testing.T) {
 		default:
 			w.WriteHeader(404)
 		}
-	}))
+	}), false)
 	defer cdn.Close()
-	hf := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	hf := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hfSeen.add(r)
 		if strings.Contains(r.URL.Path, "gated") && r.Header.Get("Authorization") != "Bearer "+hfToken {
 			w.WriteHeader(401)
@@ -307,14 +307,14 @@ func TestModelImportAcceptance(t *testing.T) {
 		default:
 			w.WriteHeader(404)
 		}
-	}))
+	}), false)
 	defer hf.Close()
-	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	other := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		otherSeen.add(r)
 		serveBytes(w, r, mystery)
-	}))
+	}), false)
 	defer other.Close()
-	vendor := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	vendor := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		vendorSeen.add(r)
 		if r.Header.Get("X-Api-Key") != vendorSecret {
 			http.Error(w, "no key", 403)
@@ -326,15 +326,15 @@ func TestModelImportAcceptance(t *testing.T) {
 		case "/moved/mystery.gguf":
 			http.Redirect(w, r, other.URL+"/mystery.gguf?token="+signedValue, 302)
 		}
-	}))
+	}), false)
 	defer vendor.Close()
 	// HTTPS sources that redirect to plain HTTP: a direct URL and a Hugging
 	// Face endpoint whose download hop points at an http:// CDN.
-	tlsSource := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tlsSource := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, vendor.URL+"/files/mystery.gguf", 302)
-	}))
+	}), true)
 	defer tlsSource.Close()
-	tlsHF := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tlsHF := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.Contains(r.URL.Path, "/revision/"):
 			json.NewEncoder(w).Encode(map[string]any{"sha": commit, "pipeline_tag": "text-generation",
@@ -342,7 +342,7 @@ func TestModelImportAcceptance(t *testing.T) {
 		default:
 			http.Redirect(w, r, cdn.URL+"/downgrade/model-Q4_K_M.gguf", 302)
 		}
-	}))
+	}), true)
 	defer tlsHF.Close()
 	caFile := filepath.Join(tmp, "test-ca.pem")
 	var caPEM []byte

@@ -30,8 +30,8 @@ const (
 func Default(root string, memoryGB int, cat *catalog.Catalog) *store.Config {
 	stt := "whisper-base-q8_0"
 	var fitting []*catalog.Spec
-	for _, s := range cat.Models {
-		if s.Kind == "stt" && runtime.FitFor(s, 0, nil, nil).MinVramGB <= memoryGB {
+	for _, s := range cat.All() {
+		if s.Kind == "stt" && runtime.FitFor(s, 0, nil, nil, cat.PlannableFeedPeaks(s)).MinVramGB <= memoryGB {
 			fitting = append(fitting, s)
 		}
 	}

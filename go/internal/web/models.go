@@ -65,7 +65,7 @@ func (u *UI) rows() []Row {
 	cfg := u.d.LLM.Config()
 	runningID, _, active := u.d.LLM.Running()
 	var rows []Row
-	for _, s := range u.d.Catalog.Models {
+	for _, s := range u.d.Catalog.All() {
 		disk := u.installedBytes(s)
 		if disk == 0 {
 			continue
@@ -76,7 +76,7 @@ func (u *UI) rows() []Row {
 			Enabled: slices.Contains(cfg.Selected[s.Kind], s.ModelID) || cfg.Active[s.Kind] == s.ModelID,
 			Default: cfg.Active[s.Kind] == s.ModelID, Loaded: runningID == s.ModelID}
 		r.Busy = r.Loaded && active > 0
-		if f := runtime.ModelFit(context.Background(), u.d.Store, s, filepath.Join(u.d.RootDir, "models", s.Kind), u.memoryGB()); f != nil {
+		if f := runtime.ModelFit(context.Background(), u.d.Store, u.d.Catalog, s, filepath.Join(u.d.RootDir, "models", s.Kind), u.memoryGB()); f != nil {
 			r.MemoryGB, r.MemorySource = f.MinVramGB, f.Source
 		}
 		rows = append(rows, r)
@@ -201,5 +201,5 @@ func (u *UI) details(w http.ResponseWriter, r *http.Request) {
 		peaks, _ = u.d.Store.ObservedPeaks(r.Context(), s.ModelID, sha)
 	}
 	u.render(w, r, "details", map[string]any{"Spec": s, "Task": t, "Disk": u.installedBytes(s),
-		"Fit": runtime.FitFor(s, u.memoryGB(), geo, peaks), "Backend": backend})
+		"Fit": runtime.FitFor(s, u.memoryGB(), geo, peaks, u.d.Catalog.PlannableFeedPeaks(s)), "Backend": backend})
 }

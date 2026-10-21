@@ -45,7 +45,7 @@ func maintenanceCommands() []*cli.Command {
 					return nil, err
 				}
 				defer st.Close()
-				cat, err := catalog.Load(r.CatalogDir())
+				cat, err := catalog.LoadRoot(r.Dir, nil)
 				if err != nil {
 					return nil, err
 				}

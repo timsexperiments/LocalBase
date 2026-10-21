@@ -223,10 +223,10 @@ func (s *Server) retrieveModel(w http.ResponseWriter, r *http.Request) {
 // capabilities resolves a model's effective capabilities (declared, detected
 // from its files, reported by its runtime).
 func (s *Server) capabilities(ctx context.Context, spec *catalog.Spec) runtime.Resolved {
-	return runtime.CapabilitiesFor(ctx, s.Store, spec, s.Root.ModelsDir(spec.Kind))
+	return runtime.CapabilitiesFor(ctx, s.Store, s.Catalog, spec, s.Root.ModelsDir(spec.Kind))
 }
 
 // fit is a model's memory figure on this machine.
 func (s *Server) fit(spec *catalog.Spec) *runtime.Fit {
-	return runtime.ModelFit(context.Background(), s.Store, spec, s.Root.ModelsDir(spec.Kind), s.MemoryGB)
+	return runtime.ModelFit(context.Background(), s.Store, s.Catalog, spec, s.Root.ModelsDir(spec.Kind), s.MemoryGB)
 }

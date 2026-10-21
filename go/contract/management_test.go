@@ -157,9 +157,29 @@ func TestDifferentialModelManagement(t *testing.T) {
 	sameOK("activate", post(admin, `{"modelId":"`+tinyModel+`","action":"activate"}`), 200)
 	same("after activate")
 	sameOK("disable active stt", post(admin, `{"modelId":"`+tinyModel+`","action":"disable"}`), 200)
-	sameOK("uninstall", post(admin, `{"modelId":"`+tinyModel+`","action":"uninstall"}`), 200)
-	same("after uninstall")
+	// Deliberate difference: TS reconciles a running runtime eagerly when the
+	// active model changes, so while its STT runtime is up it still references
+	// the model and refuses the uninstall (409 conflict). Go switches on the
+	// next request, holds nothing, and uninstalls.
+	tsEager := false
 	for _, tg := range targets {
+		if tg.Name == "ts" {
+			mods := do(t, "GET", tg.BaseURL+"/health", nil, "").JSON(t)["modalities"].(map[string]any)
+			state := mods["stt"].(map[string]any)["state"]
+			tsEager = state != "idle" && state != "disabled"
+		}
+	}
+	uninstall := post(admin, `{"modelId":"`+tinyModel+`","action":"uninstall"}`)
+	if !tsEager {
+		sameOK("uninstall", uninstall, 200)
+		same("after uninstall")
+	} else if r := uninstall["ts"]; r.Status != 409 || r.ErrorCode(t) != "conflict" {
+		t.Errorf("ts uninstall with a running STT runtime: %d %s", r.Status, r.Body)
+	}
+	for _, tg := range targets {
+		if tg.Name == "ts" && tsEager {
+			continue
+		}
 		if e := entryOf(t, state(tg), tinyModel); e["installed"] != false || e["installedBytes"] != 0.0 {
 			t.Errorf("%s after uninstall: %v", tg.Name, e)
 		}

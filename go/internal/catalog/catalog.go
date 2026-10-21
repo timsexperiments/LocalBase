@@ -19,6 +19,9 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
+
+	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
 )
 
 //go:embed data
@@ -100,9 +103,14 @@ type Spec struct {
 	Catch                   string              `json:"catch"`
 	Notes                   string              `json:"notes"`
 
-	// Trust is qualified (built-in), user (new user entry) or modified (a
-	// patch changed how it launches). Not part of the JSON.
-	Trust string `json:"-"`
+	// Trust is qualified (built-in), community (remote feed), user (new user
+	// entry) or modified (a patch changed how it launches). Origin is the tier
+	// the entry came from, Tier the highest tier that contributed, LayerPath
+	// that tier's file or feed position. Not part of the JSON.
+	Trust     string `json:"-"`
+	Origin    string `json:"-"`
+	Tier      string `json:"-"`
+	LayerPath string `json:"-"`
 }
 
 func (s *Spec) Name() string {
@@ -150,17 +158,47 @@ func (s *Spec) Qualified() bool { return s.Trust == "qualified" }
 
 // Diagnostic reports a skipped catalog file; it never stops startup.
 type Diagnostic struct {
+	Tier    string // remote | user
 	Path    string
+	ModelID string
 	Message string
 }
 
+// Catalog is the effective catalog. A gateway replaces its contents in place
+// when the remote feed updates (Replace), so every holder sees the new one;
+// read Models through All.
 type Catalog struct {
+	mu          sync.RWMutex
 	Models      []*Spec
 	byID        map[string]*Spec
 	Diagnostics []Diagnostic
+	// Annotations are the feed annotations in force.
+	Annotations []Annotation
+	byRepo      map[string][]int
 }
 
-func (c *Catalog) ByID(id string) *Spec { return c.byID[id] }
+func (c *Catalog) ByID(id string) *Spec {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.byID[id]
+}
+
+// All lists the models in catalog order.
+func (c *Catalog) All() []*Spec {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Models
+}
+
+// Replace swaps in a reloaded catalog.
+func (c *Catalog) Replace(next *Catalog) {
+	next.mu.RLock()
+	models, byID, diags, ann, byRepo := next.Models, next.byID, next.Diagnostics, next.Annotations, next.byRepo
+	next.mu.RUnlock()
+	c.mu.Lock()
+	c.Models, c.byID, c.Diagnostics, c.Annotations, c.byRepo = models, byID, diags, ann, byRepo
+	c.mu.Unlock()
+}
 
 var launchShaped = map[string]bool{
 	"kind": true, "source": true, "repositoryRevision": true, "artifacts": true,
@@ -216,14 +254,45 @@ func (s *Spec) validate() error {
 	return nil
 }
 
+// RemoteLayer is the downloaded community feed: its entries (built-in ids
+// already left out) and the annotations it publishes.
+type RemoteLayer struct {
+	URL         string
+	Entries     []json.RawMessage
+	Annotations []Annotation
+}
+
 // Load reads the built-in catalog and the user layer under userDir (may be "").
-func Load(userDir string) (*Catalog, error) {
+func Load(userDir string) (*Catalog, error) { return LoadLayers(userDir, nil) }
+
+// specKeys are the top-level fields a catalog entry may set.
+var specKeys = func() map[string]bool {
+	out := map[string]bool{}
+	t := reflect.TypeOf(Spec{})
+	for i := 0; i < t.NumField(); i++ {
+		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if name != "" && name != "-" {
+			out[name] = true
+		}
+	}
+	return out
+}()
+
+type layered struct {
+	raw                       map[string]json.RawMessage
+	trust, origin, tier, path string
+}
+
+// LoadLayers composes the built-in catalog, the remote layer (nil when the
+// feed is off or not downloaded) and the user layer, lowest first (TS
+// composeCatalog). A higher tier wins; an existing modelId is a shallow
+// patch. Invalid entries are skipped and reported in Diagnostics.
+func LoadLayers(userDir string, remote *RemoteLayer) (*Catalog, error) {
 	order, err := builtInFS.ReadFile("data/order.txt")
 	if err != nil {
 		return nil, err
 	}
-	raws := map[string]map[string]json.RawMessage{}
-	trust := map[string]string{}
+	entries := map[string]*layered{}
 	var ids []string
 	for _, rel := range strings.Fields(string(order)) {
 		b, err := builtInFS.ReadFile("data/" + rel)
@@ -236,66 +305,129 @@ func Load(userDir string) (*Catalog, error) {
 		}
 		var id string
 		json.Unmarshal(m["modelId"], &id)
-		raws[id] = m
-		trust[id] = "qualified"
+		entries[id] = &layered{raw: m, trust: "qualified", origin: "built-in", tier: "built-in"}
 		ids = append(ids, id)
 	}
 	c := &Catalog{byID: map[string]*Spec{}}
+	if remote != nil {
+		seen := map[string]string{}
+		for i, data := range remote.Entries {
+			path := fmt.Sprintf("%s#models[%d]", remote.URL, i)
+			report := func(modelID, msg string) {
+				c.Diagnostics = append(c.Diagnostics, Diagnostic{Tier: "remote", Path: path, ModelID: modelID, Message: msg})
+			}
+			var m map[string]json.RawMessage
+			if json.Unmarshal(data, &m) != nil || m == nil {
+				report("", "The file must contain one JSON object (a model spec).")
+				continue
+			}
+			var id string
+			if json.Unmarshal(m["modelId"], &id) != nil || id == "" {
+				report("", `The entry needs a non-empty "modelId".`)
+				continue
+			}
+			if base, ok := entries[id]; ok && base.origin == "built-in" {
+				continue // the binary's own entry wins; the caller filters these too
+			}
+			var unknown []string
+			for _, k := range jsonKeys(data) {
+				if !specKeys[k] {
+					unknown = append(unknown, k)
+				}
+			}
+			if len(unknown) > 0 {
+				report(id, "Unknown field(s): "+strings.Join(unknown, ", ")+".")
+				continue
+			}
+			if earlier, dup := seen[id]; dup {
+				report(id, fmt.Sprintf("Duplicate entry for %q; %s wins.", id, earlier))
+				continue
+			}
+			if _, err := decodeStrict(m); err != nil {
+				report(id, "The entry is invalid: "+err.Error())
+				continue
+			}
+			seen[id] = path
+			entries[id] = &layered{raw: m, trust: "community", origin: "remote", tier: "remote", path: path}
+			ids = append(ids, id)
+		}
+		c.Annotations = remote.Annotations
+	}
 	if userDir != "" {
 		files, _ := filepath.Glob(filepath.Join(userDir, "*.json"))
 		sort.Strings(files)
 		for _, path := range files {
 			b, err := os.ReadFile(path)
 			if err != nil {
-				c.Diagnostics = append(c.Diagnostics, Diagnostic{path, err.Error()})
+				c.Diagnostics = append(c.Diagnostics, Diagnostic{Tier: "user", Path: path, Message: err.Error()})
 				continue
 			}
 			var m map[string]json.RawMessage
 			if err := json.Unmarshal(b, &m); err != nil {
-				c.Diagnostics = append(c.Diagnostics, Diagnostic{path, "the file must contain one JSON object: " + err.Error()})
+				c.Diagnostics = append(c.Diagnostics, Diagnostic{Tier: "user", Path: path, Message: "the file must contain one JSON object: " + err.Error()})
 				continue
 			}
 			var id string
 			if json.Unmarshal(m["modelId"], &id) != nil || id == "" {
-				c.Diagnostics = append(c.Diagnostics, Diagnostic{path, "modelId is required"})
+				c.Diagnostics = append(c.Diagnostics, Diagnostic{Tier: "user", Path: path, Message: "modelId is required"})
 				continue
 			}
-			base, exists := raws[id]
+			base, exists := entries[id]
 			merged := map[string]json.RawMessage{}
-			for k, v := range base {
-				merged[k] = v
+			if exists {
+				for k, v := range base.raw {
+					merged[k] = v
+				}
 			}
 			changedLaunch := false
 			for k, v := range m {
-				if exists && launchShaped[k] && !sameJSON(base[k], v) {
+				if exists && launchShaped[k] && !sameJSON(base.raw[k], v) {
 					changedLaunch = true
 				}
 				merged[k] = v
 			}
 			if _, err := decodeStrict(merged); err != nil {
-				c.Diagnostics = append(c.Diagnostics, Diagnostic{path, err.Error()})
+				c.Diagnostics = append(c.Diagnostics, Diagnostic{Tier: "user", Path: path, ModelID: id, Message: err.Error()})
 				continue
 			}
-			raws[id] = merged
 			switch {
 			case !exists:
-				trust[id] = "user"
+				entries[id] = &layered{raw: merged, trust: "user", origin: "user", tier: "user", path: path}
 				ids = append(ids, id)
-			case changedLaunch:
-				trust[id] = "modified"
+			default:
+				next := *base
+				next.raw, next.tier, next.path = merged, "user", path
+				if changedLaunch && (base.trust == "qualified" || base.trust == "community") {
+					next.trust = "modified"
+				}
+				entries[id] = &next
 			}
 		}
 	}
 	for _, id := range ids {
-		s, err := decodeStrict(raws[id])
+		e := entries[id]
+		s, err := decodeStrict(e.raw)
 		if err != nil {
 			return nil, fmt.Errorf("catalog entry %s: %w", id, err)
 		}
-		s.Trust = trust[id]
+		s.Trust, s.Origin, s.Tier, s.LayerPath = e.trust, e.origin, e.tier, e.path
 		c.Models = append(c.Models, s)
 		c.byID[id] = s
 	}
+	c.indexAnnotations()
 	return c, nil
+}
+
+// jsonKeys lists an object's keys in JavaScript order (Object.keys).
+func jsonKeys(b []byte) []string {
+	v, err := jsjson.Parse(b)
+	if err != nil {
+		return nil
+	}
+	if o, ok := v.(*jsjson.Object); ok {
+		return o.Keys()
+	}
+	return nil
 }
 
 func sameJSON(a, b json.RawMessage) bool {

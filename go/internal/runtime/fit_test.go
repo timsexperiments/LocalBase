@@ -42,7 +42,7 @@ func TestCatalogMemoryMatchesTypeScript(t *testing.T) {
 		case ok && (demand{m.UnifiedBytes, m.HostBytes, m.AcceleratorBytes}) != *c.Measured:
 			t.Errorf("%s measured: go %+v ts %+v", c.ModelID, m, *c.Measured)
 		}
-		f := FitFor(s, 64, nil, nil)
+		f := FitFor(s, 64, nil, nil, nil)
 		if f.MinVramGB != c.MinVramGb || f.Source != c.Source || f.LaunchShape != c.LaunchShape {
 			t.Errorf("%s fit: go %d/%s/%s ts %d/%s/%s", c.ModelID, f.MinVramGB, f.Source, f.LaunchShape, c.MinVramGb, c.Source, c.LaunchShape)
 		}

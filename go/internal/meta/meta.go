@@ -206,11 +206,32 @@ func kindCapabilities(s *catalog.Spec, voices []store.Voice) any {
 	return nil
 }
 
+// tierOf is the highest catalog tier that contributed to the entry.
 func tierOf(s *catalog.Spec) string {
+	if s.Tier != "" {
+		return s.Tier
+	}
 	if s.Trust == "qualified" {
 		return "built-in"
 	}
 	return "user"
+}
+
+// feedOf is the feed URL behind a remote entry, without query, fragment or
+// credentials.
+func feedOf(s *catalog.Spec) *string {
+	if s.Origin != "remote" || s.LayerPath == "" {
+		return nil
+	}
+	u, err := url.Parse(s.LayerPath)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return nil
+	}
+	v := strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host) + u.EscapedPath()
+	if u.EscapedPath() == "" {
+		v += "/"
+	}
+	return &v
 }
 
 // Input is what a projection reads besides the spec.
@@ -222,6 +243,8 @@ type Input struct {
 	Voices   []store.Voice
 	// Snapshot is the LLM runtime state (gateway only).
 	Snapshot *runtime.Snapshot
+	// Catalog supplies the feed annotations in force (nil: none).
+	Catalog *catalog.Catalog
 	// CLI uses observed peaks without the installation rule or geometry, as
 	// TS cliMemoryInputs does.
 	CLI bool
@@ -238,18 +261,18 @@ func Project(ctx context.Context, in Input, spec *catalog.Spec) Model {
 		if sha := spec.Primary().SHA256; sha != "" && in.Store != nil {
 			peaks, _ = in.Store.ObservedPeaks(ctx, spec.ModelID, sha)
 		}
-		fit = runtime.FitFor(spec, in.MemoryGB, nil, peaks)
+		fit = runtime.FitFor(spec, in.MemoryGB, nil, peaks, feedPeaks(in.Catalog, spec))
 	} else {
-		fit = runtime.ModelFit(ctx, in.Store, spec, dir, in.MemoryGB)
+		fit = runtime.ModelFit(ctx, in.Store, in.Catalog, spec, dir, in.MemoryGB)
 	}
-	res := runtime.CapabilitiesFor(ctx, in.Store, spec, dir)
+	res := runtime.CapabilitiesFor(ctx, in.Store, in.Catalog, spec, dir)
 	voices := in.Voices
 
 	m := Model{Object: "localbase.model", ID: spec.ModelID}
 	c := &m.Catalog
 	c.Name, c.DisplayName, c.Provider, c.Source = spec.Family, spec.Name(), spec.Provider, spec.Source
 	c.Revision, c.Kind, c.QualificationState = spec.RepositoryRevision, spec.Kind, spec.QualificationState
-	c.Trust, c.CatalogTier = spec.Trust, tierOf(spec)
+	c.Trust, c.CatalogTier, c.CatalogFeed = spec.Trust, tierOf(spec), feedOf(spec)
 	c.CommercialStatus, c.Summary, c.Notes, c.Quantization = spec.CommercialStatus, spec.Catch, spec.Notes, spec.Quant
 	c.Features = Features(spec)
 	for _, a := range spec.Artifacts {
@@ -280,6 +303,11 @@ func Project(ctx context.Context, in Input, spec *catalog.Spec) Model {
 	if o := fit.Observed; o != nil {
 		mem.Observed = &Peak{o.PeakBytes, o.LaunchShape, o.Method, o.ObservedAt}
 	}
+	if p := fit.FeedPeak; p != nil {
+		mem.Reference.LaunchShape = p.LaunchShape
+		mem.FeedPeak = map[string]any{"peakBytes": p.PeakBytes, "launchShape": p.LaunchShape, "variant": p.Variant,
+			"hardware": p.Hardware, "measuredAt": p.MeasuredAt}
+	}
 	mem.Fit.Verdict, mem.Fit.SystemMemoryGb = fit.Fit, fit.SystemMemoryGB
 	mem.Fit.HeadroomGb = float64(fit.SystemMemoryGB - fit.MinVramGB)
 	c.Capabilities = kindCapabilities(spec, voices)
@@ -288,6 +316,11 @@ func Project(ctx context.Context, in Input, spec *catalog.Spec) Model {
 	c.UnsupportedCapabilities = spec.UnsupportedCapabilities
 	if c.UnsupportedCapabilities == nil {
 		c.UnsupportedCapabilities = []catalog.Unsupported{}
+	}
+	if in.Catalog != nil {
+		if s := in.Catalog.AnnotationSummaryFor(spec); s != nil {
+			c.FeedAnnotation = s
+		}
 	}
 	c.CapabilityResolution.Capabilities = res.Capabilities
 	if res.Capabilities == nil {
@@ -452,4 +485,11 @@ func QueryWithText(data []Model, q url.Values, text func(Model) []string) []Mode
 		return cmp < 0
 	})
 	return out
+}
+
+func feedPeaks(cat *catalog.Catalog, spec *catalog.Spec) []catalog.MemoryPeak {
+	if cat == nil {
+		return nil
+	}
+	return cat.PlannableFeedPeaks(spec)
 }

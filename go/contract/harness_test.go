@@ -24,6 +24,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -366,3 +367,23 @@ func each(t *testing.T, f func(t *testing.T, tg *Target)) {
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+// rangeServer is httptest.NewServer (or NewTLSServer) listening on a port in
+// the test range (24000-29999) instead of an ephemeral one.
+func rangeServer(t testing.TB, h http.Handler, tls bool) *httptest.Server {
+	t.Helper()
+	ts := httptest.NewUnstartedServer(h)
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", freePort()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts.Listener.Close()
+	ts.Listener = ln
+	if tls {
+		ts.StartTLS()
+	} else {
+		ts.Start()
+	}
+	t.Cleanup(ts.Close)
+	return ts
+}

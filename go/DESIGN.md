@@ -1046,8 +1046,11 @@ Deliberate status changes to verify against the live clients at cutover:
    TS 500 `gateway_error`; Go 400 `validation_failed`.
 3. **The wrong method on a JSON inference route** (for example `GET
    /v1/chat/completions`): TS 400; Go 405 with `Allow: POST`.
-4. **An overflowing prompt** (M1): 400 `context_length_exceeded` instead of
-   the relayed `exceed_context_size_error`.
+. **Model management while a runtime is up** (M5): TS reconciles a running
+   runtime eagerly when the active model changes, so the model it switched to
+   stays referenced and `uninstall` answers 409 `conflict` until
+   reconciliation settles; Go switches on the next request and uninstalls a
+   model no runtime holds.
 
 The Lab and My voices pages (step 6) call the API in-process as the signed-in
 person (`gateway.Server.Call`), so they get exactly the API's validation,
@@ -1080,3 +1083,20 @@ or local responses.
 
 OTLP stays dependency-free: the exporter encodes the few OTLP protobuf
 messages it needs (resource, scope, spans, log records, attributes) directly.
+
+### 14.2 Status
+
+| Step | State | Evidence |
+| --- | --- | --- |
+| 1 | Done | `TestDifferentialModelManagement`: full state and every response on both gateways, an offline install polled to completion |
+| 2 | Done | `catalog` goldens from `tools/golden/feed.ts` (the published `catalog/feed-v2.json` and v1 feed, crafted documents, tolerant annotation parsing, URL rules, all 76 built-in models' summaries, peaks and marks); `jsjson` goldens (JSON.stringify of parsed JSON); `TestCLIFeed` (status, use, refresh with ETag and failures, `models show` text and JSON, catalog fit and capability filters with feed peaks and marks applied); `TestFeedSchedulerReloadsCatalog` |
+
+The feed brings three Go structures with it. `internal/jsjson` reproduces
+JavaScript's JSON round trip (property order, number formatting), which the
+feed checksum and the Misaki dictionary depend on. The catalog is now three
+tiers (built-in, remote, user) with provenance (`Trust`, `Origin`, `Tier`,
+`LayerPath`), and a gateway replaces its catalog in place when the hourly
+check downloads a new feed. Feed peaks rank between checked-in measurements
+and estimates in every memory figure and in admission (LLM and media), and
+feed capability marks join the spec's own in capability resolution; both
+apply only to an exact repository, revision and file match.

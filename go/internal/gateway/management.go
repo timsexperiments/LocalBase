@@ -188,7 +188,7 @@ func (s *Server) installConflict(cfg *store.Config, spec *catalog.Spec, referenc
 	for _, p := range s.artifactPaths(spec) {
 		targets[p] = true
 	}
-	for _, other := range s.Catalog.Models {
+	for _, other := range s.Catalog.All() {
 		overlaps := other.ModelID == spec.ModelID
 		if !overlaps {
 			for _, p := range s.artifactPaths(other) {
@@ -223,7 +223,7 @@ func (s *Server) readManagement() (mgmtStorage, []mgmtEntry) {
 	}
 	m.mu.Unlock()
 	entries := []mgmtEntry{}
-	for _, spec := range s.Catalog.Models {
+	for _, spec := range s.Catalog.All() {
 		if spec.QualificationState == "experimental" && !cfg.AllowExperimental {
 			continue
 		}
@@ -325,7 +325,7 @@ func (s *Server) runManagement(modelID, action string) (*mgmtOperation, error) {
 				return &mgmtError{"conflict", "Disable the model and wait for runtime reconciliation before uninstalling."}
 			}
 			shared := map[string]bool{}
-			for _, other := range s.Catalog.Models {
+			for _, other := range s.Catalog.All() {
 				if other.ModelID == modelID {
 					continue
 				}

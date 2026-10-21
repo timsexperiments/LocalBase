@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -59,6 +60,12 @@ func cleanEnv() []string {
 
 func runCLI(t *testing.T, impl, root string, args ...string) cliResult {
 	t.Helper()
+	return runCLIEnv(t, impl, root, nil, args...)
+}
+
+// runCLIEnv runs a command with env entries replacing cleanEnv's.
+func runCLIEnv(t *testing.T, impl, root string, env []string, args ...string) cliResult {
+	t.Helper()
 	full := append([]string{"--root", root}, args...)
 	var cmd *exec.Cmd
 	if impl == "ts" {
@@ -68,6 +75,13 @@ func runCLI(t *testing.T, impl, root string, args ...string) cliResult {
 		cmd = exec.Command(goCLI(t), full...)
 	}
 	cmd.Env = cleanEnv()
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		cmd.Env = slices.DeleteFunc(cmd.Env, func(e string) bool { return strings.HasPrefix(e, name+"=") })
+		if kv != name+"=" {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	err := cmd.Run()

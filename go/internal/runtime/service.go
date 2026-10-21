@@ -338,7 +338,7 @@ func (s *Service) demand(t *Target) memory.Demand {
 		return memory.Demand{UnifiedBytes: b, HostBytes: b, AcceleratorBytes: b, Confidence: "declared"}
 	}
 	if spec := s.d.Catalog.ByID(t.ModelID); spec != nil && !t.Imported {
-		if d := memory.EstimateCatalog(spec, nil); d.UnifiedBytes > 0 {
+		if d := catalogServiceDemand(s.d.Catalog, spec, t.weightsBytes()); d.UnifiedBytes > 0 {
 			return d
 		}
 	}
@@ -566,4 +566,26 @@ func (s *Service) command(t *Target, host string, port int) (*serviceCommand, er
 		return &serviceCommand{name: d.ID, bin: l.Command, args: args, health: health}, nil
 	}
 	return nil, fmt.Errorf("%s (adapter %s) does not run %s models", d.Name, d.Adapter, taskOf(s.d.Modality))
+}
+
+// catalogServiceDemand is a catalog media model's admission demand (TS
+// catalogDemand then admissionDemand): the checked-in measurement, else a
+// feed peak for exactly this file and launch, else the estimate; a local
+// file larger than the catalog's adds its extra bytes.
+func catalogServiceDemand(cat *catalog.Catalog, spec *catalog.Spec, localBytes int64) memory.Demand {
+	catalogBytes := spec.TotalArtifactBytes()
+	d, measured := memory.MeasuredCatalog(spec, nil)
+	if measured {
+		d.Confidence = "measured"
+	} else if p := memory.SelectFeedPeak(spec, cat.PlannableFeedPeaks(spec), nil); p != nil {
+		d = memory.FeedDemand(spec, *p, catalogBytes, 0)
+	} else {
+		d = memory.EstimateCatalog(spec, nil)
+	}
+	if extra := localBytes - catalogBytes; extra > 0 && d.UnifiedBytes > 0 {
+		d.UnifiedBytes += extra
+		d.HostBytes += extra
+		d.AcceleratorBytes += extra
+	}
+	return d
 }

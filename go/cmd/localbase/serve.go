@@ -17,6 +17,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
+	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
@@ -284,6 +285,7 @@ func serve(c *cli.Ctx) (any, error) {
 
 	// Memory pressure: a critical sample stops the runtime and rejects queued work.
 	stopPoll := make(chan struct{})
+	feedDone := startFeedScheduler(r.Dir, cat, log, stopPoll)
 	go func() {
 		t := time.NewTicker(5 * time.Second)
 		defer t.Stop()
@@ -327,6 +329,7 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	srv.Stopping()
 	close(stopPoll)
+	<-feedDone // an in-flight refresh settles first
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	httpServer.Shutdown(ctx)
@@ -354,4 +357,55 @@ func voiceStamp(st *store.Store) string {
 		b.WriteString(v.ID + ":" + v.SHA256 + ";")
 	}
 	return b.String()
+}
+
+// startFeedScheduler keeps the remote catalog feed current (TS
+// feed-scheduler): one check at start, then every hour; each check downloads
+// only when the cached copy is older than a day. An update reloads the
+// catalog in place. The returned channel closes once stopped.
+func startFeedScheduler(rootDir string, cat *catalog.Catalog, log *slog.Logger, stop <-chan struct{}) <-chan struct{} {
+	done := make(chan struct{})
+	lastError := ""
+	check := func() {
+		res := catalog.RefreshFeed(context.Background(), rootDir, catalog.RefreshOptions{})
+		short := func(s string) string { return obs.BoundedText(s, 512) }
+		switch res.Outcome {
+		case "updated":
+			lastError = ""
+			next, err := catalog.LoadRoot(rootDir, nil)
+			if err != nil {
+				log.Warn("The updated catalog could not be loaded; the previous one stays in use.", "event", "catalog_feed.reload_failed",
+					"category", "gateway", "component", "catalog-feed", "runtime", "gateway", slog.Group("attributes", "error", short(err.Error())))
+				return
+			}
+			cat.Replace(next)
+			log.Info("Loaded a new remote catalog feed.", "event", "catalog_feed.updated", "category", "gateway",
+				"component", "catalog-feed", "runtime", "gateway", slog.Group("attributes", "url", short(res.URL)))
+		case "failed":
+			if res.Error == lastError {
+				return
+			}
+			lastError = res.Error
+			log.Warn("The remote catalog feed could not be refreshed; the last good copy stays in use.", "event", "catalog_feed.refresh_failed",
+				"category", "gateway", "component", "catalog-feed", "runtime", "gateway",
+				slog.Group("attributes", "url", short(res.URL), "error", short(res.Error)))
+		default:
+			lastError = ""
+		}
+	}
+	go func() {
+		defer close(done)
+		check()
+		t := time.NewTicker(catalog.FeedCheckInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				check()
+			}
+		}
+	}()
+	return done
 }

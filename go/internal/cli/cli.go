@@ -110,6 +110,12 @@ func (c *Ctx) Info(format string, a ...any) {
 	fmt.Fprintf(w, format+"\n", a...)
 }
 
+// Error prints a human message on stderr, with or without --json (TS
+// output.error).
+func (c *Ctx) Error(format string, a ...any) {
+	fmt.Fprintf(c.Stderr, format+"\n", a...)
+}
+
 // Streaming marks a command that writes its own JSON lines (logs --follow,
 // serve lifecycle events), so no envelope is printed on success.
 func (c *Ctx) Streaming() { c.streamingOK = true }
