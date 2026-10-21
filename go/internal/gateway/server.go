@@ -64,7 +64,11 @@ type Server struct {
 
 func New(s *Server) *Server {
 	s.started = time.Now()
-	s.mgmt = &management{operations: map[string]*mgmtOperation{}}
+	rootDir := ""
+	if s.Root != nil {
+		rootDir = s.Root.Dir
+	}
+	s.mgmt = newManagement(rootDir)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
 	for _, p := range []string{"/app/login", "/oidc/callback", "/github/callback", "/app/login/magic", "/magic-link/callback",

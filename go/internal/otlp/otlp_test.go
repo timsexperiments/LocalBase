@@ -258,7 +258,7 @@ func TestExportFailureReporting(t *testing.T) {
 	// Unreachable: the transport code is named.
 	cfg2, _ := obs.ResolveOtel("http://127.0.0.1:1", "", 100, func(string) string { return "" })
 	rt2 := New(cfg2, "test", nil)
-	if err := rt2.send(cfg2.TracesEndpoint, nil, []byte{}); err == nil || err.Error() != "collector unreachable (ConnectionRefused)" {
+	if err := rt2.send(cfg2.TracesEndpoint, nil, []byte{}, "spans", 1); err == nil || err.Error() != "collector unreachable (ConnectionRefused)" {
 		t.Errorf("unreachable: %v", err)
 	}
 	rt2.Shutdown()
@@ -329,5 +329,69 @@ func TestShutdownWithHungCollector(t *testing.T) {
 	if !strings.Contains(joined, "OTLP export failed.") ||
 		!(strings.Contains(joined, "request timed out after 5000 ms") || strings.Contains(joined, "exporter closed")) {
 		t.Errorf("diagnostics: %v", diags)
+	}
+}
+
+// A collector that accepts a batch but rejects part of it (partial success,
+// protobuf or JSON) feeds the throttled failure reporter; a full success
+// afterwards reports recovery.
+func TestPartialSuccessIsReported(t *testing.T) {
+	for _, format := range []string{"protobuf", "json"} {
+		t.Run(format, func(t *testing.T) {
+			var mu sync.Mutex
+			reject := true
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				io.ReadAll(r.Body)
+				mu.Lock()
+				defer mu.Unlock()
+				if !reject {
+					return
+				}
+				if format == "json" {
+					w.Header().Set("Content-Type", "application/json")
+					io.WriteString(w, `{"partialSuccess":{"rejectedSpans":"2","errorMessage":"span too large; token=abcdef123456"}}`)
+					return
+				}
+				var inner, outer buf
+				inner.uint(1, 2)
+				inner.str(2, "span too large")
+				outer.message(1, inner)
+				w.Header().Set("Content-Type", "application/x-protobuf")
+				w.Write(outer)
+			}))
+			defer srv.Close()
+			cfg, _ := obs.ResolveOtel(srv.URL, "", 100, func(string) string { return "" })
+			var dmu sync.Mutex
+			var diags []string
+			rt := New(cfg, "test", func(sev, msg string, attrs map[string]any) {
+				dmu.Lock()
+				defer dmu.Unlock()
+				diags = append(diags, sev+"|"+msg+"|"+fmt.Sprint(attrs["detail"]))
+			})
+			for i := 0; i < 2; i++ {
+				for j := 0; j < 3; j++ {
+					_, s := rt.Start(context.Background(), "x", KindInternal)
+					s.End()
+				}
+				rt.spans.flushOne()
+			}
+			mu.Lock()
+			reject = false
+			mu.Unlock()
+			_, s := rt.Start(context.Background(), "x", KindInternal)
+			s.End()
+			rt.spans.flushOne()
+			rt.Shutdown()
+			detail := "collector rejected 2 of 3 spans: span too large"
+			if format == "json" {
+				detail += "; token=[REDACTED]"
+			}
+			want := []string{"warn|OTLP export failed.|" + detail, "info|OTLP export recovered.|" + detail}
+			dmu.Lock()
+			defer dmu.Unlock()
+			if !reflect.DeepEqual(diags, want) {
+				t.Errorf("diagnostics:\n %q\nwant\n %q", diags, want)
+			}
+		})
 	}
 }

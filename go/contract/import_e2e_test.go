@@ -96,6 +96,8 @@ type e2e struct {
 	key    string
 	noAuth bool
 	stop   func()
+	// kill ends the gateway with SIGKILL (no shutdown at all).
+	kill   func()
 	outDir string
 	// impl is "go" (default) or "ts".
 	impl string
@@ -176,8 +178,18 @@ func (e *e2e) serve(extra ...string) {
 	if err := cmd.Start(); err != nil {
 		e.t.Fatal(err)
 	}
+	watchGateway(cmd.Process.Pid)
 	e.base = fmt.Sprintf("http://127.0.0.1:%d", port)
 	stopped := false
+	e.kill = func() {
+		if stopped {
+			return
+		}
+		stopped = true
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		cmd.Wait()
+		logf.Close()
+	}
 	e.stop = func() {
 		if stopped {
 			return

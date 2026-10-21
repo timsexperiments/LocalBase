@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
@@ -62,6 +63,60 @@ type management struct {
 	operations map[string]*mgmtOperation
 	installing string
 	inFlight   sync.WaitGroup
+	// path records the operations under the root, so an install a stopped
+	// gateway interrupted is reported as such after a restart (TS keeps them
+	// in memory only and forgets them). ctx cancels installs at shutdown.
+	path   string
+	saved  time.Time
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+// interruptedDetail is the outcome of an install the gateway stopped; the
+// partial download stays, and the next install resumes it.
+const interruptedDetail = "Interrupted when the gateway stopped. Install again to resume."
+
+func newManagement(rootDir string) *management {
+	m := &management{operations: map[string]*mgmtOperation{}}
+	m.ctx, m.cancel = context.WithCancel(context.Background())
+	if rootDir == "" {
+		return m
+	}
+	m.path = filepath.Join(rootDir, "runtime", "model-operations.json")
+	var saved struct {
+		Version    int                       `json:"version"`
+		Operations map[string]*mgmtOperation `json:"operations"`
+	}
+	if b, err := os.ReadFile(m.path); err == nil && json.Unmarshal(b, &saved) == nil && saved.Version == 1 {
+		for id, op := range saved.Operations {
+			if op == nil {
+				continue
+			}
+			if op.State == "running" {
+				op.State, op.Detail = "failed", interruptedDetail
+			}
+			m.operations[id] = op
+		}
+		m.persist(true)
+	}
+	return m
+}
+
+// persist writes the operations (progress at most every two seconds).
+// Called with mu held.
+func (m *management) persist(force bool) {
+	if m.path == "" || (!force && time.Since(m.saved) < 2*time.Second) {
+		return
+	}
+	m.saved = time.Now()
+	b, _ := json.Marshal(map[string]any{"version": 1, "operations": m.operations})
+	if os.MkdirAll(filepath.Dir(m.path), 0o700) != nil {
+		return
+	}
+	tmp := m.path + ".tmp"
+	if os.WriteFile(tmp, b, 0o600) == nil {
+		os.Rename(tmp, m.path)
+	}
 }
 
 func i64(v int64) *int64 { return &v }
@@ -397,6 +452,7 @@ func (s *Server) runManagement(modelID, action string) (*mgmtOperation, error) {
 	}
 	m.mu.Lock()
 	m.operations[modelID] = done
+	m.persist(true)
 	m.mu.Unlock()
 	return done, nil
 }
@@ -450,11 +506,12 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 			m.mu.Lock()
 			snapshot := *running
 			m.operations[spec.ModelID] = &snapshot
+			m.persist(true)
 			m.mu.Unlock()
 			accepted = true
 			admitted <- nil
 			progress := map[string]int64{}
-			_, err = install.Model(context.Background(), spec, dir, install.Options{HFToken: fresh.HFToken, Report: func(ev install.Event) {
+			_, err = install.Model(m.ctx, spec, dir, install.Options{HFToken: fresh.HFToken, Report: func(ev install.Event) {
 				switch ev.Kind {
 				case "download-progress":
 					progress[ev.Filename] = ev.Downloaded
@@ -473,6 +530,7 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 				op.Detail, op.DownloadedBytes = ev.Kind, i64(sum)
 				m.mu.Lock()
 				m.operations[spec.ModelID] = &op
+				m.persist(false)
 				m.mu.Unlock()
 			}})
 			return err
@@ -486,7 +544,13 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 		case accepted:
 			op := *m.operations[spec.ModelID]
 			op.State, op.Detail = "failed", "Installation failed. Check storage, network access, and catalog verification."
+			if m.ctx.Err() != nil {
+				op.Detail = interruptedDetail
+			}
 			m.operations[spec.ModelID] = &op
+		}
+		if accepted {
+			m.persist(true)
 		}
 		m.installing = ""
 		m.mu.Unlock()
@@ -577,5 +641,22 @@ func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
 func (s *Server) WaitManagementIdle() {
 	if s.mgmt != nil {
 		s.mgmt.inFlight.Wait()
+	}
+}
+
+// StopManagement lets an accepted install finish within grace, then
+// interrupts it; the interruption is recorded, and the partial download
+// stays for the next install to resume.
+func (s *Server) StopManagement(grace time.Duration) {
+	if s.mgmt == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() { s.mgmt.inFlight.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(grace):
+		s.mgmt.cancel()
+		<-done
 	}
 }

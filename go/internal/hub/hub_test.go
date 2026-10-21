@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -331,5 +332,33 @@ func TestDiscoverGolden(t *testing.T) {
 	check(t, "discover", got, err, g.Discovery)
 	if *misses > 0 {
 		t.Errorf("%d requests had no fixture", *misses)
+	}
+}
+
+// TestFixturesPinned: the recorded Hub responses the goldens replay are
+// exactly the pinned files (testdata/hub/PINS), none added or changed.
+func TestFixturesPinned(t *testing.T) {
+	pins, err := os.ReadFile("testdata/hub/PINS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(pins)), "\n") {
+		name, sum, ok := strings.Cut(line, "  ")
+		if !ok {
+			t.Fatalf("PINS line %q", line)
+		}
+		want[name] = sum
+	}
+	files, _ := filepath.Glob("testdata/hub/*.json")
+	if len(files) != len(want) {
+		t.Errorf("%d fixtures, %d pinned", len(files), len(want))
+	}
+	for _, f := range files {
+		b, _ := os.ReadFile(f)
+		sum := sha256.Sum256(b)
+		if got := hex.EncodeToString(sum[:]); want[filepath.Base(f)] != got {
+			t.Errorf("%s: sha256 %s, pinned %q", filepath.Base(f), got, want[filepath.Base(f)])
+		}
 	}
 }

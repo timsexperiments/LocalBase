@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -106,12 +107,21 @@ func runOTLP(t *testing.T, impl string, status int) *otlpRun {
 	t.Helper()
 	col := &collector{status: status}
 	srv := rangeServer(t, col, false)
-	tg, err := launchEnv(impl, []string{"OTEL_EXPORTER_OTLP_ENDPOINT=" + srv.URL + "/base", "OTEL_TRACES_SAMPLER=always_on",
+	run := runOTLPAt(t, impl, srv.URL+"/base")
+	run.col = col
+	return run
+}
+
+// runOTLPAt runs the scripted requests against a gateway exporting to
+// endpoint; the caller fills in what was received.
+func runOTLPAt(t *testing.T, impl, endpoint string) *otlpRun {
+	t.Helper()
+	tg, err := launchEnv(impl, []string{"OTEL_EXPORTER_OTLP_ENDPOINT=" + endpoint, "OTEL_TRACES_SAMPLER=always_on",
 		"OTEL_EXPORTER_OTLP_HEADERS=x-auth=" + otlpSecret})
 	if err != nil {
 		t.Fatal(err)
 	}
-	run := &otlpRun{col: col, root: tg.Root, requests: map[string]string{}, real: tg.RealModel}
+	run := &otlpRun{root: tg.Root, requests: map[string]string{}, real: tg.RealModel}
 	send := func(label, method, path string, headers map[string]string, body string) {
 		r := do(t, method, tg.BaseURL+path, headers, body)
 		run.requests[label] = r.Header.Get("X-Localbase-Request-Id")
@@ -210,7 +220,7 @@ func (r *otlpRun) checkRecords(t *testing.T, impl string) map[string]map[string]
 			continue
 		}
 		if attrs["event.name"] != e["eventName"] || attrs["event.category"] != e["category"] || attrs["localbase.component"] != e["component"] ||
-			attrs["localbase.runtime"] != e["runtime"] || rec["body"].(map[string]any)["stringValue"] != e["message"] ||
+			attrs["localbase.runtime"] != e["runtime"] || bodyText(rec["body"]) != e["message"] ||
 			rec["severityText"] != strings.ToUpper(e["severity"].(string)) {
 			t.Errorf("%s: record %v does not match event %v", impl, attrs, e)
 		}
@@ -376,5 +386,57 @@ func TestCLIOtelEnvironment(t *testing.T) {
 				t.Errorf("%s differs:\n  %s", label, strings.Join(d, "\n  "))
 			}
 		}
+	}
+}
+
+// bodyText is a record's string body, decoded or as collector JSON.
+func bodyText(v any) any {
+	if m, ok := v.(map[string]any); ok {
+		return m["stringValue"]
+	}
+	return v
+}
+
+// TestOtelShutdownDiagnosticsStayInTheLog (#367): with a collector that
+// refuses connections and no console mirroring (as under launchd capture),
+// the shutdown flush's failure reports reach events.jsonl, written while
+// the file sink is still open, and nothing about OTLP reaches stderr.
+func TestOtelShutdownDiagnosticsStayInTheLog(t *testing.T) {
+	if *implFlag != "go" && *implFlag != "both" {
+		t.Skip("runs the Go gateway")
+	}
+	tmp := t.TempDir()
+	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true,
+		env: []string{"OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:" + strconv.Itoa(freePort())}}
+	if r := e.cli(nil, "--json", "init"); r.code != 0 {
+		t.Fatalf("init: %s", r.stderr)
+	}
+	e.serve("--no-auth", "--json")
+	e.do("GET", "/v1/models", "")
+	e.stop()
+	logs, _ := filepath.Glob(filepath.Join(tmp, "serve-*.log"))
+	for _, p := range logs {
+		b, _ := os.ReadFile(p)
+		for _, s := range []string{"OTLP", "otel", "observability"} {
+			if strings.Contains(string(b), s) {
+				t.Errorf("process output mentions %q:\n%s", s, b)
+			}
+		}
+	}
+	b, _ := os.ReadFile(filepath.Join(e.root, "logs", "events.jsonl"))
+	var stopped, failed int
+	for i, line := range strings.Split(string(b), "\n") {
+		switch {
+		case strings.Contains(line, `"eventName":"gateway.stopped"`):
+			stopped = i
+		case strings.Contains(line, `"eventName":"observability.export-failed"`):
+			failed = i
+			if !strings.Contains(line, "collector unreachable (ConnectionRefused)") {
+				t.Errorf("failure event: %s", line)
+			}
+		}
+	}
+	if failed == 0 || failed < stopped {
+		t.Errorf("no shutdown export failure after gateway.stopped in events.jsonl (stopped line %d, failed line %d)", stopped, failed)
 	}
 }

@@ -1132,3 +1132,50 @@ carried over from M3: the Chat, admin and settings pages, and a discovery
 page over `/_localbase/model-discovery` (the API is done). The user's
 decision on CrispASR's marking is also still open; marking stays on and
 C2PA is not passed through until they decide.
+
+### 14.3 Operator review follow-ups
+
+1. **OTLP against a real collector.** `TestRealCollector` runs a pinned
+   OpenTelemetry Collector, core distribution `otelcol` 0.163.1 for
+   darwin/arm64 (`otelcol_0.163.1_darwin_arm64.tar.gz`, sha256
+   `664047e6ffd98ffaaf90d282bb481ffad46b1e8456f0b2f65e42d627d665d8d3`),
+   from `LOCALBASE_CONTRACT_OTELCOL`. It listens on a test port, never the
+   live collector on 127.0.0.1:4318, and writes what it parsed with its
+   file exporter. Both gateways' span trees and log records, as the
+   collector parsed them, match, and the Go export is accepted with no
+   reported failure. Partial success (rejected spans or log records, in a
+   protobuf or JSON body) now feeds the #358 reporter, with the collector's
+   message redacted: a deliberate difference, since TS ignores the body. 4xx
+   and 5xx responses were already reported. #367: shutdown flushes while the
+   file sink is open, the failure events land in `events.jsonl` after
+   `gateway.stopped`, and nothing about OTLP reaches stderr
+   (`TestOtelShutdownDiagnosticsStayInTheLog`).
+2. **Catalog feed and #368.** Built against current main: a feed entry with
+   a built-in id is ignored. #368 is not merged yet. Follow-up for when it
+   lands:
+   - port `src/catalog/former/` and adoption (installed or configured former
+     entries written to `catalog.d/<id>.json` with the notes hint, recorded
+     in `catalog.d/.former-built-ins`, adopted while the config row loads);
+   - skip former ids from the feed, as built-in ones, so they never come
+     back as community entries;
+   - add the `pipelineTemplate` fallback in discovery (FLUX.1, FLUX.2 Klein
+     9B, SDXL and SD1.5 encoders from the pinned former entries);
+   - regenerate `tools/golden/feed.ts` and `tools/golden/hub.ts` against it
+     (the FLUX.1-schnell, SDXL base, SDXL LoRA and LCM cases already
+     exercise the fallback);
+   - port `former-adoption.test.ts` as a contract test.
+3. **Install operations across a restart.** Operations are recorded in
+   `runtime/model-operations.json`. At shutdown an accepted install gets
+   three seconds and is then interrupted. After a restart, an install that
+   was running (interrupted or killed) reports `failed`, with "Interrupted
+   when the gateway stopped. Install again to resume.", and installing
+   again resumes the partial file (`TestInstallInterruptedByGatewayStop`,
+   SIGTERM and SIGKILL). TS keeps operations in memory and waits for the
+   install, so under launchd's stop deadline it loses them.
+4. **Diagnostics.** The planted-secret scan now also covers download auth
+   profiles, an imported model's signed URL, a custom voice's display name
+   (the log carries its id) and `go_settings`.
+5. **Hugging Face goldens.** The 37 recorded responses are pinned by sha256
+   (`testdata/hub/PINS`, `TestFixturesPinned`), and the golden script
+   refuses to fetch unless `LOCALBASE_HUB_RECORD=1`. The removed-entry
+   template fallback gets its golden with #368 (item 2).

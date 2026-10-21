@@ -3,12 +3,14 @@ package otlp
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -67,13 +69,13 @@ func New(cfg *obs.OtelConfig, version string, diag Diagnostic) *Runtime {
 	if cfg.TracesEndpoint != "" {
 		h := merge(cfg.Headers, cfg.TracesHeaders)
 		rt.spans = newBatcher(func(items []*Span) error {
-			return rt.send(cfg.TracesEndpoint, h, rt.encodeSpans(items))
+			return rt.send(cfg.TracesEndpoint, h, rt.encodeSpans(items), "spans", len(items))
 		}, "traces", rt.failures)
 	}
 	if cfg.LogsEndpoint != "" {
 		h := merge(cfg.Headers, cfg.LogsHeaders)
 		rt.logs = newBatcher(func(items []logRecord) error {
-			return rt.send(cfg.LogsEndpoint, h, rt.encodeLogs(items))
+			return rt.send(cfg.LogsEndpoint, h, rt.encodeLogs(items), "log records", len(items))
 		}, "logs", rt.failures)
 	}
 	return rt
@@ -241,7 +243,7 @@ var retryable = map[int]bool{429: true, 502: true, 503: true, 504: true}
 // send posts one batch: two attempts within a five-second deadline,
 // retrying 429/502/503/504 and transport errors (Retry-After honoured when
 // it fits). Failure text never includes the endpoint, headers or body.
-func (rt *Runtime) send(endpoint string, headers map[string]string, body []byte) error {
+func (rt *Runtime) send(endpoint string, headers map[string]string, body []byte, unit string, count int) error {
 	deadline := time.Now().Add(exportTimeout)
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
@@ -271,10 +273,10 @@ func (rt *Runtime) send(endpoint string, headers map[string]string, body []byte)
 		var retryAfter string
 		if err == nil {
 			retryAfter = resp.Header.Get("Retry-After")
-			io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+			reply, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 			resp.Body.Close()
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				return nil
+				return partialSuccess(resp.Header.Get("Content-Type"), reply, unit, count)
 			}
 			failure = "collector responded with HTTP " + strconv.Itoa(resp.StatusCode)
 			if attempt == maxAttempts || !retryable[resp.StatusCode] {
@@ -361,4 +363,60 @@ func transportFailure(err error) string {
 		return "collector unreachable"
 	}
 	return "collector unreachable (" + code + ")"
+}
+
+// partialSuccess reads an export response's partial_success: items the
+// collector rejected count as a failed export (TS ignores the body; the
+// #358 reporter should know about lost telemetry). The collector's message
+// is redacted and bounded like any external text.
+func partialSuccess(contentType string, body []byte, unit string, count int) error {
+	var rejected int64
+	var message string
+	switch {
+	case strings.Contains(contentType, "json"):
+		var r struct {
+			PartialSuccess map[string]any `json:"partialSuccess"`
+		}
+		if json.Unmarshal(body, &r) == nil {
+			for k, v := range r.PartialSuccess {
+				switch {
+				case strings.HasPrefix(k, "rejected"):
+					n, _ := strconv.ParseInt(fmt.Sprint(v), 10, 64)
+					rejected = n
+				case k == "errorMessage":
+					message, _ = v.(string)
+				}
+			}
+		}
+	default:
+		fields, err := Fields(body)
+		if err != nil {
+			return nil
+		}
+		for _, f := range fields {
+			if f.Num != 1 || f.Wire != 2 {
+				continue
+			}
+			inner, err := Fields(f.Bytes)
+			if err != nil {
+				return nil
+			}
+			for _, g := range inner {
+				switch {
+				case g.Num == 1 && g.Wire == 0:
+					rejected = int64(g.Value)
+				case g.Num == 2 && g.Wire == 2:
+					message = string(g.Bytes)
+				}
+			}
+		}
+	}
+	if rejected <= 0 {
+		return nil
+	}
+	detail := fmt.Sprintf("collector rejected %d of %d %s", rejected, count, unit)
+	if message != "" {
+		detail += ": " + obs.BoundedText(message, 256)
+	}
+	return errors.New(detail)
 }

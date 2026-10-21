@@ -9,12 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 // Planted in the logs, catalog files, the feed URL, the OTLP headers and the
 // service stderr capture: none may reach a bundle.
 var diagnosticsSecrets = []string{"hf_plantedTokenValue123", "lb_plantedLocalBaseKey1234567890abcd", "sekritBearerValue42",
-	"feedUserPassword", "feedSignature99", "otlpHeaderSecret77", "stderrCrashSecret", "secretPromptText"}
+	"feedUserPassword", "feedSignature99", "otlpHeaderSecret77", "stderrCrashSecret", "secretPromptText",
+	"authProfileHeaderSecret31", "signedUrlSignature62", "VoiceNameSecretAda", "goSettingSecret48"}
 
 func diagnosticsLog() string {
 	ev := func(i int, extra map[string]any) string {
@@ -64,6 +67,7 @@ func TestCLIDiagnostics(t *testing.T) {
 		os.WriteFile(filepath.Join(r, "catalog.d", "patch.json"), []byte(`{"modelId": "whisper-base-en-q8_0", "notes": "Patched.",
 			"repositoryRevision": "`+strings.Repeat("e", 40)+`"}`), 0o600)
 		os.WriteFile(filepath.Join(r, "catalog.d", "broken.json"), []byte(`{"modelId": "qwen2.5-coder-7b-instruct-q4_k_m", "storageGb": "big"}`), 0o600)
+		plantPrivateState(t, r)
 	}
 	env := []string{"LOCALBASE_CATALOG_FEED_URL=https://user:feedUserPassword@feed.example.com/feed.json?sig=feedSignature99#frag",
 		"OTEL_EXPORTER_OTLP_ENDPOINT=http://collector.example:4318/base/", "OTEL_EXPORTER_OTLP_HEADERS=x-auth=otlpHeaderSecret77"}
@@ -163,4 +167,43 @@ func compareManifests(t *testing.T, a, b []byte) {
 	if string(a[:2]) != "{\n" || string(b[:2]) != "{\n" || !strings.HasSuffix(string(b), "}\n") {
 		t.Error("the manifest is not JSON.stringify(manifest, null, 2) + newline")
 	}
+}
+
+// plantPrivateState writes secrets where M3.5 and M4 keep private state: a
+// download auth profile, an imported model whose source is a signed URL, a
+// custom voice whose display name is personal (logs carry its id only),
+// and a Go-only setting.
+func plantPrivateState(t *testing.T, root string) {
+	t.Helper()
+	os.MkdirAll(filepath.Join(root, "credentials"), 0o700)
+	os.WriteFile(filepath.Join(root, "credentials", "auth-profiles.json"), []byte(`{"profiles":[{"id":"vendor","origins":["https://cdn.example.com"],`+
+		`"headers":{"X-Vendor-Key":"authProfileHeaderSecret31"}}]}`), 0o600)
+	st, err := store.Open(filepath.Join(root, "local-base.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	now := "2026-10-20T10:00:00.000Z"
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO imported_models (id, definition, created_at, updated_at) VALUES (?, ?, ?, ?)`, []any{"signed-import",
+			`{"id":"signed-import","task":"chat","artifacts":[{"filename":"m.gguf","role":"weights","required":true,` +
+				`"source":{"kind":"url","url":"https://cdn.example.com/m.gguf?X-Amz-Signature=signedUrlSignature62"}}]}`, now, now}},
+		{`INSERT INTO tts_custom_voices (id, name, name_key, sha256, size_bytes, duration_ms, created_at, created_by, consent_statement, consent_attested_at)
+			VALUES ('voice_planted', 'VoiceNameSecretAda', 'voicenamesecretada', ?, 1000, 5000, ?, 'key_x', 'I consent.', ?)`, []any{strings.Repeat("a", 64), now, now}},
+		{`INSERT INTO go_settings (key, value, updated_at) VALUES ('test.private', 'goSettingSecret48', ?)`, []any{now}},
+	} {
+		if _, err := st.DB.Exec(q.sql, q.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The voice is referenced in the log by id, as the gateway logs it.
+	f, _ := os.OpenFile(filepath.Join(root, "logs", "events.jsonl"), os.O_APPEND|os.O_WRONLY, 0o600)
+	b, _ := json.Marshal(map[string]any{"schemaVersion": 2, "id": "00000000-0000-4000-8000-000000000099", "timestamp": "2026-10-20T10:00:09.000Z",
+		"severity": "info", "eventName": "voices.created", "category": "runtime", "component": "voices", "runtime": "tts",
+		"message": "Custom voice created.", "attributes": map[string]any{"voice_id": "voice_planted"}})
+	f.Write(append(b, '\n'))
+	f.Close()
 }

@@ -4,7 +4,8 @@
 //
 // Every Hub request goes through a recording fetch: responses are read from
 // go/internal/hub/testdata/hub/ (keyed by the exact URL) and fetched from
-// huggingface.co only when missing, then saved. Re-running replays offline.
+// huggingface.co only when missing and LOCALBASE_HUB_RECORD=1, then saved.
+// Re-running replays offline. testdata/hub/PINS pins every file's sha256.
 // The Go tests serve the same files from a local hub.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -36,6 +37,8 @@ const key = (url: string) => createHash("sha256").update(url).digest("hex").slic
 const recording: HubFetch = async (url) => {
   const file = join(fixtures, `${key(url)}.json`);
   if (!existsSync(file)) {
+    // Pinned: a missing fixture is an error unless recording on purpose.
+    if (process.env.LOCALBASE_HUB_RECORD !== "1") throw new Error(`No recorded Hub response for ${url}; set LOCALBASE_HUB_RECORD=1 to record it.`);
     const response = await fetch(url, { headers: { accept: "application/json" } });
     const text = await response.text();
     writeFileSync(file, JSON.stringify({ url, status: response.status, body: text }, null, 1) + "\n");

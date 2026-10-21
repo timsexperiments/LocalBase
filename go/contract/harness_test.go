@@ -276,6 +276,7 @@ func launchEnv(impl string, extra []string) (*Target, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
+	watchGateway(cmd.Process.Pid)
 	halted := false
 	halt := func() {
 		if halted {
@@ -400,4 +401,18 @@ func rangeServer(t testing.TB, h http.Handler, tls bool) *httptest.Server {
 	}
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+// watchGateway stops a gateway's process group if this test process dies
+// first (a panic skips every cleanup), so no scratch gateway or backend
+// outlives the suite. The watchdog exits once the gateway is gone.
+func watchGateway(pid int) {
+	script := fmt.Sprintf(`while kill -0 %d 2>/dev/null && kill -0 %d 2>/dev/null; do sleep 1; done; `+
+		`if kill -0 %d 2>/dev/null; then kill -TERM -%d 2>/dev/null; sleep 10; kill -KILL -%d 2>/dev/null; fi`,
+		os.Getpid(), pid, pid, pid, pid)
+	w := exec.Command("sh", "-c", script)
+	w.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if w.Start() == nil {
+		go w.Wait()
+	}
 }
