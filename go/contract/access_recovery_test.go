@@ -1,7 +1,6 @@
 package contract
 
 import (
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -15,9 +14,9 @@ func TestCLIAccessRecovery(t *testing.T) {
 	if *implFlag != "go" && *implFlag != "both" {
 		t.Skip("runs the Go CLI")
 	}
-	root := filepath.Join(t.TempDir(), "root")
-	policy := filepath.Join(t.TempDir(), "policy.json")
-	os.WriteFile(policy, []byte(`{"roles":[{"name":"admin","description":"","permissions":["access:manage","access:read"]},`+
+	root := filepath.Join(scratchDir(t), "root")
+	policy := filepath.Join(scratchDir(t), "policy.json")
+	mustWriteFile(policy, []byte(`{"roles":[{"name":"admin","description":"","permissions":["access:manage","access:read"]},`+
 		`{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email","role":"admin","email":"owner@example.com"}],"defaultRole":null}`), 0o600)
 	const warning = "Warning: nobody can manage access now"
 	run := func(wantWarning bool, args ...string) {

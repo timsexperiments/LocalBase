@@ -61,6 +61,9 @@ type ServiceDeps struct {
 	CacheDir string // per-root cache for backends (CrispASR voices, Metal caches)
 	Host     string
 	Port     int
+	// Verify checks a catalog artifact before a video launch (nil:
+	// install.Verify, size and sha256 with the checksum cache).
+	Verify func(path string, a catalog.Artifact, dir string) error
 	// Binaries override managed executables by name (tests: a fake server).
 	Binaries      map[string]string
 	QueueCapacity int
@@ -158,7 +161,7 @@ func (s *Service) Resolve(model string) (string, error) {
 var ErrNotConfigured = errors.New("modality not configured")
 
 func taskOf(modality string) string {
-	return map[string]string{"stt": "transcription", "tts": "speech", "image": "image"}[modality]
+	return map[string]string{"stt": "transcription", "tts": "speech", "image": "image", "video": "video"}[modality]
 }
 
 // Acquire waits for exclusive use of modelID's backend, starting or
@@ -307,6 +310,10 @@ func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memor
 			if switching {
 				logAdmissionRejected(s.d.Log, s.d.Modality, modalityComponents[s.d.Modality], err,
 					"stage", "switch-preflight", "from_model", previous, "to_model", modelID)
+			} else if s.d.Modality == "video" {
+				// TS checks a stopped video runtime before starting it.
+				logAdmissionRejected(s.d.Log, s.d.Modality, modalityComponents[s.d.Modality], err,
+					"stage", "start-preflight", "model", modelID)
 			} else {
 				logAdmissionRejected(s.d.Log, s.d.Modality, modalityComponents[s.d.Modality], err)
 			}
@@ -439,6 +446,7 @@ func (s *Service) demand(t *Target) memory.Demand {
 func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*svcBackend, error) {
 	ctx := otlp.WithSpan(context.Background(), parent)
 	fail := func(err error) error {
+		logStartFailed(s.d.Log, s.d.Modality, err)
 		if t.Manual || t.Imported {
 			return &BackendStartError{BackendID: t.Backend.ID, Cause: err}
 		}
@@ -450,6 +458,10 @@ func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*sv
 	host, port := BackendHost(s.d.Host), s.d.Port
 	cmd, err := s.command(t, host, port)
 	if err != nil {
+		var launch *LaunchError
+		if errors.As(err, &launch) {
+			return nil, err
+		}
 		return nil, fail(err)
 	}
 	res, err := s.d.Memory.Reserve(context.Background(), s.d.Modality, demand)
@@ -664,6 +676,9 @@ func (s *Service) command(t *Target, host string, port int) (*serviceCommand, er
 		}
 		return s.ttsServerCommand(t, host, port, weights)
 	case "sd-server/v1":
+		if s.d.Modality == "video" {
+			return s.sdVideoCommand(t, host, port)
+		}
 		if s.d.Modality != "image" {
 			break
 		}

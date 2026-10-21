@@ -274,7 +274,7 @@ func PlanLLM(in PlanInput) (*LLMPlan, error) {
 		size, quant = spec.Size, spec.Quant
 	}
 	p.Demand = memory.EstimateLLM(p.ArtifactBytes, memory.ResolveShape(size, quant, p.ArtifactBytes, p.Geometry), p.Launch)
-	if spec != nil && spec.Kind == "llm" && spec.Qualified() {
+	if spec != nil && spec.Kind == "llm" && spec.UsesReferenceMeasurements() {
 		if d, ok := memory.MeasuredLLMDemand(spec.ModelID, p.Launch, p.ArtifactBytes); ok {
 			p.Demand = d
 		}

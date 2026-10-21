@@ -11,6 +11,10 @@ import { byId, primaryArtifact } from "../../../src/catalog";
 import { readLlmKvGeometry } from "../../../src/domains/runtime/gguf-metadata";
 import { resolveConfiguredLlmLaunchPlan, describeLlmContextBudget } from "../../../src/domains/runtime/launch-plan";
 import { buildLlamaServerArgs } from "../../../src/domains/runtime/launcher";
+import { keepFormerCatalogEntries } from "../../../src/test/former-catalog";
+
+// Installs keep former built-in entries (#368); plan them as well.
+keepFormerCatalogEntries();
 
 const modelsDir = process.argv[2] ?? "/nonexistent";
 const models = [

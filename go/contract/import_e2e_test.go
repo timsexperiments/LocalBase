@@ -74,7 +74,7 @@ func ggufFile(t *testing.T, arch string, extra map[string]any, size int) []byte 
 	for k, v := range extra {
 		kv[k] = v
 	}
-	p := filepath.Join(t.TempDir(), "f.gguf")
+	p := filepath.Join(scratchDir(t), "f.gguf")
 	if err := testutil.GGUF(p, kv, size); err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func (e *e2e) serve(extra ...string) {
 		"--tts-port", fmt.Sprint(freePort()), "--image-port", fmt.Sprint(freePort()), "--video-port", fmt.Sprint(freePort())}, extra...)
 	cmd := e.command(args...)
 	cmd.Env = append(cleanEnv(), e.env...)
-	logf, _ := os.Create(filepath.Join(e.outDir, fmt.Sprintf("serve-%d.log", port)))
+	logf, _ := mustCreate(filepath.Join(e.outDir, fmt.Sprintf("serve-%d.log", port)))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
@@ -296,7 +296,7 @@ func TestModelImportAcceptance(t *testing.T) {
 	if *implFlag != "go" && *implFlag != "both" {
 		t.Skip("Go-only feature")
 	}
-	tmp := t.TempDir()
+	tmp := scratchDir(t)
 	tmp, _ = filepath.EvalSymlinks(tmp)
 	fake := filepath.Join(tmp, "fakebackend")
 	if out, err := exec.Command("go", "build", "-o", fake, "../internal/runtime/fakebackend").CombinedOutput(); err != nil {
@@ -385,7 +385,7 @@ func TestModelImportAcceptance(t *testing.T) {
 	for _, s := range []*httptest.Server{tlsSource, tlsHF} {
 		caPEM = append(caPEM, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.Certificate().Raw})...)
 	}
-	os.WriteFile(caFile, caPEM, 0o644)
+	mustWriteFile(caFile, caPEM, 0o644)
 
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp,
 		env: []string{"HF_ENDPOINT=" + hf.URL, "LOCALBASE_LLAMA_SERVER=" + fake, "LOCALBASE_DEVICE_ID=device-one",
@@ -417,7 +417,7 @@ func TestModelImportAcceptance(t *testing.T) {
 		// runners; memory admission itself stays on (an override must not
 		// bypass it, see the AC5 memory step).
 		cfg := filepath.Join(tmp, "small.toml")
-		os.WriteFile(cfg, []byte("ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"), 0o644)
+		mustWriteFile(cfg, []byte("ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"), 0o644)
 		if r := e.cli(nil, "--non-interactive", "configure", "--config", cfg); r.code != 0 {
 			t.Fatalf("configure: %s%s", r.stdout, r.stderr)
 		}
@@ -546,15 +546,15 @@ func TestModelImportAcceptance(t *testing.T) {
 
 	step("AC2 a GGUF extension is not evidence; an incomplete multi-file model names its missing files", func(t *testing.T) {
 		dir := filepath.Join(tmp, "split")
-		os.MkdirAll(dir, 0o755)
+		mustMkdirAll(dir, 0o755)
 		for i := 1; i <= 2; i++ {
-			os.WriteFile(filepath.Join(dir, fmt.Sprintf("big-%05d-of-00003.gguf", i)), ggufFile(t, "qwen3", map[string]any{"split.count": 3, "split.no": i - 1}, 4096), 0o644)
+			mustWriteFile(filepath.Join(dir, fmt.Sprintf("big-%05d-of-00003.gguf", i)), ggufFile(t, "qwen3", map[string]any{"split.count": 3, "split.no": i - 1}, 4096), 0o644)
 		}
 		r := e.cli(nil, "models", "import", filepath.Join(dir, "big-00001-of-00003.gguf"), "--task", "chat")
 		if r.code == 0 || !strings.Contains(r.stdout+r.stderr, "big-00003-of-00003.gguf") {
 			t.Fatalf("incomplete split: %s%s", r.stdout, r.stderr)
 		}
-		os.WriteFile(filepath.Join(tmp, "llama-3-8b-instruct.Q4_K_M.gguf"), []byte("not a model at all, only a name"), 0o644)
+		mustWriteFile(filepath.Join(tmp, "llama-3-8b-instruct.Q4_K_M.gguf"), []byte("not a model at all, only a name"), 0o644)
 		e.json("models", "import", filepath.Join(tmp, "llama-3-8b-instruct.Q4_K_M.gguf"), "--task", "chat", "--id", "named-only")
 		sel := e.json("models", "backend", "named-only")["selection"].(map[string]any)
 		if sel["backendId"] != "" {
@@ -619,7 +619,7 @@ func TestModelImportAcceptance(t *testing.T) {
 					"precision": map[string]any{}, "contextLength": map[string]any{}, "dimensions": map[string]any{}, "artifacts": artifacts}}}
 			b, _ := json.Marshal(def)
 			file := filepath.Join(tmp, id+".json")
-			os.WriteFile(file, b, 0o644)
+			mustWriteFile(file, b, 0o644)
 			return e.json("models", "add-definition", file)["selection"].(map[string]any)
 		}
 		local := map[string]any{"kind": "local"}
@@ -699,7 +699,7 @@ func TestModelImportAcceptance(t *testing.T) {
 			"platforms":     []any{map[string]any{"os": goruntime.GOOS, "arch": map[string]string{"arm64": "arm64", "amd64": "x64"}[goruntime.GOARCH], "accelerator": "cpu"}},
 			"launch": map[string]any{"command": fake, "args": []string{"--host", "{host}", "--port", "{port}", "-m", "{model}"}, "healthPath": "/health",
 				"memory": map[string]any{"weightsFactor": factor, "overheadGb": 0, "assumption": "weights times the factor; declared for this test"}}})
-		os.WriteFile(p, b, 0o644)
+		mustWriteFile(p, b, 0o644)
 		return p
 	}
 
@@ -741,7 +741,7 @@ func TestModelImportAcceptance(t *testing.T) {
 			}
 		}
 		file := filepath.Join(tmp, "mystery-export.json")
-		os.WriteFile(file, []byte(exp.stdout), 0o644)
+		mustWriteFile(file, []byte(exp.stdout), 0o644)
 		// The exported bytes: no selection, device id (override or hash) or credential.
 		exported, _ := os.ReadFile(file)
 		e.scan("exported model", string(exported))

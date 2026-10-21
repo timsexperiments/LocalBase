@@ -80,6 +80,12 @@ func newTestServer(t *testing.T) *httptest.Server {
 // memory controller.
 func newTestGateway(t *testing.T, h memory.HostProvider) (*httptest.Server, *runtime.LLM, *memory.Controller) {
 	t.Helper()
+	return newTestGatewayWith(t, h)
+}
+
+// newTestGatewayWith also installs and selects extra LLMs.
+func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*httptest.Server, *runtime.LLM, *memory.Controller) {
+	t.Helper()
 	dir := t.TempDir()
 	r, err := root.Init(filepath.Join(dir, "root"))
 	if err != nil {
@@ -87,11 +93,11 @@ func newTestGateway(t *testing.T, h memory.HostProvider) (*httptest.Server, *run
 	}
 	models := r.ModelsDir("llm")
 	os.MkdirAll(models, 0o700)
-	cat, err := catalog.Load("")
+	cat, err := catalog.LoadWithFormer()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{chatModel, embeddingModel, decisionModel} {
+	for _, id := range append([]string{chatModel, embeddingModel, decisionModel}, extra...) {
 		installSparse(t, models, cat.ByID(id))
 	}
 	st, err := store.Open(r.DB())
@@ -101,7 +107,11 @@ func newTestGateway(t *testing.T, h memory.HostProvider) (*httptest.Server, *run
 	t.Cleanup(func() { st.Close() })
 	cfg := &store.Config{Host: "127.0.0.1", Port: freePort(t), CtxSize: 8192, CtxMode: "auto", Parallel: "1",
 		Active:   map[string]string{"llm": chatModel},
-		Selected: map[string][]string{"llm": {chatModel, embeddingModel, decisionModel}}}
+		Selected: map[string][]string{"llm": append([]string{chatModel, embeddingModel, decisionModel}, extra...)}}
+	cfg.Root, cfg.GatewayHost, cfg.SttHost = r.Dir, "127.0.0.1", "127.0.0.1"
+	if err := st.SaveConfig(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
 	mem := memory.NewController(h, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	mem.SetSampler(nil)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))

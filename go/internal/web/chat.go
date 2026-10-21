@@ -21,7 +21,7 @@ type chatModel struct {
 	ID      string   `json:"id"`
 	Name    string   `json:"name"`
 	Ready   bool     `json:"ready"`   // installed on this machine
-	Default bool     `json:"default"` // the active chat model
+	Default bool     `json:"default"` // the effective default chat model (DESIGN §18)
 	Vision  bool     `json:"vision"`  // accepts images
 	Inputs  []string `json:"inputs"`  // effective input modalities (attachments)
 	Tools   bool     `json:"tools"`   // calls tools
@@ -35,6 +35,7 @@ func (u *UI) chatModels(r *http.Request) []chatModel {
 		return nil
 	}
 	cfg := u.d.LLM.Config()
+	def := u.d.LLM.DefaultModel(true) // a page load starts a new conversation
 	ids := slices.Clone(cfg.Selected["llm"])
 	if a := cfg.Active["llm"]; a != "" && !slices.Contains(ids, a) {
 		ids = append(ids, a)
@@ -45,7 +46,7 @@ func (u *UI) chatModels(r *http.Request) []chatModel {
 		if s == nil || s.Kind != "llm" || s.IsEmbedding() || s.IsDecision() {
 			continue
 		}
-		m := chatModel{ID: id, Name: s.Name(), Ready: u.installedBytes(s) > 0, Default: id == cfg.Active["llm"]}
+		m := chatModel{ID: id, Name: s.Name(), Ready: u.installedBytes(s) > 0, Default: id == def.ModelID}
 		if s.ContextWindowTokens != nil {
 			m.Context = *s.ContextWindowTokens
 		}
@@ -126,6 +127,19 @@ func (u *UI) dictationModel() string {
 	return ""
 }
 
+// chatDefault is the effective default chat model for a new conversation,
+// with the reason when it is not the preferred one (DESIGN §18). Each call
+// is a decision point.
+func (u *UI) chatDefault(w http.ResponseWriter, r *http.Request) {
+	var c runtime.DefaultChoice
+	if u.d.LLM != nil {
+		c = u.d.LLM.DefaultModel(true)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(c)
+}
+
 func (u *UI) chat(w http.ResponseWriter, r *http.Request) {
 	p := u.caller(r)
 	models := u.chatModels(r)
@@ -148,8 +162,14 @@ func (u *UI) chat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	pb, _ := json.Marshal(perms)
+	var def runtime.DefaultChoice
+	if u.d.LLM != nil {
+		def = u.d.LLM.DefaultModel(false) // the choice chatModels just made
+	}
+	db, _ := json.Marshal(def)
 	u.render(w, r, "chat", map[string]any{
 		"PermissionsJSON": template.JS(pb),
+		"DefaultJSON":     template.JS(db),
 		// A JSON data block: never executed, and html/template escapes it
 		// for the script context.
 		"ModelsJSON": template.JS(b),

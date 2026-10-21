@@ -94,7 +94,7 @@
   }
   /* Keep 44px touch targets on every interactive control. */
   .btn {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-[0.95rem] font-semibold transition-colors;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-base font-semibold transition-colors;
   }
   .btn-primary {
     @apply bg-accent text-on-accent hover:bg-accent-hover;
@@ -103,7 +103,7 @@
     @apply border border-line bg-surface text-ink hover:bg-hover;
   }
   .chip {
-    @apply inline-flex min-h-11 items-center rounded-full border border-line bg-surface px-4 text-sm font-medium text-ink hover:bg-hover;
+    @apply inline-flex min-h-11 items-center rounded-full border border-line bg-surface px-4 text-base font-medium text-ink hover:bg-hover;
   }
   .chip[aria-current="true"] {
     @apply border-accent bg-accent text-on-accent;
@@ -121,7 +121,7 @@
     @apply rounded-2xl border border-line bg-surface;
   }
   .eyebrow {
-    @apply text-xs font-bold uppercase tracking-[0.12em] text-accent;
+    @apply text-base font-semibold text-accent;
   }
   .input {
     @apply w-full rounded-xl border border-line bg-canvas px-3 py-2 text-base text-ink placeholder:text-muted focus:outline-2 focus:outline-accent;

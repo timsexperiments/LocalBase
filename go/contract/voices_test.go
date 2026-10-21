@@ -281,11 +281,11 @@ func TestCLIVoices(t *testing.T) {
 			t.Fatalf("%s init: %s %s", impl, r.stdout, r.stderr)
 		}
 	}
-	dir := t.TempDir()
+	dir := scratchDir(t)
 	clip := filepath.Join(dir, "clip.wav")
-	os.WriteFile(clip, voiceClip(11), 0o600)
+	mustWriteFile(clip, voiceClip(11), 0o600)
 	short := filepath.Join(dir, "short.wav")
-	os.WriteFile(short, voiceClip(11)[:44+16000*2], 0o600)
+	mustWriteFile(short, voiceClip(11)[:44+16000*2], 0o600)
 	volatile := func(p string) bool { return strings.HasSuffix(p, ".id") }
 	for _, c := range []cliCase{
 		{args: []string{"--json", "voices", "list"}},

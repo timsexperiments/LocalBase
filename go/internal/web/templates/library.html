@@ -14,7 +14,7 @@
     <div>
       <p class="text-sm text-muted">Memory available now</p>
       <p class="text-2xl font-bold">{{if ge .Available 0}}{{gib .Available}}{{else}}Unknown{{end}}</p>
-      <a href="/app/models/running" class="mt-1 inline-flex min-h-11 items-center text-sm font-semibold text-accent underline-offset-4 hover:underline">See what's running</a>
+      <a href="/app/models/running" class="mt-1 inline-flex min-h-11 items-center text-base font-semibold text-accent underline-offset-4 hover:underline">See what's running</a>
     </div>
     <div>
       <p class="text-sm text-muted">Model files on disk</p>
@@ -28,7 +28,7 @@
     <form id="lib-search" class="mt-3" action="/app/models" method="get" role="search"
           hx-get="/app/models" hx-target="#model-list" hx-select="#model-list" hx-swap="outerHTML" hx-push-url="true"
           hx-trigger="input changed delay:250ms from:#model-q, submit">
-      <label for="model-q" class="text-sm font-semibold">Find an installed model</label>
+      <label for="model-q" class="text-base font-semibold">Find an installed model</label>
       <input id="model-q" name="q" type="search" value="{{.Query}}" placeholder="Name or task" autocomplete="off"
              class="mt-1 block min-h-12 w-full rounded-xl border border-line bg-surface px-4 text-base text-ink placeholder:text-muted">
     </form>

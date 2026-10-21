@@ -28,7 +28,7 @@ func newTestService(t *testing.T) (*Service, *[]string) {
 func newTestServiceWith(t *testing.T, mem *memory.Controller) (*Service, *[]string) {
 	t.Helper()
 	dir := t.TempDir()
-	cat, _ := catalog.Load("")
+	cat, _ := catalog.LoadWithFormer()
 	reg, _ := backends.Load("")
 	st, err := store.Open(filepath.Join(dir, "local-base.db"))
 	if err != nil {

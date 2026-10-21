@@ -33,5 +33,5 @@
   "capabilities": ["embeddings", "multilingual", "code-retrieval"],
   "commercialStatus": "open",
   "catch": "Apache-2.0. Embedding endpoint only; chat and reduced dimensions are unsupported.",
-  "notes": "Last-token pooling with fixed 2560-dimensional output. Embedded tokenizer; memory estimate assumes short inputs."
+  "notes": "Official Qwen Q4_K_M GGUF of Qwen3-Embedding-4B (base Qwen3-4B-Base, 36 layers). The model card states a 32k-token context; the GGUF header declares 40,960. Last-token pooling with fixed 2560-dimensional output. Embedded tokenizer; memory estimate assumes short inputs."
 }

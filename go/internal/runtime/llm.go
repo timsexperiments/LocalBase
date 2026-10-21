@@ -123,6 +123,7 @@ type LLM struct {
 	switches sync.WaitGroup // in-flight model switches; Close waits for them
 	failed   bool           // the last start failed and nothing runs
 	claimed  bool           // idle recovery is stopping the backend; hold requests
+	chooser  defaultChooser // the fit-aware default chat model
 }
 
 type geometryEntry struct {
@@ -162,7 +163,7 @@ func ConfiguredIDs(cfg *store.Config, kind string) []string {
 func (m *LLM) Resolve(model string) (string, *catalog.Spec, error) {
 	cfg := m.Config()
 	if model == "" {
-		model = cfg.Active["llm"]
+		model = m.DefaultModel(true).ModelID
 	}
 	if !slices.Contains(ConfiguredIDs(cfg, "llm"), model) {
 		// Imported models run without being configured.
@@ -565,6 +566,7 @@ func (m *LLM) admissionDemand(spec *catalog.Spec, plan *LLMPlan) memory.Demand {
 func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, demand memory.Demand, t *Target, parent *otlp.Span) (*backend, error) {
 	ctx := otlp.WithSpan(context.Background(), parent)
 	fail := func(err error) error {
+		logStartFailed(m.d.Log, "llm", err)
 		if t != nil && (t.Manual || t.Imported) {
 			return &BackendStartError{BackendID: t.Backend.ID, Cause: err}
 		}

@@ -158,6 +158,7 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		"runtime": "gateway",
 	}
 	attributes := map[string]any{}
+	errorType := "Error"
 	addAttr := func(key string, v any) {
 		if len(attributes) >= maxAttributes {
 			return
@@ -189,7 +190,12 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 				ev["requestId"] = id
 			}
 		case "error":
-			ev["error"] = map[string]any{"type": "Error", "message": BoundedText(v.String(), maxMessage)}
+			ev["error"] = map[string]any{"type": errorType, "message": BoundedText(v.String(), maxMessage)}
+		case "error_type":
+			errorType = v.String()
+			if e, ok := ev["error"].(map[string]any); ok {
+				e["type"] = errorType
+			}
 		case "http":
 			m := map[string]any{}
 			for _, g := range v.Group() {

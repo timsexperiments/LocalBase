@@ -21,10 +21,11 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/video"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
-const Version = "0.2.0-go"
+const Version = "0.2.0"
 
 // Server holds what handlers need. Construct with New.
 type Server struct {
@@ -45,6 +46,9 @@ type Server struct {
 	STT   *runtime.Service
 	TTS   *runtime.Service
 	Image *runtime.Service
+	// Video runs video jobs on VideoJobs (nil: no video runtime).
+	Video     *runtime.Service
+	VideoJobs *video.Manager
 	// Voices stores custom voice profiles (nil: the routes are disabled).
 	Voices *voices.Store
 	// OnReady runs whenever readiness reports ready (a managed gateway
@@ -77,6 +81,7 @@ func New(s *Server) *Server {
 	}
 	mux.HandleFunc("/health/ready", s.ready)
 	mux.HandleFunc("/_localbase/instance", s.instance)
+	mux.HandleFunc("/_localbase/default-model", s.defaultModel)
 	mux.HandleFunc("/v1/models", s.guard("models:read", s.listModels))
 	mux.HandleFunc("/v1/models/{model...}", s.guard("models:read", s.retrieveModel))
 	mux.HandleFunc("/v1/chat/completions", s.guard("inference:chat", s.chat))
@@ -87,6 +92,10 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/v1/audio/speech", s.guard("inference:speech", s.speech))
 	mux.HandleFunc("/v1/images/generations", s.guard("inference:image", s.imageGeneration))
 	mux.HandleFunc("/v1/images/edits", s.guard("inference:image", s.imageEdit))
+	mux.HandleFunc("/v1/videos", s.guard("inference:video", s.videoCreate))
+	mux.HandleFunc("/v1/videos/{job_id}", s.videoJobRoute("status"))
+	mux.HandleFunc("/v1/videos/{job_id}/content", s.videoJobRoute("content"))
+	mux.HandleFunc("/v1/videos/{job_id}/cancel", s.videoJobRoute("cancel"))
 	mux.HandleFunc("/_localbase/models", s.guard("models:read", s.modelMetadata))
 	mux.HandleFunc("/_localbase/models/{model_id...}", s.guard("models:read", s.modelMetadata))
 	mux.HandleFunc("/_localbase/access-management", s.audited("access", s.accessManagement))
@@ -95,6 +104,7 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/backends", s.backendsAPI)
 	mux.HandleFunc("/_localbase/model-backend", s.modelBackendAPI)
 	mux.HandleFunc("/_localbase/model-management", s.modelManagementAPI)
+	mux.HandleFunc("/_localbase/default-chat-models", s.defaultChatModelsAPI)
 	mux.HandleFunc("/_localbase/model-discovery", s.modelDiscoveryAPI)
 	mux.HandleFunc("/_localbase/model-imports", s.modelImportsAPI)
 	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
@@ -339,9 +349,9 @@ func (s *Server) modality(kind string) (configured bool, state string, admits bo
 	if len(cfg.Selected[kind]) == 0 || cfg.Active[kind] == "" {
 		return false, "disabled", false
 	}
-	svc := map[string]*runtime.Service{"stt": s.STT, "tts": s.TTS, "image": s.Image}[kind]
+	svc := map[string]*runtime.Service{"stt": s.STT, "tts": s.TTS, "image": s.Image, "video": s.Video}[kind]
 	if svc == nil {
-		// Video arrives with M6; a disabled service (--no-x) admits nothing.
+		// A disabled service (--no-x) admits nothing.
 		return true, "idle", false
 	}
 	snap := svc.Snapshot()
@@ -421,6 +431,20 @@ func (s *Server) Ready() bool {
 
 // instance proves this gateway's identity to a CLI that knows the instance
 // token from the lock record (guards against PID reuse).
+// defaultModel reports the effective default chat model to the local CLI
+// (`status`), behind the instance token like /_localbase/instance: model
+// ids stay off the unauthenticated /health (DESIGN §18).
+func (s *Server) defaultModel(w http.ResponseWriter, r *http.Request) {
+	o := s.Root.Instance()
+	if o == nil || r.Header.Get("X-Localbase-Instance-Token") != o.InstanceToken || s.LLM == nil {
+		w.WriteHeader(404)
+		return
+	}
+	c := s.LLM.DefaultModel(false)
+	writeJSON(w, 200, map[string]any{"modelId": c.ModelID, "preferredModelId": c.Preferred, "reason": c.Reason,
+		"defaults": s.LLM.Config().DefaultLLMList()})
+}
+
 func (s *Server) instance(w http.ResponseWriter, r *http.Request) {
 	o := s.Root.Instance()
 	if o == nil || r.Header.Get("X-Localbase-Instance-Token") != o.InstanceToken {

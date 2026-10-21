@@ -252,12 +252,17 @@ func serve(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, s := range []*runtime.Service{stt, tts, image} {
+	videoService, err := service("video", "video", "127.0.0.1", 8091)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range []*runtime.Service{stt, tts, image, videoService} {
 		if s != nil {
 			recovery.Add(s)
 			defer s.Close()
 		}
 	}
+	videoJobs := newVideoJobs(videoService, r, log)
 
 	access, err := auth.LoadAccess(r.Dir)
 	if err != nil {
@@ -279,7 +284,7 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
 	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth,
-		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Voices: voices.New(st, r.Dir), Otel: tel}
+		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Video: videoService, VideoJobs: videoJobs, Voices: voices.New(st, r.Dir), Otel: tel}
 	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
 		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib,
@@ -310,7 +315,11 @@ func serve(c *cli.Ctx) (any, error) {
 	// Memory pressure: constrained stops idle runtimes; critical stops them all.
 	stopPoll := make(chan struct{})
 	feedDone := startFeedScheduler(r.Dir, cat, log, stopPoll)
-	go runtime.NewPressureMonitor(mem, recovery, log).Run(stopPoll, runtime.PressurePollInterval)
+	monitor := runtime.NewPressureMonitor(mem, recovery, log)
+	if videoJobs != nil {
+		monitor.FailVideo = func() { videoJobs.FailActiveForMemoryPressure() }
+	}
+	go monitor.Run(stopPoll, runtime.PressurePollInterval)
 
 	if srv.OnReady != nil && srv.Ready() {
 		srv.OnReady()
@@ -346,6 +355,9 @@ func serve(c *cli.Ctx) (any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	httpServer.Shutdown(ctx)
+	if videoJobs != nil {
+		videoJobs.Shutdown() // the active job stops before its runtime closes
+	}
 	srv.StopManagement(3 * time.Second) // an accepted install gets a moment, then is interrupted and recorded
 	llm.Close()
 	log.Info("LocalBase stopped.", "event", "gateway.stopped")

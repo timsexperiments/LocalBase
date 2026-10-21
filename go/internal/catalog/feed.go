@@ -424,9 +424,14 @@ func writeJSONLine(path string, v any) error {
 	return writePrivate(path, append(b, '\n'))
 }
 
-// builtInIDs are the model ids this binary ships; a feed never replaces them.
+// builtInIDs are the model ids this binary ships or an earlier release
+// shipped (former entries, #368); a feed never provides them. The published
+// feed keeps former entries for older binaries.
 var builtInIDs = func() map[string]bool {
 	out := map[string]bool{}
+	for _, id := range FormerIDs() {
+		out[id] = true
+	}
 	order, _ := builtInFS.ReadFile("data/order.txt")
 	for _, rel := range strings.Fields(string(order)) {
 		b, _ := builtInFS.ReadFile("data/" + rel)
@@ -468,8 +473,10 @@ func ReadRemoteLayer(rootDir string, getenv func(string) string) *RemoteLayer {
 }
 
 // LoadRoot loads the effective catalog of a root: built-in, the cached
-// remote feed and catalog.d.
+// remote feed and catalog.d. Installed former entries are kept as user
+// entries first (TS loadCatalogSources).
 func LoadRoot(rootDir string, getenv func(string) string) (*Catalog, error) {
+	AdoptFormerEntries(rootDir, nil)
 	return LoadLayers(filepath.Join(rootDir, "catalog.d"), ReadRemoteLayer(rootDir, getenv))
 }
 

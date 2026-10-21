@@ -405,7 +405,7 @@ func TestOtelShutdownDiagnosticsStayInTheLog(t *testing.T) {
 	if *implFlag != "go" && *implFlag != "both" {
 		t.Skip("runs the Go gateway")
 	}
-	tmp := t.TempDir()
+	tmp := scratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true,
 		env: []string{"OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:" + strconv.Itoa(freePort())}}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {

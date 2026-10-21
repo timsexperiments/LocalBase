@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
@@ -25,7 +26,7 @@ func configureCommand() *cli.Command {
 	opt := func(name, value, help string) cli.Option { return cli.Option{Name: name, Value: value, Help: help} }
 	return &cli.Command{Name: "configure", Summary: "Configure models, ports, settings, and API keys",
 		Examples: []string{"local-base configure --defaults --parallel auto",
-			"local-base configure --llm-models qwen2.5-coder-7b-instruct-q4_k_m --active-llm qwen2.5-coder-7b-instruct-q4_k_m"},
+			"local-base configure --llm-models qwen3.5-4b-q4_k_m --active-llm qwen3.5-4b-q4_k_m"},
 		Options: []cli.Option{
 			{Name: "all", Bool: true, Help: "Accepted for compatibility; Go never prompts"},
 			{Name: "defaults", Bool: true, Help: "Use saved or default settings"},
@@ -46,6 +47,7 @@ func configureCommand() *cli.Command {
 			opt("active-llm", "<id>", "Active LLM model ID"), opt("active-stt", "<id>", "Active STT model ID"),
 			opt("active-tts", "<id>", "Active TTS model ID"), opt("active-image", "<id>", "Active image model ID"),
 			opt("active-video", "<id>", "Active video model ID"),
+			opt("default-llm-models", "<id,...>", "Ordered default chat models: new conversations use the first that fits in memory now; one ID is the active LLM; empty clears (Go only)"),
 			opt("hf-token", "<token>", "Hugging Face token for gated downloads"),
 			{Name: "create-key", Bool: true, Help: "Create an initial API key (--no-create-key: do not)"},
 		},
@@ -76,6 +78,24 @@ func runConfigure(c *cli.Ctx) (any, error) {
 	}
 	if overrides != nil && overrides.Root != nil && c.Global.Root == "" && os.Getenv("LOCALBASE_ROOT") == "" {
 		c.Global.Root = *overrides.Root
+	}
+	// TS assertCatalogModels runs in the command's validate step, before
+	// the root's catalog sources load: only built-in ids pass it.
+	if builtIn, err := catalog.Load(""); err == nil {
+		for _, k := range []string{"llm", "stt", "tts", "image"} {
+			if !c.Has(k + "-models") {
+				continue
+			}
+			var invalid []string
+			for _, id := range cli.SplitList(c.String(k + "-models")) {
+				if s := builtIn.ByID(id); s == nil || s.Kind != k {
+					invalid = append(invalid, id)
+				}
+			}
+			if len(invalid) > 0 {
+				return nil, cli.Inputf("Invalid %s model ids: %s", k, strings.Join(invalid, ", "))
+			}
+		}
 	}
 	hasConfig := false
 	if _, err := os.Stat(rootDBPath(c)); err == nil {
@@ -133,6 +153,34 @@ func runConfigure(c *cli.Ctx) (any, error) {
 			cfg.Active[k] = ""
 			if len(cfg.Selected[k]) > 0 {
 				cfg.Active[k] = cfg.Selected[k][0]
+			}
+		}
+	}
+	if c.Has("default-llm-models") {
+		ids := cli.SplitList(c.String("default-llm-models"))
+		seen := map[string]bool{}
+		for _, id := range ids {
+			s := e.Catalog.ByID(id)
+			switch {
+			case !slices.Contains(cfg.Selected["llm"], id):
+				return nil, cli.Inputf("defaultLlmModels: %s must also be present in selectedLlmModels", id)
+			case s != nil && (s.IsDecision() || s.IsEmbedding()):
+				return nil, cli.Inputf("defaultLlmModels: %s must name a chat model", id)
+			case seen[id]:
+				return nil, cli.Inputf("defaultLlmModels: must not contain duplicates")
+			}
+			seen[id] = true
+		}
+		cfg.DefaultLLMs = nil
+		switch {
+		case len(ids) == 1 && c.Has("active-llm") && ids[0] != cfg.Active["llm"]:
+			return nil, cli.Inputf("defaultLlmModels: a single default must equal activeLlmModel")
+		case len(ids) == 1:
+			cfg.Active["llm"] = ids[0]
+		case len(ids) >= 2:
+			cfg.DefaultLLMs = ids
+			if !c.Has("active-llm") {
+				cfg.Active["llm"] = ids[0]
 			}
 		}
 	}

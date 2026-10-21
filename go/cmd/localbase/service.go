@@ -1,7 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -73,6 +77,17 @@ func serviceCommands() []*cli.Command {
 			}
 			c.Info("%s LocalBase service with %s.", verb, in.Service.Manager)
 			printStatus(c, in)
+			// The fit-aware default (DESIGN §18), when a list is configured.
+			if len(e.Config.DefaultLLMs) >= 2 && in.Gateway.State == "ready" {
+				if d := gatewayDefaultModel(e); d != nil {
+					line := "Default chat model: " + d.ModelID
+					if d.Reason != "" {
+						line += " (" + d.Reason + ")"
+					}
+					c.Info("%s", line)
+					return statusWithDefault{in, d}, nil
+				}
+			}
 			return in, nil
 		}
 	}
@@ -106,7 +121,52 @@ func serviceCommands() []*cli.Command {
 				return nil, err
 			}
 			printStatus(c, in)
+			// The fit-aware default (DESIGN §18), when a list is configured.
+			if len(e.Config.DefaultLLMs) >= 2 && in.Gateway.State == "ready" {
+				if d := gatewayDefaultModel(e); d != nil {
+					line := "Default chat model: " + d.ModelID
+					if d.Reason != "" {
+						line += " (" + d.Reason + ")"
+					}
+					c.Info("%s", line)
+					return statusWithDefault{in, d}, nil
+				}
+			}
 			return in, nil
 		}},
 	}
+}
+
+// statusWithDefault is the status output plus the effective default chat
+// model; without a default list the output is exactly TS's.
+type statusWithDefault struct {
+	service.Inspection
+	DefaultChatModel *gatewayDefault `json:"defaultChatModel"`
+}
+
+type gatewayDefault struct {
+	ModelID   string   `json:"modelId"`
+	Preferred string   `json:"preferredModelId"`
+	Reason    string   `json:"reason,omitempty"`
+	Defaults  []string `json:"defaults"`
+}
+
+// gatewayDefault asks the running gateway, with its instance token.
+func gatewayDefaultModel(e *env) *gatewayDefault {
+	state, o, _ := e.Root.OwnerState()
+	if state != "active" || o == nil {
+		return nil
+	}
+	req, _ := http.NewRequest(http.MethodGet, strings.TrimSuffix(o.HealthURL(), "/health")+"/_localbase/default-model", nil)
+	req.Header.Set("X-Localbase-Instance-Token", o.InstanceToken)
+	resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	var d gatewayDefault
+	if resp.StatusCode != 200 || json.NewDecoder(resp.Body).Decode(&d) != nil || d.ModelID == "" {
+		return nil
+	}
+	return &d
 }

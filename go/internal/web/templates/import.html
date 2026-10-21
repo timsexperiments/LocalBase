@@ -1,7 +1,7 @@
 {{define "title"}}Import a model · LocalBase{{end}}
 {{define "main"}}
 <section aria-labelledby="import-title">
-  <a href="/app/models/get" class="inline-flex min-h-11 items-center text-sm font-semibold text-accent">← Get models</a>
+  <a href="/app/models/get" class="inline-flex min-h-11 items-center text-base font-semibold text-accent">← Get models</a>
   <h1 id="import-title" class="mt-1 text-3xl font-bold tracking-tight">Import a model</h1>
   <p class="mt-1 text-muted">From a Hugging Face repository or file, a direct link, or a file on the LocalBase machine. Downloading a model and being able to run it are separate: the backend is checked again after the download.</p>
   <form class="card mt-6 grid gap-3 p-5" hx-post="/app/models/import/resolve" hx-target="#import-plan" hx-swap="outerHTML">
@@ -19,7 +19,7 @@
       <label class="grid gap-1"><span class="text-sm font-semibold">SHA-256 you trust <span class="font-normal text-muted">(optional)</span></span>
         <input class="input min-h-11" name="sha256" autocomplete="off" spellcheck="false" pattern="[0-9a-fA-F]{64}"></label>
     </div>
-    <label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="allow_http" value="1" class="size-5"> Allow a plain HTTP address (not encrypted)</label>
+    <label class="flex min-h-11 items-center gap-2 text-base"><input type="checkbox" name="allow_http" value="1" class="size-5"> Allow a plain HTTP address (not encrypted)</label>
     <button type="submit" class="btn btn-primary justify-self-start">Check source</button>
   </form>
   {{template "import-plan" .}}
@@ -44,7 +44,7 @@
     </dl>
     {{if .Choices}}
     <fieldset><legend class="text-sm font-semibold">This repository has several weight files. Choose one:</legend>
-      {{range .Choices}}<label class="flex min-h-11 items-center gap-2 text-sm break-all"><input type="radio" name="file" value="{{.}}" required class="size-5"> {{.}}</label>{{end}}
+      {{range .Choices}}<label class="flex min-h-11 items-center gap-2 text-base break-all"><input type="radio" name="file" value="{{.}}" required class="size-5"> {{.}}</label>{{end}}
     </fieldset>
     {{else}}
     <ul class="space-y-1 text-sm">{{range .Files}}<li class="break-all"><span class="font-semibold">{{.Filename}}</span> · {{.Role}}{{if .SizeBytes}} · {{size .SizeBytes}}{{end}} · {{if eq .HashTrust "authoritative"}}publisher checksum{{else if eq .HashTrust "user"}}your checksum{{else}}checksum recorded after download (identity only){{end}}</li>{{end}}</ul>
@@ -56,7 +56,7 @@
       </select></label>
     <p class="text-sm text-muted">{{if $.Recommended}}Detected from the source's metadata and checked again after download.{{else}}Nothing was detected as compatible. You can still download it and choose any backend now or later.{{end}}</p>
     <input type="hidden" name="token" value="{{$.Token}}">
-    {{if .Custom}}<label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="confirm" value="1" required class="size-5"> I trust this source{{if $.Insecure}} and accept the unencrypted transfer{{end}}</label>{{end}}
+    {{if .Custom}}<label class="flex min-h-11 items-center gap-2 text-base"><input type="checkbox" name="confirm" value="1" required class="size-5"> I trust this source{{if $.Insecure}} and accept the unencrypted transfer{{end}}</label>{{end}}
     <button type="submit" class="btn btn-primary justify-self-start">Download</button>
   </form>
   {{end}}

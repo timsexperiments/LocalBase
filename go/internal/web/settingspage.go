@@ -83,6 +83,9 @@ func (u *UI) settings(w http.ResponseWriter, r *http.Request) {
 	if p.Can("models:manage") {
 		data["Token"] = u.tokenData(r, nil, "", "")
 	}
+	if p.Can("models:read") && u.d.LLM != nil {
+		data["Defaults"] = u.defaultsData(r, "", "")
+	}
 	u.render(w, r, "settings", data)
 }
 

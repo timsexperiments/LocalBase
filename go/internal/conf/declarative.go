@@ -79,17 +79,23 @@ func Document(c *store.Config) *jsjson.Object {
 	reserve := func(r store.MemoryReserve) *jsjson.Object {
 		return obj("percent", r.Percent, "minimumGb", r.MinimumGB)
 	}
+	models := obj("allowExperimental", n.AllowExperimental,
+		"selectedLlmModels", strs(n.Selected["llm"]), "selectedSttModels", strs(n.Selected["stt"]),
+		"selectedTtsModels", strs(n.Selected["tts"]), "selectedImageModels", strs(n.Selected["image"]),
+		"selectedVideoModels", strs(n.Selected["video"]),
+		"activeLlmModel", n.Active["llm"], "activeSttModel", n.Active["stt"], "activeTtsModel", n.Active["tts"],
+		"activeImageModel", n.Active["image"], "activeVideoModel", n.Active["video"])
+	// Go only (DESIGN §18): rendered only when set, so a TS-shaped document
+	// stays byte-identical.
+	if len(n.DefaultLLMs) >= 2 {
+		models.Set("defaultLlmModels", strs(n.DefaultLLMs))
+	}
 	return obj(
 		"version", float64(1),
 		"gateway", obj("host", n.GatewayHost, "port", float64(n.GatewayPort)),
 		"runtime", obj("host", n.Host, "port", float64(n.Port), "ctxSize", float64(n.CtxSize), "ctxMode", n.CtxMode,
 			"parallel", parallel, "sttHost", n.SttHost, "sttPort", float64(n.SttPort)),
-		"models", obj("allowExperimental", n.AllowExperimental,
-			"selectedLlmModels", strs(n.Selected["llm"]), "selectedSttModels", strs(n.Selected["stt"]),
-			"selectedTtsModels", strs(n.Selected["tts"]), "selectedImageModels", strs(n.Selected["image"]),
-			"selectedVideoModels", strs(n.Selected["video"]),
-			"activeLlmModel", n.Active["llm"], "activeSttModel", n.Active["stt"], "activeTtsModel", n.Active["tts"],
-			"activeImageModel", n.Active["image"], "activeVideoModel", n.Active["video"]),
+		"models", models,
 		"memory", obj("systemReserve", reserve(n.SystemReserve), "acceleratorReserve", reserve(n.AcceleratorReserve)),
 	)
 }
@@ -99,7 +105,7 @@ func Project(c *store.Config) *store.Config {
 	n := &store.Config{GatewayHost: c.GatewayHost, GatewayPort: c.GatewayPort, Host: c.Host, Port: c.Port,
 		CtxSize: c.CtxSize, CtxMode: c.CtxMode, Parallel: c.Parallel, SttHost: c.SttHost, SttPort: c.SttPort,
 		AllowExperimental: c.AllowExperimental, Selected: map[string][]string{}, Active: map[string]string{},
-		SystemReserve: c.SystemReserve, AcceleratorReserve: c.AcceleratorReserve}
+		SystemReserve: c.SystemReserve, AcceleratorReserve: c.AcceleratorReserve, DefaultLLMs: slices.Clone(c.DefaultLLMs)}
 	for _, k := range store.Kinds {
 		n.Selected[k] = slices.Clone(c.Selected[k])
 		n.Active[k] = c.Active[k]
@@ -116,6 +122,7 @@ func Compose(current, desired *store.Config) *store.Config {
 	next.Host, next.Port, next.CtxSize, next.CtxMode, next.Parallel = d.Host, d.Port, d.CtxSize, d.CtxMode, d.Parallel
 	next.SttHost, next.SttPort = d.SttHost, d.SttPort
 	next.AllowExperimental, next.Selected, next.Active = d.AllowExperimental, d.Selected, d.Active
+	next.DefaultLLMs = d.DefaultLLMs
 	next.SystemReserve, next.AcceleratorReserve = d.SystemReserve, d.AcceleratorReserve
 	return next
 }
@@ -193,6 +200,13 @@ func PlanChanges(current, desired *store.Config, pending bool, cat *catalog.Cata
 	compare("runtime", l, r, "hot")
 	l, r = section("models")
 	compare("models", l, r, "hot")
+	if lo, ok := l.(*jsjson.Object); ok {
+		if lv, had := lo.Get("defaultLlmModels"); had {
+			if _, has := r.(*jsjson.Object).Get("defaultLlmModels"); !has {
+				plan.Changes = append(plan.Changes, Change{"models.defaultLlmModels", lv, nil, "hot"})
+			}
+		}
+	}
 	l, r = section("memory")
 	compare("memory", l, r, "restart-required")
 	sort.Slice(plan.Changes, func(i, j int) bool { return plan.Changes[i].Path < plan.Changes[j].Path })
@@ -457,7 +471,7 @@ func (v *docValidator) document(root map[string]any) *store.Config {
 
 var modelKeys = []string{"allowExperimental", "selectedLlmModels", "selectedSttModels", "selectedTtsModels",
 	"selectedImageModels", "selectedVideoModels", "activeLlmModel", "activeSttModel", "activeTtsModel",
-	"activeImageModel", "activeVideoModel"}
+	"activeImageModel", "activeVideoModel", "defaultLlmModels"}
 
 // models is createModelConfigurationSchema with eligibility checked for
 // every kind but video (TS parseConfiguration); the selection refinement
@@ -504,6 +518,18 @@ func (v *docValidator) models(m map[string]any, p []string, c *store.Config) {
 			v.add(at(p, field), "Too small: expected string to have >=1 characters")
 		}
 		c.Active[k] = s
+	}
+	var defaults []string
+	if x, present := m["defaultLlmModels"]; present {
+		list, ok := x.([]any)
+		if !ok || len(list) == 0 {
+			v.abort(at(p, "defaultLlmModels"), "Invalid input: expected a non-empty array, received "+received(x, present))
+		}
+		for i, e := range list {
+			if s, ok := v.str(e, true, at(p, "defaultLlmModels", strconv.Itoa(i))); ok {
+				defaults = append(defaults, s)
+			}
+		}
 	}
 	// Unrecognized keys are reported by the caller after this returns, and
 	// they also stop the refinement: check for them here.
@@ -554,6 +580,37 @@ func (v *docValidator) models(m map[string]any, p []string, c *store.Config) {
 			v.add(at(p, "active"+fieldNames[k]+"Model"), "must also be present in its selected model list")
 		}
 	}
+	v.defaultLLMs(at(p, "defaultLlmModels"), defaults, c)
+}
+
+// defaultLLMs checks the ordered default chat model list (Go only, DESIGN
+// §18): selected chat models, no duplicates. One entry is the active LLM
+// itself, so it is stored as no list.
+func (v *docValidator) defaultLLMs(p []string, ids []string, c *store.Config) {
+	if ids == nil {
+		return
+	}
+	seen := map[string]bool{}
+	for i, id := range ids {
+		ip := append(slices.Clone(p), strconv.Itoa(i))
+		switch s := v.cat.ByID(id); {
+		case !slices.Contains(c.Selected["llm"], id):
+			v.add(ip, "must also be present in selectedLlmModels")
+		case s != nil && (s.IsDecision() || s.IsEmbedding()):
+			v.add(ip, "must name a chat model")
+		}
+		if seen[id] {
+			v.add(p, "must not contain duplicates")
+		}
+		seen[id] = true
+	}
+	if len(ids) == 1 {
+		if ids[0] != c.Active["llm"] {
+			v.add(p, "a single default must equal activeLlmModel")
+		}
+		return
+	}
+	c.DefaultLLMs = ids
 }
 
 // modelID is TS modelIdSchema: non-empty, a catalog model of the kind,

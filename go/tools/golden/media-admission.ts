@@ -20,6 +20,10 @@ import {
   gibibyte,
   type RuntimeMemoryDemand,
 } from "../../../src/domains/runtime/memory-safety";
+import { keepFormerCatalogEntries } from "../../../src/test/former-catalog";
+
+// Installs keep former built-in entries (#368); plan them as well.
+keepFormerCatalogEntries();
 
 const capacityBytes = 64 * gibibyte;
 const gpuWorkingSetBytes = 48 * gibibyte;

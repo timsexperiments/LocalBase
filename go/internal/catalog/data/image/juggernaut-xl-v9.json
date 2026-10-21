@@ -7,7 +7,7 @@
   "version": "9.0",
   "size": "6.6GB",
   "quant": "F16",
-  "storageGb": 6.61,
+  "storageGb": 7.11,
   "source": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9",
   "repositoryRevision": "cf419233522daa0b9ea36c3aff98fa2cab1fb0fb",
   "artifacts": [
@@ -26,6 +26,6 @@
   },
   "capabilities": ["text-to-image", "image-to-image"],
   "commercialStatus": "open",
-  "catch": "Stability AI Community License.",
-  "notes": "The gold standard for photorealistic digital photography and cinematic lighting. Exceptional detail and realism."
+  "catch": "CreativeML Open RAIL-M license.",
+  "notes": "RunDiffusion's Juggernaut XL v9, a Stable Diffusion XL 1.0 fine-tune shipped as one F16 safetensors checkpoint with its CLIP encoders and VAE. Text-to-image and image-to-image."
 }

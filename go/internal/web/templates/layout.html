@@ -24,9 +24,9 @@
     </a>
     {{if .Principal}}
     <div class="flex items-center gap-2">
-      {{if or (.Principal.Can "access:read") (.Principal.Can "keys:read")}}<a href="/app/admin" class="btn {{if eq .Page "admin"}}bg-accent-soft text-accent{{else}}btn-quiet{{end}} text-sm" {{if eq .Page "admin"}}aria-current="page"{{end}}>Admin</a>{{end}}
-      <a href="/app/settings" class="btn {{if eq .Page "settings"}}bg-accent-soft text-accent{{else}}btn-quiet{{end}} text-sm" {{if eq .Page "settings"}}aria-current="page"{{end}}>Settings</a>
-      {{if not .NoAuth}}<button type="button" class="btn btn-quiet text-sm" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>{{end}}
+      {{if or (.Principal.Can "access:read") (.Principal.Can "keys:read")}}<a href="/app/admin" class="btn {{if eq .Page "admin"}}bg-accent-soft text-accent{{else}}btn-quiet{{end}}" {{if eq .Page "admin"}}aria-current="page"{{end}}>Admin</a>{{end}}
+      <a href="/app/settings" class="btn {{if eq .Page "settings"}}bg-accent-soft text-accent{{else}}btn-quiet{{end}}" {{if eq .Page "settings"}}aria-current="page"{{end}}>Settings</a>
+      {{if not .NoAuth}}<button type="button" class="btn btn-quiet text-base" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>{{end}}
     </div>
     {{end}}
   </div>

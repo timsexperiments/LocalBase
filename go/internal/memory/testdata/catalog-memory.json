@@ -1,5 +1,266 @@
 [
  {
+  "modelId": "qwen3.5-4b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 4407920608,
+   "hostBytes": 4068231136,
+   "acceleratorBytes": 4388710368,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 4124049408,
+   "hostBytes": 3320250368,
+   "unifiedBytes": 4664066048
+  },
+  "minVramGb": 5,
+  "source": "measured",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen3.6-35b-a3b-iq4_nl_xl",
+  "estimate": {
+   "unifiedBytes": 22515676864,
+   "hostBytes": 22150198976,
+   "acceleratorBytes": 22496466624,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 24,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen3.8-27b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 19759760992,
+   "hostBytes": 19398166112,
+   "acceleratorBytes": 19740550752,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 21,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "qwen3-embedding-0.6b-q8_0",
+  "estimate": {
+   "unifiedBytes": 1991903744,
+   "hostBytes": 1664993792,
+   "acceleratorBytes": 1972693504,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 3,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=f16/f16"
+ },
+ {
+  "modelId": "qwen3-embedding-4b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 4331998496,
+   "hostBytes": 3992309024,
+   "acceleratorBytes": 4312788256,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 5,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=f16/f16"
+ },
+ {
+  "modelId": "clef-flash-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 9965762048,
+   "hostBytes": 7666759168,
+   "acceleratorBytes": 9946551808,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 9256828928,
+   "hostBytes": 8551874560,
+   "unifiedBytes": 10527703040
+  },
+  "minVramGb": 10,
+  "source": "measured",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "clef-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 23628287520,
+   "hostBytes": 20417547808,
+   "acceleratorBytes": 23609077280,
+   "confidence": "estimated"
+  },
+  "measured": null,
+  "minVramGb": 25,
+  "source": "estimate",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "whisper-base-q8_0",
+  "estimate": {
+   "unifiedBytes": 767316617,
+   "hostBytes": 618639497,
+   "acceleratorBytes": 364663433,
+   "confidence": "derived"
+  },
+  "measured": null,
+  "minVramGb": 1,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "whisper-large-v3-turbo",
+  "estimate": {
+   "unifiedBytes": 2494821387,
+   "hostBytes": 2161426187,
+   "acceleratorBytes": 2092168203,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 2076017728,
+   "hostBytes": 1900625920,
+   "unifiedBytes": 2076017728
+  },
+  "minVramGb": 3,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "qwen3-tts-1.7b-base-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 4041382072,
+   "hostBytes": 4041382072,
+   "acceleratorBytes": 4041382072,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 4415553536,
+   "hostBytes": 4160536576,
+   "unifiedBytes": 4415553536
+  },
+  "minVramGb": 5,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "kokoro-82m-v1.0-q8",
+  "estimate": {
+   "unifiedBytes": 1166106594,
+   "hostBytes": 1166106594,
+   "acceleratorBytes": 0,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 0,
+   "hostBytes": 1027719168,
+   "unifiedBytes": 1027719168
+  },
+  "minVramGb": 1,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "z-image-turbo-q4_0",
+  "estimate": {
+   "unifiedBytes": 14032149220,
+   "hostBytes": 7052827364,
+   "acceleratorBytes": 14032149220,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 13859679109,
+   "hostBytes": 7087439872,
+   "unifiedBytes": 13859679109
+  },
+  "minVramGb": 15,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "flux2-klein-4b-q4_0",
+  "estimate": {
+   "unifiedBytes": 12810063932,
+   "hostBytes": 5830742076,
+   "acceleratorBytes": 12810063932,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 12638224384,
+   "hostBytes": 5983240192,
+   "unifiedBytes": 12638224384
+  },
+  "minVramGb": 13,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "dreamshaper-8-lcm",
+  "estimate": {
+   "unifiedBytes": 4415506368,
+   "hostBytes": 2670675904,
+   "acceleratorBytes": 4415506368,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 4415616451,
+   "hostBytes": 3006021632,
+   "unifiedBytes": 4415616451
+  },
+  "minVramGb": 5,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "juggernaut-xl-v9",
+  "estimate": {
+   "unifiedBytes": 15695282780,
+   "hostBytes": 7642219100,
+   "acceleratorBytes": 15695282780,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 15536079503,
+   "hostBytes": 7788806144,
+   "unifiedBytes": 15536079503
+  },
+  "minVramGb": 16,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "fastwan2.2-ti2v-5b-q6_k",
+  "estimate": {
+   "unifiedBytes": 16947204016,
+   "hostBytes": 10813034416,
+   "acceleratorBytes": 6979321856,
+   "confidence": "derived"
+  },
+  "measured": {
+   "acceleratorBytes": 6979321856,
+   "hostBytes": 13746454528,
+   "unifiedBytes": 17156810998
+  },
+  "minVramGb": 8,
+  "source": "measured",
+  "launchShape": "default"
+ },
+ {
+  "modelId": "wan2.2-s2v-14b-fp8",
+  "estimate": {
+   "unifiedBytes": 34712345882,
+   "hostBytes": 23859584282,
+   "acceleratorBytes": 19595788288,
+   "confidence": "derived"
+  },
+  "measured": null,
+  "minVramGb": 21,
+  "source": "estimate",
+  "launchShape": "default"
+ },
+ {
   "modelId": "qwen3.5-0.8b-q4_k_m",
   "estimate": {
    "unifiedBytes": 1731779680,
@@ -58,53 +319,6 @@
   "minVramGb": 4,
   "source": "estimate",
   "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
- },
- {
-  "modelId": "qwen3.5-4b-q4_k_m",
-  "estimate": {
-   "unifiedBytes": 4407920608,
-   "hostBytes": 4068231136,
-   "acceleratorBytes": 4388710368,
-   "confidence": "estimated"
-  },
-  "measured": {
-   "acceleratorBytes": 4124049408,
-   "hostBytes": 3320250368,
-   "unifiedBytes": 4664066048
-  },
-  "minVramGb": 5,
-  "source": "measured",
-  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
- },
- {
-  "modelId": "qwen3.5-9b-q4_k_m",
-  "estimate": {
-   "unifiedBytes": 7767978016,
-   "hostBytes": 7420629024,
-   "acceleratorBytes": 7748767776,
-   "confidence": "estimated"
-  },
-  "measured": {
-   "acceleratorBytes": 7156531200,
-   "hostBytes": 6390480896,
-   "unifiedBytes": 7753170944
-  },
-  "minVramGb": 8,
-  "source": "measured",
-  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
- },
- {
-  "modelId": "qwen3-embedding-4b-q4_k_m",
-  "estimate": {
-   "unifiedBytes": 4331998496,
-   "hostBytes": 3992309024,
-   "acceleratorBytes": 4312788256,
-   "confidence": "estimated"
-  },
-  "measured": null,
-  "minVramGb": 5,
-  "source": "estimate",
-  "launchShape": "ctx=8192;slots=1;kv=f16/f16"
  },
  {
   "modelId": "qwen3-embedding-4b-q8_0",
@@ -213,36 +427,6 @@
   "minVramGb": 16,
   "source": "measured",
   "launchShape": "default"
- },
- {
-  "modelId": "qwen3-embedding-0.6b-q8_0",
-  "estimate": {
-   "unifiedBytes": 1991903744,
-   "hostBytes": 1664993792,
-   "acceleratorBytes": 1972693504,
-   "confidence": "estimated"
-  },
-  "measured": null,
-  "minVramGb": 3,
-  "source": "estimate",
-  "launchShape": "ctx=8192;slots=1;kv=f16/f16"
- },
- {
-  "modelId": "clef-flash-q4_k_m",
-  "estimate": {
-   "unifiedBytes": 9965762048,
-   "hostBytes": 7666759168,
-   "acceleratorBytes": 9946551808,
-   "confidence": "estimated"
-  },
-  "measured": {
-   "acceleratorBytes": 9256828928,
-   "hostBytes": 8551874560,
-   "unifiedBytes": 10527703040
-  },
-  "minVramGb": 10,
-  "source": "measured",
-  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
  },
  {
   "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
@@ -518,23 +702,6 @@
   "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
  },
  {
-  "modelId": "gpt-oss-20b-q4_k_m",
-  "estimate": {
-   "unifiedBytes": 13549034560,
-   "hostBytes": 13192092736,
-   "acceleratorBytes": 13529824320,
-   "confidence": "estimated"
-  },
-  "measured": {
-   "acceleratorBytes": 12737052672,
-   "hostBytes": 11673418816,
-   "unifiedBytes": 13155434496
-  },
-  "minVramGb": 14,
-  "source": "measured",
-  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
- },
- {
   "modelId": "falcon-2-11b-instruct-q4_k_m",
   "estimate": {
    "unifiedBytes": 7941985984,
@@ -630,19 +797,6 @@
   "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
  },
  {
-  "modelId": "qwen3.8-27b-q4_k_m",
-  "estimate": {
-   "unifiedBytes": 19759760992,
-   "hostBytes": 19398166112,
-   "acceleratorBytes": 19740550752,
-   "confidence": "estimated"
-  },
-  "measured": null,
-  "minVramGb": 21,
-  "source": "estimate",
-  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
- },
- {
   "modelId": "devstral-small-2-24b-instruct-q4_k_m",
   "estimate": {
    "unifiedBytes": 16283945856,
@@ -703,21 +857,38 @@
   "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
  },
  {
-  "modelId": "whisper-large-v3-turbo",
+  "modelId": "qwen3.5-9b-q4_k_m",
   "estimate": {
-   "unifiedBytes": 2494821387,
-   "hostBytes": 2161426187,
-   "acceleratorBytes": 2092168203,
-   "confidence": "derived"
+   "unifiedBytes": 7767978016,
+   "hostBytes": 7420629024,
+   "acceleratorBytes": 7748767776,
+   "confidence": "estimated"
   },
   "measured": {
-   "acceleratorBytes": 2076017728,
-   "hostBytes": 1900625920,
-   "unifiedBytes": 2076017728
+   "acceleratorBytes": 7156531200,
+   "hostBytes": 6390480896,
+   "unifiedBytes": 7753170944
   },
-  "minVramGb": 3,
+  "minVramGb": 8,
   "source": "measured",
-  "launchShape": "default"
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
+ },
+ {
+  "modelId": "gpt-oss-20b-q4_k_m",
+  "estimate": {
+   "unifiedBytes": 13549034560,
+   "hostBytes": 13192092736,
+   "acceleratorBytes": 13529824320,
+   "confidence": "estimated"
+  },
+  "measured": {
+   "acceleratorBytes": 12737052672,
+   "hostBytes": 11673418816,
+   "unifiedBytes": 13155434496
+  },
+  "minVramGb": 14,
+  "source": "measured",
+  "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0"
  },
  {
   "modelId": "whisper-tiny-en-q8_0",
@@ -737,53 +908,6 @@
   "launchShape": "default"
  },
  {
-  "modelId": "whisper-base-q8_0",
-  "estimate": {
-   "unifiedBytes": 767316617,
-   "hostBytes": 618639497,
-   "acceleratorBytes": 364663433,
-   "confidence": "derived"
-  },
-  "measured": null,
-  "minVramGb": 1,
-  "source": "estimate",
-  "launchShape": "default"
- },
- {
-  "modelId": "qwen3-tts-1.7b-base-q4_k_m",
-  "estimate": {
-   "unifiedBytes": 4041382072,
-   "hostBytes": 4041382072,
-   "acceleratorBytes": 4041382072,
-   "confidence": "estimated"
-  },
-  "measured": {
-   "acceleratorBytes": 4415553536,
-   "hostBytes": 4160536576,
-   "unifiedBytes": 4415553536
-  },
-  "minVramGb": 5,
-  "source": "measured",
-  "launchShape": "default"
- },
- {
-  "modelId": "kokoro-82m-v1.0-q8",
-  "estimate": {
-   "unifiedBytes": 1166106594,
-   "hostBytes": 1166106594,
-   "acceleratorBytes": 0,
-   "confidence": "estimated"
-  },
-  "measured": {
-   "acceleratorBytes": 0,
-   "hostBytes": 1027719168,
-   "unifiedBytes": 1027719168
-  },
-  "minVramGb": 1,
-  "source": "measured",
-  "launchShape": "default"
- },
- {
   "modelId": "flux1-schnell-q4_0",
   "estimate": {
    "unifiedBytes": 24770089212,
@@ -797,23 +921,6 @@
    "unifiedBytes": 25991561216
   },
   "minVramGb": 15,
-  "source": "measured",
-  "launchShape": "default"
- },
- {
-  "modelId": "flux2-klein-4b-q4_0",
-  "estimate": {
-   "unifiedBytes": 12810063932,
-   "hostBytes": 5830742076,
-   "acceleratorBytes": 12810063932,
-   "confidence": "derived"
-  },
-  "measured": {
-   "acceleratorBytes": 12638224384,
-   "hostBytes": 5983240192,
-   "unifiedBytes": 12638224384
-  },
-  "minVramGb": 13,
   "source": "measured",
   "launchShape": "default"
  },
@@ -848,23 +955,6 @@
   "launchShape": "default"
  },
  {
-  "modelId": "z-image-turbo-q4_0",
-  "estimate": {
-   "unifiedBytes": 14032149220,
-   "hostBytes": 7052827364,
-   "acceleratorBytes": 14032149220,
-   "confidence": "derived"
-  },
-  "measured": {
-   "acceleratorBytes": 13859679109,
-   "hostBytes": 7087439872,
-   "unifiedBytes": 13859679109
-  },
-  "minVramGb": 15,
-  "source": "measured",
-  "launchShape": "default"
- },
- {
   "modelId": "stable-diffusion-v1-5",
   "estimate": {
    "unifiedBytes": 6546847680,
@@ -878,23 +968,6 @@
    "unifiedBytes": 5201471734
   },
   "minVramGb": 6,
-  "source": "measured",
-  "launchShape": "default"
- },
- {
-  "modelId": "dreamshaper-8-lcm",
-  "estimate": {
-   "unifiedBytes": 4415506368,
-   "hostBytes": 2670675904,
-   "acceleratorBytes": 4415506368,
-   "confidence": "derived"
-  },
-  "measured": {
-   "acceleratorBytes": 4415616451,
-   "hostBytes": 3006021632,
-   "unifiedBytes": 4415616451
-  },
-  "minVramGb": 5,
   "source": "measured",
   "launchShape": "default"
  },
@@ -946,23 +1019,6 @@
   "launchShape": "default"
  },
  {
-  "modelId": "juggernaut-xl-v9",
-  "estimate": {
-   "unifiedBytes": 15695282780,
-   "hostBytes": 7642219100,
-   "acceleratorBytes": 15695282780,
-   "confidence": "derived"
-  },
-  "measured": {
-   "acceleratorBytes": 15536079503,
-   "hostBytes": 7788806144,
-   "unifiedBytes": 15536079503
-  },
-  "minVramGb": 16,
-  "source": "measured",
-  "launchShape": "default"
- },
- {
   "modelId": "animagine-xl-3.1",
   "estimate": {
    "unifiedBytes": 15528260368,
@@ -1000,36 +1056,6 @@
    "acceleratorBytes": 6979321856,
    "hostBytes": 12147949568,
    "unifiedBytes": 14711080878
-  },
-  "minVramGb": 8,
-  "source": "measured",
-  "launchShape": "default"
- },
- {
-  "modelId": "wan2.2-s2v-14b-fp8",
-  "estimate": {
-   "unifiedBytes": 34712345882,
-   "hostBytes": 23859584282,
-   "acceleratorBytes": 19595788288,
-   "confidence": "derived"
-  },
-  "measured": null,
-  "minVramGb": 21,
-  "source": "estimate",
-  "launchShape": "default"
- },
- {
-  "modelId": "fastwan2.2-ti2v-5b-q6_k",
-  "estimate": {
-   "unifiedBytes": 16947204016,
-   "hostBytes": 10813034416,
-   "acceleratorBytes": 6979321856,
-   "confidence": "derived"
-  },
-  "measured": {
-   "acceleratorBytes": 6979321856,
-   "hostBytes": 13746454528,
-   "unifiedBytes": 17156810998
   },
   "minVramGb": 8,
   "source": "measured",

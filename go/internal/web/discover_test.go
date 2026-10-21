@@ -43,7 +43,7 @@ const searchReply = `{"cached":true,"hits":[
   "reason":null,"catalog":[]},
  {"repo":"org/Locked","url":"https://huggingface.co/org/Locked","downloads":5,"license":null,"pipelineTag":null,"gated":true,"likely":{"kind":"llm","label":"llm"},
   "preview":null,"reason":"Hugging Face requires a token for this repository.","reasonCode":"hub_auth_required","catalog":[]},
- {"repo":"Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF","url":"https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF","downloads":9,"license":null,"pipelineTag":null,"gated":false,"likely":{"kind":"llm","label":"llm"},"preview":null,"reason":null,"catalog":[]}]}`
+ {"repo":"bartowski/Qwen_Qwen3.5-4B-GGUF","url":"https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF","downloads":9,"license":null,"pipelineTag":null,"gated":false,"likely":{"kind":"llm","label":"llm"},"preview":null,"reason":null,"catalog":[]}]}`
 
 func discoverUI(t *testing.T, perms ...string) (*UI, *fakeDiscovery) {
 	t.Helper()
@@ -83,7 +83,7 @@ func TestDiscoverSearch(t *testing.T) {
 		"Suggested download · Q4_K_M", "Low quality: prefer Q4 or a smaller model", "2 parts, total", "Already in catalog",
 		`href="/app/models/m/good-q8">Open existing catalog entry`, "Accept terms on Hugging Face",
 		"Hugging Face requires a token for this repository. <a", `href="/app/settings#hf-token"`,
-		"Available in the Local catalog", `href="/app/models/m/qwen2.5-coder-1.5b-instruct-q4_k_m"`, "Download options",
+		"Available in the Local catalog", `href="/app/models/m/qwen3.5-4b-q4_k_m"`, "Download options",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)

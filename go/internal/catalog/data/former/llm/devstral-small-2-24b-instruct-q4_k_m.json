@@ -1,0 +1,28 @@
+{
+  "modelId": "devstral-small-2-24b-instruct-q4_k_m",
+  "displayName": "Devstral Small 2 24B",
+  "kind": "llm",
+  "provider": "Mistral",
+  "family": "Devstral Small",
+  "version": "2",
+  "size": "24B",
+  "quant": "Q4_K_M",
+  "storageGb": 14.4,
+  "source": "https://huggingface.co/bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF",
+  "repositoryRevision": "027695770ae1de77c2f6fb19f8e1ba9d65fcd15d",
+  "artifacts": [
+    {
+      "sourcePath": "mistralai_Devstral-Small-2-24B-Instruct-2512-Q4_K_M.gguf",
+      "filename": "mistralai_Devstral-Small-2-24B-Instruct-2512-Q4_K_M.gguf",
+      "expectedSizeBytes": 14334438272,
+      "sha256": "bfd11c8679c6b81eb43763505465d7dcfa72e460ab1c220ecc235a3efadd7f7f",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "capabilities": ["agentic-coding", "tool-calling", "long-context"],
+  "commercialStatus": "open",
+  "catch": "Apache-2.0.",
+  "notes": "bartowski Q4_K_M GGUF of mistralai/Devstral-Small-2-24B-Instruct-2512, a code-agent model built on Mistral-Small-3.1-24B-Base-2503. GGUF header: architecture mistral3. The model card states a 256k-token context; the GGUF header declares 393,216."
+}

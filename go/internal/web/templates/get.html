@@ -144,7 +144,7 @@
     </div>
     {{end}}
     <details class="discover-alternatives">
-      <summary class="flex min-h-11 cursor-pointer items-center text-sm font-semibold">Choose another file · {{len .Choices}} option{{if ne (len .Choices) 1}}s{{end}}</summary>
+      <summary class="flex min-h-11 cursor-pointer items-center text-base font-semibold">Choose another file · {{len .Choices}} option{{if ne (len .Choices) 1}}s{{end}}</summary>
       <fieldset class="grid gap-2">
         <legend class="sr-only">Download file</legend>
         {{range .Choices}}

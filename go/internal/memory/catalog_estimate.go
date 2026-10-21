@@ -307,7 +307,7 @@ func EstimateCatalog(s *catalog.Spec, geometry *Geometry) Demand {
 // MeasuredCatalog is the measured demand at the reference shape, when the
 // model is qualified and was measured there.
 func MeasuredCatalog(s *catalog.Spec, geometry *Geometry) (Demand, bool) {
-	if !s.Qualified() {
+	if !s.UsesReferenceMeasurements() {
 		return Demand{}, false
 	}
 	weights := s.TotalArtifactBytes()

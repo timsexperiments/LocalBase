@@ -53,7 +53,11 @@ func TestReadiness(t *testing.T) {
 		}
 	})
 	// Every configured media modality admits requests on both. Video arrives in
-	// Go with M6, so only TS lists it for now.
+	// Go with M6, so only TS lists it for now. An external gateway (-url, the
+	// M7 rehearsal) has its own media selection, so only the LLM is checked.
+	if len(targets) == 1 && targets[0].Name == "external" {
+		return
+	}
 	admitting := map[string]string{}
 	for _, tg := range targets {
 		var list []string
@@ -141,7 +145,7 @@ func TestModelsList(t *testing.T) {
 		}
 		// Image models: the fixture selection, with the active one first (any
 		// image request makes its model active).
-		images := []string{"dreamshaper-8-lcm", "flux1-schnell-q4_0", "realvis-xl-v5.0", "sdxl-turbo"}
+		images := []string{"dreamshaper-8-lcm", "flux1-schnell-q4_0", "realvis-xl-v5.0", "sdxl-turbo", "juggernaut-xl-v9"}
 		if slices.Contains(ids, "dreamshaper-v8") {
 			images = append(images, "dreamshaper-v8")
 		}

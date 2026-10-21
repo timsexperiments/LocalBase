@@ -132,7 +132,13 @@ func xmlEscape(s string) string { return xmlReplacer.Replace(s) }
 // RenderLaunchd renders the agent plist exactly as TS does.
 func RenderLaunchd(m Metadata, inv Invocation, rootDir, token string, otel map[string]string) string {
 	args := append([]string{inv.Program}, inv.Arguments...)
-	stderr := filepath.Join(rootDir, "logs", "service-stderr.log")
+	// The stderr path is under the canonical root (TS serviceStderrDirectory),
+	// which resolves the nearest existing ancestor (/tmp is /private/tmp).
+	stderrRoot := rootDir
+	if c, err := root.Canonical(rootDir); err == nil {
+		stderrRoot = c
+	}
+	stderr := filepath.Join(stderrRoot, "logs", "service-stderr.log")
 	lines := []string{
 		`<?xml version="1.0" encoding="UTF-8"?>`,
 		`<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">`,

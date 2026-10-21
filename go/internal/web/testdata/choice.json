@@ -1099,42 +1099,6 @@
    }
   },
   {
-   "id": "qwen3.5-0.8b-q4_k_m",
-   "catalog": {
-    "name": "Qwen3.5",
-    "displayName": "Qwen3.5 0.8B",
-    "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-0.8B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen3.5-0.8b-q8_0",
-   "catalog": {
-    "name": "Qwen3.5",
-    "displayName": "Qwen3.5 0.8B",
-    "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-0.8B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen3.5-2b-q4_k_m",
-   "catalog": {
-    "name": "Qwen3.5",
-    "displayName": "Qwen3.5 2B",
-    "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen3.5-2b-q8_0",
-   "catalog": {
-    "name": "Qwen3.5",
-    "displayName": "Qwen3.5 2B",
-    "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
    "id": "qwen3.5-4b-q4_k_m",
    "catalog": {
     "name": "Qwen3.5",
@@ -1144,371 +1108,11 @@
    }
   },
   {
-   "id": "qwen3.5-9b-q4_k_m",
+   "id": "qwen3.6-35b-a3b-iq4_nl_xl",
    "catalog": {
-    "name": "Qwen3.5",
-    "displayName": "Qwen3.5 9B",
-    "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen3-embedding-4b-q4_k_m",
-   "catalog": {
-    "name": "Qwen3-Embedding",
-    "displayName": "Qwen3 Embedding 4B",
-    "source": "https://huggingface.co/Qwen/Qwen3-Embedding-4B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen3-embedding-4b-q8_0",
-   "catalog": {
-    "name": "Qwen3-Embedding",
-    "displayName": "Qwen3 Embedding 4B",
-    "source": "https://huggingface.co/Qwen/Qwen3-Embedding-4B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen3-embedding-8b-q4_k_m",
-   "catalog": {
-    "name": "Qwen3-Embedding",
-    "displayName": "Qwen3 Embedding 8B",
-    "source": "https://huggingface.co/Qwen/Qwen3-Embedding-8B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen3-embedding-8b-q8_0",
-   "catalog": {
-    "name": "Qwen3-Embedding",
-    "displayName": "Qwen3 Embedding 8B",
-    "source": "https://huggingface.co/Qwen/Qwen3-Embedding-8B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "whisper-tiny-q8_0",
-   "catalog": {
-    "name": "Whisper",
-    "displayName": "Whisper Tiny",
-    "source": "https://huggingface.co/ggerganov/whisper.cpp",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "whisper-base-en-q8_0",
-   "catalog": {
-    "name": "Whisper",
-    "displayName": "Whisper Base (English)",
-    "source": "https://huggingface.co/ggerganov/whisper.cpp",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "whisper-small-q8_0",
-   "catalog": {
-    "name": "Whisper",
-    "displayName": "Whisper Small",
-    "source": "https://huggingface.co/ggerganov/whisper.cpp",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "whisper-medium-q8_0",
-   "catalog": {
-    "name": "Whisper",
-    "displayName": "Whisper Medium",
-    "source": "https://huggingface.co/ggerganov/whisper.cpp",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "realvis-xl-v5.0",
-   "catalog": {
-    "name": "Stable-Diffusion-XL",
-    "displayName": "RealVisXL V5.0",
-    "source": "https://huggingface.co/SG161222/RealVisXL_V5.0",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen3-embedding-0.6b-q8_0",
-   "catalog": {
-    "name": "Qwen3-Embedding",
-    "displayName": "Qwen3 Embedding 0.6B",
-    "source": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "clef-flash-q4_k_m",
-   "catalog": {
-    "name": "Clef",
-    "displayName": "Clef Flash",
-    "source": "https://huggingface.co/ggml-org/Clef-Flash-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Qwen2.5-Coder",
-    "displayName": "Qwen2.5 Coder 1.5B Instruct",
-    "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen2.5-coder-3b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Qwen2.5-Coder",
-    "displayName": "Qwen2.5 Coder 3B Instruct",
-    "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen2.5-coder-7b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Qwen2.5-Coder",
-    "displayName": "Qwen2.5 Coder 7B Instruct",
-    "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen2.5-coder-14b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Qwen2.5-Coder",
-    "displayName": "Qwen2.5 Coder 14B Instruct",
-    "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen2.5-coder-32b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Qwen2.5-Coder",
-    "displayName": "Qwen2.5 Coder 32B Instruct",
-    "source": "https://huggingface.co/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen3-coder-next-q4_k_m",
-   "catalog": {
-    "name": "Qwen3-Coder",
-    "displayName": "Qwen3 Coder Next",
-    "source": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "llama-3.2-1b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Llama",
-    "displayName": "Llama 3.2 1B Instruct",
-    "source": "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "llama-3.2-3b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Llama",
-    "displayName": "Llama 3.2 3B Instruct",
-    "source": "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "llama-3.1-8b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Llama",
-    "displayName": "Llama 3.1 8B Instruct",
-    "source": "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "llama-3.3-70b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Llama",
-    "displayName": "Llama 3.3 70B Instruct",
-    "source": "https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "deepseek-r1-distill-qwen-14b-q4_k_m",
-   "catalog": {
-    "name": "DeepSeek-R1",
-    "displayName": "DeepSeek R1 Distill Qwen 14B",
-    "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "deepseek-coder-6.7b-instruct-q4_k_m",
-   "catalog": {
-    "name": "DeepSeek-Coder",
-    "displayName": "DeepSeek Coder 6.7B Instruct",
-    "source": "https://huggingface.co/TheBloke/deepseek-coder-6.7B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "deepseek-coder-v2-lite-instruct-q4_k_m",
-   "catalog": {
-    "name": "DeepSeek-Coder-V2",
-    "displayName": "DeepSeek Coder V2 Lite Instruct",
-    "source": "https://huggingface.co/bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "deepseek-coder-33b-instruct-q4_k_m",
-   "catalog": {
-    "name": "DeepSeek-Coder",
-    "displayName": "DeepSeek Coder 33B Instruct",
-    "source": "https://huggingface.co/TheBloke/deepseek-coder-33B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "gemma-3-1b-it-q4_k_m",
-   "catalog": {
-    "name": "Gemma",
-    "displayName": "Gemma 3 1B IT",
-    "source": "https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "gemma-3-4b-it-q4_k_m",
-   "catalog": {
-    "name": "Gemma",
-    "displayName": "Gemma 3 4B IT",
-    "source": "https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "gemma-3-12b-it-q4_k_m",
-   "catalog": {
-    "name": "Gemma",
-    "displayName": "Gemma 3 12B IT",
-    "source": "https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "gemma-3-27b-it-q4_k_m",
-   "catalog": {
-    "name": "Gemma",
-    "displayName": "Gemma 3 27B IT",
-    "source": "https://huggingface.co/bartowski/google_gemma-3-27b-it-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "phi-4-q4_k_m",
-   "catalog": {
-    "name": "Phi",
-    "displayName": "Phi-4",
-    "source": "https://huggingface.co/bartowski/phi-4-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "phi-3.5-mini-instruct-q4_k_m",
-   "catalog": {
-    "name": "Phi",
-    "displayName": "Phi-3.5 Mini Instruct",
-    "source": "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "phi-3.5-moe-instruct-q4_k_m",
-   "catalog": {
-    "name": "Phi",
-    "displayName": "Phi-3.5 MoE Instruct",
-    "source": "https://huggingface.co/bartowski/Phi-3.5-MoE-instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "gpt-oss-20b-q4_k_m",
-   "catalog": {
-    "name": "GPT-OSS",
-    "displayName": "gpt-oss 20B",
-    "source": "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "falcon-2-11b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Falcon",
-    "displayName": "Falcon 2 11B Instruct",
-    "source": "https://huggingface.co/bartowski/Falcon3-10B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "deepseek-r1-distill-qwen-32b-q4_k_m",
-   "catalog": {
-    "name": "DeepSeek-R1-Distill",
-    "displayName": "DeepSeek R1 Distill Qwen 32B",
-    "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "deepseek-r1-distill-llama-8b-q4_k_m",
-   "catalog": {
-    "name": "DeepSeek-R1-Distill",
-    "displayName": "DeepSeek R1 Distill Llama 8B",
-    "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "deepseek-r1-distill-llama-70b-q4_k_m",
-   "catalog": {
-    "name": "DeepSeek-R1-Distill",
-    "displayName": "DeepSeek R1 Distill Llama 70B",
-    "source": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "qwen2.5-72b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Qwen",
-    "displayName": "Qwen2.5 72B Instruct",
-    "source": "https://huggingface.co/bartowski/Qwen2.5-72B-Instruct-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "codestral-22b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Codestral",
-    "displayName": "Codestral 22B",
-    "source": "https://huggingface.co/bartowski/Codestral-22B-v0.1-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "mistral-nemo-12b-instruct-q4_k_m",
-   "catalog": {
-    "name": "Mistral",
-    "displayName": "Mistral Nemo 12B Instruct",
-    "source": "https://huggingface.co/bartowski/Mistral-Nemo-Instruct-2407-GGUF",
+    "name": "Qwen3.6",
+    "displayName": "Qwen3.6 35B-A3B",
+    "source": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF",
     "qualificationState": "qualified"
    }
   },
@@ -1522,56 +1126,38 @@
    }
   },
   {
-   "id": "devstral-small-2-24b-instruct-q4_k_m",
+   "id": "qwen3-embedding-0.6b-q8_0",
    "catalog": {
-    "name": "Devstral Small",
-    "displayName": "Devstral Small 2 24B",
-    "source": "https://huggingface.co/bartowski/mistralai_Devstral-Small-2-24B-Instruct-2512-GGUF",
+    "name": "Qwen3-Embedding",
+    "displayName": "Qwen3 Embedding 0.6B",
+    "source": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
     "qualificationState": "qualified"
    }
   },
   {
-   "id": "ministral-3-14b-instruct-q4_k_m",
+   "id": "qwen3-embedding-4b-q4_k_m",
    "catalog": {
-    "name": "Ministral",
-    "displayName": "Ministral 3 14B Instruct",
-    "source": "https://huggingface.co/mistralai/Ministral-3-14B-Instruct-2512-GGUF",
+    "name": "Qwen3-Embedding",
+    "displayName": "Qwen3 Embedding 4B",
+    "source": "https://huggingface.co/Qwen/Qwen3-Embedding-4B-GGUF",
     "qualificationState": "qualified"
    }
   },
   {
-   "id": "qwen3.5-27b-q4_k_m",
+   "id": "clef-flash-q4_k_m",
    "catalog": {
-    "name": "Qwen3.5",
-    "displayName": "Qwen3.5 27B",
-    "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-27B-GGUF",
+    "name": "Clef",
+    "displayName": "Clef Flash",
+    "source": "https://huggingface.co/ggml-org/Clef-Flash-GGUF",
     "qualificationState": "qualified"
    }
   },
   {
-   "id": "mistral-small-3.2-24b-instruct-q4_k_m",
+   "id": "clef-q4_k_m",
    "catalog": {
-    "name": "Mistral Small",
-    "displayName": "Mistral Small 3.2 24B Instruct",
-    "source": "https://huggingface.co/bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "whisper-large-v3-turbo",
-   "catalog": {
-    "name": "Whisper",
-    "displayName": "Whisper Large V3 Turbo",
-    "source": "https://huggingface.co/ggerganov/whisper.cpp",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "whisper-tiny-en-q8_0",
-   "catalog": {
-    "name": "Whisper",
-    "displayName": "Whisper Tiny (English)",
-    "source": "https://huggingface.co/ggerganov/whisper.cpp",
+    "name": "Clef",
+    "displayName": "Clef 27B",
+    "source": "https://huggingface.co/ggml-org/Clef-GGUF",
     "qualificationState": "qualified"
    }
   },
@@ -1580,6 +1166,15 @@
    "catalog": {
     "name": "Whisper",
     "displayName": "Whisper Base",
+    "source": "https://huggingface.co/ggerganov/whisper.cpp",
+    "qualificationState": "qualified"
+   }
+  },
+  {
+   "id": "whisper-large-v3-turbo",
+   "catalog": {
+    "name": "Whisper",
+    "displayName": "Whisper Large V3 Turbo",
     "source": "https://huggingface.co/ggerganov/whisper.cpp",
     "qualificationState": "qualified"
    }
@@ -1603,11 +1198,11 @@
    }
   },
   {
-   "id": "flux1-schnell-q4_0",
+   "id": "z-image-turbo-q4_0",
    "catalog": {
-    "name": "FLUX.1",
-    "displayName": "FLUX.1 Schnell",
-    "source": "https://huggingface.co/leejet/FLUX.1-schnell-gguf",
+    "name": "Z-Image",
+    "displayName": "Z-Image Turbo",
+    "source": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
     "qualificationState": "qualified"
    }
   },
@@ -1621,74 +1216,11 @@
    }
   },
   {
-   "id": "flux2-klein-4b-q8_0",
-   "catalog": {
-    "name": "FLUX.2-klein",
-    "displayName": "FLUX.2 Klein 4B",
-    "source": "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "flux2-klein-9b-q4_0",
-   "catalog": {
-    "name": "FLUX.2-klein",
-    "displayName": "FLUX.2 Klein 9B",
-    "source": "https://huggingface.co/leejet/FLUX.2-klein-9B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "z-image-turbo-q4_0",
-   "catalog": {
-    "name": "Z-Image",
-    "displayName": "Z-Image Turbo",
-    "source": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "stable-diffusion-v1-5",
-   "catalog": {
-    "name": "Stable-Diffusion",
-    "displayName": "Stable Diffusion 1.5",
-    "source": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
-    "qualificationState": "qualified"
-   }
-  },
-  {
    "id": "dreamshaper-8-lcm",
    "catalog": {
     "name": "Stable-Diffusion",
     "displayName": "DreamShaper 8 LCM",
     "source": "https://huggingface.co/Lykon/dreamshaper-8-lcm",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "dreamshaper-v8",
-   "catalog": {
-    "name": "Stable-Diffusion",
-    "displayName": "DreamShaper 8",
-    "source": "https://huggingface.co/Lykon/DreamShaper",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "sdxl-turbo",
-   "catalog": {
-    "name": "Stable-Diffusion-XL",
-    "displayName": "SDXL Turbo",
-    "source": "https://huggingface.co/stabilityai/sdxl-turbo",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "sdxl-base-1.0",
-   "catalog": {
-    "name": "Stable-Diffusion-XL",
-    "displayName": "SDXL Base 1.0",
-    "source": "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
     "qualificationState": "qualified"
    }
   },
@@ -1702,29 +1234,11 @@
    }
   },
   {
-   "id": "animagine-xl-3.1",
+   "id": "fastwan2.2-ti2v-5b-q6_k",
    "catalog": {
-    "name": "Stable-Diffusion-XL",
-    "displayName": "Animagine XL 3.1",
-    "source": "https://huggingface.co/cagliostrolab/animagine-xl-3.1",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "realvis-xl-v4.0",
-   "catalog": {
-    "name": "Stable-Diffusion-XL",
-    "displayName": "RealVisXL V4.0",
-    "source": "https://huggingface.co/SG161222/RealVisXL_V4.0",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "wan2.1-t2v-1.3b-q8_0",
-   "catalog": {
-    "name": "Wan2.1-T2V",
-    "displayName": "Wan2.1 T2V 1.3B",
-    "source": "https://huggingface.co/samuelchristlie/Wan2.1-T2V-1.3B-GGUF",
+    "name": "FastWan2.2-TI2V",
+    "displayName": "FastWan2.2 TI2V 5B",
+    "source": "https://huggingface.co/Green-Sky/FastWan2.2-TI2V-5B-FullAttn-GGUF",
     "qualificationState": "qualified"
    }
   },
@@ -1735,51 +1249,6 @@
     "displayName": "Wan2.2 S2V 14B",
     "source": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
     "qualificationState": "experimental"
-   }
-  },
-  {
-   "id": "fastwan2.2-ti2v-5b-q6_k",
-   "catalog": {
-    "name": "FastWan2.2-TI2V",
-    "displayName": "FastWan2.2 TI2V 5B",
-    "source": "https://huggingface.co/Green-Sky/FastWan2.2-TI2V-5B-FullAttn-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "wan2.2-ti2v-5b-q6_k",
-   "catalog": {
-    "name": "Wan2.2-TI2V",
-    "displayName": "Wan2.2 TI2V 5B",
-    "source": "https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "wan2.2-t2v-a14b-q4_k_m",
-   "catalog": {
-    "name": "Wan2.2-T2V",
-    "displayName": "Wan2.2 T2V A14B",
-    "source": "https://huggingface.co/bullerwins/Wan2.2-T2V-A14B-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "ltx-2.3-22b-distilled-1.1-q4_k_m",
-   "catalog": {
-    "name": "LTX",
-    "displayName": "LTX-2.3 22B Distilled 1.1",
-    "source": "https://huggingface.co/unsloth/LTX-2.3-GGUF",
-    "qualificationState": "qualified"
-   }
-  },
-  {
-   "id": "hunyuanvideo-1.5-t2v-480p-q4_k_m",
-   "catalog": {
-    "name": "HunyuanVideo",
-    "displayName": "HunyuanVideo 1.5 T2V 480p",
-    "source": "https://huggingface.co/jayn7/HunyuanVideo-1.5_T2V_480p-GGUF",
-    "qualificationState": "qualified"
    }
   }
  ],
@@ -1802,11 +1271,11 @@
   },
   {
    "repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
-   "match": "qwen2.5-coder-7b-instruct-q4_k_m"
+   "match": null
   },
   {
    "repo": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
-   "match": "qwen2.5-coder-1.5b-instruct-q4_k_m"
+   "match": null
   },
   {
    "repo": "nerkyor/Qwen3.8-27B-Coder390-EfficientThink-Opus5.5-GPT6Astra-Grok4.7-DSV4Pro-K3-SFT-RLOO-GGUF-NInfer",
@@ -1814,15 +1283,15 @@
   },
   {
    "repo": "unsloth/Qwen3-Coder-Next-GGUF",
-   "match": "qwen3-coder-next-q4_k_m"
+   "match": null
   },
   {
    "repo": "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
-   "match": "qwen2.5-coder-14b-instruct-q4_k_m"
+   "match": null
   },
   {
    "repo": "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
-   "match": "qwen2.5-coder-3b-instruct-q4_k_m"
+   "match": null
   },
   {
    "repo": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-GGUF",
@@ -1830,7 +1299,7 @@
   },
   {
    "repo": "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF",
-   "match": "qwen2.5-coder-7b-instruct-q4_k_m"
+   "match": null
   },
   {
    "repo": "QuantFactory/Qwen2.5-Coder-7B-GGUF",
@@ -1842,15 +1311,15 @@
   },
   {
    "repo": "bartowski/Qwen2.5-Coder-1.5B-Instruct-GGUF",
-   "match": "qwen2.5-coder-1.5b-instruct-q4_k_m"
+   "match": null
   },
   {
    "repo": "MaziyarPanahi/Qwen3-Coder-Next-GGUF",
-   "match": "qwen3-coder-next-q4_k_m"
+   "match": null
   },
   {
    "repo": "Qwen/Qwen3-Coder-Next-GGUF",
-   "match": "qwen3-coder-next-q4_k_m"
+   "match": null
   },
   {
    "repo": "bartowski/Qwen2.5-Coder-7B-Instruct-abliterated-GGUF",
@@ -1858,7 +1327,7 @@
   },
   {
    "repo": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF",
-   "match": "qwen2.5-coder-14b-instruct-q4_k_m"
+   "match": null
   },
   {
    "repo": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-i1-GGUF",
@@ -1866,15 +1335,15 @@
   },
   {
    "repo": "bartowski/Qwen_Qwen3.5-0.8B-GGUF",
-   "match": "qwen3.5-0.8b-q4_k_m"
+   "match": null
   },
   {
    "repo": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
-   "match": "qwen2.5-coder-1.5b-instruct-q4_k_m"
+   "match": null
   },
   {
    "repo": "Qwen/Qwen3-Coder-Next-GGUF",
-   "match": "qwen3-coder-next-q4_k_m"
+   "match": null
   },
   {
    "repo": "ggml-org/Clef-Flash-GGUF",
@@ -1882,7 +1351,7 @@
   },
   {
    "repo": "ggerganov/whisper.cpp",
-   "match": "whisper-tiny-q8_0"
+   "match": "whisper-base-q8_0"
   },
   {
    "repo": "openai/whisper-large-v3",
@@ -1894,11 +1363,11 @@
   },
   {
    "repo": "stabilityai/stable-diffusion-xl-base-1.0",
-   "match": "sdxl-base-1.0"
+   "match": null
   },
   {
    "repo": "black-forest-labs/FLUX.1-schnell",
-   "match": "flux1-schnell-q4_0"
+   "match": null
   },
   {
    "repo": "nerijs/pixel-art-xl",
@@ -1922,11 +1391,11 @@
   },
   {
    "repo": "someone/Qwen2.5-Coder-1.5B-Instruct-GGUF",
-   "match": "qwen2.5-coder-1.5b-instruct-q4_k_m"
+   "match": null
   },
   {
    "repo": "x/qwen2.5-coder-1.5b-instruct-Q4_K_M",
-   "match": "qwen2.5-coder-1.5b-instruct-q4_k_m"
+   "match": null
   },
   {
    "repo": "x/Qwen2.5-Coder-1.5B-Instruct-abliterated-GGUF",

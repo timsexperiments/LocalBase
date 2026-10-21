@@ -30,7 +30,7 @@ func startOtelcol(t *testing.T, bin string) (endpoint, out string, stop func()) 
 	if v, err := exec.Command(bin, "--version").Output(); err != nil || !strings.Contains(string(v), otelcolVersion) {
 		t.Fatalf("otelcol %s required: %s %v", otelcolVersion, v, err)
 	}
-	dir := t.TempDir()
+	dir := scratchDir(t)
 	port := freePort()
 	out = filepath.Join(dir, "export.json")
 	cfg := fmt.Sprintf(`receivers:
@@ -54,9 +54,9 @@ service:
       exporters: [file]
 `, port, out)
 	cfgPath := filepath.Join(dir, "config.yaml")
-	os.WriteFile(cfgPath, []byte(cfg), 0o600)
+	mustWriteFile(cfgPath, []byte(cfg), 0o600)
 	cmd := exec.Command(bin, "--config", cfgPath)
-	logf, _ := os.Create(filepath.Join(dir, "otelcol.log"))
+	logf, _ := mustCreate(filepath.Join(dir, "otelcol.log"))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {

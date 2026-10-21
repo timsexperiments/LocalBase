@@ -44,3 +44,35 @@ jobs:
           name: contract-run
           path: ${{ runner.temp }}/contract-runs
           if-no-files-found: ignore
+
+  test-linux:
+    # Linux qualification (M6 step 3): the same checks on Ubuntu.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Unit tests
+        run: go test -race ./internal/... ./cmd/...
+      - name: Contract suite against the Go gateway
+        env:
+          LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
+        run: tools/contract.sh -args -impl=go
+      - name: Keep the failing contract run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: contract-run-linux
+          path: ${{ runner.temp }}/contract-runs
+          if-no-files-found: ignore

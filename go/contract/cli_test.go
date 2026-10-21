@@ -25,7 +25,7 @@ var (
 
 func goCLI(t *testing.T) string {
 	goCLIOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "lbgo-cli-bin-")
+		dir, err := scratchTemp("lbgo-cli-bin-")
 		if err != nil {
 			goCLIErr = err
 			return
@@ -124,7 +124,7 @@ type cliCase struct {
 }
 
 func twinRoots(t *testing.T) (string, string) {
-	base := t.TempDir()
+	base := scratchDir(t)
 	base, _ = filepath.EvalSymlinks(base)
 	return filepath.Join(base, "ts"), filepath.Join(base, "go")
 }
@@ -254,14 +254,17 @@ func TestCLIConfigure(t *testing.T) {
 	roots := [2]string{ts, gr}
 	msg := func(p string) bool { return p == ".error.message" }
 	tomlPath := filepath.Join(filepath.Dir(ts), "overrides.toml")
-	os.WriteFile(tomlPath, []byte("ctxSize = 65536\nparallel = 2\nselectedSttModels = []\nactiveSttModel = \"\"\n[memory.systemReserve]\npercent = 20\n"), 0o600)
+	mustWriteFile(tomlPath, []byte("ctxSize = 65536\nparallel = 2\nselectedSttModels = []\nactiveSttModel = \"\"\n[memory.systemReserve]\npercent = 20\n"), 0o600)
 	badToml := filepath.Join(filepath.Dir(ts), "bad.toml")
-	os.WriteFile(badToml, []byte("bogus = 1\n"), 0o600)
+	mustWriteFile(badToml, []byte("bogus = 1\n"), 0o600)
 	for _, c := range []cliCase{
 		{args: []string{"--json", "configure"}, skip: msg},
 		{args: []string{"--json", "configure", "--defaults", "--no-create-key"}},
 		{args: []string{"--json", "configure", "--parallel", "3", "--ctx-mode", "explicit"}},
+		// A kept former entry is not a built-in id: both refuse it before
+		// the root's catalog loads (TS assertCatalogModels, #368).
 		{args: []string{"--json", "configure", "--llm-models", "qwen2.5-coder-1.5b-instruct-q4_k_m,clef-flash-q4_k_m", "--active-llm", "clef-flash-q4_k_m"}},
+		{args: []string{"--json", "configure", "--llm-models", "qwen3.5-4b-q4_k_m,clef-flash-q4_k_m", "--active-llm", "clef-flash-q4_k_m"}},
 		{args: []string{"--json", "configure", "--stt-models", "", "--tts-models", "qwen3-tts-1.7b-base-q4_k_m"}},
 		{args: []string{"--json", "configure", "--config", tomlPath}},
 		{args: []string{"--json", "config", "show"}}, // the memory change marked a pending restart

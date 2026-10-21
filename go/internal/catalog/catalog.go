@@ -307,6 +307,26 @@ type layered struct {
 // composeCatalog). A higher tier wins; an existing modelId is a shallow
 // patch. Invalid entries are skipped and reported in Diagnostics.
 func LoadLayers(userDir string, remote *RemoteLayer) (*Catalog, error) {
+	var files []userFile
+	var diags []Diagnostic
+	if userDir != "" {
+		files, diags = readUserLayer(userDir)
+	}
+	return loadLayers(files, diags, remote)
+}
+
+// LoadWithFormer is the built-in catalog plus every former entry as a user
+// entry: an install that kept them all after upgrading (TS
+// keepFormerCatalogEntries, for tests whose fixtures are former entries).
+func LoadWithFormer() (*Catalog, error) {
+	var files []userFile
+	for i, e := range formerOnce() {
+		files = append(files, userFile{path: fmt.Sprintf("/former/%d.json", i), data: e.data})
+	}
+	return loadLayers(files, nil, nil)
+}
+
+func loadLayers(files []userFile, fileDiags []Diagnostic, remote *RemoteLayer) (*Catalog, error) {
 	order, err := builtInFS.ReadFile("data/order.txt")
 	if err != nil {
 		return nil, err
@@ -372,8 +392,7 @@ func LoadLayers(userDir string, remote *RemoteLayer) (*Catalog, error) {
 		}
 		c.Annotations = remote.Annotations
 	}
-	if userDir != "" {
-		files, fileDiags := readUserLayer(userDir)
+	{
 		c.Diagnostics = append(c.Diagnostics, fileDiags...)
 		seen := map[string]string{}
 		for _, f := range files {
@@ -406,6 +425,12 @@ func LoadLayers(userDir string, remote *RemoteLayer) (*Catalog, error) {
 				continue
 			}
 			base, exists := entries[id]
+			if exists && base.tier == "built-in" && supersededByBuiltIn(base.raw, m) {
+				// Added before it joined the built-in catalog: the built-in
+				// entry describes the same files and applies as shipped.
+				seen[id] = path
+				continue
+			}
 			merged := map[string]json.RawMessage{}
 			if exists {
 				for k, v := range base.raw {

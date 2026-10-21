@@ -1445,3 +1445,826 @@ Screenshots are in `/tmp/lbgo-phone-review` and are not committed.
 | Tab resumed retry | Done. With no recent resume, one broken read surfaces the error. Right after the tab becomes visible again, the broken read is retried after 400 ms and succeeds (433 ms; the proxy log shows the drop, then the success). Replies (POST) are not retried, as in TS |
 | Real iOS Safari render | Done on the iOS Simulator (iPhone 17, iOS 27) through the scratch URL (08). The safe-area header sits below the status bar, and the composer stays above Safari's toolbar. `simctl` can't type, so focus, zoom and the keyboard were not exercised |
 | Keyboard (no zoom on focus, composer above the keyboard, Return adds a line on touch), VoiceOver, microphone | Operator, on a real iPhone over Cloudflare Access |
+
+## 16. M6: video jobs and the converter
+
+Branch `rewrite/go-m6`, draft PR #374, stacked on #373.
+
+### 16.1 Plan
+
+1. Video jobs: `/v1/videos` create, status, content, cancel and delete; the
+   job manager; the stable-diffusion.cpp video client and runtime; input
+   validation; the pinned AVI→MP4 converter; memory admission, idle
+   recovery and pressure for video.
+2. The Lab video page and the chat `generate_video` tool against the Go
+   routes.
+3. Linux/systemd qualification. The Linux NVIDIA video target uses NVIDIA PCI
+   pinning, which stays deferred with the other NVIDIA-only features (§11.3).
+
+Every installed video model needs the 6 GB umt5 text encoder (about 10 GB in
+total), above the 2 GB limit for test models. A real-model run waits for the
+operator. Until then the success path is covered by the fake sd-server
+video API, and the TS comparison covers everything up to the job's start.
+
+### 16.2 Status
+
+| Step | State | Notes |
+| --- | --- | --- |
+| 1 | Built | `internal/video` (job manager, sd-server client, converter), `gateway/video_*.go`, `runtime/video.go`. Details below |
+| 2 | Done | Lab video section (`web/labvideo.go`, `static/js/video.js`) and the chat tool. Details below |
+| 3 | Done | Linux CI job, service unit golden, and the systemd check in a local container (§16.4) |
+
+Step 1:
+
+- **Contract.** `TestVideoGolden` (`tools/golden/video.ts`) pins the
+  create-request validation messages (22 cases), the native input
+  validation (18 cases, including PNG and WAV checks), the qualification
+  result and profile-mismatch message for each of the three catalog models
+  with a runtime profile (11 cases each), and the job projections (16,
+  including every failure code and memory message). Mutation checks fail
+  each part.
+- **Job manager** (TS `VideoJobManager`). One job at a time (429
+  `video_job_busy`). The job's deadline comes from the catalog. Artifacts
+  are limited to 64 MiB per job and 256 MiB in total, with at most 20
+  finished jobs, kept for 15 minutes. Files are private, under
+  `<root>/tmp/video-jobs`, and removed at start. The job holds the video
+  runtime's lease until it finishes, and cancelling stops that runtime
+  first. A stop that fails leaves the job running, so a later cancel can
+  retry it. Memory pressure fails the active job (`FailVideo`).
+- **Runtime.** `Service` runs `sd-server` in `vid_gen` mode with TS's
+  arguments (`buildSdVideoServerArgs`) and its 180 s startup budget. Every
+  catalog artifact is verified (size and sha256, through the checksum
+  cache) before launch. Eligibility follows TS: an experimental model
+  needs the opt-in, and a device the profile does not list gets
+  `model_hardware_ineligible`. A memory refusal of a stopped video runtime
+  logs stage `start-preflight`. Found and fixed: catalog video models named
+  backends that don't exist (`stable-diffusion.cpp-apple-unified`), so none
+  could select one. TS runs them on the Metal and Vulkan sd-server builds,
+  and Go now does too.
+- **Converter.** TS's pinned ffmpeg builds, in the Go runtime manifest.
+  `TestFFmpegPinsMatchTS` (`tools/golden/ffmpeg.ts`) keeps them equal. The
+  managed installer gained the `binary` format and `copy` support files
+  (the license and notices). The command line, the 120 s deadline, the
+  frame-count check and the `ftyp` check are TS's. Like Go's other
+  backends, the converter runs in its own process group with no guardian
+  process.
+- **Diagnostics.** `video.job-terminal` and `video.job-containment-failed`
+  as in TS. The JSONL writer now takes an `error_type`, for TS's typed
+  errors. Go now also logs `backend.start-failed` with its cause for every
+  runtime. It had no such event; the comparison run found it when a sparse
+  wan2.1 failed its checksum silently.
+- **Tests.**
+  - `TestDifferentialVideoRejections` compares 44 requests that never
+    start a job: validation, profile mismatches, unknown and non-video
+    models, install consent, the multipart form, and the job routes for
+    missing and malformed ids.
+  - `TestDifferentialVideoJobFailure` starts the same job on both gateways
+    (sparse wan2.1 weights); both accept it and end it failed with
+    `video_generation_failed`.
+  - `TestVideoJobLifecycle` (Go only, fake sd-server and converter) covers
+    completion with the converted MP4 and its headers, the native body sent
+    to the backend, busy, cancel stopping the runtime, a failed backend
+    job, the memory-pressure failure, and delete.
+  - Job manager unit tests cover owners, the deadline, shutdown, the
+    artifact limits and eviction, the TTL, pressure, and the stop retry.
+    They pass under `-race`.
+
+Real FastWan run (2026-10-21, operator-approved memory window,
+`TestVideoReal` with `LOCALBASE_CONTRACT_VIDEO_MODELS`): one
+fastwan2.2-ti2v-5b-q6_k text job at the qualification bounds (480×832, 81
+frames, 16 fps) per implementation, TS then Go. The weights were read
+through read-only APFS clones of the live files, and each scratch gateway
+was halted with its sd-server as soon as its job ended.
+
+| | TS | Go |
+| --- | --- | --- |
+| Wall time (create to completed) | 156.8 s | 158.3 s |
+| Peak sd-server footprint | 14.0 GiB | 14.0 GiB |
+| Lowest available memory | 19.8 GiB | 20.4 GiB |
+| Output | MP4, H.264, 480×832, 16 fps, 81 frames, 5.06 s, 839,465 bytes | the same |
+
+The two MP4 files are byte-identical: the catalog pins the seed, and both
+implementations run the same sd-server and ffmpeg pins. During the window
+the live gateway answered `/health` on every probe, logged no memory
+refusal or pressure change, and served no inference.
+
+Step 2:
+
+- **Lab video section.** The Lab lists text- and image-to-video models.
+  Speech to video is left out: it needs portrait and audio inputs that
+  neither TS's studio nor its chat tool collects. Each model's fixed
+  profile is shown. For image-to-video models, an optional starting
+  picture (PNG, JPEG or WebP) is scaled and center-cropped in the browser
+  to the model's frame and sent as a PNG `input_reference` (TS studio
+  `cover`). The job runs on `/v1/videos` as the signed-in person. The page
+  polls it every 2 s with Cancel, then plays the MP4 through a Lab route
+  that serves byte ranges, which iOS Safari needs. Failures show the
+  API's message. `TestLabVideo` covers the model list, the options, the
+  request at the profile, polling, playback with ranges and failures; the
+  cross-site test covers the new POST routes.
+- **Browser check** on the UI fixture, at 390 px light and 1280 px dark.
+  A 900×600 JPEG becomes a 480×832 PNG with a preview. A model without
+  files shows the API's install message. A wan2.1 job (sparse weights)
+  shows "Starting the video runtime…" with Cancel, then "Video generation
+  failed.", and polling stops. The fixture can't produce a video; the
+  playing state is covered by the unit test, and the real output by the
+  FastWan run.
+- **Chat `generate_video`.** Ported in M3 step 2c (`tools.js`) and checked
+  against TS's `runChat` on a scripted gateway. The routes it calls are now
+  checked against TS by the contract suite.
+
+### 16.3 Harness file-system guard (operator request)
+
+The near miss in step 1 was the harness writing a placeholder through a
+link onto a shared model filename, stopped only by a read-only clone. The
+contract package now routes every write through `contract/fsguard_test.go`:
+
+- **Scratch roots only.** Before each create, write, truncate, directory
+  creation or removal, the real path is resolved (the entry itself, or its
+  nearest existing ancestor). The write is refused unless it lands inside a
+  registered scratch root: a harness gateway root (`scratchTemp`) or a
+  test's `t.TempDir()` (`scratchDir`). The live root is never accepted as a
+  scratch root.
+- **No shared inodes.** Writing through a symlink, or to an existing file
+  with more than one link, is refused.
+- **Clones only.** Real model files enter a fixture only through
+  `cloneModel`: an APFS clone (`cp -c`), or a read-only copy for files up
+  to 64 MiB. The result is made read-only and checked to be a single-link
+  regular file with its own inode. Every symlink the harness used to create
+  is now a clone. After the fixture is built, `assertNoLinks` walks the
+  whole root: a model file that is a link, a link that leaves the root, or
+  any hard link fails the fixture.
+- **Refusals are loud.** Call sites that used to ignore write errors use
+  `must*` forms that panic on a refusal, so a refusal fails the test or the
+  run.
+- **Tests.** `TestFSGuard` tries each forbidden case: writes and removal
+  outside a root, a `..` escape, writes through a directory symlink and a
+  file symlink, a hard link under either name, the live root, a clone over
+  an existing entry, a link passed off as a clone. It then shows the files
+  outside are unchanged and that allowed writes still work.
+  `TestNoUnguardedWrites` fails if any other file in the package calls the
+  `os` write functions, `t.TempDir()` or `cp` directly.
+
+Also found by the new Linux CI job: the M3.5 rule that CrispASR is
+automatic only where LocalBase pins it was enforced only while it was
+missing. A managed backend without a pinned package for the device
+(CrispASR on Linux) is now manual-only even when installed, and its option
+carries `not-chosen-automatically` (`TestUnpinnedManagedBackendIsManualOnly`).
+
+### 16.4 Linux/systemd qualification (step 3)
+
+Pixelator is not used for this: it is System One's GPU host, held by other
+work. The qualification runs locally and is opt-in:
+`tools/systemd-check.sh` (Docker and bun). It builds the linux/arm64
+binary, then starts a disposable Debian container with systemd as PID 1:
+`tools/systemd-check/Dockerfile`, base pinned to the `debian:bookworm-slim`
+index digest, `--privileged --cgroupns=private`, cgroup v2, no published
+ports, no GPU. Inside it, as a non-root user with lingering enabled, on a
+scratch root, so the unit label is a scratch one, the script checks:
+
+- `start` installs, enables and starts the unit, and `status` reports
+  running and the gateway ready;
+- the installed unit is byte-identical to TS's `renderSystemdDefinition`
+  for the same service manifest (`tools/golden/systemd-unit.ts`, 577
+  bytes), with the token and journal-only stderr;
+- `config apply --restart never` (a new gateway port) records a pending
+  restart; `restart` applies it, so the gateway answers on the new port,
+  and the pending change is acknowledged;
+- the gateway's output is in the user journal, and there is no stderr file
+  on Linux (that file is the launchd path);
+- `stop` leaves the unit inactive and disabled and the gateway gone; then
+  `uninstall --yes` removes the unit, systemd no longer lists it, and the
+  root is gone.
+
+The container and the image are always removed. Result on 2026-10-21
+(Docker Desktop 29.4.3, arm64): every check passes on three consecutive
+runs. Two fixes to the script were needed. It waits for systemd-logind
+before enabling lingering, and then starts the user manager itself:
+lingering alone raced logind once. And it copies files into the home
+directory, because `docker cp` cannot write into a tmpfs mount.
+
+## 17. M7: cutover plan (for operator review)
+
+The operator runs every live step. Nothing here has been run yet. Each step
+that reads the live root waits for the operator's review of this plan.
+Throughout, "live" means `~/.local/share/local-base`, `~/.local/bin/local-base`
+and the `com.localbase.gateway.<hash>` launchd agent.
+
+### 17.1 Preconditions
+
+Each item is done, or waived on record by the operator.
+
+1. **#368 (curated catalog, former entries).** Waiting on the user. Both
+   paths are planned:
+   - **Merged before cutover:** port it (former adoption, the feed skip,
+     the discovery template fallback), regenerate the goldens, rerun the
+     dual contract, and cut a new release candidate.
+   - **Not merged:** cut over without it. Record the decision, and port it
+     after cutover like any TS change during the two weeks (§17.3 step 7).
+2. **Local iOS and accessibility checks on the Go UI** (operator,
+   2026-10-21; these replace the real-iPhone gate). The tests run real iOS
+   Safari on the Simulator, Apple's accessibility audit and axe-core in
+   desktop Chrome. They check:
+   - no zoom on focus;
+   - the composer above the keyboard;
+   - Return adding a line while Send submits;
+   - microphone dictation end to end;
+   - contrast, labels, hit areas and order.
+
+   Results are in §17.9. Dictation waits for the GPU hold to clear.
+3. **§13.6 reviewed against each live client:**
+
+   | Client | Routes to check | Differences that can reach it |
+   | --- | --- | --- |
+   | naya-device-worker | `POST /v1/chat/completions` (3827 calls in the Oct 2026 logs), `GET /v1/models` (3348), `GET /v1/models/{id}` (13, logged as unmatched before #362), `POST /v1/systemone` (6). Its client allows only `{base}/models` and `{base}/chat/completions`, retries on 503 with `Retry-After`, and treats 499 as its own cancel | 1 (repeated request after a permanent start failure), 3 (wrong method on a JSON route), 6 (503 on a memory emergency) |
+   | t3-opencode | `/v1/chat/completions` (streaming), `/v1/models` | 3, 6 |
+   | decision clients | `/v1/systemone` | 3, 6 |
+   | browser (Chat, Admin, Lab) | `/app/**`, `/_localbase/**` | 2 (unparseable multipart), 4 (model management while a runtime is up), 5 (Admin lockout, 409) |
+
+   Each row is signed off as "no client relies on the TS behaviour". The
+   transient-failure contract (503 or 429 with `Retry-After`) is unchanged,
+   and 6 replaces a 502 with that contract.
+4. **The open cutover checklist items (§13.6), on the release candidate:**
+   - an image turn with a real vision model;
+   - a real chat model choosing a generation tool by itself;
+   - the real-collector check (`go/tools/otelcol-check.sh`, pinned
+     otelcol 0.163.1);
+   - `config apply` restarting a launchd service, under a throwaway label
+     (folded into the rehearsal, §17.2 step 5).
+5. **A green build:** CI on macOS and Linux, a full dual contract run, and
+   `tools/systemd-check.sh`, all on the release-candidate commit.
+6. **Version string: `0.2.0`** (operator decision). The `-go` suffix was
+   dropped at the release candidate (2026-10-21).
+
+### 17.2 Rehearsal on this Mac, against a copy of the live root
+
+**The copy** goes to `/private/tmp/lbgo-shadow/root`. Method (b) was chosen
+(operator decision, no downtime):
+
+- **(a) Quiesced clone.** Briefly stop the live gateway (`local-base stop`),
+  clone the whole root with `cp -c -R` (APFS, copy-on-write: the live files
+  are only read), then `local-base start`. Downtime is seconds.
+- **(b) Live, consistent.** No downtime. `sqlite3 ~/.local/share/local-base/local-base.db
+  ".backup /tmp/lbgo-rehearsal/root/local-base.db"`, then APFS clones of
+  everything else (the models directories, `ui-access.json`, credentials,
+  voices, `catalog.d`, the checksum caches). No links, as in §16.3.
+  `assertNoLinks` is run on the copy.
+
+Either way the copy holds real API key hashes, sessions and access
+settings. It is served on loopback only and deleted after the rehearsal.
+
+**Steps:**
+
+1. **Schema baseline.** For the copy, record `SELECT hash, created_at
+   FROM __drizzle_migrations` and `sqlite3 .schema`.
+2. **Install Go as a service on the copy.** Under a throwaway launchd
+   label, which follows from the copy's path: `com.localbase.gateway.<hash
+   of /tmp/lbgo-rehearsal/root>`. Use a test port in 24000–29999, set with
+   `local-base --root /tmp/lbgo-rehearsal/root config apply` on the copy;
+   the backend ports move with it, away from the live ones. Then
+   `local-base start`. The TTS, image and video ports are flag-only (defaults 8090–8092,
+   the same as live), so the service on the copy is sent no media request.
+3. **Checks against the copy:**
+   - `local-base smoke`, including a decision question;
+   - the contract suite in Go-only mode (`-url http://127.0.0.1:<port>
+     -key <a copy key>`);
+   - `status`, `diagnostics`, `/health`, `/health/ready`.
+4. **No real clients (operator decision).** naya would process real jobs
+   twice, and opencode sessions are the user's. Instead, `TestClientReplay`
+   (`contract/replay_test.go`) replays their request shapes with the
+   operator's temporary key: models list, retrieve of every listed model,
+   chat (non-streaming and streaming) and one decision request.
+5. **`config apply` with a launchd restart** (§13.6): a new port with
+   `--restart auto` gives `activation: restarted`; `--wait` returns on
+   `pendingRestart: false`; `--restart never` followed by `restart` clears
+   it.
+6. **The UI through a temporary path (operator decision).** A `--no-auth`
+   scratch variant of the copy on loopback, for the visual and flow checks
+   of Chat, Admin and Lab. No cookie from the copy is ever used in a
+   browser. Session validation is proven separately by the TS-vs-Go
+   comparison of the copied `auth_browser_sessions` rows (§17.7).
+   cloudflared and Access are not touched.
+7. **Schema both ways.** After Go ran, the `__drizzle_migrations` rows are
+   identical to the baseline. The only schema change is the Go extension
+   tables (`go_schema`, `imported_models`, `model_backend_selections`,
+   `go_settings`).
+8. **Rollback on the copy.**
+   - `local-base stop` (Go).
+   - Swap to the TS binary, the live release `0.1.0` copied to a scratch
+     path, never the live one.
+   - `restart` under the same throwaway label, then `smoke`.
+   - TS opens the database and its journal check passes. It ignores the Go
+     tables; keys and sessions work.
+   - Record the time from stop to a passing smoke.
+9. **Forward again.** Swap back to Go and `smoke`, to prove the database
+   still works for Go after TS ran.
+10. **Clean up.** `stop`, then `uninstall --yes` on the copy (removes the
+    throwaway label and the copy), then remove `/tmp/lbgo-rehearsal`.
+
+Results go into this section: timings, schema dumps, and any issue.
+
+### 17.3 Live cutover runbook (the operator runs it)
+
+**Before:** the rehearsal passed within the last day, and the live
+gateway is idle. Use the window preflight (`/tmp/lbgo-video-window/preflight.sh`
+has the checks): no inference in flight, no benchmark backends, at least
+90 GB of free disk.
+
+1. **Back up** to `~/.local/share/local-base/backups/pre-go-<date>/`:
+   - `sqlite3 local-base.db ".backup …/local-base.db"`;
+   - `ui-access.json`, `credentials/`, `voices/`, `service/manifest.json`;
+   - the installed plist from `~/Library/LaunchAgents/`;
+   - a copy of the TS binary as `local-base.ts-0.1.0`.
+2. **Stage the binary:** `cp <release>/local-base ~/.local/bin/local-base.new`,
+   then `chmod 755`.
+3. **Swap**, following the deploy rules (an in-place `cp` over a running
+   binary kills it):
+   1. `mv ~/.local/bin/local-base ~/.local/bin/local-base.ts-0.1.0`
+      (if step 1 didn't already keep it);
+   2. `mv ~/.local/bin/local-base.new ~/.local/bin/local-base`;
+   3. `local-base --version` prints the release version;
+   4. `local-base restart`. The plist may change, and restart rewrites it
+      under the same label; Go's rendering is byte-identical to TS's for
+      the same inputs.
+4. **Post-cutover checks:**
+   - `local-base status`, `local-base smoke` (with a decision question),
+     `/health` and `/health/ready`;
+   - **deferred from the reduced drill (§17.10), now explicit:**
+     - the post-swap `local-base smoke` must pass on the live active model
+       (qwen3.5-9b), with its real load;
+     - one `POST /v1/systemone` decision question must answer 200 with
+       the requested type, using a scratch key from the operator;
+   - the default chat model list (§18):
+     `defaultLlmModels = ["qwen3.6-35b-a3b-iq4_nl_xl", "qwen3.5-9b-q4_k_m"]`,
+     applied with `config apply`. Then `local-base status` shows the
+     effective default and its reason;
+   - the public hostname through Cloudflare Access: Google sign-in, then
+     Chat from the phone, Admin and Lab;
+   - naya-device-worker and t3-opencode work normally;
+   - the Grafana telemetry flow: traces and logs from the new gateway
+     arrive;
+   - 30 minutes of `local-base logs --level warn`, watching
+     `runtime.memory-admission-rejected`, `runtime.memory-pressure-changed`,
+     `backend.start-failed` and error rates.
+5. **Rollback triggers.** Any one of these is enough:
+   - a failing smoke or `/health`;
+   - a sign-in or API key failure;
+   - a client failing in a way it didn't before;
+   - inference errors above the pre-cutover baseline;
+   - a memory incident;
+   - missing telemetry;
+   - the operator's call.
+6. **Rollback.** Target: under 5 minutes from the decision to a passing
+   smoke, as measured in the rehearsal.
+   1. `local-base stop`
+   2. `mv ~/.local/bin/local-base ~/.local/bin/local-base.go-<commit>`
+   3. `mv ~/.local/bin/local-base.ts-0.1.0 ~/.local/bin/local-base`
+   4. `local-base --version` prints `0.1.0`
+   5. `local-base restart`, then `local-base smoke`
+
+   The database needs nothing: the drizzle journal is unchanged, and TS
+   ignores the Go tables. The backup from step 1 is only for corruption.
+7. **Retiring TS.** The TS binary (`local-base.ts-0.1.0`) and the TS CI
+   jobs stay for two weeks after the cutover. During that time there are
+   no Go-only drizzle migrations, so rollback stays a binary swap. After
+   two weeks with no rollback, and the operator's sign-off:
+   - the TS sources and bun CI retire;
+   - the `drizzle/` SQL moves under `go/internal/store/migrations`;
+   - the stacked PRs (#369 to #374) merge with the operator.
+
+### 17.4 Not touched by the cutover
+
+cloudflared and the Cloudflare Access configuration; every launchd service
+other than the LocalBase gateway's own label; model files (no download,
+move or rewrite; the Go binary reads the same files); the user's
+OpenTelemetry collector and Grafana; System One and Pixelator.
+
+### 17.5 Feature audit of the live root (2026-10-21, read-only)
+
+Read only through `sqlite3 -readonly` on `file:…?mode=ro`, `jq` on the JSON
+files, and listings. Secrets were reported as set or unset; no values are
+recorded here.
+
+| Live feature | Live state | Go | Notes |
+| --- | --- | --- | --- |
+| Drizzle journal | 15 rows | **Matches exactly** | The row hashes equal the sha256 of Go's 15 embedded migrations |
+| Gateway listener | 127.0.0.1:2273 | Supported | `gateway-listener.json` ({0.0.0.0:2273}) is a leftover neither implementation reads; the live socket is 127.0.0.1:2273 |
+| Runtime backends | llm 0.0.0.0:18000, stt 0.0.0.0:18080, ctx 65536 auto, parallel 1 | Supported | Bind hosts as TS (`BackendHost`) |
+| Selected models | 8 LLM, 1 STT, 1 TTS (Qwen3-TTS), 1 image, 1 video (FastWan) | Supported | All in Go's built-in catalog |
+| `catalog.d` overrides | 8 files | Supported | Go loads all 8 with no diagnostics (checked on a plain copy of the files) |
+| Managed runtimes | llama, whisper, sd, tts-server and ffmpeg pins present | Supported | Go finds the same pinned package directories, so nothing is downloaded at cutover. The kokoro-tts and CrispASR pins are absent but unused (no Kokoro model selected) |
+| Browser access | direct provider, one Google OIDC registration (`client-secret-basic`) | Supported | No GitHub, magic-link, Cloudflare or email-delivery setup |
+| Access policy | 2 roles, 1 email binding, a default role | Supported | |
+| API keys | 57 rows, 9 active | Supported | Same table and hashing (contract suite) |
+| Browser sessions | 1 row | To verify in the shadow check | TS-vs-Go comparison of the stored row on the copy (§17.2) |
+| OTLP | endpoint 127.0.0.1:4318, sample 100, no headers | Supported | |
+| Hugging Face token | set | Supported | |
+| Custom voices, observed memory, capabilities | 0, 3, 2 rows | Supported | |
+| Service | plist with `LOCALBASE_SERVICE_ID` and `LOCALBASE_SERVICE_TOKEN` only | Supported | Rendering is byte-identical (§16) |
+| Installs in progress | none (`runtime/` holds only `gateway.lock`) | n/a | |
+| Memory reserves | system 15% / 8 GB, accelerator 10% / 2 GB | Supported | |
+
+**Blocking gaps: none.**
+
+Findings for the plan:
+
+1. **The live binary is not the `v0.1.0` tag.** It reports `0.1.0`, but it
+   is byte-identical to `/tmp/lb-review/dist/local-base`, built from main
+   at `c4a823d1` (#365, 2026-10-18 18:44). The tag has 10 migrations and
+   the live database has 15. The rollback drill must use TS at
+   `c4a823d1`: the tag's TS would reject the live journal. Rollback in the
+   runbook (§17.3) uses the installed binary itself, which is unaffected.
+2. **Two models share a projector by hard link:**
+   `qwen3.6-35b-a3b-*-mmproj-F16.gguf`, both unselected. Clones give each
+   copy its own inode; the live files are untouched.
+3. **`bin/` has 54 symlinks.** The 36 inside `bin/runtimes` are relative
+   library links within their packages. The others are an old flat layout
+   that neither implementation uses and the copy skips.
+
+### 17.6 Shadow tooling and the dry run (2026-10-21)
+
+`tools/shadow.sh` runs §17.2 and §17.3 on a copy:
+
+- **`copy`** runs the idle preflight when the source is the live root. It
+  takes the database through `sqlite3 "file:…?mode=ro" ".backup …"`, clones
+  the rest (`catalog.d`, `models`, `ui-access.json`, voices, credentials,
+  cache, logs, `bin/runtimes`), writes the copy's own root marker and sets
+  the copy's config row `root` (both implementations refuse a moved root),
+  then verifies that the copy is detached. The live `service/`, `runtime/`,
+  backups and `tmp/` are not copied, so nothing in the copy names the live
+  label or lock.
+- **`serve go|ts`** runs a gateway on loopback, with every backend host on
+  127.0.0.1 and every port in the scratch range.
+- **`schema <label>`** snapshots the journal and the schema.
+- **`sessions`** runs the TS-vs-Go session verdicts on a second copy of the
+  database, with TS taken from `LBGO_TS_SRC`.
+- **`cleanup`** stops everything and deletes the copy.
+
+`local-base smoke` on the copy finds the copy's gateway from the copy's own
+owner record (`runtime/gateway.lock`), never port 2273.
+
+Dry run against a synthetic scratch source root (Go `init`, a read-only
+clone of the 1.5B model, a synthetic OIDC registration, and 4 synthetic
+sessions: valid, due for a touch, expired, wrong issuer). Everything
+passed:
+
+- the copy was 0700 and detached; the journal held 15 rows;
+- the Go gateway passed smoke;
+- the session verdicts were identical in TS (`c4a823d1`) and Go for all 4,
+  and a mutated touch interval made the check fail;
+- TS opened the database after Go, and smoke passed; rollback took 5 s
+  from stopping Go;
+- Go passed smoke again after TS;
+- the journal was unchanged by either;
+- cleanup left no files or processes.
+
+The contract suite in external mode with a chat and models:read key keeps
+6 tests valid on any root: health, readiness, authentication, unmatched
+route, model retrieve and chat rejections. The rest assume the harness
+fixture (its model list, all-scope keys), so the shadow run uses that
+subset plus smoke.
+
+### 17.7 Shadow and rollback drill on the live copy (2026-10-21)
+
+Run with the operator's approval, under their conditions.
+
+- **Preflight before the copy:** 25.8 GiB available, the live gateway
+  idle (no inference in the last 60 s), no other backends.
+- **The copy:** `/private/tmp/lbgo-shadow`, mode 0700, the database
+  through the read-only `.backup`, and APFS clones, verified detached. It
+  held 9 selected LLMs (with the operator's 02:20 change), qwen3.5-9b
+  active, and the operator's temporary key `go-shadow-temp` (active).
+  Free disk was unchanged (123 GB).
+- **The key:** read only into the scratch client's environment
+  (`LOCALBASE_CONTRACT_KEY`), never printed, written or passed on a
+  command line.
+
+| Check | Result |
+| --- | --- |
+| Journal baseline | 15 rows, as live |
+| Session row (TS `c4a823d1` vs Go, by stored hash, no cookie) | `valid-touch` in both; identity fingerprints equal |
+| Go gateway on the copy | healthy on loopback, scratch ports |
+| `smoke` (Go) | passed: chat on qwen3.5-9b, 11 s with the model load |
+| Decision question with the key | answered (clef-flash) |
+| Contract subset with the key (6 tests) | all pass on Go, and again on TS |
+| Go errors in the copy's log | none |
+| Schema after Go | journal unchanged; added only `go_schema`, `imported_models`, `model_backend_selections`, `go_settings` |
+| Rollback: TS `c4a823d1` on the same database | smoke passed (decision); **7 s** from stopping Go to a passing smoke |
+| Schema after TS | journal and schema unchanged (TS ignores the Go tables) |
+| Forward: Go again | smoke passed; 4 s from start to a passing smoke |
+| Memory | lowest available 21.1 GiB (the guard aborts below 12) |
+| Live `/health` during the run | 200 on every probe |
+| Cleanup | copy, clones and TS export deleted; no processes left |
+| Live root | nothing under `models/` or `catalog.d/` modified; binary unchanged |
+
+The decision question made clef-flash the copy's active LLM, and both
+implementations save a switched model as active. That happened in the copy
+only.
+
+### 17.8 Catalog direction and model-directory hygiene (operator, 2026-10-21)
+
+**#368, revised** to the TS-runnable part of the approved proposal. Port
+it when it merges, as planned (§17.1). The proposal's benchmark metrics
+are internal and never appear in product text.
+
+| Area | Change |
+| --- | --- |
+| Chat | qwen3.5-4b (compact), qwen3.6-35b-a3b-iq4_nl_xl (new built-in, promoted from the live user entry at unsloth rev a483e9e6), qwen3.8-27b |
+| Former entries | qwen3.5-9b and gpt-oss-20b become user entries |
+| Unchanged | embeddings 0.6B and 4B, whisper-large-v3-turbo, images (Z-Image, Klein), video, Clef |
+
+**Go-only entries.** Each is added only after its backend is qualified on
+this hardware:
+
+- CrispASR Kokoro-82M F16 with its voices;
+- CrispASR Qwen3-TTS-0.6B Base Q8 with the F16 codec (voice cloning);
+- Parakeet TDT 0.6B v3 and Qwen3-ASR-1.7B, each needing a maintained
+  Mac or Linux backend first (tested only through MLX so far);
+- a portable FLUX.2 Klein profile, if the MLX result is the one to ship.
+
+Platform-specific adapters such as MLX are acceptable where justified,
+with the same user experience. The metadata-only candidates (SD Turbo,
+SDXL Lightning, Wan 1.3B, 5B and A14B, optionally LTX 2.5) are not
+qualified and are not built-ins; the weekly scan owns them.
+
+**Staging in model directories.** `models list` now skips dot-prefixed
+entries, such as a `.benchmark-parts-*.gguf/` staging directory, partial
+downloads and checksum caches. It also skips anything that isn't a
+regular file, even when the name ends in a model extension
+(`looseModelFile`, `TestLooseModelFiles`). TS `models list` lists such a
+directory as an LLM, so on a root that contains one, Go's output is
+shorter. The live directory is the operator's to clean up.
+
+**#368 ported (cdb45205, merged and deployed).** `main` is merged up the
+stack. `go generate` syncs 18 built-in entries and the 61 former entries
+(`internal/catalog/data/former`, in `FORMER_CATALOG_DATA` order).
+
+- **Kept as user entries.** On every catalog load, an installed former
+  entry (its primary file is on disk) is written to
+  `catalog.d/<id>.json`, as is one the settings name (selected or active,
+  `conf.KeepFormerSelections`). The file is the shipped data, with
+  "No longer in the LocalBase catalog; kept from an earlier release." in
+  front of its notes. A user patch at that path is applied on top.
+  `catalog.d/.former-built-ins` records each id, so removing the entry
+  sticks.
+- **Measurements and backends kept.** A kept entry whose launch-shaped
+  fields match the shipped ones keeps its checked-in memory records
+  (`Spec.UsesReferenceMeasurements`). It also keeps the backends it was
+  qualified on, so llama-server is selected without a header read.
+- **Set aside.** A complete user file that pins exactly a built-in's
+  repository, revision and files (qwen3.6 on the live root) is set aside,
+  and the built-in applies as shipped. A file that pins other files stays
+  a patch, with trust "modified".
+- **Feed.** The feed never provides a former id. Hub pipeline templates
+  fall back to former entries.
+- **Defaults and copy.** Fresh installs default to qwen3.5-4b and
+  dreamshaper-8-lcm. The CLI and the model details page say "planning
+  minimum", with its note and the measuring machine. Coding scores are
+  neither shown nor used for ranking.
+- **`configure --*-models`.** It accepts built-in ids only, as TS's
+  `assertCatalogModels` does: TS checks before the root's catalog loads.
+- **Tests.** Goldens are regenerated. The memory and plan generators call
+  `keepFormerCatalogEntries()`, and their Go tests use
+  `catalog.LoadWithFormer()`. `former_test.go` ports
+  `former-adoption.test.ts`.
+- **Contract fixture.** It keeps its former image and STT ids, as the live
+  root does. The retry case asks for the built-in juggernaut-xl-v9: on a
+  busy machine, both gateways refuse a missing model for memory before
+  its files.
+
+### 17.9 Local iOS and accessibility checks (2026-10-21)
+
+These checks replace the real-iPhone gate (§17.1 item 2). They ran
+against a fake-backend `--no-auth` fixture on a scratch port: a stub
+llama-server and sparse weights, so no model was loaded.
+
+**How the checks run:**
+
+- **Simulator Safari:** `tools/ios-check.sh <url>` runs an XCUITest
+  project, `tools/ios-check/LBCheck.xcodeproj`, that drives real iOS
+  Safari. The environment is Xcode 27, an iPhone 17 Simulator (402 pt
+  wide) and iOS 27. Xcode 27 has no Simulator.app, so a test
+  host app opens the URL in Safari. The accessibility audit is
+  `performAccessibilityAudit`, the engine behind Accessibility Inspector.
+- **Desktop Chrome:** `tools/axe-check.sh <url>` runs axe-core 4.14.0 in
+  headless Chrome. The copy is pinned in `tools/axe.pins`, its sha256
+  matches the npm integrity hash, it is cached in `go/.cache` and it is
+  injected over the DevTools protocol only. It runs WCAG 2.0 to 2.2 A/AA
+  plus best practice on 16 UI states, at 1280 and 390 px, in light and dark.
+
+| Check | Result |
+| --- | --- |
+| No zoom on focus | Every input, textarea and select is 16px or more (`TestControlsAtLeast16px`). Two Admin and backend textareas were `text-sm` and are now `text-base`. Tapping the composer leaves its width unchanged (376 pt before and after), so the page did not zoom |
+| Composer above the keyboard | After the tap, Safari scrolls the composer from y 671 to y 341, and its bottom edge (385) sits above the keyboard's top. The screenshot shows the composer, the form-assistant bar and the keyboard |
+| Return and Send | On touch, Return adds a line: the textarea holds `first line\nsecond line` and nothing is sent. Tapping Send submits, and the fake reply appears. ⌘/Ctrl-Enter sends only under `(pointer: fine)`, as in TS |
+| Apple accessibility audit: chat, picker, history drawer, Admin, Lab | No contrast, label or element-order issues. All hit-area issues on our elements are fixed (see below). Three findings remain, none from our markup: Safari's own toolbar reload button; one nil element with a zero frame, which also appears on a bare HTML probe page with no LocalBase code; and Dynamic Type (see below) |
+| axe-core, Chrome, 64 runs | Two violations found and fixed. The Voices recording input had no label (critical); it is now `aria-labelledby`. The chat composer sat outside any landmark (best practice); it is now a form landmark, "Message composer". The final run passed with no violations, including best practice |
+| Microphone dictation, end to end | Passed (2026-10-21), through `tools/mic-check.sh` in desktop Chrome. A fake capture device plays a speech clip (macOS `say`, re-encoded with the pinned ffmpeg to plain 16-bit PCM). Chat's microphone records it through `getUserMedia`, the page encodes the browser WAV, and the gateway's transcription route runs the real whisper-server with whisper-tiny-en. The transcript was "Please remind me to water the plants tomorrow morning. Please remind me to water the" (the clip loops), 4.3 s after the first tap with about 4 s of recording. The iOS Simulator cannot be fed a clip, so iOS Safari's own capture was not exercised; Chrome needs its audio service in-process to read the file |
+
+**Hit areas on iOS.** iOS reports a link's or a label's frame as the frame
+of its text, not its box. Apple's audit therefore flags any text under
+16px, which gives a frame under 20 pt, as "Hit area is too small", even
+when the box is 44px tall.
+
+A probe page settled the cause:
+- a 44px `inline-flex` link with 14px text is flagged, with or without an
+  `aria-label` or an inner block;
+- `<button>` and `role="button"` are reported at their full 44 pt box;
+- 16px text is not flagged.
+
+The fixes put text in controls at 16px:
+- `.btn` and `.chip` are `text-base`;
+- `text-sm` is gone from links, buttons, summaries and labels: the header
+  Admin and Settings links, the Lab tabs, the drawer section links, Manage
+  models, and the picker's detail line;
+- the eyebrow is now 16px semibold in sentence case, instead of 12px
+  uppercase;
+- the model picker button is 44px tall (it was 32px).
+
+The Lab's "Choose one in Get models" is now a single link, with no stray
+"." text. `TestInteractiveTextAtLeast16px` keeps these fixes in place.
+
+A later run on a dedicated Simulator ("LBGO Check iPhone 17"), free of
+the other session's device runner, passed both tests. Its audit also
+flagged the picker's "Not installed" group heading (14px), which the
+fixture showed once an uninstalled model was selected; it is now 16px.
+
+**Dynamic Type** ("partially unsupported") is reported on every page.
+The UI sizes text in rem from a fixed root size, so iOS text-size settings
+do not scale it; Safari's page zoom and reflow at 320px still work. This
+is outside the gate's categories. Supporting it would mean setting the
+root to `-apple-system-body`, a type-scale change for its own review.
+
+### 17.10 Release candidate and the service drill (2026-10-21)
+
+**Release candidate 0.2.0** (57e132d7; fe3e004d and b621798a change only
+the Chat script, the tools and this document):
+- CI is green on macOS and Linux.
+- The dual contract suite passed 96 tests. Two failed on memory and timing
+  in the full run and passed when rerun:
+  - model management, which is difference 4 of §13.6;
+  - the video job failure: both gateways answered `insufficient_memory`,
+    sampled moments apart.
+- `tools/systemd-check.sh` passed all 24 steps.
+
+**Drill on a fresh copy, after #368 went live.**
+- **The copy and the swap target.** The copy was taken under the idle
+  preflight (0 inference started in the last 60 s), with key2 inside. The
+  TS build for the swap came from a `cdb45205` export (`bun run build`),
+  byte-identical to the live binary (sha256 `b304f542…`).
+- **Reduced mode.** Available memory stayed under 25 GiB for 10 minutes
+  (best 23.2 GiB), so the drill ran in its reduced mode (`LBGO_LIGHT=1`):
+  - the copy's active LLM was the 1.5B for the smokes;
+  - the replay sent no decision request;
+  - the preflight needed 14 GiB;
+  - the 12 GiB abort floor and the live `/health` watchdog stayed on.
+- **Deferred.** The smoke on qwen3.5-9b and the replay's decision request
+  wait for 25 GiB of headroom.
+
+| Step | Result |
+| --- | --- |
+| Media | No TTS, image or video model selected before the start; `lsof`: the copy listened only on loopback scratch ports |
+| Go service, throwaway label | Started, healthy; the plist runs the copy's binary; smoke on the 1.5B passed |
+| Replay and contract subset (key2) | Passed: 9 models listed and retrieved; chat; a stream of 3 chunks, then `[DONE]` |
+| `config apply --restart auto --wait` | Activation "restarted"; healthy on the new port; acknowledged |
+| `defaultLlmModels` (run 1) | Applied; `status`: "Default chat model: qwen3.5-9b-q4_k_m (Using Qwen3.5 9B: Qwen3.6 35B-A3B needs more free memory than is available.)" |
+| `config apply --restart never`, then `restart` | Pending restart recorded, applied, cleared |
+| Rollback: binary swap to TS | TS 0.1.0 restarted under the same label and plist path; smoke and replay passed; **16 s** to a passing smoke |
+| Forward to Go | Smoke passed in 14 s |
+| Removal | `uninstall --yes`: plist removed, label unloaded, copy root removed; the live label still loaded |
+| launchd | During the drill, only the throwaway label and its plist were added. Afterwards, labels and LaunchAgents were identical to before. Spotlight's transient `com.apple.mdworker.shared.*` workers churned and are recorded apart |
+| Guard | Lowest 19.0 GiB available; live `/health` 200 on all 20 probes |
+
+**Run 1.** The first run (same copy procedure) passed every product step,
+with 16 s to a rollback smoke. It failed five checks, each of them in the
+tooling:
+- two plist checks: `plutil`'s JSON escapes `/`, so the check now compares
+  `ProgramArguments.0` raw;
+- the contract subset's media-set assertion, which no longer applies to an
+  external gateway;
+- two launchd comparisons that counted Spotlight's transient workers.
+
+**`--no-auth` UI check on the copy.** Media was off, and the default list
+was `["qwen3.6-35b-a3b-iq4_nl_xl", "qwen3.5-9b-q4_k_m"]`.
+- Chat showed "Qwen3.5 9B" with "Using Qwen3.5 9B: Qwen3.6 35B-A3B needs
+  more free memory than is available."
+- With the 1.5B picked explicitly, a real reply arrived in 4.5 s.
+- The Settings card showed the same choice and reason.
+
+**Cleanup.** The copy and clones (`/private/tmp/lbgo-shadow`) and the TS
+builds were deleted. No throwaway label or plist remains.
+
+**The two contract tests that passed only on rerun** (operator request:
+five isolated runs each, before cutover):
+- `TestDifferentialModelManagement`: 5 of 5.
+- `TestDifferentialVideoJobFailure`: 3 of 5 at first. A test bug, not a
+  gateway one. Both gateways refused the job for memory with the same code,
+  demand (13.7 GiB) and wording. The message names the usable memory
+  sampled when each job starts, the two jobs run one after the other, and
+  the sample moved by 0.1 GiB. The test now masks only that figure. After
+  the fix: 5 of 5.
+
+**TS bug, not in Go: `models show` status** (operator, live, 2026-10-21).
+- **Symptom:** TS printed "Installed · Disabled" for qwen3.5-9b and
+  qwen3.6, although both are selected (and the 9B is active).
+- **Cause:** TS's show command declares `requiresDatabase: false` without
+  `readOnlyConfiguration: true`, so its context uses `defaultConfig(root)`.
+  Enabled and Default then come from fresh-install defaults, not the
+  saved row.
+- **Go:** `models show` opens the saved configuration.
+  `TestModelsShowStatusFromSavedConfig` checks the text and JSON status
+  for selected, unselected and active models.
+- **`models list`:** it prints installed files only, in both
+  implementations, so it has no enabled state to get wrong.
+
+## 18. Fit-aware default chat model (Go only; operator, 2026-10-21)
+
+A new capability; TS has no equivalent. The user's words: "Yes 3.6 should
+be my default chat model now when it will fit in VRAM."
+
+**Configuration.** `defaultLlmModels` is an ordered list of chat models.
+- **Where it lives.** `[models] defaultLlmModels` in `config show` and
+  `config apply` (rendered only when set, so a TS-shaped document is
+  unchanged), `configure --default-llm-models a,b`, and the "Default chat
+  model" card in Settings (models:manage; read with models:read), backed
+  by `GET/POST /_localbase/default-chat-models`.
+- **Storage.** It is stored in `go_settings`
+  (`models.default-llm-models`). The TS config row and journal are
+  untouched, and TS ignores the table, so rollback is a binary swap as
+  before.
+- **Rules.** Entries must be selected chat models (not decision or
+  embedding models), without duplicates. Disabling a model removes it
+  from the list.
+- **One entry.** It is the active LLM itself and stores no list; that is
+  today's behaviour exactly, sticky active model included.
+- **Two or more.** `activeLlmModel` keeps its TS meaning (the model last
+  activated, persisted after a switch). It is what TS would use after a
+  rollback.
+- **When changes apply.** As with every model setting, a CLI `config
+  apply` reaches a running gateway at its next start, as in TS; the
+  Settings card and the API apply at once.
+- **At cutover.** The live install is set to
+  `["qwen3.6-35b-a3b-iq4_nl_xl", "qwen3.5-9b-q4_k_m"]`. Fresh installs keep
+  #368's one-entry qwen3.5-4b default.
+
+**Where it applies.** Only where the caller chose no model.
+- TS requires `model` on chat and decision requests, so the surface is
+  the browser's new conversation: the page load and each "New
+  conversation", via `GET /app/chat/default`.
+- `LLM.Resolve("")` also uses it for internal callers.
+- A request that names a model is never substituted: it gets that model,
+  or its real admission error (a retryable 503). Naya and OpenCode name
+  their models and are unaffected.
+
+**Choice.**
+- **The rule.** Take the first default that would pass memory admission
+  now. The check is `fitsNow`: the switch preflight's
+  `Memory.CheckAdmission` on the model's admission demand, crediting the
+  LLM slot (switch credit) and every runtime idle recovery could stop. It
+  stops nothing and makes no separate estimate.
+- **Not installed.** A default that is not installed does not fit.
+- **None fits.** The last default is used, and it gets the normal
+  admission error.
+- **The running model.** It fits where it runs.
+
+**Stability.**
+- **Decision points only.** The choice is re-evaluated only at a page
+  load or a new conversation, and only when the LLM is idle (no active,
+  queued or starting request). It never changes mid-stream, and a
+  conversation keeps the model it started with (the browser stores it per
+  conversation).
+- **Dwell.** After a change the choice holds for at least 30 s.
+- **Upgrade hysteresis.** Moving back up the list needs the earlier model
+  to fit with a margin (the larger of 1 GiB and 10% of its demand) at 3
+  decision points in a row, like the pressure monitor's recovery count.
+  Moving down when the current choice no longer fits is immediate.
+
+**Visible.**
+- **Chat.** The empty conversation shows the reason under its heading,
+  for example "Using Qwen3.5 9B: Qwen3.6-35B-A3B needs more free memory
+  than is available." Names come from the catalog. Other reasons: "is not
+  installed", "cannot start: <the backend's error>", and, while an
+  upgrade settles, "fits again; LocalBase switches back once it has room
+  to spare".
+- **Settings.** The card shows the model used now and the reason.
+- **Log.** Each change logs `model.default-selected` (info), with the
+  preferred id, the chosen id, the previous id and the admission cause
+  (`insufficient_memory`, `not_installed`, `settling` or the error).
+- **`status`.** It prints "Default chat model: <id> (<reason>)" and adds
+  `defaultChatModel` to its JSON. It reads them from
+  `/_localbase/default-model`, which needs the instance token, like
+  `/_localbase/instance`. The unauthenticated `/health` names no models.
+
+**Tests.**
+- `internal/runtime/default_llm_test.go`: preferred fits; fallback with
+  its reason and event; back to the preferred only after the dwell and 3
+  margin samples; none fits → the last one, with its admission error; an
+  explicit request is never substituted; no change while a request
+  streams; a single entry is the active model.
+- `internal/conf/defaults_test.go`: the document, plan and validation,
+  and the store round trip.
+- `internal/gateway/default_models_test.go`: the API and the token gate.
+
+**Live context.** Qwen3.6's planning demand is about 21 GiB against a
+reserve of about 10.3 GiB. Available memory is usually around 23 GiB
+with the user's apps open, so the fallback will often be what runs.

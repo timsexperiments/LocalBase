@@ -1,7 +1,7 @@
 {{define "title"}}Backends · LocalBase{{end}}
 {{define "main"}}
 <section aria-labelledby="backends-title">
-  <a href="/app/models/get" class="inline-flex min-h-11 items-center text-sm font-semibold text-accent">← Get models</a>
+  <a href="/app/models/get" class="inline-flex min-h-11 items-center text-base font-semibold text-accent">← Get models</a>
   <h1 id="backends-title" class="mt-1 text-3xl font-bold tracking-tight">Backends</h1>
   <p class="mt-1 text-muted">Engines LocalBase can run models with. Accelerators on this device: {{range $i, $a := .Host.Accelerators}}{{if $i}}, {{end}}{{$a}}{{end}}.</p>
   <ul class="mt-6 grid gap-3">
@@ -22,7 +22,7 @@
 <form id="backend-add" class="card mt-6 grid gap-3 p-5" hx-post="/app/backends" hx-target="#backend-add" hx-swap="outerHTML">
   <h2 class="font-bold">Add backend</h2>
   <p class="text-sm text-muted">Paste a <code>localbase.backend/v1</code> definition. It names an executable already on this machine; LocalBase starts it only for models you choose it for. Downloading a model never adds a backend.</p>
-  <textarea class="input min-h-40 font-mono text-sm" name="definition" required spellcheck="false">{{.Definition}}</textarea>
+  <textarea class="input min-h-40 font-mono text-base" name="definition" required spellcheck="false">{{.Definition}}</textarea>
   {{with .AddError}}<p class="text-danger" role="alert">{{.}}</p>{{end}}
   {{with .Added}}<p role="status">Registered {{.}}.</p>{{end}}
   <button type="submit" class="btn btn-primary justify-self-start">Add backend</button>

@@ -72,7 +72,7 @@ func loadMediaAdmissionGolden(t *testing.T) mediaAdmissionGolden {
 // whisper and an embedding model resident, to the TS numbers.
 func TestMediaAdmissionGolden(t *testing.T) {
 	g := loadMediaAdmissionGolden(t)
-	cat, err := catalog.Load("")
+	cat, err := catalog.LoadWithFormer()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func missingImageBoundary(t *testing.T) int64 {
 // files absent, as the contract fixture does.
 func newMissingImageService(t *testing.T, host *stepHost, recovery *IdleRecovery) (*Service, *memory.Controller, func() []string) {
 	t.Helper()
-	cat, _ := catalog.Load("")
+	cat, _ := catalog.LoadWithFormer()
 	if spec := cat.ByID(missingImage); spec == nil || spec.ImageRuntime != nil {
 		t.Fatalf("%s must be a catalog image model without an imageRuntime profile", missingImage)
 	}
@@ -221,7 +221,7 @@ type fakePeer struct {
 	host    *stepHost
 	res     *memory.Reservation
 	bytes   int64
-	idle    bool
+	isIdle  bool
 	mu      sync.Mutex
 	claimed bool
 	stopped bool
@@ -235,14 +235,14 @@ func newFakePeer(t *testing.T, mem *memory.Controller, host *stepHost, id string
 		t.Fatal(err)
 	}
 	res.Materialize(4242)
-	return &fakePeer{id: id, host: host, res: res, bytes: bytes, idle: idle, freed: bytes}
+	return &fakePeer{id: id, host: host, res: res, bytes: bytes, isIdle: idle, freed: bytes}
 }
 
 func (p *fakePeer) runtimeID() string { return p.id }
 func (p *fakePeer) claimIdle() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.idle || p.stopped {
+	if !p.isIdle || p.stopped {
 		return false
 	}
 	p.claimed = true
@@ -419,4 +419,10 @@ func (p *fakePeer) EmergencyStop(error) {
 		p.res.Release()
 		p.host.avail.Add(p.freed)
 	}
+}
+
+func (p *fakePeer) idle() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.isIdle && !p.stopped && !p.claimed
 }

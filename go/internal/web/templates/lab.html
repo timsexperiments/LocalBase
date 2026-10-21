@@ -5,6 +5,7 @@
   <p class="mt-1 text-muted">Try the media models you selected. Results stay on this device and expire after 30 minutes.</p>
   <nav aria-label="Lab" class="mt-4 flex flex-wrap gap-2">
     <a class="chip" href="/app/lab?tab=image" {{if eq .Tab "image"}}aria-current="true"{{end}}>Image</a>
+    <a class="chip" href="/app/lab?tab=video" {{if eq .Tab "video"}}aria-current="true"{{end}}>Video</a>
     <a class="chip" href="/app/lab?tab=speech" {{if eq .Tab "speech"}}aria-current="true"{{end}}>Speech</a>
     <a class="chip" href="/app/lab?tab=transcribe" {{if eq .Tab "transcribe"}}aria-current="true"{{end}}>Transcribe</a>
   </nav>
@@ -29,6 +30,25 @@
       </div>
     </details>
     <button type="submit" class="btn btn-primary justify-self-start">Generate<span class="htmx-indicator">…</span></button>
+  </form>
+  {{end}}
+  {{end}}
+
+  {{if eq .Tab "video"}}
+  {{if not .CanVideo}}{{template "lab-denied" "video generation"}}{{else if not .Models}}{{template "lab-none" "text- or image-to-video"}}{{else}}
+  <form class="card mt-4 grid gap-3 p-5" hx-post="/app/lab/video" hx-encoding="multipart/form-data" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]" data-video-form>
+    <label class="grid gap-1"><span class="text-sm font-semibold">Prompt</span>
+      <textarea class="input min-h-24" name="prompt" required maxlength="16384" placeholder="Describe the video, e.g. a paper boat on a rainy street"></textarea></label>
+    <label class="grid gap-1"><span class="text-sm font-semibold">Model</span>
+      <select class="input min-h-11" name="model" hx-get="/app/lab/video/options" hx-target="#lab-video-options" hx-swap="outerHTML" hx-trigger="change" hx-disabled-elt="unset">
+        {{range .Models}}<option value="{{.ID}}">{{.Name}}{{if .Active}} (current){{end}}</option>{{end}}</select></label>
+    {{template "lab-video-options" .}}
+    <details class="text-sm">
+      <summary class="flex min-h-11 cursor-pointer items-center font-semibold">More settings</summary>
+      <label class="grid gap-1 pt-2"><span class="font-semibold">Avoid <span class="font-normal text-muted">(negative prompt)</span></span>
+        <input class="input min-h-11" name="negative_prompt" maxlength="16384"></label>
+    </details>
+    <button type="submit" class="btn btn-primary justify-self-start">Generate video<span class="htmx-indicator">…</span></button>
   </form>
   {{end}}
   {{end}}
@@ -66,7 +86,7 @@
       <label class="grid gap-1"><span class="text-sm font-semibold">Language <span class="font-normal text-muted">(optional)</span></span>
         <input class="input min-h-11" name="language" maxlength="16" placeholder="en"></label>
     </div>
-    <label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="translate" class="size-5"> Translate to English</label>
+    <label class="flex min-h-11 items-center gap-2 text-base"><input type="checkbox" name="translate" class="size-5"> Translate to English</label>
     <button type="submit" class="btn btn-primary justify-self-start">Transcribe<span class="htmx-indicator">…</span></button>
   </form>
   {{end}}
@@ -75,6 +95,7 @@
   {{template "lab-result" .}}
 </section>
 <script src="{{asset "js/audio.js"}}" type="module"></script>
+<script src="{{asset "js/video.js"}}" type="module"></script>
 {{end}}
 
 {{define "lab-models"}}
@@ -88,13 +109,33 @@
 {{end}}
 
 {{define "lab-result"}}
-<div id="lab-result" class="mt-4" aria-live="polite">
+<div id="lab-result" class="mt-4" aria-live="polite"{{if and .VideoJob (or (eq .VideoStatus "queued") (eq .VideoStatus "in_progress"))}} hx-get="/app/lab/video/{{.VideoJob}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+  {{if and .VideoJob (or (eq .VideoStatus "queued") (eq .VideoStatus "in_progress"))}}<div class="card flex flex-wrap items-center gap-3 p-4"><p class="grow">{{if eq .VideoStatus "queued"}}Starting the video runtime…{{else}}Generating video…{{end}}</p><button type="button" class="btn btn-quiet" hx-post="/app/lab/video/{{.VideoJob}}/cancel" hx-target="#lab-result" hx-swap="outerHTML">Cancel</button></div>{{end}}
+  {{with .Video}}<figure class="card overflow-hidden p-2"><video controls playsinline src="{{.}}" class="mx-auto h-auto max-h-[70vh] max-w-full rounded-xl"></video><figcaption class="p-2 text-sm"><a class="font-semibold text-accent" href="{{.}}" download="video.mp4">Download</a></figcaption></figure>{{end}}
+  {{with .Notice}}<p class="card p-4 text-muted">{{.}}</p>{{end}}
   {{with .Error}}<p class="card p-4 text-danger" role="alert">{{.}}</p>{{end}}
   {{with .Image}}<figure class="card overflow-hidden p-2"><img src="{{.}}" alt="Generated image" class="mx-auto h-auto max-w-full rounded-xl"><figcaption class="p-2 text-sm"><a class="font-semibold text-accent" href="{{.}}" download="image.png">Download</a></figcaption></figure>{{end}}
-  {{with .Audio}}<div class="card grid gap-2 p-4"><audio controls src="{{.}}" class="w-full"></audio><a class="text-sm font-semibold text-accent" href="{{.}}" download="speech.wav">Download</a></div>{{end}}
+  {{with .Audio}}<div class="card grid gap-2 p-4"><audio controls src="{{.}}" class="w-full"></audio><a class="text-base font-semibold text-accent" href="{{.}}" download="speech.wav">Download</a></div>{{end}}
   {{if .Transcript}}<div class="card p-4"><p class="eyebrow">Transcript</p><p class="mt-1 whitespace-pre-wrap">{{.Transcript}}</p></div>{{end}}
 </div>
 {{end}}
 
 {{define "lab-denied"}}<p class="card mt-4 p-4 text-muted">Your access does not include {{.}}.</p>{{end}}
-{{define "lab-none"}}<p class="card mt-4 p-4 text-muted">No {{.}} model is selected yet. Choose one in <a class="font-semibold text-accent" href="/app/models/get">Get models</a>.</p>{{end}}
+{{define "lab-none"}}<p class="card mt-4 p-4 text-muted">No {{.}} model is selected yet. <a class="font-semibold text-accent" href="/app/models/get">Choose one in Get models</a></p>{{end}}
+
+{{define "lab-video-options"}}
+<div id="lab-video-options" class="grid gap-3">
+  {{with .VideoModel}}
+  <p class="text-sm text-muted">Makes {{.Frames}} frames at {{.FPS}} fps, {{.Width}}×{{.Height}}. A video takes a few minutes.</p>
+  {{if .Image}}
+  <div class="grid gap-1"><span class="text-sm font-semibold">Starting picture <span class="font-normal text-muted">(optional)</span></span>
+    <input class="input min-h-11 max-w-full" type="file" name="input_reference" accept="image/png,image/jpeg,image/webp" data-video-source data-width="{{.Width}}" data-height="{{.Height}}">
+    <p class="text-sm text-muted" data-video-status aria-live="polite">It is cropped to {{.Width}}×{{.Height}} to fill the frame.</p>
+    <img alt="Starting picture, as it will be used" class="hidden max-h-64 w-auto justify-self-start rounded-xl" data-video-preview>
+  </div>
+  {{else}}
+  <p class="text-sm text-muted">This model generates from text only. Choose an image-to-video model to animate a picture.</p>
+  {{end}}
+  {{end}}
+</div>
+{{end}}

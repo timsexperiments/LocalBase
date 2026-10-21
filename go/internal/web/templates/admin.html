@@ -48,7 +48,7 @@
   <fieldset class="grid content-start gap-1 rounded-xl border border-line p-3">
     <legend class="px-1 text-sm font-semibold">{{.Label}}</legend>
     {{range .Perms}}
-    <label class="flex min-h-9 items-center gap-2 text-sm"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="{{$.Name}}" value="{{.ID}}" {{if .Checked}}checked{{end}} {{if $.Disabled}}disabled{{end}}><code>{{.ID}}</code></label>
+    <label class="flex min-h-11 items-center gap-2 text-base"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="{{$.Name}}" value="{{.ID}}" {{if .Checked}}checked{{end}} {{if $.Disabled}}disabled{{end}}><code>{{.ID}}</code></label>
     {{end}}
   </fieldset>
   {{end}}
@@ -90,7 +90,7 @@
   <p class="mt-1 text-sm text-muted">This creates an admin role for your verified email and a default member role with chat access. Model management is not granted by default.</p>
   <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="section" value="people">
-    <div class="grid gap-1"><label class="text-sm font-semibold" for="starter-email">Your verified sign-in email</label>
+    <div class="grid gap-1"><label class="text-base font-semibold" for="starter-email">Your verified sign-in email</label>
       <input id="starter-email" class="input" type="email" readonly {{if not .VerifiedEmail}}disabled{{end}} value="{{.VerifiedEmail}}" placeholder="Verified email unavailable"></div>
     {{if not .VerifiedEmail}}<p class="text-sm text-muted">This sign-in did not supply a verified email. Use Advanced JSON or the CLI to bind the first administrator.</p>{{end}}
     <div class="flex flex-wrap gap-2">
@@ -105,11 +105,11 @@
   <p class="mt-1 text-sm text-muted">Their verified sign-in email claims this invitation on first login.</p>
   <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="section" value="people"><input type="hidden" name="action" value="invite-user">
-    <div class="grid gap-1"><label class="text-sm font-semibold" for="invite-email">Email</label><input id="invite-email" class="input" type="email" name="email" required autocomplete="email"></div>
+    <div class="grid gap-1"><label class="text-base font-semibold" for="invite-email">Email</label><input id="invite-email" class="input" type="email" name="email" required autocomplete="email"></div>
     <fieldset class="grid gap-1"><legend class="text-sm font-semibold">Roles</legend>
       {{range .InviteRoles}}<label class="flex min-h-11 items-center gap-2"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="roles" value="{{.Name}}" {{if .Checked}}checked{{end}}><span><span class="font-semibold">{{.Name}}</span>{{with .Description}} <span class="text-sm text-muted">{{.}}</span>{{end}}</span></label>{{end}}
     </fieldset>
-    <label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="sendEmail" value="1" {{if not $s.EmailDelivery}}disabled{{end}}> Send invitation email</label>
+    <label class="flex min-h-11 items-center gap-2 text-base"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="sendEmail" value="1" {{if not $s.EmailDelivery}}disabled{{end}}> Send invitation email</label>
     {{if not $s.EmailDelivery}}<p class="-mt-2 text-sm text-muted">Configure SMTP under Browser access to send invitations.</p>{{end}}
     <button type="submit" class="btn btn-primary min-h-11 justify-self-start">Create invitation</button>
   </form>
@@ -125,7 +125,7 @@
 <section class="card p-5" aria-labelledby="people-title">
   <div class="flex flex-wrap items-center justify-between gap-2">
     <h2 id="people-title" class="text-lg font-bold">People <span class="text-sm font-normal text-muted">· {{len $s.Users}} managed</span></h2>
-    <a class="btn btn-quiet min-h-11 text-sm" href="/app/admin?section=people">Refresh</a>
+    <a class="btn btn-quiet min-h-11 text-base" href="/app/admin?section=people">Refresh</a>
   </div>
   <ul class="mt-3 grid gap-3">
     {{range .Users}}
@@ -137,7 +137,7 @@
           <span class="badge {{if eq .Status "active"}}badge-ok{{end}}">{{.Status}}</span>
         </div>
         <fieldset class="flex flex-wrap gap-x-4" {{if eq .Status "disabled"}}disabled{{end}}><legend class="sr-only">Roles for {{.Email}}</legend>
-          {{range .Roles}}<label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="roles" value="{{.Name}}" {{if .Checked}}checked{{end}}>{{.Name}}</label>{{end}}
+          {{range .Roles}}<label class="flex min-h-11 items-center gap-2 text-base"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="roles" value="{{.Name}}" {{if .Checked}}checked{{end}}>{{.Name}}</label>{{end}}
         </fieldset>
         <div class="flex flex-wrap gap-2">
           <button type="submit" name="action" value="replace-user-roles" class="btn btn-quiet min-h-11" {{if eq .Status "disabled"}}disabled{{end}}>Save roles</button>
@@ -157,7 +157,7 @@
     <h2 id="roles-title" class="text-lg font-bold">Roles <span class="text-sm font-normal text-muted">· {{len $s.Roles}}</span></h2>
     <form class="flex flex-wrap items-end gap-2" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="section" value="people"><input type="hidden" name="action" value="default-role">
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="default-role">Default for eligible sign-ins</label>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="default-role">Default for eligible sign-ins</label>
         <select id="default-role" class="input min-h-11 w-auto" name="name">
           <option value="">No default role</option>
           {{range $s.Roles}}<option value="{{.Name}}" {{if eq .Name $.DefaultRole}}selected{{end}}>{{.Name}}</option>{{end}}
@@ -171,7 +171,7 @@
       <form class="grid gap-2" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="section" value="people"><input type="hidden" name="name" value="{{$role.Name}}">
         <p class="font-semibold">{{$role.Name}}</p>
-        <div class="grid gap-1"><label class="text-sm font-semibold" for="role-desc-{{$i}}">Description</label><input id="role-desc-{{$i}}" class="input" name="description" maxlength="256" value="{{$role.Description}}"></div>
+        <div class="grid gap-1"><label class="text-base font-semibold" for="role-desc-{{$i}}">Description</label><input id="role-desc-{{$i}}" class="input" name="description" maxlength="256" value="{{$role.Description}}"></div>
         <details class="reasoning"><summary>{{len $role.Permissions}} permissions</summary>{{template "perm-picker" (dict "Groups" $role.Picker "Name" "permissions")}}</details>
         <div class="flex flex-wrap gap-2">
           <button type="submit" name="action" value="save-role" class="btn btn-quiet min-h-11">Save role</button>
@@ -188,8 +188,8 @@
   <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="section" value="people"><input type="hidden" name="action" value="create-role">
     <div class="grid gap-3 min-[600px]:grid-cols-2">
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="new-role-name">Name</label><input id="new-role-name" class="input" name="name" required pattern="[a-z][a-z0-9-]*" maxlength="64" placeholder="video-creator"></div>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="new-role-desc">Description</label><input id="new-role-desc" class="input" name="description" maxlength="256" placeholder="Can create and inspect videos"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="new-role-name">Name</label><input id="new-role-name" class="input" name="name" required pattern="[a-z][a-z0-9-]*" maxlength="64" placeholder="video-creator"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="new-role-desc">Description</label><input id="new-role-desc" class="input" name="description" maxlength="256" placeholder="Can create and inspect videos"></div>
     </div>
     <details class="reasoning"><summary>Permissions · 2 selected</summary>{{template "perm-picker" (dict "Groups" .NewRolePerms "Name" "permissions")}}</details>
     <button type="submit" class="btn btn-primary min-h-11 justify-self-start">Create role</button>
@@ -232,31 +232,31 @@
   <form id="provider" class="mt-4 grid gap-3" data-provider-form hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="section" value="access"><input type="hidden" name="action" value="save-provider">
     <div class="grid gap-3 min-[600px]:grid-cols-2">
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="provider-kind">Provider</label>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="provider-kind">Provider</label>
         <select id="provider-kind" class="input min-h-11" name="provider" data-provider-select>
           {{range list "cloudflare-access" "oidc" "github-oauth" "magic-link"}}<option value="{{.}}" {{if eq . $e.Provider}}selected{{end}}>{{if eq . "cloudflare-access"}}Cloudflare Access{{else if eq . "oidc"}}OpenID Connect{{else if eq . "github-oauth"}}GitHub{{else}}Email magic link{{end}}</option>{{end}}
         </select></div>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="provider-origin">Public HTTPS origin</label><input id="provider-origin" class="input" type="url" name="origin" required value="{{$e.Origin}}" placeholder="https://localbase.example.com"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="provider-origin">Public HTTPS origin</label><input id="provider-origin" class="input" type="url" name="origin" required value="{{$e.Origin}}" placeholder="https://localbase.example.com"></div>
     </div>
     <fieldset class="grid gap-3 min-[600px]:grid-cols-2" data-provider-fields="cloudflare-access" {{if ne $e.Provider "cloudflare-access"}}disabled hidden{{end}}>
       <legend class="sr-only">Cloudflare Access</legend>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="cf-team">Team domain</label><input id="cf-team" class="input" name="teamDomain" required value="{{$e.TeamDomain}}" placeholder="team.cloudflareaccess.com"></div>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="cf-aud">Application audience</label><input id="cf-aud" class="input" name="audience" required value="{{$e.Audience}}"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="cf-team">Team domain</label><input id="cf-team" class="input" name="teamDomain" required value="{{$e.TeamDomain}}" placeholder="team.cloudflareaccess.com"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="cf-aud">Application audience</label><input id="cf-aud" class="input" name="audience" required value="{{$e.Audience}}"></div>
     </fieldset>
     <fieldset class="grid gap-3 min-[600px]:grid-cols-2" data-provider-fields="oidc github-oauth magic-link" {{if eq $e.Provider "cloudflare-access"}}disabled hidden{{end}}>
       <legend class="sr-only">Registration</legend>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="reg-id">Registration ID</label><input id="reg-id" class="input" name="registrationId" required pattern="[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?" maxlength="64" value="{{$e.ID}}" placeholder="google" {{if $e.Existing}}readonly{{end}}></div>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="reg-name">Sign-in name</label><input id="reg-name" class="input" name="registrationName" required maxlength="64" value="{{$e.Name}}" placeholder="Google"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="reg-id">Registration ID</label><input id="reg-id" class="input" name="registrationId" required pattern="[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?" maxlength="64" value="{{$e.ID}}" placeholder="google" {{if $e.Existing}}readonly{{end}}></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="reg-name">Sign-in name</label><input id="reg-name" class="input" name="registrationName" required maxlength="64" value="{{$e.Name}}" placeholder="Google"></div>
     </fieldset>
     <fieldset class="grid gap-3" data-provider-fields="oidc" {{if ne $e.Provider "oidc"}}disabled hidden{{end}}>
       <legend class="sr-only">OpenID Connect</legend>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="oidc-issuer">Issuer</label><input id="oidc-issuer" class="input" type="url" name="issuer" required value="{{$e.Issuer}}" placeholder="https://identity.example.com"></div>
-      <label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="publicClient" value="1" data-public-client {{if $e.PublicClient}}checked{{end}}> Public client with PKCE</label>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="oidc-issuer">Issuer</label><input id="oidc-issuer" class="input" type="url" name="issuer" required value="{{$e.Issuer}}" placeholder="https://identity.example.com"></div>
+      <label class="flex min-h-11 items-center gap-2 text-base"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="publicClient" value="1" data-public-client {{if $e.PublicClient}}checked{{end}}> Public client with PKCE</label>
     </fieldset>
     <fieldset class="grid gap-3 min-[600px]:grid-cols-2" data-provider-fields="oidc github-oauth" {{if not (or (eq $e.Provider "oidc") (eq $e.Provider "github-oauth"))}}disabled hidden{{end}}>
       <legend class="sr-only">Client</legend>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="client-id">Client ID</label><input id="client-id" class="input" name="clientId" required value="{{$e.ClientID}}"></div>
-      <div class="grid gap-1" data-client-secret><label class="text-sm font-semibold" for="client-secret">Client secret</label><input id="client-secret" class="input" type="password" name="clientSecret" required autocomplete="new-password" placeholder="Re-enter to save"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="client-id">Client ID</label><input id="client-id" class="input" name="clientId" required value="{{$e.ClientID}}"></div>
+      <div class="grid gap-1" data-client-secret><label class="text-base font-semibold" for="client-secret">Client secret</label><input id="client-secret" class="input" type="password" name="clientSecret" required autocomplete="new-password" placeholder="Re-enter to save"></div>
     </fieldset>
     <details class="reasoning"><summary>Provider-wide permissions</summary>
       <p class="mb-2 text-sm text-muted">A configured policy replaces these permissions. Keep CLI access available as the recovery path.</p>
@@ -274,17 +274,17 @@
   <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="section" value="access">
     <div class="grid gap-3 min-[600px]:grid-cols-2">
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-host">SMTP host</label><input id="smtp-host" class="input" name="host" required value="{{with $s.EmailDelivery}}{{.Host}}{{end}}" placeholder="smtp.example.com"></div>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-port">Port</label><input id="smtp-port" class="input" type="number" inputmode="numeric" name="port" min="1" max="65535" required value="{{with $s.EmailDelivery}}{{.Port}}{{else}}587{{end}}"></div>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-security">Transport security</label>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="smtp-host">SMTP host</label><input id="smtp-host" class="input" name="host" required value="{{with $s.EmailDelivery}}{{.Host}}{{end}}" placeholder="smtp.example.com"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="smtp-port">Port</label><input id="smtp-port" class="input" type="number" inputmode="numeric" name="port" min="1" max="65535" required value="{{with $s.EmailDelivery}}{{.Port}}{{else}}587{{end}}"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="smtp-security">Transport security</label>
         <select id="smtp-security" class="input min-h-11" name="security">{{$sec := "starttls"}}{{with $s.EmailDelivery}}{{$sec = .Security}}{{end}}<option value="starttls" {{if eq $sec "starttls"}}selected{{end}}>STARTTLS</option><option value="tls" {{if eq $sec "tls"}}selected{{end}}>TLS</option></select></div>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-from">From address</label><input id="smtp-from" class="input" type="email" name="from" required value="{{with $s.EmailDelivery}}{{.From}}{{end}}"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="smtp-from">From address</label><input id="smtp-from" class="input" type="email" name="from" required value="{{with $s.EmailDelivery}}{{.From}}{{end}}"></div>
     </div>
-    <label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="passwordAuth" value="1" data-password-auth {{with $s.EmailDelivery}}{{if eq .Authentication "password"}}checked{{end}}{{end}}> SMTP username and password</label>
+    <label class="flex min-h-11 items-center gap-2 text-base"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="passwordAuth" value="1" data-password-auth {{with $s.EmailDelivery}}{{if eq .Authentication "password"}}checked{{end}}{{end}}> SMTP username and password</label>
     <fieldset class="grid gap-3 min-[600px]:grid-cols-2" data-password-fields {{with $s.EmailDelivery}}{{if ne .Authentication "password"}}disabled{{end}}{{else}}disabled{{end}}>
       <legend class="sr-only">SMTP credentials</legend>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-user">Username</label><input id="smtp-user" class="input" name="username" required autocomplete="username"></div>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-pass">Password</label><input id="smtp-pass" class="input" type="password" name="password" required autocomplete="new-password" placeholder="{{with $s.EmailDelivery}}{{if eq .Authentication "password"}}Re-enter to replace credentials{{end}}{{end}}"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="smtp-user">Username</label><input id="smtp-user" class="input" name="username" required autocomplete="username"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="smtp-pass">Password</label><input id="smtp-pass" class="input" type="password" name="password" required autocomplete="new-password" placeholder="{{with $s.EmailDelivery}}{{if eq .Authentication "password"}}Re-enter to replace credentials{{end}}{{end}}"></div>
     </fieldset>
     <div class="flex flex-wrap gap-2">
       <button type="submit" name="action" value="configure-email-delivery" class="btn btn-primary min-h-11">Save SMTP</button>
@@ -294,7 +294,7 @@
   {{if $s.EmailDelivery}}
   <form class="mt-3 flex flex-wrap items-end gap-2" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="section" value="access"><input type="hidden" name="action" value="test-email-delivery">
-    <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-test">Test recipient</label><input id="smtp-test" class="input" type="email" name="to" required></div>
+    <div class="grid gap-1"><label class="text-base font-semibold" for="smtp-test">Test recipient</label><input id="smtp-test" class="input" type="email" name="to" required></div>
     <button type="submit" class="btn btn-quiet min-h-11">Send test</button>
   </form>
   {{end}}
@@ -305,8 +305,8 @@
   <p class="mt-1 text-sm text-muted">JSON roles and identity bindings. At least one binding must retain <code>access:manage</code>.</p>
   <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="section" value="access"><input type="hidden" name="revision" value="{{with $s.PolicyRevision}}{{.}}{{else}}null{{end}}">
-    <label class="text-sm font-semibold" for="policy-json">Policy JSON</label>
-    <textarea id="policy-json" class="input min-h-48 font-mono text-sm" name="policy" spellcheck="false" {{if not $cfg}}disabled{{end}} placeholder='{"roles":[{"name":"admin","permissions":["access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"owner@example.com"}],"defaultRole":null}'>{{.PolicyJSON}}</textarea>
+    <label class="text-base font-semibold" for="policy-json">Policy JSON</label>
+    <textarea id="policy-json" class="input min-h-48 font-mono text-base" name="policy" spellcheck="false" {{if not $cfg}}disabled{{end}} placeholder='{"roles":[{"name":"admin","permissions":["access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"owner@example.com"}],"defaultRole":null}'>{{.PolicyJSON}}</textarea>
     <div class="flex flex-wrap gap-2">
       <button type="submit" name="action" value="apply-policy" class="btn btn-primary min-h-11" {{if not $cfg}}disabled{{end}}>Save policy</button>
       {{if $s.Policy}}{{template "confirm" (dict "Label" "Clear policy" "Action" "clear-policy" "Confirm" "Confirm clear" "Text" "Use provider-wide permissions instead?")}}{{end}}
@@ -325,8 +325,8 @@
   <form class="mt-3 grid gap-3" hx-post="/app/admin/keys" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="action" value="create">
     <div class="grid gap-3 min-[600px]:grid-cols-2">
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="key-name">Name</label><input id="key-name" class="input" name="name" required maxlength="128"></div>
-      <div class="grid gap-1"><label class="text-sm font-semibold" for="key-expiry">Expires after days <span class="font-normal text-muted">(optional)</span></label><input id="key-expiry" class="input" type="number" inputmode="numeric" name="expiresDays" min="1" max="3650"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="key-name">Name</label><input id="key-name" class="input" name="name" required maxlength="128"></div>
+      <div class="grid gap-1"><label class="text-base font-semibold" for="key-expiry">Expires after days <span class="font-normal text-muted">(optional)</span></label><input id="key-expiry" class="input" type="number" inputmode="numeric" name="expiresDays" min="1" max="3650"></div>
     </div>
     <details class="reasoning"><summary>Scopes · 2 selected</summary>{{template "perm-picker" (dict "Groups" .NewKeyPerms "Name" "scopes")}}</details>
     <button type="submit" class="btn btn-primary min-h-11 justify-self-start">Create key</button>
@@ -336,7 +336,7 @@
 <section class="card p-5" aria-labelledby="keys-title">
   <div class="flex flex-wrap items-center justify-between gap-2">
     <h2 id="keys-title" class="text-lg font-bold">Keys <span class="text-sm font-normal text-muted">· {{len .Keys}} total</span></h2>
-    <a class="btn btn-quiet min-h-11 text-sm" href="/app/admin?section=keys">Refresh</a>
+    <a class="btn btn-quiet min-h-11 text-base" href="/app/admin?section=keys">Refresh</a>
   </div>
   <ul class="mt-3 grid gap-3">
     {{range .Keys}}{{$k := .Key}}{{$active := eq .Status "Active"}}

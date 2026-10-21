@@ -35,6 +35,8 @@ type idlePeer interface {
 	stopClaimed()
 	// unclaim lets the runtime take work again.
 	unclaim()
+	// idle reports whether claimIdle would succeed now, without claiming.
+	idle() bool
 	// EmergencyStop rejects queued work with reason and stops the runtime,
 	// active or not; its next request starts it again.
 	EmergencyStop(reason error)
@@ -62,6 +64,23 @@ func (r *IdleRecovery) Add(p idlePeer) {
 	r.mu.Lock()
 	r.peers = append(r.peers, p)
 	r.mu.Unlock()
+}
+
+// idleIDs are the runtimes other than modality that recovery could stop now.
+func (r *IdleRecovery) idleIDs(modality string) []string {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	peers := append([]idlePeer(nil), r.peers...)
+	r.mu.Unlock()
+	var ids []string
+	for _, p := range peers {
+		if p.runtimeID() != modality && p.idle() {
+			ids = append(ids, p.runtimeID())
+		}
+	}
+	return ids
 }
 
 // recoverable reports whether err is a memory refusal recovery may resolve.
@@ -163,6 +182,12 @@ func (s *Service) stopClaimed() {
 	}
 }
 
+func (s *Service) idle() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cur != nil && !s.busy && !s.claimed && !s.closed && !s.switching && len(s.queue) == 0
+}
+
 func (s *Service) unclaim() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -173,6 +198,12 @@ func (s *Service) unclaim() {
 }
 
 func (m *LLM) runtimeID() string { return "llm" }
+
+func (m *LLM) idle() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cur != nil && m.active == 0 && !m.starting && !m.claimed && !m.closed && len(m.queue) == 0
+}
 
 func (m *LLM) claimIdle() bool {
 	m.mu.Lock()

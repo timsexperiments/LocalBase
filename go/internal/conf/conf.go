@@ -21,8 +21,8 @@ const (
 	DefaultLLMPort     = 18000
 	DefaultSTTPort     = 18080
 	DefaultCtxSize     = 131072
-	defaultLLM         = "qwen2.5-coder-7b-instruct-q4_k_m"
-	defaultImage       = "stable-diffusion-v1-5"
+	defaultLLM         = "qwen3.5-4b-q4_k_m" // the compact chat model on every machine (#368)
+	defaultImage       = "dreamshaper-8-lcm"
 )
 
 // Default is a fresh configuration for root (TS defaultConfig). The STT
@@ -251,5 +251,26 @@ func Public(c *store.Config, eff *obs.OtelConfig) map[string]any {
 		"hfTokenConfigured": c.HFToken != "",
 		"observability": map[string]any{"enabled": enabled, "source": source, "endpoint": endpoint,
 			"persistedEndpoint": persisted, "sampler": sampler, "sampleRatio": ratio},
+	}
+}
+
+// KeepFormerSelections: settings saved by an earlier release can name a
+// model that has since left the built-in catalog without its files being
+// installed. Those are kept as user entries before validation so the
+// settings stay valid, and cat is reloaded (TS keepFormerCatalogSelections).
+func KeepFormerSelections(rootDir string, c *store.Config, cat *catalog.Catalog) {
+	var ids []string
+	for _, k := range store.Kinds {
+		ids = append(ids, c.Selected[k]...)
+	}
+	for _, k := range store.Kinds {
+		ids = append(ids, c.Active[k])
+	}
+	missing := catalog.MissingFormerIDs(ids, func(id string) bool { return cat.ByID(id) != nil })
+	if len(missing) == 0 || len(catalog.AdoptFormerEntries(rootDir, missing)) == 0 {
+		return
+	}
+	if next, err := catalog.LoadRoot(rootDir, nil); err == nil {
+		cat.Replace(next)
 	}
 }
