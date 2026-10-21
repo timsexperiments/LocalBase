@@ -1654,10 +1654,13 @@ and the `com.localbase.gateway.<hash>` launchd agent.
 
 Each item is done, or waived on record by the operator.
 
-1. **#368 (curated catalog, former entries).** Either merged and ported
-   (former adoption, the feed skip, the discovery template fallback;
-   goldens regenerated), or a recorded decision to cut over without it and
-   port it afterwards.
+1. **#368 (curated catalog, former entries).** Waiting on the user. Both
+   paths are planned:
+   - **Merged before cutover:** port it (former adoption, the feed skip,
+     the discovery template fallback), regenerate the goldens, rerun the
+     dual contract, and cut a new release candidate.
+   - **Not merged:** cut over without it. Record the decision, and port it
+     after cutover like any TS change during the two weeks (§17.3 step 7).
 2. **The user's real-iPhone checks on the Go UI**, over Cloudflare Access to
    a release candidate (§15.4): no zoom when the composer is focused, the
    composer stays above the keyboard, Return adds a line on touch,
@@ -1666,7 +1669,7 @@ Each item is done, or waived on record by the operator.
 
    | Client | Routes to check | Differences that can reach it |
    | --- | --- | --- |
-   | naya-device-worker | the routes it calls (operator to list) | 1 (repeated request after a permanent start failure), 3 (wrong method on a JSON route), 6 (503 on a memory emergency) |
+   | naya-device-worker | `POST /v1/chat/completions` (3827 calls in the Oct 2026 logs), `GET /v1/models` (3348), `GET /v1/models/{id}` (13, logged as unmatched before #362), `POST /v1/systemone` (6). Its client allows only `{base}/models` and `{base}/chat/completions`, retries on 503 with `Retry-After`, and treats 499 as its own cancel | 1 (repeated request after a permanent start failure), 3 (wrong method on a JSON route), 6 (503 on a memory emergency) |
    | t3-opencode | `/v1/chat/completions` (streaming), `/v1/models` | 3, 6 |
    | decision clients | `/v1/systemone` | 3, 6 |
    | browser (Chat, Admin, Lab) | `/app/**`, `/_localbase/**` | 2 (unparseable multipart), 4 (model management while a runtime is up), 5 (Admin lockout, 409) |
@@ -1683,13 +1686,13 @@ Each item is done, or waived on record by the operator.
      (folded into the rehearsal, §17.2 step 5).
 5. **A green build:** CI on macOS and Linux, a full dual contract run, and
    `tools/systemd-check.sh`, all on the release-candidate commit.
-6. **Version string.** The release binary reports `0.2.0` (it reports
-   `0.2.0-go` now), unless the operator chooses otherwise.
+6. **Version string: `0.2.0`** (operator decision). The `-go` suffix is
+   dropped at the release candidate.
 
 ### 17.2 Rehearsal on this Mac, against a copy of the live root
 
-**The copy** goes to `/tmp/lbgo-rehearsal/root` (operator's choice of one
-method):
+**The copy** goes to `/private/tmp/lbgo-shadow/root`. Method (b) was chosen
+(operator decision, no downtime):
 
 - **(a) Quiesced clone.** Briefly stop the live gateway (`local-base stop`),
   clone the whole root with `cp -c -R` (APFS, copy-on-write: the live files
@@ -1712,27 +1715,28 @@ settings. It is served on loopback only and deleted after the rehearsal.
    of /tmp/lbgo-rehearsal/root>`. Use a test port in 24000–29999, set with
    `local-base --root /tmp/lbgo-rehearsal/root config apply` on the copy;
    the backend ports move with it, away from the live ones. Then
-   `local-base start`.
+   `local-base start`. The TTS, image and video ports are flag-only (defaults 8090–8092,
+   the same as live), so the service on the copy is sent no media request.
 3. **Checks against the copy:**
    - `local-base smoke`, including a decision question;
    - the contract suite in Go-only mode (`-url http://127.0.0.1:<port>
      -key <a copy key>`);
    - `status`, `diagnostics`, `/health`, `/health/ready`.
-4. **Real clients, only where the operator judges it safe:** naya and
-   opencode pointed at the rehearsal port through a config override (one
-   profile each, no shared state). A client with side effects outside
-   LocalBase is left out.
+4. **No real clients (operator decision).** naya would process real jobs
+   twice, and opencode sessions are the user's. Instead, `TestClientReplay`
+   (`contract/replay_test.go`) replays their request shapes with the
+   operator's temporary key: models list, retrieve of every listed model,
+   chat (non-streaming and streaming) and one decision request.
 5. **`config apply` with a launchd restart** (§13.6): a new port with
    `--restart auto` gives `activation: restarted`; `--wait` returns on
    `pendingRestart: false`; `--restart never` followed by `restart` clears
    it.
-6. **The UI through a temporary path.** The copy's Google sign-in only
-   accepts the public callback, so the UI is checked through one of:
-   - the copy's session cookie set for the loopback origin in a scratch
-     browser profile;
-   - a scratch copy of the copy with a magic-link or `--no-auth` setup.
-   Chat, Admin and Lab load and work. cloudflared and Access are not
-   touched.
+6. **The UI through a temporary path (operator decision).** A `--no-auth`
+   scratch variant of the copy on loopback, for the visual and flow checks
+   of Chat, Admin and Lab. No cookie from the copy is ever used in a
+   browser. Session validation is proven separately by the TS-vs-Go
+   comparison of the copied `auth_browser_sessions` rows (§17.7).
+   cloudflared and Access are not touched.
 7. **Schema both ways.** After Go ran, the `__drizzle_migrations` rows are
    identical to the baseline. The only schema change is the Go extension
    tables (`go_schema`, `imported_models`, `model_backend_selections`,
