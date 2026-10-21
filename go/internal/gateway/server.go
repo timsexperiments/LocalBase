@@ -20,6 +20,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
 const Version = "0.2.0-go"
@@ -39,6 +40,12 @@ type Server struct {
 	// Library joins the catalog, imports and backend selections (nil in
 	// unit tests that need neither).
 	Library *library.Library
+	// STT, TTS and Image supervise the media modalities (nil: route disabled).
+	STT   *runtime.Service
+	TTS   *runtime.Service
+	Image *runtime.Service
+	// Voices stores custom voice profiles (nil: the routes are disabled).
+	Voices *voices.Store
 	// UI handles /app and / when set.
 	UI http.Handler
 
@@ -62,6 +69,11 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/v1/chat/completions", s.guard("inference:chat", s.chat))
 	mux.HandleFunc("/v1/embeddings", s.guard("inference:embeddings", s.embeddings))
 	mux.HandleFunc("/v1/systemone", s.guard("inference:decision", s.systemone))
+	mux.HandleFunc("/v1/audio/transcriptions", s.guard("inference:transcription", s.transcription))
+	mux.HandleFunc("/v1/audio/translations", s.guard("inference:transcription", s.transcription))
+	mux.HandleFunc("/v1/audio/speech", s.guard("inference:speech", s.speech))
+	mux.HandleFunc("/v1/images/generations", s.guard("inference:image", s.imageGeneration))
+	mux.HandleFunc("/v1/images/edits", s.guard("inference:image", s.imageEdit))
 	mux.HandleFunc("/_localbase/models", s.guard("models:read", s.modelMetadata))
 	mux.HandleFunc("/_localbase/models/{model_id...}", s.guard("models:read", s.modelMetadata))
 	mux.HandleFunc("/_localbase/access-management", s.accessManagement)
@@ -71,6 +83,8 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/model-backend", s.modelBackendAPI)
 	mux.HandleFunc("/_localbase/model-imports", s.modelImportsAPI)
 	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
+	mux.HandleFunc("/_localbase/voices", s.voicesAPI)
+	mux.HandleFunc("/_localbase/voices/", s.voicesAPI)
 	if s.UI != nil {
 		mux.Handle("/app", s.UI)
 		mux.Handle("/app/", s.UI)
@@ -270,12 +284,17 @@ func (s *Server) modality(kind string) (configured bool, state string, admits bo
 		configured = snap.State != "disabled"
 		return configured, snap.State, configured && snap.Accepting && snap.Waiting < snap.Capacity
 	}
-	// Speech, image and video runtimes arrive in milestone 4.
 	cfg := s.LLM.Config()
-	if len(cfg.Selected[kind]) > 0 && cfg.Active[kind] != "" {
+	if len(cfg.Selected[kind]) == 0 || cfg.Active[kind] == "" {
+		return false, "disabled", false
+	}
+	svc := map[string]*runtime.Service{"stt": s.STT, "tts": s.TTS, "image": s.Image}[kind]
+	if svc == nil {
+		// Video arrives with M6; a disabled service (--no-x) admits nothing.
 		return true, "idle", false
 	}
-	return false, "disabled", false
+	snap := svc.Snapshot()
+	return true, snap.State, snap.Accepting && snap.Waiting < snap.Capacity
 }
 
 func (s *Server) modalityHealth() map[string]any {

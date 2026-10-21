@@ -36,6 +36,12 @@ var goSchema = []string{
 		updated_at TEXT NOT NULL,
 		PRIMARY KEY (model_id, device_id)
 	)`,
+	// Go-only settings: one row per key (for example speech.provenance-marking).
+	`CREATE TABLE IF NOT EXISTS go_settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`,
 }
 
 func applyGoSchema(ctx context.Context, tx *sql.Tx) error {
@@ -148,4 +154,21 @@ func (s *Store) ResetBackendChoice(ctx context.Context, modelID, deviceID string
 	}
 	n, _ := res.RowsAffected()
 	return n > 0, nil
+}
+
+// Setting reads a Go-only setting ("" and false when unset).
+func (s *Store) Setting(ctx context.Context, key string) (string, bool, error) {
+	var v string
+	err := s.DB.QueryRowContext(ctx, `SELECT value FROM go_settings WHERE key = ?`, key).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return v, err == nil, err
+}
+
+// SetSetting stores a Go-only setting.
+func (s *Store) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO go_settings (key, value, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, key, value, nowISO())
+	return err
 }

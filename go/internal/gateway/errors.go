@@ -69,7 +69,8 @@ func serviceUnavailable(w http.ResponseWriter, r *http.Request, service string) 
 }
 
 // runtimeError maps runtime and admission errors to responses.
-func runtimeError(w http.ResponseWriter, r *http.Request, err error, model string) {
+// service names the runtime in a 503 ("LLM", "STT", "TTS", "Image"), as TS does.
+func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, service string) {
 	var ae *memory.AdmissionError
 	var notInstalled *runtime.NotInstalledError
 	var launch *runtime.LaunchError
@@ -90,6 +91,9 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model strin
 	case errors.As(err, &started):
 		// A chosen or imported backend reports its own startup error; nothing
 		// else is substituted.
+		// A failed start may be transient (a crash, a timeout), so clients that
+		// retry on 503 get Retry-After, like every other transient failure.
+		w.Header().Set("Retry-After", "5")
 		writeError(w, r, 503, "api_error", "backend_startup_failed", obs.BoundedText(started.Error(), 1024), nil)
 	case errors.As(err, &ae):
 		w.Header().Set("Retry-After", "5")
@@ -101,6 +105,7 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model strin
 	case errors.Is(err, r.Context().Err()) && r.Context().Err() != nil:
 		w.WriteHeader(499)
 	default:
-		serviceUnavailable(w, r, "LLM")
+		// Transient (a crash, a start timeout): clients retry after Retry-After.
+		serviceUnavailable(w, r, service)
 	}
 }

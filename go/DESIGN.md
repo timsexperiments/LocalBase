@@ -133,6 +133,7 @@ Go standard library first. Every addition needs a reason:
 | Module | Why |
 | --- | --- |
 | `modernc.org/sqlite` | Pure-Go SQLite, so `CGO_ENABLED=0` still produces a static binary and cross-compiling to linux/amd64 is trivial. |
+| `internal/third_party/norm` (vendored, not a module) | Unicode NFC/NFKC for voice names (TS `String.prototype.normalize`). A copy of the Go go1.26.0 toolchain's vendored `golang.org/x/text/unicode/norm` (x/text v0.32.0, BSD-3-Clause, Unicode 15.0). Provenance and edits in its README; `PINS` and `norm_pins_test.go` fail on drift. |
 | (none else) | Dropped after review (§11): purego (Metal working set comes from `llama-server --list-devices`) and a TOML library (a small reader like TS's `toml.ts`). |
 
 Not added: an HTTP router (Go 1.22+ `ServeMux` patterns cover every route), a
@@ -800,7 +801,7 @@ files are fetched.
 | --- | --- | --- | --- |
 | llama.cpp | chat, vision, embeddings, decisions | macOS Metal; Linux Vulkan and a managed CUDA build; CPU | Integrated. The Mac and Linux pins should match (today: b11671 on the Mac and a different Linux pin); the CUDA package is new work. |
 | stable-diffusion.cpp | images, video | Metal, Vulkan | Integrated in TS (M4/M6 in Go). Exact launch profile per architecture. |
-| CrispASR | TTS now (Kokoro, Qwen TTS); ASR after qualification | Mac, Linux | TTS Mac/Linux tests done (audit 2026-10-20). Parakeet, Qwen-ASR, Whisper and Vulkan are documented upstream but not qualified here. No managed pin yet. |
+| CrispASR | TTS now (Kokoro, Qwen TTS); ASR after qualification | Mac, Linux | TTS Mac/Linux tests done (audit 2026-10-20). Parakeet, Qwen-ASR, Whisper and Vulkan are documented upstream but not qualified here. macOS arm64 is pinned in M4 (§13.3); Linux is not. |
 | whisper.cpp | ASR | Metal, Vulkan | Transition exception until CrispASR ASR is qualified. |
 | ONNX Runtime (CPU) | Kokoro | CPU | Transition exception; replaced by CrispASR Kokoro once pinned. |
 
@@ -850,7 +851,7 @@ export and the database for three planted secrets.
 | OP2 profiles redacted everywhere (planted secrets) | `OP2 no output, page, log, export or database contains a planted secret` | `acquire.TestDirectURLImport` |
 | OP3 HF token off CDN origins unless the `huggingface` profile lists them; anonymous CDN works; HTTPS→HTTP refused | `OP3 the Hugging Face token stays off CDN origins ...`, `OP3 an HTTPS to plain-HTTP redirect is refused, even with --allow-http, and no header crosses it` (direct URL and HF→http CDN hop) | `acquire.TestHFTokenCDNScope`, `TestRedirectDowngradeRefused` |
 | OP4 ratings never from names; user sentences plus machine codes; findings table | `OP4 models inspect --json has a findings table ...`, `AC2 ...` | `backends.TestNoRatingFromNames` |
-| OP5 CrispASR listed as not installed, never automatic until pinned | `OP5 CrispASR is listed as not installed ...` (backends list, the API, the selector page, and a Kokoro speech model it rates supported but is never chosen for) | `backends.TestCrispASRWithoutPin` |
+| OP5 CrispASR listed as not installed, never automatic until pinned (M4: automatic only where pinned, and only for speech) | `OP5 CrispASR is automatic only where pinned, and only for speech` (backends list, a Kokoro speech model, a GGUF whisper model it is never chosen for) | `backends.TestCrispASRWithoutPin` |
 | Rollback stays a binary swap | `rollback: TS opens the database Go wrote` | `store.TestBackendChoicesPersist` |
 
 HTTPS→HTTP redirects are refused anywhere in a redirect chain (no consent
@@ -865,3 +866,194 @@ Also checked by hand: the import, model settings and backend pages at 390 px
 in light and dark on a scratch gateway. Not done here, by design: live
 deployment, CrispASR pins and adapters (M4), a managed CUDA package, and
 qualification of any new backend/model pair.
+
+## 13. M4: speech, voices and images
+
+Stacked on M3.5 (`rewrite/go-m4` on `rewrite/go-model-import`). The
+OpenAI-compatible routes keep the TS contract: the same validation, error
+codes and response shapes, checked by the TS/Go contract suite. Internals use
+the M3.5 backend registry: every modality resolves model → selection →
+backend → adapter, with the same explicit launch errors.
+
+### 13.1 Runtime
+
+One generic supervisor (`runtime.Service`) replaces the TS per-modality
+supervisor factory for STT, TTS and images. Each holds one resident backend
+process for one model at a time, with:
+- a FIFO queue with capacity and timeout (as for the LLM);
+- memory admission before start, with demand from the backend's estimate
+  rule, stated with its assumptions;
+- a model switch: stop, then start; no rollback onto another model;
+- an unexpected exit clears the slot, and the next request restarts it;
+- startup failures of chosen or imported backends are reported as
+  `backend_startup_failed`.
+
+### 13.2 Adapters
+
+| Adapter | Backends | Contract |
+| --- | --- | --- |
+| `whisper-server/v1` | whisper.cpp (Metal, Vulkan) | `POST /inference` multipart (translation is a flag) |
+| `crispasr/v1` | CrispASR | `--server --backend kokoro\|qwen3-tts`, `POST /v1/audio/speech` (WAV, 24 kHz mono), `GET /health` |
+| `tts-server/v1` | tts-server (transition) | TS warm-server protocol |
+| `sd-server/v1` | stable-diffusion.cpp | OpenAI-compatible images API of the pinned sd-server |
+
+### 13.3 CrispASR
+
+The 2026-10-20 TTS screen ran the CrispASR v0.8.43 release assets:
+- `crispasr-macos-arm64.tar.gz`, sha256 `5c13fbbc…`, 18,012,924 bytes;
+- `crispasr-linux-x86_64-cuda.tar.gz`, sha256 `abeb01ea…`, 225,358,330
+  bytes, plus pinned CUDA runtime wheels.
+
+It loaded Kokoro 82M F16 (with a voice GGUF) and Qwen3-TTS 0.6B Q8_0 (with
+its 12 Hz tokenizer), on CPU and on Metal or CUDA, through its HTTP server.
+Every output was a valid WAV; the quality audit is still pending.
+
+M4 pins the macOS arm64 asset as a managed package, so `crispasr-metal` and
+`crispasr-cpu` become installable on Apple Silicon and automatic routing may
+pick them for speech. Linux stays unpinned until the CUDA library set is
+packaged, so `crispasr-cuda` and `crispasr-cpu` there are manual-only,
+custom-registered builds. **CrispASR speech recognition stays unqualified**:
+whisper.cpp keeps transcription until CrispASR ASR is measured here, and
+CrispASR's ASR architectures stay `likely`.
+
+The definitions enforce that split with `automaticTasks: ["speech"]`: routing
+picks a backend automatically only for models whose tasks are all listed, so
+a GGUF whisper import goes to whisper.cpp even though `crispasr-metal` comes
+first in the routing order. CrispASR transcription stays selectable by hand,
+with the `not-chosen-automatically` warning.
+
+The managed package is installed on first use (`runtime.EnsureBinary`):
+- the archive is checked against its pinned size and sha256 and extracted
+  with path checks;
+- the Misaki dictionary is rebuilt from two pinned hexgrad/misaki files (gold
+  first, then silver entries gold lacks) and must reproduce its recorded
+  sha256 `9c44a4b8…`;
+- a TS-compatible `.managed-binaries.json` receipt is written.
+
+An installed package with a missing or damaged dictionary is rebuilt, and
+the adapter refuses to start without it (builtin G2P mispronounces common
+words). The server runs as the screen did: builtin-only G2P, no punctuation
+model, network blocked by dead proxies, working directory the model
+directory.
+
+The Kokoro catalog model gains a `crispasr-f16` variant (pinned
+`cstr/kokoro-82m-GGUF` F16 weights and the `af_heart` voice GGUF), qualified
+on `crispasr-metal` and `crispasr-cpu`. `af_bella` is not in the pinned voice
+revision, so it answers `voice_not_supported` on this variant. `onnx-cpu`
+becomes manual-only.
+
+**Provenance (product decision, open):** CrispASR marks synthesized speech
+with an inaudible AI-content watermark and, in its own WAV files, a C2PA
+manifest. Measured on the pinned build (2026-10-20): it watermarks raw PCM
+responses even with every opt-out, and honors the opt-outs only for WAV. The
+gateway therefore asks CrispASR for WAV and keeps only its samples. With
+marking on (the default) the output carries the watermark but not the C2PA
+manifest, because LocalBase writes its own WAV header and PCM can hold none.
+The single switch is `local-base speech marking on|off` (the Go setting
+`speech.provenance-marking`, stored in `go_settings`); off passes
+`--no-watermark --no-c2pa --no-spoken-disclaimer
+--accept-marking-responsibility` and restarts the speech server on the next
+request. `TestSpeechKokoroCrispASR` detects the watermark when on and its
+absence when off. tts-server output is not marked. Qwen3-TTS through CrispASR needs a reference voice and a consent
+attestation and is deferred; Qwen TTS stays on tts-server.
+
+### 13.4 Plan
+
+| Step | Contents |
+| --- | --- |
+| 1 | `runtime.Service`, a generic supervisor with an adapter interface; LLM untouched |
+| 2 | STT: whisper adapter, `/v1/audio/transcriptions` and `/translations` (multipart validation, response formats) |
+| 3 | TTS: CrispASR adapter (Kokoro, Qwen TTS) and tts-server; `/v1/audio/speech` (WAV/PCM, streaming formats) |
+| 4 | Custom voices: `/_localbase/voices` CRUD and audio; `voices` CLI |
+| 5 | Images: sd-server adapter, `/v1/images/generations` and `/edits`, LoRA |
+| 6 | UI: Lab pages (speak, transcribe, images) and the voices page |
+| 7 | Contract cases TS/Go for every route; real small-model runs (whisper tiny, Kokoro) on scratch roots |
+
+### 13.5 Status
+
+| Step | State | Evidence |
+| --- | --- | --- |
+| 1 | Done | `runtime.TestService*` (queue, admission, switch, crash recovery, close) |
+| 2 | Done | `TestDifferentialTranscriptionRejections`; `TestTranscriptionReal` (whisper tiny.en, identical text on TS and Go in every format) |
+| 3 | Done for Kokoro via CrispASR and the tts-server adapter | `TestDifferentialSpeechRejections` (same status, code, param and message as TS); `TestSpeechKokoroCrispASR` (automatic `crispasr-metal`, WAV/PCM/SSE, whisper hears the input); `runtime.TestEnsureBinaryInstallsPinnedRelease` (offline: checksums, extraction, dictionary rebuild); `backends.TestCrispASRWithoutPin` |
+| 4 | Done | `voices.TestNormalizeAudioGolden` (15 recordings and every rejection reproduce the TS normalizer byte for byte: `tools/golden/voices.ts`); `voices.TestNameRulesGolden` (NFC, NFKC key, JS whitespace and lowercase); `TestDifferentialVoices` (same stored sha256 on both gateways, every rejection, permission and method error); `TestCLIVoices` |
+| 5 | Done | `TestDifferentialImageRejections` (generation and edit validation, permissions, content checks); `TestImageReal` (DreamShaper 8 through sd-server: generation and edit are byte-identical on TS and Go); validator and tuning-block unit tests |
+| 6 | Done | `/app/lab` (image, speech, transcription) and `/app/voices` (record or upload, consent, preview, rename, delete), exercised in a browser against real models at 320 and 1280 px; `web` handler tests (API errors shown escaped, results bound to their owner, cross-site posts refused) |
+| 7 | Done | Every M4 route has differential TS/Go cases (transcription, translation, speech, voices, image generation and edits, readiness, retry semantics). Real runs on scratch roots: whisper tiny.en (identical transcripts on both), Kokoro through CrispASR (heard back by whisper; marking on and off), Qwen3-TTS through tts-server with a reference and a cloned custom voice on both (heard back by whisper), DreamShaper 8 generation and edit (byte-identical on both). Step 7 also found and fixed: health/readiness now report the speech and image services (TS lists every configured modality as admitting; video waits for M6), media queues use the TS defaults (16 waiting, 60 s) and the serve flags, the Qwen TTS projector role was lost in the legacy variant, and routing preferred CrispASR for Qwen3-TTS, which its adapter does not run yet (tts-server is now preferred; Kokoro still routes to CrispASR). |
+
+`serve` now honours `--stt-*`, `--tts-*` and `--image-*` host and port
+options and `--no-stt`, `--no-tts` and `--no-image` (TS defaults: TTS 8092,
+images 8090). The TTS server restarts when the custom voice set changes,
+since it loads voices at launch. `TestSpeechKokoroCrispASR` needs
+`LOCALBASE_CONTRACT_CRISPASR` (the unpacked release, the dictionary and the
+pinned Kokoro files) and is skipped in CI.
+
+Custom voices (step 4) keep the TS store: `<root>/voices/<id>.wav` (0600 in
+a 0700 directory) plus the `tts_custom_voices` row, so a rollback to TS sees
+the same voices. Recordings are decoded and resampled in Go with the TS
+arithmetic (float32 samples and kernels, float64 sums, JavaScript rounding),
+so the same upload stores the same bytes and checksum on either gateway. A
+voice resolves for speech only while its recording matches its checksum.
+Voice names need Unicode NFC and NFKC, which the standard library does not
+export; `internal/third_party/norm` is the Go toolchain's own vendored copy
+of `x/text/unicode/norm` (BSD, Unicode 15), so go.mod still lists only
+modernc.org/sqlite. One deliberate difference: a multipart body TS cannot
+parse makes it answer 500 `gateway_error`; Go answers 400
+`validation_failed`.
+
+Images (step 5) keep the TS launch profile (`-m` or the diffusion component
+arguments, generation defaults, `--diffusion-fa`, `--prediction`; 30 s
+startup, 180 s from 10 GiB of catalog weights), the `<sd_cpp_extra_args>`
+tuning block byte for byte (LoRA, negative prompt, seed, strength, steps,
+guidance), and the edit upload checks (PNG/JPEG structure, 2048 px and
+4.2 MP limits). As in Bun, an uploaded file's type comes from its filename
+extension, not the part header. A media model becomes active when it is
+requested, before its files are checked (TS activateModel), so a request for
+a selected but missing model changes the default for later requests on both.
+
+Retry semantics are listed in §13.6.
+
+Contract fixtures: launched gateways run offline (dead proxies, loopback
+exempt), so a missing runtime or model fails instead of downloading, and
+`bin/runtimes` fixtures merge instead of nesting.
+
+### 13.6 Status changes for the cutover checklist
+
+Live clients (naya-device-worker, t3-opencode) retry on 503 with
+`Retry-After`. The contract: **transient failures keep 503 (or 429) with
+`Retry-After`**, as TS answers them; **failures that need someone to act
+answer their real 4xx without it**. `gateway.TestRuntimeErrorRetrySemantics`
+pins the mapping and `TestDifferentialRetrySemantics` checks it on both
+gateways with a real sd-server.
+
+| Class | Status, code | Retry-After | TS |
+| --- | --- | --- | --- |
+| A backend crashed or did not become healthy | 503 `service_unavailable` ("Image service is currently restarting…", the service named as in TS) | 5 | same |
+| A chosen or imported backend failed to start (M3.5, Go only) | 503 `backend_startup_failed` | 5 | no equivalent |
+| Memory pressure | 503 `insufficient_memory` | 5 | same |
+| Queue full or timed out | 429 `inference_queue_full`, `inference_queue_timeout` | 1 | same |
+| Files not installed | 409 `model_install_consent_required` | none | same on the first request |
+| Launch can never work as configured | 409 `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported` | none | no equivalent (M3.5) |
+
+Deliberate status changes to verify against the live clients at cutover:
+
+1. **A repeated request after a permanent start failure.** TS keeps the failed
+   runtime and answers 503 `service_unavailable` with `Retry-After: 5`; Go
+   answers the real 409 every time. A retrying client now stops instead of
+   retrying a model that cannot start. Transient start failures still answer
+   503 with `Retry-After` on every attempt, as in TS.
+2. **An unparseable multipart body** (voices, image edits, transcription):
+   TS 500 `gateway_error`; Go 400 `validation_failed`.
+3. **The wrong method on a JSON inference route** (for example `GET
+   /v1/chat/completions`): TS 400; Go 405 with `Allow: POST`.
+4. **An overflowing prompt** (M1): 400 `context_length_exceeded` instead of
+   the relayed `exceed_context_size_error`.
+
+The Lab and My voices pages (step 6) call the API in-process as the signed-in
+person (`gateway.Server.Call`), so they get exactly the API's validation,
+permissions and errors without a JSON client. Generated media is kept per
+person for 30 minutes (at most 16 results) and served from the UI's own
+origin. Recording, file conversion and resampling to WAV happen in the
+browser (`static/js/audio.js`), since the server decodes only WAV.
+`TestServeForUI` serves the contract fixture with `--no-auth` on a test
+port for checking the pages by hand.

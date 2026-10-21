@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "notes": "Runtimes the Go build pins in addition to the TS manifest. CrispASR v0.8.43 macOS arm64: the asset the 2026-10-20 TTS screen ran (reports/model-benchmark-20261017/crispasr-tts-screen-20261020-v2/mac-runtime-pins.json). Linux needs the pinned CUDA library set and is not managed yet.",
+  "targets": [
+    {
+      "platform": "darwin",
+      "architecture": "arm64",
+      "runtimes": {
+        "crispasr": {
+          "tag": "v0.8.43",
+          "assetName": "crispasr-macos-arm64.tar.gz",
+          "url": "https://github.com/CrispStrobe/CrispASR/releases/download/v0.8.43/crispasr-macos-arm64.tar.gz",
+          "expectedSizeBytes": 18012924,
+          "sha256": "5c13fbbc12eb45c3f01823a6bbfbbb22e0682bc76c6b78a0d9511da1aaf88831",
+          "format": "tar.gz",
+          "stripComponents": 1,
+          "supportFiles": [
+            {
+              "filename": "misaki-merged.json",
+              "sha256": "9c44a4b8661fa600f0019c0d4996dc3899e08bcaf978b06a8b816821a70e6c62",
+              "derivation": "misaki-gold-first-union",
+              "sources": [
+                {
+                  "url": "https://raw.githubusercontent.com/hexgrad/misaki/fba1236595f2d2bf21d414ba6e57d25256afada3/misaki/data/us_gold.json",
+                  "expectedSizeBytes": 3000469,
+                  "sha256": "dc414872a49a28ae6c141463d502fd945f3b2fde040484fdc47d00cc4612686f"
+                },
+                {
+                  "url": "https://raw.githubusercontent.com/hexgrad/misaki/fba1236595f2d2bf21d414ba6e57d25256afada3/misaki/data/us_silver.json",
+                  "expectedSizeBytes": 3099517,
+                  "sha256": "de8f67be911bb6c659187b4a65fd966b6a30e56350e0f790d763210b053ac475"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

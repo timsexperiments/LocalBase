@@ -302,3 +302,50 @@ func fileSHA256(path string) (string, error) {
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
+
+// FetchPinned downloads a variant's missing artifacts from their pinned
+// Hugging Face sources into dir, checks each against its authoritative size
+// and sha256, and moves it into place. Files already present with the right
+// size are kept.
+func FetchPinned(ctx context.Context, dir string, arts []models.Artifact, hfToken string, progress func(Progress)) error {
+	if progress == nil {
+		progress = func(Progress) {}
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	staging := filepath.Join(dir, ".staging")
+	if err := os.MkdirAll(staging, 0o700); err != nil {
+		return err
+	}
+	client := newClient(nil, hfToken, nil)
+	for _, a := range arts {
+		final := filepath.Join(dir, a.Filename)
+		if info, err := os.Stat(final); err == nil && (a.SizeBytes == 0 || info.Size() == a.SizeBytes) {
+			continue
+		}
+		if a.Source.Kind != "huggingface" || a.Source.Repo == "" || a.Source.Revision == "" || a.SHA256 == "" {
+			return fmt.Errorf("%s has no pinned source to download it from", a.Filename)
+		}
+		url := HFEndpoint() + "/" + a.Source.Repo + "/resolve/" + a.Source.Revision + "/" + escapePath(a.Source.Path)
+		partial := filepath.Join(staging, a.Filename+".partial")
+		if err := download(ctx, client, url, partial, a.SizeBytes, redactorFor(nil), func(n int64) {
+			progress(Progress{Phase: "download", File: a.Filename, Done: n, Total: a.SizeBytes})
+		}); err != nil {
+			return err
+		}
+		sum, err := fileSHA256(partial)
+		if err != nil {
+			return err
+		}
+		if !strings.EqualFold(sum, a.SHA256) {
+			os.Remove(partial)
+			return &HashMismatchError{File: a.Filename, Expected: a.SHA256, Actual: sum, Trust: models.HashAuthoritative}
+		}
+		if err := os.Rename(partial, final); err != nil {
+			return err
+		}
+	}
+	os.Remove(staging)
+	return nil
+}

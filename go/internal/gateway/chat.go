@@ -52,11 +52,17 @@ func readJSON(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 		payloadTooLarge(w, r)
 		return nil, false
 	}
-	var req map[string]any
+	var v any
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
-	if err := dec.Decode(&req); err != nil || req == nil || dec.More() {
+	if err := dec.Decode(&v); err != nil || dec.More() {
 		badRequest(w, r, "Invalid JSON payload.", nil)
+		return nil, false
+	}
+	req, ok := v.(map[string]any)
+	if !ok {
+		// Valid JSON that is not an object fails the request schema, as in TS.
+		badRequest(w, r, "Validation failed: : Invalid input: expected object, received "+typeName(v), nil)
 		return nil, false
 	}
 	return req, true
@@ -340,11 +346,13 @@ type leaseInfo struct {
 }
 
 type inferOpts struct {
-	path      string
-	kind      string // chat | embeddings | decision
-	streaming bool
-	schema    map[string]any
-	prepareMs *float64
+	path string
+	kind string // chat | embeddings | decision | image
+	// contentType of the backend request (default application/json).
+	contentType string
+	streaming   bool
+	schema      map[string]any
+	prepareMs   *float64
 }
 
 // inferLLM admits the request on the LLM runtime, finishes the body, and
@@ -359,7 +367,7 @@ func (s *Server) inferLLM(w http.ResponseWriter, r *http.Request, model string, 
 	lease, err := s.LLM.Acquire(r.Context(), model)
 	if err != nil {
 		s.logAdmissionRejection(requestID, "llm", model, err)
-		runtimeError(w, r, err, model)
+		runtimeError(w, r, err, model, "LLM")
 		return
 	}
 	defer lease.Release()

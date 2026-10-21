@@ -1,0 +1,653 @@
+{
+ "audio": [
+  {
+   "spec": {
+    "case": "pcm16 mono 16k",
+    "rate": 16000,
+    "frames": 64000
+   },
+   "inputSha256": "436dc5331d41a48c41ff7c457e5b33dec0b20ab80e986cc7aac46fc2a11a0946",
+   "sha256": "4f5def09e6b9fe5fe44217c73fc3287bdcd1120b8a618a9a684f040830dcb3db",
+   "sizeBytes": 192044,
+   "sampleCount": 96000,
+   "durationMs": 4000
+  },
+  {
+   "spec": {
+    "case": "pcm16 stereo 44.1k",
+    "channels": 2,
+    "rate": 44100,
+    "frames": 198450,
+    "seed": 7
+   },
+   "inputSha256": "2bd93cf8199dca0e06924b9abfa5d1cc6e40918607d21d0ddd9b957297a2b192",
+   "sha256": "83719a9e10432cbd728bea5e72c5396be8b47d7cf37603f8f7525e565cf080d5",
+   "sizeBytes": 216044,
+   "sampleCount": 108000,
+   "durationMs": 4500
+  },
+  {
+   "spec": {
+    "case": "pcm24 mono 48k",
+    "bits": 24,
+    "rate": 48000,
+    "frames": 153600,
+    "seed": 3
+   },
+   "inputSha256": "7bc1dc716a22e05e53b8ef79f68ccfff8b178c2d021629aa7dbe1f69a2837150",
+   "sha256": "c4d3ae0f5eac2a05085f0bc52e32613baabc7ada28b98d64a0c598a3d7e6ab07",
+   "sizeBytes": 153644,
+   "sampleCount": 76800,
+   "durationMs": 3200
+  },
+  {
+   "spec": {
+    "case": "pcm32 mono 22.05k",
+    "bits": 32,
+    "rate": 22050,
+    "frames": 77175,
+    "seed": 11
+   },
+   "inputSha256": "c7dca1027fc4012d9941518cedb97c0cff3ccd464524f849dd09f7c742ac046b",
+   "sha256": "d628d160aa17a0173d5fa79fbf45a5fa69809a89380ccd482203dced27bd99b7",
+   "sizeBytes": 168044,
+   "sampleCount": 84000,
+   "durationMs": 3500
+  },
+  {
+   "spec": {
+    "case": "pcm8 mono 8k",
+    "bits": 8,
+    "rate": 8000,
+    "frames": 40000,
+    "seed": 5
+   },
+   "inputSha256": "29792066b37bd50777eb97e843aafb392ae536a243339419c17cf65ef3c0a926",
+   "sha256": "8ef01b4be32994f3906f27ad7b82ab03eedfcf56303f63b39545ab53ec41e891",
+   "sizeBytes": 240044,
+   "sampleCount": 120000,
+   "durationMs": 5000
+  },
+  {
+   "spec": {
+    "case": "float32 stereo 48k",
+    "tag": 3,
+    "bits": 32,
+    "channels": 2,
+    "rate": 48000,
+    "frames": 168000,
+    "seed": 13
+   },
+   "inputSha256": "850f06f7b022f5b7903d5c450142a9460c97abcbeb9cd659145f1d2bc911e9c8",
+   "sha256": "3abb4608f4d5172b6d59298ed3238ad2fcee1910bf1d674bd00ef75d2a02b3e3",
+   "sizeBytes": 168044,
+   "sampleCount": 84000,
+   "durationMs": 3500
+  },
+  {
+   "spec": {
+    "case": "float64 mono 96k",
+    "tag": 3,
+    "bits": 64,
+    "rate": 96000,
+    "frames": 300000,
+    "seed": 17,
+    "amp": 1.5
+   },
+   "inputSha256": "3be86ff12331aee5f9a4838a0f2f32badbea05888c635f64db5198e1bd84246a",
+   "sha256": "78ff2ece4cf6ec1a833a4b98c0a897d7cf2bbb821abec00ecabc82517e0d6767",
+   "sizeBytes": 150044,
+   "sampleCount": 75000,
+   "durationMs": 3125
+  },
+  {
+   "spec": {
+    "case": "pcm16 mono 24k (no resample)",
+    "rate": 24000,
+    "frames": 96000,
+    "seed": 19
+   },
+   "inputSha256": "4fe33f7313a17edb1b85661485981ab5f1e8fa811817110016fe3a1bd69ea705",
+   "sha256": "a28ded23adcb0cf15cce878b0cab0a2d8bbb95bd0a658ccebed96b444fdab6d3",
+   "sizeBytes": 192044,
+   "sampleCount": 96000,
+   "durationMs": 4000
+  },
+  {
+   "spec": {
+    "case": "extensible pcm16 32k",
+    "extensible": true,
+    "rate": 32000,
+    "frames": 112000,
+    "seed": 23
+   },
+   "inputSha256": "e5b1176d3b44895338ddcc5fcf627bbc30d79ee87da7c28f6eb08ad71f1340ef",
+   "sha256": "f67ca45995581a46850a566f078f0126a37510335c8851eb5ccc5fffb64b9981",
+   "sizeBytes": 168044,
+   "sampleCount": 84000,
+   "durationMs": 3500
+  },
+  {
+   "spec": {
+    "case": "pcm16 mono 192k",
+    "rate": 192000,
+    "frames": 576000,
+    "seed": 29
+   },
+   "inputSha256": "c46fe550ceab373d98519320ec33c97e763df0688dacb0eda16f631e13dfbcee",
+   "sha256": "7e5162bbcdadf37c0956e1ca557f4606bdfb73498efe0481fb1a5195b775821c",
+   "sizeBytes": 144044,
+   "sampleCount": 72000,
+   "durationMs": 3000
+  },
+  {
+   "spec": {
+    "case": "pcm16 mono 11.025k",
+    "rate": 11025,
+    "frames": 44100,
+    "seed": 31
+   },
+   "inputSha256": "85464c1fd234bc6cc7b987064fab8a469c95a8c40d50b39f8fafa516814c62e1",
+   "sha256": "280ef0a074fb7fdd19979ff3801c67b57f30a65642ee97a9e7329e127e70f233",
+   "sizeBytes": 192044,
+   "sampleCount": 96000,
+   "durationMs": 4000
+  },
+  {
+   "spec": {
+    "case": "pcm16 3 channels 12k with odd LIST chunk",
+    "channels": 3,
+    "rate": 12000,
+    "frames": 48000,
+    "seed": 37,
+    "preChunks": [
+     {
+      "id": "LIST",
+      "size": 7
+     }
+    ]
+   },
+   "inputSha256": "d922621a5221230669b6fb666148fccee834bb998bb198a646dd6c4a71f620b8",
+   "sha256": "5ba5dfe072b5a5ed28310e42862998112e4c09c52ccb5f86295f32442085ce11",
+   "sizeBytes": 192044,
+   "sampleCount": 96000,
+   "durationMs": 4000
+  },
+  {
+   "spec": {
+    "case": "pcm8 odd data size",
+    "bits": 8,
+    "rate": 8000,
+    "frames": 24001,
+    "seed": 41
+   },
+   "inputSha256": "07b46feeaa30ed6bd928dba0dfb2ee56f19695507e7be0b95b870b3d86fc5b41",
+   "sha256": "17f005f6054286ad8f86efcb3dccc0b2ef43eb8ff197c1cfe422d2622c8bbf4d",
+   "sizeBytes": 144050,
+   "sampleCount": 72003,
+   "durationMs": 3000
+  },
+  {
+   "spec": {
+    "case": "exactly 3 s",
+    "rate": 16000,
+    "frames": 48000,
+    "seed": 43
+   },
+   "inputSha256": "39e9640c79030859f26cae312d6487f9519e8da463eed53947a498419bb7cc0d",
+   "sha256": "43e013b6471e11e6a2dca7026f2042c141f3340c650c8923b0fe771102ebd751",
+   "sizeBytes": 144044,
+   "sampleCount": 72000,
+   "durationMs": 3000
+  },
+  {
+   "spec": {
+    "case": "exactly 30 s",
+    "rate": 8000,
+    "frames": 240000,
+    "seed": 47
+   },
+   "inputSha256": "d03683f70945cc9354713ff7f1c57147284527e9ed528f814125ce2189ba550e",
+   "sha256": "cc59ee3350f73672c8611d1a74e3c49ca07896d5beb1bfc7036af31a2b54a32f",
+   "sizeBytes": 1440044,
+   "sampleCount": 720000,
+   "durationMs": 30000
+  },
+  {
+   "spec": {
+    "case": "too short (tie 2.25 s)",
+    "rate": 16000,
+    "frames": 36000
+   },
+   "inputSha256": "b89cd0ca91c7f2a207b5fc8db17d55dac760b04e197b641a33995bbdb9011d5f",
+   "error": {
+    "code": "audio_too_short",
+    "message": "The recording is 2.3 s; use at least 3 s of speech."
+   }
+  },
+  {
+   "spec": {
+    "case": "too short 0.1 s",
+    "rate": 8000,
+    "frames": 800
+   },
+   "inputSha256": "572429dec785b25c04e4744d9cdbccee501636c81c9b2059b931a79f29b8f848",
+   "error": {
+    "code": "audio_too_short",
+    "message": "The recording is 0.1 s; use at least 3 s of speech."
+   }
+  },
+  {
+   "spec": {
+    "case": "too long",
+    "rate": 8000,
+    "frames": 240400
+   },
+   "inputSha256": "8a4b4c2127ce56a31f677e49f341d692100c51226e575ad84050965729fd0cbf",
+   "error": {
+    "code": "audio_too_long",
+    "message": "The recording is 30.1 s; keep it to 30 s or less."
+   }
+  },
+  {
+   "spec": {
+    "case": "silent",
+    "rate": 16000,
+    "frames": 64000,
+    "silent": true
+   },
+   "inputSha256": "f751fd7094be088dc785125e4a1a0222a17c2bd20469aa31728ca5e515ed5809",
+   "error": {
+    "code": "audio_silent",
+    "message": "The recording is silent. Check the microphone and record again."
+   }
+  },
+  {
+   "spec": {
+    "case": "silent pcm8",
+    "bits": 8,
+    "rate": 16000,
+    "frames": 64000,
+    "silent": true
+   },
+   "inputSha256": "c0dfc2bec9eae72da81c90cbf1c15a79c7dd3c9b99212184efc4a38b552920e9",
+   "error": {
+    "code": "audio_silent",
+    "message": "The recording is silent. Check the microphone and record again."
+   }
+  },
+  {
+   "spec": {
+    "case": "float NaN",
+    "tag": 3,
+    "bits": 32,
+    "rate": 16000,
+    "frames": 64000,
+    "nanAt": 1000
+   },
+   "inputSha256": "0b32c6aacf5b91579d02ec974c1f3ea70ab532a71c3fde32ade314a14f69ac7b",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "The WAV file contains invalid float samples."
+   }
+  },
+  {
+   "spec": {
+    "case": "adpcm",
+    "tag": 2,
+    "rate": 16000,
+    "frames": 64000
+   },
+   "inputSha256": "ac7b4215ae97cc988168e16b3f8f48d14c7afde5ba75ba85cb4735baf292143d",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "Only uncompressed PCM or float WAV audio is supported."
+   }
+  },
+  {
+   "spec": {
+    "case": "12-bit",
+    "bits": 12,
+    "rate": 16000,
+    "frames": 100
+   },
+   "inputSha256": "b2bfa4978d0ecd9363293a71c6f74e0fcf87b87f4a53fb2936365a340ed60574",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "12-bit WAV audio is not supported."
+   }
+  },
+  {
+   "spec": {
+    "case": "float16",
+    "tag": 3,
+    "bits": 16,
+    "rate": 16000,
+    "frames": 100
+   },
+   "inputSha256": "e0b812ce58555e13e1a7d164a69461a106454b46c33c0910f58b5f761261fae8",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "16-bit WAV audio is not supported."
+   }
+  },
+  {
+   "spec": {
+    "case": "9 channels",
+    "channels": 9,
+    "rate": 16000,
+    "frames": 100
+   },
+   "inputSha256": "6c0cc4dd863ec8e57ed6b496e143a67b26703cc201821a0494bad4ff281d677b",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "WAV audio must have 1 to 8 channels."
+   }
+  },
+  {
+   "spec": {
+    "case": "rate 7999",
+    "rate": 7999,
+    "frames": 100
+   },
+   "inputSha256": "00a7c164bc71fab89d08d7b2611280c9ed13fe18bb63be64ae164e6a06f0f24e",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "WAV sample rate must be between 8000 and 192000 Hz."
+   }
+  },
+  {
+   "spec": {
+    "case": "rate 192001",
+    "rate": 192001,
+    "frames": 100
+   },
+   "inputSha256": "9573a29f04965038843e8a39e78eba515abd6462835b694487f083f317888a68",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "WAV sample rate must be between 8000 and 192000 Hz."
+   }
+  },
+  {
+   "spec": {
+    "case": "bad block align",
+    "blockAlign": 3,
+    "rate": 16000,
+    "frames": 100
+   },
+   "inputSha256": "d4c2fa91a432e1507bc69c16f3e452427fd53757a0316581dbf940fb254e4034",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "The WAV block alignment does not match its format."
+   }
+  },
+  {
+   "spec": {
+    "case": "no fmt",
+    "noFmt": true,
+    "rate": 16000,
+    "frames": 100
+   },
+   "inputSha256": "a8d7e6843005baa54c4f3b72dd3bcd483df9647a8f9a9df67124e4b1e0b02510",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "The WAV file has no format chunk."
+   }
+  },
+  {
+   "spec": {
+    "case": "no data",
+    "noData": true
+   },
+   "inputSha256": "04d9bddab64a8da67151c234322d72fb7e2207301cdafe8487e30dbcfeb9a332",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "The WAV file has no audio data."
+   }
+  },
+  {
+   "spec": {
+    "case": "two fmt",
+    "dupFmt": true,
+    "rate": 16000,
+    "frames": 100
+   },
+   "inputSha256": "fea2eff8263ee61a30842b2841c46d951d406981790647ecdf3cab65d0603463",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "The WAV file has more than one format chunk."
+   }
+  },
+  {
+   "spec": {
+    "case": "two data",
+    "dupData": true,
+    "rate": 16000,
+    "frames": 100
+   },
+   "inputSha256": "614809e16ab36029688be929edbb936f13b294d137345f92cf526f090c8ae5a5",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "The WAV file has more than one data chunk."
+   }
+  },
+  {
+   "spec": {
+    "case": "truncated",
+    "rate": 16000,
+    "frames": 64000,
+    "truncate": 10
+   },
+   "inputSha256": "4aeadb74d9deee91e95871fdb5e4f2933b3beb13d78c138f42994913baba2f19",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "The WAV file is truncated or has an invalid chunk size."
+   }
+  },
+  {
+   "spec": {
+    "case": "not wav",
+    "raw": "SUQzBAAAAAAAAGhlbGxv"
+   },
+   "inputSha256": "c183caa82a13c757cc266f77300d042db8313c4a86685ee87e7e36ccb52bf006",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "Upload a WAV file (RIFF/WAVE)."
+   }
+  },
+  {
+   "spec": {
+    "case": "empty",
+    "raw": ""
+   },
+   "inputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "Upload a WAV file (RIFF/WAVE)."
+   }
+  },
+  {
+   "spec": {
+    "case": "riff only",
+    "raw": "UklGRgQAAABXQVZF"
+   },
+   "inputSha256": "1fe5a351bf0314c8a1840b023fd1e4cab3f0f123468940c241bd7bf20e989ab8",
+   "error": {
+    "code": "unsupported_audio_format",
+    "message": "The WAV file has no format chunk."
+   }
+  }
+ ],
+ "names": [
+  {
+   "input": "Narrator",
+   "name": "Narrator",
+   "key": "narrator"
+  },
+  {
+   "input": "  Narrator  ",
+   "name": "Narrator",
+   "key": "narrator"
+  },
+  {
+   "input": "Two\t\n words",
+   "name": "Two words",
+   "key": "two words"
+  },
+  {
+   "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+   "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "error": "Voice name must be at most 48 characters.",
+   "key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+   "input": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+   "name": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+   "key": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+  },
+  {
+   "input": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+   "error": "Voice name must be at most 48 characters.",
+   "key": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+  },
+  {
+   "input": "",
+   "error": "Voice name is required.",
+   "key": ""
+  },
+  {
+   "input": "   ",
+   "error": "Voice name is required.",
+   "key": "   "
+  },
+  {
+   "input": "  ﻿",
+   "error": "Voice name is required.",
+   "key": "  ﻿"
+  },
+  {
+   "input": "Default",
+   "error": "That name belongs to a built-in voice.",
+   "key": "default"
+  },
+  {
+   "input": "DEFAULT",
+   "error": "That name belongs to a built-in voice.",
+   "key": "default"
+  },
+  {
+   "input": "ＤＥＦＡＵＬＴ",
+   "error": "That name belongs to a built-in voice.",
+   "key": "default"
+  },
+  {
+   "input": "af_heart",
+   "error": "That name belongs to a built-in voice.",
+   "key": "af_heart"
+  },
+  {
+   "input": "AF_Bella",
+   "error": "That name belongs to a built-in voice.",
+   "key": "af_bella"
+  },
+  {
+   "input": "voice-0123456789ab",
+   "error": "Voice name cannot look like a voice id.",
+   "key": "voice-0123456789ab"
+  },
+  {
+   "input": "voice-0123456789AB",
+   "name": "voice-0123456789AB",
+   "key": "voice-0123456789ab"
+  },
+  {
+   "input": "bad\u0007bell",
+   "error": "Voice name cannot contain control characters.",
+   "key": "bad\u0007bell"
+  },
+  {
+   "input": "zero​width",
+   "error": "Voice name cannot contain control characters.",
+   "key": "zero​width"
+  },
+  {
+   "input": "éclair",
+   "name": "éclair",
+   "key": "éclair"
+  },
+  {
+   "input": "éclair",
+   "name": "éclair",
+   "key": "éclair"
+  },
+  {
+   "input": "Ｆｕｌｌ",
+   "name": "Ｆｕｌｌ",
+   "key": "full"
+  },
+  {
+   "input": "ﬁne",
+   "name": "ﬁne",
+   "key": "fine"
+  },
+  {
+   "input": "İstanbul",
+   "name": "İstanbul",
+   "key": "i̇stanbul"
+  },
+  {
+   "input": "ΟΔΟΣ",
+   "name": "ΟΔΟΣ",
+   "key": "οδος"
+  },
+  {
+   "input": "ΟΔΟΣ.",
+   "name": "ΟΔΟΣ.",
+   "key": "οδος."
+  },
+  {
+   "input": "Σ",
+   "name": "Σ",
+   "key": "σ"
+  },
+  {
+   "input": "ΑΣ'Β",
+   "name": "ΑΣ'Β",
+   "key": "ασ'β"
+  },
+  {
+   "input": "Straße",
+   "name": "Straße",
+   "key": "straße"
+  },
+  {
+   "input": "ǅ",
+   "name": "ǅ",
+   "key": "dž"
+  },
+  {
+   "input": "Ⅻ",
+   "name": "Ⅻ",
+   "key": "xii"
+  },
+  {
+   "input": "x y",
+   "name": "x y",
+   "key": "x y"
+  },
+  {
+   "input": "tab\u000bvt",
+   "name": "tab vt",
+   "key": "tab vt"
+  },
+  {
+   "input": "next",
+   "error": "Voice name cannot contain control characters.",
+   "key": "next"
+  }
+ ]
+}

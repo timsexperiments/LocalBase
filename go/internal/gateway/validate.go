@@ -95,6 +95,10 @@ func (c *checker) optNumber(obj map[string]any, path, key string, lo, hi float64
 		c.fail(p, expected("number", v, true))
 		return
 	}
+	if math.IsNaN(f) {
+		c.fail(p, "Invalid input: expected number, received NaN")
+		return
+	}
 	if !math.IsNaN(lo) && (f < lo || (loExclusive && f == lo)) {
 		if loExclusive {
 			c.fail(p, "Too small: expected number to be >"+trimFloat(lo))

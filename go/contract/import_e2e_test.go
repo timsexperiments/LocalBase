@@ -155,7 +155,8 @@ func (e *e2e) do(method, path, body string) *Resp {
 func (e *e2e) serve(extra ...string) {
 	e.t.Helper()
 	port, llmPort := freePort(), freePort()
-	args := append([]string{"--root", e.root, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort)}, extra...)
+	args := append([]string{"--root", e.root, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort),
+		"--tts-port", fmt.Sprint(freePort()), "--image-port", fmt.Sprint(freePort()), "--video-port", fmt.Sprint(freePort())}, extra...)
 	cmd := exec.Command(goCLI(e.t), args...)
 	cmd.Env = append(cleanEnv(), e.env...)
 	logf, _ := os.Create(filepath.Join(e.outDir, fmt.Sprintf("serve-%d.log", port)))
@@ -547,16 +548,27 @@ func TestModelImportAcceptance(t *testing.T) {
 		}
 	})
 
-	step("OP5 CrispASR is listed as not installed and never chosen automatically", func(t *testing.T) {
-		// backends list says "not installed", not an error.
+	step("OP5 CrispASR is automatic only where pinned, and only for speech", func(t *testing.T) {
+		// Pinned: the macOS arm64 release. Elsewhere there is no managed
+		// package: "not installed", never automatic.
+		pinned := goruntime.GOOS == "darwin" && goruntime.GOARCH == "arm64"
 		for _, b := range e.json("backends", "list")["backends"].([]any) {
 			bm := b.(map[string]any)
-			if strings.HasPrefix(bm["id"].(string), "crispasr") &&
-				(bm["install"] != "missing" || bm["installLabel"] != "not installed (no managed package yet)" || bm["automatic"] != false) {
-				t.Fatalf("CrispASR in backends list: %v", bm)
+			id := bm["id"].(string)
+			if !strings.HasPrefix(id, "crispasr") {
+				continue
+			}
+			switch {
+			case pinned && id != "crispasr-vulkan":
+				if bm["install"] != "installable" || bm["installLabel"] != "installs on first use" || bm["automatic"] != true ||
+					fmt.Sprint(bm["automaticTasks"]) != "[speech]" {
+					t.Fatalf("pinned CrispASR in backends list: %v", bm)
+				}
+			case bm["install"] != "missing" || bm["installLabel"] != "not installed (no managed package yet)":
+				t.Fatalf("unpinned CrispASR in backends list: %v", bm)
 			}
 		}
-		if r := e.cli(nil, "backends", "list"); !strings.Contains(r.stdout, "not installed (no managed package yet)") || r.code != 0 {
+		if r := e.cli(nil, "backends", "list"); r.code != 0 || !strings.Contains(r.stdout, "not installed (no managed package yet)") {
 			t.Fatalf("human backends list: %s%s", r.stdout, r.stderr)
 		}
 		// A speech model CrispASR is the routing table's first choice for.
@@ -564,41 +576,56 @@ func TestModelImportAcceptance(t *testing.T) {
 		if goruntime.GOOS == "linux" {
 			crisp = "crispasr-cpu"
 		}
-		def := map[string]any{"id": "kokoro-def", "name": "Kokoro definition", "tasks": []string{"speech"}, "capabilities": []string{},
-			"origin": "import", "variants": []any{map[string]any{"id": "q8",
-				"format": map[string]any{"value": "gguf", "source": "declared"}, "architecture": map[string]any{"value": "kokoro", "source": "declared"},
-				"precision": map[string]any{}, "contextLength": map[string]any{}, "dimensions": map[string]any{},
-				"artifacts": []any{
-					map[string]any{"filename": "kokoro.gguf", "role": "weights", "required": true, "source": map[string]any{"kind": "local"}},
-					map[string]any{"filename": "af_heart.bin", "role": "voice", "required": true, "source": map[string]any{"kind": "local"}}}}}}
-		b, _ := json.Marshal(def)
-		file := filepath.Join(tmp, "kokoro-def.json")
-		os.WriteFile(file, b, 0o644)
-		sel := e.json("models", "add-definition", file)["selection"].(map[string]any)
-		if sel["backendId"] != "" {
-			t.Fatalf("a backend without a managed package was chosen automatically: %v", sel)
+		define := func(id, task, arch string, artifacts ...any) map[string]any {
+			def := map[string]any{"id": id, "name": id, "tasks": []string{task}, "capabilities": []string{},
+				"origin": "import", "variants": []any{map[string]any{"id": "q8",
+					"format": map[string]any{"value": "gguf", "source": "declared"}, "architecture": map[string]any{"value": arch, "source": "declared"},
+					"precision": map[string]any{}, "contextLength": map[string]any{}, "dimensions": map[string]any{}, "artifacts": artifacts}}}
+			b, _ := json.Marshal(def)
+			file := filepath.Join(tmp, id+".json")
+			os.WriteFile(file, b, 0o644)
+			return e.json("models", "add-definition", file)["selection"].(map[string]any)
+		}
+		local := map[string]any{"kind": "local"}
+		sel := define("kokoro-def", "speech", "kokoro",
+			map[string]any{"filename": "kokoro.gguf", "role": "weights", "required": true, "source": local},
+			map[string]any{"filename": "af_heart.bin", "role": "voice", "required": true, "source": local})
+		if want := map[bool]string{true: crisp, false: ""}[pinned]; sel["backendId"] != want {
+			t.Fatalf("Kokoro automatic backend %q, want %q: %v", sel["backendId"], want, sel)
 		}
 		found := false
 		for _, o := range sel["recommendation"].(map[string]any)["options"].([]any) {
 			om := o.(map[string]any)
-			if !strings.HasPrefix(om["backendId"].(string), "crispasr") {
+			if om["backendId"] != crisp {
 				continue
 			}
+			found = true
 			codes := strings.Join(warningCodes(om), ",")
-			if om["install"] != "missing" || !strings.Contains(codes, "no-managed-package") || !strings.Contains(codes, "not-chosen-automatically") {
-				t.Fatalf("CrispASR option %v", om)
+			if om["rating"] != "supported" {
+				t.Fatalf("%s should rate this Kokoro variant supported: %v", crisp, om)
 			}
-			if om["backendId"] == crisp {
-				found = true
-				if om["rating"] != "supported" {
-					t.Fatalf("%s should rate this Kokoro variant supported (it would be preferred): %v", crisp, om)
-				}
+			if pinned && (om["install"] != "installable" || !strings.Contains(codes, "installs-on-first-use")) ||
+				!pinned && (om["install"] != "missing" || !strings.Contains(codes, "no-managed-package") || !strings.Contains(codes, "not-chosen-automatically")) {
+				t.Fatalf("CrispASR option %v", om)
 			}
 		}
 		if !found {
 			t.Fatalf("%s is not listed", crisp)
 		}
-		// Choosing it by hand is allowed and shown as not installed.
+		// Recognition stays unqualified: a GGUF whisper model never goes to
+		// CrispASR automatically, wherever it is pinned.
+		sel = define("whisper-def", "transcription", "whisper",
+			map[string]any{"filename": "whisper.gguf", "role": "weights", "required": true, "source": local})
+		if strings.HasPrefix(fmt.Sprint(sel["backendId"]), "crispasr") {
+			t.Fatalf("CrispASR chosen automatically for transcription: %v", sel)
+		}
+		for _, o := range sel["recommendation"].(map[string]any)["options"].([]any) {
+			om := o.(map[string]any)
+			if om["backendId"] == crisp && !strings.Contains(strings.Join(warningCodes(om), ","), "not-chosen-automatically") {
+				t.Fatalf("CrispASR transcription option: %v", om)
+			}
+		}
+		// Choosing it by hand is allowed.
 		s := e.json("models", "backend", "kokoro-def", "--set", crisp)["selection"].(map[string]any)
 		if s["backendId"] != crisp || s["mode"] != "manual" {
 			t.Fatalf("manual CrispASR: %v", s)

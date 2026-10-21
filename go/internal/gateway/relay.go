@@ -215,7 +215,11 @@ func upstreamFailure(w http.ResponseWriter, r *http.Request, message string) {
 // the backend call when the client goes away; the backend stays up (#276).
 func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body []byte, modelID string, o inferOpts, t *inference) {
 	up, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(body))
-	up.Header.Set("Content-Type", "application/json")
+	ct := "application/json"
+	if o.contentType != "" {
+		ct = o.contentType
+	}
+	up.Header.Set("Content-Type", ct)
 	for _, h := range []string{"Traceparent", "Tracestate"} {
 		if v := r.Header.Get(h); v != "" {
 			up.Header.Set(h, v)
@@ -390,6 +394,21 @@ func validResponse(kind string, obj map[string]any) bool {
 		}
 		u, ok := obj["usage"].(map[string]any)
 		return ok && isNum(u["prompt_tokens"]) && isNum(u["total_tokens"])
+	case "image":
+		// imageGenerationResponseSchema: created, and data items with b64_json.
+		data, ok := obj["data"].([]any)
+		if !ok || !isNum(obj["created"]) {
+			return false
+		}
+		for _, d := range data {
+			m, ok := d.(map[string]any)
+			if !ok || !isString(m["b64_json"]) {
+				return false
+			}
+			if rp, has := m["revised_prompt"]; has && !isString(rp) {
+				return false
+			}
+		}
 	case "decision":
 		if !isString(obj["model"]) {
 			return false

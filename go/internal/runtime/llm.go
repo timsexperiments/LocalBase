@@ -59,6 +59,9 @@ type LLMDeps struct {
 	// Gate resolves the backend selection (nil: every model runs on the
 	// managed llama-server, as before backend selection).
 	Gate Gate
+	// Activate persists modelID as the active model of kind after a switch
+	// to it (TS activateModel); nil skips it.
+	Activate func(kind, modelID string)
 	// SelectionKey identifies a model's current backend selection cheaply;
 	// a running model whose key changed is restarted on its next request.
 	SelectionKey func(modelID string) string
@@ -447,7 +450,18 @@ func (m *LLM) doSwitch(modelID, key string) error {
 	}
 	b.key = key
 	m.install(b)
+	if m.d.Activate != nil && (t == nil || !t.Imported) {
+		m.d.Activate("llm", modelID)
+	}
 	return nil
+}
+
+// SetConfig replaces the configuration snapshot (after the active model
+// changed).
+func (m *LLM) SetConfig(cfg *store.Config) {
+	m.mu.Lock()
+	m.cfg = cfg
+	m.mu.Unlock()
 }
 
 func (m *LLM) install(b *backend) {

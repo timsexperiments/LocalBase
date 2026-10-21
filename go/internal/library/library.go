@@ -30,7 +30,11 @@ type Library struct {
 	Catalog  *catalog.Catalog
 	Registry *backends.Registry
 	host     backends.Host
-	DeviceID string
+	// InstallMissing lets a launch download a selected catalog variant's pinned
+	// files (serve --install-missing); HFToken returns the saved token.
+	InstallMissing bool
+	HFToken        func() string
+	DeviceID       string
 
 	jobs  jobs
 	mu    sync.Mutex
@@ -227,7 +231,10 @@ func (l *Library) SaveImport(ctx context.Context, res *acquire.Result, backendID
 var llmTasks = []string{"chat", "embeddings", "decision"}
 
 // Gate resolves a model for the LLM runtime through the selection.
-func (l *Library) Gate() runtime.Gate {
+func (l *Library) Gate() runtime.Gate { return l.GateFor(llmTasks...) }
+
+// GateFor resolves models of the given tasks through the selection.
+func (l *Library) GateFor(tasks ...string) runtime.Gate {
 	return func(modelID string) (*runtime.Target, error) {
 		ctx := context.Background()
 		e, err := l.Get(ctx, modelID)
@@ -237,7 +244,7 @@ func (l *Library) Gate() runtime.Gate {
 		if err != nil {
 			return nil, err
 		}
-		if !slices.ContainsFunc(llmTasks, e.Model.HasTask) {
+		if !slices.ContainsFunc(tasks, e.Model.HasTask) {
 			return nil, runtime.ErrModelNotFound
 		}
 		s, err := l.Selection(ctx, e)
@@ -257,6 +264,18 @@ func (l *Library) Gate() runtime.Gate {
 		t.Variant = e.Model.Variant(s.VariantID)
 		if t.Variant == nil {
 			return t, &runtime.LaunchError{Code: "backend_not_selected", Message: "The selected variant no longer exists. Select a backend to run this model."}
+		}
+		if !e.Imported && t.Variant.ID != "default" && len(s.NeedsDownload) > 0 {
+			if !l.InstallMissing {
+				return t, &runtime.NotInstalledError{ModelID: modelID}
+			}
+			token := ""
+			if l.HFToken != nil {
+				token = l.HFToken()
+			}
+			if err := acquire.FetchPinned(ctx, e.Dir, t.Variant.Artifacts, token, nil); err != nil {
+				return t, err
+			}
 		}
 		if e.Imported && len(s.NeedsDownload) > 0 {
 			return t, &runtime.LaunchError{Code: "model_assets_missing", Message: fmt.Sprintf(

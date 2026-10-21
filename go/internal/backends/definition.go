@@ -89,8 +89,12 @@ type Definition struct {
 	Launch        *Launch             `json:"launch,omitempty"`
 	// Automatic false keeps a backend out of automatic selection (for
 	// example until a managed package is pinned); it stays selectable.
-	Automatic *bool  `json:"automatic,omitempty"`
-	Notes     string `json:"notes,omitempty"`
+	Automatic *bool `json:"automatic,omitempty"`
+	// AutomaticTasks, when set, limits automatic selection to models whose
+	// tasks are all listed: a backend can be qualified here for one task and
+	// not another (CrispASR synthesis, not its recognition).
+	AutomaticTasks []string `json:"automaticTasks,omitempty"`
+	Notes          string   `json:"notes,omitempty"`
 
 	BuiltIn bool `json:"-"`
 }
@@ -122,6 +126,11 @@ func (d *Definition) Validate() error {
 			return fmt.Errorf("unknown task %q", t)
 		}
 	}
+	for _, t := range d.AutomaticTasks {
+		if !slices.Contains(d.Tasks, t) {
+			return fmt.Errorf("automaticTasks lists %q, which is not one of the backend's tasks", t)
+		}
+	}
 	for _, p := range d.Platforms {
 		if p.OS == "" || p.Arch == "" || p.Accelerator == "" {
 			return errors.New("each platform needs os, arch and accelerator")
@@ -149,6 +158,22 @@ func (d *Definition) Validate() error {
 
 // automatic reports whether routing may pick this backend.
 func (d *Definition) automatic() bool { return d.Automatic == nil || *d.Automatic }
+
+// automaticFor reports whether routing may pick this backend for a model.
+func (d *Definition) automaticFor(m *models.Model) bool {
+	if !d.automatic() {
+		return false
+	}
+	if len(d.AutomaticTasks) == 0 {
+		return true
+	}
+	for _, t := range m.Tasks {
+		if !slices.Contains(d.AutomaticTasks, t) {
+			return false
+		}
+	}
+	return true
+}
 
 // Supports reports task or capability support.
 func (d *Definition) Supports(taskOrCapability string) bool {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -51,6 +52,21 @@ func TestReadiness(t *testing.T) {
 			t.Errorf("modalities = %v", body["modalities"])
 		}
 	})
+	// Every configured media modality admits requests on both. Video arrives in
+	// Go with M6, so only TS lists it for now.
+	admitting := map[string]string{}
+	for _, tg := range targets {
+		var list []string
+		for _, m := range do(t, "GET", tg.BaseURL+"/health/ready", nil, "").JSON(t)["modalities"].([]any) {
+			if m != "video" {
+				list = append(list, m.(string))
+			}
+		}
+		admitting[tg.Name] = strings.Join(list, ",")
+		if admitting[tg.Name] != "llm,stt,tts,image" {
+			t.Errorf("%s admits %s", tg.Name, admitting[tg.Name])
+		}
+	}
 }
 
 func TestAuthentication(t *testing.T) {
@@ -123,8 +139,28 @@ func TestModelsList(t *testing.T) {
 				t.Errorf("%s: object/owned_by = %v/%v", m["id"], m["object"], m["owned_by"])
 			}
 		}
-		want := []string{chatModel, decisionModel, embeddingModel, "whisper-base-en-q8_0", "qwen3-tts-1.7b-base-q4_k_m",
-			"kokoro-82m-v1.0-q8", "dreamshaper-8-lcm", "flux1-schnell-q4_0", "realvis-xl-v5.0", "wan2.1-t2v-1.3b-q8_0", "fastwan2.2-ti2v-5b-q6_k"}
+		// Image models: the fixture selection, with the active one first (any
+		// image request makes its model active).
+		images := []string{"dreamshaper-8-lcm", "flux1-schnell-q4_0", "realvis-xl-v5.0", "sdxl-turbo"}
+		if slices.Contains(ids, "dreamshaper-v8") {
+			images = append(images, "dreamshaper-v8")
+		}
+		if first := slices.IndexFunc(ids, func(id string) bool { return slices.Contains(images, id) }); first >= 0 {
+			if i := slices.Index(images, ids[first]); i > 0 {
+				images = slices.Concat([]string{images[i]}, images[:i], images[i+1:])
+			}
+		}
+		want := slices.Concat([]string{chatModel, decisionModel, embeddingModel, "whisper-base-en-q8_0", "qwen3-tts-1.7b-base-q4_k_m",
+			"kokoro-82m-v1.0-q8"}, images, []string{"wan2.1-t2v-1.3b-q8_0", "fastwan2.2-ti2v-5b-q6_k"})
+		// With a real whisper model linked, tiny.en is selected too, and a request
+		// to it makes it the active (first) STT model.
+		if slices.Contains(ids, "whisper-tiny-en-q8_0") {
+			stt := []string{"whisper-base-en-q8_0", "whisper-tiny-en-q8_0"}
+			if i := slices.Index(ids, "whisper-tiny-en-q8_0"); i < slices.Index(ids, "whisper-base-en-q8_0") {
+				stt = []string{"whisper-tiny-en-q8_0", "whisper-base-en-q8_0"}
+			}
+			want = slices.Concat(want[:3], stt, want[4:])
+		}
 		if !reflect.DeepEqual(ids, want) {
 			t.Errorf("ids = %v, want %v", ids, want)
 		}
