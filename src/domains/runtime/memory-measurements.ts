@@ -21,6 +21,10 @@
  * A record only applies to the launch shape it was measured at; any other
  * context size, slot count, KV type, resolution or launch option falls back
  * to the estimate.
+ *
+ * Records for entries that left the built-in catalog (`catalog/former`) stay:
+ * installs that kept one as a user entry still plan from its record while
+ * the files match (`usesReferenceMeasurements`).
  */
 
 const mebibyte = 1024 * 1024;

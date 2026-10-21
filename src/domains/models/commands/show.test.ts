@@ -1,10 +1,18 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { byId } from "../../../catalog";
 import { defaultConfig } from "../../../manager";
 import { gibibyte } from "../../runtime/memory-safety";
 import { resolveModelCapabilities } from "../capability-detection";
 import { projectModelMetadata } from "../model-metadata";
 import { feedAnnotationLines, modelDetailLines } from "./show";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
 

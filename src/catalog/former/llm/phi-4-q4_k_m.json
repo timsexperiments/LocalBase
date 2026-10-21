@@ -1,0 +1,29 @@
+{
+  "modelId": "phi-4-q4_k_m",
+  "displayName": "Phi-4",
+  "kind": "llm",
+  "provider": "Microsoft",
+  "family": "Phi",
+  "version": "4",
+  "size": "14B",
+  "quant": "Q4_K_M",
+  "storageGb": 9,
+  "source": "https://huggingface.co/bartowski/phi-4-GGUF",
+  "repositoryRevision": "19cd65f97c2f1712a81c506611d3f9c94b16a1e1",
+  "artifacts": [
+    {
+      "sourcePath": "phi-4-Q4_K_M.gguf",
+      "filename": "phi-4-Q4_K_M.gguf",
+      "expectedSizeBytes": 9053114816,
+      "sha256": "009aba717c09d4a35890c7d35eb59d54e1dba884c7c526e7197d9c13ab5911d9",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 16384,
+  "capabilities": ["reasoning", "tool-calling", "code-generation"],
+  "commercialStatus": "open",
+  "catch": "MIT License.",
+  "notes": "bartowski Q4_K_M GGUF of microsoft/phi-4 (14B). GGUF header: architecture phi3, 16,384-token training context."
+}

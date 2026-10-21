@@ -44,6 +44,37 @@ export const memoryFigureLabels = {
   observed: "Seen on this machine",
 } as const;
 
+/**
+ * Label for the computed minimum (`minVramGb` / `minimumVramEstimateGb` in
+ * JSON). It is a planning figure at one launch shape, not a hardware
+ * requirement, so the copy never calls it "VRAM needed".
+ */
+export const planningMinimumLabel = "Planning minimum";
+
+/** What the planning minimum is, for help text and footnotes. */
+export const planningMinimumNote =
+  "LocalBase's planning minimum is the estimated or measured accelerator demand at the stated launch settings plus a margin of 512 MiB or 10%, whichever is larger. It is not a hardware requirement, and other settings or machines need different amounts.";
+
+/** How the reference figure was obtained, such as `measured on Apple M-series 64 GiB, macOS 26`. */
+export function describeMemoryBasis(
+  reference: Readonly<{
+    source: keyof typeof memoryFigureLabels;
+    hardware?: string;
+  }>,
+): string {
+  switch (reference.source) {
+    case "estimate":
+      return "formula estimate, not measured";
+    case "observed":
+      return "peak recorded on this machine";
+    case "measured":
+    case "feed":
+      return reference.hardware
+        ? `measured on ${reference.hardware}`
+        : "measured";
+  }
+}
+
 export const fitLabels = {
   fits: "Fits",
   tight: "Tight fit",

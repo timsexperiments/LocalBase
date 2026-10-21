@@ -407,6 +407,10 @@ export const modelSpecObjectSchema = z
     version: z.string().min(1),
     size: z.string().min(1),
     quant: z.string().min(1),
+    /**
+     * Accepted so older catalog.d files still parse. Built-in entries carry
+     * no score, and LocalBase neither displays nor ranks by it.
+     */
     codingScore: z.number().optional(),
     storageGb: z.number().positive(),
     source: repositoryUrlSchema,

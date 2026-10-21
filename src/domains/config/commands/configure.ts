@@ -141,12 +141,12 @@ function llmChoices(
 }> {
   return listModels("llm").map((model) => {
     const fit = evaluateModelFit(model, vramGb);
-    let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, min VRAM ${fit.minVramGb}GB ${fit.source}, coding ${model.codingScore}/10)`;
+    let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, planning min ${fit.minVramGb}GB ${fit.source})`;
 
     let disabled: string | boolean = false;
     if (fit.status === "insufficient") {
-      label += ` [❌ Requires ${fit.minVramGb}GB, you have ${vramGb}GB]`;
-      disabled = `Requires ${fit.minVramGb}GB VRAM`;
+      label += ` [❌ Planning minimum ${fit.minVramGb}GB exceeds your ${vramGb}GB]`;
+      disabled = `Planning minimum ${fit.minVramGb}GB`;
     } else if (fit.status === "tight") {
       label += ` [⚠️ Tight: leaves ${fit.headroomGb.toFixed(1)}GB headroom]`;
     } else {
@@ -173,12 +173,12 @@ function sttChoices(
 }> {
   return listModels("stt").map((model) => {
     const fit = evaluateModelFit(model, vramGb);
-    let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, min VRAM ${fit.minVramGb}GB ${fit.source})`;
+    let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, planning min ${fit.minVramGb}GB ${fit.source})`;
 
     let disabled: string | boolean = false;
     if (fit.status === "insufficient") {
-      label += ` [❌ Requires ${fit.minVramGb}GB, you have ${vramGb}GB]`;
-      disabled = `Requires ${fit.minVramGb}GB VRAM`;
+      label += ` [❌ Planning minimum ${fit.minVramGb}GB exceeds your ${vramGb}GB]`;
+      disabled = `Planning minimum ${fit.minVramGb}GB`;
     } else if (fit.status === "tight") {
       label += ` [⚠️ Tight: leaves ${fit.headroomGb.toFixed(1)}GB headroom]`;
     } else {
@@ -205,12 +205,12 @@ function imageChoices(
 }> {
   return listModels("image").map((model) => {
     const fit = evaluateModelFit(model, vramGb);
-    let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, min VRAM ${fit.minVramGb}GB ${fit.source})`;
+    let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, planning min ${fit.minVramGb}GB ${fit.source})`;
 
     let disabled: string | boolean = false;
     if (fit.status === "insufficient") {
-      label += ` [❌ Requires ${fit.minVramGb}GB, you have ${vramGb}GB]`;
-      disabled = `Requires ${fit.minVramGb}GB VRAM`;
+      label += ` [❌ Planning minimum ${fit.minVramGb}GB exceeds your ${vramGb}GB]`;
+      disabled = `Planning minimum ${fit.minVramGb}GB`;
     } else if (fit.status === "tight") {
       label += ` [⚠️ Tight: leaves ${fit.headroomGb.toFixed(1)}GB headroom]`;
     } else {
@@ -237,11 +237,11 @@ function ttsChoices(
 }> {
   return listModels("tts").map((model) => {
     const fit = evaluateModelFit(model, vramGb);
-    let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, min VRAM ${fit.minVramGb}GB ${fit.source})`;
+    let label = `${model.modelId} (${model.storageGb.toFixed(2)}GB, planning min ${fit.minVramGb}GB ${fit.source})`;
     let disabled: string | boolean = false;
     if (fit.status === "insufficient") {
-      label += ` [Requires ${fit.minVramGb}GB, you have ${vramGb}GB]`;
-      disabled = `Requires ${fit.minVramGb}GB VRAM`;
+      label += ` [Planning minimum ${fit.minVramGb}GB exceeds your ${vramGb}GB]`;
+      disabled = `Planning minimum ${fit.minVramGb}GB`;
     } else if (fit.status === "tight") {
       label += ` [Tight: leaves ${fit.headroomGb.toFixed(1)}GB headroom]`;
     }

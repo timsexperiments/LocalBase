@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { afterAll, expect, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
@@ -19,6 +19,14 @@ import { ensureLocalBaseRootMarker } from "../../../utils/root";
 import { createOtelRuntime, OtelRuntimeHolder } from "../../observability/otel";
 import { RuntimeConfigController } from "../../runtime/config-snapshot";
 import { CliInputError } from "../../app/commands/errors";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 const nonInteractiveExecution: CommandExecution = {
   global: { nonInteractive: true, json: false },

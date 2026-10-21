@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,6 +28,14 @@ import {
   type VideoJobBackend,
   type VideoJobInput,
 } from "./video-job-manager";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 const VIDEO_MODEL = "wan2.1-t2v-1.3b-q8_0";
 

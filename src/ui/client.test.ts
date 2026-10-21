@@ -692,10 +692,10 @@ describe("playground client boundaries", () => {
     const first = models[0];
     if (!first) throw new Error("Expected model fixture.");
     expect(modelMemorySummary(first, parsed.host.memory)).toBe(
-      "Needs ~1 GB · 37.5 GB available",
+      "Planned ~1 GB · 37.5 GB available",
     );
     expect(modelMemorySummary(first, null)).toBe(
-      "Needs ~1 GB · memory availability unknown",
+      "Planned ~1 GB · memory availability unknown",
     );
     expect(
       modelMemorySummary(first, {
@@ -711,7 +711,7 @@ describe("playground client boundaries", () => {
           },
         ],
       }),
-    ).toBe("Needs ~1 GB · 23.3 GB available");
+    ).toBe("Planned ~1 GB · 23.3 GB available");
     for (const accelerators of [
       [],
       [
@@ -728,7 +728,7 @@ describe("playground client boundaries", () => {
           },
           accelerators,
         }),
-      ).toBe("Needs ~1 GB · memory availability unknown");
+      ).toBe("Planned ~1 GB · memory availability unknown");
     }
     const speechModels = availableModels(models, "tts");
     expect(speechModels.map((m) => m.id)).toEqual(["speech"]);

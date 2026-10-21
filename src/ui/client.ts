@@ -196,6 +196,8 @@ const modelSchema = z.object({
           source: z.enum(["estimate", "feed", "measured"]),
           bytes: z.number(),
           launchShape: z.string(),
+          /** Machine a measured figure was recorded on. */
+          hardware: z.string().optional(),
         })
         .optional(),
       /** Peaks seen on this machine, one per launch shape. */
@@ -345,7 +347,7 @@ export function modelMemorySummary(
     availableBytes == null
       ? "memory availability unknown"
       : `${Math.round((availableBytes / 1024 ** 3) * 10) / 10} GB available`;
-  return `Needs ~${modelMemoryRequirement(model)} · ${available}`;
+  return `Planned ~${modelMemoryRequirement(model)} · ${available}`;
 }
 
 const memorySourceLabels = {
@@ -361,7 +363,10 @@ const fitVerdictLabels = {
   "wont-fit": "won't fit",
 } as const;
 
-/** The minimum memory with its source, such as `3 GB (observed on this machine)`. */
+/**
+ * The planning minimum with its source, such as `3 GB (observed on this
+ * machine)`. It is a figure at one launch shape, not a hardware requirement.
+ */
 export function modelMemoryRequirement(model: Model): string {
   const memory = model.catalog.memory;
   const source = memory.source ? ` (${memorySourceLabels[memory.source]})` : "";

@@ -7,7 +7,7 @@
   "version": "base",
   "size": "base",
   "quant": "Q8_0",
-  "storageGb": 0.15,
+  "storageGb": 0.08,
   "source": "https://huggingface.co/ggerganov/whisper.cpp",
   "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
   "artifacts": [
@@ -24,5 +24,5 @@
   "capabilities": ["speech-to-text", "multilingual"],
   "commercialStatus": "open",
   "catch": "MIT License.",
-  "notes": "Good default STT latency/quality tradeoff."
+  "notes": "whisper.cpp ggml Q8_0 conversion of OpenAI Whisper base (74M parameters, multilingual). File header: 6 encoder and 6 decoder layers, 80 mel bins. Vocabulary and mel filters are bundled; no Core ML encoder required."
 }
